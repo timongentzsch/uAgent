@@ -224,7 +224,7 @@ std::vector<Tool> BuildTools(AppContext& context,
             topic, name,
             SelfDescriptionInputs{app->config_manager, app->runtime.config,
                                   app->runtime.api, app->tools,
-                                  ApprovalIsAutomatic(), app->agent.get()});
+                                  app->agent.get()});
       },
       prepare, std::make_shared<ConfigProposalStore>()));
   WebSearchRoute search_route =
@@ -280,68 +280,71 @@ std::vector<Tool> BuildTools(AppContext& context,
 // answer. That is defense in depth for the built-in file tools, not a
 // boundary: until commands are sandboxed an approved shell reaches the same
 // paths with none of these checks in front of it.
-// Shells and interpreters can execute arbitrary payloads after the first word,
-// so reusable approval is exact-command scoped. Every grant also includes the
-// policy/schema generation: refreshing an MCP definition can never inherit
-// authority merely because its public name stayed the same.
-std::string ApprovalKey(const Tool& tool, const json& arguments,
-                        ApprovalClass required) {
-  json policy = {{"name", tool.name},
-                 {"provider", tool.provider},
-                 {"parameters", ToolParameters(tool)},
-                 {"mutating", tool.mutating},
-                 {"capabilities", tool.capabilities},
-                 {"approval_class", static_cast<int>(required)}};
-  if (!tool.output_schema.is_null()) {
-    policy["output_schema"] = tool.output_schema;
-  }
-  std::string command = Trim(JsonValue(arguments, "command", ""));
-  std::string scope = command.empty() ? tool.name : tool.name + " " + command;
-  return HashHex(JsonDump(policy)) + "\n" + scope;
-}
-
-std::string ApprovalScope(const Tool& tool, const json& arguments) {
-  return Trim(JsonValue(arguments, "command", "")).empty()
-             ? tool.name
-             : "this exact command";
-}
-
 Agent::Approver MakeApprover(AppContext* app) {
-  return [app](const Tool& tool, const json& arguments) {
+  return [app](const Tool& tool, const json& arguments, int64_t turn) {
     static std::atomic<uint64_t> sequence{0};
     ApprovalClass required = RequiredApproval(tool, arguments);
     bool mandatory = required == ApprovalClass::kMandatoryHuman;
-    std::string key = ApprovalKey(tool, arguments, required);
-    bool remembered =
-        !mandatory &&
-        std::find(app->session_approvals.begin(), app->session_approvals.end(),
-                  key) != app->session_approvals.end();
-    bool automatic = (ApprovalIsAutomatic() || remembered) && !mandatory;
+    std::string key = PermissionKey(tool, arguments, required);
+    const std::string root = CanonicalCwd();
+    bool session_rule = !mandatory && app->session_approvals.contains(key);
+    bool repository_rule =
+        !mandatory && !session_rule && RepositoryPermissionAllows(root, key);
+    bool automatic =
+        !mandatory && (ApprovalIsYolo() || session_rule || repository_rule);
     bool granted = true;
+    json review = json::object();
     std::string request_id =
         "approval-" + std::to_string(sequence.fetch_add(1) + 1);
+    const std::string raw_payload = tool.approval_preview
+                                        ? tool.approval_preview(arguments)
+                                        : ToolSummary(tool, arguments);
+    if (!automatic && !mandatory &&
+        CurrentApprovalMode() == ApprovalMode::kAuto) {
+      AutoPermissionReview decision =
+          ReviewPermission(app->runtime.permission_api, app->runtime.config,
+                           app->runtime.side_usage, turn, tool, raw_payload,
+                           app->agent->History().LastText(MessageKind::kUser));
+      const char* choice =
+          decision.decision == AutoPermissionDecision::kAllow  ? "allow"
+          : decision.decision == AutoPermissionDecision::kDeny ? "deny"
+                                                               : "ask";
+      review = {{"choice", choice},
+                {"probabilities", std::move(decision.probabilities)}};
+      if (!decision.error.empty()) review["error"] = decision.error;
+      if (decision.decision == AutoPermissionDecision::kAllow) {
+        automatic = true;
+        granted = true;
+      } else if (decision.decision == AutoPermissionDecision::kDeny) {
+        automatic = true;
+        granted = false;
+      } else if (!InteractiveApprovalAvailable()) {
+        automatic = true;
+        granted = false;
+      }
+      DebugLog("permission_review", {{"tool", tool.name}, {"result", review}});
+    }
     if (!automatic) {
       // Print the full command/payload before asking, so long commands are
       // never truncated in the approval prompt. A tool with more to show than
       // its one-line label supplies its own preview.
-      std::string payload =
-          TerminalSafe(tool.approval_preview ? tool.approval_preview(arguments)
-                                             : ToolSummary(tool, arguments));
+      std::string payload = TerminalSafe(raw_payload);
       // Reaching µAgent's own configuration is the reason a tool escalates by
       // its path; a tool that escalates for its own reason names it.
       std::string reason = tool.mandatory_reason.empty()
                                ? "changes \u00b5Agent's own configuration"
                                : tool.mandatory_reason;
-      Emit(Event{EventId::kApprovalRequested,
-                 {{"id", request_id},
-                  {"tool", tool.name},
-                  {"preview", payload},
-                  {"scope", ApprovalScope(tool, arguments)},
-                  {"mandatory_human", mandatory},
-                  {"mandatory_reason", mandatory ? reason : std::string()},
-                  {"choices", mandatory ? json::array({"yes", "no"})
-                                        : json::array({"once", "always", "no",
-                                                       "guidance"})}}});
+      Emit(Event{
+          EventId::kApprovalRequested,
+          {{"id", request_id},
+           {"tool", tool.name},
+           {"preview", payload},
+           {"scope", PermissionScope()},
+           {"mandatory_human", mandatory},
+           {"mandatory_reason", mandatory ? reason : std::string()},
+           {"choices", mandatory ? json::array({"yes", "no"})
+                                 : json::array({"once", "session", "repository",
+                                                "no", "guidance"})}}});
       if (!app->channel) {
         std::string headline = "allow " + TerminalSafe(tool.name) + RST();
         if (mandatory) headline += " \u2014 " + reason;
@@ -368,9 +371,9 @@ Agent::Approver MakeApprover(AppContext* app) {
         // Anything else is guidance: denied, and queued as steering.
         std::string question =
             std::string(YEL()) + "allow " + TerminalSafe(tool.name) +
-            "? [y] once  [a] always " +
-            TerminalSafe(ApprovalScope(tool, arguments)) +
-            " this session  [n] no — or say what to do instead: " + RST();
+            "? [y] once  [s] session  [a] repository  [n] no — or say what "
+            "to do instead: " +
+            RST();
         bool cancelled = false;
         bool eof = false;
         std::string answer = Trim(ReadChoiceLine(
@@ -379,15 +382,28 @@ Agent::Approver MakeApprover(AppContext* app) {
              .prompt = std::move(question),
              .options = json::array(
                  {{{"value", "y"}, {"label", "Allow once"}},
-                  {{"value", "a"}, {"label", "Always this session"}},
+                  {{"value", "s"}, {"label", "Allow for this session"}},
+                  {{"value", "a"}, {"label", "Always in this repository"}},
                   {{"value", "n"}, {"label", "Deny"}},
                   {{"value", "guidance"}, {"label", "Send guidance"}}})},
             cancelled, eof));
         std::string choice = AsciiLower(answer);
-        bool always = choice == "a" || choice == "always";
-        granted =
-            !cancelled && !eof && (choice == "y" || choice == "yes" || always);
-        if (granted && always) app->session_approvals.push_back(key);
+        bool remember_session = choice == "s" || choice == "session";
+        bool remember_repository =
+            choice == "a" || choice == "always" || choice == "repository";
+        granted = !cancelled && !eof &&
+                  (choice == "y" || choice == "yes" || remember_session ||
+                   remember_repository);
+        if (granted && remember_session) app->session_approvals.insert(key);
+        if (granted && remember_repository) {
+          std::string error;
+          if (!RememberRepositoryPermission(root, key, tool.name, raw_payload,
+                                            error)) {
+            Emit(NoticeEvent(
+                PresentationStatus::kWarned,
+                "· allowed once; could not save permission rule: " + error));
+          }
+        }
         if (!granted && !cancelled && !eof && !answer.empty() &&
             choice != "n" && choice != "no") {
           SteeringState().Queue(answer);
@@ -396,12 +412,18 @@ Agent::Approver MakeApprover(AppContext* app) {
     }
     DebugLog("approval", {{"tool", tool.name},
                           {"automatic", automatic},
+                          {"mode", ApprovalModeName(CurrentApprovalMode())},
+                          {"session_rule", session_rule},
+                          {"repository_rule", repository_rule},
+                          {"review", review},
                           {"mandatory_human", mandatory},
                           {"granted", granted}});
     Emit(Event{EventId::kApprovalResolved,
                {{"id", request_id},
                 {"tool", tool.name},
                 {"automatic", automatic},
+                {"mode", ApprovalModeName(CurrentApprovalMode())},
+                {"review", review},
                 {"mandatory_human", mandatory},
                 {"granted", granted}}});
     return granted;
@@ -425,7 +447,7 @@ Agent::ToolRefresher MakeToolRefresher(AppContext* app) {
 // Two things a session must not discover only when a command fails: that the
 // sandbox it asked for is not running, and that a root it listed was dropped.
 void ReportSandbox() {
-  if (ApprovalIsAutomatic()) return;
+  if (ApprovalIsYolo()) return;
   const SandboxStatus& status = SandboxRuntime();
   if (status.mode == SandboxMode::kDegraded) {
     Emit(Event{EventId::kCapabilityChanged,
@@ -468,7 +490,7 @@ void LogReady(const AppContext& context) {
       {"memory", config.memory_enabled},
       {"memory_generate", config.memory_generate},
       {"run_mode", run_mode},
-      {"approval", ApprovalIsAutomatic() ? "yolo" : "prompt"},
+      {"approval", ApprovalModeName(CurrentApprovalMode())},
       {"auto_compact_pct", AutoCompactPct()},
       {"auto_compact_tokens", AutoCompactTokens()},
       {"tool_concurrency", ToolConcurrency()},
@@ -499,7 +521,7 @@ void LogReady(const AppContext& context) {
        {"output_mode", context.options.json_stream
                            ? "json-stream"
                            : (context.options.json ? "json" : "text")},
-       {"yolo", ApprovalIsAutomatic()},
+       {"yolo", ApprovalIsYolo()},
        {"auto_compact_pct", AutoCompactPct()},
        {"auto_compact_tokens", AutoCompactTokens()},
        {"openrouter_provider", config.openrouter_provider},
@@ -588,7 +610,12 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   MaintainArtifacts();
   // Keep the explicit CLI flag distinct from the configured default so a
   // resumed conversation can restore its own override.
-  SetApprovalAutomatic(options.yolo || config.approval == "yolo");
+  ApprovalMode approval_mode = ApprovalMode::kAsk;
+  if (!ParseApprovalMode(config.approval, approval_mode)) {
+    approval_mode = ApprovalMode::kAsk;
+  }
+  if (options.yolo) approval_mode = ApprovalMode::kYolo;
+  SetApprovalMode(approval_mode);
   if (!options.debug) {
     options.debug_path = EnvStr("UAGENT_DEBUG_LOG");
     options.debug = !options.debug_path.empty();
@@ -674,7 +701,9 @@ BootstrapResult Bootstrap(Options options, const char* executable,
                              });
     }
   }
-  context->permission_override.store(context->options.yolo ? 1 : -1);
+  context->permission_override.store(context->options.yolo
+                                         ? PermissionOverride::kYolo
+                                         : PermissionOverride::kDefault);
   AppContext* app = context.get();
   context->agent = std::make_unique<Agent>(
       api, context->tools, context->runtime.processes,

@@ -59,9 +59,10 @@ void LoadSessionJournal(AppSession& session, const std::string& previous_path) {
     }
   }
   if (!session.context.options.yolo) {
-    int mode = JsonValue(settings, "permissions", -1);
-    session.context.permission_override.store(mode >= -1 && mode <= 1 ? mode
-                                                                      : -1);
+    auto found = settings.find("permissions");
+    session.context.permission_override.store(
+        found == settings.end() ? PermissionOverride::kDefault
+                                : LegacyPermissionOverride(*found));
     PermissionControl(session.context, json::object());
     session.ActiveAgent().ApprovalChanged();
   }
@@ -246,13 +247,12 @@ bool RunSlashCommand(AppSession& session, const ParsedSlashCommand& command,
       return false;
     }
     case SlashCommandId::kYolo:
-      result = PermissionControl(
-          session.context, {{"mode", ApprovalIsAutomatic() ? "ask" : "yolo"}});
+      result = PermissionControl(session.context,
+                                 {{"mode", ApprovalIsYolo() ? "ask" : "yolo"}});
       session.ActiveAgent().ApprovalChanged();
-      printf(
-          "%s· yolo %s%s\n", DIM(),
-          ApprovalIsAutomatic() ? "ON — automatic ordinary approvals" : "off",
-          RST());
+      printf("%s· yolo %s%s\n", DIM(),
+             ApprovalIsYolo() ? "ON — automatic ordinary approvals" : "off",
+             RST());
       break;
     case SlashCommandId::kCompact:
       HandleCompact(session);

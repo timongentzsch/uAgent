@@ -42,6 +42,10 @@ test("appearance and configuration remain usable at large scales", async ({
   });
   await page.getByLabel("Zoom", { exact: true }).fill("50");
   await expect(page.locator("html")).toHaveCSS("--zoom", "0.5");
+  const smallText = await composer.evaluate((element) =>
+    parseFloat(getComputedStyle(element).fontSize),
+  );
+  expect(smallText).toBeLessThan(parseFloat(originalText) * 0.7);
   const smallControl = await resetZoom.evaluate((element) => {
     const style = getComputedStyle(element);
     return {

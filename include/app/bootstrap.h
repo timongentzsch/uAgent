@@ -3,15 +3,18 @@
 #ifndef UAGENT_INCLUDE_APP_BOOTSTRAP_H_
 #define UAGENT_INCLUDE_APP_BOOTSTRAP_H_
 
+#include <atomic>
 #include <functional>
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
 #include "include/agent.h"
 #include "include/app/options.h"
+#include "include/app/permissions.h"
 #include "include/app/runtime.h"
 #include "include/core/effective_config.h"
 #include "include/core/events.h"
@@ -90,8 +93,9 @@ struct AppContext {
   std::vector<Tool> tools;
   // What "don't ask again" granted, bound to the tool's current provider,
   // schema and approval policy. Session-scoped by construction: it dies here.
-  std::vector<std::string> session_approvals;
-  std::atomic<int> permission_override{-1};
+  std::unordered_set<std::string> session_approvals;
+  std::atomic<PermissionOverride> permission_override{
+      PermissionOverride::kDefault};
   std::unique_ptr<Agent> agent;
   HeadlessOutput output;
 };

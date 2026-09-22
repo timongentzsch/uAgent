@@ -185,9 +185,9 @@ void Application::RunTurns(const std::string& input, json content,
             ? std::min(api_.config.session_token_budget, ceiling)
             : ceiling;
   }
-  bool was_automatic = ApprovalIsAutomatic();
+  ApprovalMode previous_mode = CurrentApprovalMode();
   PermissionControl(context_, json::object());
-  if (was_automatic != ApprovalIsAutomatic()) agent_.ApprovalChanged();
+  if (previous_mode != CurrentApprovalMode()) agent_.ApprovalChanged();
   struct TurnGuard {
     bool& flag_;
     explicit TurnGuard(bool& flag) : flag_(flag) { flag_ = true; }
@@ -342,7 +342,7 @@ json Application::InterfaceState() const {
           {"background", runtime_.processes.Count()},
           {"tools", context_.tools.size()},
           {"verbose", agent_.Verbose()},
-          {"yolo", ApprovalIsAutomatic()}};
+          {"yolo", ApprovalIsYolo()}};
 }
 
 bool Application::ProcessInput(std::string input) {

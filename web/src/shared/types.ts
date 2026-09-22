@@ -245,6 +245,16 @@ export interface Permissions {
   default: string;
   effective?: string;
 }
+export interface PermissionRule {
+  key: string;
+  tool: string;
+  preview: string;
+  created: number;
+}
+export interface PermissionRules {
+  root: string;
+  rules: PermissionRule[];
+}
 export interface Session {
   task_id?: string;
   run_id?: string;
@@ -479,6 +489,15 @@ export interface ToolCatalogue {
   full_schema_bytes: number;
   tools: ToolCatalogueItem[];
 }
+export interface ToolCategory {
+  id: string;
+  name: string;
+  created: number;
+}
+export interface ToolCategories {
+  categories: ToolCategory[];
+  assignments: Record<string, string>;
+}
 export interface CommandResults {
   browser: {
     running?: boolean;
@@ -493,6 +512,7 @@ export interface CommandResults {
   model: ModelCatalogue;
   config: Configuration;
   tools: ToolCatalogue;
+  tool_categories: ToolCategories;
   activity: ActivityDetail;
   context: { exchanges: Exchange[] };
   fork: { id: string };
@@ -508,6 +528,7 @@ export interface CommandResults {
   reply: never;
   interrupt: never;
   permissions: Permissions;
+  permission_rules: PermissionRules;
   revoke_device: never;
   test_notification: never;
 }
@@ -544,6 +565,7 @@ export interface CommandFields {
   text?: string;
   interaction_id?: string;
   profile_id?: string;
+  category_id?: string;
   attachment_ids?: (string | { id: string; name: string })[];
   activity_id?: number;
   agent_id?: string;
@@ -583,7 +605,8 @@ export type AppModal =
   | { type: "prompt"; scope?: string; edit?: boolean }
   | StatisticsModal
   | ({ type: "raw" } & RawOptions)
-  | { type: "new" | "settings" | "tools" };
+  | { type: "new" | "settings" }
+  | { type: "tools"; session_id: string };
 
 export interface PromptDocument {
   scope: string;
@@ -652,7 +675,7 @@ export interface ScheduledTask {
   prompt: string;
   cwd: string;
   model: string;
-  permissions: "prompt" | "yolo";
+  permissions: "prompt" | "auto" | "yolo";
   environment: "local" | "worktree";
   schedule: ScheduleRule;
   enabled: boolean;

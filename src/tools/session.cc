@@ -138,7 +138,7 @@ bool SharesLink(const std::string& a, const std::string& b) {
 }
 
 ToolResult EnsureSessionAutoLink() {
-  if (!ApprovalIsAutomatic()) return ToolSuccess({});
+  if (!ApprovalIsYolo()) return ToolSuccess({});
   json me = OwnMember();
   if (!me.is_object()) return ToolSuccess({});
   const std::string name = AutoLinkName();

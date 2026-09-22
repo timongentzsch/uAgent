@@ -1,6 +1,7 @@
 // Transcript must not statically import lazy dialog chunks: holding every
 // dialog chunk must not block message or turn-footer rendering.
 import { test, expect } from "./fixtures.js";
+import { readFile } from "node:fs/promises";
 
 test("transcript renders while dialog chunks are held", async ({
   page,
@@ -8,25 +9,29 @@ test("transcript renders while dialog chunks are held", async ({
   command,
 }) => {
   test.setTimeout(120000);
+  const manifest = JSON.parse(
+    await readFile(new URL("../dist/.vite/manifest.json", import.meta.url)),
+  );
+  const chunks = {
+    sidebar: "src/features/sidebar/sidebar.tsx",
+    chat: "src/features/chat/chat.tsx",
+    composer: "src/features/composer/composer.tsx",
+    "model-picker": "src/features/settings/model-picker.tsx",
+    settings: "src/features/settings/settings.tsx",
+    statistics: "src/features/settings/statistics.tsx",
+    raw: "src/features/settings/raw.tsx",
+    "conversation-actions": "src/features/chat/conversation-actions.tsx",
+    prompt: "src/features/settings/prompt.tsx",
+    library: "src/features/library/library.tsx",
+    scheduled: "src/features/scheduled/scheduled.tsx",
+    decision: "src/features/chat/decision.tsx",
+  };
   const gates = {};
-  for (const chunk of [
-    "sidebar",
-    "chat",
-    "composer",
-    "model-picker",
-    "settings",
-    "statistics",
-    "raw",
-    "conversation-actions",
-    "prompt",
-    "library",
-    "scheduled",
-    "decision",
-  ]) {
+  for (const [chunk, source] of Object.entries(chunks)) {
     let release;
     const gate = new Promise((resolve) => (release = resolve));
     gates[chunk] = release;
-    await page.route(`**/${chunk}-*.js`, async (route) => {
+    await page.route(`**/${manifest[source].file}`, async (route) => {
       await gate;
       await route.continue();
     });
@@ -36,7 +41,10 @@ test("transcript renders while dialog chunks are held", async ({
     await page.waitForTimeout(200);
   };
 
-  await page.goto(`/#session=${session.id}`);
+  // The deliberately held lazy resources keep document readiness open. The
+  // response commit is sufficient to release the shell chunks without making
+  // navigation wait on the resources this test is intentionally gating.
+  await page.goto(`/#session=${session.id}`, { waitUntil: "commit" });
   await release("sidebar");
   await release("chat");
   await release("composer");

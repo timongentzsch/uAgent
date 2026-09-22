@@ -59,10 +59,12 @@ skipped. Calendar calculations run in an isolated helper because libc timezone
 state is process-global.
 
 Each run freezes its task definition and is durably claimed before launch. It
-creates an ordinary session with the task's model selection and Ask/YOLO
-permissions. A blank model uses the project's current default. Ask can pause for
-approval; open the run in the web UI or terminal. Both clients can answer the
-same pending decision while the runtime continues.
+creates an ordinary session with the task's model selection and Ask, Auto, or
+YOLO permissions. A blank model uses the project's current default. Ask can
+pause for approval; open the run in the web UI or terminal. Auto reviews
+ordinary approvals and denies when the reviewer asks or fails because a
+scheduled run has no person attached. Both clients can answer an Ask decision
+while the runtime continues.
 
 Git worktrees are the default and start from committed `HEAD`. Choose Local to
 use the working directory directly. Worktrees and conversations are retained

@@ -25,6 +25,8 @@ model output, tool results, paths, and usage.
 | one-off Python scratch scripts | `<workspace>/.uagent/scratch/*.py` |
 | project trust | `~/.uagent/config/trusted-projects.json` |
 | preferred model | `~/.uagent/config/model-preference.json` |
+| exact repository permission rules | `~/.uagent/config/permissions.json` |
+| custom tool categories | `~/.uagent/config/tool-categories.json` |
 
 Session format 3 persists active messages, structured kinds, the bounded
 archive, usage, provider session identity, and the mutable system directive and

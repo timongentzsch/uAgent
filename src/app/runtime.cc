@@ -18,7 +18,10 @@ CurlRuntime::~CurlRuntime() {
 }
 
 AppRuntime::AppRuntime(RuntimeConfig parsed)
-    : config(std::move(parsed)), api(config), collaborator(side_usage) {}
+    : config(std::move(parsed)),
+      api(config),
+      permission_api(config),
+      collaborator(side_usage) {}
 
 AppRuntime::~AppRuntime() { Shutdown(); }
 

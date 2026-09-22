@@ -34,9 +34,12 @@ untrusted model evidence even when you trust a server to run.
   installed `@playwright/cli`; pin its npm version when reproducible or offline
   execution matters.
 - Mutating, process, network, cost-bearing, and untrusted MCP tools require
-  approval unless yolo mode is active. An MCP call skips approval only when its
-  configured server is trusted and the server marks that tool read-only.
-  External reads also prompt.
+  approval unless YOLO or an exact remembered rule allows them. Auto mode sends
+  the current request and bounded action preview to the configured OpenRouter
+  Decisions model; it never bypasses mandatory human approval and denies
+  unattended calls when review fails or asks. An MCP call skips approval only
+  when its configured server is trusted and the server marks that tool
+  read-only. External reads also prompt.
 - Paths are canonicalized to reduce symlink escapes. Writes are atomic. Shell
   commands are additionally confined by the OS sandbox below.
 - Requests, responses, attachments, tool output, scans, jobs, turns, costs, MCP

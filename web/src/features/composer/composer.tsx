@@ -220,7 +220,8 @@ export default function Composer({
   const permission = state?.permissions;
   const effective =
     permission?.mode === "default" ? permission.default : permission?.mode;
-  const permissionLabel = effective === "yolo" ? "YOLO" : "Ask";
+  const permissionLabel =
+    effective === "yolo" ? "YOLO" : effective === "auto" ? "Auto" : "Ask";
   return (
     <section
       class="composer"
@@ -496,9 +497,14 @@ export default function Composer({
                   >
                     <option value="default">
                       Default ·{" "}
-                      {permission?.default === "yolo" ? "YOLO" : "Ask"}
+                      {permission?.default === "yolo"
+                        ? "YOLO"
+                        : permission?.default === "auto"
+                          ? "Auto"
+                          : "Ask"}
                     </option>
                     <option value="ask">Ask</option>
+                    <option value="auto">Auto review</option>
                     <option value="yolo">YOLO</option>
                   </Select>
                 </Field>

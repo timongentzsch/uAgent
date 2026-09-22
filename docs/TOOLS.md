@@ -37,11 +37,26 @@ grant and a headless run all answer no. [SECURITY.md](../SECURITY.md) has the
 full policy.
 
 Filesystem and external-read approval follows the active path policy. Mutating
-and process tools require approval unless yolo mode is active. Editing µAgent's
-own configuration, the project trust store or `.mcp.json` is a stricter class:
-it always asks, yolo does not apply, and a run with no interactive terminal
-denies rather than assuming consent. Child processes receive the sanitized
-environment described in [SECURITY.md](../SECURITY.md).
+and process tools use one of three modes: Ask, Auto, or YOLO. Ask presents the
+full action and can allow it once, for the session, or for that exact repository
+action. Repository rules include the tool provider, schema, approval class, and
+arguments, so changing any of them asks again. Rules are owner-only files and
+can be removed from Settings.
+
+Auto sends the current user request and a bounded action preview to OpenRouter's
+Decisions API. It uses `~typesafe/jev-latest` by default and accepts the model's
+explicit allow, ask, or deny choice without a local confidence threshold. An
+ask result opens the normal prompt; when no interactive client is attached it
+denies. Network, authentication, and malformed-response failures follow the
+same path. Reviewer token use and provider-reported cost are included in the
+active turn and session statistics. Configure the model and endpoint with
+`UAGENT_PERMISSION_MODEL` and `UAGENT_PERMISSION_URL`.
+
+Editing µAgent's own configuration, the project trust store or `.mcp.json` is a
+stricter class: it always asks, remembered rules and automatic modes do not
+apply, and a run with no interactive terminal denies rather than assuming
+consent. Child processes receive the sanitized environment described in
+[SECURITY.md](../SECURITY.md).
 
 ## Activity presentation
 

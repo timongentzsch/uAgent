@@ -299,7 +299,8 @@ json ScheduleControl(const json& request) {
       if (name.empty() || name.size() > kScheduleNameChars || prompt.empty() ||
           prompt.size() > kSchedulePromptChars ||
           (environment != "local" && environment != "worktree") ||
-          (permissions != "prompt" && permissions != "yolo")) {
+          (permissions != "prompt" && permissions != "auto" &&
+           permissions != "yolo")) {
         return {{"error",
                  "provide a name, instructions, execution environment and "
                  "permissions"}};

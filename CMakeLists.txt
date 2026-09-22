@@ -208,6 +208,9 @@ add_library(
   src/app/config_control.cc
   src/app/library.cc
   src/app/prompt_control.cc
+  src/app/permissions.cc
+  src/app/private_store.cc
+  src/app/tool_categories.cc
   src/app/control.cc
   src/app/schedule.cc
   src/cli/options.cc

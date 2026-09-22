@@ -249,18 +249,48 @@ std::string ShellEnvironmentAllowlist() {
   return StringSetting(Cfg("UAGENT_SHELL_ENV_ALLOW"));
 }
 
-std::atomic<bool>& ApprovalAutomaticFlag() {
-  static std::atomic<bool> automatic{false};
-  return automatic;
+std::atomic<ApprovalMode>& ApprovalModeState() {
+  static std::atomic<ApprovalMode> mode{ApprovalMode::kAsk};
+  return mode;
 }
 
-bool ApprovalIsAutomatic() {
-  return ApprovalAutomaticFlag().load(std::memory_order_relaxed);
+const char* ApprovalModeName(ApprovalMode mode) {
+  switch (mode) {
+    case ApprovalMode::kAsk:
+      return "ask";
+    case ApprovalMode::kAuto:
+      return "auto";
+    case ApprovalMode::kYolo:
+      return "yolo";
+  }
+  return "ask";
 }
 
-void SetApprovalAutomatic(bool automatic) {
-  ApprovalAutomaticFlag().store(automatic, std::memory_order_relaxed);
+bool ParseApprovalMode(std::string_view value, ApprovalMode& mode) {
+  if (value.empty() || value == "prompt" || value == "ask") {
+    mode = ApprovalMode::kAsk;
+    return true;
+  }
+  if (value == "auto") {
+    mode = ApprovalMode::kAuto;
+    return true;
+  }
+  if (value == "yolo") {
+    mode = ApprovalMode::kYolo;
+    return true;
+  }
+  return false;
 }
+
+ApprovalMode CurrentApprovalMode() {
+  return ApprovalModeState().load(std::memory_order_relaxed);
+}
+
+void SetApprovalMode(ApprovalMode mode) {
+  ApprovalModeState().store(mode, std::memory_order_relaxed);
+}
+
+bool ApprovalIsYolo() { return CurrentApprovalMode() == ApprovalMode::kYolo; }
 
 namespace {
 
@@ -315,6 +345,8 @@ constexpr FieldBinding<double> kDoubleOptions[] = {
 };
 constexpr FieldBinding<std::string> kStringOptions[] = {
     {&Cfg("UAGENT_APPROVAL"), &RuntimeConfig::approval},
+    {&Cfg("UAGENT_PERMISSION_MODEL"), &RuntimeConfig::permission_model},
+    {&Cfg("UAGENT_PERMISSION_URL"), &RuntimeConfig::permission_url},
     {&Cfg("UAGENT_OPENROUTER_PROVIDER"), &RuntimeConfig::openrouter_provider},
     {&Cfg("UAGENT_OPENROUTER_VARIANT"), &RuntimeConfig::openrouter_variant},
     {&Cfg("UAGENT_WEB_SEARCH_BACKEND"), &RuntimeConfig::web_search_backend},

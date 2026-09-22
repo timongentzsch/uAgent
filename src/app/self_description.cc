@@ -172,7 +172,7 @@ json DescribeSelf(SelfTopic topic, const std::string& name,
                           ? "provider default"
                           : inputs.api.reasoning_effort;
       out["wire_api"] = WireApiName(inputs.api.capabilities.wire_api);
-      out["approval"] = inputs.yolo ? "yolo" : "ask";
+      out["approval"] = ApprovalModeName(CurrentApprovalMode());
       out["context_window"] = inputs.api.ctx_window;
       out["tools"] = inputs.tools.size();
       out["session_budget"] = inputs.active.session_budget;

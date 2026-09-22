@@ -249,7 +249,7 @@ void TestWorkspaceScopedSession() {
   AdaptiveSystemState adaptive_system;
   Agent agent(
       api, tools, processes, usage,
-      [](const Tool&, const json&) { return false; }, {}, {}, {},
+      [](const Tool&, const json&, int64_t) { return false; }, {}, {}, {},
       &adaptive_system);
   api.capabilities.image_input = false;
   agent.RouteChanged();

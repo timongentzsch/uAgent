@@ -92,7 +92,9 @@ bool ParsePermissionOverride(const std::string& value,
     return true;
   }
   ApprovalMode parsed;
-  if (!ParseApprovalMode(value, parsed)) return false;
+  if (!ParseApprovalMode(value, parsed)) {
+    return false;
+  }
   mode = parsed == ApprovalMode::kYolo   ? PermissionOverride::kYolo
          : parsed == ApprovalMode::kAuto ? PermissionOverride::kAuto
                                          : PermissionOverride::kAsk;
@@ -102,13 +104,18 @@ bool ParsePermissionOverride(const std::string& value,
 PermissionOverride LegacyPermissionOverride(const json& value) {
   if (value.is_string()) {
     PermissionOverride parsed;
-    if (ParsePermissionOverride(value.get<std::string>(), parsed))
+    if (ParsePermissionOverride(value.get<std::string>(), parsed)) {
       return parsed;
+    }
   }
   if (value.is_number_integer()) {
     const int legacy = value.get<int>();
-    if (legacy == 0) return PermissionOverride::kAsk;
-    if (legacy == 1) return PermissionOverride::kYolo;
+    if (legacy == 0) {
+      return PermissionOverride::kAsk;
+    }
+    if (legacy == 1) {
+      return PermissionOverride::kYolo;
+    }
   }
   return PermissionOverride::kDefault;
 }
@@ -121,8 +128,9 @@ std::string PermissionKey(const Tool& tool, const json& arguments,
                  {"mutating", tool.mutating},
                  {"capabilities", tool.capabilities},
                  {"approval_class", static_cast<int>(required)}};
-  if (!tool.output_schema.is_null())
+  if (!tool.output_schema.is_null()) {
     policy["output_schema"] = tool.output_schema;
+  }
   return HashHex(
       JsonDump({{"policy", std::move(policy)}, {"arguments", arguments}}));
 }

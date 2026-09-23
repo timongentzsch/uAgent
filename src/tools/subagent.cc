@@ -765,6 +765,7 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
                 api, processes, remaining_budget, remaining_token_budget)) {
           return *blocked;
         }
+        const std::string child_model = route.model;
         EnvironmentOverrides environment =
             ChildAgentEnvironment(std::move(route));
         // Team identity travels with the child so same-team peers can reach
@@ -917,7 +918,7 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
                                  : "; persistent runtime retained]");
           return result;
         }
-        std::string command = ChildAgentCommand(debug, prompt);
+        std::string command = ChildAgentCommand(debug, prompt, child_model);
         ShellCommandResult child = RunShellCommand(
             processes, child_context,
             {.command = std::move(command),

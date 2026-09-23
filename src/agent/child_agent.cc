@@ -217,9 +217,11 @@ EnvironmentOverrides ChildAgentEnvironment(SideRoute route) {
   };
 }
 
-std::string ChildAgentCommand(bool debug, const std::string& prompt) {
+std::string ChildAgentCommand(bool debug, const std::string& prompt,
+                              const std::string& model) {
   return ShellQuote(ExecutablePath()) + " --yolo --json" +
-         (debug ? " --debug" : "") + " -p " + ShellQuote(prompt);
+         (debug ? " --debug" : "") + " --model " + ShellQuote(model) + " -p " +
+         ShellQuote(prompt);
 }
 
 // The child prints its envelope as one line. Progress lines precede it, the

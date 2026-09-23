@@ -1703,7 +1703,7 @@ def test_web_child_controls_and_conversation_ownership(root, home, *, binary):
         if "WEB_CHILD_SEED" in users:
             if "WEB_CHILD_FOLLOWUP" in users:
                 assert any(message.get("content") == "Child result" for message in body["messages"])
-                assert body["model"] == "child-followup-model", body
+                assert body["model"] == "mock/new", body
                 return event({"content": "Child follow-up result"})
             child_started.set()
             assert release_child.wait(timeout=budget(10))
@@ -1715,7 +1715,13 @@ def test_web_child_controls_and_conversation_ownership(root, home, *, binary):
         )
 
     with Server([answer]) as provider:
-        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+        with web_host(
+            binary,
+            root,
+            home,
+            provider.url,
+            extra_env={"UAGENT_MODEL": "mock/old", "UAGENT_PROVIDER_PROTOCOL": "openrouter"},
+        ) as (client, code, _, _):
             client.pair(code)
             session = client.create(project)
             peer = client.create(project)
@@ -1776,7 +1782,7 @@ def test_web_child_controls_and_conversation_ownership(root, home, *, binary):
                 operation="followup",
                 agent_id=child["agent_id"],
                 text="WEB_CHILD_FOLLOWUP",
-                model="child-followup-model",
+                model="mock/new",
             )
             client.until(
                 session,

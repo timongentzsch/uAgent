@@ -33,11 +33,12 @@ only a saved checkpoint while running; the statistics panel explicitly says so.
 Missing provider costs stay unreported. See [Measurements](MEASUREMENTS.md).
 
 Ordinary child follow-ups can choose model, variant and effort without changing
-the parent selection. Persistent agents keep their existing runtime model; the
-UI explains that restriction. Guidance during a running turn keeps the active
-model. Both input fields share Enter/Shift+Enter, IME handling and automatic
-height. Session-specific submission, attachments and approval ownership remain
-with their existing controllers.
+the parent selection. Child launches explicitly select the resolved model so a
+restored journal cannot overwrite that choice. Persistent agents keep their
+existing runtime model; the UI explains that restriction. Guidance during a
+running turn keeps the active model. Both input fields share Enter/Shift+Enter,
+IME handling and automatic height. Session-specific submission, attachments
+and approval ownership remain with their existing controllers.
 
 ## Architecture and performance
 
@@ -73,10 +74,10 @@ lives in `features/browser/gestures.ts`. These are policies, not measured device
 limits. Keep bundle measurements advisory. Reduce dependencies or work based on
 observed cost, not an arbitrary line count.
 
-Build sizes (gzip bytes): initial JavaScript 29,369 → 28,989; initial CSS
-5,384 → 5,558; precache 146,015 → 147,294. Added parity and layout behavior
+Build sizes (gzip bytes): initial JavaScript 29,369 → 28,988; initial CSS
+5,384 → 5,562; precache 146,015 → 147,293. Added parity and layout behavior
 therefore fits within essentially the same delivery footprint. The full asset
-set is 2,051,314 gzip bytes, with 1,893,250 bytes loaded only for optional
+set is 2,051,310 gzip bytes, with 1,893,250 bytes loaded only for optional
 rendering/viewer features.
 
 ## Remaining targets and evidence required

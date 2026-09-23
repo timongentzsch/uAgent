@@ -1010,6 +1010,9 @@ dialog > header {
   border-bottom: 1px solid var(--line);
   padding: var(--surface-inset);
   flex-shrink: 0;
+  /* Reserve the same native scrollbar space as the body on every platform. */
+  overflow: hidden;
+  scrollbar-gutter: stable;
 }
 .dialog-body {
   padding: var(--surface-inset);

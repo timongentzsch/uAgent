@@ -283,6 +283,11 @@ test("system prompt editing shares revisions, replacement and request previews",
   );
   // Raw viewer CSS has loaded by this point. It must not clip the prompt
   // depending on which dialog was opened first.
+  // Exercise classic scrollbar gutters even on hosts with overlay scrollbars.
+  await page.addStyleTag({
+    content:
+      "dialog > header::-webkit-scrollbar, .dialog-body::-webkit-scrollbar { width: 1rem; }",
+  });
   for (const viewport of [
     { width: 390, height: 600 },
     { width: 844, height: 390 },
@@ -2178,6 +2183,11 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
   await expect(detail.getByText("Follow-up started.")).toBeVisible({
     timeout: 20000,
   });
+  await expect(
+    thread.getByRole("heading", { name: "Verified response", exact: true }),
+  ).toHaveCount(2);
+  await expect(detail).not.toContainText("Saved model is unavailable");
+  await expect(detail.locator(".model-selector")).toContainText("mock/main");
   await detail
     .getByRole("button", { name: "Show full message", exact: true })
     .click();

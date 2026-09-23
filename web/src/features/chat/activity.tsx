@@ -1,8 +1,9 @@
 import "./activity.css";
 import MessageInput from "../composer/message-input.tsx";
 import ModelControl from "../composer/model-control.tsx";
-import { SessionSummary } from "./session-summary.tsx";
-import { StatsSkeleton } from "../../shared/loading.tsx";
+import HistoryStart from "./history-start.tsx";
+import { ContextSummary, SessionSummary } from "./session-summary.tsx";
+import { StatisticsLoading } from "../../shared/statistics-layout.tsx";
 import { count } from "../../shared/quantities.ts";
 import { duration } from "../../shared/duration.ts";
 import type {
@@ -29,11 +30,10 @@ import {
   Deferred,
   Field,
   Modal,
-  Skeleton,
+  Spinner,
   LoadError,
   IconButton,
 } from "../../shared/ui.tsx";
-import { RawSkeleton } from "../../shared/loading.tsx";
 
 import { active } from "./activity-status.tsx";
 import { manage } from "../../state/api.ts";
@@ -460,6 +460,8 @@ function ActivityModal({
   );
   const childState: State = {
     view: detail.conversation,
+    context_tokens: detail.context_tokens,
+    context_window: detail.context_window,
     usage: detail.usage,
     statistics: detail.statistics,
     turns: detail.turns,
@@ -587,7 +589,7 @@ function ActivityModal({
         )}
         {error && <LoadError error={error} retry={() => inspect(detail)} />}
         {loading && bare && !error && (
-          <Skeleton label={`Loading ${title.toLowerCase()}…`} />
+          <Spinner label={`Loading ${title.toLowerCase()}…`} surface />
         )}
         {meta.length > 0 && <p class="detail-meta">{meta.join(" · ")}</p>}
 
@@ -660,6 +662,18 @@ function ActivityModal({
               aria-label="Subagent task"
             >
               <div ref={thread.attachContent}>
+                <HistoryStart
+                  view={detail.conversation}
+                  online={online}
+                  loading={loading}
+                  load={() =>
+                    thread
+                      .preserveWhile(() =>
+                        inspect(detail, detail.conversation?.before),
+                      )
+                      .catch(report)
+                  }
+                />
                 {detail.conversation ? (
                   <MessageRows
                     blocks={detail.conversation.blocks}
@@ -695,23 +709,6 @@ function ActivityModal({
                   <span aria-hidden="true">({thread.unseen} new)</span>
                 )}
                 <ArrowDown aria-hidden="true" />
-              </button>
-            )}
-            {detail.conversation?.more && (
-              <button
-                type="button"
-                class="quiet history-button"
-                disabled={!online || loading}
-                aria-busy={loading || undefined}
-                onClick={() =>
-                  thread
-                    .preserveWhile(() =>
-                      inspect(detail, detail.conversation?.before),
-                    )
-                    .catch(report)
-                }
-              >
-                {loading ? "Loading older messages…" : "Load older messages"}
               </button>
             )}
           </section>
@@ -811,6 +808,7 @@ function ActivityModal({
               </button>
             </div>
             <div class="metrics">
+              <ContextSummary state={childState} />
               <SessionSummary
                 state={childState}
                 open={() => setStatsTarget({})}
@@ -839,7 +837,7 @@ function ActivityModal({
           )}
           <Deferred
             load={statisticsDialog}
-            fallback={<StatsSkeleton turn={!!statsTarget.blockId} />}
+            fallback={<StatisticsLoading turn={!!statsTarget.blockId} />}
             state={childState}
             blockId={statsTarget.blockId}
           />
@@ -855,7 +853,7 @@ function ActivityModal({
         >
           <Deferred
             load={rawDialog}
-            fallback={<RawSkeleton />}
+            fallback={<Spinner label="Loading full body…" surface />}
             value={raw.value}
           />
         </Modal>

@@ -38,7 +38,7 @@ Opening the browser while the agent is working starts a read-only viewer, so
 the page remains visible without changing browser ownership. **Take control**
 is the explicit handoff that pauses agent input and enables local input.
 When the agent calls `request_human`, the conversation shows **Open browser**.
-Take control, complete sign-in and MFA in Chrome, then choose **Done**. Only
+Take control, complete the requested interaction, then choose **Done**. Only
 that paired device can finish the matching pending interaction. Closing the
 viewer or losing its connection keeps the agent paused. A second device can
 take control after the first finishes; the browser profile and login survive a
@@ -52,6 +52,16 @@ existing `/data/browser/profile` remains the **Default** profile, so upgrading
 does not move or clear a saved login. Named profiles live under
 `/data/browser/profiles`; `/data/browser/profiles.json` records their names and
 current selection. Back up the full `/data` volume to preserve every login.
+
+For account setup choose **Take control → Sign in to profile**. This reopens
+the selected persistent profile in ordinary Chrome without a debugging
+connection. Sign in to your sites and complete MFA, then choose **Done** to
+reopen the same profile for the agent. Chrome restores saved tabs; finish
+unsaved page edits before switching modes. Profile shutdown has a bounded grace
+period to flush saved state. No cookies are copied between profiles and no
+browser security checks are disabled. Google may reject automation-controlled
+browsers; see its [supported browser guidance](https://support.google.com/accounts/answer/7675428?co=GENIE.Platform%3DDesktop&hl=en).
+Account-specific sign-in acceptance still needs a real user check.
 On a phone the display is view-only: pinch to zoom and drag the zoomed view to
 pan. The separate **Trackpad** uses one finger for the remote pointer, a tap for
 left click, a two-finger tap for right click and a two-finger drag for scrolling.
@@ -154,11 +164,14 @@ responses. Disconnected views stop animation and disable commands.
   redacted; bodies can contain sensitive workspace content.
 - Background completions, memory updates and compaction use expandable event
   rows, with their own retained details rather than tool inspection. Subagent
-  details reuse the main conversation renderer, turn/session statistics, model
+  details reuse the main conversation renderer, older-history control, context
+  estimate, turn/session statistics, model
   picker and message input. Ordinary follow-ups can select another model;
   persistent agents retain their runtime model. Running process children label
   statistics that reflect only the latest saved checkpoint. Compaction leaves the
   conversation in place without opening a dialog.
+  Context capacity is saved with each new checkpoint; older snapshots that did
+  not record it show the usage estimate without inventing a capacity.
 - Settings contain appearance, zoom (the entire interface, conversation
   included), default permissions and registered configuration. The UI showcase
   opens the shared controls and loading states on a static page for focused
@@ -174,6 +187,11 @@ forcing columns below their intrinsic minimum width.
 Dialogs, drawers and popovers share the visible viewport's safe-area bounds;
 dialog headers stay fixed while their bodies scroll above the phone's home
 indicator.
+Dialog focus starts at its title, and nested dialogs return focus without
+outlining their container. Only interactive keyboard targets show focus rings.
+The standalone PWA uses CSS layout bounds at rest and visual-viewport bounds for
+keyboard/pinch changes. Rotation invalidates the previous keyboard geometry;
+orientation, visibility and page restoration events refresh the shared bounds.
 
 See the [web audit](WEB_AUDIT.md) for component ownership, the performance probe
 and remaining targets that need measurement or physical-device validation.
@@ -302,7 +320,7 @@ bytes in CI for review; it has no fixed byte ceiling. Heavy renderers
 
 | Group | Raw | Gzip |
 | --- | ---: | ---: |
-| Initial JS | 75,147 | 29,366 |
-| Initial CSS | 22,549 | 5,384 |
-| App (excl. diagrams) | 1,170,866 | 569,799 |
-| Diagrams (lazy) | 5,125,202 | 1,479,992 |
+| Initial JS | 70,260 | 28,076 |
+| Initial CSS | 22,984 | 5,509 |
+| App (excl. diagrams) | 1,172,483 | 571,293 |
+| Diagrams (lazy) | 5,126,644 | 1,480,446 |

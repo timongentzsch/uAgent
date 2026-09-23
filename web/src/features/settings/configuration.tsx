@@ -9,7 +9,7 @@ import type {
 import "./configuration.css";
 import { useEffect, useState } from "preact/hooks";
 import { command } from "../../state/api.ts";
-import { Select, Skeleton, LoadError } from "../../shared/ui.tsx";
+import { Select, Spinner, LoadError } from "../../shared/ui.tsx";
 
 const stringify = (value?: JSONValue) =>
   value == null
@@ -215,13 +215,7 @@ export default function Configuration({
       {error ? (
         <LoadError error={error} retry={() => setAttempt(attempt + 1)} />
       ) : (
-        !data && (
-          <Skeleton
-            className="form-skeleton"
-            rows={5}
-            label="Loading configuration…"
-          />
-        )
+        !data && <Spinner label="Loading configuration…" surface />
       )}
       {[...groups].map(([category, settings]) => (
         <details key={category} open={!!query}>

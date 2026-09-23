@@ -217,6 +217,8 @@ export interface Collaborator {
   persistent?: boolean;
 }
 export interface ActivityDetail extends Activity {
+  context_tokens?: number;
+  context_window?: number;
   statistics_live?: boolean;
   route?: string;
   persistent?: boolean;

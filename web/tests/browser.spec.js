@@ -185,6 +185,56 @@ test("creates and selects a persistent Chrome profile", async ({
   expect(actions).toEqual(["create_profile", "select_profile"]);
 });
 
+test("profile sign-in explicitly reopens Chrome and returns the same profile", async ({
+  page,
+  session,
+}) => {
+  const status = {
+    ok: true,
+    mode: "human",
+    running: true,
+    controller: true,
+    leased: true,
+    generation: 1,
+    profile_id: "default",
+    profile_setup: false,
+  };
+  const actions = [];
+  await page.route("**/api/browser/status", (route) =>
+    route.fulfill({ json: status }),
+  );
+  await page.route("**/api/command", (route) => {
+    const { action } = route.request().postDataJSON();
+    actions.push(action);
+    status.profile_setup = action === "setup_profile";
+    status.generation++;
+    if (action === "done") {
+      status.mode = "idle";
+      status.controller = false;
+      status.leased = false;
+    }
+    return route.fulfill({
+      json: { accepted: true, pending: false, result: status },
+    });
+  });
+  await page.goto(`/#session=${session.id}`);
+  await page.getByRole("button", { name: "Open browser" }).click();
+  const dialog = page.getByRole("dialog", { name: "Browser", exact: true });
+  await dialog
+    .getByRole("button", { name: "Sign in to profile", exact: true })
+    .click();
+  await expect(dialog.getByText(/Done reopens this profile/)).toBeVisible();
+  await expect(
+    dialog.getByRole("button", { name: "Sign in to profile", exact: true }),
+  ).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Done", exact: true }).click();
+  await expect(
+    dialog.getByRole("button", { name: "Take control", exact: true }),
+  ).toBeVisible();
+  expect(status.profile_id).toBe("default");
+  expect(actions).toEqual(["setup_profile", "done"]);
+});
+
 test.describe("real noVNC input in a mobile modal", () => {
   test.use({
     viewport: { width: 390, height: 844 },

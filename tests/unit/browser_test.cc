@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <thread>
 
 #include "include/browser/runtime.h"
 #include "include/core/json.h"
@@ -143,6 +144,65 @@ void TestBrowserProfiles() {
                       {"device", kDevice},
                       {"name", "Personal"}})
             .contains("error"));
+}
+
+void TestBrowserProfileSignIn() {
+  namespace fs = std::filesystem;
+  TestWorkspace workspace("browser-signin");
+  const auto directory = fs::canonical(workspace.root) / "browser";
+  const auto bin = workspace.root / "bin";
+  fs::create_directory(bin);
+  for (const char* name : {"xauth", "Xtigervnc", "google-chrome-stable"}) {
+    const auto path = bin / name;
+    fs::copy_file(
+        fs::path(UAGENT_TEST_SOURCE_DIR) / "tests/fixtures/browser_runtime.py",
+        path);
+    fs::permissions(path, fs::perms::owner_all);
+  }
+  ScopedEnv configured("UAGENT_BROWSER_DATA", directory.string());
+  ScopedEnv search("PATH", bin.string() + ":" + getenv("PATH"));
+  ScopedEnv display("DISPLAY");
+  ScopedEnv authority("XAUTHORITY");
+  constexpr const char* kDevice = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  constexpr const char* kOther = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+  browser::Runtime runtime;
+  CHECK(runtime.Execute({{"op", "setup_profile"}, {"device", kDevice}})
+            .contains("error"));
+  CHECK(runtime.Execute({{"op", "takeover"}, {"device", kDevice}})
+            .value("running", false));
+  CHECK(runtime.Execute({{"op", "setup_profile"}, {"device", kOther}})
+            .contains("error"));
+  const auto setup =
+      runtime.Execute({{"op", "setup_profile"}, {"device", kDevice}});
+  CHECK(setup.value("profile_setup", false));
+  CHECK(setup.value("viewer", "") == kDevice);
+  CHECK(!setup.contains("url"));
+  const auto profile = directory / "profile";
+  const auto deadline = std::chrono::steady_clock::now() +
+                        std::chrono::milliseconds(BudgetMs(3000));
+  while (!fs::exists(profile / "manual-ready") &&
+         std::chrono::steady_clock::now() < deadline) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  CHECK(fs::exists(profile / "manual-ready"));
+  CHECK(runtime.Execute({{"op", "tabs"}, {"session_id", kOther}})
+            .contains("error"));
+  CHECK(runtime.Execute({{"op", "takeover"}, {"device", kDevice}})
+            .value("profile_setup", false));
+  const auto prepared =
+      runtime.Execute({{"op", "prepare_done"}, {"device", kDevice}});
+  CHECK(!prepared.contains("error"));
+  CHECK(!prepared.value("profile_setup", true));
+  CHECK(prepared.value("mode", "") == "human");
+  CHECK(fs::exists(profile / "saved-login"));
+  std::ifstream log(profile / "launches.jsonl");
+  std::vector<bool> controlled;
+  for (std::string line; std::getline(log, line);) {
+    controlled.push_back(json::parse(line).value("controlled", false));
+  }
+  CHECK(controlled == std::vector<bool>({true, false, true}));
+  CHECK(runtime.Execute({{"op", "done"}, {"device", kDevice}})
+            .value("mode", "") == "idle");
 }
 
 }  // namespace uagent

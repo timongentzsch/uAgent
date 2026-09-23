@@ -72,7 +72,7 @@
 /* Modal: single grid, zero child margins, sections carry the labels. */
 /* Subagent/activity modal carries a full thread: widen toward the chat
    measure so rows wrap like the transcript instead of a narrow card. */
-.activity-view .dialog-body {
+.activity-view > .dialog-body {
   display: flex;
   flex-direction: column;
   min-height: 0;

@@ -313,16 +313,17 @@ json InspectCollaborator(const ProcessSupervisor& processes,
   }
   const json live_state = runtime ? runtime->LiveState(id) : json::object();
   json live_view = JsonValue(live_state, "view", json::object());
-  const auto apply_live_statistics = [&] {
+  const auto apply_live_state = [&] {
     detail["statistics_live"] =
         live_state.contains("statistics") && live_state.contains("usage");
-    for (const char* field : {"usage", "statistics", "turns", "route"}) {
+    for (const char* field : {"usage", "statistics", "turns", "route",
+                              "context_tokens", "context_window"}) {
       if (live_state.contains(field)) detail[field] = live_state[field];
     }
   };
   if (!loaded.record) {
     if (!live_view.empty()) detail["conversation"] = std::move(live_view);
-    apply_live_statistics();
+    apply_live_state();
     return detail;
   }
   const auto& record = *loaded.record;
@@ -349,12 +350,14 @@ json InspectCollaborator(const ProcessSupervisor& processes,
                                JsonValue(request, "before", uint64_t{0}))},
        {"turns", record.metadata.turns},
        {"model", record.metadata.model},
+       {"context_tokens", record.state.context_tokens},
+       {"context_window", record.state.context_window},
        {"statistics", conversation.Statistics()},
        {"usage", UsageJson(record.state.usage)}});
   if (!record.state.last_sent_prompt.empty()) {
     detail["system_prompt"] = record.state.last_sent_prompt;
   }
-  apply_live_statistics();
+  apply_live_state();
   return detail;
 }
 

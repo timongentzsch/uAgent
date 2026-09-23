@@ -1,3 +1,7 @@
+import {
+  ConnectionStatus,
+  type ConnectionPhase,
+} from "../../shared/connection-status.tsx";
 import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import type { Report, Session } from "../../shared/types.ts";
 import { api, command } from "../../state/api.ts";
@@ -33,6 +37,7 @@ interface BrowserStatus {
   url?: string;
   title?: string;
   profile_id?: string;
+  profile_setup?: boolean;
   profiles?: { id: string; name: string }[];
   error?: string;
 }
@@ -43,7 +48,7 @@ function Viewer({ report, readOnly }: { report: Report; readOnly: boolean }) {
   const viewer = useRef<RFB | null>(null);
   const textBox = useRef<HTMLTextAreaElement>(null);
   const pasteTimer = useRef<number | null>(null);
-  const [connection, setConnection] = useState("Connecting…");
+  const [connection, setConnection] = useState<ConnectionPhase>("connecting");
   const [showTrackpad, setShowTrackpad] = useState(
     () => matchMedia("(pointer: coarse)").matches,
   );
@@ -56,10 +61,12 @@ function Viewer({ report, readOnly }: { report: Report; readOnly: boolean }) {
     if (!target.current) return;
     const scheme = location.protocol === "https:" ? "wss:" : "ws:";
     let active = true;
+    let attempted = false;
     let retry: number | undefined;
     const connect = () => {
       if (!active || !target.current) return;
-      setConnection("Connecting…");
+      setConnection(attempted ? "reconnecting" : "connecting");
+      attempted = true;
       const role = readOnly ? "observe" : "control";
       const rfb = new RFB(
         target.current,
@@ -72,11 +79,11 @@ function Viewer({ report, readOnly }: { report: Report; readOnly: boolean }) {
       rfb.clipViewport = false;
       rfb.dragViewport = false;
       viewer.current = rfb;
-      rfb.addEventListener("connect", () => setConnection("Connected"));
+      rfb.addEventListener("connect", () => setConnection("connected"));
       rfb.addEventListener("disconnect", () => {
         if (viewer.current === rfb) viewer.current = null;
         if (active) {
-          setConnection("Disconnected");
+          setConnection(denied ? "disconnected" : "reconnecting");
           if (!denied)
             retry = window.setTimeout(connect, VIEWER_RECONNECT_DELAY_MS);
         }
@@ -86,6 +93,7 @@ function Viewer({ report, readOnly }: { report: Report; readOnly: boolean }) {
       });
       rfb.addEventListener("securityfailure", () => {
         denied = true;
+        setConnection("disconnected");
         report(new Error("Browser viewer authentication failed"));
       });
     };
@@ -103,14 +111,14 @@ function Viewer({ report, readOnly }: { report: Report; readOnly: boolean }) {
     viewer.current?.sendKey(keysym, code);
   const chord = (keysym: number, code: string) => {
     const rfb = viewer.current;
-    if (!rfb || connection !== "Connected" || readOnly) return;
+    if (!rfb || connection !== "connected" || readOnly) return;
     rfb.sendKey(X11_KEYSYM.control, "ControlLeft", true);
     rfb.sendKey(keysym, code);
     rfb.sendKey(X11_KEYSYM.control, "ControlLeft", false);
   };
   const sendText = (paste: boolean) => {
     const rfb = viewer.current;
-    if (!rfb || connection !== "Connected" || !text || readOnly) return;
+    if (!rfb || connection !== "connected" || !text || readOnly) return;
     rfb.clipboardPasteFrom(text);
     setNotice(
       paste
@@ -146,15 +154,19 @@ function Viewer({ report, readOnly }: { report: Report; readOnly: boolean }) {
       <BrowserInput
         screen={screen}
         target={target}
-        disabled={readOnly || connection !== "Connected"}
+        disabled={readOnly || connection !== "connected"}
         showTrackpad={showTrackpad && !readOnly}
         readOnly={readOnly}
       />
       <div class="browser-view-controls">
-        <small role="status" class="muted">
-          {readOnly
-            ? `Watching agent · ${connection.toLowerCase()}`
-            : connection}
+        <small class="muted">
+          {readOnly ? (
+            <>
+              Watching agent · <ConnectionStatus phase={connection} />
+            </>
+          ) : (
+            <ConnectionStatus phase={connection} />
+          )}
         </small>
         {!readOnly && (
           <>
@@ -190,21 +202,21 @@ function Viewer({ report, readOnly }: { report: Report; readOnly: boolean }) {
           <div class="browser-text-actions">
             <button
               type="button"
-              disabled={connection !== "Connected" || !text}
+              disabled={connection !== "connected" || !text}
               onClick={() => sendText(true)}
             >
               Send &amp; paste
             </button>
             <button
               type="button"
-              disabled={connection !== "Connected" || !text}
+              disabled={connection !== "connected" || !text}
               onClick={() => sendText(false)}
             >
               Send only
             </button>
             <button
               type="button"
-              disabled={connection !== "Connected"}
+              disabled={connection !== "connected"}
               onClick={() => {
                 setText(remoteText);
                 setNotice(
@@ -227,56 +239,56 @@ function Viewer({ report, readOnly }: { report: Report; readOnly: boolean }) {
           <div class="browser-key-actions" aria-label="Browser keys">
             <button
               type="button"
-              disabled={connection !== "Connected"}
+              disabled={connection !== "connected"}
               onClick={() => chord(X11_KEYSYM.l, "KeyL")}
             >
               Address
             </button>
             <button
               type="button"
-              disabled={connection !== "Connected"}
+              disabled={connection !== "connected"}
               onClick={() => key(X11_KEYSYM.tab, "Tab")}
             >
               Tab
             </button>
             <button
               type="button"
-              disabled={connection !== "Connected"}
+              disabled={connection !== "connected"}
               onClick={() => key(X11_KEYSYM.enter, "Enter")}
             >
               Enter
             </button>
             <button
               type="button"
-              disabled={connection !== "Connected"}
+              disabled={connection !== "connected"}
               onClick={() => key(X11_KEYSYM.backspace, "Backspace")}
             >
               ⌫
             </button>
             <button
               type="button"
-              disabled={connection !== "Connected"}
+              disabled={connection !== "connected"}
               onClick={() => key(X11_KEYSYM.escape, "Escape")}
             >
               Esc
             </button>
             <button
               type="button"
-              disabled={connection !== "Connected"}
+              disabled={connection !== "connected"}
               onClick={() => chord(X11_KEYSYM.c, "KeyC")}
             >
               Copy
             </button>
             <button
               type="button"
-              disabled={connection !== "Connected"}
+              disabled={connection !== "connected"}
               onClick={() => chord(X11_KEYSYM.v, "KeyV")}
             >
               Paste
             </button>
             <button
               type="button"
-              disabled={connection !== "Connected"}
+              disabled={connection !== "connected"}
               onClick={() => chord(X11_KEYSYM.a, "KeyA")}
             >
               Select all
@@ -357,7 +369,13 @@ export default function BrowserPanel({
     };
   }, [refresh]);
   const send = async (
-    action: "takeover" | "done" | "stop" | "create_profile" | "select_profile",
+    action:
+      | "takeover"
+      | "done"
+      | "stop"
+      | "create_profile"
+      | "select_profile"
+      | "setup_profile",
     fields: { name?: string; profile_id?: string } = {},
   ) => {
     const session = sessions.find((item) => item.id === status.session_id);
@@ -367,7 +385,9 @@ export default function BrowserPanel({
       ...fields,
     });
   };
-  const control = async (action: "takeover" | "done" | "stop") => {
+  const control = async (
+    action: "takeover" | "done" | "stop" | "setup_profile",
+  ) => {
     setBusy(true);
     try {
       await send(action);
@@ -419,9 +439,9 @@ export default function BrowserPanel({
     <section class="browser-panel">
       {!status.controller && (
         <p class="muted">
-          This is the same Chrome tab the agent uses. Sign in here, including
-          MFA; credentials stay in the browser. One paired device controls it at
-          a time.
+          This is the Chrome profile the agent uses. Take control and choose
+          Sign in to profile to save your logins, including MFA. One paired
+          device controls it at a time.
         </p>
       )}
       {status.error && <p role="alert">{status.error}</p>}
@@ -481,6 +501,25 @@ export default function BrowserPanel({
         <p class="browser-location" title={status.title}>
           {status.url}
         </p>
+      )}
+      {status.controller && (
+        <div class="browser-signin">
+          {status.profile_setup ? (
+            <p role="status">
+              Sign in to your sites in Chrome. Done reopens this profile for the
+              agent with your saved logins.
+            </p>
+          ) : (
+            <button
+              type="button"
+              disabled={busy}
+              title="Reopens this profile for manual sign-in. The agent waits until you choose Done."
+              onClick={() => void control("setup_profile")}
+            >
+              Sign in to profile
+            </button>
+          )}
+        </div>
       )}
       {status.mode === "human" && status.leased && !status.controller ? (
         <p>

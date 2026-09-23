@@ -261,6 +261,7 @@ bool Agent::Save(const std::string& path, std::string& error) const {
       .archive = conversation_.Archive(),
       .archive_dropped_segments = conversation_.DroppedSegments(),
       .context_tokens = ContextUsed(),
+      .context_window = api_.ctx_window,
       .usage = session_usage_,
       .route_usage = route_usage_,
       .last_sent_prompt = last_sent_prompt_,

@@ -1776,6 +1776,8 @@ def test_web_child_controls_and_conversation_ownership(root, home, *, binary):
                 "activity", session, operation="inspect", activity_id=child["id"]
             )["result"]
             assert_true("Child result" in json.dumps(detail["conversation"]), detail)
+            assert_true(detail["context_tokens"] > 0, detail)
+            assert_true(detail["context_window"] == snapshot["state"]["context_window"], detail)
             client.command(
                 "activity",
                 session,
@@ -2066,7 +2068,14 @@ def test_persistent_guidance_requires_its_command_receipt(root, home, *, binary)
                 child = snapshot["state"]["collaborators"][0]
                 live = web.command("activity", session, operation="inspect", agent_id=child["id"])
                 assert_true(live["result"].get("statistics_live"), live)
-                for field in ("usage", "statistics", "turns", "route"):
+                for field in (
+                    "usage",
+                    "statistics",
+                    "turns",
+                    "route",
+                    "context_tokens",
+                    "context_window",
+                ):
                     assert_true(field in live["result"], live)
                 blocks = live["result"]["conversation"]["blocks"]
                 assert_true(

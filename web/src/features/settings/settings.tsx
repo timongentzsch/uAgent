@@ -17,6 +17,7 @@ import {
   Field,
   Select,
   Skeleton,
+  Spinner,
   LoadError,
 } from "../../shared/ui.tsx";
 import { useEffect, useRef, useState } from "preact/hooks";
@@ -143,7 +144,7 @@ export default function Settings({
             load={configuration}
             session={session}
             online={online}
-            fallback={<Skeleton className="form-skeleton" rows={5} />}
+            fallback={<Spinner label="Loading configuration…" surface />}
           />
         </>
       ) : (

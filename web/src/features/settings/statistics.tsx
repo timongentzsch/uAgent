@@ -8,7 +8,10 @@ import type {
 } from "../../shared/types.ts";
 import { useEffect, useState } from "preact/hooks";
 import { LoadError } from "../../shared/ui.tsx";
-import { StatsSkeleton } from "../../shared/loading.tsx";
+import {
+  StatisticsLayout,
+  StatisticsLoading,
+} from "../../shared/statistics-layout.tsx";
 import { presentMessages } from "../chat/message-view.ts";
 
 const rate = (value?: number) =>
@@ -72,7 +75,7 @@ export default function Statistics({
   ) : error ? (
     <LoadError error={error} retry={() => setAttempt(attempt + 1)} />
   ) : (
-    <StatsSkeleton turn={!!modal.block_id} />
+    <StatisticsLoading turn={!!modal.block_id} />
   );
 }
 
@@ -83,7 +86,9 @@ export function StatisticsContent({
   state?: State;
   blockId?: string;
 }) {
-  const [scope, setScope] = useState(blockId ? "turn" : "session");
+  const [scope, setScope] = useState<"turn" | "session">(
+    blockId ? "turn" : "session",
+  );
   const presented = state?.view ? presentMessages(state.view.blocks) : [];
   const flattened = presented.flatMap((row) =>
     row.children ? [row, ...row.children] : [row],
@@ -188,19 +193,7 @@ export function StatisticsContent({
           ],
         ];
   return (
-    <>
-      {blockId && (
-        <div class="dialog-actions" role="group" aria-label="Statistics scope">
-          {(["turn", "session"] as const).map((value) => (
-            <button
-              aria-pressed={scope === value}
-              onClick={() => setScope(value)}
-            >
-              {value === "turn" ? "Turn" : "Session"}
-            </button>
-          ))}
-        </div>
-      )}
+    <StatisticsLayout turn={!!blockId} scope={scope} change={setScope}>
       {missingTurn ? (
         <p role="status">
           This turn is outside the loaded history. Load its retained messages
@@ -238,6 +231,6 @@ export function StatisticsContent({
           </p>
         </>
       )}
-    </>
+    </StatisticsLayout>
   );
 }

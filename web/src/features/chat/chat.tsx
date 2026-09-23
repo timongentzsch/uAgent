@@ -8,6 +8,7 @@ import type {
 import type { RefObject } from "preact";
 import { useCallback, useEffect, useState } from "preact/hooks";
 import { LoadError, Mark, Spinner } from "../../shared/ui.tsx";
+import HistoryStart from "./history-start.tsx";
 import { MessageRows, prepareHistoryBlocks } from "./message.tsx";
 
 export { prepareHistoryBlocks } from "./message.tsx";
@@ -106,24 +107,12 @@ export default function Chat({
       ref={attachBox}
     >
       <div class="transcript-content" ref={attachColumn}>
-        {view?.more && (
-          <button
-            type="button"
-            class="history-button"
-            disabled={!online || loadingOlder}
-            aria-busy={loadingOlder || undefined}
-            onClick={() => loadOlder().catch(report)}
-          >
-            {loadingOlder
-              ? "Loading older messages…"
-              : "Load older retained messages"}
-          </button>
-        )}
-        {(view?.dropped_segments || 0) > 0 && (
-          <p class="retention">
-            {view?.dropped_segments} older segments are outside retention.
-          </p>
-        )}
+        <HistoryStart
+          view={view}
+          online={online}
+          loading={loadingOlder}
+          load={() => loadOlder().catch(report)}
+        />
         {snapshot?.live_truncated && (
           <p class="retention">
             The live preview exceeded its buffer. Retained history refreshes

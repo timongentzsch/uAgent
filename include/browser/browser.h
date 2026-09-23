@@ -11,6 +11,12 @@
 
 namespace uagent::browser {
 
+// Profile flushes get a bounded grace period before a child is killed.
+inline constexpr int kChildShutdownGraceMs = 5000;
+inline constexpr int kChildShutdownPollMs = 20;
+// Chrome and Xvnc may each consume their grace; allow another for cleanup.
+inline constexpr int kServiceShutdownGraceMs = 3 * kChildShutdownGraceMs;
+
 // The appliance sets one private directory for its browser profiles.
 // An empty value disables the browser feature in ordinary native installs.
 std::string DataDirectory();

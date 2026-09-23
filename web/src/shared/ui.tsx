@@ -374,15 +374,27 @@ export function Modal({
   layout?: "content" | "panel";
 }) {
   const ref = useRef<HTMLDialogElement>(null);
+  const heading = useRef<HTMLHeadingElement>(null);
   const titleId = useId();
   useLayoutEffect(() => {
     const prior = document.activeElement;
     const dialog = ref.current;
     dialog?.showModal();
+    // Start at the dialog's title instead of highlighting its first action.
+    // Tab still reaches Close; native modality and focus restoration remain.
+    heading.current?.focus({ preventScroll: true });
     return () => {
       dialog?.close();
-      if (prior instanceof HTMLElement && prior.isConnected)
-        prior.focus({ preventScroll: true });
+      const target =
+        prior instanceof HTMLElement && prior.isConnected
+          ? prior
+          : document.activeElement;
+      const restored =
+        target instanceof HTMLDialogElement
+          ? target.querySelector<HTMLElement>("header > h2")
+          : target;
+      if (restored instanceof HTMLElement)
+        restored.focus({ preventScroll: true });
     };
   }, []);
   return (
@@ -398,7 +410,9 @@ export function Modal({
       }}
     >
       <header>
-        <h2 id={titleId}>{title}</h2>
+        <h2 id={titleId} ref={heading} tabIndex={-1}>
+          {title}
+        </h2>
         <IconButton label={`Close ${title.toLowerCase()}`} onClick={close}>
           <X />
         </IconButton>
@@ -452,7 +466,9 @@ export function Deferred<P extends object>({
     <Component {...(props as P)} />
   ) : error ? (
     <LoadError error={error} retry={() => setAttempt(attempt + 1)} />
+  ) : fallback === undefined ? (
+    <Spinner surface />
   ) : (
-    fallback || <Skeleton delayMs={0} />
+    fallback
   );
 }

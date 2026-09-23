@@ -2,8 +2,7 @@ import "./raw.css";
 import type { RawOptions, Exchange, JSONValue } from "../../shared/types.ts";
 import { useEffect, useId, useMemo, useState } from "preact/hooks";
 import { Download } from "lucide-preact";
-import { Field, Select, LoadError } from "../../shared/ui.tsx";
-import { RawBodySkeleton } from "../../shared/loading.tsx";
+import { Field, Select, LoadError, Spinner } from "../../shared/ui.tsx";
 import { readPages, command } from "../../state/api.ts";
 import { formatBody } from "../../shared/format.ts";
 import { formatEventStream } from "../../state/event-stream.ts";
@@ -187,7 +186,7 @@ export default function Raw({
         {error ? (
           <LoadError error={error} retry={() => setRetry(retry + 1)} />
         ) : body === undefined ? (
-          <RawBodySkeleton />
+          <Spinner label="Loading full body…" surface />
         ) : !text.trim() ? (
           <p class="muted">No content recorded.</p>
         ) : (

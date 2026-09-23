@@ -514,7 +514,7 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
     settings.getByRole("status", { name: "Loading settings…" }),
   ).toHaveAttribute("aria-busy", "true");
   await expect(
-    settings.getByRole("button", { name: "Close settings" }),
+    settings.getByRole("heading", { name: "Settings", exact: true }),
   ).toBeFocused();
   // The skeleton can report a mid-growth box on the opening frames
   // (identical DOM measures 394 then settles at 572), so snapshot it
@@ -807,13 +807,16 @@ test("code blocks, thinking and HTTP dialogs preserve content and loading geomet
     exact: true,
   });
   await expect(raw.getByRole("status")).toHaveAttribute("aria-busy", "true");
-  // The loading shell is structural shimmer by design (never buttons),
-  // so assert its geometry while the chunk is gated instead of a
-  // disabled Download: the shell must already have final shape.
-  await expect(raw.locator(".raw-body .code-skeleton")).toBeVisible();
+  // The eager dialog shell reserves geometry while unknown code loads.
+  // Once loaded, the real controls stay present while its body data loads.
+  await expect(raw.getByRole("status")).toBeVisible();
   const rawLoadingBox = await raw.boundingBox();
   releaseRaw();
-  await expect(raw.locator(".raw-body-loader")).toBeVisible();
+  await expect(
+    raw
+      .locator(".raw-body")
+      .getByRole("status", { name: "Loading full body…" }),
+  ).toBeVisible();
   await expect(raw.locator(".raw-content")).toHaveCount(1);
   await expect(raw.locator(".raw-body")).toHaveCount(1);
   releaseRawBody();
@@ -2091,11 +2094,27 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
   ).toBe(true);
   await page.setViewportSize({ width: 390, height: 844 });
   await list.getByRole("button", { name: /Show .*completed/ }).click();
+  // Force a retained older page so its control must share the thread's scroll.
+  await page.route("**/api/command", async (route) => {
+    const body = route.request().postDataJSON();
+    if (body.kind !== "activity" || body.operation !== "inspect" || body.detail)
+      return route.continue();
+    const response = await route.fetch();
+    const value = await response.json();
+    if (value.result?.conversation) {
+      value.result.conversation.more = true;
+      value.result.conversation.before = 1;
+    }
+    await route.fulfill({ response, json: value });
+  });
   await list
     .getByRole("button")
     .filter({ hasText: "Review the full task." })
     .click();
   const detail = page.getByRole("dialog", { name: "Subagent", exact: true });
+  await expect(
+    detail.getByLabel("Estimated context", { exact: true }),
+  ).toHaveText(/est\. ctx [\d.]+k?\/[\d.]+[kM]? · \d+% left/);
   await expect(detail.locator(".detail-label, .detail-task")).toHaveCount(0);
   const followUp = detail.getByRole("textbox", { name: "Follow-up" });
   await expect(followUp).toHaveCSS("border-top-style", "solid");
@@ -2111,6 +2130,20 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
   // Popup threads carry the same rows and viewers as chat history.
   const thread = detail.locator('[aria-label="Subagent task"]');
   await expect(thread.locator(".message")).not.toHaveCount(0);
+  const older = thread.getByRole("button", {
+    name: "Load older retained messages",
+    exact: true,
+  });
+  await expect(older).toHaveCount(1);
+  expect(
+    await older.evaluate((button) => {
+      const first = button.closest(".child-thread").querySelector(".message");
+      return !!(
+        button.compareDocumentPosition(first) & Node.DOCUMENT_POSITION_FOLLOWING
+      );
+    }),
+  ).toBe(true);
+
   await expect(thread.locator(".tool-disclosure")).not.toHaveCount(0);
   const toolRow = thread.locator(".tool-disclosure").first();
   await toolRow.locator("summary").click();
@@ -2142,9 +2175,21 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
     stats.getByText("Parent turn time", { exact: true }),
   ).toBeVisible();
   await expect(stats.getByText("Model time", { exact: true })).toBeVisible();
+  const statsBody = stats.locator(":scope > .dialog-body");
+  await expect(statsBody).toHaveCSS("overflow-y", "auto");
+  await statsBody.hover();
+  await page.mouse.wheel(0, 600);
+  await expect
+    .poll(() => statsBody.evaluate((node) => node.scrollTop))
+    .toBeGreaterThan(0);
   await stats
     .getByRole("button", { name: "Close subagent statistics" })
     .click();
+  await expect(detail).toHaveCSS("outline-style", "none");
+  // Native close may fall back to the dialog when its previous opener is gone.
+  await detail.evaluate((node) => node.focus());
+  await expect(detail).toBeFocused();
+  await expect(detail).toHaveCSS("outline-style", "none");
   await thread
     .getByRole("button", { name: "Turn statistics", exact: true })
     .last()

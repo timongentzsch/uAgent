@@ -30,13 +30,7 @@ import { Globe2, Menu, Settings } from "lucide-preact";
 // place. Loaded dynamically: a static import would drag markdown.css into
 // the initial bundle and break the CSS size budget.
 const markdownView = () => import("../shared/markdown-view.tsx");
-import {
-  ConversationActionSkeleton,
-  ManagementSkeleton,
-  PromptSkeleton,
-  RawSkeleton,
-  StatsSkeleton,
-} from "../shared/loading.tsx";
+import { StatisticsLoading } from "../shared/statistics-layout.tsx";
 import { applyZoom, normalizeZoom } from "../shared/size-controls.tsx";
 
 import { useHost } from "../state/use-host.ts";
@@ -89,7 +83,7 @@ function App() {
     managementVersion,
     authenticated,
     online,
-    connecting,
+    connection,
     loadErrors,
     catalogue,
     setCatalogue,
@@ -689,7 +683,7 @@ function App() {
       selected={page === "chat" ? selected : ""}
       unread={unread}
       online={online}
-      connecting={connecting}
+      connection={connection}
       choose={choose}
       menu={conversationMenu}
       refresh={refresh}
@@ -847,7 +841,18 @@ function App() {
                 unread={unread}
                 choose={choose}
                 refresh={refresh}
-                fallback={<ManagementSkeleton kind={page} />}
+                fallback={
+                  <div class="management">
+                    <Spinner
+                      label={
+                        page === "library"
+                          ? "Loading library…"
+                          : "Loading scheduled tasks…"
+                      }
+                      surface
+                    />
+                  </div>
+                }
               />
             ) : session ? (
               <>
@@ -892,6 +897,7 @@ function App() {
                   commands={catalogue.commands || []}
                   snapshot={snapshot}
                   online={online}
+                  connection={connection}
                   draft={draft}
                   setDraft={setDraft}
                   upload={upload}
@@ -958,19 +964,16 @@ function App() {
           {modal.type === "statistics" ? (
             <Deferred
               load={statisticsDialog}
-              fallback={
-                <StatsSkeleton
-                  turn={!!modal.block_id}
-                  controls={!!modal.block_id}
-                />
-              }
+              fallback={<StatisticsLoading turn={!!modal.block_id} />}
               modal={modal}
               loadSnapshot={load}
             />
           ) : (
             <Deferred
               load={conversationActions}
-              fallback={<ConversationActionSkeleton kind={modal.type} />}
+              fallback={
+                <Spinner label="Loading conversation actions…" surface />
+              }
               key={`${modal.type}-${modal.session.id}`}
               modal={modal}
               close={() => setModal(null)}
@@ -1043,11 +1046,7 @@ function App() {
           <Deferred
             load={rawDialog}
             prompt={() => setModal({ type: "prompt" })}
-            fallback={
-              <RawSkeleton
-                http={modal.context || modal.exchanges !== undefined}
-              />
-            }
+            fallback={<Spinner label="Loading full body…" surface />}
             id={modal.id}
             session={modal.session}
             value={modal.value}
@@ -1071,7 +1070,7 @@ function App() {
         >
           <Deferred
             load={promptDialog}
-            fallback={<PromptSkeleton />}
+            fallback={<Spinner label="Loading system prompt…" surface />}
             session={session}
             projects={projects}
             online={online}

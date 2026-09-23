@@ -1014,6 +1014,11 @@ dialog > header {
   overflow: hidden;
   scrollbar-gutter: stable;
 }
+/* Dialog containers and titles are focus anchors, not interactive controls. */
+dialog:focus,
+dialog > header > h2:focus {
+  outline: none;
+}
 .dialog-body {
   padding: var(--surface-inset);
   overflow: auto;
@@ -1086,9 +1091,6 @@ dialog section {
   overflow: auto;
   border: 1px solid var(--line);
   background: var(--surface);
-}
-.raw-body > .raw-body-loader {
-  padding: var(--pad);
 }
 .raw-content footer {
   flex-shrink: 0;
@@ -1170,8 +1172,7 @@ dialog section {
 .run-history h2 {
   font-size: 1em;
 }
-.prompt-editor,
-.prompt-content-skeleton {
+.prompt-editor {
   display: grid;
   gap: var(--gap);
 }
@@ -1266,7 +1267,6 @@ dialog section {
 .control-skeleton {
   padding: 0;
 }
-.form-skeleton span,
 .control-skeleton span {
   height: var(--control);
   width: 100%;
@@ -1284,20 +1284,6 @@ dialog section {
 .meta-skeleton span {
   height: 0.75em;
   width: 68%;
-}
-.action-skeleton {
-  width: auto;
-  padding: 0;
-}
-.action-skeleton span {
-  height: var(--control);
-  width: calc(96rem / 14);
-}
-.stats .skeleton {
-  padding: var(--space-2) 0;
-}
-.composer .status-line > .skeleton {
-  padding: var(--space-3) 0;
 }
 
 @media (pointer: coarse) {

@@ -278,6 +278,7 @@ void TestWorkspaceScopedSession() {
           std::string::npos);
     CHECK(payload.value("archive_dropped_segments", int64_t{-1}) == 0);
     CHECK(payload.value("context_tokens", int64_t{-1}) == agent.ContextUsed());
+    CHECK(payload.value("context_window", int64_t{-1}) == api.ctx_window);
     CHECK(payload.value("adaptive_system", "") ==
           "Persist this task strategy.");
     CHECK(payload.value("adaptive_system_revision", uint64_t{0}) == 4);
@@ -291,6 +292,7 @@ void TestWorkspaceScopedSession() {
     // Earlier format-3 sessions omit both kinds of display metadata.
     payload.erase("tool_displays");
     payload.erase("display");
+    payload.erase("context_window");
     CHECK(ToolWritePrivateFile(session.string(),
                                header.dump() + "\n" + payload.dump())
               .output.starts_with("wrote "));
@@ -326,6 +328,7 @@ void TestWorkspaceScopedSession() {
   CHECK(older.record.has_value());
   CHECK(older.record->state.tool_displays == json::object());
   CHECK(older.record->state.display == json::object());
+  CHECK(older.record->state.context_window == 0);
   auto forked = SessionStore::Fork(session.string(), "Legacy fork", true);
   CHECK(!forked.contains("error"));
   const auto fork_path = forked.value("path", "");

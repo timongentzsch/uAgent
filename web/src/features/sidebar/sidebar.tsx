@@ -1,3 +1,7 @@
+import {
+  ConnectionStatus,
+  type ConnectionPhase,
+} from "../../shared/connection-status.tsx";
 import type { ComponentChildren } from "preact";
 import type {
   Session,
@@ -17,7 +21,7 @@ import { command } from "../../state/api.ts";
 import { Mark } from "../../shared/ui.tsx";
 import FolderLabel from "./folder-label.tsx";
 import { Menu, MenuItem } from "../../shared/popover.tsx";
-import { ActivityStatus, StatusLed, active } from "../chat/activity-status.tsx";
+import { ActivityStatus, active } from "../chat/activity-status.tsx";
 const shortDate = new Intl.DateTimeFormat(undefined, {
   day: "numeric",
   month: "short",
@@ -122,7 +126,7 @@ export default function Sidebar({
   selected,
   unread,
   online,
-  connecting,
+  connection,
   choose,
   menu,
   refresh,
@@ -139,7 +143,7 @@ export default function Sidebar({
   selected: string;
   unread: Set<string>;
   online: boolean;
-  connecting: boolean;
+  connection: ConnectionPhase;
   choose: (id: string) => void;
   menu: (session: Session) => ComponentChildren;
   refresh: () => void;
@@ -261,15 +265,10 @@ export default function Sidebar({
         ))}
       </nav>
       <footer>
-        <span
-          class={`connection ${online ? "connected" : ""}`}
-          title={
-            online ? "Connected" : connecting ? "Connecting…" : "Disconnected"
-          }
-        >
-          <StatusLed state={online ? "active" : "idle"} />{" "}
-          {online ? "Connected" : connecting ? "Connecting…" : "Disconnected"}
-        </span>
+        <ConnectionStatus
+          phase={connection}
+          className={`connection ${online ? "connected" : ""}`}
+        />
         <button
           class="quiet icon-button"
           onClick={refresh}

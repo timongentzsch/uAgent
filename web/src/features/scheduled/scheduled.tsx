@@ -6,8 +6,7 @@ import type {
 } from "../../shared/types.ts";
 import { useEffect, useState } from "preact/hooks";
 import { Plus, ArrowLeft, Play, Square } from "lucide-preact";
-import { Field, Select, Modal, LoadError } from "../../shared/ui.tsx";
-import { ManagementBodySkeleton } from "../../shared/loading.tsx";
+import { Field, Select, Modal, LoadError, Spinner } from "../../shared/ui.tsx";
 import { Menu, MenuItem } from "../../shared/popover.tsx";
 import { Popover } from "../../shared/popover.tsx";
 import ModelPicker from "../settings/model-picker.tsx";
@@ -178,7 +177,7 @@ export default function Scheduled({
       {scheduled?.error ? (
         <LoadError error={scheduled.error} retry={refresh} />
       ) : !scheduled ? (
-        <ManagementBodySkeleton kind="scheduled" />
+        <Spinner label="Loading scheduled tasks…" surface />
       ) : (
         <div class={`management-body ${task ? "has-selection" : ""}`}>
           <div class="management-list">

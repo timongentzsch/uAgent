@@ -1,10 +1,9 @@
+import type { ConnectionPhase } from "../../shared/connection-status.tsx";
 import "./attachments.css";
 import { useCommandSuggestions } from "./command-suggestions.tsx";
 import { parseSlash } from "./slash.ts";
-import { Deferred, Field, Select } from "../../shared/ui.tsx";
-import { DecisionSkeleton } from "../../shared/loading.tsx";
+import { Deferred, Field, Select, Spinner } from "../../shared/ui.tsx";
 import { bytes } from "../../shared/quantities.ts";
-import { contextSummary } from "../../state/context.ts";
 import type {
   SlashCommand,
   Session,
@@ -30,7 +29,7 @@ import { Popover } from "../../shared/popover.tsx";
 import Activities from "../chat/activity-status.tsx";
 import MessageInput from "./message-input.tsx";
 import ModelControl from "./model-control.tsx";
-import { SessionSummary } from "../chat/session-summary.tsx";
+import { ContextSummary, SessionSummary } from "../chat/session-summary.tsx";
 const decisionPanel = () => import("../chat/decision.tsx");
 
 export default function Composer({
@@ -38,6 +37,7 @@ export default function Composer({
   commands,
   snapshot,
   online,
+  connection,
   draft,
   setDraft,
   upload,
@@ -60,6 +60,7 @@ export default function Composer({
   commands: SlashCommand[];
   snapshot?: Snapshot;
   online: boolean;
+  connection: ConnectionPhase;
   draft: Draft;
   setDraft: (draft: Draft) => void;
   upload: (files: File[]) => void;
@@ -228,7 +229,11 @@ export default function Composer({
           act={act}
           online={online}
           report={report}
-          fallback={<DecisionSkeleton editor={pending.kind === "editor"} />}
+          fallback={
+            <section class="decision">
+              <Spinner label="Loading decision…" surface />
+            </section>
+          }
         />
       ) : online && !session.generation ? (
         <button
@@ -481,24 +486,13 @@ export default function Composer({
         report={report}
         items={online ? state?.activities || [] : []}
         present={online && !!session?.presence}
-        phase={
-          !online
-            ? "Disconnected"
-            : detached || state?.activity || (state ? "Ready" : "Loading…")
-        }
+        connection={connection}
+        phase={detached || state?.activity || (state ? "Ready" : "Loading…")}
         running={online && running}
         pending={online ? pending : null}
       >
         <div class="metrics">
-          <button
-            class="quiet"
-            aria-label="Raw context"
-            title={`Estimated context: ${state?.context_tokens?.toLocaleString() || "—"}${state?.context_window ? ` / ${state.context_window.toLocaleString()}` : ""} tokens from serialized request bytes; provider billing usage is separate · View raw context`}
-            disabled={!online}
-            onClick={showContext}
-          >
-            {contextSummary(state?.context_tokens, state?.context_window)}
-          </button>
+          <ContextSummary state={state} open={showContext} online={online} />
           <SessionSummary state={state} open={showStatistics} />
           {!!session.guidance && (
             <span class="muted" role="status">

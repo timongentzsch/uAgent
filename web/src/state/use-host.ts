@@ -21,6 +21,7 @@ import {
 import { api, protocol, receiveOutcome } from "./api.ts";
 import { selectedFromURL, writeSelection } from "../shared/navigation.ts";
 import { maxLocalRequests } from "../shared/limits.ts";
+import type { ConnectionPhase } from "../shared/connection-status.tsx";
 
 // One SSE subscription owns host snapshots, command receipts and read state.
 export function useHost(
@@ -31,6 +32,7 @@ export function useHost(
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
   const [online, setOnline] = useState(false);
   const [connecting, setConnecting] = useState(true);
+  const connectedOnce = useRef(false);
   const [loadErrors, setLoadErrors] = useState<Record<string, unknown>>({});
   const revoked = useRef(false);
   const catalogueRef = useRef<Catalogue>();
@@ -73,7 +75,6 @@ export function useHost(
     readingConversation && following && document.visibilityState === "visible";
   const report = useCallback((error: unknown) => {
     const issue = failure(error);
-    setConnecting(false);
     if (issue.network) setOnline(false);
     else setError(issue.message);
   }, []);
@@ -247,7 +248,7 @@ export function useHost(
       events.onerror = () => {
         if (stream.current !== events || signal.aborted) return;
         setOnline(false);
-        setConnecting(true);
+        setConnecting(events.readyState === EventSource.CONNECTING);
       };
       events.addEventListener("ready", (message) => {
         if (stream.current !== events || signal.aborted) return;
@@ -266,6 +267,7 @@ export function useHost(
           refresh();
           return;
         }
+        connectedOnce.current = true;
         setOnline(true);
         setConnecting(false);
       });
@@ -297,6 +299,7 @@ export function useHost(
             ),
           );
           setOnline(false);
+          setConnecting(false);
           return;
         }
         if (
@@ -594,6 +597,7 @@ export function useHost(
       stream.current?.close();
       stream.current = undefined;
       setOnline(false);
+      setConnecting(false);
     };
     addEventListener("pageshow", recover);
     addEventListener("pagehide", suspend);
@@ -682,6 +686,8 @@ export function useHost(
     catalogueRef.current = undefined;
     setCatalogue({ sessions: [], devices: [], capabilities: {} });
     setOnline(false);
+    setConnecting(false);
+    connectedOnce.current = false;
     setAuthenticated(false);
     writeSelection("", true);
     setSelected("");
@@ -690,7 +696,13 @@ export function useHost(
     managementVersion,
     authenticated,
     online,
-    connecting,
+    connection: (online
+      ? "connected"
+      : connecting
+        ? connectedOnce.current
+          ? "reconnecting"
+          : "connecting"
+        : "disconnected") as ConnectionPhase,
     loadErrors,
     catalogue,
     setCatalogue,

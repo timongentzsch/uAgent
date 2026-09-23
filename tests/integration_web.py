@@ -1521,7 +1521,14 @@ def test_web_immediate_message_model_control_and_receipts(root, home, *, binary)
             assert_true(models[0]["efforts"] == efforts, catalog)
             try:
                 assert started.wait(timeout=budget(5))
-                snapshot = client.snapshot(session)
+                # The provider and host consume separate connections; receiving
+                # the request does not mean the host has drained response.started.
+                snapshot = client.until(
+                    session,
+                    lambda value: any(
+                        row["kind"] == "assistant" for row in value["state"]["view"]["blocks"]
+                    ),
+                )
                 assert_true(snapshot["state"]["efforts"] == ["default", *efforts], snapshot)
                 rows = snapshot["state"]["view"]["blocks"]
                 users = [row for row in rows if row["kind"] == "user"]
@@ -1703,6 +1710,7 @@ def test_web_child_controls_and_conversation_ownership(root, home, *, binary):
         if "WEB_CHILD_SEED" in users:
             if "WEB_CHILD_FOLLOWUP" in users:
                 assert any(message.get("content") == "Child result" for message in body["messages"])
+                assert body["model"] == "mock/new", body
                 return event({"content": "Child follow-up result"})
             child_started.set()
             assert release_child.wait(timeout=budget(10))
@@ -1714,7 +1722,13 @@ def test_web_child_controls_and_conversation_ownership(root, home, *, binary):
         )
 
     with Server([answer]) as provider:
-        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+        with web_host(
+            binary,
+            root,
+            home,
+            provider.url,
+            extra_env={"UAGENT_MODEL": "mock/old", "UAGENT_PROVIDER_PROTOCOL": "openrouter"},
+        ) as (client, code, _, _):
             client.pair(code)
             session = client.create(project)
             peer = client.create(project)
@@ -1769,12 +1783,15 @@ def test_web_child_controls_and_conversation_ownership(root, home, *, binary):
                 "activity", session, operation="inspect", activity_id=child["id"]
             )["result"]
             assert_true("Child result" in json.dumps(detail["conversation"]), detail)
+            assert_true(detail["context_tokens"] > 0, detail)
+            assert_true(detail["context_window"] == snapshot["state"]["context_window"], detail)
             client.command(
                 "activity",
                 session,
                 operation="followup",
                 agent_id=child["agent_id"],
                 text="WEB_CHILD_FOLLOWUP",
+                model="mock/new",
             )
             client.until(
                 session,
@@ -2057,6 +2074,16 @@ def test_persistent_guidance_requires_its_command_receipt(root, home, *, binary)
                 snapshot = web.until(session, lambda value: value["state"].get("collaborators"))
                 child = snapshot["state"]["collaborators"][0]
                 live = web.command("activity", session, operation="inspect", agent_id=child["id"])
+                assert_true(live["result"].get("statistics_live"), live)
+                for field in (
+                    "usage",
+                    "statistics",
+                    "turns",
+                    "route",
+                    "context_tokens",
+                    "context_window",
+                ):
+                    assert_true(field in live["result"], live)
                 blocks = live["result"]["conversation"]["blocks"]
                 assert_true(
                     any("retained worker" in block.get("text", "") for block in blocks), blocks

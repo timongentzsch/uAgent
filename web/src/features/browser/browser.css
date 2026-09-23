@@ -1,7 +1,3 @@
-.browser-view {
-  width: min(1350px, calc(var(--content-width) - 2 * var(--dialog-gutter)));
-  max-width: none;
-}
 .browser-panel {
   display: grid;
   gap: var(--gap);
@@ -58,7 +54,6 @@
 .browser-rfb {
   position: absolute;
   inset: 0;
-  transform-origin: 0 0;
 }
 .browser-rfb canvas {
   display: block;
@@ -150,4 +145,26 @@
   .browser-view-controls small {
     flex-basis: 100%;
   }
+}
+
+/* The mobile cursor belongs to the modal's top layer, above the framebuffer.
+   It remains legible at every remote zoom and never intercepts input. */
+.browser-pointer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 20px;
+  height: 24px;
+  overflow: visible;
+  pointer-events: none;
+  fill: #111;
+  stroke: #fff;
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+.browser-pointer[hidden] {
+  display: none;
+}
+.browser-screen[data-trackpad] canvas {
+  cursor: none !important;
 }

@@ -88,6 +88,7 @@ test.describe("browser input showcase on a phone", () => {
 
   test("keeps view gestures separate from trackpad input", async ({ page }) => {
     await page.goto("/ui.html");
+    await page.getByRole("button", { name: "Open browser input" }).click();
     const canvas = page.locator(".showcase-browser-input canvas");
     await expect(canvas).toBeVisible();
     await canvas.evaluate((element) => {
@@ -252,7 +253,9 @@ test.describe("browser input showcase on a phone", () => {
       viewBox.y + viewBox.height / 2,
     );
     const zoomed = await target.evaluate(
-      (element) => new DOMMatrix(getComputedStyle(element).transform).a,
+      (element) =>
+        element.getBoundingClientRect().width /
+        element.parentElement.getBoundingClientRect().width,
     );
     expect(zoomed).toBeGreaterThan(1);
     const zoomTransform = await target.evaluate(

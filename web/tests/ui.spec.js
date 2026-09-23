@@ -85,14 +85,15 @@ test("mobile chrome keeps an opaque safe area and applies appearance before app 
   const settings = page.getByRole("dialog", { name: "Settings", exact: true });
   const geometry = await settings.evaluate((element) => {
     const box = element.getBoundingClientRect();
-    const close = element
-      .querySelector("header button")
-      .getBoundingClientRect();
+    const header = element.querySelector("header");
+    const close = header.querySelector("button").getBoundingClientRect();
+    // Padding excludes the native scrollbar gutter shared with the body.
+    const gutter = header.offsetWidth - header.clientWidth;
     return {
       top: box.top,
       bottom: box.bottom,
       insetTop: close.top - box.top,
-      insetRight: box.right - close.right,
+      insetRight: box.right - close.right - gutter,
     };
   });
   expect(geometry.top).toBeGreaterThanOrEqual(47 + 8);
@@ -283,6 +284,11 @@ test("system prompt editing shares revisions, replacement and request previews",
   );
   // Raw viewer CSS has loaded by this point. It must not clip the prompt
   // depending on which dialog was opened first.
+  // Exercise classic scrollbar gutters even on hosts with overlay scrollbars.
+  await page.addStyleTag({
+    content:
+      "dialog > header::-webkit-scrollbar, .dialog-body::-webkit-scrollbar { width: 1rem; }",
+  });
   for (const viewport of [
     { width: 390, height: 600 },
     { width: 844, height: 390 },
@@ -508,7 +514,7 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
     settings.getByRole("status", { name: "Loading settings…" }),
   ).toHaveAttribute("aria-busy", "true");
   await expect(
-    settings.getByRole("button", { name: "Close settings" }),
+    settings.getByRole("heading", { name: "Settings", exact: true }),
   ).toBeFocused();
   // The skeleton can report a mid-growth box on the opening frames
   // (identical DOM measures 394 then settles at 572), so snapshot it
@@ -801,13 +807,16 @@ test("code blocks, thinking and HTTP dialogs preserve content and loading geomet
     exact: true,
   });
   await expect(raw.getByRole("status")).toHaveAttribute("aria-busy", "true");
-  // The loading shell is structural shimmer by design (never buttons),
-  // so assert its geometry while the chunk is gated instead of a
-  // disabled Download: the shell must already have final shape.
-  await expect(raw.locator(".raw-body .code-skeleton")).toBeVisible();
+  // The eager dialog shell reserves geometry while unknown code loads.
+  // Once loaded, the real controls stay present while its body data loads.
+  await expect(raw.getByRole("status")).toBeVisible();
   const rawLoadingBox = await raw.boundingBox();
   releaseRaw();
-  await expect(raw.locator(".raw-body-loader")).toBeVisible();
+  await expect(
+    raw
+      .locator(".raw-body")
+      .getByRole("status", { name: "Loading full body…" }),
+  ).toBeVisible();
   await expect(raw.locator(".raw-content")).toHaveCount(1);
   await expect(raw.locator(".raw-body")).toHaveCount(1);
   releaseRawBody();
@@ -1382,7 +1391,7 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
       })
       .toBe(true);
   };
-  const input = async (locator, text, expectedFontSize = 14) => {
+  const input = async (locator, text, expectedFontSize = 16) => {
     await locator.fill(text);
     await viewport(390, 70);
     await expect(locator).toBeFocused();
@@ -1473,7 +1482,7 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
     await settings
       .getByRole("button", { name: "Advanced configuration", exact: true })
       .tap();
-    await input(settings.getByLabel("Find a setting"), "web", 7);
+    await input(settings.getByLabel("Find a setting"), "web", 16);
     await contained(settings, 390, 70);
     await settings.getByRole("button", { name: "Back", exact: true }).tap();
     await settings
@@ -2085,11 +2094,27 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
   ).toBe(true);
   await page.setViewportSize({ width: 390, height: 844 });
   await list.getByRole("button", { name: /Show .*completed/ }).click();
+  // Force a retained older page so its control must share the thread's scroll.
+  await page.route("**/api/command", async (route) => {
+    const body = route.request().postDataJSON();
+    if (body.kind !== "activity" || body.operation !== "inspect" || body.detail)
+      return route.continue();
+    const response = await route.fetch();
+    const value = await response.json();
+    if (value.result?.conversation) {
+      value.result.conversation.more = true;
+      value.result.conversation.before = 1;
+    }
+    await route.fulfill({ response, json: value });
+  });
   await list
     .getByRole("button")
     .filter({ hasText: "Review the full task." })
     .click();
   const detail = page.getByRole("dialog", { name: "Subagent", exact: true });
+  await expect(
+    detail.getByLabel("Estimated context", { exact: true }),
+  ).toHaveText(/est\. ctx [\d.]+k?\/[\d.]+[kM]? · \d+% left/);
   await expect(detail.locator(".detail-label, .detail-task")).toHaveCount(0);
   const followUp = detail.getByRole("textbox", { name: "Follow-up" });
   await expect(followUp).toHaveCSS("border-top-style", "solid");
@@ -2105,6 +2130,20 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
   // Popup threads carry the same rows and viewers as chat history.
   const thread = detail.locator('[aria-label="Subagent task"]');
   await expect(thread.locator(".message")).not.toHaveCount(0);
+  const older = thread.getByRole("button", {
+    name: "Load older retained messages",
+    exact: true,
+  });
+  await expect(older).toHaveCount(1);
+  expect(
+    await older.evaluate((button) => {
+      const first = button.closest(".child-thread").querySelector(".message");
+      return !!(
+        button.compareDocumentPosition(first) & Node.DOCUMENT_POSITION_FOLLOWING
+      );
+    }),
+  ).toBe(true);
+
   await expect(thread.locator(".tool-disclosure")).not.toHaveCount(0);
   const toolRow = thread.locator(".tool-disclosure").first();
   await toolRow.locator("summary").click();
@@ -2124,13 +2163,77 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
     .getByRole("button", { name: "Close tool input/output", exact: true })
     .click();
   await expect(toolView).toHaveCount(0);
+  await detail
+    .getByRole("button", { name: "Session statistics", exact: true })
+    .click();
+  const stats = page.getByRole("dialog", {
+    name: "Subagent statistics",
+    exact: true,
+  });
+  await expect(stats.locator("dt").filter({ hasText: /^Cost$/ })).toBeVisible();
+  await expect(
+    stats.getByText("Parent turn time", { exact: true }),
+  ).toBeVisible();
+  await expect(stats.getByText("Model time", { exact: true })).toBeVisible();
+  const statsBody = stats.locator(":scope > .dialog-body");
+  await expect(statsBody).toHaveCSS("overflow-y", "auto");
+  await statsBody.hover();
+  await page.mouse.wheel(0, 600);
+  await expect
+    .poll(() => statsBody.evaluate((node) => node.scrollTop))
+    .toBeGreaterThan(0);
+  await stats
+    .getByRole("button", { name: "Close subagent statistics" })
+    .click();
+  await expect(detail).toHaveCSS("outline-style", "none");
+  // Native close may fall back to the dialog when its previous opener is gone.
+  await detail.evaluate((node) => node.focus());
+  await expect(detail).toBeFocused();
+  await expect(detail).toHaveCSS("outline-style", "none");
+  await thread
+    .getByRole("button", { name: "Turn statistics", exact: true })
+    .last()
+    .click();
+  await expect(
+    stats.getByText("Model at completion", { exact: true }),
+  ).toBeVisible();
+  await expect(stats.getByText("TTFT", { exact: true })).toBeVisible();
+  await stats
+    .getByRole("button", { name: "Close subagent statistics" })
+    .click();
+  await detail
+    .getByRole("button", { name: "Model and effort", exact: true })
+    .click();
+  const childModel = page.getByRole("dialog", {
+    name: "Model and effort",
+    exact: true,
+  });
+  await childModel
+    .getByRole("combobox", { name: "Model", exact: true })
+    .selectOption({ value: "mock/main" });
+  await childModel.getByRole("button", { name: "Apply", exact: true }).click();
+  const followUpRequest = page.waitForRequest((request) => {
+    if (!request.url().endsWith("/api/command") || request.method() !== "POST")
+      return false;
+    const body = request.postDataJSON();
+    return body.kind === "activity" && body.operation === "followup";
+  });
   // Follow-up sends from the popup and receipts like the composer.
   await detail
     .getByRole("button", { name: "Start follow-up", exact: true })
     .click();
+  expect((await followUpRequest).postDataJSON().model).toBe("mock/main");
+  await expect(page.locator(".composer > form .model-selector")).toContainText(
+    "mock/model-b",
+  );
   await expect(detail.getByText("Follow-up started.")).toBeVisible({
     timeout: 20000,
   });
+  await expect(
+    thread.getByRole("heading", { name: "Verified response", exact: true }),
+  ).toHaveCount(2);
+  await expect(detail).not.toContainText("Saved model is unavailable");
+  await expect(detail.locator(".model-selector")).toContainText("mock/main");
   await detail
     .getByRole("button", { name: "Show full message", exact: true })
     .click();
@@ -2140,14 +2243,14 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
   expect(
     (await detail.locator('[aria-label="Subagent task"]').textContent()).length,
   ).toBeGreaterThan(16000);
-  // No System prompt disclosure anymore; run details render open at the top.
+  // Do not create empty metadata sections for ordinary agents.
   await expect(detail.getByText("System prompt", { exact: true })).toHaveCount(
     0,
   );
   await detail.getByText("Task and run details").click();
-  await expect(
-    detail.locator('section[aria-label="Run details"]'),
-  ).toBeVisible();
+  await expect(detail.locator('section[aria-label="Run details"]')).toHaveCount(
+    0,
+  );
   await page.screenshot({
     path: testInfo.outputPath("subagent-task-phone.png"),
   });

@@ -1,9 +1,17 @@
 import { duration } from "../../shared/duration.ts";
 import { count } from "../../shared/quantities.ts";
-import type { Usage, StatisticsModal, Snapshot } from "../../shared/types.ts";
+import type {
+  Usage,
+  StatisticsModal,
+  Snapshot,
+  State,
+} from "../../shared/types.ts";
 import { useEffect, useState } from "preact/hooks";
 import { LoadError } from "../../shared/ui.tsx";
-import { StatsSkeleton } from "../../shared/loading.tsx";
+import {
+  StatisticsLayout,
+  StatisticsLoading,
+} from "../../shared/statistics-layout.tsx";
 import { presentMessages } from "../chat/message-view.ts";
 
 const rate = (value?: number) =>
@@ -47,23 +55,6 @@ export default function Statistics({
   const [snapshot, setSnapshot] = useState<Snapshot>();
   const [error, setError] = useState<unknown>(null);
   const [attempt, setAttempt] = useState(0);
-  const [scope, setScope] = useState(modal.block_id ? "turn" : "session");
-  const presented = snapshot?.state?.view
-    ? presentMessages(snapshot.state.view.blocks)
-    : [];
-  const flattened = presented.flatMap((row) =>
-    row.children ? [row, ...row.children] : [row],
-  );
-  const block =
-    scope === "turn"
-      ? flattened.find(
-          (row) =>
-            row.key === modal.block_id ||
-            row.id === modal.block_id ||
-            row.response_id === modal.block_id ||
-            row.occurrence_id === modal.block_id,
-        )
-      : undefined;
   useEffect(() => {
     let active = true;
     setSnapshot(undefined);
@@ -79,7 +70,40 @@ export default function Statistics({
       active = false;
     };
   }, [modal.session_id, attempt]);
-  const state = snapshot?.state;
+  return snapshot ? (
+    <StatisticsContent state={snapshot.state} blockId={modal.block_id} />
+  ) : error ? (
+    <LoadError error={error} retry={() => setAttempt(attempt + 1)} />
+  ) : (
+    <StatisticsLoading turn={!!modal.block_id} />
+  );
+}
+
+export function StatisticsContent({
+  state,
+  blockId,
+}: {
+  state?: State;
+  blockId?: string;
+}) {
+  const [scope, setScope] = useState<"turn" | "session">(
+    blockId ? "turn" : "session",
+  );
+  const presented = state?.view ? presentMessages(state.view.blocks) : [];
+  const flattened = presented.flatMap((row) =>
+    row.children ? [row, ...row.children] : [row],
+  );
+  const block =
+    scope === "turn"
+      ? flattened.find(
+          (row) =>
+            row.key === blockId ||
+            row.id === blockId ||
+            row.response_id === blockId ||
+            row.occurrence_id === blockId,
+        )
+      : undefined;
+  const missingTurn = blockId && scope === "turn" && !block;
   const stats = state?.statistics;
   const summary = block?.summary;
   const side = summary?.background_statistics;
@@ -169,25 +193,12 @@ export default function Statistics({
           ],
         ];
   return (
-    <>
-      {modal.block_id && (
-        <div class="dialog-actions" role="group" aria-label="Statistics scope">
-          {(["turn", "session"] as const).map((value) => (
-            <button
-              aria-pressed={scope === value}
-              onClick={() => setScope(value)}
-            >
-              {value === "turn" ? "Turn" : "Session"}
-            </button>
-          ))}
-        </div>
-      )}
-      {!block && !snapshot ? (
-        error ? (
-          <LoadError error={error} retry={() => setAttempt(attempt + 1)} />
-        ) : (
-          <StatsSkeleton turn={scope === "turn"} />
-        )
+    <StatisticsLayout turn={!!blockId} scope={scope} change={setScope}>
+      {missingTurn ? (
+        <p role="status">
+          This turn is outside the loaded history. Load its retained messages
+          and try again, or select Session.
+        </p>
       ) : (
         <>
           {!block && fork && (
@@ -220,6 +231,6 @@ export default function Statistics({
           </p>
         </>
       )}
-    </>
+    </StatisticsLayout>
   );
 }

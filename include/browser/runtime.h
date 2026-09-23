@@ -22,7 +22,7 @@ class Runtime {
   void Shutdown();
 
  private:
-  bool Start(std::string& error);
+  bool Start(std::string& error, bool profile_setup = false);
   void Stop(bool preserve_lease = false);
   json Call(const std::string& method, const json& parameters = json::object(),
             const std::string& session = {});
@@ -52,6 +52,7 @@ class Runtime {
   std::string selected_profile_ = "default";
   std::string profile_error_;
   std::string mode_ = "idle";
+  bool profile_setup_ = false;
   uint64_t generation_ = 0;
 };
 

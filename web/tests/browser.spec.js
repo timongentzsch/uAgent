@@ -184,3 +184,210 @@ test("creates and selects a persistent Chrome profile", async ({
   ).toHaveValue("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
   expect(actions).toEqual(["create_profile", "select_profile"]);
 });
+
+test("profile sign-in explicitly reopens Chrome and returns the same profile", async ({
+  page,
+  session,
+}) => {
+  const status = {
+    ok: true,
+    mode: "human",
+    running: true,
+    controller: true,
+    leased: true,
+    generation: 1,
+    profile_id: "default",
+    profile_setup: false,
+  };
+  const actions = [];
+  await page.route("**/api/browser/status", (route) =>
+    route.fulfill({ json: status }),
+  );
+  await page.route("**/api/command", (route) => {
+    const { action } = route.request().postDataJSON();
+    actions.push(action);
+    status.profile_setup = action === "setup_profile";
+    status.generation++;
+    if (action === "done") {
+      status.mode = "idle";
+      status.controller = false;
+      status.leased = false;
+    }
+    return route.fulfill({
+      json: { accepted: true, pending: false, result: status },
+    });
+  });
+  await page.goto(`/#session=${session.id}`);
+  await page.getByRole("button", { name: "Open browser" }).click();
+  const dialog = page.getByRole("dialog", { name: "Browser", exact: true });
+  await dialog
+    .getByRole("button", { name: "Sign in to profile", exact: true })
+    .click();
+  await expect(dialog.getByText(/Done reopens this profile/)).toBeVisible();
+  await expect(
+    dialog.getByRole("button", { name: "Sign in to profile", exact: true }),
+  ).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Done", exact: true }).click();
+  await expect(
+    dialog.getByRole("button", { name: "Take control", exact: true }),
+  ).toBeVisible();
+  expect(status.profile_id).toBe("default");
+  expect(actions).toEqual(["setup_profile", "done"]);
+});
+
+test.describe("real noVNC input in a mobile modal", () => {
+  test.use({
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true,
+  });
+  test("paints the pointer above the dialog and follows it at zoom", async ({
+    page,
+    session,
+  }, testInfo) => {
+    const { serveFramebuffer, touch } = await import("./rfb-fixture.js");
+    const remote = await serveFramebuffer(page);
+    const errors = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    await page.route("**/api/browser/status", (route) =>
+      route.fulfill({
+        json: {
+          ok: true,
+          mode: "human",
+          running: true,
+          controller: true,
+          generation: 1,
+        },
+      }),
+    );
+    await page.goto(`/#session=${session.id}`);
+    await remote.prepare();
+    await page.getByRole("button", { name: "Open browser" }).click();
+    const dialog = page.getByRole("dialog", { name: "Browser", exact: true });
+    await expect(dialog.getByText("Connected", { exact: true })).toBeVisible();
+    const marker = dialog.locator(".browser-pointer");
+    await expect(marker).toBeVisible();
+    expect(
+      await marker.evaluate((node) => !!node.closest("dialog:modal")),
+    ).toBe(true);
+    const viewport = dialog.getByLabel("Browser viewport");
+    const canvas = dialog.locator(".browser-rfb canvas");
+    const pad = dialog.getByLabel("Browser trackpad");
+    const move = async (dx, dy) => {
+      const box = await pad.boundingBox();
+      const x = box.x + box.width / 2,
+        y = box.y + box.height / 2;
+      await touch(pad, "pointerdown", 1, x, y);
+      await touch(pad, "pointermove", 1, x + dx, y + dy);
+      await touch(pad, "pointerup", 1, x + dx, y + dy);
+    };
+    const assertPosition = async () => {
+      const cursor = await marker.boundingBox(),
+        display = await canvas.boundingBox();
+      const expected = {
+        x: Math.min(
+          remote.width - 1,
+          Math.round(((cursor.x - display.x) / display.width) * remote.width),
+        ),
+        y: Math.min(
+          remote.height - 1,
+          Math.round(((cursor.y - display.y) / display.height) * remote.height),
+        ),
+      };
+      // WebKit can quantize MouseEvent coordinates to CSS pixels; RFB then
+      // quantizes again to framebuffer pixels. Account for the display scale.
+      const pixelQuantization =
+        Math.ceil(
+          Math.max(
+            remote.width / display.width,
+            remote.height / display.height,
+          ),
+        ) + 1;
+      await expect
+        .poll(() => {
+          const actual = remote.pointers.at(-1);
+          return actual
+            ? Math.max(
+                Math.abs(actual.x - expected.x),
+                Math.abs(actual.y - expected.y),
+              )
+            : Infinity;
+        })
+        .toBeLessThanOrEqual(pixelQuantization);
+    };
+    await move(12, 8);
+    await assertPosition();
+    const view = await viewport.boundingBox();
+    await touch(
+      viewport,
+      "pointerdown",
+      2,
+      view.x + view.width * 0.4,
+      view.y + view.height / 2,
+    );
+    await touch(
+      viewport,
+      "pointerdown",
+      3,
+      view.x + view.width * 0.6,
+      view.y + view.height / 2,
+    );
+    await touch(
+      viewport,
+      "pointermove",
+      2,
+      view.x + view.width * 0.2,
+      view.y + view.height / 2,
+    );
+    await touch(
+      viewport,
+      "pointermove",
+      3,
+      view.x + view.width * 0.8,
+      view.y + view.height / 2,
+    );
+    await touch(
+      viewport,
+      "pointerup",
+      2,
+      view.x + view.width * 0.2,
+      view.y + view.height / 2,
+    );
+    await touch(
+      viewport,
+      "pointerup",
+      3,
+      view.x + view.width * 0.8,
+      view.y + view.height / 2,
+    );
+    await expect
+      .poll(async () => (await canvas.boundingBox()).width / view.width)
+      .toBeGreaterThan(2);
+    const target = dialog.locator(".browser-rfb");
+    const before = await target.evaluate((node) => node.style.transform);
+    await move(200, 100);
+    await assertPosition();
+    expect(await target.evaluate((node) => node.style.transform)).not.toBe(
+      before,
+    );
+    const point = await marker.boundingBox();
+    expect(point.x).toBeGreaterThanOrEqual(view.x);
+    expect(point.x).toBeLessThan(view.x + view.width);
+    expect(point.y).toBeGreaterThanOrEqual(view.y);
+    expect(point.y).toBeLessThan(view.y + view.height);
+    const arrow = await marker.locator("path").boundingBox();
+    expect(arrow.x).toBeGreaterThanOrEqual(view.x);
+    expect(arrow.x + arrow.width).toBeLessThanOrEqual(view.x + view.width);
+    expect(arrow.y).toBeGreaterThanOrEqual(view.y);
+    expect(arrow.y + arrow.height).toBeLessThanOrEqual(view.y + view.height);
+    const right = dialog.getByRole("button", { name: "Right", exact: true });
+    const button = await right.boundingBox();
+    await touch(right, "pointerdown", 4, button.x + 5, button.y + 5);
+    await touch(right, "pointerup", 4, button.x + 5, button.y + 5);
+    expect(remote.pointers.some((point) => point.buttons === 4)).toBe(true);
+    await dialog.screenshot({
+      path: testInfo.outputPath("visible-vnc-cursor.png"),
+    });
+    expect(errors).toEqual([]);
+  });
+});

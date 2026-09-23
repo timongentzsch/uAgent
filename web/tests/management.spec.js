@@ -45,8 +45,7 @@ for (const surface of [
             };
           };
           return {
-            toolbar: box(".management-toolbar"),
-            list: box(".management-list"),
+            shell: box(".management"),
             overflow: document.documentElement.scrollWidth - innerWidth,
           };
         });
@@ -66,18 +65,11 @@ for (const surface of [
           page.getByRole("heading", { name: "All runs" }),
         ).toBeVisible();
       const loaded = await measure();
-      for (const part of ["toolbar", "list"])
-        for (const edge of ["x", "y", "width", "height"])
-          if (
-            part !== "list" ||
-            surface.name === "Library" ||
-            viewport.width > 900 ||
-            edge !== "height"
-          )
-            expect(
-              Math.abs(loaded[part][edge] - loading[part][edge]),
-              `${part}.${edge}`,
-            ).toBeLessThan(3);
+      for (const edge of ["x", "y", "width", "height"])
+        expect(
+          Math.abs(loaded.shell[edge] - loading.shell[edge]),
+          edge,
+        ).toBeLessThan(3);
       expect(loading.overflow).toBe(0);
       expect(loaded.overflow).toBe(0);
     });

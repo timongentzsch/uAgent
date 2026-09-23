@@ -22,11 +22,12 @@ signal.signal(signal.SIGTERM, lambda *_: stop.set())
 
 
 def answer(handler, body):
-    assert body.get("model") == "model-b", body.get("model")
     texts = [
         message.get("content", "") for message in body["messages"] if message.get("role") == "user"
     ]
     prompt = str(texts[-1]) if texts else ""
+    expected_model = "model-a" if prompt == "Retained follow-up" else "model-b"
+    assert body.get("model") == expected_model, body.get("model")
     if "Summarize the bounded transcript" in str(body["messages"]):
         return event({"content": "COMPACT-PREVIEW-SUMMARY"})
     if prompt == "Delegate preview task" and not any(

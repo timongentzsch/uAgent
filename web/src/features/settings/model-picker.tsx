@@ -7,7 +7,7 @@ import type {
 import { useEffect, useRef, useState } from "preact/hooks";
 import { command } from "../../state/api.ts";
 import { Field, Select, LoadError } from "../../shared/ui.tsx";
-import { ModelSkeleton } from "../../shared/loading.tsx";
+import { ModelLoading, ModelActions } from "../../shared/loading.tsx";
 
 export default function ModelPicker({
   session,
@@ -80,6 +80,7 @@ export default function ModelPicker({
       ++generation.current;
     };
   }, [session.id, session.cwd]);
+  if (!catalog && !error) return <ModelLoading close={close} />;
   const providers = new Map<string, Model[]>();
   for (const item of catalog?.models || []) {
     const provider = item.label.includes("/")
@@ -105,11 +106,7 @@ export default function ModelPicker({
   return (
     <div class="model-form" ref={form}>
       {!catalog ? (
-        error ? (
-          <LoadError error={error} retry={loadCatalog} />
-        ) : (
-          <ModelSkeleton />
-        )
+        <LoadError error={error} retry={loadCatalog} />
       ) : (
         <>
           <Field label="Model">
@@ -173,52 +170,45 @@ export default function ModelPicker({
           {error && <LoadError error={error} />}
         </>
       )}
-      <div class="dialog-actions">
-        <button type="button" onClick={close}>
-          Cancel
-        </button>
-        <button
-          type="button"
-          class="primary"
-          disabled={busy || !catalog || !model || !online || running}
-          onClick={async () => {
-            setBusy(true);
-            setError(null);
-            try {
-              if (save) {
-                save(
-                  [
-                    model,
-                    variant === "default" ? "" : variant,
-                    effort === "default" ? "" : effort,
-                  ]
-                    .filter(Boolean)
-                    .join(":"),
-                );
-                close();
-                return;
-              }
-              const result = await command("model", session, {
-                operation: "select",
-                model,
-                effort,
-                variant,
-              });
-              if (result.pending)
-                throw new Error(
-                  "Model change is still pending. Check the current model before retrying.",
-                );
+      <ModelActions
+        close={close}
+        busy={busy}
+        disabled={!catalog || !model || !online || running}
+        apply={async () => {
+          setBusy(true);
+          setError(null);
+          try {
+            if (save) {
+              save(
+                [
+                  model,
+                  variant === "default" ? "" : variant,
+                  effort === "default" ? "" : effort,
+                ]
+                  .filter(Boolean)
+                  .join(":"),
+              );
               close();
-            } catch (failure) {
-              setError(failure);
-            } finally {
-              setBusy(false);
+              return;
             }
-          }}
-        >
-          {busy ? "Applying…" : "Apply"}
-        </button>
-      </div>
+            const result = await command("model", session, {
+              operation: "select",
+              model,
+              effort,
+              variant,
+            });
+            if (result.pending)
+              throw new Error(
+                "Model change is still pending. Check the current model before retrying.",
+              );
+            close();
+          } catch (failure) {
+            setError(failure);
+          } finally {
+            setBusy(false);
+          }
+        }}
+      />
     </div>
   );
 }

@@ -27,6 +27,37 @@ const gap = (page) =>
         element.scrollHeight - element.scrollTop - element.clientHeight,
     );
 
+test("progressive rendering retains text while syntax highlighting loads", async ({
+  page,
+  session,
+  command,
+}) => {
+  let release;
+  const loading = new Promise((resolve) => (release = resolve));
+  await page.route("**/assets/highlight-*.js", async (route) => {
+    await loading;
+    await route.continue();
+  });
+  try {
+    await startLongProbe(page, session, command);
+    const stream = page.locator(".message.response .markdown-stream");
+    await expect
+      .poll(async () => (await stream.textContent())?.length || 0)
+      .toBeGreaterThan(2000);
+    // A pending rich prefix must remain in the plain tail until it can paint.
+    await expect(stream).toContainText("print('stable copy control')");
+    release();
+    await expect(page.locator(".composer .status-led.running")).toBeHidden();
+    const final = page.locator(".message.response > .markdown");
+    await expect(final).toContainText("print('stable copy control')");
+    await expect(final).toContainText(
+      "unfinished-looking content retained safely",
+    );
+  } finally {
+    release();
+  }
+});
+
 test("streaming stays pinned to the end while following", async ({
   page,
   session,

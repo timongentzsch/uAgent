@@ -147,7 +147,14 @@ def test_schedule_calendar_dst_and_conflicts(root, home, *, binary):
 
 
 def test_scheduled_run_native_session_and_restart(root, home, *, binary):
-    with Server([lambda _, _body: event({"content": "Scheduled review complete"})]) as provider:
+    entered, release = threading.Event(), threading.Event()
+
+    def answer(_index, _body):
+        entered.set()
+        assert release.wait(budget(20)), "overlap check never released the model response"
+        return event({"content": "Scheduled review complete"})
+
+    with Server([answer]) as provider:
         with web_host(binary, root, home, provider.url) as (client, code, process, env):
             client.pair(code)
             task = dict(
@@ -163,8 +170,12 @@ def test_scheduled_run_native_session_and_restart(root, home, *, binary):
             item = response["result"]["item"]
             # CLI changes feed the same store observed by the host.
             launched = control(binary, root, env, "schedule", action="run", key=item["id"])["run"]
-            duplicate = control(binary, root, env, "schedule", action="run", key=item["id"])
-            assert_true("error" in duplicate, duplicate)
+            try:
+                assert_true(entered.wait(budget(10)), "scheduled model did not start")
+                duplicate = control(binary, root, env, "schedule", action="run", key=item["id"])
+                assert_true("error" in duplicate, duplicate)
+            finally:
+                release.set()
 
             def finished():
                 state = client.command("schedule", action="list")["result"]

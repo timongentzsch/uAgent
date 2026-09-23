@@ -753,7 +753,8 @@ void Master::Command(const Request& request, Response& response) {
         {"name", JsonValue(command, "name", "")},
         {"profile_id", JsonValue(command, "profile_id", "")}};
     if (action != "takeover" && action != "done" && action != "stop" &&
-        action != "create_profile" && action != "select_profile") {
+        action != "create_profile" && action != "select_profile" &&
+        action != "setup_profile") {
       error = "unsupported browser control";
     } else {
       lock.unlock();

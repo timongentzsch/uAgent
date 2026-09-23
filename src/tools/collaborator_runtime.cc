@@ -533,7 +533,7 @@ json CollaboratorRuntime::Snapshot(const std::string& id) const {
   return result;
 }
 
-json CollaboratorRuntime::LiveView(const std::string& id) const {
+json CollaboratorRuntime::LiveState(const std::string& id) const {
   std::string path, generation;
   {
     const State& state = *state_;
@@ -550,9 +550,7 @@ json CollaboratorRuntime::LiveView(const std::string& id) const {
   json state = Command(path, generation, connection, "refresh", "",
                        Clock::now() + std::chrono::seconds(2), false, nullptr,
                        json::object(), true);
-  return state.contains("command_error")
-             ? json::object()
-             : JsonValue(state, "view", json::object());
+  return state.contains("command_error") ? json::object() : state;
 }
 
 bool CollaboratorRuntime::Active(const std::string& id) const {

@@ -1,24 +1,9 @@
-import type {
-  CommandFields,
-  CommandKind,
-  CommandResults,
-} from "../../shared/types.ts";
+import type { CommandResults } from "../../shared/types.ts";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
-import { command } from "../../state/api.ts";
+import { manage } from "../../state/api.ts";
 import { Field, Select } from "../../shared/ui.tsx";
 import "./management.css";
 
-export async function manage<K extends CommandKind>(
-  kind: K,
-  fields: CommandFields = {},
-): Promise<CommandResults[K]> {
-  const result = await command(kind, null, fields);
-  if (result.pending)
-    throw new Error(
-      "The operation is still pending. Refresh to inspect its result.",
-    );
-  return result.result;
-}
 export function useLibrary(
   kind: "memory" | "skills",
   cwd: string,
@@ -35,11 +20,12 @@ export function useLibrary(
   const generation = useRef(0);
   useEffect(() => {
     const current = ++generation.current;
+    const controller = new AbortController();
     setResult((value) =>
       value?.error ? { ...value, error: undefined } : value,
     );
     if (cwd && online)
-      manage(kind, { cwd, action: "list" })
+      manage(kind, { cwd, action: "list" }, controller.signal)
         .then((value) => {
           if (generation.current === current) setResult({ key, data: value });
         })
@@ -53,6 +39,7 @@ export function useLibrary(
         });
     return () => {
       ++generation.current;
+      controller.abort();
     };
   }, [kind, cwd, version, attempt, online]);
   return {

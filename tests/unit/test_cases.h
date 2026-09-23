@@ -7,6 +7,7 @@ namespace uagent {
   X(TestBrowserViewOnlyFilter)                   \
   X(TestBrowserHandoverRecovery)                 \
   X(TestBrowserProfiles)                         \
+  X(TestBrowserProfileSignIn)                    \
   X(TestForeignToolMarkup)                       \
   X(TestToolResults)                             \
   X(TestRegistries)                              \

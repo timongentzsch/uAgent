@@ -130,9 +130,11 @@ bool EnsureDataDirectory(const std::string& path) {
 ServiceProcess::~ServiceProcess() {
   owner.Reset();
   if (pid <= 0) return;
-  for (int attempt = 0; attempt < 50; ++attempt) {
+  // Let the service finish both child shutdowns and release the profile lock.
+  for (int elapsed = 0; elapsed < kServiceShutdownGraceMs;
+       elapsed += kChildShutdownPollMs) {
     if (waitpid(pid, nullptr, WNOHANG) == pid) return;
-    poll(nullptr, 0, 20);
+    poll(nullptr, 0, kChildShutdownPollMs);
   }
   kill(pid, SIGTERM);
   waitpid(pid, nullptr, 0);

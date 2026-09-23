@@ -1,9 +1,10 @@
-import type { RefObject } from "preact";
+import type { ComponentChildren, RefObject } from "preact";
 import { useEffect, useRef } from "preact/hooks";
 import {
   capturePointer,
   constrainView,
   distance,
+  followPointer,
   midpoint,
   panView,
   pinchView,
@@ -17,11 +18,19 @@ function BrowserViewport({
   target,
   readOnly,
   refreshPointer,
+  reveal,
+  pointAt,
+  trackpad,
+  children,
 }: {
   screen: RefObject<HTMLDivElement>;
   target: RefObject<HTMLDivElement>;
   readOnly: boolean;
   refreshPointer: () => void;
+  reveal: RefObject<(point: Point) => void>;
+  pointAt: (x: number, y: number) => void;
+  trackpad: boolean;
+  children: ComponentChildren;
 }) {
   const pointers = useRef(new Map<number, TrackedPoint>());
   const view = useRef<BrowserView>({ scale: 1, x: 0, y: 0 });
@@ -39,8 +48,23 @@ function BrowserViewport({
     if (!rect || !element) return;
     view.current = constrainView(next, rect.width, rect.height);
     const { scale, x, y } = view.current;
-    element.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
+    // Let noVNC scale its own canvas from the real container dimensions.
+    // An outer CSS scale bypasses its pointer-coordinate conversion.
+    element.style.width = `${scale * 100}%`;
+    element.style.height = `${scale * 100}%`;
+    element.style.transform = `translate(${x}px, ${y}px)`;
     refresh.current();
+  };
+
+  reveal.current = (point) => {
+    const rect = screen.current?.getBoundingClientRect();
+    if (!rect) return;
+    setView(
+      followPointer(view.current, rect.width, rect.height, {
+        x: point.x - rect.left,
+        y: point.y - rect.top,
+      }),
+    );
   };
 
   const resetRemainingPointer = () => {
@@ -68,6 +92,8 @@ function BrowserViewport({
       event.stopPropagation();
     };
     observer.observe(element);
+    // noVNC resizes its canvas after the container changes.
+    if (target.current) observer.observe(target.current);
     for (const kind of ["touchstart", "touchmove", "touchend", "touchcancel"])
       element.addEventListener(kind, blockNoVncTouch, {
         capture: true,
@@ -88,6 +114,7 @@ function BrowserViewport({
     <div
       class={`browser-screen${readOnly ? " readonly" : ""}`}
       ref={screen}
+      data-trackpad={trackpad || undefined}
       role="group"
       aria-label="Browser viewport"
       onPointerDownCapture={(event) => {
@@ -113,6 +140,10 @@ function BrowserViewport({
         }
       }}
       onPointerMoveCapture={(event) => {
+        if (event.pointerType === "mouse") {
+          pointAt(event.clientX, event.clientY);
+          return;
+        }
         const point = pointers.current.get(event.pointerId);
         const rect = screen.current?.getBoundingClientRect();
         if (!point || !rect) return;
@@ -161,6 +192,7 @@ function BrowserViewport({
           readOnly ? "Read-only browser display" : "Interactive browser display"
         }
       />
+      {children}
     </div>
   );
 }

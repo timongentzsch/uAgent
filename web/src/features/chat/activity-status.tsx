@@ -1,3 +1,8 @@
+import {
+  ConnectionStatus,
+  StatusLed,
+  type ConnectionPhase,
+} from "../../shared/connection-status.tsx";
 import { count } from "../../shared/quantities.ts";
 import type { ComponentChildren } from "preact";
 import type {
@@ -36,10 +41,6 @@ export function activityLabel(items: Activity[] = []) {
     .filter(Boolean)
     .join(" · ");
 }
-export type LedState = "idle" | "active" | "running";
-export function StatusLed({ state }: { state: LedState }) {
-  return <span class={`status-led ${state}`} aria-hidden="true" />;
-}
 export function ActivityStatus({
   phase = "Ready",
   running,
@@ -48,6 +49,7 @@ export function ActivityStatus({
   pending,
   announce = false,
   present = false,
+  connection,
 }: {
   phase?: string;
   running?: boolean;
@@ -56,7 +58,10 @@ export function ActivityStatus({
   pending?: Pending | boolean | null;
   announce?: boolean;
   present?: boolean;
+  connection?: ConnectionPhase;
 }) {
+  if (connection && connection !== "connected")
+    return <ConnectionStatus phase={connection} />;
   const counts = activityLabel([
     ...items,
     ...collaborators.map((item) => ({
@@ -85,6 +90,7 @@ export default function Activities(
     phase?: string;
     pending?: Pending | null;
     present?: boolean;
+    connection?: ConnectionPhase;
     children?: ComponentChildren;
   },
 ) {

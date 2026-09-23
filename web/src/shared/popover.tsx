@@ -45,18 +45,20 @@ export function Popover({
     const place = () => {
       const { left: x, top: y, width, height } = viewportBounds(true);
       const target = button.getBoundingClientRect();
-      const above = Math.max(0, target.top - y - 16);
-      const below = Math.max(0, y + height - target.bottom - 16);
+      const gap =
+        parseFloat(getComputedStyle(element).getPropertyValue("row-gap")) || 0;
+      const above = Math.max(0, target.top - y - 2 * gap);
+      const below = Math.max(0, y + height - target.bottom - 2 * gap);
       const upwards =
         side === "top"
           ? above >= Math.min(element.scrollHeight, below)
           : below < Math.min(element.scrollHeight, above);
-      element.style.maxWidth = `${width - 16}px`;
+      element.style.maxWidth = `${width - 2 * gap}px`;
       element.style.maxHeight = `${Math.max(1, upwards ? above : below)}px`;
       const box = element.getBoundingClientRect();
       const left = align === "start" ? target.left : target.right - box.width;
-      element.style.left = `${Math.max(x + 8, Math.min(left, x + width - box.width - 8))}px`;
-      element.style.top = `${Math.max(y + 8, Math.min(upwards ? target.top - box.height - 8 : target.bottom + 8, y + height - box.height - 8))}px`;
+      element.style.left = `${Math.max(x + gap, Math.min(left, x + width - box.width - gap))}px`;
+      element.style.top = `${Math.max(y + gap, Math.min(upwards ? target.top - box.height - gap : target.bottom + gap, y + height - box.height - gap))}px`;
     };
     place();
     element

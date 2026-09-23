@@ -1,7 +1,3 @@
-.tools-view {
-  width: min(48rem, calc(100vw - 2 * var(--pad)));
-}
-
 .tools-content,
 .tool-groups {
   display: grid;
@@ -34,7 +30,7 @@
 .tools-busy {
   padding: var(--space-3);
   background: var(--raised);
-  border: 1px solid var(--border);
+  border: 1px solid var(--line);
 }
 
 .tools-search {
@@ -59,7 +55,7 @@
   gap: var(--space-2);
   padding: var(--space-3);
   background: var(--raised);
-  border: 1px solid var(--border);
+  border: 1px solid var(--line);
 }
 
 .tool-toggle {

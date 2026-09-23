@@ -1,13 +1,13 @@
+import { manage } from "../../state/api.ts";
 import type { LibraryItem } from "../../shared/types.ts";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { Plus, ArrowLeft, ChevronDown, Pencil } from "lucide-preact";
-import { Field, LoadError, Modal, Select } from "../../shared/ui.tsx";
-import { EditorSkeleton, LibraryRows } from "../../shared/loading.tsx";
+import { Field, LoadError, Modal, Select, Spinner } from "../../shared/ui.tsx";
+import { LibraryRows } from "../../shared/loading.tsx";
 import { Menu, MenuItem } from "../../shared/popover.tsx";
 import { readStored, writeStored } from "../../state/store.ts";
 import { bytes } from "../../shared/quantities.ts";
 import {
-  manage,
   useLibrary,
   ProjectField,
   ScopeField,
@@ -337,7 +337,7 @@ export default function Library({
           </div>
           <fieldset disabled={busy} class="management-editor">
             {loading ? (
-              <EditorSkeleton />
+              <Spinner label="Loading document…" surface />
             ) : item ? (
               <>
                 <div class="editor-head">

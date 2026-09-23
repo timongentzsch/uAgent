@@ -47,12 +47,13 @@ pid_t Launch(const std::vector<std::string>& arguments,
 void Terminate(pid_t& pid) {
   if (pid <= 0) return;
   kill(pid, SIGTERM);
-  for (int i = 0; i < 25; ++i) {
+  for (int elapsed = 0; elapsed < kChildShutdownGraceMs;
+       elapsed += kChildShutdownPollMs) {
     if (waitpid(pid, nullptr, WNOHANG) == pid) {
       pid = -1;
       return;
     }
-    poll(nullptr, 0, 20);
+    poll(nullptr, 0, kChildShutdownPollMs);
   }
   kill(pid, SIGKILL);
   waitpid(pid, nullptr, 0);
@@ -199,6 +200,7 @@ void Runtime::Stop(bool preserve_lease) {
   observation_.clear();
   view_width_ = view_height_ = 0;
   cdp_buffer_.clear();
+  profile_setup_ = false;
   agent_session_ = std::move(session);
   interaction_ = std::move(interaction);
   viewer_.clear();
@@ -208,7 +210,7 @@ void Runtime::Stop(bool preserve_lease) {
   ++generation_;
 }
 
-bool Runtime::Start(std::string& error) {
+bool Runtime::Start(std::string& error, bool profile_setup) {
   if (!profile_error_.empty()) {
     error = profile_error_;
     return false;
@@ -288,6 +290,23 @@ bool Runtime::Start(std::string& error) {
     Stop(true);
     return false;
   }
+  // Manual profile setup uses ordinary Chrome, without a debugging endpoint.
+  // Both modes own the same profile exclusively and restore its saved tabs.
+  std::vector<std::string> chrome = {
+      "google-chrome-stable",   "--user-data-dir=" + profile,
+      "--no-first-run",         "--no-default-browser-check",
+      "--window-size=1280,800", "--ozone-platform=x11",
+      "--password-store=basic", "--restore-last-session"};
+  if (profile_setup) {
+    chrome_pid_ = Launch(chrome);
+    if (chrome_pid_ < 0) {
+      error = "cannot launch Google Chrome Stable";
+      Stop(true);
+      return false;
+    }
+    profile_setup_ = true;
+    return true;
+  }
   int to_chrome[2], from_chrome[2];
   if (pipe(to_chrome) != 0) {
     error = "cannot create Chrome control pipes";
@@ -327,12 +346,8 @@ bool Runtime::Start(std::string& error) {
   posix_spawn_file_actions_addopen(&actions, STDOUT_FILENO, "/dev/null",
                                    O_WRONLY, 0);
   // Chrome's sandbox stays enabled. This is a private profile.
-  chrome_pid_ =
-      Launch({"google-chrome-stable", "--remote-debugging-pipe",
-              "--user-data-dir=" + profile, "--no-first-run",
-              "--no-default-browser-check", "--window-size=1280,800",
-              "--ozone-platform=x11", "--password-store=basic", "about:blank"},
-             &actions);
+  chrome.emplace_back("--remote-debugging-pipe");
+  chrome_pid_ = Launch(chrome, &actions);
   posix_spawn_file_actions_destroy(&actions);
   chrome_read.Reset();
   chrome_write.Reset();
@@ -457,10 +472,11 @@ json Runtime::Status(bool include_page) {
                  {"interaction_id", interaction_},
                  {"viewer", viewer_},
                  {"profile_id", selected_profile_},
+                 {"profile_setup", profile_setup_},
                  {"profiles", profiles},
                  {"generation", generation_}};
   if (!profile_error_.empty()) result["error"] = profile_error_;
-  if (running && include_page) {
+  if (running && include_page && !profile_setup_) {
     json targets = Call("Target.getTargets");
     if (const json* response = JsonObject(targets, "result")) {
       if (const json* infos = JsonArray(*response, "targetInfos")) {
@@ -501,6 +517,7 @@ json Runtime::SwitchProfile(const std::string& id) {
   if (id == selected_profile_) return Status();
   const std::string previous = selected_profile_;
   const std::string controller = viewer_;
+  const bool profile_setup = profile_setup_;
   const bool restart = !controller.empty();
   if (restart) Stop(true);
   selected_profile_ = id;
@@ -508,7 +525,7 @@ json Runtime::SwitchProfile(const std::string& id) {
     selected_profile_ = previous;
     if (restart) {
       std::string restart_error;
-      if (Start(restart_error)) {
+      if (Start(restart_error, profile_setup)) {
         viewer_ = controller;
         mode_ = "human";
         ++generation_;
@@ -522,11 +539,11 @@ json Runtime::SwitchProfile(const std::string& id) {
     return {{"error", "cannot save Chrome profile selection"}};
   }
   std::string error;
-  if (restart && !Start(error)) {
+  if (restart && !Start(error, profile_setup)) {
     selected_profile_ = previous;
     bool selection_restored = SaveProfiles();
     std::string rollback_error;
-    if (Start(rollback_error)) {
+    if (Start(rollback_error, profile_setup)) {
       viewer_ = controller;
       mode_ = "human";
       ++generation_;
@@ -611,14 +628,23 @@ json Runtime::Execute(const json& command) {
     SaveHandover();
     return Status();
   }
-  if (op == "takeover") {
+  if (op == "takeover" || op == "setup_profile") {
     std::string device = JsonValue(command, "device", "");
     if (!session::OpaqueId(device)) return {{"error", "invalid device"}};
     if (!viewer_.empty() && viewer_ != device) {
       return {{"error", "another device controls the browser"}};
     }
+    if (op == "setup_profile" && (mode_ != "human" || viewer_ != device)) {
+      return {{"error", "take control before signing in to a profile"}};
+    }
+    const bool setup = profile_setup_ || op == "setup_profile";
+    if (setup && !profile_setup_) Stop(true);
     std::string error;
-    if (!Start(error)) return {{"error", error}};
+    if (!Start(error, setup)) {
+      viewer_ = device;
+      mode_ = "human";
+      return {{"error", error}};
+    }
     viewer_ = device;
     mode_ = "human";
     observation_.clear();
@@ -647,21 +673,26 @@ json Runtime::Execute(const json& command) {
     }
     return Status();
   }
-  if (op == "prepare_done") {
+  if (op == "prepare_done" || op == "done") {
     if (mode_ != "human" || viewer_ != JsonValue(command, "device", "") ||
         interaction_ != JsonValue(command, "interaction_id", "")) {
       return {{"error", "browser interaction changed; refresh"}};
     }
-    return Status();
+    if (profile_setup_) {
+      const std::string controller = viewer_;
+      Stop(true);
+      std::string error;
+      const bool started = Start(error);
+      viewer_ = controller;
+      mode_ = "human";
+      if (!started) {
+        profile_setup_ = true;
+        return {{"error", error}};
+      }
+    }
+    if (op == "prepare_done") return Status();
   }
   if (op == "done") {
-    if (mode_ != "human" || viewer_ != JsonValue(command, "device", "")) {
-      return {{"error", "this device does not control the browser"}};
-    }
-    std::string requested = JsonValue(command, "interaction_id", "");
-    if (requested != interaction_) {
-      return {{"error", "browser interaction changed; refresh"}};
-    }
     std::string previous_viewer = viewer_;
     std::string previous_interaction = interaction_;
     std::string previous_mode = mode_;
@@ -727,6 +758,9 @@ json Runtime::Execute(const json& command) {
     return Status();
   }
   std::string error;
+  if (mode_ == "human") {
+    return {{"error", "human controls the browser; wait for Done"}};
+  }
   if (!Start(error)) return {{"error", error}};
   if (!Agent(command, error)) return {{"error", error}};
   if (op == "request_human") {

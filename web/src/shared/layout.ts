@@ -13,14 +13,30 @@ export function observeResize(update: () => void, ...elements: Element[]) {
   };
 }
 
-export function viewportBounds(safeArea = false) {
+const VIEWPORT_ROUNDING_PX = 1;
+let currentViewport: ReturnType<typeof readViewportBounds> | undefined;
+
+function readViewportBounds() {
   const viewport = globalThis.visualViewport;
-  const bounds = {
-    left: viewport?.offsetLeft || 0,
-    top: viewport?.offsetTop || 0,
-    width: viewport?.width || innerWidth,
-    height: viewport?.height || innerHeight,
+  const root = document.documentElement;
+  const width = Math.min(viewport?.width || innerWidth, root.clientWidth);
+  const height = Math.min(viewport?.height || innerHeight, root.clientHeight);
+  return {
+    left: Math.max(
+      0,
+      Math.min(viewport?.offsetLeft || 0, root.clientWidth - width),
+    ),
+    top: Math.max(
+      0,
+      Math.min(viewport?.offsetTop || 0, root.clientHeight - height),
+    ),
+    width,
+    height,
   };
+}
+
+export function viewportBounds(safeArea = false) {
+  const bounds = { ...(currentViewport || readViewportBounds()) };
   if (safeArea) {
     // The shell resolves env()/calc() insets into actual padding lengths.
     const style = getComputedStyle(
@@ -48,6 +64,11 @@ export function observeViewport(update: () => void) {
   };
   const viewport = globalThis.visualViewport;
   addEventListener("resize", changed);
+  addEventListener("scroll", changed);
+  addEventListener("pageshow", changed);
+  addEventListener("orientationchange", changed);
+  screen.orientation?.addEventListener("change", changed);
+  document.addEventListener("visibilitychange", changed);
   document.addEventListener("focusin", changed);
   document.addEventListener("focusout", changed);
   viewport?.addEventListener("resize", changed);
@@ -56,6 +77,11 @@ export function observeViewport(update: () => void) {
   return () => {
     cancelAnimationFrame(frame);
     removeEventListener("resize", changed);
+    removeEventListener("scroll", changed);
+    removeEventListener("pageshow", changed);
+    removeEventListener("orientationchange", changed);
+    screen.orientation?.removeEventListener("change", changed);
+    document.removeEventListener("visibilitychange", changed);
     document.removeEventListener("focusin", changed);
     document.removeEventListener("focusout", changed);
     viewport?.removeEventListener("resize", changed);
@@ -95,23 +121,42 @@ export function revealFocusedField() {
 }
 
 export function trackViewport() {
-  const restingHeights = new Map<number, number>();
-  return observeViewport(() => {
-    const bounds = viewportBounds();
-    const viewportWidth = Math.round(bounds.width);
-    restingHeights.set(
-      viewportWidth,
-      Math.max(
-        restingHeights.get(viewportWidth) || 0,
-        bounds.height,
-        document.documentElement.clientHeight,
-      ),
+  let lastWidth = 0;
+  let keyboard = false;
+  const standalone = matchMedia("(display-mode: standalone)");
+  const stop = observeViewport(() => {
+    const root = document.documentElement;
+    const viewport = globalThis.visualViewport;
+    const bounds = readViewportBounds();
+    const editing = document.activeElement?.matches(
+      'textarea, input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"]), [contenteditable="true"]',
     );
+    // Rotation invalidates keyboard state from the previous layout. A lifetime
+    // maximum height per width mistakes smaller windows for an open keyboard.
+    if (root.clientWidth !== lastWidth) keyboard = false;
+    lastWidth = root.clientWidth;
     // Focusout commonly arrives before the keyboard finishes closing. Keep the
     // inset suppressed until the visual viewport itself returns to rest.
-    const keyboard =
-      bounds.height < (restingHeights.get(viewportWidth) || bounds.height) - 1;
-    document.documentElement.toggleAttribute("data-keyboard", keyboard);
+    keyboard =
+      !!(editing || keyboard) &&
+      (viewport?.scale || 1) === 1 &&
+      Math.abs((viewport?.width || innerWidth) - root.clientWidth) <=
+        VIEWPORT_ROUNDING_PX &&
+      bounds.height < root.clientHeight - VIEWPORT_ROUNDING_PX;
+    // WebKit may retain landscape visual-viewport dimensions/offsets in a
+    // standalone app. At rest the CSS layout viewport is authoritative; keep
+    // visual geometry for keyboards and actual browser pinch zoom.
+    if (standalone.matches && !keyboard && (viewport?.scale || 1) === 1) {
+      Object.assign(bounds, {
+        left: 0,
+        top: 0,
+        width: root.clientWidth,
+        height: root.clientHeight,
+      });
+      if (scrollX || scrollY) scrollTo(0, 0);
+    }
+    currentViewport = bounds;
+    root.toggleAttribute("data-keyboard", keyboard);
     for (const [key, value] of Object.entries(bounds))
       document.documentElement.style.setProperty(
         `--viewport-${key}`,
@@ -123,6 +168,10 @@ export function trackViewport() {
     // field inside their own body instead (see revealFocusedField).
     revealFocusedField();
   });
+  return () => {
+    stop();
+    currentViewport = undefined;
+  };
 }
 
 export function observeCompact(changed: (compact: boolean) => void) {

@@ -1,7 +1,8 @@
 import { render } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
-import { Check, Copy, Ellipsis, Plus } from "lucide-preact";
+import { Check, Copy, Plus } from "lucide-preact";
 import {
+  Button,
   Field,
   IconButton,
   Mark,
@@ -34,6 +35,14 @@ function BrowserInputSample() {
     canvas.height = 500;
     canvas.style.width = "100%";
     canvas.style.height = "100%";
+    const context = canvas.getContext("2d")!;
+    context.fillStyle = "#e2e2e2";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.fillStyle = "#171717";
+    context.font = "24px monospace";
+    for (let y = 40; y < canvas.height; y += 80)
+      for (let x = 20; x < canvas.width; x += 160)
+        context.fillText(`${x},${y}`, x, y);
     target.current.append(canvas);
   }, []);
   return (
@@ -49,6 +58,28 @@ function BrowserInputSample() {
   );
 }
 
+const DEMO_LOAD_DELAY_MS = 800;
+function DelayedContent() {
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setReady(true), DEMO_LOAD_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, []);
+  return ready ? (
+    <div class="settings-fields">
+      <Field label="Loaded value">
+        <input defaultValue="Content arrived without resizing the shell" />
+      </Field>
+      <p>
+        This example deliberately delays content so layout changes are easy to
+        inspect.
+      </p>
+    </div>
+  ) : (
+    <Spinner label="Loading example…" surface />
+  );
+}
+
 function Showcase() {
   const [theme, setTheme] = useState(
     () => localStorage.getItem("uagent-theme") || "system",
@@ -57,7 +88,9 @@ function Showcase() {
     normalizeZoom(readStored<number>(localStorage, "uagent-zoom", 100)),
   );
   const [enabled, setEnabled] = useState(true);
-  const [dialog, setDialog] = useState(false);
+  const [dialog, setDialog] = useState<
+    "example" | "browser" | "loading" | null
+  >(null);
 
   useEffect(() => applyTheme(theme), [theme]);
   useEffect(() => {
@@ -129,23 +162,48 @@ function Showcase() {
             <p>Solid primary actions and flat raised secondary actions.</p>
           </div>
         </div>
-        <div class="showcase-row">
-          <button class="primary">Primary action</button>
-          <button>Secondary action</button>
-          <button class="quiet">Quiet action</button>
-          <button class="with-icon">
-            <Plus aria-hidden="true" />
-            With icon
-          </button>
-          <button disabled>Disabled</button>
-          <IconButton label="Copy example">
-            <Copy aria-hidden="true" />
-          </IconButton>
-          <Menu label="Example menu">
-            <MenuItem>First action</MenuItem>
-            <MenuItem>Second action</MenuItem>
-            <MenuItem disabled>Unavailable</MenuItem>
-          </Menu>
+        <div class="showcase-grid showcase-grid-two">
+          <div class="showcase-card">
+            <h3>Variants</h3>
+            <div class="showcase-row">
+              <Button variant="primary">Primary action</Button>
+              <Button>Secondary action</Button>
+              <Button variant="quiet">Quiet action</Button>
+              <Button variant="destructive">Destructive action</Button>
+            </div>
+          </div>
+          <div class="showcase-card">
+            <h3>Sizes and icons</h3>
+            <div class="showcase-row">
+              <Button size="compact">Compact action</Button>
+              <Button class="with-icon">
+                <Plus aria-hidden="true" />
+                With icon
+              </Button>
+              <IconButton label="Copy example">
+                <Copy aria-hidden="true" />
+              </IconButton>
+              <Menu label="Example menu">
+                <MenuItem>First action</MenuItem>
+                <MenuItem>Second action</MenuItem>
+                <MenuItem disabled>Unavailable</MenuItem>
+              </Menu>
+            </div>
+          </div>
+          <div class="showcase-card">
+            <h3>States</h3>
+            <div class="showcase-row">
+              <Button disabled>Disabled</Button>
+              <Button busy>Working</Button>
+              <Button aria-pressed="true" class="with-icon">
+                <Check aria-hidden="true" />
+                Selected state
+              </Button>
+            </div>
+            <p class="muted">
+              Use Tab to inspect keyboard focus; touch uses pressed feedback.
+            </p>
+          </div>
         </div>
       </section>
 
@@ -219,14 +277,10 @@ function Showcase() {
           </div>
         </div>
         <div class="showcase-row">
-          <button onClick={() => setDialog(true)}>Open dialog</button>
-          <button class="with-icon">
-            <Check aria-hidden="true" />
-            Selected state
-          </button>
-          <IconButton label="More options">
-            <Ellipsis aria-hidden="true" />
-          </IconButton>
+          <Button onClick={() => setDialog("example")}>Open dialog</Button>
+          <Button onClick={() => setDialog("loading")}>
+            Open loading dialog
+          </Button>
         </div>
       </section>
 
@@ -237,20 +291,40 @@ function Showcase() {
             <p>View gestures and relative pointer controls remain separate.</p>
           </div>
         </div>
-        <BrowserInputSample />
+        <Button onClick={() => setDialog("browser")}>Open browser input</Button>
       </section>
 
-      {dialog && (
-        <Modal title="Example dialog" close={() => setDialog(false)}>
+      {dialog === "example" && (
+        <Modal title="Example dialog" close={() => setDialog(null)}>
           <p>
             A modal uses the same controls and spacing tokens as every page.
           </p>
           <div class="dialog-actions">
-            <button onClick={() => setDialog(false)}>Cancel</button>
-            <button class="primary" onClick={() => setDialog(false)}>
+            <button onClick={() => setDialog(null)}>Cancel</button>
+            <button class="primary" onClick={() => setDialog(null)}>
               Confirm
             </button>
           </div>
+        </Modal>
+      )}
+      {dialog === "loading" && (
+        <Modal
+          title="Loading example"
+          size="medium"
+          layout="panel"
+          close={() => setDialog(null)}
+        >
+          <DelayedContent />
+        </Modal>
+      )}
+      {dialog === "browser" && (
+        <Modal
+          title="Browser input"
+          size="browser"
+          layout="panel"
+          close={() => setDialog(null)}
+        >
+          <BrowserInputSample />
         </Modal>
       )}
     </main>

@@ -311,9 +311,19 @@ json InspectCollaborator(const ProcessSupervisor& processes,
     json retained = runtime->Snapshot(id);
     if (!retained.empty()) detail.update(retained);
   }
-  json live_view = runtime ? runtime->LiveView(id) : json::object();
+  const json live_state = runtime ? runtime->LiveState(id) : json::object();
+  json live_view = JsonValue(live_state, "view", json::object());
+  const auto apply_live_state = [&] {
+    detail["statistics_live"] =
+        live_state.contains("statistics") && live_state.contains("usage");
+    for (const char* field : {"usage", "statistics", "turns", "route",
+                              "context_tokens", "context_window"}) {
+      if (live_state.contains(field)) detail[field] = live_state[field];
+    }
+  };
   if (!loaded.record) {
     if (!live_view.empty()) detail["conversation"] = std::move(live_view);
+    apply_live_state();
     return detail;
   }
   const auto& record = *loaded.record;
@@ -339,11 +349,15 @@ json InspectCollaborator(const ProcessSupervisor& processes,
             : ConversationView(conversation,
                                JsonValue(request, "before", uint64_t{0}))},
        {"turns", record.metadata.turns},
+       {"model", record.metadata.model},
+       {"context_tokens", record.state.context_tokens},
+       {"context_window", record.state.context_window},
        {"statistics", conversation.Statistics()},
        {"usage", UsageJson(record.state.usage)}});
   if (!record.state.last_sent_prompt.empty()) {
     detail["system_prompt"] = record.state.last_sent_prompt;
   }
+  apply_live_state();
   return detail;
 }
 
@@ -754,6 +768,7 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
                 api, processes, remaining_budget, remaining_token_budget)) {
           return *blocked;
         }
+        const std::string child_model = route.model;
         EnvironmentOverrides environment =
             ChildAgentEnvironment(std::move(route));
         // Team identity travels with the child so same-team peers can reach
@@ -906,7 +921,7 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
                                  : "; persistent runtime retained]");
           return result;
         }
-        std::string command = ChildAgentCommand(debug, prompt);
+        std::string command = ChildAgentCommand(debug, prompt, child_model);
         ShellCommandResult child = RunShellCommand(
             processes, child_context,
             {.command = std::move(command),

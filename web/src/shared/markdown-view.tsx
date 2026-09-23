@@ -1,4 +1,10 @@
 import "./markdown.css";
+import {
+  maxPreparedMarkdownChars,
+  maxProgressiveMarkdownChars,
+  progressiveMarkdownIntervalMs,
+  progressiveMarkdownScanLines,
+} from "./limits.ts";
 import { Component, type ComponentType } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { MarkdownBlock } from "./markdown.ts";
@@ -7,7 +13,6 @@ import { CodeCopy, LoadError } from "./ui.tsx";
 let renderer: Promise<typeof import("./markdown.ts")> | undefined;
 const prepared = new Map<string, MarkdownBlock[]>();
 let preparedChars = 0;
-const MAX_PREPARED_CHARS = 4_000_000;
 
 // Completed pages are parsed before they become visible. Keep the same
 // bounded result for the message component's first render; streaming text
@@ -17,10 +22,11 @@ export async function prepareMarkdown(text: string): Promise<MarkdownBlock[]> {
   if (cached) return cached;
   renderer ??= import("./markdown.ts");
   const blocks = await (await renderer).renderMarkdownBlocks(text);
-  if (text.length <= MAX_PREPARED_CHARS) {
+  if (text.length <= maxPreparedMarkdownChars) {
+    // Concurrent preparation may already have inserted this same source.
+    if (!prepared.has(text)) preparedChars += text.length;
     prepared.set(text, blocks);
-    preparedChars += text.length;
-    while (preparedChars > MAX_PREPARED_CHARS) {
+    while (preparedChars > maxPreparedMarkdownChars) {
       const oldest = prepared.keys().next().value;
       if (oldest === undefined) break;
       preparedChars -= oldest.length;
@@ -71,13 +77,9 @@ function balancedFences(head: string): boolean {
   return ticks % 2 === 0 && tildes % 2 === 0;
 }
 
-const STREAM_MAX_CHARS = 16000;
-const STREAM_MIN_INTERVAL_MS = 120;
-const STREAM_SCAN_LINES = 40;
-
 function streamingHead(source: string): string {
   const lines = source.split("\n");
-  const start = Math.max(1, lines.length - STREAM_SCAN_LINES);
+  const start = Math.max(1, lines.length - progressiveMarkdownScanLines);
   for (let i = lines.length - 1; i >= start; i--) {
     if (lines[i].trim() !== "") continue;
     const head = lines.slice(0, i).join("\n");
@@ -192,77 +194,63 @@ export default function Markdown({
   }>(() => ({ text, blocks: prepared.get(text) || [] }));
   const [error, setError] = useState<unknown>(null);
   const [retry, setRetry] = useState(0);
-  const [streamBlocks, setStreamBlocks] = useState<MarkdownBlock[]>([]);
-  const [streamTail, setStreamTail] = useState(text);
+  const [streamed, setStreamed] = useState<{
+    head: string;
+    blocks: MarkdownBlock[];
+  }>({ head: "", blocks: [] });
   const pending = useRef({ active: true, text, running: false });
   pending.current.text = text;
   const stream = useRef({
-    text: "",
-    tail: "",
-    rendered: 0,
+    text,
+    active: true,
     timer: 0,
     lastRun: 0,
   });
-  // Progressive streaming render: at most one pass per
-  // STREAM_MIN_INTERVAL_MS over the closed prefix, with the unfinished
-  // tail staying plain. Stable block keys keep completed DOM subtrees
-  // untouched, so growth never flips rendered structure; the completion
-  // pass below then only fills the tail instead of swapping plain text
-  // for markdown in one height wave.
+  stream.current.text = text;
+  // Parse closed prefixes at the configured interval. The plain remainder
+  // keeps incoming text visible while parsing; block keys preserve already
+  // formatted subtrees during the stream.
   useEffect(() => {
-    if (!streaming || !progressive) {
-      setStreamBlocks([]);
+    if (
+      !streaming ||
+      !progressive ||
+      text.length > maxProgressiveMarkdownChars
+    ) {
+      setStreamed((previous) =>
+        previous.head ? { head: "", blocks: [] } : previous,
+      );
       return;
     }
     prefetchMarkdown(text);
     const state = stream.current;
-    state.text = text;
-    if (text.length > STREAM_MAX_CHARS) {
-      // Long turns stay plain until completion: a full-document parse per
-      // keystroke would jank the turn it decorates.
-      setStreamBlocks([]);
-      setStreamTail(text);
-      state.rendered = 0;
-      return;
-    }
     if (state.timer) return; // trailing pass already scheduled
     const wait = Math.max(
       0,
-      STREAM_MIN_INTERVAL_MS - (Date.now() - state.lastRun),
+      progressiveMarkdownIntervalMs - (Date.now() - state.lastRun),
     );
     state.timer = window.setTimeout(() => {
       state.timer = 0;
       state.lastRun = Date.now();
-      const value = state.text;
-      const head = streamingHead(value);
-      if (head.length < stream.current.rendered) {
-        // A later opener unbalanced the fences: keep the frozen frame and
-        // let the plain tail cover everything past it. Rendered structure
-        // never unmounts mid-stream.
-        const frozenTail = value.slice(stream.current.rendered);
-        if (stream.current.tail !== frozenTail) {
-          stream.current.tail = frozenTail;
-          setStreamTail(frozenTail);
-        }
-        return;
-      }
-      stream.current.rendered = head.length;
-      const tail = value.slice(head.length);
-      if (stream.current.tail !== tail) {
-        stream.current.tail = tail;
-        setStreamTail(tail);
-      }
-      if (!head.trim()) {
-        setStreamBlocks([]);
-        return;
-      }
+      const head = streamingHead(state.text);
+      if (!head.trim()) return;
       const pendingRenderer = (renderer ??= import("./markdown.ts"));
       pendingRenderer
         .then((module) => module.renderMarkdownBlocks(head))
         .then((output) => {
-          // A newer pass started while this one parsed; it will paint.
-          if (stream.current.text !== value) return;
-          setStreamBlocks(output);
+          if (
+            !state.active ||
+            state.text.length > maxProgressiveMarkdownChars ||
+            !state.text.startsWith(head)
+          )
+            return;
+          // Commit the prefix and its blocks together. Until parsing finishes,
+          // the plain tail still contains every byte after the painted prefix.
+          setStreamed((previous) =>
+            previous.head.length >= head.length &&
+            state.text.startsWith(previous.head)
+              ? previous
+              : { head, blocks: output },
+          );
         })
         .catch(() => {
           // Keep the previous progressive frame; the plain tail covers.
@@ -303,35 +291,35 @@ export default function Markdown({
   useEffect(
     () => () => {
       pending.current.active = false;
+      stream.current.active = false;
     },
     [],
   );
   if (streaming) {
-    const startLine =
-      text.slice(0, stream.current.rendered).split("\n").length - 1;
-    // NOTE: deliberately not `.markdown`. Completion-timing contracts
-    // (asserted in ui.spec.js) observe `.message.response > .markdown`
-    // appearing at block completion with stable nodes; publishing the
-    // progressive tree under that selector would hand out nodes the
-    // completion swap then replaces (selection loss, removals). The
-    // stream tree swaps for the final render exactly like the old
-    // plain-text path did.
+    const frame = text.startsWith(streamed.head)
+      ? streamed
+      : { head: "", blocks: [] };
+    const startLine = frame.head.split("\n").length - 1;
+    // `.markdown` identifies a completed render. Until then the history
+    // controller uses these source-line anchors to preserve reading position.
     return (
       <div class="markdown-stream">
-        {streamBlocks.map((block) => (
+        {frame.blocks.map((block) => (
           <div key={block.key} data-anchor-id={block.key.split(":")[0]}>
             <RenderedBlock block={block} streaming />
           </div>
         ))}
-        {plainSegments(streamTail, startLine).map((segment) => (
-          <div
-            key={`plain-${segment.line}`}
-            data-anchor-id={String(segment.line)}
-            class="plain"
-          >
-            {segment.text}
-          </div>
-        ))}
+        {plainSegments(text.slice(frame.head.length), startLine).map(
+          (segment) => (
+            <div
+              key={`plain-${segment.line}`}
+              data-anchor-id={String(segment.line)}
+              class="plain"
+            >
+              {segment.text}
+            </div>
+          ),
+        )}
       </div>
     );
   }

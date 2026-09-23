@@ -1,5 +1,5 @@
 import { render } from "preact";
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import { Check, Copy, Ellipsis, Plus } from "lucide-preact";
 import {
   Field,
@@ -19,8 +19,35 @@ import {
   SizeControls,
 } from "./shared/size-controls.tsx";
 import { readStored, writeStored } from "./state/store.ts";
+import BrowserInput from "./features/browser/input.tsx";
 import "./shared/style.css";
+import "./features/browser/browser.css";
 import "./showcase.css";
+
+function BrowserInputSample() {
+  const screen = useRef<HTMLDivElement>(null);
+  const target = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!target.current || target.current.querySelector("canvas")) return;
+    const canvas = document.createElement("canvas");
+    canvas.width = 800;
+    canvas.height = 500;
+    canvas.style.width = "100%";
+    canvas.style.height = "100%";
+    target.current.append(canvas);
+  }, []);
+  return (
+    <div class="showcase-browser-input">
+      <BrowserInput
+        screen={screen}
+        target={target}
+        disabled={false}
+        showTrackpad
+        readOnly={false}
+      />
+    </div>
+  );
+}
 
 function Showcase() {
   const [theme, setTheme] = useState(
@@ -201,6 +228,16 @@ function Showcase() {
             <Ellipsis aria-hidden="true" />
           </IconButton>
         </div>
+      </section>
+
+      <section class="showcase-section">
+        <div class="showcase-section-head">
+          <div>
+            <h2>Remote browser input</h2>
+            <p>View gestures and relative pointer controls remain separate.</p>
+          </div>
+        </div>
+        <BrowserInputSample />
       </section>
 
       {dialog && (

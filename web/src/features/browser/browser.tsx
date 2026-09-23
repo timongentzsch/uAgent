@@ -2,8 +2,23 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import type { Report, Session } from "../../shared/types.ts";
 import { api, command } from "../../state/api.ts";
 import RFB from "@novnc/novnc";
-import BrowserTouch from "./touch.tsx";
+import BrowserInput from "./input.tsx";
 import "./browser.css";
+
+const VIEWER_RECONNECT_DELAY_MS = 1_000;
+const CLIPBOARD_PASTE_DELAY_MS = 150;
+const STATUS_POLL_INTERVAL_MS = 2_000;
+const X11_KEYSYM = Object.freeze({
+  control: 0xffe3,
+  tab: 0xff09,
+  enter: 0xff0d,
+  backspace: 0xff08,
+  escape: 0xff1b,
+  a: 0x61,
+  c: 0x63,
+  l: 0x6c,
+  v: 0x76,
+});
 
 interface BrowserStatus {
   ok?: boolean;
@@ -28,6 +43,9 @@ function Viewer({ report, readOnly }: { report: Report; readOnly: boolean }) {
   const textBox = useRef<HTMLTextAreaElement>(null);
   const pasteTimer = useRef<number | null>(null);
   const [connection, setConnection] = useState("Connecting…");
+  const [showTrackpad, setShowTrackpad] = useState(
+    () => matchMedia("(pointer: coarse)").matches,
+  );
   const [showText, setShowText] = useState(false);
   const [text, setText] = useState("");
   const [remoteText, setRemoteText] = useState("");
@@ -58,7 +76,8 @@ function Viewer({ report, readOnly }: { report: Report; readOnly: boolean }) {
         if (viewer.current === rfb) viewer.current = null;
         if (active) {
           setConnection("Disconnected");
-          if (!denied) retry = window.setTimeout(connect, 1000);
+          if (!denied)
+            retry = window.setTimeout(connect, VIEWER_RECONNECT_DELAY_MS);
         }
       });
       rfb.addEventListener("clipboard", (event) => {
@@ -84,9 +103,9 @@ function Viewer({ report, readOnly }: { report: Report; readOnly: boolean }) {
   const chord = (keysym: number, code: string) => {
     const rfb = viewer.current;
     if (!rfb || connection !== "Connected" || readOnly) return;
-    rfb.sendKey(0xffe3, "ControlLeft", true);
+    rfb.sendKey(X11_KEYSYM.control, "ControlLeft", true);
     rfb.sendKey(keysym, code);
-    rfb.sendKey(0xffe3, "ControlLeft", false);
+    rfb.sendKey(X11_KEYSYM.control, "ControlLeft", false);
   };
   const sendText = (paste: boolean) => {
     const rfb = viewer.current;
@@ -100,9 +119,9 @@ function Viewer({ report, readOnly }: { report: Report; readOnly: boolean }) {
     if (paste) {
       if (pasteTimer.current !== null) clearTimeout(pasteTimer.current);
       pasteTimer.current = window.setTimeout(() => {
-        if (viewer.current === rfb) chord(0x76, "KeyV");
+        if (viewer.current === rfb) chord(X11_KEYSYM.v, "KeyV");
         pasteTimer.current = null;
-      }, 150);
+      }, CLIPBOARD_PASTE_DELAY_MS);
     }
   };
   const copyToDevice = async () => {
@@ -122,22 +141,14 @@ function Viewer({ report, readOnly }: { report: Report; readOnly: boolean }) {
   };
 
   return (
-    <>
-      <div
-        class={`browser-screen${readOnly ? " readonly" : ""}`}
-        ref={screen}
-        aria-label={
-          readOnly ? "Read-only browser display" : "Interactive browser display"
-        }
-      >
-        <div class="browser-rfb" ref={target} />
-        <BrowserTouch
-          screen={screen}
-          target={target}
-          rfb={viewer}
-          disabled={readOnly || connection !== "Connected"}
-        />
-      </div>
+    <div class="browser-viewer">
+      <BrowserInput
+        screen={screen}
+        target={target}
+        disabled={readOnly || connection !== "Connected"}
+        showTrackpad={showTrackpad && !readOnly}
+        readOnly={readOnly}
+      />
       <div class="browser-view-controls">
         <small role="status" class="muted">
           {readOnly
@@ -145,13 +156,22 @@ function Viewer({ report, readOnly }: { report: Report; readOnly: boolean }) {
             : connection}
         </small>
         {!readOnly && (
-          <button
-            type="button"
-            aria-pressed={showText}
-            onClick={() => setShowText(!showText)}
-          >
-            Text &amp; keys
-          </button>
+          <>
+            <button
+              type="button"
+              aria-pressed={showTrackpad}
+              onClick={() => setShowTrackpad(!showTrackpad)}
+            >
+              Trackpad
+            </button>
+            <button
+              type="button"
+              aria-pressed={showText}
+              onClick={() => setShowText(!showText)}
+            >
+              Text &amp; keys
+            </button>
+          </>
         )}
       </div>
       {showText && !readOnly && (
@@ -207,56 +227,56 @@ function Viewer({ report, readOnly }: { report: Report; readOnly: boolean }) {
             <button
               type="button"
               disabled={connection !== "Connected"}
-              onClick={() => chord(0x6c, "KeyL")}
+              onClick={() => chord(X11_KEYSYM.l, "KeyL")}
             >
               Address
             </button>
             <button
               type="button"
               disabled={connection !== "Connected"}
-              onClick={() => key(0xff09, "Tab")}
+              onClick={() => key(X11_KEYSYM.tab, "Tab")}
             >
               Tab
             </button>
             <button
               type="button"
               disabled={connection !== "Connected"}
-              onClick={() => key(0xff0d, "Enter")}
+              onClick={() => key(X11_KEYSYM.enter, "Enter")}
             >
               Enter
             </button>
             <button
               type="button"
               disabled={connection !== "Connected"}
-              onClick={() => key(0xff08, "Backspace")}
+              onClick={() => key(X11_KEYSYM.backspace, "Backspace")}
             >
               ⌫
             </button>
             <button
               type="button"
               disabled={connection !== "Connected"}
-              onClick={() => key(0xff1b, "Escape")}
+              onClick={() => key(X11_KEYSYM.escape, "Escape")}
             >
               Esc
             </button>
             <button
               type="button"
               disabled={connection !== "Connected"}
-              onClick={() => chord(0x63, "KeyC")}
+              onClick={() => chord(X11_KEYSYM.c, "KeyC")}
             >
               Copy
             </button>
             <button
               type="button"
               disabled={connection !== "Connected"}
-              onClick={() => chord(0x76, "KeyV")}
+              onClick={() => chord(X11_KEYSYM.v, "KeyV")}
             >
               Paste
             </button>
             <button
               type="button"
               disabled={connection !== "Connected"}
-              onClick={() => chord(0x61, "KeyA")}
+              onClick={() => chord(X11_KEYSYM.a, "KeyA")}
             >
               Select all
             </button>
@@ -267,7 +287,7 @@ function Viewer({ report, readOnly }: { report: Report; readOnly: boolean }) {
           </small>
         </div>
       )}
-    </>
+    </div>
   );
 }
 
@@ -291,7 +311,7 @@ export default function BrowserPanel({
   };
   useEffect(() => {
     void refresh();
-    const timer = setInterval(() => void refresh(), 2000);
+    const timer = setInterval(() => void refresh(), STATUS_POLL_INTERVAL_MS);
     return () => clearInterval(timer);
   }, []);
   const send = async (

@@ -97,17 +97,7 @@ export function revealFocusedField() {
 export function trackViewport() {
   const restingHeights = new Map<number, number>();
   return observeViewport(() => {
-    // During pinch zoom retain layout coordinates. Refresh them from the
-    // layout viewport on rotation instead of leaving stale portrait bounds.
-    const zoomed = Math.abs((globalThis.visualViewport?.scale || 1) - 1) > 0.01;
-    const bounds = zoomed
-      ? {
-          left: 0,
-          top: 0,
-          width: document.documentElement.clientWidth,
-          height: document.documentElement.clientHeight,
-        }
-      : viewportBounds();
+    const bounds = viewportBounds();
     const viewportWidth = Math.round(bounds.width);
     restingHeights.set(
       viewportWidth,
@@ -120,7 +110,6 @@ export function trackViewport() {
     // Focusout commonly arrives before the keyboard finishes closing. Keep the
     // inset suppressed until the visual viewport itself returns to rest.
     const keyboard =
-      !zoomed &&
       bounds.height < (restingHeights.get(viewportWidth) || bounds.height) - 1;
     document.documentElement.toggleAttribute("data-keyboard", keyboard);
     for (const [key, value] of Object.entries(bounds))

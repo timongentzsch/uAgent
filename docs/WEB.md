@@ -52,10 +52,12 @@ existing `/data/browser/profile` remains the **Default** profile, so upgrading
 does not move or clear a saved login. Named profiles live under
 `/data/browser/profiles`; `/data/browser/profiles.json` records their names and
 current selection. Back up the full `/data` volume to preserve every login.
-On a phone the display itself is a relative trackpad: move one finger to aim,
-tap to click, long press to hold, pinch to zoom, and use two fingers to scroll
-at fit or pan while zoomed. The local cursor remains visible above the remote
-display. **Text & keys** opens a phone text field, clipboard transfer and useful
+On a phone the display is view-only: pinch to zoom and drag the zoomed view to
+pan. The separate **Trackpad** uses one finger for the remote pointer, a tap for
+left click, a two-finger tap for right click and a two-finger drag for scrolling.
+Hold **Left** while moving on the trackpad for drag, resize or text selection.
+The real Chrome cursor remains visible on the display. **Text & keys** opens a
+phone text field, clipboard transfer and useful
 keys; **Address** focuses Chrome's URL field. Copy in Chrome before loading
 its clipboard into the field. Text moves only when you choose a transfer
 action; it is not synced automatically with the phone clipboard. Browser
@@ -89,7 +91,7 @@ needs more space.
 On an ARM64 Docker Desktop host (2026-09-21), the built image measured 378 MB
 in Docker and 375 MB as a gzip-compressed image archive. The stopped browser
 used 15 MiB of container memory; Chrome showing a page used 828 MiB. The lazy
-viewer bundle with phone controls is 198 KB raw / 60 KB gzip. These are
+viewer bundle with phone controls is 205 KB raw / 61 KB gzip. These are
 comparison points, not size ceilings; measure again on the deployment host.
 
 ## Execution and persistence
@@ -277,8 +279,9 @@ npm run test:browser --prefix web
 `use-host.ts` owns connection/replay, `store.ts` the event projection, and feature
 modules render it. Shared controls, popovers, spinners, structural skeletons and
 spacing tokens keep layout changes centralized. `/ui.html` renders those real
-shared components without a host connection, so themes, scale and states can be
-reviewed in isolation. `quantities.ts` and native quantity helpers use decimal
+shared components, including the remote browser controls, without a host
+connection so themes, scale, gestures and states can be reviewed in isolation.
+`quantities.ts` and native quantity helpers use decimal
 display units; raw exports retain exact values. Native and browser tests use mock
 providers. Physical iOS keyboard, install and notification behavior still
 requires device validation; browser emulation does not establish it.
@@ -293,7 +296,7 @@ bytes in CI for review; it has no fixed byte ceiling. Heavy renderers
 
 | Group | Raw | Gzip |
 | --- | ---: | ---: |
-| Initial JS | 75,115 | 29,357 |
+| Initial JS | 75,147 | 29,366 |
 | Initial CSS | 22,549 | 5,384 |
-| App (excl. diagrams) | 1,166,517 | 568,328 |
-| Diagrams (lazy) | 5,124,554 | 1,479,761 |
+| App (excl. diagrams) | 1,170,866 | 569,799 |
+| Diagrams (lazy) | 5,125,202 | 1,479,992 |

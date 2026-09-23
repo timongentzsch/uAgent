@@ -576,6 +576,31 @@ def test_web_external_origin_pairing(root, home, *, binary):
             assert_true(rejected.returncode != 0 and "origin" in rejected.stderr, rejected.stderr)
 
 
+def test_web_external_origin_allows_authenticated_loopback(root, home, *, binary):
+    with Server([event({"content": "unused"})]) as provider:
+        with web_host(
+            binary,
+            root,
+            home,
+            provider.url,
+            extra_env={"UAGENT_WEB_ORIGIN": "https://browser.example"},
+        ) as (client, code, _, _):
+            assert_true(client.request("/")[0] == 200, "loopback shell rejected")
+            assert_true(client.json("/api/sessions")[0] == 401, "loopback bypassed pairing")
+            status, value, headers = client.json(
+                "/api/auth", {"code": code, "name": "Loopback device"}
+            )
+            assert_true(status == 200, value)
+            cookie = headers["Set-Cookie"]
+            assert_true("; Secure" not in cookie, cookie)
+            client.cookie = cookie.split(";", 1)[0]
+            assert_true(client.json("/api/sessions")[0] == 200, "loopback pairing failed")
+            assert_true(
+                client.json("/api/sessions", headers={"Origin": "http://evil.example"})[0] == 403,
+                "foreign origin accepted through loopback",
+            )
+
+
 def test_web_singleton_auth_persistence(root, home, *, binary):
     project = root / "outside-launch"
     project.mkdir()

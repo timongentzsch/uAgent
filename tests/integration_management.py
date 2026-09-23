@@ -6,7 +6,7 @@ import signal
 import subprocess
 import threading
 
-from integration_support import Server, assert_true, base_env, event, wait_until
+from integration_support import Server, assert_true, base_env, budget, event, wait_until
 from web_support import web_host
 
 
@@ -19,7 +19,7 @@ def control(binary, root, env, kind, **fields):
         capture_output=True,
         env=env,
         cwd=root,
-        timeout=20,
+        timeout=budget(20),
     )
     assert_true(result.returncode in (0, 1), result.stderr)
     return json.loads(result.stdout)
@@ -203,7 +203,7 @@ def test_scheduled_runtime_survives_web_restart(root, home, *, binary):
 
     def response(_index, _body):
         entered.set()
-        assert release.wait(20), "restart never released the model response"
+        assert release.wait(budget(20)), "restart never released the model response"
         return event({"content": "Finished across web restart"})
 
     with Server([response]) as provider:
@@ -224,14 +224,14 @@ def test_scheduled_runtime_survives_web_restart(root, home, *, binary):
             )["result"]["item"]
             run = control(binary, root, env, "schedule", action="run", key=task["id"])["run"]
             try:
-                if not entered.wait(10):
+                if not entered.wait(budget(10)):
                     raise AssertionError(
                         "scheduled model request never started: "
                         + json.dumps(client.command("schedule", action="list")["result"])
                     )
                 before = client.snapshot(dict(id=run["session_id"]))
                 host.send_signal(signal.SIGTERM)
-                host.wait(timeout=10)
+                host.wait(timeout=budget(10))
                 with web_host(binary, root, home, provider.url) as (resumed, code, _, _):
                     resumed.pair(code)
                     current = resumed.until(

@@ -223,8 +223,18 @@ uagent --web --web-port 18080 --web-origin http://100.64.0.10:18080
 tailscale serve --bg --tcp=18080 tcp://127.0.0.1:18080
 ```
 
-Installation, offline shell loading and background push require trusted HTTPS.
-On iOS, use Safari → Share → Add to Home Screen. Pair the installed app separately
+Tailnet HTTP is not a browser secure context. To test service-worker installation
+without trusted HTTPS, forward the same port and open the exact loopback URL:
+
+```sh
+ssh -N -L 18080:127.0.0.1:18080 dev@100.64.0.9
+# Open http://127.0.0.1:18080 in the local browser.
+```
+
+The loopback origin is accepted alongside the configured remote origin, with the
+same pairing, device authentication and exact Origin checks. Trusted HTTPS is
+still required when installing directly from another device. On iOS, use
+Safari → Share → Add to Home Screen. Pair the installed app separately
 if its browser storage is separate. Updates are offered explicitly and do not
 force a reload over drafts or a pending decision.
 

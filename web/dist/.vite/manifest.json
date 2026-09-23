@@ -60,19 +60,19 @@
     "file": "assets/attachments-HVCs3SOd.css",
     "src": "_attachments-HVCs3SOd.css"
   },
-  "_browser-BBm59jy2.js": {
-    "file": "assets/browser-BBm59jy2.js",
+  "_browser-B9k8Ex_0.js": {
+    "file": "assets/browser-B9k8Ex_0.js",
     "name": "browser",
     "imports": [
       "_jsxRuntime.module-CKEjqQ3o.js"
     ],
     "css": [
-      "assets/browser-BaBt5buP.css"
+      "assets/browser-zuDPqY_Q.css"
     ]
   },
-  "_browser-BaBt5buP.css": {
-    "file": "assets/browser-BaBt5buP.css",
-    "src": "_browser-BaBt5buP.css"
+  "_browser-zuDPqY_Q.css": {
+    "file": "assets/browser-zuDPqY_Q.css",
+    "src": "_browser-zuDPqY_Q.css"
   },
   "_channel-CyYw1jNK.js": {
     "file": "assets/channel-CyYw1jNK.js",
@@ -772,7 +772,7 @@
     ]
   },
   "index.html": {
-    "file": "assets/index-BDFaXQ3q.js",
+    "file": "assets/index-DPtrGJYW.js",
     "name": "index",
     "src": "index.html",
     "isEntry": true,
@@ -1786,14 +1786,14 @@
     "isDynamicEntry": true
   },
   "src/features/browser/browser.tsx": {
-    "file": "assets/browser-ChxQKjNR.js",
+    "file": "assets/browser-BFOP9gHL.js",
     "name": "browser",
     "src": "src/features/browser/browser.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_jsxRuntime.module-CKEjqQ3o.js",
       "_api-BJi7HnBw.js",
-      "_browser-BBm59jy2.js"
+      "_browser-B9k8Ex_0.js"
     ]
   },
   "src/features/chat/activity.tsx": {
@@ -2206,7 +2206,7 @@
     ]
   },
   "ui.html": {
-    "file": "assets/ui-DXk6QFw7.js",
+    "file": "assets/ui-C6an52Rq.js",
     "name": "ui",
     "src": "ui.html",
     "isEntry": true,
@@ -2219,7 +2219,7 @@
       "_plus-uUySRJGi.js",
       "_size-controls-B1920zIM.js",
       "_layout-DPD2E3zu.js",
-      "_browser-BBm59jy2.js"
+      "_browser-B9k8Ex_0.js"
     ],
     "css": [
       "assets/ui-BGVW9ILG.css"

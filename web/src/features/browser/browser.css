@@ -63,14 +63,11 @@
 .browser-rfb canvas {
   display: block;
 }
-.browser-viewport-touch {
-  display: none;
-}
 .browser-trackpad {
   order: 3;
   display: grid;
   grid-template-rows: minmax(calc(96rem / 14), 1fr) auto;
-  min-height: min(calc(180rem / 14), 28dvh);
+  min-height: min(calc(240rem / 14), 34dvh);
   border: 1px solid var(--line);
   background: var(--surface);
   touch-action: none;
@@ -97,7 +94,7 @@
 }
 .browser-trackpad-buttons {
   display: grid;
-  grid-template-columns: 3fr 2fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   border-top: 1px solid var(--line);
 }
 .browser-trackpad-buttons > button {
@@ -143,18 +140,9 @@
 .browser-key-actions > button {
   flex: 1 1 auto;
 }
-@media (pointer: coarse) {
-  .browser-viewport-touch {
-    display: block;
-    position: absolute;
-    inset: 0;
-    z-index: 2;
-    touch-action: none;
-  }
-}
 @media (max-width: 600px) {
   .browser-trackpad {
-    min-height: min(calc(160rem / 14), 24dvh);
+    min-height: min(calc(220rem / 14), 32dvh);
   }
   .browser-view-controls > button {
     flex: 1;

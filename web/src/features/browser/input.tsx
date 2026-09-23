@@ -108,9 +108,7 @@ export default function BrowserInput({
     if (button === null) return;
     mouse("mouseup", button, 0);
     pressedButton.current = null;
-    // noVNC's touch cursor checks what is under the release point. The
-    // viewport gesture layer is above its canvas, so refresh the real remote
-    // cursor after release instead of drawing a second local cursor.
+    // Refresh noVNC's fallback cursor after releasing a captured drag.
     refreshPointer();
   };
   const click = (button: number) => {
@@ -127,20 +125,12 @@ export default function BrowserInput({
 
   return (
     <>
-      <div
-        class={`browser-screen${readOnly ? " readonly" : ""}`}
-        ref={screen}
-        aria-label={
-          readOnly ? "Read-only browser display" : "Interactive browser display"
-        }
-      >
-        <div class="browser-rfb" ref={target} />
-        <BrowserViewport
-          screen={screen}
-          target={target}
-          refreshPointer={refreshPointer}
-        />
-      </div>
+      <BrowserViewport
+        screen={screen}
+        target={target}
+        readOnly={readOnly}
+        refreshPointer={refreshPointer}
+      />
       {showTrackpad && (
         <BrowserTrackpad
           disabled={disabled}

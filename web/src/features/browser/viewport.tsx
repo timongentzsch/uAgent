@@ -15,10 +15,12 @@ import {
 function BrowserViewport({
   screen,
   target,
+  readOnly,
   refreshPointer,
 }: {
   screen: RefObject<HTMLDivElement>;
   target: RefObject<HTMLDivElement>;
+  readOnly: boolean;
   refreshPointer: () => void;
 }) {
   const pointers = useRef(new Map<number, TrackedPoint>());
@@ -61,11 +63,22 @@ function BrowserViewport({
       if (document.visibilityState === "hidden") reset();
     };
     const observer = new ResizeObserver(() => setView(view.current));
+    const blockNoVncTouch = (event: Event) => {
+      event.preventDefault();
+      event.stopPropagation();
+    };
     observer.observe(element);
+    for (const kind of ["touchstart", "touchmove", "touchend", "touchcancel"])
+      element.addEventListener(kind, blockNoVncTouch, {
+        capture: true,
+        passive: false,
+      });
     addEventListener("blur", reset);
     document.addEventListener("visibilitychange", hide);
     return () => {
       observer.disconnect();
+      for (const kind of ["touchstart", "touchmove", "touchend", "touchcancel"])
+        element.removeEventListener(kind, blockNoVncTouch, true);
       removeEventListener("blur", reset);
       document.removeEventListener("visibilitychange", hide);
     };
@@ -73,10 +86,11 @@ function BrowserViewport({
 
   return (
     <div
-      class="browser-viewport-touch"
+      class={`browser-screen${readOnly ? " readonly" : ""}`}
+      ref={screen}
       role="group"
       aria-label="Browser viewport"
-      onPointerDown={(event) => {
+      onPointerDownCapture={(event) => {
         if (event.pointerType === "mouse") return;
         event.preventDefault();
         capturePointer(event.currentTarget, event.pointerId);
@@ -98,7 +112,7 @@ function BrowserViewport({
           };
         }
       }}
-      onPointerMove={(event) => {
+      onPointerMoveCapture={(event) => {
         const point = pointers.current.get(event.pointerId);
         const rect = screen.current?.getBoundingClientRect();
         if (!point || !rect) return;
@@ -131,15 +145,23 @@ function BrowserViewport({
           ),
         );
       }}
-      onPointerUp={(event) => {
+      onPointerUpCapture={(event) => {
         pointers.current.delete(event.pointerId);
         resetRemainingPointer();
       }}
-      onPointerCancel={(event) => {
+      onPointerCancelCapture={(event) => {
         pointers.current.delete(event.pointerId);
         resetRemainingPointer();
       }}
-    />
+    >
+      <div
+        class="browser-rfb"
+        ref={target}
+        aria-label={
+          readOnly ? "Read-only browser display" : "Interactive browser display"
+        }
+      />
+    </div>
   );
 }
 

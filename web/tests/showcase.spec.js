@@ -107,7 +107,17 @@ test.describe("browser input showcase on a phone", () => {
     const takeEvents = () =>
       page.evaluate(() => globalThis.browserInputEvents.splice(0));
     const pad = page.getByLabel("Browser trackpad");
+    await pad.scrollIntoViewIfNeeded();
+    await page.evaluate(
+      () =>
+        new Promise((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(resolve)),
+        ),
+    );
+    await takeEvents();
     const box = await pad.boundingBox();
+    const trackpadBox = await page.locator(".browser-trackpad").boundingBox();
+    expect(trackpadBox.height).toBeGreaterThan(trackpadBox.width / 2);
     const x = box.x + box.width / 2;
     const y = box.y + box.height / 2;
 
@@ -138,7 +148,10 @@ test.describe("browser input showcase on a phone", () => {
     );
 
     const left = page.getByRole("button", { name: "Left", exact: true });
+    const right = page.getByRole("button", { name: "Right", exact: true });
     const leftBox = await left.boundingBox();
+    const rightBox = await right.boundingBox();
+    expect(Math.abs(leftBox.width - rightBox.width)).toBeLessThan(1);
     await pointer(
       left,
       "pointerdown",
@@ -164,6 +177,13 @@ test.describe("browser input showcase on a phone", () => {
       ]),
     );
     expect(drag.at(-2)).toMatchObject({ type: "mouseup", buttons: 0 });
+    const lastMove = drag.findLast(({ type }) => type === "mousemove");
+    expect(
+      await page.evaluate(
+        ({ x, y }) => document.elementFromPoint(x, y)?.tagName,
+        lastMove,
+      ),
+    ).toBe("CANVAS");
 
     await pointer(
       left,

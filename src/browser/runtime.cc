@@ -346,7 +346,7 @@ bool Runtime::Start(std::string& error, bool profile_setup) {
   posix_spawn_file_actions_addopen(&actions, STDOUT_FILENO, "/dev/null",
                                    O_WRONLY, 0);
   // Chrome's sandbox stays enabled. This is a private profile.
-  chrome.push_back("--remote-debugging-pipe");
+  chrome.emplace_back("--remote-debugging-pipe");
   chrome_pid_ = Launch(chrome, &actions);
   posix_spawn_file_actions_destroy(&actions);
   chrome_read.Reset();

@@ -1346,13 +1346,12 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
   );
   // Desktop engines cannot open a phone keyboard. Model an independently
   // resized/panned visual viewport; a window resize alone misses this bug.
-  const viewport = async (height, top = 0, scale = 1) => {
+  const viewport = async (height, top = 0) => {
     await page.evaluate(
-      ({ height, top, scale }) => {
+      ({ height, top }) => {
         for (const [key, value] of Object.entries({
           height,
           offsetTop: top,
-          scale,
         }))
           Object.defineProperty(visualViewport, key, {
             configurable: true,
@@ -1361,14 +1360,13 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
         visualViewport.dispatchEvent(new Event("resize"));
         visualViewport.dispatchEvent(new Event("scroll"));
       },
-      { height, top, scale },
+      { height, top },
     );
-    if (scale === 1)
-      await expect
-        .poll(async () =>
-          Math.round((await page.locator("#app").boundingBox()).height),
-        )
-        .toBe(height);
+    await expect
+      .poll(async () =>
+        Math.round((await page.locator("#app").boundingBox()).height),
+      )
+      .toBe(height);
   };
   const contained = async (locator, height, top = 0) => {
     await expect
@@ -1395,6 +1393,10 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
   };
   try {
     await page.goto(`${fixture.origin}/#session=${session.id}`);
+    await expect(page.locator('meta[name="viewport"]')).toHaveAttribute(
+      "content",
+      /maximum-scale=1, user-scalable=no/,
+    );
     const prompt = page.getByLabel("Message or guidance");
     await expect(prompt).toBeVisible();
     await page
@@ -1437,10 +1439,6 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
       await expect(prompt).toBeFocused();
       expect(await page.evaluate(() => scrollY)).toBe(0);
     }
-    await viewport(422, 100, 2);
-    expect(Math.round((await page.locator("#app").boundingBox()).height)).toBe(
-      844,
-    );
     await viewport(430, 60);
     await page
       .getByRole("button", { name: "Model and effort", exact: true })

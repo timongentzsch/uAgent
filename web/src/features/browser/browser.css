@@ -40,7 +40,13 @@
   border-top: 1px solid var(--line);
   background: var(--bg);
 }
+.browser-viewer {
+  display: grid;
+  gap: var(--gap);
+  min-width: 0;
+}
 .browser-screen {
+  order: 1;
   position: relative;
   width: 100%;
   aspect-ratio: 8 / 5;
@@ -57,11 +63,54 @@
 .browser-rfb canvas {
   display: block;
 }
-.browser-touch-layer,
-.browser-touch-cursor {
+.browser-viewport-touch {
   display: none;
 }
+.browser-trackpad {
+  order: 3;
+  display: grid;
+  grid-template-rows: minmax(calc(96rem / 14), 1fr) auto;
+  min-height: min(calc(180rem / 14), 28dvh);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.browser-trackpad.disabled {
+  opacity: 0.55;
+}
+.browser-trackpad-surface {
+  display: grid;
+  place-items: center;
+  min-height: 0;
+  padding: var(--pad);
+  color: var(--muted);
+  background: var(--surface);
+  touch-action: none;
+  cursor: default;
+}
+.browser-trackpad-surface span {
+  max-width: 30ch;
+  text-align: center;
+  pointer-events: none;
+}
+.browser-trackpad-buttons {
+  display: grid;
+  grid-template-columns: 3fr 2fr;
+  border-top: 1px solid var(--line);
+}
+.browser-trackpad-buttons > button {
+  min-height: var(--control);
+  border: 0;
+  background: var(--raised);
+  touch-action: none;
+}
+.browser-trackpad-buttons > button + button {
+  border-left: 1px solid var(--line);
+}
 .browser-view-controls {
+  order: 2;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -77,6 +126,7 @@
   gap: var(--gap);
 }
 .browser-text-panel {
+  order: 4;
   display: grid;
   gap: var(--gap);
   padding: var(--pad);
@@ -94,34 +144,18 @@
   flex: 1 1 auto;
 }
 @media (pointer: coarse) {
-  .browser-screen:not(.readonly) .browser-rfb canvas {
-    cursor: none !important;
-  }
-  .browser-touch-layer {
+  .browser-viewport-touch {
     display: block;
     position: absolute;
     inset: 0;
     z-index: 2;
     touch-action: none;
   }
-  .browser-touch-layer.disabled {
-    pointer-events: none;
-  }
-  .browser-touch-cursor {
-    display: block;
-    position: absolute;
-    z-index: 3;
-    width: calc(10rem / 14);
-    height: calc(10rem / 14);
-    border: 2px solid #000;
-    border-radius: 50%;
-    background: #fff;
-    box-shadow: 0 0 0 1px #fff;
-    transform: translate(-50%, -50%);
-    pointer-events: none;
-  }
 }
 @media (max-width: 600px) {
+  .browser-trackpad {
+    min-height: min(calc(160rem / 14), 24dvh);
+  }
   .browser-view-controls > button {
     flex: 1;
   }

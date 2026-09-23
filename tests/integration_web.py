@@ -1521,7 +1521,14 @@ def test_web_immediate_message_model_control_and_receipts(root, home, *, binary)
             assert_true(models[0]["efforts"] == efforts, catalog)
             try:
                 assert started.wait(timeout=budget(5))
-                snapshot = client.snapshot(session)
+                # The provider and host consume separate connections; receiving
+                # the request does not mean the host has drained response.started.
+                snapshot = client.until(
+                    session,
+                    lambda value: any(
+                        row["kind"] == "assistant" for row in value["state"]["view"]["blocks"]
+                    ),
+                )
                 assert_true(snapshot["state"]["efforts"] == ["default", *efforts], snapshot)
                 rows = snapshot["state"]["view"]["blocks"]
                 users = [row for row in rows if row["kind"] == "user"]

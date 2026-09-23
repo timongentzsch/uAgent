@@ -1,4 +1,10 @@
 import "./markdown.css";
+import {
+  maxPreparedMarkdownChars,
+  maxProgressiveMarkdownChars,
+  progressiveMarkdownIntervalMs,
+  progressiveMarkdownScanLines,
+} from "./limits.ts";
 import { Component, type ComponentType } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { MarkdownBlock } from "./markdown.ts";
@@ -7,7 +13,6 @@ import { CodeCopy, LoadError } from "./ui.tsx";
 let renderer: Promise<typeof import("./markdown.ts")> | undefined;
 const prepared = new Map<string, MarkdownBlock[]>();
 let preparedChars = 0;
-const MAX_PREPARED_CHARS = 4_000_000;
 
 // Completed pages are parsed before they become visible. Keep the same
 // bounded result for the message component's first render; streaming text
@@ -17,10 +22,11 @@ export async function prepareMarkdown(text: string): Promise<MarkdownBlock[]> {
   if (cached) return cached;
   renderer ??= import("./markdown.ts");
   const blocks = await (await renderer).renderMarkdownBlocks(text);
-  if (text.length <= MAX_PREPARED_CHARS) {
+  if (text.length <= maxPreparedMarkdownChars) {
+    // Concurrent preparation may already have inserted this same source.
+    if (!prepared.has(text)) preparedChars += text.length;
     prepared.set(text, blocks);
-    preparedChars += text.length;
-    while (preparedChars > MAX_PREPARED_CHARS) {
+    while (preparedChars > maxPreparedMarkdownChars) {
       const oldest = prepared.keys().next().value;
       if (oldest === undefined) break;
       preparedChars -= oldest.length;
@@ -71,13 +77,9 @@ function balancedFences(head: string): boolean {
   return ticks % 2 === 0 && tildes % 2 === 0;
 }
 
-const STREAM_MAX_CHARS = 16000;
-const STREAM_MIN_INTERVAL_MS = 120;
-const STREAM_SCAN_LINES = 40;
-
 function streamingHead(source: string): string {
   const lines = source.split("\n");
-  const start = Math.max(1, lines.length - STREAM_SCAN_LINES);
+  const start = Math.max(1, lines.length - progressiveMarkdownScanLines);
   for (let i = lines.length - 1; i >= start; i--) {
     if (lines[i].trim() !== "") continue;
     const head = lines.slice(0, i).join("\n");
@@ -200,11 +202,12 @@ export default function Markdown({
     text: "",
     tail: "",
     rendered: 0,
+    active: true,
     timer: 0,
     lastRun: 0,
   });
   // Progressive streaming render: at most one pass per
-  // STREAM_MIN_INTERVAL_MS over the closed prefix, with the unfinished
+  // progressiveMarkdownIntervalMs over the closed prefix, with the unfinished
   // tail staying plain. Stable block keys keep completed DOM subtrees
   // untouched, so growth never flips rendered structure; the completion
   // pass below then only fills the tail instead of swapping plain text
@@ -217,7 +220,7 @@ export default function Markdown({
     prefetchMarkdown(text);
     const state = stream.current;
     state.text = text;
-    if (text.length > STREAM_MAX_CHARS) {
+    if (text.length > maxProgressiveMarkdownChars) {
       // Long turns stay plain until completion: a full-document parse per
       // keystroke would jank the turn it decorates.
       setStreamBlocks([]);
@@ -228,7 +231,7 @@ export default function Markdown({
     if (state.timer) return; // trailing pass already scheduled
     const wait = Math.max(
       0,
-      STREAM_MIN_INTERVAL_MS - (Date.now() - state.lastRun),
+      progressiveMarkdownIntervalMs - (Date.now() - state.lastRun),
     );
     state.timer = window.setTimeout(() => {
       state.timer = 0;
@@ -261,7 +264,7 @@ export default function Markdown({
         .then((module) => module.renderMarkdownBlocks(head))
         .then((output) => {
           // A newer pass started while this one parsed; it will paint.
-          if (stream.current.text !== value) return;
+          if (!stream.current.active || stream.current.text !== value) return;
           setStreamBlocks(output);
         })
         .catch(() => {
@@ -303,6 +306,7 @@ export default function Markdown({
   useEffect(
     () => () => {
       pending.current.active = false;
+      stream.current.active = false;
     },
     [],
   );

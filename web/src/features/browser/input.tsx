@@ -17,6 +17,8 @@ export default function BrowserInput({
   readOnly: boolean;
 }) {
   const cursor = useRef({ x: 0.5, y: 0.5 });
+  const marker = useRef<SVGSVGElement>(null);
+  const reveal = useRef<(point: { x: number; y: number }) => void>(() => {});
   const pressedButton = useRef<number | null>(null);
 
   const canvas = () => target.current?.querySelector("canvas");
@@ -54,7 +56,20 @@ export default function BrowserInput({
       }),
     );
   };
+  const paintPointer = () => {
+    const point = pointerPoint();
+    if (!point || !marker.current) return;
+    marker.current.style.transform = `translate(${point.x - point.visible.left}px, ${point.y - point.visible.top}px)`;
+    // At framebuffer edges the hotspot must still reach the last pixel. Turn
+    // the arrow inward there instead of clipping its entire shape offscreen.
+    const { width, height } = marker.current.getBoundingClientRect();
+    marker.current.firstElementChild?.setAttribute(
+      "transform",
+      `scale(${point.x + width > point.visible.right ? -1 : 1}, ${point.y + height > point.visible.bottom ? -1 : 1})`,
+    );
+  };
   const refreshPointer = () => {
+    paintPointer();
     const button = pressedButton.current;
     if (disabled) return;
     mouse("mousemove", 0, button === null ? 0 : buttonMask(button));
@@ -65,24 +80,16 @@ export default function BrowserInput({
     if (!point) return;
     cursor.current.x += dx / point.rect.width;
     cursor.current.y += dy / point.rect.height;
-    const minimumX = Math.max(
+    cursor.current.x = Math.max(
       0,
-      (point.visible.left - point.rect.left) / point.rect.width,
+      Math.min(1 - 1 / point.element.width, cursor.current.x),
     );
-    const maximumX = Math.min(
-      1,
-      (point.visible.right - point.rect.left) / point.rect.width,
-    );
-    const minimumY = Math.max(
+    cursor.current.y = Math.max(
       0,
-      (point.visible.top - point.rect.top) / point.rect.height,
+      Math.min(1 - 1 / point.element.height, cursor.current.y),
     );
-    const maximumY = Math.min(
-      1,
-      (point.visible.bottom - point.rect.top) / point.rect.height,
-    );
-    cursor.current.x = Math.max(minimumX, Math.min(maximumX, cursor.current.x));
-    cursor.current.y = Math.max(minimumY, Math.min(maximumY, cursor.current.y));
+    const next = pointerPoint();
+    if (next) reveal.current({ x: next.x, y: next.y });
     refreshPointer();
   };
   const wheel = (dy: number) => {
@@ -108,7 +115,6 @@ export default function BrowserInput({
     if (button === null) return;
     mouse("mouseup", button, 0);
     pressedButton.current = null;
-    // Refresh noVNC's fallback cursor after releasing a captured drag.
     refreshPointer();
   };
   const click = (button: number) => {
@@ -129,8 +135,29 @@ export default function BrowserInput({
         screen={screen}
         target={target}
         readOnly={readOnly}
-        refreshPointer={refreshPointer}
-      />
+        refreshPointer={paintPointer}
+        reveal={reveal}
+        trackpad={showTrackpad && !disabled}
+        pointAt={(x, y) => {
+          const point = pointerPoint();
+          if (!point) return;
+          cursor.current = {
+            x: (x - point.rect.left) / point.rect.width,
+            y: (y - point.rect.top) / point.rect.height,
+          };
+          paintPointer();
+        }}
+      >
+        <svg
+          ref={marker}
+          class="browser-pointer"
+          viewBox="0 0 20 24"
+          aria-hidden="true"
+          hidden={!showTrackpad || disabled}
+        >
+          <path d="M0 0v17l4.5-4 3.5 7 3-1.5-3.5-7H14Z" />
+        </svg>
+      </BrowserViewport>
       {showTrackpad && (
         <BrowserTrackpad
           disabled={disabled}

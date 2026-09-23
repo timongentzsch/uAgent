@@ -1,6 +1,12 @@
 import type { ComponentChildren, ComponentType, JSX } from "preact";
 import { failure } from "./types.ts";
-import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "preact/hooks";
 import { ChevronDown, ChevronRight, X, Check, Copy } from "lucide-preact";
 import { markPath } from "./mark.ts";
 
@@ -14,7 +20,10 @@ export async function copyText(text: string) {
   field.readOnly = true;
   field.style.cssText = "position:fixed;left:-9999px";
   const focused = document.activeElement;
-  document.body.append(field);
+  (
+    (focused instanceof Element ? focused.closest("dialog[open]") : null) ||
+    document.body
+  ).append(field);
   field.select();
   try {
     if (!document.execCommand("copy"))
@@ -171,6 +180,7 @@ export function Spinner({
     <div
       class={`loading-indicator${surface ? " loading-surface" : ""}`}
       role="status"
+      aria-label={label}
       aria-busy="true"
       aria-live="polite"
     >
@@ -303,21 +313,48 @@ export function DisclosureRow({
   );
 }
 
+export function Button({
+  variant = "secondary",
+  size = "default",
+  busy = false,
+  class: className = "",
+  children,
+  disabled,
+  ...props
+}: JSX.ButtonHTMLAttributes<HTMLButtonElement> & {
+  variant?: "primary" | "secondary" | "quiet" | "destructive";
+  size?: "default" | "compact" | "icon";
+  busy?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      {...props}
+      class={`${variant} ${size === "default" ? "" : `${size}-button`} ${className}`}
+      disabled={disabled || busy}
+      aria-busy={busy || undefined}
+    >
+      {busy && <span class="spinner" aria-hidden="true" />}
+      {children}
+    </button>
+  );
+}
+
 export function IconButton({
   label,
   children,
   ...props
 }: JSX.ButtonHTMLAttributes<HTMLButtonElement> & { label: string }) {
   return (
-    <button
-      type="button"
-      class="quiet icon-button"
+    <Button
+      variant="quiet"
+      size="icon"
       aria-label={label}
       title={label}
       {...props}
     >
       {children}
-    </button>
+    </Button>
   );
 }
 
@@ -326,28 +363,23 @@ export function Modal({
   children,
   close,
   className = "",
+  size = "compact",
+  layout = "content",
 }: {
   title: string;
   children: ComponentChildren;
   close: () => void;
   className?: string;
+  size?: "compact" | "medium" | "wide" | "browser";
+  layout?: "content" | "panel";
 }) {
   const ref = useRef<HTMLDialogElement>(null);
-  const [ready, setReady] = useState(false);
+  const titleId = useId();
   useLayoutEffect(() => {
     const prior = document.activeElement;
     const dialog = ref.current;
     dialog?.showModal();
-    // Paint gate: mount work and the first async data land before the
-    // dialog becomes visible, so open never flashes an unsettled box.
-    // One frame is layout, the second commits paint.
-    let second = 0;
-    const first = requestAnimationFrame(() => {
-      second = requestAnimationFrame(() => setReady(true));
-    });
     return () => {
-      cancelAnimationFrame(first);
-      cancelAnimationFrame(second);
       dialog?.close();
       if (prior instanceof HTMLElement && prior.isConnected)
         prior.focus({ preventScroll: true });
@@ -357,15 +389,16 @@ export function Modal({
     <dialog
       ref={ref}
       class={className}
-      data-ready={ready || undefined}
-      aria-label={title}
+      data-size={size}
+      data-layout={layout}
+      aria-labelledby={titleId}
       onCancel={(event) => {
         event.preventDefault();
         close();
       }}
     >
       <header>
-        <h2>{title}</h2>
+        <h2 id={titleId}>{title}</h2>
         <IconButton label={`Close ${title.toLowerCase()}`} onClick={close}>
           <X />
         </IconButton>

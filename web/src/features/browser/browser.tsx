@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import type { Report, Session } from "../../shared/types.ts";
 import { api, command } from "../../state/api.ts";
 import RFB from "@novnc/novnc";
+import { Spinner } from "../../shared/ui.tsx";
 import BrowserInput from "./input.tsx";
 import "./browser.css";
 
@@ -302,18 +303,59 @@ export default function BrowserPanel({
   const [busy, setBusy] = useState(false);
   const [addingProfile, setAddingProfile] = useState(false);
   const [profileName, setProfileName] = useState("");
-  const refresh = async () => {
-    try {
-      setStatus(await api<BrowserStatus>("/api/browser/status"));
-    } catch (error) {
-      report(error);
-    }
-  };
+  const lifetime = useRef(new AbortController());
+  const inFlight = useRef<Promise<void> | null>(null);
+  const refresh = useCallback(
+    async (afterCommand = false): Promise<void> => {
+      if (inFlight.current) {
+        await inFlight.current;
+        if (!afterCommand) return;
+      }
+      while (inFlight.current) await inFlight.current;
+      const { signal } = lifetime.current;
+      if (signal.aborted) return;
+      const request = api<BrowserStatus>("/api/browser/status", undefined, {
+        signal,
+      })
+        .then((value) => {
+          if (!signal.aborted) setStatus(value);
+        })
+        .catch((error) => {
+          if (!signal.aborted) report(error);
+        })
+        .finally(() => {
+          if (inFlight.current === request) inFlight.current = null;
+        });
+      inFlight.current = request;
+      return request;
+    },
+    [report],
+  );
   useEffect(() => {
-    void refresh();
-    const timer = setInterval(() => void refresh(), STATUS_POLL_INTERVAL_MS);
-    return () => clearInterval(timer);
-  }, []);
+    let timer: ReturnType<typeof setTimeout>;
+    let active = true;
+    let polling = false;
+    lifetime.current = new AbortController();
+    const poll = async () => {
+      if (polling || !active) return;
+      polling = true;
+      clearTimeout(timer);
+      if (document.visibilityState === "visible") await refresh();
+      polling = false;
+      if (active) timer = setTimeout(poll, STATUS_POLL_INTERVAL_MS);
+    };
+    const visible = () => {
+      if (document.visibilityState === "visible") void poll();
+    };
+    void poll();
+    document.addEventListener("visibilitychange", visible);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+      lifetime.current.abort();
+      document.removeEventListener("visibilitychange", visible);
+    };
+  }, [refresh]);
   const send = async (
     action: "takeover" | "done" | "stop" | "create_profile" | "select_profile",
     fields: { name?: string; profile_id?: string } = {},
@@ -329,7 +371,7 @@ export default function BrowserPanel({
     setBusy(true);
     try {
       await send(action);
-      await refresh();
+      await refresh(true);
     } catch (error) {
       report(error);
     } finally {
@@ -340,10 +382,10 @@ export default function BrowserPanel({
     setBusy(true);
     try {
       await send("select_profile", { profile_id: id });
-      await refresh();
+      await refresh(true);
     } catch (error) {
       report(error);
-      await refresh();
+      await refresh(true);
     } finally {
       setBusy(false);
     }
@@ -360,14 +402,16 @@ export default function BrowserPanel({
         setProfileName("");
         setAddingProfile(false);
       }
-      await refresh();
+      await refresh(true);
     } catch (error) {
       report(error);
-      await refresh();
+      await refresh(true);
     } finally {
       setBusy(false);
     }
   };
+  if (!status.ok && !status.mode)
+    return <Spinner label="Loading browser…" surface />;
   const canChangeProfile =
     status.controller ||
     (status.mode === "idle" && !status.running && !status.leased);

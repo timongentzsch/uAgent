@@ -1,3 +1,4 @@
+import { manage } from "../../state/api.ts";
 import type { LibraryItem } from "../../shared/types.ts";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { Plus, ArrowLeft, ChevronDown, Pencil } from "lucide-preact";
@@ -7,7 +8,6 @@ import { Menu, MenuItem } from "../../shared/popover.tsx";
 import { readStored, writeStored } from "../../state/store.ts";
 import { bytes } from "../../shared/quantities.ts";
 import {
-  manage,
   useLibrary,
   ProjectField,
   ScopeField,

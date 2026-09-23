@@ -1,11 +1,13 @@
 import type {
   BodyPage,
   CommandFields,
+  CommandResults,
   CommandKind,
   CommandReceipt,
   Outcome,
   SessionRef,
 } from "../shared/types.ts";
+import { commandReceiptWaitMs } from "../shared/limits.ts";
 import { failure } from "../shared/types.ts";
 
 export const protocol = 2;
@@ -87,27 +89,37 @@ export async function command<K extends CommandKind>(
   kind: K,
   session?: SessionRef | null,
   fields: CommandFields = {},
+  options: { signal?: AbortSignal } = {},
 ): Promise<CommandReceipt<K>> {
+  options.signal?.throwIfAborted();
   const request_id = fields.request_id || requestId();
   let timeout: ReturnType<typeof setTimeout> | undefined;
+  let abort: (() => void) | undefined;
   const receipt = new Promise<Outcome>((resolve) => {
+    abort = () => resolve({ request_id, accepted: true, pending: true });
+    options.signal?.addEventListener("abort", abort, { once: true });
     receipts.set(request_id, resolve);
     timeout = setTimeout(
       () => resolve({ request_id, accepted: true, pending: true }),
-      30000,
+      commandReceiptWaitMs,
     );
   });
   try {
-    let result = await api<Outcome>("/api/command", {
-      v: protocol,
-      request_id,
-      kind,
-      ...(session
-        ? { session_id: session.id, generation: session.generation }
-        : {}),
-      ...fields,
-    });
+    let result = await api<Outcome>(
+      "/api/command",
+      {
+        v: protocol,
+        request_id,
+        kind,
+        ...(session
+          ? { session_id: session.id, generation: session.generation }
+          : {}),
+        ...fields,
+      },
+      options,
+    );
     if (result.pending) result = await receipt;
+    options.signal?.throwIfAborted();
     if (result.accepted === false) {
       const error = failure(new Error(result.error || "Command rejected"));
       error.rejected = true;
@@ -117,5 +129,19 @@ export async function command<K extends CommandKind>(
   } finally {
     clearTimeout(timeout);
     receipts.delete(request_id);
+    if (abort) options.signal?.removeEventListener("abort", abort);
   }
+}
+
+export async function manage<K extends CommandKind>(
+  kind: K,
+  fields: CommandFields = {},
+  signal?: AbortSignal,
+): Promise<CommandResults[K]> {
+  const result = await command(kind, null, fields, { signal });
+  if (result.pending)
+    throw new Error(
+      "The operation is still pending. Refresh to inspect its result.",
+    );
+  return result.result;
 }

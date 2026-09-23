@@ -56,7 +56,8 @@ On a phone the display is view-only: pinch to zoom and drag the zoomed view to
 pan. The separate **Trackpad** uses one finger for the remote pointer, a tap for
 left click, a two-finger tap for right click and a two-finger drag for scrolling.
 Hold **Left** while moving on the trackpad for drag, resize or text selection.
-The real Chrome cursor remains visible on the display. **Text & keys** opens a
+The trackpad pointer stays visible in the browser dialog, and a zoomed display
+pans to follow it. **Text & keys** opens a
 phone text field, clipboard transfer and useful
 keys; **Address** focuses Chrome's URL field. Copy in Chrome before loading
 its clipboard into the field. Text moves only when you choose a transfer
@@ -153,8 +154,10 @@ responses. Disconnected views stop animation and disable commands.
   redacted; bodies can contain sensitive workspace content.
 - Background completions, memory updates and compaction use expandable event
   rows, with their own retained details rather than tool inspection. Subagent
-  details reuse the main conversation renderer and include the full task,
-  effective system prompt and child conversation. Compaction leaves the
+  details reuse the main conversation renderer, turn/session statistics, model
+  picker and message input. Ordinary follow-ups can select another model;
+  persistent agents retain their runtime model. Running process children label
+  statistics that reflect only the latest saved checkpoint. Compaction leaves the
   conversation in place without opening a dialog.
 - Settings contain appearance, zoom (the entire interface, conversation
   included), default permissions and registered configuration. The UI showcase
@@ -171,6 +174,9 @@ forcing columns below their intrinsic minimum width.
 Dialogs, drawers and popovers share the visible viewport's safe-area bounds;
 dialog headers stay fixed while their bodies scroll above the phone's home
 indicator.
+
+See the [web audit](WEB_AUDIT.md) for component ownership, the performance probe
+and remaining targets that need measurement or physical-device validation.
 
 ## Attachments
 

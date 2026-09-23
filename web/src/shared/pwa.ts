@@ -18,7 +18,8 @@ export function watchPwa(
   report: Report,
 ) {
   let active: ServiceWorker | null = null;
-  let stopUpdateCheck: (() => void) | undefined;
+  let disposed = false;
+  const cleanup: (() => void)[] = [];
   const cache = (entries: PerformanceEntry[]) => {
     if (!active) return;
     const paths = entries
@@ -37,17 +38,27 @@ export function watchPwa(
     navigator.serviceWorker
       .register("/sw.js", { updateViaCache: "none" })
       .then((registration) => {
+        if (disposed) return;
         if (registration.waiting) update(registration.waiting);
-        registration.addEventListener("updatefound", () => {
+        const found = () => {
           const worker = registration.installing;
-          worker?.addEventListener("statechange", () => {
+          if (!worker) return;
+          const changed = () => {
             if (
               worker.state === "installed" &&
               navigator.serviceWorker.controller
             )
               update(worker);
-          });
-        });
+          };
+          worker.addEventListener("statechange", changed);
+          cleanup.push(() =>
+            worker.removeEventListener("statechange", changed),
+          );
+        };
+        registration.addEventListener("updatefound", found);
+        cleanup.push(() =>
+          registration.removeEventListener("updatefound", found),
+        );
         // Standalone PWAs can live for days without the browser's own
         // periodic update check firing; check every time the app becomes
         // visible so a waiting worker is actually discovered.
@@ -56,17 +67,23 @@ export function watchPwa(
           Promise.resolve(registration.update()).catch(() => {});
         };
         document.addEventListener("visibilitychange", refreshRegistration);
-        stopUpdateCheck = refreshRegistration;
+        cleanup.push(() =>
+          document.removeEventListener("visibilitychange", refreshRegistration),
+        );
         navigator.serviceWorker.ready.then((ready) => {
+          if (disposed) return;
           active = ready.active;
           cache(performance.getEntriesByType("resource"));
         });
       })
-      .catch(report);
+      .catch((error) => {
+        if (!disposed) report(error);
+      });
   return () => {
+    disposed = true;
+    active = null;
+    cleanup.forEach((stop) => stop());
     resources.disconnect();
     removeEventListener("beforeinstallprompt", prompted);
-    if (stopUpdateCheck)
-      document.removeEventListener("visibilitychange", stopUpdateCheck);
   };
 }

@@ -7,7 +7,7 @@ import type {
 import { useEffect, useRef, useState } from "preact/hooks";
 import { command } from "../../state/api.ts";
 import { Field, Select, LoadError } from "../../shared/ui.tsx";
-import { ModelSkeleton } from "../../shared/loading.tsx";
+import { ModelLoading } from "../../shared/loading.tsx";
 
 export default function ModelPicker({
   session,
@@ -80,6 +80,7 @@ export default function ModelPicker({
       ++generation.current;
     };
   }, [session.id, session.cwd]);
+  if (!catalog && !error) return <ModelLoading close={close} />;
   const providers = new Map<string, Model[]>();
   for (const item of catalog?.models || []) {
     const provider = item.label.includes("/")
@@ -105,11 +106,7 @@ export default function ModelPicker({
   return (
     <div class="model-form" ref={form}>
       {!catalog ? (
-        error ? (
-          <LoadError error={error} retry={loadCatalog} />
-        ) : (
-          <ModelSkeleton />
-        )
+        <LoadError error={error} retry={loadCatalog} />
       ) : (
         <>
           <Field label="Model">

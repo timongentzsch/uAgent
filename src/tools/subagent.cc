@@ -311,9 +311,18 @@ json InspectCollaborator(const ProcessSupervisor& processes,
     json retained = runtime->Snapshot(id);
     if (!retained.empty()) detail.update(retained);
   }
-  json live_view = runtime ? runtime->LiveView(id) : json::object();
+  const json live_state = runtime ? runtime->LiveState(id) : json::object();
+  json live_view = JsonValue(live_state, "view", json::object());
+  const auto apply_live_statistics = [&] {
+    detail["statistics_live"] =
+        live_state.contains("statistics") && live_state.contains("usage");
+    for (const char* field : {"usage", "statistics", "turns", "route"}) {
+      if (live_state.contains(field)) detail[field] = live_state[field];
+    }
+  };
   if (!loaded.record) {
     if (!live_view.empty()) detail["conversation"] = std::move(live_view);
+    apply_live_statistics();
     return detail;
   }
   const auto& record = *loaded.record;
@@ -339,11 +348,13 @@ json InspectCollaborator(const ProcessSupervisor& processes,
             : ConversationView(conversation,
                                JsonValue(request, "before", uint64_t{0}))},
        {"turns", record.metadata.turns},
+       {"model", record.metadata.model},
        {"statistics", conversation.Statistics()},
        {"usage", UsageJson(record.state.usage)}});
   if (!record.state.last_sent_prompt.empty()) {
     detail["system_prompt"] = record.state.last_sent_prompt;
   }
+  apply_live_statistics();
   return detail;
 }
 

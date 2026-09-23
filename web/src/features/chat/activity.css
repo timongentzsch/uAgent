@@ -72,17 +72,6 @@
 /* Modal: single grid, zero child margins, sections carry the labels. */
 /* Subagent/activity modal carries a full thread: widen toward the chat
    measure so rows wrap like the transcript instead of a narrow card. */
-.activity-view {
-  width: min(
-    calc(880rem / 14),
-    calc(var(--content-width) - 2 * var(--dialog-gutter))
-  );
-  height: min(
-    calc(780rem / 14),
-    calc(var(--content-height) - 2 * var(--dialog-gutter))
-  );
-}
-
 .activity-view .dialog-body {
   display: flex;
   flex-direction: column;

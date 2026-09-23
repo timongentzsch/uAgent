@@ -1382,7 +1382,7 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
       })
       .toBe(true);
   };
-  const input = async (locator, text, expectedFontSize = 14) => {
+  const input = async (locator, text, expectedFontSize = 16) => {
     await locator.fill(text);
     await viewport(390, 70);
     await expect(locator).toBeFocused();
@@ -1473,7 +1473,7 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
     await settings
       .getByRole("button", { name: "Advanced configuration", exact: true })
       .tap();
-    await input(settings.getByLabel("Find a setting"), "web", 7);
+    await input(settings.getByLabel("Find a setting"), "web", 16);
     await contained(settings, 390, 70);
     await settings.getByRole("button", { name: "Back", exact: true }).tap();
     await settings
@@ -2124,10 +2124,57 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
     .getByRole("button", { name: "Close tool input/output", exact: true })
     .click();
   await expect(toolView).toHaveCount(0);
+  await detail
+    .getByRole("button", { name: "Session statistics", exact: true })
+    .click();
+  const stats = page.getByRole("dialog", {
+    name: "Subagent statistics",
+    exact: true,
+  });
+  await expect(stats.locator("dt").filter({ hasText: /^Cost$/ })).toBeVisible();
+  await expect(
+    stats.getByText("Parent turn time", { exact: true }),
+  ).toBeVisible();
+  await expect(stats.getByText("Model time", { exact: true })).toBeVisible();
+  await stats
+    .getByRole("button", { name: "Close subagent statistics" })
+    .click();
+  await thread
+    .getByRole("button", { name: "Turn statistics", exact: true })
+    .last()
+    .click();
+  await expect(
+    stats.getByText("Model at completion", { exact: true }),
+  ).toBeVisible();
+  await expect(stats.getByText("TTFT", { exact: true })).toBeVisible();
+  await stats
+    .getByRole("button", { name: "Close subagent statistics" })
+    .click();
+  await detail
+    .getByRole("button", { name: "Model and effort", exact: true })
+    .click();
+  const childModel = page.getByRole("dialog", {
+    name: "Model and effort",
+    exact: true,
+  });
+  await childModel
+    .getByRole("combobox", { name: "Model", exact: true })
+    .selectOption({ value: "mock/main" });
+  await childModel.getByRole("button", { name: "Apply", exact: true }).click();
+  const followUpRequest = page.waitForRequest((request) => {
+    if (!request.url().endsWith("/api/command") || request.method() !== "POST")
+      return false;
+    const body = request.postDataJSON();
+    return body.kind === "activity" && body.operation === "followup";
+  });
   // Follow-up sends from the popup and receipts like the composer.
   await detail
     .getByRole("button", { name: "Start follow-up", exact: true })
     .click();
+  expect((await followUpRequest).postDataJSON().model).toBe("mock/main");
+  await expect(page.locator(".composer > form .model-selector")).toContainText(
+    "mock/model-b",
+  );
   await expect(detail.getByText("Follow-up started.")).toBeVisible({
     timeout: 20000,
   });
@@ -2140,14 +2187,14 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
   expect(
     (await detail.locator('[aria-label="Subagent task"]').textContent()).length,
   ).toBeGreaterThan(16000);
-  // No System prompt disclosure anymore; run details render open at the top.
+  // Do not create empty metadata sections for ordinary agents.
   await expect(detail.getByText("System prompt", { exact: true })).toHaveCount(
     0,
   );
   await detail.getByText("Task and run details").click();
-  await expect(
-    detail.locator('section[aria-label="Run details"]'),
-  ).toBeVisible();
+  await expect(detail.locator('section[aria-label="Run details"]')).toHaveCount(
+    0,
+  );
   await page.screenshot({
     path: testInfo.outputPath("subagent-task-phone.png"),
   });

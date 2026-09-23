@@ -35,7 +35,6 @@ import {
   ManagementSkeleton,
   PromptSkeleton,
   RawSkeleton,
-  SettingsSkeleton,
   StatsSkeleton,
 } from "../shared/loading.tsx";
 import { applyZoom, normalizeZoom } from "../shared/size-controls.tsx";
@@ -953,7 +952,7 @@ function App() {
                   ? "Message statistics"
                   : "Conversation statistics"
           }
-          className={modal.type === "statistics" ? "statistics-view" : ""}
+          layout={modal.type === "statistics" ? "panel" : "content"}
           close={() => setModal(null)}
         >
           {modal.type === "statistics" ? (
@@ -988,11 +987,13 @@ function App() {
         <Modal
           title="Browser"
           className="browser-view"
+          size="browser"
+          layout="panel"
           close={() => setModal(null)}
         >
           <Deferred
             load={browserDialog}
-            fallback={<p role="status">Loading browser…</p>}
+            fallback={<Spinner label="Loading browser…" surface />}
             sessions={catalogue.sessions}
             report={report}
           />
@@ -1035,6 +1036,8 @@ function App() {
                   : "Full content"
           }
           className="raw-view"
+          size="wide"
+          layout="panel"
           close={() => setModal(null)}
         >
           <Deferred
@@ -1062,6 +1065,8 @@ function App() {
         <Modal
           title="System prompt"
           className="prompt-view"
+          size="wide"
+          layout="panel"
           close={() => setModal(null)}
         >
           <Deferred
@@ -1081,11 +1086,13 @@ function App() {
         <Modal
           title="Settings"
           className="settings-view"
+          size="medium"
+          layout="panel"
           close={() => setModal(null)}
         >
           <Deferred
             load={settingsDialog}
-            fallback={<SettingsSkeleton repository={!!session?.cwd} />}
+            fallback={<Spinner label="Loading settings…" surface />}
             theme={theme}
             setTheme={setTheme}
             zoom={zoom}
@@ -1115,6 +1122,8 @@ function App() {
         <Modal
           title="Tools"
           className="tools-view"
+          size="medium"
+          layout="panel"
           close={() => setModal(null)}
         >
           {toolsSession ? (

@@ -19,7 +19,7 @@ function Actions() {
   );
 }
 
-export function ModelSkeleton() {
+function ModelSkeleton() {
   // Both callers own the form wrapper and actions. Reserve the optional
   // variant slot until the catalogue tells us whether it is available.
   return (
@@ -39,6 +39,22 @@ export function ModelSkeleton() {
         </Field>
       </div>
     </>
+  );
+}
+
+export function ModelLoading({ close }: { close: () => void }) {
+  return (
+    <div class="model-form">
+      <ModelSkeleton />
+      <div class="dialog-actions">
+        <button type="button" onClick={close}>
+          Cancel
+        </button>
+        <button type="button" class="primary" disabled>
+          Apply
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -69,64 +85,6 @@ export function StatsSkeleton({
           </div>
         ))}
       </dl>
-    </div>
-  );
-}
-
-export function SettingsSkeleton({
-  repository = false,
-}: {
-  repository?: boolean;
-}) {
-  // Mirror the live settings form row for row: same Fields (labels,
-  // values, help), real inert controls where the shape is textual
-  // (disabled buttons, closed sections, disabled ranges render their
-  // exact heights by construction), shimmer only for the selects.
-  // The compact-surfaces spec pins loading-vs-loaded height parity.
-  return (
-    <div className="settings-content" {...busy} aria-label="Loading settings…">
-      <div className="settings-fields" aria-hidden="true">
-        <Field label="Appearance">
-          <Control />
-        </Field>
-        <Field
-          label="Zoom"
-          value="100%"
-          help="Scales the entire interface, conversation included."
-        >
-          <input type="range" disabled value={100} />
-        </Field>
-        <div className="dialog-actions">
-          <button type="button" disabled>
-            Reset zoom
-          </button>
-        </div>
-        <Field
-          label="Default permissions"
-          help="Used by new conversations and conversations that inherit the default. Auto sends the current request and action preview to the configured reviewer."
-        >
-          <Control />
-        </Field>
-        <button type="button" disabled>
-          System prompt
-        </button>
-        <button type="button" disabled>
-          Advanced configuration
-        </button>
-        <button type="button" disabled>
-          UI showcase
-        </button>
-      </div>
-      {repository && (
-        <details className="settings-section" aria-hidden="true">
-          <summary>Remembered permissions</summary>
-        </details>
-      )}
-      {["Install", "Notifications", "Paired devices"].map((name) => (
-        <details key={name} className="settings-section" aria-hidden="true">
-          <summary>{name}</summary>
-        </details>
-      ))}
     </div>
   );
 }

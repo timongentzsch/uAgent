@@ -1,3 +1,4 @@
+import { manage } from "../../state/api.ts";
 import type {
   ScheduledTask,
   ScheduledState,
@@ -11,12 +12,7 @@ import { Menu, MenuItem } from "../../shared/popover.tsx";
 import { Popover } from "../../shared/popover.tsx";
 import ModelPicker from "../settings/model-picker.tsx";
 import { readStored, writeStored } from "../../state/store.ts";
-import {
-  manage,
-  ProjectField,
-  dateTime,
-  taskActive,
-} from "../settings/management.tsx";
+import { ProjectField, dateTime, taskActive } from "../settings/management.tsx";
 
 const blank = (cwd: string): ScheduledTask => ({
   id: "",

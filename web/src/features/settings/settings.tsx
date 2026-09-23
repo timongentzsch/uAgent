@@ -205,9 +205,7 @@ export default function Settings({
                   }}
                 >
                   <option value="ask">Ask</option>
-                  <option value="auto">
-                    Auto · review ordinary approvals with Jev
-                  </option>
+                  <option value="auto">Auto · review ordinary approvals</option>
                   <option value="yolo">
                     YOLO · automatic ordinary approvals
                   </option>
@@ -221,6 +219,9 @@ export default function Settings({
             <button type="button" onClick={() => setAdvanced(true)}>
               Advanced configuration
             </button>
+          </div>
+          <details class="settings-section">
+            <summary>Design and development</summary>
             <a
               class="button-link with-icon"
               href="/ui.html"
@@ -230,7 +231,7 @@ export default function Settings({
               <Palette aria-hidden="true" />
               UI showcase
             </a>
-          </div>
+          </details>
           {session?.cwd && (
             <details class="settings-section">
               <summary>

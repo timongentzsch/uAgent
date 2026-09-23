@@ -36,6 +36,7 @@ export function capturePointer(element: HTMLElement, pointerId: number) {
 // thresholds, independent of the interface zoom setting.
 export const BROWSER_GESTURE = Object.freeze({
   maximumViewScale: 5,
+  cursorEdgeInsetPx: 24,
   movementSlopPx: 8,
   tapDurationMs: 300,
   pointerBaseGain: 0.85,
@@ -116,4 +117,25 @@ export function acceleratedPointerDelta(
     BROWSER_GESTURE.pointerMaximumGain,
   );
   return { x: dx * gain, y: dy * gain };
+}
+
+// Reveal only the edge the pointer crossed. Manual panning does not call this.
+export function followPointer(
+  view: BrowserView,
+  width: number,
+  height: number,
+  point: Point,
+) {
+  const inset = Math.min(
+    BROWSER_GESTURE.cursorEdgeInsetPx,
+    width / 2,
+    height / 2,
+  );
+  return panView(
+    view,
+    width,
+    height,
+    clamp(point.x, inset, width - inset) - point.x,
+    clamp(point.y, inset, height - inset) - point.y,
+  );
 }

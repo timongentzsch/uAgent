@@ -2,10 +2,9 @@ import "./attachments.css";
 import { useCommandSuggestions } from "./command-suggestions.tsx";
 import { parseSlash } from "./slash.ts";
 import { Deferred, Field, Select } from "../../shared/ui.tsx";
-import { DecisionSkeleton, ModelSkeleton } from "../../shared/loading.tsx";
-import { bytes, count } from "../../shared/quantities.ts";
+import { DecisionSkeleton } from "../../shared/loading.tsx";
+import { bytes } from "../../shared/quantities.ts";
 import { contextSummary } from "../../state/context.ts";
-import { observeResize } from "../../shared/layout.ts";
 import type {
   SlashCommand,
   Session,
@@ -16,12 +15,10 @@ import type {
   Block,
 } from "../../shared/types.ts";
 import type { JSX } from "preact";
-import { useLayoutEffect, useRef, useState } from "preact/hooks";
+import { useRef, useState } from "preact/hooks";
 import {
   ArrowDown,
   ArrowUp,
-  ChevronDown,
-  Gauge,
   Paperclip,
   Shield,
   Square,
@@ -31,7 +28,9 @@ import { command } from "../../state/api.ts";
 import { dedupeName, encodeMention, matchMention } from "./mention.ts";
 import { Popover } from "../../shared/popover.tsx";
 import Activities from "../chat/activity-status.tsx";
-const modelPicker = () => import("../settings/model-picker.tsx");
+import MessageInput from "./message-input.tsx";
+import ModelControl from "./model-control.tsx";
+import { SessionSummary } from "../chat/session-summary.tsx";
 const decisionPanel = () => import("../chat/decision.tsx");
 
 export default function Composer({
@@ -54,8 +53,8 @@ export default function Composer({
   clearActivity,
   showContext,
   showStatistics,
-  zoom,
   openBrowser,
+  zoom,
 }: {
   session: Session;
   commands: SlashCommand[];
@@ -192,31 +191,6 @@ export default function Composer({
     ? (session?.status || "").charAt(0).toUpperCase() +
       (session?.status || "").slice(1)
     : "";
-  useLayoutEffect(() => {
-    const element = input.current;
-    if (!element) return;
-    let lastWidth = element.clientWidth;
-    const resize = () => {
-      lastWidth = element.clientWidth;
-      const prev = element.style.height;
-      // Reset before measuring: with a tall height applied, scrollHeight
-      // clamps to the box and a shrink is unobservable (the box grew on
-      // wrap but never shrank back on send or delete). Both writes land
-      // in one synchronous block, so observers only ever see the net
-      // size; restoring an identical height fires no resize.
-      element.style.height = "0px";
-      const final = `${element.scrollHeight}px`;
-      element.style.height = final === prev ? prev : final;
-    };
-    resize();
-    // Width-only parent subscription: the textarea's own height growth
-    // changes the parent height, which must not re-trigger a shrink to
-    // zero (the old feedback loop). Only a width change alters wrapping.
-    const onParent = () => {
-      if (element.clientWidth !== lastWidth) resize();
-    };
-    return observeResize(onParent, element.parentElement!);
-  }, [draft.text, zoom, pending?.id, session.generation]);
   const permission = state?.permissions;
   const effective =
     permission?.mode === "default" ? permission.default : permission?.mode;
@@ -292,10 +266,12 @@ export default function Composer({
           <label class="sr-only" for="prompt">
             Message or guidance
           </label>
-          <textarea
+          <MessageInput
+            submit={send}
+            resizeKey={zoom}
             {...suggestions.attributes}
             id="prompt"
-            ref={input}
+            inputRef={input}
             rows={1}
             placeholder={running ? "Add guidance…" : "Ask µAgent…"}
             value={draft.text}
@@ -321,15 +297,6 @@ export default function Composer({
             onKeyDown={(event) => {
               if (mentionOpen && mentionKeyDown(event)) return;
               if (suggestions.keyDown(event)) return;
-              if (
-                event.key === "Enter" &&
-                !event.shiftKey &&
-                !event.isComposing &&
-                event.keyCode !== 229
-              ) {
-                event.preventDefault();
-                if (!event.repeat) send(event);
-              }
             }}
           />
           {!!state?.attachments && (
@@ -426,47 +393,13 @@ export default function Composer({
                 }}
               />
             </label>
-            <Popover
+            <ModelControl
               key={session.id}
-              label="Model and effort"
-              title={state?.route || "Select model"}
-              side="top"
-              align="start"
-              className="model-control"
-              buttonClass="quiet model-selector with-icon"
-              disabled={!online || running}
-              trigger={
-                <>
-                  <Gauge />
-                  <span>{state?.route || "Select model"}</span>
-                  <ChevronDown />
-                </>
-              }
-            >
-              {(close) => (
-                <Deferred
-                  load={modelPicker}
-                  session={session}
-                  state={state}
-                  online={online}
-                  running={running}
-                  close={close}
-                  fallback={
-                    <div class="model-form">
-                      <ModelSkeleton />
-                      <div class="dialog-actions">
-                        <button type="button" onClick={close}>
-                          Cancel
-                        </button>
-                        <button type="button" class="primary" disabled>
-                          Apply
-                        </button>
-                      </div>
-                    </div>
-                  }
-                />
-              )}
-            </Popover>
+              session={session}
+              state={state}
+              online={online}
+              running={running}
+            />
             <Popover
               label="Permissions"
               title={`${permissionLabel}${permission?.mode === "default" ? " · using default permissions" : " · conversation override"}`}
@@ -566,13 +499,7 @@ export default function Composer({
           >
             {contextSummary(state?.context_tokens, state?.context_window)}
           </button>
-          <button class="quiet" onClick={showStatistics}>
-            Session · {count(state?.statistics?.recorded_turns ?? state?.turns)}{" "}
-            turns
-            {state?.usage?.cost_reported
-              ? ` · $${state.usage.cost.toFixed(4)}`
-              : ""}
-          </button>
+          <SessionSummary state={state} open={showStatistics} />
           {!!session.guidance && (
             <span class="muted" role="status">
               {session.guidance} guidance queued

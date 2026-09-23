@@ -1703,6 +1703,7 @@ def test_web_child_controls_and_conversation_ownership(root, home, *, binary):
         if "WEB_CHILD_SEED" in users:
             if "WEB_CHILD_FOLLOWUP" in users:
                 assert any(message.get("content") == "Child result" for message in body["messages"])
+                assert body["model"] == "child-followup-model", body
                 return event({"content": "Child follow-up result"})
             child_started.set()
             assert release_child.wait(timeout=budget(10))
@@ -1775,6 +1776,7 @@ def test_web_child_controls_and_conversation_ownership(root, home, *, binary):
                 operation="followup",
                 agent_id=child["agent_id"],
                 text="WEB_CHILD_FOLLOWUP",
+                model="child-followup-model",
             )
             client.until(
                 session,
@@ -2057,6 +2059,9 @@ def test_persistent_guidance_requires_its_command_receipt(root, home, *, binary)
                 snapshot = web.until(session, lambda value: value["state"].get("collaborators"))
                 child = snapshot["state"]["collaborators"][0]
                 live = web.command("activity", session, operation="inspect", agent_id=child["id"])
+                assert_true(live["result"].get("statistics_live"), live)
+                for field in ("usage", "statistics", "turns", "route"):
+                    assert_true(field in live["result"], live)
                 blocks = live["result"]["conversation"]["blocks"]
                 assert_true(
                     any("retained worker" in block.get("text", "") for block in blocks), blocks

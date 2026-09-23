@@ -4,7 +4,10 @@ import type {
   HostEvent,
   Snapshot,
 } from "../shared/types.ts";
-import { maxLivePreviewChars } from "../shared/limits.ts";
+import {
+  maxLivePreviewChars,
+  retainedBackgroundViews,
+} from "../shared/limits.ts";
 export function readStored<T>(
   storage: Pick<Storage, "getItem">,
   key: string,
@@ -335,7 +338,8 @@ export function applySessionEvent(
     } else blocks[index] = reconcileBlock(blocks[index], changed);
     state = {
       ...(state || {}),
-      view: { ...prior, blocks: blocks.slice(-256) },
+      // Explicitly loaded older pages belong to this view until it is evicted.
+      view: { ...prior, blocks },
     };
   }
   if (event.kind === "event") streamed = liveBlocks([event], streamed);
@@ -394,7 +398,7 @@ export function retainedViews(
 ): Record<string, Snapshot> {
   const recent = Object.entries(views)
     .filter(([id]) => id !== selected)
-    .slice(-4);
+    .slice(-retainedBackgroundViews);
   return Object.fromEntries([
     ...recent,
     ...(views[selected] ? [[selected, views[selected]]] : []),

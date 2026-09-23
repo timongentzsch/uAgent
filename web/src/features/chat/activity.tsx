@@ -1,4 +1,8 @@
 import "./activity.css";
+import MessageInput from "../composer/message-input.tsx";
+import ModelControl from "../composer/model-control.tsx";
+import { SessionSummary } from "./session-summary.tsx";
+import { StatsSkeleton } from "../../shared/loading.tsx";
 import { count } from "../../shared/quantities.ts";
 import { duration } from "../../shared/duration.ts";
 import type {
@@ -6,6 +10,7 @@ import type {
   ActivityDetail,
   Block,
   JSONValue,
+  State,
 } from "../../shared/types.ts";
 import type { ActivityProps } from "./activity-status.tsx";
 import {
@@ -31,7 +36,7 @@ import {
 import { RawSkeleton } from "../../shared/loading.tsx";
 
 import { active } from "./activity-status.tsx";
-import { manage } from "../settings/management.tsx";
+import { manage } from "../../state/api.ts";
 import Markdown from "../../shared/markdown-view.tsx";
 import { MessageRows, prepareHistoryBlocks } from "./message.tsx";
 
@@ -55,23 +60,33 @@ async function fetchActivityDetail(
   item: ActivityDetail,
   before?: number,
   prior?: ActivityDetail | null,
+  signal?: AbortSignal,
 ): Promise<ActivityDetail> {
   if (item.memory) {
-    const result = await manage("memory", {
-      action: "get",
-      cwd,
-      key: item.memory.key,
-    });
+    const result = await manage(
+      "memory",
+      {
+        action: "get",
+        cwd,
+        key: item.memory.key,
+      },
+      signal,
+    );
     if (!result.item || result.item.error)
       throw new Error(result.item?.error || "Memory is no longer available.");
     return { ...item, output: result.item.content || "" };
   }
-  const response = await command("activity", session, {
-    operation: "inspect",
-    activity_id: item.id || item.activity_id || 0,
-    agent_id: item.agent_id || "",
-    ...(before ? { before } : {}),
-  });
+  const response = await command(
+    "activity",
+    session,
+    {
+      operation: "inspect",
+      activity_id: item.id || item.activity_id || 0,
+      agent_id: item.agent_id || "",
+      ...(before ? { before } : {}),
+    },
+    { signal },
+  );
   if (response.pending)
     throw new Error("Activity is still loading. Try again shortly.");
   await prepareHistoryBlocks(response.result.conversation?.blocks || []);
@@ -90,6 +105,10 @@ async function fetchActivityDetail(
   };
 }
 
+const statisticsDialog = () =>
+  import("../settings/statistics.tsx").then((module) => ({
+    default: module.StatisticsContent,
+  }));
 const rawDialog = () => import("../settings/raw.tsx");
 
 export default function Activities({
@@ -110,18 +129,24 @@ export default function Activities({
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const inspection = useRef(0);
+  const inspectionRequest = useRef<AbortController>();
 
   useEffect(
     () => () => {
       ++inspection.current;
+      inspectionRequest.current?.abort();
     },
     [],
   );
 
   // Bound loader shared with nested viewers (which own their UI state).
   const loadDetail = useCallback(
-    (item: ActivityDetail, before?: number, prior?: ActivityDetail | null) =>
-      fetchActivityDetail(session, cwd, item, before, prior),
+    (
+      item: ActivityDetail,
+      before?: number,
+      prior?: ActivityDetail | null,
+      signal?: AbortSignal,
+    ) => fetchActivityDetail(session, cwd, item, before, prior, signal),
     [session, cwd],
   );
 
@@ -150,6 +175,9 @@ export default function Activities({
     refresh = false,
   ) {
     const version = ++inspection.current;
+    inspectionRequest.current?.abort();
+    const controller = new AbortController();
+    inspectionRequest.current = controller;
     if (!before)
       setDetail((prior) =>
         prior?.id === item.id && prior?.agent_id === item.agent_id
@@ -161,7 +189,12 @@ export default function Activities({
       setError(null);
     }
     try {
-      const next = await loadDetail(item, before, before ? detail : undefined);
+      const next = await loadDetail(
+        item,
+        before,
+        before ? detail : undefined,
+        controller.signal,
+      );
       if (version !== inspection.current) return;
       setDetail(next);
     } catch (failure) {
@@ -380,6 +413,7 @@ function ActivityModal({
     item: ActivityDetail,
     before?: number,
     prior?: ActivityDetail | null,
+    signal?: AbortSignal,
   ) => Promise<ActivityDetail>;
 }) {
   const current =
@@ -409,11 +443,33 @@ function ActivityModal({
   // Guidance submit lives here (not the panel) so every nesting level
   // sends with its own text and receipt.
   const [text, setText] = useState("");
+  const lifetime = useRef(new AbortController());
+  useEffect(() => {
+    lifetime.current = new AbortController();
+    return () => lifetime.current.abort();
+  }, [detail.agent_id, detail.id]);
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState("");
+  const [model, setModel] = useState("");
+  const [statsTarget, setStatsTarget] = useState<{ blockId?: string } | null>(
+    null,
+  );
+  const showTurnStats = useCallback(
+    (block: Block) => setStatsTarget({ blockId: block.id }),
+    [],
+  );
+  const childState: State = {
+    view: detail.conversation,
+    usage: detail.usage,
+    statistics: detail.statistics,
+    turns: detail.turns,
+    route: detail.route || detail.model,
+  };
   useEffect(() => {
     setText("");
     setNotice("");
+    setModel("");
+    setStatsTarget(null);
   }, [detail.agent_id]);
   // One route stack keeps the thread in one stable surface. Nested agents use
   // the same history/rendering path and a Back action instead of recursive
@@ -432,15 +488,20 @@ function ActivityModal({
     [detail.agent_id, detail.id],
   );
   const readDetail = useCallback(
-    (id: string, rawFlag: boolean, signal?: AbortSignal) =>
+    (id: string, rawFlag: boolean, signal = lifetime.current.signal) =>
       readPages(async (offset) => {
-        const response = await command("activity", session, {
-          operation: "inspect",
-          agent_id: detail.agent_id,
-          detail: id,
-          raw: rawFlag,
-          offset,
-        });
+        const response = await command(
+          "activity",
+          session,
+          {
+            operation: "inspect",
+            agent_id: detail.agent_id,
+            detail: id,
+            raw: rawFlag,
+            offset,
+          },
+          { signal },
+        );
         const body = response.pending ? undefined : response.result?.body;
         if (!body) throw new Error("Message is unavailable.");
         return body;
@@ -449,8 +510,9 @@ function ActivityModal({
   );
   const openRaw = useCallback(
     async (id: string) => {
+      const { signal } = lifetime.current;
       try {
-        const page = await readDetail(id, true);
+        const page = await readDetail(id, true, signal);
         setRaw({
           title: id.startsWith("t-") ? "Tool input/output" : "Full content",
           value: id.startsWith("t-")
@@ -458,33 +520,40 @@ function ActivityModal({
             : { output: page.text },
         });
       } catch (failure) {
-        report(failure);
+        if (!signal.aborted) report(failure);
       }
     },
     [readDetail, report],
   );
   const openNested = useCallback(
     async (block: Block) => {
+      const { signal } = lifetime.current;
       try {
-        const full = await loadDetail({
-          activity_id: block.activity_id,
-          agent_id: block.agent_id,
-          label: block.activity?.label || "Subagent",
-          status: block.status,
-          command: (block as unknown as { command?: string }).command,
-          output: block.text,
-        });
+        const full = await loadDetail(
+          {
+            activity_id: block.activity_id,
+            agent_id: block.agent_id,
+            label: block.activity?.label || "Subagent",
+            status: block.status,
+            command: (block as unknown as { command?: string }).command,
+            output: block.text,
+          },
+          undefined,
+          undefined,
+          signal,
+        );
+        signal.throwIfAborted();
         setAncestors((prior) => [...prior, detail]);
         navigate(full);
       } catch (failure) {
-        report(failure);
+        if (!signal.aborted) report(failure);
       }
     },
     [detail, loadDetail, navigate, report],
   );
   const meta = [
     current.status,
-    detail.model,
+    detail.route || detail.model,
     current.started_ms
       ? duration(
           Math.max(0, current.duration_ms ?? Date.now() - current.started_ms),
@@ -493,7 +562,13 @@ function ActivityModal({
   ].filter(Boolean);
 
   return (
-    <Modal title={title} className="activity-view" close={close}>
+    <Modal
+      title={title}
+      className="activity-view"
+      size="wide"
+      layout="panel"
+      close={close}
+    >
       <div class="activity-detail">
         {ancestors.length > 0 && (
           <button
@@ -528,22 +603,10 @@ function ActivityModal({
                 <p class="muted">{cleanText(detail.description)}</p>
               </section>
             )}
-            {(detail.directive || detail.statistics) && (
+            {detail.directive && (
               <section aria-label="Run details">
-                {detail.directive && (
-                  <>
-                    <h3>Persistent directive</h3>
-                    <Markdown text={detail.directive} />
-                  </>
-                )}
-                {detail.statistics && (
-                  <p class="muted">
-                    {count(detail.turns)} turns ·{" "}
-                    {count(detail.statistics.model_calls)} model calls ·{" "}
-                    {count(detail.statistics.tool_calls)} tool calls ·{" "}
-                    {count(detail.usage?.output)} output tokens
-                  </p>
-                )}
+                <h3>Persistent directive</h3>
+                <Markdown text={detail.directive} />
               </section>
             )}
             {!!detail.communication?.length && (
@@ -606,6 +669,7 @@ function ActivityModal({
                     report={report}
                     inspect={openRaw}
                     activity={openNested}
+                    statistics={showTurnStats}
                   />
                 ) : (
                   <p class="muted">Waiting for the subagent transcript…</p>
@@ -694,6 +758,7 @@ function ActivityModal({
                   activity_id: detail.id || 0,
                   agent_id: detail.agent_id || "",
                   text: text.trim(),
+                  ...(!isLive && model ? { model } : {}),
                 });
                 if (!response.pending) {
                   setText("");
@@ -711,21 +776,26 @@ function ActivityModal({
             }}
           >
             <Field label={isLive ? "Guidance" : "Follow-up"}>
-              <textarea
+              <MessageInput
+                submit={(event) =>
+                  (
+                    event.currentTarget as HTMLTextAreaElement
+                  ).form?.requestSubmit()
+                }
                 value={text}
                 rows={2}
                 onInput={(event) => setText(event.currentTarget.value)}
-                onKeyDown={(event) => {
-                  if (
-                    (event.metaKey || event.ctrlKey) &&
-                    event.key === "Enter"
-                  ) {
-                    event.currentTarget.form?.requestSubmit();
-                  }
-                }}
               />
             </Field>
-            <div class="dialog-actions">
+            <div class="composer-actions">
+              <ModelControl
+                session={session}
+                state={childState}
+                selection={model || childState.route}
+                online={online}
+                running={isLive || !!detail.persistent || sending}
+                save={setModel}
+              />
               <button
                 type="submit"
                 class="primary"
@@ -740,12 +810,49 @@ function ActivityModal({
                     : "Start follow-up"}
               </button>
             </div>
+            <div class="metrics">
+              <SessionSummary
+                state={childState}
+                open={() => setStatsTarget({})}
+              />
+            </div>
+            {detail.persistent && (
+              <small class="muted">
+                Persistent agents retain their model across follow-ups.
+              </small>
+            )}
             {notice && <p role="status">{notice}</p>}
           </form>
         )}
       </div>
+      {statsTarget && (
+        <Modal
+          title="Subagent statistics"
+          layout="panel"
+          close={() => setStatsTarget(null)}
+        >
+          {isLive && !detail.statistics_live && (
+            <p class="muted">
+              Totals reflect the latest saved checkpoint. Current work may not
+              yet be included.
+            </p>
+          )}
+          <Deferred
+            load={statisticsDialog}
+            fallback={<StatsSkeleton turn={!!statsTarget.blockId} />}
+            state={childState}
+            blockId={statsTarget.blockId}
+          />
+        </Modal>
+      )}
       {raw && (
-        <Modal title={raw.title} close={() => setRaw(null)}>
+        <Modal
+          title={raw.title}
+          className="raw-view"
+          size="wide"
+          layout="panel"
+          close={() => setRaw(null)}
+        >
           <Deferred
             load={rawDialog}
             fallback={<RawSkeleton />}

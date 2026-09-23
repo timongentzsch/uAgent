@@ -493,3 +493,50 @@ test("collaborator lifecycle events upsert and remove one retained runtime", () 
     { id: "ordinary", status: "idle" },
   ]);
 });
+
+test("a retained arrival preserves older pages explicitly loaded by the user", () => {
+  const blocks = Array.from({ length: 400 }, (_, sequence) => ({
+    id: `m-${sequence}`,
+    sequence,
+    kind: "user",
+    text: "retained",
+  }));
+  const current = {
+    metadata: { incoming: 0 },
+    state: { view: { blocks } },
+    cursor: 400,
+  };
+  const next = applySessionEvent(current, {
+    kind: "event",
+    type: "message.changed",
+    sequence: 401,
+    data: {
+      block: { id: "m-400", sequence: 400, kind: "assistant", text: "new" },
+    },
+  });
+  assert.equal(next.state.view.blocks.length, 401);
+  assert.equal(next.state.view.blocks[0], blocks[0]);
+  assert.equal(next.state.view.blocks.at(-1).text, "new");
+});
+
+test("closing a view aborts its pending command wait", async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => ({
+    ok: true,
+    json: async () => ({ accepted: true, pending: true }),
+  });
+  try {
+    const controller = new AbortController();
+    const pending = command(
+      "activity",
+      null,
+      { operation: "inspect" },
+      { signal: controller.signal },
+    );
+    await Promise.resolve();
+    controller.abort();
+    await assert.rejects(pending, { name: "AbortError" });
+  } finally {
+    globalThis.fetch = original;
+  }
+});

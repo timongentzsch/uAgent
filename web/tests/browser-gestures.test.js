@@ -54,3 +54,16 @@ test("trackpad acceleration is bounded and preserves direction", () => {
   const fast = acceleratedPointerDelta(1_000, 0, 1);
   assert.equal(fast.x, 1_000 * BROWSER_GESTURE.pointerMaximumGain);
 });
+
+test("cursor follow pans only at viewport edges and cannot leave the desktop", async () => {
+  const { followPointer } = await import("../src/features/browser/gestures.ts");
+  const view = { scale: 3, x: -200, y: -100 };
+  assert.deepEqual(followPointer(view, 400, 250, { x: 200, y: 125 }), view);
+  const next = followPointer(view, 400, 250, { x: 410, y: -10 });
+  assert.equal(next.x, -234);
+  assert.equal(next.y, -66);
+  assert.deepEqual(
+    followPointer({ scale: 1, x: 0, y: 0 }, 400, 250, { x: 500, y: -100 }),
+    { scale: 1, x: 0, y: 0 },
+  );
+});

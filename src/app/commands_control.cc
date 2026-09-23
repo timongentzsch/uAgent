@@ -195,11 +195,12 @@ json SessionControl(AppSession& session, const json& request) {
         session.ApiClient(), session.Runtime().processes,
         session.context.provider.routes, session.context.provider.providers,
         Debug().Enabled(), &session.Runtime().collaborator);
-    ToolResult result =
-        tool.run({{"operation", "followup"},
-                  {"agent_id", JsonValue(request, "agent_id", "")},
-                  {"prompt", JsonValue(request, "text", "")}},
-                 ToolContext{});
+    json arguments = {{"operation", "followup"},
+                      {"agent_id", JsonValue(request, "agent_id", "")},
+                      {"prompt", JsonValue(request, "text", "")}};
+    const std::string model = JsonValue(request, "model", "");
+    if (!model.empty()) arguments["model"] = model;
+    ToolResult result = tool.run(arguments, ToolContext{});
     return result.Ok() ? json{{"output", result.output}}
                        : json{{"error", result.output}};
   }

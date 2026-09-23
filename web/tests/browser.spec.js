@@ -244,6 +244,15 @@ test.describe("real noVNC input in a mobile modal", () => {
           Math.round(((cursor.y - display.y) / display.height) * remote.height),
         ),
       };
+      // WebKit can quantize MouseEvent coordinates to CSS pixels; RFB then
+      // quantizes again to framebuffer pixels. Account for the display scale.
+      const pixelQuantization =
+        Math.ceil(
+          Math.max(
+            remote.width / display.width,
+            remote.height / display.height,
+          ),
+        ) + 1;
       await expect
         .poll(() => {
           const actual = remote.pointers.at(-1);
@@ -254,7 +263,7 @@ test.describe("real noVNC input in a mobile modal", () => {
               )
             : Infinity;
         })
-        .toBeLessThanOrEqual(2);
+        .toBeLessThanOrEqual(pixelQuantization);
     };
     await move(12, 8);
     await assertPosition();

@@ -85,14 +85,15 @@ test("mobile chrome keeps an opaque safe area and applies appearance before app 
   const settings = page.getByRole("dialog", { name: "Settings", exact: true });
   const geometry = await settings.evaluate((element) => {
     const box = element.getBoundingClientRect();
-    const close = element
-      .querySelector("header button")
-      .getBoundingClientRect();
+    const header = element.querySelector("header");
+    const close = header.querySelector("button").getBoundingClientRect();
+    // Padding excludes the native scrollbar gutter shared with the body.
+    const gutter = header.offsetWidth - header.clientWidth;
     return {
       top: box.top,
       bottom: box.bottom,
       insetTop: close.top - box.top,
-      insetRight: box.right - close.right,
+      insetRight: box.right - close.right - gutter,
     };
   });
   expect(geometry.top).toBeGreaterThanOrEqual(47 + 8);

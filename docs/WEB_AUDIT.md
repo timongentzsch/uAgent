@@ -17,7 +17,7 @@ physical mobile device has been exercised.
 | Loaded history | New retained rows silently trimmed explicitly loaded pages to 256 entries. | Preserve loaded history. The separate cache still evicts inactive session views. |
 | Async work | Browser polling could overlap; read requests and PWA listeners could outlive their surface. | Serialize status requests, suspend hidden polling, abort superseded inspection reads, and clean up service-worker listeners. |
 | Feature boundaries | Activity imported a transport helper from settings UI, pulling unrelated styles into its dependency graph. | `state/api.ts` owns command/management transport. Feature modules own presentation. |
-| Markdown cache | Concurrent preparation counted the same cached source more than once. | Count unique entries and ignore late progressive render work after unmount. |
+| Markdown rendering | A progressive prefix could advance before its formatted blocks were ready, temporarily dropping text and moving the reader. Concurrent preparation also double-counted cache entries. | Commit the prefix and blocks together; derive the remaining plain text from that frame. Count unique cache entries and ignore late work after unmount. |
 | Design review | Showcase examples did not consistently use production controls. | Showcase uses shared button variants, modal loading and actual browser input in a modal. |
 | Auto permissions | Settings described the default reviewer by model name. | Product copy describes Auto review; the actual reviewer remains configurable. |
 
@@ -59,11 +59,11 @@ Local Chromium samples (one run each, not a statistical speedup claim):
 
 | Measurement | Previous master | Refactor |
 | --- | ---: | ---: |
-| Mock tokens / elapsed | 5,000 / 5,002 ms | 5,000 / 5,001 ms |
+| Mock tokens / elapsed | 5,000 / 5,002 ms | 5,000 / 5,002 ms |
 | Frame gap, 95th percentile | 16.8 ms | 16.7 ms |
 | Longest sampled frame gap | 16.8 ms | 16.8 ms |
-| Input round trip during streaming | Not sampled | 13.1 ms |
-| Input round trip after streaming | 25.9 ms | 8.6 ms |
+| Input round trip during streaming | Not sampled | 11.5 ms |
+| Input round trip after streaming | 25.9 ms | 8.4 ms |
 
 These runs exercised a 25,000-character plain response on this development
 machine. They establish no observed browser stall for that workload, not a
@@ -74,10 +74,10 @@ lives in `features/browser/gestures.ts`. These are policies, not measured device
 limits. Keep bundle measurements advisory. Reduce dependencies or work based on
 observed cost, not an arbitrary line count.
 
-Build sizes (gzip bytes): initial JavaScript 29,369 → 28,988; initial CSS
-5,384 → 5,562; precache 146,015 → 147,293. Added parity and layout behavior
+Build sizes (gzip bytes): initial JavaScript 29,369 → 28,987; initial CSS
+5,384 → 5,562; precache 146,015 → 147,259. Added parity and layout behavior
 therefore fits within essentially the same delivery footprint. The full asset
-set is 2,051,310 gzip bytes, with 1,893,250 bytes loaded only for optional
+set is 2,051,273 gzip bytes, with 1,893,250 bytes loaded only for optional
 rendering/viewer features.
 
 ## Remaining targets and evidence required

@@ -6,6 +6,7 @@
 #include <fstream>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include "include/browser/runtime.h"
 #include "include/core/json.h"

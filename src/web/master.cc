@@ -117,6 +117,7 @@ class Master {
         executable_(std::move(executable)),
         directory_(std::move(directory)),
         local_("http://127.0.0.1:" + std::to_string(options_.port)),
+        local_authority_(local_.substr(7)),
         origin_(options_.origin.empty() ? local_ : options_.origin),
         epoch_(RandomToken(16)),
         secret_(RandomToken()),
@@ -182,30 +183,27 @@ class Master {
           "connect-src "
           "'self'; manifest-src 'self'; worker-src 'self'; base-uri 'none'; "
           "form-action 'self'; frame-ancestors 'none'"}});
-    server_.set_pre_routing_handler(
-        [this](const Request& request, Response& response) {
-          const std::string host = request.get_header_value("Host");
-          // The local instance check uses its own secret, not a device cookie.
-          bool local = request.path == "/api/instance";
-          bool valid_host =
-              host == authority_ || (local && host == local_.substr(7));
-          std::string origin = request.get_header_value("Origin");
-          bool mutation = request.method != "GET" && request.method != "HEAD";
-          if (!valid_host || (!origin.empty() && origin != origin_) ||
-              (mutation && !local && origin != origin_)) {
-            Error(response, "invalid Host or Origin", 403);
-            return httplib::Server::HandlerResponse::Handled;
-          }
-          if (request.path.starts_with("/api/") &&
-              request.path != "/api/auth" && !local) {
-            std::lock_guard lock(mutex_);
-            if (DeviceId(request).empty()) {
-              Error(response, "authentication required", 401);
-              return httplib::Server::HandlerResponse::Handled;
-            }
-          }
-          return httplib::Server::HandlerResponse::Unhandled;
-        });
+    server_.set_pre_routing_handler([this](const Request& request,
+                                           Response& response) {
+      const std::string* expected_origin = ExpectedOrigin(request);
+      const std::string origin = request.get_header_value("Origin");
+      const bool instance = request.path == "/api/instance";
+      const bool mutation = request.method != "GET" && request.method != "HEAD";
+      if (!expected_origin || (!origin.empty() && origin != *expected_origin) ||
+          (mutation && !instance && origin != *expected_origin)) {
+        Error(response, "invalid Host or Origin", 403);
+        return httplib::Server::HandlerResponse::Handled;
+      }
+      if (request.path.starts_with("/api/") && request.path != "/api/auth" &&
+          !instance) {
+        std::lock_guard lock(mutex_);
+        if (DeviceId(request).empty()) {
+          Error(response, "authentication required", 401);
+          return httplib::Server::HandlerResponse::Handled;
+        }
+      }
+      return httplib::Server::HandlerResponse::Unhandled;
+    });
     server_.Post(
         "/api/instance", [this](const Request& request, Response& response) {
           if (!EqualSecret(request.get_header_value("X-Uagent-Instance"),
@@ -269,8 +267,9 @@ class Master {
                                          : "control";
             {
               std::lock_guard lock(mutex_);
-              if (request.get_header_value("Host") == authority_ &&
-                  request.get_header_value("Origin") == origin_) {
+              const std::string* expected_origin = ExpectedOrigin(request);
+              if (expected_origin &&
+                  request.get_header_value("Origin") == *expected_origin) {
                 device = DeviceId(request);
               }
             }
@@ -461,6 +460,18 @@ class Master {
   }
 
  private:
+  const std::string* ExpectedOrigin(const Request& request) const {
+    // Keep loopback available for a local browser or an SSH-forwarded PWA while
+    // preserving exact Host and Origin checks for the configured remote URL.
+    const std::string host = request.get_header_value("Host");
+    if (host == authority_) {
+      return &origin_;
+    }
+    if (host == local_authority_) {
+      return &local_;
+    }
+    return nullptr;
+  }
   std::string Pair() {
     pair_ = RandomToken(12);
     pair_deadline_ = Clock::now() + kPairingLifetime;
@@ -570,6 +581,7 @@ class Master {
       return;
     }
     pair_.clear();
+    const std::string* expected_origin = ExpectedOrigin(request);
     response.set_header(
         "Set-Cookie",
         "uagent_device=" + device.token +
@@ -577,7 +589,9 @@ class Master {
             std::to_string(std::chrono::duration_cast<std::chrono::seconds>(
                                kDeviceLifetime)
                                .count()) +
-            (origin_.starts_with("https://") ? "; Secure" : ""));
+            (expected_origin && expected_origin->starts_with("https://")
+                 ? "; Secure"
+                 : ""));
     Reply(response, {{"v", kProtocol}, {"device", device.id}});
   }
   void Publish(const std::string& session, const std::string& generation,
@@ -591,8 +605,8 @@ class Master {
   void AssetRead(const Request&, Response&);
 
   WebOptions options_;
-  std::string executable_, directory_, local_, origin_, authority_, epoch_,
-      secret_, pair_;
+  std::string executable_, directory_, local_, local_authority_, origin_,
+      authority_, epoch_, secret_, pair_;
   session::SessionHost host_;
   Clock::time_point pair_deadline_{}, auth_window_{}, scanned_{};
   int auth_attempts_ = 0;

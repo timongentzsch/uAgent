@@ -818,20 +818,16 @@ void Agent::ReportMemoryCompletion(BackgroundCompletion& completion) {
   {
     bool warning =
         event.action == "failed" || event.action == "receipt_unavailable";
-    const char* mark = warning ? "!" : "◇";
-    if (event.action == "created" || event.action == "updated") mark = "◆";
     std::string label = event.action;
     if (event.action == "no_change") {
       label = "extraction complete · nothing saved";
     } else if (event.action == "receipt_unavailable") {
       label = "extraction complete · receipt unavailable";
     }
-    std::string line = std::string(mark) + " memory " + label;
+    std::string line = "Memory " + label;
     if (!event.key.empty()) line += " · " + event.key;
     const bool changed = event.action == "created" ||
                          event.action == "updated" || event.action == "deleted";
-    std::string web_label = "memory " + label;
-    if (!event.key.empty()) web_label += " · " + event.key;
     json block = conversation_.RecordEntry(
         {{"text", line + (event.preview.empty() ? "" : "\n" + event.preview)},
          {"memory",
@@ -840,8 +836,7 @@ void Agent::ReportMemoryCompletion(BackgroundCompletion& completion) {
            {"automatic", event.automatic},
            {"minor", minor}}},
          {"activity",
-          {{"category", changed ? "change" : "explore"},
-           {"label", std::move(web_label)}}},
+          {{"category", changed ? "change" : "explore"}, {"label", line}}},
          {"status", warning ? "failed" : "completed"},
          {"turn_root", turn_root_}});
     Emit(Event{EventId::kMessageChanged, {{"block", block}}});

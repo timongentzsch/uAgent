@@ -11,6 +11,7 @@ namespace uagent {
   X(TestForeignToolMarkup)                       \
   X(TestToolResults)                             \
   X(TestToolViews)                               \
+  X(TestToolTrailer)                             \
   X(TestRegistries)                              \
   X(TestCommandAndDisplayRegistries)             \
   X(TestModelCatalogParsing)                     \

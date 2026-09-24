@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "include/agent/protocol.h"
+#include "include/agent/session_view.h"
 #include "include/core/json.h"
 #include "include/core/limits.h"
 #include "include/core/strings.h"
@@ -118,7 +119,7 @@ PresentationRecord ToolResultPresentation(const CallTask& task,
 
   bool truncated = model_output.size() < task.result.output.size();
   record.summary = ToolResultSummary(task.result, model_output, truncated);
-  record.output = model_output;
+  record.output = StripToolTrailer(model_output);
   return record;
 }
 

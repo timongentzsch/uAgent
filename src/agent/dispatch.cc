@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "include/agent/protocol.h"
+#include "include/agent/session_view.h"
 #include "include/api.h"
 #include "include/core/checked.h"
 #include "include/core/debug.h"
@@ -123,6 +124,7 @@ json ToolResultData(const CallTask& task, const ToolCall& call, int64_t turn,
       {"issue_field", task.issue ? task.issue->field : std::string()},
       {"duration_ms", task.duration_ms},
       {"result", task.result.output},
+      {"text", StripToolTrailer(task.result.output)},
       {"result_chars", task.result.output.size()},
       {"no_change", task.result.no_change},
       {"activity_terminal", task.result.activity_terminal},
@@ -130,6 +132,7 @@ json ToolResultData(const CallTask& task, const ToolCall& call, int64_t turn,
        task.result.artifact ? task.result.artifact->path : std::string()},
       {"artifact_bytes",
        task.result.artifact ? task.result.artifact->bytes : uint64_t{0}}};
+  if (task.result.facts.is_object()) data.update(task.result.facts);
   // The operation is a schema enum, not an argument value. It is enough to
   // distinguish a quiet poll from a wait without journalling ids or input.
   if (call.name == "activity" && task.args.is_object()) {

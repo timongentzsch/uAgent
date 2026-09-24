@@ -10,6 +10,7 @@
 #include <string>
 
 #include "include/agent/child_agent.h"
+#include "include/agent/session_view.h"
 #include "include/agent/tool_presentation.h"
 #include "include/app/options.h"
 #include "include/core/activity.h"
@@ -369,6 +370,17 @@ void TestToolViews() {
   CHECK(ToolView(&run, {{"command", command}})["input"][0]["text"] == command);
   // Unparseable arguments still render, as the raw text.
   CHECK(ToolView(nullptr, json("{broken"))["input"][0]["text"] == "{broken");
+}
+
+// The resume hint is for the model; rows link to the agent through facts.
+void TestToolTrailer() {
+  CHECK(StripToolTrailer("done\n[collaborator agent-1; resume with subagent "
+                         "operation=followup]") == "done");
+  CHECK(StripToolTrailer("done\n[collaborator agent-1; persistent runtime "
+                         "retained]") == "done");
+  // Only a final line is a trailer; the same text elsewhere is content.
+  CHECK(StripToolTrailer("[collaborator x]\nmore") == "[collaborator x]\nmore");
+  CHECK(StripToolTrailer("plain") == "plain");
 }
 
 void TestDiffLineColoring() {

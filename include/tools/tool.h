@@ -79,7 +79,10 @@ struct ToolResult {
   // Optional model-facing override for this call. Most tools inherit their
   // registry cap; a bounded richer result can raise it.
   int64_t result_chars = -1;
-  std::string display;     // optional terminal-only receipt
+  std::string display;  // optional terminal-only receipt
+  // Display-only facts for the transcript row, never model-facing: links to
+  // the work a call started (agent_id, activity_id) and shared files (file).
+  json facts = nullptr;
   bool no_change = false;  // activity poll found nothing new
   bool activity_terminal = false;
 

@@ -326,10 +326,12 @@ ShellCommandResult StartDetachedShell(ProcessSupervisor& supervisor,
   if (!supervisor.TryAdd(std::move(job), max_jobs)) {
     return fail_and_reap(JobLimitError(max_jobs));
   }
-  return {ToolSuccess("[detached] pid " + std::to_string(pid) + ", log: " +
-                      log + " — activity id " + std::to_string(pid) +
-                      "; verify readiness with activity output"),
-          std::nullopt, /*launched=*/true};
+  ToolResult detached =
+      ToolSuccess("[detached] pid " + std::to_string(pid) + ", log: " + log +
+                  " — activity id " + std::to_string(pid) +
+                  "; verify readiness with activity output");
+  detached.facts = {{"activity_id", pid}};
+  return {std::move(detached), std::nullopt, /*launched=*/true};
 }
 
 }  // namespace
@@ -542,12 +544,13 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
             std::nullopt, /*launched=*/true};
   }
   if (is_subagent) {
-    return {ToolSuccess("[started] subagent id " + std::to_string(activity_id) +
-                        "; completion is added to the next natural model call "
-                        "without starting one; inspect activity output for "
-                        "progress/readiness, or wait when the next step is "
-                        "blocked"),
-            std::nullopt, /*launched=*/true};
+    ToolResult started = ToolSuccess(
+        "[started] subagent id " + std::to_string(activity_id) +
+        "; completion is added to the next natural model call without "
+        "starting one; inspect activity output for progress/readiness, or "
+        "wait when the next step is blocked");
+    started.facts = {{"activity_id", activity_id}};
+    return {std::move(started), std::nullopt, /*launched=*/true};
   }
   std::string initial_output;
   {
@@ -561,7 +564,9 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
                        "it keeps running while you work; poll or wait on it "
                        "for output";
   if (!initial_output.empty()) output += "\n" + initial_output;
-  return {ToolSuccess(std::move(output)), std::nullopt, /*launched=*/true};
+  ToolResult running = ToolSuccess(std::move(output));
+  running.facts = {{"activity_id", activity_id}};
+  return {std::move(running), std::nullopt, /*launched=*/true};
 }
 
 ToolResult ToolRunApprovedShell(ProcessSupervisor& supervisor,

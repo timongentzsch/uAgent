@@ -13,6 +13,7 @@
 
 #include "include/agent.h"
 #include "include/agent/dispatch.h"
+#include "include/agent/session_view.h"
 #include "include/agent/tool_presentation.h"
 #include "include/core/activity.h"
 #include "include/core/events.h"
@@ -63,12 +64,13 @@ void Agent::AppendToolResult(const ToolCall& call, const std::string& result,
   conversation_.RecordToolDisplay(call.id,
                                   original.Ok() ? original.display : "");
   conversation_.AddStatistics({{"tool_results", 1}, {"tool_ms", duration_ms}});
-  json facts = {{"name", call.name},
-                {"status", CompletionStatusName(original.status)},
-                {"duration_ms", duration_ms},
-                {"output", Utf8Trunc(original.output, kPreviewChars)},
-                {"truncated", original.output.size() > kPreviewChars},
-                {"change", Utf8Trunc(original.display, kChangePreviewChars)}};
+  json facts = {
+      {"name", call.name},
+      {"status", CompletionStatusName(original.status)},
+      {"duration_ms", duration_ms},
+      {"output", Utf8Trunc(StripToolTrailer(original.output), kPreviewChars)},
+      {"truncated", original.output.size() > kPreviewChars},
+      {"change", Utf8Trunc(original.display, kChangePreviewChars)}};
   if (retain_exchanges_) {
     json exchange = {
         {"request", {{"name", call.name}, {"arguments", call.args}}},
@@ -83,6 +85,7 @@ void Agent::AppendToolResult(const ToolCall& call, const std::string& result,
     }
   }
   if (original.artifact) facts["artifact"] = original.artifact->path;
+  if (original.facts.is_object()) facts.update(original.facts);
   facts["call_id"] = call.id;
   facts["response_id"] = call.response_id;
   facts["occurrence_id"] = call.occurrence_id;

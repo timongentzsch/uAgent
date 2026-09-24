@@ -128,6 +128,9 @@ bool IsBlankLine(std::string_view line) {
 // the text they typed, with the attachments shown from their own records.
 std::string DisplayText(const json& message) {
   std::string text = Text(message);
+  if (JsonValue(message, "role", "") == "tool") {
+    return StripToolTrailer(std::move(text));
+  }
   const json* content = JsonArray(message, "content");
   if (!content) return text;
   for (const json& part : *content) {
@@ -471,6 +474,9 @@ json DisplayBlock(const Conversation& conversation, uint64_t sequence,
     }
     block["detail_id"] = detail_id;
     block["change"] = Utf8Trunc(JsonValue(detail, "change", ""), kPreviewChars);
+    for (const char* key : {"agent_id", "activity_id", "file"}) {
+      if (detail.contains(key)) block[key] = detail[key];
+    }
     block["artifact"] = detail.contains("artifact");
     if (detail.contains("result_replay")) {
       block["replay"] = detail["result_replay"];
@@ -654,6 +660,15 @@ json ConversationExchange(const Conversation& conversation,
           {"bytes", text.size()},
           {"more", end < text.size()}};
 }
+std::string StripToolTrailer(std::string text) {
+  const size_t line = text.rfind("\n[collaborator ");
+  if (line != std::string::npos && text.back() == ']' &&
+      text.find('\n', line + 1) == std::string::npos) {
+    text.resize(line);
+  }
+  return text;
+}
+
 std::string StripAttachedTrailer(const std::string& text) {
   constexpr std::string_view kMarker = "\n\nAttached:\n";
   const size_t marker = text.rfind(kMarker);

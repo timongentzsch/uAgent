@@ -264,7 +264,7 @@ ToolResult AccessMemory(const std::string& name, const std::string& scope,
     WriteMemoryEvent(event, "", error);
     LibraryChanged();
     ToolResult result = ToolSuccess("forgot " + path.string());
-    result.display = "◆ memory deleted · " + event.key;
+    result.display = "Memory deleted · " + event.key;
     return result;
   }
 
@@ -332,7 +332,7 @@ ToolResult AccessMemory(const std::string& name, const std::string& scope,
   }
   if (action != "unchanged") {
     LibraryChanged();
-    saved.display = "◆ memory " + action + " · " + event.key;
+    saved.display = "Memory " + action + " · " + event.key;
   }
   return saved;
 }

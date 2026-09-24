@@ -199,6 +199,8 @@ json PresentationJson(const PresentationRecord& record) {
   if (!record.change.empty()) {
     value["change"] = record.change;
   }
+  if (!record.output.empty()) value["output"] = record.output;
+  if (record.minor) value["minor"] = true;
   AddArtifacts(value, record.artifacts);
   return value;
 }
@@ -211,7 +213,6 @@ json AppProjection(const Event& event) {
   if (!event.text.empty() && !data.contains("text")) {
     data["text"] = std::string(event.text);
   }
-  if (event.verbose) data["verbose"] = true;
   if (event.presentation) {
     data["presentation"] = PresentationJson(*event.presentation);
   }
@@ -483,11 +484,12 @@ void Observability::Unsubscribe(uint64_t subscription) {
   });
 }
 
-Event NoticeEvent(PresentationStatus status, std::string text) {
+Event NoticeEvent(PresentationStatus status, std::string text, bool minor) {
   Event event{EventId::kNotice};
   event.presentation = PresentationRecord{};
   event.presentation->kind = PresentationKind::kNotice;
   event.presentation->status = status;
+  event.presentation->minor = minor;
   event.presentation->title = text;
   event.data = json{{"text", std::move(text)}};
   // Notices printed unconditionally before this existed, including headless.
@@ -587,11 +589,9 @@ void Emit(Event event) noexcept {
   if (g_observability) g_observability->Emit(std::move(event));
 }
 
-ResponseObservation::ResponseObservation(bool verbose, const std::string& label,
-                                         json context)
+ResponseObservation::ResponseObservation(const std::string& label, json context)
     : context_(std::move(context)) {
   Event event{EventId::kResponseStarted, context_};
-  event.verbose = verbose;
   event.text = label;
   Emit(std::move(event));
 }

@@ -381,7 +381,7 @@ std::string Api::RequestModel() const {
 
 ChatResult Api::Chat(const json& messages, const json& tool_schemas,
                      int64_t timeout_s, const std::string& session_id,
-                     size_t estimated_bytes, bool full_reasoning) {
+                     size_t estimated_bytes) {
   ChatResult res;
   http_exchanges = json::array();
   auto overall_started = std::chrono::steady_clock::now();
@@ -458,7 +458,7 @@ ChatResult Api::Chat(const json& messages, const json& tool_schemas,
         std::to_string(attempt);
     response_context.erase("response_base");
     res = PerformChat(payload, web_available, attempt_timeout, session_id,
-                      full_reasoning, &exchange, std::move(response_context));
+                      &exchange, std::move(response_context));
     json recorded =
         exchange.Finish(res.http_status, res.interrupted, res.error);
     if (!recorded.is_null()) http_exchanges.push_back(std::move(recorded));
@@ -602,8 +602,7 @@ WebResponse Api::GetUrl(const std::string& url, int64_t timeout_s, size_t cap) {
 
 ChatResult Api::PerformChat(const std::string& payload, bool web_available,
                             int64_t timeout_s, const std::string& session_id,
-                            bool full_reasoning, HttpExchange* exchange,
-                            json response_context) {
+                            HttpExchange* exchange, json response_context) {
   ChatResult res;
   res.response_id = JsonValue(response_context, "response_id", "");
   res.attempt = JsonValue(response_context, "attempt", int64_t{0});
@@ -676,8 +675,7 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
   const std::string activity =
       web_available ? std::string(kWaitingActivity) + " · web available"
                     : std::string(kWaitingActivity);
-  ResponseObservation observation(full_reasoning, activity,
-                                  std::move(response_context));
+  ResponseObservation observation(activity, std::move(response_context));
 
   CURLcode rc = CURLE_OK;
   bool cancelled =

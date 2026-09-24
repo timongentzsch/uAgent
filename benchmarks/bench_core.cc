@@ -73,7 +73,7 @@ void BenchmarkStream() {
   close(null);
   double milliseconds = 0;
   {
-    ResponseObservation response(/*verbose=*/false, "benchmark");
+    ResponseObservation response("benchmark");
     milliseconds = Measure(kEvents, [&] {
       size_t fed = stream.Feed(event.data(), event.size());
       return fed == event.size() ? size_t{1} : size_t{0};

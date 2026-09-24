@@ -34,9 +34,14 @@ class TerminalPresenter {
   void Consume(const AppEvent& event) noexcept;
   void Block(const json& block);
   void Finish() noexcept;
+  // /verbose: full reasoning, one row per call, whole tool output, every
+  // source and routine notices. A presentation choice, never a runtime one.
+  void SetDetailed(bool detailed) { detailed_ = detailed; }
+  bool Detailed() const { return detailed_; }
 
  private:
   struct State;
+  bool detailed_ = false;
   std::unique_ptr<State> state_;
   std::unique_ptr<TerminalSpinner> spinner_;
 };
@@ -44,7 +49,8 @@ class TerminalPresenter {
 void PrintMessageHeader();
 std::string TurnStatsLine(const json& summary);
 
-void PrintPresentation(const PresentationRecord& record) noexcept;
+void PrintPresentation(const PresentationRecord& record,
+                       bool detailed = false) noexcept;
 
 }  // namespace uagent
 

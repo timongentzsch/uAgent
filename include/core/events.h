@@ -104,12 +104,17 @@ struct PresentationRecord {
   // the scrollback rather than reading as one more tool row.
   bool skill = false;
   bool poll = false;  // bare activity-tool check, no interaction sent
+  // Routine detail a client shows only when asked for the full picture.
+  bool minor = false;
+  // The result text the model received, for a client that expands results.
+  // Live events only: retained history already holds it as the tool message.
+  std::string output;
   std::vector<PresentationArtifact> artifacts;
 };
 
-// What the agent decided to do is shown in full; only results are shortened
-// outside /verbose. A label with newlines becomes detail so the row stays one
-// line.
+// What the agent decided to do is shown in full; results carry a one-line
+// summary and their output, and each client picks one. A label with newlines
+// becomes detail so the row stays one line.
 inline void SetCallLabel(PresentationRecord& record, std::string label) {
   record.multiline = label.find('\n') != std::string::npos;
   (record.multiline ? record.detail : record.summary) = std::move(label);
@@ -124,7 +129,8 @@ inline constexpr const char* kHeadlessProgressPrefix = "· ";
 // spine as everything else so it reaches the journal and the JSONL, not only a
 // terminal that may not be attached. Severity picks the color, nothing else.
 struct Event;
-Event NoticeEvent(PresentationStatus status, std::string text);
+Event NoticeEvent(PresentationStatus status, std::string text,
+                  bool minor = false);
 
 struct Event {
   explicit Event(EventId event_id) : id(event_id) {}
@@ -136,7 +142,6 @@ struct Event {
   std::optional<PresentationRecord> presentation;
   std::string_view text;
   bool render = false;
-  bool verbose = false;
 };
 
 struct EventPolicy {
@@ -244,8 +249,8 @@ void Emit(Event event) noexcept;
 
 class ResponseObservation {
  public:
-  ResponseObservation(bool verbose, const std::string& label,
-                      json context = json::object());
+  explicit ResponseObservation(const std::string& label,
+                               json context = json::object());
   ~ResponseObservation();
   ResponseObservation(const ResponseObservation&) = delete;
   ResponseObservation& operator=(const ResponseObservation&) = delete;

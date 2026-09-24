@@ -129,22 +129,21 @@ void TestPollCollapse() {
   PresentationRecord call_record = ToolCallPresentation(quiet, call);
   CHECK(call_record.poll);
 
-  PresentationRecord first = ToolResultPresentation(quiet, call, "", false);
+  PresentationRecord first = ToolResultPresentation(quiet, call, "");
   CHECK(first.poll);
   CHECK(first.summary.find("waited on activity 4242") != std::string::npos);
   CHECK(first.detail.empty());
 
   // A second quiet poll keeps the original anchor, so elapsed only grows.
   auto before = PollElapsed(4242);
-  PresentationRecord second = ToolResultPresentation(quiet, call, "", false);
+  PresentationRecord second = ToolResultPresentation(quiet, call, "");
   CHECK(second.poll);
   CHECK(PollElapsed(4242) >= before);
 
   // Real output ends the quiet spell and renders as an ordinary result.
   CallTask productive = quiet;
   productive.result = ToolSuccess("server ready");
-  PresentationRecord shown =
-      ToolResultPresentation(productive, call, "", false);
+  PresentationRecord shown = ToolResultPresentation(productive, call, "");
   CHECK(!shown.poll);
   CHECK(shown.summary.find("waited on activity") == std::string::npos);
 
@@ -161,12 +160,12 @@ void TestPollCollapse() {
   CallTask steering = quiet;
   steering.args = {{"operation", "write"}, {"id", 4242}, {"chars", "y\n"}};
   CHECK(!IsActivityPoll(steering));
-  CHECK(!ToolResultPresentation(steering, call, "", false).poll);
+  CHECK(!ToolResultPresentation(steering, call, "").poll);
 
   // A failed poll still collapses, but is not styled as success.
   CallTask failed = quiet;
   failed.result = ToolFailure(ToolErrorCode::kNotFound, "gone");
-  PresentationRecord failure = ToolResultPresentation(failed, call, "", false);
+  PresentationRecord failure = ToolResultPresentation(failed, call, "");
   CHECK(!failure.poll);
   CHECK(failure.status == PresentationStatus::kFailed);
 
@@ -208,15 +207,15 @@ void TestPollCollapse() {
   script.result =
       ToolSuccess("[script: .uagent/scratch/x.py · wrote]\n" + body);
   PresentationRecord compact =
-      ToolResultPresentation(script, call, script.result.output, false);
+      ToolResultPresentation(script, call, script.result.output);
   CHECK(compact.change.empty());
   CHECK(!compact.multiline);
   CHECK(compact.summary.starts_with("[script: .uagent/scratch/x.py · wrote]"));
   CHECK(compact.summary.find("+30 lines") != std::string::npos);
-  PresentationRecord loud =
-      ToolResultPresentation(script, call, script.result.output, true);
-  CHECK(loud.multiline);
-  CHECK(loud.detail.find("\n30") != std::string::npos);  // /verbose is whole
+  // The whole output travels with the row; /verbose prints it.
+  CHECK(compact.output.find("\n30") != std::string::npos);
+  CHECK(CaptureStdout([&] { PrintPresentation(compact, true); }).find("\n30") !=
+        std::string::npos);
   std::string drawn = CaptureStdout([&] { PrintPresentation(compact); });
   CHECK(drawn.find("← [2] activity") != std::string::npos);
   CHECK(drawn.find("[script:") != std::string::npos);
@@ -225,14 +224,14 @@ void TestPollCollapse() {
   wrote.result = ToolSuccess("wrote 9 bytes to a.txt");
   wrote.result.display = "Created a.txt\n+x";
   PresentationRecord receipt =
-      ToolResultPresentation(wrote, call, wrote.result.output, false);
+      ToolResultPresentation(wrote, call, wrote.result.output);
   CHECK(receipt.detail.empty() && receipt.summary.empty());
   CHECK(CaptureStdout([&] { PrintPresentation(receipt); }).find("←") ==
         std::string::npos);
   // The shared record is independent of which client owns stdout.
   g_tty = false;
   PresentationRecord headless =
-      ToolResultPresentation(wrote, call, wrote.result.output, false);
+      ToolResultPresentation(wrote, call, wrote.result.output);
   CHECK(headless.change == receipt.change);
   CHECK(headless.summary == receipt.summary);
   g_tty = tty;
@@ -244,11 +243,10 @@ void TestPollCollapse() {
   std::string plain = CaptureStdout([&] { PrintPresentation(compact); });
   CHECK(plain.find("<- [2]") != std::string::npos);
   CHECK(plain.find("←") == std::string::npos);
-  compact.multiline = true;
-  compact.detail = "model text: µ · ← …";
+  compact.output = "model text: µ · ← …\nsecond";
   CHECK(CaptureStdout([&] {
-          PrintPresentation(compact);
-        }).find(compact.detail) != std::string::npos);
+          PrintPresentation(compact, true);
+        }).find(compact.output) != std::string::npos);
   CHECK(StatusBarLine("thinking · 2s").find("thinking - 2s") !=
         std::string::npos);
   g_unicode = prior_unicode;
@@ -404,8 +402,8 @@ void TestHostedSearchStatusRow() {
   CHECK(CurrentTerminalActivity().empty());
   const std::string corrected = CaptureStdout([&] {
     TerminalPresenter verbose;
-    verbose.Consume(
-        AppEvent{1, "", "response.started", {{"verbose", true}}, false});
+    verbose.SetDetailed(true);
+    verbose.Consume(AppEvent{1, "", "response.started", json::object(), false});
     verbose.Consume(AppEvent{
         2, "", "response.reasoning.delta", {{"text", "original"}}, false});
     verbose.Consume(AppEvent{3,

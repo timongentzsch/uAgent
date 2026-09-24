@@ -10,8 +10,8 @@
     "file": "assets/_baseUniq-DR4vVjyC.js",
     "name": "_baseUniq"
   },
-  "_activity-status-BVpYXibB.js": {
-    "file": "assets/activity-status-BVpYXibB.js",
+  "_activity-status-D3YGwHeZ.js": {
+    "file": "assets/activity-status-D3YGwHeZ.js",
     "name": "activity-status",
     "imports": [
       "_ui--nl-hiEy.js",
@@ -623,8 +623,8 @@
       "node_modules/@mermaid-js/parser/dist/chunks/mermaid-parser.core/cynefin-OW5HDTMX.mjs"
     ]
   },
-  "_message-DKhcd-re.js": {
-    "file": "assets/message-DKhcd-re.js",
+  "_message-Bvm9AQsa.js": {
+    "file": "assets/message-Bvm9AQsa.js",
     "name": "message",
     "imports": [
       "_ui--nl-hiEy.js",
@@ -633,7 +633,7 @@
       "_display-eLEs6893.js",
       "_quantities-CUEaPVqX.js",
       "_markdown-view-BwpO_4gP.js",
-      "_message-view-CaJmYnyc.js",
+      "_message-view-Z74g0hSP.js",
       "_diff-view-Cs3j3nX3.js"
     ],
     "css": [
@@ -645,8 +645,8 @@
     "file": "assets/message-DkyyV18J.css",
     "src": "_message-DkyyV18J.css"
   },
-  "_message-view-CaJmYnyc.js": {
-    "file": "assets/message-view-CaJmYnyc.js",
+  "_message-view-Z74g0hSP.js": {
+    "file": "assets/message-view-Z74g0hSP.js",
     "name": "message-view",
     "imports": [
       "_display-eLEs6893.js"
@@ -779,7 +779,7 @@
     "name": "ui"
   },
   "index.html": {
-    "file": "assets/index-MmfDP7X6.js",
+    "file": "assets/index-C6dJzWfJ.js",
     "name": "index",
     "src": "index.html",
     "isEntry": true,
@@ -1806,14 +1806,14 @@
     ]
   },
   "src/features/chat/activity.tsx": {
-    "file": "assets/activity-B6E0pNMA.js",
+    "file": "assets/activity-jav6WdpL.js",
     "name": "activity",
     "src": "src/features/chat/activity.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_ui--nl-hiEy.js",
       "_api-DmP0yOfF.js",
-      "_message-DKhcd-re.js",
+      "_message-Bvm9AQsa.js",
       "_session-summary-JDKHelbi.js",
       "_arrow-left-CAGGW1fk.js",
       "_square-BSHPzahU.js",
@@ -1822,7 +1822,7 @@
       "_history-page-CcfTUXP_.js",
       "_preload-helper-Czpn1I53.js",
       "_quantities-CUEaPVqX.js",
-      "_activity-status-BVpYXibB.js",
+      "_activity-status-D3YGwHeZ.js",
       "_markdown-view-BwpO_4gP.js"
     ],
     "dynamicImports": [
@@ -1834,13 +1834,13 @@
     ]
   },
   "src/features/chat/chat.tsx": {
-    "file": "assets/chat-DOYBhZYP.js",
+    "file": "assets/chat-OF7MNxOC.js",
     "name": "chat",
     "src": "src/features/chat/chat.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_ui--nl-hiEy.js",
-      "_message-DKhcd-re.js"
+      "_message-Bvm9AQsa.js"
     ]
   },
   "src/features/chat/conversation-actions.tsx": {
@@ -1864,7 +1864,7 @@
     ]
   },
   "src/features/composer/composer.tsx": {
-    "file": "assets/composer-DWHEKObT.js",
+    "file": "assets/composer-DpmF-MG4.js",
     "name": "composer",
     "src": "src/features/composer/composer.tsx",
     "isDynamicEntry": true,
@@ -1877,7 +1877,7 @@
       "_mention-D08lr6wL.js",
       "_preload-helper-Czpn1I53.js",
       "_quantities-CUEaPVqX.js",
-      "_activity-status-BVpYXibB.js"
+      "_activity-status-D3YGwHeZ.js"
     ],
     "dynamicImports": [
       "src/features/chat/decision.tsx"
@@ -2009,7 +2009,7 @@
     ]
   },
   "src/features/settings/statistics.tsx": {
-    "file": "assets/statistics-BqxjJBcW.js",
+    "file": "assets/statistics-etw6wdUU.js",
     "name": "statistics",
     "src": "src/features/settings/statistics.tsx",
     "isDynamicEntry": true,
@@ -2018,7 +2018,7 @@
       "_display-eLEs6893.js",
       "_statistics-layout-CQGwnpLA.js",
       "_quantities-CUEaPVqX.js",
-      "_message-view-CaJmYnyc.js"
+      "_message-view-Z74g0hSP.js"
     ]
   },
   "src/features/settings/tools.tsx": {
@@ -2035,7 +2035,7 @@
     ]
   },
   "src/features/sidebar/sidebar.tsx": {
-    "file": "assets/sidebar-CqkwkuLk.js",
+    "file": "assets/sidebar-Lix4vF-_.js",
     "name": "sidebar",
     "src": "src/features/sidebar/sidebar.tsx",
     "isDynamicEntry": true,
@@ -2047,7 +2047,7 @@
       "_plus-DVwC9aMu.js",
       "_settings-D7XQ3FSH.js",
       "_connection-status-CYKto_cg.js",
-      "_activity-status-BVpYXibB.js"
+      "_activity-status-D3YGwHeZ.js"
     ]
   },
   "src/shared/diagram.tsx": {

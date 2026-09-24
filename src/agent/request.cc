@@ -225,8 +225,8 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
     last_progress = now;
   };
   api_.observe_progress(json::object(), 0);
-  ChatResult result = api_.Chat(messages, schemas, turn_budget, session_id_,
-                                estimated_bytes, verbose_);
+  ChatResult result =
+      api_.Chat(messages, schemas, turn_budget, session_id_, estimated_bytes);
   api_.observe_progress = {};
   if (progress_pending) {
     emit_progress(pending_progress, pending_response_bytes);

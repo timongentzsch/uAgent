@@ -335,7 +335,6 @@ json Application::InterfaceState() const {
           {"attachments", attachments_.size()},
           {"background", runtime_.processes.Count()},
           {"tools", context_.tools.size()},
-          {"verbose", agent_.Verbose()},
           {"yolo", ApprovalIsYolo()}};
 }
 

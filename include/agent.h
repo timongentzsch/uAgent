@@ -72,8 +72,6 @@ class Agent {
   std::string LastText() const { return conversation_.LastAssistantText(); }
 
   size_t MessageCount() const { return conversation_.UserVisibleCount(); }
-  bool Verbose() const { return verbose_; }
-  void SetVerbose(bool verbose) { verbose_ = verbose; }
 
   void RouteChanged();
 
@@ -381,7 +379,6 @@ class Agent {
   int64_t turn_id_ = 0;
   int64_t request_id_ = 0;
   uint64_t revision_ = 0;
-  bool verbose_ = false;
   bool cost_warning_shown_ = false;
   bool token_warning_shown_ = false;
   std::chrono::steady_clock::time_point active_deadline_ =

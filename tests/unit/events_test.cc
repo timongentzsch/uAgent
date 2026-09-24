@@ -184,11 +184,10 @@ void TestObservabilityEvents() {
   CHECK(!received[2].data.contains("query"));
   SetObservability(&observable);
   {
-    ResponseObservation response(false, "waiting",
-                                 {{"response_id", "r-2-4-1"},
-                                  {"turn", 2},
-                                  {"request", 4},
-                                  {"attempt", 1}});
+    ResponseObservation response("waiting", {{"response_id", "r-2-4-1"},
+                                             {"turn", 2},
+                                             {"request", 4},
+                                             {"attempt", 1}});
   }
   SetObservability(nullptr);
   REQUIRE(received.size() == 5);

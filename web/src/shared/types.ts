@@ -111,7 +111,12 @@ export interface TurnSummary {
   usage: Usage;
 }
 export interface Block {
-  memory?: { action: string; key: string; automatic: boolean };
+  memory?: {
+    action: string;
+    key: string;
+    automatic: boolean;
+    minor?: boolean;
+  };
   activity?: ToolActivity;
   sequence?: number;
   summary?: TurnSummary;

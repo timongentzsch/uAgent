@@ -361,8 +361,7 @@ bool Agent::RunCalls(
     {
       Event result_event{EventId::kPresentation};
       result_event.presentation = ToolResultPresentation(
-          tasks[index], calls[index], model_results[index], verbose_);
-      if (verbose_) result_event.presentation->activity.erase("group");
+          tasks[index], calls[index], model_results[index]);
       if (result_event.presentation) {
         conversation_.RecordDisplay(
             calls[index].detail_id,

@@ -87,7 +87,6 @@ void Agent::RecordModelResponse(
                    {"annotations", response.annotations},
                    {"line_open", state.line_open},
                    {"citations", !response.content.empty()}}};
-    sources.verbose = verbose_;
     Emit(std::move(sources));
     state.line_open = false;
   }

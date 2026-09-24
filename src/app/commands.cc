@@ -92,7 +92,8 @@ void RunSlashCommand(AppSession& session, const ParsedSlashCommand& command,
     case SlashCommandId::kReset:
     case SlashCommandId::kSessions:
     case SlashCommandId::kFork:
-      result = {{"error", "conversation navigation belongs to the client"}};
+    case SlashCommandId::kVerbose:
+      result = {{"error", "this command belongs to the client"}};
       return;
     case SlashCommandId::kClear:
       printf("\033[H\033[2J");
@@ -140,14 +141,6 @@ void RunSlashCommand(AppSession& session, const ParsedSlashCommand& command,
       break;
     case SlashCommandId::kVariant:
       HandleVariant(session, command.argument);
-      break;
-    case SlashCommandId::kVerbose:
-      session.ActiveAgent().SetVerbose(!session.ActiveAgent().Verbose());
-      printf("%s· verbose %s%s\n", DIM(),
-             session.ActiveAgent().Verbose()
-                 ? "ON — full reasoning and expanded bounded tool output"
-                 : "off — compact reasoning and compact tool output",
-             RST());
       break;
     case SlashCommandId::kHelp:
       PrintCommandHelp();

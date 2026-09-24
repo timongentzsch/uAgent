@@ -122,6 +122,8 @@ export function presentMessages(blocks: Block[]): PresentedBlock[] {
       !block.truncated
     )
       continue;
+    // Routine memory outcomes are for the terminal's /verbose view only.
+    if (block.memory?.minor) continue;
     if (block.kind === "user") calls.clear();
     if (block.kind === "tool_result") {
       const index = find(block);

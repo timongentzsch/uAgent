@@ -201,16 +201,10 @@ void PrintTraceToolResult(const json& call, const std::string& ordinal) {
     PrintPresentation(record);
     return;
   }
-  std::string result = call["result"].is_string()
-                           ? call["result"].get<std::string>()
-                           : JsonDump(call["result"]);
-  if (result.find('\n') != std::string::npos) {
-    record.detail = std::move(result);
-    record.multiline = true;
-  } else {
-    record.summary = std::move(result);
-  }
-  PrintPresentation(record);
+  // A trace is the full record: the result prints expanded.
+  record.output = call["result"].is_string() ? call["result"].get<std::string>()
+                                             : JsonDump(call["result"]);
+  PrintPresentation(record, /*detailed=*/true);
 }
 
 void PrintLatestTrace(const json& archive, const std::vector<Tool>& tools) {

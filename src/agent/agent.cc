@@ -810,10 +810,12 @@ void Agent::ReportMemoryCompletion(BackgroundCompletion& completion) {
     std::filesystem::remove(completion.receipt_path, ignored);
   }
 
-  bool show = verbose_ || event.action == "created" ||
-              event.action == "updated" || event.action == "failed" ||
-              event.action == "receipt_unavailable";
-  if (show) {
+  // Routine outcomes are recorded too, marked minor: a client showing the
+  // full picture lists them, the default view does not.
+  const bool minor = event.action != "created" && event.action != "updated" &&
+                     event.action != "failed" &&
+                     event.action != "receipt_unavailable";
+  {
     bool warning =
         event.action == "failed" || event.action == "receipt_unavailable";
     const char* mark = warning ? "!" : "◇";
@@ -835,7 +837,8 @@ void Agent::ReportMemoryCompletion(BackgroundCompletion& completion) {
          {"memory",
           {{"action", event.action},
            {"key", event.key},
-           {"automatic", event.automatic}}},
+           {"automatic", event.automatic},
+           {"minor", minor}}},
          {"activity",
           {{"category", changed ? "change" : "explore"},
            {"label", std::move(web_label)}}},
@@ -844,9 +847,10 @@ void Agent::ReportMemoryCompletion(BackgroundCompletion& completion) {
     Emit(Event{EventId::kMessageChanged, {{"block", block}}});
     Emit(NoticeEvent(
         warning ? PresentationStatus::kFailed : PresentationStatus::kNeutral,
-        std::move(line)));
+        std::move(line), minor));
     if (!event.preview.empty()) {
-      Emit(NoticeEvent(PresentationStatus::kNeutral, "  " + event.preview));
+      Emit(NoticeEvent(PresentationStatus::kNeutral, "  " + event.preview,
+                       minor));
     }
   }
   DebugLog("memory_extract_finished", {{"activity_id", completion.activity_id},

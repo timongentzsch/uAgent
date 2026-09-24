@@ -35,7 +35,7 @@ namespace {
 // runs, the session row otherwise -- the same renderers presentation_test pins.
 std::string StatusRow(const json& state,
                       std::chrono::steady_clock::duration elapsed,
-                      bool interrupting) {
+                      bool interrupting, bool verbose) {
   const int64_t used = JsonValue(state, "context_tokens", int64_t{0});
   const int64_t window = JsonValue(state, "context_window", int64_t{0});
   const std::string route = JsonValue(state, "route", "");
@@ -75,6 +75,7 @@ std::string StatusRow(const json& state,
                     .context_window = window,
                     .model = route,
                     .approval = JsonValue(permissions, "effective", "ask"),
+                    .verbose = verbose,
                     .background = background + subagents});
 }
 
@@ -335,6 +336,14 @@ class Terminal {
         const ForkArgument parsed = ParseForkArgument(text.substr(7));
         Send({{"kind", "rewind"},
               {"turn", parsed.title.empty() ? parsed.turn : 0}});
+      } else if (text == "/verbose") {
+        presenter_.SetDetailed(!presenter_.Detailed());
+        WriteTerminalRecord(
+            presenter_.Detailed()
+                ? "· verbose ON — full reasoning and tool output\n"
+                : "· verbose off — compact reasoning and tool output\n");
+        wake_.Wake();
+        continue;
       } else if (text == "/share") {
         Send({{"kind", "share"}});
       } else if (text.starts_with("/share ")) {
@@ -557,7 +566,7 @@ class Terminal {
         state,
         turn_started_ ? std::chrono::steady_clock::now() - *turn_started_
                       : std::chrono::steady_clock::duration{},
-        interrupting_);
+        interrupting_, presenter_.Detailed());
     const bool resized = g_terminal_resized != 0;
     g_terminal_resized = 0;
     if (!update.changed && !resized && composer_.Drawn()) {

@@ -12,6 +12,7 @@ import type {
   Act,
   Report,
   Block,
+  SessionStatus,
 } from "../../shared/types.ts";
 import type { JSX } from "preact";
 import { useRef, useState } from "preact/hooks";
@@ -186,9 +187,9 @@ export default function Composer({
   const state = snapshot?.state;
   // A session without a live worker names its lifecycle state here instead
   // of a phase, so closing a session still reports that it was saved.
-  const detached = ["saved", "closed", "draft", "starting"].includes(
-    session?.status || "",
-  )
+  const detached = (
+    ["saved", "interrupted", "draft", "starting"] as SessionStatus[]
+  ).includes(session?.status!)
     ? (session?.status || "").charAt(0).toUpperCase() +
       (session?.status || "").slice(1)
     : "";

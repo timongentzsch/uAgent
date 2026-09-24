@@ -23,6 +23,18 @@
 #include "include/tools/files.h"
 
 namespace uagent::session {
+namespace {
+// The status a connected worker reports through its latest state/activity.
+std::string LiveStatus(const HostSession& session) {
+  return session.closing                    ? "closing"
+         : !session.pending.is_null()       ? "waiting"
+         : !session.state.contains("route") ? "starting"
+         : session.turn_active              ? "running"
+         : session.command_busy             ? "processing"
+                                            : "idle";
+}
+}  // namespace
+
 std::string SessionHost::RunResultFor(const std::string& outcome) {
   return outcome == "complete"      ? "completed"
          : outcome == "interrupted" ? "interrupted"
@@ -138,6 +150,10 @@ void SessionHost::Received(HostSession* session, json frame) {
     }
   } else {
     ApplyRuntimeFrame(*session, frame);
+    // Clients adopt the host's lifecycle status rather than re-deriving it.
+    if (kind == "state" || kind == "activity") {
+      frame["metadata"] = Metadata(*session);
+    }
   }
   replay_.Publish(epoch_, session->id, session->generation, std::move(frame),
                   !session->run_id.empty());
@@ -243,7 +259,8 @@ bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
           session->status = "interrupted";
           session->state["activity"] = "Interrupted";
           replay_.Publish(epoch_, session->id, session->generation,
-                          {{"kind", "closed"}}, !session->run_id.empty());
+                          {{"kind", "closed"}, {"metadata", Metadata(*session)}},
+                          !session->run_id.empty());
         }
       }
       session->exited = true;
@@ -287,13 +304,9 @@ void SessionHost::ApplyRuntimeFrame(HostSession& session, json& frame) {
     session.state = std::move(next);
     session.pending = JsonValue(frame, "pending", json(nullptr));
     session.turn_active = JsonValue(frame, "busy", false);
+    session.command_busy = JsonValue(frame, "command_busy", false);
     session.guidance = JsonValue(frame, "guidance", uint64_t{0});
-    session.status = session.closing                           ? "closing"
-                     : !session.pending.is_null()              ? "waiting"
-                     : !session.state.contains("route")        ? "starting"
-                     : session.turn_active                     ? "running"
-                     : JsonValue(frame, "command_busy", false) ? "processing"
-                                                               : "idle";
+    session.status = LiveStatus(session);
     if (JsonValue(frame, "checkpoint", false)) {
       if (!session.run_id.empty() && !session.turn_active) {
         if (const auto* blocks = JsonArray(session.state["view"], "blocks")) {
@@ -321,6 +334,7 @@ void SessionHost::ApplyRuntimeFrame(HostSession& session, json& frame) {
     session.state["activity_detail"] =
         JsonValue(frame, "activity_detail", json(nullptr));
     session.turn_active = JsonValue(frame, "busy", false);
+    session.status = LiveStatus(session);
     return;
   }
   if (kind == "gap") {

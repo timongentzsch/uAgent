@@ -44,7 +44,7 @@ struct HostSession {
   int64_t updated = 0;
   bool live_truncated = false;
   json published = nullptr;
-  bool turn_active = false;
+  bool turn_active = false, command_busy = false;
   uint64_t guidance = 0, incoming = 0, runtime_sequence = 0;
   pid_t pid = -1;
   Fd socket;

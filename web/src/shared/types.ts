@@ -262,6 +262,20 @@ export interface PermissionRules {
   root: string;
   rules: PermissionRule[];
 }
+// Lifecycle status owned by the native session host.
+export type SessionStatus =
+  | "draft"
+  | "saved"
+  | "starting"
+  | "idle"
+  | "running"
+  | "waiting"
+  | "processing"
+  | "closing"
+  | "interrupted"
+  | "failed"
+  | "updating"
+  | "deleting";
 export interface Session {
   task_id?: string;
   run_id?: string;
@@ -269,7 +283,7 @@ export interface Session {
   generation?: string;
   title?: string;
   cwd?: string;
-  status?: string;
+  status?: SessionStatus;
   presence?: "active" | "";
   updated?: number;
   incoming?: number;

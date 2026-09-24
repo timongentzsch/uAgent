@@ -783,7 +783,7 @@
     ]
   },
   "index.html": {
-    "file": "assets/index-Ba_x8rxf.js",
+    "file": "assets/index-DtwlebhZ.js",
     "name": "index",
     "src": "index.html",
     "isEntry": true,
@@ -1866,7 +1866,7 @@
     ]
   },
   "src/features/composer/composer.tsx": {
-    "file": "assets/composer-CYlYV5hM.js",
+    "file": "assets/composer-Ckdctz9v.js",
     "name": "composer",
     "src": "src/features/composer/composer.tsx",
     "isDynamicEntry": true,
@@ -1962,7 +1962,7 @@
     ]
   },
   "src/features/settings/prompt.tsx": {
-    "file": "assets/prompt-BEzV4XF3.js",
+    "file": "assets/prompt-D1cxKMq8.js",
     "name": "prompt",
     "src": "src/features/settings/prompt.tsx",
     "isDynamicEntry": true,

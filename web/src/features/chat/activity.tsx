@@ -35,7 +35,11 @@ import {
   IconButton,
 } from "../../shared/ui.tsx";
 
-import { active, ActivityStatus } from "./activity-status.tsx";
+import {
+  active,
+  ActivityStatus,
+  withCollaborators,
+} from "./activity-status.tsx";
 import { manage } from "../../state/api.ts";
 import Markdown from "../../shared/markdown-view.tsx";
 import { MessageRows, prepareHistoryBlocks } from "./message.tsx";
@@ -150,18 +154,7 @@ export default function Activities({
     [session, cwd],
   );
 
-  const rows: Activity[] = [
-    ...items,
-    ...collaborators
-      .filter((child) => !items.some((item) => item.agent_id === child.id))
-      .map((child) => ({
-        ...child,
-        id: undefined,
-        agent_id: child.id,
-        kind: "agent",
-        status: child.status || "idle",
-      })),
-  ];
+  const rows = withCollaborators(items, collaborators);
   const live = rows.some(active);
   useEffect(() => {
     if (!live) return;

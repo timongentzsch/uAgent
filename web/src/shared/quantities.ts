@@ -15,3 +15,5 @@ export const bytes = (value: number) =>
   Number.isFinite(value) && value >= 0
     ? scaled(value, ["B", "kB", "MB", "GB", "TB", "PB", "EB"], " ")
     : "Not recorded";
+// Same precision as the terminal's FmtCost: cents above a dollar.
+export const cost = (value: number) => `$${value.toFixed(value < 1 ? 4 : 2)}`;

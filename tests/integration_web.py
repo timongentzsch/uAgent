@@ -1880,6 +1880,7 @@ def test_web_http_context_configuration_permissions_and_fork(root, home, *, bina
             # Clients get the asset id, never the private upload path.
             assert_true(request.get("files"), request)
             assert_true(all("path" not in item for item in request["files"]), request)
+            assert_true("Attached:" not in request["text"], request["text"])
             reply = next(row for row in reversed(rows) if row["kind"] == "assistant")
             assert_true(reply["reply_to"] == request["id"] == reply["turn_root"], rows)
             exchange = reply["http"][-1]

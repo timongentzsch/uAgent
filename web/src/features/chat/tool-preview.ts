@@ -38,7 +38,6 @@ function firstLine(text = ""): string {
 export function getToolPreview(block: Block): {
   title: string;
   subtitle: string;
-  preview: string;
 } {
   const name = block.name || "tool";
   const subtitle = statusLine({
@@ -47,10 +46,7 @@ export function getToolPreview(block: Block): {
     duration_ms: block.duration_ms,
   });
   const native = block.activity?.label?.trim();
-  if (native) {
-    const output = typeof block.text === "string" ? firstLine(block.text) : "";
-    return { title: native, subtitle, preview: output };
-  }
+  if (native) return { title: native, subtitle };
   const args = block.arguments;
   let title = name;
   const path = arg(args, "path") || arg(args, "file") || arg(args, "dir");
@@ -117,49 +113,26 @@ export function getToolPreview(block: Block): {
       if (path) title = `${name} ${path}`;
       break;
   }
-  const output = typeof block.text === "string" ? firstLine(block.text) : "";
-  return { title, subtitle, preview: output };
+  return { title, subtitle };
 }
 
 export interface ToolRow {
   title: string;
   subtitle: string;
-  preview: string;
   diffOnly: boolean;
-  server: boolean;
 }
 
-// Single GUI adapter for every tool row. Titles come from the live
-// receipt the server maintains on activity.label (updated post-execution
-// to FirstLine(display), so live and retained rows read identically);
-// local synthesis covers rows whose activity facts are missing, and the
-// result replay title only ever carries the bare tool name
-// (ToolResultPresentation records ordinal+name for the TUI resume path,
-// which replays through PrintPresentation, not this adapter). The replay
-// summary still owns the compact preview (ToolResultSummary). Per-tool
-// differences stay in the title formatter above plus the diffOnly flag
-// below — never in per-call JSX — mirroring the backend's per-tool
-// `summary` lambdas.
+// Single GUI adapter for every tool row. The title is the native
+// activity.label when the session recorded one; sessions saved before those
+// facts fall back to the synthesis above. A file change whose diff is the
+// whole story renders as the diff alone.
 export function getToolRow(block: Block): ToolRow {
-  const fallback = getToolPreview(block);
-  const replayTitle = block.replay?.title?.trim();
-  const replaySummary = block.replay?.summary?.trim();
+  const { title, subtitle } = getToolPreview(block);
   const diffOnly =
     (block.name === "write_file" ||
       block.name === "edit_file" ||
       block.name === "delete_file") &&
     !!block.change &&
     !/fail|error/i.test(block.status || "");
-  if (replayTitle || replaySummary) {
-    return {
-      // fallback.title is the native label when present, else synthesis:
-      // a bare-name replay title must never shadow the live receipt.
-      title: fallback.title,
-      subtitle: fallback.subtitle,
-      preview: replaySummary || fallback.preview,
-      diffOnly,
-      server: true,
-    };
-  }
-  return { ...fallback, diffOnly, server: false };
+  return { title, subtitle, diffOnly };
 }

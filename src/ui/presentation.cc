@@ -352,19 +352,11 @@ void TerminalPresenter::Block(const json& block) {
   const std::string kind = JsonValue(block, "kind", "");
   const std::string text = TerminalSafe(JsonValue(block, "text", ""));
   if (kind == "user" || kind == "attachment") {
-    // Stored text keeps the "Attached:" path trailer for the model
-    // payload; live rows render the delivery gallery instead, like history
-    // replay and the web client do.
-    const json deliveries = JsonValue(block, "deliveries", json::array());
-    const json files = JsonValue(block, "files", json::array());
-    const bool attached =
-        !deliveries.empty() || (files.is_array() && !files.empty());
-    const std::string echo =
-        attached
-            ? TerminalSafe(StripAttachedTrailer(JsonValue(block, "text", "")))
-            : text;
-    WriteTerminalRecord(UserEchoRow(InputPrompt(), echo) + "\n" +
-                        AttachmentDeliveryRows(deliveries));
+    // The view already dropped the "Attached:" path trailer; attachments
+    // render as the delivery gallery, like history replay and the web.
+    WriteTerminalRecord(
+        UserEchoRow(InputPrompt(), text) + "\n" +
+        AttachmentDeliveryRows(JsonValue(block, "deliveries", json::array())));
   } else if (kind == "assistant") {
     // Mirror the stored-transcript printer and the live presenter: the mark
     // only prints with text (tool-only turns show rows, never a bare mark),

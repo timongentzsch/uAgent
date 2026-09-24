@@ -208,24 +208,6 @@ export function presentMessages(blocks: Block[]): PresentedBlock[] {
   return rows;
 }
 
-// The server appends an "Attached:" trailer (attachments.cc) listing raw
-// host paths to the stored user text. The gallery below the message already
-// shows the files by name, so rendering the trailer only leaks
-// implementation paths into the transcript. Strip it at render time:
-// history already stored keeps working, and the model payload is untouched.
-// Gated on files and anchored to the exact server format at end of text,
-// so a user literally typing "Attached:" keeps their words.
-const kAttachedTrailer =
-  /\n\nAttached:\n(?:- path "(?:[^"\\]|\\.)*"(?: \(from tool call "(?:[^"\\]|\\.)*"\))?\n?)+\s*$/;
-
-export function stripAttachedTrailer(
-  text: string | undefined,
-  files?: { length?: number } | null,
-): string | undefined {
-  if (!text || !files?.length) return text;
-  return text.replace(kAttachedTrailer, "");
-}
-
 export type TextPart =
   { text: string } | { mention: { id: string; alt: string } };
 

@@ -3,13 +3,8 @@ import DiffView from "./diff-view.tsx";
 import { cleanText, formatDateTime } from "../../shared/display.ts";
 import type { PresentedBlock } from "../../shared/types.ts";
 
-// One chrome for every tool call and result. Titles come from getToolRow
-// (server replay when present, local synthesis otherwise) so the GUI names
-// the same action the TUI prints via ToolCallPresentation /
-// ToolResultPresentation. Per-tool differences stay in the row adapter
-// (title formatter + diffOnly) — never in per-call JSX — mirroring the
-// backend's per-tool `summary` lambdas. Subclasses per tool override only
-// `renderBodyExtra`, never the disclosure itself.
+// One chrome for every tool call and result. Titles and the diff-only choice
+// come from getToolRow, so per-tool differences never live in this JSX.
 export function ToolRow({
   block,
   title,
@@ -20,7 +15,6 @@ export function ToolRow({
   input,
   output,
   text,
-  expanded,
   expanding,
   loadError,
   retry,
@@ -37,7 +31,6 @@ export function ToolRow({
   input: string;
   output: string;
   text?: string;
-  expanded: boolean;
   expanding: boolean;
   loadError: unknown;
   retry: () => void;
@@ -45,7 +38,6 @@ export function ToolRow({
   inspect?: (id: string) => void;
   onToggle: (event: { currentTarget: { open: boolean } }) => void;
 }) {
-  void expanded;
   return (
     <DisclosureRow
       className="tool-disclosure"

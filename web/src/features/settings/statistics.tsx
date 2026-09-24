@@ -1,5 +1,5 @@
 import { duration } from "../../shared/duration.ts";
-import { count } from "../../shared/quantities.ts";
+import { cost, count } from "../../shared/quantities.ts";
 import type {
   Usage,
   StatisticsModal,
@@ -37,10 +37,7 @@ function UsageRows({ usage }: { usage?: Usage }) {
         ["Reasoning tokens", count(usage?.reasoning)],
         ["Cache read tokens", count(usage?.cache_read)],
         ["Cache write tokens", count(usage?.cache_write)],
-        [
-          "Cost",
-          usage?.cost_reported ? `$${usage.cost.toFixed(4)}` : "Not reported",
-        ],
+        ["Cost", usage?.cost_reported ? cost(usage.cost) : "Not reported"],
       ]}
     />
   );

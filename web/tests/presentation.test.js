@@ -18,7 +18,6 @@ import { count, bytes } from "../src/shared/quantities.ts";
 import {
   presentMessages,
   splitMentionTokens,
-  stripAttachedTrailer,
 } from "../src/features/chat/message-view.ts";
 import { dedupeName } from "../src/features/composer/mention.ts";
 import {
@@ -220,35 +219,6 @@ test("tool-sourced attachments stay inline with uploads", () => {
   assert.deepEqual(
     rows.map((row) => row.id),
     ["u1", "a1", "m1", "a2", "m2"],
-  );
-});
-
-test("server Attached trailers strip at render, user words survive", () => {
-  const files = [{ id: "f1", name: "chart.png" }];
-  assert.equal(
-    stripAttachedTrailer(
-      'look at this\n\nAttached:\n- path "/tmp/x/805b.data"',
-      files,
-    ),
-    "look at this",
-  );
-  assert.equal(
-    stripAttachedTrailer(
-      'a\n\nAttached:\n- path "/a/1.data" (from tool call "c1")\n- path "/b/2 \\"q\\".data"',
-      files,
-    ),
-    "a",
-  );
-  // No files: a user literally typing the format keeps their words.
-  assert.equal(
-    stripAttachedTrailer('note\n\nAttached:\n- path "/x"', []),
-    'note\n\nAttached:\n- path "/x"',
-  );
-  assert.equal(stripAttachedTrailer(undefined, files), undefined);
-  // Mid-text lookalikes are not trailers.
-  assert.equal(
-    stripAttachedTrailer('x\n\nAttached:\n- path "/a"\n\nmore', files),
-    'x\n\nAttached:\n- path "/a"\n\nmore',
   );
 });
 
@@ -908,7 +878,7 @@ test("absent fields never wipe present ones across paths", () => {
   assert.equal(rows[1].status, "success");
 });
 
-test("server replay never shadows the live receipt title", () => {
+test("tool rows title from the native label, else local synthesis", () => {
   const base = {
     kind: "tool_result",
     name: "read_path",
@@ -916,19 +886,14 @@ test("server replay never shadows the live receipt title", () => {
     text: "local first line\nsecond",
     status: "success",
   };
-  const local = getToolRow(base);
-  assert.equal(local.server, false);
-  assert.equal(local.title, "Read a.txt");
-  // Result replay titles carry the bare tool name (ordinal+name for the
-  // TUI resume path); the row keeps the synthesized receipt instead.
-  const server = getToolRow({
-    ...base,
-    replay: { title: "[2] read_path", summary: "a.txt · +3 lines" },
-  });
-  assert.equal(server.server, true);
-  assert.equal(server.title, "Read a.txt");
-  assert.equal(server.preview, "a.txt · +3 lines");
-  // The native activity label is the live receipt: it wins over replay.
+  // Sessions saved before activity labels synthesize from the arguments; a
+  // bare-name replay title never shadows that.
+  assert.equal(getToolRow(base).title, "Read a.txt");
+  assert.equal(
+    getToolRow({ ...base, replay: { title: "[2] read_path" } }).title,
+    "Read a.txt",
+  );
+  // The native activity label is the live receipt and always wins.
   const receipt = getToolRow({
     ...base,
     activity: { label: "◆ memory created · project/proof" },

@@ -4,11 +4,7 @@ import Markdown, { prepareMarkdown } from "../../shared/markdown-view.tsx";
 import "./message.css";
 import { bytes, count } from "../../shared/quantities.ts";
 import { Component, type ComponentProps } from "preact";
-import {
-  presentMessages,
-  splitMentionTokens,
-  stripAttachedTrailer,
-} from "./message-view.ts";
+import { presentMessages, splitMentionTokens } from "./message-view.ts";
 import type {
   PresentedBlock,
   Block,
@@ -110,7 +106,7 @@ function MessageView({
   const [expanded, setExpanded] = useState(false);
   const [loadError, setLoadError] = useState<unknown>(null);
   const [retry, setRetry] = useState(0);
-  const text = stripAttachedTrailer(full ?? block.text, block.files);
+  const text = full ?? block.text;
   const tool = block.kind === "tool_result";
   const load = useBlockReader(session, read);
   useEffect(() => {
@@ -297,7 +293,6 @@ function MessageView({
                 input={input}
                 output={output}
                 text={text}
-                expanded={expanded}
                 expanding={expanding}
                 loadError={loadError}
                 retry={() => setRetry(retry + 1)}
@@ -503,7 +498,7 @@ export async function prepareHistoryBlocks(blocks: Block[]) {
       continue;
     }
     if (block.kind === "tool_result") continue;
-    const text = stripAttachedTrailer(block.text || "", block.files) || "";
+    const text = block.text || "";
     for (const part of splitMentionTokens(text)) {
       if ("text" in part && part.text) texts.add(part.text);
     }

@@ -21,7 +21,6 @@ constexpr size_t kStoredPreviewBytes = 4096;
 constexpr size_t kReviewerPreviewBytes = 16384;
 constexpr int64_t kReviewerTimeoutSeconds = 15;
 constexpr int kReviewerAttempts = 3;
-constexpr char kPermissionStoreFile[] = "permissions.json";
 constexpr char kReviewerRoute[] = "permission_review";
 
 json EmptyStore() {

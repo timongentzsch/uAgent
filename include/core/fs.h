@@ -75,6 +75,8 @@ inline constexpr const char* kTerminalLogsDir = "terminals/logs";
 inline constexpr const char* kArtifactsDir = "artifacts";
 inline constexpr const char* kMcpDir = "mcp";
 inline constexpr const char* kConfigDir = "config";
+// Remembered approval rules under kConfigDir; they grant future authority.
+inline constexpr const char* kPermissionStoreFile = "permissions.json";
 
 // Write every byte or report why not; errno is left set for the caller.
 bool WriteFully(int fd, std::string_view data);

@@ -21,7 +21,7 @@ per-conversation choices made with `/tools`.
 | `edit_file` | apply ordered exact replacements atomically | full toolset |
 | `delete_file` | delete a regular file and show the removed content | full toolset |
 | `run` | run a supervised shell command, optionally with a PTY or detached | always |
-| `scratch` | write and rerun one `.py` (under uv) or `.sh` script in `.uagent/scratch` | `uv` or `python3` on `PATH` |
+| `scratch` | run a `.py` (under uv) or `.sh` script written to `.uagent/scratch` with `write_file`; writes there need no approval, the run does and shows the script | `uv` or `python3` on `PATH` |
 | `activity` | list, poll, wait for, write to, resize or stop activities | when activities exist |
 | `memory` | list, search and read memory; write when the user asks | full toolset, memory enabled |
 | `uagent` | inspect this build (status, flags, commands, config, tools, prompt, routes); change settings | full toolset |

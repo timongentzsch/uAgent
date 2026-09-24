@@ -93,9 +93,10 @@ def test_full_run_and_python_terminal_trace(root, home, *, binary):
         [
             tool_call("run", {"command": shell_command, "shell": "/bin/sh"}),
             tool_call(
-                "scratch",
-                {"path": "trace.py", "code": python_code, "packages": []},
+                "write_file",
+                {"path": ".uagent/scratch/trace.py", "content": python_code},
             ),
+            tool_call("scratch", {"path": "trace.py"}),
             event({"content": "trace-ok"}),
         ]
     ) as server:
@@ -110,13 +111,12 @@ def test_full_run_and_python_terminal_trace(root, home, *, binary):
             "printf 'shell-two",
             "shell-one",
             "shell-two",
-            "scratch(write trace.py · execute)",
-            "[script: .uagent/scratch/trace.py · wrote · executed]",
+            "scratch(trace.py)",
             "python-one",
             "python-two",
-            "latest trace · turn 1 · 2 tools",
+            "latest trace · turn 1 · 3 tools",
             "→ [1] run",
-            "← [2] scratch",
+            "← [3] scratch",
             "trace-ok",
         ):
             assert_true(expected in result.stdout, result.stdout)

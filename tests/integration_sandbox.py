@@ -119,11 +119,11 @@ def test_sudo_uses_shared_approval_and_sandbox_policy(root, home, *, binary):
                 continue
             outside = root / f"{tool}-{mode}.txt"
             command = "sudo sh -c " + shlex.quote(f"echo written > {shlex.quote(str(outside))}")
-            arguments = (
-                {"command": command}
-                if tool == "run"
-                else {"path": f"{mode}.sh", "code": command, "packages": []}
-            )
+            if tool == "scratch":
+                script = ws / ".uagent" / "scratch" / f"{mode}.sh"
+                script.parent.mkdir(parents=True, exist_ok=True)
+                script.write_text(command + "\n")
+            arguments = {"command": command} if tool == "run" else {"path": f"{mode}.sh"}
             if mode == "approved":
                 arguments["sandbox"] = False
             seen = []

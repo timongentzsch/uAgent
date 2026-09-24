@@ -51,137 +51,94 @@ void TestPythonTool() {
   CHECK(run && ToolDescription(*run).find("omit cd") != std::string::npos);
   setenv("PATH", (bin.string() + ":" + prior_path).c_str(), 1);
 
-  ToolResult result = ToolRunScratch(supervisor, root, "math.py",
-                                     "print(6 * 7)", json::array({"numpy>=2"}));
-  CHECK(result.output ==
-        "[script: .uagent/scratch/math.py · wrote · executed]\n42\n");
-  fs::path script = root / ".uagent/scratch/math.py";
-  CHECK(fs::is_regular_file(script));
-  CHECK(fs::is_regular_file(root / ".uagent/scratch/.gitignore"));
-  result = ToolRunScratch(supervisor, root, ".uagent/scratch/prefixed.py",
-                          "print('normalized')", json::array());
-  CHECK(result.output ==
-        "[script: .uagent/scratch/prefixed.py · wrote · executed]\n"
-        "normalized\n");
-  CHECK(fs::is_regular_file(root / ".uagent/scratch/prefixed.py"));
-  std::ifstream script_input(script);
-  std::string script_source{std::istreambuf_iterator<char>(script_input),
-                            std::istreambuf_iterator<char>()};
-  CHECK(script_source.find("# /// script") == 0);
-  CHECK(script_source.find("\"numpy>=2\"") != std::string::npos);
+  // Scripts are written with the file tools and only run here.
+  fs::path scratch = root / ".uagent/scratch";
+  auto write = [&](const std::string& name, const std::string& source) {
+    CHECK(ToolWriteFile((scratch / name).string(), source).Ok());
+  };
+  // Writing into scratch is the agent's own working state, not a change a
+  // person approves; the same write anywhere else still is.
+  const Tool* write_file = FindTool(python_tools, "write_file");
+  CHECK(write_file &&
+        !ToolMutates(*write_file, {{"path", (scratch / "math.py").string()}}) &&
+        ToolMutates(*write_file, {{"path", (root / "math.py").string()}}));
 
-  result = ToolRunScratch(supervisor, root, "math.py", "print(6 * 7)",
-                          json::array({"numpy>=2"}));
-  CHECK(result.error == ToolErrorCode::kInvalidArguments);
-  CHECK(result.output.find("code is identical") != std::string::npos);
-  CHECK(result.output.find("code=null") != std::string::npos);
+  ToolResult result = ToolRunScratch(supervisor, root, "math.py");
+  CHECK(result.error == ToolErrorCode::kNotFound);
+  CHECK(result.output.find("write it first with write_file") !=
+        std::string::npos);
 
-  result = ToolRunScratch(supervisor, root, "math.py", "print(7 * 7)",
-                          json::array({"numpy>=2"}));
-  CHECK(result.output ==
-        "[script: .uagent/scratch/math.py · overwrote · executed]\n49\n");
+  write("math.py",
+        "# /// script\n# dependencies = [\"numpy>=2\"]\n# ///\nprint(6 * 7)\n");
+  result = ToolRunScratch(supervisor, root, "math.py");
+  CHECK(result.output == "42\n");
+  CHECK(fs::is_regular_file(scratch / ".gitignore"));
+  result = ToolRunScratch(supervisor, root, ".uagent/scratch/math.py");
+  CHECK(result.output == "42\n");
 
-  CHECK(ToolEditFile(script.string(), {{"7 * 7", "8 * 8", false}}).Ok());
-  result = ToolRunScratch(supervisor, root, "math.py", nullptr, nullptr);
-  CHECK(result.output == "[script: .uagent/scratch/math.py · executed]\n64\n");
+  CHECK(
+      ToolEditFile((scratch / "math.py").string(), {{"6 * 7", "8 * 8", false}})
+          .Ok());
+  CHECK(ToolRunScratch(supervisor, root, "math.py").output == "64\n");
 
   // argv lets one saved script answer a family of questions, so a changed
   // parameter is a rerun rather than a rewritten body.
+  write("argv.py", "import sys; print('|'.join(sys.argv[1:]))\n");
   result = ToolRunScratch(supervisor, root, "argv.py",
-                          "import sys; print('|'.join(sys.argv[1:]))",
-                          json::array());
-  CHECK(result.output ==
-        "[script: .uagent/scratch/argv.py · wrote · executed]\n\n");
-  result = ToolRunScratch(supervisor, root, "argv.py", nullptr, nullptr,
                           json::array({"a b", "--limit=5"}));
-  CHECK(result.output ==
-        "[script: .uagent/scratch/argv.py 'a b' --limit=5 · executed]\n"
-        "a b|--limit=5\n");
-  result = ToolRunScratch(supervisor, root, "argv.sh", "echo \"$2/$1\"\n",
-                          json::array(), json::array({"one", "two"}));
-  CHECK(result.output ==
-        "[script: .uagent/scratch/argv.sh one two · wrote · executed]\n"
-        "two/one\n");
-  result = ToolRunScratch(supervisor, root, "argv.sh", nullptr, nullptr,
-                          json::array({7}));
+  CHECK(result.output == "a b|--limit=5\n");
+  write("argv.sh", "echo \"$2/$1\"\n");
+  CHECK(ToolRunScratch(supervisor, root, "argv.sh", json::array({"one", "two"}))
+            .output == "two/one\n");
+  result = ToolRunScratch(supervisor, root, "argv.sh", json::array({7}));
   CHECK(result.error == ToolErrorCode::kInvalidArguments);
   CHECK(result.output.find("args must be strings") != std::string::npos);
 
-  // A script is not a change receipt: the row reports what it printed.
-  result =
-      ToolRunScratch(supervisor, root, "receipt.py", "print(1)", json::array());
-  CHECK(result.display.empty());
-  CHECK(result.output ==
-        "[script: .uagent/scratch/receipt.py · wrote · executed]\n1\n");
-
+  // Arguments are data, never shell syntax.
   fs::path marker = root / "injected";
-  result = ToolRunScratch(supervisor, root, "safe.py", "print('safe')",
+  write("safe.py", "print('safe')\n");
+  result = ToolRunScratch(supervisor, root, "safe.py",
                           json::array({"x; touch " + marker.string()}));
-  CHECK(result.output ==
-        "[script: .uagent/scratch/safe.py · wrote · executed]\nsafe\n");
+  CHECK(result.output == "safe\n");
   CHECK(!fs::exists(marker));
+  CHECK(result.display.empty());  // a run is not a change receipt
 
-  result = ToolRunScratch(supervisor, root, "slow.py",
-                          "import time; time.sleep(.2); print('slow-ok')",
-                          json::array());
-  CHECK(result.output ==
-        "[script: .uagent/scratch/slow.py · wrote · executed]\nslow-ok\n");
+  write("slow.py", "import time; time.sleep(.2); print('slow-ok')\n");
+  CHECK(ToolRunScratch(supervisor, root, "slow.py").output == "slow-ok\n");
   CHECK(supervisor.PendingCount() == 0);
 
-  result =
-      ToolRunScratch(supervisor, root, "missing.py",
-                     "import definitely_missing_uagent_package", json::array());
+  write("missing.py", "import definitely_missing_uagent_package\n");
+  result = ToolRunScratch(supervisor, root, "missing.py");
   CHECK(result.error == ToolErrorCode::kProcessFailed);
   CHECK(result.output.find("error: Python execution failed.") !=
         std::string::npos);
   CHECK(result.output.find("PEP 723 header") != std::string::npos);
 
-  // A shell script is the same save-once-rerun mechanism without an
-  // interpreter: half of every run command this agent sends is a byte-exact
-  // repeat, and only .py could be saved and rerun by path.
-  result = ToolRunScratch(supervisor, root, "pipe.sh",
-                          "echo one two | sed 's/ /-/'\n", json::array());
-  CHECK(result.output ==
-        "[script: .uagent/scratch/pipe.sh · wrote · executed]\none-two\n");
-  result = ToolRunScratch(supervisor, root, "pipe.sh", nullptr, nullptr);
-  CHECK(result.output ==
-        "[script: .uagent/scratch/pipe.sh · executed]\none-two\n");
-
-  result = ToolRunScratch(supervisor, root, "deps.sh", "true\n",
-                          json::array({"numpy"}));
-  CHECK(result.error == ToolErrorCode::kInvalidArguments);
-  CHECK(result.output.find("takes no packages") != std::string::npos);
-
   // Use a harmless executable named sudo: scripts follow the shared spawn
-  // policy, including reruns after editing, without a separate keyword ban.
+  // policy, without a separate keyword ban.
   CHECK(
       ToolWriteFile((bin / "sudo").string(), "#!/bin/sh\nexec \"$@\"\n").Ok());
   CHECK(chmod((bin / "sudo").c_str(), 0700) == 0);
-  result = ToolRunScratch(supervisor, root, "priv.sh", "sudo printf before\n",
-                          json::array());
+  write("priv.sh", "sudo printf before\n");
+  result = ToolRunScratch(supervisor, root, "priv.sh");
   CHECK(result.Ok());
   CHECK(result.output.ends_with("before"));
-  CHECK(ToolEditFile((root / ".uagent/scratch/priv.sh").string(),
-                     {{"before", "after", false}})
-            .Ok());
-  result = ToolRunScratch(supervisor, root, "priv.sh", nullptr, nullptr);
-  CHECK(result.Ok());
-  CHECK(result.output.ends_with("after"));
 
-  result =
-      ToolRunScratch(supervisor, root, "other.rb", "puts 1", json::array());
-  CHECK(result.error == ToolErrorCode::kInvalidArguments);
-  CHECK(result.output.find(".py or .sh") != std::string::npos);
+  // The approval a person sees is the script itself.
+  const Tool* scratch_tool = FindTool(python_tools, "scratch");
+  CHECK(scratch_tool && scratch_tool->approval_preview({{"path", "priv.sh"}}) ==
+                            "sudo printf before\n");
 
-  result = ToolRunScratch(supervisor, root, "../escape.py", "print('x')",
-                          json::array());
-  CHECK(result.error == ToolErrorCode::kPermissionDenied);
-  result = ToolRunScratch(supervisor, root, "math.py", nullptr, json::array());
-  CHECK(result.error == ToolErrorCode::kInvalidArguments);
+  CHECK(
+      ToolRunScratch(supervisor, root, "other.rb").output.find(".py or .sh") !=
+      std::string::npos);
+  CHECK(ToolRunScratch(supervisor, root, "../escape.py").error ==
+        ToolErrorCode::kInvalidArguments);
 
   setenv("PATH", root.c_str(), 1);  // no uv
-  result = ToolRunScratch(supervisor, root, "dependency.py", "print('x')",
-                          json::array({"numpy"}));
+  write("dependency.py",
+        "# /// script\n# dependencies = [\"numpy\"]\n# ///\nprint('x')\n");
+  result = ToolRunScratch(supervisor, root, "dependency.py");
   CHECK(result.error == ToolErrorCode::kUnavailable);
   CHECK(result.output.find("declares third-party dependencies") !=
         std::string::npos);

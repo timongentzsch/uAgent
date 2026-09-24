@@ -643,142 +643,67 @@ std::string ScratchArgvLabel(const json& args) {
   return label;
 }
 
-ToolResult ToolRunScratch(ProcessSupervisor& supervisor,
-                          const std::filesystem::path& workspace,
-                          const std::string& relative_path, const json& code,
-                          const json& packages, const json& args,
-                          const ToolContext& context) {
+std::optional<std::filesystem::path> ScratchScriptPath(
+    const std::filesystem::path& workspace, const std::string& relative_path,
+    std::string& error) {
   namespace fs = std::filesystem;
   constexpr std::string_view kScratchPrefix = ".uagent/scratch/";
   fs::path requested(relative_path.starts_with(kScratchPrefix)
                          ? relative_path.substr(kScratchPrefix.size())
                          : relative_path);
-  const bool shell_script = requested.extension() == ".sh";
   if (relative_path.empty() || requested.is_absolute() ||
-      (!shell_script && requested.extension() != ".py")) {
-    return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "error: path must be a relative .py or .sh file under "
-                       ".uagent/scratch");
+      (requested.extension() != ".sh" && requested.extension() != ".py")) {
+    error = "path must be a relative .py or .sh file under .uagent/scratch";
+    return std::nullopt;
   }
   for (const fs::path& component : requested) {
     if (component == "..") {
-      return ToolFailure(ToolErrorCode::kPermissionDenied,
-                         "error: scratch script path must not contain ..");
+      error = "scratch script path must not contain ..";
+      return std::nullopt;
     }
   }
-
   fs::path scratch = workspace / ".uagent" / "scratch";
-  std::error_code ec;
-  fs::create_directories(scratch, ec);
-  if (ec) {
-    return ToolFailure(
-        ToolErrorCode::kInternal,
-        "error: cannot create scratch directory: " + ec.message());
-  }
-  scratch = fs::canonical(scratch, ec);
   fs::path script = CanonicalAccessPath((scratch / requested).string());
-  if (ec || !PathWithin(script, scratch)) {
-    return ToolFailure(ToolErrorCode::kPermissionDenied,
-                       "error: scratch script path escapes .uagent/scratch");
+  if (!PathWithin(script, CanonicalAccessPath(scratch.string()))) {
+    error = "scratch script path escapes .uagent/scratch";
+    return std::nullopt;
   }
+  return script;
+}
 
+ToolResult ToolRunScratch(ProcessSupervisor& supervisor,
+                          const std::filesystem::path& workspace,
+                          const std::string& relative_path, const json& args,
+                          const ToolContext& context) {
+  namespace fs = std::filesystem;
+  std::string error;
+  const auto script = ScratchScriptPath(workspace, relative_path, error);
+  if (!script) {
+    return ToolFailure(ToolErrorCode::kInvalidArguments, "error: " + error);
+  }
+  std::error_code ec;
+  if (!fs::is_regular_file(*script, ec)) {
+    return ToolFailure(
+        ToolErrorCode::kNotFound,
+        "error: no script at .uagent/scratch/" +
+            fs::relative(*script, workspace / ".uagent" / "scratch", ec)
+                .generic_string() +
+            "; write it first with write_file");
+  }
+  // The scratch directory is private to the agent: keep it out of git.
+  const fs::path ignore = script->parent_path() / ".gitignore";
   std::string write_error;
-  fs::path ignore = scratch / ".gitignore";
-  if (!fs::exists(ignore, ec) &&
+  if (script->parent_path().filename() == "scratch" &&
+      !fs::exists(ignore, ec) &&
       !AtomicWriteFile(ignore.string(), "*\n", kSharedFileMode,
                        /*preserve_mode=*/false, write_error)) {
     return ToolFailure(ToolErrorCode::kInternal, "error: " + write_error);
   }
-
-  bool create = code.is_string();
-  bool replaced = false;
-  std::string source;
-  std::string prior;
-  if (create != packages.is_array() || (!create && !packages.is_null())) {
-    return ToolFailure(
-        ToolErrorCode::kInvalidArguments,
-        "error: creation requires code plus a packages array; rerunning "
-        "requires code=null and packages=null");
-  }
-
-  if (create) {
-    bool exists = fs::exists(script, ec);
-    if (ec) {
-      return ToolFailure(
-          ToolErrorCode::kInternal,
-          "error: cannot inspect scratch script: " + ec.message());
-    }
-    if (exists && !fs::is_regular_file(script, ec)) {
-      return ToolFailure(
-          ToolErrorCode::kInvalidArguments,
-          "error: scratch path exists but is not a regular file: " +
-              requested.generic_string());
-    }
-    std::string body = code.get<std::string>();
-    if (body.find('\0') != std::string::npos) {
-      return ToolFailure(ToolErrorCode::kInvalidArguments,
-                         "error: script code contains NUL");
-    }
-    if (shell_script) {
-      if (!packages.empty()) {
-        return ToolFailure(ToolErrorCode::kInvalidArguments,
-                           "error: a .sh script takes no packages; pass [] and "
-                           "install nothing, or use a .py script under uv");
-      }
-      source = body;
-      if (source.empty() || source.back() != '\n') source += '\n';
-    } else {
-      if (body.find("# /// script") != std::string::npos) {
-        return ToolFailure(ToolErrorCode::kInvalidArguments,
-                           "error: code must contain only the script body; "
-                           "packages generate the PEP 723 header");
-      }
-      source = "# /// script\n# dependencies = [\n";
-      for (const json& value : packages) {
-        std::string package = value.get<std::string>();
-        if (package.find_first_of("\r\n") != std::string::npos ||
-            package.find('\0') != std::string::npos) {
-          return ToolFailure(ToolErrorCode::kInvalidArguments,
-                             "error: invalid package entry");
-        }
-        source += "#   " + JsonDump(package) + ",\n";
-      }
-      source += "# ]\n# ///\n\n" + body;
-      if (source.back() != '\n') source += '\n';
-    }
-    if (exists) {
-      std::ifstream prior_input(script);
-      prior.assign(std::istreambuf_iterator<char>(prior_input),
-                   std::istreambuf_iterator<char>());
-      if (prior == source) {
-        return ToolFailure(ToolErrorCode::kInvalidArguments,
-                           "error: code is identical to .uagent/scratch/" +
-                               requested.generic_string() +
-                               "; rerun with code=null and packages=null");
-      }
-      replaced = true;
-    }
-    if (!AtomicWriteFile(script.string(), source, kSharedFileMode,
-                         /*preserve_mode=*/true, write_error)) {
-      return ToolFailure(ToolErrorCode::kInternal, "error: " + write_error);
-    }
-  } else if (!fs::is_regular_file(script, ec)) {
-    return ToolFailure(
-        ToolErrorCode::kNotFound,
-        "error: scratch script does not exist: " + relative_path);
-  }
-
-  if (!create) {  // a rerun executes whatever is on disk now
-    std::ifstream input(script);
-    source.assign(std::istreambuf_iterator<char>(input),
-                  std::istreambuf_iterator<char>());
-  }
-  std::string command;
-  std::string argv;
   if (!args.is_null() && !args.is_array()) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
                        "error: args must be an array of strings");
   }
+  std::string argv;
   if (args.is_array()) {
     for (const json& value : args) {
       if (!value.is_string() ||
@@ -789,10 +714,15 @@ ToolResult ToolRunScratch(ProcessSupervisor& supervisor,
       argv += ' ' + ShellQuote(value.get<std::string>());
     }
   }
+  const bool shell_script = script->extension() == ".sh";
+  std::string command;
   if (shell_script) {
-    command = "sh " + ShellQuote(script.string()) + argv;
+    command = "sh " + ShellQuote(script->string()) + argv;
   } else {
-    bool uv = ExecutableOnPath("uv");
+    std::ifstream input(*script);
+    const std::string source((std::istreambuf_iterator<char>(input)),
+                             std::istreambuf_iterator<char>());
+    const bool uv = ExecutableOnPath("uv");
     if (!uv && PythonScriptHasDependencies(source)) {
       return ToolFailure(
           ToolErrorCode::kUnavailable,
@@ -802,8 +732,8 @@ ToolResult ToolRunScratch(ProcessSupervisor& supervisor,
     command =
         uv ? "UV_NO_PROGRESS=1 MPLBACKEND=Agg uv run --quiet --no-project "
              "--script " +
-                 ShellQuote(script.string()) + argv
-           : "MPLBACKEND=Agg python3 " + ShellQuote(script.string()) + argv;
+                 ShellQuote(script->string()) + argv
+           : "MPLBACKEND=Agg python3 " + ShellQuote(script->string()) + argv;
   }
   ShellCommandResult result =
       RunShellCommand(supervisor, context, {.command = std::move(command)});
@@ -811,21 +741,17 @@ ToolResult ToolRunScratch(ProcessSupervisor& supervisor,
     std::string hint =
         result.result.output.find("No module named") != std::string::npos
             ? " Add every third-party dependency to the script's PEP 723 "
-              "header; do not install it with pip or run."
+              "header (# /// script); do not install it with pip or run."
             : "";
     result.result.output =
         "error: Python execution failed." + hint + "\n" + result.result.output;
   }
-  std::string lifecycle =
-      create ? (replaced ? " · overwrote" : " · wrote") : "";
-  lifecycle +=
-      result.result.Ok()
-          ? " · executed"
-          : " · execution " +
-                std::string(CompletionStatusName(result.result.status));
-  result.result.output = "[script: .uagent/scratch/" +
-                         requested.generic_string() + ScratchArgvLabel(args) +
-                         lifecycle + "]\n" + result.result.output;
+  if (!result.result.Ok()) {
+    result.result.output =
+        "[execution " +
+        std::string(CompletionStatusName(result.result.status)) + "]\n" +
+        result.result.output;
+  }
   return std::move(result.result);
 }
 

@@ -1,6 +1,7 @@
 // Copyright 2026 Timon Gentzsch
 
 #include <cstdint>
+#include <fstream>
 #include <optional>
 #include <string>
 #include <utility>
@@ -121,28 +122,24 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
         tools,
         MakeTool(
             "scratch",
-            "Run a one-off script, never requested project code. Writes or "
-            "replaces one persistent script under .uagent/scratch and reruns "
-            "it by path with optional argv: prefer this over resending a long "
-            "shell pipeline or heredoc through run, and vary `args` instead "
-            "of rewriting the body. .py runs under isolated uv, .sh under sh.",
+            "Run a one-off script, never requested project code. Write it "
+            "under .uagent/scratch with write_file (a .py declares its "
+            "dependencies in a PEP 723 `# /// script` header and runs under "
+            "isolated uv; a .sh runs under sh), fix it with edit_file, and "
+            "rerun it here with different `args` instead of rewriting it. "
+            "Prefer this over resending a long pipeline or heredoc through "
+            "run.",
             schema(
                 R"json({"type":"object","additionalProperties":false,"properties":{
                     "path":{"type":"string","minLength":1,
-                      "description":"stable relative .py or .sh path; reuse it during the task"},
-                    "code":{"type":["string","null"],"minLength":1,"maxLength":131072,
-                      "description":"script body, without PEP 723 metadata; null reruns the file unchanged"},
-                    "packages":{"type":["array","null"],"items":{"type":"string","minLength":1,"maxLength":256},"maxItems":12,
-                      "description":"PEP 508 dependencies with code ([] for stdlib or any .sh); null when rerunning"},
+                      "description":"the script's path relative to .uagent/scratch"},
                     "args":{"type":"array","items":{"type":"string","maxLength":4096},"maxItems":32,
-                      "description":"argv for this run, read from sys.argv or $@; vary it instead of rewriting the script"}},
-                    "required":["path","code","packages"]})json"),
+                      "description":"argv for this run, read from sys.argv or $@"}},
+                    "required":["path"]})json"),
             [&supervisor, workspace](const json& a,
                                      const ToolContext& context) {
               return ToolRunScratch(
                   supervisor, workspace, JsonValue(a, "path", ""),
-                  JsonValue(a, "code", json(nullptr)),
-                  JsonValue(a, "packages", json(nullptr)),
                   JsonValue(a, "args", json(nullptr)), context);
             }));
     python.declared_intent = true;
@@ -152,11 +149,24 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
     python.capabilities = Capability(ToolCapability::kExecute) |
                           Capability(ToolCapability::kMutate);
     python.summary = [](const json& a) {
-      std::string path = JsonValue(a, "path", "");
-      std::string argv = ScratchArgvLabel(JsonValue(a, "args", json(nullptr)));
-      return a.contains("code") && a["code"].is_string()
-                 ? "write " + path + argv + " · execute"
-                 : "execute " + path + argv;
+      return JsonValue(a, "path", "") +
+             ScratchArgvLabel(JsonValue(a, "args", json(nullptr)));
+    };
+    python.present = [](const json& a) {
+      return json::array(
+          {CommandPart(JsonValue(a, "path", "") +
+                       ScratchArgvLabel(JsonValue(a, "args", json(nullptr))))});
+    };
+    // Running is what a person approves, so they read what will run.
+    python.approval_preview = [workspace](const json& a) {
+      std::string error;
+      const auto script =
+          ScratchScriptPath(workspace, JsonValue(a, "path", ""), error);
+      if (!script) return error;
+      std::ifstream input(*script);
+      std::string source((std::istreambuf_iterator<char>(input)),
+                         std::istreambuf_iterator<char>());
+      return Utf8Trunc(source, kPreviewChars);
     };
     python.stable_argument = "path";
     python.timeout_s = 0;  // bounded by the turn; no model-driven polling

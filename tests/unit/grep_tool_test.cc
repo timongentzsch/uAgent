@@ -186,10 +186,7 @@ void TestGrepTool() {
                       "never requested project code") != std::string::npos);
   CHECK(python &&
         python->parameters.value("additionalProperties", true) == false);
-  CHECK(python && python->parameters["required"] ==
-                      json::array({"path", "code", "packages"}));
-  CHECK(python && python->parameters["properties"]["code"]["type"] ==
-                      json::array({"string", "null"}));
+  CHECK(python && python->parameters["required"] == json::array({"path"}));
   const Tool* memory = FindTool(lean_tools, "memory");
   CHECK(memory != nullptr);
   if (memory) {

@@ -471,16 +471,16 @@ void TestBackgroundValidation() {
   auto add_job = [&](BgJob job) {
     CHECK(supervisor.TryAdd(std::move(job), 100));
   };
-  add_job({999998, "", "", true, ""});
+  add_job({.pid = 999998, .kind = ActivityKind::kDetached});
   CHECK(!supervisor.PendingCount());
   CHECK(supervisor.DetachedCount() == 1);
-  add_job({999997, "", "", false, ""});
+  add_job({.pid = 999997});
   CHECK(supervisor.PendingCount());
   CHECK(supervisor.PendingCount() == 1);
   CHECK(supervisor.Count() == 2);
   CHECK(!supervisor.Find(999997).has_value());
   CHECK(supervisor.Find(ActivityId(supervisor.Snapshot().back())).has_value());
-  CHECK(!supervisor.TryAdd({999996, "", "", false, ""}, 1));
+  CHECK(!supervisor.TryAdd({.pid = 999996}, 1));
   CHECK(supervisor.Snapshot().size() == supervisor.Count());
   CHECK(!supervisor.TakeAllForShutdown().empty());
   std::vector<Tool> tools = BuiltinTools(supervisor);

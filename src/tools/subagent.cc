@@ -933,7 +933,7 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
              // commands inherit UAGENT_SANDBOX and are
              // confined one level down.
              .sandbox = false,
-             .job_kind = "subagent",
+             .activity_kind = ActivityKind::kSubagent,
              .activity_label = route_label,
              .source_id = collaborator_id,
              .completion_notes = clamped,

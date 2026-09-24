@@ -69,7 +69,7 @@ void TestGrepTool() {
   CHECK(paths.output.find("one.cpp") != std::string::npos);
   CHECK(paths.output.find("needle one") == std::string::npos);
   setenv("UAGENT_MAX_BACKGROUND_JOBS", "1", 1);
-  CHECK(supervisor.TryAdd({999991, "", "busy", false, ""}, 1));
+  CHECK(supervisor.TryAdd({.pid = 999991, .cmd = "busy"}, 1));
   ToolResult limited = ToolGrep(supervisor, "needle", root.string(), "");
   CHECK(limited.error == ToolErrorCode::kLimitExceeded);
   CHECK(limited.output.find("background job limit") != std::string::npos);

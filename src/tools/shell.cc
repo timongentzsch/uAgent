@@ -315,16 +315,14 @@ ShellCommandResult StartDetachedShell(ProcessSupervisor& supervisor,
   };
   ToolResult saved = SaveDetachedRecord(pid, log, cmd);
   if (!saved.Ok()) return fail_and_reap(std::move(saved));
-  BgJob job{pid,
-            log,
-            cmd,
-            true,
-            spec.job_kind,
-            pid,
-            nullptr,
-            std::move(spec.activity_label),
-            std::move(spec.receipt_path),
-            std::move(spec.source_id)};
+  BgJob job{.pid = pid,
+            .log = log,
+            .cmd = cmd,
+            .kind = ActivityKind::kDetached,
+            .id = pid,
+            .display_label = std::move(spec.activity_label),
+            .receipt_path = std::move(spec.receipt_path),
+            .source_id = std::move(spec.source_id)};
   if (!supervisor.TryAdd(std::move(job), max_jobs)) {
     return fail_and_reap(JobLimitError(max_jobs));
   }
@@ -357,8 +355,7 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
 
   // Everything below is the supervised foreground lifecycle.
   int64_t max_jobs = MaxBackgroundJobs();
-  bool is_subagent =
-      ParseActivityKind(spec.job_kind) == ActivityKind::kSubagent;
+  bool is_subagent = spec.activity_kind == ActivityKind::kSubagent;
   int64_t max_children = std::max<int64_t>(1, max_jobs - kDelegatedJobHeadroom);
   std::optional<ActivityReservation> reservation =
       supervisor.ReserveActivity(max_jobs, is_subagent ? max_children : 0);
@@ -428,18 +425,17 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
         "error: cannot duplicate PTY input: " + std::string(strerror(errno)))};
   }
 
-  BgJob foreground{pid,
-                   log,
-                   cmd,
-                   false,
-                   spec.job_kind,
-                   reservation->Id(),
-                   session,
-                   std::move(spec.activity_label),
-                   std::move(spec.receipt_path),
-                   std::move(spec.source_id),
-                   std::move(spec.completion_notes),
-                   std::move(spec.activity_metadata)};
+  BgJob foreground{.pid = pid,
+                   .log = log,
+                   .cmd = cmd,
+                   .kind = spec.activity_kind,
+                   .id = reservation->Id(),
+                   .session = session,
+                   .display_label = std::move(spec.activity_label),
+                   .receipt_path = std::move(spec.receipt_path),
+                   .source_id = std::move(spec.source_id),
+                   .completion_notes = std::move(spec.completion_notes),
+                   .metadata = std::move(spec.activity_metadata)};
   std::optional<int64_t> registered = reservation->Register(foreground);
   if (!registered) {
     KillProcess(pid);
@@ -537,8 +533,6 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
     });
   }
 
-  std::string subagent_label =
-      spec.job_kind.empty() ? "subagent" : spec.job_kind;
   std::optional<BgJob> moved = supervisor.MoveForegroundToBackground(pid);
   if (!moved) {
     BgTrackSignal(pid, false);
@@ -549,8 +543,7 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
             std::nullopt, /*launched=*/true};
   }
   if (is_subagent) {
-    return {ToolSuccess("[started] " + subagent_label + " id " +
-                        std::to_string(activity_id) +
+    return {ToolSuccess("[started] subagent id " + std::to_string(activity_id) +
                         "; completion is added to the next natural model call "
                         "without starting one; inspect activity output for "
                         "progress/readiness, or wait when the next step is "

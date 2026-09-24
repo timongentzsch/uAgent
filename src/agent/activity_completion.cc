@@ -84,8 +84,7 @@ std::vector<std::string> TakeCompleted(
                    ids->end()) {
       continue;
     }
-    if (!kind.empty() &&
-        candidate.kind != ParseActivityKind(std::string(kind))) {
+    if (!kind.empty() && ActivityKindName(candidate.kind) != kind) {
       continue;
     }
     std::unique_lock<std::mutex> interaction;
@@ -96,7 +95,7 @@ std::vector<std::string> TakeCompleted(
 
     int status = 0;
     bool completed = false;
-    if (candidate.detached) {
+    if (candidate.Detached()) {
       pid_t waited = WaitPid(candidate.pid, &status, WNOHANG);
       bool leader_reaped =
           waited == candidate.pid || (waited < 0 && errno == ECHILD);
@@ -113,16 +112,16 @@ std::vector<std::string> TakeCompleted(
         supervisor.Take(ActivityId(candidate), /*retain=*/true);
     if (!taken) continue;  // another waiter owns exactly-once delivery
     BgJob job = std::move(*taken);
-    if (!job.detached) BgTrackSignal(job.pid, false);
-    if (job.detached) unlink(DetachedRecordPath(job.pid).c_str());
+    if (!job.Detached()) BgTrackSignal(job.pid, false);
+    if (job.Detached()) unlink(DetachedRecordPath(job.pid).c_str());
     std::string incremental =
         job.session ? DrainActivityOutput(job, output_cap) : std::string();
     bool failed = !(WIFEXITED(status) && WEXITSTATUS(status) == 0);
     CollectedLog collected =
-        job.detached
+        job.Detached()
             ? CollectedLog{ReadLogTail(job.log, output_cap), std::nullopt}
             : CollectCompletedLog(job.log, output_cap, failed);
-    if (job.detached) RemoveLog(job.log);
+    if (job.Detached()) RemoveLog(job.log);
     std::string output;
     if (job.session) {
       output = incremental.empty() || incremental == kNoNewActivityOutput
@@ -192,7 +191,7 @@ ToolResult ToolActivityWait(ProcessSupervisor& supervisor,
   // up would silently lose that record; it is no more waitable than a detached
   // activity.
   auto waitable = [](const BgJob& job) {
-    return !job.detached && job.kind != ActivityKind::kMemory;
+    return !job.Detached() && job.kind != ActivityKind::kMemory;
   };
   std::vector<int64_t> ids;
   if (requested.empty()) {

@@ -85,7 +85,7 @@ std::string SupervisedJobLabel(const BgJob& job) {
   ActivityKind kind = job.kind;
   if (kind == ActivityKind::kSubagent) return "subagent";
   if (kind == ActivityKind::kMemory) return "memory";
-  return job.detached ? "detached" : "background";
+  return job.Detached() ? "detached" : "background";
 }
 
 namespace {
@@ -118,7 +118,7 @@ static ToolResult FormatActivityList(const std::vector<BgJob>& supervised,
     pid_t record_pid = JsonValue(record, "pid", 0);
     if (std::any_of(supervised.begin(), supervised.end(),
                     [record_pid](const BgJob& job) {
-                      return job.detached && job.pid == record_pid;
+                      return job.Detached() && job.pid == record_pid;
                     })) {
       continue;
     }
@@ -549,7 +549,7 @@ ToolResult ToolActivityStop(ProcessSupervisor& supervisor, int64_t requested) {
   bool persisted_alive = false;
   if (supervised) {
     log = supervised->log;
-    detached = supervised->detached;
+    detached = supervised->Detached();
   } else {
     std::optional<json> record = FindDetachedRecord(pid);
     if (!record) return ActivityNotFound(pid);
@@ -607,7 +607,7 @@ ToolResult ToolActivityStop(ProcessSupervisor& supervisor, int64_t requested) {
 
 void BgShutdownAll(ProcessSupervisor& supervisor) {
   std::vector<BgJob> jobs = supervisor.TakeAllForShutdown();
-  std::erase_if(jobs, [](const BgJob& job) { return job.detached; });
+  std::erase_if(jobs, [](const BgJob& job) { return job.Detached(); });
   for (const BgJob& job : jobs) SignalProcessGroup(job.pid, SIGTERM);
   auto deadline =
       std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
@@ -634,7 +634,7 @@ void BgShutdownAll(ProcessSupervisor& supervisor) {
 size_t BgCancelSubagents(ProcessSupervisor& supervisor) {
   size_t cancelled = 0;
   for (const BgJob& candidate : supervisor.Snapshot()) {
-    if (candidate.detached || !candidate.session ||
+    if (candidate.Detached() || !candidate.session ||
         candidate.kind != ActivityKind::kSubagent) {
       continue;
     }

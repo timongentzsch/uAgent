@@ -353,8 +353,9 @@ void TestToolExecutionPolicy() {
   fs::remove_all(log_root);
 
   ProcessSupervisor task_processes;
-  BgJob task_header{7, "", "uagent -p 'very long delegated prompt'", false,
-                    "subagent"};
+  BgJob task_header{.pid = 7,
+                    .cmd = "uagent -p 'very long delegated prompt'",
+                    .kind = ActivityKind::kSubagent};
   CHECK(BgResultHeader(task_header) == "[Background result: subagent id 7]");
   CHECK(BgResultHeader(task_header).find("delegated prompt") ==
         std::string::npos);
@@ -364,12 +365,13 @@ void TestToolExecutionPolicy() {
   task_completion.command = "uagent -p 'very long delegated prompt'";
   CHECK(BgResultHeader(task_completion) ==
         "[Background result: subagent id 7]");
-  ToolResult launched = RunShellCommand(task_processes, base,
-                                        {.command = "sleep 10",
-                                         .background = true,
-                                         .immediate = true,
-                                         .job_kind = "subagent"})
-                            .result;
+  ToolResult launched =
+      RunShellCommand(task_processes, base,
+                      {.command = "sleep 10",
+                       .background = true,
+                       .immediate = true,
+                       .activity_kind = ActivityKind::kSubagent})
+          .result;
   CHECK(launched.output.starts_with("[started] subagent id "));
   CHECK(task_processes.JoinableCount() == 1);
   std::vector<BgJob> tasks = task_processes.Snapshot();

@@ -272,10 +272,14 @@ void TestActivityBufferAndAdmission() {
     std::lock_guard<std::mutex> lock(delegated->mutex);
     delegated->transcript.Push("· reading\n· writing\n");
   }
-  CHECK(delegating.TryAdd({899980, "", "child", false, "subagent", 0, delegated,
-                           "haiku", "", "agent-1a2b3c4d"},
+  CHECK(delegating.TryAdd({.pid = 899980,
+                           .cmd = "child",
+                           .kind = ActivityKind::kSubagent,
+                           .session = delegated,
+                           .display_label = "haiku",
+                           .source_id = "agent-1a2b3c4d"},
                           4));
-  CHECK(delegating.TryAdd({899981, "", "plain", false, "command"}, 4));
+  CHECK(delegating.TryAdd({.pid = 899981, .cmd = "plain"}, 4));
   std::vector<SubagentView> views = delegating.SubagentViews();
   REQUIRE(views.size() == 1);
   CHECK(views[0].source_id == "agent-1a2b3c4d");
@@ -313,7 +317,7 @@ void TestActivityBufferAndAdmission() {
   std::optional<ActivityReservation> first_slot = admission.ReserveActivity(1);
   CHECK(first_slot.has_value());
   CHECK(!admission.ReserveActivity(1).has_value());
-  CHECK(!admission.TryAdd({899999, "", "busy", false, ""}, 1));
+  CHECK(!admission.TryAdd({.pid = 899999, .cmd = "busy"}, 1));
   first_slot.reset();
   CHECK(admission.ReserveActivity(1).has_value());
 
@@ -327,7 +331,7 @@ void TestActivityBufferAndAdmission() {
   CHECK(early->Id() > 0 && later->Id() > early->Id());
   const int64_t promised = early->Id();
   std::optional<int64_t> committed =
-      early->Register({899997, "", "reserved", false, "", promised});
+      early->Register({.pid = 899997, .cmd = "reserved", .id = promised});
   REQUIRE(committed.has_value());
   CHECK(*committed == promised);
 
@@ -345,9 +349,10 @@ void TestActivityBufferAndAdmission() {
   std::vector<int64_t> retained_ids;
   for (int index = 0; index < 17; ++index) {
     auto session = std::make_shared<ActivitySession>();
-    CHECK(retained.TryAdd(
-        {static_cast<pid_t>(900000 + index), "", "done", false, "", 0, session},
-        32));
+    CHECK(retained.TryAdd({.pid = static_cast<pid_t>(900000 + index),
+                           .cmd = "done",
+                           .session = session},
+                          32));
     int64_t id = ActivityId(retained.Snapshot().back());
     retained_ids.push_back(id);
     {
@@ -387,7 +392,8 @@ void TestActivityStateGraph() {
     CHECK(!TransitionActivityLocked(*stopped, ActivityState::kDelivered));
   }
   ProcessSupervisor supervisor;
-  CHECK(supervisor.TryAdd({899990, "", "stopped", false, "", 0, stopped}, 1));
+  CHECK(supervisor.TryAdd({.pid = 899990, .cmd = "stopped", .session = stopped},
+                          1));
   int64_t id = ActivityId(supervisor.Snapshot().front());
   std::optional<BgJob> job = supervisor.Take(id, /*retain=*/true);
   REQUIRE(job.has_value());
@@ -398,8 +404,8 @@ void TestActivityStateGraph() {
   // activity popup never degrades to the abbreviated label once inspect can
   // no longer reach a finished job.
   const std::string long_command(300, 'x');
-  CHECK(
-      supervisor.TryAdd({899991, "", long_command, false, "", 0, stopped}, 4));
+  CHECK(supervisor.TryAdd(
+      {.pid = 899991, .cmd = long_command, .session = stopped}, 4));
   json long_row;
   for (const json& row : supervisor.ActivityViews()) {
     if (row.value("command", "") == long_command) long_row = row;
@@ -637,7 +643,7 @@ void TestActivityWaitAndDelivery() {
   auto closed_session = std::make_shared<ActivitySession>();
   closed_session->tty = true;
   CHECK(closed_input.TryAdd(
-      {899998, "", "closed input", false, "", 0, closed_session}, 1));
+      {.pid = 899998, .cmd = "closed input", .session = closed_session}, 1));
   std::vector<BgJob> closed_jobs = closed_input.Snapshot();
   CHECK(closed_jobs.size() == 1);
   if (!closed_jobs.empty()) {
@@ -656,7 +662,8 @@ void TestActivityWaitAndDelivery() {
   invalid_pty_session->input_fd.Reset(open("/dev/null", O_RDWR));
   CHECK(invalid_pty_session->input_fd.Valid());
   CHECK(invalid_pty.TryAdd(
-      {899997, "", "invalid PTY", false, "", 0, invalid_pty_session}, 1));
+      {.pid = 899997, .cmd = "invalid PTY", .session = invalid_pty_session},
+      1));
   std::vector<BgJob> invalid_pty_jobs = invalid_pty.Snapshot();
   CHECK(invalid_pty_jobs.size() == 1);
   if (!invalid_pty_jobs.empty()) {
@@ -840,7 +847,7 @@ void TestActivityWaitAndDelivery() {
                         {.command = "printf memory-done",
                          .background = true,
                          .immediate = true,
-                         .job_kind = "memory",
+                         .activity_kind = ActivityKind::kMemory,
                          .activity_label = "extracting from source-123",
                          .receipt_path = "/tmp/receipt-123.json",
                          .source_id = "source-123"})
@@ -1029,23 +1036,27 @@ void TestDetachedActivityOwnership() {
     // The parent's own busy jobs must never refuse delegation: a child
     // competes against other children, not against its parent.
     ProcessSupervisor parent_busy;
-    CHECK(parent_busy.TryAdd({999801, "", "own-a", false, "command"}, 4));
-    CHECK(parent_busy.TryAdd({999802, "", "own-b", false, "command"}, 4));
-    ShellCommandResult admitted = RunShellCommand(
-        parent_busy, context,
-        {.command = "printf child-admitted", .job_kind = "subagent"});
+    CHECK(parent_busy.TryAdd({.pid = 999801, .cmd = "own-a"}, 4));
+    CHECK(parent_busy.TryAdd({.pid = 999802, .cmd = "own-b"}, 4));
+    ShellCommandResult admitted =
+        RunShellCommand(parent_busy, context,
+                        {.command = "printf child-admitted",
+                         .activity_kind = ActivityKind::kSubagent});
     CHECK(admitted.result.Ok());
     CHECK(admitted.result.output.find("child-admitted") != std::string::npos);
     (void)parent_busy.TakeAllForShutdown();
 
     // Children stop short of the ceiling so the parent keeps slots of its own.
     ProcessSupervisor children_busy;
-    CHECK(children_busy.TryAdd({999803, "", "child-a", false, "subagent"}, 4));
-    CHECK(children_busy.TryAdd({999804, "", "child-b", false, "subagent"}, 4));
-    ShellCommandResult refused = RunShellCommand(children_busy, context,
-                                                 {.command = "echo third-child",
-                                                  .immediate = true,
-                                                  .job_kind = "subagent"});
+    CHECK(children_busy.TryAdd(
+        {.pid = 999803, .cmd = "child-a", .kind = ActivityKind::kSubagent}, 4));
+    CHECK(children_busy.TryAdd(
+        {.pid = 999804, .cmd = "child-b", .kind = ActivityKind::kSubagent}, 4));
+    ShellCommandResult refused =
+        RunShellCommand(children_busy, context,
+                        {.command = "echo third-child",
+                         .immediate = true,
+                         .activity_kind = ActivityKind::kSubagent});
     CHECK(!refused.result.Ok());
     CHECK(!refused.launched);
     CHECK(refused.result.output.find("at most 2 concurrent children") !=
@@ -1060,9 +1071,12 @@ void TestDetachedActivityOwnership() {
     // Detached terminals outlive the session, so the pool bounds them too.
     ProcessSupervisor detached_pool;
     for (pid_t pid = 999811; pid < 999815; ++pid) {
-      CHECK(detached_pool.TryAdd({pid, "", "held", true, "command"}, 4));
+      CHECK(detached_pool.TryAdd(
+          {.pid = pid, .cmd = "held", .kind = ActivityKind::kDetached}, 4));
     }
-    CHECK(!detached_pool.TryAdd({999815, "", "overflow", true, "command"}, 4));
+    CHECK(!detached_pool.TryAdd(
+        {.pid = 999815, .cmd = "overflow", .kind = ActivityKind::kDetached},
+        4));
     ShellCommandResult refused_detach = RunShellCommand(
         detached_pool, context,
         {.command = "sleep 21", .detach = true, .immediate = true});
@@ -1082,12 +1096,14 @@ void TestDetachedActivityOwnership() {
   {
     ScopedEnv tiny("UAGENT_MAX_BACKGROUND_JOBS", "1");
     ProcessSupervisor single;
-    ShellCommandResult child = RunShellCommand(
-        single, context,
-        {.command = "printf tiny-pool", .job_kind = "subagent"});
+    ShellCommandResult child =
+        RunShellCommand(single, context,
+                        {.command = "printf tiny-pool",
+                         .activity_kind = ActivityKind::kSubagent});
     CHECK(child.result.Ok());
     CHECK(child.result.output.find("tiny-pool") != std::string::npos);
-    CHECK(single.TryAdd({999821, "", "holder", false, "subagent"}, 1));
+    CHECK(single.TryAdd(
+        {.pid = 999821, .cmd = "holder", .kind = ActivityKind::kSubagent}, 1));
     ShellCommandResult blocked =
         RunShellCommand(single, context, {.command = "printf blocked"});
     CHECK(!blocked.result.Ok());

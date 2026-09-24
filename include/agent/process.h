@@ -35,7 +35,6 @@ enum class ActivityState : uint8_t {
   kStopped,
 };
 
-ActivityKind ParseActivityKind(const std::string& kind);
 std::string ActivityKindName(ActivityKind kind);
 bool ActivityTerminal(ActivityState state);
 // Call while holding ActivitySession::mutex. Rejects illegal regressions and
@@ -76,17 +75,8 @@ struct ActivitySession {
 };
 
 struct BgJob {
-  BgJob(pid_t process_pid, std::string log_path, std::string command,
-        bool is_detached = false, const std::string& job_kind = {},
-        int64_t activity_id = 0,
-        std::shared_ptr<ActivitySession> activity = nullptr,
-        std::string label = {}, std::string receipt = {},
-        std::string source = {}, std::vector<std::string> notes = {},
-        json metadata = json::object());
-
-  pid_t pid;
+  pid_t pid = -1;
   std::string log, cmd;
-  bool detached = false;
   ActivityKind kind = ActivityKind::kCommand;
   int64_t id = 0;
   std::shared_ptr<ActivitySession> session;
@@ -94,7 +84,7 @@ struct BgJob {
   std::string receipt_path;
   std::string source_id;
   std::vector<std::string> completion_notes;
-  json metadata;
+  json metadata = json::object();
   int64_t started_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                            std::chrono::system_clock::now().time_since_epoch())
                            .count();
@@ -103,6 +93,8 @@ struct BgJob {
   // has been alive, not how long the supervisor has known about it.
   std::chrono::steady_clock::time_point started =
       std::chrono::steady_clock::now();
+
+  bool Detached() const { return kind == ActivityKind::kDetached; }
 };
 
 inline int64_t ActivityId(const BgJob& job) {

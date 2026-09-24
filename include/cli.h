@@ -67,6 +67,13 @@ struct ParsedSlashCommand {
 };
 
 ParsedSlashCommand ParseSlashCommand(const std::string& input);
+// "/fork [TITLE] [@TURN]": a trailing @N (or a bare number) forks at user
+// turn N, otherwise the whole session. Shared by every client.
+struct ForkArgument {
+  std::string title;
+  int64_t turn = 0;
+};
+ForkArgument ParseForkArgument(const std::string& argument);
 // The turn a prompt command stands for; empty for a local action.
 std::string SlashCommandPrompt(const ParsedSlashCommand& command);
 void PrintCommandHelp();

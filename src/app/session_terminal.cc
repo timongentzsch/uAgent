@@ -277,27 +277,8 @@ class Terminal {
           files.push_back(CanonicalAccessPath(file).string());
         }
       } else if (text == "/fork" || text.starts_with("/fork ")) {
-        // Optional trailing @N forks at user turn N (message-exclusive,
-        // so the dropped turn can be retried fresh); otherwise the whole
-        // session. A bare number alone is a turn, never a title.
-        std::string rest = Trim(text.substr(5));
-        std::string title = rest;
-        int64_t turn = 0;
-        size_t at = rest.rfind(" @");
-        if (at == std::string::npos && !rest.empty() && rest[0] == '@') at = 0;
-        if (at != std::string::npos) {
-          std::string tail = Trim(rest.substr(at + (at == 0 ? 1 : 2)));
-          if (!tail.empty() && tail.size() <= 9 &&
-              std::all_of(tail.begin(), tail.end(), ::isdigit)) {
-            turn = std::stoll(tail);
-            title = Trim(rest.substr(0, at));
-          }
-        } else if (!rest.empty() && rest.size() <= 9 &&
-                   std::all_of(rest.begin(), rest.end(), ::isdigit)) {
-          title.clear();
-          turn = std::stoll(rest);
-        }
-        Send({{"kind", "fork"}, {"title", title}, {"turn", turn}});
+        const ForkArgument fork = ParseForkArgument(text.substr(5));
+        Send({{"kind", "fork"}, {"title", fork.title}, {"turn", fork.turn}});
       } else if (text == "/rewind" || text.starts_with("/rewind ")) {
         // Same [@]N grammar as /fork's turn suffix, title aside: rewind
         // truncates this session in place instead of branching it.

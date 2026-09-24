@@ -15,6 +15,7 @@
 #include "include/app/session.h"
 #include "include/app/session_command.h"
 #include "include/app/session_host.h"
+#include "include/cli.h"
 #include "include/core/capture.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
@@ -58,6 +59,14 @@ SessionCommandResult SessionHost::ExecuteCommand(
       session->status == "updating" || session->status == "deleting") {
     result.error = "conversation update in progress";
     return result;
+  }
+  if (kind == HostCommandKind::kFork && command.contains("argument")) {
+    // Browser clients send the typed argument; the grammar lives natively.
+    const ForkArgument fork =
+        ParseForkArgument(JsonValue(command, "argument", ""));
+    command.erase("argument");
+    command["title"] = fork.title;
+    command["turn"] = fork.turn;
   }
   if (kind == HostCommandKind::kFork && session->pid <= 0) {
     if (JsonValue(command, "generation", "") != session->generation) {

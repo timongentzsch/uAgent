@@ -1897,6 +1897,9 @@ def test_web_http_context_configuration_permissions_and_fork(root, home, *, bina
             assert_true("tools" in json.loads(captured), "tools absent from HTTP body")
             fork = client.command("fork", session, title="Independent fork")["result"]
             assert_true(fork["id"] != session["id"], fork)
+            # The browser forwards the typed /fork argument; @N is a turn.
+            branch = client.command("fork", session, argument="Branch @1")["result"]
+            assert_true(branch["title"] == "Branch", branch)
             fork_saved = client.snapshot(fork)
             assert_true(fork_saved["metadata"]["status"] == "saved", fork_saved)
             assert_true(

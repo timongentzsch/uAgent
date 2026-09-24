@@ -70,8 +70,8 @@ WebSearchRoute SelectWebSearchRoute(
       // redirecting the request to a different endpoint.
       if (route->protocol != ProviderProtocol::kOpenRouter) return {};
       return {route->base_url,
-              route->api_key.empty() ? "sk-noop" : route->api_key, route->model,
-              selection.effort};
+              route->api_key.empty() ? kPlaceholderApiKey : route->api_key,
+              route->model, selection.effort};
     }
   }
   auto candidate = [&](std::string base_url, std::string api_key,

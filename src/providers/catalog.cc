@@ -96,7 +96,7 @@ ProviderCatalog LoadProviderCatalog() {
     std::string base_url = JsonValue(provider, "base_url", "");
     if (base_url.empty()) continue;
     base_url = StripTrailingSlashes(std::move(base_url));
-    std::string api_key = JsonValue(provider, "api_key", "sk-noop");
+    std::string api_key = JsonValue(provider, "api_key", kPlaceholderApiKey);
     int64_t context = JsonValue(provider, "context", int64_t{0});
     std::optional<WireApi> wire_api =
         ParseWireApi(JsonValue(provider, "wire_api", "chat_completions"));
@@ -107,9 +107,8 @@ ProviderCatalog LoadProviderCatalog() {
       configured_protocol = ParseProviderProtocol(protocol_name);
       if (!configured_protocol) continue;
     }
-    ProviderProtocol protocol = configured_protocol.value_or(
-        *wire_api == WireApi::kAnthropicMessages ? ProviderProtocol::kAnthropic
-                                                 : ProviderProtocol::kOpenAi);
+    ProviderProtocol protocol =
+        configured_protocol.value_or(ProviderProtocol::kOpenAi);
     bool hosted_web_search =
         HasHostedTool(JsonValue(provider, "hosted_tools", json::array()),
                       HostedTool::kWebSearch);
@@ -144,11 +143,6 @@ ProviderCatalog LoadProviderCatalog() {
               ParseWireApi(JsonValue(spec, "wire_api", ""));
           if (!model_wire) continue;
           route.wire_api = *model_wire;
-          if (protocol_name.empty()) {
-            route.protocol = *model_wire == WireApi::kAnthropicMessages
-                                 ? ProviderProtocol::kAnthropic
-                                 : ProviderProtocol::kOpenAi;
-          }
         }
         if (spec.contains("hosted_tools")) {
           route.hosted_web_search =

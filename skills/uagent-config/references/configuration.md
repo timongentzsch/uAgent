@@ -45,7 +45,7 @@ Every setting below is read from the running binary's registry. `takes effect` i
 | `UAGENT_WIRE_API` | string | `chat_completions` | restart-required | chat_completions, responses, or anthropic_messages |
 | `UAGENT_HOSTED_TOOLS` | string | empty | restart-required | comma-separated hosted capabilities; currently web_search |
 | `UAGENT_MODEL_FEATURES` | string | empty | restart-required | JSON model capabilities: reasoning_summary, adaptive_thinking |
-| `UAGENT_PROVIDER_PROTOCOL` | string | empty | restart-required | openai, openrouter, or anthropic |
+| `UAGENT_PROVIDER_PROTOCOL` | string | empty | restart-required | openai or openrouter (anthropic is an alias of openai) |
 | `UAGENT_OPENROUTER_PROVIDER` | string | empty | next-user-turn | pin OpenRouter to one upstream provider |
 | `UAGENT_OPENROUTER_VARIANT` | string | empty | next-user-turn | nitro, floor, or exacto routing preference |
 | `UAGENT_OPENROUTER_FALLBACKS` | boolean | `1` | next-user-turn | allow OpenRouter to fall back to another provider |

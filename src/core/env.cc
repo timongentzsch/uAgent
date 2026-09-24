@@ -36,15 +36,6 @@ double EnvDouble(const char* name, double dflt) {
   return ParseFiniteDouble(v, value) ? value : dflt;
 }
 
-namespace {
-
-bool OneOf(std::string_view value,
-           std::initializer_list<std::string_view> allowed) {
-  return std::find(allowed.begin(), allowed.end(), value) != allowed.end();
-}
-
-}  // namespace
-
 int64_t ToolResultCap() { return LongSetting(Cfg("UAGENT_TOOL_RESULT_CHARS")); }
 
 int64_t ToolBatchResultCap() {
@@ -362,19 +353,13 @@ constexpr FieldBinding<bool> kBoolOptions[] = {
     {&Cfg("UAGENT_MEMORY_GENERATE"), &RuntimeConfig::memory_generate},
 };
 
+// A fixed-choice setting outside its registered spellings keeps the default.
 void NormalizeRuntimeConfig(RuntimeConfig& config) {
-  if (!ValidOpenRouterVariant(config.openrouter_variant)) {
-    config.openrouter_variant.clear();
-  }
-  if (!OneOf(config.web_search_backend, {"auto", "openrouter", "off"})) {
-    config.web_search_backend = "auto";
-  }
-  if (!OneOf(config.web_search_engine, {"auto", "native", "exa", "firecrawl",
-                                        "parallel", "perplexity"})) {
-    config.web_search_engine = "auto";
-  }
-  if (!OneOf(config.web_search_context_size, {"low", "medium", "high"})) {
-    config.web_search_context_size.clear();
+  for (const auto& option : kStringOptions) {
+    if (!option.descriptor->Accepts(config.*option.field)) {
+      config.*option.field =
+          std::get<std::string_view>(option.descriptor->default_value);
+    }
   }
 }
 

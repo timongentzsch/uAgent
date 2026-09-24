@@ -65,7 +65,31 @@ struct ConfigDescriptor {
   unsigned scopes = kScopeUser | kScopeProject;
   std::string_view category;
   std::string_view description;
+  // Accepted spellings of a fixed-choice string; empty means free text. An
+  // empty value always means the default.
+  std::span<const std::string_view> choices = {};
+
+  bool Accepts(std::string_view value) const {
+    if (choices.empty() || value.empty()) return true;
+    for (std::string_view choice : choices) {
+      if (value == choice) return true;
+    }
+    return false;
+  }
 };
+
+inline constexpr std::string_view kOpenRouterVariants[] = {"nitro", "floor",
+                                                           "exacto"};
+inline constexpr std::string_view kWebSearchBackends[] = {"auto", "openrouter",
+                                                          "off"};
+inline constexpr std::string_view kWebSearchEngines[] = {
+    "auto", "native", "exa", "firecrawl", "parallel", "perplexity"};
+inline constexpr std::string_view kWebSearchContextSizes[] = {"low", "medium",
+                                                              "high"};
+
+// Sent when a route has no credential; local OpenAI-compatible servers accept
+// any bearer value, and "no key configured" checks compare against it.
+inline constexpr char kPlaceholderApiKey[] = "sk-noop";
 
 namespace registry {
 
@@ -76,29 +100,22 @@ inline constexpr int64_t kMb = int64_t{1024} * 1024;
 consteval ConfigDescriptor Int(std::string_view env, std::string_view field,
                                int64_t value, int64_t minimum, int64_t maximum,
                                ReloadPolicy reload, std::string_view category,
-                               std::string_view description) {
-  return {env,
-          field,
-          ConfigType::kInt,
-          value,
-          minimum,
-          maximum,
-          reload,
-          Sensitivity::kPublic,
-          kScopeUser | kScopeProject,
-          category,
-          description};
+                               std::string_view description,
+                               unsigned scopes = kScopeUser | kScopeProject) {
+  return {env,     field,    ConfigType::kInt, value,
+          minimum, maximum,  reload,           Sensitivity::kPublic,
+          scopes,  category, description};
 }
 
 consteval ConfigDescriptor Str(std::string_view env, std::string_view field,
                                std::string_view value, ReloadPolicy reload,
                                Sensitivity sensitivity,
                                std::string_view category,
-                               std::string_view description) {
-  return {env,      field,         ConfigType::kString,
-          value,    kConfigAnyMin, kConfigAnyMax,
-          reload,   sensitivity,   kScopeUser | kScopeProject,
-          category, description};
+                               std::string_view description,
+                               unsigned scopes = kScopeUser | kScopeProject) {
+  return {env,           field,  ConfigType::kString, value,  kConfigAnyMin,
+          kConfigAnyMax, reload, sensitivity,         scopes, category,
+          description};
 }
 
 consteval ConfigDescriptor Bul(std::string_view env, std::string_view field,
@@ -135,6 +152,12 @@ consteval ConfigDescriptor Dbl(std::string_view env, std::string_view field,
           description};
 }
 
+consteval ConfigDescriptor Choice(ConfigDescriptor descriptor,
+                                  std::span<const std::string_view> choices) {
+  descriptor.choices = choices;
+  return descriptor;
+}
+
 // A default computed from another setting rather than a constant.
 consteval ConfigDescriptor Derived(std::string_view env, int64_t minimum,
                                    int64_t maximum, std::string_view category,
@@ -155,68 +178,34 @@ consteval ConfigDescriptor Derived(std::string_view env, int64_t minimum,
 }  // namespace registry
 
 inline constexpr ConfigDescriptor kConfigRegistry[] = {
-    {"UAGENT_WEB_BIND",
-     {},
-     ConfigType::kString,
-     std::string_view{"127.0.0.1"},
-     kConfigAnyMin,
-     kConfigAnyMax,
-     ReloadPolicy::kRestartRequired,
-     Sensitivity::kPublic,
-     kScopeUser,
-     "web",
-     "web listener address: loopback by default, all interfaces only when "
-     "explicitly configured"},
-    {"UAGENT_BROWSER_DATA",
-     {},
-     ConfigType::kString,
-     std::string_view{},
-     kConfigAnyMin,
-     kConfigAnyMax,
-     ReloadPolicy::kRestartRequired,
-     Sensitivity::kPublic,
-     kScopeUser,
-     "web",
-     "private browser profile and service directory; empty disables the "
-     "browser appliance"},
-    {"UAGENT_WEB_PORT",
-     {},
-     ConfigType::kInt,
-     int64_t{8080},
-     1024,
-     65535,
-     ReloadPolicy::kRestartRequired,
-     Sensitivity::kPublic,
-     kScopeUser,
-     "web",
-     "global web master's loopback port"},
-    {"UAGENT_WEB_ORIGIN",
-     {},
-     ConfigType::kString,
-     std::string_view{},
-     kConfigAnyMin,
-     kConfigAnyMax,
-     ReloadPolicy::kRestartRequired,
-     Sensitivity::kPublic,
-     kScopeUser,
-     "web",
-     "exact browser origin via an explicitly configured HTTPS or tailnet "
-     "proxy"},
-    {"UAGENT_WEB_PUSH_CONTACT",
-     {},
-     ConfigType::kString,
-     std::string_view{},
-     kConfigAnyMin,
-     kConfigAnyMax,
-     ReloadPolicy::kRestartRequired,
-     Sensitivity::kPublic,
-     kScopeUser,
-     "web",
-     "VAPID mailto or HTTPS contact; empty disables optional native Web Push"},
+    // The web master is per OS user, so its settings never come from a project.
+    registry::Str("UAGENT_WEB_BIND", {}, "127.0.0.1",
+                  ReloadPolicy::kRestartRequired, Sensitivity::kPublic, "web",
+                  "web listener address: loopback by default, all interfaces "
+                  "only when explicitly configured",
+                  kScopeUser),
+    registry::Str("UAGENT_BROWSER_DATA", {}, "", ReloadPolicy::kRestartRequired,
+                  Sensitivity::kPublic, "web",
+                  "private browser profile and service directory; empty "
+                  "disables the browser appliance",
+                  kScopeUser),
+    registry::Int("UAGENT_WEB_PORT", {}, 8080, 1024, 65535,
+                  ReloadPolicy::kRestartRequired, "web",
+                  "global web master's loopback port", kScopeUser),
+    registry::Str("UAGENT_WEB_ORIGIN", {}, "", ReloadPolicy::kRestartRequired,
+                  Sensitivity::kPublic, "web",
+                  "exact browser origin via an explicitly configured HTTPS or "
+                  "tailnet proxy",
+                  kScopeUser),
+    registry::Str("UAGENT_WEB_PUSH_CONTACT", {}, "",
+                  ReloadPolicy::kRestartRequired, Sensitivity::kPublic, "web",
+                  "VAPID mailto or HTTPS contact; empty disables optional "
+                  "native Web Push",
+                  kScopeUser),
     // Route selection and credentials.
     registry::Str("UAGENT_BASE_URL", {}, "", ReloadPolicy::kRestartRequired,
                   Sensitivity::kPublic, "route", "active API base URL"),
-    registry::Str("UAGENT_API_KEY", {}, "sk-noop",
+    registry::Str("UAGENT_API_KEY", {}, kPlaceholderApiKey,
                   ReloadPolicy::kRestartRequired, Sensitivity::kSecret, "route",
                   "credential for the active route"),
     registry::Str("OPENROUTER_API_KEY", {}, "", ReloadPolicy::kRestartRequired,
@@ -244,13 +233,15 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
         "JSON model capabilities: reasoning_summary, adaptive_thinking"),
     registry::Str("UAGENT_PROVIDER_PROTOCOL", {}, "",
                   ReloadPolicy::kRestartRequired, Sensitivity::kPublic, "route",
-                  "openai, openrouter, or anthropic"),
+                  "openai or openrouter (anthropic is an alias of openai)"),
     registry::Str("UAGENT_OPENROUTER_PROVIDER", "openrouter_provider", "",
                   ReloadPolicy::kNextUserTurn, Sensitivity::kPublic, "route",
                   "pin OpenRouter to one upstream provider"),
-    registry::Str("UAGENT_OPENROUTER_VARIANT", "openrouter_variant", "",
-                  ReloadPolicy::kNextUserTurn, Sensitivity::kPublic, "route",
-                  "nitro, floor, or exacto routing preference"),
+    registry::Choice(
+        registry::Str("UAGENT_OPENROUTER_VARIANT", "openrouter_variant", "",
+                      ReloadPolicy::kNextUserTurn, Sensitivity::kPublic,
+                      "route", "nitro, floor, or exacto routing preference"),
+        kOpenRouterVariants),
     registry::Bul("UAGENT_OPENROUTER_FALLBACKS", "openrouter_fallbacks", true,
                   ReloadPolicy::kNextUserTurn, "route",
                   "allow OpenRouter to fall back to another provider"),
@@ -410,22 +401,29 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                   "lean withholds implementation tools from this process"),
 
     // Web search.
-    registry::Str("UAGENT_WEB_SEARCH_BACKEND", "web_search_backend", "auto",
-                  ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
-                  "search", "auto, openrouter, or off"),
+    registry::Choice(
+        registry::Str("UAGENT_WEB_SEARCH_BACKEND", "web_search_backend", "auto",
+                      ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
+                      "search", "auto, openrouter, or off"),
+        kWebSearchBackends),
     registry::Str("UAGENT_WEB_SEARCH_MODEL", "web_search_model", "",
                   ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
                   "search", "model route used for search"),
     registry::Str("UAGENT_WEB_SEARCH_EFFORT", "web_search_effort", "",
                   ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
                   "search", "reasoning effort for the search route"),
-    registry::Str("UAGENT_WEB_SEARCH_ENGINE", "web_search_engine", "auto",
-                  ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
-                  "search",
-                  "auto, native, exa, firecrawl, parallel, perplexity"),
-    registry::Str("UAGENT_WEB_SEARCH_CONTEXT_SIZE", "web_search_context_size",
-                  "", ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
-                  "search", "low, medium, or high native search context"),
+    registry::Choice(
+        registry::Str("UAGENT_WEB_SEARCH_ENGINE", "web_search_engine", "auto",
+                      ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
+                      "search",
+                      "auto, native, exa, firecrawl, parallel, perplexity"),
+        kWebSearchEngines),
+    registry::Choice(
+        registry::Str("UAGENT_WEB_SEARCH_CONTEXT_SIZE",
+                      "web_search_context_size", "",
+                      ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
+                      "search", "low, medium, or high native search context"),
+        kWebSearchContextSizes),
     registry::Int("UAGENT_WEB_SEARCH_TIMEOUT", "web_search_timeout_s", 60, 1,
                   kConfigAnyMax, ReloadPolicy::kNextUserTurn, "search",
                   "seconds allowed for one search request"),

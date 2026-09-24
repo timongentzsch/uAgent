@@ -293,6 +293,13 @@ bool ValidateValue(const ConfigDescriptor& descriptor, std::string& value,
       return true;
     }
     case ConfigType::kString:
+      if (!descriptor.Accepts(value)) {
+        error = name + " expects one of:";
+        for (std::string_view choice : descriptor.choices) {
+          error += " " + std::string(choice);
+        }
+        return false;
+      }
       if (name == "UAGENT_APPROVAL" && !value.empty() && value != "prompt" &&
           value != "ask" && value != "auto" && value != "yolo") {
         error = "UAGENT_APPROVAL expects prompt, ask, auto or yolo";

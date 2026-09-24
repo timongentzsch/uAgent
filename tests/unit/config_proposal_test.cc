@@ -112,6 +112,12 @@ void TestConfigProposalAndCommit() {
       manager, active, false);
   CHECK(!unknown.ok);
   CHECK(unknown.error.find("unknown setting") != std::string::npos);
+  // A fixed-choice setting refuses a spelling it would otherwise ignore.
+  ConfigProposal choice = PrepareConfigProposal(
+      ConfigProposalScope::kUser, {{"UAGENT_WEB_SEARCH_BACKEND", "foo", false}},
+      manager, active, false);
+  CHECK(!choice.ok);
+  CHECK(choice.error.find("auto openrouter off") != std::string::npos);
 
   // A credential may never arrive through a tool argument.
   ConfigProposal secret = PrepareConfigProposal(

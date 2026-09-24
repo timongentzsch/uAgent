@@ -16,8 +16,6 @@ const char* ProviderProtocolName(ProviderProtocol protocol) {
       return "openai";
     case ProviderProtocol::kOpenRouter:
       return "openrouter";
-    case ProviderProtocol::kAnthropic:
-      return "anthropic";
   }
   return "openai";
 }
@@ -26,7 +24,7 @@ std::optional<ProviderProtocol> ParseProviderProtocol(
     std::string_view protocol) {
   if (protocol == "openai") return ProviderProtocol::kOpenAi;
   if (protocol == "openrouter") return ProviderProtocol::kOpenRouter;
-  if (protocol == "anthropic") return ProviderProtocol::kAnthropic;
+  if (protocol == "anthropic") return ProviderProtocol::kOpenAi;
   return std::nullopt;
 }
 
@@ -167,8 +165,6 @@ ProviderCapabilities CapabilitiesForRoute(ProviderProtocol protocol,
     capabilities.provider_routing = true;
     capabilities.session_passthrough = true;
     capabilities.model_variants = true;
-  } else if (protocol == ProviderProtocol::kAnthropic) {
-    capabilities.reasoning_object = true;
   } else if (OpenaiUrl(base_url)) {
     // Exact official host, not a model-name or substring heuristic: OpenAI's
     // Chat Completions dialect uses max_completion_tokens.

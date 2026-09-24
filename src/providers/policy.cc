@@ -78,7 +78,8 @@ SideRoute ResolveSideRoute(const Api& api,
     if (std::optional<ModelRoute> route =
             ResolveModelRoute(routes, providers, parsed.base)) {
       resolved.base_url = route->base_url;
-      resolved.api_key = route->api_key.empty() ? "sk-noop" : route->api_key;
+      resolved.api_key =
+          route->api_key.empty() ? kPlaceholderApiKey : route->api_key;
       resolved.model = route->model;
       resolved.effort = route->effort;
       resolved.variant.clear();
@@ -103,7 +104,7 @@ SideRoute ResolveSideRoute(const Api& api,
 
 void ApplyRoute(Api& api, const ModelRoute& route) {
   api.base_url = route.base_url;
-  api.api_key = route.api_key.empty() ? "sk-noop" : route.api_key;
+  api.api_key = route.api_key.empty() ? kPlaceholderApiKey : route.api_key;
   api.model = route.model;
   api.reasoning_effort = route.effort;
   api.supported_reasoning_efforts = route.supported_efforts;
@@ -134,7 +135,7 @@ std::string RouteSelection(const SideRoute& route,
 
 void ApplySideRoute(Api& api, const SideRoute& route) {
   api.base_url = route.base_url;
-  api.api_key = route.api_key.empty() ? "sk-noop" : route.api_key;
+  api.api_key = route.api_key.empty() ? kPlaceholderApiKey : route.api_key;
   api.model = route.model;
   api.reasoning_effort = route.effort;
   api.supported_reasoning_efforts.clear();
@@ -159,7 +160,7 @@ void ActivateRoute(Api& api) {
 
 ProviderSetup ConfigureProvider(Api& api) {
   api.base_url = StripTrailingSlashes(EnvStr("UAGENT_BASE_URL"));
-  api.api_key = EnvStr("UAGENT_API_KEY", "sk-noop");
+  api.api_key = EnvStr("UAGENT_API_KEY", kPlaceholderApiKey);
   ModelSelection requested = ParseModelSelection(EnvStr("UAGENT_MODEL"));
   api.model = requested.base;
   const std::string configured_effort = EnvStr("UAGENT_REASONING_EFFORT");
@@ -174,14 +175,8 @@ ProviderSetup ConfigureProvider(Api& api) {
   if (!protocol_setting.empty()) {
     configured_protocol = ParseProviderProtocol(protocol_setting);
   }
-  ProviderProtocol protocol;
-  if (configured_protocol) {
-    protocol = *configured_protocol;
-  } else if (wire_api == WireApi::kAnthropicMessages) {
-    protocol = ProviderProtocol::kAnthropic;
-  } else {
-    protocol = ProviderProtocol::kOpenAi;
-  }
+  ProviderProtocol protocol =
+      configured_protocol.value_or(ProviderProtocol::kOpenAi);
   json hosted_tools = json::array();
   for (std::string tool : SplitPathList(EnvStr("UAGENT_HOSTED_TOOLS"), ',')) {
     tool = Trim(tool);

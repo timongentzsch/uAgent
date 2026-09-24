@@ -65,15 +65,8 @@ bool HeadlessProgressEnabled();
 // Experiment overlay for the base prompt: a path, empty when unset.
 std::string PromptOverlayPath();
 
-inline constexpr std::string_view kOpenRouterVariants[] = {"nitro", "floor",
-                                                           "exacto"};
-
 inline bool ValidOpenRouterVariant(std::string_view variant) {
-  if (variant.empty()) return true;
-  for (std::string_view candidate : kOpenRouterVariants) {
-    if (variant == candidate) return true;
-  }
-  return false;
+  return Cfg("UAGENT_OPENROUTER_VARIANT").Accepts(variant);
 }
 
 // Bounded tunables. Every UAGENT_* limit the agent honours is declared here

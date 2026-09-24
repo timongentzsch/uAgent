@@ -155,7 +155,7 @@ void HandleContext(AppSession& session) {
       {"model", session.ApiClient().RequestModel()},
       {"model_source", std::move(model_source)},
       {"credentials", session.ApiClient().api_key.empty() ||
-                              session.ApiClient().api_key == "sk-noop"
+                              session.ApiClient().api_key == kPlaceholderApiKey
                           ? "<unset>"
                           : "<set>"},
       {"credential_source", std::move(credential_source)},

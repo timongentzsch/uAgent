@@ -230,10 +230,7 @@ ToolResult ToolActivityWait(ProcessSupervisor& supervisor,
   // per-call budget. Both ends are reported below, because "timed out" alone
   // reads as though the requested wait elapsed and invites the caller to give
   // up on an activity that is running normally.
-  auto wait_started = std::chrono::steady_clock::now();
-  auto wait_requested = wait_started + std::chrono::milliseconds(wait_ms);
-  auto deadline = std::min(context.deadline, wait_requested);
-  bool wait_capped = context.deadline < wait_requested;
+  const WaitWindow window(wait_ms, context.deadline);
   std::string output;
   for (;;) {
     uint64_t generation = supervisor.Generation();
@@ -261,22 +258,15 @@ ToolResult ToolActivityWait(ProcessSupervisor& supervisor,
                 " still running]";
       return ToolSuccess(LimitOutput(std::move(output), cap));
     }
-    auto now = std::chrono::steady_clock::now();
-    if (now >= deadline) {
+    if (std::chrono::steady_clock::now() >= window.deadline) {
       if (!output.empty()) output += "\n\n";
-      double waited = std::chrono::duration<double>(now - wait_started).count();
-      output += "[waited " + FmtDuration(waited);
-      if (wait_capped) {
-        output += " of " + FmtDuration(static_cast<double>(wait_ms) / 1000.0) +
-                  " requested, capped by the turn deadline";
-      }
-      output += "; " + ActivityCount(running) +
+      output += "[" + window.Note("waited") + "; " + ActivityCount(running) +
                 " still running; call again to keep waiting]";
       return ToolSuccess(LimitOutput(std::move(output), cap));
     }
     // Process state changes, Escape, and queued steering all pair with Wake(),
     // so this predicate wait needs no periodic abort polling.
-    supervisor.WaitForChange(generation, deadline);
+    supervisor.WaitForChange(generation, window.deadline);
   }
 }
 

@@ -4,6 +4,8 @@
 #define UAGENT_INCLUDE_AGENT_JOBS_H_
 // Bounded job-log, detached-terminal, and process lifecycle declarations.
 
+#include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -12,9 +14,41 @@
 
 #include "include/agent/process.h"
 #include "include/core/json.h"
+#include "include/core/strings.h"
 #include "include/tools/tool.h"
 
 namespace uagent {
+
+// A wait bounded by the caller's request and by the turn deadline. The note
+// says which one ended it: "timed out" alone reads as though the requested
+// wait elapsed and invites giving up on an activity that is running normally.
+struct WaitWindow {
+  // Declared first: the constructor measures the deadline from it.
+  std::chrono::steady_clock::time_point started =
+      std::chrono::steady_clock::now();
+  int64_t requested_ms;
+  std::chrono::steady_clock::time_point deadline;
+  bool capped;
+
+  WaitWindow(int64_t wait_ms, std::chrono::steady_clock::time_point turn_end)
+      : requested_ms(wait_ms),
+        deadline(
+            std::min(turn_end, started + std::chrono::milliseconds(wait_ms))),
+        capped(turn_end < started + std::chrono::milliseconds(wait_ms)) {}
+
+  // "<lead> 3s", or "<lead> 3s of 10s requested, capped by the turn deadline".
+  std::string Note(std::string_view lead) const {
+    const double waited = std::chrono::duration<double>(
+                              std::chrono::steady_clock::now() - started)
+                              .count();
+    std::string note = std::string(lead) + " " + FmtDuration(waited);
+    if (capped) {
+      note += " of " + FmtDuration(static_cast<double>(requested_ms) / 1000.0) +
+              " requested, capped by the turn deadline";
+    }
+    return note;
+  }
+};
 
 // The activity tool's slice of the global result cap, shared by the tool's own
 // budget and by the automatic background-completion text. Background output is

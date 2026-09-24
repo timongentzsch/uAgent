@@ -171,10 +171,7 @@ std::string CollectSessionOutput(const ProcessSupervisor& supervisor,
     bool captured = !tail.empty();
     return done(std::move(tail), captured);
   }
-  auto poll_started = std::chrono::steady_clock::now();
-  auto poll_requested = poll_started + std::chrono::milliseconds(wait_ms);
-  auto deadline = std::min(context.deadline, poll_requested);
-  bool poll_capped = context.deadline < poll_requested;
+  const WaitWindow window(wait_ms, context.deadline);
   HeadTailBuffer collected(cap > 0 ? static_cast<size_t>(cap)
                                    : size_t{1024} * 1024);
   std::optional<std::chrono::steady_clock::time_point> quiet_deadline;
@@ -236,18 +233,12 @@ std::string CollectSessionOutput(const ProcessSupervisor& supervisor,
       return finish(
           "[wait yielded for queued steering; process still running]");
     }
-    auto now = std::chrono::steady_clock::now();
-    if (now >= deadline) {
-      double waited = std::chrono::duration<double>(now - poll_started).count();
-      std::string note = "[waited " + FmtDuration(waited);
-      if (poll_capped) {
-        note += " of " + FmtDuration(static_cast<double>(wait_ms) / 1000.0) +
-                " requested, capped by the turn deadline";
-      }
-      return finish(note + "; process still running]");
+    if (std::chrono::steady_clock::now() >= window.deadline) {
+      return finish("[" + window.Note("waited") + "; process still running]");
     }
-    auto wait_deadline =
-        quiet_deadline ? std::min(deadline, *quiet_deadline) : deadline;
+    auto wait_deadline = quiet_deadline
+                             ? std::min(window.deadline, *quiet_deadline)
+                             : window.deadline;
     supervisor.WaitForChange(generation, wait_deadline);
   }
 }
@@ -351,17 +342,13 @@ ToolResult ToolActivityOutput(const ProcessSupervisor& supervisor, int64_t id,
     const int64_t read_cap = ToolResultCap();
     std::string current = ReadLogTail(watch_path, read_cap);
     if (wait_ms <= 0) return reply(std::move(current), false);
-    auto watch_started = std::chrono::steady_clock::now();
-    auto watch_requested = watch_started + std::chrono::milliseconds(wait_ms);
-    auto deadline = std::min(context.deadline, watch_requested);
-    bool watch_capped = context.deadline < watch_requested;
+    const WaitWindow window(wait_ms, context.deadline);
     std::string accumulated = current;
     for (;;) {
       bool steering_yield = SteeringYieldRequested();
       bool found =
           !until.empty() && accumulated.find(until) != std::string::npos;
-      auto now = std::chrono::steady_clock::now();
-      bool expired = now >= deadline;
+      bool expired = std::chrono::steady_clock::now() >= window.deadline;
       if (found || expired || AbortRequested() || steering_yield) {
         bool no_change = accumulated == current && !steering_yield;
         if (steering_yield) {
@@ -373,18 +360,12 @@ ToolResult ToolActivityOutput(const ProcessSupervisor& supervisor, int64_t id,
           // for", when in fact the marker never appeared and the wait may have
           // been cut short by the turn deadline rather than by wait_ms.
           if (!accumulated.empty()) accumulated += "\n";
-          double waited =
-              std::chrono::duration<double>(now - watch_started).count();
-          accumulated += until.empty()
-                             ? "[waited " + FmtDuration(waited)
-                             : "[marker \"" + std::string(until) +
-                                   "\" not seen in " + FmtDuration(waited);
-          if (watch_capped) {
-            accumulated += " of " +
-                           FmtDuration(static_cast<double>(wait_ms) / 1000.0) +
-                           " requested, capped by the turn deadline";
-          }
-          accumulated += "; process still running; call again to keep waiting]";
+          accumulated +=
+              "[" +
+              window.Note(until.empty() ? "waited"
+                                        : "marker \"" + std::string(until) +
+                                              "\" not seen in") +
+              "; process still running; call again to keep waiting]";
           no_change = false;
         }
         return reply(std::move(accumulated), no_change);
@@ -398,7 +379,7 @@ ToolResult ToolActivityOutput(const ProcessSupervisor& supervisor, int64_t id,
         continue;
       }
       FileWaitResult changed =
-          WaitForFileChange(watch_path, observed, deadline);
+          WaitForFileChange(watch_path, observed, window.deadline);
       if (changed == FileWaitResult::kInterrupted ||
           changed == FileWaitResult::kSteering ||
           changed == FileWaitResult::kTimedOut) {

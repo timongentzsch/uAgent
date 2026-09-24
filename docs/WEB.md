@@ -63,8 +63,9 @@ over drafts or a pending decision.
 - Every request must address the configured origin or the loopback URL, and
   mutations must carry that exact Origin. API routes other than pairing
   require device authentication.
-- Optional Web Push requires building with `-DUAGENT_WEB_PUSH=ON` (OpenSSL 3),
-  a `UAGENT_WEB_PUSH_CONTACT` (`mailto:` or HTTPS contact) and browser
+- Web Push is built into release archives and the Docker image (source
+  builds opt in with `-DUAGENT_WEB_PUSH=ON` and OpenSSL 3). It needs a
+  `UAGENT_WEB_PUSH_CONTACT` (`mailto:` or HTTPS contact) and browser
   permission. Notifications contain generic activity information, not prompts
   or answers. Delivery is best effort; the conversation remains authoritative.
 

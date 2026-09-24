@@ -451,8 +451,6 @@ install(FILES README.md SECURITY.md CONTRIBUTING.md LICENSE
 # Keep the source-relative paths used by README and CONTRIBUTING valid in an
 # installed documentation tree.
 install(FILES ${UAGENT_GUIDES} DESTINATION ${CMAKE_INSTALL_DOCDIR}/docs)
-install(FILES benchmarks/baselines/web.json
-        DESTINATION ${CMAKE_INSTALL_DOCDIR}/benchmarks/baselines)
 if(UAGENT_WEB)
   install(FILES web/THIRD_PARTY_NOTICES.md DESTINATION ${CMAKE_INSTALL_DOCDIR})
   install(FILES third_party/cpp-httplib/LICENSE

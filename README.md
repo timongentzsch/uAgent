@@ -14,7 +14,8 @@ interface and machine-readable output from one conversation runtime.
 - CMake 3.21+, a C++20 compiler and libcurl
 - Optional: [uv](https://docs.astral.sh/uv/) for Python `scratch` scripts;
   Node.js with `npm install -g @playwright/cli@latest` for browser automation;
-  OpenSSL 3 libcrypto for native Web Push (`-DUAGENT_WEB_PUSH=ON`)
+  OpenSSL 3 libcrypto to build Web Push from source (`-DUAGENT_WEB_PUSH=ON`;
+  release archives and the Docker image include it)
 
 The default build embeds the prebuilt browser interface from `web/dist`, so it
 needs no Node.js. `-DUAGENT_WEB=OFF` builds a CLI-only binary.

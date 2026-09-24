@@ -24,9 +24,11 @@ using ConfigProposalFactory = std::function<ConfigProposal(
 // be committed. There is deliberately no commit argument the model can set.
 using SelfDescriptionProvider =
     std::function<json(SelfTopic, const std::string&)>;
+using ConfigApprovals = ApprovedProposals<ConfigProposal>;
+
 Tool UagentTool(SelfDescriptionProvider describe,
                 const ConfigProposalFactory& prepare = {},
-                const std::shared_ptr<ConfigProposalStore>& store = {});
+                const std::shared_ptr<ConfigApprovals>& store = {});
 
 }  // namespace uagent
 

@@ -414,7 +414,7 @@ ToolResult ToolMemoryAction(const std::string& action, const std::string& key,
   if (!cwd) return ToolFailure(ToolErrorCode::kInternal, error);
   FileLease lease;
   if ((action == "set" || action == "forget") &&
-      !lease.Acquire(UagentDir("library") + "/write.lock", error)) {
+      !AcquireLibraryWriteLease(lease, error)) {
     return ToolFailure(ToolErrorCode::kInternal, error);
   }
   return MemoryAction(action, key, content, *cwd);
@@ -495,7 +495,7 @@ json MemoryControl(const json& request, const std::filesystem::path& cwd) {
   }
   std::string error;
   FileLease lease;
-  if (!lease.Acquire(UagentDir("library") + "/write.lock", error)) {
+  if (!AcquireLibraryWriteLease(lease, error)) {
     return {{"error", error}};
   }
   const auto path = external_copy ? std::filesystem::path(found->path)

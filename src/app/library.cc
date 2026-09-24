@@ -104,7 +104,7 @@ json SkillControl(const json& request, const std::filesystem::path& cwd) {
     if (found == discovered.end()) return {{"error", "skill not found"}};
     std::string error;
     FileLease lease;
-    if (!lease.Acquire(UagentDir("library") + "/write.lock", error)) {
+    if (!AcquireLibraryWriteLease(lease, error)) {
       return {{"error", error}};
     }
     auto manager = ConfigManager::Capture(false, {});
@@ -158,7 +158,7 @@ json SkillControl(const json& request, const std::filesystem::path& cwd) {
   }
   std::string error, previous;
   FileLease lease;
-  if (!lease.Acquire(UagentDir("library") + "/write.lock", error)) {
+  if (!AcquireLibraryWriteLease(lease, error)) {
     return {{"error", error}};
   }
   bool existed = PathExists(path.string());

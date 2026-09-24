@@ -100,23 +100,19 @@ bool ParsePermissionOverride(const std::string& value,
   return true;
 }
 
-PermissionOverride LegacyPermissionOverride(const json& value) {
-  if (value.is_string()) {
-    PermissionOverride parsed;
-    if (ParsePermissionOverride(value.get<std::string>(), parsed)) {
-      return parsed;
-    }
+ApprovalMode ResolveApprovalMode(PermissionOverride override,
+                                 ApprovalMode configured) {
+  switch (override) {
+    case PermissionOverride::kAsk:
+      return ApprovalMode::kAsk;
+    case PermissionOverride::kAuto:
+      return ApprovalMode::kAuto;
+    case PermissionOverride::kYolo:
+      return ApprovalMode::kYolo;
+    case PermissionOverride::kDefault:
+      break;
   }
-  if (value.is_number_integer()) {
-    const int legacy = value.get<int>();
-    if (legacy == 0) {
-      return PermissionOverride::kAsk;
-    }
-    if (legacy == 1) {
-      return PermissionOverride::kYolo;
-    }
-  }
-  return PermissionOverride::kDefault;
+  return configured;
 }
 
 std::string PermissionKey(const Tool& tool, const json& arguments,

@@ -214,7 +214,6 @@ std::vector<Tool> BuildTools(AppContext& context,
     prepare = [app = &context](ConfigProposalScope scope,
                                const std::vector<ConfigChange>& changes) {
       return PrepareConfigProposal(scope, changes, app->config_manager,
-                                   app->runtime.config,
                                    app->config_manager.ProjectTrusted());
     };
   }
@@ -226,7 +225,7 @@ std::vector<Tool> BuildTools(AppContext& context,
                                   app->runtime.api, app->tools,
                                   app->agent.get()});
       },
-      prepare, std::make_shared<ConfigProposalStore>()));
+      prepare, std::make_shared<ConfigApprovals>()));
   WebSearchRoute search_route =
       SelectWebSearchRoute(api, context.provider.providers);
   if (search_route.Valid()) {
@@ -610,12 +609,13 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   MaintainArtifacts();
   // Keep the explicit CLI flag distinct from the configured default so a
   // resumed conversation can restore its own override.
-  ApprovalMode approval_mode = ApprovalMode::kAsk;
-  if (!ParseApprovalMode(config.approval, approval_mode)) {
-    approval_mode = ApprovalMode::kAsk;
+  ApprovalMode configured_mode = ApprovalMode::kAsk;
+  if (!ParseApprovalMode(config.approval, configured_mode)) {
+    configured_mode = ApprovalMode::kAsk;
   }
-  if (options.yolo) approval_mode = ApprovalMode::kYolo;
-  SetApprovalMode(approval_mode);
+  SetApprovalMode(ResolveApprovalMode(
+      options.yolo ? PermissionOverride::kYolo : PermissionOverride::kDefault,
+      configured_mode));
   if (!options.debug) {
     options.debug_path = EnvStr("UAGENT_DEBUG_LOG");
     options.debug = !options.debug_path.empty();

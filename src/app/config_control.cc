@@ -16,28 +16,16 @@ json ConfigurationControl(const json& request, const ConfigManager& manager,
   std::string operation = JsonValue(request, "operation", "get");
   json effects = json::array();
   if (operation == "apply") {
-    std::string scope = JsonValue(request, "scope", "user");
-    if (scope != "user" && scope != "project") {
+    ConfigProposalScope scope = ConfigProposalScope::kUser;
+    if (!ParseConfigScope(JsonValue(request, "scope", "user"), scope)) {
       return {{"error", "invalid configuration scope"}};
     }
     std::vector<ConfigChange> changes;
-    if (const json* items = JsonArray(request, "changes")) {
-      if (items->size() > kConfigurationChangeLimit) {
-        return {{"error", "too many configuration changes"}};
-      }
-      for (const json& item : *items) {
-        changes.push_back({JsonValue(item, "key", ""),
-                           JsonValue(item, "value", ""),
-                           JsonValue(item, "unset", false)});
-      }
-    }
-    if (changes.empty()) return {{"error", "no configuration changes"}};
-    auto proposal =
-        PrepareConfigProposal(scope == "user" ? ConfigProposalScope::kUser
-                                              : ConfigProposalScope::kProject,
-                              changes, manager, active, project_trusted, true);
-    if (!proposal.ok) return {{"error", proposal.error}};
     std::string error;
+    if (!ParseConfigChanges(request, changes, error)) return {{"error", error}};
+    auto proposal =
+        PrepareConfigProposal(scope, changes, manager, project_trusted, true);
+    if (!proposal.ok) return {{"error", proposal.error}};
     if (!CommitConfigProposal(proposal, error)) return {{"error", error}};
     for (const auto& effect : proposal.effects) {
       effects.push_back(
@@ -46,36 +34,25 @@ json ConfigurationControl(const json& request, const ConfigManager& manager,
   } else if (operation != "get") {
     return {{"error", "unknown configuration operation"}};
   }
+  // A fresh read: an apply above has just changed the files.
   auto configured = manager.Read();
-  json actual = active.DiagnosticJson();
-  json settings = ConfigSchemaJson();
+  json settings =
+      ConfigSettingsJson(configured.sources, active.DiagnosticJson(),
+                         JsonValue(request, "name", ""));
   for (json& setting : settings) {
-    std::string name = setting["name"];
+    const std::string name = setting["name"];
     const auto* descriptor = FindConfigDescriptor(name);
     setting["scopes"] = json::array();
     if (descriptor->scopes & kScopeUser) setting["scopes"].push_back("user");
     if (descriptor->scopes & kScopeProject) {
       setting["scopes"].push_back("project");
     }
-    setting["source"] = JsonValue(configured.sources, name.c_str(), "default");
     auto value = configured.values.find(name);
-    bool secret = descriptor->sensitivity != Sensitivity::kPublic;
     setting["set"] = value != configured.values.end() && !value->second.empty();
-    setting["value"] = secret                             ? json(nullptr)
+    setting["value"] = descriptor->sensitivity != Sensitivity::kPublic
+                           ? json(nullptr)
                        : value == configured.values.end() ? setting["default"]
                                                           : json(value->second);
-    std::string field(descriptor->field);
-    if (!secret && !field.empty() && actual.contains(field)) {
-      setting["active"] = actual[field];
-    }
-  }
-  std::string name = JsonValue(request, "name", "");
-  if (!name.empty()) {
-    json matches = json::array();
-    for (auto& setting : settings) {
-      if (setting["name"] == name) matches.push_back(std::move(setting));
-    }
-    settings = std::move(matches);
   }
   return {{"settings", settings},
           {"effects", effects},

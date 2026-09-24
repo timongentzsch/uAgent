@@ -39,7 +39,7 @@ json PromptControl(const json& request, AdaptiveSystemState* state,
   std::string error;
   FileLease lease;
   if (write && scope != "conversation" &&
-      !lease.Acquire(UagentDir("library") + "/write.lock", error)) {
+      !AcquireLibraryWriteLease(lease, error)) {
     return {{"error", error}};
   }
   auto documents = PromptDocuments(state);

@@ -9,6 +9,7 @@
 #include <chrono>
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -17,7 +18,9 @@
 #include <vector>
 
 #include "include/core/json.h"
+#include "include/core/limits.h"
 #include "include/core/outcome.h"
+#include "include/core/strings.h"
 #include "include/core/time.h"
 
 namespace uagent {
@@ -307,6 +310,41 @@ class ToolSchemaCache {
   size_t bytes_ = 0;
   std::vector<size_t> selected_;
   json available_ = json::array();
+};
+
+// Single-use approvals keyed by the exact tool arguments they were prepared
+// from, so the preview a person approved is the request that runs. The
+// arguments are re-compared, so the digest is an index, not the boundary.
+template <typename T>
+class ApprovedProposals {
+ public:
+  void Put(const json& arguments, T value,
+           std::chrono::steady_clock::time_point expires) {
+    if (entries_.size() >= kMaxAdaptiveProposals) entries_.clear();
+    entries_[HashHex(JsonDump(arguments))] = {arguments, std::move(value),
+                                              expires};
+  }
+  // Removes and returns the approval; empty when absent, expired, or prepared
+  // from different arguments.
+  std::optional<T> Take(const json& arguments) {
+    auto found = entries_.find(HashHex(JsonDump(arguments)));
+    if (found == entries_.end()) return std::nullopt;
+    Entry entry = std::move(found->second);
+    entries_.erase(found);
+    if (entry.arguments != arguments ||
+        std::chrono::steady_clock::now() > entry.expires) {
+      return std::nullopt;
+    }
+    return std::move(entry.value);
+  }
+
+ private:
+  struct Entry {
+    json arguments;
+    T value;
+    std::chrono::steady_clock::time_point expires;
+  };
+  std::map<std::string, Entry> entries_;
 };
 
 }  // namespace uagent

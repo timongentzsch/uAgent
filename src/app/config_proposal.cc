@@ -366,8 +366,7 @@ std::string ConfigProposal::Preview() const {
 ConfigProposal PrepareConfigProposal(ConfigProposalScope scope,
                                      const std::vector<ConfigChange>& changes,
                                      const ConfigManager& manager,
-                                     const RuntimeConfig&, bool project_trusted,
-                                     bool direct_user) {
+                                     bool project_trusted, bool direct_user) {
   ConfigProposal proposal;
   if (changes.empty()) {
     proposal.error = "no changes requested";
@@ -550,20 +549,53 @@ bool CommitConfigProposal(const ConfigProposal& proposal, std::string& error,
   return true;
 }
 
-void ConfigProposalStore::Put(const std::string& key, json arguments,
-                              ConfigProposal proposal) {
-  proposals_[key] = Entry{std::move(arguments), std::move(proposal)};
+bool ParseConfigScope(std::string_view name, ConfigProposalScope& scope) {
+  if (name == "user") {
+    scope = ConfigProposalScope::kUser;
+  } else if (name == "project") {
+    scope = ConfigProposalScope::kProject;
+  } else {
+    return false;
+  }
+  return true;
 }
 
-ConfigProposal ConfigProposalStore::Take(const std::string& key,
-                                         const json& arguments) {
-  auto found = proposals_.find(key);
-  if (found == proposals_.end()) return {};
-  Entry entry = std::move(found->second);
-  proposals_.erase(found);
-  if (entry.arguments != arguments) return {};
-  if (std::chrono::steady_clock::now() > entry.proposal.expires) return {};
-  return entry.proposal;
+bool ParseConfigChanges(const json& request, std::vector<ConfigChange>& changes,
+                        std::string& error) {
+  const json* list = JsonArray(request, "changes");
+  if (!list || list->empty()) {
+    error = "changes must be a non-empty array";
+    return false;
+  }
+  if (list->size() > kConfigurationChangeLimit) {
+    error = "too many configuration changes";
+    return false;
+  }
+  for (const json& entry : *list) {
+    ConfigChange change;
+    change.key = Trim(JsonValue(entry, "key", ""));
+    const std::string operation = Trim(JsonValue(entry, "operation", "set"));
+    change.unset = JsonValue(entry, "unset", false) || operation == "unset";
+    if (change.key.empty()) {
+      error = "each change needs a key";
+      return false;
+    }
+    if (operation != "set" && operation != "unset") {
+      error = "operation must be set or unset";
+      return false;
+    }
+    if (!change.unset) {
+      auto value = entry.find("value");
+      if (value == entry.end()) {
+        error = "set needs a value for " + change.key;
+        return false;
+      }
+      change.value =
+          value->is_string() ? value->get<std::string>() : JsonDump(*value);
+    }
+    changes.push_back(std::move(change));
+  }
+  return true;
 }
 
 }  // namespace uagent

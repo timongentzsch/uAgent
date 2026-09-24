@@ -59,10 +59,10 @@ void LoadSessionJournal(AppSession& session, const std::string& previous_path) {
     }
   }
   if (!session.context.options.yolo) {
-    auto found = settings.find("permissions");
-    session.context.permission_override.store(
-        found == settings.end() ? PermissionOverride::kDefault
-                                : LegacyPermissionOverride(*found));
+    PermissionOverride saved = PermissionOverride::kDefault;
+    const std::string mode = JsonValue(settings, "permissions", "");
+    if (!mode.empty()) ParsePermissionOverride(mode, saved);
+    session.context.permission_override.store(saved);
     PermissionControl(session.context, json::object());
     session.ActiveAgent().ApprovalChanged();
   }

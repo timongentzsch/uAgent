@@ -285,7 +285,9 @@ set(UAGENT_PCH
     <string_view>
     <utility>
     <vector>)
-foreach(_uagent_lib IN ITEMS uagent_core_base uagent_api uagent_toolcore uagent_agent uagent_tools uagent_app)
+set(UAGENT_LIBRARIES uagent_core_base uagent_api uagent_toolcore uagent_agent
+                     uagent_tools uagent_app)
+foreach(_uagent_lib IN LISTS UAGENT_LIBRARIES)
   target_precompile_headers(${_uagent_lib} PRIVATE ${UAGENT_PCH})
 endforeach()
 
@@ -294,7 +296,7 @@ endforeach()
 include(CheckIPOSupported)
 check_ipo_supported(RESULT ipo_ok OUTPUT _)
 if(ipo_ok)
-  foreach(_uagent_lib IN ITEMS uagent_core_base uagent_api uagent_toolcore uagent_agent uagent_tools uagent_app)
+  foreach(_uagent_lib IN LISTS UAGENT_LIBRARIES)
     set_property(TARGET ${_uagent_lib} PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
   endforeach()
   set_property(TARGET uagent PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
@@ -372,27 +374,19 @@ if(BUILD_TESTING)
     # (TSan runtime, ~5min) so the runner always wins the race.
     set_tests_properties(integration_${group} PROPERTIES TIMEOUT 900)
   endforeach()
-  add_test(NAME ci_changes
-           COMMAND ${Python3_EXECUTABLE}
-                   ${CMAKE_CURRENT_SOURCE_DIR}/tests/ci_changes_test.py)
-  set_tests_properties(ci_changes PROPERTIES LABELS source)
-  add_test(NAME layer_boundary
-           COMMAND ${Python3_EXECUTABLE}
-                   ${CMAKE_CURRENT_SOURCE_DIR}/tests/boundary_test.py)
-  set_tests_properties(layer_boundary PROPERTIES LABELS source)
-  add_test(NAME wire_contract
-           COMMAND ${Python3_EXECUTABLE}
-                   ${CMAKE_CURRENT_SOURCE_DIR}/tests/wire_contract_test.py)
-  set_tests_properties(wire_contract PROPERTIES LABELS source)
-  add_test(NAME session_metrics_self_test
-           COMMAND ${Python3_EXECUTABLE}
-                   ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/session_metrics.py
-                   --self-test)
-  add_test(NAME eval_harness_self_test
-           COMMAND ${Python3_EXECUTABLE}
-                   ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/eval.py
-                   --self-test)
-  set_tests_properties(session_metrics_self_test eval_harness_self_test PROPERTIES LABELS source)
+  # Source checks: no binary needed, so CI runs them apart (label `source`).
+  foreach(_check IN ITEMS "ci_changes|tests/ci_changes_test.py"
+                          "layer_boundary|tests/boundary_test.py"
+                          "wire_contract|tests/wire_contract_test.py"
+                          "session_metrics_self_test|benchmarks/session_metrics.py|--self-test"
+                          "eval_harness_self_test|benchmarks/eval.py|--self-test")
+    string(REPLACE "|" ";" _check "${_check}")
+    list(POP_FRONT _check _name _script)
+    add_test(NAME ${_name}
+             COMMAND ${Python3_EXECUTABLE}
+                     ${CMAKE_CURRENT_SOURCE_DIR}/${_script} ${_check})
+    set_tests_properties(${_name} PROPERTIES LABELS source)
+  endforeach()
   # Behavioral scoreboard: every scenario is scored and compared against the
   # committed baseline, so a harness change that costs rounds, batching or
   # answer quality fails here rather than being noticed later.
@@ -436,16 +430,8 @@ install(
   FILES docs/ARCHITECTURE.md
   DESTINATION ${CMAKE_INSTALL_DATADIR}/uagent/skills/uagent-config/references
   RENAME architecture.md)
-set(UAGENT_GUIDES
-    docs/ARCHITECTURE.md
-    docs/CACHING.md
-    docs/OPERATIONS.md
-    docs/PERSISTENCE.md
-    docs/TESTING.md
-    docs/TOOLS.md
-    docs/WEB.md
-    docs/SYSTEM_PROMPTS.md
-    docs/MANAGEMENT.md)
+# Every guide ships; tests/package_contents.py checks the same directory.
+file(GLOB UAGENT_GUIDES CONFIGURE_DEPENDS docs/*.md)
 install(FILES README.md SECURITY.md CONTRIBUTING.md LICENSE
         DESTINATION ${CMAKE_INSTALL_DOCDIR})
 # Keep the source-relative paths used by README and CONTRIBUTING valid in an

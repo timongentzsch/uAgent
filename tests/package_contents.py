@@ -52,17 +52,7 @@ def main():
         fail("bin/uagent is missing")
 
     docs = f"{root}/share/doc/uagent/"
-    for name in (
-        "ARCHITECTURE",
-        "OPERATIONS",
-        "PERSISTENCE",
-        "SYSTEM_PROMPTS",
-        "TESTING",
-        "TOOLS",
-        "WEB",
-        "MANAGEMENT",
-        "CACHING",
-    ):
+    for name in sorted(guide.stem for guide in (source / "docs").glob("*.md")):
         if f"{docs}docs/{name}.md" not in files:
             fail(f"canonical guide docs/{name}.md is missing")
         if f"{docs}{name}.md" in files:

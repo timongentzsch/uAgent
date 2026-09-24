@@ -102,8 +102,8 @@
   ],
   "testPresets": [
     {
-      "name": "debug",
-      "configurePreset": "debug",
+      "name": "base",
+      "hidden": true,
       "execution": {
         "jobs": 6
       },
@@ -112,14 +112,14 @@
       }
     },
     {
+      "name": "debug",
+      "configurePreset": "debug",
+      "inherits": "base"
+    },
+    {
       "name": "release",
       "configurePreset": "release",
-      "execution": {
-        "jobs": 6
-      },
-      "output": {
-        "outputOnFailure": true
-      }
+      "inherits": "base"
     },
     {
       "name": "sanitize",
@@ -129,12 +129,7 @@
         "ASAN_OPTIONS": "strict_string_checks=1",
         "UBSAN_OPTIONS": "print_stacktrace=1:halt_on_error=1"
       },
-      "execution": {
-        "jobs": 6
-      },
-      "output": {
-        "outputOnFailure": true
-      }
+      "inherits": "base"
     },
     {
       "name": "tsan",
@@ -142,22 +137,12 @@
       "environment": {
         "TSAN_OPTIONS": "halt_on_error=1:second_deadlock_stack=1"
       },
-      "execution": {
-        "jobs": 6
-      },
-      "output": {
-        "outputOnFailure": true
-      }
+      "inherits": "base"
     },
     {
       "name": "coverage",
       "configurePreset": "coverage",
-      "execution": {
-        "jobs": 6
-      },
-      "output": {
-        "outputOnFailure": true
-      }
+      "inherits": "base"
     }
   ]
 }

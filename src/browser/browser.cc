@@ -27,6 +27,7 @@
 
 #include "include/app/session.h"
 #include "include/browser/runtime.h"
+#include "include/core/platform.h"
 
 namespace uagent::browser {
 namespace {
@@ -118,10 +119,9 @@ ServiceProcess::~ServiceProcess() {
   owner.Reset();
   if (pid <= 0) return;
   // Let the service finish both child shutdowns and release the profile lock.
-  for (int elapsed = 0; elapsed < kServiceShutdownGraceMs;
-       elapsed += kChildShutdownPollMs) {
-    if (waitpid(pid, nullptr, WNOHANG) == pid) return;
-    poll(nullptr, 0, kChildShutdownPollMs);
+  if (ReapPidFor(pid, nullptr,
+                 std::chrono::milliseconds(kServiceShutdownGraceMs))) {
+    return;
   }
   kill(pid, SIGTERM);
   waitpid(pid, nullptr, 0);

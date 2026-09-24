@@ -247,3 +247,19 @@
     display: none;
   }
 }
+
+/* /btw: a dismissible card above the composer, outside the conversation. */
+.side-answer {
+  max-height: calc(var(--viewport-height) * 0.35);
+  overflow: auto;
+  margin-bottom: var(--gap);
+  padding: var(--space-2) var(--space-4) var(--space-4);
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+.side-answer > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap);
+}

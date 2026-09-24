@@ -641,6 +641,7 @@ void Agent::FinishTurn(TurnExecution& state, int64_t step) {
   completed.render = true;
   Emit(std::move(completed));
   active_deadline_ = std::chrono::steady_clock::time_point::max();
+  PublishSideContext();
 }
 
 }  // namespace uagent

@@ -575,6 +575,7 @@ export interface CommandResults {
   fork: { id: string };
   rewind: { turns: number };
   share: { path: string };
+  side: { answer: string };
   create: never;
   activate: never;
   close: never;

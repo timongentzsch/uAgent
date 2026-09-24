@@ -82,6 +82,13 @@ int Application::RunChannel() {
     if (JsonValue(request, "kind", "") == "permissions") {
       return PermissionControl(context_, request);
     }
+    if (JsonValue(request, "kind", "") == "side") {
+      json answer = agent_.SideQuestion(JsonValue(request, "text", ""));
+      if (const json* usage = JsonObject(answer, "usage")) {
+        runtime_.side_usage.Add(*usage);
+      }
+      return answer;
+    }
     return ActivityControl(runtime_.processes, request, &runtime_.collaborator);
   });
   PublishChannelState();

@@ -127,6 +127,8 @@ constexpr SlashCommandSpec kSlashCommands[] = {
      "show latest trace or full tool request/response"},
     {SlashCommandId::kVariant, "/variant", "MODE",
      "set OpenRouter provider routing", false},
+    {SlashCommandId::kBtw, "/btw", "QUESTION",
+     "ask a side question without adding it to the conversation", false, true},
     {SlashCommandId::kVerbose, "/verbose", "",
      "toggle full reasoning and expanded tool output", false, true, true},
     {SlashCommandId::kYolo, "/yolo", "", "toggle automatic approval", false},

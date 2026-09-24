@@ -93,6 +93,7 @@ void RunSlashCommand(AppSession& session, const ParsedSlashCommand& command,
     case SlashCommandId::kSessions:
     case SlashCommandId::kFork:
     case SlashCommandId::kVerbose:
+    case SlashCommandId::kBtw:
       result = {{"error", "this command belongs to the client"}};
       return;
     case SlashCommandId::kClear:

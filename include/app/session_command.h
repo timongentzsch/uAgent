@@ -40,6 +40,7 @@ enum class SessionCommandKind {
   kFork,
   kRewind,
   kShare,
+  kSide,
   kPrompt,
   kSubmit,
   kCreate,

@@ -904,6 +904,48 @@ def test_web_approval_interrupt_and_independent_workers(root, home, *, binary):
             assert_true(len(snapshots) == 2, snapshots)
 
 
+def test_web_side_question_answers_beside_a_running_turn(root, home, *, binary):
+    started = threading.Event()
+    release = threading.Event()
+
+    def responder(_, body):
+        last = str(body["messages"][-1].get("content", ""))
+        if "Side question" in last:
+            # Same conversation prefix, no new tools offered beyond the turn's.
+            return event({"content": "SIDE-ANSWER"})
+        if any(message.get("role") == "tool" for message in body["messages"]):
+            return event({"content": "MAIN-DONE"})
+        started.set()
+        release.wait(timeout=budget(10))
+        return tool_call("run", {"command": "true"}, call_id="main-run")
+
+    with Server([responder]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+            client.pair(code)
+            session = client.create(root)
+            client.command("permissions", session, mode="yolo")
+            client.command("submit", session, text="Long main task")
+            assert_true(started.wait(timeout=budget(5)), "main turn never started")
+            try:
+                side = client.command("side", session, text="what are we doing?")
+                answer = side.get("result", {}).get("answer")
+                if side.get("pending"):
+                    status, receipt, _ = client.json("/api/receipts/" + side["request_id"])
+                    answer = receipt.get("result", {}).get("answer")
+                assert_true(answer == "SIDE-ANSWER", side)
+            finally:
+                release.set()
+            value = client.until(
+                session,
+                lambda value: (
+                    "MAIN-DONE" in json.dumps(value) and not value["metadata"]["turn_active"]
+                ),
+            )
+            transcript = json.dumps(value["state"]["view"])
+            assert_true("SIDE-ANSWER" not in transcript, transcript)
+            assert_true("what are we doing" not in transcript, transcript)
+
+
 def p256_public_key():
     """A fresh uncompressed P-256 point, as a browser's p256dh key."""
     pem = subprocess.run(

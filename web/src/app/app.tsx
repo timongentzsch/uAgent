@@ -65,6 +65,7 @@ import {
   promptDialog,
   rawDialog,
   inspectorDialog,
+  sideAnswer,
   scheduledModule,
   settingsDialog,
   toolsDialog,
@@ -91,6 +92,10 @@ function App() {
   const [modal, setModal] = useState<AppModal | null>(null);
   const [browserAvailable, setBrowserAvailable] = useState(false);
   const [notice, setNotice] = useState("");
+  const [side, setSide] = useState<{
+    question: string;
+    answer?: string;
+  } | null>(null);
   const onResult = useCallback((value: JSONValue, inspect: boolean) => {
     if (inspect) setModal({ type: "raw", value });
     else setNotice(typeof value === "string" ? value : JSON.stringify(value));
@@ -324,6 +329,21 @@ function App() {
         await command("activate", { id: result.result.id, generation: "" });
         await load(result.result.id);
       }
+    } else if (name === "/btw") {
+      if (!argument) throw new Error("Use /btw QUESTION");
+      setSide({ question: argument });
+      try {
+        const result = await act("side", { text: argument });
+        if (!result.pending)
+          setSide((current) =>
+            current?.question === argument
+              ? { question: argument, answer: result.result.answer }
+              : current,
+          );
+      } catch (failure) {
+        setSide(null);
+        throw failure;
+      }
     } else if (name === "/rewind") {
       const result = await act("rewind", { argument });
       if (!result.pending) await load(selected);
@@ -391,7 +411,8 @@ function App() {
       request_id = requestId();
     if (sent.text.startsWith("/")) {
       try {
-        if (running)
+        // A side question is the one command meant for a running turn.
+        if (running && !sent.text.startsWith("/btw "))
           throw new Error(
             "Wait for this turn to finish before running a slash command.",
           );
@@ -916,6 +937,15 @@ function App() {
                     statistics={showMessageStatistics}
                   />
                 </LiveActivities.Provider>
+                {side && (
+                  <Deferred
+                    load={sideAnswer}
+                    fallback={null}
+                    question={side.question}
+                    answer={side.answer}
+                    close={() => setSide(null)}
+                  />
+                )}
                 <Deferred
                   load={composer}
                   fallback={null}

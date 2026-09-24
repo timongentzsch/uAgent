@@ -21,6 +21,7 @@
 #include "include/cli.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
+#include "include/core/style.h"
 #include "include/core/term.h"
 #include "include/md.h"
 #include "include/ui/display.h"
@@ -336,6 +337,9 @@ class Terminal {
         const ForkArgument parsed = ParseForkArgument(text.substr(7));
         Send({{"kind", "rewind"},
               {"turn", parsed.title.empty() ? parsed.turn : 0}});
+      } else if (text.starts_with("/btw ")) {
+        Send({{"kind", "side"}, {"text", Trim(text.substr(5))}});
+        continue;
       } else if (text == "/verbose") {
         presenter_.SetDetailed(!presenter_.Detailed());
         WriteTerminalRecord(
@@ -512,7 +516,11 @@ class Terminal {
         WriteTerminalRecord(TerminalSafe(error) + "\n");
       }
       const json result = JsonValue(frame, "result", json::object());
-      if (!result.empty()) {
+      if (result.contains("answer")) {
+        WriteTerminalRecord(StyledBlock("side · not in history", DIM()) +
+                            TerminalSafe(JsonValue(result, "answer", "")) +
+                            "\n");
+      } else if (!result.empty()) {
         WriteTerminalRecord(TerminalSafe(JsonDump(result, 2)) + "\n");
       }
       if (JsonValue(result, "forked", false)) {

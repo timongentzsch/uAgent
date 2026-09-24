@@ -69,6 +69,63 @@ Agent::Agent(Api& api, std::vector<Tool>& tools, ProcessSupervisor& processes,
 
 json Agent::DisplaySnapshot() const { return ConversationView(conversation_); }
 
+void Agent::PublishSideContext(const json* tools) {
+  std::lock_guard lock(side_mutex_);
+  auto context = std::make_shared<json>(json{
+      {"messages", conversation_.Messages()},
+      {"tools",
+       tools ? *tools
+             : (side_context_ ? (*side_context_)["tools"] : json::array())}});
+  side_context_ = std::move(context);
+}
+
+json Agent::SideQuestion(const std::string& question) const {
+  std::shared_ptr<const json> context;
+  {
+    std::lock_guard lock(side_mutex_);
+    context = side_context_;
+  }
+  if (!context) return {{"error", "nothing to ask about yet"}};
+  // Same prefix and tools as the last request, so the prompt cache serves it;
+  // attachments are prepared per request, so a side question reads text only.
+  json messages = json::array();
+  for (json message : (*context)["messages"]) {
+    if (const json* parts = JsonArray(message, "content")) {
+      std::string text;
+      for (const json& part : *parts) {
+        if (JsonValue(part, "type", "") == "text") {
+          text += JsonValue(part, "text", "");
+        }
+      }
+      message["content"] = std::move(text);
+    }
+    messages.push_back(std::move(message));
+  }
+  messages.push_back(
+      {{"role", "user"},
+       {"content",
+        "Side question. Answer briefly from this conversation only; do not "
+        "call tools. Neither this question nor your answer is added to the "
+        "conversation.\n\n" +
+            question}});
+  Api side(api_.config);
+  side.base_url = api_.base_url;
+  side.api_key = api_.api_key;
+  side.model = api_.model;
+  side.reasoning_effort = api_.reasoning_effort;
+  side.supported_reasoning_efforts = api_.supported_reasoning_efforts;
+  side.ctx_window = api_.ctx_window;
+  side.capabilities = api_.capabilities;
+  QuietEvents quiet;
+  ChatResult result = side.Chat(messages, (*context)["tools"], 0, session_id_);
+  if (!result.error.empty()) return {{"error", result.error}};
+  std::string answer = result.content;
+  if (!result.tool_calls.empty()) {
+    answer += "\n\n(The model tried to use tools; nothing was run.)";
+  }
+  return {{"answer", std::move(answer)}, {"usage", result.usage}};
+}
+
 json Agent::RawExchange(const std::string& id, size_t offset) const {
   return ConversationExchange(
       conversation_,

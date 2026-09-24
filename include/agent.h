@@ -11,6 +11,8 @@
 #include <chrono>
 #include <cstdint>
 #include <functional>
+#include <memory>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -98,6 +100,12 @@ class Agent {
   const std::vector<Tool>& Tools() const { return tools_; }
   const json& TraceArchive() const { return conversation_.Archive(); }
   json DisplaySnapshot() const;
+  // /btw: one tool-less model call over the conversation as of the last
+  // request or turn end, never recorded. Safe beside a running turn.
+  json SideQuestion(const std::string& question) const;
+  // Snapshot the conversation (and the tools last offered, when given) for
+  // SideQuestion; called by the turn thread only.
+  void PublishSideContext(const json* tools = nullptr);
   json RawExchange(const std::string& id, size_t offset = 0) const;
   void RetainExchanges(bool enabled) {
     retain_exchanges_ = enabled;
@@ -386,6 +394,8 @@ class Agent {
   std::string last_error_;
   json last_stop_;
   json turn_side_statistics_ = json::object();
+  mutable std::mutex side_mutex_;
+  std::shared_ptr<const json> side_context_;
 };
 
 }  // namespace uagent

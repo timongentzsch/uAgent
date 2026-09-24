@@ -36,6 +36,7 @@ constexpr KindRow kKinds[] = {
     {"fork", SessionCommandKind::kFork, true},
     {"rewind", SessionCommandKind::kRewind, true},
     {"share", SessionCommandKind::kShare, true},
+    {"side", SessionCommandKind::kSide, true},
     {"prompt", SessionCommandKind::kPrompt, true},
     {"submit", SessionCommandKind::kSubmit, true},
     {"create", SessionCommandKind::kCreate, false},

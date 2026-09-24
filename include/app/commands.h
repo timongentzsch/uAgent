@@ -13,7 +13,6 @@
 #include "include/app/bootstrap.h"
 #include "include/cli.h"
 #include "include/media/attachments.h"
-#include "include/ui/display.h"
 
 namespace uagent {
 

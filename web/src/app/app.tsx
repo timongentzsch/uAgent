@@ -331,19 +331,22 @@ function App() {
       }
     } else if (name === "/btw") {
       if (!argument) throw new Error("Use /btw QUESTION");
+      // The card shows the question; the composer is free again at once.
       setSide({ question: argument });
-      try {
-        const result = await act("side", { text: argument });
-        if (!result.pending)
-          setSide((current) =>
-            current?.question === argument
-              ? { question: argument, answer: result.result.answer }
-              : current,
-          );
-      } catch (failure) {
-        setSide(null);
-        throw failure;
-      }
+      act("side", { text: argument }).then(
+        (result) => {
+          if (!result.pending)
+            setSide((current) =>
+              current?.question === argument
+                ? { question: argument, answer: result.result.answer }
+                : current,
+            );
+        },
+        (failure) => {
+          setSide(null);
+          report(failure);
+        },
+      );
     } else if (name === "/rewind") {
       const result = await act("rewind", { argument });
       if (!result.pending) await load(selected);

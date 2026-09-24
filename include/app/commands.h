@@ -42,7 +42,6 @@ void LoadSessionJournal(AppSession& session, const std::string& previous_path);
 
 void SaveSessionSettings(AppSession& session);
 
-StatusView SessionStatusView(const AppSession& session);
 json SessionControl(AppSession& session, const json& request);
 json PermissionControl(AppContext& context, const json& request);
 json ActivityControl(ProcessSupervisor& processes, const json& request,

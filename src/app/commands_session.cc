@@ -49,21 +49,6 @@ void SaveSessionSettings(AppSession& session) {
        {"tools", session.ActiveAgent().ToolSelectionSettings()}});
 }
 
-StatusView SessionStatusView(const AppSession& session) {
-  std::string model =
-      RouteSelection(session.ApiClient(), session.context.provider.providers);
-  std::string host = model.find('/') == std::string::npos
-                         ? UrlHost(session.ApiClient().base_url)
-                         : "";
-  return StatusView{.context_used = session.ActiveAgent().ContextUsed(),
-                    .model = std::move(model),
-                    .host = std::move(host),
-                    .verbose = session.ActiveAgent().Verbose(),
-                    .yolo = ApprovalIsYolo(),
-                    .attachments = session.attachments.size(),
-                    .background = session.Runtime().processes.Count()};
-}
-
 void HandleCompact(AppSession& session) {
   session.ActiveAgent().Compact();
   SteeringState().Take();

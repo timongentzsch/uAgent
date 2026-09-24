@@ -544,8 +544,6 @@ void TestStatusBarDropsByPriority() {
   g_tty = true;
   g_color = false;
 
-  Api api{RuntimeConfig{}};
-  api.ctx_window = 1300000;
   Usage usage;
   usage.input = 12000;
   usage.output = 3400;
@@ -554,8 +552,8 @@ void TestStatusBarDropsByPriority() {
   StatusView view;
   view.model = "anthropic/claude-sonnet-4-5";
   view.context_used = 12000;
+  view.context_window = 1300000;
   view.verbose = true;
-  view.attachments = 2;
   view.background = 1;
 
   // Wide enough for everything: the full row is the baseline the narrower
@@ -563,11 +561,11 @@ void TestStatusBarDropsByPriority() {
   std::string wide;
   {
     FixedWidth columns(200);
-    wide = StatusBar(api, usage, view);
+    wide = StatusBar(usage, view);
   }
   CHECK(wide ==
         "anthropic/claude-sonnet-4-5 · est. ctx 12k/1.3M · 99% left · "
-        "12k in · 3.4k out · cache 33% · $0.4200 · bg:1 · 2 attached · "
+        "12k in · 3.4k out · cache 33% · $0.4200 · bg:1 · "
         "verbose · /help for shortcuts · Ask");
 
   // Each narrower width is a prefix of the priorities that survive: 7 (the
@@ -575,7 +573,7 @@ void TestStatusBarDropsByPriority() {
   std::string medium;
   {
     FixedWidth columns(80);
-    medium = StatusBar(api, usage, view);
+    medium = StatusBar(usage, view);
   }
   CHECK(medium.find("/help for shortcuts") == std::string::npos);
   CHECK(medium.find("verbose") == std::string::npos);
@@ -585,7 +583,7 @@ void TestStatusBarDropsByPriority() {
   std::string narrow;
   {
     FixedWidth columns(40);
-    narrow = StatusBar(api, usage, view);
+    narrow = StatusBar(usage, view);
   }
   CHECK(DisplayWidth(narrow) <= 40);
   CHECK(narrow.find("cache 33%") == std::string::npos);
@@ -595,18 +593,8 @@ void TestStatusBarDropsByPriority() {
   // otherwise stop saying where the request goes.
   {
     FixedWidth columns(4);
-    std::string squeezed = StatusBar(api, usage, view);
+    std::string squeezed = StatusBar(usage, view);
     CHECK(squeezed == "anthropic/claude-sonnet-4-5");
-  }
-
-  // A resolved provider scope is the whole of segment 0; an unresolvable one
-  // appends the host, and that pair still cannot be split apart.
-  {
-    FixedWidth columns(4);
-    StatusView hosted = view;
-    hosted.model = "local-model";
-    hosted.host = "127.0.0.1";
-    CHECK(StatusBar(api, usage, hosted) == "local-model @ 127.0.0.1");
   }
 
   g_tty = prior;

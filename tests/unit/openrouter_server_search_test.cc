@@ -175,30 +175,25 @@ void TestOpenRouterServerSearch() {
 
   // The status row is one ordered list: everything fits when there is room,
   // and the least valuable segments go first when there is not.
-  RuntimeConfig status_config;
-  Api status_api(status_config);
-  status_api.base_url = "https://openrouter.ai/api/v1";
-  status_api.model = "vendor/model";
-  status_api.ctx_window = 1000000;
   Usage status_usage;
   status_usage.input = 1200000;
   status_usage.output = 45300;
   status_usage.cache_read = 3100000;
   status_usage.cost = 0.31;
   StatusView status_view{.context_used = 4700,
+                         .context_window = 1000000,
                          .model = "openrouter/vendor/model:high",
-                         .host = {},
-                         .yolo = true};
+                         .approval = "yolo"};
   setenv("COLUMNS", "200", 1);
-  std::string wide = StatusBar(status_api, status_usage, status_view);
+  std::string wide = StatusBar(status_usage, status_view);
   CHECK(wide.find("ctx 4.7k/1M") != std::string::npos);
   CHECK(wide.find("1.2M in · 45.3k out") != std::string::npos);
   CHECK(wide.find("cache 72%") != std::string::npos);
   CHECK(wide.find("openrouter/vendor/model:high") != std::string::npos);
   CHECK(wide.find("YOLO") != std::string::npos);
   // An unknown context window degrades to the used figure alone.
-  status_api.ctx_window = 0;
-  CHECK(StatusBar(status_api, status_usage, status_view).find("ctx 4.7k ") !=
+  status_view.context_window = 0;
+  CHECK(StatusBar(status_usage, status_view).find("ctx 4.7k ") !=
         std::string::npos);
   unsetenv("COLUMNS");
 

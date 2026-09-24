@@ -12,7 +12,6 @@
 #include <utility>
 #include <vector>
 
-#include "include/api.h"
 #include "include/core/env.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
@@ -48,24 +47,23 @@ inline std::string ContextSummary(int64_t used, int64_t window = 0) {
 // Compact session metadata for the persistent composer. Keep the stable
 // identity first; transient work state gets its own line while a turn runs.
 struct StatusView {
+  // What the session is doing between turns: Ready, Interrupted, Connecting.
+  std::string activity;
   int64_t context_used = 0;
+  int64_t context_window = 0;
   // The active route in schema form, [provider/]model[:variant][:effort], so
   // the row shows a selection the user could paste back into --model.
   std::string model;
-  // Only set when no provider scope was resolvable, where the bare model id
-  // alone would not say where the request goes.
-  std::string host;
+  // The effective approval mode, as ApprovalModeName spells it.
+  std::string approval = "ask";
   bool verbose = false;
-  bool yolo = false;
-  size_t attachments = 0;
   size_t background = 0;
 };
 
 // One ordered list of segments, rendered in place and dropped by priority when
 // the terminal is too narrow. A second hand-maintained "cramped" spelling of
 // the same row is how the two copies used to drift.
-inline std::string StatusBar(const Api& api, const Usage& usage,
-                             const StatusView& view) {
+inline std::string StatusBar(const Usage& usage, const StatusView& view) {
   struct Segment {
     int priority;  // higher is dropped first
     std::string text;
@@ -75,21 +73,21 @@ inline std::string StatusBar(const Api& api, const Usage& usage,
     if (!text.empty()) segments.push_back({priority, std::move(text)});
   };
 
-  add(0, view.host.empty() ? view.model : view.model + " @ " + view.host);
-  add(1, ContextSummary(view.context_used, api.ctx_window));
-  add(3, ContextLeftSummary(view.context_used, api.ctx_window));
+  add(0, view.activity);
+  add(0, view.model);
+  add(1, ContextSummary(view.context_used, view.context_window));
+  add(3, ContextLeftSummary(view.context_used, view.context_window));
   if (usage.input || usage.output) add(4, TokenSummary(usage));
   add(5, CacheSummary(usage));
   if (usage.cost > 0) add(2, FmtCost(usage.cost));
   if (view.background) {
     add(3, "bg:" + FmtCount(static_cast<int64_t>(view.background)));
   }
-  if (view.attachments) {
-    add(3, FmtCount(static_cast<int64_t>(view.attachments)) + " attached");
-  }
   if (view.verbose) add(6, "verbose");
   add(7, "/help for shortcuts");
-  add(2, view.yolo ? "YOLO" : "Ask");
+  add(2, view.approval == "yolo"   ? "YOLO"
+         : view.approval == "auto" ? "Auto"
+                                   : "Ask");
 
   auto join = [&segments] {
     std::string line;
@@ -101,7 +99,7 @@ inline std::string StatusBar(const Api& api, const Usage& usage,
   };
   std::string line = join();
   if (!g_tty) return line;
-  // Drop the least valuable segment until the row fits; PrintStatusBar still
+  // Drop the least valuable segment until the row fits; StatusBarLine still
   // performs the final UTF-8-safe clipping.
   while (DisplayWidth(line) > TerminalWidth(1) && segments.size() > 1) {
     auto victim = std::max_element(segments.begin(), segments.end(),
@@ -220,14 +218,6 @@ inline std::string StatusBarLine(const std::string& status,
       DisplayTrunc(AsciiGlyphs(TerminalSafe(status)), TerminalWidth(1));
   if (columns) *columns = DisplayWidth(text);
   return std::string(RST()) + DIM() + text + "\033[K" + RST();
-}
-
-inline void PrintStatusBar(const std::string& status) {
-  if (!g_tty) {
-    printf("%s\n", AsciiGlyphs(TerminalSafe(status)).c_str());
-    return;
-  }
-  printf("%s\n", StatusBarLine(status).c_str());
 }
 
 }  // namespace uagent

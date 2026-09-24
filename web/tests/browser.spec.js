@@ -199,6 +199,7 @@ test("profile sign-in explicitly reopens Chrome and returns the same profile", a
     leased: true,
     generation: 1,
     profile_id: "default",
+    profiles: [{ id: "default", name: "Default" }],
     profile_setup: false,
   };
   const actions = [];
@@ -222,6 +223,12 @@ test("profile sign-in explicitly reopens Chrome and returns the same profile", a
   await page.goto(`/#session=${session.id}`);
   await page.getByRole("button", { name: "Open browser" }).click();
   const dialog = page.getByRole("dialog", { name: "Browser", exact: true });
+  // Sign-in sits in the profile row, beside New profile.
+  await expect(
+    dialog
+      .locator(".browser-profile-controls")
+      .getByRole("button", { name: "Sign in to profile", exact: true }),
+  ).toBeVisible();
   await dialog
     .getByRole("button", { name: "Sign in to profile", exact: true })
     .click();
@@ -247,7 +254,8 @@ test.describe("real noVNC input in a mobile modal", () => {
     page,
     session,
   }, testInfo) => {
-    const { serveFramebuffer, touch } = await import("./rfb-fixture.js");
+    const { serveFramebuffer, touch, cursor } =
+      await import("./rfb-fixture.js");
     const remote = await serveFramebuffer(page);
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
@@ -272,6 +280,17 @@ test.describe("real noVNC input in a mobile modal", () => {
     expect(
       await marker.evaluate((node) => !!node.closest("dialog:modal")),
     ).toBe(true);
+    // The pointer is the server's own cursor image, not a local stand-in.
+    await expect
+      .poll(() => marker.evaluate((node) => [node.width, node.height]))
+      .toEqual([cursor.width, cursor.height]);
+    const hotspot = async () => {
+      const box = await marker.boundingBox();
+      const [x, y] = (await marker.getAttribute("data-hotspot"))
+        .split(",")
+        .map(Number);
+      return { x: box.x + x, y: box.y + y };
+    };
     const viewport = dialog.getByLabel("Browser viewport");
     const canvas = dialog.locator(".browser-rfb canvas");
     const pad = dialog.getByLabel("Browser trackpad");
@@ -284,16 +303,16 @@ test.describe("real noVNC input in a mobile modal", () => {
       await touch(pad, "pointerup", 1, x + dx, y + dy);
     };
     const assertPosition = async () => {
-      const cursor = await marker.boundingBox(),
+      const point = await hotspot(),
         display = await canvas.boundingBox();
       const expected = {
         x: Math.min(
           remote.width - 1,
-          Math.round(((cursor.x - display.x) / display.width) * remote.width),
+          Math.round(((point.x - display.x) / display.width) * remote.width),
         ),
         y: Math.min(
           remote.height - 1,
-          Math.round(((cursor.y - display.y) / display.height) * remote.height),
+          Math.round(((point.y - display.y) / display.height) * remote.height),
         ),
       };
       // WebKit can quantize MouseEvent coordinates to CSS pixels; RFB then
@@ -372,16 +391,20 @@ test.describe("real noVNC input in a mobile modal", () => {
     expect(await target.evaluate((node) => node.style.transform)).not.toBe(
       before,
     );
-    const point = await marker.boundingBox();
+    const point = await hotspot();
     expect(point.x).toBeGreaterThanOrEqual(view.x);
     expect(point.x).toBeLessThan(view.x + view.width);
     expect(point.y).toBeGreaterThanOrEqual(view.y);
     expect(point.y).toBeLessThan(view.y + view.height);
-    const arrow = await marker.locator("path").boundingBox();
-    expect(arrow.x).toBeGreaterThanOrEqual(view.x);
-    expect(arrow.x + arrow.width).toBeLessThanOrEqual(view.x + view.width);
-    expect(arrow.y).toBeGreaterThanOrEqual(view.y);
-    expect(arrow.y + arrow.height).toBeLessThanOrEqual(view.y + view.height);
+    // Like a native pointer, the image past the hotspot may run under the
+    // screen's edge; the screen clips it.
+    expect(
+      await marker.evaluate(
+        (node) =>
+          getComputedStyle(node.closest(".browser-screen")).overflow ===
+          "hidden",
+      ),
+    ).toBe(true);
     const right = dialog.getByRole("button", { name: "Right", exact: true });
     const button = await right.boundingBox();
     await touch(right, "pointerdown", 4, button.x + 5, button.y + 5);
@@ -420,7 +443,7 @@ test.describe("phone browser keyboard", () => {
     browserName,
   }) => {
     test.skip(browserName !== "chromium", "needs CDP text insertion");
-    const { serveFramebuffer } = await import("./rfb-fixture.js");
+    const { serveFramebuffer, cursor } = await import("./rfb-fixture.js");
     const remote = await serveFramebuffer(page);
     await controlledBrowser(page);
     await page.goto(`/#session=${session.id}`);
@@ -428,10 +451,14 @@ test.describe("phone browser keyboard", () => {
     await page.getByRole("button", { name: "Open browser" }).click();
     const dialog = page.getByRole("dialog", { name: "Browser", exact: true });
     await expect(dialog.getByText("Connected", { exact: true })).toBeVisible();
-    // The arrow shrinks with the remote screen, like a native pointer.
-    const arrow = await dialog.locator(".browser-pointer").boundingBox();
-    expect(arrow.width).toBeLessThan(20);
-    expect(arrow.width).toBeGreaterThanOrEqual(9);
+    // The server's pointer shrinks with the remote screen, like Chrome's own.
+    const pointer = dialog.locator(".browser-pointer");
+    await expect
+      .poll(() => pointer.evaluate((node) => node.width))
+      .toBe(cursor.width);
+    const drawn = (await pointer.boundingBox()).width;
+    expect(drawn).toBeLessThan(cursor.width);
+    expect(drawn).toBeGreaterThanOrEqual(cursor.width * 0.45 - 0.5);
     await dialog.getByRole("button", { name: "Keyboard" }).click();
     await expect(dialog.getByLabel("Type into Chrome")).toBeFocused();
     // Typing keeps the screen in view: the trackpad steps aside.

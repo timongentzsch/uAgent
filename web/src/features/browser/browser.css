@@ -19,7 +19,7 @@
 }
 .browser-profile-controls .text-control,
 .browser-profile-create .text-control {
-  flex: 1 1 12rem;
+  flex: 1 1 8rem;
   min-width: 0;
 }
 .browser-location {
@@ -178,20 +178,13 @@
   }
 }
 
-/* The mobile cursor belongs to the modal's top layer, above the framebuffer.
-   It remains legible at every remote zoom and never intercepts input. */
+/* The mobile pointer: the server's own cursor image, drawn in the modal's top
+   layer above the framebuffer and scaled with it. It never intercepts input. */
 .browser-pointer {
   position: absolute;
   top: 0;
   left: 0;
-  width: 20px;
-  height: 24px;
-  overflow: visible;
   pointer-events: none;
-  fill: #111;
-  stroke: #fff;
-  stroke-width: 1.5;
-  stroke-linejoin: round;
 }
 .browser-pointer[hidden] {
   display: none;

@@ -9,6 +9,7 @@ import RFB from "@novnc/novnc";
 import { Spinner, Input, Textarea, Select } from "../../shared/ui.tsx";
 import { ClipboardPaste, Copy, Keyboard } from "lucide-preact";
 import BrowserInput from "./input.tsx";
+import { observeCursor, type CursorShape } from "./cursor.ts";
 import "./browser.css";
 
 const VIEWER_RECONNECT_DELAY_MS = 1_000;
@@ -83,6 +84,7 @@ function Viewer({ report, readOnly }: { report: Report; readOnly: boolean }) {
   const [text, setText] = useState("");
   const [remoteText, setRemoteText] = useState("");
   const [notice, setNotice] = useState("");
+  const [cursorShape, setCursorShape] = useState<CursorShape | null>(null);
   const live = connection === "connected" && !readOnly;
 
   useEffect(() => {
@@ -106,6 +108,8 @@ function Viewer({ report, readOnly }: { report: Report; readOnly: boolean }) {
       rfb.resizeSession = false;
       rfb.clipViewport = false;
       rfb.dragViewport = false;
+      setCursorShape(null);
+      observeCursor(rfb, setCursorShape);
       viewer.current = rfb;
       rfb.addEventListener("connect", () => setConnection("connected"));
       rfb.addEventListener("disconnect", () => {
@@ -282,6 +286,7 @@ function Viewer({ report, readOnly }: { report: Report; readOnly: boolean }) {
         disabled={!live}
         showTrackpad={touch && !readOnly}
         readOnly={readOnly}
+        cursorShape={cursorShape}
       />
       <div class="browser-view-controls">
         <small class="muted">
@@ -607,10 +612,22 @@ export default function BrowserPanel({
             <button
               type="button"
               disabled={busy || !canChangeProfile}
+              aria-label="New profile"
               onClick={() => setAddingProfile(!addingProfile)}
             >
-              New profile
+              New
             </button>
+            {status.controller && !status.profile_setup && (
+              <button
+                type="button"
+                disabled={busy}
+                title="Reopens this profile for manual sign-in. The agent waits until you choose Done."
+                aria-label="Sign in to profile"
+                onClick={() => void control("setup_profile")}
+              >
+                Sign in
+              </button>
+            )}
           </div>
           {!canChangeProfile && !status.error && (
             <small class="muted">Take control to switch profiles.</small>
@@ -643,24 +660,11 @@ export default function BrowserPanel({
           {status.url}
         </p>
       )}
-      {status.controller && (
-        <div class="browser-signin">
-          {status.profile_setup ? (
-            <p role="status">
-              Sign in to your sites in Chrome. Done reopens this profile for the
-              agent with your saved logins.
-            </p>
-          ) : (
-            <button
-              type="button"
-              disabled={busy}
-              title="Reopens this profile for manual sign-in. The agent waits until you choose Done."
-              onClick={() => void control("setup_profile")}
-            >
-              Sign in to profile
-            </button>
-          )}
-        </div>
+      {status.controller && status.profile_setup && (
+        <p role="status">
+          Sign in to your sites in Chrome. Done reopens this profile for the
+          agent with your saved logins.
+        </p>
       )}
       {status.mode === "human" && status.leased && !status.controller ? (
         <p>

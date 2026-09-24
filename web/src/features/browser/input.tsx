@@ -2,10 +2,10 @@ import type { RefObject } from "preact";
 import { useEffect, useRef } from "preact/hooks";
 import BrowserTrackpad from "./trackpad.tsx";
 import BrowserViewport from "./viewport.tsx";
+import { drawCursor, hiddenCursor, type CursorShape } from "./cursor.ts";
 
-// The arrow's size in remote pixels, as Chrome draws its own pointer.
-const POINTER_WIDTH = 20;
-const POINTER_HEIGHT = 24;
+// The pointer scales with the screen like a native one; below this it stops
+// shrinking, so it stays findable on a phone.
 const POINTER_MIN_SCALE = 0.45;
 
 export default function BrowserInput({
@@ -14,15 +14,18 @@ export default function BrowserInput({
   disabled,
   showTrackpad,
   readOnly,
+  cursorShape,
 }: {
   screen: RefObject<HTMLDivElement>;
   target: RefObject<HTMLDivElement>;
   disabled: boolean;
   showTrackpad: boolean;
   readOnly: boolean;
+  // The server's pointer; null until it sends one.
+  cursorShape: CursorShape | null;
 }) {
   const cursor = useRef({ x: 0.5, y: 0.5 });
-  const marker = useRef<SVGSVGElement>(null);
+  const marker = useRef<HTMLCanvasElement>(null);
   const reveal = useRef<(point: { x: number; y: number }) => void>(() => {});
   const pressedButton = useRef<number | null>(null);
 
@@ -64,22 +67,17 @@ export default function BrowserInput({
   const paintPointer = () => {
     const point = pointerPoint();
     if (!point || !marker.current) return;
-    marker.current.style.transform = `translate(${point.x - point.visible.left}px, ${point.y - point.visible.top}px)`;
-    // Drawn at the remote cursor's own size, so it shrinks with the screen
-    // like a native pointer; the floor keeps it findable on a phone.
     const scale = Math.min(
       1,
       Math.max(POINTER_MIN_SCALE, point.rect.width / point.element.width),
     );
-    marker.current.style.width = `${POINTER_WIDTH * scale}px`;
-    marker.current.style.height = `${POINTER_HEIGHT * scale}px`;
-    // At framebuffer edges the hotspot must still reach the last pixel. Turn
-    // the arrow inward there instead of clipping its entire shape offscreen.
-    const { width, height } = marker.current.getBoundingClientRect();
-    marker.current.firstElementChild?.setAttribute(
-      "transform",
-      `scale(${point.x + width > point.visible.right ? -1 : 1}, ${point.y + height > point.visible.bottom ? -1 : 1})`,
-    );
+    const shape = marker.current;
+    const hotX = (cursorShape?.hotX ?? 1) * scale,
+      hotY = (cursorShape?.hotY ?? 1) * scale;
+    shape.style.width = `${shape.width * scale}px`;
+    shape.style.height = `${shape.height * scale}px`;
+    shape.style.transform = `translate(${point.x - point.visible.left - hotX}px, ${point.y - point.visible.top - hotY}px)`;
+    shape.dataset.hotspot = `${hotX},${hotY}`;
   };
   const refreshPointer = () => {
     paintPointer();
@@ -141,6 +139,11 @@ export default function BrowserInput({
     if (disabled) release();
     return release;
   }, [disabled]);
+  useEffect(() => {
+    if (!marker.current) return;
+    drawCursor(marker.current, cursorShape);
+    paintPointer();
+  }, [cursorShape]);
 
   return (
     <>
@@ -161,15 +164,16 @@ export default function BrowserInput({
           paintPointer();
         }}
       >
-        <svg
+        <canvas
           ref={marker}
           class="browser-pointer"
-          viewBox="0 0 20 24"
           aria-hidden="true"
-          hidden={!showTrackpad || disabled}
-        >
-          <path d="M0 0v17l4.5-4 3.5 7 3-1.5-3.5-7H14Z" />
-        </svg>
+          hidden={
+            !showTrackpad ||
+            disabled ||
+            (!!cursorShape && hiddenCursor(cursorShape))
+          }
+        />
       </BrowserViewport>
       {showTrackpad && (
         <BrowserTrackpad

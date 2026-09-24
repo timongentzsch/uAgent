@@ -51,6 +51,7 @@ function BrowserInputSample() {
         disabled={false}
         showTrackpad
         readOnly={false}
+        cursorShape={null}
       />
     </div>
   );

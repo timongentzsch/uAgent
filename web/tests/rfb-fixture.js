@@ -85,10 +85,10 @@ export async function serveFramebuffer(page) {
             painted = true;
             const frame = Buffer.alloc(16 + width * height * 4, 0xdd);
             frame.fill(0, 0, 16);
-            frame.writeUInt16BE(1, 2);
+            frame.writeUInt16BE(2, 2);
             frame.writeUInt16BE(width, 8);
             frame.writeUInt16BE(height, 10);
-            socket.send(frame);
+            socket.send(Buffer.concat([frame, cursorRect()]));
           }
           pending = pending.subarray(length);
         }
@@ -137,6 +137,22 @@ export async function serveFramebuffer(page) {
       }),
   };
 }
+
+// The server's pointer (Cursor pseudo-encoding -239): an opaque 12x16 block
+// with its hotspot at (2, 3), so a client drawing it can be told apart from
+// any local stand-in.
+export const cursor = { width: 12, height: 16, hotX: 2, hotY: 3 };
+const cursorRect = () => {
+  const header = Buffer.alloc(12);
+  header.writeUInt16BE(cursor.hotX, 0);
+  header.writeUInt16BE(cursor.hotY, 2);
+  header.writeUInt16BE(cursor.width, 4);
+  header.writeUInt16BE(cursor.height, 6);
+  header.writeInt32BE(-239, 8);
+  const pixels = Buffer.alloc(cursor.width * cursor.height * 4);
+  const mask = Buffer.alloc(Math.ceil(cursor.width / 8) * cursor.height, 0xff);
+  return Buffer.concat([header, pixels, mask]);
+};
 
 // ServerCutText: type 3, three padding bytes, length, Latin-1 text.
 const cutText = (text) => {

@@ -140,7 +140,8 @@ disabled. Google may still reject automation-controlled browsers; see its
 | **Keys** | Esc, Tab, Enter, ⌫, arrows, **Address bar**, **Select all**, **Send text…** (for dictation or composed input) |
 | Ctrl/⌘+C, X, V (desktop) | Sync clipboards inside the viewer; ⌘ maps to Ctrl for the Linux Chrome |
 
-The pointer stays visible and a zoomed display pans to follow it. The clipboard
+On touch devices the pointer is Chrome's own cursor (arrow, I-beam, hand), drawn
+at the display's scale; a zoomed display pans to follow it. The clipboard
 changes only on these actions and travels over the private VNC connection; a
 browser that denies clipboard access falls back to a text field.
 

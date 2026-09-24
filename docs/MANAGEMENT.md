@@ -1,112 +1,100 @@
 # Library and scheduled tasks
 
-Library and Scheduled are native capabilities. The web UI calls the same
-operations as `/memory`, `/skills`, `/schedule`, and `uagent --control`.
-Management commands do not start a model turn. The browser keeps one SSE
-subscription: native storage changes invalidate Library views and publish
-scheduled task/run snapshots. Ordinary worker events carry run progress,
-approvals, activity, messages and usage.
+The web UI's Library and Scheduled views call the same native operations as
+`/memory`, `/skills`, `/schedule` and `uagent --control`. Management commands
+do not start a model turn. Storage changes invalidate open Library views and
+publish scheduled task and run snapshots over the web event stream.
 
 ## Library
 
-The Library lists global and project memories and the discovered skill inventory.
-Memories use a Global group and project folder groups matching the conversation
-sidebar. Open a folder to load its memories, or select it in the scope/project
-filter. Only the open project's contents are loaded and searched. The Project
-field also accepts a directory outside the conversation catalogue.
-Select an item to inspect its source, path, revision, size, provenance (when
-recorded), or rendered Markdown. Edit opens the source; Save and Cancel return
-to the rendered view. Read-only items remain in that view. Drafts survive navigation
-in the current browser tab; a stale revision cannot overwrite a newer file.
-Refresh discovers changes made by an external editor. Native management writes
-also notify connected clients.
+The Library lists global and project memories and the discovered skills.
+Memories are grouped as Global plus one group per project folder, matching the
+conversation sidebar; only the open project's contents are loaded and searched.
+The Project field also accepts a directory outside the conversation catalogue.
 
-uAgent memories and skills are editable. Codex, Claude and bundled sources are
-read-only; copy their content into a new uAgent entry to customize it. Skill
-status distinguishes available, overridden, disabled and invalid manifests.
-Required tool names and supporting file paths are shown without executing them.
-Disabling a skill updates the global name exclusion; a project exclusion can
-still apply. Deleting a skill removes its manifest and keeps supporting files.
+Selecting an item shows its source, path, revision, size, recorded provenance
+and rendered Markdown. **Edit** opens the source; drafts survive navigation in
+the current tab, and a stale revision cannot overwrite a newer file.
+**Refresh** picks up changes made by an external editor.
 
-Saving a library item does not rewrite an active agent's startup context.
-Memory enablement, startup memory budgets and skill catalogue selection keep
-using the existing native configuration. Start a new session to load changes.
-Project memory remains on-demand; eligible global memory fits within the
-configured startup slice. The UI does not claim that every stored item is
-currently in a particular conversation's context.
+- uAgent memories and skills are editable. External (Codex, Claude) and bundled
+  sources are read-only; copy them into a new uAgent entry to customize.
+- Skill status is available, overridden, disabled or invalid. Required tools
+  and supporting files are listed without executing anything.
+- Disabling a skill edits the global `UAGENT_SKILL_EXCLUDE` list; a project
+  exclusion can still apply. Deleting a skill removes its `SKILL.md` and keeps
+  supporting files.
+- Saved changes apply to new sessions. They do not rewrite a running agent's
+  startup context.
 
 ```sh
 uagent --control '{"kind":"memory","action":"list","cwd":"/absolute/project"}'
 uagent --control '{"kind":"skills","action":"list","cwd":"/absolute/project"}'
 ```
 
-Use `get` with an item's `key`, then include its returned `revision` with `set`,
-`forget`, or memory `rename`/`copy`. New destinations use `global/name` or
-`project/name` and an empty revision. `set` supplies `content`; `rename` and
-`copy` supply `target`. Skills use inventory keys for existing items and
-`enable`/`disable` for global exclusions. In the terminal, `/memory set KEY
-@FILE` and `/skills set KEY @FILE` read a file and perform the same revision
-check. A JSON argument exposes the complete control protocol in either UI.
+| Action | Applies to | Arguments |
+| --- | --- | --- |
+| `list`, `get` | memory, skills | `get` takes `key` |
+| `set` | memory, skills | `key`, `revision`, `content` |
+| `forget` | memory, skills | `key`, `revision` |
+| `rename`, `copy` | memory | `key`, `revision`, `target` |
+| `enable`, `disable` | skills | `key` |
 
-## Scheduled
+Writes require the `revision` returned by `get`. New items use a
+`global/NAME` or `project/NAME` key with an empty revision. In the terminal,
+`/memory set KEY @FILE` and `/skills set KEY @FILE` read content from a file
+and fill in the current revision; a JSON argument sends a raw control request.
 
-Start `uagent --web` on the host. The singleton host owns the runner; no browser
-needs to remain open. Tasks support a future one-off time, a fixed interval of
-at least one minute, or selected weekdays in an installed IANA timezone.
-Previews use the same native calendar calculation as execution. Repeated local
-times run at their first occurrence; nonexistent daylight-saving times are
-skipped. Calendar calculations run in an isolated helper because libc timezone
-state is process-global.
+## Scheduled tasks
 
-Each run freezes its task definition and is durably claimed before launch. It
-creates an ordinary session with the task's model selection and Ask, Auto, or
-YOLO permissions. A blank model uses the project's current default. Ask can
-pause for approval; open the run in the web UI or terminal. Auto reviews
-ordinary approvals and denies when the reviewer asks or fails because a
-scheduled run has no person attached. Both clients can answer an Ask decision
-while the runtime continues.
+Scheduled tasks run only while `uagent --web` is running on the host; no
+browser needs to stay open. A task runs once at a future time, at a fixed
+interval between one minute and one year, or on selected weekdays at `HH:MM`
+in an installed IANA timezone. Previews use the same calculation as execution.
+A repeated local time runs at its first occurrence; a nonexistent
+daylight-saving time is skipped.
 
-Git worktrees are the default and start from committed `HEAD`. Choose Local to
-use the working directory directly. Worktrees and conversations are retained
-for review; they are not deleted by deleting a task. Use the normal Git worktree
-commands to clean up a reviewed worktree.
+Each run freezes its task definition and is claimed before launch. It creates
+an ordinary session with the task's model (blank uses the project default) and
+permission mode: Ask (`prompt`), Auto (`auto`) or YOLO (`yolo`). When a run
+needs a decision, open it in the web UI or terminal to answer.
 
-- Run now tests the saved definition. Save edits first.
-- Pause disables future occurrences and cancels queued runs. Active runs keep
-  their frozen definition; Stop requests native interruption.
-- The same task cannot overlap itself. Up to four scheduled runs execute
-  concurrently; interactive sessions do not consume those slots.
-- Occurrences more than 60 seconds late are recorded as missed. Other due times
-  advance without catch-up bursts; overlap records a skipped occurrence.
-- A web host restart reconnects to surviving session runtimes. A claimed run
-  whose runtime is unavailable becomes interrupted for review; it is never
-  submitted again automatically. Unclaimed queued jobs may start.
-- History retains up to 128 run receipts and 64 tasks in a bounded, atomically
-  replaced store. Old terminal receipts are pruned; conversations/worktrees remain.
+Runs use a Git worktree by default (`environment: "worktree"`), created
+detached from committed `HEAD`; `local` runs in the project directory.
+Worktrees and conversations are kept for review, including after the task is
+deleted; remove a reviewed worktree with `git worktree remove`.
+
+- **Run now** runs the saved definition; save edits first.
+- **Pause** disables future occurrences and cancels queued runs. Active runs
+  keep their frozen definition; **Stop** interrupts one.
+- A task never overlaps itself; an occurrence during an active run is recorded
+  as skipped. At most two scheduled runs execute at once; interactive sessions
+  do not use these slots.
+- Occurrences more than 60 seconds late are recorded as missed; there is no
+  catch-up burst.
+- After a web host restart, runs whose runtime survived reconnect. A claimed
+  run whose runtime is gone becomes interrupted and is never resubmitted
+  automatically; unclaimed queued runs may still start.
+- The store holds up to 64 tasks and 128 run records; the oldest finished
+  records are pruned first. A damaged store is reported and preserved.
 
 ```sh
 uagent --control '{"kind":"schedule","action":"save","revision":"","task":{"name":"Review","prompt":"Review the repository and report findings.","cwd":"/absolute/project","environment":"worktree","permissions":"prompt","schedule":{"type":"weekly","days":[1,2,3,4,5],"time":"09:00","timezone":"Europe/Zurich"}}}'
 uagent --control '{"kind":"schedule","action":"list"}'
 ```
 
-`get`, `save`, `forget`, `pause`, `resume`, `run`, `stop` and `preview` are shared
-by `/schedule` and the web UI. Task mutations use `key` plus `revision`; `stop`
-uses a run ID. `/schedule run ID`, `/schedule pause ID`, and `/schedule resume
-ID` are terminal shortcuts. `preview` takes `schedule` and an optional Unix
-`after` timestamp. Store errors are reported without replacing the damaged file.
+| Action | Arguments |
+| --- | --- |
+| `list` | — |
+| `get` | `key` |
+| `save` | `task`, `revision` (empty for a new task; `key` to update) |
+| `pause`, `resume`, `forget` | `key`, `revision` |
+| `run` | `key` |
+| `stop` | `key` set to the run ID |
+| `preview` | `schedule`, optional Unix `after` |
 
-## Design references and verification
-
-The local host/worktree/review flow is informed by
-[Codex automations](https://learn.chatgpt.com/docs/automations).
-Scope and explicit settings follow the familiar
-[VS Code user/workspace distinction](https://code.visualstudio.com/docs/configure/settings).
-List/detail editing and collapsed provenance follow
-[progressive disclosure](https://www.nngroup.com/articles/progressive-disclosure/).
-These are design references, not evidence that this specific layout is optimal.
-
-`integration_management` verifies native revision conflicts, scopes, external
-copying, path confinement, DST behavior, overlap rejection, saved run results and
-restart recovery. Browser tests exercise editing, retained drafts, model choices,
-unread results, run navigation and compact layouts. New screens are loaded on
-demand and remain within the existing bundle limits.
+Schedules use `{"type":"once","at":UNIX}`,
+`{"type":"interval","seconds":N}` (optional `start`) or
+`{"type":"weekly","days":[0-6],"time":"HH:MM","timezone":"Zone/Name"}`, where
+day 0 is Sunday. `/schedule run ID`, `/schedule pause ID` and
+`/schedule resume ID` are terminal shortcuts.

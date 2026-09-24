@@ -1,103 +1,120 @@
 # Testing
 
-The default suite is hermetic and needs no API key:
+How to run µAgent's test suites, behavioral evaluation and measurement tools,
+and how CI selects them. Build and style rules live in
+[CONTRIBUTING.md](../CONTRIBUTING.md).
+
+## Hermetic suite
+
+The default suite needs no API key or network:
 
 ```sh
 cmake --preset debug
 cmake --build --preset debug
-ctest --preset debug -j6 --output-on-failure
+ctest --preset debug --output-on-failure
 ```
 
-Run one C++ case with `--test` or filter cases with `-k`:
+Test presets exist for `debug`, `release`, `sanitize` (ASan and UBSan), `tsan`
+and `coverage`. `ctest -L source` runs only the Python and source-contract
+tests; `-LE source` excludes them.
+
+| CTest name | Covers |
+| --- | --- |
+| `core` | C++ unit tests (`tests/unit/`, binary `uagent_tests`) |
+| `integration_runtime`, `_tools`, `_ui`, `_providers`, `_mcp`, `_delegation`, `_sandbox` | end-to-end cases against the real binary with a scripted HTTP provider and PTY (`tests/integration*.py`) |
+| `integration_web`, `integration_management` | native web host; only with `UAGENT_WEB=ON` |
+| `web_push` | Web Push encryption; only with `UAGENT_WEB_PUSH=ON` |
+| `behavior_eval` | scenario scores against the committed baseline |
+| `token_audit` | request and schema sizes against the committed baseline |
+| `eval_harness_self_test`, `session_metrics_self_test` | measurement tooling (label `source`) |
+| `ci_changes`, `consumer_boundary`, `wire_contract` | CI path selection and source contracts (label `source`) |
+| `benchmarks` | native micro-benchmarks; only with `UAGENT_BUILD_BENCHMARKS=ON` |
+
+Run a subset of unit or integration cases with `--list`, `--test NAME`, or
+`-k SUBSTRING`:
 
 ```sh
-build/debug/uagent_tests --list
 build/debug/uagent_tests --test TestActivitySessions
 build/debug/uagent_tests -k Activity
-```
-
-Run one integration case with `--test` or filter cases with `-k`. Integration
-cases are discovered from each module in source order, so adding a top-level
-`test_` function registers it automatically:
-
-```sh
-python3 tests/integration.py build/debug/uagent --list
+python3 tests/integration.py build/debug/uagent --group runtime --list
 python3 tests/integration.py build/debug/uagent --test test_plain_turn
 python3 tests/integration.py build/debug/uagent -k compaction
 ```
 
-`tests/unit/` covers local policy and protocols: activity IDs, bounded output
-and retention, admission, yielding, PTY/pipe I/O, readiness markers,
-exactly-once completion, Ctrl+B/exit races, foreground handoff, non-TTY
-rejection, resumed images, public-destination policy, and request-payload
-stability. Provider fixtures cover errors, context compaction, observational
-background completion, bounded task delivery, and no-replay failures. One
-shared HTTP/PTY fixture drives isolated `runtime`, `tools`, `ui`, `providers`,
-`mcp`, and `delegation` CTest processes. CI runs the SSE framing fuzz target.
+Integration cases are discovered in source order, so a new top-level `test_`
+function registers itself. Each case has its own deadline;
+`UAGENT_TEST_TIMEOUT_SCALE` multiplies them on slow or instrumented builds.
+
+The SSE and input-decoder fuzzers build with the `fuzz` preset. CI runs a short
+smoke pass from `tests/fuzz/corpus`; a weekly workflow runs longer.
+
+## Web tests
+
+Run from `web/`:
+
+```sh
+npm test                 # Node unit tests
+npm run test:browser     # Playwright against a native host
+```
+
+Browser tests start `tests/web_host.py` with `UAGENT_TEST_BINARY` (default
+`../build/release/uagent`). Each test owns its host, temporary HOME and
+project, mock provider, pairing cookie and output directory, and waits on
+visible state or an API condition rather than a fixed delay. Chromium runs
+every spec; WebKit runs the layout, browser and scroll specs. Playwright
+retries a failed test once locally and twice in CI (`CI ? 2 : 1`), uses two
+workers in CI, and keeps traces and screenshots of failures.
 
 ## Behavioral evaluation
 
-`benchmarks/eval.py` scores end-to-end agent behavior against declarative
-scenarios in `benchmarks/scenarios/*.json`: workspace fixture, prompt, scripted
-provider, and the checks that define a good run — answer content and shape,
-files read, forbidden tools, model rounds, batch width, deduplication, cumulative
-request/tool-result characters, active-schema recovery, and workspace
-immutability. Results are compared with the committed baseline in
-`benchmarks/baselines/hermetic.json`, and CTest runs that gate:
+`benchmarks/eval.py` runs declarative scenarios from
+`benchmarks/scenarios/*.json`: a workspace fixture, a prompt, a scripted
+provider and the checks that define a good run (answer, files read, forbidden
+tools, model rounds, batch width, deduplication, cumulative request and result
+size, workspace immutability). Results are compared with
+`benchmarks/baselines/hermetic.json`. `benchmarks/run_trace.py` holds the
+shared run timing and trace aggregation used by the eval and the audit.
 
 ```sh
 python3 benchmarks/eval.py build/debug/uagent --check
 python3 benchmarks/eval.py build/debug/uagent --scenario parallel_batch
 python3 benchmarks/eval.py build/debug/uagent --scenario CASE --trials 5 --pass-k 3
-python3 benchmarks/eval.py --self-test
 python3 benchmarks/eval.py build/debug/uagent --update   # review the diff
+python3 benchmarks/eval.py --self-test
 ```
 
-The hermetic mode scripts the provider, so it measures harness behavior — the
-part this repository owns — not model quality. A prompt change moves request
-bytes there; whether it moves *quality* is only visible live:
+- A scenario's `tier` is `regression` (gates the build) or `capability`
+  (reported only; the eval suggests promoting it once it passes).
+- `variants` and `variant_env` compare settings within one scenario, for
+  example `read_volume` (250/500/1000-line reads) and `superseded_reads`
+  (`control`/`pruned`). A `compacted` variant fails if it scores below its
+  `control`.
+- Reports include pass@1, pass@k, pass^k with a Wilson 95% interval, rounds,
+  idle rounds, failure categories, context size, latency and usage.
+
+The hermetic mode scripts the provider, so it measures the harness, not model
+quality.
+
+### Live runs
+
+`--run` replays scenarios against a real route. Repeated runs need an explicit
+`--scenario`, and each trial gets a fresh workspace and HOME in seeded order.
 
 ```sh
-python3 benchmarks/eval.py build/release/uagent --run \
-  --model provider/model --scenario browser_outcome_rounds --trials 5 \
-  --cost-authority /path/to/authority.json --report /tmp/uagent-eval.json
 python3 benchmarks/eval.py build/release/uagent --run --model provider/model \
-  --scenario CASE --prompt-overlay experiment.json \
-  --cost-authority /path/to/authority.json
+  --scenario CASE --trials 5 --cost-authority authority.json \
+  --report /tmp/uagent-eval.json
 ```
 
-Live runs make real provider calls and require `--run`; they may be billable or
-explicitly operator-declared non-billable. Repeated runs require an explicit
-scenario and get a fresh workspace and HOME in deterministic seeded order. The
-report groups route/model/provenance cohorts and includes pass@1, pass@k,
-pass^k, a Wilson 95% interval, rounds, cumulative context, result characters,
-latency and normalized usage.
-
-`--max-cost` (default `$0.10`) is one aggregate ceiling for routes that
-report cost, not a per-run allowance. Before making any call, live mode requires
-a `--cost-authority` JSON file with schema `uagent.eval.cost-authority.v1`.
-Each selected route chooses exactly one authority mode.
-
-A normal billable route must explicitly report costs and enforce the hard USD
-budget:
+Live mode refuses to start without a `--cost-authority` file
+(`uagent.eval.cost-authority.v1`, validated by `benchmarks/live_authority.py`)
+that gives every selected route exactly one mode:
 
 ```json
 {
   "schema": "uagent.eval.cost-authority.v1",
   "routes": {
-    "provider/model": {"reports_cost": true, "enforces_hard_budget": true}
-  }
-}
-```
-
-An operator may instead declare an exact route both non-billable and cheap.
-This is an explicit policy statement, never a model-name heuristic. All five
-limits are mandatory:
-
-```json
-{
-  "schema": "uagent.eval.cost-authority.v1",
-  "routes": {
+    "provider/model": {"reports_cost": true, "enforces_hard_budget": true},
     "local/cheap-model": {
       "non_billable": true,
       "cheap": true,
@@ -113,97 +130,62 @@ limits are mandatory:
 }
 ```
 
-The eval rejects declarations above global cheap-mode ceilings: 12 sessions,
-8 model calls per session, 32 tool calls per session, 8192 output tokens per
-model call, and 300 seconds per session. It enforces those limits in the child
-process through `UAGENT_MAX_STEPS`, `UAGENT_MAX_TOOL_CALLS`,
-`UAGENT_MAX_TOKENS`, `UAGENT_MAX_TURN_SECONDS`, request/stream deadlines, and a
-matching subprocess deadline. OpenRouter fallback is disabled for cheap-authority
-children so the exact attested route cannot silently escape to a different
-billing path. The planned session count is rejected before the first call.
-Results are checked against the same limits afterward.
+- **Reported cost.** `--max-cost` (default `$0.10`) is one aggregate ceiling
+  across all such runs.
+- **Non-billable cheap.** All five limits are required and may not exceed 12
+  sessions, 8 model calls, 32 tool calls, 8,192 output tokens per call and
+  300 seconds per session. They are enforced in the child through
+  `UAGENT_MAX_STEPS`, `UAGENT_MAX_TOOL_CALLS`, `UAGENT_MAX_TOKENS`,
+  `UAGENT_MAX_TURN_SECONDS` and a subprocess deadline, with OpenRouter
+  fallbacks disabled, and checked again afterwards. Unreported cost is never
+  counted as `$0`.
 
-A route without one complete declaration is blocked rather than tried
-optimistically. `--max-cost` applies only to reported-cost routes; a
-non-billable declaration does not turn unavailable provider cost into a
-reported `$0`. The report records `live_authority.sha256` and each route's
-normalized authority mode so downstream experiment records can bind themselves
-to the exact reviewed file. A compacted run fails if its score is below its
-control, hermetically and live.
+The report records the authority file's SHA-256 and each route's mode.
 
-Scenarios carry a `tier`. A `capability` scenario is reported but does not gate
-the build — it is a hill to climb — and graduates to `regression` once it holds
-green. The suite reports rounds that asked for nothing (`idle`) and the
-failure-category vector alongside the score, because a pass rate alone does not
-say what broke.
+## Measurement tools
 
-## Improvement iterations
+`benchmarks/audit.py` measures request and schema sizes in a fresh HOME and
+checks them against `benchmarks/baselines/audit.json`. `--profile`, `--host`
+and `--history` add report-only local observations that never affect the gate.
 
-The `read_volume` scenario compares 250/500/1000-line defaults, including the
-extra requests needed to continue reading. `superseded_reads` compares control
-with opt-in step-boundary pruning. Both use `variant_env` to apply only the
-settings under test:
+`benchmarks/session_metrics.py` summarizes real sessions from their journals
+without retaining prompts or tool values: cohorts by `session.ready`
+provenance (`legacy` for older journals), failed-call recovery, repeats,
+argument issues, activity polls and turn outcomes.
 
 ```sh
-python3 benchmarks/eval.py build/release/uagent --scenario read_volume \
-  --scenario superseded_reads --trials 3 --report /tmp/efficiency.json
-```
-
-These scripted trials verify mechanisms and cumulative accounting, not model
-quality. Use the live authority procedure above before changing defaults. The
-native benchmark also compares full and cached payload preparation for every
-wire API; these timings exclude network and generation latency.
-
-`benchmarks/session_metrics.py` reports what real sessions did and where they
-spent time, tokens and turns. It cohorts canonical, allowlisted
-`session.ready` provenance (`legacy` is explicit), supports `--cohort`, and
-derives failed-call recovery, identical repeats, argument issues, quiet/terminal
-activity polls and turn outcomes offline. `benchmarks/audit.py` prints the
-request/schema report and checks deterministic measurements against its baseline:
-
-```sh
-python3 benchmarks/session_metrics.py --since 2026-08-01
-python3 benchmarks/session_metrics.py --self-test
 python3 benchmarks/audit.py build/debug/uagent --check
 python3 benchmarks/audit.py build/debug/uagent --profile --host --history ~/.uagent/history
+python3 benchmarks/session_metrics.py --since 2026-08-01
+python3 benchmarks/session_metrics.py --cohort ID --json /tmp/sessions.json
 ```
 
-The check uses a fresh HOME, validated request telemetry and explicit source
-contracts. Missing telemetry or a baseline is an error. Personal profile,
-history and build observations are opt-in reports and cannot affect the gate.
-Ruff runs once in CI over workflow helpers, tests, benchmarks and shipped skill scripts. Regex
-reachability, prose/style and clone-count gates have been removed; compiler
-warnings, clang-tidy, package/discovery and generated-reference checks remain.
-Python/source-only tests carry the `source` CTest label and run in one CI job;
-`ctest --preset debug` still runs the complete local suite. Release builds cover Linux x86_64, Linux ARM64 and macOS ARM64. Debug coverage
-comes from ASan/UBSan; TSan targets concurrent runtime paths. Both runners report
-case times.
+## CI
 
-Browser tests use a test-scoped [Playwright fixture](https://playwright.dev/docs/test-fixtures):
-each owns its native host, temporary HOME and project, mock provider, pairing cookie
-and output directory. No test depends on a preceding test's conversation or login.
-They wait for visible state or an API condition, not a fixed delay. This follows
-[Playwright's isolation and assertion guidance](https://playwright.dev/docs/best-practices).
-Screenshots, traces and native host logs are retained on failure; retries are disabled. CI uses
-two browser workers and two concurrent native test groups to bound contention.
-Messaging, settings, conversation lifecycle and large-history checks have separate
-fixtures and deadlines; adding one flow does not consume another flow's timeout.
-Layout checks assert geometry and state directly instead of taking unasserted
-screenshots throughout successful runs.
-Delays that deliberately simulate a stalled provider or timeout remain part of
-those tests. Mock GET and POST callback failures both fail the owning test.
+`.github/changes.py` selects jobs for pull requests. Changes only under `docs/`
+or to top-level `README.md`, `CHANGELOG.md`, `CONTRIBUTING.md`, `SECURITY.md`
+or `LICENSE` run the Python job alone; adding `web/` changes adds the web job.
+Any other path runs every job. Pushes to `master` and `dev`, and tags, always
+run everything.
 
-PR job selection lives in `.github/changes.py`: frontend-only changes run web and
-source checks; documentation-only changes run source checks. Native, shared,
-workflow and unknown paths run every suite. Master, dev, tags and scheduled CodeQL runs
-always use full coverage. The CLI-only build remains in the native Release matrix.
-The always-run `CI result` job fails on any failed or cancelled dependency; it is
-the stable check to require in branch protection. Job conditions avoid the
-[pending checks caused by skipping whole workflows](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#onpushpull_requestpull_request_targetpathspaths-ignore).
-Superseded CI and CodeQL runs are cancelled. This reduces unrelated work; it does
-not suppress a failing test or replace platform and sanitizer coverage.
+| Job | Runs |
+| --- | --- |
+| `build-and-test` | Release builds on Linux x86_64, Linux ARM64 and macOS ARM64; `ctest -LE source`; generated-reference check; CLI-only build; packaging |
+| `sanitizers` | `sanitize` preset, `ctest -LE source` |
+| `thread-sanitizer` | `tsan` preset: `core`, `integration_runtime`, `integration_tools`, `integration_web` |
+| `fuzzers` | SSE and input-decoder smoke runs |
+| `coverage` | `core` and integration groups with a branch report |
+| `python` | Ruff check and format; `ctest -L source` |
+| `cpp-style` | clang-format, cpplint and clang-tidy |
+| `web` | format, Node tests, bundle and notices check, push build, Playwright |
+| `CI result` | fails if any required job failed or was cancelled |
 
-Keep tests proportional: pure helpers get focused unit coverage; externally
-visible behavior gets one hermetic integration path. Avoid duplicating the
-same contract across unit, integration, simulation, and live-model layers.
-Never put secrets in prompts, fixtures, reports, or failures.
+Require `CI result` in branch protection. Superseded runs are cancelled.
+CodeQL runs in its own workflow on pushes, pull requests and weekly.
+
+## Guidelines
+
+Keep tests proportional: pure helpers get focused unit tests, and externally
+visible behavior gets one hermetic integration path. Do not repeat a contract
+across unit, integration and live layers. Never put secrets in prompts,
+fixtures, reports or failure output.

@@ -1,157 +1,150 @@
 # Tools
 
-µAgent builds the model-visible tool registry at startup and refreshes it when
-MCP capabilities change. The exact set is filtered by approval policy, lean
-mode, route capabilities, runtime state, installed skills, delegation depth,
-and trusted configuration. `/context` prints the schemas currently advertised;
-normal turn-boundary work can still change the next wire request.
+The tools µAgent offers the model, when each is available, and how calls are
+approved. The exact schemas and their sizes are in the generated
+[tool reference](../skills/uagent-config/references/tools.md); `/context` shows
+the set a live session currently advertises, including MCP tools.
 
-## Core tools
+## Inventory
 
-| Tool | Purpose | Availability |
+The registry is built at startup and refreshed when MCP tool lists change. It is
+filtered by the toolset (`UAGENT_TOOLSET=lean` withholds implementation tools),
+`UAGENT_TOOL_CAPABILITIES` (`inspect`, `execute`, `mutate`, `delegate`,
+`external`), route capabilities, installed skills, delegation depth and
+per-conversation choices made with `/tools`.
+
+| Tool | Purpose | Available |
 | --- | --- | --- |
-| `read_path` | Read text/ranges, list directories, or load media into model context | standard and lean toolsets |
-| `grep` | Search paths or file contents with a regex and optional glob | standard and lean toolsets |
-| `write_file` | Create a file; whole-file replacement requires `overwrite=true` | standard toolset; mutating |
-| `edit_file` | Apply ordered exact replacements atomically to an existing file | standard toolset; mutating |
-| `delete_file` | Delete a regular file with a change receipt | standard toolset; mutating |
-| `run` | Execute a supervised shell command, optionally yielding, using a PTY, or detaching | execute capability |
-| `scratch` | Create or rerun one bounded uv-backed scratch script, with optional argv | standard toolset with execute capability |
-| `memory` | List, search, read, or explicitly mutate native memory; automatic changes produce private audit receipts | standard toolset when memory and policy allow it |
-| `uagent` | Describe this build: version, flags, slash commands, configuration schema with effective values and provenance, the live tool surface, or the model routes and providers it can reach | standard toolset; configure requires interactive human approval |
-| `web_fetch` | Read one http(s) URL as text, converting markup to what a reader would see | standard toolset; approval required |
+| `read_path` | read text or line ranges, list directories, load images and documents | always |
+| `grep` | regex or literal search of file contents or paths | always |
+| `write_file` | create a file; replacing one needs `overwrite=true` | full toolset |
+| `edit_file` | apply ordered exact replacements atomically | full toolset |
+| `delete_file` | delete a regular file and show the removed content | full toolset |
+| `run` | run a supervised shell command, optionally with a PTY or detached | always |
+| `scratch` | write and rerun one `.py` (under uv) or `.sh` script in `.uagent/scratch` | `uv` or `python3` on `PATH` |
+| `activity` | list, poll, wait for, write to, resize or stop activities | when activities exist |
+| `memory` | list, search and read memory; write when the user asks | full toolset, memory enabled |
+| `uagent` | inspect this build (status, flags, commands, config, tools, prompt, routes); change settings | full toolset |
+| `web_fetch` | read one public http(s) URL as text | always |
+| `web_search` | cited web search through OpenRouter's hosted search | an OpenRouter-protocol route or search endpoint |
+| `session` | list linked sessions and message them | always |
+| `subagent` | delegate a subtask to a durable collaborator | delegation depth below `UAGENT_SUBAGENT_DEPTH` |
+| `skill` | load an installed skill | a usable skill is installed |
+| `adapt_system` | read and revise the system prompt | `UAGENT_ADAPT_SYSTEM=1`; see [SYSTEM_PROMPTS.md](SYSTEM_PROMPTS.md) |
+| `browser` | drive the shared Chrome of the browser appliance | top-level web sessions with `UAGENT_BROWSER_DATA`; see [WEB.md](WEB.md) |
+| `<server>_<tool>` | tools discovered from MCP servers; see [OPERATIONS.md](OPERATIONS.md#mcp) | configured servers; not in lean children |
 
-`read_path` decodes text or queues media for capability-aware model input.
+Independent calls to parallel-safe tools may run concurrently; results are
+appended in the order the model issued the calls. A tool with a per-turn cap
+(`web_search` 4, `subagent` 32 by default) is withdrawn for the rest of the
+turn once the cap is reached. Tool limits, timeouts and turn budgets apply in
+every approval mode.
 
-`grep` defaults to regex content matches. `literal=true` searches exact text;
-`mode=files` matches filenames, while `mode=matching_files` returns only paths
-whose contents match. Both path-only modes ignore `context`.
-Create-only writes publish atomically without replacing an existing path,
-including a symlink. Use `edit_file` for targeted changes to existing files.
+## Approval
 
-`run`, `scratch` and `grep` execute inside the OS sandbox: writes land in the
-workspace, the temporary directories and the package caches, and are refused
-everywhere else, while reads and (by default) the network stay open. `run`
-alone offers `sandbox=false`, which always asks a person — yolo, a remembered
-grant and a headless run all answer no. [SECURITY.md](../SECURITY.md) has the
-full policy.
+Paths outside the workspace need approval. Mutating, process and network tools
+follow the permission mode (`/permissions`, `UAGENT_APPROVAL`):
 
-Filesystem and external-read approval follows the active path policy. Mutating
-and process tools use one of three modes: Ask, Auto, or YOLO. Ask presents the
-full action and can allow it once, for the session, or for that exact repository
-action. Repository rules include the tool provider, schema, approval class, and
-arguments, so changing any of them asks again. Rules are owner-only files and
-can be removed from Settings.
+- **Ask** shows the full action and can allow it once, for the session, or
+  always for that exact action in this repository. A remembered rule covers
+  the tool's provider, schema, approval class and arguments, so a change to
+  any of them asks again. Rules live in `~/.uagent/config/permissions.json`
+  and can be removed from the web Settings page.
+- **Auto** sends the user request and a bounded preview of the action to
+  OpenRouter's Decisions API (`UAGENT_PERMISSION_MODEL`, default
+  `~typesafe/jev-latest`; `UAGENT_PERMISSION_URL`) and follows its allow, ask
+  or deny answer. An ask opens the normal prompt, or denies when no
+  interactive client is attached; network, authentication and parse failures
+  are treated the same way. Reviewer usage counts toward the turn and
+  session.
+- **YOLO** (`--yolo`, `/yolo`) approves ordinary mutations and turns the
+  command sandbox off.
 
-Auto sends the current user request and a bounded action preview to OpenRouter's
-Decisions API. It uses `~typesafe/jev-latest` by default and accepts the model's
-explicit allow, ask, or deny choice without a local confidence threshold. An
-ask result opens the normal prompt; when no interactive client is attached it
-denies. Network, authentication, and malformed-response failures follow the
-same path. Reviewer token use and provider-reported cost are included in the
-active turn and session statistics. Configure the model and endpoint with
-`UAGENT_PERMISSION_MODEL` and `UAGENT_PERMISSION_URL`.
+Some actions always need a person: reading or writing µAgent's config files,
+`.mcp.json` or `permissions.json`, writing the project trust store or a
+`system-prompt.json`, changing settings through `uagent`, and
+`run(sandbox=false)`. Remembered rules and automatic modes do not apply, and a
+session with nobody to ask denies. Child processes get the sanitized
+environment described in [SECURITY.md](../SECURITY.md).
 
-Editing µAgent's own configuration, the project trust store or `.mcp.json` is a
-stricter class: it always asks, remembered rules and automatic modes do not
-apply, and a run with no interactive terminal denies rather than assuming
-consent. Child processes receive the sanitized environment described in
-[SECURITY.md](../SECURITY.md).
+## Files and search
 
-## Activity presentation
+- `read_path` loads images, documents and binary files through the same
+  capability-aware pipeline as attachments; omit line ranges for media.
+- `write_file` publishes atomically. Without `overwrite=true` it refuses any
+  existing path, including a symlink; use `edit_file` for targeted changes.
+- `grep` defaults to regex content matches. `literal=true` searches exact
+  text, `mode=files` matches file names and `mode=matching_files` returns the
+  paths whose contents match; both path modes ignore `context`.
+- A byte-identical repeat of a `read_path` or `grep` result still in recent
+  context is returned as a short receipt.
+- `run`, `scratch` and `grep` execute inside the OS sandbox: writes are
+  limited to the workspace, temporary directories and package caches; reads
+  and, by default, the network stay open. See
+  [SECURITY.md](../SECURITY.md) for the full policy.
 
-The native host records `explore`, `change`, or `execute` for each call. Native
-operations use their tool contract; `run` and `scratch` accept optional `intent`
-with these values, defaulting to `execute`. Intent describes purpose, never
-permissions or verified absence of side effects. No command parser or separate
-model call is involved. Confirmed change receipts come from tool results.
+## Activities
 
-Adjacent successful exploration in one assistant batch folds into a disclosure
-in the web UI and a compact terminal summary. Changes, failures, and human
-approval boundaries remain visible. Call order determines grouping; result IDs
-preserve attribution when parallel work finishes out of order. The saved facts
-serve live, replay, and offline views; `/trace` and `/verbose` expose terminal
-detail.
+`run` waits `UAGENT_RUN_YIELD_MS` (10 s) and then returns a still-running
+command as an activity. `yield_ms` of 250–30,000 overrides the wait and `0`
+waits until the command exits. Set `tty=true` only when the process needs
+interactive input; a PTY keeps merged output, writable input, interruption and
+resize. `detach=true` keeps the command running after the session ends, with a
+rotating log.
 
-`read_path` loads binary files, images, and documents through the same bounded,
-capability-aware pipeline as user attachments. Media reads omit line ranges.
-`uagent action=inspect` reads live state; `action=configure` accepts `scope` and
-`changes`, and always requires a human-approved diff. Headless sessions expose
-only inspection.
+Every `activity` call names one `operation`:
 
-## Activity tools
-
-These tools are advertised when supervised background work makes them useful.
-`activity.wait` requires `wait_ms`; optional `ids` selects a batch, otherwise
-it waits on all eligible activities. `resize` requires `id`, `rows` and `cols`.
-
-| Tool | Purpose |
+| Operation | Arguments |
 | --- | --- |
-| `activity` | List activities, drain or wait for bounded output, write raw characters to a retained PTY, interrupt or resize it, or stop it |
+| `list` | |
+| `poll` | `id`; optional `wait_ms` and `until` (a readiness marker) |
+| `wait` | `wait_ms`; optional `ids` (default: all) and `mode=any\|all` |
+| `write` | `id`, `chars`; an empty string is a valid write and `\u0003` interrupts the process group |
+| `resize` | `id`, `rows` and `cols` in 1..1000; PTY activities only |
+| `stop` | `id`; ends the process group and removes its records and logs |
 
-`run` waits up to `UAGENT_RUN_YIELD_MS` (10 seconds by default) before a
-still-running command becomes an activity. Explicit `yield_ms=0` waits to the
-turn deadline; values from 250 through 30,000 override the initial wait. Set
-`tty=true` only when the process needs interactive input.
-Every `activity` call names one operation: `list`, `poll`, `wait`, `write`,
-`resize`, or `stop`. `poll`, `write`, `resize`, and `stop` require an `id`;
-`wait` requires a bounded `wait_ms` and optionally chooses `mode=any|all`.
-`stop` terminates the complete process group and cleans its records and logs.
-An empty `chars` value is a valid write with no input bytes, while `\u0003`
-interrupts the process group. A resize requires `rows` and `cols` in 1..1000. Normal input to a non-TTY
-activity is rejected. `run` and `activity` accept `max_output_chars` to lower
-the host-capped output budget for one interaction.
+`run` and `activity` accept `max_output_chars` (256–65,536) to lower the output
+cap for one call. Output returned once is not returned again. Writing to a
+non-PTY activity is rejected.
 
-Supervised PTY and non-TTY outputs share one event-driven process-I/O layer.
-Once returned by `run` or `activity`, output is not returned again as new output. A 1 MiB head/tail
-buffer preserves the oldest and newest bytes and reports an omitted middle.
-Persistent detached commands remain log-based and cannot be interactively
-reattached after the harness exits. Waiting readers use native kqueue/inotify
-file notifications where available.
+## Delegation
 
-## Conditional and extensible tools
+`subagent` defaults to `operation=spawn` and returns an activity ID and a
+durable collaborator ID.
 
-| Tool | Condition |
-| --- | --- |
-| `web_search` | an OpenRouter-protocol route or configured search endpoint is available |
-| `subagent` | delegation is enabled and the current depth is below its limit |
-| `skill` | at least one installed skill remains usable after tool-requirement filtering |
-| `adapt_system` | `UAGENT_ADAPT_SYSTEM=1` |
-| `<server>_<tool>` | discovered from a configured MCP server; names are sanitized and collision-safe |
+- `followup` resumes the collaborator's private conversation and prepends its
+  stored `directive`; an empty directive clears it.
+- `message` delivers one-shot guidance at the child's next step, or at the next
+  follow-up when it is idle.
+- `list` reports this workspace's collaborators with model, toolset and state.
+- `persistent=true` keeps one blocking collaborator's session worker and
+  processes alive between handoffs; its model, mode and limits are fixed at
+  spawn. Stop it through `subagent`.
+- Use `activity` to wait for, read or stop ordinary children. `/agents` shows
+  the same records.
 
-`subagent` defaults to `operation=spawn`, returning both an activity ID and a
-durable collaborator ID. With `persistent=true`, one blocking collaborator
-keeps the same session worker and its supervised activities between sequential
-handoffs; its model, mode and limits remain fixed. `operation=followup` resumes
-the private conversation and prepends its persisted coordinator-owned
-`directive`; an explicit empty directive clears it. `message` delivers one-shot
-guidance to a running child and holds it for the next follow-up when an ordinary
-child is idle. `list` reports this workspace's collaborators with their model,
-toolset, status and live activity or runtime state. Use `activity` for ordinary
-child output, waiting and stopping; stop a persistent collaborator through
-`subagent`. `/agents` projects the same records and progress events.
+## Web
 
-`web_fetch` is independent of hosted-route support. It decodes markup, JSON,
-XML, and plain text, and refuses other content. Use the browser skill for pages
-behind a login or assembled by scripts. Oversized bodies are truncated at
-`UAGENT_WEB_FETCH_BYTES` and marked partial. For PDFs and images, download with
-`run` and inspect with `read_path`.
+`web_fetch` needs no hosted-search route. It decodes HTML, JSON, XML and plain
+text and refuses other content types; download PDFs and images with `run` and
+open them with `read_path`. Bodies over `UAGENT_WEB_FETCH_BYTES` are truncated
+and marked partial. Pages behind a login or built by scripts need the browser.
 
-Only public Internet destinations are accepted. Before each initial or redirect
-connection, µAgent checks every resolved IPv4 and IPv6 address. It rejects
-loopback, private, carrier-NAT, link-local, reserved, and multicast addresses,
-including IPv4-mapped, NAT64, Teredo, and 6to4 forms. Direct connections ignore
-proxy environment variables so a proxy cannot resolve an unchecked address.
+Only public Internet addresses are accepted. Every resolved IPv4 and IPv6
+address of the initial request and of each redirect is checked; loopback,
+private, carrier-grade NAT, link-local, reserved and multicast addresses are
+refused, including IPv4-mapped, NAT64, Teredo and 6to4 forms. Proxy variables
+are ignored so a proxy cannot resolve an unchecked address.
 
-Every tool call is printed in full; results are summarized outside `/verbose`.
+`web_search` has one schema for every model. It calls OpenRouter's hosted
+`openrouter:web_search` on its own route, so citations and accounting do not
+depend on the conversation model. `UAGENT_WEB_SEARCH_BACKEND=off` withholds it.
 
-`web_search` is always one named model-facing function. The host implementation
-calls OpenRouter's hosted `openrouter:web_search` server tool on a route of its
-own, so models, yolo mode, and delegated workers receive the same schema,
-citations, and accounting whichever model is answering. Set
-`UAGENT_WEB_SEARCH_BACKEND=off` to withhold the tool.
+## Presentation
 
-Independent parallel-safe calls may execute concurrently, but results are
-appended to the conversation in model call order. Tool-specific limits,
-timeouts, visibility, stable-argument checks, and the global turn budget remain
-host-enforced even in yolo mode.
+Each call is recorded as `explore`, `change` or `execute`. Native tools use
+their own contract; `run` and `scratch` take an optional `intent` (default
+`execute`) that labels the activity and never changes permissions. Adjacent
+successful exploration in one batch folds into one row in the web UI and a
+compact terminal summary; changes, failures and approval prompts stay visible.
+`/trace` and `/verbose` show full detail in the terminal.

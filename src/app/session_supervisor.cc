@@ -258,9 +258,10 @@ bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
         } else {
           session->status = "interrupted";
           session->state["activity"] = "Interrupted";
-          replay_.Publish(epoch_, session->id, session->generation,
-                          {{"kind", "closed"}, {"metadata", Metadata(*session)}},
-                          !session->run_id.empty());
+          replay_.Publish(
+              epoch_, session->id, session->generation,
+              {{"kind", "closed"}, {"metadata", Metadata(*session)}},
+              !session->run_id.empty());
         }
       }
       session->exited = true;

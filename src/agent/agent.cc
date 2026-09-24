@@ -397,16 +397,11 @@ json Agent::CompactionMessages() const {
   constexpr size_t kEvidenceBytes = 1024;
   HeadTailBuffer transcript(transcript_bytes);
   std::unordered_map<std::string, std::string> tool_names;
-  auto bounded = [](std::string_view value, size_t cap) {
-    HeadTailBuffer buffer(cap);
-    buffer.Push(value);
-    return buffer.Snapshot();
-  };
   auto append = [&](std::string_view label, const std::string& value,
                     size_t cap) {
     if (value.empty()) return;
     transcript.Push(label);
-    transcript.Push(bounded(value, cap));
+    transcript.Push(HeadTail(value, cap));
     transcript.Push("\n");
   };
   auto append_call = [&](const std::string& name, const json& arguments,

@@ -9,6 +9,7 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <sstream>
 #include <string>
 #include <system_error>
 #include <thread>
@@ -57,17 +58,13 @@ std::string CollaboratorCommunicationPath(const std::string& id) {
 }
 
 json CollaboratorCommunication(const std::string& id) {
-  std::ifstream input(CollaboratorCommunicationPath(id), std::ios::binary);
-  if (!input) return json::array();
-  input.seekg(0, std::ios::end);
-  const auto bytes = input.tellg();
-  constexpr std::streamoff kTailBytes = 64L * 1024;
-  if (bytes > kTailBytes) {
-    input.seekg(bytes - kTailBytes);
+  constexpr int64_t kTailBytes = int64_t{64} * 1024;
+  int64_t start = 0;
+  std::istringstream input(
+      ReadFileTail(CollaboratorCommunicationPath(id), kTailBytes, &start));
+  if (start > 0) {  // the tail began mid-line
     std::string partial;
     std::getline(input, partial);
-  } else {
-    input.seekg(0);
   }
   json messages = json::array();
   std::string line;

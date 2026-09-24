@@ -253,13 +253,8 @@ std::optional<json> ChildAgentEnvelope(const std::string& output) {
 std::string ChildAgentRecoverEnvelope(std::string output,
                                       const std::string& log_path) {
   if (log_path.empty() || ChildAgentEnvelope(output)) return output;
-  std::ifstream file(log_path, std::ios::binary | std::ios::ate);
-  if (!file) return output;
-  auto size = static_cast<int64_t>(file.tellg());
-  file.seekg(std::max(int64_t{0}, size - kEnvelopeRecoveryBytes));
-  std::string whole((std::istreambuf_iterator<char>(file)),
-                    std::istreambuf_iterator<char>());
-  if (std::optional<json> envelope = ChildAgentEnvelope(whole)) {
+  const std::string tail = ReadFileTail(log_path, kEnvelopeRecoveryBytes);
+  if (std::optional<json> envelope = ChildAgentEnvelope(tail)) {
     // Recovered, not re-read: the diagnostics keep the cap they were given,
     // and only the record the caller is owed is added back.
     output += "\n" + JsonDump(*envelope);

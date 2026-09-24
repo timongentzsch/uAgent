@@ -72,13 +72,8 @@ int64_t ActivityOutputCap(int64_t requested) {
   return requested > 0 ? std::min(requested, ToolResultCap()) : ToolResultCap();
 }
 
-// Over-cap text keeps its head and its tail: the middle is what a reader can
-// most afford to lose.
 std::string LimitOutput(std::string text, int64_t cap) {
-  if (cap <= 0 || text.size() <= static_cast<size_t>(cap)) return text;
-  HeadTailBuffer limited(static_cast<size_t>(cap));
-  limited.Push(text);
-  return limited.Snapshot();
+  return cap <= 0 ? text : HeadTail(text, static_cast<size_t>(cap));
 }
 
 ToolResult LimitOutput(ToolResult result, int64_t cap) {
@@ -88,15 +83,9 @@ ToolResult LimitOutput(ToolResult result, int64_t cap) {
 
 std::string ReadLogTail(const std::string& path, int64_t cap) {
   auto tail = [](const std::string& file, int64_t bytes) {
-    std::ifstream f(file, std::ios::binary | std::ios::ate);
-    if (!f || bytes == 0) return std::pair<std::string, int64_t>{"", 0};
-    int64_t size = static_cast<int64_t>(f.tellg());
-    int64_t start = bytes > 0 && size > bytes ? size - bytes : 0;
-    f.seekg(start);
-    return std::pair<std::string, int64_t>{
-        std::string(std::istreambuf_iterator<char>(f),
-                    std::istreambuf_iterator<char>()),
-        start};
+    int64_t start = 0;
+    std::string text = bytes == 0 ? "" : ReadFileTail(file, bytes, &start);
+    return std::pair{std::move(text), start};
   };
   auto [current, current_start] = tail(path, cap);
   int64_t remaining =

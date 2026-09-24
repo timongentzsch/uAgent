@@ -228,9 +228,9 @@ Markdown supports code highlighting, math and fenced `mermaid` diagrams. Raw
 HTML and trusted math commands are disabled, remote images are inert and links
 use a scheme allowlist. Renderers and fonts ship locally and load on demand.
 
-The page viewport sets `maximum-scale=1, user-scalable=no` so the viewer's
-pinch gesture zooms the remote display rather than the page; use the interface
-zoom setting to scale the UI. On touch devices, fields keep a layout font of at
+The page stays pinch-zoomable. While the browser viewer is open the viewport
+adds `maximum-scale=1, user-scalable=no`, so a pinch zooms the remote display
+rather than the page. On touch devices, fields keep a layout font of at
 least 16px to avoid focus zoom. The installed PWA uses layout bounds at rest and
 visual-viewport bounds while the keyboard is open; rotation, visibility changes
 and page restoration refresh them. Reduced-motion preferences disable

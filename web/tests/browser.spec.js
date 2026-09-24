@@ -127,6 +127,12 @@ test("watches an active agent without taking control", async ({
   for (const name of ["Keyboard", "Copy", "Paste", "Keys"])
     await expect(dialog.getByRole("button", { name })).toHaveCount(0);
   await expect(dialog.getByLabel("Browser trackpad")).toHaveCount(0);
+  // Pinch belongs to the remote display only while the viewer is open.
+  const viewport = page.locator('meta[name="viewport"]');
+  await expect(viewport).toHaveAttribute("content", /user-scalable=no/);
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(viewport).not.toHaveAttribute("content", /user-scalable=no/);
 });
 
 test("creates and selects a persistent Chrome profile", async ({

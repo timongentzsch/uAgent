@@ -1415,9 +1415,10 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
   };
   try {
     await page.goto(`${fixture.origin}/#session=${session.id}`);
-    await expect(page.locator('meta[name="viewport"]')).toHaveAttribute(
+    // The page stays pinch-zoomable; only the browser viewer locks it.
+    await expect(page.locator('meta[name="viewport"]')).not.toHaveAttribute(
       "content",
-      /maximum-scale=1, user-scalable=no/,
+      /user-scalable=no/,
     );
     const prompt = page.getByLabel("Message or guidance");
     await expect(prompt).toBeVisible();

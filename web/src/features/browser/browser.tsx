@@ -496,6 +496,18 @@ export default function BrowserPanel({
   const [profileName, setProfileName] = useState("");
   const lifetime = useRef(new AbortController());
   const inFlight = useRef<Promise<void> | null>(null);
+  // While the viewer is open a pinch zooms the remote display, not the page.
+  useEffect(() => {
+    const meta = document.querySelector<HTMLMetaElement>(
+      'meta[name="viewport"]',
+    );
+    if (!meta) return;
+    const content = meta.content;
+    meta.content = `${content}, maximum-scale=1, user-scalable=no`;
+    return () => {
+      meta.content = content;
+    };
+  }, []);
   const refresh = useCallback(
     async (afterCommand = false): Promise<void> => {
       if (inFlight.current) {

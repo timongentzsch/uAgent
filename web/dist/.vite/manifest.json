@@ -779,7 +779,7 @@
     "name": "ui"
   },
   "index.html": {
-    "file": "assets/index-DiPWT94P.js",
+    "file": "assets/index-BHGZDxJe.js",
     "name": "index",
     "src": "index.html",
     "isEntry": true,
@@ -1793,7 +1793,7 @@
     ]
   },
   "src/features/browser/browser.tsx": {
-    "file": "assets/browser-Ckb8Ywo6.js",
+    "file": "assets/browser-CSDnISHI.js",
     "name": "browser",
     "src": "src/features/browser/browser.tsx",
     "isDynamicEntry": true,

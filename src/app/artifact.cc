@@ -14,7 +14,7 @@
 
 namespace uagent {
 
-Tool ArtifactTool(std::string session_path) {
+Tool ArtifactTool(const std::string& session_path) {
   Tool tool = MakeTool(
       "artifact",
       "Hand the user a file you made (HTML report, PDF, image, archive, "

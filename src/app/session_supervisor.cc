@@ -90,13 +90,6 @@ Connection SessionHost::OpenRuntime(const HostSession& session, bool create,
   Connection connection = create ? Open(executable_, session.cwd, session.path,
                                         session.draft_title, options, error)
                                  : Connect(session.path);
-  // Record which executable this worker runs before anyone can adopt it:
-  // a later host compares this against the binary on disk. Written only
-  // for fresh spawns; a dead-on-arrival spawn leaves no socket, so the
-  // next attempt overwrites the record with its own spawn.
-  if (create && connection.socket) {
-    WriteWorkerBinary(session.path, ExecutableIdentity(executable_));
-  }
   return connection;
 }
 
@@ -167,10 +160,10 @@ void SessionHost::Received(HostSession* session, json frame) {
 bool SessionHost::RecycleStaleWorkerLocked(
     const std::shared_ptr<HostSession>& session,
     std::unique_lock<std::mutex>& lock) {
-  if (!WorkerBinaryStale(ExecutableIdentity(executable_),
-                         ReadWorkerBinary(session->path))) {
-    return false;
-  }
+  // A worker from another build of the executable is recycled; one whose
+  // executable cannot be stated right now is left alone.
+  const std::string current = FileIdentity(executable_);
+  if (current.empty() || current == session->binary) return false;
   // Binary upgraded since this worker spawned: graceful close, then the
   // caller spawns fresh. Same semantics as user-initiated close of a busy
   // session; a worker that ignores close keeps serving (fail open, retried
@@ -238,6 +231,7 @@ bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
       session->generation = connected.generation;
     }
     session->pid = connected.pid;
+    session->binary = std::move(connected.binary);
     session->exited = false;
     session->status = "starting";
     session->error.clear();
@@ -269,7 +263,7 @@ bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
     });
     // Adopted a live worker through Connect: it may predate the executable
     // (host restarted over it). Recycle through the same gate, then spawn.
-    // Fresh spawns match the record OpenRuntime just wrote and skip this.
+    // A fresh spawn reports the executable on disk and skips this.
     if (RecycleStaleWorkerLocked(session, lock)) {
       if (attempt > 0) {
         error = "worker binary changed during activation";

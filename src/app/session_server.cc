@@ -58,41 +58,6 @@ std::string SocketPath(const std::string& path) {
          HashHex(GlobalBase()) + "/" + HashHex(path) + ".sock";
 }
 
-std::string ExecutableIdentity(const std::string& executable) {
-  std::error_code ec;
-  const auto bytes = std::filesystem::file_size(executable, ec);
-  if (ec) return "";
-  const auto mtime = std::filesystem::last_write_time(executable, ec);
-  if (ec) return "";
-  return std::to_string(
-             static_cast<int64_t>(mtime.time_since_epoch().count())) +
-         ":" + std::to_string(static_cast<uint64_t>(bytes));
-}
-
-std::string WorkerBinaryPath(const std::string& path) {
-  return SocketPath(path) + ".binary";
-}
-
-bool WriteWorkerBinary(const std::string& path, const std::string& identity) {
-  if (identity.empty()) return false;
-  std::string error;
-  return AtomicWriteFile(WorkerBinaryPath(path), identity, 0600, false, error);
-}
-
-std::string ReadWorkerBinary(const std::string& path) {
-  std::string recorded, error;
-  if (!ReadRegularFile(WorkerBinaryPath(path), kWorkerIdentityBytes, recorded,
-                       error)) {
-    return "";
-  }
-  return recorded;
-}
-
-bool WorkerBinaryStale(const std::string& current,
-                       const std::string& recorded) {
-  if (current.empty()) return false;
-  return recorded != current;
-}
 Connection Connect(const std::string& path) {
   Connection result;
   const std::string address = SocketPath(path);
@@ -122,6 +87,7 @@ Connection Connect(const std::string& path) {
       json hello = json::parse(line, nullptr, false);
       result.generation = JsonValue(hello, "generation", "");
       result.pid = JsonValue(hello, "pid", -1);
+      result.binary = JsonValue(hello, "binary", "");
       if (JsonValue(hello, "v", 0) == kProtocol &&
           JsonValue(hello, "session_id", "") == HashHex(path) &&
           OpaqueId(result.generation) && result.pid > 0) {
@@ -232,7 +198,8 @@ struct Server::State {
   std::mutex mutex;
   std::deque<json> pending;
   size_t pending_bytes = 0;
-  std::string path, id, generation;
+  // FileIdentity of the executable this worker started from.
+  std::string path, id, generation, binary;
   std::function<bool(const json&)> command;
   json snapshot;
   std::deque<std::string> replay;
@@ -367,7 +334,8 @@ struct Server::State {
                                   {"kind", "hello"},
                                   {"pid", getpid()},
                                   {"session_id", id},
-                                  {"generation", generation}}) +
+                                  {"generation", generation},
+                                  {"binary", binary}}) +
                             '\n'};
           if (!snapshot.is_null()) client.output += JsonDump(snapshot) + '\n';
           if (replay_gap) {
@@ -397,6 +365,7 @@ bool Server::Start(const std::string& path, const std::string& generation,
   state.path = SocketPath(path);
   state.id = HashHex(path);
   state.generation = generation;
+  state.binary = FileIdentity(ExecutablePath());
   state.command = std::move(command);
   std::string error;
   if (!state.lease.Acquire(state.path + ".lock", error) || !state.wake.Open()) {

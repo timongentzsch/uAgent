@@ -109,6 +109,7 @@ void BenchmarkActivity(bool labels) {
   const auto started = std::chrono::steady_clock::now();
   const auto cpu_started = std::clock();
   std::vector<std::future<size_t>> workers;
+  workers.reserve(kSessions);
   for (size_t session = 0; session < kSessions; ++session) {
     workers.push_back(std::async(std::launch::async, [labels] {
       Observability events;

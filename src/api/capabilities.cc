@@ -76,10 +76,13 @@ void ProviderCapabilities::SetInputModalities(const json& modalities) {
                    modalities.end() ||
                std::find(modalities.begin(), modalities.end(), "file") !=
                    modalities.end();
-  audio_input = std::find(modalities.begin(), modalities.end(), "audio") !=
-                modalities.end();
-  video_input = std::find(modalities.begin(), modalities.end(), "video") !=
-                modalities.end();
+  // Only the Chat Completions dialect has speech and video parts; Responses
+  // and Anthropic Messages accept text, images and files.
+  const bool chat = wire_api == WireApi::kChatCompletions;
+  audio_input = chat && std::find(modalities.begin(), modalities.end(),
+                                  "audio") != modalities.end();
+  video_input = chat && std::find(modalities.begin(), modalities.end(),
+                                  "video") != modalities.end();
 }
 
 void ProviderCapabilities::SetModelFeatures(const json& features) {
@@ -101,8 +104,8 @@ void ProviderCapabilities::ResetNegotiated() {
   stream_usage_option = wire_api == WireApi::kChatCompletions && !OpenRouter();
   image_input = true;
   file_input = true;
-  audio_input = true;
-  video_input = true;
+  audio_input = wire_api == WireApi::kChatCompletions;
+  video_input = audio_input;
   json modalities = std::move(input_modalities);
   input_modalities = nullptr;
   SetInputModalities(modalities);

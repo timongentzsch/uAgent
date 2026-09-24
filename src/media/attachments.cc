@@ -234,7 +234,7 @@ std::string AudioFormat(const std::string& mime) {
   if (mime == "audio/mpeg") return "mp3";
   if (mime == "audio/flac") return "flac";
   if (mime == "audio/ogg") return "ogg";
-  if (mime == "audio/mp4") return "mp3";
+  if (mime == "audio/mp4") return "m4a";
   if (mime == "audio/opus") return "opus";
   if (mime == "audio/aac") return "aac";
   if (mime == "audio/aiff") return "aiff";

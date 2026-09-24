@@ -97,24 +97,6 @@ json ResponsesContent(const json& content, bool assistant) {
         block["file_data"] = (*file)["file_data"];
       }
       if (block.size() > 1) blocks.push_back(std::move(block));
-    } else if (type == "input_audio") {
-      const json* audio = JsonObject(part, "input_audio");
-      if (!audio) continue;
-      json payload;
-      if (audio->contains("data")) payload["data"] = (*audio)["data"];
-      if (audio->contains("format")) payload["format"] = (*audio)["format"];
-      if (!payload.empty()) {
-        blocks.push_back(
-            {{"type", "input_audio"}, {"input_audio", std::move(payload)}});
-      }
-    } else if (type == "video_url") {
-      const json* video = JsonObject(part, "video_url");
-      if (!video) continue;
-      const std::string url = JsonValue(*video, "url", "");
-      if (!url.empty()) {
-        blocks.push_back(
-            {{"type", "video_url"}, {"video_url", {{"url", url}}}});
-      }
     }
   }
   return blocks;

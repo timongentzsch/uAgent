@@ -574,11 +574,6 @@ std::string SessionStore::ShareMarkdown(const SessionRecord& record) {
 }
 
 json SessionStore::Share(const std::string& path) {
-  FileLease writer;
-  std::string error;
-  if (!writer.Acquire(CanonicalAccessPath(path).string() + ".lock", error)) {
-    return {{"error", error}};
-  }
   auto loaded = Inspect(path);
   if (!loaded.record) return {{"error", loaded.status.message}};
   std::string sibling = path;

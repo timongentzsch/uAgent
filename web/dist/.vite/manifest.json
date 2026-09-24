@@ -10,8 +10,8 @@
     "file": "assets/_baseUniq-DR4vVjyC.js",
     "name": "_baseUniq"
   },
-  "_activity-status-TTz6F_fb.js": {
-    "file": "assets/activity-status-TTz6F_fb.js",
+  "_activity-status-BVpYXibB.js": {
+    "file": "assets/activity-status-BVpYXibB.js",
     "name": "activity-status",
     "imports": [
       "_ui--nl-hiEy.js",
@@ -779,7 +779,7 @@
     "name": "ui"
   },
   "index.html": {
-    "file": "assets/index-DATrLC2A.js",
+    "file": "assets/index-MmfDP7X6.js",
     "name": "index",
     "src": "index.html",
     "isEntry": true,
@@ -1806,7 +1806,7 @@
     ]
   },
   "src/features/chat/activity.tsx": {
-    "file": "assets/activity-DsASaFJH.js",
+    "file": "assets/activity-B6E0pNMA.js",
     "name": "activity",
     "src": "src/features/chat/activity.tsx",
     "isDynamicEntry": true,
@@ -1822,7 +1822,7 @@
       "_history-page-CcfTUXP_.js",
       "_preload-helper-Czpn1I53.js",
       "_quantities-CUEaPVqX.js",
-      "_activity-status-TTz6F_fb.js",
+      "_activity-status-BVpYXibB.js",
       "_markdown-view-BwpO_4gP.js"
     ],
     "dynamicImports": [
@@ -1864,7 +1864,7 @@
     ]
   },
   "src/features/composer/composer.tsx": {
-    "file": "assets/composer-BOvaI2aE.js",
+    "file": "assets/composer-DWHEKObT.js",
     "name": "composer",
     "src": "src/features/composer/composer.tsx",
     "isDynamicEntry": true,
@@ -1877,7 +1877,7 @@
       "_mention-D08lr6wL.js",
       "_preload-helper-Czpn1I53.js",
       "_quantities-CUEaPVqX.js",
-      "_activity-status-TTz6F_fb.js"
+      "_activity-status-BVpYXibB.js"
     ],
     "dynamicImports": [
       "src/features/chat/decision.tsx"
@@ -2035,7 +2035,7 @@
     ]
   },
   "src/features/sidebar/sidebar.tsx": {
-    "file": "assets/sidebar-DlP1Cn6R.js",
+    "file": "assets/sidebar-CqkwkuLk.js",
     "name": "sidebar",
     "src": "src/features/sidebar/sidebar.tsx",
     "isDynamicEntry": true,
@@ -2047,7 +2047,7 @@
       "_plus-DVwC9aMu.js",
       "_settings-D7XQ3FSH.js",
       "_connection-status-CYKto_cg.js",
-      "_activity-status-TTz6F_fb.js"
+      "_activity-status-BVpYXibB.js"
     ]
   },
   "src/shared/diagram.tsx": {

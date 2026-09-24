@@ -309,6 +309,13 @@ function App() {
         await command("activate", { id: result.result.id, generation: "" });
         await load(result.result.id);
       }
+    } else if (name === "/rewind") {
+      const result = await act("rewind", { argument });
+      if (!result.pending) await load(selected);
+    } else if (name === "/share") {
+      const result = await act("share");
+      if (!result.pending)
+        setNotice(`Transcript saved to ${result.result.path}`);
     } else if (
       name === "/prompt" &&
       (!argument ||

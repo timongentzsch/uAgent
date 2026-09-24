@@ -203,6 +203,8 @@ export interface Activity {
   duration_ms?: number;
   progress?: string;
   model?: string;
+  // A command the turn is still waiting on, until moved to the background.
+  detached?: boolean;
 }
 export interface Collaborator {
   id: string;
@@ -359,8 +361,6 @@ export interface SlashCommand {
   aliases: string[];
   usage: string;
   description: string;
-  // Performed by the client itself; the runtime refuses it.
-  client_only?: boolean;
 }
 export interface Catalogue {
   commands?: SlashCommand[];
@@ -554,6 +554,8 @@ export interface CommandResults {
   activity: ActivityDetail;
   context: { exchanges: Exchange[] };
   fork: { id: string };
+  rewind: { turns: number };
+  share: { path: string };
   create: never;
   activate: never;
   close: never;

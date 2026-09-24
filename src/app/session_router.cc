@@ -60,13 +60,17 @@ SessionCommandResult SessionHost::ExecuteCommand(
     result.error = "conversation update in progress";
     return result;
   }
-  if (kind == SessionCommandKind::kFork && command.contains("argument")) {
+  if ((kind == SessionCommandKind::kFork ||
+       kind == SessionCommandKind::kRewind) &&
+      command.contains("argument")) {
     // Browser clients send the typed argument; the grammar lives natively.
-    const ForkArgument fork =
+    // Rewind shares /fork's [@]TURN and takes no title.
+    const ForkArgument parsed =
         ParseForkArgument(JsonValue(command, "argument", ""));
     command.erase("argument");
-    command["title"] = fork.title;
-    command["turn"] = fork.turn;
+    const bool fork = kind == SessionCommandKind::kFork;
+    if (fork) command["title"] = parsed.title;
+    command["turn"] = fork || parsed.title.empty() ? parsed.turn : 0;
   }
   if (kind == SessionCommandKind::kFork && session->pid <= 0) {
     if (JsonValue(command, "generation", "") != session->generation) {

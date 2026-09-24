@@ -61,6 +61,8 @@ struct SlashCommandSpec {
   bool inspect_result = true;  // Queries may open a result viewer.
   // Conversation navigation a client performs itself; a runtime refuses it.
   bool client_only = false;
+  // Only meaningful at a terminal, so the browser does not offer it.
+  bool terminal_only = false;
 };
 
 struct ParsedSlashCommand {

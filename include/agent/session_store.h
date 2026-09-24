@@ -122,7 +122,8 @@ class SessionStore {
   // and runtime-context messages never leave the session file.
   static std::string ShareMarkdown(const SessionRecord& record);
   // Writes ShareMarkdown next to the session file and returns the sibling
-  // path ({{"shared", true}, {"path", ...}}) or {{"error", ...}}.
+  // path ({{"shared", true}, {"path", ...}}) or {{"error", ...}}. The caller
+  // owns the session: the live worker that just saved it holds its lease.
   static json Share(const std::string& path);
   static SessionStoreStatus Rename(const std::string& path,
                                    const std::string& title);

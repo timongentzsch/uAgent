@@ -332,14 +332,9 @@ class Terminal {
       } else if (text == "/rewind" || text.starts_with("/rewind ")) {
         // Same [@]N grammar as /fork's turn suffix, title aside: rewind
         // truncates this session in place instead of branching it.
-        std::string rest = Trim(text.substr(7));
-        if (rest.starts_with("@")) rest = Trim(rest.substr(1));
-        int64_t turn = 0;
-        if (!rest.empty() && rest.size() <= 9 &&
-            std::all_of(rest.begin(), rest.end(), ::isdigit)) {
-          turn = std::stoll(rest);
-        }
-        Send({{"kind", "rewind"}, {"turn", turn}});
+        const ForkArgument parsed = ParseForkArgument(text.substr(7));
+        Send({{"kind", "rewind"},
+              {"turn", parsed.title.empty() ? parsed.turn : 0}});
       } else if (text == "/share") {
         Send({{"kind", "share"}});
       } else if (text.starts_with("/share ")) {

@@ -32,6 +32,9 @@ import MessageInput from "./message-input.tsx";
 import ModelControl from "./model-control.tsx";
 import { ContextSummary, SessionSummary } from "../chat/session-summary.tsx";
 const decisionPanel = () => import("../chat/decision.tsx");
+// Prompts sent from this page per session, oldest first: Up and Down recall
+// them the way the terminal composer does.
+const sentPrompts = new Map<string, string[]>();
 
 export default function Composer({
   session,
@@ -81,6 +84,7 @@ export default function Composer({
   zoom: number;
 }) {
   const input = useRef<HTMLTextAreaElement>(null);
+  const recalled = useRef(-1);
   const [renaming, setRenaming] = useState<string | null>(null);
   // @-mention over attached files: caret-driven, independent of the
   // slash menu (slash only matches a lone leading /command).
@@ -180,7 +184,35 @@ export default function Composer({
         ?.querySelector<HTMLInputElement>("input[type=file]")
         ?.click();
       setDraft({ ...draft, text: "" });
-    } else submit(event);
+    } else {
+      if (draft.text.trim()) {
+        const past = sentPrompts.get(session.id) || [];
+        if (past.at(-1) !== draft.text)
+          sentPrompts.set(session.id, [...past, draft.text].slice(-100));
+      }
+      recalled.current = -1;
+      submit(event);
+    }
+  };
+  // Recall only from an empty draft or the entry being browsed, so arrows
+  // still move the caret through text the person is writing.
+  const recallKeyDown = (
+    event: JSX.TargetedKeyboardEvent<HTMLTextAreaElement>,
+  ) => {
+    const past = sentPrompts.get(session.id) || [];
+    const at = recalled.current;
+    const browsing = at >= 0 && draft.text === past[at];
+    if (!browsing) recalled.current = -1;
+    let next: number;
+    if (event.key === "ArrowUp" && (browsing || !draft.text) && past.length)
+      next = browsing ? Math.max(0, at - 1) : past.length - 1;
+    else if (event.key === "ArrowDown" && browsing)
+      next = at + 1 < past.length ? at + 1 : -1;
+    else return false;
+    event.preventDefault();
+    recalled.current = next;
+    setDraft({ ...draft, text: next < 0 ? "" : past[next] });
+    return true;
   };
   const pending = online ? snapshot?.pending : null;
   const running = online && !!session.turn_active;
@@ -303,6 +335,18 @@ export default function Composer({
             onKeyDown={(event) => {
               if (mentionOpen && mentionKeyDown(event)) return;
               if (suggestions.keyDown(event)) return;
+              if (
+                event.isComposing ||
+                event.shiftKey ||
+                event.ctrlKey ||
+                event.metaKey ||
+                event.altKey
+              )
+                return;
+              if (event.key === "Escape" && running) {
+                event.preventDefault();
+                act("interrupt").catch(report);
+              } else recallKeyDown(event);
             }}
           />
           {!!state?.attachments && (

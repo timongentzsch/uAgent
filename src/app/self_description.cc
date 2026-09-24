@@ -174,10 +174,10 @@ json CliSchemaJson() {
   return flags;
 }
 
-json CommandSchemaJson() {
+json CommandSchemaJson(bool browser) {
   json commands = json::array();
   for (const SlashCommandSpec& command : SlashCommandRegistry()) {
-    if (!*command.description) continue;
+    if (!*command.description || (browser && command.terminal_only)) continue;
     commands.push_back(CommandJson(command));
   }
   return commands;

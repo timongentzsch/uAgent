@@ -56,7 +56,8 @@ json ConfigSchemaJson();
 json ConfigSettingsJson(const json& sources, const json& active,
                         std::string_view name);
 json CliSchemaJson();
-json CommandSchemaJson();
+// `browser` leaves out the commands only a terminal can perform.
+json CommandSchemaJson(bool browser = false);
 
 // The model-facing surface: the base prompt with its sections and every
 // capability fragment, and the built-in tool schemas as the model receives

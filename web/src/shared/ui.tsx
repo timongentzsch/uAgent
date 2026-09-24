@@ -1,4 +1,9 @@
-import type { ComponentChildren, ComponentType, JSX } from "preact";
+import {
+  Component,
+  type ComponentChildren,
+  type ComponentType,
+  type JSX,
+} from "preact";
 import { failure } from "./types.ts";
 import {
   useEffect,
@@ -197,6 +202,26 @@ export function LoadError({
       )}
     </div>
   );
+}
+// Contains a render failure to its subtree: one malformed event or message
+// must not blank the whole interface.
+export class ErrorBoundary extends Component<
+  { children: ComponentChildren },
+  { error?: unknown }
+> {
+  componentDidCatch(error: unknown) {
+    this.setState({ error });
+  }
+  render() {
+    return this.state.error !== undefined ? (
+      <LoadError
+        error={this.state.error}
+        retry={() => this.setState({ error: undefined })}
+      />
+    ) : (
+      this.props.children
+    );
+  }
 }
 export function EventRow({
   title,

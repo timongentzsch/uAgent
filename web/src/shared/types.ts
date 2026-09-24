@@ -569,6 +569,8 @@ export interface CommandResults {
 }
 export type CommandKind = keyof CommandResults;
 export interface CommandFields {
+  // Raw text after a slash command, parsed by the native host.
+  argument?: string;
   detail?: string;
   raw?: boolean;
   offset?: number;

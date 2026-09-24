@@ -26,6 +26,7 @@ import {
   Skeleton,
   LoadError,
   EventRow,
+  ErrorBoundary,
 } from "../../shared/ui.tsx";
 import { MessageMenu } from "./message-menu.tsx";
 import { useBlockReader } from "../../state/block-reader.ts";
@@ -479,7 +480,11 @@ export class Message extends Component<MessageProps> {
     return !messagePropsEqual(this.props, next);
   }
   render(props: MessageProps) {
-    return <MessageView {...props} />;
+    return (
+      <ErrorBoundary>
+        <MessageView {...props} />
+      </ErrorBoundary>
+    );
   }
 }
 

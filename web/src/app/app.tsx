@@ -25,6 +25,7 @@ import {
   Spinner,
   preloadDeferred,
   Input,
+  ErrorBoundary,
 } from "../shared/ui.tsx";
 import { Globe2, Menu, Settings } from "lucide-preact";
 // Prefetch helpers live next to the renderer so marker regexes stay in one
@@ -305,7 +306,7 @@ function App() {
       await act("close");
       await load(selected);
     } else if (name === "/fork") {
-      const result = await command("fork", session, { title: argument });
+      const result = await command("fork", session, { argument });
       if (!result.pending) {
         await refresh();
         await choose(result.result.id);
@@ -1143,4 +1144,9 @@ function App() {
     </>
   );
 }
-render(<App />, document.getElementById("app")!);
+render(
+  <ErrorBoundary>
+    <App />
+  </ErrorBoundary>,
+  document.getElementById("app")!,
+);

@@ -19,6 +19,7 @@
 
 #include "include/agent/prompt.h"
 #include "include/api.h"
+#include "include/app/artifact.h"
 #include "include/app/reference.h"
 #include "include/browser/browser.h"
 #include "include/cli.h"
@@ -235,6 +236,10 @@ std::vector<Tool> BuildTools(AppContext& context,
   // Reading a named URL needs no hosted route, so it does not follow search's
   // availability.
   tools.push_back(WebFetchTool(api));
+  if (context.channel && !context.channel->SessionPath().empty() &&
+      AgentDepth() == 0) {
+    tools.push_back(ArtifactTool(context.channel->SessionPath()));
+  }
 #ifdef UAGENT_WEB  // the web host starts the browser and serves its viewer
   if (!browser::DataDirectory().empty() && context.options.browser_session &&
       context.channel && !context.channel->SessionPath().empty() &&

@@ -263,3 +263,11 @@
   justify-content: space-between;
   gap: var(--gap);
 }
+
+/* A file the agent shared: name, size, then open and download. */
+.tool-file {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2) var(--space-4);
+}

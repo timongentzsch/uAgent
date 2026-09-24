@@ -6,6 +6,7 @@ import type { PresentedBlock, ToolPart } from "../../shared/types.ts";
 import { useContext } from "preact/hooks";
 import { LiveActivities } from "../../state/live-activities.ts";
 import { duration } from "../../shared/duration.ts";
+import { bytes } from "../../shared/quantities.ts";
 import { active } from "./activity-status.tsx";
 
 // A fence longer than any backtick run in the body, so code never ends early.
@@ -64,6 +65,7 @@ export function ToolRow({
   online,
   inspect,
   open,
+  assets,
   onToggle,
 }: {
   block: PresentedBlock;
@@ -80,6 +82,8 @@ export function ToolRow({
   inspect?: (id: string) => void;
   // Opens the agent or activity this call started in the inspector.
   open?: () => void;
+  // The session's asset path, for a file the call shared.
+  assets: string;
   onToggle: (event: { currentTarget: { open: boolean } }) => void;
 }) {
   // A call that started background work stays live until that work ends.
@@ -157,6 +161,29 @@ export function ToolRow({
               </p>
             )
           ))
+        )}
+        {block.file && (
+          <p class="tool-file">
+            <strong>{cleanText(block.file.name)}</strong> ·{" "}
+            {bytes(block.file.bytes)}
+            {/^(image\/|application\/pdf$|text\/html$)/.test(
+              block.file.mime,
+            ) && (
+              <a
+                href={`${assets}${block.file.id}`}
+                target="_blank"
+                rel="noopener"
+              >
+                Open
+              </a>
+            )}
+            <a
+              href={`${assets}${block.file.id}?download=1`}
+              download={block.file.name}
+            >
+              Download
+            </a>
+          </p>
         )}
         {block.change && <DiffView text={cleanText(block.change)} />}
         {inspect && (

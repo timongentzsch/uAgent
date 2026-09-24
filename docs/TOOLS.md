@@ -26,6 +26,7 @@ per-conversation choices made with `/tools`.
 | `memory` | list, search and read memory; write when the user asks | full toolset, memory enabled |
 | `uagent` | inspect this build (status, flags, commands, config, tools, prompt, routes); change settings | full toolset |
 | `web_fetch` | read one public http(s) URL as text | always |
+| `artifact` | hand the user a file to open or download (HTML runs sandboxed, PDFs and images open inline); snapshot into the session's assets | a session with a client |
 | `web_search` | cited web search through OpenRouter's hosted search | an OpenRouter-protocol route or search endpoint |
 | `session` | list linked sessions and message them | always |
 | `subagent` | delegate a subtask to a durable collaborator | delegation depth below `UAGENT_SUBAGENT_DEPTH` |

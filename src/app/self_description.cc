@@ -12,6 +12,7 @@
 #include "include/agent/process.h"
 #include "include/agent/prompt.h"
 #include "include/api.h"
+#include "include/app/artifact.h"
 #include "include/app/config_proposal.h"
 #include "include/app/options.h"
 #include "include/cli.h"
@@ -360,6 +361,7 @@ json ToolSurfaceJson() {
       SubagentTool(api, supervisor, {}, {}, /*debug=*/false),
       "delegation depth");
   conditional.emplace_back(SessionTool(), "always");
+  conditional.emplace_back(ArtifactTool(""), "a session with a client");
 #ifdef UAGENT_WEB
   conditional.emplace_back(BrowserTool(""),
                            "browser appliance, top-level web session");

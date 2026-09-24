@@ -1005,9 +1005,29 @@ void Master::AssetRead(const Request& request, Response& response) {
     Error(response, "invalid image asset", 415);
     return;
   }
-  if (!image) response.set_header("Content-Disposition", "attachment");
+  // Images, PDFs and HTML open in the browser; HTML runs sandboxed in an
+  // opaque origin, so its scripts can never read this device's session or
+  // call the API. Everything else, or ?download, is saved under its name.
+  const bool html = mime == "text/html";
+  const bool inline_view = !request.has_param("download") &&
+                           (image || html || mime == "application/pdf");
+  response.set_header("X-Content-Type-Options", "nosniff");
+  if (html) {
+    response.set_header("Content-Security-Policy",
+                        "sandbox allow-scripts allow-forms allow-popups");
+  }
+  if (!inline_view) {
+    std::string name = JsonValue(asset, "name", "download");
+    for (char& ch : name) {
+      if (ch == '"' || ch == '\\' || static_cast<unsigned char>(ch) < 32) {
+        ch = '_';
+      }
+    }
+    response.set_header("Content-Disposition",
+                        "attachment; filename=\"" + name + "\"");
+  }
   response.set_content(std::move(bytes),
-                       image ? mime : "application/octet-stream");
+                       inline_view || html ? mime : "application/octet-stream");
 }
 
 }  // namespace

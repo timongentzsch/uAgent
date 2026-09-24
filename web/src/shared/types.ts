@@ -186,6 +186,8 @@ export interface Block {
   reply_excerpt?: string;
   activity_id?: number;
   agent_id?: string;
+  // A file the call shared with the person (artifact tool).
+  file?: { id: string; name: string; mime: string; bytes: number };
   command?: string;
 }
 export interface PresentedBlock extends Block {
@@ -424,6 +426,7 @@ export interface EventData extends Omit<Partial<Exchange>, "status"> {
   result?: JSONValue;
   agent_id?: string;
   activity_id?: number;
+  file?: Block["file"];
   preview_truncated?: boolean;
   completion_status?: string;
   status?: string | number;

@@ -282,6 +282,7 @@ function MessageView({
                 retry={() => setRetry(retry + 1)}
                 online={online}
                 inspect={inspect}
+                assets={`/api/sessions/${session.id}/assets/`}
                 open={
                   activity && (block.agent_id || block.activity_id)
                     ? () => activity(block)

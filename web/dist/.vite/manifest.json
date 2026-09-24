@@ -637,12 +637,8 @@
       "node_modules/@mermaid-js/parser/dist/chunks/mermaid-parser.core/cynefin-OW5HDTMX.mjs"
     ]
   },
-  "_message-B3FUI8Gn.css": {
-    "file": "assets/message-B3FUI8Gn.css",
-    "src": "_message-B3FUI8Gn.css"
-  },
-  "_message-Gf3-zT5M.js": {
-    "file": "assets/message-Gf3-zT5M.js",
+  "_message-B7NOEq6Z.js": {
+    "file": "assets/message-B7NOEq6Z.js",
     "name": "message",
     "imports": [
       "_ui-Ca6YsEiZ.js",
@@ -658,8 +654,12 @@
     ],
     "css": [
       "assets/attachments-By6-qNSM.css",
-      "assets/message-B3FUI8Gn.css"
+      "assets/message-Ce5WjTW2.css"
     ]
+  },
+  "_message-Ce5WjTW2.css": {
+    "file": "assets/message-Ce5WjTW2.css",
+    "src": "_message-Ce5WjTW2.css"
   },
   "_message-view-C1PXdaq2.js": {
     "file": "assets/message-view-C1PXdaq2.js",
@@ -772,8 +772,8 @@
       "_ui-Ca6YsEiZ.js"
     ]
   },
-  "_store-C3eWjjPG.js": {
-    "file": "assets/store-C3eWjjPG.js",
+  "_store-CJw9jaZH.js": {
+    "file": "assets/store-CJw9jaZH.js",
     "name": "store",
     "imports": [
       "_limits-DNQcmWGQ.js"
@@ -795,14 +795,14 @@
     "name": "ui"
   },
   "index.html": {
-    "file": "assets/index-C1B87gG8.js",
+    "file": "assets/index-CCxuld-K.js",
     "name": "index",
     "src": "index.html",
     "isEntry": true,
     "imports": [
       "_style-CuN3udIp.js",
       "_ui-Ca6YsEiZ.js",
-      "_store-C3eWjjPG.js",
+      "_store-CJw9jaZH.js",
       "_api-B17OK55B.js",
       "_settings-B5UFnXsU.js",
       "_statistics-layout-DMu70G1z.js",
@@ -1825,13 +1825,13 @@
     ]
   },
   "src/features/chat/chat.tsx": {
-    "file": "assets/chat-Ci2iqICz.js",
+    "file": "assets/chat-duG9bqhi.js",
     "name": "chat",
     "src": "src/features/chat/chat.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_ui-Ca6YsEiZ.js",
-      "_message-Gf3-zT5M.js"
+      "_message-B7NOEq6Z.js"
     ]
   },
   "src/features/chat/conversation-actions.tsx": {
@@ -1855,14 +1855,14 @@
     ]
   },
   "src/features/chat/inspector.tsx": {
-    "file": "assets/inspector-DK-uPnb3.js",
+    "file": "assets/inspector-DHLDMNvm.js",
     "name": "inspector",
     "src": "src/features/chat/inspector.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_ui-Ca6YsEiZ.js",
       "_api-B17OK55B.js",
-      "_message-Gf3-zT5M.js",
+      "_message-B7NOEq6Z.js",
       "_activity-status-DGFTFU87.js",
       "_session-summary-IErw1Soa.js",
       "_arrow-left-B1lzZ2we.js",
@@ -1915,13 +1915,13 @@
     ]
   },
   "src/features/library/library.tsx": {
-    "file": "assets/library-DC0HS8XZ.js",
+    "file": "assets/library-BJZ8B1Mz.js",
     "name": "library",
     "src": "src/features/library/library.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_ui-Ca6YsEiZ.js",
-      "_store-C3eWjjPG.js",
+      "_store-CJw9jaZH.js",
       "_api-B17OK55B.js",
       "_arrow-left-B1lzZ2we.js",
       "_popover-C_XrKKkT.js",
@@ -1933,17 +1933,17 @@
       "_management-Dd1UCKIY.js"
     ],
     "css": [
-      "assets/message-B3FUI8Gn.css"
+      "assets/message-Ce5WjTW2.css"
     ]
   },
   "src/features/scheduled/scheduled.tsx": {
-    "file": "assets/scheduled-p-F-kksh.js",
+    "file": "assets/scheduled-piMDJLWd.js",
     "name": "scheduled",
     "src": "src/features/scheduled/scheduled.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_ui-Ca6YsEiZ.js",
-      "_store-C3eWjjPG.js",
+      "_store-CJw9jaZH.js",
       "_api-B17OK55B.js",
       "_arrow-left-B1lzZ2we.js",
       "_popover-C_XrKKkT.js",
@@ -1987,13 +1987,13 @@
     ]
   },
   "src/features/settings/prompt.tsx": {
-    "file": "assets/prompt-DpNrZxfI.js",
+    "file": "assets/prompt-B7ies9AA.js",
     "name": "prompt",
     "src": "src/features/settings/prompt.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_ui-Ca6YsEiZ.js",
-      "_store-C3eWjjPG.js",
+      "_store-CJw9jaZH.js",
       "_api-B17OK55B.js",
       "_diff-view-B_seulVy.js",
       "_management-Dd1UCKIY.js"
@@ -2217,14 +2217,14 @@
     ]
   },
   "ui.html": {
-    "file": "assets/ui-YReTI7XH.js",
+    "file": "assets/ui-nYntxDXc.js",
     "name": "ui",
     "src": "ui.html",
     "isEntry": true,
     "imports": [
       "_style-CuN3udIp.js",
       "_ui-Ca6YsEiZ.js",
-      "_store-C3eWjjPG.js",
+      "_store-CJw9jaZH.js",
       "_popover-C_XrKKkT.js",
       "_plus-MhiQgEbS.js",
       "_size-controls-C5mHYkMy.js",

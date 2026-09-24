@@ -105,6 +105,7 @@ Common slash commands:
 | `/ps`, `/agents`, `/tools`, `/permissions`, `/yolo` | Manage background work, collaborators, tools and approval mode |
 | `/sessions`, `/new`, `/fork`, `/rewind`, `/compact`, `/share` | Manage sessions and context |
 | `/memory`, `/skills`, `/schedule`, `/prompt`, `/config` | Manage memory, skills, scheduled tasks, system prompt and settings |
+| `/btw QUESTION` | Ask a side question about the conversation; the answer is not added to it |
 | `/verbose`, `/clear`, `/help`, `/quit` | Toggle full output, clear the screen, list all commands, detach |
 
 `/help` lists every command with its arguments.

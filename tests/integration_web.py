@@ -946,6 +946,44 @@ def test_web_side_question_answers_beside_a_running_turn(root, home, *, binary):
             assert_true("what are we doing" not in transcript, transcript)
 
 
+def test_web_artifact_is_shared_sandboxed_and_downloadable(root, home, *, binary):
+    (root / "report.html").write_text("<script>document.title='x'</script>REPORT")
+
+    def responder(_, body):
+        if any(message.get("role") == "tool" for message in body["messages"]):
+            return event({"content": "shared"})
+        return tool_call("artifact", {"path": "report.html"}, call_id="share")
+
+    with Server([responder]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+            client.pair(code)
+            session = client.create(root)
+            client.command("permissions", session, mode="yolo")
+            client.command("submit", session, text="Share the report")
+            value = client.until(
+                session,
+                lambda value: (
+                    "shared" in json.dumps(value) and not value["metadata"]["turn_active"]
+                ),
+            )
+            files = [b["file"] for b in value["state"]["view"]["blocks"] if b.get("file")]
+            assert_true(len(files) == 1 and files[0]["name"] == "report.html", files)
+            url = f"/api/sessions/{session['id']}/assets/{files[0]['id']}"
+            status, body, headers = client.request(url)
+            assert_true(status == 200 and b"REPORT" in body, (status, body))
+            # Opens inline, but scripts run in an opaque origin.
+            assert_true(headers.get("Content-Type", "").startswith("text/html"), headers)
+            assert_true("sandbox" in headers.get("Content-Security-Policy", ""), headers)
+            assert_true("allow-same-origin" not in headers["Content-Security-Policy"], headers)
+            assert_true(headers.get("X-Content-Type-Options") == "nosniff", headers)
+            status, _, headers = client.request(url + "?download=1")
+            assert_true(
+                status == 200
+                and 'filename="report.html"' in headers.get("Content-Disposition", ""),
+                headers,
+            )
+
+
 def p256_public_key():
     """A fresh uncompressed P-256 point, as a browser's p256dh key."""
     pem = subprocess.run(

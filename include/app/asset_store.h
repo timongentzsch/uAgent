@@ -35,8 +35,11 @@ class AssetStore {
   // Persists one upload into session_path + ".assets". The caller checks
   // session liveness before and after; uncommitted uploads older than a day
   // are reaped by the quota scan, so a lost race only costs bytes, not truth.
+  // `committed`: kept for the session's life (a shared artifact) rather
+  // than waiting for a message to claim it.
   AssetStoreResult Store(const std::string& session_path,
-                         const std::string& bytes, std::string name);
+                         const std::string& bytes, std::string name,
+                         bool committed = false);
   // Resolves attachment id claims into command["attachments"], runs gate
   // (the host's session-liveness check) before committing anything, then
   // size-checks and commits. gate's non-empty return aborts uncommitted.

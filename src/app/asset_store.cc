@@ -98,7 +98,8 @@ void UnclaimLocked(std::vector<std::pair<std::string, json>>& claims,
 }  // namespace
 
 AssetStoreResult AssetStore::Store(const std::string& session_path,
-                                   const std::string& bytes, std::string name) {
+                                   const std::string& bytes, std::string name,
+                                   bool committed) {
   std::lock_guard assets(mutex_);
   const std::string folder = session_path + ".assets";
   if (!EnsurePrivateDirectory(folder)) {
@@ -166,12 +167,13 @@ AssetStoreResult AssetStore::Store(const std::string& session_path,
     return {{}, "cannot persist upload", 500};
   }
   bytes_ += bytes.size();
-  if (!ToolWritePrivateFile(stem + ".json", JsonDump({{"mime", mime},
-                                                      {"name", name},
-                                                      {"image", image},
-                                                      {"extension", ".data"},
-                                                      {"bytes", bytes.size()},
-                                                      {"committed", false}}))
+  if (!ToolWritePrivateFile(stem + ".json",
+                            JsonDump({{"mime", mime},
+                                      {"name", name},
+                                      {"image", image},
+                                      {"extension", ".data"},
+                                      {"bytes", bytes.size()},
+                                      {"committed", committed}}))
            .Ok()) {
     return {{}, "cannot persist upload metadata", 500};
   }

@@ -853,20 +853,12 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
           max_seconds = ceiling;
         }
         if (max_seconds > 0) child_context = context.WithTimeout(max_seconds);
-        if (persistent) {
-          if (operation == "spawn") {
-            collaborator["limits"] = {{"steps", steps},
-                                      {"tool_calls", tool_calls},
-                                      {"seconds", max_seconds},
-                                      {"cost", child_budget},
-                                      {"memory", child_memory}};
-          }
-          collaborator["mode"] = mode;
-          collaborator["model"] =
-              requested.empty() ? DefaultSubagentModel(api) : requested;
+        // What this request says about the collaborator, recorded for both the
+        // persistent and the bounded path once the child is under way.
+        auto RecordRequest = [&](const char* fallback_label) {
           collaborator["task"] = JsonValue(arguments, "prompt", "");
           collaborator["label"] = Utf8Trunc(
-              FirstLine(JsonValue(arguments, "prompt", "Sidekick")), 160);
+              FirstLine(JsonValue(arguments, "prompt", fallback_label)), 160);
           if (operation == "spawn" || arguments.contains("name")) {
             collaborator["name"] = JsonValue(
                 arguments, "name", JsonValue(collaborator, "name", ""));
@@ -879,6 +871,19 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
           }
           collaborator["memory"] = child_memory;
           collaborator["updated_at"] = UtcStamp();
+        };
+        if (persistent) {
+          if (operation == "spawn") {
+            collaborator["limits"] = {{"steps", steps},
+                                      {"tool_calls", tool_calls},
+                                      {"seconds", max_seconds},
+                                      {"cost", child_budget},
+                                      {"memory", child_memory}};
+          }
+          collaborator["mode"] = mode;
+          collaborator["model"] =
+              requested.empty() ? DefaultSubagentModel(api) : requested;
+          RecordRequest("Sidekick");
           collaborator["route"] = route_label;
           ToolResult saved = SaveCollaborator(collaborator);
           if (!saved.Ok()) return saved;
@@ -975,21 +980,7 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
           collaborator["mode"] = JsonValue(
               arguments, "mode", JsonValue(collaborator, "mode", "lean"));
           collaborator["model"] = requested;
-          collaborator["task"] = JsonValue(arguments, "prompt", "");
-          collaborator["label"] = Utf8Trunc(
-              FirstLine(JsonValue(arguments, "prompt", "Subagent")), 160);
-          if (operation == "spawn" || arguments.contains("name")) {
-            collaborator["name"] = JsonValue(
-                arguments, "name", JsonValue(collaborator, "name", ""));
-          }
-          if (operation == "spawn" || arguments.contains("description")) {
-            collaborator["description"] =
-                Utf8Trunc(JsonValue(arguments, "description",
-                                    JsonValue(collaborator, "description", "")),
-                          kAgentDescriptionMax);
-          }
-          collaborator["memory"] = child_memory;
-          collaborator["updated_at"] = UtcStamp();
+          RecordRequest("Subagent");
           ToolResult saved = SaveCollaborator(collaborator);
           if (saved.Ok()) {
             result.output += "\n[collaborator " + collaborator_id +

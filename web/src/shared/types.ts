@@ -305,7 +305,6 @@ export interface ActivityStatusDetail {
 export interface State {
   phase?: ExecutionPhase;
   activity_detail?: ActivityStatusDetail | null;
-  pending_decision?: Pending | null;
   attachments?: number;
   title?: string;
   route?: string;
@@ -355,6 +354,8 @@ export interface SlashCommand {
   aliases: string[];
   usage: string;
   description: string;
+  // Performed by the client itself; the runtime refuses it.
+  client_only?: boolean;
 }
 export interface Catalogue {
   commands?: SlashCommand[];
@@ -432,7 +433,6 @@ interface HostEnvelope extends Partial<Omit<Outcome, "pending">> {
   metadata?: Session;
   state?: State;
   phase?: ExecutionPhase;
-  pending_decision?: Pending | null;
   guidance?: number;
   presence?: "active" | "";
   checkpoint?: boolean;

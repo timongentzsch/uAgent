@@ -57,11 +57,7 @@ bool ResolveCommandAttachments(const json& command,
       attachment.mime = JsonValue(path, "mime", attachment.mime);
       attachment.image = JsonValue(path, "image", false);
     }
-    images.push_back({{"id", attachment.asset_id},
-                      {"name", attachment.name},
-                      {"mime", attachment.mime},
-                      {"bytes", attachment.bytes},
-                      {"image", attachment.image}});
+    images.push_back(AttachmentDisplayJson(attachment));
     attachments.push_back(std::move(attachment));
   }
   return true;
@@ -441,7 +437,6 @@ class WorkerChannel final : public ApplicationChannel {
           {"busy", turn_active_},
           {"command_busy", busy_},
           {"pending", decision_},
-          {"pending_decision", decision_},
           {"phase", JsonValue(state_, "phase", "idle")},
           {"guidance", SteeringState().QueuedCount()},
           {"completed_request_id",
@@ -639,13 +634,7 @@ class WorkerChannel final : public ApplicationChannel {
             error = "empty message";
           }
           ParsedSlashCommand slash = ParseSlashCommand(input.text);
-          if (slash.spec && (slash.spec->id == SlashCommandId::kReset ||
-                             slash.spec->id == SlashCommandId::kClear ||
-                             slash.spec->id == SlashCommandId::kFork ||
-                             slash.spec->id == SlashCommandId::kRewind ||
-                             slash.spec->id == SlashCommandId::kShare ||
-                             slash.spec->id == SlashCommandId::kSessions ||
-                             slash.spec->id == SlashCommandId::kQuit)) {
+          if (slash.spec && slash.spec->client_only) {
             error = "use conversation controls to navigate, branch, or close";
           }
           if (error.empty()) {
@@ -662,6 +651,9 @@ class WorkerChannel final : public ApplicationChannel {
         }
         break;
       }
+      case SessionCommandKind::kCreate:
+      case SessionCommandKind::kDelete:
+      case SessionCommandKind::kActivate:
       case SessionCommandKind::kUnknown: {
         error = "unsupported command";
         break;

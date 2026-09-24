@@ -318,12 +318,7 @@ void Application::RunPrompt(const std::string& input) {
     }
     for (const auto& attachment : attachments_) {
       if (!attachment.asset_id.empty()) {
-        images.push_back({{"id", attachment.asset_id},
-                          {"name", attachment.name},
-                          {"mime", attachment.mime},
-                          {"bytes", attachment.bytes},
-                          {"image", attachment.image},
-                          {"path", attachment.path}});
+        images.push_back(AttachmentDisplayJson(attachment));
       }
     }
     attachments_.clear();

@@ -63,7 +63,6 @@ enum class EventId : uint16_t {
   kPresentation,
 };
 
-enum class EventDurability : uint8_t { kTransient, kDurable };
 enum class EventRedaction : uint8_t { kNone, kPublicProjection };
 
 enum class PresentationKind : uint8_t {
@@ -145,9 +144,11 @@ struct EventPolicy {
   const char* app_type;
   const char* debug_name;
   const char* public_type;
+  // Durable events are exactly the ones the session journal records.
   const char* journal_type;
-  EventDurability durability;
   EventRedaction redaction;
+
+  bool Durable() const { return journal_type != nullptr; }
 };
 
 const EventPolicy& PolicyFor(EventId id);

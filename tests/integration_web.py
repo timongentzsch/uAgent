@@ -1877,6 +1877,9 @@ def test_web_http_context_configuration_permissions_and_fork(root, home, *, bina
             snapshot = client.until(session, lambda value: value["metadata"]["status"] == "idle")
             rows = snapshot["state"]["view"]["blocks"]
             request = rows[0]
+            # Clients get the asset id, never the private upload path.
+            assert_true(request.get("files"), request)
+            assert_true(all("path" not in item for item in request["files"]), request)
             reply = next(row for row in reversed(rows) if row["kind"] == "assistant")
             assert_true(reply["reply_to"] == request["id"] == reply["turn_root"], rows)
             exchange = reply["http"][-1]

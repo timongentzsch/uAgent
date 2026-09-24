@@ -59,6 +59,8 @@ struct SlashCommandSpec {
   const char* argument;
   const char* description;
   bool inspect_result = true;  // Queries may open a result viewer.
+  // Conversation navigation a client performs itself; a runtime refuses it.
+  bool client_only = false;
 };
 
 struct ParsedSlashCommand {

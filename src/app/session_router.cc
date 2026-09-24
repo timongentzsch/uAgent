@@ -31,9 +31,9 @@ SessionCommandResult SessionHost::ExecuteCommand(
   std::unique_lock lock(mutex_);
   SessionCommandResult result;
   result.outcome = {{"request_id", request_id}, {"accepted", true}};
-  const HostCommandKind kind =
-      ParseHostCommandKind(JsonValue(command, "kind", ""));
-  if (kind == HostCommandKind::kCreate) {
+  const SessionCommandKind kind =
+      ParseSessionCommandKind(JsonValue(command, "kind", ""));
+  if (kind == SessionCommandKind::kCreate) {
     std::error_code ec;
     auto cwd = std::filesystem::canonical(JsonValue(command, "cwd", ""), ec);
     if (ec || !std::filesystem::is_directory(cwd, ec)) {
@@ -60,7 +60,7 @@ SessionCommandResult SessionHost::ExecuteCommand(
     result.error = "conversation update in progress";
     return result;
   }
-  if (kind == HostCommandKind::kFork && command.contains("argument")) {
+  if (kind == SessionCommandKind::kFork && command.contains("argument")) {
     // Browser clients send the typed argument; the grammar lives natively.
     const ForkArgument fork =
         ParseForkArgument(JsonValue(command, "argument", ""));
@@ -68,7 +68,7 @@ SessionCommandResult SessionHost::ExecuteCommand(
     command["title"] = fork.title;
     command["turn"] = fork.turn;
   }
-  if (kind == HostCommandKind::kFork && session->pid <= 0) {
+  if (kind == SessionCommandKind::kFork && session->pid <= 0) {
     if (JsonValue(command, "generation", "") != session->generation) {
       result.error = "stale session; refresh before acting";
     } else if (sessions_.size() >= kMaxCatalogueEntries) {
@@ -85,26 +85,27 @@ SessionCommandResult SessionHost::ExecuteCommand(
     }
     return result;
   }
-  if ((kind == HostCommandKind::kRename || kind == HostCommandKind::kDelete) &&
+  if ((kind == SessionCommandKind::kRename ||
+       kind == SessionCommandKind::kDelete) &&
       session->pid <= 0) {
     if (JsonValue(command, "generation", "") != session->generation) {
       result.error = "stale session; refresh before acting";
       return result;
     }
     std::string title = Trim(JsonValue(command, "title", ""));
-    if (kind == HostCommandKind::kRename && !ValidSessionTitle(title)) {
+    if (kind == SessionCommandKind::kRename && !ValidSessionTitle(title)) {
       result.error = "title must be 1–256 bytes without control characters";
       return result;
     }
     std::string prior_status = session->status;
     session->status =
-        kind == HostCommandKind::kDelete ? "deleting" : "updating";
+        kind == SessionCommandKind::kDelete ? "deleting" : "updating";
     lock.unlock();
     std::unique_lock scan(scan_mutex_);
     std::unique_lock asset_lock = assets_.GuardMutation();
     std::string draft_path = directory_ + "/drafts/" + session->id + ".json";
     SessionStoreStatus stored;
-    if (kind == HostCommandKind::kDelete) {
+    if (kind == SessionCommandKind::kDelete) {
       stored = SessionStore::Remove(session->path, draft_path);
     } else if (PathExists(session->path)) {
       stored = SessionStore::Rename(session->path, title);
@@ -120,12 +121,12 @@ SessionCommandResult SessionHost::ExecuteCommand(
     }
     if (!stored.Ok()) result.error = stored.message;
     asset_lock.unlock();
-    if (result.error.empty() && kind == HostCommandKind::kDelete) {
+    if (result.error.empty() && kind == SessionCommandKind::kDelete) {
       assets_.Invalidate();
     }
     lock.lock();
     session->status = prior_status;
-    if (result.error.empty() && kind == HostCommandKind::kDelete) {
+    if (result.error.empty() && kind == SessionCommandKind::kDelete) {
       sessions_.erase(session->id);
       replay_.Publish(epoch_, session->id, "", {{"kind", "deleted"}},
                       !session->run_id.empty());
@@ -142,16 +143,16 @@ SessionCommandResult SessionHost::ExecuteCommand(
     }
     return result;
   }
-  if (kind == HostCommandKind::kDelete) {
+  if (kind == SessionCommandKind::kDelete) {
     result.error = "stop and close this conversation before deleting it";
-  } else if (kind == HostCommandKind::kActivate) {
+  } else if (kind == SessionCommandKind::kActivate) {
     if (ActivateLocked(session, result.error, lock, true)) {
       result.outcome["session"] = Metadata(*session);
     }
   } else if (JsonValue(command, "generation", "") != session->generation ||
              session->generation.empty()) {
     result.error = "stale worker generation; refresh before acting";
-  } else if (kind == HostCommandKind::kClose) {
+  } else if (kind == SessionCommandKind::kClose) {
     auto recorded = session->run_id.empty()
                         ? json::object()
                         : UpdateScheduledRun(session->run_id, "interrupted",
@@ -203,7 +204,7 @@ SessionCommandResult SessionHost::ExecuteCommand(
     }
     if (result.error.empty()) {
       result.worker_request = HashHex(device) + HashHex(request_id);
-      command["client_request_id"] = kind == HostCommandKind::kRecall
+      command["client_request_id"] = kind == SessionCommandKind::kRecall
                                          ? JsonValue(command, "target_id", "")
                                          : request_id;
       lock.unlock();

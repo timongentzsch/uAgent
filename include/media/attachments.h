@@ -80,6 +80,9 @@ json AttachmentContent(const std::string& prompt,
 // Resolved attachment records ({path,name,mime,bytes,image,id}) back into an
 // Attachment. Display-only fields stay out of the model struct.
 Attachment AttachmentFromJson(const json& item);
+// What clients show for an attachment: asset id, name, type and size, never
+// the private upload path.
+json AttachmentDisplayJson(const Attachment& attachment);
 
 // Compose a steered user message: attachment content when files ride along,
 // plain prompt text otherwise. The bool selects the message kind

@@ -113,7 +113,8 @@ json CommandJson(const SlashCommandSpec& command) {
           {"aliases", std::move(aliases)},
           {"usage", std::move(usage)},
           {"description", command.description},
-          {"alias", !*command.description}};
+          {"alias", !*command.description},
+          {"client_only", command.client_only}};
 }
 
 }  // namespace

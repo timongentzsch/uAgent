@@ -491,6 +491,14 @@ json AttachmentContent(const std::string& prompt,
   return content;
 }
 
+json AttachmentDisplayJson(const Attachment& attachment) {
+  return {{"id", attachment.asset_id},
+          {"name", attachment.name},
+          {"mime", attachment.mime},
+          {"bytes", attachment.bytes},
+          {"image", attachment.image}};
+}
+
 Attachment AttachmentFromJson(const json& item) {
   Attachment attachment;
   attachment.path = JsonValue(item, "path", "");

@@ -18,37 +18,11 @@
 
 namespace uagent::session {
 
+// Every command kind a client can send. The host runs close, guide and the
+// saved-session kinds (create, delete, activate) itself; the rest are
+// forwarded to the worker, which answers anything it does not run as
+// "unsupported command".
 enum class SessionCommandKind {
-  kClose,
-  kInterrupt,
-  kReply,
-  kSteer,
-  kGuide,
-  kRecall,
-  kRename,
-  kRefresh,
-  kPermissions,
-  kActivity,
-  kTools,
-  kModel,
-  kConfig,
-  kContext,
-  kFork,
-  kRewind,
-  kShare,
-  kPrompt,
-  kSubmit,
-  kUnknown,
-};
-
-const char* SessionCommandKindName(SessionCommandKind kind);
-SessionCommandKind ParseSessionCommandKind(std::string_view kind);
-
-// Host-side command vocabulary. The eighteen worker kinds are shared: most
-// are forwarded to the worker, but close is executed by the host close flow
-// and guide never crosses the socket. Create/delete/activate exist only on
-// the host (saved-session management without a live worker).
-enum class HostCommandKind {
   kClose,
   kInterrupt,
   kReply,
@@ -74,11 +48,9 @@ enum class HostCommandKind {
   kUnknown,
 };
 
-HostCommandKind ParseHostCommandKind(std::string_view kind);
-// Worker kinds the host forwards over the socket. Adding a worker kind
-// without extending this list strands it as "unsupported command"; the
-// parity test below guards the list, not inspection.
-bool ForwardsToWorker(HostCommandKind kind);
+const char* SessionCommandKindName(SessionCommandKind kind);
+SessionCommandKind ParseSessionCommandKind(std::string_view kind);
+bool ForwardsToWorker(SessionCommandKind kind);
 
 struct SessionCommand {
   SessionCommandKind kind = SessionCommandKind::kUnknown;

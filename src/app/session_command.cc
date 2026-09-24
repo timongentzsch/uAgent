@@ -10,73 +10,63 @@
 
 namespace uagent::session {
 
-const char* SessionCommandKindName(SessionCommandKind kind) {
-  switch (kind) {
-    case SessionCommandKind::kClose:
-      return "close";
-    case SessionCommandKind::kInterrupt:
-      return "interrupt";
-    case SessionCommandKind::kReply:
-      return "reply";
-    case SessionCommandKind::kSteer:
-      return "steer";
-    case SessionCommandKind::kGuide:
-      return "guide";
-    case SessionCommandKind::kRecall:
-      return "recall";
-    case SessionCommandKind::kRename:
-      return "rename";
-    case SessionCommandKind::kRefresh:
-      return "refresh";
-    case SessionCommandKind::kPermissions:
-      return "permissions";
-    case SessionCommandKind::kActivity:
-      return "activity";
-    case SessionCommandKind::kTools:
-      return "tools";
-    case SessionCommandKind::kModel:
-      return "model";
-    case SessionCommandKind::kConfig:
-      return "config";
-    case SessionCommandKind::kContext:
-      return "context";
-    case SessionCommandKind::kFork:
-      return "fork";
-    case SessionCommandKind::kRewind:
-      return "rewind";
-    case SessionCommandKind::kShare:
-      return "share";
-    case SessionCommandKind::kPrompt:
-      return "prompt";
-    case SessionCommandKind::kSubmit:
-      return "submit";
-    case SessionCommandKind::kUnknown:
-      return "";
+namespace {
+
+struct KindRow {
+  std::string_view name;
+  SessionCommandKind kind;
+  bool forwarded;
+};
+
+constexpr KindRow kKinds[] = {
+    {"close", SessionCommandKind::kClose, false},
+    {"interrupt", SessionCommandKind::kInterrupt, true},
+    {"reply", SessionCommandKind::kReply, true},
+    {"steer", SessionCommandKind::kSteer, true},
+    {"guide", SessionCommandKind::kGuide, false},
+    {"recall", SessionCommandKind::kRecall, true},
+    {"rename", SessionCommandKind::kRename, true},
+    {"refresh", SessionCommandKind::kRefresh, true},
+    {"permissions", SessionCommandKind::kPermissions, true},
+    {"activity", SessionCommandKind::kActivity, true},
+    {"tools", SessionCommandKind::kTools, true},
+    {"model", SessionCommandKind::kModel, true},
+    {"config", SessionCommandKind::kConfig, true},
+    {"context", SessionCommandKind::kContext, true},
+    {"fork", SessionCommandKind::kFork, true},
+    {"rewind", SessionCommandKind::kRewind, true},
+    {"share", SessionCommandKind::kShare, true},
+    {"prompt", SessionCommandKind::kPrompt, true},
+    {"submit", SessionCommandKind::kSubmit, true},
+    {"create", SessionCommandKind::kCreate, false},
+    {"delete", SessionCommandKind::kDelete, false},
+    {"activate", SessionCommandKind::kActivate, false},
+};
+
+const KindRow* FindKind(SessionCommandKind kind) {
+  for (const KindRow& row : kKinds) {
+    if (row.kind == kind) return &row;
   }
-  return "";
+  return nullptr;
+}
+
+}  // namespace
+
+const char* SessionCommandKindName(SessionCommandKind kind) {
+  const KindRow* row = FindKind(kind);
+  return row ? row->name.data() : "";
 }
 
 SessionCommandKind ParseSessionCommandKind(std::string_view kind) {
-  if (kind == "close") return SessionCommandKind::kClose;
-  if (kind == "interrupt") return SessionCommandKind::kInterrupt;
-  if (kind == "reply") return SessionCommandKind::kReply;
-  if (kind == "steer") return SessionCommandKind::kSteer;
-  if (kind == "guide") return SessionCommandKind::kGuide;
-  if (kind == "recall") return SessionCommandKind::kRecall;
-  if (kind == "rename") return SessionCommandKind::kRename;
-  if (kind == "refresh") return SessionCommandKind::kRefresh;
-  if (kind == "permissions") return SessionCommandKind::kPermissions;
-  if (kind == "activity") return SessionCommandKind::kActivity;
-  if (kind == "tools") return SessionCommandKind::kTools;
-  if (kind == "model") return SessionCommandKind::kModel;
-  if (kind == "config") return SessionCommandKind::kConfig;
-  if (kind == "context") return SessionCommandKind::kContext;
-  if (kind == "fork") return SessionCommandKind::kFork;
-  if (kind == "rewind") return SessionCommandKind::kRewind;
-  if (kind == "share") return SessionCommandKind::kShare;
-  if (kind == "prompt") return SessionCommandKind::kPrompt;
-  if (kind == "submit") return SessionCommandKind::kSubmit;
+  for (const KindRow& row : kKinds) {
+    if (row.name == kind) return row.kind;
+  }
   return SessionCommandKind::kUnknown;
+}
+
+bool ForwardsToWorker(SessionCommandKind kind) {
+  const KindRow* row = FindKind(kind);
+  return row && row->forwarded;
 }
 
 bool ParseSessionCommand(const json& command, const std::string& session_id,
@@ -134,87 +124,6 @@ void ReceiptLog::Record(const json& frame) {
   std::lock_guard lock(mutex_);
   auto found = receipts_.find(JsonValue(frame, "request_id", ""));
   if (found != receipts_.end()) found->second.second = frame;
-}
-
-HostCommandKind ParseHostCommandKind(std::string_view kind) {
-  const SessionCommandKind worker = ParseSessionCommandKind(kind);
-  switch (worker) {
-    case SessionCommandKind::kClose:
-      return HostCommandKind::kClose;
-    case SessionCommandKind::kInterrupt:
-      return HostCommandKind::kInterrupt;
-    case SessionCommandKind::kReply:
-      return HostCommandKind::kReply;
-    case SessionCommandKind::kSteer:
-      return HostCommandKind::kSteer;
-    case SessionCommandKind::kGuide:
-      return HostCommandKind::kGuide;
-    case SessionCommandKind::kRecall:
-      return HostCommandKind::kRecall;
-    case SessionCommandKind::kRename:
-      return HostCommandKind::kRename;
-    case SessionCommandKind::kRefresh:
-      return HostCommandKind::kRefresh;
-    case SessionCommandKind::kPermissions:
-      return HostCommandKind::kPermissions;
-    case SessionCommandKind::kActivity:
-      return HostCommandKind::kActivity;
-    case SessionCommandKind::kTools:
-      return HostCommandKind::kTools;
-    case SessionCommandKind::kModel:
-      return HostCommandKind::kModel;
-    case SessionCommandKind::kConfig:
-      return HostCommandKind::kConfig;
-    case SessionCommandKind::kContext:
-      return HostCommandKind::kContext;
-    case SessionCommandKind::kFork:
-      return HostCommandKind::kFork;
-    case SessionCommandKind::kRewind:
-      return HostCommandKind::kRewind;
-    case SessionCommandKind::kShare:
-      return HostCommandKind::kShare;
-    case SessionCommandKind::kPrompt:
-      return HostCommandKind::kPrompt;
-    case SessionCommandKind::kSubmit:
-      return HostCommandKind::kSubmit;
-    case SessionCommandKind::kUnknown:
-      break;
-  }
-  if (kind == "create") return HostCommandKind::kCreate;
-  if (kind == "delete") return HostCommandKind::kDelete;
-  if (kind == "activate") return HostCommandKind::kActivate;
-  return HostCommandKind::kUnknown;
-}
-
-bool ForwardsToWorker(HostCommandKind kind) {
-  switch (kind) {
-    case HostCommandKind::kSubmit:
-    case HostCommandKind::kSteer:
-    case HostCommandKind::kInterrupt:
-    case HostCommandKind::kRecall:
-    case HostCommandKind::kReply:
-    case HostCommandKind::kRefresh:
-    case HostCommandKind::kRename:
-    case HostCommandKind::kModel:
-    case HostCommandKind::kActivity:
-    case HostCommandKind::kTools:
-    case HostCommandKind::kPermissions:
-    case HostCommandKind::kConfig:
-    case HostCommandKind::kContext:
-    case HostCommandKind::kFork:
-    case HostCommandKind::kRewind:
-    case HostCommandKind::kShare:
-    case HostCommandKind::kPrompt:
-      return true;
-    case HostCommandKind::kClose:
-    case HostCommandKind::kGuide:
-    case HostCommandKind::kCreate:
-    case HostCommandKind::kDelete:
-    case HostCommandKind::kActivate:
-    case HostCommandKind::kUnknown:
-      return false;
-  }
-  return false;
 }
 
 }  // namespace uagent::session

@@ -172,43 +172,34 @@ void TestReceiptLogBackpressure() {
 }
 
 void TestHostCommandKinds() {
-  // Every worker kind parses to its host namesake, including the two the
-  // host never forwards.
-  CHECK(session::ParseHostCommandKind("submit") ==
-        session::HostCommandKind::kSubmit);
-  CHECK(session::ParseHostCommandKind("close") ==
-        session::HostCommandKind::kClose);
-  CHECK(session::ParseHostCommandKind("guide") ==
-        session::HostCommandKind::kGuide);
-  CHECK(session::ParseHostCommandKind("create") ==
-        session::HostCommandKind::kCreate);
-  CHECK(session::ParseHostCommandKind("delete") ==
-        session::HostCommandKind::kDelete);
-  CHECK(session::ParseHostCommandKind("activate") ==
-        session::HostCommandKind::kActivate);
-  CHECK(session::ParseHostCommandKind("teleport") ==
-        session::HostCommandKind::kUnknown);
-  // The forward list is exactly the worker vocabulary minus the host-side
-  // close flow and the worker-local guide ping. A new worker kind that is
-  // not added here strands as "unsupported command"; this test fails
-  // first, not a user report.
-  int forwarded = 0;
-  // kUnknown terminates the vocabulary: every enumerator before it is a
-  // real worker kind and must appear in the forward list unless excluded.
+  // Every kind round-trips through its wire name; unknown names stay unknown.
   for (int raw = 0;
        raw < static_cast<int>(session::SessionCommandKind::kUnknown); ++raw) {
-    const auto worker = static_cast<session::SessionCommandKind>(raw);
-    const bool non_forwarded = worker == session::SessionCommandKind::kClose ||
-                               worker == session::SessionCommandKind::kGuide;
-    CHECK(session::ForwardsToWorker(session::ParseHostCommandKind(
-              session::SessionCommandKindName(worker))) == !non_forwarded);
-    forwarded += !non_forwarded ? 1 : 0;
+    const auto kind = static_cast<session::SessionCommandKind>(raw);
+    CHECK(session::ParseSessionCommandKind(
+              session::SessionCommandKindName(kind)) == kind);
+  }
+  CHECK(session::ParseSessionCommandKind("teleport") ==
+        session::SessionCommandKind::kUnknown);
+  // The host runs close, guide and saved-session management itself and
+  // forwards everything else; a new kind must choose one explicitly.
+  int forwarded = 0;
+  for (int raw = 0;
+       raw < static_cast<int>(session::SessionCommandKind::kUnknown); ++raw) {
+    forwarded +=
+        session::ForwardsToWorker(static_cast<session::SessionCommandKind>(raw))
+            ? 1
+            : 0;
   }
   CHECK(forwarded == 17);
-  CHECK(!session::ForwardsToWorker(session::HostCommandKind::kCreate));
-  CHECK(!session::ForwardsToWorker(session::HostCommandKind::kDelete));
-  CHECK(!session::ForwardsToWorker(session::HostCommandKind::kActivate));
-  CHECK(!session::ForwardsToWorker(session::HostCommandKind::kUnknown));
+  for (auto local : {session::SessionCommandKind::kClose,
+                     session::SessionCommandKind::kGuide,
+                     session::SessionCommandKind::kCreate,
+                     session::SessionCommandKind::kDelete,
+                     session::SessionCommandKind::kActivate,
+                     session::SessionCommandKind::kUnknown}) {
+    CHECK(!session::ForwardsToWorker(local));
+  }
 }
 
 }  // namespace uagent

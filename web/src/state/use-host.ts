@@ -396,19 +396,14 @@ export function useHost(
         }
         if (event.kind === "state") {
           const phase = event.phase || event.state?.phase || "idle";
-          const pendingDecision =
-            event.pending_decision ?? event.state?.pending_decision ?? null;
+          const pendingDecision = event.pending ?? null;
           const metadata = event.metadata!;
           const projected: Snapshot = {
             ...current,
             epoch: event.epoch,
             cursor: event.sequence,
             metadata,
-            state: {
-              ...event.state,
-              phase,
-              pending_decision: pendingDecision,
-            },
+            state: { ...event.state, phase },
             pending: pendingDecision,
             streamed: event.checkpoint ? [] : current?.streamed,
           };

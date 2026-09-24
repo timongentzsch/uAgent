@@ -202,20 +202,11 @@ std::string ChildAgentFailureReport(std::string_view route,
 }
 
 EnvironmentOverrides ChildAgentEnvironment(SideRoute route) {
-  return {
-      {"UAGENT_DEPTH", std::to_string(AgentDepth() + 1)},
-      {"UAGENT_BASE_URL", std::move(route.base_url)},
-      {"UAGENT_API_KEY", std::move(route.api_key)},
-      {"UAGENT_MODEL", std::move(route.model)},
-      {"UAGENT_CONTEXT", std::to_string(route.context)},
-      {"UAGENT_REASONING_EFFORT", std::move(route.effort)},
-      {"UAGENT_PROVIDER_PROTOCOL", ProviderProtocolName(route.protocol)},
-      {"UAGENT_WIRE_API", WireApiName(route.wire_api)},
-      {"UAGENT_HOSTED_TOOLS", route.hosted_web_search ? "web_search" : ""},
-      {"UAGENT_MODEL_FEATURES", JsonDump(route.features)},
-      {"UAGENT_OPENROUTER_VARIANT", std::move(route.variant)},
-      {"UAGENT_USAGE_FILE", UsageLedger()},
-  };
+  EnvironmentOverrides environment = RouteEnvironment(route);
+  environment.emplace_back("UAGENT_DEPTH", std::to_string(AgentDepth() + 1));
+  environment.emplace_back("UAGENT_API_KEY", std::move(route.api_key));
+  environment.emplace_back("UAGENT_USAGE_FILE", UsageLedger());
+  return environment;
 }
 
 std::string ChildAgentCommand(bool debug, const std::string& prompt,

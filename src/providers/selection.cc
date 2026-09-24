@@ -22,6 +22,19 @@
 #include "include/providers.h"
 
 namespace uagent {
+namespace {
+
+// Catalog model features with configured route or provider features on top:
+// what an operator declared wins over what a catalog reports.
+json MergeFeatures(const json& catalog, const json& configured) {
+  if (!configured.is_object()) return catalog;
+  json merged = catalog.is_object() ? catalog : json::object();
+  merged.update(configured);
+  return merged;
+}
+
+}  // namespace
+
 // Two selections naming the same endpoint, model and protocol are the same
 // route however they were spelled; only one of them is offered.
 std::string RouteIdentity(const std::string& base_url, const std::string& model,
@@ -350,11 +363,7 @@ ModelSearch SearchModels(const Api& api, const std::vector<ModelRoute>& routes,
         }
         route.supported_efforts = info.efforts;
         route.input_modalities = info.input_modalities;
-        if (info.features.is_object()) {
-          json features = info.features;
-          if (route.features.is_object()) features.update(route.features);
-          route.features = std::move(features);
-        }
+        route.features = MergeFeatures(info.features, route.features);
         if (route.context == 0) route.context = info.context;
         candidate.info = info;
         candidate.info.context = route.context;
@@ -377,11 +386,7 @@ ModelSearch SearchModels(const Api& api, const std::vector<ModelRoute>& routes,
                        info.efforts};
       route.effort = info.default_effort;
       route.input_modalities = info.input_modalities;
-      route.features = info.features;
-      if (source.features.is_object()) {
-        if (!route.features.is_object()) route.features = json::object();
-        route.features.update(source.features);
-      }
+      route.features = MergeFeatures(info.features, source.features);
       if (info.context == 0) info.context = context;
       result.matches.push_back(
           {std::move(selection), std::move(route), std::move(info)});

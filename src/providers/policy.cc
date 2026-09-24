@@ -34,18 +34,10 @@ void ApplySelectionPolicy(Api& api, const ModelSelection& selection) {
 
 namespace {
 void ExportRoute(const Api& api) {
-  setenv("UAGENT_BASE_URL", api.base_url.c_str(), 1);
-  setenv("UAGENT_MODEL", api.model.c_str(), 1);
-  setenv("UAGENT_MODEL_FEATURES",
-         JsonDump(api.capabilities.model_features).c_str(), 1);
-  setenv("UAGENT_REASONING_EFFORT", api.reasoning_effort.c_str(), 1);
-  setenv("UAGENT_OPENROUTER_VARIANT", api.config.openrouter_variant.c_str(), 1);
-  setenv("UAGENT_CONTEXT", std::to_string(api.ctx_window).c_str(), 1);
-  setenv("UAGENT_PROVIDER_PROTOCOL",
-         ProviderProtocolName(api.capabilities.protocol), 1);
-  setenv("UAGENT_WIRE_API", WireApiName(api.capabilities.wire_api), 1);
-  setenv("UAGENT_HOSTED_TOOLS",
-         api.capabilities.hosted_web_search ? "web_search" : "", 1);
+  for (const auto& [name, value] :
+       RouteEnvironment(ResolveSideRoute(api, {}, {}, ""))) {
+    setenv(name.c_str(), value.c_str(), 1);
+  }
 }
 
 void ResetRouteCapabilities(Api& api) {
@@ -57,6 +49,21 @@ void ResetRouteCapabilities(Api& api) {
 }
 
 }  // namespace
+
+EnvironmentOverrides RouteEnvironment(const SideRoute& route) {
+  return {
+      {"UAGENT_BASE_URL", route.base_url},
+      {"UAGENT_MODEL", route.model},
+      {"UAGENT_MODEL_FEATURES", JsonDump(route.features)},
+      {"UAGENT_REASONING_EFFORT", route.effort},
+      {"UAGENT_OPENROUTER_VARIANT", route.variant},
+      {"UAGENT_CONTEXT", std::to_string(route.context)},
+      {"UAGENT_PROVIDER_PROTOCOL", ProviderProtocolName(route.protocol)},
+      {"UAGENT_WIRE_API", WireApiName(route.wire_api)},
+      {"UAGENT_HOSTED_TOOLS", route.hosted_web_search ? "web_search" : ""},
+  };
+}
+
 SideRoute ResolveSideRoute(const Api& api,
                            const std::vector<ModelRoute>& routes,
                            const std::vector<NamedProvider>& providers,
@@ -102,18 +109,19 @@ SideRoute ResolveSideRoute(const Api& api,
   return resolved;
 }
 
+// A configured route also carries catalog facts a side route does not.
 void ApplyRoute(Api& api, const ModelRoute& route) {
-  api.base_url = route.base_url;
-  api.api_key = route.api_key.empty() ? kPlaceholderApiKey : route.api_key;
-  api.model = route.model;
-  api.reasoning_effort = route.effort;
+  ApplySideRoute(api, {.model = route.model,
+                       .base_url = route.base_url,
+                       .api_key = route.api_key,
+                       .effort = route.effort,
+                       .context = route.context,
+                       .protocol = route.protocol,
+                       .wire_api = route.wire_api,
+                       .hosted_web_search = route.hosted_web_search,
+                       .features = route.features});
   api.supported_reasoning_efforts = route.supported_efforts;
-  api.config.openrouter_variant.clear();
-  api.ctx_window = route.context;
-  api.capabilities = CapabilitiesForRoute(
-      route.protocol, route.base_url, route.wire_api, route.hosted_web_search);
   api.capabilities.SetInputModalities(route.input_modalities);
-  api.capabilities.SetModelFeatures(route.features);
 }
 
 std::string RouteSelection(const Api& api,

@@ -387,13 +387,6 @@ if(BUILD_TESTING)
            COMMAND ${Python3_EXECUTABLE}
                    ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/session_metrics.py
                    --self-test)
-  # The controller drives real subprocesses through disposable source copies,
-  # so it gets more room than a pure unit test while staying model-free.
-  add_test(NAME self_improve_controller
-           COMMAND ${Python3_EXECUTABLE}
-                   ${CMAKE_CURRENT_SOURCE_DIR}/tests/self_improve_controller_test.py
-                   $<TARGET_FILE:uagent>)
-  set_tests_properties(self_improve_controller PROPERTIES TIMEOUT 300)
   add_test(NAME eval_harness_self_test
            COMMAND ${Python3_EXECUTABLE}
                    ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/eval.py
@@ -442,9 +435,6 @@ install(
   DESTINATION ${CMAKE_INSTALL_DATADIR}/uagent/skills
   PATTERN ".*" EXCLUDE
   PATTERN "__pycache__" EXCLUDE)
-install(
-  PROGRAMS skills/self-improve/scripts/experiment.py
-  DESTINATION ${CMAKE_INSTALL_DATADIR}/uagent/skills/self-improve/scripts)
 # The architecture narrative is authored once; the package carries a copy so
 # the skill can answer design questions without a source checkout.
 install(
@@ -456,8 +446,6 @@ set(UAGENT_GUIDES
     docs/CACHING.md
     docs/OPERATIONS.md
     docs/PERSISTENCE.md
-    docs/SELF_IMPROVEMENT.md
-    docs/SELF_IMPROVEMENT_RESEARCH.md
     docs/TESTING.md
     docs/TOOLS.md
     docs/WEB.md

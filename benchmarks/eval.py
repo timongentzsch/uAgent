@@ -49,16 +49,15 @@ CHEAP_AUTHORITY_SELF_TEST_PATH = ROOT / "tests" / "fixtures" / "eval" / "cheap_a
 # One HTTP/SSE fixture serves the integration suite and this harness; a second
 # copy would drift from the transport the tests actually exercise.
 sys.path.insert(0, str(ROOT / "tests"))
-sys.path.insert(0, str(ROOT / "skills" / "self-improve" / "scripts"))
 
 # isort: off
 from integration_support import Server, event  # noqa: E402
-from agent_run import (  # noqa: E402
+from run_trace import (  # noqa: E402
     measured_command,
     peak_rss,
     read_trace,
 )
-from agent_run import trace_metrics as run_trace_metrics  # noqa: E402
+from run_trace import trace_metrics as run_trace_metrics  # noqa: E402
 from live_authority import (  # noqa: E402
     AuthorityError,
     account_reported_cost,

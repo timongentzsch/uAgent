@@ -36,19 +36,11 @@ loaded.
 | Skill | Origin | License |
 | --- | --- | --- |
 | `uagent-config` | µAgent | MIT, this repository |
-| `self-improve` | µAgent | MIT, this repository |
 | `browser-use` | µAgent | MIT, this repository |
 
 `uagent-config` documents the release's configuration precedence and complete
 runtime, install, and integration environment reference. It keeps that detail
 out of the base system prompt and loads it only for configuration work.
-
-`self-improve` performs one bounded, verified improvement attempt on µAgent's
-own source, and drives the generation loop that compares the incumbent binary
-with a candidate built from that source on byte-identical fresh copies of the
-same snapshot. Its controller owns identity, isolation, budgets, gates, the
-deterministic verdict and the promotion pointer; promotion needs explicit human
-approval and rollback restores the exact prior version.
 
 `browser-use` drives Playwright CLI through the existing approved `run` tool.
 Its daemon reuses one browser across concise calls while snapshots stay outside

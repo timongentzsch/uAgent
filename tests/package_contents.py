@@ -56,8 +56,7 @@ def main():
         "ARCHITECTURE",
         "OPERATIONS",
         "PERSISTENCE",
-        "SELF_IMPROVEMENT",
-        "SELF_IMPROVEMENT_RESEARCH",
+        "SYSTEM_PROMPTS",
         "TESTING",
         "TOOLS",
         "WEB",
@@ -68,13 +67,6 @@ def main():
             fail(f"canonical guide docs/{name}.md is missing")
         if f"{docs}{name}.md" in files:
             fail(f"duplicate flat guide {name}.md")
-
-    runner = f"{root}/share/uagent/skills/self-improve/scripts/experiment.py"
-    runner_member = next((member for member in members if member.name == runner), None)
-    if runner_member is None or not runner_member.isfile():
-        fail("self-improve experiment runner is missing")
-    if runner_member.mode & 0o111 == 0:
-        fail("self-improve experiment runner is not executable")
 
     prefix = f"{root}/share/uagent/skills/"
     packaged_skills = {name.removeprefix(prefix) for name in files if name.startswith(prefix)}

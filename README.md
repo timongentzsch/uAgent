@@ -155,7 +155,6 @@ the denial to the model as steering.
 - [System prompts](docs/SYSTEM_PROMPTS.md)
 - [Prompt caching](docs/CACHING.md)
 - [Testing](docs/TESTING.md)
-- [Bounded self-improvement](docs/SELF_IMPROVEMENT.md)
 - [Security](SECURITY.md)
 - [Contributing](CONTRIBUTING.md)
 

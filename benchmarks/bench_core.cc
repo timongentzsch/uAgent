@@ -125,14 +125,16 @@ void BenchmarkActivity(bool labels) {
             {{"response_id", "r"},
              {"text", index % 1000 == 0 ? "\nChecking tests\n" : "token "}}});
         if (index % 1000 == 0) {
-          for (const auto* call : {"a", "b"})
+          for (const auto* call : {"a", "b"}) {
             events.Emit(Event{EventId::kToolStarted,
                               {{"response_id", "r"},
                                {"occurrence_id", call},
                                {"name", "read_path"}}});
-          for (const auto* call : {"a", "b"})
+          }
+          for (const auto* call : {"a", "b"}) {
             events.Emit(Event{EventId::kToolResult,
                               {{"response_id", "r"}, {"occurrence_id", call}}});
+          }
         }
       }
       events.Emit(Event{EventId::kTurnCompleted, {{"turn", 1}}});
@@ -232,8 +234,9 @@ int RunBenchmarks() {
   size_t lean_schema = ToolSchemas(lean_tools).dump().size();
   auto without_descriptions = lean_tools;
   for (Tool& tool : without_descriptions) {
-    if (tool.declared_intent)
+    if (tool.declared_intent) {
       tool.parameters["properties"].erase("description");
+    }
   }
   std::cout << "optional action descriptions "
             << lean_schema - ToolSchemas(without_descriptions).dump().size()

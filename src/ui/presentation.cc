@@ -263,8 +263,9 @@ void TerminalPresenter::Consume(const Event& event) noexcept {
       break;
     case EventId::kReasoningDelta:
       if (state_ && state_->full_reasoning && spinner_) spinner_->Stop();
-      if (state_ && JsonValue(event.data, "corrected", false))
+      if (state_ && JsonValue(event.data, "corrected", false)) {
         state_->Reasoning("\n[Updated provider reasoning]\n");
+      }
       if (state_) state_->Reasoning(event.text);
       break;
     case EventId::kAnswerDelta:

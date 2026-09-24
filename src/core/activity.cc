@@ -149,12 +149,14 @@ bool ActivityProjection::Consume(EventId id, const json& data) {
     phase_ = "working";
   } else {
     if (!active_ ||
-        (data.contains("turn") && JsonValue(data, "turn", turn_) != turn_))
+        (data.contains("turn") && JsonValue(data, "turn", turn_) != turn_)) {
       return false;
+    }
     const std::string response = JsonValue(data, "response_id", "");
     if (id != EventId::kResponseStarted && !response.empty() &&
-        response != response_)
+        response != response_) {
       return false;
+    }
     switch (id) {
       case EventId::kResponseStarted:
         response_ = response;
@@ -171,8 +173,9 @@ bool ActivityProjection::Consume(EventId id, const json& data) {
         const std::string source = reasoning_source_;
         Reasoning(data);
         if (phase_ == "thinking" && previous == excerpt_ &&
-            source == reasoning_source_)
+            source == reasoning_source_) {
           return false;
+        }
         phase_ = "thinking";
         break;
       }
@@ -203,10 +206,11 @@ bool ActivityProjection::Consume(EventId id, const json& data) {
       case EventId::kHostedToolActivity: {
         const std::string phase = JsonValue(data, "phase", "");
         const std::string key = JsonValue(data, "id", "");
-        if (phase == "started" || phase == "searching")
+        if (phase == "started" || phase == "searching") {
           searches_.insert(key);
-        else
+        } else {
           searches_.erase(key);
+        }
         break;
       }
       case EventId::kResponseRetry:

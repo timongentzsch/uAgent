@@ -376,8 +376,9 @@ json RequestEnvelope(WireApi wire_api, const WireRequest& request, json tools) {
         request.reasoning_effort != "none") {
       if (request.adaptive_thinking) {
         body["thinking"] = {{"type", "adaptive"}};
-        if (request.reasoning_summary)
+        if (request.reasoning_summary) {
           body["thinking"]["display"] = "summarized";
+        }
       }
       // Effort is an explicit user setting; pass it through even when the
       // route has not advertised adaptive thinking, rather than ignore it.

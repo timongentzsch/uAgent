@@ -321,8 +321,9 @@ json InspectCollaborator(const ProcessSupervisor& processes,
           "context_window", "phase", "activity_detail"}) {
       if (live_state.contains(field)) detail[field] = live_state[field];
     }
-    if (live_state.contains("activity"))
+    if (live_state.contains("activity")) {
       detail["progress"] = live_state["activity"];
+    }
   };
   if (!loaded.record) {
     if (!live_view.empty()) detail["conversation"] = std::move(live_view);

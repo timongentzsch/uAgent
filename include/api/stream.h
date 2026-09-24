@@ -79,8 +79,9 @@ struct StreamCtx {
   }
 
   void OutputReasoning(const ReasoningDelta& fragment) {
-    if (fragment.text.empty() && !reasoning_parts.contains(fragment.part))
+    if (fragment.text.empty() && !reasoning_parts.contains(fragment.part)) {
       return;
+    }
     auto [found, inserted] = reasoning_parts.try_emplace(fragment.part);
     ReasoningSpan& span = found->second;
     if (span.complete && !fragment.complete) return;
@@ -94,10 +95,11 @@ struct StreamCtx {
       const std::string_view previous(res->reasoning.data() + span.offset,
                                       span.bytes);
       if (addition == previous && span.complete == fragment.complete) return;
-      if (addition.starts_with(previous))
+      if (addition.starts_with(previous)) {
         addition.erase(0, span.bytes);
-      else
+      } else {
         erase = span.bytes;
+      }
     } else if (span.complete) {
       return;
     }

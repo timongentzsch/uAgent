@@ -222,8 +222,9 @@ json AppProjection(const Event& event) {
   if (!event.data.is_null() && !event.data.is_object()) {
     data["value"] = event.data;
   }
-  if (!event.text.empty() && !data.contains("text"))
+  if (!event.text.empty() && !data.contains("text")) {
     data["text"] = std::string(event.text);
+  }
   if (event.verbose) data["verbose"] = true;
   if (event.presentation) {
     data["presentation"] = PresentationJson(*event.presentation);
@@ -521,8 +522,9 @@ void Observability::Emit(Event event) noexcept {
     std::lock_guard<std::mutex> lock(mutex_);
     if (shutdown_) return;
     const EventPolicy& policy = PolicyFor(event.id);
-    if (event.id == EventId::kResponseStarted && event.data.contains("turn"))
+    if (event.id == EventId::kResponseStarted && event.data.contains("turn")) {
       render_activity_ = event.render;
+    }
     if (activity_->Consume(event.id, event.data)) {
       activity_revision = activity_->Revision();
     }

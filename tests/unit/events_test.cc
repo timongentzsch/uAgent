@@ -82,8 +82,9 @@ void TestActivityProjection() {
   // A long token stream never retains the growing transcript in the caption
   // or emits extra status events once the incomplete line is known.
   const uint64_t before = projection.Revision();
-  for (int index = 0; index < 10000; ++index)
+  for (int index = 0; index < 10000; ++index) {
     emit(EventId::kReasoningDelta, {{"text", "token "}});
+  }
   CHECK(projection.Revision() == before);
   emit(EventId::kTurnStopped);
   CHECK(projection.Status()["phase"] == "finishing");

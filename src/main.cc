@@ -79,7 +79,9 @@ void InitializeProcess() {
   }
   g_tty = isatty(STDOUT_FILENO);
   g_color = ResolveColorEnabled(g_tty);
-  g_unicode = ResolveUnicodeEnabled();
+  // Without a multibyte locale every non-ASCII character measures zero
+  // columns, so glyphs are only safe to emit once one is in effect.
+  g_unicode = EnsureUtf8Ctype() && ResolveUnicodeEnabled();
   g_signal_tty = g_tty;
   InitializeSignalNotifications();
   signal(SIGINT, SigintHandler);

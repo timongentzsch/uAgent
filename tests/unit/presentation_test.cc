@@ -5,6 +5,7 @@
 #include <unistd.h>
 
 #include <chrono>
+#include <clocale>
 #include <cstdio>
 #include <string>
 
@@ -264,6 +265,11 @@ void TestPollCollapse() {
   } else {
     unsetenv("LC_ALL");
   }
+
+  // A process started with no locale still measures conversation text.
+  std::setlocale(LC_CTYPE, "C");
+  CHECK(EnsureUtf8Ctype());
+  CHECK(DisplayWidth("\xe4\xb8\xad") == 2);
 
   ClearPollAnchor(4242);
 }

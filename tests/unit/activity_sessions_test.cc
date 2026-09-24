@@ -1117,7 +1117,7 @@ void TestCollaboratorMail() {
   namespace fs = std::filesystem;
   TestWorkspace workspace("collaborator-mail");
   const fs::path dir = fs::path(UagentDir("collaborators"));
-  auto texts = [](const std::vector<CollaboratorMail>& mails) {
+  auto texts = [](const std::vector<QueuedMessage>& mails) {
     std::vector<std::string> out;
     out.reserve(mails.size());
     for (auto& mail : mails) out.push_back(mail.text);
@@ -1171,7 +1171,7 @@ void TestCollaboratorMail() {
 void TestSessionMail() {
   namespace fs = std::filesystem;
   TestWorkspace workspace("session-mail");
-  auto texts = [](const std::vector<SessionMail>& mails) {
+  auto texts = [](const std::vector<QueuedMessage>& mails) {
     std::vector<std::string> out;
     out.reserve(mails.size());
     for (auto& mail : mails) out.push_back(mail.text);
@@ -1181,7 +1181,7 @@ void TestSessionMail() {
   CHECK(WriteSessionMail("sess-aaa", "first", "sess-bbb", 0).Ok());
   CHECK(WriteSessionMail("sess-aaa", "second", "sess-bbb", 0).Ok());
   CHECK(WriteSessionMail("sess-ccc", "other", "sess-bbb", 0).Ok());
-  std::vector<SessionMail> taken = TakeSessionMail("sess-aaa");
+  std::vector<QueuedMessage> taken = TakeSessionMail("sess-aaa");
   CHECK(texts(taken) == std::vector<std::string>({"first", "second"}));
   // Sender survives the round trip; the take consumed only the addressee's.
   taken = TakeSessionMail("sess-aaa");
@@ -1232,7 +1232,7 @@ void TestSessionLinks() {
     CHECK(MessageSession("aaa", "loop", "bbb", 8).Ok());
   }
   CHECK(SharesLink("aaa", "bbb"));
-  std::vector<SessionMail> taken = TakeSessionMail("aaa");
+  std::vector<QueuedMessage> taken = TakeSessionMail("aaa");
   CHECK(taken.size() == 1);
   CHECK(taken[0].text == "hello a");
   CHECK(taken[0].from == "bbb");

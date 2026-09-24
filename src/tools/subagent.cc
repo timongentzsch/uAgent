@@ -115,10 +115,10 @@ std::string NewCollaboratorId() {
 // back on the way out is the only place that covers all of them.
 struct MailRestore {
   std::string id;
-  std::vector<CollaboratorMail> taken;
+  std::vector<QueuedMessage> taken;
 
   ~MailRestore() {
-    for (const CollaboratorMail& queued : taken) {
+    for (const QueuedMessage& queued : taken) {
       WriteCollaboratorMail(id, queued.text, queued.from, queued.hops);
     }
   }
@@ -728,7 +728,7 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
         MailRestore restore{collaborator_id, {}};
         if (operation == "followup") {
           restore.taken = TakeCollaboratorMail(collaborator_id);
-          for (const CollaboratorMail& queued : restore.taken) {
+          for (const QueuedMessage& queued : restore.taken) {
             if (!prompt.empty()) prompt += "\n\n";
             prompt += std::string("[queued guidance") +
                       (queued.from.empty() || queued.from == "parent"

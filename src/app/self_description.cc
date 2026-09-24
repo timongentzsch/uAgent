@@ -21,8 +21,10 @@
 #include "include/core/sandbox.h"
 #include "include/core/strings.h"
 #include "include/providers.h"
+#include "include/tools/browser.h"
 #include "include/tools/configure.h"
 #include "include/tools/registry.h"
+#include "include/tools/session.h"
 #include "include/tools/skill.h"
 #include "include/tools/subagent.h"
 #include "include/tools/tool.h"
@@ -357,6 +359,9 @@ json ToolSurfaceJson() {
   conditional.emplace_back(
       SubagentTool(api, supervisor, {}, {}, /*debug=*/false),
       "delegation depth");
+  conditional.emplace_back(SessionTool(), "always");
+  conditional.emplace_back(BrowserTool(""),
+                           "browser appliance, top-level web session");
   conditional.emplace_back(SkillTool({}, {}), "skills installed");
 
   json out = json::array();

@@ -138,7 +138,6 @@ struct Event {
   std::string_view text;
   bool render = false;
   bool verbose = false;
-  std::chrono::steady_clock::time_point anchor{};
 };
 
 struct EventPolicy {
@@ -226,7 +225,6 @@ class Observability {
   SessionJournal journal_;
   std::unique_ptr<TerminalPresenter> terminal_;
   std::unique_ptr<ActivityProjection> activity_;
-  bool render_activity_ = false;
   std::vector<std::pair<uint64_t, EventSubscriber>> subscribers_;
   // Serializes subscriber delivery without holding the sink/state mutex.
   // Recursive so a callback may emit or unsubscribe itself.
@@ -245,8 +243,7 @@ void Emit(Event event) noexcept;
 
 class ResponseObservation {
  public:
-  ResponseObservation(bool render, bool verbose, const std::string& label,
-                      std::chrono::steady_clock::time_point anchor = {},
+  ResponseObservation(bool verbose, const std::string& label,
                       json context = json::object());
   ~ResponseObservation();
   ResponseObservation(const ResponseObservation&) = delete;

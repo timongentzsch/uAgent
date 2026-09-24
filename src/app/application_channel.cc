@@ -55,7 +55,7 @@
 namespace uagent {
 int Application::FinishInteractive(int status) {
   SaveSession();
-  Teardown(exit_reason_.c_str());
+  Teardown("eof");
   TerminalRestore();
   return status;
 }
@@ -88,7 +88,6 @@ int Application::RunChannel() {
   while (std::optional<ApplicationInput> input = channel_->NextInput()) {
     agent_.DrainBackground();
     agent_.AccountSideUsage();
-    bool quit = false;
     request_id_ = input->request_id;
     if (input->title) {
       agent_.Rename(std::move(*input->title));
@@ -102,11 +101,10 @@ int Application::RunChannel() {
       for (auto& attachment : input->attachments) {
         attachments_.push_back(std::move(attachment));
       }
-      quit = ProcessInput(std::move(input->text));
+      ProcessInput(std::move(input->text));
     }
     SaveSession(input->title.has_value());
     PublishChannelState();
-    if (quit) break;
   }
   runtime_.processes.SetNotifyFd(-1);
   channel_->SetActivityControl({});

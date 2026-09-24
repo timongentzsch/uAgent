@@ -522,9 +522,6 @@ void Observability::Emit(Event event) noexcept {
     std::lock_guard<std::mutex> lock(mutex_);
     if (shutdown_) return;
     const EventPolicy& policy = PolicyFor(event.id);
-    if (event.id == EventId::kResponseStarted && event.data.contains("turn")) {
-      render_activity_ = event.render;
-    }
     if (activity_->Consume(event.id, event.data)) {
       activity_revision = activity_->Revision();
     }
@@ -569,9 +566,7 @@ void Observability::Emit(Event event) noexcept {
   // A subscriber may emit a newer lifecycle event recursively. Never publish
   // the older projection after it. Concurrent producers hold delivery_mutex_.
   if (activity_revision && activity_revision == activity_->Revision()) {
-    Event activity{EventId::kActivityStatus, activity_->Status()};
-    activity.render = render_activity_;
-    Emit(std::move(activity));
+    Emit(Event{EventId::kActivityStatus, activity_->Status()});
   }
 }
 
@@ -608,15 +603,12 @@ void Emit(Event event) noexcept {
   if (g_observability) g_observability->Emit(std::move(event));
 }
 
-ResponseObservation::ResponseObservation(
-    bool render, bool verbose, const std::string& label,
-    std::chrono::steady_clock::time_point anchor, json context)
+ResponseObservation::ResponseObservation(bool verbose, const std::string& label,
+                                         json context)
     : context_(std::move(context)) {
   Event event{EventId::kResponseStarted, context_};
-  event.render = render;
   event.verbose = verbose;
   event.text = label;
-  event.anchor = anchor;
   Emit(std::move(event));
 }
 

@@ -382,14 +382,9 @@ size_t Agent::RequestContextBytes(size_t schema_bytes,
                                         : bytes;
 }
 
-// Publishes the estimate the status row reads from the UI thread.
-int64_t Agent::SnapshotContext(size_t schema_bytes) const {
-  int64_t used = EstimatedTokens(RequestContextBytes(schema_bytes));
-  context_snapshot_.store(used, std::memory_order_relaxed);
-  return used;
+int64_t Agent::ContextUsed() const {
+  return EstimatedTokens(RequestContextBytes(schema_bytes_));
 }
-
-int64_t Agent::ContextUsed() const { return SnapshotContext(schema_bytes_); }
 
 json Agent::CompactionMessages() const {
   size_t transcript_bytes = size_t{256} * 1024;
@@ -559,7 +554,7 @@ bool Agent::Compact(bool automatic, Usage* turn_usage) {
   std::vector<uint64_t> retained_ids;
   json retained_users = CompactionUserMessages(&retained_ids);
   size_t projected_bytes = JsonEstimatedBytes(compact_messages);
-  ChatResult r = Chat("compact", -1, json::array(), false, &compact_messages);
+  ChatResult r = Chat("compact", -1, json::array(), &compact_messages);
   Usage compact_usage = AccountModelUsage(r.usage);
   if (turn_usage) turn_usage->Merge(compact_usage);
   json runtime_context = HarnessMessage(RuntimeContextText());
@@ -924,7 +919,6 @@ void Agent::DeliverActivityCompletions(
          {"output_chars", completion.output.size()}}};
     record.title += succeeded ? " completed" : " failed";
     display.presentation = std::move(record);
-    display.render = api_.render_stream;
     Emit(std::move(display));
 
     if (completion.kind != ActivityKind::kSubagent) continue;

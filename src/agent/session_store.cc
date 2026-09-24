@@ -504,40 +504,6 @@ json SessionStore::Fork(const std::string& source, const std::string& title,
           {"title", record.metadata.title}};
 }
 
-json SessionStore::Rewind(const std::string& path, int64_t turn) {
-  if (turn <= 0) return {{"error", "rewind turn must be positive"}};
-  FileLease writer;
-  std::string error;
-  if (!writer.Acquire(CanonicalAccessPath(path).string() + ".lock", error)) {
-    return {{"error", error}};
-  }
-  auto loaded = Inspect(path);
-  if (!loaded.record) return {{"error", loaded.status.message}};
-  auto record = std::move(*loaded.record);
-  Conversation conversation;
-  if (!conversation.Restore(record.state.messages, record.state.message_kinds,
-                            record.state.archive,
-                            record.state.archive_dropped_segments,
-                            record.state.tool_displays, record.state.display)) {
-    return {{"error", "session conversation state is invalid"}};
-  }
-  if (!conversation.TruncateBeforeUserTurn(turn)) {
-    return {
-        {"error", "session has fewer than " + std::to_string(turn) + " turns"}};
-  }
-  record.state.messages = conversation.Messages();
-  record.state.message_kinds = conversation.Kinds();
-  record.state.tool_displays = conversation.ToolDisplays();
-  record.state.display = conversation.DisplayMetadata();
-  record.metadata.turns = turn - 1;
-  // The dropped messages are gone; the boundary fact keeps the cut visible.
-  record.state.display["facts"]["reset-boundary"] = {
-      {"turn", turn}, {"time", UtcStamp("%Y%m%dT%H%M%SZ")}};
-  auto result = Save(path, record);
-  if (!result.Ok()) return {{"error", result.message}};
-  return {{"rewound", true}, {"turns", record.metadata.turns}, {"path", path}};
-}
-
 namespace {
 // Transcript text for /share: plain strings pass through, content arrays
 // contribute their text parts and file placeholders for the rest.

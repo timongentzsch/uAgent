@@ -128,17 +128,14 @@ class Agent {
   bool Load(const std::string& path, const std::string& expected_cwd,
             std::string& error);
 
-  // Drops the Nth live user turn and everything after it, mirroring
-  // SessionStore::Rewind on the running conversation. Numbering restarts
-  // at the cut; the caller persists with Save.
+  // Drops the Nth live user turn and everything after it, recording a
+  // reset-boundary display fact. Numbering restarts at the cut; the caller
+  // persists with Save.
   bool RewindToTurn(int64_t turn, std::string& error);
 
   // Estimated tokens in the request currently represented by the conversation.
   // Provider usage belongs to billing and may be cumulative or stale.
   int64_t ContextUsed() const;
-  int64_t ContextSnapshot() const {
-    return context_snapshot_.load(std::memory_order_relaxed);
-  }
 
   // summarize the conversation with the model, then restart the session
   // from that summary — frees the context without losing the thread
@@ -259,7 +256,6 @@ class Agent {
   void ArchiveAll(const char* reason);
 
   ChatResult Chat(const char* purpose, int64_t step, const json& schemas,
-                  bool render_output = true,
                   const json* request_messages = nullptr);
   json CompactionMessages() const;
   // Retained recent user instructions for the post-compaction context.
@@ -271,7 +267,6 @@ class Agent {
 
   size_t RequestContextBytes(size_t schema_bytes,
                              const json* messages = nullptr) const;
-  int64_t SnapshotContext(size_t schema_bytes) const;
   int64_t ContextPressurePct(size_t pending_bytes, size_t schema_bytes,
                              int64_t* projected_tokens = nullptr) const;
   bool ContextNeedsCompaction(size_t pending_bytes, size_t schema_bytes,
@@ -366,7 +361,6 @@ class Agent {
   mutable std::string prompt_error_;
   std::string last_sent_prompt_;
   Conversation conversation_;
-  mutable std::atomic<int64_t> context_snapshot_{0};
   SearchTrace turn_search_trace_;
   Usage session_usage_;
   RouteUsage route_usage_;

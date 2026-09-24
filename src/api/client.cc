@@ -381,8 +381,7 @@ std::string Api::RequestModel() const {
 
 ChatResult Api::Chat(const json& messages, const json& tool_schemas,
                      int64_t timeout_s, const std::string& session_id,
-                     bool render_output, size_t estimated_bytes,
-                     bool full_reasoning) {
+                     size_t estimated_bytes, bool full_reasoning) {
   ChatResult res;
   http_exchanges = json::array();
   auto overall_started = std::chrono::steady_clock::now();
@@ -459,8 +458,7 @@ ChatResult Api::Chat(const json& messages, const json& tool_schemas,
         std::to_string(attempt);
     response_context.erase("response_base");
     res = PerformChat(payload, web_available, attempt_timeout, session_id,
-                      render_output, full_reasoning, &exchange,
-                      std::move(response_context));
+                      full_reasoning, &exchange, std::move(response_context));
     json recorded =
         exchange.Finish(res.http_status, res.interrupted, res.error);
     if (!recorded.is_null()) http_exchanges.push_back(std::move(recorded));
@@ -503,16 +501,7 @@ ChatResult Api::Chat(const json& messages, const json& tool_schemas,
             .count() +
         delay.count();
     Emit(Event{EventId::kResponseRetry, std::move(retry)});
-    if (render_stream && render_output) {
-      std::string reason = res.error.starts_with("model ")
-                               ? res.error
-                               : "transient provider failure";
-      printf("%s· %s — retry %d/%d in %s%s\n", DIM(),
-             TerminalSafe(reason).c_str(), attempt, kChatAttempts - 1,
-             FmtDuration(static_cast<double>(delay.count()) / 1000.0).c_str(),
-             RST());
-    }
-    if (!WaitForRetry(delay, render_output)) {
+    if (!WaitForRetry(delay)) {
       res.error.clear();
       res.interrupted = true;
       res.duration_ms = ElapsedMs(started);
@@ -552,7 +541,7 @@ JsonResponse Api::Post(const std::string& path, const json& body,
                      "· " + TerminalSafe(response.error) + " — retry " +
                          std::to_string(attempt) + "/" +
                          std::to_string(attempts - 1) + " in " + seconds));
-    if (!WaitForRetry(delay, /*render_output=*/false)) return response;
+    if (!WaitForRetry(delay)) return response;
   }
   return response;
 }
@@ -613,8 +602,8 @@ WebResponse Api::GetUrl(const std::string& url, int64_t timeout_s, size_t cap) {
 
 ChatResult Api::PerformChat(const std::string& payload, bool web_available,
                             int64_t timeout_s, const std::string& session_id,
-                            bool render_output, bool full_reasoning,
-                            HttpExchange* exchange, json response_context) {
+                            bool full_reasoning, HttpExchange* exchange,
+                            json response_context) {
   ChatResult res;
   res.response_id = JsonValue(response_context, "response_id", "");
   res.attempt = JsonValue(response_context, "attempt", int64_t{0});
@@ -687,8 +676,7 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
   const std::string activity =
       web_available ? std::string(kWaitingActivity) + " · web available"
                     : std::string(kWaitingActivity);
-  ResponseObservation observation(render_stream && render_output,
-                                  full_reasoning, activity, turn_started,
+  ResponseObservation observation(full_reasoning, activity,
                                   std::move(response_context));
 
   CURLcode rc = CURLE_OK;
@@ -740,10 +728,7 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
   return res;
 }
 
-bool Api::WaitForRetry(std::chrono::milliseconds delay,
-                       bool render_output) const {
-  TerminalSpinner spinner(render_stream && render_output,
-                          SpinnerLabel("retrying"), turn_started);
+bool Api::WaitForRetry(std::chrono::milliseconds delay) const {
   auto deadline = std::chrono::steady_clock::now() + delay;
   bool cancelled = RunCancellable([&] {
     pollfd wake = {AbortWakeFd(), POLLIN, 0};

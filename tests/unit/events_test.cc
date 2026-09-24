@@ -188,7 +188,7 @@ void TestObservabilityEvents() {
   CHECK(!received[2].data.contains("query"));
   SetObservability(&observable);
   {
-    ResponseObservation response(false, false, "waiting", {},
+    ResponseObservation response(false, "waiting",
                                  {{"response_id", "r-2-4-1"},
                                   {"turn", 2},
                                   {"request", 4},

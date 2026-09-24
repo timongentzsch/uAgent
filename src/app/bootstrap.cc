@@ -655,7 +655,6 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   }
 
   Api& api = context->runtime.api;
-  api.render_stream = context->options.prompt.empty() && !channel;
   size_t project_limit =
       static_cast<size_t>(context->runtime.config.project_doc_bytes);
   ProjectInstructions instructions = LoadInstructions(

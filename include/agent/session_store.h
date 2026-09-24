@@ -117,10 +117,6 @@ class SessionStore {
   static SessionLoadResult Inspect(const std::string& path);
   static json Fork(const std::string& path, const std::string& title = "",
                    bool source_owned = false, int64_t fork_turn = 0);
-  // Truncates the saved session before its Nth user turn, keeping the same
-  // identity and title. Records a reset-boundary display fact so the cut
-  // stays visible after the dropped messages are gone.
-  static json Rewind(const std::string& path, int64_t turn);
   // Renders the saved session as markdown for /share. Pure transcript view:
   // user and assistant text plus truncated tool results; system, internal
   // and runtime-context messages never leave the session file.

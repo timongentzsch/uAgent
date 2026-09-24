@@ -34,7 +34,7 @@ constexpr int64_t kDefaultResponseReserveDivisor = 4;
 }  // namespace
 
 ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
-                       bool render_output, const json* request_messages) {
+                       const json* request_messages) {
   if (api_.config.session_budget > 0 &&
       session_usage_.cost >= api_.config.session_budget) {
     ChatResult result;
@@ -118,8 +118,6 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
       api_.capabilities.native_tools
           ? SaturatingAdd(message_bytes, schema_bytes)
           : message_bytes;
-  context_snapshot_.store(EstimatedTokens(estimated_bytes),
-                          std::memory_order_relaxed);
   if (Debug().Enabled()) {
     // A full snapshot after any shrink plus per-step deltas reconstructs every
     // request without re-dumping the whole history on every step.
@@ -206,7 +204,6 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
     // billing tokens. Keep the same estimate when a provider reports no usage.
     int64_t context =
         EstimatedTokens(SaturatingAdd(estimated_bytes, response_bytes));
-    context_snapshot_.store(context, std::memory_order_relaxed);
     Emit(Event{
         EventId::kUsageUpdated,
         {{"usage", UsageJson(provisional)}, {"context_tokens", context}}});
@@ -234,7 +231,7 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
   };
   api_.observe_progress(json::object(), 0);
   ChatResult result = api_.Chat(messages, schemas, turn_budget, session_id_,
-                                render_output, estimated_bytes, verbose_);
+                                estimated_bytes, verbose_);
   api_.observe_progress = {};
   if (progress_pending) {
     emit_progress(pending_progress, pending_response_bytes);
@@ -353,7 +350,6 @@ std::string Agent::AnalyzeImageContent(const json& content,
   vision.capabilities.native_tools = false;
   vision.capabilities.parallel_tools = false;
   vision.capabilities.image_input = true;
-  vision.render_stream = false;
 
   json messages = json::array(
       {{{"role", "system"},
@@ -363,8 +359,8 @@ std::string Agent::AnalyzeImageContent(const json& content,
          "layout, visible defects, text, and uncertainty. Return concise "
          "prose only; do not call or imitate tools."}},
        {{"role", "user"}, {"content", content}}});
-  ChatResult result = vision.Chat(messages, json::array(),
-                                  api_.config.request_timeout_s, "", false);
+  ChatResult result =
+      vision.Chat(messages, json::array(), api_.config.request_timeout_s);
   Usage usage;
   usage.Add(result.usage);
   side_usage_.Add(RouteKey(vision.base_url, "image_analysis",

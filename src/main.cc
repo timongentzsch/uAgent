@@ -239,7 +239,7 @@ int Main(int argc, char** argv) {
     return session::TerminalMain(std::move(parsed.options));
   }
   const bool json_envelope = parsed.options.json;
-  observability.EnableJournal(parsed.options.prompt.empty());
+  observability.EnableJournal(false);  // headless runs keep no journal
   if (json_stream && !observability.StartJsonStream()) {
     fprintf(stderr, "cannot initialize JSON event stream\n");
     return 1;

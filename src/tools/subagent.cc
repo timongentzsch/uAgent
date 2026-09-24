@@ -17,7 +17,6 @@
 #include <vector>
 
 #include "include/agent/child_agent.h"
-#include "include/agent/delegation.h"
 #include "include/agent/jobs.h"
 #include "include/agent/session_store.h"
 #include "include/agent/session_view.h"

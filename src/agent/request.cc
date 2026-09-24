@@ -10,7 +10,6 @@
 
 #include "include/agent.h"
 #include "include/agent/child_agent.h"
-#include "include/agent/delegation.h"
 #include "include/agent/prompt.h"
 #include "include/agent/protocol.h"
 #include "include/api/retry.h"

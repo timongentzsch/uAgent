@@ -15,7 +15,6 @@
 
 #include "include/agent.h"
 #include "include/agent/child_agent.h"
-#include "include/agent/delegation.h"
 #include "include/api/retry.h"
 #include "include/app/permissions.h"
 #include "include/app/self_description.h"

@@ -144,7 +144,6 @@ add_library(
   src/agent/agent.cc
   src/agent/child_agent.cc
   src/agent/conversation.cc
-  src/agent/delegation.cc
   src/agent/dispatch.cc
   src/agent/file_services.cc
   src/agent/jobs.cc

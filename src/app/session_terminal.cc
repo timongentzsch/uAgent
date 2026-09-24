@@ -129,8 +129,8 @@ class Terminal {
           {wake_.read.Get(), POLLIN, 0},
           {AbortWakeFd(), POLLIN, 0}};
       int timeout = -1;
-      if (raw_ && composer_.WakeDeadline()) {
-        timeout = PollTimeoutMs(*composer_.WakeDeadline());
+      if (const auto deadline = composer_.WakeDeadline(); raw_ && deadline) {
+        timeout = PollTimeoutMs(*deadline);
       }
       // The working row's spinner and elapsed time advance on their own.
       if (raw_ && running) timeout = timeout < 0 ? 100 : std::min(timeout, 100);

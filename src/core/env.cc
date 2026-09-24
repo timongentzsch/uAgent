@@ -409,8 +409,9 @@ RuntimeConfig RuntimeConfig::FromValues(const Values& values) {
       }
     } else if constexpr (std::is_same_v<Field, double>) {
       double parsed = 0;
-      if (ParseFiniteDouble(text.c_str(), parsed))
+      if (ParseFiniteDouble(text.c_str(), parsed)) {
         field = std::max(0.0, parsed);
+      }
     } else if constexpr (std::is_same_v<Field, bool>) {
       ParseBool(text, field);
     } else {

@@ -72,7 +72,7 @@ int64_t ActivityOutputCap(int64_t requested) {
   return requested > 0 ? std::min(requested, ToolResultCap()) : ToolResultCap();
 }
 
-std::string LimitOutput(std::string text, int64_t cap) {
+std::string LimitOutput(const std::string& text, int64_t cap) {
   return cap <= 0 ? text : HeadTail(text, static_cast<size_t>(cap));
 }
 

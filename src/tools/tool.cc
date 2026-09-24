@@ -381,12 +381,13 @@ std::string ToolSummary(const Tool& t, const json& args) {
 }
 
 json CommandPart(std::string text) {
-  return {{"kind", "command"}, {"text", Utf8Trunc(text, kPreviewChars)}};
+  return {{"kind", "command"},
+          {"text", Utf8Trunc(std::move(text), kPreviewChars)}};
 }
 
 json CodePart(std::string text, std::string language, std::string label) {
   json part = {{"kind", "code"},
-               {"text", Utf8Trunc(text, kPreviewChars)},
+               {"text", Utf8Trunc(std::move(text), kPreviewChars)},
                {"language", std::move(language)}};
   if (!label.empty()) part["label"] = std::move(label);
   return part;

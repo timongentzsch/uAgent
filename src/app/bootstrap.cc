@@ -347,8 +347,9 @@ Agent::Approver MakeApprover(AppContext* app) {
                                  : json::array({"once", "session", "repository",
                                                 "no", "guidance"})}}});
       if (!app->channel) {
-        if (mandatory)
+        if (mandatory) {
           fprintf(stdout, "%s%s%s\n", YEL(), reason.c_str(), RST());
+        }
         fprintf(stdout, "%s\n", ColorizeDiffLines(payload).c_str());
       }
       if (mandatory && !InteractiveApprovalAvailable()) {

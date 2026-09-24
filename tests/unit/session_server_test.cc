@@ -16,7 +16,9 @@ void TestWorkerBinaryIdentity() {
   TestWorkspace test("worker-binary");
   const std::filesystem::path probe = test.workspace / "uagent-probe";
   CHECK(ToolWriteFile(probe.string(), "v1").Ok());
-  const std::string prior = ExecutablePath();
+  // A copy: SetExecutablePath replaces the string ExecutablePath refers to.
+  const std::string prior =
+      ExecutablePath();  // NOLINT(performance-unnecessary-copy-initialization)
   SetExecutablePath(probe.string());
   const std::string session_path = (test.workspace / "s.json").string();
   // Open creates the private socket folder before a worker starts its server.

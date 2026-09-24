@@ -76,14 +76,14 @@ struct ActivitySession {
 
 struct BgJob {
   pid_t pid = -1;
-  std::string log, cmd;
+  std::string log{}, cmd{};
   ActivityKind kind = ActivityKind::kCommand;
   int64_t id = 0;
-  std::shared_ptr<ActivitySession> session;
-  std::string display_label;
-  std::string receipt_path;
-  std::string source_id;
-  std::vector<std::string> completion_notes;
+  std::shared_ptr<ActivitySession> session{};
+  std::string display_label{};
+  std::string receipt_path{};
+  std::string source_id{};
+  std::vector<std::string> completion_notes{};
   json metadata = json::object();
   int64_t started_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                            std::chrono::system_clock::now().time_since_epoch())

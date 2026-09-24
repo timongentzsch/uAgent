@@ -85,7 +85,7 @@ ToolResult ProcessResult(std::string output, int status);
 // Shared output budgeting for every activity read: ActivityOutputCap folds a
 // caller request into the global cap, LimitOutput enforces it head-and-tail.
 int64_t ActivityOutputCap(int64_t requested);
-std::string LimitOutput(std::string text, int64_t cap);
+std::string LimitOutput(const std::string& text, int64_t cap);
 ToolResult LimitOutput(ToolResult result, int64_t cap);
 std::string DrainActivityOutput(const BgJob& job, int64_t cap);
 std::string ReadLogTail(const std::string& path, int64_t cap);

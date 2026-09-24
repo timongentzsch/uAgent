@@ -854,7 +854,7 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
         if (max_seconds > 0) child_context = context.WithTimeout(max_seconds);
         // What this request says about the collaborator, recorded for both the
         // persistent and the bounded path once the child is under way.
-        auto RecordRequest = [&](const char* fallback_label) {
+        auto record_request = [&](const char* fallback_label) {
           collaborator["task"] = JsonValue(arguments, "prompt", "");
           collaborator["label"] = Utf8Trunc(
               FirstLine(JsonValue(arguments, "prompt", fallback_label)), 160);
@@ -882,7 +882,7 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
           collaborator["mode"] = mode;
           collaborator["model"] =
               requested.empty() ? DefaultSubagentModel(api) : requested;
-          RecordRequest("Sidekick");
+          record_request("Sidekick");
           collaborator["route"] = route_label;
           ToolResult saved = SaveCollaborator(collaborator);
           if (!saved.Ok()) return saved;
@@ -979,7 +979,7 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
           collaborator["mode"] = JsonValue(
               arguments, "mode", JsonValue(collaborator, "mode", "lean"));
           collaborator["model"] = requested;
-          RecordRequest("Subagent");
+          record_request("Subagent");
           ToolResult saved = SaveCollaborator(collaborator);
           if (saved.Ok()) {
             result.output += "\n[collaborator " + collaborator_id +

@@ -8,7 +8,6 @@
 #include <cstdint>
 #include <cstdio>
 #include <memory>
-#include <set>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -76,36 +75,6 @@ const char* ResultStyle(PresentationStatus status) {
 
 }  // namespace
 
-std::string StripDisplayMarkdown(const std::string& text) {
-  std::string safe = TerminalSafe(text);
-  std::string plain;
-  plain.reserve(safe.size());
-  bool separator = false;
-  for (size_t index = 0; index < safe.size(); ++index) {
-    unsigned char c = static_cast<unsigned char>(safe[index]);
-    bool left_word =
-        index > 0 && isalnum(static_cast<unsigned char>(safe[index - 1]));
-    bool right_word = index + 1 < safe.size() &&
-                      isalnum(static_cast<unsigned char>(safe[index + 1]));
-    bool decoration = c == '`' ||
-                      ((c == '*' || c == '_') && !(left_word && right_word)) ||
-                      (c == '#' && !left_word);
-    bool whitespace = c == ' ' || c == '\t' || c == '\r' || c == '\n';
-    if (decoration || whitespace) {
-      separator = !plain.empty();
-      continue;
-    }
-    if (separator && plain.back() != ' ') plain.push_back(' ');
-    separator = false;
-    plain.push_back(static_cast<char>(c));
-  }
-  plain = Trim(plain);
-  while (plain.starts_with("- ") || plain.starts_with("> ")) {
-    plain = Trim(plain.substr(2));
-  }
-  return plain;
-}
-
 const char* DiffLineStyle(std::string_view line) {
   if (line.starts_with('+')) return GREEN();
   if (line.starts_with('-')) return RED();
@@ -131,25 +100,6 @@ std::string ColorizeDiffLines(std::string_view text) {
   return output;
 }
 
-// Bounded single-line rolling buffer for the live reasoning ticker: collapse
-// newlines to spaces so the status row never wraps, keep UTF-8 boundaries.
-void AppendRolling(std::string& buffer, std::string_view value) {
-  for (char c : value) {
-    if (c == '\r' || c == '\n') c = ' ';
-    buffer.push_back(c);
-  }
-  constexpr size_t kRollingBytes = 512;
-  if (buffer.size() > kRollingBytes) {
-    size_t start = Utf8BoundaryAfter(buffer, buffer.size() - kRollingBytes);
-    buffer.erase(0, start);
-  }
-}
-
-// What the row says while the provider runs a search of its own. Ephemeral by
-// design: several searches a turn would otherwise each leave a permanent line
-// in the scrollback for something the user did not ask to see individually.
-constexpr const char* kSearchingActivity = "searching the web";
-
 void PrintMessageHeader() {
   if (!g_tty) return;
   // Assistant header is the binary name in ASCII, identical on live turns
@@ -160,19 +110,10 @@ void PrintMessageHeader() {
 
 struct TerminalPresenter::State {
   explicit State(const Event& event)
-      : render(event.render),
-        full_reasoning(event.verbose),
-        base_label(SpinnerLabel(std::string(event.text))),
-        spinner(std::make_unique<TerminalSpinner>(event.render, base_label,
-                                                  event.anchor)) {}
-
-  void BeginOutput() {
-    if (spinner) spinner->Stop();
-  }
+      : render(event.render), full_reasoning(event.verbose) {}
 
   void Text(std::string_view value) {
     if (!render) return;
-    BeginOutput();
     if (!header_printed) {
       PrintMessageHeader();
       header_printed = true;
@@ -218,23 +159,7 @@ struct TerminalPresenter::State {
 
   void Reasoning(std::string_view value) {
     if (!render) return;
-    if (!full_reasoning) {
-      if (!spinner) return;
-      AppendRolling(reasoning_tail, value);
-      // A provider-side search owns the row for as long as it runs. The buffer
-      // still grows underneath, so the ticker resumes at the live edge rather
-      // than replaying what was thought during the wait.
-      if (!active_searches.empty()) return;
-      // Strip on the whole buffer, not per delta: decoration detection needs
-      // the neighbouring characters, which a chunk boundary would split. The
-      // renderer applies it, so that whole-buffer pass runs once per drawn
-      // frame instead of once per streamed token — an order of magnitude
-      // apart — while the ticker still shows the newest text.
-      spinner->SetRolling("Thinking · ", reasoning_tail, StripDisplayMarkdown);
-      return;
-    }
-
-    BeginOutput();
+    if (!full_reasoning) return;
     if (!header_printed) {
       PrintMessageHeader();
       header_printed = true;
@@ -253,32 +178,7 @@ struct TerminalPresenter::State {
     SetLineOpen(value);
   }
 
-  // A tool the provider ran. It is response activity, not a tool row: routing
-  // it through the tool presentation would claim this agent executed a search,
-  // and would put an approval-shaped record in the scrollback for one it never
-  // could have declined.
-  void HostedTool(const json& data) {
-    if (!render || !spinner) return;
-    const std::string phase = JsonValue(data, "phase", "");
-    const bool running = phase == "started" || phase == "searching";
-    // Erasing an id that never started covers a completion with no matching
-    // start, which otherwise strands the row on "searching the web".
-    if (running) {
-      active_searches.insert(JsonValue(data, "id", ""));
-    } else {
-      active_searches.erase(JsonValue(data, "id", ""));
-    }
-    if (!active_searches.empty()) {
-      spinner->SetLabel(kSearchingActivity);
-    } else if (!reasoning_tail.empty()) {
-      spinner->SetRolling("Thinking · ", reasoning_tail, StripDisplayMarkdown);
-    } else {
-      spinner->SetLabel(base_label);
-    }
-  }
-
   void Finish() {
-    BeginOutput();
     if (in_reasoning) {
       markdown.Control(RST());
       if (line_open) markdown.FeedPlain("\n");
@@ -293,11 +193,6 @@ struct TerminalPresenter::State {
   bool in_reasoning = false;
   bool content_started = false;
   bool line_open = false;
-  std::string reasoning_tail;
-  std::string base_label;
-  // Concurrent searches share one label; the last to finish hands the row back.
-  std::set<std::string> active_searches;
-  std::unique_ptr<TerminalSpinner> spinner;
   MdStream markdown;
 };
 
@@ -334,7 +229,12 @@ std::string TurnStatsLine(const json& summary) {
 
 void TerminalPresenter::Consume(const Event& event) noexcept {
   switch (event.id) {
+    case EventId::kTurnStarted:
+      Finish();
+      spinner_ = std::make_unique<TerminalSpinner>(false);
+      break;
     case EventId::kToolResult:
+      if (spinner_) spinner_->Stop();
       break;  // The grouped result presentation follows result bookkeeping.
     case EventId::kResponseSources:
       Finish();
@@ -362,20 +262,38 @@ void TerminalPresenter::Consume(const Event& event) noexcept {
       state_ = std::make_unique<State>(event);
       break;
     case EventId::kReasoningDelta:
+      if (state_ && state_->full_reasoning && spinner_) spinner_->Stop();
+      if (state_ && JsonValue(event.data, "corrected", false))
+        state_->Reasoning("\n[Updated provider reasoning]\n");
       if (state_) state_->Reasoning(event.text);
       break;
     case EventId::kAnswerDelta:
+      if (spinner_) spinner_->Stop();
       if (state_) state_->Text(event.text);
       break;
-    case EventId::kHostedToolActivity:
-      if (state_) state_->HostedTool(event.data);
+    case EventId::kActivityStatus: {
+      const std::string phase = JsonValue(event.data, "phase", "idle");
+      const bool animate =
+          event.render && phase != "idle" && phase != "finishing" &&
+          phase != "decision" && phase != "responding" &&
+          !(phase == "thinking" && state_ && state_->full_reasoning);
+      if (!animate) {
+        if (spinner_) spinner_->Stop();
+      } else {
+        const std::string label =
+            TerminalSafe(JsonValue(event.data, "activity", "Working"));
+        if (!spinner_) spinner_ = std::make_unique<TerminalSpinner>(false);
+        spinner_->SetLabel(label);
+        spinner_->Start();
+      }
       break;
+    }
     case EventId::kResponseFinished:
       Finish();
       break;
     default:
       if (event.render && event.presentation) {
-        if (state_) state_->BeginOutput();
+        if (spinner_) spinner_->Stop();
         PrintPresentation(*event.presentation);
       }
       break;
@@ -388,7 +306,9 @@ void TerminalPresenter::Consume(const AppEvent& received) noexcept {
     auto id = static_cast<EventId>(index);
     if (received.type != PolicyFor(id).app_type) continue;
     Event event{id, received.data};
-    std::string text = JsonValue(received.data, "text", "");
+    std::string text = JsonValue(
+        received.data,
+        received.data.contains("append_text") ? "append_text" : "text", "");
     event.text = text;
     event.render = true;
     event.verbose = JsonValue(received.data, "verbose", false);
@@ -508,6 +428,7 @@ void TerminalPresenter::Block(const json& block) {
 }
 
 void TerminalPresenter::Finish() noexcept {
+  if (spinner_) spinner_->Stop();
   if (!state_) return;
   state_->Finish();
   state_.reset();

@@ -217,6 +217,8 @@ export interface Collaborator {
   persistent?: boolean;
 }
 export interface ActivityDetail extends Activity {
+  activity_detail?: ActivityStatusDetail | null;
+  phase?: ExecutionPhase;
   context_tokens?: number;
   context_window?: number;
   statistics_live?: boolean;
@@ -279,8 +281,18 @@ export interface Session {
   error?: string;
 }
 export type SessionRef = Pick<Session, "id" | "generation">;
+export interface ActivityStatusDetail {
+  source: "lifecycle" | "tool" | "model_intent" | "summary" | "reasoning";
+  label: string;
+  response_id: string;
+  occurrence_id: string;
+  active_tools: number;
+  turn: number;
+  retry?: { attempt: number; max_attempts: number; retry_at_ms: number };
+}
 export interface State {
   phase?: ExecutionPhase;
+  activity_detail?: ActivityStatusDetail | null;
   pending_decision?: Pending | null;
   attachments?: number;
   title?: string;
@@ -308,6 +320,8 @@ export type ExecutionPhase =
   | "idle"
   | "working"
   | "waiting"
+  | "preparing"
+  | "retrying"
   | "thinking"
   | "responding"
   | "tool"
@@ -361,6 +375,7 @@ export interface EventData extends Omit<Partial<Exchange>, "status"> {
   statistics?: Statistics;
   block?: Block;
   text?: string;
+  reset?: boolean;
   id?: string;
   response_id?: string;
   occurrence_id?: string;
@@ -392,6 +407,7 @@ export interface EventData extends Omit<Partial<Exchange>, "status"> {
 }
 // Host envelopes and native EventEmitter payloads share the same SSE channel.
 interface HostEnvelope extends Partial<Omit<Outcome, "pending">> {
+  activity_detail?: ActivityStatusDetail | null;
   scheduled?: ScheduledState;
   v: number;
   epoch: string;

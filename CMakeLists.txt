@@ -93,6 +93,7 @@ endif()
 # touching tools/ headers rebuilds tools+app only.
 add_library(
   uagent_core_base
+  src/core/activity.cc
   src/core/capture.cc
   src/core/child_env.cc
   src/core/config_document.cc

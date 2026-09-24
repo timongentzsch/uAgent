@@ -35,7 +35,7 @@ import {
   IconButton,
 } from "../../shared/ui.tsx";
 
-import { active } from "./activity-status.tsx";
+import { active, ActivityStatus } from "./activity-status.tsx";
 import { manage } from "../../state/api.ts";
 import Markdown from "../../shared/markdown-view.tsx";
 import { MessageRows, prepareHistoryBlocks } from "./message.tsx";
@@ -689,8 +689,17 @@ function ActivityModal({
                   <p class="muted">Waiting for the subagent transcript…</p>
                 )}
                 {isAgent && isLive && (
-                  <p class="thread-progress" role="status">
-                    {cleanText(current.progress || "Subagent working…")}
+                  <p
+                    class="thread-progress"
+                    title="Latest reported subagent activity"
+                  >
+                    <ActivityStatus
+                      phase={cleanText(
+                        current.progress || detail.progress || "Working",
+                      )}
+                      running
+                      announce
+                    />
                   </p>
                 )}
               </div>

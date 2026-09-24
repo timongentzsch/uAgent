@@ -18,10 +18,82 @@
 #include "include/app/reference.h"
 #include "include/app/runtime.h"
 #include "include/cli.h"
+#include "include/core/activity.h"
 #include "include/core/config.h"
+#include "include/core/limits.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {
+
+void TestActivityProjection() {
+  ActivityProjection projection;
+  auto emit = [&](EventId id, json data = json::object()) {
+    if (!data.contains("turn")) data["turn"] = 1;
+    return projection.Consume(id, data);
+  };
+  emit(EventId::kTurnStarted);
+  emit(EventId::kResponseStarted, {{"response_id", "r1"}});
+  CHECK(projection.Status()["activity"] == "Waiting for model");
+  CHECK(!projection.Consume(EventId::kResponseStarted,
+                            {{"response_id", "judge"}}));
+  emit(EventId::kReasoningDelta,
+       {{"response_id", "r1"}, {"text", "**Checking "}});
+  const uint64_t revision = projection.Revision();
+  CHECK(!emit(EventId::kReasoningDelta, {{"text", "sources**"}}));
+  CHECK(projection.Revision() == revision);
+  emit(EventId::kReasoningDelta,
+       {{"text", "\n"}, {"reasoning_kind", "summary"}});
+  CHECK(projection.Status()["activity"] == "Thinking · Checking sources");
+  CHECK(projection.Status()["activity_detail"]["source"] == "summary");
+  emit(EventId::kToolArguments);
+  CHECK(projection.Status()["phase"] == "preparing");
+  json first = {
+      {"occurrence_id", "a"},
+      {"response_id", "r1"},
+      {"activity",
+       {{"status_label", "Running tests"}, {"label_source", "model_intent"}}}};
+  json second = {
+      {"occurrence_id", "b"}, {"response_id", "r1"}, {"name", "read_path"}};
+  emit(EventId::kToolCall, first);
+  CHECK(projection.Status()["phase"] == "preparing");
+  emit(EventId::kApprovalRequested, {{"id", "same"}});
+  emit(EventId::kInteractionRequested, {{"id", "same"}});
+  emit(EventId::kApprovalResolved, {{"id", "same"}});
+  CHECK(projection.Status()["phase"] == "decision");
+  emit(EventId::kInteractionResolved, {{"id", "same"}});
+  emit(EventId::kToolStarted, first);
+  emit(EventId::kToolStarted, second);
+  CHECK(projection.Status()["activity_detail"]["active_tools"] == 2);
+  emit(EventId::kToolCall, first);  // Duplicate preparation cannot un-start it.
+  CHECK(projection.Status()["activity_detail"]["active_tools"] == 2);
+  emit(EventId::kToolResult, first);
+  CHECK(projection.Status()["activity"] == "Running · read_path");
+  emit(EventId::kToolResult, second);
+  emit(EventId::kResponseRetry,
+       {{"attempt", 2}, {"max_attempts", 3}, {"retry_at_ms", 123}});
+  CHECK(projection.Status()["phase"] == "retrying");
+  emit(EventId::kResponseStarted, {{"response_id", "r2"}});
+  CHECK(!emit(EventId::kReasoningDelta,
+              {{"response_id", "r1"}, {"text", "stale\n"}}));
+  emit(EventId::kReasoningDelta,
+       {{"text",
+         std::string(kActivityLineBytes + 1, 'x') + "\nShort heading\n"}});
+  CHECK(projection.Status()["activity"] == "Thinking · Short heading");
+  // A long token stream never retains the growing transcript in the caption
+  // or emits extra status events once the incomplete line is known.
+  const uint64_t before = projection.Revision();
+  for (int index = 0; index < 10000; ++index)
+    emit(EventId::kReasoningDelta, {{"text", "token "}});
+  CHECK(projection.Revision() == before);
+  emit(EventId::kTurnStopped);
+  CHECK(projection.Status()["phase"] == "finishing");
+  CHECK(!emit(EventId::kToolStarted, first));
+  emit(EventId::kTurnStarted, {{"turn", 2}});
+  CHECK(!emit(EventId::kToolResult, second));
+  CHECK(ActivityLabel("**C# snake_case 2*3**") == "C# snake_case 2*3");
+  CHECK(ActivityLabel(std::string(kActivityLabelBytes - 1, 'x') + "µlong")
+            .size() == kActivityLabelBytes - 1);
+}
 
 void TestObservabilityEvents() {
   json manifest = ReferenceManifestJson();

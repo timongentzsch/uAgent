@@ -113,11 +113,15 @@ int ResponsesSlot(const json& value, ResponsesStreamState& state,
   if (output_index >= 0 &&
       output_index <= static_cast<int64_t>(std::numeric_limits<int>::max())) {
     int slot = static_cast<int>(output_index);
-    std::string item_id = JsonValue(value, "item_id", "");
+    std::string item_id = JsonValue(
+        value, "item_id",
+        JsonValue(JsonValue(value, "item", json::object()), "id", ""));
     if (!item_id.empty()) state.item_slots[item_id] = slot;
     return slot;
   }
-  std::string item_id = JsonValue(value, "item_id", "");
+  std::string item_id =
+      JsonValue(value, "item_id",
+                JsonValue(JsonValue(value, "item", json::object()), "id", ""));
   if (!item_id.empty()) {
     auto found = state.item_slots.find(item_id);
     if (found != state.item_slots.end()) return found->second;
@@ -134,6 +138,18 @@ void RecordResponsesReplay(int slot, const json& item,
     items.push_back(replay);
   }
   result.replay = {{"wire_api", "responses"}, {"items", std::move(items)}};
+}
+
+void ResponsesSummary(const json& item, int slot, bool complete,
+                      WireStreamDelta& delta) {
+  if (const json* summary = JsonArray(item, "summary")) {
+    for (size_t index = 0; index < summary->size(); ++index) {
+      AddReasoningDelta(
+          delta,
+          "summary/" + std::to_string(slot) + "/" + std::to_string(index),
+          "summary", JsonValue((*summary)[index], "text", ""), complete, true);
+    }
+  }
 }
 
 WireStreamDelta DecodeResponsesEvent(const json& value, ChatResult& result,
@@ -178,10 +194,26 @@ WireStreamDelta DecodeResponsesEvent(const json& value, ChatResult& result,
     return delta;
   }
   if (type == "response.reasoning_summary_text.delta" ||
-      type == "response.reasoning_text.delta") {
-    delta.reasoning = JsonValue(value, "delta", "");
+      type == "response.reasoning_text.delta" ||
+      type == "response.reasoning_summary_text.done" ||
+      type == "response.reasoning_text.done" ||
+      type == "response.reasoning_summary_part.added" ||
+      type == "response.reasoning_summary_part.done") {
+    const bool summary = type.find("summary") != std::string::npos;
+    const std::string kind = summary ? "summary" : "reasoning";
+    const int slot = ResponsesSlot(value, state, calls);
+    const int64_t part = JsonValue(
+        value, summary ? "summary_index" : "content_index", int64_t{0});
+    const bool done = type.ends_with(".done");
+    const bool part_event = type.find("_part.") != std::string::npos;
+    const std::string text =
+        part_event
+            ? JsonValue(JsonValue(value, "part", json::object()), "text", "")
+            : JsonValue(value, done ? "text" : "delta", "");
+    AddReasoningDelta(
+        delta, kind + "/" + std::to_string(slot) + "/" + std::to_string(part),
+        kind, text, done, done || part_event);
     result.reasoning_field = true;
-    delta.activity = !delta.reasoning.empty();
     return delta;
   }
   if (type == "response.output_text.annotation.added") {
@@ -193,6 +225,7 @@ WireStreamDelta DecodeResponsesEvent(const json& value, ChatResult& result,
   }
   if (type == "response.function_call_arguments.delta" ||
       type == "response.function_call_arguments.done") {
+    delta.tool_arguments = true;
     int slot = ResponsesSlot(value, state, calls);
     ToolCall& call = calls[slot];
     MergeStreamIdentity(call.id, JsonValue(value, "call_id", ""));
@@ -213,6 +246,7 @@ WireStreamDelta DecodeResponsesEvent(const json& value, ChatResult& result,
     if (!item) return delta;
     const std::string item_type = JsonValue(*item, "type", "");
     if (item_type == "function_call") {
+      delta.tool_arguments = true;
       int slot = ResponsesSlot(value, state, calls);
       ToolCall& call = calls[slot];
       MergeStreamIdentity(call.id, JsonValue(*item, "call_id", ""));
@@ -221,6 +255,9 @@ WireStreamDelta DecodeResponsesEvent(const json& value, ChatResult& result,
         std::string arguments = JsonValue(*item, "arguments", "");
         if (!arguments.empty()) call.args = std::move(arguments);
       }
+    } else if (item_type == "reasoning") {
+      const int slot = ResponsesSlot(value, state, calls);
+      ResponsesSummary(*item, slot, type.ends_with(".done"), delta);
     } else if (item_type == "message") {
       AddAnnotationsFromMessage(*item, result);
       if (type.ends_with(".done") && result.content.empty()) {
@@ -257,6 +294,16 @@ WireStreamDelta DecodeResponsesEvent(const json& value, ChatResult& result,
   if (type == "response.completed") {
     const json* response = JsonObject(value, "response");
     if (response) {
+      if (const json* output = JsonArray(*response, "output")) {
+        for (size_t index = 0; index < output->size(); ++index) {
+          const json& item = (*output)[index];
+          if (JsonValue(item, "type", "") != "reasoning") continue;
+          const int slot = ResponsesSlot(
+              {{"output_index", index}, {"item", item}}, state, calls);
+          ResponsesSummary(item, slot, true, delta);
+          RecordResponsesReplay(slot, item, state, result);
+        }
+      }
       if (response->contains("usage")) result.usage = (*response)["usage"];
       result.finish_reason = JsonValue(*response, "status", "completed");
       result.stop_cause = ClassifyResponseStop(result.finish_reason);
@@ -365,9 +412,11 @@ WireStreamDelta DecodeAnthropicEvent(const json& value, ChatResult& result,
     if (block_type == "text") {
       delta.content = JsonValue(*started, "text", "");
     } else if (block_type == "thinking") {
-      delta.reasoning = JsonValue(*started, "thinking", "");
+      AddReasoningDelta(delta, "thinking/" + std::to_string(index), "reasoning",
+                        JsonValue(*started, "thinking", ""));
       result.reasoning_field = true;
     } else if (block_type == "tool_use") {
+      delta.tool_arguments = true;
       ToolCall& call = calls[index];
       call.id = JsonValue(*started, "id", "");
       call.name = JsonValue(*started, "name", "");
@@ -406,11 +455,13 @@ WireStreamDelta DecodeAnthropicEvent(const json& value, ChatResult& result,
       delta.content = JsonValue(*event_delta, "text", "");
       block.block["text"] = JsonValue(block.block, "text", "") + delta.content;
     } else if (delta_type == "input_json_delta") {
+      delta.tool_arguments = true;
       std::string fragment = JsonValue(*event_delta, "partial_json", "");
       block.input_json += fragment;
       calls[index].args += fragment;
     } else if (delta_type == "thinking_delta") {
-      delta.reasoning = JsonValue(*event_delta, "thinking", "");
+      AddReasoningDelta(delta, "thinking/" + std::to_string(index), "reasoning",
+                        JsonValue(*event_delta, "thinking", ""));
       result.reasoning_field = true;
       block.block["thinking"] =
           JsonValue(block.block, "thinking", "") + delta.reasoning;
@@ -434,6 +485,10 @@ WireStreamDelta DecodeAnthropicEvent(const json& value, ChatResult& result,
     return delta;
   }
   if (type == "content_block_stop") {
+    if (JsonValue(block.block, "type", "") == "thinking") {
+      AddReasoningDelta(delta, "thinking/" + std::to_string(index), "reasoning",
+                        "", true);
+    }
     if (JsonValue(block.block, "type", "") == "tool_use") {
       ToolCall& call = calls[index];
       if (call.args.empty() && block.block.contains("input")) {
@@ -449,6 +504,15 @@ WireStreamDelta DecodeAnthropicEvent(const json& value, ChatResult& result,
 }
 
 }  // namespace
+
+void AddReasoningDelta(WireStreamDelta& delta, std::string part,
+                       std::string kind, std::string text, bool complete,
+                       bool snapshot) {
+  delta.reasoning += text;
+  delta.activity = delta.activity || !text.empty();
+  delta.reasoning_parts.push_back(
+      {std::move(part), std::move(kind), std::move(text), complete, snapshot});
+}
 
 json HostedToolJson(const HostedToolDelta& delta) {
   const char* phase = "none";

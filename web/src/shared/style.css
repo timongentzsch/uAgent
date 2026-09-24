@@ -263,7 +263,7 @@ summary:focus-visible,
 input:focus-visible,
 textarea:focus-visible,
 select:focus-visible,
-[tabindex]:focus-visible {
+[tabindex]:not([tabindex="-1"]):focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
@@ -737,17 +737,41 @@ pre code {
   border: 1px solid transparent;
   background: var(--raised);
 }
-.composer > form > textarea {
+.message-input {
   display: block;
-  border: 0;
+  --input-scale: 1;
+  --input-min-height: var(--control);
+  --input-max-height: min(
+    calc(160rem / 14),
+    calc(var(--viewport-height) * 0.25)
+  );
+  --input-padding-y: var(--space-2);
+  min-width: 0;
+  width: 100%;
+  font-size: calc(16rem / 14);
+  overflow: clip;
+}
+:root .message-input > textarea {
+  display: block;
   resize: none;
-  min-height: max(calc(40rem / 14), calc(1.5em + var(--space-6)));
-  max-height: min(calc(160rem / 14), calc(var(--viewport-height) * 0.25));
-  background: transparent;
-  padding: var(--space-3) var(--space-4);
+  width: calc(100% / var(--input-scale));
+  min-height: calc(var(--input-min-height) / var(--input-scale));
+  max-height: calc(var(--input-max-height) / var(--input-scale));
+  padding: calc(var(--input-padding-y) / var(--input-scale))
+    calc(var(--space-4) / var(--input-scale));
+  font-size: calc(1em / var(--input-scale));
+  transform: scale(var(--input-scale));
+  transform-origin: top left;
   outline-offset: -2px;
   overflow: auto;
-  font-size: calc(16rem / 14);
+}
+.composer > form > .message-input {
+  --input-min-height: max(calc(40rem / 14), calc(1.5em + var(--space-6)));
+  --input-padding-y: var(--space-3);
+}
+.composer > form > .message-input > textarea {
+  border: 0;
+  background: transparent;
 }
 .composer-actions {
   display: flex;
@@ -834,6 +858,16 @@ pre code {
   align-items: center;
   gap: 0.4em;
   min-width: 0;
+  max-width: 100%;
+}
+.activity-caption {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.activity-counts {
+  flex-shrink: 0;
 }
 .metrics {
   display: flex;
@@ -1297,9 +1331,6 @@ dialog section {
   :root textarea {
     font-size: max(1rem, var(--input-font-min));
   }
-  :root .composer > form > textarea {
-    font-size: max(calc(16rem / 14), var(--input-font-min));
-  }
   .activity-toggle,
   .metrics > button {
     min-height: calc(32rem / 14);
@@ -1435,10 +1466,9 @@ dialog section {
   .conversation-head {
     min-height: calc(40rem / 14);
   }
-  .composer > form > textarea {
-    min-height: max(calc(38rem / 14), calc(1.5em + var(--space-6)));
-    max-height: calc(var(--viewport-height) * 0.2);
-    padding-block: var(--space-3);
+  .composer > form > .message-input {
+    --input-min-height: max(calc(38rem / 14), calc(1.5em + var(--space-6)));
+    --input-max-height: calc(var(--viewport-height) * 0.2);
   }
   .transcript {
     padding-block: var(--space-2);

@@ -1103,3 +1103,31 @@ def test_effort_and_variant_persist_like_model(root, home, *, binary):
         session = run_dialog(root, env, "/effort high\n/quit\n", binary=binary)
         assert_true("this session only" in session.stdout, session.stdout)
         assert_true(not preference.exists(), "must not invent a preference")
+
+
+def test_provider_summary_capability_fallback(root, home, *, binary):
+    def reject(handler, body):
+        assert_true(body["reasoning"]["summary"] == "auto", body)
+        write_json_response(
+            handler, {"error": {"message": "Unsupported parameter: reasoning.summary"}}, status=400
+        )
+
+    def answer(handler, body):
+        assert_true("summary" not in body.get("reasoning", {}), body)
+        write_sse_sequence(
+            handler,
+            [
+                {"type": "response.output_text.delta", "delta": "summary-fallback-ok"},
+                {"type": "response.completed", "response": {"status": "completed"}},
+            ],
+        )
+
+    with Server([reject, answer]) as server:
+        env = base_env(home, server.url)
+        env.update(
+            {"UAGENT_WIRE_API": "responses", "UAGENT_MODEL_FEATURES": '{"reasoning_summary":true}'}
+        )
+        result = run(root, env, "-p", "inspect", binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true("summary-fallback-ok" in result.stdout, result.stdout)
+        assert_true(len(server.requests) == 2, len(server.requests))

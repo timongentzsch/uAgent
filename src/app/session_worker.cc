@@ -146,46 +146,18 @@ class WorkerChannel final : public ApplicationChannel {
       BeginTurn();
       SendState();
     }
-    std::string phase;
-    if (event.type == "turn.started") {
-      phase = "working";
-    } else if (event.type == "response.started") {
-      phase = "waiting";
-    } else if (event.type == "response.reasoning.delta") {
-      phase = "thinking";
-    } else if (event.type == "response.answer.delta") {
-      phase = "responding";
-    } else if (event.type == "tool.call") {
-      phase = "tool";
-    } else if (event.type == "tool.result") {
-      phase = "working";
-    } else if (event.type == "response.hosted_tool") {
-      phase = "searching";
-    } else if (event.type == "turn.completed" || event.type == "turn.stopped") {
-      phase = "finishing";
+    if (event.type == "turn.completed" || event.type == "turn.stopped") {
       if (browser_session_) {
         browser::Request({{"op", "release"}, {"session_id", id_}}, 1000);
       }
     }
-    if (!phase.empty()) {
-      std::string activity = phase == "waiting"      ? "Waiting for model"
-                             : phase == "thinking"   ? "Thinking"
-                             : phase == "responding" ? "Responding"
-                             : phase == "tool"
-                                 ? "Running " + JsonValue(data, "name", "tool")
-                             : phase == "searching" ? "Searching"
-                             : phase == "finishing" ? "Finishing"
-                                                    : "Working";
+    if (event.type == "activity.status") {
       std::lock_guard lock(mutex_);
-      if (JsonValue(state_, "phase", "") != phase ||
-          JsonValue(state_, "activity", "") != activity) {
-        state_["phase"] = phase;
-        state_["activity"] = activity;
-        Send({{"kind", "activity"},
-              {"activity", activity},
-              {"phase", phase},
-              {"busy", turn_active_}});
-      }
+      state_.update(data);
+      data["kind"] = "activity";
+      data["busy"] = turn_active_;
+      Send(std::move(data));
+      return;
     }
     Send({{"kind", "event"},
           {"type", event.type},
@@ -274,10 +246,12 @@ class WorkerChannel final : public ApplicationChannel {
     std::lock_guard lock(mutex_);
     std::string activity = JsonValue(state_, "activity", "Ready");
     std::string phase = JsonValue(state_, "phase", "idle");
+    json detail = JsonValue(state_, "activity_detail", json(nullptr));
     state_ = state;
     state_["notices"] = notices_;
     state_["activity"] = activity;
     state_["phase"] = phase;
+    state_["activity_detail"] = std::move(detail);
     if (!checkpoint) {
       // Live accounting only: the turn keeps running, so its phase, busy
       // state and queued guidance stay untouched.
@@ -291,6 +265,7 @@ class WorkerChannel final : public ApplicationChannel {
       // application checkpoint makes the turn idle and accepts another input.
       turn_active_ = false;
       state_["activity"] = "Ready";
+      state_.erase("activity_detail");
       state_["phase"] = "idle";
       ClearAbort();
       NormalizeAbortWake();
@@ -356,6 +331,11 @@ class WorkerChannel final : public ApplicationChannel {
   void QueueDelta(const AppEvent& event) {
     const auto now = std::chrono::steady_clock::now();
     const std::string key = DeltaKey(event);
+    if (JsonValue(event.data, "reset", false)) {
+      FlushTransientEvents();
+      DeliverEvent(event);
+      return;
+    }
     if (!sent_delta_keys_.contains(key)) {
       FlushTransientEvents();
       sent_delta_keys_.insert(key);

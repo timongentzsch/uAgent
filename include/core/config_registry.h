@@ -238,6 +238,10 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
     registry::Str("UAGENT_HOSTED_TOOLS", {}, "", ReloadPolicy::kRestartRequired,
                   Sensitivity::kPublic, "route",
                   "comma-separated hosted capabilities; currently web_search"),
+    registry::Str(
+        "UAGENT_MODEL_FEATURES", {}, "", ReloadPolicy::kRestartRequired,
+        Sensitivity::kPublic, "route",
+        "JSON model capabilities: reasoning_summary, adaptive_thinking"),
     registry::Str("UAGENT_PROVIDER_PROTOCOL", {}, "",
                   ReloadPolicy::kRestartRequired, Sensitivity::kPublic, "route",
                   "openai, openrouter, or anthropic"),

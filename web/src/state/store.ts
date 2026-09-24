@@ -109,7 +109,8 @@ export function liveBlocks(events: HostEvent[], prior: Block[] = []): Block[] {
       const field = event.type.includes("reasoning") ? "reasoning" : "text";
       if (responseIndex < 0) continue;
       const response = blocks[responseIndex];
-      const text = (response[field] || "") + (data.text || "");
+      const text =
+        (data.reset ? "" : response[field] || "") + (data.text || "");
       update(responseIndex, {
         [field]: text.slice(0, maxLivePreviewChars),
         truncated:
@@ -273,7 +274,12 @@ export function applySessionEvent(
       state.context_tokens = data.context_tokens;
   }
   if (event.kind === "activity")
-    state = { ...(state || {}), activity: event.activity };
+    state = {
+      ...(state || {}),
+      activity: event.activity,
+      phase: event.phase,
+      activity_detail: event.activity_detail,
+    };
   if (event.type === "activities.changed")
     state = { ...(state || {}), activities: data.activities };
   if (event.type === "collaborator.changed" && data.collaborator) {

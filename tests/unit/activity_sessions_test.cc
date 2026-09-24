@@ -271,12 +271,12 @@ void TestActivityBufferAndAdmission() {
   REQUIRE(views.size() == 1);
   CHECK(views[0].source_id == "agent-1a2b3c4d");
   CHECK(views[0].label == "haiku");
-  CHECK(views[0].tail == "· writing");
+  CHECK(views[0].tail == "writing");
   CHECK(delegating.Count(ActivityKind::kSubagent) == 1);
   CHECK(delegating.Count() == 2);
   // Looking is not draining: the tool that joins the child still needs every
   // byte the transcript holds.
-  CHECK(delegating.SubagentViews()[0].tail == "· writing");
+  CHECK(delegating.SubagentViews()[0].tail == "writing");
   // The child's answer is not progress. Once it prints its JSON envelope the
   // newest line on the stream is the result the parent will deliver whole, so
   // the row says nothing rather than a fragment of it.

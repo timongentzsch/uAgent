@@ -128,16 +128,18 @@ std::optional<ModelRoute> ResolveModelRoute(
   const NamedProvider* provider =
       FindNamedProvider(providers, selection.substr(0, slash));
   if (!provider) return std::nullopt;
-  return ModelRoute{selection,
-                    provider->base_url,
-                    provider->api_key,
-                    selection.substr(slash + 1),
-                    "",
-                    provider->context,
-                    provider->protocol,
-                    provider->wire_api,
-                    provider->hosted_web_search,
-                    {}};
+  ModelRoute route{selection,
+                   provider->base_url,
+                   provider->api_key,
+                   selection.substr(slash + 1),
+                   "",
+                   provider->context,
+                   provider->protocol,
+                   provider->wire_api,
+                   provider->hosted_web_search,
+                   {}};
+  route.features = provider->features;
+  return route;
 }
 
 bool SaveSelectionSuffix(const std::string& variant, const std::string& effort,
@@ -159,7 +161,9 @@ bool CanUseRawModel(const Api& api, std::string_view name) {
 
 bool ProbeModel(Api& api, bool discover_efforts) {
   if (!api.model.empty() && api.ctx_window > 0 &&
-      (!discover_efforts || !api.supported_reasoning_efforts.empty())) {
+      (!discover_efforts || !api.supported_reasoning_efforts.empty()) &&
+      !(api.capabilities.Anthropic() &&
+        api.capabilities.model_features.is_null())) {
     return true;
   }
   // Discover effort support on demand, without delaying a configured startup
@@ -176,6 +180,7 @@ bool ProbeModel(Api& api, bool discover_efforts) {
       if (api.ctx_window == 0) api.ctx_window = info.context;
       api.supported_reasoning_efforts = info.efforts;
       api.capabilities.SetInputModalities(info.input_modalities);
+      api.capabilities.SetModelFeatures(info.features);
       if (!SupportsReasoningEffort(api, api.reasoning_effort)) {
         api.reasoning_effort.clear();
       }
@@ -345,6 +350,11 @@ ModelSearch SearchModels(const Api& api, const std::vector<ModelRoute>& routes,
         }
         route.supported_efforts = info.efforts;
         route.input_modalities = info.input_modalities;
+        if (info.features.is_object()) {
+          json features = info.features;
+          if (route.features.is_object()) features.update(route.features);
+          route.features = std::move(features);
+        }
         if (route.context == 0) route.context = info.context;
         candidate.info = info;
         candidate.info.context = route.context;
@@ -367,6 +377,11 @@ ModelSearch SearchModels(const Api& api, const std::vector<ModelRoute>& routes,
                        info.efforts};
       route.effort = info.default_effort;
       route.input_modalities = info.input_modalities;
+      route.features = info.features;
+      if (source.features.is_object()) {
+        if (!route.features.is_object()) route.features = json::object();
+        route.features.update(source.features);
+      }
       if (info.context == 0) info.context = context;
       result.matches.push_back(
           {std::move(selection), std::move(route), std::move(info)});
@@ -390,6 +405,7 @@ json ModelCatalogue(Api& api, const std::vector<ModelRoute>& routes,
     if (active) {
       api.supported_reasoning_efforts = candidate.info.efforts;
       api.capabilities.SetInputModalities(candidate.info.input_modalities);
+      api.capabilities.SetModelFeatures(candidate.route.features);
     }
     models.push_back(
         {{"value", candidate.selection},

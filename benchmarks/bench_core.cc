@@ -5,9 +5,12 @@
 
 #include <chrono>
 #include <cstdio>
+#include <ctime>
+#include <future>
 #include <iomanip>
 #include <iostream>
 #include <string>
+#include <vector>
 
 #include "include/agent.h"
 #include "include/agent/protocol.h"
@@ -97,6 +100,55 @@ void BenchmarkStream(bool tty, bool render = true) {
   Report(name, kEvents, milliseconds);
 }
 
+// Burst benchmark through actual event delivery, comparing identical main
+// and two child workloads with activity projection inactive/active. No wire
+// or browser/network timing is implied by this native measurement.
+void BenchmarkActivity(bool labels) {
+  constexpr size_t kSessions = 3;
+  constexpr size_t kTokens = 10000;
+  const auto started = std::chrono::steady_clock::now();
+  const auto cpu_started = std::clock();
+  std::vector<std::future<size_t>> workers;
+  for (size_t session = 0; session < kSessions; ++session) {
+    workers.push_back(std::async(std::launch::async, [labels] {
+      Observability events;
+      size_t captions = 0;
+      events.Subscribe([&](const AppEvent& event) {
+        if (event.type == "activity.status") ++captions;
+      });
+      if (labels) events.Emit(Event{EventId::kTurnStarted, {{"turn", 1}}});
+      events.Emit(Event{EventId::kResponseStarted,
+                        {{"turn", 1}, {"response_id", "r"}}});
+      for (size_t index = 0; index < kTokens; ++index) {
+        events.Emit(Event{
+            EventId::kReasoningDelta,
+            {{"response_id", "r"},
+             {"text", index % 1000 == 0 ? "\nChecking tests\n" : "token "}}});
+        if (index % 1000 == 0) {
+          for (const auto* call : {"a", "b"})
+            events.Emit(Event{EventId::kToolStarted,
+                              {{"response_id", "r"},
+                               {"occurrence_id", call},
+                               {"name", "read_path"}}});
+          for (const auto* call : {"a", "b"})
+            events.Emit(Event{EventId::kToolResult,
+                              {{"response_id", "r"}, {"occurrence_id", call}}});
+        }
+      }
+      events.Emit(Event{EventId::kTurnCompleted, {{"turn", 1}}});
+      return captions;
+    }));
+  }
+  size_t captions = 0;
+  for (auto& worker : workers) captions += worker.get();
+  Report(labels ? "3 sessions + captions" : "3 sessions baseline",
+         kSessions * kTokens, ElapsedMs(started));
+  std::cout << "  status events " << captions << "; process CPU "
+            << 1000.0 * static_cast<double>(std::clock() - cpu_started) /
+                   CLOCKS_PER_SEC
+            << " ms\n";
+}
+
 }  // namespace
 
 int RunBenchmarks() {
@@ -116,6 +168,8 @@ int RunBenchmarks() {
   BenchmarkStream(false);
   BenchmarkStream(true);
   BenchmarkStream(false, false);
+  BenchmarkActivity(false);
+  BenchmarkActivity(true);
 
   json history = json::array();
   for (size_t index = 0; index < 128; ++index) {
@@ -176,11 +230,19 @@ int RunBenchmarks() {
   size_t grep_schema = ToolSchemas(no_scratch_tools).dump().size();
   size_t no_edit_schema = ToolSchemas(no_edit_tools).dump().size();
   size_t lean_schema = ToolSchemas(lean_tools).dump().size();
-  std::cout << "built-in schema              " << lean_schema << " bytes (~"
-            << lean_schema / 4 << " tokens); grep adds "
-            << grep_schema - base_schema << " bytes; scratch adds "
-            << lean_schema - grep_schema << " bytes; edit adds "
-            << lean_schema - no_edit_schema << " bytes\n";
+  auto without_descriptions = lean_tools;
+  for (Tool& tool : without_descriptions) {
+    if (tool.declared_intent)
+      tool.parameters["properties"].erase("description");
+  }
+  std::cout << "optional action descriptions "
+            << lean_schema - ToolSchemas(without_descriptions).dump().size()
+            << " schema bytes\n";
+  std::cout << "built-in schema              " << lean_schema
+            << " bytes; grep adds " << grep_schema - base_schema
+            << " bytes; scratch adds " << lean_schema - grep_schema
+            << " bytes; edit adds " << lean_schema - no_edit_schema
+            << " bytes\n";
   for (const Tool& tool : lean_tools) {
     std::cout << "  " << std::left << std::setw(24) << tool.name << std::right
               << JsonDump(ToolSchema(tool)).size() << " bytes\n";

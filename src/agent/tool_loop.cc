@@ -14,6 +14,7 @@
 #include "include/agent.h"
 #include "include/agent/dispatch.h"
 #include "include/agent/tool_presentation.h"
+#include "include/core/activity.h"
 #include "include/core/events.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
@@ -144,6 +145,13 @@ bool Agent::RunCalls(
     task.args = task.raw_args;
     task.tool = FindTool(tools_, call.name);
     const Tool* tool = task.tool;
+    std::string description;
+    if (tool && tool->declared_intent && task.args.is_object()) {
+      // Display metadata never reaches validation, permission decisions or
+      // execution. The original tool call remains intact for exact replay.
+      description = ActivityLabel(JsonValue(task.args, "description", ""));
+      task.args.erase("description");
+    }
     if (tool) CanonicalizeToolArguments(*tool, task.args, &task.clamped);
     const json& arguments = task.args;
     bool valid = false;
@@ -227,6 +235,12 @@ bool Agent::RunCalls(
     task.activity["call_id"] = call.id;
     task.activity["occurrence_id"] = call.occurrence_id;
     task.activity["detail_id"] = call.detail_id;
+    task.activity["status_label"] =
+        valid && !description.empty() ? description
+        : tool ? ActivityLabel(ToolTitle(*tool) + " · " + task.label)
+               : ActivityLabel(call.name);
+    task.activity["label_source"] =
+        valid && !description.empty() ? "model_intent" : "tool";
     conversation_.RecordDisplay(call.detail_id, {{"activity", task.activity}});
     Event call_event{EventId::kToolCall, ToolCallData(call, turn_id_, step)};
     call_event.data["activity"] = task.activity;
@@ -285,11 +299,6 @@ bool Agent::RunCalls(
                                  {"concurrency_limit", limit}});
   }
 
-  std::string activity_label = runnable.size() == 1
-                                   ? calls[runnable.front()].name
-                                   : std::to_string(runnable.size()) + " tools";
-  TerminalSpinner spinner(!runnable.empty(), SpinnerLabel(activity_label),
-                          api_.turn_started);
   ToolContext context{deadline};
   context.turn_id = turn_id_;
   for (size_t begin = 0; begin < runnable.size() && !AbortRequested();) {
@@ -332,7 +341,6 @@ bool Agent::RunCalls(
     }
     EmitToolResultObservation(task, calls[index], turn_id_, step);
   }
-  spinner.Stop();
 
   bool cancelled = AbortRequested() && !SteeringState().Requested();
   if (!SteeringState().Requested()) ClearAbort();

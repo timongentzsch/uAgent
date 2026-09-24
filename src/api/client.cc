@@ -493,6 +493,16 @@ ChatResult Api::Chat(const json& messages, const json& tool_schemas,
                            {"http_status", res.http_status},
                            {"remote_error_type", res.remote_error_type},
                            {"remote_error_code", res.remote_error_code}});
+    json retry = exchange_context;
+    retry["attempt"] = attempt + 1;
+    retry["max_attempts"] = kChatAttempts;
+    retry["delay_ms"] = delay.count();
+    retry["retry_at_ms"] =
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch())
+            .count() +
+        delay.count();
+    Emit(Event{EventId::kResponseRetry, std::move(retry)});
     if (render_stream && render_output) {
       std::string reason = res.error.starts_with("model ")
                                ? res.error

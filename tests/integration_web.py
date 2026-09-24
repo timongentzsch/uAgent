@@ -1945,6 +1945,10 @@ def test_web_http_retry_and_failed_request_persistence(root, home, *, binary):
             client.pair(code)
             session = client.create(root)
             client.command("submit", session, text="Retry this request")
+            waiting = client.until(session, lambda value: value["state"].get("phase") == "retrying")
+            retry = waiting["state"]["activity_detail"]["retry"]
+            assert_true(retry["attempt"] == 2 and retry["max_attempts"] == 3, retry)
+            assert_true(retry["delay_ms"] > 0 and retry["retry_at_ms"] > 0, retry)
             snapshot = client.until(session, lambda value: value["metadata"]["status"] == "idle")
             reply = next(
                 row

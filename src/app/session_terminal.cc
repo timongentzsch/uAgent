@@ -424,6 +424,7 @@ class Terminal {
       }
       wake_.Wake();
     } else if (kind == "activity") {
+      presenter_.Consume(AppEvent{0, "", "activity.status", frame, false});
       std::lock_guard lock(mutex_);
       state_["activity"] = JsonValue(frame, "activity", "Ready");
       wake_.Wake();
@@ -522,7 +523,7 @@ class Terminal {
                          JsonValue(state, "route", "");
     if (JsonValue(state, "turn_active", false) &&
         !CurrentTerminalActivity().empty()) {
-      status = RenderCurrentTerminalActivity(TerminalWidth(14)) + " · " +
+      status = CurrentTerminalActivity() + " · " +
                JsonValue(state, "route", "") + " · " +
                ContextSummary(JsonValue(state, "context_tokens", int64_t{0}),
                               JsonValue(state, "context_window", int64_t{0}));

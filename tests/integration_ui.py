@@ -102,12 +102,7 @@ def test_reasoning_modes_render_consistently(root, home, *, binary):
             handler,
             [
                 event(
-                    {
-                        "reasoning": (
-                            "**Map core invariants****Detail implementation and tests****"
-                            "Planning provider normalization phases**"
-                        )
-                    },
+                    {"reasoning": ("**Planning provider normalization phases**\n")},
                     finish=None,
                 ),
                 event({"content": "Final answer"}),
@@ -135,9 +130,7 @@ def test_reasoning_modes_render_consistently(root, home, *, binary):
         assert_true(reasoning_style + b"latest line" in verbose, verbose)
         assert_true(verbose.find(b"first line") < verbose.find(b"Final answer"), verbose)
 
-        # The working row also names the route, so the ticker window is a few
-        # columns narrower than the reasoning it scrolls: assert the clause
-        # that fits rather than a width budget the row no longer has.
+        # Compact mode selects a complete heading and removes decoration.
         code, compact = run_pty(
             root,
             env,

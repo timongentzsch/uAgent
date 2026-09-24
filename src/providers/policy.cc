@@ -36,6 +36,8 @@ namespace {
 void ExportRoute(const Api& api) {
   setenv("UAGENT_BASE_URL", api.base_url.c_str(), 1);
   setenv("UAGENT_MODEL", api.model.c_str(), 1);
+  setenv("UAGENT_MODEL_FEATURES",
+         JsonDump(api.capabilities.model_features).c_str(), 1);
   setenv("UAGENT_REASONING_EFFORT", api.reasoning_effort.c_str(), 1);
   setenv("UAGENT_OPENROUTER_VARIANT", api.config.openrouter_variant.c_str(), 1);
   setenv("UAGENT_CONTEXT", std::to_string(api.ctx_window).c_str(), 1);
@@ -47,9 +49,11 @@ void ExportRoute(const Api& api) {
 }
 
 void ResetRouteCapabilities(Api& api) {
+  const json features = api.capabilities.model_features;
   api.capabilities = CapabilitiesForRoute(
       api.capabilities.protocol, api.base_url, api.capabilities.wire_api,
       api.capabilities.hosted_web_search);
+  api.capabilities.SetModelFeatures(features);
 }
 
 }  // namespace
@@ -69,6 +73,7 @@ SideRoute ResolveSideRoute(const Api& api,
   resolved.protocol = api.capabilities.protocol;
   resolved.wire_api = api.capabilities.wire_api;
   resolved.hosted_web_search = api.capabilities.hosted_web_search;
+  resolved.features = api.capabilities.model_features;
   if (!parsed.base.empty()) {
     if (std::optional<ModelRoute> route =
             ResolveModelRoute(routes, providers, parsed.base)) {
@@ -81,10 +86,12 @@ SideRoute ResolveSideRoute(const Api& api,
       resolved.protocol = route->protocol;
       resolved.wire_api = route->wire_api;
       resolved.hosted_web_search = route->hosted_web_search;
+      resolved.features = route->features;
     } else {
       // A bare model id on the parent's provider also lands here; only the
       // execution paths decide whether that is usable.
       resolved.unresolved = true;
+      if (resolved.model != api.CatalogModel()) resolved.features = nullptr;
     }
   }
   // A suffix is the most specific statement of intent, so it wins over both the
@@ -105,6 +112,7 @@ void ApplyRoute(Api& api, const ModelRoute& route) {
   api.capabilities = CapabilitiesForRoute(
       route.protocol, route.base_url, route.wire_api, route.hosted_web_search);
   api.capabilities.SetInputModalities(route.input_modalities);
+  api.capabilities.SetModelFeatures(route.features);
 }
 
 std::string RouteSelection(const Api& api,
@@ -133,6 +141,7 @@ void ApplySideRoute(Api& api, const SideRoute& route) {
   api.ctx_window = route.context;
   api.capabilities = CapabilitiesForRoute(
       route.protocol, route.base_url, route.wire_api, route.hosted_web_search);
+  api.capabilities.SetModelFeatures(route.features);
   api.config.openrouter_variant = route.variant;
 }
 
@@ -181,6 +190,8 @@ ProviderSetup ConfigureProvider(Api& api) {
   api.capabilities =
       CapabilitiesForRoute(protocol, api.base_url, wire_api,
                            HasHostedTool(hosted_tools, HostedTool::kWebSearch));
+  api.capabilities.SetModelFeatures(
+      json::parse(EnvStr("UAGENT_MODEL_FEATURES"), nullptr, false));
 
   ProviderCatalog catalog = SessionProviderCatalog();
   ProviderSetup setup{

@@ -317,6 +317,9 @@ void SessionHost::ApplyRuntimeFrame(HostSession& session, json& frame) {
   }
   if (kind == "activity") {
     session.state["activity"] = JsonValue(frame, "activity", "Ready");
+    session.state["phase"] = JsonValue(frame, "phase", "working");
+    session.state["activity_detail"] =
+        JsonValue(frame, "activity_detail", json(nullptr));
     session.turn_active = JsonValue(frame, "busy", false);
     return;
   }

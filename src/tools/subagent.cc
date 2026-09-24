@@ -316,10 +316,13 @@ json InspectCollaborator(const ProcessSupervisor& processes,
   const auto apply_live_state = [&] {
     detail["statistics_live"] =
         live_state.contains("statistics") && live_state.contains("usage");
-    for (const char* field : {"usage", "statistics", "turns", "route",
-                              "context_tokens", "context_window"}) {
+    for (const char* field :
+         {"usage", "statistics", "turns", "route", "context_tokens",
+          "context_window", "phase", "activity_detail"}) {
       if (live_state.contains(field)) detail[field] = live_state[field];
     }
+    if (live_state.contains("activity"))
+      detail["progress"] = live_state["activity"];
   };
   if (!loaded.record) {
     if (!live_view.empty()) detail["conversation"] = std::move(live_view);

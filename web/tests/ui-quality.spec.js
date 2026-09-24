@@ -221,6 +221,7 @@ test("loading showcase keeps a fixed shell and keyboard focus", async ({
   await expect(
     dialog.getByRole("heading", { name: "Loading example" }),
   ).toBeFocused();
+  await expect(dialog.getByRole("heading")).toHaveCSS("outline-style", "none");
   const close = dialog.getByRole("button", { name: "Close loading example" });
   await expect(close).not.toBeFocused();
   await page.keyboard.press("Tab");
@@ -292,6 +293,75 @@ test.describe("touch interaction", () => {
     expect(bounds.x + bounds.width).toBeLessThanOrEqual(390);
     expect(bounds.y).toBeGreaterThanOrEqual(0);
     expect(bounds.y + bounds.height).toBeLessThanOrEqual(844);
+  });
+  test("composer text scales at every density without a sub-16px layout font", async ({
+    page,
+    session,
+  }, testInfo) => {
+    await page.goto(`/#session=${session.id}`);
+    const input = page.getByRole("textbox", { name: "Message or guidance" });
+    for (const zoom of [50, 75, 100, 150]) {
+      await page.getByRole("button", { name: "Settings", exact: true }).click();
+      const settings = page.getByRole("dialog", {
+        name: "Settings",
+        exact: true,
+      });
+      await settings.getByLabel("Zoom", { exact: true }).fill(String(zoom));
+      await settings.getByRole("button", { name: "Close settings" }).click();
+      await input.fill("Zoom and wrapping proof. ".repeat(12));
+      await input.tap();
+      const geometry = await input.evaluate((node) => {
+        const style = getComputedStyle(node);
+        const scale = new DOMMatrix(style.transform).a;
+        const box = node.getBoundingClientRect();
+        const wrapper = node.parentElement.getBoundingClientRect();
+        return {
+          font: parseFloat(style.fontSize),
+          paintedFont: parseFloat(style.fontSize) * scale,
+          width: box.width,
+          wrapperWidth: wrapper.width,
+          height: box.height,
+          wrapperHeight: wrapper.height,
+          viewportScale: visualViewport.scale,
+          overflow: document.documentElement.scrollWidth > innerWidth,
+        };
+      });
+      expect(geometry.font).toBeGreaterThanOrEqual(16);
+      expect(geometry.paintedFont).toBeCloseTo((16 * zoom) / 100, 1);
+      expect(Math.abs(geometry.width - geometry.wrapperWidth)).toBeLessThan(1);
+      expect(Math.abs(geometry.height - geometry.wrapperHeight)).toBeLessThan(
+        1,
+      );
+      expect(geometry.viewportScale).toBe(1);
+      expect(geometry.overflow).toBe(false);
+      if (zoom === 50 || zoom === 100)
+        await testInfo.attach(`composer-${zoom}.png`, {
+          body: await page.screenshot({
+            path: testInfo.outputPath(`composer-${zoom}.png`),
+          }),
+          contentType: "image/png",
+        });
+      // Opening the keyboard can change height without changing width.
+      await page.evaluate(() =>
+        document.documentElement.style.setProperty(
+          "--viewport-height",
+          "280px",
+        ),
+      );
+      await expect
+        .poll(() =>
+          input.evaluate((node) =>
+            Math.abs(
+              node.getBoundingClientRect().height -
+                node.parentElement.getBoundingClientRect().height,
+            ),
+          ),
+        )
+        .toBeLessThan(1);
+      await page.evaluate(() =>
+        document.documentElement.style.removeProperty("--viewport-height"),
+      );
+    }
   });
   test("touch does not acquire desktop hover and small-scale fields keep a readable font", async ({
     page,

@@ -2186,10 +2186,18 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
     .getByRole("button", { name: "Close subagent statistics" })
     .click();
   await expect(detail).toHaveCSS("outline-style", "none");
+  await expect(detail.locator(":scope > header > h2")).toHaveCSS(
+    "outline-style",
+    "none",
+  );
   // Native close may fall back to the dialog when its previous opener is gone.
   await detail.evaluate((node) => node.focus());
   await expect(detail).toBeFocused();
   await expect(detail).toHaveCSS("outline-style", "none");
+  await expect(detail.locator(":scope > header > h2")).toHaveCSS(
+    "outline-style",
+    "none",
+  );
   await thread
     .getByRole("button", { name: "Turn statistics", exact: true })
     .last()

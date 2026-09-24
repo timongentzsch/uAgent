@@ -82,6 +82,19 @@ void ProviderCapabilities::SetInputModalities(const json& modalities) {
                 modalities.end();
 }
 
+void ProviderCapabilities::SetModelFeatures(const json& features) {
+  if (!features.is_object()) return;
+  json merged = features;
+  // Explicit route features and a negotiated rejection survive catalog
+  // refreshes. Changing route creates a fresh capability object.
+  if (model_features.is_object()) merged.update(model_features);
+  model_features = std::move(merged);
+  reasoning_summary =
+      JsonValue(model_features, "reasoning_summary", reasoning_summary);
+  adaptive_thinking =
+      JsonValue(model_features, "adaptive_thinking", adaptive_thinking);
+}
+
 void ProviderCapabilities::ResetNegotiated() {
   native_tools = true;
   parallel_tools = true;
@@ -116,6 +129,8 @@ json ProviderCapabilities::DiagnosticJson() const {
           {"native_tools", native_tools},
           {"parallel_tools", parallel_tools},
           {"stream_usage_option", stream_usage_option},
+          {"reasoning_summary", reasoning_summary},
+          {"adaptive_thinking", adaptive_thinking},
           {"image_input", image_input},
           {"file_input", file_input},
           {"audio_input", audio_input},
@@ -164,6 +179,7 @@ ProviderCapabilities CapabilitiesForRoute(ProviderProtocol protocol,
     capabilities.reasoning_object = true;
     capabilities.max_completion_tokens = true;
     capabilities.web_search_sources = OpenaiUrl(base_url);
+    capabilities.reasoning_summary = OpenaiUrl(base_url);
   }
   capabilities.ResetNegotiated();
   return capabilities;
@@ -211,6 +227,16 @@ RejectedCapability RejectedRouteCapability(
     return RejectedCapability::kVideoInput;
   }
   if (result.http_status != 400) return RejectedCapability::kNone;
+  if (capabilities.reasoning_summary &&
+      (evidence.find("reasoning.summary") != std::string::npos ||
+       evidence.find("'reasoning'") != std::string::npos ||
+       evidence.find("\"reasoning\"") != std::string::npos ||
+       evidence.find("thinking.display") != std::string::npos) &&
+      (evidence.find("unsupported") != std::string::npos ||
+       evidence.find("not supported") != std::string::npos ||
+       evidence.find("unknown") != std::string::npos)) {
+    return RejectedCapability::kReasoningSummary;
+  }
   if (capabilities.parallel_tools &&
       (evidence.find("parallel_tool_calls") != std::string::npos ||
        evidence.find("parallel tool calls") != std::string::npos)) {
@@ -237,6 +263,8 @@ const char* CapabilityName(RejectedCapability capability) {
       return "parallel_tool_calls";
     case RejectedCapability::kStreamUsage:
       return "stream_options";
+    case RejectedCapability::kReasoningSummary:
+      return "reasoning_summary";
     case RejectedCapability::kNone:
       return "none";
   }

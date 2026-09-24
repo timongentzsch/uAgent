@@ -212,6 +212,7 @@ EnvironmentOverrides ChildAgentEnvironment(SideRoute route) {
       {"UAGENT_PROVIDER_PROTOCOL", ProviderProtocolName(route.protocol)},
       {"UAGENT_WIRE_API", WireApiName(route.wire_api)},
       {"UAGENT_HOSTED_TOOLS", route.hosted_web_search ? "web_search" : ""},
+      {"UAGENT_MODEL_FEATURES", JsonDump(route.features)},
       {"UAGENT_OPENROUTER_VARIANT", std::move(route.variant)},
       {"UAGENT_USAGE_FILE", UsageLedger()},
   };

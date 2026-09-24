@@ -69,31 +69,11 @@ inline void TerminalClearToEnd() {
   fputs("\r\033[K", stdout);
   fflush(stdout);
 }
-// The transient activity registry: the label (or rolling reasoning ticker)
-// shown in the status row while a call is in flight. The state itself is
-// implementation-owned; see src/core/term.cc.
+// The transient activity registry shown while a call is in flight.
 uint64_t BeginTerminalActivity(std::string label);
 void UpdateTerminalActivity(uint64_t id, std::string label);
-
-// How the renderer turns the raw buffer into displayable text. The ui layer
-// owns that definition; passing it here is what lets whole-buffer
-// normalization run once per drawn frame rather than once per streamed token.
-using ActivityTextTransform = std::string (*)(const std::string&);
-
-// Switch an activity to rolling-ticker mode: `text` is the bounded reasoning
-// buffer, kept behind the caller's static `prefix`. Each status frame renders
-// the prefix plus a window of the transformed buffer.
-void SetTerminalActivityRolling(uint64_t id, const std::string& prefix,
-                                const std::string& text,
-                                ActivityTextTransform transform = nullptr);
 void EndTerminalActivity(uint64_t id);
-
-// The newest activity's static label, and whether it is in rolling mode.
 std::string CurrentTerminalActivity();
-bool CurrentTerminalActivityRolling();
-
-// Render the newest activity for one animation frame, bounded to `columns`.
-std::string RenderCurrentTerminalActivity(size_t columns);
 
 // Names what a blocking call waits on, for as long as it blocks.
 class TerminalActivityLabel {
@@ -141,12 +121,11 @@ class TerminalSpinner {
         double elapsed = std::chrono::duration<double>(
                              std::chrono::steady_clock::now() - started_)
                              .count();
-        const std::string shown =
-            rolling_.load(std::memory_order_relaxed)
-                ? RenderCurrentTerminalActivity(TerminalWidth(14))
-                : label_;
-        printf("\r%s%c %s · %s%s%s", DIM(), "|/-\\"[frame_], shown.c_str(),
-               FmtDuration(elapsed).c_str(), EraseToEol(), RST());
+        const std::string row =
+            DisplayTrunc(std::string(1, "|/-\\"[frame_]) + " " + label_ +
+                             " · " + FmtDuration(elapsed),
+                         TerminalWidth(1));
+        printf("\r%s%s%s%s", DIM(), row.c_str(), EraseToEol(), RST());
         fflush(stdout);
         frame_ = (frame_ + 1) & 3;
         wake_.wait_for(lock, std::chrono::milliseconds(100),
@@ -159,25 +138,12 @@ class TerminalSpinner {
   TerminalSpinner(const TerminalSpinner&) = delete;
   TerminalSpinner& operator=(const TerminalSpinner&) = delete;
 
-  // Switch to rolling-ticker mode: `text` is the bounded, newline-collapsed
-  // reasoning buffer, kept behind the caller's static `prefix`. Each status
-  // frame renders the prefix plus a sliding window of the buffer.
-  void SetRolling(const std::string& prefix, const std::string& text,
-                  ActivityTextTransform transform = nullptr) {
-    rolling_.store(true, std::memory_order_relaxed);
-    SetTerminalActivityRolling(activity_id_, prefix, text, transform);
-    wake_.notify_one();
-  }
-
-  // Rename the live row: what the response is waiting on has changed, and the
-  // caller has something more useful to say than the label it started with.
-  // Leaves rolling mode, so a later SetRolling re-enters it at the live edge.
+  // Rename the live row when its observed operation changes.
   void SetLabel(std::string label) {
     {
       std::lock_guard<std::mutex> lock(mutex_);
       label_ = label;
     }
-    rolling_.store(false, std::memory_order_relaxed);
     UpdateTerminalActivity(activity_id_, std::move(label));
     wake_.notify_one();
   }
@@ -206,8 +172,6 @@ class TerminalSpinner {
   uint64_t activity_id_ = 0;
   std::chrono::steady_clock::time_point started_;
   std::string label_;
-  // Set by the streaming thread, read by the animation thread every frame.
-  std::atomic<bool> rolling_{false};
   std::thread thread_;
 };
 

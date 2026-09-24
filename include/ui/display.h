@@ -190,40 +190,16 @@ inline std::string ActivityBar(const ActivityView& view) {
     suffix += " · steer:" + FmtCount(static_cast<int64_t>(view.queued));
   }
   size_t width = TerminalWidth(1);
-  // The route is the part of this row that yields when a rolling ticker wants
-  // the same columns: it never changes during a turn and the idle row names it
-  // anyway, whereas a window under roughly forty columns shows fragments of
-  // words rather than a readable phrase — and a fully qualified route id can
-  // take half a narrow terminal by itself.
-  if (!route.empty() && CurrentTerminalActivityRolling()) {
-    static constexpr size_t kReadableTicker = 32;
-    size_t taken =
-        DisplayWidth(prefix) + DisplayWidth(suffix) + DisplayWidth(route);
-    if (width < taken + kReadableTicker) route.clear();
-  }
   suffix = route + suffix;
   if (SteeringEnabled()) {
     std::string hint = " · Esc to interrupt";
-    // A rolling ticker always holds more text than fits, so it asks for
-    // the full cap instead of the width of its idle fallback label.
-    size_t desired = std::min<size_t>(
-        CurrentTerminalActivityRolling() ? 64 : DisplayWidth(state), 64);
+    size_t desired = std::min<size_t>(DisplayWidth(state), 64);
     size_t with_hint = DisplayWidth(prefix) + DisplayWidth(suffix) +
                        DisplayWidth(hint) + desired;
     if (with_hint <= width) suffix += hint;
   }
   size_t reserved = DisplayWidth(prefix) + DisplayWidth(suffix);
   size_t activity_width = width > reserved ? width - reserved : 0;
-  if (CurrentTerminalActivityRolling()) {
-    // Rolling ticker: render a sliding window of the reasoning instead of
-    // the static fallback label so it animates with the status frame.
-    // ActivityLabel is a no-op while the window fits; on a terminal too
-    // narrow even for the ticker label it bounds the row as usual.
-    return prefix +
-           ActivityLabel(RenderCurrentTerminalActivity(activity_width),
-                         activity_width) +
-           suffix;
-  }
   return prefix + ActivityLabel(state, activity_width) + suffix;
 }
 

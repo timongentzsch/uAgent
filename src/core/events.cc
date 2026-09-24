@@ -14,6 +14,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/core/activity.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
@@ -44,6 +45,8 @@ constexpr EventPolicy kPolicies[] = {
      EventRedaction::kPublicProjection},
     {EventId::kToolCall, "tool.call", "tool_call", "tool.call", "tool.call",
      EventDurability::kDurable, EventRedaction::kPublicProjection},
+    {EventId::kToolStarted, "tool.started", nullptr, nullptr, nullptr,
+     EventDurability::kTransient, EventRedaction::kNone},
     {EventId::kToolResult, "tool.result", "tool_result", "tool.result",
      "tool.result", EventDurability::kDurable,
      EventRedaction::kPublicProjection},
@@ -64,6 +67,12 @@ constexpr EventPolicy kPolicies[] = {
     {EventId::kError, "error", nullptr, "error", nullptr,
      EventDurability::kTransient, EventRedaction::kPublicProjection},
     {EventId::kResponseStarted, "response.started", nullptr, nullptr, nullptr,
+     EventDurability::kTransient, EventRedaction::kNone},
+    {EventId::kToolArguments, "response.tool_arguments", nullptr, nullptr,
+     nullptr, EventDurability::kTransient, EventRedaction::kNone},
+    {EventId::kResponseRetry, "response.retry", nullptr, nullptr, nullptr,
+     EventDurability::kTransient, EventRedaction::kNone},
+    {EventId::kActivityStatus, "activity.status", nullptr, nullptr, nullptr,
      EventDurability::kTransient, EventRedaction::kNone},
     {EventId::kReasoningDelta, "response.reasoning.delta", nullptr, nullptr,
      nullptr, EventDurability::kTransient, EventRedaction::kNone},
@@ -213,7 +222,8 @@ json AppProjection(const Event& event) {
   if (!event.data.is_null() && !event.data.is_object()) {
     data["value"] = event.data;
   }
-  if (!event.text.empty()) data["text"] = std::string(event.text);
+  if (!event.text.empty() && !data.contains("text"))
+    data["text"] = std::string(event.text);
   if (event.verbose) data["verbose"] = true;
   if (event.presentation) {
     data["presentation"] = PresentationJson(*event.presentation);
@@ -339,26 +349,14 @@ json JournalProjection(const Event& event) {
   return data;
 }
 
-// A headless child prints nothing until its final answer, so a parent that
-// delegated a long task cannot tell work from a stall. When the parent asks
-// for it, every durable event is echoed as one unbuffered stderr line: the
-// child's stderr is already dup2'd into the activity log the parent polls
-// (tools/shell.cc), so live traceability needs no second channel and no change
-// to the stdout answer contract.
-// One line per event, kept narrow enough to stay readable in a polled log.
-constexpr size_t kProgressLineChars = 120;
-
-void EchoHeadlessProgress(const Event& event, const EventPolicy& policy) {
+// Process children reuse the same caption through their existing progress
+// log. The parent exposes its latest checkpoint without a second event bus.
+void EchoHeadlessProgress(const Event& event) {
   static const bool kEnabled = HeadlessProgressEnabled();
-  if (!kEnabled || !policy.journal_type || !event.presentation) return;
-  const PresentationRecord& record = *event.presentation;
-  std::string line = record.title;
-  if (!record.summary.empty()) {
-    line += line.empty() ? record.summary : " · " + record.summary;
-  }
-  if (line.empty()) line = policy.journal_type;
+  if (!kEnabled || event.id != EventId::kActivityStatus) return;
+  const std::string line = JsonValue(event.data, "activity", "");
   fprintf(stderr, "%s%s\n", kHeadlessProgressPrefix,
-          Utf8Trunc(TerminalSafe(line), kProgressLineChars).c_str());
+          TerminalSafe(line).c_str());
 }
 
 }  // namespace
@@ -452,7 +450,8 @@ void SessionJournal::Clear() {
 }
 
 Observability::Observability()
-    : terminal_(std::make_unique<TerminalPresenter>()) {}
+    : terminal_(std::make_unique<TerminalPresenter>()),
+      activity_(std::make_unique<ActivityProjection>()) {}
 
 Observability::~Observability() {
   Shutdown();
@@ -517,10 +516,16 @@ void Observability::Emit(Event event) noexcept {
   std::lock_guard<std::recursive_mutex> delivery(delivery_mutex_);
   std::vector<std::pair<uint64_t, EventSubscriber>> subscribers;
   AppEvent app_event;
+  uint64_t activity_revision = 0;
   {
     std::lock_guard<std::mutex> lock(mutex_);
     if (shutdown_) return;
     const EventPolicy& policy = PolicyFor(event.id);
+    if (event.id == EventId::kResponseStarted && event.data.contains("turn"))
+      render_activity_ = event.render;
+    if (activity_->Consume(event.id, event.data)) {
+      activity_revision = activity_->Revision();
+    }
     if (terminal_) terminal_->Consume(event);
     if (debug_.Enabled() && policy.debug_name) {
       json data = event.data;
@@ -537,8 +542,8 @@ void Observability::Emit(Event event) noexcept {
     }
     if (policy.durability == EventDurability::kDurable) {
       journal_.Append(event, policy);
-      EchoHeadlessProgress(event, policy);
     }
+    EchoHeadlessProgress(event);
     if (!subscribers_.empty()) {
       app_event = {++app_sequence_, UtcStamp(), policy.app_type,
                    AppProjection(event),
@@ -558,6 +563,13 @@ void Observability::Emit(Event event) noexcept {
       }
     }
     subscriber(app_event);
+  }
+  // A subscriber may emit a newer lifecycle event recursively. Never publish
+  // the older projection after it. Concurrent producers hold delivery_mutex_.
+  if (activity_revision && activity_revision == activity_->Revision()) {
+    Event activity{EventId::kActivityStatus, activity_->Status()};
+    activity.render = render_activity_;
+    Emit(std::move(activity));
   }
 }
 

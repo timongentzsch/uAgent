@@ -3,6 +3,7 @@ import { Field } from "./ui.tsx";
 export const minimumZoom = 50;
 export const maximumZoom = 200;
 const conversationMeasure = 1040;
+export const zoomChanged = "uagent:zoom";
 
 export function normalizeZoom(value: number) {
   return Math.min(maximumZoom, Math.max(minimumZoom, value || 100));
@@ -15,6 +16,7 @@ export function applyZoom(value: number) {
     "--conversation-measure",
     `${(conversationMeasure * 100) / zoom}px`,
   );
+  dispatchEvent(new Event(zoomChanged));
 }
 
 export function SizeControls({

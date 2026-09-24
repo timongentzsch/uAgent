@@ -446,7 +446,9 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   int output_fd = tty ? master.Release() : pipe_read.Release();
   supervisor.RegisterIo(session, output_fd, input.Release(), log_fd, log_bytes);
 
-  TrackPid(g_child_pgids, kFgMax, pid, true);
+  // Registered for the signal handler's kill sweep from spawn onward, so a
+  // Ctrl-C at any point, including the handover below, reaches the child.
+  BgTrackSignal(pid, true);
   bool cancelled = false;
   bool handed_off = false;
   bool exited = false;
@@ -478,11 +480,8 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
         std::chrono::steady_clock::now() + std::chrono::seconds(2);
     exited = WaitForTerminal(supervisor, session, stop_deadline);
   }
-  // Joined before it is dropped, so a Ctrl-C landing in the handover still
-  // reaches the child; every path below that does not background it takes the
+  // Every path below that does not background the child takes its signal
   // registration back out.
-  BgTrackSignal(pid, true);
-  TrackPid(g_child_pgids, kFgMax, pid, false);
 
   auto finish = [&](auto build) {
     int status = 0;

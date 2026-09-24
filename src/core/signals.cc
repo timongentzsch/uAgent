@@ -24,7 +24,6 @@ volatile sig_atomic_t g_streaming = 0;
 volatile sig_atomic_t g_terminal_resized = 0;
 std::atomic_flag g_signal_abort = ATOMIC_FLAG_INIT;
 std::atomic<bool> g_thread_abort{false};
-volatile sig_atomic_t g_child_pgids[kFgMax] = {};
 volatile sig_atomic_t g_mcp_pids[kMcpMax] = {};
 volatile sig_atomic_t g_bg_pids[kBgMax] = {};
 bool g_tty = false;
@@ -273,12 +272,6 @@ void SigintHandler(int signal_number) {
     g_signal_abort.test_and_set(std::memory_order_relaxed);
     WakeDescriptor(g_abort_wake_write);
     return;
-  }
-  for (int index = 0; index < kFgMax; ++index) {
-    if (g_child_pgids[index] > 0 &&
-        kill(-static_cast<pid_t>(g_child_pgids[index]), SIGKILL) != 0) {
-      kill(static_cast<pid_t>(g_child_pgids[index]), SIGKILL);
-    }
   }
   for (int index = 0; index < kBgMax; ++index) {
     if (g_bg_pids[index] <= 0) continue;

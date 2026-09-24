@@ -74,7 +74,7 @@ test.describe("phone browser viewer", () => {
     );
     await expect(dialog.getByRole("button", { name: "Left" })).toBeVisible();
     await expect(dialog.getByRole("button", { name: "Right" })).toBeVisible();
-    for (const name of ["Keyboard", "Copy", "Paste", "Keys"])
+    for (const name of ["Keyboard", "Copy", "Paste"])
       await expect(dialog.getByRole("button", { name })).toBeVisible();
     await expect(dialog.getByRole("button", { name: "Done" })).toBeVisible();
     await page.setViewportSize({ width: 390, height: 600 });
@@ -124,7 +124,7 @@ test("watches an active agent without taking control", async ({
   await expect(
     dialog.getByRole("button", { name: "Take control" }),
   ).toBeVisible();
-  for (const name of ["Keyboard", "Copy", "Paste", "Keys"])
+  for (const name of ["Keyboard", "Copy", "Paste"])
     await expect(dialog.getByRole("button", { name })).toHaveCount(0);
   await expect(dialog.getByLabel("Browser trackpad")).toHaveCount(0);
   // Pinch belongs to the remote display only while the viewer is open.
@@ -428,8 +428,16 @@ test.describe("phone browser keyboard", () => {
     await page.getByRole("button", { name: "Open browser" }).click();
     const dialog = page.getByRole("dialog", { name: "Browser", exact: true });
     await expect(dialog.getByText("Connected", { exact: true })).toBeVisible();
+    // The arrow shrinks with the remote screen, like a native pointer.
+    const arrow = await dialog.locator(".browser-pointer").boundingBox();
+    expect(arrow.width).toBeLessThan(20);
+    expect(arrow.width).toBeGreaterThanOrEqual(9);
     await dialog.getByRole("button", { name: "Keyboard" }).click();
     await expect(dialog.getByLabel("Type into Chrome")).toBeFocused();
+    // Typing keeps the screen in view: the trackpad steps aside.
+    await expect(dialog.getByLabel("Browser trackpad")).toBeHidden();
+    await expect(dialog.getByLabel("Browser viewport")).toBeInViewport();
+    await expect(dialog.getByRole("button", { name: "Keys" })).toHaveCount(0);
     const pressed = () =>
       remote.keys.filter((key) => key.down).map((key) => key.keysym);
     await page.keyboard.insertText("Hé");

@@ -7,7 +7,6 @@ import { failure, type Report, type Session } from "../../shared/types.ts";
 import { api, command } from "../../state/api.ts";
 import RFB from "@novnc/novnc";
 import { Spinner, Input, Textarea, Select } from "../../shared/ui.tsx";
-import { MenuItem, Popover } from "../../shared/popover.tsx";
 import { ClipboardPaste, Copy, Keyboard } from "lucide-preact";
 import BrowserInput from "./input.tsx";
 import "./browser.css";
@@ -276,7 +275,7 @@ function Viewer({ report, readOnly }: { report: Report; readOnly: boolean }) {
   const keepFocus = (event: Event) => event.preventDefault();
 
   return (
-    <div class="browser-viewer">
+    <div class={`browser-viewer${typing ? " typing" : ""}`}>
       <BrowserInput
         screen={screen}
         target={target}
@@ -326,55 +325,6 @@ function Viewer({ report, readOnly }: { report: Report; readOnly: boolean }) {
             >
               <ClipboardPaste aria-hidden="true" /> Paste
             </button>
-            <Popover
-              label="Keys"
-              trigger={<span>Keys</span>}
-              buttonClass="quiet"
-              side="top"
-              disabled={!live}
-              menu
-            >
-              {(close) => (
-                <>
-                  {Object.entries(SPECIAL_KEYS).map(([name, [label, sym]]) => (
-                    <MenuItem
-                      key={name}
-                      aria-label={name.replace("Arrow", "Arrow ")}
-                      onClick={() => {
-                        key(sym, name);
-                        close();
-                      }}
-                    >
-                      {label}
-                    </MenuItem>
-                  ))}
-                  <MenuItem
-                    onClick={() => {
-                      chord(X11_KEYSYM.l, "KeyL");
-                      close();
-                    }}
-                  >
-                    Address bar
-                  </MenuItem>
-                  <MenuItem
-                    onClick={() => {
-                      chord(X11_KEYSYM.a, "KeyA");
-                      close();
-                    }}
-                  >
-                    Select all
-                  </MenuItem>
-                  <MenuItem
-                    onClick={() => {
-                      setShowText(true);
-                      close();
-                    }}
-                  >
-                    Send text…
-                  </MenuItem>
-                </>
-              )}
-            </Popover>
           </>
         )}
       </div>

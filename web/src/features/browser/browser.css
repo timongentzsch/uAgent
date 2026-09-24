@@ -137,18 +137,29 @@
 .browser-key-actions > button {
   flex: 1 1 auto;
 }
-/* Shown while the on-screen keyboard is open, directly above it. */
+/* While the on-screen keyboard is open it covers the lower half of the
+   device: the screen stays in view with the special keys under it, and the
+   trackpad steps aside until typing ends. */
 .browser-key-actions {
+  order: 2;
+}
+.browser-viewer.typing .browser-trackpad,
+.browser-viewer.typing .browser-text-panel,
+.browser-panel:has(> .browser-viewer.typing) > :not(.browser-viewer) {
+  display: none;
+}
+.browser-viewer.typing .browser-view-controls {
   order: 3;
 }
 .browser-viewer > [role="status"] {
   order: 5;
 }
 /* Focus target that opens the on-screen keyboard: focusable, invisible and
-   never hit-tested. The shared field keeps its 16px focus floor on touch. */
+   never hit-tested. It sits at the top so focusing it scrolls the screen, not
+   the trackpad, into view. The shared field keeps its 16px focus floor on touch. */
 .browser-keyboard-input {
   position: absolute;
-  bottom: 0;
+  top: 0;
   left: 0;
   width: 1px;
   opacity: 0;

@@ -3,6 +3,11 @@ import { useEffect, useRef } from "preact/hooks";
 import BrowserTrackpad from "./trackpad.tsx";
 import BrowserViewport from "./viewport.tsx";
 
+// The arrow's size in remote pixels, as Chrome draws its own pointer.
+const POINTER_WIDTH = 20;
+const POINTER_HEIGHT = 24;
+const POINTER_MIN_SCALE = 0.45;
+
 export default function BrowserInput({
   screen,
   target,
@@ -60,6 +65,14 @@ export default function BrowserInput({
     const point = pointerPoint();
     if (!point || !marker.current) return;
     marker.current.style.transform = `translate(${point.x - point.visible.left}px, ${point.y - point.visible.top}px)`;
+    // Drawn at the remote cursor's own size, so it shrinks with the screen
+    // like a native pointer; the floor keeps it findable on a phone.
+    const scale = Math.min(
+      1,
+      Math.max(POINTER_MIN_SCALE, point.rect.width / point.element.width),
+    );
+    marker.current.style.width = `${POINTER_WIDTH * scale}px`;
+    marker.current.style.height = `${POINTER_HEIGHT * scale}px`;
     // At framebuffer edges the hotspot must still reach the last pixel. Turn
     // the arrow inward there instead of clipping its entire shape offscreen.
     const { width, height } = marker.current.getBoundingClientRect();

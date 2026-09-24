@@ -72,7 +72,7 @@ constexpr SlashCommandSpec kSlashCommands[] = {
      "rewind this conversation to user turn N", false},
     {SlashCommandId::kShare, "/share", "", "export transcript as markdown",
      false},
-    {SlashCommandId::kPermissions, "/permissions", "[default|ask|yolo]",
+    {SlashCommandId::kPermissions, "/permissions", "[default|ask|auto|yolo]",
      "show or change permission mode", false},
     {SlashCommandId::kPrompt, "/prompt",
      "[show|edit|set|reset] [--scope global|project|conversation] [--mode "
@@ -172,6 +172,24 @@ ParsedSlashCommand ParseSlashCommand(const std::string& input) {
     }
   }
   return {};
+}
+
+ForkArgument ParseForkArgument(const std::string& argument) {
+  const std::string rest = Trim(argument);
+  auto number = [](const std::string& text) {
+    return !text.empty() && text.size() <= 9 &&
+           std::all_of(text.begin(), text.end(), ::isdigit);
+  };
+  ForkArgument fork{rest};
+  size_t at = rest.rfind(" @");
+  if (at == std::string::npos && rest.starts_with('@')) at = 0;
+  if (at != std::string::npos) {
+    const std::string tail = Trim(rest.substr(at + (at == 0 ? 1 : 2)));
+    if (number(tail)) fork = {Trim(rest.substr(0, at)), std::stoll(tail)};
+  } else if (number(rest)) {
+    fork = {"", std::stoll(rest)};
+  }
+  return fork;
 }
 
 void PrintCommandHelp() {

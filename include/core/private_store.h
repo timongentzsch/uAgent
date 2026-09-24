@@ -1,7 +1,7 @@
 // Copyright 2026 Timon Gentzsch
 
-#ifndef UAGENT_INCLUDE_APP_PRIVATE_STORE_H_
-#define UAGENT_INCLUDE_APP_PRIVATE_STORE_H_
+#ifndef UAGENT_INCLUDE_CORE_PRIVATE_STORE_H_
+#define UAGENT_INCLUDE_CORE_PRIVATE_STORE_H_
 
 #include <cstddef>
 #include <string>
@@ -34,4 +34,4 @@ class PrivateJsonStore {
 
 }  // namespace uagent
 
-#endif  // UAGENT_INCLUDE_APP_PRIVATE_STORE_H_
+#endif  // UAGENT_INCLUDE_CORE_PRIVATE_STORE_H_

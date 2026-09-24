@@ -1,6 +1,6 @@
 // Copyright 2026 Timon Gentzsch
 
-#include "include/app/private_store.h"
+#include "include/core/private_store.h"
 
 #include <fcntl.h>
 #include <sys/stat.h>

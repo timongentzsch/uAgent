@@ -107,6 +107,7 @@ add_library(
   src/core/fs.cc
   src/core/library.cc
   src/core/platform_posix.cc
+  src/core/private_store.cc
   src/core/sandbox.cc
   src/core/sandbox_posix.cc
   src/core/signals.cc
@@ -210,7 +211,6 @@ add_library(
   src/app/library.cc
   src/app/prompt_control.cc
   src/app/permissions.cc
-  src/app/private_store.cc
   src/app/tool_categories.cc
   src/app/control.cc
   src/app/schedule.cc

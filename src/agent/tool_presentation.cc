@@ -57,6 +57,7 @@ PresentationRecord ToolCallPresentation(const CallTask& task,
   record.skill = task.tool && task.tool->name == "skill";
   record.poll =
       IsActivityPoll(task);  // outcome unknown until result; see below
+  record.view = ToolView(task.tool, task.args);
   SetCallLabel(record, task.label);
   return record;
 }
@@ -68,6 +69,7 @@ PresentationRecord ToolCallPresentation(const std::string& name,
   CallTask task;
   task.tool = FindTool(tools, name);
   task.ordinal = ordinal;
+  task.args = arguments;
   task.label = task.tool && arguments.is_object()
                    ? ToolSummary(*task.tool, arguments)
                    : (arguments.is_string() ? arguments.get<std::string>()
@@ -124,6 +126,7 @@ json ToolReplayJson(const PresentationRecord& record) {
   json value = {{"title", record.title},
                 {"summary", record.summary},
                 {"poll", record.poll}};
+  if (!record.view.is_null()) value["view"] = record.view;
   if (record.multiline) {
     value["multiline"] = true;
     value["detail"] = Utf8Trunc(record.detail, kReplayDetailChars);

@@ -16,6 +16,7 @@
 #include "include/core/fs.h"
 #include "include/core/limits.h"
 #include "include/core/strings.h"
+#include "include/tools/tool.h"
 
 namespace uagent {
 namespace {
@@ -429,6 +430,16 @@ json DisplayBlock(const Conversation& conversation, uint64_t sequence,
         // replay facts fall back to the legacy synthesis in the presenter.
         if (detail.contains("call_replay")) {
           tool["replay"] = detail["call_replay"];
+        }
+        // Calls recorded before views existed get the generic one.
+        const json replay = JsonValue(detail, "call_replay", json::object());
+        if (const json* recorded = JsonObject(replay, "view")) {
+          tool["view"] = *recorded;
+        } else {
+          const std::string raw = JsonValue(function, "arguments", "");
+          json parsed = json::parse(raw, nullptr, false);
+          tool["view"] =
+              ToolView(nullptr, parsed.is_discarded() ? json(raw) : parsed);
         }
         if (detail.contains("exchange_path")) {
           tool["exchange_path"] = detail["exchange_path"];

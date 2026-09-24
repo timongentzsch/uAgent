@@ -34,7 +34,6 @@ import {
   formatTime,
   isRunningStatus,
   statusLine,
-  stringifyArgs,
 } from "../../shared/display.ts";
 
 // Inline @-mention reference. Resolves against the message's own files so
@@ -147,11 +146,6 @@ function MessageView({
     session.id,
     retry,
   ]);
-  const argumentsText = stringifyArgs(block.arguments);
-  const input = useMemo(
-    () => (expanded ? cleanText(argumentsText) : ""),
-    [expanded, argumentsText],
-  );
   const output = useMemo(
     () => (expanded ? cleanText(text) : ""),
     [expanded, text],
@@ -289,8 +283,6 @@ function MessageView({
                 subtitle={row.subtitle}
                 running={running}
                 diffOnly={row.diffOnly}
-                argumentsText={argumentsText}
-                input={input}
                 output={output}
                 text={text}
                 expanding={expanding}
@@ -456,6 +448,7 @@ function messagePropsEqual(before: MessageProps, after: MessageProps): boolean {
     (x.files?.length || 0) === (y.files?.length || 0) &&
     (x.http?.length || 0) === (y.http?.length || 0) &&
     x.arguments === y.arguments &&
+    x.view === y.view &&
     x.summary === y.summary &&
     x.compaction === y.compaction &&
     x.memory === y.memory &&

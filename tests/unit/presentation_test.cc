@@ -343,6 +343,34 @@ void TestReplayBlocksMirrorLiveRows() {
   CHECK(drawn.find("read_path \u00b7 success") != std::string::npos);
 }
 
+// Every client renders one vocabulary; the shapes below are that contract.
+void TestToolViews() {
+  // The generic view: short scalars are fields, long text is code, nested
+  // values are indented JSON, and display labels are never repeated.
+  json view = ToolView(nullptr, {{"path", "a.txt"},
+                                 {"limit", 20},
+                                 {"intent", "read"},
+                                 {"body", "one\ntwo"},
+                                 {"edits", json::array({{{"old", "x"}}})}});
+  CHECK(view["output"] == "text");
+  const json& input = view["input"];
+  CHECK(input[0]["kind"] == "fields");
+  CHECK(input[0]["rows"].size() == 2);
+  CHECK(input.dump().find("intent") == std::string::npos);
+  CHECK(input[1]["kind"] == "code" && input[1]["label"] == "body" &&
+        input[1]["text"] == "one\ntwo");
+  CHECK(input[2]["language"] == "json");
+  // A shell line is shown verbatim, never as escaped JSON.
+  Tool run;
+  run.present = [](const json& a) {
+    return json::array({CommandPart(JsonValue(a, "command", ""))});
+  };
+  const std::string command = R"(psql -c "SELECT 'x'")";
+  CHECK(ToolView(&run, {{"command", command}})["input"][0]["text"] == command);
+  // Unparseable arguments still render, as the raw text.
+  CHECK(ToolView(nullptr, json("{broken"))["input"][0]["text"] == "{broken");
+}
+
 void TestDiffLineColoring() {
   const std::string diff =
       "target: /tmp/config\n\n--- /tmp/config\n+++ /tmp/config\n"

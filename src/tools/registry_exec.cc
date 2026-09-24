@@ -101,6 +101,13 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
       {"type", json::array({"string", "null"})},
       {"description",
        "Optional short action label, e.g. Running tests. Display only."}};
+  run.present = [](const json& a) {
+    json parts = json::array({CommandPart(JsonValue(a, "command", ""))});
+    for (json& part : GenericInputParts(a, {"command"})) {
+      parts.push_back(std::move(part));
+    }
+    return parts;
+  };
   run.parameters["properties"]["description"] = description_schema;
 
   // ToolRunScratch runs a .py under uv when it is there and falls back to

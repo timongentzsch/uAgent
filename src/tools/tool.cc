@@ -380,6 +380,67 @@ std::string ToolSummary(const Tool& t, const json& args) {
   return JsonDump(args);
 }
 
+json CommandPart(std::string text) {
+  return {{"kind", "command"}, {"text", Utf8Trunc(text, kPreviewChars)}};
+}
+
+json CodePart(std::string text, std::string language, std::string label) {
+  json part = {{"kind", "code"},
+               {"text", Utf8Trunc(text, kPreviewChars)},
+               {"language", std::move(language)}};
+  if (!label.empty()) part["label"] = std::move(label);
+  return part;
+}
+
+json GenericInputParts(const json& args,
+                       std::initializer_list<std::string_view> skip) {
+  json parts = json::array();
+  if (!args.is_object()) {
+    if (!args.is_null()) {
+      parts.push_back(
+          CodePart(args.is_string() ? args.get<std::string>() : args.dump(2),
+                   args.is_string() ? "" : "json"));
+    }
+    return parts;
+  }
+  constexpr size_t kFieldChars = 160;
+  json rows = json::array();
+  for (const auto& [key, value] : args.items()) {
+    if (key == "intent" || key == "description" || value.is_null() ||
+        std::find(skip.begin(), skip.end(), key) != skip.end()) {
+      continue;
+    }
+    if (value.is_string()) {
+      const std::string& text = value.get_ref<const std::string&>();
+      if (text.size() <= kFieldChars && text.find('\n') == std::string::npos) {
+        rows.push_back(json::array({key, text}));
+      } else {
+        parts.push_back(CodePart(text, "", key));
+      }
+    } else if (value.is_primitive()) {
+      rows.push_back(json::array({key, value.dump()}));
+    } else {
+      std::string text = value.dump(2);
+      if (text.size() <= kFieldChars && text.find('\n') == std::string::npos) {
+        rows.push_back(json::array({key, std::move(text)}));
+      } else {
+        parts.push_back(CodePart(std::move(text), "json", key));
+      }
+    }
+  }
+  if (!rows.empty()) {
+    parts.insert(parts.begin(),
+                 json{{"kind", "fields"}, {"rows", std::move(rows)}});
+  }
+  return parts;
+}
+
+json ToolView(const Tool* tool, const json& args) {
+  return {{"input", tool && tool->present ? tool->present(args)
+                                          : GenericInputParts(args)},
+          {"output", tool && tool->markdown_output ? "markdown" : "text"}};
+}
+
 const Tool* FindTool(const std::vector<Tool>& tools, const std::string& name) {
   for (auto& t : tools) {
     if (t.name == name) return &t;

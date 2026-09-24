@@ -10,6 +10,7 @@ namespace uagent {
   X(TestBrowserProfileSignIn)                    \
   X(TestForeignToolMarkup)                       \
   X(TestToolResults)                             \
+  X(TestToolViews)                               \
   X(TestRegistries)                              \
   X(TestCommandAndDisplayRegistries)             \
   X(TestModelCatalogParsing)                     \

@@ -1041,6 +1041,7 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
     return "[" + label + "] " + prompt;
   };
   tool.summary = describe;
+  tool.markdown_output = true;
   // The summary names the model and the brief; what it cannot show is the
   // authority handed over with them. The child runs with automatic approvals,
   // so approving the spawn approves every tool call that child then decides

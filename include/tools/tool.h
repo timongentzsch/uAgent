@@ -9,9 +9,11 @@
 #include <chrono>
 #include <cstdint>
 #include <functional>
+#include <initializer_list>
 #include <map>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -145,6 +147,9 @@ struct Tool {
   // Full, possibly multi-line text shown only when asking a person to approve
   // this call. `summary` stays a one-liner for labels, traces and evidence.
   using Preview = std::function<std::string(const json&)>;
+  // How a call's input reads to a person, as ToolView parts. Unset means the
+  // generic view: short strings and scalars as fields, long text as code.
+  using Present = std::function<json(const json&)>;
 
   std::string name;
   std::string title;     // short human label, derived from name by default
@@ -155,9 +160,11 @@ struct Tool {
   bool declared_intent = false;  // presentation only, never authority
   Approval mutates;  // argument-dependent mutation (e.g. memory save)
   Run run;
-  Canonicalize canonicalize;  // materialized provider args -> operation args
-  Validate validate;          // semantic issue before approval/execution
-  Summary summary;            // args -> one-line display
+  Canonicalize canonicalize;     // materialized provider args -> operation args
+  Validate validate;             // semantic issue before approval/execution
+  Summary summary;               // args -> one-line display
+  Present present;               // args -> ToolView input parts
+  bool markdown_output = false;  // the result reads as Markdown, not a log
   bool redact_invalid_arguments = false;  // hide raw rejected arguments
   bool parallel_safe = false;             // safe beside another tool call
   uint32_t capabilities = kAllToolCapabilities;  // required to expose
@@ -255,6 +262,22 @@ json ToolParameters(const Tool& tool);
 // common case), else the raw args. Shared by the approval prompt and the
 // call trace so both name the same action the same way.
 std::string ToolSummary(const Tool& t, const json& args);
+
+// What every client renders for a call, from a closed vocabulary:
+//   {"input": [part...], "output": "text" | "markdown"}
+// where a part is one of
+//   {"kind": "command", "text"}                  a shell line, verbatim
+//   {"kind": "code", "text", "language", "label"} a body: script, JSON, prose
+//   {"kind": "fields", "rows": [[label, value]]}  small scalar arguments
+// The result itself is the tool message (or its diff), so it is not repeated
+// here. `tool` may be null for a call whose tool is gone: the generic view.
+json ToolView(const Tool* tool, const json& args);
+json CommandPart(std::string text);
+json CodePart(std::string text, std::string language, std::string label = "");
+// Generic parts for `args`, leaving out `skip` (arguments another part or the
+// result already shows). Labels (`intent`, `description`) are never repeated.
+json GenericInputParts(const json& args,
+                       std::initializer_list<std::string_view> skip = {});
 
 const Tool* FindTool(const std::vector<Tool>& tools, const std::string& name);
 

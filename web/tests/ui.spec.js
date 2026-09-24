@@ -946,6 +946,13 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
       call_id: "fixture",
       detail_id: "t-fixture",
       arguments: { query: "a test query" },
+      view: {
+        input: [
+          { kind: "command", text: `psql -c "SELECT 'x'"` },
+          { kind: "fields", rows: [["query", "a test query"]] },
+        ],
+        output: "text",
+      },
       text: "short preview",
       reasoning: "Closed rich reasoning: $$x^2 + y^2$$",
       status: "success",
@@ -1113,6 +1120,11 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
   await tool.getByRole("button", { name: "Retry", exact: true }).click();
   await expect(tool.locator(".tool-body")).toContainText("END OF FULL RESULT");
   expect(requests).toBe(3);
+  // The native view reads as typed: the command verbatim, never escaped JSON.
+  await expect(tool.locator(".tool-command")).toHaveText(
+    `psql -c "SELECT 'x'"`,
+  );
+  await expect(tool.locator(".tool-fields dd")).toHaveText("a test query");
   await expect(tool.locator(".thinking .markdown")).toHaveCount(0);
   await expect(tool.locator(".katex")).toHaveCount(0);
   await toggle.click();

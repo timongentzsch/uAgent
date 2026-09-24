@@ -147,7 +147,11 @@ export function liveBlocks(events: HostEvent[], prior: Block[] = []): Block[] {
       update(
         index,
         event.type === "tool.call"
-          ? { activity: data.activity, arguments: data.arguments }
+          ? {
+              activity: data.activity,
+              arguments: data.arguments,
+              view: data.view,
+            }
           : {
               activity: data.activity,
               text:

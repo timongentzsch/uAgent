@@ -92,7 +92,17 @@ export interface ToolCall {
   detail_id?: string;
   name: string;
   arguments?: JSONValue;
+  view?: ToolView;
   status?: string;
+}
+// How a call reads, built natively by each tool (see ToolView in tool.h).
+export type ToolPart =
+  | { kind: "command"; text: string }
+  | { kind: "code"; text: string; language?: string; label?: string }
+  | { kind: "fields"; rows: [string, string][] };
+export interface ToolView {
+  input: ToolPart[];
+  output: "text" | "markdown";
 }
 export interface TurnSummary {
   usage_reported?: boolean;
@@ -154,6 +164,7 @@ export interface Block {
   call_id?: string;
   name?: string;
   arguments?: JSONValue;
+  view?: ToolView;
   detail_id?: string;
   status?: string;
   error?: string;
@@ -409,6 +420,7 @@ export interface EventData extends Omit<Partial<Exchange>, "status"> {
   attempt?: number;
   name?: string;
   arguments?: JSONValue;
+  view?: ToolView;
   result?: JSONValue;
   preview_truncated?: boolean;
   completion_status?: string;

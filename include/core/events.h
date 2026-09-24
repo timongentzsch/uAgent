@@ -104,6 +104,8 @@ struct PresentationRecord {
   // the scrollback rather than reading as one more tool row.
   bool skill = false;
   bool poll = false;  // bare activity-tool check, no interaction sent
+  // A call's ToolView: how its input reads, and how to render its result.
+  json view = nullptr;
   // Routine detail a client shows only when asked for the full picture.
   bool minor = false;
   // The result text the model received, for a client that expands results.

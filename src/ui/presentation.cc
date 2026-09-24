@@ -334,6 +334,7 @@ void TerminalPresenter::Consume(const AppEvent& received) noexcept {
       record.poll = JsonValue(*value, "poll", false);
       record.minor = JsonValue(*value, "minor", false);
       record.output = JsonValue(*value, "output", "");
+      record.view = JsonValue(*value, "view", json(nullptr));
       record.activity = JsonValue(*value, "activity", json::object());
       if (const json* artifacts = JsonArray(*value, "artifacts")) {
         for (const auto& artifact : *artifacts) {
@@ -382,6 +383,7 @@ void TerminalPresenter::Block(const json& block) {
         record.multiline = JsonValue(*replay, "multiline", false);
         record.skill = JsonValue(tool, "name", "") == "skill";
         record.poll = JsonValue(*replay, "poll", false);
+        record.view = JsonValue(tool, "view", json(nullptr));
         PrintPresentation(record, detailed_);
       }
     }
@@ -432,6 +434,34 @@ void TerminalPresenter::Finish() noexcept {
   state_.reset();
 }
 
+namespace {
+// The terminal spelling of a ToolView's input parts, the same vocabulary the
+// browser renders: a command after "$", code as-is, fields as "label: value".
+std::string InputPartsText(const json& view) {
+  std::string text;
+  const json* parts = JsonArray(view, "input");
+  if (!parts) return text;
+  for (const json& part : *parts) {
+    const std::string kind = JsonValue(part, "kind", "");
+    if (kind == "command") {
+      text += "$ " + JsonValue(part, "text", "") + "\n";
+    } else if (kind == "code") {
+      const std::string label = JsonValue(part, "label", "");
+      if (!label.empty()) text += label + ":\n";
+      text += JsonValue(part, "text", "") + "\n";
+    } else if (const json* rows = JsonArray(part, "rows")) {
+      for (const json& row : *rows) {
+        if (row.is_array() && row.size() == 2) {
+          text += row[0].get<std::string>() + ": " + row[1].get<std::string>() +
+                  "\n";
+        }
+      }
+    }
+  }
+  return text;
+}
+}  // namespace
+
 void PrintPresentation(const PresentationRecord& record,
                        bool detailed) noexcept {
   if (record.kind == PresentationKind::kNotice) {
@@ -462,6 +492,12 @@ void PrintPresentation(const PresentationRecord& record,
       body += '(' + TerminalSafe(record.summary) + ')';
     }
     WriteTerminalRecord(StyledBlock(body, BOLD()));
+    if (detailed) {
+      const std::string input = InputPartsText(record.view);
+      if (!input.empty()) {
+        WriteTerminalRecord(StyledBlock(TerminalSafe(input), DIM()));
+      }
+    }
     return;
   }
   if (record.kind != PresentationKind::kToolResult) return;

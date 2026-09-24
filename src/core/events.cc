@@ -200,6 +200,7 @@ json PresentationJson(const PresentationRecord& record) {
     value["change"] = record.change;
   }
   if (!record.output.empty()) value["output"] = record.output;
+  if (!record.view.is_null()) value["view"] = record.view;
   if (record.minor) value["minor"] = true;
   AddArtifacts(value, record.artifacts);
   return value;

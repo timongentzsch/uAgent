@@ -142,7 +142,7 @@ def test_sudo_uses_shared_approval_and_sandbox_policy(root, home, *, binary):
                     code, transcript = run_pty(
                         ws,
                         env,
-                        [(b"go\n", b"allow run? [y/N] "), (b"y\n", b"policy-ok"), b"", b"/q\n"],
+                        [(b"go\n", b"Allow run?  [y] Allow"), (b"y\n", b"policy-ok"), b"", b"/q\n"],
                         timeout=30,
                         binary=binary,
                     )
@@ -375,7 +375,7 @@ def test_sandbox_escape_hatch_runs_unconfined_when_approved(root, home, *, binar
             # composer is still reading until `Confirm` takes over, so a "y"
             # typed on the headline is captured as steering and the child then
             # blocks on an answer that has already been consumed.
-            [(b"go\n", b"allow run? [y/N] "), (b"y\n", b"hatch-ok"), b"", b"/q\n"],
+            [(b"go\n", b"Allow run?  [y] Allow"), (b"y\n", b"hatch-ok"), b"", b"/q\n"],
             timeout=30,
             binary=binary,
         )

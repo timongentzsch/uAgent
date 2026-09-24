@@ -129,7 +129,7 @@ bool ResolveProjectTrust(const Options& options, bool& trusted,
     } else {
       trusted = Confirm(
           {.kind = "project.trust",
-           .prompt = "Trust this workspace's " + surfaces + "? [y/N] ",
+           .prompt = "Trust this workspace's " + surfaces + "?",
            .options = json::array({{{"value", "y"}, {"label", "Trust"}},
                                    {{"value", "n"}, {"label", "Decline"}}})});
       if (trusted && !TrustProjectConfig(error, &trusted_snapshot)) {
@@ -345,11 +345,9 @@ Agent::Approver MakeApprover(AppContext* app) {
                                  : json::array({"once", "session", "repository",
                                                 "no", "guidance"})}}});
       if (!app->channel) {
-        std::string headline = "allow " + TerminalSafe(tool.name) + RST();
-        if (mandatory) headline += " \u2014 " + reason;
-        std::string styled_payload = ColorizeDiffLines(payload);
-        fprintf(stdout, "%s%s\n%s\n%s\n", YEL(), headline.c_str(),
-                styled_payload.c_str(), RST());
+        if (mandatory)
+          fprintf(stdout, "%s%s%s\n", YEL(), reason.c_str(), RST());
+        fprintf(stdout, "%s\n", ColorizeDiffLines(payload).c_str());
       }
       if (mandatory && !InteractiveApprovalAvailable()) {
         fprintf(stdout,
@@ -358,27 +356,20 @@ Agent::Approver MakeApprover(AppContext* app) {
                 RED(), RST());
         granted = false;
       } else if (mandatory) {
-        std::string question = std::string(YEL()) + "allow " +
-                               TerminalSafe(tool.name) + "? [y/N] " + RST();
         granted = Confirm(
             {.id = request_id,
              .kind = "approval",
-             .prompt = std::move(question),
+             .prompt = "Allow " + TerminalSafe(tool.name) + "?",
              .options = json::array({{{"value", "y"}, {"label", "Allow"}},
                                      {{"value", "n"}, {"label", "Deny"}}})});
       } else {
         // Anything else is guidance: denied, and queued as steering.
-        std::string question =
-            std::string(YEL()) + "allow " + TerminalSafe(tool.name) +
-            "? [y] once  [s] session  [a] repository  [n] no — or say what "
-            "to do instead: " +
-            RST();
         bool cancelled = false;
         bool eof = false;
         std::string answer = Trim(ReadChoiceLine(
             {.id = request_id,
              .kind = "approval",
-             .prompt = std::move(question),
+             .prompt = "Allow " + TerminalSafe(tool.name) + "?",
              .options = json::array(
                  {{{"value", "y"}, {"label", "Allow once"}},
                   {{"value", "s"}, {"label", "Allow for this session"}},

@@ -160,10 +160,7 @@ test("background completion badges while unfollowed, cleared on jump", async ({
   await expect(page.locator(".decision")).toContainText("BROWSER_ACTIVITY", {
     timeout: 30000,
   });
-  await page.getByLabel("Response", { exact: true }).selectOption("y");
-  await page
-    .getByRole("button", { name: "Send response", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Allow once", exact: true }).click();
   await expect(page.locator(".tool-disclosure").first()).toBeVisible({
     timeout: 30000,
   });

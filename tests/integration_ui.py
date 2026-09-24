@@ -61,7 +61,7 @@ def test_yolo_toggle_refreshes_approval_state(root, home, *, binary):
         assert_true(result.returncode == 0, (result.stdout, result.stderr))
         assert_true("env-on-ok" in result.stdout, result.stdout)
         assert_true("env-off-ok" in result.stdout, result.stdout)
-        assert_true(result.stdout.count("allow run?") == 1, result.stdout)
+        assert_true(result.stdout.count("Allow run?") == 1, result.stdout)
         assert_true(len(server.requests) == 4, server.requests)
 
 
@@ -349,7 +349,7 @@ def test_input_redraw_approval_does_not_pollute_history(root, home, *, binary):
             root,
             base_env(home, server.url),
             [
-                (b"go\n", b"allow run?"),
+                (b"go\n", b"Allow run?"),
                 (b"y\n", b"approval-done"),
                 # The idle status carries the route in schema form and the
                 # context window beside what is used.
@@ -941,7 +941,7 @@ def test_cli_fork_does_not_inherit_remembered_approvals(root, home, *, binary):
             binary=binary,
         )
         assert_true(result.returncode == 0, result.stderr)
-        assert_true(result.stdout.count("allow write_file?") == 2, result.stdout)
+        assert_true(result.stdout.count("Allow write_file?") == 2, result.stdout)
         assert_true(
             (root / "first.txt").exists() and not (root / "second.txt").exists(),
             "fork inherited an approval grant",

@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <cstdio>
 #include <cstring>
 #include <iostream>
@@ -242,6 +243,24 @@ std::string UserEchoRow(const std::string& prompt, const std::string& text) {
   return row + EraseToEol() + RST();
 }
 
+std::string DecisionPrompt(const std::string& prompt, const json& options) {
+  std::string hints;
+  bool guidance = false;
+  for (const json& option : options) {
+    std::string value = JsonValue(option, "value", "");
+    if (value == "guidance") {
+      guidance = true;
+    } else if (value.size() == 1 &&
+               std::isalpha(static_cast<unsigned char>(value[0]))) {
+      hints += "  [" + value + "] " + JsonValue(option, "label", "");
+    } else {
+      return prompt;
+    }
+  }
+  if (guidance) hints += " \u2014 or type what to do instead";
+  return prompt + hints;
+}
+
 std::string ReadInteraction(InteractionRequest request, bool* eof) {
   static std::atomic<uint64_t> sequence{0};
   if (request.id.empty()) {
@@ -263,7 +282,8 @@ std::string ReadInteraction(InteractionRequest request, bool* eof) {
     *eof = !EditExternalText(answer, STDIN_FILENO, kAdaptiveSystemBytes);
   } else {
     ScopedCookedInput cooked_input;
-    fputs(request.prompt.c_str(), stdout);
+    fputs((DecisionPrompt(request.prompt, request.options) + " ").c_str(),
+          stdout);
     fputs(request.initial.c_str(), stdout);
     fflush(stdout);
     if (!std::getline(std::cin, answer)) {

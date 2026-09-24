@@ -194,11 +194,7 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
   // Waiting for a person keeps the runtime active without a running pulse.
   await expect(page.locator(".composer .status-led.active")).toBeVisible();
   await expect(page.locator(".decision")).toContainText("browser-proof.txt");
-  await expect(page.getByLabel("Response", { exact: true })).toHaveValue("n");
-  await page.getByLabel("Response", { exact: true }).selectOption("y");
-  await page
-    .getByRole("button", { name: "Send response", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Allow once", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Needs your decision" }),
   ).toHaveCount(0);

@@ -243,7 +243,12 @@ export interface Pending {
   initial?: string;
   prompt?: string;
   options?: (string | { value: string; label?: string; title?: string })[];
-  approval?: { tool: string; mandatory_human?: boolean; preview?: string };
+  approval?: {
+    tool: string;
+    mandatory_human?: boolean;
+    mandatory_reason?: string;
+    preview?: string;
+  };
 }
 export interface Permissions {
   mode: string;

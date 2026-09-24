@@ -186,14 +186,6 @@ class Terminal {
             description = JsonValue(*approval, "mandatory_reason", "") + "\n" +
                           JsonValue(*approval, "preview", "") + "\n";
           }
-          if (const json* options = JsonArray(pending, "options")) {
-            for (const auto& option : *options) {
-              if (option.is_object()) {
-                description += JsonValue(option, "value", "") + " · " +
-                               JsonValue(option, "label", "") + "\n";
-              }
-            }
-          }
           if (raw_) {
             Unmount();
             output_.Write(ColorizeDiffLines(TerminalSafe(description)));
@@ -202,19 +194,20 @@ class Terminal {
             fputs(TerminalSafe(description).c_str(), stdout);
           }
         }
+        const std::string prompt = TerminalSafe(
+            DecisionPrompt(JsonValue(pending, "prompt", ""),
+                           JsonValue(pending, "options", json::array())));
         if (raw_) {
           Unmount();
           if (!decision.empty()) {
             draft_ = composer_.Buffer();
-            output_.Write(TerminalSafe(JsonValue(pending, "prompt", "")) +
-                          "\n");
+            output_.Write(prompt + "\n");
             composer_.Mount("> ", JsonValue(pending, "initial", ""), false);
           } else {
             composer_.Mount(InputPrompt(), draft_);
           }
         } else if (!decision.empty()) {
-          printf("%s\n",
-                 TerminalSafe(JsonValue(pending, "prompt", "")).c_str());
+          printf("%s\n", prompt.c_str());
         }
       }
       if (!(waits[0].revents & (POLLIN | POLLHUP)) &&

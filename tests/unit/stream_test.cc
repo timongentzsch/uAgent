@@ -11,7 +11,6 @@
 #include "include/agent/jobs.h"
 #include "include/agent/process.h"
 #include "include/agent/tool_presentation.h"
-#include "include/api/openai_stream.h"
 #include "include/api/retry.h"
 #include "include/core/activity.h"
 #include "include/core/term.h"
@@ -21,6 +20,14 @@
 #include "tests/unit/test_support.h"
 
 namespace uagent {
+namespace {
+WireStreamDelta DecodeChatEvent(std::string_view data, ChatResult& result,
+                                std::map<int, ToolCall>& calls) {
+  WireStreamState state;
+  return DecodeWireStreamEvent(WireApi::kChatCompletions, data, result, calls,
+                               state);
+}
+}  // namespace
 
 void TestReasoningPartReconciliation() {
   ChatResult result;
@@ -210,36 +217,36 @@ void TestSseChunkPartitions() {
                     {{"type", "reasoning.encrypted"}, {"data", data}}})}}}}}}});
   };
   WireStreamDelta first_details =
-      DecodeOpenAiStreamEvent(reasoning_event("one", "a"), unindexed, no_calls);
-  WireStreamDelta second_details = DecodeOpenAiStreamEvent(
-      reasoning_event(" two", "b"), unindexed, no_calls);
+      DecodeChatEvent(reasoning_event("one", "a"), unindexed, no_calls);
+  WireStreamDelta second_details =
+      DecodeChatEvent(reasoning_event(" two", "b"), unindexed, no_calls);
   CHECK(first_details.reasoning == "one");
   CHECK(second_details.reasoning == " two");
   CHECK(unindexed.reasoning_details.size() == 2);
   CHECK(unindexed.reasoning_details[0]["text"] == "one two");
   CHECK(unindexed.reasoning_details[1]["data"] == "ab");
 
-  WireStreamDelta summary_delta = DecodeOpenAiStreamEvent(
+  WireStreamDelta summary_delta = DecodeChatEvent(
       R"({"choices":[{"delta":{"reasoning_details":[{"type":"reasoning.summary","summary":"Summary chunk"}]}}]})",
       unindexed, no_calls);
   CHECK(summary_delta.reasoning == "Summary chunk");
   CHECK(unindexed.reasoning_details.size() == 3);
 
   ChatResult aliased_reasoning;
-  WireStreamDelta aliased_delta = DecodeOpenAiStreamEvent(
+  WireStreamDelta aliased_delta = DecodeChatEvent(
       R"({"choices":[{"delta":{"reasoning":"once","reasoning_details":[{"type":"reasoning.text","text":"once"}]}}]})",
       aliased_reasoning, no_calls);
   CHECK(aliased_delta.reasoning == "once");
   CHECK(aliased_reasoning.reasoning_details_field);
 
   ChatResult empty_details;
-  DecodeOpenAiStreamEvent(R"({"choices":[{"delta":{"reasoning_details":[]}}]})",
-                          empty_details, no_calls);
+  DecodeChatEvent(R"({"choices":[{"delta":{"reasoning_details":[]}}]})",
+                  empty_details, no_calls);
   CHECK(empty_details.reasoning_details_field);
   CHECK(empty_details.reasoning_details.empty());
 
   ChatResult empty_alias;
-  WireStreamDelta details_fallback = DecodeOpenAiStreamEvent(
+  WireStreamDelta details_fallback = DecodeChatEvent(
       R"({"choices":[{"delta":{"reasoning":"","reasoning_details":[{"type":"reasoning.text","text":"details only"}]}}]})",
       empty_alias, no_calls);
   CHECK(details_fallback.reasoning == "details only");
@@ -354,17 +361,16 @@ void TestSseChunkPartitions() {
 
   ChatResult usage_then_error;
   std::map<int, ToolCall> no_tool_calls;
-  DecodeOpenAiStreamEvent(
-      R"({"usage":{"prompt_tokens":1,"completion_tokens":0}})",
-      usage_then_error, no_tool_calls);
+  DecodeChatEvent(R"({"usage":{"prompt_tokens":1,"completion_tokens":0}})",
+                  usage_then_error, no_tool_calls);
   CHECK(usage_then_error.semantic_progress);
-  DecodeOpenAiStreamEvent(
+  DecodeChatEvent(
       R"({"error":{"type":"server_error","code":"server_error","message":"retry"}})",
       usage_then_error, no_tool_calls);
   CHECK(!SafeToRetry(usage_then_error));
 
   ChatResult nested_error;
-  DecodeOpenAiStreamEvent(
+  DecodeChatEvent(
       R"({"type":"error","message":"{\"type\":\"error\",\"error\":{\"type\":\"service_unavailable_error\",\"code\":\"server_is_overloaded\",\"message\":\"busy\"}}"})",
       nested_error, no_tool_calls);
   CHECK(nested_error.retryable);
@@ -373,7 +379,7 @@ void TestSseChunkPartitions() {
   // A bare error frame says the same thing as the documented envelope, and a
   // stream that failed before emitting anything is safe to replay.
   ChatResult flat_error;
-  DecodeOpenAiStreamEvent(
+  DecodeChatEvent(
       R"({"type":"api_error","message":"JSON error injected into SSE stream"})",
       flat_error, no_tool_calls);
   CHECK(flat_error.error == "JSON error injected into SSE stream");
@@ -386,7 +392,7 @@ void TestSseChunkPartitions() {
   answered_stream.res = &answered_then_error;
   answered_stream.started = std::chrono::steady_clock::now();
   answered_stream.EmitContent("visible");
-  DecodeOpenAiStreamEvent(
+  DecodeChatEvent(
       R"({"type":"api_error","message":"JSON error injected into SSE stream"})",
       answered_then_error, no_tool_calls);
   CHECK(!SafeToRetry(answered_then_error));
@@ -395,10 +401,10 @@ void TestSseChunkPartitions() {
   // instead of merging into one call with two schemas' arguments.
   ChatResult unindexed_calls;
   std::map<int, ToolCall> parallel;
-  DecodeOpenAiStreamEvent(
+  DecodeChatEvent(
       R"({"choices":[{"delta":{"tool_calls":[{"id":"a","function":{"name":"grep","arguments":"{\"pattern\":"}},{"id":"b","function":{"name":"run","arguments":"{\"command\":"}}]}}]})",
       unindexed_calls, parallel);
-  DecodeOpenAiStreamEvent(
+  DecodeChatEvent(
       R"({"choices":[{"delta":{"tool_calls":[{"id":"b","function":{"arguments":"\"ls\"}"}}]}}]})",
       unindexed_calls, parallel);
   CHECK(parallel.size() == 2);
@@ -419,8 +425,8 @@ void TestChatCompletionAnnotationDeduplication() {
 
   ChatResult result;
   std::map<int, ToolCall> calls;
-  DecodeOpenAiStreamEvent(
-      JsonDump({{"choices", json::array({std::move(choice)})}}), result, calls);
+  DecodeChatEvent(JsonDump({{"choices", json::array({std::move(choice)})}}),
+                  result, calls);
 
   CHECK(result.semantic_progress);
   CHECK(result.annotations.size() == 1);

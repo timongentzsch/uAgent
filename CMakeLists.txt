@@ -124,7 +124,6 @@ add_library(
   src/api/capabilities.cc
   src/api/client.cc
   src/api/exchange.cc
-  src/api/openai_stream.cc
   src/api/wire_request.cc
   src/api/wire_stream.cc)
 target_link_libraries(uagent_api PUBLIC uagent_core_base)

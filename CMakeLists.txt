@@ -402,12 +402,6 @@ if(BUILD_TESTING)
   # Each scenario enforces its own subprocess deadline. Leave enough wrapper
   # headroom for loaded hosted macOS runners to report that diagnostic.
   set_tests_properties(behavior_eval PROPERTIES TIMEOUT 120)
-  # Fresh-HOME request/schema measurements only; personal history is report-only.
-  add_test(NAME token_audit
-           COMMAND ${Python3_EXECUTABLE}
-                   ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/audit.py
-                   $<TARGET_FILE:uagent> --check)
-  set_tests_properties(token_audit PROPERTIES TIMEOUT 180)
 endif()
 
 option(UAGENT_BUILD_BENCHMARKS "Build lightweight performance baselines" OFF)

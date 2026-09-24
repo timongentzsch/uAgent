@@ -1823,6 +1823,11 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
   ).toBeVisible();
   await page.reload();
   await expect(page.locator(".transcript .tool-disclosure")).toHaveCount(3);
+  // Retained history replays through the live pipeline: one row per call,
+  // none stuck on Running.
+  await expect(
+    page.locator(".transcript .tool-disclosure", { hasText: "Running" }),
+  ).toHaveCount(0);
   await expect(
     page
       .locator(".tool-disclosure")

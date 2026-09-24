@@ -25,7 +25,6 @@ tests; `-LE source` excludes them.
 | `integration_web`, `integration_management` | native web host; only with `UAGENT_WEB=ON` |
 | `web_push` | Web Push encryption; only with `UAGENT_WEB_PUSH=ON` |
 | `behavior_eval` | scenario scores against the committed baseline |
-| `token_audit` | request and schema sizes against the committed baseline |
 | `eval_harness_self_test`, `session_metrics_self_test` | measurement tooling (label `source`) |
 | `ci_changes`, `layer_boundary`, `wire_contract` | CI path selection and source contracts (label `source`) |
 | `benchmarks` | native micro-benchmarks; only with `UAGENT_BUILD_BENCHMARKS=ON` |
@@ -144,9 +143,9 @@ The report records the authority file's SHA-256 and each route's mode.
 
 ## Measurement tools
 
-`benchmarks/audit.py` measures request and schema sizes in a fresh HOME and
-checks them against `benchmarks/baselines/audit.json`. `--profile`, `--host`
-and `--history` add report-only local observations that never affect the gate.
+`benchmarks/audit.py` reports request and schema sizes from a fresh HOME;
+`behavior_eval` gates their growth per scenario. `--profile`, `--host` and
+`--history` add local observations.
 
 `benchmarks/session_metrics.py` summarizes real sessions from their journals
 without retaining prompts or tool values: cohorts by `session.ready`
@@ -154,7 +153,7 @@ provenance (`legacy` for older journals), failed-call recovery, repeats,
 argument issues, activity polls and turn outcomes.
 
 ```sh
-python3 benchmarks/audit.py build/debug/uagent --check
+python3 benchmarks/audit.py build/debug/uagent
 python3 benchmarks/audit.py build/debug/uagent --profile --host --history ~/.uagent/history
 python3 benchmarks/session_metrics.py --since 2026-08-01
 python3 benchmarks/session_metrics.py --cohort ID --json /tmp/sessions.json

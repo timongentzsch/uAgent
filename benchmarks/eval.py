@@ -358,7 +358,7 @@ def run_case(
             env["TMPDIR"] = str(scratch)
             authority = arguments.cost_authority_data["routes"][model] if arguments.run else None
             if authority is not None:
-                apply_live_authority(env, authority)
+                apply_authority(env, authority)
             prompt = str(scenario["prompt"])
             prompt = prompt.replace("${workspace}", str(workspace))
             prompt = prompt.replace("${workspace_uri}", workspace.as_uri())
@@ -645,6 +645,14 @@ def compare(results: list[dict[str, Any]], baseline: dict[str, Any]) -> list[dic
                 regressions.append(f"{field} {base[field]} → {result[field]}")
         if result["max_batch"] < base["max_batch"]:
             regressions.append(f"max_batch {base['max_batch']} → {result['max_batch']}")
+        # Tool schemas are sent on every request, so their growth is gated on its
+        # own rather than hidden inside the context allowance below.
+        schema_ceiling = int(base.get("initial_schema_bytes", 0) * 1.05) + 16
+        if base.get("initial_schema_bytes") and result["initial_schema_bytes"] > schema_ceiling:
+            regressions.append(
+                f"schema bytes {base['initial_schema_bytes']} → "
+                f"{result['initial_schema_bytes']} (>5%)"
+            )
         ceiling = int(base["max_estimated_context_bytes"] * 1.05) + 512
         if result["max_estimated_context_bytes"] > ceiling:
             regressions.append(
@@ -812,35 +820,8 @@ def trial_summaries(results: list[dict[str, Any]], requested_k: int) -> list[dic
     return summaries
 
 
-class LiveCostBlocker(RuntimeError):
-    """The runner cannot prove that a live route stays inside its authority."""
-
-
-def load_cost_authority(path: Path | None, models: list[str]) -> dict[str, Any]:
-    try:
-        return load_authority(path, models)
-    except AuthorityError as error:
-        raise LiveCostBlocker(f"live evaluation blocked: {error}") from error
-
-
-def apply_live_authority(env: dict[str, str], declaration: dict[str, Any]) -> None:
-    apply_authority(env, declaration)
-
-
-def account_live_result(
-    result: dict[str, Any], declaration: dict[str, Any], spent: float, cap: float
-) -> float:
-    try:
-        return account_result(result, declaration, spent, cap)
-    except AuthorityError as error:
-        raise LiveCostBlocker(f"live evaluation {error}") from error
-
-
-def account_live_cost(result: dict[str, Any], spent: float, cap: float) -> float:
-    try:
-        return account_reported_cost(result, spent, cap)
-    except AuthorityError as error:
-        raise LiveCostBlocker(f"live evaluation {error}") from error
+# The runner cannot prove that a live route stays inside its authority.
+LiveCostBlocker = AuthorityError
 
 
 def validate_live_plan(authority: dict[str, Any], jobs: list[tuple[Any, ...]], trials: int) -> None:
@@ -928,7 +909,7 @@ def eval_self_test() -> int:
                 failures.append(f"{field}={summary[0].get(field)}, want {expected}")
     for planted in fixture["blocked_cost_cases"]:
         try:
-            account_live_cost(planted["result"], planted["spent"], planted["cap"])
+            account_reported_cost(planted["result"], planted["spent"], planted["cap"])
         except LiveCostBlocker:
             continue
         failures.append(f"cost guard accepted planted case {planted['name']}")
@@ -978,7 +959,7 @@ def eval_self_test() -> int:
             continue
         failures.append(f"authority guard accepted planted case {planted['name']}")
     env = {}
-    apply_live_authority(env, cheap)
+    apply_authority(env, cheap)
     expected_env = {
         "UAGENT_MAX_STEPS": "3",
         "UAGENT_MAX_TOOL_CALLS": "4",
@@ -1000,7 +981,7 @@ def eval_self_test() -> int:
     else:
         failures.append("cheap session-count guard accepted 3 sessions above limit 2")
     try:
-        account_live_result(
+        account_result(
             {
                 "model": "provider/model",
                 "model_requests": 4,
@@ -1129,7 +1110,7 @@ def parse_args():
         parser.error("--cost-authority is only used with --run")
     if arguments.run:
         try:
-            arguments.cost_authority_data = load_cost_authority(
+            arguments.cost_authority_data = load_authority(
                 arguments.cost_authority, arguments.model
             )
             if (
@@ -1141,7 +1122,7 @@ def parse_args():
             ):
                 parser.error("reported-cost live routes require a positive --max-cost")
         except LiveCostBlocker as error:
-            parser.error(str(error))
+            parser.error(f"live evaluation blocked: {error}")
     return arguments
 
 
@@ -1208,7 +1189,7 @@ def main() -> int:
             results.append(result)
             if arguments.run:
                 try:
-                    spent = account_live_result(result, declaration, spent, arguments.max_cost)
+                    spent = account_result(result, declaration, spent, arguments.max_cost)
                 except LiveCostBlocker as error:
                     blocker = error
                     break
@@ -1221,7 +1202,7 @@ def main() -> int:
     summaries = trial_summaries(results, arguments.pass_k)
     print_results(results, comparisons, summaries)
     if blocker:
-        print(f"BLOCKED: {blocker}", file=sys.stderr)
+        print(f"BLOCKED: live evaluation {blocker}", file=sys.stderr)
     if arguments.update:
         write_baseline(results)
     selected_authorities = arguments.cost_authority_data["routes"] if arguments.run else {}

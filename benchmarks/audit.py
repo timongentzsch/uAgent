@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Deterministic request/schema regression check, with opt-in local observations.
+"""Report request and schema sizes from a fresh HOME, plus opt-in local observations.
 
-The baseline contains only measured request sizes and scenario coverage.
-Use --profile, --history PATH or --host to add report-only local information.
+Report only: `eval.py --check` gates schema and context growth per scenario.
+Use --profile, --history PATH or --host to add local information.
 """
 
 from __future__ import annotations
@@ -19,7 +19,6 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
-BASELINE_PATH = ROOT / "benchmarks" / "baselines" / "audit.json"
 sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "benchmarks"))
 
@@ -296,33 +295,6 @@ def collect(binary: Path, arguments) -> dict[str, Any]:
     }
 
 
-def compare(current: dict[str, Any], baseline: dict[str, Any]) -> list[str]:
-    """Only the axes that are machine-independent are allowed to fail a build."""
-    if baseline.get("schema") != "uagent.audit.v3":
-        raise ValueError("missing or unsupported audit baseline schema")
-    for data in (current, baseline):
-        if not isinstance(data.get("capability", {}).get("tool_calls"), dict):
-            raise ValueError("missing required scenario coverage")
-    regressions = []
-    for axis, field, tolerance in (
-        ("token", "system_chars", 1.05),
-        ("token", "schema_bytes", 1.05),
-        ("token", "always_on_schema_bytes", 1.05),
-    ):
-        before = baseline.get(axis, {}).get(field)
-        after = current.get(axis, {}).get(field)
-        if before is None or after is None:
-            raise ValueError(f"missing required measurement: {axis}.{field}")
-        ceiling = before * tolerance + (16 if tolerance > 1 else 0)
-        if after > ceiling:
-            regressions.append(f"{axis}.{field} {before} → {after}")
-    covered_before = set(baseline.get("capability", {}).get("tool_calls", {}))
-    covered_after = set(current.get("capability", {}).get("tool_calls", {}))
-    if covered_before - covered_after:
-        regressions.append(f"scenario coverage lost: {sorted(covered_before - covered_after)}")
-    return regressions
-
-
 def render(report: dict[str, Any]) -> None:
     token = report["token"]
     print(
@@ -350,7 +322,7 @@ def render(report: dict[str, Any]) -> None:
         print(f"speed         rebuild fanout (TUs per header): {fanout}")
     capability = report["capability"]
     print(
-        f"capability    {capability['surface_tools']} tools in the drift gate; "
+        f"capability    {capability['surface_tools']} tools; "
         f"{capability['scenarios']} scenarios {capability['tiers']} with "
         f"{capability['checks']} checks over {sorted(capability['tool_calls'])}"
     )
@@ -388,8 +360,6 @@ def render(report: dict[str, Any]) -> None:
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("binary", type=Path)
-    parser.add_argument("--check", action="store_true", help="fail on a regression")
-    parser.add_argument("--update", action="store_true", help="rewrite the baseline")
     parser.add_argument("--json", type=Path, help="write the full report")
     parser.add_argument("--history", help="opt-in report of session journals")
     parser.add_argument("--profile", action="store_true", help="report personal profile size")
@@ -404,31 +374,10 @@ def parse_args():
 
 def main() -> int:
     arguments = parse_args()
-    if arguments.check and (arguments.history or arguments.profile or arguments.host):
-        raise ValueError("--check excludes personal and host observations")
     report = collect(arguments.binary, arguments)
     render(report)
     if arguments.json:
         arguments.json.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
-    regressions = []
-    if not BASELINE_PATH.exists() and not arguments.update:
-        raise ValueError(f"missing required baseline: {BASELINE_PATH}")
-    if BASELINE_PATH.exists():
-        regressions = compare(report, json.loads(BASELINE_PATH.read_text(encoding="utf-8")))
-        for regression in regressions:
-            print(f"REGRESSION: {regression}")
-    if arguments.update:
-        # After reporting, so rewriting the baseline still shows what moved.
-        BASELINE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        BASELINE_PATH.write_text(
-            json.dumps({key: report[key] for key in ("schema", "token", "capability")}, indent=2)
-            + "\n",
-            encoding="utf-8",
-        )
-        print(f"baseline written: {BASELINE_PATH.relative_to(ROOT)}")
-        return 0
-    if regressions and arguments.check:
-        return 1
     return 0
 
 

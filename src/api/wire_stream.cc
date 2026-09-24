@@ -6,7 +6,6 @@
 #include <string_view>
 #include <utility>
 
-#include "include/api/openai_stream.h"
 #include "include/api/retry.h"
 #include "include/api/wire.h"
 #include "include/core/json.h"
@@ -14,6 +13,226 @@
 
 namespace uagent {
 namespace {
+
+void MergeStreamIdentity(std::string& target, const std::string& fragment) {
+  if (fragment.empty()) return;
+  if (target.empty() || fragment.starts_with(target)) {
+    target = fragment;
+  } else if (fragment != target) {
+    target += fragment;
+  }
+}
+
+void AddStreamAnnotation(const json& annotation, ChatResult& result) {
+  if (!annotation.is_object()) return;
+  for (const json& existing : result.annotations) {
+    if (existing == annotation) return;
+  }
+  result.annotations.push_back(annotation);
+  result.semantic_progress = true;
+}
+
+// OpenAI-compatible streams number parallel tool calls with `index`. A
+// provider that omits it would otherwise pile every fragment into slot 0 and
+// yield one call whose arguments merge two schemas, so key on the call id
+// instead: a known id continues its slot, an unseen id opens the next one, and
+// an anonymous fragment continues the newest slot.
+int StreamToolSlot(const std::map<int, ToolCall>& calls,
+                   const std::string& id) {
+  if (calls.empty()) return 0;
+  if (id.empty()) return calls.rbegin()->first;
+  for (const auto& [slot, call] : calls) {
+    if (call.id == id) return slot;
+  }
+  return calls.rbegin()->first + 1;
+}
+
+void AddAnnotations(const json& annotations, ChatResult& result) {
+  if (!annotations.is_array()) return;
+  for (const json& annotation : annotations) {
+    AddStreamAnnotation(annotation, result);
+  }
+}
+
+std::string AddReasoningDetails(const json& details, ChatResult& result) {
+  std::string streamed_text;
+  if (!details.is_array()) return streamed_text;
+  for (const json& detail : details) {
+    if (!detail.is_object()) continue;
+    std::string type = JsonValue(detail, "type", "");
+    if (type == "reasoning.text" && detail.contains("text") &&
+        detail["text"].is_string()) {
+      streamed_text += detail["text"].get<std::string>();
+    } else if (type == "reasoning.summary" && detail.contains("summary") &&
+               detail["summary"].is_string()) {
+      streamed_text += detail["summary"].get<std::string>();
+    }
+    int64_t index = JsonValue(detail, "index", -1);
+    json* target = nullptr;
+    if (index >= 0) {
+      for (json& existing : result.reasoning_details) {
+        if (existing.is_object() && JsonValue(existing, "index", -1) == index) {
+          target = &existing;
+          break;
+        }
+      }
+    } else if (!type.empty()) {
+      for (auto existing = result.reasoning_details.rbegin();
+           existing != result.reasoning_details.rend(); ++existing) {
+        if (existing->is_object() && JsonValue(*existing, "type", "") == type) {
+          target = &*existing;
+          break;
+        }
+      }
+    }
+    if (!target) {
+      result.reasoning_details.push_back(detail);
+      continue;
+    }
+    for (const auto& [key, value] : detail.items()) {
+      if ((key == "text" || key == "summary" || key == "data" ||
+           key == "signature") &&
+          value.is_string() && target->contains(key) &&
+          (*target)[key].is_string()) {
+        (*target)[key] =
+            (*target)[key].get<std::string>() + value.get<std::string>();
+      } else if (!target->contains(key) || (*target)[key].is_null()) {
+        (*target)[key] = value;
+      }
+    }
+  }
+  return streamed_text;
+}
+
+// OpenAI Chat Completions and compatible providers.
+WireStreamDelta DecodeChatCompletionsEvent(
+    const json& value, ChatResult& result,
+    std::map<int, ToolCall>& tool_calls) {
+  WireStreamDelta delta;
+  json nested;
+  const json* envelope = &value;
+  if (!value.contains("error") && value.contains("message") &&
+      value["message"].is_string()) {
+    nested = json::parse(value["message"].get<std::string>(), nullptr, false);
+    if (nested.is_object()) envelope = &nested;
+  }
+  if (envelope->contains("error")) {
+    result.retryable = ApplyRemoteError((*envelope)["error"], result) ||
+                       BarrenStreamError(result);
+    result.error = JsonErrorMessage(*envelope, "stream failed");
+    return delta;
+  }
+  // Some providers inject the bare {"type":"…error","message":"…"} shape
+  // rather than the documented envelope. Falling through would drop it as an
+  // unrecognized frame and end the stream with no diagnosis at all.
+  if (!value.contains("choices") && envelope->contains("message") &&
+      (*envelope)["message"].is_string() &&
+      JsonValue(*envelope, "type", "").ends_with("error")) {
+    result.retryable =
+        ApplyRemoteError(*envelope, result) || BarrenStreamError(result);
+    result.error = (*envelope)["message"].get<std::string>();
+    return delta;
+  }
+  if (value.contains("usage") && !value["usage"].is_null()) {
+    result.usage = value["usage"];
+    result.semantic_progress = true;
+  }
+  if (!value.contains("choices") || !value["choices"].is_array() ||
+      value["choices"].empty() || !value["choices"][0].is_object()) {
+    return delta;
+  }
+
+  const json& choice = value["choices"][0];
+  if (choice.contains("finish_reason") && choice["finish_reason"].is_string()) {
+    result.finish_reason = choice["finish_reason"].get<std::string>();
+    result.stop_cause = ClassifyResponseStop(result.finish_reason);
+  }
+  if (choice.contains("annotations")) {
+    AddAnnotations(choice["annotations"], result);
+  }
+  if (choice.contains("message") && choice["message"].is_object() &&
+      choice["message"].contains("annotations")) {
+    AddAnnotations(choice["message"]["annotations"], result);
+  }
+  if (!choice.contains("delta") || !choice["delta"].is_object()) return delta;
+
+  const json& event_delta = choice["delta"];
+  if (event_delta.contains("annotations")) {
+    AddAnnotations(event_delta["annotations"], result);
+  }
+  std::string details_reasoning;
+  if (event_delta.contains("reasoning_details") &&
+      event_delta["reasoning_details"].is_array()) {
+    result.reasoning_details_field = true;
+    details_reasoning =
+        AddReasoningDetails(event_delta["reasoning_details"], result);
+    delta.activity =
+        delta.activity || !event_delta["reasoning_details"].empty();
+  }
+  std::string direct_reasoning;
+  if (event_delta.contains("reasoning_content") &&
+      event_delta["reasoning_content"].is_string()) {
+    result.reasoning_content_field = true;
+  }
+  if (event_delta.contains("reasoning") &&
+      event_delta["reasoning"].is_string()) {
+    result.reasoning_field = true;
+    direct_reasoning = event_delta["reasoning"].get<std::string>();
+  }
+  if (direct_reasoning.empty() && event_delta.contains("reasoning_content") &&
+      event_delta["reasoning_content"].is_string()) {
+    direct_reasoning = event_delta["reasoning_content"].get<std::string>();
+  }
+  if (!details_reasoning.empty()) {
+    for (const json& detail : event_delta["reasoning_details"]) {
+      const std::string type = JsonValue(detail, "type", "");
+      const bool summary = type == "reasoning.summary";
+      if (!summary && type != "reasoning.text") continue;
+      const std::string text =
+          JsonValue(detail, summary ? "summary" : "text", "");
+      if (text.empty()) continue;
+      const std::string part =
+          type + "/" + std::to_string(JsonValue(detail, "index", int64_t{-1}));
+      AddReasoningDelta(delta, part, summary ? "summary" : "reasoning", text);
+    }
+  } else if (!direct_reasoning.empty()) {
+    AddReasoningDelta(delta, "reasoning", "reasoning",
+                      std::move(direct_reasoning));
+  }
+  if (event_delta.contains("content") && event_delta["content"].is_string()) {
+    delta.content = event_delta["content"].get<std::string>();
+    delta.activity = delta.activity || !delta.content.empty();
+  }
+  if (!event_delta.contains("tool_calls") ||
+      !event_delta["tool_calls"].is_array()) {
+    return delta;
+  }
+
+  delta.tool_arguments = !event_delta["tool_calls"].empty();
+  delta.activity = delta.activity || delta.tool_arguments;
+  for (const json& tool_call : event_delta["tool_calls"]) {
+    if (!tool_call.is_object()) continue;
+    int64_t index = JsonValue(tool_call, "index", int64_t{-1});
+    if (index > std::numeric_limits<int>::max()) continue;
+    std::string id;
+    if (tool_call.contains("id") && tool_call["id"].is_string()) {
+      id = tool_call["id"].get<std::string>();
+    }
+    if (index < 0) index = StreamToolSlot(tool_calls, id);
+    ToolCall& target = tool_calls[static_cast<int>(index)];
+    if (!id.empty()) MergeStreamIdentity(target.id, id);
+    const json* found = JsonObject(tool_call, "function");
+    if (!found) continue;
+    const json& function = *found;
+    if (function.contains("name") && function["name"].is_string()) {
+      MergeStreamIdentity(target.name, function["name"].get<std::string>());
+    }
+    if (function.contains("arguments") && function["arguments"].is_string()) {
+      target.args += function["arguments"].get<std::string>();
+    }
+  }
+  return delta;
+}
 
 void MergeObject(json& target, const json& update) {
   if (!update.is_object()) return;
@@ -37,6 +256,17 @@ void AddAnnotationsFromMessage(const json& item, ChatResult& result) {
       AddStreamAnnotation(annotation, result);
     }
   }
+}
+
+// Hosted search observed in the stream but absent from the provider's usage
+// (the Responses and Anthropic dialects report it under different keys).
+void BackfillSearchCount(json& usage, const char* key, int64_t searches) {
+  if (searches <= 0) return;
+  const json* reported = JsonObject(usage, key);
+  if (reported && JsonValue(*reported, "web_search_requests", int64_t{0}) > 0) {
+    return;
+  }
+  EnsureObject(usage, key)["web_search_requests"] = searches;
 }
 
 json ParseEvent(std::string_view data) {
@@ -308,14 +538,8 @@ WireStreamDelta DecodeResponsesEvent(const json& value, ChatResult& result,
       result.finish_reason = JsonValue(*response, "status", "completed");
       result.stop_cause = ClassifyResponseStop(result.finish_reason);
     }
-    if (state.hosted.web_searches > 0) {
-      const json* details = JsonObject(result.usage, "server_tool_use_details");
-      if (!details ||
-          JsonValue(*details, "web_search_requests", int64_t{0}) == 0) {
-        json& counts = EnsureObject(result.usage, "server_tool_use_details");
-        counts["web_search_requests"] = state.hosted.web_searches;
-      }
-    }
+    BackfillSearchCount(result.usage, "server_tool_use_details",
+                        state.hosted.web_searches);
     delta.activity = true;
     return delta;
   }
@@ -389,14 +613,8 @@ WireStreamDelta DecodeAnthropicEvent(const json& value, ChatResult& result,
       delta.activity = true;
     } else if (type == "message_stop") {
       SetAnthropicReplay(state, result);
-      if (state.hosted.web_searches > 0) {
-        const json* server = JsonObject(result.usage, "server_tool_use");
-        if (!server ||
-            JsonValue(*server, "web_search_requests", int64_t{0}) == 0) {
-          json& counts = EnsureObject(result.usage, "server_tool_use");
-          counts["web_search_requests"] = state.hosted.web_searches;
-        }
-      }
+      BackfillSearchCount(result.usage, "server_tool_use",
+                          state.hosted.web_searches);
       delta.activity = true;
     }
     return delta;
@@ -561,11 +779,11 @@ WireStreamDelta DecodeWireStreamEvent(WireApi wire_api, std::string_view data,
                                       ChatResult& result,
                                       std::map<int, ToolCall>& tool_calls,
                                       WireStreamState& state) {
-  if (wire_api == WireApi::kChatCompletions) {
-    return DecodeOpenAiStreamEvent(data, result, tool_calls);
-  }
   json value = ParseEvent(data);
   if (value.is_discarded() || value.is_null()) return {};
+  if (wire_api == WireApi::kChatCompletions) {
+    return DecodeChatCompletionsEvent(value, result, tool_calls);
+  }
   if (wire_api == WireApi::kResponses) {
     return DecodeResponsesEvent(value, result, tool_calls, state.responses);
   }

@@ -175,45 +175,29 @@ void TestOpenRouterServerSearch() {
 
   // The status row is one ordered list: everything fits when there is room,
   // and the least valuable segments go first when there is not.
-  RuntimeConfig status_config;
-  Api status_api(status_config);
-  status_api.base_url = "https://openrouter.ai/api/v1";
-  status_api.model = "vendor/model";
-  status_api.ctx_window = 1000000;
   Usage status_usage;
   status_usage.input = 1200000;
   status_usage.output = 45300;
   status_usage.cache_read = 3100000;
   status_usage.cost = 0.31;
   StatusView status_view{.context_used = 4700,
+                         .context_window = 1000000,
                          .model = "openrouter/vendor/model:high",
-                         .host = {},
-                         .yolo = true};
+                         .approval = "yolo"};
   setenv("COLUMNS", "200", 1);
-  std::string wide = StatusBar(status_api, status_usage, status_view);
+  std::string wide = StatusBar(status_usage, status_view);
   CHECK(wide.find("ctx 4.7k/1M") != std::string::npos);
   CHECK(wide.find("1.2M in · 45.3k out") != std::string::npos);
   CHECK(wide.find("cache 72%") != std::string::npos);
   CHECK(wide.find("openrouter/vendor/model:high") != std::string::npos);
   CHECK(wide.find("YOLO") != std::string::npos);
   // An unknown context window degrades to the used figure alone.
-  status_api.ctx_window = 0;
-  CHECK(StatusBar(status_api, status_usage, status_view).find("ctx 4.7k ") !=
+  status_view.context_window = 0;
+  CHECK(StatusBar(status_usage, status_view).find("ctx 4.7k ") !=
         std::string::npos);
   unsetenv("COLUMNS");
 
-  // A configured search endpoint outranks the conversation's own route.
   RuntimeConfig search_config;
-  search_config.web_search_url = "https://search.example/v1/";
-  search_config.web_search_api_key = "search-key";
-  search_config.web_search_model = "search-model";
-  Api search_api(search_config);
-  search_api.base_url = "https://inference.example/v1";
-  search_api.api_key = "inference-key";
-  WebSearchRoute route = SelectWebSearchRoute(search_api, {});
-  CHECK(route.base_url == "https://search.example/v1");
-  CHECK(route.api_key == "search-key");
-  CHECK(route.model == "search-model");
   // A provider-scoped selection is a route of its own: endpoint, key and model
   // all come from it, and the :effort suffix beats the session default.
   setenv("UAGENT_PROVIDERS",
@@ -224,8 +208,6 @@ void TestOpenRouterServerSearch() {
                            "api_key":"plain-key"}})json",
          1);
   RuntimeConfig scoped_config = search_config;
-  scoped_config.web_search_url.clear();
-  scoped_config.web_search_api_key.clear();
   scoped_config.web_search_model = "seeker/finder-model:high";
   scoped_config.web_search_effort = "low";
   Api scoped_api(scoped_config);
@@ -246,14 +228,20 @@ void TestOpenRouterServerSearch() {
   foreign_api.base_url = "https://inference.example/v1";
   foreign_api.api_key = "inference-key";
   CHECK(!SelectWebSearchRoute(foreign_api, {}).Valid());
-  // A bare id still only renames the model on the winning candidate.
+  // A bare id only renames the model on the winning candidate, here the first
+  // OpenRouter-protocol provider.
   RuntimeConfig bare_config = search_config;
   bare_config.web_search_model = "plain-model";
   Api bare_api(bare_config);
   bare_api.base_url = "https://inference.example/v1";
   bare_api.api_key = "inference-key";
-  WebSearchRoute bare = SelectWebSearchRoute(bare_api, {});
-  CHECK(bare.base_url == "https://search.example/v1");
+  const NamedProvider seeker{.name = "seeker",
+                             .base_url = "https://seek.example/v1",
+                             .api_key = "seek-key",
+                             .protocol = ProviderProtocol::kOpenRouter};
+  WebSearchRoute bare = SelectWebSearchRoute(bare_api, {seeker});
+  CHECK(bare.base_url == "https://seek.example/v1");
+  CHECK(bare.api_key == "seek-key");
   CHECK(bare.model == "plain-model");
   unsetenv("UAGENT_PROVIDERS");
   // Without any configured search route, an OpenRouter conversation route is

@@ -17,6 +17,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <functional>
 #include <istream>
 #include <map>
@@ -512,6 +513,19 @@ std::string CanonicalCwd() {
   return ec ? std::filesystem::current_path().string() : path.string();
 }
 std::string WorkspaceId(const std::string& root) { return HashHex(root); }
+std::string ReadFileTail(const std::string& path, int64_t bytes,
+                         int64_t* start) {
+  if (start) *start = 0;
+  std::ifstream file(path, std::ios::binary | std::ios::ate);
+  if (!file) return "";
+  const auto size = static_cast<int64_t>(file.tellg());
+  const int64_t offset = bytes >= 0 && size > bytes ? size - bytes : 0;
+  if (start) *start = offset;
+  file.seekg(offset);
+  return {std::istreambuf_iterator<char>(file),
+          std::istreambuf_iterator<char>()};
+}
+
 bool LockFileExclusive(int fd) {
   int result;
   do {

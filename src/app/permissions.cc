@@ -6,9 +6,9 @@
 #include <string>
 #include <utility>
 
-#include "include/app/private_store.h"
 #include "include/core/debug.h"
 #include "include/core/fs.h"
+#include "include/core/private_store.h"
 #include "include/core/strings.h"
 #include "include/core/time.h"
 
@@ -21,7 +21,6 @@ constexpr size_t kStoredPreviewBytes = 4096;
 constexpr size_t kReviewerPreviewBytes = 16384;
 constexpr int64_t kReviewerTimeoutSeconds = 15;
 constexpr int kReviewerAttempts = 3;
-constexpr char kPermissionStoreFile[] = "permissions.json";
 constexpr char kReviewerRoute[] = "permission_review";
 
 json EmptyStore() {
@@ -101,23 +100,19 @@ bool ParsePermissionOverride(const std::string& value,
   return true;
 }
 
-PermissionOverride LegacyPermissionOverride(const json& value) {
-  if (value.is_string()) {
-    PermissionOverride parsed;
-    if (ParsePermissionOverride(value.get<std::string>(), parsed)) {
-      return parsed;
-    }
+ApprovalMode ResolveApprovalMode(PermissionOverride override,
+                                 ApprovalMode configured) {
+  switch (override) {
+    case PermissionOverride::kAsk:
+      return ApprovalMode::kAsk;
+    case PermissionOverride::kAuto:
+      return ApprovalMode::kAuto;
+    case PermissionOverride::kYolo:
+      return ApprovalMode::kYolo;
+    case PermissionOverride::kDefault:
+      break;
   }
-  if (value.is_number_integer()) {
-    const int legacy = value.get<int>();
-    if (legacy == 0) {
-      return PermissionOverride::kAsk;
-    }
-    if (legacy == 1) {
-      return PermissionOverride::kYolo;
-    }
-  }
-  return PermissionOverride::kDefault;
+  return configured;
 }
 
 std::string PermissionKey(const Tool& tool, const json& arguments,
@@ -231,7 +226,6 @@ AutoPermissionReview ReviewPermission(Api& api, const RuntimeConfig& config,
   api.base_url = config.permission_url;
   api.api_key = EnvStr("OPENROUTER_API_KEY");
   api.capabilities.wire_api = WireApi::kChatCompletions;
-  api.render_stream = false;
   if (api.api_key.empty()) {
     result.error = "OPENROUTER_API_KEY is not configured";
     return result;

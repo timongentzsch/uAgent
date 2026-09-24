@@ -6,8 +6,11 @@
 // every early return, so an error path cannot forget one.
 
 #include <fcntl.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 #include <unistd.h>
 
+#include <string>
 #include <utility>
 
 namespace uagent {
@@ -55,6 +58,23 @@ class Fd {
  private:
   int fd_ = -1;
 };
+
+// A blocking, close-on-exec stream connection to a local socket path; empty
+// when the path does not fit or nobody is listening.
+inline Fd ConnectUnix(const std::string& path) {
+  sockaddr_un address{};
+  address.sun_family = AF_UNIX;
+  if (path.empty() || path.size() >= sizeof(address.sun_path)) return {};
+  path.copy(address.sun_path, path.size());
+  Fd fd(socket(AF_UNIX, SOCK_STREAM, 0));
+  if (!fd) return {};
+  fcntl(fd.Get(), F_SETFD, FD_CLOEXEC);
+  if (connect(fd.Get(), reinterpret_cast<sockaddr*>(&address),
+              sizeof(address)) != 0) {
+    return {};
+  }
+  return fd;
+}
 
 }  // namespace uagent
 

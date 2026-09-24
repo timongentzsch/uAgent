@@ -22,20 +22,7 @@
 
 namespace uagent::web {
 namespace {
-Fd ConnectRfb() {
-  std::string path = browser::RfbPath();
-  if (path.empty() || path.size() >= sizeof(sockaddr_un::sun_path)) return {};
-  Fd fd(socket(AF_UNIX, SOCK_STREAM, 0));
-  if (!fd) return {};
-  sockaddr_un address{};
-  address.sun_family = AF_UNIX;
-  memcpy(address.sun_path, path.c_str(), path.size() + 1);
-  if (connect(fd.Get(), reinterpret_cast<sockaddr*>(&address),
-              sizeof(address)) != 0) {
-    return {};
-  }
-  return fd;
-}
+Fd ConnectRfb() { return ConnectUnix(browser::RfbPath()); }
 bool StillViews(const std::string& device, const std::string& role,
                 uint64_t generation) {
   json status = browser::Request(

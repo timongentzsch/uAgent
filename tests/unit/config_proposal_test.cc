@@ -91,7 +91,7 @@ void TestConfigProposalAndCommit() {
       "# keep me\n"
       "# COMMENT_API_KEY=not-an-assignment\n"
       "UAGENT_MAX_TOOL_CALLS=40\n"
-      "UAGENT_WEB_SEARCH_API_KEY=canary-secret\n"
+      "OPENROUTER_API_KEY=canary-secret\n"
       "QWEN_GPU_API_KEY=adjacent-provider-secret\n"
       "UAGENT_PROVIDERS='{\"old\":{\"base_url\":\"https://old.example/v1\","
       "\"api_key\":\"existing-provider-secret\"},\"gpu\":{\"base_url\":"
@@ -101,50 +101,58 @@ void TestConfigProposalAndCommit() {
   ScopedEnv no_custom("UAGENT_CONFIG_FILE");
   ScopedEnv no_override("UAGENT_MAX_TOOL_CALLS");
   ScopedEnv no_providers("UAGENT_PROVIDERS");
+  // Initialize exports file values into the process environment.
+  ScopedEnv no_route_key("OPENROUTER_API_KEY");
   ConfigManager manager = ConfigManager::Capture(false, {});
   RuntimeConfig active = manager.Initialize();
 
   // Unknown keys are rejected before anything is read or written.
   ConfigProposal unknown = PrepareConfigProposal(
       ConfigProposalScope::kUser, {{"UAGENT_NOT_A_SETTING", "1", false}},
-      manager, active, false);
+      manager, false);
   CHECK(!unknown.ok);
   CHECK(unknown.error.find("unknown setting") != std::string::npos);
+  // A fixed-choice setting refuses a spelling it would otherwise ignore.
+  ConfigProposal choice = PrepareConfigProposal(
+      ConfigProposalScope::kUser, {{"UAGENT_WEB_SEARCH_BACKEND", "foo", false}},
+      manager, false);
+  CHECK(!choice.ok);
+  CHECK(choice.error.find("auto openrouter off") != std::string::npos);
 
   // A credential may never arrive through a tool argument.
   ConfigProposal secret = PrepareConfigProposal(
-      ConfigProposalScope::kUser,
-      {{"UAGENT_WEB_SEARCH_API_KEY", "leaked", false}}, manager, active, false);
+      ConfigProposalScope::kUser, {{"OPENROUTER_API_KEY", "leaked", false}},
+      manager, false);
   CHECK(!secret.ok);
   CHECK(secret.error.find("credential") != std::string::npos);
   auto human_secret = PrepareConfigProposal(
       ConfigProposalScope::kUser,
-      {{"UAGENT_WEB_SEARCH_API_KEY", "human-secret-replacement", false}},
-      manager, active, false, true);
+      {{"OPENROUTER_API_KEY", "human-secret-replacement", false}}, manager,
+      false, true);
   CHECK(human_secret.ok);
   CHECK(human_secret.Preview().find("human-secret-replacement") ==
         std::string::npos);
   auto invalid_human_provider = PrepareConfigProposal(
       ConfigProposalScope::kUser, {{"UAGENT_PROVIDERS", "[]", false}}, manager,
-      active, false, true);
+      false, true);
   CHECK(!invalid_human_provider.ok);
 
   // Removing a credential does not carry one through the tool arguments.
-  ConfigProposal unset_secret = PrepareConfigProposal(
-      ConfigProposalScope::kUser, {{"UAGENT_WEB_SEARCH_API_KEY", "", true}},
-      manager, active, false);
+  ConfigProposal unset_secret =
+      PrepareConfigProposal(ConfigProposalScope::kUser,
+                            {{"OPENROUTER_API_KEY", "", true}}, manager, false);
   CHECK(unset_secret.ok);
   CHECK(unset_secret.Preview().find("canary-secret") == std::string::npos);
 
   // A boolean takes any documented spelling and is stored in one of them.
-  ConfigProposal boolean = PrepareConfigProposal(
-      ConfigProposalScope::kUser, {{"UAGENT_MEMORY", "off", false}}, manager,
-      active, false);
+  ConfigProposal boolean =
+      PrepareConfigProposal(ConfigProposalScope::kUser,
+                            {{"UAGENT_MEMORY", "off", false}}, manager, false);
   CHECK(boolean.ok);
   CHECK(boolean.candidate.find("UAGENT_MEMORY=0") != std::string::npos);
   ConfigProposal bad_boolean = PrepareConfigProposal(
       ConfigProposalScope::kUser, {{"UAGENT_MEMORY", "maybe", false}}, manager,
-      active, false);
+      false);
   CHECK(!bad_boolean.ok);
 
   // Composite credentials may be named only by an exact environment reference.
@@ -152,7 +160,7 @@ void TestConfigProposalAndCommit() {
       R"({"codex-local":{"base_url":"http://127.0.0.1:8787/openai/v1","api_key":"$CODEX_LOCAL_PROXY_API_KEY","wire_api":"responses","hosted_tools":["web_search"]}})";
   ConfigProposal composite = PrepareConfigProposal(
       ConfigProposalScope::kUser, {{"UAGENT_PROVIDERS", providers, false}},
-      manager, active, false);
+      manager, false);
   CHECK(composite.ok);
   CHECK(composite.Preview().find("$CODEX_LOCAL_PROXY_API_KEY") !=
         std::string::npos);
@@ -187,7 +195,7 @@ void TestConfigProposalAndCommit() {
         credential + "\"}}";
     ConfigProposal rejected = PrepareConfigProposal(
         ConfigProposalScope::kUser, {{"UAGENT_PROVIDERS", unsafe, false}},
-        manager, active, false);
+        manager, false);
     CHECK(!rejected.ok);
     CHECK(rejected.error.find("environment-variable reference") !=
           std::string::npos);
@@ -200,7 +208,7 @@ void TestConfigProposalAndCommit() {
         "{\"bad\":{\"base_url\":\"" + url + "\",\"api_key\":\"$API_KEY\"}}";
     ConfigProposal rejected = PrepareConfigProposal(
         ConfigProposalScope::kUser, {{"UAGENT_PROVIDERS", unsafe, false}},
-        manager, active, false);
+        manager, false);
     CHECK(!rejected.ok);
     CHECK(rejected.error.find("without credentials") != std::string::npos);
   }
@@ -208,19 +216,19 @@ void TestConfigProposalAndCommit() {
   // Out-of-range values are refused against the registry's own bounds.
   ConfigProposal invalid = PrepareConfigProposal(
       ConfigProposalScope::kUser, {{"UAGENT_MAX_TOOL_CALLS", "-5", false}},
-      manager, active, false);
+      manager, false);
   CHECK(!invalid.ok);
 
   // Project scope cannot bootstrap its own trust.
   ConfigProposal untrusted = PrepareConfigProposal(
       ConfigProposalScope::kProject, {{"UAGENT_MAX_TOOL_CALLS", "60", false}},
-      manager, active, /*project_trusted=*/false);
+      manager, /*project_trusted=*/false);
   CHECK(!untrusted.ok);
   CHECK(untrusted.error.find("not trusted") != std::string::npos);
 
   ConfigProposal proposal = PrepareConfigProposal(
       ConfigProposalScope::kUser, {{"UAGENT_MAX_TOOL_CALLS", "120", false}},
-      manager, active, false);
+      manager, false);
   CHECK(proposal.ok);
   CHECK(proposal.effects.size() == 1);
   CHECK(proposal.effects[0].effect == ConfigEffect::kActiveNextUserTurn);
@@ -245,18 +253,18 @@ void TestConfigProposalAndCommit() {
   CHECK(error.find("changed after the preview") != std::string::npos);
 
   // An external edit between preview and commit is never merged away.
-  ConfigProposal racing = PrepareConfigProposal(
-      ConfigProposalScope::kUser, {{"UAGENT_MAX_STEPS", "7", false}}, manager,
-      active, false);
+  ConfigProposal racing =
+      PrepareConfigProposal(ConfigProposalScope::kUser,
+                            {{"UAGENT_MAX_STEPS", "7", false}}, manager, false);
   CHECK(racing.ok);
   Write(config, written + "UAGENT_TOOL_TIMEOUT=99\n");
   CHECK(!CommitConfigProposal(racing, error));
   CHECK(Read(config).find("UAGENT_MAX_STEPS") == std::string::npos);
 
   // An expired proposal cannot commit.
-  ConfigProposal expired = PrepareConfigProposal(
-      ConfigProposalScope::kUser, {{"UAGENT_MAX_STEPS", "7", false}}, manager,
-      active, false);
+  ConfigProposal expired =
+      PrepareConfigProposal(ConfigProposalScope::kUser,
+                            {{"UAGENT_MAX_STEPS", "7", false}}, manager, false);
   CHECK(expired.ok);
   expired.expires = std::chrono::steady_clock::now() - std::chrono::seconds(1);
   CHECK(!CommitConfigProposal(expired, error));
@@ -264,18 +272,20 @@ void TestConfigProposalAndCommit() {
 
   // The store hands a proposal out once, and only for the arguments it was
   // prepared from.
-  ConfigProposalStore store;
-  ConfigProposal stored = PrepareConfigProposal(
-      ConfigProposalScope::kUser, {{"UAGENT_MAX_STEPS", "7", false}}, manager,
-      active, false);
+  ConfigApprovals store;
+  ConfigProposal stored =
+      PrepareConfigProposal(ConfigProposalScope::kUser,
+                            {{"UAGENT_MAX_STEPS", "7", false}}, manager, false);
   CHECK(stored.ok);
   const json arguments = {{"scope", "user"}, {"key", "UAGENT_MAX_STEPS"}};
-  store.Put("key", arguments, stored);
-  CHECK(!store.Take("key", json{{"scope", "user"}}).ok);  // different request
-  store.Put("key", arguments, stored);
-  CHECK(store.Take("key", arguments).ok);
-  CHECK(!store.Take("key", arguments).ok);
-  CHECK(!store.Take("never-prepared", arguments).ok);
+  store.Put(arguments, stored, stored.expires);
+  CHECK(!store.Take(json{{"scope", "user"}}));  // different request
+  store.Put(arguments, stored, stored.expires);
+  CHECK(store.Take(arguments).has_value());
+  CHECK(!store.Take(arguments));
+  store.Put(arguments, stored,
+            std::chrono::steady_clock::now() - std::chrono::seconds(1));
+  CHECK(!store.Take(arguments));  // expired
 
   Tool configure =
       UagentTool([](SelfTopic, const std::string&) { return json::object(); },
@@ -284,7 +294,7 @@ void TestConfigProposalAndCommit() {
                    rejected.error = "specific rejection";
                    return rejected;
                  },
-                 std::make_shared<ConfigProposalStore>());
+                 std::make_shared<ConfigApprovals>());
   const json inspect = {{"action", "inspect"}, {"topic", "config"}};
   CHECK(RequiredApproval(configure, inspect) == ApprovalClass::kNone);
   CHECK(configure.run(inspect, {}).Ok());
@@ -329,7 +339,7 @@ void TestProjectConfigTrustRestamp() {
 
   ConfigProposal proposal = PrepareConfigProposal(
       ConfigProposalScope::kProject, {{"UAGENT_MAX_TOOL_CALLS", "120", false}},
-      manager, active, /*project_trusted=*/true);
+      manager, /*project_trusted=*/true);
   CHECK(proposal.ok);
 
   std::string notice;
@@ -345,7 +355,7 @@ void TestProjectConfigTrustRestamp() {
         "{\"mcpServers\":{\"x\":{\"command\":\"evil\"}}}\n");
   ConfigProposal after_swap = PrepareConfigProposal(
       ConfigProposalScope::kProject, {{"UAGENT_MAX_STEPS", "9", false}},
-      manager, active, /*project_trusted=*/true);
+      manager, /*project_trusted=*/true);
   CHECK(after_swap.ok);
   CHECK(CommitConfigProposal(after_swap, error, &notice));
   CHECK(notice.find("trusted again") != std::string::npos);

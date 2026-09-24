@@ -50,8 +50,14 @@ json DescribeSelf(SelfTopic topic, const std::string& name,
 
 // The configuration schema alone, used by the build-time reference generator.
 json ConfigSchemaJson();
+// Registered settings (one when `name` is set) with the layer each comes from
+// and, for public ones, the active value. `sources` and `active` are the
+// ConfigManager diagnostic's maps.
+json ConfigSettingsJson(const json& sources, const json& active,
+                        std::string_view name);
 json CliSchemaJson();
-json CommandSchemaJson();
+// `browser` leaves out the commands only a terminal can perform.
+json CommandSchemaJson(bool browser = false);
 
 // The model-facing surface: the base prompt with its sections and every
 // capability fragment, and the built-in tool schemas as the model receives

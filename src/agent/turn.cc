@@ -31,7 +31,6 @@
 #include "include/core/strings.h"
 #include "include/core/term.h"
 #include "include/core/time.h"
-#include "include/md.h"
 #include "include/media/attachments.h"
 #include "include/providers.h"
 #include "src/agent/turn_internal.h"
@@ -348,7 +347,6 @@ Agent::StepFlow Agent::ExecuteToolCalls(const std::vector<ToolCall>& calls,
 
 void Agent::Turn(const std::string& user_input, json user_content, json images,
                  const std::string& request_id) {
-  api_.turn_started = std::chrono::steady_clock::now();
   last_error_.clear();
   // A new turn owns its outcome: clients must never re-report the
   // previous turn's stop from a boundary publish before this one ends.
@@ -410,7 +408,6 @@ void Agent::Turn(const std::string& user_input, json user_content, json images,
     Emit(NoticeEvent(PresentationStatus::kWarned, "· interrupted"));
     Emit(Event{EventId::kTurnStopped,
                {{"turn", turn_id_}, {"outcome", "interrupted"}, {"steps", 0}}});
-    api_.turn_started = {};
     return;
   }
   EnsureRuntimeContext();
@@ -519,7 +516,7 @@ void Agent::Turn(const std::string& user_input, json user_content, json images,
     }
 
     PushAssistantMessage(response, calls);
-    flow = calls.empty() ? FinishWithProse(response, state, loop)
+    flow = calls.empty() ? FinishWithProse(state, loop)
                          : ExecuteToolCalls(calls, state, loop);
     if (flow == StepFlow::kEndTurn) break;
   }
@@ -644,7 +641,6 @@ void Agent::FinishTurn(TurnExecution& state, int64_t step) {
   completed.render = true;
   Emit(std::move(completed));
   active_deadline_ = std::chrono::steady_clock::time_point::max();
-  api_.turn_started = {};
 }
 
 }  // namespace uagent

@@ -7,12 +7,12 @@
 #include <utility>
 
 #include "include/agent/prompt.h"
-#include "include/app/library.h"
 #include "include/cli.h"
 #include "include/core/config_document.h"
 #include "include/core/events.h"
 #include "include/core/fs.h"
 #include "include/core/lease.h"
+#include "include/core/library.h"
 #include "include/tools/files.h"
 
 namespace uagent {
@@ -39,7 +39,7 @@ json PromptControl(const json& request, AdaptiveSystemState* state,
   std::string error;
   FileLease lease;
   if (write && scope != "conversation" &&
-      !lease.Acquire(UagentDir("library") + "/write.lock", error)) {
+      !AcquireLibraryWriteLease(lease, error)) {
     return {{"error", error}};
   }
   auto documents = PromptDocuments(state);

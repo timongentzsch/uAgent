@@ -11,6 +11,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/session_view.h"
 #include "include/agent/tool_presentation.h"
 #include "include/agent/trace.h"
 #include "include/cli.h"
@@ -22,75 +23,6 @@
 #include "include/ui/presentation.h"
 
 namespace uagent {
-
-namespace {
-
-// Scans a double-quoted segment with backslash escapes. `pos` starts on the
-// opening quote and ends past the closing one; false when unterminated.
-bool ScanQuotedSegment(std::string_view line, size_t& pos) {
-  if (pos >= line.size() || line[pos] != '"') return false;
-  ++pos;
-  while (pos < line.size()) {
-    if (line[pos] == '\\') {
-      pos += 2;
-      continue;
-    }
-    if (line[pos] == '"') {
-      ++pos;
-      return true;
-    }
-    ++pos;
-  }
-  return false;
-}
-
-// One `- path "..."` reference line as AttachmentContent writes it, with
-// the optional ` (from tool call "...")` suffix.
-bool IsAttachmentReference(std::string_view line) {
-  constexpr std::string_view kPrefix = "- path ";
-  constexpr std::string_view kFrom = " (from tool call ";
-  if (!line.starts_with(kPrefix)) return false;
-  size_t pos = kPrefix.size();
-  if (!ScanQuotedSegment(line, pos)) return false;
-  if (pos == line.size()) return true;
-  if (!line.substr(pos).starts_with(kFrom)) return false;
-  pos += kFrom.size();
-  if (!ScanQuotedSegment(line, pos)) return false;
-  if (pos >= line.size() || line[pos] != ')') return false;
-  ++pos;
-  return pos == line.size();
-}
-
-bool IsBlankLine(std::string_view line) {
-  return line.find_first_not_of(" \t\r") == std::string_view::npos;
-}
-
-}  // namespace
-
-std::string StripAttachedTrailer(const std::string& text) {
-  constexpr std::string_view kMarker = "\n\nAttached:\n";
-  const size_t marker = text.rfind(kMarker);
-  if (marker == std::string::npos) return text;
-  size_t pos = marker + kMarker.size();
-  bool referenced = false;
-  while (pos < text.size()) {
-    size_t end = text.find('\n', pos);
-    const size_t stop = end == std::string::npos ? text.size() : end;
-    const std::string_view line(text.data() + pos, stop - pos);
-    if (IsBlankLine(line)) {
-      // A trailing whitespace tail is formatting, not user text.
-      if (text.find_first_not_of(" \t\r\n", pos) == std::string::npos) {
-        break;
-      }
-      return text;
-    }
-    if (!IsAttachmentReference(line)) return text;
-    referenced = true;
-    pos = end == std::string::npos ? text.size() : end + 1;
-  }
-  if (!referenced) return text;
-  return text.substr(0, marker);
-}
 
 std::string AttachmentDeliveryRows(const json& deliveries) {
   std::string rows;
@@ -269,16 +201,10 @@ void PrintTraceToolResult(const json& call, const std::string& ordinal) {
     PrintPresentation(record);
     return;
   }
-  std::string result = call["result"].is_string()
-                           ? call["result"].get<std::string>()
-                           : JsonDump(call["result"]);
-  if (result.find('\n') != std::string::npos) {
-    record.detail = std::move(result);
-    record.multiline = true;
-  } else {
-    record.summary = std::move(result);
-  }
-  PrintPresentation(record);
+  // A trace is the full record: the result prints expanded.
+  record.output = call["result"].is_string() ? call["result"].get<std::string>()
+                                             : JsonDump(call["result"]);
+  PrintPresentation(record, /*detailed=*/true);
 }
 
 void PrintLatestTrace(const json& archive, const std::vector<Tool>& tools) {

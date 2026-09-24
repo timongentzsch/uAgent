@@ -61,16 +61,18 @@ def test_yolo_toggle_refreshes_approval_state(root, home, *, binary):
         assert_true(result.returncode == 0, (result.stdout, result.stderr))
         assert_true("env-on-ok" in result.stdout, result.stdout)
         assert_true("env-off-ok" in result.stdout, result.stdout)
-        assert_true(result.stdout.count("allow run?") == 1, result.stdout)
+        assert_true(result.stdout.count("Allow run?") == 1, result.stdout)
         assert_true(len(server.requests) == 4, server.requests)
 
 
 def test_command_help(root, home, *, binary):
     with Server([event({"content": "unused"})]) as server:
         result = run_dialog(
-            root, base_env(home, server.url), "/models\n/wat\n/recap\n/help\n/q\n", binary=binary
+            root, base_env(home, server.url), "/models\n/wat\n/recap\n/help\n/exit\n", binary=binary
         )
         assert_true(result.returncode == 0, result.stderr)
+        # Every quit alias detaches locally instead of reaching the runtime.
+        assert_true("use conversation controls" not in result.stdout, result.stdout)
         assert_true("unknown command /wat; use /help" in result.stdout, result.stdout)
         assert_true("unknown command /recap; use /help" in result.stdout, result.stdout)
         assert_true("commands\n" in result.stdout, result.stdout)
@@ -177,8 +179,8 @@ def test_multiline_bracketed_paste(root, home, *, binary):
         )
         assert_true(code == 0, output)
         assert_true(b"multiline-paste-ok" in output, output)
-        # The 24-column status truncates after the estimate label.
-        assert_true(b"est. ct" in output, output)
+        # A 24-column status keeps its never-dropped segments: state and route.
+        assert_true(b"Ready \xc2\xb7 test\x1b[K" in output, output)
         assert_true(b"\x1b[?2004h" in output and b"\x1b[?2004l" in output, output)
         # The echoed turn is banded to the right edge on every row it spans,
         # and the band is always closed again.
@@ -347,7 +349,7 @@ def test_input_redraw_approval_does_not_pollute_history(root, home, *, binary):
             root,
             base_env(home, server.url),
             [
-                (b"go\n", b"allow run?"),
+                (b"go\n", b"Allow run?"),
                 (b"y\n", b"approval-done"),
                 # The idle status carries the route in schema form and the
                 # context window beside what is used.
@@ -693,8 +695,8 @@ def test_context_command_shows_memory_and_skills(root, home, *, binary):
     global_config = home / ".uagent" / ".config"
     global_config.parent.mkdir(parents=True, exist_ok=True)
     global_config.write_text(
-        "UAGENT_WEB_SEARCH_API_KEY=context-secret-sentinel\n"
-        "UAGENT_WEB_SEARCH_URL=https://user:pass@search.example/v1\n",
+        "OPENROUTER_API_KEY=context-secret-sentinel\n"
+        "UAGENT_PERMISSION_URL=https://user:pass@review.example/v1\n",
         encoding="utf-8",
     )
     skill = workspace / ".uagent" / "skills" / "context-demo"
@@ -727,7 +729,6 @@ def test_context_command_shows_memory_and_skills(root, home, *, binary):
         assert_true(b'"name": "memory"' in output, output)
         assert_true(b'"name": "skill"' in output, output)
         assert_true(b'"UAGENT_MODEL": "environment"' in output, output)
-        assert_true(b'"web_search_api_key": "<set>"' in output, output)
         assert_true(b"context-secret-sentinel" not in output, output)
         assert_true(b"user:pass" not in output, output)
         assert_true(b'"enabled": true' in output, output)
@@ -940,7 +941,7 @@ def test_cli_fork_does_not_inherit_remembered_approvals(root, home, *, binary):
             binary=binary,
         )
         assert_true(result.returncode == 0, result.stderr)
-        assert_true(result.stdout.count("allow write_file?") == 2, result.stdout)
+        assert_true(result.stdout.count("Allow write_file?") == 2, result.stdout)
         assert_true(
             (root / "first.txt").exists() and not (root / "second.txt").exists(),
             "fork inherited an approval grant",

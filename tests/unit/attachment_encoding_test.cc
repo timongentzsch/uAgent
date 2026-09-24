@@ -339,6 +339,24 @@ void TestAudioVideoAttachments() {
   CHECK(audio != nullptr);
   CHECK(JsonValue(*audio, "format", "") == "mp3");
   CHECK(!JsonValue(*audio, "data", "").empty());
+  // An MP4 audio container is m4a on the wire, not mp3.
+  CHECK(InspectAttachment(memo.string(), attachment, error));
+  request = json::array(
+      {{{"role", "user"},
+        {"content", AttachmentContent("transcribe", {attachment}, error)}}});
+  CHECK(PrepareAttachments(request, capabilities, false, "memo", error));
+  CHECK(JsonValue(request[0]["content"][1]["input_audio"], "format", "") ==
+        "m4a");
+  // Responses and Anthropic Messages have no speech or video parts, so a
+  // route there degrades to file paths instead of silently dropping them.
+  for (WireApi dialect : {WireApi::kResponses, WireApi::kAnthropicMessages}) {
+    ProviderCapabilities other;
+    other.wire_api = dialect;
+    other.ResetNegotiated();
+    CHECK(!other.audio_input && !other.video_input);
+    other.SetInputModalities(json::array({"text", "audio", "video"}));
+    CHECK(!other.audio_input && !other.video_input);
+  }
   error.clear();
   CHECK(InspectAttachment(clip.string(), attachment, error));
   request = json::array(

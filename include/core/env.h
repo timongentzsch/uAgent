@@ -11,9 +11,16 @@
 #include <string_view>
 #include <vector>
 
+#include "include/core/config_registry.h"
 #include "include/core/json.h"
 
 namespace uagent {
+
+// Default model route when nothing is configured: DeepSeek flash through
+// OpenRouter auto-routing. One constant so the provider template and side-model
+// defaults cannot drift apart.
+inline constexpr const char* kDefaultModelRoute =
+    "~deepseek/deepseek-flash-latest";
 
 std::string EnvStr(const char* name, const std::string& dflt = "");
 
@@ -58,15 +65,8 @@ bool HeadlessProgressEnabled();
 // Experiment overlay for the base prompt: a path, empty when unset.
 std::string PromptOverlayPath();
 
-inline constexpr std::string_view kOpenRouterVariants[] = {"nitro", "floor",
-                                                           "exacto"};
-
 inline bool ValidOpenRouterVariant(std::string_view variant) {
-  if (variant.empty()) return true;
-  for (std::string_view candidate : kOpenRouterVariants) {
-    if (variant == candidate) return true;
-  }
-  return false;
+  return Cfg("UAGENT_OPENROUTER_VARIANT").Accepts(variant);
 }
 
 // Bounded tunables. Every UAGENT_* limit the agent honours is declared here
@@ -131,71 +131,104 @@ std::string RuntimeConfigField(std::string_view environment);
 // member of it so that every `config.max_steps` reader keeps working, and so
 // that a turn takes its snapshot by slicing -- one assignment that cannot omit
 // a budget the way seven hand-written ones could.
+// Struct defaults are read from the registry so the two cannot disagree.
+template <typename T>
+consteval T RegistryDefault(std::string_view environment) {
+  return std::get<T>(Cfg(environment).default_value);
+}
+
 struct TurnBudgets {
   // Zero disables the model-round limit; turn time, cost, context, process,
   // and tool-call budgets remain independent safety limits.
-  int64_t max_steps = 0;
+  int64_t max_steps = RegistryDefault<int64_t>("UAGENT_MAX_STEPS");
   // Zero disables the aggregate per-turn tool-call budget. Individual tools,
   // repeated identical calls, time, and cost remain bounded.
-  int64_t max_tool_calls = 0;
+  int64_t max_tool_calls = RegistryDefault<int64_t>("UAGENT_MAX_TOOL_CALLS");
   // Zero disables the aggregate wall-clock turn deadline. Request, stream,
   // tool, repetition, cost, and user-interrupt limits remain independent.
-  int64_t max_turn_seconds = 0;
+  int64_t max_turn_seconds =
+      RegistryDefault<int64_t>("UAGENT_MAX_TURN_SECONDS");
   // Zero disables generated-token limits. Enforcement happens between model
   // rounds, so one response may cross a positive ceiling before the turn stops.
-  int64_t max_turn_tokens = 0;
-  int64_t session_token_budget = 0;
+  int64_t max_turn_tokens = RegistryDefault<int64_t>("UAGENT_MAX_TURN_TOKENS");
+  int64_t session_token_budget =
+      RegistryDefault<int64_t>("UAGENT_SESSION_TOKEN_BUDGET");
   // Zero disables the per-turn reported-cost budget. Users may opt into a
   // positive turn limit or set a separate cumulative session budget.
-  double max_turn_cost = 0;
-  double session_budget = 0;
+  double max_turn_cost = RegistryDefault<double>("UAGENT_MAX_TURN_COST");
+  double session_budget = RegistryDefault<double>("UAGENT_SESSION_BUDGET");
 };
 
 struct RuntimeConfig : TurnBudgets {
   using Values = std::map<std::string, std::string>;
-  int64_t first_event_timeout_s = 300;
-  int64_t stream_idle_timeout_s = 300;
-  int64_t request_timeout_s = 600;
-  int64_t request_bytes = int64_t{64} * 1024 * 1024;
-  int64_t response_bytes = int64_t{32} * 1024 * 1024;
-  int64_t tool_timeout_s = 30;
-  int64_t web_search_timeout_s = 60;
-  int64_t web_search_max_tokens = 5000;
-  int64_t web_search_calls = 4;
-  int64_t web_search_max_results = 5;
-  int64_t web_search_max_uses = 3;
-  int64_t mcp_timeout_s = 60;
-  int64_t mcp_startup_grace_s = 2;
-  int64_t mcp_servers = 32;
-  int64_t mcp_pages = 100;
-  int64_t mcp_tools = 256;
-  int64_t mcp_config_bytes = int64_t{1024} * 1024;
-  int64_t mcp_response_bytes = int64_t{16} * 1024 * 1024;
-  int64_t mcp_schema_bytes = int64_t{256} * 1024;
-  int64_t mcp_log_bytes = int64_t{16} * 1024 * 1024;
-  int64_t memory_always_bytes = 2048;
-  int64_t project_doc_bytes = int64_t{32} * 1024;
-  int64_t session_archive_bytes = int64_t{16} * 1024 * 1024;
-  std::string approval;
-  std::string permission_model = "~typesafe/jev-latest";
-  std::string permission_url = "https://openrouter.ai/api/alpha";
-  std::string openrouter_provider;
-  std::string openrouter_variant;
-  std::string web_search_backend = "auto";
-  std::string web_search_url;
-  std::string web_search_api_key;
-  std::string web_search_effort;
-  std::string web_search_model;
-  std::string web_search_engine = "auto";
-  std::string web_search_context_size;
-  std::string image_model;
+  int64_t first_event_timeout_s =
+      RegistryDefault<int64_t>("UAGENT_FIRST_EVENT_TIMEOUT");
+  int64_t stream_idle_timeout_s =
+      RegistryDefault<int64_t>("UAGENT_STREAM_IDLE_TIMEOUT");
+  int64_t request_timeout_s =
+      RegistryDefault<int64_t>("UAGENT_REQUEST_TIMEOUT");
+  int64_t request_bytes = RegistryDefault<int64_t>("UAGENT_REQUEST_BYTES");
+  int64_t response_bytes = RegistryDefault<int64_t>("UAGENT_RESPONSE_BYTES");
+  int64_t tool_timeout_s = RegistryDefault<int64_t>("UAGENT_TOOL_TIMEOUT");
+  int64_t web_search_timeout_s =
+      RegistryDefault<int64_t>("UAGENT_WEB_SEARCH_TIMEOUT");
+  int64_t web_search_max_tokens =
+      RegistryDefault<int64_t>("UAGENT_WEB_SEARCH_MAX_TOKENS");
+  int64_t web_search_calls =
+      RegistryDefault<int64_t>("UAGENT_WEB_SEARCH_CALLS");
+  int64_t web_search_max_results =
+      RegistryDefault<int64_t>("UAGENT_WEB_SEARCH_MAX_RESULTS");
+  int64_t web_search_max_uses =
+      RegistryDefault<int64_t>("UAGENT_WEB_SEARCH_MAX_USES");
+  int64_t mcp_timeout_s = RegistryDefault<int64_t>("UAGENT_MCP_TIMEOUT");
+  int64_t mcp_startup_grace_s =
+      RegistryDefault<int64_t>("UAGENT_MCP_STARTUP_GRACE");
+  int64_t mcp_servers = RegistryDefault<int64_t>("UAGENT_MCP_SERVERS");
+  int64_t mcp_pages = RegistryDefault<int64_t>("UAGENT_MCP_PAGES");
+  int64_t mcp_tools = RegistryDefault<int64_t>("UAGENT_MCP_TOOLS");
+  int64_t mcp_config_bytes =
+      RegistryDefault<int64_t>("UAGENT_MCP_CONFIG_BYTES");
+  int64_t mcp_response_bytes =
+      RegistryDefault<int64_t>("UAGENT_MCP_RESPONSE_BYTES");
+  int64_t mcp_schema_bytes =
+      RegistryDefault<int64_t>("UAGENT_MCP_SCHEMA_BYTES");
+  int64_t mcp_log_bytes = RegistryDefault<int64_t>("UAGENT_MCP_LOG_BYTES");
+  int64_t memory_always_bytes =
+      RegistryDefault<int64_t>("UAGENT_MEMORY_ALWAYS_BYTES");
+  int64_t project_doc_bytes =
+      RegistryDefault<int64_t>("UAGENT_PROJECT_DOC_BYTES");
+  int64_t session_archive_bytes =
+      RegistryDefault<int64_t>("UAGENT_SESSION_ARCHIVE_BYTES");
+  std::string approval{RegistryDefault<std::string_view>("UAGENT_APPROVAL")};
+  std::string permission_model{
+      RegistryDefault<std::string_view>("UAGENT_PERMISSION_MODEL")};
+  std::string permission_url{
+      RegistryDefault<std::string_view>("UAGENT_PERMISSION_URL")};
+  std::string openrouter_provider{
+      RegistryDefault<std::string_view>("UAGENT_OPENROUTER_PROVIDER")};
+  std::string openrouter_variant{
+      RegistryDefault<std::string_view>("UAGENT_OPENROUTER_VARIANT")};
+  std::string web_search_backend{
+      RegistryDefault<std::string_view>("UAGENT_WEB_SEARCH_BACKEND")};
+  std::string web_search_effort{
+      RegistryDefault<std::string_view>("UAGENT_WEB_SEARCH_EFFORT")};
+  std::string web_search_model{
+      RegistryDefault<std::string_view>("UAGENT_WEB_SEARCH_MODEL")};
+  std::string web_search_engine{
+      RegistryDefault<std::string_view>("UAGENT_WEB_SEARCH_ENGINE")};
+  std::string web_search_context_size{
+      RegistryDefault<std::string_view>("UAGENT_WEB_SEARCH_CONTEXT_SIZE")};
+  std::string image_model{
+      RegistryDefault<std::string_view>("UAGENT_IMAGE_MODEL")};
   // OpenRouter file-parser engine for documents a model cannot read natively:
   // cloudflare-ai (free), mistral-ocr (scans, billed per page) or native.
-  std::string pdf_engine;
-  std::string mcp_roots;
-  bool openrouter_fallbacks = true;
-  bool memory_enabled = true;
-  bool memory_generate = true;
+  std::string pdf_engine{
+      RegistryDefault<std::string_view>("UAGENT_PDF_ENGINE")};
+  std::string mcp_roots{RegistryDefault<std::string_view>("UAGENT_MCP_ROOTS")};
+  bool openrouter_fallbacks =
+      RegistryDefault<bool>("UAGENT_OPENROUTER_FALLBACKS");
+  bool memory_enabled = RegistryDefault<bool>("UAGENT_MEMORY");
+  bool memory_generate = RegistryDefault<bool>("UAGENT_MEMORY_GENERATE");
 
   static RuntimeConfig FromEnvironment();
   static RuntimeConfig FromValues(const Values& values);

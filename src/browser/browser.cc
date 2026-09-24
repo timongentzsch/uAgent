@@ -27,6 +27,7 @@
 
 #include "include/app/session.h"
 #include "include/browser/runtime.h"
+#include "include/core/platform.h"
 
 namespace uagent::browser {
 namespace {
@@ -77,20 +78,7 @@ bool Packet(int fd, json& value, bool write, int timeout_ms) {
   return write || !value.is_discarded();
 }
 
-Fd Connect() {
-  const std::string path = SocketPath();
-  if (path.empty() || path.size() >= sizeof(sockaddr_un::sun_path)) return {};
-  Fd fd(socket(AF_UNIX, SOCK_STREAM, 0));
-  if (!fd) return {};
-  sockaddr_un address{};
-  address.sun_family = AF_UNIX;
-  memcpy(address.sun_path, path.c_str(), path.size() + 1);
-  if (connect(fd.Get(), reinterpret_cast<sockaddr*>(&address),
-              sizeof(address)) != 0) {
-    return {};
-  }
-  return fd;
-}
+Fd Connect() { return ConnectUnix(SocketPath()); }
 }  // namespace
 
 std::string DataDirectory() {
@@ -131,10 +119,9 @@ ServiceProcess::~ServiceProcess() {
   owner.Reset();
   if (pid <= 0) return;
   // Let the service finish both child shutdowns and release the profile lock.
-  for (int elapsed = 0; elapsed < kServiceShutdownGraceMs;
-       elapsed += kChildShutdownPollMs) {
-    if (waitpid(pid, nullptr, WNOHANG) == pid) return;
-    poll(nullptr, 0, kChildShutdownPollMs);
+  if (ReapPidFor(pid, nullptr,
+                 std::chrono::milliseconds(kServiceShutdownGraceMs))) {
+    return;
   }
   kill(pid, SIGTERM);
   waitpid(pid, nullptr, 0);

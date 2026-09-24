@@ -18,7 +18,6 @@ using session::Pipe;
 using session::RandomToken;
 using session::ReadFrames;
 using session::WriteFrame;
-inline constexpr size_t kScheduledConcurrency = 4;
 inline constexpr size_t kWebDeviceLimit = 16;
 inline constexpr size_t kWebSseConnections = 4;
 inline constexpr size_t kWebRequestReceipts = 256;

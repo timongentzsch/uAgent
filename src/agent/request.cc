@@ -10,7 +10,6 @@
 
 #include "include/agent.h"
 #include "include/agent/child_agent.h"
-#include "include/agent/delegation.h"
 #include "include/agent/prompt.h"
 #include "include/agent/protocol.h"
 #include "include/api/retry.h"
@@ -34,7 +33,7 @@ constexpr int64_t kDefaultResponseReserveDivisor = 4;
 }  // namespace
 
 ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
-                       bool render_output, const json* request_messages) {
+                       const json* request_messages) {
   if (api_.config.session_budget > 0 &&
       session_usage_.cost >= api_.config.session_budget) {
     ChatResult result;
@@ -114,12 +113,7 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
                                   ? available_schemas_.Bytes()
                                   : JsonEstimatedBytes(schemas);
   const size_t message_bytes = JsonEstimatedBytes(messages);
-  const size_t estimated_bytes =
-      api_.capabilities.native_tools
-          ? SaturatingAdd(message_bytes, schema_bytes)
-          : message_bytes;
-  context_snapshot_.store(EstimatedTokens(estimated_bytes),
-                          std::memory_order_relaxed);
+  const size_t estimated_bytes = SaturatingAdd(message_bytes, schema_bytes);
   if (Debug().Enabled()) {
     // A full snapshot after any shrink plus per-step deltas reconstructs every
     // request without re-dumping the whole history on every step.
@@ -133,7 +127,6 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
         {"total_messages", conversation_.Size()},
         {"tool_schemas", schemas.size()},
         {"schema_bytes", schema_bytes},
-        {"native_tools", api_.capabilities.native_tools},
         {"parallel_tools", api_.capabilities.parallel_tools},
         {"include_usage", api_.capabilities.stream_usage_option},
         {"system_revision", adaptive_system_ ? adaptive_system_->revision : 0}};
@@ -206,7 +199,6 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
     // billing tokens. Keep the same estimate when a provider reports no usage.
     int64_t context =
         EstimatedTokens(SaturatingAdd(estimated_bytes, response_bytes));
-    context_snapshot_.store(context, std::memory_order_relaxed);
     Emit(Event{
         EventId::kUsageUpdated,
         {{"usage", UsageJson(provisional)}, {"context_tokens", context}}});
@@ -233,8 +225,8 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
     last_progress = now;
   };
   api_.observe_progress(json::object(), 0);
-  ChatResult result = api_.Chat(messages, schemas, turn_budget, session_id_,
-                                render_output, estimated_bytes, verbose_);
+  ChatResult result =
+      api_.Chat(messages, schemas, turn_budget, session_id_, estimated_bytes);
   api_.observe_progress = {};
   if (progress_pending) {
     emit_progress(pending_progress, pending_response_bytes);
@@ -348,12 +340,10 @@ std::string Agent::AnalyzeImageContent(const json& content,
       ResolveSideRoute(api_, catalog.models, catalog.providers, image_model);
   Api vision(api_.config);
   ApplySideRoute(vision, route);
-  // The route decides where the request goes; these three facts are true of
+  // The route decides where the request goes; these facts are true of
   // any vision side call regardless of provider.
-  vision.capabilities.native_tools = false;
   vision.capabilities.parallel_tools = false;
   vision.capabilities.image_input = true;
-  vision.render_stream = false;
 
   json messages = json::array(
       {{{"role", "system"},
@@ -363,8 +353,8 @@ std::string Agent::AnalyzeImageContent(const json& content,
          "layout, visible defects, text, and uncertainty. Return concise "
          "prose only; do not call or imitate tools."}},
        {{"role", "user"}, {"content", content}}});
-  ChatResult result = vision.Chat(messages, json::array(),
-                                  api_.config.request_timeout_s, "", false);
+  ChatResult result =
+      vision.Chat(messages, json::array(), api_.config.request_timeout_s);
   Usage usage;
   usage.Add(result.usage);
   side_usage_.Add(RouteKey(vision.base_url, "image_analysis",

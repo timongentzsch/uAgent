@@ -378,18 +378,12 @@ size_t Agent::RequestContextBytes(size_t schema_bytes,
                                   const json* messages) const {
   size_t bytes =
       JsonEstimatedBytes(messages ? *messages : conversation_.Messages());
-  return api_.capabilities.native_tools ? SaturatingAdd(bytes, schema_bytes)
-                                        : bytes;
+  return SaturatingAdd(bytes, schema_bytes);
 }
 
-// Publishes the estimate the status row reads from the UI thread.
-int64_t Agent::SnapshotContext(size_t schema_bytes) const {
-  int64_t used = EstimatedTokens(RequestContextBytes(schema_bytes));
-  context_snapshot_.store(used, std::memory_order_relaxed);
-  return used;
+int64_t Agent::ContextUsed() const {
+  return EstimatedTokens(RequestContextBytes(schema_bytes_));
 }
-
-int64_t Agent::ContextUsed() const { return SnapshotContext(schema_bytes_); }
 
 json Agent::CompactionMessages() const {
   size_t transcript_bytes = size_t{256} * 1024;
@@ -403,16 +397,11 @@ json Agent::CompactionMessages() const {
   constexpr size_t kEvidenceBytes = 1024;
   HeadTailBuffer transcript(transcript_bytes);
   std::unordered_map<std::string, std::string> tool_names;
-  auto bounded = [](std::string_view value, size_t cap) {
-    HeadTailBuffer buffer(cap);
-    buffer.Push(value);
-    return buffer.Snapshot();
-  };
   auto append = [&](std::string_view label, const std::string& value,
                     size_t cap) {
     if (value.empty()) return;
     transcript.Push(label);
-    transcript.Push(bounded(value, cap));
+    transcript.Push(HeadTail(value, cap));
     transcript.Push("\n");
   };
   auto append_call = [&](const std::string& name, const json& arguments,
@@ -559,7 +548,7 @@ bool Agent::Compact(bool automatic, Usage* turn_usage) {
   std::vector<uint64_t> retained_ids;
   json retained_users = CompactionUserMessages(&retained_ids);
   size_t projected_bytes = JsonEstimatedBytes(compact_messages);
-  ChatResult r = Chat("compact", -1, json::array(), false, &compact_messages);
+  ChatResult r = Chat("compact", -1, json::array(), &compact_messages);
   Usage compact_usage = AccountModelUsage(r.usage);
   if (turn_usage) turn_usage->Merge(compact_usage);
   json runtime_context = HarnessMessage(RuntimeContextText());
@@ -821,10 +810,12 @@ void Agent::ReportMemoryCompletion(BackgroundCompletion& completion) {
     std::filesystem::remove(completion.receipt_path, ignored);
   }
 
-  bool show = verbose_ || event.action == "created" ||
-              event.action == "updated" || event.action == "failed" ||
-              event.action == "receipt_unavailable";
-  if (show) {
+  // Routine outcomes are recorded too, marked minor: a client showing the
+  // full picture lists them, the default view does not.
+  const bool minor = event.action != "created" && event.action != "updated" &&
+                     event.action != "failed" &&
+                     event.action != "receipt_unavailable";
+  {
     bool warning =
         event.action == "failed" || event.action == "receipt_unavailable";
     const char* mark = warning ? "!" : "◇";
@@ -846,7 +837,8 @@ void Agent::ReportMemoryCompletion(BackgroundCompletion& completion) {
          {"memory",
           {{"action", event.action},
            {"key", event.key},
-           {"automatic", event.automatic}}},
+           {"automatic", event.automatic},
+           {"minor", minor}}},
          {"activity",
           {{"category", changed ? "change" : "explore"},
            {"label", std::move(web_label)}}},
@@ -855,9 +847,10 @@ void Agent::ReportMemoryCompletion(BackgroundCompletion& completion) {
     Emit(Event{EventId::kMessageChanged, {{"block", block}}});
     Emit(NoticeEvent(
         warning ? PresentationStatus::kFailed : PresentationStatus::kNeutral,
-        std::move(line)));
+        std::move(line), minor));
     if (!event.preview.empty()) {
-      Emit(NoticeEvent(PresentationStatus::kNeutral, "  " + event.preview));
+      Emit(NoticeEvent(PresentationStatus::kNeutral, "  " + event.preview,
+                       minor));
     }
   }
   DebugLog("memory_extract_finished", {{"activity_id", completion.activity_id},
@@ -924,7 +917,6 @@ void Agent::DeliverActivityCompletions(
          {"output_chars", completion.output.size()}}};
     record.title += succeeded ? " completed" : " failed";
     display.presentation = std::move(record);
-    display.render = api_.render_stream;
     Emit(std::move(display));
 
     if (completion.kind != ActivityKind::kSubagent) continue;

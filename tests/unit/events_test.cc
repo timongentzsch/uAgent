@@ -119,8 +119,7 @@ void TestObservabilityEvents() {
         "tool.result");
   CHECK(std::string(PolicyFor(EventId::kTurnCompleted).public_type) == "usage");
   CHECK(PolicyFor(EventId::kTurnStopped).public_type == nullptr);
-  CHECK(PolicyFor(EventId::kReasoningDelta).durability ==
-        EventDurability::kTransient);
+  CHECK(!PolicyFor(EventId::kReasoningDelta).Durable());
   // A tool the provider ran reaches subscribers and the public stream, and
   // stops there: journalling it would put provider-side activity into the
   // session record, where only what this agent did belongs.
@@ -129,18 +128,15 @@ void TestObservabilityEvents() {
   CHECK(std::string(PolicyFor(EventId::kHostedToolActivity).public_type) ==
         "response.hosted_tool");
   CHECK(PolicyFor(EventId::kHostedToolActivity).journal_type == nullptr);
-  CHECK(PolicyFor(EventId::kHostedToolActivity).durability ==
-        EventDurability::kTransient);
-  CHECK(PolicyFor(EventId::kToolResult).durability ==
-        EventDurability::kDurable);
-  CHECK(PolicyFor(EventId::kActivityCompleted).durability ==
-        EventDurability::kDurable);
+  CHECK(!PolicyFor(EventId::kHostedToolActivity).Durable());
+  CHECK(PolicyFor(EventId::kToolResult).Durable());
+  CHECK(PolicyFor(EventId::kActivityCompleted).Durable());
 
   // Notices used to be raw printf, so they reached a terminal and nothing
   // else. They are durable now: journalled and projected to the public JSONL.
   CHECK(std::string(PolicyFor(EventId::kNotice).journal_type) == "notice");
   CHECK(std::string(PolicyFor(EventId::kNotice).public_type) == "notice");
-  CHECK(PolicyFor(EventId::kNotice).durability == EventDurability::kDurable);
+  CHECK(PolicyFor(EventId::kNotice).Durable());
   Event notice = NoticeEvent(PresentationStatus::kWarned, "· interrupted");
   CHECK(notice.id == EventId::kNotice);
   CHECK(notice.render);
@@ -188,11 +184,10 @@ void TestObservabilityEvents() {
   CHECK(!received[2].data.contains("query"));
   SetObservability(&observable);
   {
-    ResponseObservation response(false, false, "waiting", {},
-                                 {{"response_id", "r-2-4-1"},
-                                  {"turn", 2},
-                                  {"request", 4},
-                                  {"attempt", 1}});
+    ResponseObservation response("waiting", {{"response_id", "r-2-4-1"},
+                                             {"turn", 2},
+                                             {"request", 4},
+                                             {"attempt", 1}});
   }
   SetObservability(nullptr);
   REQUIRE(received.size() == 5);

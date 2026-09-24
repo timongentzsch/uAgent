@@ -13,7 +13,6 @@
 #include "include/app/bootstrap.h"
 #include "include/cli.h"
 #include "include/media/attachments.h"
-#include "include/ui/display.h"
 
 namespace uagent {
 
@@ -32,9 +31,9 @@ struct AppSession {
   Agent& ActiveAgent() const { return *context.agent; }
 };
 
-// Returns true when the command ends the session and fills the same semantic
-// result a non-terminal client receives in command.completed.
-bool RunSlashCommand(AppSession& session, const ParsedSlashCommand& command,
+// Fills the semantic result a client receives in command.completed; text the
+// command prints becomes that event's output.
+void RunSlashCommand(AppSession& session, const ParsedSlashCommand& command,
                      json& result);
 
 // Adopts the journal of a session that was just resumed into.
@@ -42,7 +41,6 @@ void LoadSessionJournal(AppSession& session, const std::string& previous_path);
 
 void SaveSessionSettings(AppSession& session);
 
-StatusView SessionStatusView(const AppSession& session);
 json SessionControl(AppSession& session, const json& request);
 json PermissionControl(AppContext& context, const json& request);
 json ActivityControl(ProcessSupervisor& processes, const json& request,

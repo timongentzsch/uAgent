@@ -38,13 +38,13 @@ struct HostSession {
   bool run_checkpoint = false, stop_sent = false;
   json launch = json::object();
   std::string id, path, cwd, title, draft_title, generation, status = "saved",
-                                                             error;
+                                                             error, binary;
   json state = json::object(), pending = nullptr;
   std::map<std::string, json> active_exchanges;
   int64_t updated = 0;
   bool live_truncated = false;
   json published = nullptr;
-  bool turn_active = false;
+  bool turn_active = false, command_busy = false;
   uint64_t guidance = 0, incoming = 0, runtime_sequence = 0;
   pid_t pid = -1;
   Fd socket;

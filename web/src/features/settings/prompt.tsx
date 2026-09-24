@@ -4,6 +4,7 @@ import type {
   PromptDocument,
   PromptResult,
   Session,
+  SessionStatus,
 } from "../../shared/types.ts";
 import { readStored, writeStored } from "../../state/store.ts";
 import { command } from "../../state/api.ts";
@@ -37,7 +38,9 @@ export default function PromptEditor({
 }) {
   const active =
     session?.generation &&
-    !["saved", "draft", "closed", "starting"].includes(session.status || "")
+    !(
+      ["saved", "draft", "interrupted", "starting"] as SessionStatus[]
+    ).includes(session.status!)
       ? session
       : undefined;
   const [scope, setScope] = useState(

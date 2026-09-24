@@ -23,6 +23,18 @@
 #include "include/tools/files.h"
 
 namespace uagent::session {
+namespace {
+// The status a connected worker reports through its latest state/activity.
+std::string LiveStatus(const HostSession& session) {
+  return session.closing                    ? "closing"
+         : !session.pending.is_null()       ? "waiting"
+         : !session.state.contains("route") ? "starting"
+         : session.turn_active              ? "running"
+         : session.command_busy             ? "processing"
+                                            : "idle";
+}
+}  // namespace
+
 std::string SessionHost::RunResultFor(const std::string& outcome) {
   return outcome == "complete"      ? "completed"
          : outcome == "interrupted" ? "interrupted"
@@ -78,13 +90,6 @@ Connection SessionHost::OpenRuntime(const HostSession& session, bool create,
   Connection connection = create ? Open(executable_, session.cwd, session.path,
                                         session.draft_title, options, error)
                                  : Connect(session.path);
-  // Record which executable this worker runs before anyone can adopt it:
-  // a later host compares this against the binary on disk. Written only
-  // for fresh spawns; a dead-on-arrival spawn leaves no socket, so the
-  // next attempt overwrites the record with its own spawn.
-  if (create && connection.socket) {
-    WriteWorkerBinary(session.path, ExecutableIdentity(executable_));
-  }
   return connection;
 }
 
@@ -138,6 +143,10 @@ void SessionHost::Received(HostSession* session, json frame) {
     }
   } else {
     ApplyRuntimeFrame(*session, frame);
+    // Clients adopt the host's lifecycle status rather than re-deriving it.
+    if (kind == "state" || kind == "activity") {
+      frame["metadata"] = Metadata(*session);
+    }
   }
   replay_.Publish(epoch_, session->id, session->generation, std::move(frame),
                   !session->run_id.empty());
@@ -151,10 +160,10 @@ void SessionHost::Received(HostSession* session, json frame) {
 bool SessionHost::RecycleStaleWorkerLocked(
     const std::shared_ptr<HostSession>& session,
     std::unique_lock<std::mutex>& lock) {
-  if (!WorkerBinaryStale(ExecutableIdentity(executable_),
-                         ReadWorkerBinary(session->path))) {
-    return false;
-  }
+  // A worker from another build of the executable is recycled; one whose
+  // executable cannot be stated right now is left alone.
+  const std::string current = FileIdentity(executable_);
+  if (current.empty() || current == session->binary) return false;
   // Binary upgraded since this worker spawned: graceful close, then the
   // caller spawns fresh. Same semantics as user-initiated close of a busy
   // session; a worker that ignores close keeps serving (fail open, retried
@@ -222,6 +231,7 @@ bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
       session->generation = connected.generation;
     }
     session->pid = connected.pid;
+    session->binary = std::move(connected.binary);
     session->exited = false;
     session->status = "starting";
     session->error.clear();
@@ -242,8 +252,10 @@ bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
         } else {
           session->status = "interrupted";
           session->state["activity"] = "Interrupted";
-          replay_.Publish(epoch_, session->id, session->generation,
-                          {{"kind", "closed"}}, !session->run_id.empty());
+          replay_.Publish(
+              epoch_, session->id, session->generation,
+              {{"kind", "closed"}, {"metadata", Metadata(*session)}},
+              !session->run_id.empty());
         }
       }
       session->exited = true;
@@ -251,7 +263,7 @@ bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
     });
     // Adopted a live worker through Connect: it may predate the executable
     // (host restarted over it). Recycle through the same gate, then spawn.
-    // Fresh spawns match the record OpenRuntime just wrote and skip this.
+    // A fresh spawn reports the executable on disk and skips this.
     if (RecycleStaleWorkerLocked(session, lock)) {
       if (attempt > 0) {
         error = "worker binary changed during activation";
@@ -287,13 +299,9 @@ void SessionHost::ApplyRuntimeFrame(HostSession& session, json& frame) {
     session.state = std::move(next);
     session.pending = JsonValue(frame, "pending", json(nullptr));
     session.turn_active = JsonValue(frame, "busy", false);
+    session.command_busy = JsonValue(frame, "command_busy", false);
     session.guidance = JsonValue(frame, "guidance", uint64_t{0});
-    session.status = session.closing                           ? "closing"
-                     : !session.pending.is_null()              ? "waiting"
-                     : !session.state.contains("route")        ? "starting"
-                     : session.turn_active                     ? "running"
-                     : JsonValue(frame, "command_busy", false) ? "processing"
-                                                               : "idle";
+    session.status = LiveStatus(session);
     if (JsonValue(frame, "checkpoint", false)) {
       if (!session.run_id.empty() && !session.turn_active) {
         if (const auto* blocks = JsonArray(session.state["view"], "blocks")) {
@@ -321,6 +329,7 @@ void SessionHost::ApplyRuntimeFrame(HostSession& session, json& frame) {
     session.state["activity_detail"] =
         JsonValue(frame, "activity_detail", json(nullptr));
     session.turn_active = JsonValue(frame, "busy", false);
+    session.status = LiveStatus(session);
     return;
   }
   if (kind == "gap") {

@@ -195,10 +195,7 @@ test("unread completions, background activity and conversation lifecycle", async
     .fill("Background activity probe");
   await page.getByRole("button", { name: "Send", exact: true }).click();
   await expect(page.locator(".decision")).toContainText("BROWSER_ACTIVITY");
-  await page.getByLabel("Response", { exact: true }).selectOption("y");
-  await page
-    .getByRole("button", { name: "Send response", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Allow once", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Activity", exact: true }),
   ).toContainText("1 command");

@@ -444,6 +444,13 @@ void TestFileTools() {
           ApprovalClass::kNone);
     CHECK(PathApprovalClass(TrustStorePath(), PathAccess::kWrite) ==
           ApprovalClass::kMandatoryHuman);
+    // Remembered "always allow" rules authorize future calls, so writing them
+    // is never something an automatic reviewer may approve.
+    const std::string rules =
+        UagentDir(kConfigDir) + "/" + kPermissionStoreFile;
+    CHECK(SelfConfigurationPath(rules));
+    CHECK(PathApprovalClass(rules, PathAccess::kWrite) ==
+          ApprovalClass::kMandatoryHuman);
   }
   {
     ScopedEnv configured("UAGENT_CONFIG_FILE", custom_config_alias.string());

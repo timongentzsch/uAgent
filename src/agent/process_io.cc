@@ -43,12 +43,6 @@ void CloseSessionIo(const std::shared_ptr<ActivitySession>& session) {
 
 }  // namespace
 
-ActivityKind ParseActivityKind(const std::string& kind) {
-  if (kind == "subagent") return ActivityKind::kSubagent;
-  if (kind == "memory") return ActivityKind::kMemory;
-  return ActivityKind::kCommand;
-}
-
 std::string ActivityKindName(ActivityKind kind) {
   switch (kind) {
     case ActivityKind::kSubagent:
@@ -96,24 +90,6 @@ bool TransitionActivityLocked(ActivitySession& session, ActivityState next) {
   if (allowed) session.state = next;
   return allowed;
 }
-
-BgJob::BgJob(pid_t process_pid, std::string log_path, std::string command,
-             bool is_detached, const std::string& job_kind, int64_t activity_id,
-             std::shared_ptr<ActivitySession> activity, std::string label,
-             std::string receipt, std::string source,
-             std::vector<std::string> notes, json facts)
-    : pid(process_pid),
-      log(std::move(log_path)),
-      cmd(std::move(command)),
-      detached(is_detached),
-      kind(is_detached ? ActivityKind::kDetached : ParseActivityKind(job_kind)),
-      id(activity_id),
-      session(std::move(activity)),
-      display_label(std::move(label)),
-      receipt_path(std::move(receipt)),
-      source_id(std::move(source)),
-      completion_notes(std::move(notes)),
-      metadata(std::move(facts)) {}
 
 ActivityReservation::~ActivityReservation() { Reset(); }
 
@@ -213,7 +189,7 @@ void ProcessSupervisor::RegisterIo(
 
 void ProcessSupervisor::AssignId(BgJob& job) {
   if (job.id <= 0) {
-    job.id = job.detached ? static_cast<int64_t>(job.pid) : next_id_++;
+    job.id = job.Detached() ? static_cast<int64_t>(job.pid) : next_id_++;
   }
   if (job.session) {
     std::lock_guard<std::mutex> lock(job.session->mutex);
@@ -228,7 +204,7 @@ std::optional<ActivityReservation> ProcessSupervisor::ReserveActivity(
   size_t live = foreground_.size() +
                 static_cast<size_t>(std::count_if(
                     jobs_.begin(), jobs_.end(),
-                    [](const BgJob& current) { return !current.detached; }));
+                    [](const BgJob& current) { return !current.Detached(); }));
   if (static_cast<int64_t>(live) + reservations_ >= max_pending) {
     return std::nullopt;
   }
@@ -237,7 +213,7 @@ std::optional<ActivityReservation> ProcessSupervisor::ReserveActivity(
   bool subagent = max_subagents > 0;
   if (subagent) {
     auto child = [](const BgJob& current) {
-      return !current.detached && current.kind == ActivityKind::kSubagent;
+      return !current.Detached() && current.kind == ActivityKind::kSubagent;
     };
     int64_t children =
         static_cast<int64_t>(
@@ -336,13 +312,13 @@ bool ProcessSupervisor::RequestForegroundBackground() {
 
 bool ProcessSupervisor::TryAdd(BgJob job, int64_t max_pending) {
   std::lock_guard<std::mutex> lock(mutex_);
-  auto pending = [](const BgJob& current) { return !current.detached; };
-  if (job.detached) {
+  auto pending = [](const BgJob& current) { return !current.Detached(); };
+  if (job.Detached()) {
     // A detached terminal outlives the turn that started it, so this is the
     // only bound on how many one session can leave running.
     int64_t detached = static_cast<int64_t>(
         std::count_if(jobs_.begin(), jobs_.end(),
-                      [](const BgJob& current) { return current.detached; }));
+                      [](const BgJob& current) { return current.Detached(); }));
     if (detached >= max_pending) return false;
   } else {
     size_t count =
@@ -377,14 +353,14 @@ size_t ProcessSupervisor::PendingCount() const {
   std::lock_guard<std::mutex> lock(mutex_);
   return static_cast<size_t>(
       std::count_if(jobs_.begin(), jobs_.end(),
-                    [](const BgJob& job) { return !job.detached; }));
+                    [](const BgJob& job) { return !job.Detached(); }));
 }
 
 size_t ProcessSupervisor::DetachedCount() const {
   std::lock_guard<std::mutex> lock(mutex_);
   return static_cast<size_t>(
       std::count_if(jobs_.begin(), jobs_.end(),
-                    [](const BgJob& job) { return job.detached; }));
+                    [](const BgJob& job) { return job.Detached(); }));
 }
 
 size_t ProcessSupervisor::Count() const {
@@ -442,7 +418,7 @@ json ProcessSupervisor::ActivityViews() const {
     json row = job.metadata;
     row["id"] = ActivityId(job);
     row["agent_id"] = job.source_id;
-    row["detached"] = job.detached;
+    row["detached"] = job.Detached();
     row["kind"] = job.kind == ActivityKind::kSubagent ? "agent" : "command";
     row["label"] =
         JsonValue(row, "label",
@@ -512,7 +488,7 @@ size_t ProcessSupervisor::JoinableCount() const {
   std::lock_guard<std::mutex> lock(mutex_);
   return static_cast<size_t>(
       std::count_if(jobs_.begin(), jobs_.end(), [](const BgJob& job) {
-        return !job.detached && job.session &&
+        return !job.Detached() && job.session &&
                job.kind == ActivityKind::kSubagent;
       }));
 }
@@ -536,7 +512,7 @@ std::optional<BgJob> ProcessSupervisor::Take(int64_t id, bool retain) {
   size_t index = IndexOfLocked(id);
   if (index == jobs_.size()) return std::nullopt;
   const auto& session = jobs_[index].session;
-  retain = retain && session && !jobs_[index].detached;
+  retain = retain && session && !jobs_[index].Detached();
   if (retain) {
     std::lock_guard state_lock(session->mutex);
     if (session->state != ActivityState::kStopped &&

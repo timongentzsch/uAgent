@@ -1,50 +1,91 @@
-"""Consumer-boundary guard: domain layers never include presentation.
+"""Layer guard: a translation unit includes only its own layer or lower ones.
 
-The agent, provider-dialect and tool layers emit typed events and data views;
-terminal, browser and headless runners consume them. A domain translation unit
-that includes ui/ or web/ can steer control flow from presentation code, so the
-boundary is enforced here rather than by inspection. Tool-call observation
-records live in agent/tool_presentation.h precisely so the loop can attach
-them without reaching into ui/.
+CMake links the libraries as core <- api <- toolcore <- agent <- tools <- app
+<- web. Static-library ordering hides an upward include until the symbol it
+names moves, so the order is checked here. KNOWN lists the remaining upward
+edges; removing one is progress, adding one fails this test.
 """
 
 import re
+import subprocess
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-DOMAIN = ("src/agent", "src/api", "src/tools")
-DOMAIN_HEADERS = ("include/agent", "include/api", "include/tools")
-CONSUMER = re.compile(r'#include\s+"include/(ui|web)/[^"]+"')
+ORDER = ["core", "api", "toolcore", "agent", "tools", "app", "web"]
+INCLUDE = re.compile(r'#include\s+"(include/[^"]+)"')
+
+KNOWN = {
+    "include/api/stream.h -> include/agent/tool_protocol.h",
+    "include/media/attachments.h -> include/api/capabilities.h",
+    "include/media/attachments.h -> include/tools/tool.h",
+    "include/tools/adapt_system.h -> include/app/prompt_control.h",
+    "include/tools/collaborator_runtime.h -> include/app/options.h",
+    "include/tools/configure.h -> include/app/config_proposal.h",
+    "include/tools/configure.h -> include/app/self_description.h",
+    "src/agent/child_agent.cc -> include/tools/session.h",
+    "src/agent/request.cc -> include/app/prompt_control.h",
+    "src/browser/browser.cc -> include/app/session.h",
+    "src/browser/runtime.cc -> include/app/session.h",
+    "src/core/events.cc -> include/ui/presentation.h",
+    "src/tools/browser.cc -> include/app/session.h",
+    "src/tools/browser.cc -> include/cli.h",
+    "src/tools/collaborator_runtime.cc -> include/app/session.h",
+    "src/tools/session.cc -> include/app/session.h",
+}
 
 
-def includes_of(path):
-    found = []
-    for line in path.read_text().splitlines():
-        match = CONSUMER.search(line)
-        if match:
-            found.append(match.group(0))
-    return found
+def layer(path):
+    if path.startswith(("src/core/", "src/transport/", "src/media/")):
+        return "core"
+    if path.startswith(("include/core/", "include/transport/", "include/media/")):
+        return "core"
+    if path.startswith(("src/api/", "include/api/")) or path == "include/api.h":
+        return "api"
+    if path in ("src/tools/tool.cc", "include/tools/tool.h", "include/providers.h"):
+        return "toolcore"
+    if path.startswith("src/providers/"):
+        return "toolcore"
+    if path.startswith(("src/agent/", "include/agent/")) or path == "include/agent.h":
+        return "agent"
+    if path.startswith(("src/tools/", "src/mcp/", "src/browser/")):
+        return "tools"
+    if path.startswith(("include/tools/", "include/mcp/", "include/browser/")):
+        return "tools"
+    if path.startswith(("src/app/", "src/cli/", "src/ui/", "include/app/", "include/ui/")):
+        return "app"
+    if path in ("include/cli.h", "include/md.h"):
+        return "app"
+    if path.startswith(("src/web/", "include/web/")):
+        return "web"
+    return None
 
 
-class ConsumerBoundaryTest(unittest.TestCase):
-    def test_domain_headers_include_no_presentation(self):
-        violations = []
-        for tree in DOMAIN_HEADERS:
-            for path in sorted((ROOT / tree).rglob("*.h")):
-                for line in includes_of(path):
-                    violations.append(f"{path.relative_to(ROOT)}: {line}")
-        self.assertEqual(violations, [])
+def upward_edges():
+    tracked = subprocess.run(
+        ["git", "ls-files", "src", "include"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.split()
+    edges = set()
+    for name in tracked:
+        own = layer(name)
+        if own is None:
+            continue
+        for target in INCLUDE.findall((ROOT / name).read_text()):
+            other = layer(target)
+            if other and ORDER.index(other) > ORDER.index(own):
+                edges.add(f"{name} -> {target}")
+    return edges
 
-    def test_domain_sources_include_no_presentation(self):
-        violations = []
-        for tree in DOMAIN:
-            for suffix in ("*.cc", "*.h"):
-                for path in sorted((ROOT / tree).rglob(suffix)):
-                    rel = path.relative_to(ROOT).as_posix()
-                    for line in includes_of(path):
-                        violations.append(f"{rel}: {line}")
-        self.assertEqual(violations, [])
+
+class LayerBoundaryTest(unittest.TestCase):
+    def test_no_new_upward_includes(self):
+        edges = upward_edges()
+        self.assertEqual(sorted(edges - KNOWN), [], "new upward include")
+        self.assertEqual(sorted(KNOWN - edges), [], "remove fixed edges from KNOWN")
 
 
 if __name__ == "__main__":

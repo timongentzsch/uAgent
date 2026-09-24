@@ -396,46 +396,14 @@ export function useHost(
         }
         if (event.kind === "state") {
           const phase = event.phase || event.state?.phase || "idle";
-          const pendingDecision =
-            event.pending_decision ?? event.state?.pending_decision ?? null;
-          const turnActive = !["idle", "decision"].includes(phase);
-          const metadata = {
-            ...(current?.metadata || knownSessions.get(id)),
-            id,
-            generation: event.generation,
-            presence: event.presence || "active",
-            updated: event.updated ?? current?.metadata.updated,
-            status: pendingDecision
-              ? "waiting"
-              : !event.state?.route
-                ? "starting"
-                : turnActive
-                  ? "running"
-                  : "idle",
-            turn_active: turnActive,
-            pending: !!pendingDecision,
-            guidance: event.guidance || 0,
-            activity: event.state?.activity,
-            activities: event.state?.activities,
-            incoming:
-              event.state?.statistics?.incoming ||
-              current?.metadata.incoming ||
-              0,
-            title:
-              event.state?.title ||
-              current?.metadata.title ||
-              "New conversation",
-          };
+          const pendingDecision = event.pending ?? null;
+          const metadata = event.metadata!;
           const projected: Snapshot = {
             ...current,
             epoch: event.epoch,
             cursor: event.sequence,
             metadata,
-            state: {
-              ...event.state,
-              phase,
-              pending_decision: pendingDecision,
-            },
+            state: { ...event.state, phase },
             pending: pendingDecision,
             streamed: event.checkpoint ? [] : current?.streamed,
           };
@@ -448,7 +416,7 @@ export function useHost(
           setCatalogue((prior) => ({
             ...prior,
             sessions: prior.sessions.map((item) =>
-              item.id === id ? { ...item, ...metadata } : item,
+              item.id === id ? metadata : item,
             ),
           }));
         } else if (
@@ -456,23 +424,17 @@ export function useHost(
           event.type === "activities.changed" ||
           event.type === "collaborator.changed"
         ) {
-          if (current) live.current[id] = applySessionEvent(current, event);
+          if (current)
+            live.current[id] = {
+              ...applySessionEvent(current, event),
+              ...(event.metadata && { metadata: event.metadata }),
+            };
           setCatalogue((prior) => ({
             ...prior,
             sessions: prior.sessions.map((item) =>
               item.id !== id
                 ? item
-                : {
-                    ...item,
-                    ...(event.kind === "activity"
-                      ? {
-                          activity: event.activity,
-                          turn_active: event.phase
-                            ? !["idle", "decision"].includes(event.phase)
-                            : item.turn_active,
-                        }
-                      : { activities: data.activities }),
-                  },
+                : event.metadata || { ...item, activities: data.activities },
             ),
           }));
         } else if (event.kind === "event" && current) {
@@ -496,32 +458,19 @@ export function useHost(
         } else if (event.kind === "outcome" && !event.accepted)
           report(new Error(event.error));
         else if (event.kind === "error") report(new Error(event.error));
-        else if (event.kind === "closed") {
+        else if (event.kind === "closed" && event.metadata) {
+          const metadata = event.metadata;
           if (current)
             live.current[id] = {
               ...current,
               cursor: event.sequence,
               pending: null,
-              metadata: {
-                ...current.metadata,
-                status: "interrupted",
-                presence: "",
-                turn_active: false,
-                activity: "Interrupted",
-              },
+              metadata,
             };
           setCatalogue((prior) => ({
             ...prior,
             sessions: prior.sessions.map((item) =>
-              item.id === id
-                ? {
-                    ...item,
-                    status: "interrupted",
-                    presence: "",
-                    turn_active: false,
-                    activity: "Interrupted",
-                  }
-                : item,
+              item.id === id ? metadata : item,
             ),
           }));
         }

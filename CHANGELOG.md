@@ -2,8 +2,29 @@
 
 ## Unreleased
 
+### Upgrade notes
+
+- Running sessions restart on upgrade and installed web apps must reload:
+  workers now report their binary in the connection handshake, and the old
+  pending-decision field and `.sock.binary` marker are gone.
+- An empty setting (`KEY=`) now means "use the default" everywhere.
+- The legacy integer permission override is no longer read; set
+  `UAGENT_APPROVAL` to `ask`, `auto` or `yolo`.
+- `scratch` no longer takes `code` or `packages`: write the script under
+  `.uagent/scratch` with `write_file` (dependencies in its PEP 723 header) and
+  run it with `scratch`.
+
 ### Added
 
+- Web Push is built into release archives and the Docker image.
+- Tool rows show each call the way the tool describes it: a command verbatim,
+  a script as highlighted code, small arguments as fields, and Markdown
+  results rendered. The terminal prints the same parts under `/verbose`.
+- Timestamps show the date when it matters and follow per-device settings:
+  a 12-hour, 24-hour or locale clock, and smart, relative or absolute stamps.
+- The browser performs `/rewind` and `/share`, recalls sent prompts with
+  Up/Down, stops a turn with Esc and moves a command to the background from
+  the activity panel.
 - `$fusion` coordinates one opt-in retained sidekick through blocking handoffs.
   The same event-driven session worker preserves its supervised activities,
   charges cumulative usage deltas to the lead, and appears consistently in CLI
@@ -14,10 +35,6 @@
   socket and consume the same ordered events. Client exit or web restart detaches
   without stopping the session. Correlated receipts reject conflicting retries
   and stale replies; reconnect never automatically repeats uncertain work.
-- Self-improvement baseline preflight and a human review packet with the exact
-  patch, measured evidence, agent-assessed impact/generality and recommendation.
-  Bind promotion approval to the current review ID; document research support
-  and the limits of exploratory recursive comparisons.
 - `scratch` accepts script arguments; `grep` supports literal searches and
   returning only the names of files with matching content.
 - Image attachments accept HEIC/HEIF phone photos and SVG diagrams: HEIC
@@ -28,6 +45,13 @@
 
 ### Changed
 
+- Approvals ask one plain question; the terminal shows its key hints once and
+  the browser shows one button per option.
+- The terminal status row shows elapsed time, the Esc and Ctrl+B hints,
+  running agents and commands, context left and the approval mode.
+- `/verbose` is a terminal view setting: the runtime always records full tool
+  output and routine memory outcomes, so older rows can still be expanded.
+- Builds without the web host (`-DUAGENT_WEB=OFF`) leave out the browser.
 - Web steering queues guidance without aborting the turn, so steering no
   longer reports an interruption or kills running tools; passive waits
   yield on the queued message. The browser's session cost and counters
@@ -73,14 +97,6 @@
   image-only web display path and archive ID guessing. Prompt writes use the
   scoped revision contract; custom routes use `UAGENT_PROVIDER_PROTOCOL`.
 
-- Target self-improvement at shared architectural mechanisms with evidence
-  across distinct workflows; treat isolated fixes as incidental findings and
-  distinguish source validation from architectural impact in human review.
-- Default self-improvement to unlimited model calls; subscription authority can
-  declare `max_model_calls: 0` while retaining token, time, tool and run limits.
-- Replace prompt-overlay self-improvement with one bounded source/binary loop:
-  immutable executors, same-source replay and continuation, independently
-  reproduced claims, conservative selection, explicit promotion and rollback.
 - Remove slopscan and duplicate audit/lint work. Keep deterministic telemetry
   and source contracts; make personal history and host reports opt-in.
 - Consolidate cache parity and test support, run source-only CI checks once,
@@ -93,16 +109,29 @@
 - Complete MCP discovery, subscriptions and bounded input continuations while
   preserving tool arguments, response correlation and cancellation.
 
+### Removed
+
+- The self-improvement controller and its skill; trace metrics and live
+  authority checks moved to `benchmarks/`.
+- The GitHub `action.yml`.
+- `UAGENT_WEB_SEARCH_URL` and `UAGENT_WEB_SEARCH_API_KEY`: web search uses the
+  side-model route. The `anthropic` protocol value is accepted as an alias
+  only; the wire API decides the dialect.
+
 ### Fixed
 
+- `/share` failed in every live session because it re-took the session lease
+  its own worker held.
+- Audio and video attachments are accepted only on Chat Completions routes;
+  other routes report them as unsupported instead of dropping them silently.
+- `permissions.json` is protected like the other configuration files, MCP
+  servers no longer inherit a file-size limit, and non-UTF-8 locales fall back
+  to UTF-8 or ASCII instead of measuring text as zero width.
 - Restore effective-prompt scrolling, centralize dialog spacing and size controls,
   and distinguish interface scale from conversation text size with live previews.
 - Keep configuration edits stable during initial rendering; remove the delayed
   effect that could overwrite a newly typed value.
 
-- Verify self-improvement proposals in clean source copies and HOME; allow
-  predeclared host verification for tests that exercise native sandboxing.
-  Report validated source fixes separately from recursive A/B verdicts.
 - Render scratch output as an ordinary tool result instead of hiding it behind
   a repeated script diff. Mark truncated whole-file diffs.
 - Preserve model/tool Unicode content when UI symbols fall back to ASCII.

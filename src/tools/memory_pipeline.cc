@@ -233,7 +233,7 @@ std::string StartMemoryExtractor(ProcessSupervisor& processes, const Api& api,
                        // confined child could not. Its own commands inherit
                        // UAGENT_SANDBOX and are confined one level down.
                        .sandbox = false,
-                       .job_kind = "memory",
+                       .activity_kind = ActivityKind::kMemory,
                        .activity_label = "extracting from " + source_id,
                        .receipt_path = receipt,
                        .source_id = source_id,

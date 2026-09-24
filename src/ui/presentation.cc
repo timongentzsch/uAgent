@@ -109,8 +109,8 @@ void PrintMessageHeader() {
 }
 
 struct TerminalPresenter::State {
-  explicit State(const Event& event)
-      : render(event.render), full_reasoning(event.verbose) {}
+  State(const Event& event, bool detailed)
+      : render(event.render), full_reasoning(detailed) {}
 
   void Text(std::string_view value) {
     if (!render) return;
@@ -240,7 +240,7 @@ void TerminalPresenter::Consume(const Event& event) noexcept {
       Finish();
       if (event.render) {
         PrintSearchReceipt(JsonValue(event.data, "searches", int64_t{0}),
-                           event.data["annotations"], event.verbose,
+                           event.data["annotations"], detailed_,
                            JsonValue(event.data, "line_open", false));
         if (JsonValue(event.data, "citations", false)) {
           PrintCitationSources(event.data["annotations"]);
@@ -259,7 +259,7 @@ void TerminalPresenter::Consume(const Event& event) noexcept {
       break;
     case EventId::kResponseStarted:
       Finish();
-      state_ = std::make_unique<State>(event);
+      state_ = std::make_unique<State>(event, detailed_);
       break;
     case EventId::kReasoningDelta:
       if (state_ && state_->full_reasoning && spinner_) spinner_->Stop();
@@ -295,7 +295,7 @@ void TerminalPresenter::Consume(const Event& event) noexcept {
     default:
       if (event.render && event.presentation) {
         if (spinner_) spinner_->Stop();
-        PrintPresentation(*event.presentation);
+        PrintPresentation(*event.presentation, detailed_);
       }
       break;
   }
@@ -312,7 +312,6 @@ void TerminalPresenter::Consume(const AppEvent& received) noexcept {
         received.data.contains("append_text") ? "append_text" : "text", "");
     event.text = text;
     event.render = true;
-    event.verbose = JsonValue(received.data, "verbose", false);
     if (const json* value = JsonObject(received.data, "presentation")) {
       PresentationRecord record;
       auto kind = JsonValue(*value, "kind", "");
@@ -333,6 +332,9 @@ void TerminalPresenter::Consume(const AppEvent& received) noexcept {
       record.id = JsonValue(*value, "id", "");
       record.skill = JsonValue(*value, "skill", false);
       record.poll = JsonValue(*value, "poll", false);
+      record.minor = JsonValue(*value, "minor", false);
+      record.output = JsonValue(*value, "output", "");
+      record.view = JsonValue(*value, "view", json(nullptr));
       record.activity = JsonValue(*value, "activity", json::object());
       if (const json* artifacts = JsonArray(*value, "artifacts")) {
         for (const auto& artifact : *artifacts) {
@@ -352,19 +354,11 @@ void TerminalPresenter::Block(const json& block) {
   const std::string kind = JsonValue(block, "kind", "");
   const std::string text = TerminalSafe(JsonValue(block, "text", ""));
   if (kind == "user" || kind == "attachment") {
-    // Stored text keeps the "Attached:" path trailer for the model
-    // payload; live rows render the delivery gallery instead, like history
-    // replay and the web client do.
-    const json deliveries = JsonValue(block, "deliveries", json::array());
-    const json files = JsonValue(block, "files", json::array());
-    const bool attached =
-        !deliveries.empty() || (files.is_array() && !files.empty());
-    const std::string echo =
-        attached
-            ? TerminalSafe(StripAttachedTrailer(JsonValue(block, "text", "")))
-            : text;
-    WriteTerminalRecord(UserEchoRow(InputPrompt(), echo) + "\n" +
-                        AttachmentDeliveryRows(deliveries));
+    // The view already dropped the "Attached:" path trailer; attachments
+    // render as the delivery gallery, like history replay and the web.
+    WriteTerminalRecord(
+        UserEchoRow(InputPrompt(), text) + "\n" +
+        AttachmentDeliveryRows(JsonValue(block, "deliveries", json::array())));
   } else if (kind == "assistant") {
     // Mirror the stored-transcript printer and the live presenter: the mark
     // only prints with text (tool-only turns show rows, never a bare mark),
@@ -389,7 +383,8 @@ void TerminalPresenter::Block(const json& block) {
         record.multiline = JsonValue(*replay, "multiline", false);
         record.skill = JsonValue(tool, "name", "") == "skill";
         record.poll = JsonValue(*replay, "poll", false);
-        PrintPresentation(record);
+        record.view = JsonValue(tool, "view", json(nullptr));
+        PrintPresentation(record, detailed_);
       }
     }
   } else if (kind == "turn_summary") {
@@ -398,7 +393,10 @@ void TerminalPresenter::Block(const json& block) {
   } else if (kind == "compaction") {
     WriteTerminalRecord("Context compacted\n");
   } else if (kind == "activity") {
-    WriteTerminalRecord("· " + text + "\n");
+    const json memory = JsonValue(block, "memory", json::object());
+    if (detailed_ || !JsonValue(memory, "minor", false)) {
+      WriteTerminalRecord("· " + text + "\n");
+    }
   } else if (kind == "tool_result") {
     if (const json* replay = JsonObject(block, "replay")) {
       // Same row the live printer drew: recorded title/summary plus the
@@ -410,6 +408,7 @@ void TerminalPresenter::Block(const json& block) {
       record.title =
           JsonValue(*replay, "title", JsonValue(block, "name", "tool"));
       record.summary = JsonValue(*replay, "summary", "");
+      record.output = JsonValue(block, "text", "");
       record.change = JsonValue(block, "change", "");
       const std::string status = JsonValue(block, "status", "");
       record.status = status == "success"     ? PresentationStatus::kSucceeded
@@ -417,7 +416,7 @@ void TerminalPresenter::Block(const json& block) {
                       : status == "failed" || status == "timed_out"
                           ? PresentationStatus::kFailed
                           : PresentationStatus::kNeutral;
-      PrintPresentation(record);
+      PrintPresentation(record, detailed_);
       return;
     }
     json activity = JsonValue(block, "activity", json::object());
@@ -435,8 +434,38 @@ void TerminalPresenter::Finish() noexcept {
   state_.reset();
 }
 
-void PrintPresentation(const PresentationRecord& record) noexcept {
+namespace {
+// The terminal spelling of a ToolView's input parts, the same vocabulary the
+// browser renders: a command after "$", code as-is, fields as "label: value".
+std::string InputPartsText(const json& view) {
+  std::string text;
+  const json* parts = JsonArray(view, "input");
+  if (!parts) return text;
+  for (const json& part : *parts) {
+    const std::string kind = JsonValue(part, "kind", "");
+    if (kind == "command") {
+      text += "$ " + JsonValue(part, "text", "") + "\n";
+    } else if (kind == "code") {
+      const std::string label = JsonValue(part, "label", "");
+      if (!label.empty()) text += label + ":\n";
+      text += JsonValue(part, "text", "") + "\n";
+    } else if (const json* rows = JsonArray(part, "rows")) {
+      for (const json& row : *rows) {
+        if (row.is_array() && row.size() == 2) {
+          text += row[0].get<std::string>() + ": " + row[1].get<std::string>() +
+                  "\n";
+        }
+      }
+    }
+  }
+  return text;
+}
+}  // namespace
+
+void PrintPresentation(const PresentationRecord& record,
+                       bool detailed) noexcept {
   if (record.kind == PresentationKind::kNotice) {
+    if (record.minor && !detailed) return;
     const char* color = record.status == PresentationStatus::kFailed   ? RED()
                         : record.status == PresentationStatus::kWarned ? YEL()
                                                                        : DIM();
@@ -463,12 +492,18 @@ void PrintPresentation(const PresentationRecord& record) noexcept {
       body += '(' + TerminalSafe(record.summary) + ')';
     }
     WriteTerminalRecord(StyledBlock(body, BOLD()));
+    if (detailed) {
+      const std::string input = InputPartsText(record.view);
+      if (!input.empty()) {
+        WriteTerminalRecord(StyledBlock(TerminalSafe(input), DIM()));
+      }
+    }
     return;
   }
   if (record.kind != PresentationKind::kToolResult) return;
 
   if (const auto group = record.activity.find("group");
-      group != record.activity.end()) {
+      !detailed && group != record.activity.end()) {
     if (JsonValue(*group, "id", "") == record.id) {
       WriteTerminalRecord(StyledBlock(JsonValue(*group, "label", ""), DIM()));
     }
@@ -502,9 +537,14 @@ void PrintPresentation(const PresentationRecord& record) noexcept {
 
   const char* style = ResultStyle(record.status);
   std::string prefix = AsciiGlyphs("  ← ") + TerminalSafe(record.title);
-  if (record.multiline && !record.detail.empty()) {
+  if (detailed && record.output.find('\n') != std::string::npos) {
     WriteTerminalRecord(std::string(style) + prefix + RST() + "\n" +
-                        TerminalSafe(record.detail) + "\n");
+                        TerminalSafe(record.output) + "\n");
+    return;
+  }
+  if (detailed && !record.output.empty()) {
+    WriteTerminalRecord(std::string(style) + prefix + ": " +
+                        TerminalSafe(record.output) + RST() + "\n");
     return;
   }
   WriteTerminalRecord(std::string(style) + prefix + ": " +

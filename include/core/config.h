@@ -21,6 +21,7 @@
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/limits.h"
+#include "include/core/private_store.h"
 #include "include/core/strings.h"
 
 namespace uagent {
@@ -160,8 +161,23 @@ inline bool ProjectTrustSnapshot(json& snapshot, std::string& error) {
   return true;
 }
 
+inline constexpr char kTrustStoreFile[] = "trusted-projects.json";
+inline constexpr size_t kTrustStoreBytes = size_t{16} * 1024 * 1024;
+
 inline std::string TrustStorePath() {
-  return UagentDir(kConfigDir) + "/trusted-projects.json";
+  return UagentDir(kConfigDir) + "/" + kTrustStoreFile;
+}
+
+// Records one workspace under the store's cross-process lock, so trusting two
+// workspaces at once cannot drop either record.
+inline bool WriteTrustRecord(const std::string& root, json record,
+                             std::string& error) {
+  PrivateJsonStore store(kTrustStoreFile, json::object(), kTrustStoreBytes,
+                         error);
+  if (!store.Ready()) return false;
+  if (!store.Data().is_object()) store.Data() = json::object();
+  store.Data()[root] = std::move(record);
+  return store.Save(error);
 }
 
 inline json ReadTrustStore() {
@@ -215,24 +231,21 @@ inline bool RestampProjectConfigTrust(std::string& error) {
     error = "project .mcp.json changed, so trust must be granted again";
     return false;
   }
-  store[root] = {
-      {"format", 3}, {"mcp", record["mcp"]}, {"config", snapshot["config"]}};
-  std::string data = JsonDump(store, 2) + "\n";
-  return AtomicWriteFile(TrustStorePath(), data, kPrivateFileMode,
-                         /*preserve_mode=*/false, error);
+  return WriteTrustRecord(
+      root,
+      {{"format", 3}, {"mcp", record["mcp"]}, {"config", snapshot["config"]}},
+      error);
 }
 
 inline bool TrustProjectConfig(std::string& error,
                                json* trusted_mcp = nullptr) {
   json snapshot;
   if (!ProjectTrustSnapshot(snapshot, error)) return false;
-  json store = ReadTrustStore();
-  store[CanonicalCwd()] = {
-      {"format", 3}, {"mcp", snapshot["mcp"]}, {"config", snapshot["config"]}};
-  std::string path = TrustStorePath();
-  std::string data = JsonDump(store, 2) + "\n";
-  if (!AtomicWriteFile(path, data, kPrivateFileMode, /*preserve_mode=*/false,
-                       error)) {
+  if (!WriteTrustRecord(CanonicalCwd(),
+                        {{"format", 3},
+                         {"mcp", snapshot["mcp"]},
+                         {"config", snapshot["config"]}},
+                        error)) {
     return false;
   }
   if (trusted_mcp) *trusted_mcp = std::move(snapshot["mcp"]);

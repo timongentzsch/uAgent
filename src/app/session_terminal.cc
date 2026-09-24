@@ -2,10 +2,13 @@
 #include <poll.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cstdio>
 #include <filesystem>
 #include <mutex>
+#include <optional>
 #include <set>
 #include <string>
 #include <thread>
@@ -15,10 +18,12 @@
 #include "include/agent/session_store.h"
 #include "include/agent/session_view.h"
 #include "include/app/session.h"
+#include "include/cli.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
 #include "include/md.h"
+#include "include/ui/display.h"
 #include "include/ui/editor.h"
 #include "include/ui/interactive.h"
 #include "include/ui/presentation.h"
@@ -26,6 +31,54 @@
 
 namespace uagent::session {
 namespace {
+// The pinned row from the worker's state frame: the working row while a turn
+// runs, the session row otherwise -- the same renderers presentation_test pins.
+std::string StatusRow(const json& state,
+                      std::chrono::steady_clock::duration elapsed,
+                      bool interrupting, bool verbose) {
+  const int64_t used = JsonValue(state, "context_tokens", int64_t{0});
+  const int64_t window = JsonValue(state, "context_window", int64_t{0});
+  const std::string route = JsonValue(state, "route", "");
+  size_t background = 0, foreground = 0, subagents = 0;
+  std::string subagent;
+  if (const json* rows = JsonArray(state, "activities")) {
+    for (const json& row : *rows) {
+      if (JsonValue(row, "status", "") != "running") continue;
+      if (JsonValue(row, "kind", "") == "agent") {
+        ++subagents;
+        std::string progress = JsonValue(row, "progress", "");
+        if (!progress.empty()) {
+          subagent = JsonValue(row, "id", "") + ": " + progress;
+        }
+      } else if (JsonValue(row, "detached", false)) {
+        ++background;
+      } else {
+        ++foreground;
+      }
+    }
+  }
+  if (JsonValue(state, "turn_active", false)) {
+    return ActivityBar({.elapsed = elapsed,
+                        .context_used = used,
+                        .context_window = window,
+                        .model = route,
+                        .background = background,
+                        .foreground = foreground,
+                        .subagents = subagents,
+                        .interrupting = interrupting,
+                        .subagent = std::move(subagent)});
+  }
+  const json permissions = JsonValue(state, "permissions", json::object());
+  return StatusBar(UsageFromJson(JsonValue(state, "usage", json::object())),
+                   {.activity = JsonValue(state, "activity", "Connecting"),
+                    .context_used = used,
+                    .context_window = window,
+                    .model = route,
+                    .approval = JsonValue(permissions, "effective", "ask"),
+                    .verbose = verbose,
+                    .background = background + subagents});
+}
+
 class Terminal {
  public:
   Terminal(Connection connection, std::string path)
@@ -76,9 +129,11 @@ class Terminal {
           {wake_.read.Get(), POLLIN, 0},
           {AbortWakeFd(), POLLIN, 0}};
       int timeout = -1;
-      if (raw_ && composer_.WakeDeadline()) {
-        timeout = PollTimeoutMs(*composer_.WakeDeadline());
+      if (const auto deadline = composer_.WakeDeadline(); raw_ && deadline) {
+        timeout = PollTimeoutMs(*deadline);
       }
+      // The working row's spinner and elapsed time advance on their own.
+      if (raw_ && running) timeout = timeout < 0 ? 100 : std::min(timeout, 100);
       if (poll(waits, 4, timeout) < 0 && errno != EINTR) break;
       wake_.Drain();
       if (TakeIdleInterrupt()) {
@@ -99,6 +154,7 @@ class Terminal {
       }
       if (AbortRequested()) {
         Send({{"kind", "interrupt"}});
+        interrupting_ = true;
         ClearAbort();
         NormalizeAbortWake();
       }
@@ -131,14 +187,6 @@ class Terminal {
             description = JsonValue(*approval, "mandatory_reason", "") + "\n" +
                           JsonValue(*approval, "preview", "") + "\n";
           }
-          if (const json* options = JsonArray(pending, "options")) {
-            for (const auto& option : *options) {
-              if (option.is_object()) {
-                description += JsonValue(option, "value", "") + " · " +
-                               JsonValue(option, "label", "") + "\n";
-              }
-            }
-          }
           if (raw_) {
             Unmount();
             output_.Write(ColorizeDiffLines(TerminalSafe(description)));
@@ -147,19 +195,20 @@ class Terminal {
             fputs(TerminalSafe(description).c_str(), stdout);
           }
         }
+        const std::string prompt = TerminalSafe(
+            DecisionPrompt(JsonValue(pending, "prompt", ""),
+                           JsonValue(pending, "options", json::array())));
         if (raw_) {
           Unmount();
           if (!decision.empty()) {
             draft_ = composer_.Buffer();
-            output_.Write(TerminalSafe(JsonValue(pending, "prompt", "")) +
-                          "\n");
+            output_.Write(prompt + "\n");
             composer_.Mount("> ", JsonValue(pending, "initial", ""), false);
           } else {
             composer_.Mount(InputPrompt(), draft_);
           }
         } else if (!decision.empty()) {
-          printf("%s\n",
-                 TerminalSafe(JsonValue(pending, "prompt", "")).c_str());
+          printf("%s\n", prompt.c_str());
         }
       }
       if (!(waits[0].revents & (POLLIN | POLLHUP)) &&
@@ -192,7 +241,10 @@ class Terminal {
         if (!decision.empty()) {
           Send({{"kind", "reply"}, {"interaction_id", decision}, {"text", ""}});
         }
-        if (running) Send({{"kind", "interrupt"}});
+        if (running) {
+          Send({{"kind", "interrupt"}});
+          interrupting_ = true;
+        }
         continue;
       }
       if (input.kind == InteractiveInputKind::kBackground) {
@@ -216,7 +268,8 @@ class Terminal {
         composer_.Mount(InputPrompt());
       }
       std::string text = Trim(input.text);
-      if (text == "/q" || text == "/quit") break;
+      const ParsedSlashCommand slash = ParseSlashCommand(text);
+      if (slash.spec && slash.spec->id == SlashCommandId::kQuit) break;
       if (text == "/clear" || text.starts_with("/clear ")) {
         // Screen only: the session keeps running underneath.
         if (raw_) {
@@ -275,38 +328,22 @@ class Terminal {
           files.push_back(CanonicalAccessPath(file).string());
         }
       } else if (text == "/fork" || text.starts_with("/fork ")) {
-        // Optional trailing @N forks at user turn N (message-exclusive,
-        // so the dropped turn can be retried fresh); otherwise the whole
-        // session. A bare number alone is a turn, never a title.
-        std::string rest = Trim(text.substr(5));
-        std::string title = rest;
-        int64_t turn = 0;
-        size_t at = rest.rfind(" @");
-        if (at == std::string::npos && !rest.empty() && rest[0] == '@') at = 0;
-        if (at != std::string::npos) {
-          std::string tail = Trim(rest.substr(at + (at == 0 ? 1 : 2)));
-          if (!tail.empty() && tail.size() <= 9 &&
-              std::all_of(tail.begin(), tail.end(), ::isdigit)) {
-            turn = std::stoll(tail);
-            title = Trim(rest.substr(0, at));
-          }
-        } else if (!rest.empty() && rest.size() <= 9 &&
-                   std::all_of(rest.begin(), rest.end(), ::isdigit)) {
-          title.clear();
-          turn = std::stoll(rest);
-        }
-        Send({{"kind", "fork"}, {"title", title}, {"turn", turn}});
+        const ForkArgument fork = ParseForkArgument(text.substr(5));
+        Send({{"kind", "fork"}, {"title", fork.title}, {"turn", fork.turn}});
       } else if (text == "/rewind" || text.starts_with("/rewind ")) {
         // Same [@]N grammar as /fork's turn suffix, title aside: rewind
         // truncates this session in place instead of branching it.
-        std::string rest = Trim(text.substr(7));
-        if (rest.starts_with("@")) rest = Trim(rest.substr(1));
-        int64_t turn = 0;
-        if (!rest.empty() && rest.size() <= 9 &&
-            std::all_of(rest.begin(), rest.end(), ::isdigit)) {
-          turn = std::stoll(rest);
-        }
-        Send({{"kind", "rewind"}, {"turn", turn}});
+        const ForkArgument parsed = ParseForkArgument(text.substr(7));
+        Send({{"kind", "rewind"},
+              {"turn", parsed.title.empty() ? parsed.turn : 0}});
+      } else if (text == "/verbose") {
+        presenter_.SetDetailed(!presenter_.Detailed());
+        WriteTerminalRecord(
+            presenter_.Detailed()
+                ? "· verbose ON — full reasoning and tool output\n"
+                : "· verbose off — compact reasoning and tool output\n");
+        wake_.Wake();
+        continue;
       } else if (text == "/share") {
         Send({{"kind", "share"}});
       } else if (text.starts_with("/share ")) {
@@ -393,8 +430,9 @@ class Terminal {
       const json state = JsonValue(frame, "state", json::object());
       {
         std::lock_guard lock(mutex_);
-        for (const char* field : {"activity", "route", "usage", "turn_active",
-                                  "context_tokens", "context_window"}) {
+        for (const char* field :
+             {"activity", "route", "usage", "turn_active", "context_tokens",
+              "context_window", "activities", "permissions"}) {
           if (state.contains(field)) state_[field] = state[field];
         }
         pending_ = JsonValue(frame, "pending", json(nullptr));
@@ -518,23 +556,17 @@ class Terminal {
       std::lock_guard lock(mutex_);
       state = state_;
     }
-    const json usage = JsonValue(state, "usage", json::object());
-    std::string status = JsonValue(state, "activity", "Connecting") + " · " +
-                         JsonValue(state, "route", "");
-    if (JsonValue(state, "turn_active", false) &&
-        !CurrentTerminalActivity().empty()) {
-      status = CurrentTerminalActivity() + " · " +
-               JsonValue(state, "route", "") + " · " +
-               ContextSummary(JsonValue(state, "context_tokens", int64_t{0}),
-                              JsonValue(state, "context_window", int64_t{0}));
-    } else {
-      status += " · " +
-                ContextSummary(JsonValue(state, "context_tokens", int64_t{0}),
-                               JsonValue(state, "context_window", int64_t{0}));
+    if (!JsonValue(state, "turn_active", false)) {
+      turn_started_.reset();
+      interrupting_ = false;
+    } else if (!turn_started_) {
+      turn_started_ = std::chrono::steady_clock::now();
     }
-    if (JsonValue(usage, "cost_reported", false)) {
-      status += " · " + FmtCost(JsonValue(usage, "cost", 0.0));
-    }
+    std::string status = StatusRow(
+        state,
+        turn_started_ ? std::chrono::steady_clock::now() - *turn_started_
+                      : std::chrono::steady_clock::duration{},
+        interrupting_, presenter_.Detailed());
     const bool resized = g_terminal_resized != 0;
     g_terminal_resized = 0;
     if (!update.changed && !resized && composer_.Drawn()) {
@@ -572,6 +604,8 @@ class Terminal {
   bool running_ = false, history_ = false, raw_ = false;
   bool quit_hint_ = false;
   size_t status_columns_ = 0;
+  std::optional<std::chrono::steady_clock::time_point> turn_started_;
+  std::atomic<bool> interrupting_{false};
   std::atomic<bool> disconnected_{false}, detaching_{false}, ended_{false},
       failed_{false};
   std::atomic<bool> navigate_{false};

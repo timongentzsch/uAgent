@@ -7,16 +7,12 @@
 
 #include "include/core/file_watch.h"
 #include "include/core/json.h"
+#include "include/core/library.h"
 
 namespace uagent {
 // The same bounded document operations serve the terminal and web clients.
 json LibraryControl(const json& request,
                     const std::filesystem::path& workspace);
 json SkillControl(const json& request, const std::filesystem::path& workspace);
-std::string LibraryChangePath();
-void LibraryChanged();
-bool LibraryPath(const std::filesystem::path& root,
-                 const std::filesystem::path& path);
-bool LibraryName(const std::string& name);
 }  // namespace uagent
 #endif

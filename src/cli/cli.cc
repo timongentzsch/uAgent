@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <cstdio>
 #include <cstring>
 #include <iostream>
@@ -67,12 +68,12 @@ constexpr SlashCommandSpec kSlashCommands[] = {
     {SlashCommandId::kConfig, "/config", "[user|project KEY=VALUE|unset KEY]",
      "inspect or change configuration"},
     {SlashCommandId::kFork, "/fork", "[TITLE] [@TURN]",
-     "branch this conversation, optionally at user turn N", false},
+     "branch this conversation, optionally at user turn N", false, true},
     {SlashCommandId::kRewind, "/rewind", "[@TURN]",
-     "rewind this conversation to user turn N", false},
+     "rewind this conversation to user turn N", false, true},
     {SlashCommandId::kShare, "/share", "", "export transcript as markdown",
-     false},
-    {SlashCommandId::kPermissions, "/permissions", "[default|ask|yolo]",
+     false, true},
+    {SlashCommandId::kPermissions, "/permissions", "[default|ask|auto|yolo]",
      "show or change permission mode", false},
     {SlashCommandId::kPrompt, "/prompt",
      "[show|edit|set|reset] [--scope global|project|conversation] [--mode "
@@ -108,14 +109,15 @@ constexpr SlashCommandSpec kSlashCommands[] = {
     {SlashCommandId::kProcesses, "/ps", "[ID [output|stop]]",
      "inspect or stop background work"},
     {SlashCommandId::kPeers, "/peers", "", "list linked and linkable sessions"},
-    {SlashCommandId::kQuit, "/quit", "", "exit uagent", false},
-    {SlashCommandId::kReset, "/reset", "", "start a new chat", false},
-    {SlashCommandId::kReset, "/new", "", "start a new chat", false},
-    {SlashCommandId::kClear, "/clear", "", "clear the screen", false},
+    {SlashCommandId::kQuit, "/quit", "", "exit uagent", false, true},
+    {SlashCommandId::kReset, "/reset", "", "start a new chat", false, true},
+    {SlashCommandId::kReset, "/new", "", "start a new chat", false, true},
+    {SlashCommandId::kClear, "/clear", "", "clear the screen", false, true,
+     true},
     {SlashCommandId::kReview, "/review", "[TARGET]",
      "review my current changes and find issues"},
     {SlashCommandId::kSessions, "/sessions", "[PREFIX]",
-     "resume a saved chat, optionally matching PREFIX"},
+     "resume a saved chat, optionally matching PREFIX", true, true},
     {SlashCommandId::kStatus, "/status", "",
      "show current session configuration and token usage"},
     {SlashCommandId::kTell, "/tell", "ID TEXT", "message a linked session"},
@@ -126,13 +128,13 @@ constexpr SlashCommandSpec kSlashCommands[] = {
     {SlashCommandId::kVariant, "/variant", "MODE",
      "set OpenRouter provider routing", false},
     {SlashCommandId::kVerbose, "/verbose", "",
-     "toggle full reasoning and expanded tool output", false},
+     "toggle full reasoning and expanded tool output", false, true, true},
     {SlashCommandId::kYolo, "/yolo", "", "toggle automatic approval", false},
     {SlashCommandId::kHelp, "/commands", "", ""},
-    {SlashCommandId::kQuit, "/exit", "", ""},
-    {SlashCommandId::kQuit, "/q", "", ""},
+    {SlashCommandId::kQuit, "/exit", "", "", false, true},
+    {SlashCommandId::kQuit, "/q", "", "", false, true},
     {SlashCommandId::kContext, "/ctx", "", ""},
-    {SlashCommandId::kSessions, "/resume", "", ""},
+    {SlashCommandId::kSessions, "/resume", "[PREFIX]", "", true, true},
 };
 
 std::span<const SlashCommandSpec> SlashCommandRegistry() {
@@ -172,6 +174,24 @@ ParsedSlashCommand ParseSlashCommand(const std::string& input) {
     }
   }
   return {};
+}
+
+ForkArgument ParseForkArgument(const std::string& argument) {
+  const std::string rest = Trim(argument);
+  auto number = [](const std::string& text) {
+    return !text.empty() && text.size() <= 9 &&
+           std::all_of(text.begin(), text.end(), ::isdigit);
+  };
+  ForkArgument fork{rest};
+  size_t at = rest.rfind(" @");
+  if (at == std::string::npos && rest.starts_with('@')) at = 0;
+  if (at != std::string::npos) {
+    const std::string tail = Trim(rest.substr(at + (at == 0 ? 1 : 2)));
+    if (number(tail)) fork = {Trim(rest.substr(0, at)), std::stoll(tail)};
+  } else if (number(rest)) {
+    fork = {"", std::stoll(rest)};
+  }
+  return fork;
 }
 
 void PrintCommandHelp() {
@@ -224,11 +244,22 @@ std::string UserEchoRow(const std::string& prompt, const std::string& text) {
   return row + EraseToEol() + RST();
 }
 
-std::string ReadInputLine(const std::string& prompt, bool* eof,
-                          bool keep_history, const std::string& initial) {
-  return ReadInteraction(
-      {.prompt = prompt, .keep_history = keep_history, .initial = initial},
-      eof);
+std::string DecisionPrompt(const std::string& prompt, const json& options) {
+  std::string hints;
+  bool guidance = false;
+  for (const json& option : options) {
+    std::string value = JsonValue(option, "value", "");
+    if (value == "guidance") {
+      guidance = true;
+    } else if (value.size() == 1 &&
+               std::isalpha(static_cast<unsigned char>(value[0]))) {
+      hints += "  [" + value + "] " + JsonValue(option, "label", "");
+    } else {
+      return prompt;
+    }
+  }
+  if (guidance) hints += " \u2014 or type what to do instead";
+  return prompt + hints;
 }
 
 std::string ReadInteraction(InteractionRequest request, bool* eof) {
@@ -252,7 +283,8 @@ std::string ReadInteraction(InteractionRequest request, bool* eof) {
     *eof = !EditExternalText(answer, STDIN_FILENO, kAdaptiveSystemBytes);
   } else {
     ScopedCookedInput cooked_input;
-    fputs(request.prompt.c_str(), stdout);
+    fputs((DecisionPrompt(request.prompt, request.options) + " ").c_str(),
+          stdout);
     fputs(request.initial.c_str(), stdout);
     fflush(stdout);
     if (!std::getline(std::cin, answer)) {

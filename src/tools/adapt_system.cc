@@ -36,11 +36,10 @@ Tool AdaptSystemTool(AdaptiveSystemState& state, PromptController control) {
     return request;
   };
   struct Prepared {
-    json arguments, request;
+    json request;
     std::string digest;
-    std::chrono::steady_clock::time_point expires;
   };
-  auto proposals = std::make_shared<std::map<std::string, Prepared>>();
+  auto proposals = std::make_shared<ApprovedProposals<Prepared>>();
   Tool tool = MakeTool(
       "adapt_system",
       "Show, overlay, replace or edit the system prompt at conversation, "
@@ -66,18 +65,17 @@ Tool AdaptSystemTool(AdaptiveSystemState& state, PromptController control) {
                                                  const ToolContext&) {
         auto request = normalize(args);
         if (mandatory(args)) {
-          auto entry = proposals->extract(HashHex(JsonDump(args)));
-          if (entry.empty() || entry.mapped().arguments != args ||
-              std::chrono::steady_clock::now() > entry.mapped().expires) {
+          std::optional<Prepared> approved = proposals->Take(args);
+          if (!approved) {
             return ToolFailure(ToolErrorCode::kPermissionDenied,
                                "No approved prompt change for this request.");
           }
-          request = entry.mapped().request;
+          request = approved->request;
           auto preview_request = request;
           preview_request["action"] = "preview";
           const auto preview = control(preview_request);
           if (preview.contains("error") ||
-              HashHex(JsonDump(preview["sources"])) != entry.mapped().digest) {
+              HashHex(JsonDump(preview["sources"])) != approved->digest) {
             return ToolFailure(
                 ToolErrorCode::kInvalidArguments,
                 "Prompt changed since approval; show and propose again.");
@@ -123,10 +121,8 @@ Tool AdaptSystemTool(AdaptiveSystemState& state, PromptController control) {
     request["action"] = preview["item"]["mode"] == "inherit" ? "reset" : "set";
     request["mode"] = preview["item"]["mode"];
     request["text"] = preview["item"]["text"];
-    if (proposals->size() >= kMaxAdaptiveProposals) proposals->clear();
-    (*proposals)[HashHex(JsonDump(args))] = {
-        args, request, HashHex(JsonDump(preview["sources"])),
-        std::chrono::steady_clock::now() + std::chrono::minutes(5)};
+    proposals->Put(args, {request, HashHex(JsonDump(preview["sources"]))},
+                   std::chrono::steady_clock::now() + std::chrono::minutes(5));
     return JsonValue(args, "scope", "conversation") +
            " system prompt · next model request\n" +
            JsonValue(preview, "diff", "");

@@ -7,13 +7,13 @@ RUN npm run build
 
 FROM debian:trixie-slim@sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a AS native
 RUN apt-get -o Acquire::Retries=5 update && apt-get -o Acquire::Retries=5 install -y --no-install-recommends \
-    ca-certificates cmake g++ make libcurl4-openssl-dev pkg-config \
+    ca-certificates cmake g++ make libcurl4-openssl-dev libssl-dev pkg-config \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /src
 COPY . .
 COPY --from=frontend /web/dist /src/web/dist
 RUN cmake -S . -B /tmp/uagent-build -DCMAKE_BUILD_TYPE=Release \
-    -DUAGENT_WEB=ON -DBUILD_TESTING=OFF \
+    -DUAGENT_WEB=ON -DUAGENT_WEB_PUSH=ON -DBUILD_TESTING=OFF \
     && cmake --build /tmp/uagent-build --target uagent -j 4
 
 FROM debian:trixie-slim@sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a

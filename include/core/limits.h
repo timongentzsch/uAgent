@@ -103,8 +103,6 @@ inline constexpr int64_t kActivityPollStopAfter = 12;
 // display formatters. A year here is 365 days (31536000s), matching the
 // HTTP `max-age` convention, not a leap-corrected calendar year.
 inline constexpr int64_t kSecondsPerMinute = 60;
-inline constexpr int64_t kSecondsPerHour = 3600;
-inline constexpr int64_t kSecondsPerDay = 86400;
 inline constexpr int64_t kSecondsPerYear = 31536000;
 inline constexpr int64_t kMillisecondsPerSecond = 1000;
 // Latest epoch accepted by schedule validation (2100-01-01T00:00:00Z).
@@ -122,7 +120,6 @@ inline constexpr size_t kAgentNameChars = 8;
 // the adapt_system tool. A receipt larger than this is truncated before it
 // is stored, so all three must agree.
 inline constexpr size_t kAdaptiveSystemBytes = size_t{64} * 1024;
-inline constexpr size_t kAdaptiveSystemReasonBytes = 512;
 // Memory-event journal budgets: the append-only audit log is compacted past
 // this size, and a single event line beyond this is refused. The writer, the
 // readers and the retention policy must agree.

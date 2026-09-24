@@ -1,49 +1,42 @@
 // Copyright 2026 Timon Gentzsch
-#include <unistd.h>
-
 #include <filesystem>
 #include <string>
 
 #include "include/app/session.h"
+#include "include/core/fs.h"
+#include "include/core/signals.h"
 #include "include/tools/files.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {
 
+// A worker reports the executable it started from in its hello, so a host can
+// recycle workers left running across an upgrade.
 void TestWorkerBinaryIdentity() {
-  namespace fs = std::filesystem;
-  const fs::path root = fs::temp_directory_path() /
-                        ("uagent-worker-binary-test-" +
-                         std::to_string(static_cast<int64_t>(getpid())));
-  std::error_code ec;
-  fs::create_directories(root, ec);
-  const std::string session = (root / "s.json").string();
-  const fs::path probe = root / "uagent";
-
-  // Missing record (pre-feature spawn) always recycles, exactly once:
-  // after recording, the same binary is fresh.
-  CHECK(session::WorkerBinaryPath(session).ends_with(".sock.binary"));
-  CHECK(session::ReadWorkerBinary(session).empty());
-  CHECK(session::WorkerBinaryStale("current", ""));
+  TestWorkspace test("worker-binary");
+  const std::filesystem::path probe = test.workspace / "uagent-probe";
+  CHECK(ToolWriteFile(probe.string(), "v1").Ok());
+  // A copy: SetExecutablePath replaces the string ExecutablePath refers to.
+  // NOLINTNEXTLINE(performance-unnecessary-copy-initialization)
+  const std::string prior = ExecutablePath();
+  SetExecutablePath(probe.string());
+  const std::string session_path = (test.workspace / "s.json").string();
+  // Open creates the private socket folder before a worker starts its server.
+  CreatePrivateDirectories(
+      std::filesystem::path(session::SocketPath(session_path)).parent_path());
   {
-    std::string error;
-    CHECK(ToolWriteFile(probe.string(), "v1").Ok());
-    const std::string first = session::ExecutableIdentity(probe.string());
-    CHECK(!first.empty());
-    CHECK(session::WriteWorkerBinary(session, first));
-    CHECK(session::ReadWorkerBinary(session) == first);
-    CHECK(
-        !session::WorkerBinaryStale(first, session::ReadWorkerBinary(session)));
-    // Same-second reinstalls still differ by size.
+    session::Server server;
+    CHECK(server.Start(session_path, session::RandomToken(16),
+                       [](const json&) { return true; }));
+    session::Connection connection = session::Connect(session_path);
+    CHECK(connection.socket.Valid());
+    CHECK(!connection.binary.empty());
+    CHECK(connection.binary == FileIdentity(probe.string()));
+    // A same-second reinstall still changes the identity the host compares.
     CHECK(ToolWriteFile(probe.string(), "v1!").Ok());
-    const std::string second = session::ExecutableIdentity(probe.string());
-    CHECK(second != first);
-    CHECK(session::WorkerBinaryStale(second, first));
+    CHECK(FileIdentity(probe.string()) != connection.binary);
   }
-  // An unstatable executable never recycles blindly.
-  CHECK(session::ExecutableIdentity((root / "missing").string()).empty());
-  CHECK(!session::WorkerBinaryStale("", "anything"));
-  fs::remove_all(root, ec);
+  SetExecutablePath(prior);
 }
 
 }  // namespace uagent

@@ -52,8 +52,6 @@ export interface Statistics {
   side_tool_calls?: number;
   side_model_calls?: number;
   side_duration_ms?: number;
-  side_model_ms?: number;
-  side_tool_ms?: number;
 }
 export interface Exchange {
   id: string;
@@ -94,7 +92,17 @@ export interface ToolCall {
   detail_id?: string;
   name: string;
   arguments?: JSONValue;
+  view?: ToolView;
   status?: string;
+}
+// How a call reads, built natively by each tool (see ToolView in tool.h).
+export type ToolPart =
+  | { kind: "command"; text: string }
+  | { kind: "code"; text: string; language?: string; label?: string }
+  | { kind: "fields"; rows: [string, string][] };
+export interface ToolView {
+  input: ToolPart[];
+  output: "text" | "markdown";
 }
 export interface TurnSummary {
   usage_reported?: boolean;
@@ -113,7 +121,12 @@ export interface TurnSummary {
   usage: Usage;
 }
 export interface Block {
-  memory?: { action: string; key: string; automatic: boolean };
+  memory?: {
+    action: string;
+    key: string;
+    automatic: boolean;
+    minor?: boolean;
+  };
   activity?: ToolActivity;
   sequence?: number;
   summary?: TurnSummary;
@@ -151,6 +164,7 @@ export interface Block {
   call_id?: string;
   name?: string;
   arguments?: JSONValue;
+  view?: ToolView;
   detail_id?: string;
   status?: string;
   error?: string;
@@ -205,6 +219,8 @@ export interface Activity {
   duration_ms?: number;
   progress?: string;
   model?: string;
+  // A command the turn is still waiting on, until moved to the background.
+  detached?: boolean;
 }
 export interface Collaborator {
   id: string;
@@ -245,7 +261,12 @@ export interface Pending {
   initial?: string;
   prompt?: string;
   options?: (string | { value: string; label?: string; title?: string })[];
-  approval?: { tool: string; mandatory_human?: boolean; preview?: string };
+  approval?: {
+    tool: string;
+    mandatory_human?: boolean;
+    mandatory_reason?: string;
+    preview?: string;
+  };
 }
 export interface Permissions {
   mode: string;
@@ -262,6 +283,20 @@ export interface PermissionRules {
   root: string;
   rules: PermissionRule[];
 }
+// Lifecycle status owned by the native session host.
+export type SessionStatus =
+  | "draft"
+  | "saved"
+  | "starting"
+  | "idle"
+  | "running"
+  | "waiting"
+  | "processing"
+  | "closing"
+  | "interrupted"
+  | "failed"
+  | "updating"
+  | "deleting";
 export interface Session {
   task_id?: string;
   run_id?: string;
@@ -269,7 +304,7 @@ export interface Session {
   generation?: string;
   title?: string;
   cwd?: string;
-  status?: string;
+  status?: SessionStatus;
   presence?: "active" | "";
   updated?: number;
   incoming?: number;
@@ -293,7 +328,6 @@ export interface ActivityStatusDetail {
 export interface State {
   phase?: ExecutionPhase;
   activity_detail?: ActivityStatusDetail | null;
-  pending_decision?: Pending | null;
   attachments?: number;
   title?: string;
   route?: string;
@@ -386,6 +420,7 @@ export interface EventData extends Omit<Partial<Exchange>, "status"> {
   attempt?: number;
   name?: string;
   arguments?: JSONValue;
+  view?: ToolView;
   result?: JSONValue;
   preview_truncated?: boolean;
   completion_status?: string;
@@ -420,7 +455,6 @@ interface HostEnvelope extends Partial<Omit<Outcome, "pending">> {
   metadata?: Session;
   state?: State;
   phase?: ExecutionPhase;
-  pending_decision?: Pending | null;
   guidance?: number;
   presence?: "active" | "";
   checkpoint?: boolean;
@@ -537,6 +571,8 @@ export interface CommandResults {
   activity: ActivityDetail;
   context: { exchanges: Exchange[] };
   fork: { id: string };
+  rewind: { turns: number };
+  share: { path: string };
   create: never;
   activate: never;
   close: never;
@@ -555,6 +591,8 @@ export interface CommandResults {
 }
 export type CommandKind = keyof CommandResults;
 export interface CommandFields {
+  // Raw text after a slash command, parsed by the native host.
+  argument?: string;
   detail?: string;
   raw?: boolean;
   offset?: number;

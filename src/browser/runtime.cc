@@ -47,16 +47,11 @@ pid_t Launch(const std::vector<std::string>& arguments,
 void Terminate(pid_t& pid) {
   if (pid <= 0) return;
   kill(pid, SIGTERM);
-  for (int elapsed = 0; elapsed < kChildShutdownGraceMs;
-       elapsed += kChildShutdownPollMs) {
-    if (waitpid(pid, nullptr, WNOHANG) == pid) {
-      pid = -1;
-      return;
-    }
-    poll(nullptr, 0, kChildShutdownPollMs);
+  if (!ReapPidFor(pid, nullptr,
+                  std::chrono::milliseconds(kChildShutdownGraceMs))) {
+    kill(pid, SIGKILL);
+    waitpid(pid, nullptr, 0);
   }
-  kill(pid, SIGKILL);
-  waitpid(pid, nullptr, 0);
   pid = -1;
 }
 

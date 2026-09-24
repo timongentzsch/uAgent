@@ -79,7 +79,9 @@ void InitializeProcess() {
   }
   g_tty = isatty(STDOUT_FILENO);
   g_color = ResolveColorEnabled(g_tty);
-  g_unicode = ResolveUnicodeEnabled();
+  // Without a multibyte locale every non-ASCII character measures zero
+  // columns, so glyphs are only safe to emit once one is in effect.
+  g_unicode = EnsureUtf8Ctype() && ResolveUnicodeEnabled();
   g_signal_tty = g_tty;
   InitializeSignalNotifications();
   signal(SIGINT, SigintHandler);
@@ -127,9 +129,11 @@ int Main(int argc, char** argv) {
   if (argc > 1 && std::string_view(argv[1]) == "--session-worker") {
     return session::WorkerMain(argc, argv);
   }
+#ifdef UAGENT_WEB
   if (argc == 2 && std::string_view(argv[1]) == "--browser-service") {
     return browser::ServiceMain(3);
   }
+#endif
   Observability observability;
   SetObservability(&observability);
   ParsedOptions parsed = ParseOptions(argc, argv);
@@ -237,7 +241,7 @@ int Main(int argc, char** argv) {
     return session::TerminalMain(std::move(parsed.options));
   }
   const bool json_envelope = parsed.options.json;
-  observability.EnableJournal(parsed.options.prompt.empty());
+  observability.EnableJournal(false);  // headless runs keep no journal
   if (json_stream && !observability.StartJsonStream()) {
     fprintf(stderr, "cannot initialize JSON event stream\n");
     return 1;

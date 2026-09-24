@@ -21,7 +21,14 @@ import {
   useRef,
   useState,
 } from "preact/hooks";
-import { Bot, Terminal, Square, ArrowDown, ArrowLeft } from "lucide-preact";
+import {
+  Bot,
+  Terminal,
+  Square,
+  ArrowDown,
+  ArrowDownToLine,
+  ArrowLeft,
+} from "lucide-preact";
 import { command, readPages } from "../../state/api.ts";
 import { useTranscriptHistory } from "../../state/use-transcript-history.ts";
 import { prependHistoryPage } from "../../state/history-page.ts";
@@ -35,7 +42,11 @@ import {
   IconButton,
 } from "../../shared/ui.tsx";
 
-import { active, ActivityStatus } from "./activity-status.tsx";
+import {
+  active,
+  ActivityStatus,
+  withCollaborators,
+} from "./activity-status.tsx";
 import { manage } from "../../state/api.ts";
 import Markdown from "../../shared/markdown-view.tsx";
 import { MessageRows, prepareHistoryBlocks } from "./message.tsx";
@@ -150,18 +161,7 @@ export default function Activities({
     [session, cwd],
   );
 
-  const rows: Activity[] = [
-    ...items,
-    ...collaborators
-      .filter((child) => !items.some((item) => item.agent_id === child.id))
-      .map((child) => ({
-        ...child,
-        id: undefined,
-        agent_id: child.id,
-        kind: "agent",
-        status: child.status || "idle",
-      })),
-  ];
+  const rows = withCollaborators(items, collaborators);
   const live = rows.some(active);
   useEffect(() => {
     if (!live) return;
@@ -257,8 +257,8 @@ export default function Activities({
     inspect(source, undefined, true).catch(report);
   }, [rowsVersion, detail?.id, detail?.agent_id, detail?.olderWindow, loading]);
 
-  // Stop-only: guidance/follow-up submit lives in the modal (per-level
-  // text and receipts), so this never touches message state.
+  // Stop and background only: guidance/follow-up submit lives in the modal
+  // (per-level text and receipts), so this never touches message state.
   async function act(item: Activity, operation: string) {
     setBusy(true);
     try {
@@ -324,6 +324,15 @@ export default function Activities({
           </time>
         )}
       </button>
+      {active(item) && item.kind !== "agent" && item.detached === false && (
+        <IconButton
+          label="Move to background"
+          disabled={!online || busy}
+          onClick={() => act(item, "background")}
+        >
+          <ArrowDownToLine />
+        </IconButton>
+      )}
       {active(item) && (
         <IconButton
           label={`Stop ${isAgentRow(item) ? agentName(item) : item.label}`}

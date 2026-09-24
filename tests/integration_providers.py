@@ -210,9 +210,16 @@ def test_openrouter_named_search_contract_and_errors(root, home, *, binary):
                 {
                     "UAGENT_PROVIDER_PROTOCOL": "openrouter",
                     "UAGENT_WEB_SEARCH_BACKEND": "openrouter",
-                    "UAGENT_WEB_SEARCH_URL": search_server.url,
-                    "UAGENT_WEB_SEARCH_API_KEY": "search-key",
-                    "UAGENT_WEB_SEARCH_MODEL": "search-model",
+                    "UAGENT_PROVIDERS": json.dumps(
+                        {
+                            "search": {
+                                "base_url": search_server.url,
+                                "api_key": "search-key",
+                                "protocol": "openrouter",
+                            }
+                        }
+                    ),
+                    "UAGENT_WEB_SEARCH_MODEL": "search/search-model",
                 }
             )
             result = run(root, env, "--yolo", "--json", "-p", "search", binary=binary)
@@ -704,8 +711,16 @@ def test_provider_responses_native_search_and_function_replay(root, home, *, bin
                 "UAGENT_WIRE_API": "responses",
                 "UAGENT_HOSTED_TOOLS": "web_search",
                 "UAGENT_WEB_SEARCH_BACKEND": "auto",
-                "UAGENT_WEB_SEARCH_URL": server.url,
-                "UAGENT_WEB_SEARCH_API_KEY": "fallback-key",
+                "UAGENT_PROVIDERS": json.dumps(
+                    {
+                        "search": {
+                            "base_url": server.url,
+                            "api_key": "fallback-key",
+                            "protocol": "openrouter",
+                        }
+                    }
+                ),
+                "UAGENT_WEB_SEARCH_MODEL": "search/fallback-model",
             }
         )
         result = run(root, env, "--yolo", "--json", "-p", "inspect and search", binary=binary)
@@ -831,8 +846,16 @@ def test_hosted_search_reports_one_lifecycle_on_either_route(root, home, *, bina
                     "UAGENT_WIRE_API": wire_api,
                     "UAGENT_HOSTED_TOOLS": "web_search",
                     "UAGENT_WEB_SEARCH_BACKEND": "auto",
-                    "UAGENT_WEB_SEARCH_URL": server.url,
-                    "UAGENT_WEB_SEARCH_API_KEY": "fallback-key",
+                    "UAGENT_PROVIDERS": json.dumps(
+                        {
+                            "search": {
+                                "base_url": server.url,
+                                "api_key": "fallback-key",
+                                "protocol": "openrouter",
+                            }
+                        }
+                    ),
+                    "UAGENT_WEB_SEARCH_MODEL": "search/fallback-model",
                 }
             )
             result = run(root, env, "--yolo", "--json-stream", "-p", "search", binary=binary)
@@ -977,8 +1000,16 @@ def test_provider_anthropic_native_search_pause_turn_replay(root, home, *, binar
                 "UAGENT_WIRE_API": "anthropic_messages",
                 "UAGENT_HOSTED_TOOLS": "web_search",
                 "UAGENT_WEB_SEARCH_BACKEND": "auto",
-                "UAGENT_WEB_SEARCH_URL": server.url,
-                "UAGENT_WEB_SEARCH_API_KEY": "fallback-key",
+                "UAGENT_PROVIDERS": json.dumps(
+                    {
+                        "search": {
+                            "base_url": server.url,
+                            "api_key": "fallback-key",
+                            "protocol": "openrouter",
+                        }
+                    }
+                ),
+                "UAGENT_WEB_SEARCH_MODEL": "search/fallback-model",
             }
         )
         result = run(root, env, "--yolo", "--json", "-p", "search", binary=binary)
@@ -1047,7 +1078,6 @@ def test_uagent_tool_reports_live_configuration(root, home, *, binary):
         assert_true(sources["runtime"]["active"], sources)
         assert_true(sources["project"]["mode"] == "inherit", sources)
         serialized = json.dumps(body["messages"])
-        assert_true("canary-search-key" not in serialized, "secret leaked into transcript")
         assert_true("canary-api-key" not in serialized, "secret leaked into transcript")
         return event({"content": "self-info-ok"})
 
@@ -1056,7 +1086,6 @@ def test_uagent_tool_reports_live_configuration(root, home, *, binary):
         env.update(
             {
                 "UAGENT_API_KEY": "canary-api-key",
-                "UAGENT_WEB_SEARCH_API_KEY": "canary-search-key",
                 "UAGENT_PROVIDERS": json.dumps(
                     {
                         "fixture-provider": {
@@ -1071,7 +1100,6 @@ def test_uagent_tool_reports_live_configuration(root, home, *, binary):
         result = run(root, env, "--yolo", "-p", "describe yourself", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip().endswith("self-info-ok"), result.stdout)
-        assert_true("canary-search-key" not in result.stdout, result.stdout)
         assert_true("canary-route-key" not in result.stdout, result.stdout)
 
 

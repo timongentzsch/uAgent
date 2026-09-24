@@ -194,12 +194,11 @@ void TestConfigRegistryContract() {
   ScopedEnv results("UAGENT_GREP_RESULTS", "0");
   CHECK(GrepResults() == FindConfigDescriptor("UAGENT_GREP_RESULTS")->minimum);
 
-  // Secrets are declared, and every declared secret is redacted by the
-  // diagnostic that feeds /context, /debug-config and uagent.
-  ScopedEnv search_key("UAGENT_WEB_SEARCH_API_KEY", "canary-secret-value");
+  // The diagnostic that feeds /context, /debug-config and uagent never
+  // carries a credential.
+  ScopedEnv route_key("OPENROUTER_API_KEY", "canary-secret-value");
   json diagnostic = RuntimeConfig::FromEnvironment().DiagnosticJson();
   CHECK(JsonDump(diagnostic).find("canary-secret-value") == std::string::npos);
-  CHECK(JsonValue(diagnostic, "web_search_api_key", "") == "<set>");
 
   // Direct runtime lookups are occasionally necessary at bootstrap, but they
   // still belong to the registry unless their name explicitly marks
@@ -281,6 +280,15 @@ void TestStrictBooleanSettings() {
   CHECK(RuntimeConfig::FromValues({{"UAGENT_MEMORY", "ON"}}).memory_enabled);
   CHECK(RuntimeConfig::FromValues({{"UAGENT_MEMORY", "wat"}}).memory_enabled);
   CHECK(RuntimeConfig::FromValues({}).memory_enabled);
+  // An empty value means "use the default" from a file and the environment
+  // alike, and struct defaults are the registry's.
+  CHECK(RuntimeConfig::FromValues({{"UAGENT_PERMISSION_URL", ""}})
+            .permission_url == "https://openrouter.ai/api/alpha");
+  CHECK(RuntimeConfig{}.pdf_engine == "cloudflare-ai");
+  {
+    ScopedEnv empty("UAGENT_PDF_ENGINE", "");
+    CHECK(RuntimeConfig::FromEnvironment().pdf_engine == "cloudflare-ai");
+  }
 }
 
 void TestSelfDescriptionSchemas() {

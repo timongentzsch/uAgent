@@ -180,7 +180,6 @@ class InputBroker {
   void Shutdown();
 
   int ReadFd() const { return wake_read_.Get(); }
-  int NotifyFd() const { return wake_write_.Get(); }
 
  private:
   Fd wake_read_, wake_write_;

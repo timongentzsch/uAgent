@@ -27,8 +27,8 @@ size_t TextLines(const std::string& text);
 std::string ToolResultSummary(const ToolResult& result,
                               const std::string& output, bool truncated);
 
-// Compact rows stay bounded: a long result is summarised by its first line
-// and a count, and /verbose prints the whole thing.
+// A result row carries both a bounded summary (first line and a count) and
+// the output itself; the client decides which one to show.
 PresentationRecord ToolCallPresentation(const CallTask& task,
                                         const ToolCall& call);
 
@@ -40,8 +40,7 @@ PresentationRecord ToolCallPresentation(const std::string& name,
 
 PresentationRecord ToolResultPresentation(const CallTask& task,
                                           const ToolCall& call,
-                                          const std::string& model_output,
-                                          bool verbose);
+                                          const std::string& model_output);
 
 // Kept receipts replay exactly what the live row showed. Only the compact
 // row shape is recorded (title/summary/flags); bodies, diffs and groups

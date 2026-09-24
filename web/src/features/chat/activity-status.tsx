@@ -30,6 +30,25 @@ export interface ActivityProps {
 }
 export const active = (item: Activity) =>
   ["running", "starting", "stopping", "finishing"].includes(item.status || "");
+// Supervised activities plus collaborators not already listed as one.
+export function withCollaborators(
+  items: Activity[],
+  collaborators: Collaborator[],
+): Activity[] {
+  return [
+    ...items,
+    ...collaborators
+      .filter((child) => !items.some((item) => item.agent_id === child.id))
+      .map((child) => ({
+        ...child,
+        id: undefined,
+        agent_id: child.id,
+        kind: "agent",
+        status: child.status || "idle",
+      })),
+  ];
+}
+
 export function activityLabel(items: Activity[] = []) {
   const running = items.filter(active);
   const agents = running.filter((item) => item.kind === "agent").length;
@@ -62,15 +81,7 @@ export function ActivityStatus({
 }) {
   if (connection && connection !== "connected")
     return <ConnectionStatus phase={connection} />;
-  const counts = activityLabel([
-    ...items,
-    ...collaborators.map((item) => ({
-      ...item,
-      id: undefined,
-      agent_id: item.id,
-      kind: "agent",
-    })),
-  ]);
+  const counts = activityLabel(withCollaborators(items, collaborators));
   return (
     <span
       class="activity-status"

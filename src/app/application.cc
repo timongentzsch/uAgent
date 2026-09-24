@@ -58,9 +58,8 @@ namespace {
 
 // Slash commands render text for the terminal; channel clients receive the
 // same text inside command.completed. Capture it once at the boundary.
-std::string CaptureCommandOutput(bool capture,
-                                 const std::function<void()>& run) {
-  FILE* captured = capture ? tmpfile() : nullptr;
+std::string CaptureCommandOutput(const std::function<void()>& run) {
+  FILE* captured = tmpfile();
   fflush(stdout);
   Fd saved(captured ? dup(STDOUT_FILENO) : -1);
   if (saved) dup2(fileno(captured), STDOUT_FILENO);
@@ -319,12 +318,7 @@ void Application::RunPrompt(const std::string& input) {
     }
     for (const auto& attachment : attachments_) {
       if (!attachment.asset_id.empty()) {
-        images.push_back({{"id", attachment.asset_id},
-                          {"name", attachment.name},
-                          {"mime", attachment.mime},
-                          {"bytes", attachment.bytes},
-                          {"image", attachment.image},
-                          {"path", attachment.path}});
+        images.push_back(AttachmentDisplayJson(attachment));
       }
     }
     attachments_.clear();
@@ -341,49 +335,42 @@ json Application::InterfaceState() const {
           {"attachments", attachments_.size()},
           {"background", runtime_.processes.Count()},
           {"tools", context_.tools.size()},
-          {"verbose", agent_.Verbose()},
           {"yolo", ApprovalIsYolo()}};
 }
 
-bool Application::ProcessInput(std::string input) {
+void Application::ProcessInput(std::string input) {
   input = Trim(input);
   if (input.empty()) {
     if (!attachments_.empty()) RunPrompt(input);
-    return false;
+    return;
   }
   ParsedSlashCommand command = ParseSlashCommand(input);
   if (command.spec) DebugLog("command", {{"command", command.spec->name}});
   if (std::string prompt = SlashCommandPrompt(command); !prompt.empty()) {
     RunPrompt(prompt);
-    return false;
+    return;
   }
   if (command.spec) {
     AppSession session = Session();
     json result;
-    bool quit = false;
-    std::string output = CaptureCommandOutput(channel_ != nullptr, [&] {
-      quit = RunSlashCommand(session, command, result);
-    });
+    std::string output = CaptureCommandOutput(
+        [&] { RunSlashCommand(session, command, result); });
     Emit(Event{EventId::kCommandCompleted,
                {{"request_id", request_id_},
                 {"command", command.spec->name},
                 {"argument", command.argument},
                 {"inspect", command.spec->inspect_result},
                 {"output", std::move(output)},
-                {"quit", quit},
                 {"result", std::move(result)},
                 {"state", InterfaceState()}}});
-    if (!quit) return false;
-    exit_reason_ = "command";
-    return true;
+    return;
   }
   if (input[0] == '/') {
     Emit(NoticeEvent(PresentationStatus::kFailed,
                      "· unknown command " + input + "; use /help"));
-    return false;
+    return;
   }
   RunPrompt(input);
-  return false;
 }
 
 int RunApplication(AppContext& context) { return Application(context).Run(); }

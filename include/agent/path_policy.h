@@ -39,7 +39,8 @@ inline bool SelfConfigurationPath(const std::string& path) {
     return true;
   }
   if (matches(UagentConfigPath()) || matches(ProjectConfigFilePath()) ||
-      matches(TrustStorePath()) || matches(EnvStr("UAGENT_CONFIG_FILE"))) {
+      matches(TrustStorePath()) || matches(EnvStr("UAGENT_CONFIG_FILE")) ||
+      matches(UagentDir(kConfigDir) + "/" + kPermissionStoreFile)) {
     return true;
   }
   // A workspace .mcp.json decides which servers are spawned. Preserve the

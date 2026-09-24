@@ -57,6 +57,7 @@ PresentationRecord ToolCallPresentation(const CallTask& task,
   record.skill = task.tool && task.tool->name == "skill";
   record.poll =
       IsActivityPoll(task);  // outcome unknown until result; see below
+  record.view = ToolView(task.tool, task.args);
   SetCallLabel(record, task.label);
   return record;
 }
@@ -68,6 +69,7 @@ PresentationRecord ToolCallPresentation(const std::string& name,
   CallTask task;
   task.tool = FindTool(tools, name);
   task.ordinal = ordinal;
+  task.args = arguments;
   task.label = task.tool && arguments.is_object()
                    ? ToolSummary(*task.tool, arguments)
                    : (arguments.is_string() ? arguments.get<std::string>()
@@ -79,8 +81,7 @@ PresentationRecord ToolCallPresentation(const std::string& name,
 
 PresentationRecord ToolResultPresentation(const CallTask& task,
                                           const ToolCall& call,
-                                          const std::string& model_output,
-                                          bool verbose) {
+                                          const std::string& model_output) {
   PresentationRecord record;
   record.kind = PresentationKind::kToolResult;
   record.id = call.id;
@@ -115,21 +116,9 @@ PresentationRecord ToolResultPresentation(const CallTask& task,
     if (!task.tool || !task.tool->declared_intent) return record;
   }
 
-  std::string shown = verbose
-                          ? ModelResultText(task.result, ResultCharLimit(task))
-                          : model_output;
-  if (verbose && shown.find('\n') != std::string::npos) {
-    record.detail = shown;
-    record.multiline = true;
-    return record;
-  }
-  bool truncated = !verbose && model_output.size() < task.result.output.size();
-  if (verbose && !shown.empty()) {
-    record.summary = shown;
-  } else {
-    std::string summary = ToolResultSummary(task.result, shown, truncated);
-    record.summary = std::move(summary);
-  }
+  bool truncated = model_output.size() < task.result.output.size();
+  record.summary = ToolResultSummary(task.result, model_output, truncated);
+  record.output = model_output;
   return record;
 }
 
@@ -137,6 +126,7 @@ json ToolReplayJson(const PresentationRecord& record) {
   json value = {{"title", record.title},
                 {"summary", record.summary},
                 {"poll", record.poll}};
+  if (!record.view.is_null()) value["view"] = record.view;
   if (record.multiline) {
     value["multiline"] = true;
     value["detail"] = Utf8Trunc(record.detail, kReplayDetailChars);

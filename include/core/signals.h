@@ -37,10 +37,10 @@ bool ExecutableReplaced();
 // operations cannot race signal observation.
 extern std::atomic_flag g_signal_abort;
 extern std::atomic<bool> g_thread_abort;
-inline constexpr int kFgMax = 16;  // concurrent foreground shells
-extern volatile sig_atomic_t g_child_pgids[kFgMax];
+inline constexpr int kFgMax = 16;   // concurrent foreground shells
 inline constexpr int kMcpMax = 64;  // tracked MCP server processes
 extern volatile sig_atomic_t g_mcp_pids[kMcpMax];
+// Supervised processes, foreground and background, that SIGINT kills.
 inline constexpr int kBgMax = 64;
 extern volatile sig_atomic_t g_bg_pids[kBgMax];
 

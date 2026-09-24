@@ -2,9 +2,9 @@
 
 `uagent` with `action=configure` persists a setting. It accepts only registered `UAGENT_*`
 names, shows the user an exact diff, and commits nothing until they approve it.
-`--yolo` does not apply, and a headless or delegated run cannot commit at all,
-so in those sessions the tool is not offered and the answer is a proposal for
-the user to apply themselves.
+`--yolo` does not apply. A headless or delegated run cannot commit at all:
+`inspect` still works, `configure` is rejected, and the answer is a proposal
+for the user to apply themselves.
 
 Do not hand-edit `~/.uagent/.config` with the file tools. The tool merges into
 the existing file and holds the approved bytes; a `write_file` over the same

@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "include/api.h"
+#include "include/core/child_env.h"
 #include "include/core/json.h"
 
 namespace uagent {
@@ -128,6 +129,10 @@ struct SideRoute {
   json features = nullptr;
 };
 
+// The route variables a process started for this route reads: endpoint,
+// model, dialect, capabilities and selection suffixes. Never the API key.
+EnvironmentOverrides RouteEnvironment(const SideRoute& route);
+
 SideRoute ResolveSideRoute(const Api& api,
                            const std::vector<ModelRoute>& routes,
                            const std::vector<NamedProvider>& providers,
@@ -137,11 +142,6 @@ std::string NormalizeModelId(std::string model);
 const ProviderTemplate* FindProviderTemplateForUrl(const std::string& url);
 // The built-in default template (OpenRouter) for unattributed endpoints.
 const ProviderTemplate& DefaultProviderTemplate();
-// Default model route when nothing is configured: DeepSeek flash through
-// OpenRouter auto-routing. One constant so the template, the search fallback
-// and future side-model defaults cannot drift apart.
-inline constexpr const char* kDefaultModelRoute =
-    "~deepseek/deepseek-flash-latest";
 bool ApplyProviderTemplate(Api& api, const ProviderTemplate& provider);
 std::string ModelPreferencePath();
 bool PersistableSelection(const std::string& selection);

@@ -194,11 +194,7 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
   // Waiting for a person keeps the runtime active without a running pulse.
   await expect(page.locator(".composer .status-led.active")).toBeVisible();
   await expect(page.locator(".decision")).toContainText("browser-proof.txt");
-  await expect(page.getByLabel("Response", { exact: true })).toHaveValue("n");
-  await page.getByLabel("Response", { exact: true }).selectOption("y");
-  await page
-    .getByRole("button", { name: "Send response", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Allow once", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Needs your decision" }),
   ).toHaveCount(0);
@@ -213,6 +209,17 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
     )
     .toBe("approved from browser");
   await expect(page.locator(".composer .status-led.active")).toBeVisible();
+  // Up recalls the last prompt sent from this page; Down returns to empty.
+  const composerInput = page.getByLabel("Message or guidance");
+  await composerInput.press("ArrowUp");
+  await expect(composerInput).toHaveValue("request approval");
+  await composerInput.press("ArrowDown");
+  await expect(composerInput).toHaveValue("");
+  await composerInput.fill("/share");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(
+    page.getByText(/^Transcript saved to .*\.share\.md$/),
+  ).toBeVisible();
   const toolResult = page.locator(".message.tool").last();
   await expect(toolResult).toContainText("Created browser-proof.txt");
   await toolResult.locator(".tool-disclosure > summary").click();

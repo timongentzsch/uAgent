@@ -77,8 +77,9 @@ std::string OwnCollaboratorId();
 // Team this process belongs to (UAGENT_TEAM), empty for the coordinator.
 std::string OwnTeam();
 
-// One queued guidance message. hops counts peer forwards for loop clamping.
-struct CollaboratorMail {
+// One queued message from a parent or peer. hops counts forwards for loop
+// clamping.
+struct QueuedMessage {
   std::string text;
   std::string from;
   int hops = 0;
@@ -95,7 +96,7 @@ ToolResult WriteCollaboratorMail(const std::string& id,
                                  const std::string& from = "", int hops = 0);
 // Oldest first, consumed as they are read. Corrupt mail is dropped rather than
 // retried, the same posture unreadable detached records get.
-std::vector<CollaboratorMail> TakeCollaboratorMail(const std::string& id);
+std::vector<QueuedMessage> TakeCollaboratorMail(const std::string& id);
 // The child half: queue whatever has arrived as ordinary steering, then unlink.
 // Queue-before-unlink makes redelivery the failure mode rather than loss. A
 // no-op in a process that is not a collaborator.
@@ -109,21 +110,13 @@ std::string OwnSessionFile();
 // Empty when there is no session file yet.
 std::string OwnSessionId();
 
-// One queued peer message. Same at-least-once file posture as collaborator
-// mail, but between linked sessions instead of parent and child.
-struct SessionMail {
-  std::string text;
-  std::string from;
-  int hops = 0;
-};
-
 // Inbox lives at sessions/inbox/ so the sessions/ debug pruner never mistakes
 // it, and delivery needs no path lookup: the filename carries the recipient.
 ToolResult WriteSessionMail(const std::string& id, const std::string& text,
                             const std::string& from = "", int hops = 0);
 // Oldest first, consumed as they are read. Ungated: the link check happens
 // at drain time so a message sent before linking still arrives after it.
-std::vector<SessionMail> TakeSessionMail(const std::string& id);
+std::vector<QueuedMessage> TakeSessionMail(const std::string& id);
 // Queue arrived peer mail as ordinary steering, skipping senders outside the
 // reader's links. A no-op without a session file. Unlinked mail stays on
 // disk: linking later delivers it.
@@ -136,6 +129,11 @@ void DrainSessionMailIntoSteering();
 std::optional<ToolResult> ChildAgentBudgetBlock(
     const Api& api, const ProcessSupervisor& processes, double& remaining_cost,
     int64_t& remaining_tokens);
+
+// The model a delegated child runs by default, and the one-line runtime
+// context describing the parent route and that default.
+std::string DefaultSubagentModel(const Api& api);
+std::string DelegationRuntimeContext(const Api& api);
 
 }  // namespace uagent
 

@@ -12,7 +12,7 @@ no application server language runtime or dynamically loaded plugin layer.
 | `src/app/session_*.cc` | Session-host facets: routing, schedules, supervision, snapshots (facade: `session_host.h`; event log: `replay_log`, attachments: `asset_store`, receipts: `outcome_store`) |
 | `src/tools/registry_*.cc` | Tool registration by family (files, exec, activity, memory); `registry.cc` only orders the families |
 | `src/app/commands_*.cc` | Slash-command dispatcher (commands.cc) plus model, session and control handlers |
-| `src/cli/` | Terminal entry surface: flag parsing, interactive reads, `--emit-reference` |
+| `src/cli/` | Terminal entry surface: flag parsing, slash-command registry, interactive reads, `--emit-reference` |
 | `src/api/` | Provider dialects, streaming, capabilities, usage and HTTP captures: transport in client.cc, request-body construction in wire_request.cc |
 | `src/agent/` | Turn execution, canonical conversation, context preparation, persistence, supervision services (process/jobs/child_agent), memory store and observation records |
 | `src/providers/` | Route catalog, model selection grammar and route policy |
@@ -24,6 +24,7 @@ no application server language runtime or dynamically loaded plugin layer.
 | `src/web/` | Authenticated HTTP/SSE adapter, assets and optional push |
 | `web/src/` | Browser event projection and presentation (`app/` shell, `state/` host-data layer, `features/<name>/` self-contained UI, `shared/` cross-feature rendering and formatting) |
 | `src/mcp/` | Bounded stdio JSON-RPC integration |
+| `src/browser/` | Browser service for the Docker appliance: owns Chrome and Xvnc behind a private socket |
 | `tests/`, `benchmarks/` | Behavioral contracts and measurement |
 
 The registry owns tool contracts, configuration descriptors own settings, route
@@ -32,17 +33,26 @@ Clients do not interpret shell text to infer permission or mutation authority.
 
 ## Build layers
 
-CMake mirrors the dependency DAG: `uagent_core_base` (core/transport/media,
-leaf) <- `uagent_api` <- `uagent_toolcore` (tool vocabulary + provider
-catalog: no agent, tool, or app dependency) <- `uagent_agent` (turn loop,
-session persistence, supervision services, memory store, observation
-records) <- `uagent_tools` (tool surface + mcp adapters, consuming agent
-services) <- `uagent_app` (app/ui/cli).
-`uagent_core` is an INTERFACE umbrella so tests, benches, fuzzers and the web
-lib keep one link name. Public headers live under `include/` (top-level
-facades plus `include/<module>/`); only module-private shared declarations
-stay in `src/<module>/*_internal.h`. The web bundle embeds `web/dist` or
-fails with instructions (`npm run build` in `web/`, or `-DUAGENT_WEB=OFF`).
+CMake mirrors the dependency DAG; each library links the one above it:
+
+| Library | Contents |
+| --- | --- |
+| `uagent_core_base` | `src/core/`, `src/transport/`, `src/media/` (leaf) |
+| `uagent_api` | `src/api/` |
+| `uagent_toolcore` | Tool vocabulary (`src/tools/tool.cc`) and `src/providers/`; no agent, tool or app dependency |
+| `uagent_agent` | `src/agent/`: turn loop, persistence, supervision services, memory store, observation records |
+| `uagent_tools` | Tool surface, `src/mcp/` and `src/browser/`, consuming agent services |
+| `uagent_app` | `src/app/`, `src/ui/`, `src/cli/` |
+| `uagent_web` | `src/web/` and the embedded bundle; built when `UAGENT_WEB=ON` (default) |
+
+`uagent_core` is an INTERFACE umbrella over `uagent_app`; tests, benchmarks,
+fuzzers and `uagent_web` link it. Public headers live under `include/`
+(top-level facades plus `include/<module>/`); only module-private shared
+declarations stay in `src/<module>/*_internal.h`. `tests/boundary_test.py`
+rejects any new include that points up this order; its `KNOWN` set lists the
+remaining exceptions. The web bundle embeds
+`web/dist` or fails with instructions (`npm run build` in `web/`, or
+`-DUAGENT_WEB=OFF`).
 
 ## Session runtime and clients
 
@@ -120,6 +130,30 @@ are independent: a bounded checkpoint preview at the same revision cannot
 replace a fuller body already held by a client. The runtime also publishes its
 canonical execution phase and pending decision; transport connection health
 remains client-owned.
+
+One activity projection (`include/core/activity.h`) derives the working label
+for the terminal, the browser and process-child progress. `tool.call` marks a
+call being prepared, before approval; `tool.started` is emitted immediately
+before execution. Calls are tracked by occurrence ID, so one finished parallel
+call cannot clear another. Pending decisions, provider retry waits and terminal
+states override descriptive labels. `run` and `scratch` accept an optional
+model-authored `description` for the label; it is stripped before validation,
+approval and execution, while the original arguments stay in provider replay.
+While the model reasons, the label is `Thinking · <line>`, where the line is
+the latest complete readable line of supplied reasoning, stripped of Markdown
+decoration and capped at 160 bytes; lines over 192 bytes are skipped, and
+without one the label is `Thinking`. This is a display heuristic: labels never
+establish that an action ran or succeeded.
+
+Readable reasoning summaries are requested per route. Official OpenAI
+Responses routes send `reasoning.summary: auto` unless effort is `none`.
+Anthropic routes send adaptive thinking with `display: summarized` when the
+Models API catalog advertises adaptive thinking and an effort other than
+`none` is set. Other routes opt in with the `reasoning_summary` and
+`adaptive_thinking` model features (provider `features` or
+`UAGENT_MODEL_FEATURES`), which override catalog metadata. A 400 response
+that rejects the summary field turns summary requests off for that route and
+retries only if the attempt produced no progress. Signed or opaque reasoning is replayed to the provider unchanged.
 
 Provider-reported partial usage is combined with the confirmed session total for
 live display. Final usage replaces that provisional view through the normal

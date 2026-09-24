@@ -249,10 +249,6 @@ bool Agent::RunCalls(
       call_event.data["issue_field"] = task.issue->field;
     }
     call_event.presentation = ToolCallPresentation(task, call);
-    call_event.render =
-        api_.render_stream &&
-        (verbose_ || JsonValue(task.activity, "category", "") != "explore" ||
-         !JsonValue(task.activity, "groupable", false));
     if (call_event.presentation) {
       // --resume replays the row from facts: same title/summary/flags the
       // live printer saw, so history matches execution exactly.
@@ -365,9 +361,7 @@ bool Agent::RunCalls(
     {
       Event result_event{EventId::kPresentation};
       result_event.presentation = ToolResultPresentation(
-          tasks[index], calls[index], model_results[index], verbose_);
-      if (verbose_) result_event.presentation->activity.erase("group");
-      result_event.render = api_.render_stream;
+          tasks[index], calls[index], model_results[index]);
       if (result_event.presentation) {
         conversation_.RecordDisplay(
             calls[index].detail_id,

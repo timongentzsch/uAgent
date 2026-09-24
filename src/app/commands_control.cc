@@ -105,10 +105,7 @@ json PermissionControl(AppContext& context, const json& request) {
     ParseApprovalMode(value->second, default_mode);
   }
   PermissionOverride override = context.permission_override.load();
-  ApprovalMode effective = default_mode;
-  if (override == PermissionOverride::kAsk) effective = ApprovalMode::kAsk;
-  if (override == PermissionOverride::kAuto) effective = ApprovalMode::kAuto;
-  if (override == PermissionOverride::kYolo) effective = ApprovalMode::kYolo;
+  ApprovalMode effective = ResolveApprovalMode(override, default_mode);
   SetApprovalMode(effective);
   json result = {{"mode", PermissionOverrideName(override)},
                  {"effective", ApprovalModeName(effective)},

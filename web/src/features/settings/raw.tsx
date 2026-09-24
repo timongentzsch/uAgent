@@ -2,7 +2,7 @@ import "./raw.css";
 import type { RawOptions, Exchange, JSONValue } from "../../shared/types.ts";
 import { useEffect, useId, useMemo, useState } from "preact/hooks";
 import { Download } from "lucide-preact";
-import { Field, Select, LoadError, Spinner } from "../../shared/ui.tsx";
+import { Field, Select, LoadError, Spinner, Time } from "../../shared/ui.tsx";
 import { readPages, command } from "../../state/api.ts";
 import { formatBody } from "../../shared/format.ts";
 import { formatEventStream } from "../../state/event-stream.ts";
@@ -123,7 +123,7 @@ export default function Raw({
             {info.preview
               ? "Current context · not sent yet"
               : `${info.method} ${info.url} · ${info.status || info.state}`}{" "}
-            {info.time && <time>{new Date(info.time).toLocaleString()}</time>}
+            <Time value={info.time} />
           </p>
         )}
         {(http || tool) && (

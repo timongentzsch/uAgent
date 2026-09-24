@@ -946,6 +946,13 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
       call_id: "fixture",
       detail_id: "t-fixture",
       arguments: { query: "a test query" },
+      view: {
+        input: [
+          { kind: "command", text: `psql -c "SELECT 'x'"` },
+          { kind: "fields", rows: [["query", "a test query"]] },
+        ],
+        output: "text",
+      },
       text: "short preview",
       reasoning: "Closed rich reasoning: $$x^2 + y^2$$",
       status: "success",
@@ -1113,6 +1120,11 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
   await tool.getByRole("button", { name: "Retry", exact: true }).click();
   await expect(tool.locator(".tool-body")).toContainText("END OF FULL RESULT");
   expect(requests).toBe(3);
+  // The native view reads as typed: the command verbatim, never escaped JSON.
+  await expect(tool.locator(".tool-command")).toHaveText(
+    `psql -c "SELECT 'x'"`,
+  );
+  await expect(tool.locator(".tool-fields dd")).toHaveText("a test query");
   await expect(tool.locator(".thinking .markdown")).toHaveCount(0);
   await expect(tool.locator(".katex")).toHaveCount(0);
   await toggle.click();
@@ -1283,6 +1295,7 @@ test("late snapshots and retired streams cannot replace current session state", 
           generation: metadata.generation,
           kind: "state",
           busy: false,
+          metadata,
           state: snapshot(metadata, context).state,
         },
       },
@@ -1402,9 +1415,10 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
   };
   try {
     await page.goto(`${fixture.origin}/#session=${session.id}`);
-    await expect(page.locator('meta[name="viewport"]')).toHaveAttribute(
+    // The page stays pinch-zoomable; only the browser viewer locks it.
+    await expect(page.locator('meta[name="viewport"]')).not.toHaveAttribute(
       "content",
-      /maximum-scale=1, user-scalable=no/,
+      /user-scalable=no/,
     );
     const prompt = page.getByLabel("Message or guidance");
     await expect(prompt).toBeVisible();
@@ -1822,6 +1836,11 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
   ).toBeVisible();
   await page.reload();
   await expect(page.locator(".transcript .tool-disclosure")).toHaveCount(3);
+  // Retained history replays through the live pipeline: one row per call,
+  // none stuck on Running.
+  await expect(
+    page.locator(".transcript .tool-disclosure", { hasText: "Running" }),
+  ).toHaveCount(0);
   await expect(
     page
       .locator(".tool-disclosure")

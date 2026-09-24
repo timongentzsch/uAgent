@@ -127,6 +127,36 @@
 .tool-body {
   padding: var(--space-2) 0;
 }
+/* ToolView parts: one look per kind, whatever the tool. */
+.tool-command {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.tool-command::before {
+  content: "$ ";
+  color: var(--muted);
+}
+.tool-code {
+  margin: var(--space-2) 0;
+}
+.tool-code figcaption {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.tool-fields {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--space-1) var(--space-4);
+  margin: var(--space-2) 0;
+  font-size: 0.85rem;
+}
+.tool-fields dt {
+  color: var(--muted);
+}
+.tool-fields dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
 @media (pointer: coarse) {
   .message {
     --control: calc(32rem / 14);

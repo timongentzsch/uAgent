@@ -122,6 +122,8 @@ export function presentMessages(blocks: Block[]): PresentedBlock[] {
       !block.truncated
     )
       continue;
+    // Routine memory outcomes are for the terminal's /verbose view only.
+    if (block.memory?.minor) continue;
     if (block.kind === "user") calls.clear();
     if (block.kind === "tool_result") {
       const index = find(block);
@@ -172,6 +174,7 @@ export function presentMessages(blocks: Block[]): PresentedBlock[] {
             name: tool.name,
             activity: tool.activity,
             arguments: tool.arguments,
+            view: tool.view,
             time: block.time,
             turn_root: block.turn_root,
             reply_to: block.reply_to,
@@ -193,6 +196,7 @@ export function presentMessages(blocks: Block[]): PresentedBlock[] {
         name: tool.name,
         activity: tool.activity,
         arguments: tool.arguments,
+        view: tool.view,
         status: tool.status,
         time: block.time,
         turn_root: block.turn_root,
@@ -206,24 +210,6 @@ export function presentMessages(blocks: Block[]): PresentedBlock[] {
     }
   }
   return rows;
-}
-
-// The server appends an "Attached:" trailer (attachments.cc) listing raw
-// host paths to the stored user text. The gallery below the message already
-// shows the files by name, so rendering the trailer only leaks
-// implementation paths into the transcript. Strip it at render time:
-// history already stored keeps working, and the model payload is untouched.
-// Gated on files and anchored to the exact server format at end of text,
-// so a user literally typing "Attached:" keeps their words.
-const kAttachedTrailer =
-  /\n\nAttached:\n(?:- path "(?:[^"\\]|\\.)*"(?: \(from tool call "(?:[^"\\]|\\.)*"\))?\n?)+\s*$/;
-
-export function stripAttachedTrailer(
-  text: string | undefined,
-  files?: { length?: number } | null,
-): string | undefined {
-  if (!text || !files?.length) return text;
-  return text.replace(kAttachedTrailer, "");
 }
 
 export type TextPart =

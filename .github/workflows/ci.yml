@@ -61,12 +61,16 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev
+        run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev libssl-dev
+      # Release archives ship Web Push. macOS links Homebrew's libcrypto
+      # statically so the archive runs on hosts without Homebrew.
       - name: Configure
         run: >-
           cmake -S . -B build
           -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
           -DUAGENT_WARNINGS_AS_ERRORS=ON
+          -DUAGENT_WEB_PUSH=ON
+          ${{ runner.os == 'macOS' && '-DOPENSSL_ROOT_DIR=/opt/homebrew/opt/openssl@3 -DOPENSSL_USE_STATIC_LIBS=TRUE' || '' }}
       - name: Build
         # Bounded to the cores actually present. `--parallel` with no count
         # hands Make an unlimited `-j`, and this tree's translation units are
@@ -290,7 +294,6 @@ jobs:
           cmake --preset release -DUAGENT_WEB_PUSH=ON
           cmake --build --preset release --parallel 4
           ctest --preset release -j 2 -R '^(core|integration_web|web_push)$'
-          python3 benchmarks/web.py build/release/uagent --push-contact mailto:benchmark@example.invalid --output build/web-footprint.json
       - name: Browser integration against native host
         run: |
           npm exec --prefix web -- playwright install --with-deps chromium webkit

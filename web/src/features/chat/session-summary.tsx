@@ -1,5 +1,5 @@
 import type { State } from "../../shared/types.ts";
-import { count } from "../../shared/quantities.ts";
+import { cost, count } from "../../shared/quantities.ts";
 import { contextSummary } from "../../state/context.ts";
 
 export function ContextSummary({
@@ -46,7 +46,7 @@ export function SessionSummary({
       aria-label="Session statistics"
     >
       Session · {count(state?.statistics?.recorded_turns ?? state?.turns)} turns
-      {state?.usage?.cost_reported ? ` · $${state.usage.cost.toFixed(4)}` : ""}
+      {state?.usage?.cost_reported ? ` · ${cost(state.usage.cost)}` : ""}
     </button>
   );
 }

@@ -4,11 +4,7 @@ import Markdown, { prepareMarkdown } from "../../shared/markdown-view.tsx";
 import "./message.css";
 import { bytes, count } from "../../shared/quantities.ts";
 import { Component, type ComponentProps } from "preact";
-import {
-  presentMessages,
-  splitMentionTokens,
-  stripAttachedTrailer,
-} from "./message-view.ts";
+import { presentMessages, splitMentionTokens } from "./message-view.ts";
 import type {
   PresentedBlock,
   Block,
@@ -26,20 +22,15 @@ import {
   Skeleton,
   LoadError,
   EventRow,
+  ErrorBoundary,
+  Time,
 } from "../../shared/ui.tsx";
 import { MessageMenu } from "./message-menu.tsx";
 import { useBlockReader } from "../../state/block-reader.ts";
+import { duration } from "../../shared/duration.ts";
 import { getToolRow } from "./tool-preview.ts";
 import { ToolRow } from "./tool-row.tsx";
-import {
-  formatDateTime,
-  formatDuration,
-  formatTime,
-  isRunningStatus,
-  previewBody,
-  statusLine,
-  stringifyArgs,
-} from "../../shared/display.ts";
+import { isRunningStatus, statusLine } from "../../shared/display.ts";
 
 // Inline @-mention reference. Resolves against the message's own files so
 // a renamed file shows its current name; a removed one degrades to muted
@@ -110,7 +101,7 @@ function MessageView({
   const [expanded, setExpanded] = useState(false);
   const [loadError, setLoadError] = useState<unknown>(null);
   const [retry, setRetry] = useState(0);
-  const text = stripAttachedTrailer(full ?? block.text, block.files);
+  const text = full ?? block.text;
   const tool = block.kind === "tool_result";
   const load = useBlockReader(session, read);
   useEffect(() => {
@@ -151,13 +142,8 @@ function MessageView({
     session.id,
     retry,
   ]);
-  const argumentsText = stringifyArgs(block.arguments);
-  const input = useMemo(
-    () => (expanded ? previewBody(argumentsText) : ""),
-    [expanded, argumentsText],
-  );
   const output = useMemo(
-    () => (expanded ? previewBody(text) : ""),
+    () => (expanded ? cleanText(text) : ""),
     [expanded, text],
   );
   if (block.kind === "compaction" && block.compaction)
@@ -174,7 +160,7 @@ function MessageView({
         </p>
         <p class="muted">
           {block.compaction.automatic ? "Automatic" : "Manual"} ·{" "}
-          {formatDuration(block.compaction.duration_ms)}
+          {duration(block.compaction.duration_ms)}
         </p>
       </EventRow>
     );
@@ -254,11 +240,7 @@ function MessageView({
               })}
             </span>
           )}
-          {
-            <time dateTime={block.time} title={formatDateTime(block.time)}>
-              {formatTime(block.time)}
-            </time>
-          }
+          <Time value={block.time} />
           {recall &&
             online &&
             block.status === "Guidance queued" &&
@@ -293,11 +275,8 @@ function MessageView({
                 subtitle={row.subtitle}
                 running={running}
                 diffOnly={row.diffOnly}
-                argumentsText={argumentsText}
-                input={input}
                 output={output}
                 text={text}
-                expanded={expanded}
                 expanding={expanding}
                 loadError={loadError}
                 retry={() => setRetry(retry + 1)}
@@ -461,6 +440,7 @@ function messagePropsEqual(before: MessageProps, after: MessageProps): boolean {
     (x.files?.length || 0) === (y.files?.length || 0) &&
     (x.http?.length || 0) === (y.http?.length || 0) &&
     x.arguments === y.arguments &&
+    x.view === y.view &&
     x.summary === y.summary &&
     x.compaction === y.compaction &&
     x.memory === y.memory &&
@@ -479,7 +459,11 @@ export class Message extends Component<MessageProps> {
     return !messagePropsEqual(this.props, next);
   }
   render(props: MessageProps) {
-    return <MessageView {...props} />;
+    return (
+      <ErrorBoundary>
+        <MessageView {...props} />
+      </ErrorBoundary>
+    );
   }
 }
 
@@ -499,7 +483,7 @@ export async function prepareHistoryBlocks(blocks: Block[]) {
       continue;
     }
     if (block.kind === "tool_result") continue;
-    const text = stripAttachedTrailer(block.text || "", block.files) || "";
+    const text = block.text || "";
     for (const part of splitMentionTokens(text)) {
       if ("text" in part && part.text) texts.add(part.text);
     }

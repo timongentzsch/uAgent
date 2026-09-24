@@ -16,6 +16,7 @@
 #include "include/core/fs.h"
 #include "include/core/limits.h"
 #include "include/core/strings.h"
+#include "include/tools/tool.h"
 
 namespace uagent {
 namespace {
@@ -81,6 +82,60 @@ std::string Text(const json& message) {
     return text;
   }
   return JsonValue(message, "content", "");
+}
+
+// Scans a double-quoted segment with backslash escapes. `pos` starts on the
+// opening quote and ends past the closing one; false when unterminated.
+bool ScanQuotedSegment(std::string_view line, size_t& pos) {
+  if (pos >= line.size() || line[pos] != '"') return false;
+  ++pos;
+  while (pos < line.size()) {
+    if (line[pos] == '\\') {
+      pos += 2;
+      continue;
+    }
+    if (line[pos] == '"') {
+      ++pos;
+      return true;
+    }
+    ++pos;
+  }
+  return false;
+}
+
+// One `- path "..."` reference line as AttachmentContent writes it, with
+// the optional ` (from tool call "...")` suffix.
+bool IsAttachmentReference(std::string_view line) {
+  constexpr std::string_view kPrefix = "- path ";
+  constexpr std::string_view kFrom = " (from tool call ";
+  if (!line.starts_with(kPrefix)) return false;
+  size_t pos = kPrefix.size();
+  if (!ScanQuotedSegment(line, pos)) return false;
+  if (pos == line.size()) return true;
+  if (!line.substr(pos).starts_with(kFrom)) return false;
+  pos += kFrom.size();
+  if (!ScanQuotedSegment(line, pos)) return false;
+  if (pos >= line.size() || line[pos] != ')') return false;
+  ++pos;
+  return pos == line.size();
+}
+
+bool IsBlankLine(std::string_view line) {
+  return line.find_first_not_of(" \t\r") == std::string_view::npos;
+}
+
+// Stored user text keeps the "Attached:" trailer for the model; readers see
+// the text they typed, with the attachments shown from their own records.
+std::string DisplayText(const json& message) {
+  std::string text = Text(message);
+  const json* content = JsonArray(message, "content");
+  if (!content) return text;
+  for (const json& part : *content) {
+    if (JsonValue(part, "type", "") == "attachment") {
+      return StripAttachedTrailer(text);
+    }
+  }
+  return text;
 }
 }  // namespace
 
@@ -286,7 +341,7 @@ json DisplayBlock(const Conversation& conversation, uint64_t sequence,
   const json& facts = conversation.DisplayFacts();
   std::string id = "m-" + std::to_string(sequence);
   const json& message = *entry.message;
-  std::string text = Text(message);
+  std::string text = DisplayText(message);
   json block = {{"id", id},
                 {"sequence", sequence},
                 {"kind", entry.kind},
@@ -375,6 +430,16 @@ json DisplayBlock(const Conversation& conversation, uint64_t sequence,
         // replay facts fall back to the legacy synthesis in the presenter.
         if (detail.contains("call_replay")) {
           tool["replay"] = detail["call_replay"];
+        }
+        // Calls recorded before views existed get the generic one.
+        const json replay = JsonValue(detail, "call_replay", json::object());
+        if (const json* recorded = JsonObject(replay, "view")) {
+          tool["view"] = *recorded;
+        } else {
+          const std::string raw = JsonValue(function, "arguments", "");
+          json parsed = json::parse(raw, nullptr, false);
+          tool["view"] =
+              ToolView(nullptr, parsed.is_discarded() ? json(raw) : parsed);
         }
         if (detail.contains("exchange_path")) {
           tool["exchange_path"] = detail["exchange_path"];
@@ -491,7 +556,7 @@ json ConversationDetail(const Conversation& conversation, const std::string& id,
   } else {
     for (const auto& [sequence, entry] : Entries(conversation)) {
       if (Visible(entry) && "m-" + std::to_string(sequence) == id) {
-        text = Text(*entry.message);
+        text = DisplayText(*entry.message);
       }
     }
   }
@@ -589,4 +654,29 @@ json ConversationExchange(const Conversation& conversation,
           {"bytes", text.size()},
           {"more", end < text.size()}};
 }
+std::string StripAttachedTrailer(const std::string& text) {
+  constexpr std::string_view kMarker = "\n\nAttached:\n";
+  const size_t marker = text.rfind(kMarker);
+  if (marker == std::string::npos) return text;
+  size_t pos = marker + kMarker.size();
+  bool referenced = false;
+  while (pos < text.size()) {
+    size_t end = text.find('\n', pos);
+    const size_t stop = end == std::string::npos ? text.size() : end;
+    const std::string_view line(text.data() + pos, stop - pos);
+    if (IsBlankLine(line)) {
+      // A trailing whitespace tail is formatting, not user text.
+      if (text.find_first_not_of(" \t\r\n", pos) == std::string::npos) {
+        break;
+      }
+      return text;
+    }
+    if (!IsAttachmentReference(line)) return text;
+    referenced = true;
+    pos = end == std::string::npos ? text.size() : end + 1;
+  }
+  if (!referenced) return text;
+  return text.substr(0, marker);
+}
+
 }  // namespace uagent

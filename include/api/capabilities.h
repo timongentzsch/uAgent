@@ -15,7 +15,9 @@
 
 namespace uagent {
 
-enum class ProviderProtocol : uint8_t { kOpenAi, kOpenRouter, kAnthropic };
+// Anthropic routes are identified by their wire API; "anthropic" is still
+// accepted as a protocol name and means the OpenAI-compatible default.
+enum class ProviderProtocol : uint8_t { kOpenAi, kOpenRouter };
 enum class WireApi : uint8_t {
   kChatCompletions,
   kResponses,
@@ -47,7 +49,6 @@ struct ProviderCapabilities {
   bool hosted_web_search = false;
 
   // Request features that may be downgraded after a structured rejection.
-  bool native_tools = true;
   bool parallel_tools = true;
   bool stream_usage_option = true;
   bool reasoning_summary = false;
@@ -62,7 +63,6 @@ struct ProviderCapabilities {
   bool video_input = true;
 
   // Stable route dialect features.
-  bool model_catalog_required = true;
   bool raw_slash_models = false;
   bool reasoning_object = false;
   bool reasoning_replay_text = false;
@@ -84,7 +84,7 @@ struct ProviderCapabilities {
   bool reported_usage = false;
 
   bool OpenRouter() const { return protocol == ProviderProtocol::kOpenRouter; }
-  bool Anthropic() const { return protocol == ProviderProtocol::kAnthropic; }
+  bool Anthropic() const { return wire_api == WireApi::kAnthropicMessages; }
   bool Supports(HostedTool tool) const {
     return tool == HostedTool::kWebSearch && hosted_web_search;
   }

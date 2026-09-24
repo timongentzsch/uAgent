@@ -34,13 +34,8 @@ class Api {
   std::vector<std::string> supported_reasoning_efforts;
   int64_t ctx_window = 0;
   ProviderCapabilities capabilities;
-  bool render_stream = true;
   double session_cost = 0;
   int64_t session_generated_tokens = 0;
-  // Set once at the user-turn boundary. Every transient status row in that
-  // turn uses the same anchor, matching Codex's TurnStarted/TurnCompleted
-  // lifetime instead of restarting for each request or tool.
-  std::chrono::steady_clock::time_point turn_started;
 
   explicit Api(RuntimeConfig config = RuntimeConfig::FromEnvironment());
   ~Api();
@@ -67,8 +62,7 @@ class Api {
                           bool* web_available = nullptr);
   ChatResult Chat(const json& messages, const json& tool_schemas,
                   int64_t timeout_s = 0, const std::string& session_id = "",
-                  bool render_output = true, size_t estimated_bytes = 0,
-                  bool full_reasoning = true);
+                  size_t estimated_bytes = 0);
   // timeout_s bounds one attempt; attempts>1 adds the same bounded backoff
   // the conversation gets, for transport failures and transient statuses.
   JsonResponse Post(const std::string& path, const json& body,
@@ -84,9 +78,8 @@ class Api {
  private:
   ChatResult PerformChat(const std::string& payload, bool web_available,
                          int64_t timeout_s, const std::string& session_id,
-                         bool render_output, bool full_reasoning,
                          HttpExchange* exchange, json response_context);
-  bool WaitForRetry(std::chrono::milliseconds delay, bool render_output) const;
+  bool WaitForRetry(std::chrono::milliseconds delay) const;
   JsonResponse Fetch(const std::string& path, const std::string* payload,
                      int64_t timeout_s, bool abortable);
   static void SetAbortable(CURL* handle, StreamCtx* context = nullptr);

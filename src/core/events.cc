@@ -26,94 +26,80 @@ namespace {
 
 constexpr EventPolicy kPolicies[] = {
     {EventId::kSessionReady, "session.ready", "session_ready", nullptr,
-     "session.ready", EventDurability::kDurable,
-     EventRedaction::kPublicProjection},
+     "session.ready", EventRedaction::kPublicProjection},
     {EventId::kSessionResumed, "session.resumed", "session_resumed", nullptr,
-     "session.resumed", EventDurability::kDurable,
-     EventRedaction::kPublicProjection},
+     "session.resumed", EventRedaction::kPublicProjection},
     {EventId::kSessionEnded, "session.ended", "session_end", nullptr,
-     "session.ended", EventDurability::kDurable,
-     EventRedaction::kPublicProjection},
+     "session.ended", EventRedaction::kPublicProjection},
     {EventId::kTurnStarted, "turn.started", "turn_start", "turn.started",
-     "turn.started", EventDurability::kDurable,
-     EventRedaction::kPublicProjection},
+     "turn.started", EventRedaction::kPublicProjection},
     {EventId::kTurnStopped, "turn.stopped", "turn_end", nullptr,
-     "turn.completed", EventDurability::kDurable,
-     EventRedaction::kPublicProjection},
+     "turn.completed", EventRedaction::kPublicProjection},
     {EventId::kTurnCompleted, "turn.completed", "turn_end", "usage",
-     "turn.completed", EventDurability::kDurable,
-     EventRedaction::kPublicProjection},
+     "turn.completed", EventRedaction::kPublicProjection},
     {EventId::kToolCall, "tool.call", "tool_call", "tool.call", "tool.call",
-     EventDurability::kDurable, EventRedaction::kPublicProjection},
+     EventRedaction::kPublicProjection},
     {EventId::kToolStarted, "tool.started", nullptr, nullptr, nullptr,
-     EventDurability::kTransient, EventRedaction::kNone},
+     EventRedaction::kNone},
     {EventId::kToolResult, "tool.result", "tool_result", "tool.result",
-     "tool.result", EventDurability::kDurable,
-     EventRedaction::kPublicProjection},
+     "tool.result", EventRedaction::kPublicProjection},
     {EventId::kActivityCompleted, "activity.completed", "activity_completed",
-     nullptr, "activity.completed", EventDurability::kDurable,
-     EventRedaction::kPublicProjection},
+     nullptr, "activity.completed", EventRedaction::kPublicProjection},
     {EventId::kCapabilityChanged, "capability.changed", "feature_degraded",
-     nullptr, "capability.changed", EventDurability::kDurable,
-     EventRedaction::kPublicProjection},
+     nullptr, "capability.changed", EventRedaction::kPublicProjection},
     {EventId::kConfigChanged, "config.changed", "config_changed", nullptr,
-     "config.changed", EventDurability::kDurable,
-     EventRedaction::kPublicProjection},
+     "config.changed", EventRedaction::kPublicProjection},
     {EventId::kPromptChanged, "prompt.changed", "prompt_changed", nullptr,
-     "prompt.changed", EventDurability::kDurable,
-     EventRedaction::kPublicProjection},
+     "prompt.changed", EventRedaction::kPublicProjection},
     {EventId::kAnswer, "answer", nullptr, "answer", nullptr,
-     EventDurability::kTransient, EventRedaction::kPublicProjection},
+     EventRedaction::kPublicProjection},
     {EventId::kError, "error", nullptr, "error", nullptr,
-     EventDurability::kTransient, EventRedaction::kPublicProjection},
+     EventRedaction::kPublicProjection},
     {EventId::kResponseStarted, "response.started", nullptr, nullptr, nullptr,
-     EventDurability::kTransient, EventRedaction::kNone},
+     EventRedaction::kNone},
     {EventId::kToolArguments, "response.tool_arguments", nullptr, nullptr,
-     nullptr, EventDurability::kTransient, EventRedaction::kNone},
+     nullptr, EventRedaction::kNone},
     {EventId::kResponseRetry, "response.retry", nullptr, nullptr, nullptr,
-     EventDurability::kTransient, EventRedaction::kNone},
+     EventRedaction::kNone},
     {EventId::kActivityStatus, "activity.status", nullptr, nullptr, nullptr,
-     EventDurability::kTransient, EventRedaction::kNone},
+     EventRedaction::kNone},
     {EventId::kReasoningDelta, "response.reasoning.delta", nullptr, nullptr,
-     nullptr, EventDurability::kTransient, EventRedaction::kNone},
+     nullptr, EventRedaction::kNone},
     {EventId::kAnswerDelta, "response.answer.delta", nullptr, nullptr, nullptr,
-     EventDurability::kTransient, EventRedaction::kNone},
+     EventRedaction::kNone},
     // A tool the provider ran, not one this agent did: no journal type, so it
     // never enters the session record or model context, and no query text, so
     // the public stream carries the fact of a search and not its subject.
     {EventId::kHostedToolActivity, "response.hosted_tool", "hosted_tool",
-     "response.hosted_tool", nullptr, EventDurability::kTransient,
-     EventRedaction::kPublicProjection},
+     "response.hosted_tool", nullptr, EventRedaction::kPublicProjection},
     {EventId::kResponseFinished, "response.finished", nullptr, nullptr, nullptr,
-     EventDurability::kTransient, EventRedaction::kNone},
+     EventRedaction::kNone},
     {EventId::kApprovalRequested, "approval.requested", "approval_requested",
-     nullptr, nullptr, EventDurability::kTransient, EventRedaction::kNone},
+     nullptr, nullptr, EventRedaction::kNone},
     {EventId::kApprovalResolved, "approval.resolved", "approval_resolved",
-     nullptr, nullptr, EventDurability::kTransient, EventRedaction::kNone},
+     nullptr, nullptr, EventRedaction::kNone},
     {EventId::kInteractionRequested, "interaction.requested",
-     "interaction_requested", nullptr, nullptr, EventDurability::kTransient,
-     EventRedaction::kNone},
+     "interaction_requested", nullptr, nullptr, EventRedaction::kNone},
     {EventId::kInteractionResolved, "interaction.resolved",
-     "interaction_resolved", nullptr, nullptr, EventDurability::kTransient,
-     EventRedaction::kNone},
+     "interaction_resolved", nullptr, nullptr, EventRedaction::kNone},
     {EventId::kCommandCompleted, "command.completed", "command_completed",
-     nullptr, nullptr, EventDurability::kTransient, EventRedaction::kNone},
+     nullptr, nullptr, EventRedaction::kNone},
     {EventId::kNotice, "notice", "notice", "notice", "notice",
-     EventDurability::kDurable, EventRedaction::kPublicProjection},
+     EventRedaction::kPublicProjection},
     {EventId::kMessageChanged, "message.changed", nullptr, nullptr, nullptr,
-     EventDurability::kTransient, EventRedaction::kNone},
+     EventRedaction::kNone},
     {EventId::kActivitiesChanged, "activities.changed", nullptr, nullptr,
-     nullptr, EventDurability::kTransient, EventRedaction::kNone},
+     nullptr, EventRedaction::kNone},
     {EventId::kCollaboratorChanged, "collaborator.changed", nullptr, nullptr,
-     nullptr, EventDurability::kTransient, EventRedaction::kNone},
+     nullptr, EventRedaction::kNone},
     {EventId::kHttpExchange, "http.exchange", nullptr, nullptr, nullptr,
-     EventDurability::kTransient, EventRedaction::kNone},
+     EventRedaction::kNone},
     {EventId::kUsageUpdated, "usage.updated", nullptr, "usage.updated", nullptr,
-     EventDurability::kTransient, EventRedaction::kNone},
+     EventRedaction::kNone},
     {EventId::kResponseSources, "response.sources", nullptr, nullptr, nullptr,
-     EventDurability::kTransient, EventRedaction::kNone},
+     EventRedaction::kNone},
     {EventId::kPresentation, "ui.presentation", nullptr, nullptr, nullptr,
-     EventDurability::kTransient, EventRedaction::kNone},
+     EventRedaction::kNone},
 };
 
 constexpr bool ValidPolicies() {
@@ -213,6 +199,9 @@ json PresentationJson(const PresentationRecord& record) {
   if (!record.change.empty()) {
     value["change"] = record.change;
   }
+  if (!record.output.empty()) value["output"] = record.output;
+  if (!record.view.is_null()) value["view"] = record.view;
+  if (record.minor) value["minor"] = true;
   AddArtifacts(value, record.artifacts);
   return value;
 }
@@ -225,7 +214,6 @@ json AppProjection(const Event& event) {
   if (!event.text.empty() && !data.contains("text")) {
     data["text"] = std::string(event.text);
   }
-  if (event.verbose) data["verbose"] = true;
   if (event.presentation) {
     data["presentation"] = PresentationJson(*event.presentation);
   }
@@ -369,8 +357,7 @@ const EventPolicy& PolicyFor(EventId id) {
 
 void SessionJournal::Append(const Event& event,
                             const EventPolicy& policy) noexcept {
-  if (!enabled_ || policy.durability != EventDurability::kDurable ||
-      !policy.journal_type) {
+  if (!enabled_ || !policy.Durable() || !policy.journal_type) {
     return;
   }
   json record = {{"schema", "uagent.session.event.v1"},
@@ -498,11 +485,12 @@ void Observability::Unsubscribe(uint64_t subscription) {
   });
 }
 
-Event NoticeEvent(PresentationStatus status, std::string text) {
+Event NoticeEvent(PresentationStatus status, std::string text, bool minor) {
   Event event{EventId::kNotice};
   event.presentation = PresentationRecord{};
   event.presentation->kind = PresentationKind::kNotice;
   event.presentation->status = status;
+  event.presentation->minor = minor;
   event.presentation->title = text;
   event.data = json{{"text", std::move(text)}};
   // Notices printed unconditionally before this existed, including headless.
@@ -522,9 +510,6 @@ void Observability::Emit(Event event) noexcept {
     std::lock_guard<std::mutex> lock(mutex_);
     if (shutdown_) return;
     const EventPolicy& policy = PolicyFor(event.id);
-    if (event.id == EventId::kResponseStarted && event.data.contains("turn")) {
-      render_activity_ = event.render;
-    }
     if (activity_->Consume(event.id, event.data)) {
       activity_revision = activity_->Revision();
     }
@@ -542,14 +527,13 @@ void Observability::Emit(Event event) noexcept {
                       : event.data;
       json_.Emit(policy.public_type, std::move(data));
     }
-    if (policy.durability == EventDurability::kDurable) {
+    if (policy.Durable()) {
       journal_.Append(event, policy);
     }
     EchoHeadlessProgress(event);
     if (!subscribers_.empty()) {
       app_event = {++app_sequence_, UtcStamp(), policy.app_type,
-                   AppProjection(event),
-                   policy.durability == EventDurability::kDurable};
+                   AppProjection(event), policy.Durable()};
       subscribers.reserve(subscribers_.size());
       subscribers = subscribers_;
     }
@@ -569,9 +553,7 @@ void Observability::Emit(Event event) noexcept {
   // A subscriber may emit a newer lifecycle event recursively. Never publish
   // the older projection after it. Concurrent producers hold delivery_mutex_.
   if (activity_revision && activity_revision == activity_->Revision()) {
-    Event activity{EventId::kActivityStatus, activity_->Status()};
-    activity.render = render_activity_;
-    Emit(std::move(activity));
+    Emit(Event{EventId::kActivityStatus, activity_->Status()});
   }
 }
 
@@ -608,15 +590,10 @@ void Emit(Event event) noexcept {
   if (g_observability) g_observability->Emit(std::move(event));
 }
 
-ResponseObservation::ResponseObservation(
-    bool render, bool verbose, const std::string& label,
-    std::chrono::steady_clock::time_point anchor, json context)
+ResponseObservation::ResponseObservation(const std::string& label, json context)
     : context_(std::move(context)) {
   Event event{EventId::kResponseStarted, context_};
-  event.render = render;
-  event.verbose = verbose;
   event.text = label;
-  event.anchor = anchor;
   Emit(std::move(event));
 }
 

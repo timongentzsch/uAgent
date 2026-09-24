@@ -9,15 +9,20 @@
 #include <chrono>
 #include <cstdint>
 #include <functional>
+#include <initializer_list>
+#include <map>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
 
 #include "include/core/json.h"
+#include "include/core/limits.h"
 #include "include/core/outcome.h"
+#include "include/core/strings.h"
 #include "include/core/time.h"
 
 namespace uagent {
@@ -142,6 +147,9 @@ struct Tool {
   // Full, possibly multi-line text shown only when asking a person to approve
   // this call. `summary` stays a one-liner for labels, traces and evidence.
   using Preview = std::function<std::string(const json&)>;
+  // How a call's input reads to a person, as ToolView parts. Unset means the
+  // generic view: short strings and scalars as fields, long text as code.
+  using Present = std::function<json(const json&)>;
 
   std::string name;
   std::string title;     // short human label, derived from name by default
@@ -152,9 +160,11 @@ struct Tool {
   bool declared_intent = false;  // presentation only, never authority
   Approval mutates;  // argument-dependent mutation (e.g. memory save)
   Run run;
-  Canonicalize canonicalize;  // materialized provider args -> operation args
-  Validate validate;          // semantic issue before approval/execution
-  Summary summary;            // args -> one-line display
+  Canonicalize canonicalize;     // materialized provider args -> operation args
+  Validate validate;             // semantic issue before approval/execution
+  Summary summary;               // args -> one-line display
+  Present present;               // args -> ToolView input parts
+  bool markdown_output = false;  // the result reads as Markdown, not a log
   bool redact_invalid_arguments = false;  // hide raw rejected arguments
   bool parallel_safe = false;             // safe beside another tool call
   uint32_t capabilities = kAllToolCapabilities;  // required to expose
@@ -253,6 +263,22 @@ json ToolParameters(const Tool& tool);
 // call trace so both name the same action the same way.
 std::string ToolSummary(const Tool& t, const json& args);
 
+// What every client renders for a call, from a closed vocabulary:
+//   {"input": [part...], "output": "text" | "markdown"}
+// where a part is one of
+//   {"kind": "command", "text"}                  a shell line, verbatim
+//   {"kind": "code", "text", "language", "label"} a body: script, JSON, prose
+//   {"kind": "fields", "rows": [[label, value]]}  small scalar arguments
+// The result itself is the tool message (or its diff), so it is not repeated
+// here. `tool` may be null for a call whose tool is gone: the generic view.
+json ToolView(const Tool* tool, const json& args);
+json CommandPart(std::string text);
+json CodePart(std::string text, std::string language, std::string label = "");
+// Generic parts for `args`, leaving out `skip` (arguments another part or the
+// result already shows). Labels (`intent`, `description`) are never repeated.
+json GenericInputParts(const json& args,
+                       std::initializer_list<std::string_view> skip = {});
+
 const Tool* FindTool(const std::vector<Tool>& tools, const std::string& name);
 
 std::string ToolCategory(const Tool& tool);
@@ -307,6 +333,41 @@ class ToolSchemaCache {
   size_t bytes_ = 0;
   std::vector<size_t> selected_;
   json available_ = json::array();
+};
+
+// Single-use approvals keyed by the exact tool arguments they were prepared
+// from, so the preview a person approved is the request that runs. The
+// arguments are re-compared, so the digest is an index, not the boundary.
+template <typename T>
+class ApprovedProposals {
+ public:
+  void Put(const json& arguments, T value,
+           std::chrono::steady_clock::time_point expires) {
+    if (entries_.size() >= kMaxAdaptiveProposals) entries_.clear();
+    entries_[HashHex(JsonDump(arguments))] = {arguments, std::move(value),
+                                              expires};
+  }
+  // Removes and returns the approval; empty when absent, expired, or prepared
+  // from different arguments.
+  std::optional<T> Take(const json& arguments) {
+    auto found = entries_.find(HashHex(JsonDump(arguments)));
+    if (found == entries_.end()) return std::nullopt;
+    Entry entry = std::move(found->second);
+    entries_.erase(found);
+    if (entry.arguments != arguments ||
+        std::chrono::steady_clock::now() > entry.expires) {
+      return std::nullopt;
+    }
+    return std::move(entry.value);
+  }
+
+ private:
+  struct Entry {
+    json arguments;
+    T value;
+    std::chrono::steady_clock::time_point expires;
+  };
+  std::map<std::string, Entry> entries_;
 };
 
 }  // namespace uagent

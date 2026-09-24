@@ -41,7 +41,7 @@ class Application {
   void ReportReplacedExecutable();
   void RunPrompt(const std::string& input);
   json InterfaceState() const;
-  bool ProcessInput(std::string input);
+  void ProcessInput(std::string input);
   int FinishInteractive(int status);
   int RunChannel();
   json BuildChannelState() const;
@@ -57,7 +57,6 @@ class Application {
   bool turn_active_ = false;
   std::string request_id_;
   uint64_t message_subscription_ = 0;
-  std::string exit_reason_ = "eof";
   std::string input_error_;
   json handoff_budget_;
   ApplicationChannel* channel_ = nullptr;

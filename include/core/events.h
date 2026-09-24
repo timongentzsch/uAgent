@@ -63,7 +63,6 @@ enum class EventId : uint16_t {
   kPresentation,
 };
 
-enum class EventDurability : uint8_t { kTransient, kDurable };
 enum class EventRedaction : uint8_t { kNone, kPublicProjection };
 
 enum class PresentationKind : uint8_t {
@@ -105,12 +104,19 @@ struct PresentationRecord {
   // the scrollback rather than reading as one more tool row.
   bool skill = false;
   bool poll = false;  // bare activity-tool check, no interaction sent
+  // A call's ToolView: how its input reads, and how to render its result.
+  json view = nullptr;
+  // Routine detail a client shows only when asked for the full picture.
+  bool minor = false;
+  // The result text the model received, for a client that expands results.
+  // Live events only: retained history already holds it as the tool message.
+  std::string output;
   std::vector<PresentationArtifact> artifacts;
 };
 
-// What the agent decided to do is shown in full; only results are shortened
-// outside /verbose. A label with newlines becomes detail so the row stays one
-// line.
+// What the agent decided to do is shown in full; results carry a one-line
+// summary and their output, and each client picks one. A label with newlines
+// becomes detail so the row stays one line.
 inline void SetCallLabel(PresentationRecord& record, std::string label) {
   record.multiline = label.find('\n') != std::string::npos;
   (record.multiline ? record.detail : record.summary) = std::move(label);
@@ -125,7 +131,8 @@ inline constexpr const char* kHeadlessProgressPrefix = "· ";
 // spine as everything else so it reaches the journal and the JSONL, not only a
 // terminal that may not be attached. Severity picks the color, nothing else.
 struct Event;
-Event NoticeEvent(PresentationStatus status, std::string text);
+Event NoticeEvent(PresentationStatus status, std::string text,
+                  bool minor = false);
 
 struct Event {
   explicit Event(EventId event_id) : id(event_id) {}
@@ -137,8 +144,6 @@ struct Event {
   std::optional<PresentationRecord> presentation;
   std::string_view text;
   bool render = false;
-  bool verbose = false;
-  std::chrono::steady_clock::time_point anchor{};
 };
 
 struct EventPolicy {
@@ -146,9 +151,11 @@ struct EventPolicy {
   const char* app_type;
   const char* debug_name;
   const char* public_type;
+  // Durable events are exactly the ones the session journal records.
   const char* journal_type;
-  EventDurability durability;
   EventRedaction redaction;
+
+  bool Durable() const { return journal_type != nullptr; }
 };
 
 const EventPolicy& PolicyFor(EventId id);
@@ -226,7 +233,6 @@ class Observability {
   SessionJournal journal_;
   std::unique_ptr<TerminalPresenter> terminal_;
   std::unique_ptr<ActivityProjection> activity_;
-  bool render_activity_ = false;
   std::vector<std::pair<uint64_t, EventSubscriber>> subscribers_;
   // Serializes subscriber delivery without holding the sink/state mutex.
   // Recursive so a callback may emit or unsubscribe itself.
@@ -245,9 +251,8 @@ void Emit(Event event) noexcept;
 
 class ResponseObservation {
  public:
-  ResponseObservation(bool render, bool verbose, const std::string& label,
-                      std::chrono::steady_clock::time_point anchor = {},
-                      json context = json::object());
+  explicit ResponseObservation(const std::string& label,
+                               json context = json::object());
   ~ResponseObservation();
   ResponseObservation(const ResponseObservation&) = delete;
   ResponseObservation& operator=(const ResponseObservation&) = delete;

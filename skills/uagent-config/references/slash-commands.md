@@ -13,7 +13,7 @@
 | `/fork [TITLE] [@TURN]` | branch this conversation, optionally at user turn N |
 | `/rewind [@TURN]` | rewind this conversation to user turn N |
 | `/share` | export transcript as markdown |
-| `/permissions [default|ask|yolo]` | show or change permission mode |
+| `/permissions [default|ask|auto|yolo]` | show or change permission mode |
 | `/prompt [show|edit|set|reset] [--scope global|project|conversation] [--mode overlay|replace] [--file PATH]` | inspect or edit the system prompt |
 | `/http [INDEX [request|response]]` | inspect captured HTTP attempts (latest by default) |
 | `/diff` | show git diff (including untracked files) |

@@ -23,7 +23,6 @@
 #include <vector>
 
 #include "include/agent/memory_store.h"
-#include "include/app/library.h"
 #include "include/core/checked.h"
 #include "include/core/debug.h"
 #include "include/core/env.h"
@@ -31,6 +30,7 @@
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/lease.h"
+#include "include/core/library.h"
 #include "include/core/limits.h"
 #include "include/core/project.h"
 #include "include/core/strings.h"
@@ -414,7 +414,7 @@ ToolResult ToolMemoryAction(const std::string& action, const std::string& key,
   if (!cwd) return ToolFailure(ToolErrorCode::kInternal, error);
   FileLease lease;
   if ((action == "set" || action == "forget") &&
-      !lease.Acquire(UagentDir("library") + "/write.lock", error)) {
+      !AcquireLibraryWriteLease(lease, error)) {
     return ToolFailure(ToolErrorCode::kInternal, error);
   }
   return MemoryAction(action, key, content, *cwd);
@@ -495,7 +495,7 @@ json MemoryControl(const json& request, const std::filesystem::path& cwd) {
   }
   std::string error;
   FileLease lease;
-  if (!lease.Acquire(UagentDir("library") + "/write.lock", error)) {
+  if (!AcquireLibraryWriteLease(lease, error)) {
     return {{"error", error}};
   }
   const auto path = external_copy ? std::filesystem::path(found->path)

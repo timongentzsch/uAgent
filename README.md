@@ -3,52 +3,34 @@
 [![CI](https://github.com/timongentzsch/uAgent/actions/workflows/ci.yml/badge.svg)](https://github.com/timongentzsch/uAgent/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-µAgent is a local coding-agent harness shipped as one native binary, without a
-server-side language runtime or plugin system. Explicit route
-adapters stream Chat Completions, OpenAI Responses, and Anthropic Messages. A
-conversation runtime owns its commands and children; retained collaborators are
-same-binary child runtimes. Typed events provide shared state to terminal,
-browser and machine interfaces.
+µAgent is a local coding agent shipped as one native C++ binary `uagent`. It
+streams Chat Completions, OpenAI Responses and Anthropic Messages through
+explicit route adapters, and serves a terminal client, an embedded browser
+interface and machine-readable output from one conversation runtime.
 
-Linux and macOS are supported. The native runtime links libcurl and the platform
-C++ libraries. The default build also embeds a browser interface and vendors
-cpp-httplib alongside json.hpp; `-DUAGENT_WEB=OFF` retains a CLI-only build.
-Optional native Web Push adds OpenSSL 3 libcrypto. See [the web guide](docs/WEB.md)
-for architecture, security, dependencies and limits.
+## Requirements
 
-## Design
+- Linux or macOS
+- CMake 3.21+, a C++20 compiler and libcurl
+- Optional: [uv](https://docs.astral.sh/uv/) for Python `scratch` scripts;
+  Node.js with `npm install -g @playwright/cli@latest` for browser automation;
+  OpenSSL 3 libcrypto to build Web Push from source (`-DUAGENT_WEB_PUSH=ON`;
+  release archives and the Docker image include it)
 
-- One runtime per interactive conversation. CLI and web clients send commands
-  and consume the same ordered events; neither owns a separate conversation.
-- Explicit adapters for Chat Completions, OpenAI Responses and Anthropic
-  Messages, driven by declared route capabilities.
-- One process supervisor per runtime for command I/O, background work and
-  cleanup, with shared approval and sandbox policy.
-- Bounded operation defaults and optional aggregate budgets, reported through
-  inspectable configuration and per-turn/session statistics.
-- Atomic conversation snapshots, a bounded metadata journal and an optional
-  sensitive debug trace with distinct purposes.
+The default build embeds the prebuilt browser interface from `web/dist`, so it
+needs no Node.js. `-DUAGENT_WEB=OFF` builds a CLI-only binary.
 
-## Quick start
-
-Run `uagent --web` for one local control center across all your directories.
-Open the printed URL and pair the browser using the single-use code. Sessions
-run independently and can be resumed from desktop or mobile; trusted HTTPS is
-required for phone installation and background notifications. The embedded UI
-needs no npm or Node runtime. [Setup and development](docs/WEB.md).
-
-Requires CMake, a C++20 compiler, and libcurl. [uv](https://docs.astral.sh/uv/)
-enables Python scratch scripts. Browser automation additionally requires
-Node.js 20+ and `npm install -g @playwright/cli@latest`.
-The [Docker browser appliance](docs/WEB.md#docker-browser-appliance) ships a
-persistent Chrome, browser tool and phone viewer in one image.
+## Install
 
 ```sh
 ./install.sh
 ```
 
-The installer uses `build/release` and reuses an existing preset build instead
-of compiling the binary a second time.
+The installer builds a Release binary in `build/release` (reusing an existing
+build there) and installs it with the bundled skills under `~/.local`.
+`UAGENT_PREFIX` and `UAGENT_BUILD_DIR` override those locations.
+
+## Configure
 
 Create `~/.uagent/.config`:
 
@@ -57,97 +39,80 @@ OPENROUTER_API_KEY=replace-me
 OPENROUTER_MODEL=deepseek/deepseek-v4-flash
 ```
 
-Any OpenAI-compatible endpoint can instead use `UAGENT_BASE_URL`,
-`UAGENT_API_KEY`, and `UAGENT_MODEL`. Named routes use `UAGENT_PROVIDERS`.
-Environment values override trusted project and user configuration; project
-`.env` files are never loaded. The bundled `$uagent-config` skill contains the
-complete configuration reference.
+Any OpenAI-compatible endpoint can use `UAGENT_BASE_URL`, `UAGENT_API_KEY`
+and `UAGENT_MODEL` instead; `UAGENT_PROVIDERS` defines named routes.
+Environment variables override a trusted project `.uagent/.config`, which
+overrides `~/.uagent/.config`. Project `.env` files are never loaded. The
+bundled `$uagent-config` skill holds the complete configuration reference.
+
+## Usage
 
 ```sh
-uagent
-uagent -p "inspect this repository"
+uagent                                   # interactive session
+uagent -p "inspect this repository"      # one headless run
 uagent -p "inspect this repository" --json
 uagent -p "inspect this repository" --json-stream --budget 2 --token-budget 20000
-uagent -c
-uagent --resume
-uagent --debug=/tmp/uagent.jsonl
-uagent --yolo
+uagent -c                                # continue the latest session
+uagent --resume                          # pick a saved session
+uagent --debug=/tmp/uagent.jsonl         # write a sensitive debug trace
+uagent --web                             # local browser control center
 ```
+
+`uagent --web` prints a URL and a single-use pairing code. One host serves
+sessions across directories on desktop and mobile; see
+[the web guide](docs/WEB.md), including the Docker browser appliance.
 
 ## Highlights
 
-- Native streamed answers and reasoning across OpenAI-compatible
-  `reasoning`, `reasoning_details`, and `reasoning_content` fields, with
-  compact mode and `/verbose` for the full stream.
-- Persistent editable composer with queued steering, interruption, and
-  foreground-command handoff; parallel safe tools, resumable collaborators,
-  and resumable workspace sessions.
-- Supervised process activities with opaque IDs, incremental output,
-  optional PTYs, writable input, resize, wait, stop, and log-only detach.
-- Repository tools, document/image input, web search, skills, memory,
-  Playwright automation, and dynamically discovered MCP tools. MCP stdio
-  requires the stateless `2026-07-28` protocol; there is no legacy downgrade.
-- One typed application event spine consumed by terminal, browser, JSONL,
-  and debug-trace projections over a shared input channel.
-- Centralized route capabilities with explicit Chat Completions, Responses,
-  and Anthropic Messages adapters; native hosted web search when the route
-  declares it, otherwise an explicitly configured search route.
-- Redacted effective configuration and provenance in `/context`, validated
-  settings reloaded only between turns, and bounded context-overflow
-  recovery (one compaction, at most one safe retry).
-- Explicit limits for time, output, processes, context, persistence, and
-  provider-reported spend.
-
-## Tools
-
-The core registry includes:
-
-| Area | Tools |
-| --- | --- |
-| inspect | `read_path`, `grep` |
-| mutate | `write_file`, `edit_file`, `delete_file` |
-| execute | `run`, `scratch` |
-| activities | `activity` |
-| evidence and state | `memory`, `uagent` |
-| web | `web_fetch` |
-| conditional | `web_search`, `subagent`, `skill`, `adapt_system`, MCP tools |
-
-Policy, lean mode, route capabilities, runtime state, and configuration filter
-the active schemas; see [the tool reference](docs/TOOLS.md).
+- One runtime per conversation; terminal and browser clients send commands to
+  it and render the same ordered events.
+- Streamed answers and reasoning, queued steering while the agent works, and
+  interruption at any point.
+- Supervised processes with optional PTYs, writable input, background
+  handoff and bounded logs, confined by an OS sandbox that restricts writes.
+- File, search, shell, memory, web, skill, subagent and MCP tools, filtered
+  by policy and route capabilities; see [Tools](docs/TOOLS.md).
+- Approval modes (ask, auto, YOLO) with mandatory human approval for changes
+  to µAgent's own configuration and unsandboxed commands.
+- Bounded time, output, processes, context and persistence, plus optional
+  turn budgets for spend, tokens and calls.
 
 ## Interactive controls
 
 | Input | Action |
 | --- | --- |
-| Enter while working | Queue steering; passive activity waits yield at once |
-| Ctrl+B during a command | Move the foreground command batch to background supervision |
-| Escape | Interrupt the foreground operation and apply queued steering |
-| Shift+Enter, Alt+Enter | Keep the draft open on a new line; Enter still submits |
-| Tab after `/` | Complete the command being typed from the rows below the draft |
-| Tab after `@` | Complete a path one segment at a time from the same rows |
-| Ctrl+X Ctrl+E | Open the draft in `$VISUAL`/`$EDITOR` and take back what it saves |
-| Ctrl+C while idle | A second press detaches; another key cancels the gesture |
-| `/models`, `/model` | Search or change model route |
-| `/effort`, `/variant` | Change reasoning effort or OpenRouter routing |
-| `/attach` | Queue or clear an attachment |
-| `/context`, `/trace`, `/cost`, `/ps`, `/agents`, `/tools` | Inspect active state |
-| `/compact`, `/sessions`, `/reset` | Manage context and sessions |
-| `/init`, `/review`, `/diff` | Write AGENTS.md, review changes, or show the git diff |
-| `/memory` | Show saved memory action, time, source, and redacted preview |
-| `/verbose` | Toggle full reasoning and expanded bounded tool output |
-| `/yolo` | Toggle automatic approval |
-| `/help`, `/quit` | Show help or detach from the runtime |
+| Enter while working | Queue the draft as steering for the running turn |
+| Shift+Enter, Alt+Enter | Insert a newline in the draft |
+| Tab | Complete a `/command` or an `@path` segment |
+| Ctrl+X Ctrl+E | Edit the draft in `$VISUAL`/`$EDITOR` |
+| Escape | Clear the draft and interrupt the running turn |
+| Ctrl+B | Move the foreground command to background supervision |
+| Ctrl+C | Interrupt while working; press twice while idle to detach |
+| Ctrl+D on an empty draft | Detach |
 
-Approval prompts accept `y` once or `a` for the session. Shell approval reuse is
-scoped to the exact command payload; approving one `git`, shell, or interpreter
-invocation cannot authorize another. Any other answer denies the call and sends
-the denial to the model as steering.
+Approval prompts accept `y` (once), `s` (this session), `a` (always in this
+repository) or `n`; any other answer denies the call and is sent to the model
+as guidance. Changes that need a person accept only `y` or `n`. Remembered
+shell approvals match the exact command, not the executable.
+
+Common slash commands:
+
+| Command | Action |
+| --- | --- |
+| `/model`, `/models`, `/effort`, `/variant` | Choose route, model, reasoning effort or OpenRouter routing |
+| `/attach PATH`, `/diff`, `/review`, `/init` | Attach a file, show the git diff, review changes, write `AGENTS.md` |
+| `/status`, `/context`, `/cost`, `/trace`, `/http` | Inspect configuration, the model request, spend and captured traffic |
+| `/ps`, `/agents`, `/tools`, `/permissions`, `/yolo` | Manage background work, collaborators, tools and approval mode |
+| `/sessions`, `/new`, `/fork`, `/rewind`, `/compact`, `/share` | Manage sessions and context |
+| `/memory`, `/skills`, `/schedule`, `/prompt`, `/config` | Manage memory, skills, scheduled tasks, system prompt and settings |
+| `/verbose`, `/clear`, `/help`, `/quit` | Toggle full output, clear the screen, list all commands, detach |
+
+`/help` lists every command with its arguments.
 
 ## Documentation
 
 - [Architecture](docs/ARCHITECTURE.md)
 - [Operations and limits](docs/OPERATIONS.md)
-- [Measurements and estimates](docs/MEASUREMENTS.md)
 - [Tools](docs/TOOLS.md)
 - [Persistence](docs/PERSISTENCE.md)
 - [Web interface](docs/WEB.md)
@@ -155,24 +120,17 @@ the denial to the model as steering.
 - [System prompts](docs/SYSTEM_PROMPTS.md)
 - [Prompt caching](docs/CACHING.md)
 - [Testing](docs/TESTING.md)
-- [Bounded self-improvement](docs/SELF_IMPROVEMENT.md)
+- [Bundled skills](skills/README.md)
 - [Security](SECURITY.md)
 - [Contributing](CONTRIBUTING.md)
 
 ## Development
 
 ```sh
-uv sync --frozen
-uv run --frozen ruff check tests
-uv run --frozen ruff format --check tests
 cmake --preset debug
 cmake --build --preset debug
 ctest --preset debug --output-on-failure
+uv run --frozen ruff check .github tests benchmarks skills
 ```
 
-First-party C++ follows the
-[Google C++ Style Guide](https://google.github.io/styleguide/cppguide.html).
-µAgent is a local single-user CLI. It confines the commands it runs with the
-OS sandbox — writes only, on by default, `UAGENT_SANDBOX=0` to opt out — but it
-is not a container; use a restricted account, container, or VM for untrusted
-code.
+See [Contributing](CONTRIBUTING.md) for the full check list.

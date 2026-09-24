@@ -25,6 +25,7 @@ import {
   Spinner,
   preloadDeferred,
   Input,
+  ErrorBoundary,
 } from "../shared/ui.tsx";
 import { Globe2, Menu, Settings } from "lucide-preact";
 // Prefetch helpers live next to the renderer so marker regexes stay in one
@@ -32,11 +33,22 @@ import { Globe2, Menu, Settings } from "lucide-preact";
 // the initial bundle and break the CSS size budget.
 const markdownView = () => import("../shared/markdown-view.tsx");
 import { StatisticsLoading } from "../shared/statistics-layout.tsx";
-import { applyZoom, normalizeZoom } from "../shared/layout.ts";
+import {
+  applyTheme,
+  applyZoom,
+  normalizeZoom,
+  observeCompact,
+  trackViewport,
+} from "../shared/layout.ts";
 
 import { useHost } from "../state/use-host.ts";
 import { parseSlash } from "../features/composer/slash.ts";
 import { dedupeName } from "../features/composer/mention.ts";
+import {
+  TimePrefsContext,
+  normalizeTimePrefs,
+  type TimePrefs,
+} from "../shared/time.ts";
 import { useTranscriptHistory } from "../state/use-transcript-history.ts";
 import { prependHistoryPage } from "../state/history-page.ts";
 import "../shared/style.css";
@@ -127,6 +139,13 @@ function App() {
   const [install, setInstall] = useState<InstallPrompt | null>(null);
   const [update, setUpdate] = useState<ServiceWorker | null>(null);
   const [notificationMode, setNotificationMode] = useState(false);
+  const [timePrefs, setTimePrefs] = useState<TimePrefs>(() =>
+    normalizeTimePrefs(readStored(localStorage, "uagent-time", {})),
+  );
+  useEffect(
+    () => writeStored(localStorage, "uagent-time", timePrefs),
+    [timePrefs],
+  );
   const [theme, setTheme] = useState(
     () => localStorage.getItem("uagent-theme") || "system",
   );
@@ -209,27 +228,17 @@ function App() {
     ]);
   }, []);
   useEffect(() => {
-    let viewport: (() => void) | undefined;
-    let compact: (() => void) | undefined;
-    import("../shared/layout.ts").then(({ trackViewport, observeCompact }) => {
-      viewport = trackViewport();
-      compact = observeCompact((value) => {
-        setCompact(value);
-        setDrawer(false);
-      });
+    const viewport = trackViewport();
+    const compact = observeCompact((value) => {
+      setCompact(value);
+      setDrawer(false);
     });
     return () => {
-      viewport?.();
-      compact?.();
+      viewport();
+      compact();
     };
   }, []);
-  useEffect(() => {
-    let stop: (() => void) | undefined;
-    import("../shared/layout.ts").then(
-      ({ applyTheme }) => (stop = applyTheme(theme)),
-    );
-    return () => stop?.();
-  }, [theme]);
+  useEffect(() => applyTheme(theme), [theme]);
   useEffect(() => {
     let stop: (() => void) | undefined;
     import("../shared/pwa.ts").then(
@@ -305,13 +314,20 @@ function App() {
       await act("close");
       await load(selected);
     } else if (name === "/fork") {
-      const result = await command("fork", session, { title: argument });
+      const result = await command("fork", session, { argument });
       if (!result.pending) {
         await refresh();
         await choose(result.result.id);
         await command("activate", { id: result.result.id, generation: "" });
         await load(result.result.id);
       }
+    } else if (name === "/rewind") {
+      const result = await act("rewind", { argument });
+      if (!result.pending) await load(selected);
+    } else if (name === "/share") {
+      const result = await act("share");
+      if (!result.pending)
+        setNotice(`Transcript saved to ${result.result.path}`);
     } else if (
       name === "/prompt" &&
       (!argument ||
@@ -697,7 +713,7 @@ function App() {
   );
 
   return (
-    <>
+    <TimePrefsContext.Provider value={timePrefs}>
       {(error || notice) && (
         <div role={error ? "alert" : "status"} class="error-banner">
           <span>{error || notice}</span>
@@ -1009,7 +1025,6 @@ function App() {
             <label>
               Directory on the host
               <Input
-                // eslint-disable-next-line jsx-a11y/no-autofocus
                 autoFocus
                 value={folder}
                 onInput={(event) => setFolder(event.currentTarget.value)}
@@ -1095,6 +1110,8 @@ function App() {
             fallback={<Spinner label="Loading settings…" surface />}
             theme={theme}
             setTheme={setTheme}
+            timePrefs={timePrefs}
+            setTimePrefs={setTimePrefs}
             zoom={zoom}
             setZoom={setZoom}
             installed={installed}
@@ -1140,7 +1157,12 @@ function App() {
           )}
         </Modal>
       )}
-    </>
+    </TimePrefsContext.Provider>
   );
 }
-render(<App />, document.getElementById("app")!);
+render(
+  <ErrorBoundary>
+    <App />
+  </ErrorBoundary>,
+  document.getElementById("app")!,
+);

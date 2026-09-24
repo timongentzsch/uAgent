@@ -18,7 +18,6 @@ void PrintConversationHistory(const Conversation& conversation,
 // Mirrors the web client's stripAttachedTrailer: stored user text keeps the
 // "Attached:" path trailer for the model payload, but transcripts render
 // the delivery gallery below instead of leaking host paths.
-std::string StripAttachedTrailer(const std::string& text);
 // One dim "name · delivery" row per recorded attachment delivery, mirroring
 // the web message gallery. Empty when there is nothing to show.
 std::string AttachmentDeliveryRows(const json& deliveries);

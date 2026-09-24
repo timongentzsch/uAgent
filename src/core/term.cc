@@ -5,6 +5,8 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <clocale>
+#include <cstdlib>
 #include <mutex>
 #include <string>
 #include <string_view>
@@ -36,6 +38,14 @@ bool ResolveUnicodeEnabled() {
            value.find("utf8") != std::string::npos;
   }
   return true;
+}
+
+bool EnsureUtf8Ctype() {
+  if (MB_CUR_MAX > 1) return true;
+  for (const char* name : {"C.UTF-8", "en_US.UTF-8"}) {
+    if (std::setlocale(LC_CTYPE, name)) return true;
+  }
+  return false;
 }
 
 namespace {

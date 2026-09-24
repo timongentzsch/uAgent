@@ -93,9 +93,10 @@ def test_full_run_and_python_terminal_trace(root, home, *, binary):
         [
             tool_call("run", {"command": shell_command, "shell": "/bin/sh"}),
             tool_call(
-                "scratch",
-                {"path": "trace.py", "code": python_code, "packages": []},
+                "write_file",
+                {"path": ".uagent/scratch/trace.py", "content": python_code},
             ),
+            tool_call("scratch", {"path": "trace.py"}),
             event({"content": "trace-ok"}),
         ]
     ) as server:
@@ -110,13 +111,12 @@ def test_full_run_and_python_terminal_trace(root, home, *, binary):
             "printf 'shell-two",
             "shell-one",
             "shell-two",
-            "scratch(write trace.py · execute)",
-            "[script: .uagent/scratch/trace.py · wrote · executed]",
+            "scratch(trace.py)",
             "python-one",
             "python-two",
-            "latest trace · turn 1 · 2 tools",
+            "latest trace · turn 1 · 3 tools",
             "→ [1] run",
-            "← [2] scratch",
+            "← [3] scratch",
             "trace-ok",
         ):
             assert_true(expected in result.stdout, result.stdout)
@@ -756,7 +756,7 @@ def test_self_configuration_asks_even_under_yolo(root, home, *, binary):
             root,
             base_env(home, server.url),
             [
-                (b"raise the limit\n", b"allow uagent? "),
+                (b"raise the limit\n", b"Allow uagent?"),
                 (b"y\n", b"yolo-still-asked"),
                 b"/quit\n",
             ],
@@ -766,7 +766,7 @@ def test_self_configuration_asks_even_under_yolo(root, home, *, binary):
         )
         assert_true(status == 0, output)
         # The prompt appeared despite --yolo, and only then was the file written.
-        assert_true(b"allow uagent? " in output, output)
+        assert_true(b"Allow uagent?" in output, output)
         assert_true(b"changes \xc2\xb5Agent's own configuration" in output, output)
         # The diff belongs to the approval prompt alone: the call label is a
         # one-liner, so file contents stay out of traces and evidence.
@@ -822,7 +822,7 @@ def test_composite_configuration_requires_exact_human_approval(root, home, *, bi
             root,
             base_env(home, server.url),
             [
-                (b"configure providers\n", b"allow uagent? "),
+                (b"configure providers\n", b"Allow uagent?"),
                 (b"y\n", b"composite-config-ok"),
                 b"/quit\n",
             ],
@@ -831,7 +831,7 @@ def test_composite_configuration_requires_exact_human_approval(root, home, *, bi
             binary=binary,
         )
         assert_true(status == 0, output)
-        assert_true(b"allow uagent? " in output, output)
+        assert_true(b"Allow uagent?" in output, output)
         assert_true(b"$CODEX_LOCAL_PROXY_API_KEY" in output, output)
         assert_true(b"adjacent-integration-secret" not in output, output)
         # Status redraws may insert cursor controls before the colored line.
@@ -887,7 +887,7 @@ def test_composite_configuration_rejects_literal_credentials(root, home, *, bina
             binary=binary,
         )
         assert_true(status == 0, output)
-        assert_true(b"allow uagent? " not in output, output)
+        assert_true(b"Allow uagent?" not in output, output)
         assert_true(literal.encode() not in output, output)
         assert_true(config.read_text() == original, config.read_text())
 
@@ -956,7 +956,7 @@ def test_self_configuration_commits_after_approval(root, home, *, binary):
             root,
             env,
             [
-                (b"raise the limit\n", b"allow uagent? "),
+                (b"raise the limit\n", b"Allow uagent?"),
                 (b"y\n", b"configure-ok"),
                 b"/quit\n",
             ],
@@ -1007,7 +1007,7 @@ def test_approval_remembers_exact_action_and_forwards_a_refusal(root, home, *, b
             binary=binary,
         )
         assert_true(status == 0, output)
-        assert_true(b"[y] once" in output and b"[n] no" in output, output)
+        assert_true(b"[y] Allow once" in output and b"[n] Deny" in output, output)
         # Reaching rm proves the exact repeat ran without consuming the refusal;
         # rm is a different command, so that refusal is delivered there.
         assert_true(b"run(rm -rf /tmp/uagent-nothing)" in output, output)

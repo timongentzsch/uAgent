@@ -9,6 +9,7 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <sstream>
 #include <string>
 #include <system_error>
 #include <thread>
@@ -16,7 +17,6 @@
 #include <vector>
 
 #include "include/agent/child_agent.h"
-#include "include/agent/delegation.h"
 #include "include/agent/jobs.h"
 #include "include/agent/session_store.h"
 #include "include/agent/session_view.h"
@@ -57,17 +57,13 @@ std::string CollaboratorCommunicationPath(const std::string& id) {
 }
 
 json CollaboratorCommunication(const std::string& id) {
-  std::ifstream input(CollaboratorCommunicationPath(id), std::ios::binary);
-  if (!input) return json::array();
-  input.seekg(0, std::ios::end);
-  const auto bytes = input.tellg();
-  constexpr std::streamoff kTailBytes = 64L * 1024;
-  if (bytes > kTailBytes) {
-    input.seekg(bytes - kTailBytes);
+  constexpr int64_t kTailBytes = int64_t{64} * 1024;
+  int64_t start = 0;
+  std::istringstream input(
+      ReadFileTail(CollaboratorCommunicationPath(id), kTailBytes, &start));
+  if (start > 0) {  // the tail began mid-line
     std::string partial;
     std::getline(input, partial);
-  } else {
-    input.seekg(0);
   }
   json messages = json::array();
   std::string line;
@@ -118,10 +114,10 @@ std::string NewCollaboratorId() {
 // back on the way out is the only place that covers all of them.
 struct MailRestore {
   std::string id;
-  std::vector<CollaboratorMail> taken;
+  std::vector<QueuedMessage> taken;
 
   ~MailRestore() {
-    for (const CollaboratorMail& queued : taken) {
+    for (const QueuedMessage& queued : taken) {
       WriteCollaboratorMail(id, queued.text, queued.from, queued.hops);
     }
   }
@@ -731,7 +727,7 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
         MailRestore restore{collaborator_id, {}};
         if (operation == "followup") {
           restore.taken = TakeCollaboratorMail(collaborator_id);
-          for (const CollaboratorMail& queued : restore.taken) {
+          for (const QueuedMessage& queued : restore.taken) {
             if (!prompt.empty()) prompt += "\n\n";
             prompt += std::string("[queued guidance") +
                       (queued.from.empty() || queued.from == "parent"
@@ -856,20 +852,12 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
           max_seconds = ceiling;
         }
         if (max_seconds > 0) child_context = context.WithTimeout(max_seconds);
-        if (persistent) {
-          if (operation == "spawn") {
-            collaborator["limits"] = {{"steps", steps},
-                                      {"tool_calls", tool_calls},
-                                      {"seconds", max_seconds},
-                                      {"cost", child_budget},
-                                      {"memory", child_memory}};
-          }
-          collaborator["mode"] = mode;
-          collaborator["model"] =
-              requested.empty() ? DefaultSubagentModel(api) : requested;
+        // What this request says about the collaborator, recorded for both the
+        // persistent and the bounded path once the child is under way.
+        auto record_request = [&](const char* fallback_label) {
           collaborator["task"] = JsonValue(arguments, "prompt", "");
           collaborator["label"] = Utf8Trunc(
-              FirstLine(JsonValue(arguments, "prompt", "Sidekick")), 160);
+              FirstLine(JsonValue(arguments, "prompt", fallback_label)), 160);
           if (operation == "spawn" || arguments.contains("name")) {
             collaborator["name"] = JsonValue(
                 arguments, "name", JsonValue(collaborator, "name", ""));
@@ -882,6 +870,19 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
           }
           collaborator["memory"] = child_memory;
           collaborator["updated_at"] = UtcStamp();
+        };
+        if (persistent) {
+          if (operation == "spawn") {
+            collaborator["limits"] = {{"steps", steps},
+                                      {"tool_calls", tool_calls},
+                                      {"seconds", max_seconds},
+                                      {"cost", child_budget},
+                                      {"memory", child_memory}};
+          }
+          collaborator["mode"] = mode;
+          collaborator["model"] =
+              requested.empty() ? DefaultSubagentModel(api) : requested;
+          record_request("Sidekick");
           collaborator["route"] = route_label;
           ToolResult saved = SaveCollaborator(collaborator);
           if (!saved.Ok()) return saved;
@@ -936,7 +937,7 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
              // commands inherit UAGENT_SANDBOX and are
              // confined one level down.
              .sandbox = false,
-             .job_kind = "subagent",
+             .activity_kind = ActivityKind::kSubagent,
              .activity_label = route_label,
              .source_id = collaborator_id,
              .completion_notes = clamped,
@@ -978,21 +979,7 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
           collaborator["mode"] = JsonValue(
               arguments, "mode", JsonValue(collaborator, "mode", "lean"));
           collaborator["model"] = requested;
-          collaborator["task"] = JsonValue(arguments, "prompt", "");
-          collaborator["label"] = Utf8Trunc(
-              FirstLine(JsonValue(arguments, "prompt", "Subagent")), 160);
-          if (operation == "spawn" || arguments.contains("name")) {
-            collaborator["name"] = JsonValue(
-                arguments, "name", JsonValue(collaborator, "name", ""));
-          }
-          if (operation == "spawn" || arguments.contains("description")) {
-            collaborator["description"] =
-                Utf8Trunc(JsonValue(arguments, "description",
-                                    JsonValue(collaborator, "description", "")),
-                          kAgentDescriptionMax);
-          }
-          collaborator["memory"] = child_memory;
-          collaborator["updated_at"] = UtcStamp();
+          record_request("Subagent");
           ToolResult saved = SaveCollaborator(collaborator);
           if (saved.Ok()) {
             result.output += "\n[collaborator " + collaborator_id +
@@ -1054,6 +1041,7 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
     return "[" + label + "] " + prompt;
   };
   tool.summary = describe;
+  tool.markdown_output = true;
   // The summary names the model and the brief; what it cannot show is the
   // authority handed over with them. The child runs with automatic approvals,
   // so approving the spawn approves every tool call that child then decides

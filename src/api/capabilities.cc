@@ -16,8 +16,6 @@ const char* ProviderProtocolName(ProviderProtocol protocol) {
       return "openai";
     case ProviderProtocol::kOpenRouter:
       return "openrouter";
-    case ProviderProtocol::kAnthropic:
-      return "anthropic";
   }
   return "openai";
 }
@@ -26,7 +24,7 @@ std::optional<ProviderProtocol> ParseProviderProtocol(
     std::string_view protocol) {
   if (protocol == "openai") return ProviderProtocol::kOpenAi;
   if (protocol == "openrouter") return ProviderProtocol::kOpenRouter;
-  if (protocol == "anthropic") return ProviderProtocol::kAnthropic;
+  if (protocol == "anthropic") return ProviderProtocol::kOpenAi;
   return std::nullopt;
 }
 
@@ -76,10 +74,13 @@ void ProviderCapabilities::SetInputModalities(const json& modalities) {
                    modalities.end() ||
                std::find(modalities.begin(), modalities.end(), "file") !=
                    modalities.end();
-  audio_input = std::find(modalities.begin(), modalities.end(), "audio") !=
-                modalities.end();
-  video_input = std::find(modalities.begin(), modalities.end(), "video") !=
-                modalities.end();
+  // Only the Chat Completions dialect has speech and video parts; Responses
+  // and Anthropic Messages accept text, images and files.
+  const bool chat = wire_api == WireApi::kChatCompletions;
+  audio_input = chat && std::find(modalities.begin(), modalities.end(),
+                                  "audio") != modalities.end();
+  video_input = chat && std::find(modalities.begin(), modalities.end(),
+                                  "video") != modalities.end();
 }
 
 void ProviderCapabilities::SetModelFeatures(const json& features) {
@@ -96,13 +97,12 @@ void ProviderCapabilities::SetModelFeatures(const json& features) {
 }
 
 void ProviderCapabilities::ResetNegotiated() {
-  native_tools = true;
   parallel_tools = true;
   stream_usage_option = wire_api == WireApi::kChatCompletions && !OpenRouter();
   image_input = true;
   file_input = true;
-  audio_input = true;
-  video_input = true;
+  audio_input = wire_api == WireApi::kChatCompletions;
+  video_input = audio_input;
   json modalities = std::move(input_modalities);
   input_modalities = nullptr;
   SetInputModalities(modalities);
@@ -126,7 +126,6 @@ json ProviderCapabilities::DiagnosticJson() const {
   return {{"protocol", ProviderProtocolName(protocol)},
           {"wire_api", WireApiName(wire_api)},
           {"hosted_tools", HostedToolsJson(hosted_web_search)},
-          {"native_tools", native_tools},
           {"parallel_tools", parallel_tools},
           {"stream_usage_option", stream_usage_option},
           {"reasoning_summary", reasoning_summary},
@@ -137,7 +136,6 @@ json ProviderCapabilities::DiagnosticJson() const {
           {"video_input", video_input},
           {"input_modalities", input_modalities},
           {"web_search_sources", web_search_sources},
-          {"model_catalog_required", model_catalog_required},
           {"raw_slash_models", raw_slash_models},
           {"reasoning_object", reasoning_object},
           {"reasoning_replay_text", reasoning_replay_text},
@@ -161,23 +159,18 @@ ProviderCapabilities CapabilitiesForRoute(ProviderProtocol protocol,
   capabilities.wire_api = wire_api;
   capabilities.hosted_web_search = hosted_web_search;
   if (protocol == ProviderProtocol::kOpenRouter) {
-    capabilities.model_catalog_required = false;
     capabilities.raw_slash_models = true;
     capabilities.reasoning_object = true;
     capabilities.reasoning_replay_text = true;
     capabilities.provider_routing = true;
     capabilities.session_passthrough = true;
     capabilities.model_variants = true;
-  } else if (protocol == ProviderProtocol::kAnthropic) {
-    capabilities.reasoning_object = true;
   } else if (OpenaiUrl(base_url)) {
     // Exact official host, not a model-name or substring heuristic: OpenAI's
     // Chat Completions dialect uses max_completion_tokens.
     capabilities.max_completion_tokens = true;
   }
   if (wire_api == WireApi::kResponses) {
-    capabilities.reasoning_object = true;
-    capabilities.max_completion_tokens = true;
     capabilities.web_search_sources = OpenaiUrl(base_url);
     capabilities.reasoning_summary = OpenaiUrl(base_url);
   }

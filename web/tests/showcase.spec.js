@@ -89,7 +89,7 @@ test.describe("browser input showcase on a phone", () => {
   test("keeps view gestures separate from trackpad input", async ({ page }) => {
     await page.goto("/ui.html");
     await page.getByRole("button", { name: "Open browser input" }).click();
-    const canvas = page.locator(".showcase-browser-input canvas");
+    const canvas = page.locator(".showcase-browser-input .browser-rfb canvas");
     await expect(canvas).toBeVisible();
     await canvas.evaluate((element) => {
       globalThis.browserInputEvents = [];

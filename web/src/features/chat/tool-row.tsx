@@ -1,26 +1,59 @@
-import { DisclosureRow, Skeleton, LoadError } from "../../shared/ui.tsx";
+import { DisclosureRow, Skeleton, LoadError, Time } from "../../shared/ui.tsx";
 import DiffView from "./diff-view.tsx";
-import { cleanText, formatDateTime } from "../../shared/display.ts";
-import type { PresentedBlock } from "../../shared/types.ts";
+import Markdown from "../../shared/markdown-view.tsx";
+import { cleanText } from "../../shared/display.ts";
+import type { PresentedBlock, ToolPart } from "../../shared/types.ts";
 
-// One chrome for every tool call and result. Titles come from getToolRow
-// (server replay when present, local synthesis otherwise) so the GUI names
-// the same action the TUI prints via ToolCallPresentation /
-// ToolResultPresentation. Per-tool differences stay in the row adapter
-// (title formatter + diffOnly) — never in per-call JSX — mirroring the
-// backend's per-tool `summary` lambdas. Subclasses per tool override only
-// `renderBodyExtra`, never the disclosure itself.
+// A fence longer than any backtick run in the body, so code never ends early.
+function fenced(text: string, language = "") {
+  const longest = Math.max(
+    2,
+    ...(text.match(/`+/g) || []).map((run) => run.length),
+  );
+  const fence = "`".repeat(longest + 1);
+  return `${fence}${language}\n${text}\n${fence}`;
+}
+
+// The input half of a native ToolView. Each tool chose its parts; this
+// component only knows the closed vocabulary, never a tool name.
+export function ToolInput({ parts }: { parts: ToolPart[] }) {
+  return (
+    <>
+      {parts.map((part, index) =>
+        part.kind === "command" ? (
+          <pre class="tool-command" key={index}>
+            {cleanText(part.text)}
+          </pre>
+        ) : part.kind === "code" ? (
+          <figure class="tool-code" key={index}>
+            {part.label && <figcaption>{part.label}</figcaption>}
+            <Markdown text={fenced(cleanText(part.text), part.language)} />
+          </figure>
+        ) : (
+          <dl class="tool-fields" key={index}>
+            {part.rows.map(([label, value]) => (
+              <>
+                <dt>{label}</dt>
+                <dd>{cleanText(value)}</dd>
+              </>
+            ))}
+          </dl>
+        ),
+      )}
+    </>
+  );
+}
+
+// One chrome for every tool call and result. Titles and the diff-only choice
+// come from getToolRow; how input and output read comes from the native view.
 export function ToolRow({
   block,
   title,
   subtitle,
   running,
   diffOnly,
-  argumentsText,
-  input,
   output,
   text,
-  expanded,
   expanding,
   loadError,
   retry,
@@ -33,11 +66,8 @@ export function ToolRow({
   subtitle: string;
   running: boolean;
   diffOnly: boolean;
-  argumentsText: string;
-  input: string;
   output: string;
   text?: string;
-  expanded: boolean;
   expanding: boolean;
   loadError: unknown;
   retry: () => void;
@@ -45,7 +75,6 @@ export function ToolRow({
   inspect?: (id: string) => void;
   onToggle: (event: { currentTarget: { open: boolean } }) => void;
 }) {
-  void expanded;
   return (
     <DisclosureRow
       className="tool-disclosure"
@@ -59,16 +88,22 @@ export function ToolRow({
       onToggle={onToggle}
     >
       <div class="tool-body">
-        {block.source?.time && (
-          <p class="small muted">
-            Called {formatDateTime(block.source.time)}
-            {block.result_loaded &&
-              block.time &&
-              ` · completed ${formatDateTime(block.time)}`}
-          </p>
-        )}
-        <p class="small muted">{block.name}</p>
-        {!diffOnly && argumentsText && <pre>{input}</pre>}
+        <p class="small muted">
+          {block.name}
+          {block.source?.time && (
+            <>
+              {" · called "}
+              <Time value={block.source.time} />
+            </>
+          )}
+          {block.result_loaded && block.time && (
+            <>
+              {" · completed "}
+              <Time value={block.time} />
+            </>
+          )}
+        </p>
+        {!diffOnly && <ToolInput parts={block.view?.input || []} />}
         {!online && block.truncated && text == null && (
           <p class="small muted">
             Recent output only. Connect to load the full result.
@@ -78,7 +113,13 @@ export function ToolRow({
         {loadError && <LoadError error={loadError} retry={retry} />}
         {!diffOnly &&
           (text ? (
-            <pre>{output}</pre>
+            block.view?.output === "markdown" ? (
+              <div class="tool-output">
+                <Markdown text={output} />
+              </div>
+            ) : (
+              <pre class="tool-output">{output}</pre>
+            )
           ) : (
             block.result_loaded === false && (
               <p class="muted">

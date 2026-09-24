@@ -1,5 +1,5 @@
 import { duration } from "../../shared/duration.ts";
-import { count } from "../../shared/quantities.ts";
+import { cost, count } from "../../shared/quantities.ts";
 import type {
   Usage,
   StatisticsModal,
@@ -7,7 +7,8 @@ import type {
   State,
 } from "../../shared/types.ts";
 import { useEffect, useState } from "preact/hooks";
-import { LoadError } from "../../shared/ui.tsx";
+import { LoadError, Time } from "../../shared/ui.tsx";
+import type { ComponentChildren } from "preact";
 import {
   StatisticsLayout,
   StatisticsLoading,
@@ -16,7 +17,8 @@ import { presentMessages } from "../chat/message-view.ts";
 
 const rate = (value?: number) =>
   value && value > 0 ? `${count(value)} tok/s` : "Not recorded";
-function Rows({ rows }: { rows: [string, string][] }) {
+type Row = [string, ComponentChildren];
+function Rows({ rows }: { rows: Row[] }) {
   return (
     <dl class="stats">
       {rows.map(([label, value]) => (
@@ -37,10 +39,7 @@ function UsageRows({ usage }: { usage?: Usage }) {
         ["Reasoning tokens", count(usage?.reasoning)],
         ["Cache read tokens", count(usage?.cache_read)],
         ["Cache write tokens", count(usage?.cache_write)],
-        [
-          "Cost",
-          usage?.cost_reported ? `$${usage.cost.toFixed(4)}` : "Not reported",
-        ],
+        ["Cost", usage?.cost_reported ? cost(usage.cost) : "Not reported"],
       ]}
     />
   );
@@ -114,7 +113,7 @@ export function StatisticsContent({
     summary?.direct_model_calls === undefined
       ? "recorded parent"
       : "all agents";
-  const rows: [string, string][] = summary
+  const rows: Row[] = summary
     ? [
         ["Outcome", summary.outcome],
         ["Model at completion", summary.route || "Not recorded"],
@@ -131,7 +130,7 @@ export function StatisticsContent({
       ? [
           [
             "Timestamp",
-            block.time ? new Date(block.time).toLocaleString() : "Not recorded",
+            block.time ? <Time value={block.time} /> : "Not recorded",
           ],
           ["Model", block.route || "Not recorded"],
           ["Tool", block.name || "—"],

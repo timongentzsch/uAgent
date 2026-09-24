@@ -21,8 +21,10 @@
 #include "include/core/sandbox.h"
 #include "include/core/strings.h"
 #include "include/providers.h"
+#include "include/tools/browser.h"
 #include "include/tools/configure.h"
 #include "include/tools/registry.h"
+#include "include/tools/session.h"
 #include "include/tools/skill.h"
 #include "include/tools/subagent.h"
 #include "include/tools/tool.h"
@@ -70,6 +72,7 @@ json DescriptorJson(const ConfigDescriptor& descriptor) {
                 {"category", descriptor.category},
                 {"description", descriptor.description}};
   if (!descriptor.field.empty()) entry["field"] = descriptor.field;
+  if (!descriptor.choices.empty()) entry["choices"] = descriptor.choices;
   if (descriptor.type == ConfigType::kInt) {
     if (descriptor.minimum != kConfigAnyMin) {
       entry["minimum"] = descriptor.minimum;
@@ -112,7 +115,8 @@ json CommandJson(const SlashCommandSpec& command) {
           {"aliases", std::move(aliases)},
           {"usage", std::move(usage)},
           {"description", command.description},
-          {"alias", !*command.description}};
+          {"alias", !*command.description},
+          {"client_only", command.client_only}};
 }
 
 }  // namespace
@@ -142,6 +146,25 @@ json ConfigSchemaJson() {
   return settings;
 }
 
+json ConfigSettingsJson(const json& sources, const json& active,
+                        std::string_view name) {
+  json settings = json::array();
+  for (const ConfigDescriptor& descriptor : ConfigRegistry()) {
+    if (!name.empty() && descriptor.environment != name) continue;
+    json entry = DescriptorJson(descriptor);
+    entry["source"] =
+        JsonValue(sources, std::string(descriptor.environment).c_str(),
+                  std::string("default"));
+    const std::string field(descriptor.field);
+    if (descriptor.sensitivity == Sensitivity::kPublic && !field.empty() &&
+        active.contains(field)) {
+      entry["active"] = active[field];
+    }
+    settings.push_back(std::move(entry));
+  }
+  return settings;
+}
+
 json CliSchemaJson() {
   json flags = json::array();
   for (const FlagSpec& spec : FlagRegistry()) {
@@ -151,10 +174,10 @@ json CliSchemaJson() {
   return flags;
 }
 
-json CommandSchemaJson() {
+json CommandSchemaJson(bool browser) {
   json commands = json::array();
   for (const SlashCommandSpec& command : SlashCommandRegistry()) {
-    if (!*command.description) continue;
+    if (!*command.description || (browser && command.terminal_only)) continue;
     commands.push_back(CommandJson(command));
   }
   return commands;
@@ -192,22 +215,8 @@ json DescribeSelf(SelfTopic topic, const std::string& name,
       break;
     case SelfTopic::kConfig: {
       json diagnostics = inputs.config_manager.DiagnosticJson(inputs.active);
-      const json& sources = diagnostics["sources"];
-      const json& active = diagnostics["active"];
-      json settings = json::array();
-      for (const ConfigDescriptor& descriptor : ConfigRegistry()) {
-        if (!name.empty() && descriptor.environment != name) continue;
-        json entry = DescriptorJson(descriptor);
-        entry["source"] =
-            JsonValue(sources, std::string(descriptor.environment).c_str(),
-                      std::string("default"));
-        if (!descriptor.field.empty() &&
-            active.contains(std::string(descriptor.field))) {
-          entry["active"] = active[std::string(descriptor.field)];
-        }
-        settings.push_back(std::move(entry));
-      }
-      out["settings"] = std::move(settings);
+      out["settings"] = ConfigSettingsJson(diagnostics["sources"],
+                                           diagnostics["active"], name);
       out["restart_required"] = diagnostics["restart_required"];
       break;
     }
@@ -343,13 +352,18 @@ json ToolSurfaceJson() {
                  [](ConfigProposalScope, const std::vector<ConfigChange>&) {
                    return ConfigProposal{};
                  },
-                 std::make_shared<ConfigProposalStore>()),
+                 std::make_shared<ConfigApprovals>()),
       "inspect always; configure requires interactive approval");
   conditional.emplace_back(WebSearchTool(api, usage, {}), "search route");
   conditional.emplace_back(WebFetchTool(api), "always");
   conditional.emplace_back(
       SubagentTool(api, supervisor, {}, {}, /*debug=*/false),
       "delegation depth");
+  conditional.emplace_back(SessionTool(), "always");
+#ifdef UAGENT_WEB
+  conditional.emplace_back(BrowserTool(""),
+                           "browser appliance, top-level web session");
+#endif
   conditional.emplace_back(SkillTool({}, {}), "skills installed");
 
   json out = json::array();

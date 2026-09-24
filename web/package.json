@@ -24,7 +24,10 @@
     "preact": "10.29.8"
   },
   "overrides": {
-    "lodash-es": "4.18.1"
+    "lodash-es": "4.18.1",
+    "mermaid": {
+      "katex": "$katex"
+    }
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",

@@ -19,7 +19,7 @@
 }
 .browser-profile-controls .text-control,
 .browser-profile-create .text-control {
-  flex: 1 1 12rem;
+  flex: 1 1 8rem;
   min-width: 0;
 }
 .browser-location {
@@ -37,6 +37,7 @@
   background: var(--bg);
 }
 .browser-viewer {
+  position: relative;
   display: grid;
   gap: var(--gap);
   min-width: 0;
@@ -136,6 +137,35 @@
 .browser-key-actions > button {
   flex: 1 1 auto;
 }
+/* While the on-screen keyboard is open it covers the lower half of the
+   device: the screen stays in view with the special keys under it, and the
+   trackpad steps aside until typing ends. */
+.browser-key-actions {
+  order: 2;
+}
+.browser-viewer.typing .browser-trackpad,
+.browser-viewer.typing .browser-text-panel,
+.browser-panel:has(> .browser-viewer.typing) > :not(.browser-viewer) {
+  display: none;
+}
+.browser-viewer.typing .browser-view-controls {
+  order: 3;
+}
+.browser-viewer > [role="status"] {
+  order: 5;
+}
+/* Focus target that opens the on-screen keyboard: focusable, invisible and
+   never hit-tested. It sits at the top so focusing it scrolls the screen, not
+   the trackpad, into view. The shared field keeps its 16px focus floor on touch. */
+.browser-keyboard-input {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1px;
+  opacity: 0;
+  clip-path: inset(50%);
+  pointer-events: none;
+}
 @media (max-width: 600px) {
   .browser-trackpad {
     min-height: min(calc(220rem / 14), 32dvh);
@@ -148,20 +178,13 @@
   }
 }
 
-/* The mobile cursor belongs to the modal's top layer, above the framebuffer.
-   It remains legible at every remote zoom and never intercepts input. */
+/* The mobile pointer: the server's own cursor image, drawn in the modal's top
+   layer above the framebuffer and scaled with it. It never intercepts input. */
 .browser-pointer {
   position: absolute;
   top: 0;
   left: 0;
-  width: 20px;
-  height: 24px;
-  overflow: visible;
   pointer-events: none;
-  fill: #111;
-  stroke: #fff;
-  stroke-width: 1.5;
-  stroke-linejoin: round;
 }
 .browser-pointer[hidden] {
   display: none;

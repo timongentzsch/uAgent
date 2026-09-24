@@ -177,18 +177,15 @@ void HandleModels(AppSession& session, const std::string& argument) {
   printf("%s· searching all model catalogs%s%s\n", DIM(), suffix.c_str(),
          RST());
   fflush(stdout);
-  TerminalSpinner spinner(session.context.channel == nullptr,
-                          SpinnerLabel("searching model catalogs"));
   ModelSearch search =
       SearchModels(session.ApiClient(), session.context.provider.routes,
                    session.context.provider.providers, argument);
-  spinner.Stop();
   if (AbortRequested()) {
     ClearAbort();
     printf("%s· model search cancelled%s\n", YEL(), RST());
     return;
   }
-  if (session.context.channel && search.matches.empty()) {
+  if (search.matches.empty()) {
     // A dead sidecar (e.g. an unreachable local proxy) must not disguise a
     // plain non-match as an outage: only blame the catalogs when every
     // queried one failed.
@@ -205,7 +202,7 @@ void HandleModels(AppSession& session, const std::string& argument) {
       }
     }
   }
-  if (session.context.channel && search.matches.size() > kModelPickerMatches) {
+  if (search.matches.size() > kModelPickerMatches) {
     search.matches.resize(kModelPickerMatches);
     Emit(NoticeEvent(PresentationStatus::kWarned,
                      "Showing the first " +

@@ -57,11 +57,7 @@ bool ResolveCommandAttachments(const json& command,
       attachment.mime = JsonValue(path, "mime", attachment.mime);
       attachment.image = JsonValue(path, "image", false);
     }
-    images.push_back({{"id", attachment.asset_id},
-                      {"name", attachment.name},
-                      {"mime", attachment.mime},
-                      {"bytes", attachment.bytes},
-                      {"image", attachment.image}});
+    images.push_back(AttachmentDisplayJson(attachment));
     attachments.push_back(std::move(attachment));
   }
   return true;
@@ -147,9 +143,11 @@ class WorkerChannel final : public ApplicationChannel {
       SendState();
     }
     if (event.type == "turn.completed" || event.type == "turn.stopped") {
+#ifdef UAGENT_WEB
       if (browser_session_) {
         browser::Request({{"op", "release"}, {"session_id", id_}}, 1000);
       }
+#endif
     }
     if (event.type == "activity.status") {
       std::lock_guard lock(mutex_);
@@ -441,7 +439,6 @@ class WorkerChannel final : public ApplicationChannel {
           {"busy", turn_active_},
           {"command_busy", busy_},
           {"pending", decision_},
-          {"pending_decision", decision_},
           {"phase", JsonValue(state_, "phase", "idle")},
           {"guidance", SteeringState().QueuedCount()},
           {"completed_request_id",
@@ -639,13 +636,7 @@ class WorkerChannel final : public ApplicationChannel {
             error = "empty message";
           }
           ParsedSlashCommand slash = ParseSlashCommand(input.text);
-          if (slash.spec && (slash.spec->id == SlashCommandId::kReset ||
-                             slash.spec->id == SlashCommandId::kClear ||
-                             slash.spec->id == SlashCommandId::kFork ||
-                             slash.spec->id == SlashCommandId::kRewind ||
-                             slash.spec->id == SlashCommandId::kShare ||
-                             slash.spec->id == SlashCommandId::kSessions ||
-                             slash.spec->id == SlashCommandId::kQuit)) {
+          if (slash.spec && slash.spec->client_only) {
             error = "use conversation controls to navigate, branch, or close";
           }
           if (error.empty()) {
@@ -662,6 +653,9 @@ class WorkerChannel final : public ApplicationChannel {
         }
         break;
       }
+      case SessionCommandKind::kCreate:
+      case SessionCommandKind::kDelete:
+      case SessionCommandKind::kActivate:
       case SessionCommandKind::kUnknown: {
         error = "unsupported command";
         break;
@@ -681,7 +675,7 @@ class WorkerChannel final : public ApplicationChannel {
   std::mutex mutex_, control_mutex_;
   bool closed_ = false, busy_ = true;
   bool turn_active_ = false;
-  bool browser_session_ = false;
+  [[maybe_unused]] bool browser_session_ = false;  // web builds only
   bool reply_cancelled_ = false;
   bool ready_ = false;
   json notices_ = json::array();

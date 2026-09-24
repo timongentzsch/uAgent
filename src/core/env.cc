@@ -8,6 +8,7 @@
 #include <limits>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -15,7 +16,6 @@
 #include "include/core/limits.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
-#include "include/providers.h"
 
 namespace uagent {
 
@@ -35,15 +35,6 @@ double EnvDouble(const char* name, double dflt) {
   double value = 0;
   return ParseFiniteDouble(v, value) ? value : dflt;
 }
-
-namespace {
-
-bool OneOf(std::string_view value,
-           std::initializer_list<std::string_view> allowed) {
-  return std::find(allowed.begin(), allowed.end(), value) != allowed.end();
-}
-
-}  // namespace
 
 int64_t ToolResultCap() { return LongSetting(Cfg("UAGENT_TOOL_RESULT_CHARS")); }
 
@@ -110,10 +101,7 @@ int64_t SubagentCallsPerTurn() {
   return LongSetting(Cfg("UAGENT_SUBAGENT_CALLS_PER_TURN"));
 }
 
-int64_t PersistentMax() {
-  int64_t max = LongSetting(Cfg("UAGENT_PERSISTENT_MAX"));
-  return max < 1 ? 1 : (max > 8 ? 8 : max);
-}
+int64_t PersistentMax() { return LongSetting(Cfg("UAGENT_PERSISTENT_MAX")); }
 
 // -1 omits the cap so the provider applies its own maximum; a fixed cap would
 // also clamp any thinking budget derived from it.
@@ -350,8 +338,6 @@ constexpr FieldBinding<std::string> kStringOptions[] = {
     {&Cfg("UAGENT_OPENROUTER_PROVIDER"), &RuntimeConfig::openrouter_provider},
     {&Cfg("UAGENT_OPENROUTER_VARIANT"), &RuntimeConfig::openrouter_variant},
     {&Cfg("UAGENT_WEB_SEARCH_BACKEND"), &RuntimeConfig::web_search_backend},
-    {&Cfg("UAGENT_WEB_SEARCH_URL"), &RuntimeConfig::web_search_url},
-    {&Cfg("UAGENT_WEB_SEARCH_API_KEY"), &RuntimeConfig::web_search_api_key},
     {&Cfg("UAGENT_WEB_SEARCH_EFFORT"), &RuntimeConfig::web_search_effort},
     {&Cfg("UAGENT_WEB_SEARCH_MODEL"), &RuntimeConfig::web_search_model},
     {&Cfg("UAGENT_WEB_SEARCH_ENGINE"), &RuntimeConfig::web_search_engine},
@@ -367,19 +353,13 @@ constexpr FieldBinding<bool> kBoolOptions[] = {
     {&Cfg("UAGENT_MEMORY_GENERATE"), &RuntimeConfig::memory_generate},
 };
 
+// A fixed-choice setting outside its registered spellings keeps the default.
 void NormalizeRuntimeConfig(RuntimeConfig& config) {
-  if (!ValidOpenRouterVariant(config.openrouter_variant)) {
-    config.openrouter_variant.clear();
-  }
-  if (!OneOf(config.web_search_backend, {"auto", "openrouter", "off"})) {
-    config.web_search_backend = "auto";
-  }
-  if (!OneOf(config.web_search_engine, {"auto", "native", "exa", "firecrawl",
-                                        "parallel", "perplexity"})) {
-    config.web_search_engine = "auto";
-  }
-  if (!OneOf(config.web_search_context_size, {"low", "medium", "high"})) {
-    config.web_search_context_size.clear();
+  for (const auto& option : kStringOptions) {
+    if (!option.descriptor->Accepts(config.*option.field)) {
+      config.*option.field =
+          std::get<std::string_view>(option.descriptor->default_value);
+    }
   }
 }
 
@@ -390,56 +370,54 @@ std::string RuntimeConfigField(std::string_view environment) {
   return descriptor ? std::string(descriptor->field) : std::string();
 }
 
-RuntimeConfig RuntimeConfig::FromEnvironment() {
-  RuntimeConfig c;
-  for (const auto& option : kLongOptions) {
-    c.*option.field = LongSetting(*option.descriptor, c.*option.field);
-  }
-  for (const auto& option : kStringOptions) {
-    c.*option.field = StringSetting(*option.descriptor);
-  }
-  for (const auto& option : kBoolOptions) {
-    c.*option.field = BoolSetting(*option.descriptor);
-  }
-  for (const auto& option : kDoubleOptions) {
-    c.*option.field = std::max(0.0, EnvDouble(option.Env(), c.*option.field));
-  }
-  NormalizeRuntimeConfig(c);
-  return c;
+namespace {
+
+// One visitor over every RuntimeConfig binding, whatever its type.
+template <typename Visit>
+void ForEachBinding(Visit&& visit) {
+  for (const auto& option : kLongOptions) visit(option);
+  for (const auto& option : kDoubleOptions) visit(option);
+  for (const auto& option : kStringOptions) visit(option);
+  for (const auto& option : kBoolOptions) visit(option);
 }
 
+}  // namespace
+
+RuntimeConfig RuntimeConfig::FromEnvironment() {
+  Values values;
+  ForEachBinding([&](const auto& option) {
+    if (const char* value = getenv(option.Env())) values[option.Env()] = value;
+  });
+  return FromValues(values);
+}
+
+// An absent, empty or unparsable value keeps the registry default; numbers are
+// clamped to the registered bounds.
 RuntimeConfig RuntimeConfig::FromValues(const Values& values) {
   RuntimeConfig config;
-  auto value = [&](const char* name) -> const std::string* {
-    auto found = values.find(name);
-    return found == values.end() ? nullptr : &found->second;
-  };
-  for (const auto& option : kLongOptions) {
-    int64_t parsed = config.*option.field;
-    const std::string* selected = value(option.Env());
-    if (selected) ParseInt64(selected->c_str(), parsed);
-    config.*option.field = std::clamp(parsed, option.descriptor->minimum,
-                                      option.descriptor->maximum);
-  }
-  for (const auto& option : kStringOptions) {
-    const std::string* selected = value(option.Env());
-    config.*option.field = selected ? *selected
-                                    : std::string(std::get<std::string_view>(
-                                          option.descriptor->default_value));
-  }
-  for (const auto& option : kBoolOptions) {
-    bool parsed = std::get<bool>(option.descriptor->default_value);
-    const std::string* selected = value(option.Env());
-    if (selected) ParseBool(*selected, parsed);
-    config.*option.field = parsed;
-  }
-  for (const auto& option : kDoubleOptions) {
-    const std::string* selected = value(option.Env());
-    double parsed = 0;
-    if (selected && ParseFiniteDouble(selected->c_str(), parsed)) {
-      config.*option.field = std::max(0.0, parsed);
+  ForEachBinding([&](const auto& option) {
+    auto found = values.find(option.Env());
+    if (found == values.end() || found->second.empty()) return;
+    const std::string& text = found->second;
+    auto& field = config.*option.field;
+    using Field = std::remove_reference_t<decltype(field)>;
+    if constexpr (std::is_same_v<Field, int64_t>) {
+      int64_t parsed = 0;
+      if (ParseInt64(text.c_str(), parsed)) {
+        field = std::clamp(parsed, option.descriptor->minimum,
+                           option.descriptor->maximum);
+      }
+    } else if constexpr (std::is_same_v<Field, double>) {
+      double parsed = 0;
+      if (ParseFiniteDouble(text.c_str(), parsed)) {
+        field = std::max(0.0, parsed);
+      }
+    } else if constexpr (std::is_same_v<Field, bool>) {
+      ParseBool(text, field);
+    } else {
+      field = text;
     }
-  }
+  });
   NormalizeRuntimeConfig(config);
   return config;
 }
@@ -449,65 +427,46 @@ std::vector<std::string> RuntimeConfig::ApplyTurnReload(
   std::vector<std::string> changed;
   // Reloadability is a registry property, so the applied set cannot drift from
   // the policy the descriptors publish.
-  auto reload = [&](const auto& options) {
-    for (const auto& option : options) {
-      if (option.descriptor->reload != ReloadPolicy::kNextUserTurn ||
-          this->*option.field == next.*option.field) {
-        continue;
-      }
-      this->*option.field = next.*option.field;
-      changed.emplace_back(option.descriptor->field);
+  ForEachBinding([&](const auto& option) {
+    if (option.descriptor->reload != ReloadPolicy::kNextUserTurn ||
+        this->*option.field == next.*option.field) {
+      return;
     }
-  };
-  reload(kLongOptions);
-  reload(kDoubleOptions);
-  reload(kStringOptions);
-  reload(kBoolOptions);
+    this->*option.field = next.*option.field;
+    changed.emplace_back(option.descriptor->field);
+  });
   return changed;
 }
 
 json RuntimeConfig::ProvenanceJson(const json& env_sources) const {
   json out = json::object();
-  auto source = [&](const char* env) {
-    return env_sources.is_object() ? JsonValue(env_sources, env, "default")
-                                   : std::string("default");
-  };
-  for (const auto& option : kLongOptions) {
-    out[option.descriptor->field] = source(option.Env());
-  }
-  for (const auto& option : kStringOptions) {
-    out[option.descriptor->field] = source(option.Env());
-  }
-  for (const auto& option : kBoolOptions) {
-    out[option.descriptor->field] = source(option.Env());
-  }
-  for (const auto& option : kDoubleOptions) {
-    out[option.descriptor->field] = source(option.Env());
-  }
+  ForEachBinding([&](const auto& option) {
+    out[option.descriptor->field] =
+        env_sources.is_object()
+            ? JsonValue(env_sources, option.Env(), "default")
+            : std::string("default");
+  });
   return out;
 }
 
 json RuntimeConfig::DiagnosticJson() const {
   json out;
-  for (const auto& option : kLongOptions) {
-    out[option.descriptor->field] = this->*option.field;
-  }
-  for (const auto& option : kStringOptions) {
-    const ConfigDescriptor& descriptor = *option.descriptor;
-    std::string value = this->*option.field;
-    if (descriptor.sensitivity != Sensitivity::kPublic) {
-      value = value.empty() ? "<unset>" : "<set>";
-    } else if (descriptor.field.ends_with("_url")) {
-      value = RedactedUrl(std::move(value));
+  ForEachBinding([&](const auto& option) {
+    const auto& value = this->*option.field;
+    if constexpr (std::is_same_v<std::remove_cvref_t<decltype(value)>,
+                                 std::string>) {
+      const ConfigDescriptor& descriptor = *option.descriptor;
+      std::string shown = value;
+      if (descriptor.sensitivity != Sensitivity::kPublic) {
+        shown = shown.empty() ? "<unset>" : "<set>";
+      } else if (descriptor.field.ends_with("_url")) {
+        shown = RedactedUrl(std::move(shown));
+      }
+      out[descriptor.field] = std::move(shown);
+    } else {
+      out[option.descriptor->field] = value;
     }
-    out[descriptor.field] = std::move(value);
-  }
-  for (const auto& option : kBoolOptions) {
-    out[option.descriptor->field] = this->*option.field;
-  }
-  for (const auto& option : kDoubleOptions) {
-    out[option.descriptor->field] = this->*option.field;
-  }
+  });
   out.update({
       {"auto_compact_pct", AutoCompactPct()},
       {"auto_compact_tokens", AutoCompactTokens()},

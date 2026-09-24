@@ -291,6 +291,7 @@ Tool WebFetchTool(Api& api) {
   t.needs_approval = [](const json&) { return true; };
   t.parallel_safe = true;
   t.summary = [](const json& a) { return JsonValue(a, "url", ""); };
+  t.markdown_output = true;
   return t;
 }
 

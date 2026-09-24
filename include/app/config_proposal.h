@@ -69,13 +69,19 @@ const char* ConfigEffectName(ConfigEffect effect);
 ConfigProposal PrepareConfigProposal(ConfigProposalScope scope,
                                      const std::vector<ConfigChange>& changes,
                                      const ConfigManager& manager,
-                                     const RuntimeConfig& active,
                                      bool project_trusted,
                                      bool direct_user = false);
 
 // Human CLI/UI controls share schema, validation, scope and atomic persistence.
 json ConfigurationControl(const json& request, const ConfigManager& manager,
                           const RuntimeConfig& active, bool project_trusted);
+
+bool ParseConfigScope(std::string_view name, ConfigProposalScope& scope);
+// The change list the settings screen, --control and the uagent tool send:
+// each entry is {key, value}, {key, unset: true} or
+// {key, operation: set|unset, value}. Bounded by kConfigurationChangeLimit.
+bool ParseConfigChanges(const json& request, std::vector<ConfigChange>& changes,
+                        std::string& error);
 
 // Re-reads the target and refuses when its bytes no longer match the snapshot
 // the human approved, then replaces it atomically. A project-scope commit also
@@ -84,25 +90,6 @@ json ConfigurationControl(const json& request, const ConfigManager& manager,
 // should know that did not stop the write.
 bool CommitConfigProposal(const ConfigProposal& proposal, std::string& error,
                           std::string* notice = nullptr);
-
-// Single-use, expiring proposals keyed by the exact tool arguments they were
-// prepared from, so the preview shown at approval is the one that commits. The
-// arguments are retained and re-compared, so the key is an index rather than
-// the security boundary.
-class ConfigProposalStore {
- public:
-  void Put(const std::string& key, json arguments, ConfigProposal proposal);
-  // Removes and returns the proposal; empty when absent, expired, or prepared
-  // from different arguments.
-  ConfigProposal Take(const std::string& key, const json& arguments);
-
- private:
-  struct Entry {
-    json arguments;
-    ConfigProposal proposal;
-  };
-  std::map<std::string, Entry> proposals_;
-};
 
 }  // namespace uagent
 

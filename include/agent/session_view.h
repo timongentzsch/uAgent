@@ -12,6 +12,8 @@ namespace uagent {
 // base64 images, or arbitrary-path links. Full retained details are paged.
 json ConversationView(const Conversation& conversation, uint64_t before = 0);
 json LastMessageView(const Conversation& conversation);
+// A user message's text without the "Attached:" path trailer the model sees.
+std::string StripAttachedTrailer(const std::string& text);
 void MergeDisplayBlock(json& view, const json& block);
 // Apply an event represented in a session snapshot; false means live-only.
 bool ApplySessionEvent(json& state, const std::string& type, const json& data);

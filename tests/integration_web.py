@@ -904,6 +904,68 @@ def test_web_approval_interrupt_and_independent_workers(root, home, *, binary):
             assert_true(len(snapshots) == 2, snapshots)
 
 
+def p256_public_key():
+    """A fresh uncompressed P-256 point, as a browser's p256dh key."""
+    pem = subprocess.run(
+        ["openssl", "ecparam", "-name", "prime256v1", "-genkey", "-noout"],
+        capture_output=True,
+        check=True,
+    ).stdout
+    der = subprocess.run(
+        ["openssl", "ec", "-pubout", "-outform", "DER"],
+        input=pem,
+        capture_output=True,
+        check=True,
+    ).stdout
+    return base64.urlsafe_b64encode(der[-65:]).rstrip(b"=").decode()
+
+
+def test_web_push_announces_pending_approval(root, home, *, binary):
+    capture = root / "push.jsonl"
+
+    def responder(_, body):
+        if any(message.get("role") == "tool" for message in body["messages"]):
+            return event({"content": "done"})
+        return tool_call("run", {"command": "echo PUSH_PRIVATE_TEXT"}, call_id="push-run")
+
+    env = {
+        "UAGENT_WEB_PUSH_CONTACT": "mailto:test@example.invalid",
+        "UAGENT_INTERNAL_PUSH_CAPTURE": str(capture),
+    }
+    with Server([responder]) as provider:
+        with web_host(binary, root, home, provider.url, extra_env=env) as (client, code, _, _):
+            client.pair(code)
+            _, catalogue, _ = client.json("/api/sessions")
+            if not catalogue["capabilities"]["push"]:
+                return  # built without UAGENT_WEB_PUSH
+            status, subscribed, _ = client.json(
+                "/api/push/subscriptions",
+                {
+                    "endpoint": "https://fcm.googleapis.com/send/integration",
+                    "keys": {
+                        "p256dh": p256_public_key(),
+                        "auth": base64.urlsafe_b64encode(os.urandom(16)).rstrip(b"=").decode(),
+                    },
+                },
+            )
+            assert_true(status == 200 and subscribed["subscribed"], subscribed)
+            session = client.create(root)
+            client.command("submit", session, text="Run PUSH_PRIVATE_TEXT")
+            client.until(session, lambda value: bool(value.get("pending")))
+            wait_until(
+                lambda: capture.exists() and capture.read_text().strip(),
+                "a pending approval sent no push",
+                timeout=budget(5),
+            )
+            deliveries = [json.loads(line) for line in capture.read_text().splitlines()]
+            assert_true(len(deliveries) == 1, deliveries)
+            delivery = deliveries[0]
+            # Only the encrypted, content-free wake-up leaves the host; the
+            # payload's plaintext is pinned by the web_push unit test.
+            assert_true(delivery["endpoint"].startswith("https://fcm.googleapis.com/"), delivery)
+            assert_true(delivery["vapid"] and delivery["bytes"] > 0, delivery)
+
+
 def test_web_steer_yields_activity_wait(root, home, *, binary):
     workspace = root / "steer-wait"
     workspace.mkdir()
@@ -1877,6 +1939,10 @@ def test_web_http_context_configuration_permissions_and_fork(root, home, *, bina
             snapshot = client.until(session, lambda value: value["metadata"]["status"] == "idle")
             rows = snapshot["state"]["view"]["blocks"]
             request = rows[0]
+            # Clients get the asset id, never the private upload path.
+            assert_true(request.get("files"), request)
+            assert_true(all("path" not in item for item in request["files"]), request)
+            assert_true("Attached:" not in request["text"], request["text"])
             reply = next(row for row in reversed(rows) if row["kind"] == "assistant")
             assert_true(reply["reply_to"] == request["id"] == reply["turn_root"], rows)
             exchange = reply["http"][-1]
@@ -1897,6 +1963,9 @@ def test_web_http_context_configuration_permissions_and_fork(root, home, *, bina
             assert_true("tools" in json.loads(captured), "tools absent from HTTP body")
             fork = client.command("fork", session, title="Independent fork")["result"]
             assert_true(fork["id"] != session["id"], fork)
+            # The browser forwards the typed /fork argument; @N is a turn.
+            branch = client.command("fork", session, argument="Branch @1")["result"]
+            assert_true(branch["title"] == "Branch", branch)
             fork_saved = client.snapshot(fork)
             assert_true(fork_saved["metadata"]["status"] == "saved", fork_saved)
             assert_true(

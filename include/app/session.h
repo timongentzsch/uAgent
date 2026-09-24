@@ -52,23 +52,13 @@ struct Pipe {
 };
 
 std::string SocketPath(const std::string& path);
-// Identity of the executable a worker was spawned from (<mtime-ns>:<size>).
-// Any rebuild, cp install, or mv swap bumps mtime; empty when unstated.
-// Same-source rebuilds recycle once (harmless) rather than risk stale code.
-std::string ExecutableIdentity(const std::string& executable);
-// Sidecar recording which executable a session's worker was spawned from.
-// Lives next to the worker socket; missing after /tmp clean or pre-feature.
-std::string WorkerBinaryPath(const std::string& path);
-bool WriteWorkerBinary(const std::string& path, const std::string& identity);
-std::string ReadWorkerBinary(const std::string& path);
-// Missing record (pre-feature spawn) or disagreement (upgraded binary)
-// recycles; an unstatable executable never recycles blindly.
-bool WorkerBinaryStale(const std::string& current, const std::string& recorded);
 struct Connection {
   Fd socket;
   Fd owner;  // Delegated runtime lifetime; close when the parent session exits.
   std::string generation;
   int pid = -1;
+  // FileIdentity of the executable the worker started from, from its hello.
+  std::string binary;
 };
 Connection Connect(const std::string& path);
 Connection Open(const std::string& executable, const std::string& cwd,

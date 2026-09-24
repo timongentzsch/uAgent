@@ -105,7 +105,9 @@ add_library(
   src/core/events.cc
   src/core/file_watch.cc
   src/core/fs.cc
+  src/core/library.cc
   src/core/platform_posix.cc
+  src/core/private_store.cc
   src/core/sandbox.cc
   src/core/sandbox_posix.cc
   src/core/signals.cc
@@ -122,7 +124,6 @@ add_library(
   src/api/capabilities.cc
   src/api/client.cc
   src/api/exchange.cc
-  src/api/openai_stream.cc
   src/api/wire_request.cc
   src/api/wire_stream.cc)
 target_link_libraries(uagent_api PUBLIC uagent_core_base)
@@ -137,10 +138,11 @@ target_link_libraries(uagent_toolcore PUBLIC uagent_api)
 
 add_library(
   uagent_agent
+  src/agent/activity_completion.cc
+  src/agent/activity_log.cc
   src/agent/agent.cc
   src/agent/child_agent.cc
   src/agent/conversation.cc
-  src/agent/delegation.cc
   src/agent/dispatch.cc
   src/agent/file_services.cc
   src/agent/jobs.cc
@@ -171,8 +173,6 @@ add_library(
   src/mcp/server.cc
   src/tools/adapt_system.cc
   src/tools/browser.cc
-  src/tools/activity_completion.cc
-  src/tools/activity_log.cc
   src/tools/collaborator_runtime.cc
   src/tools/files.cc
   src/tools/image_result.cc
@@ -188,7 +188,6 @@ add_library(
   src/tools/shell.cc
   src/tools/session.cc
   src/tools/subagent.cc
-  src/tools/tool.cc
   src/tools/web_fetch.cc
   src/tools/web_search.cc)
 target_link_libraries(uagent_tools PUBLIC uagent_agent)
@@ -210,7 +209,6 @@ add_library(
   src/app/library.cc
   src/app/prompt_control.cc
   src/app/permissions.cc
-  src/app/private_store.cc
   src/app/tool_categories.cc
   src/app/control.cc
   src/app/schedule.cc
@@ -254,7 +252,10 @@ if(UAGENT_WEB)
                          "${_web_generated}")
   target_link_libraries(uagent_web PUBLIC uagent_core)
   target_include_directories(uagent_web SYSTEM PRIVATE third_party/cpp-httplib)
+  # The browser appliance only runs under the web host, so builds without it
+  # leave the browser unreferenced and the linker drops it.
   target_compile_definitions(uagent PRIVATE UAGENT_WEB)
+  target_compile_definitions(uagent_app PRIVATE UAGENT_WEB)
   target_link_libraries(uagent PRIVATE uagent_web)
   if(UAGENT_WEB_PUSH)
     find_package(OpenSSL 3 REQUIRED COMPONENTS Crypto)
@@ -284,7 +285,9 @@ set(UAGENT_PCH
     <string_view>
     <utility>
     <vector>)
-foreach(_uagent_lib IN ITEMS uagent_core_base uagent_api uagent_toolcore uagent_agent uagent_tools uagent_app)
+set(UAGENT_LIBRARIES uagent_core_base uagent_api uagent_toolcore uagent_agent
+                     uagent_tools uagent_app)
+foreach(_uagent_lib IN LISTS UAGENT_LIBRARIES)
   target_precompile_headers(${_uagent_lib} PRIVATE ${UAGENT_PCH})
 endforeach()
 
@@ -293,7 +296,7 @@ endforeach()
 include(CheckIPOSupported)
 check_ipo_supported(RESULT ipo_ok OUTPUT _)
 if(ipo_ok)
-  foreach(_uagent_lib IN ITEMS uagent_core_base uagent_api uagent_toolcore uagent_agent uagent_tools uagent_app)
+  foreach(_uagent_lib IN LISTS UAGENT_LIBRARIES)
     set_property(TARGET ${_uagent_lib} PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
   endforeach()
   set_property(TARGET uagent PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
@@ -371,34 +374,19 @@ if(BUILD_TESTING)
     # (TSan runtime, ~5min) so the runner always wins the race.
     set_tests_properties(integration_${group} PROPERTIES TIMEOUT 900)
   endforeach()
-  add_test(NAME ci_changes
-           COMMAND ${Python3_EXECUTABLE}
-                   ${CMAKE_CURRENT_SOURCE_DIR}/tests/ci_changes_test.py)
-  set_tests_properties(ci_changes PROPERTIES LABELS source)
-  add_test(NAME consumer_boundary
-           COMMAND ${Python3_EXECUTABLE}
-                   ${CMAKE_CURRENT_SOURCE_DIR}/tests/boundary_test.py)
-  set_tests_properties(consumer_boundary PROPERTIES LABELS source)
-  add_test(NAME wire_contract
-           COMMAND ${Python3_EXECUTABLE}
-                   ${CMAKE_CURRENT_SOURCE_DIR}/tests/wire_contract_test.py)
-  set_tests_properties(wire_contract PROPERTIES LABELS source)
-  add_test(NAME session_metrics_self_test
-           COMMAND ${Python3_EXECUTABLE}
-                   ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/session_metrics.py
-                   --self-test)
-  # The controller drives real subprocesses through disposable source copies,
-  # so it gets more room than a pure unit test while staying model-free.
-  add_test(NAME self_improve_controller
-           COMMAND ${Python3_EXECUTABLE}
-                   ${CMAKE_CURRENT_SOURCE_DIR}/tests/self_improve_controller_test.py
-                   $<TARGET_FILE:uagent>)
-  set_tests_properties(self_improve_controller PROPERTIES TIMEOUT 300)
-  add_test(NAME eval_harness_self_test
-           COMMAND ${Python3_EXECUTABLE}
-                   ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/eval.py
-                   --self-test)
-  set_tests_properties(session_metrics_self_test eval_harness_self_test PROPERTIES LABELS source)
+  # Source checks: no binary needed, so CI runs them apart (label `source`).
+  foreach(_check IN ITEMS "ci_changes|tests/ci_changes_test.py"
+                          "layer_boundary|tests/boundary_test.py"
+                          "wire_contract|tests/wire_contract_test.py"
+                          "session_metrics_self_test|benchmarks/session_metrics.py|--self-test"
+                          "eval_harness_self_test|benchmarks/eval.py|--self-test")
+    string(REPLACE "|" ";" _check "${_check}")
+    list(POP_FRONT _check _name _script)
+    add_test(NAME ${_name}
+             COMMAND ${Python3_EXECUTABLE}
+                     ${CMAKE_CURRENT_SOURCE_DIR}/${_script} ${_check})
+    set_tests_properties(${_name} PROPERTIES LABELS source)
+  endforeach()
   # Behavioral scoreboard: every scenario is scored and compared against the
   # committed baseline, so a harness change that costs rounds, batching or
   # answer quality fails here rather than being noticed later.
@@ -409,12 +397,6 @@ if(BUILD_TESTING)
   # Each scenario enforces its own subprocess deadline. Leave enough wrapper
   # headroom for loaded hosted macOS runners to report that diagnostic.
   set_tests_properties(behavior_eval PROPERTIES TIMEOUT 120)
-  # Fresh-HOME request/schema measurements only; personal history is report-only.
-  add_test(NAME token_audit
-           COMMAND ${Python3_EXECUTABLE}
-                   ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/audit.py
-                   $<TARGET_FILE:uagent> --check)
-  set_tests_properties(token_audit PROPERTIES TIMEOUT 180)
 endif()
 
 option(UAGENT_BUILD_BENCHMARKS "Build lightweight performance baselines" OFF)
@@ -442,34 +424,19 @@ install(
   DESTINATION ${CMAKE_INSTALL_DATADIR}/uagent/skills
   PATTERN ".*" EXCLUDE
   PATTERN "__pycache__" EXCLUDE)
-install(
-  PROGRAMS skills/self-improve/scripts/experiment.py
-  DESTINATION ${CMAKE_INSTALL_DATADIR}/uagent/skills/self-improve/scripts)
 # The architecture narrative is authored once; the package carries a copy so
 # the skill can answer design questions without a source checkout.
 install(
   FILES docs/ARCHITECTURE.md
   DESTINATION ${CMAKE_INSTALL_DATADIR}/uagent/skills/uagent-config/references
   RENAME architecture.md)
-set(UAGENT_GUIDES
-    docs/ARCHITECTURE.md
-    docs/CACHING.md
-    docs/OPERATIONS.md
-    docs/PERSISTENCE.md
-    docs/SELF_IMPROVEMENT.md
-    docs/SELF_IMPROVEMENT_RESEARCH.md
-    docs/TESTING.md
-    docs/TOOLS.md
-    docs/WEB.md
-    docs/SYSTEM_PROMPTS.md
-    docs/MANAGEMENT.md)
+# Every guide ships; tests/package_contents.py checks the same directory.
+file(GLOB UAGENT_GUIDES CONFIGURE_DEPENDS docs/*.md)
 install(FILES README.md SECURITY.md CONTRIBUTING.md LICENSE
         DESTINATION ${CMAKE_INSTALL_DOCDIR})
 # Keep the source-relative paths used by README and CONTRIBUTING valid in an
 # installed documentation tree.
 install(FILES ${UAGENT_GUIDES} DESTINATION ${CMAKE_INSTALL_DOCDIR}/docs)
-install(FILES benchmarks/baselines/web.json
-        DESTINATION ${CMAKE_INSTALL_DOCDIR}/benchmarks/baselines)
 if(UAGENT_WEB)
   install(FILES web/THIRD_PARTY_NOTICES.md DESTINATION ${CMAKE_INSTALL_DOCDIR})
   install(FILES third_party/cpp-httplib/LICENSE

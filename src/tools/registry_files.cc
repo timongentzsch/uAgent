@@ -47,6 +47,14 @@ void RegisterFileTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
     };
     return AddTool(tools, std::move(tool));
   };
+  // Scripts under .uagent/scratch are the agent's own working files: writing
+  // one changes nothing a person relies on. Running it is what asks, and the
+  // scratch approval shows the script.
+  auto outside_scratch = [workspace](const json& args) {
+    return !PathWithin(
+        CanonicalAccessPath(JsonValue(args, "path", "")),
+        CanonicalAccessPath((workspace / ".uagent" / "scratch").string()));
+  };
   auto reads_only = [](Tool& tool) {
     tool.approval_class = [](const json& args) {
       return PathApprovalClass(JsonValue(args, "path", "."), PathAccess::kRead);
@@ -100,7 +108,7 @@ void RegisterFileTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
                                         JsonValue(a, "content", ""),
                                         JsonValue(a, "overwrite", false));
       }));
-  write.mutating = true;
+  write.mutates = outside_scratch;
   write.capabilities = Capability(ToolCapability::kMutate);
   write.available_in_lean = false;
   write.summary = [](const json& a) {
@@ -135,7 +143,7 @@ void RegisterFileTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
       [](const json& a, const ToolContext&) {
         return ToolEditFile(JsonValue(a, "path", ""), RequestedEdits(a));
       }));
-  edit.mutating = true;
+  edit.mutates = outside_scratch;
   edit.capabilities = Capability(ToolCapability::kMutate);
   edit.available_in_lean = false;
   edit.summary = [](const json& a) {

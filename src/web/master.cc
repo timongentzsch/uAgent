@@ -43,6 +43,7 @@
 #include "include/core/capture.h"
 #include "include/core/child_env.h"
 #include "include/core/effective_config.h"
+#include "include/core/env.h"
 #include "include/core/file_watch.h"
 #include "include/core/fs.h"
 #include "include/core/lease.h"
@@ -159,7 +160,24 @@ class Master {
       return false;
     }
     LoadDevices();
-    push_ = std::make_unique<PushSender>(directory_, options_.push_contact);
+    // Integration tests read deliveries from a file instead of a push
+    // service. Internal: a deployment never sets it.
+    PushTransport capture;
+    if (std::string path = EnvStr("UAGENT_INTERNAL_PUSH_CAPTURE");
+        !path.empty()) {
+      capture = [path](const std::string& endpoint, const std::string& vapid,
+                       const std::string& body) -> int64_t {
+        std::string ignored;
+        AppendPrivateLine(path,
+                          JsonDump({{"endpoint", endpoint},
+                                    {"vapid", vapid.starts_with("vapid t=")},
+                                    {"bytes", body.size()}}),
+                          ignored);
+        return 201;
+      };
+    }
+    push_ = std::make_unique<PushSender>(directory_, options_.push_contact,
+                                         capture);
     host_.LoadDrafts();
     host_.RefreshCatalogue();
     host_.RefreshInvalidations({});
@@ -233,7 +251,7 @@ class Master {
                        {"epoch", epoch_},
                        {"cursor", catalogue["cursor"]},
                        {"sessions", catalogue["sessions"]},
-                       {"commands", CommandSchemaJson()},
+                       {"commands", CommandSchemaJson(true)},
                        {"capabilities", push_->Capabilities(DeviceId(request))},
                        {"devices", PublicDevices()},
                        {"scheduled", catalogue["scheduled"]},

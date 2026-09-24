@@ -6,9 +6,9 @@
 #include <set>
 #include <string>
 
-#include "include/app/private_store.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
+#include "include/core/private_store.h"
 #include "include/core/strings.h"
 #include "include/core/time.h"
 

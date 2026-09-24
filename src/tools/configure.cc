@@ -11,66 +11,9 @@
 #include "include/core/strings.h"
 
 namespace uagent {
-namespace {
-
-bool ParseScope(const std::string& name, ConfigProposalScope& scope) {
-  if (name == "user") {
-    scope = ConfigProposalScope::kUser;
-    return true;
-  }
-  if (name == "project") {
-    scope = ConfigProposalScope::kProject;
-    return true;
-  }
-  return false;
-}
-
-bool ParseChanges(const json& arguments, std::vector<ConfigChange>& changes,
-                  std::string& error) {
-  const json* list = JsonArray(arguments, "changes");
-  if (!list || list->empty()) {
-    error = "changes must be a non-empty array";
-    return false;
-  }
-  for (const json& entry : *list) {
-    ConfigChange change;
-    change.key = Trim(JsonValue(entry, "key", ""));
-    std::string operation = Trim(JsonValue(entry, "operation", "set"));
-    if (change.key.empty()) {
-      error = "each change needs a key";
-      return false;
-    }
-    if (operation == "unset") {
-      change.unset = true;
-    } else if (operation != "set") {
-      error = "operation must be set or unset";
-      return false;
-    } else {
-      auto value = entry.find("value");
-      if (value == entry.end()) {
-        error = "set needs a value for " + change.key;
-        return false;
-      }
-      change.value =
-          value->is_string() ? value->get<std::string>() : JsonDump(*value);
-    }
-    changes.push_back(std::move(change));
-  }
-  return true;
-}
-
-// The approval preview and the commit must describe the same request, so both
-// key off the exact arguments. The stored arguments are compared as well, so a
-// digest collision cannot substitute one approved request for another.
-std::string ProposalKey(const json& arguments) {
-  return HashHex(JsonDump(arguments));
-}
-
-}  // namespace
-
 Tool UagentTool(SelfDescriptionProvider describe,
                 const ConfigProposalFactory& prepare,
-                const std::shared_ptr<ConfigProposalStore>& store) {
+                const std::shared_ptr<ConfigApprovals>& store) {
   Tool tool = MakeTool(
       "uagent",
       "Inspect this running build: status, cli, commands, config, tools, "
@@ -135,13 +78,13 @@ Tool UagentTool(SelfDescriptionProvider describe,
           return ToolFailure(ToolErrorCode::kPermissionDenied,
                              "error: configuration unavailable");
         }
-        ConfigProposal approved =
-            store->Take(ProposalKey(arguments), arguments);
-        if (!approved.ok) {
+        std::optional<ConfigProposal> taken = store->Take(arguments);
+        if (!taken || !taken->ok) {
           return ToolFailure(
               ToolErrorCode::kPermissionDenied,
               "error: no approved configuration change for this request");
         }
+        const ConfigProposal& approved = *taken;
         std::string error;
         std::string notice;
         if (!CommitConfigProposal(approved, error, &notice)) {
@@ -181,13 +124,13 @@ Tool UagentTool(SelfDescriptionProvider describe,
                            "configure does not accept topic or name");
     }
     ConfigProposalScope scope = ConfigProposalScope::kUser;
-    if (!ParseScope(Trim(JsonValue(arguments, "scope", "")), scope)) {
+    if (!ParseConfigScope(Trim(JsonValue(arguments, "scope", "")), scope)) {
       return ArgumentIssue("config.scope", "scope must be user or project",
                            "scope");
     }
     std::vector<ConfigChange> changes;
     std::string error;
-    if (!ParseChanges(arguments, changes, error)) {
+    if (!ParseConfigChanges(arguments, changes, error)) {
       return ArgumentIssue("config.changes", error, "changes");
     }
     ConfigProposal proposal = prepare(scope, changes);
@@ -223,14 +166,15 @@ Tool UagentTool(SelfDescriptionProvider describe,
     ConfigProposalScope scope = ConfigProposalScope::kUser;
     std::vector<ConfigChange> changes;
     std::string error;
-    if (!ParseScope(Trim(JsonValue(arguments, "scope", "")), scope) ||
-        !ParseChanges(arguments, changes, error)) {
+    if (!ParseConfigScope(Trim(JsonValue(arguments, "scope", "")), scope) ||
+        !ParseConfigChanges(arguments, changes, error)) {
       return std::string("invalid configuration request");
     }
     ConfigProposal proposal = prepare(scope, changes);
     if (!proposal.ok) return "cannot apply: " + proposal.error;
     std::string preview = proposal.Preview();
-    store->Put(ProposalKey(arguments), arguments, std::move(proposal));
+    const auto expires = proposal.expires;
+    store->Put(arguments, std::move(proposal), expires);
     return preview;
   };
   // Inspection survives restricted policies; configure still requires a human.

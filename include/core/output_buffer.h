@@ -100,6 +100,15 @@ class HeadTailBuffer {
   size_t omitted_ = 0;
 };
 
+// Over-cap text keeps its head and its tail: the middle is what a reader can
+// most afford to lose.
+inline std::string HeadTail(std::string_view text, size_t cap) {
+  if (text.size() <= cap) return std::string(text);
+  HeadTailBuffer buffer(cap);
+  buffer.Push(text);
+  return buffer.Snapshot();
+}
+
 }  // namespace uagent
 
 #endif  // UAGENT_INCLUDE_CORE_OUTPUT_BUFFER_H_

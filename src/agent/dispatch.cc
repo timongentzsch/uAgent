@@ -208,6 +208,7 @@ void ExecuteCall(CallTask& task, const ToolCall& call, int64_t turn,
   call_context.call_id = call.id;
   json start = ToolCallData(call, turn, step);
   start["activity"] = task.activity;
+  start["view"] = ToolView(task.tool, task.args);
   Emit(Event{EventId::kToolStarted, std::move(start)});
   task.result = task.tool->run(task.args, call_context);
   task.result.output = CapResult(task.result.output, ResultCharLimit(task));

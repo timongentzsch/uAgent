@@ -59,10 +59,10 @@ void LoadSessionJournal(AppSession& session, const std::string& previous_path) {
     }
   }
   if (!session.context.options.yolo) {
-    auto found = settings.find("permissions");
-    session.context.permission_override.store(
-        found == settings.end() ? PermissionOverride::kDefault
-                                : LegacyPermissionOverride(*found));
+    PermissionOverride saved = PermissionOverride::kDefault;
+    const std::string mode = JsonValue(settings, "permissions", "");
+    if (!mode.empty()) ParsePermissionOverride(mode, saved);
+    session.context.permission_override.store(saved);
     PermissionControl(session.context, json::object());
     session.ActiveAgent().ApprovalChanged();
   }
@@ -85,19 +85,20 @@ void LoadSessionJournal(AppSession& session, const std::string& previous_path) {
               {"messages", session.ActiveAgent().MessageCount()}}});
 }
 
-bool RunSlashCommand(AppSession& session, const ParsedSlashCommand& command,
+void RunSlashCommand(AppSession& session, const ParsedSlashCommand& command,
                      json& result) {
   switch (command.spec->id) {
     case SlashCommandId::kQuit:
     case SlashCommandId::kReset:
     case SlashCommandId::kSessions:
     case SlashCommandId::kFork:
-      result = {{"error", "conversation navigation belongs to the client"}};
-      return false;
+    case SlashCommandId::kVerbose:
+      result = {{"error", "this command belongs to the client"}};
+      return;
     case SlashCommandId::kClear:
       printf("\033[H\033[2J");
       fflush(stdout);
-      return false;
+      return;
     case SlashCommandId::kRewind: {
       std::string arg = Trim(command.argument);
       if (arg.starts_with("@")) arg = Trim(arg.substr(1));
@@ -108,31 +109,18 @@ bool RunSlashCommand(AppSession& session, const ParsedSlashCommand& command,
       }
       if (turn <= 0) {
         result = {{"error", "usage: /rewind [@]TURN"}};
-        return false;
+        return;
       }
       result = SessionControl(session, {{"kind", "rewind"}, {"turn", turn}});
-      if (session.context.channel == nullptr) {
-        printf("%s\n", TerminalSafe(JsonDump(result, 2)).c_str());
-        fflush(stdout);
-      }
-      return false;
+      return;
     }
     case SlashCommandId::kShare: {
       if (!command.argument.empty()) {
         result = {{"error", "usage: /share"}};
-        return false;
+        return;
       }
       result = SessionControl(session, {{"kind", "share"}});
-      if (session.context.channel == nullptr) {
-        if (result.contains("path")) {
-          printf("%s· shared transcript: %s%s\n", DIM(),
-                 TerminalSafe(JsonValue(result, "path", "")).c_str(), RST());
-        } else {
-          printf("%s\n", TerminalSafe(JsonDump(result, 2)).c_str());
-        }
-        fflush(stdout);
-      }
-      return false;
+      return;
     }
     case SlashCommandId::kTrace:
       if (!command.argument.empty()) {
@@ -146,21 +134,13 @@ bool RunSlashCommand(AppSession& session, const ParsedSlashCommand& command,
         } while (JsonValue(result, "more", false));
         printf("\n");
         fflush(stdout);
-        return false;
+        return;
       }
       PrintLatestTrace(session.ActiveAgent().TraceArchive(),
                        session.context.tools);
       break;
     case SlashCommandId::kVariant:
       HandleVariant(session, command.argument);
-      break;
-    case SlashCommandId::kVerbose:
-      session.ActiveAgent().SetVerbose(!session.ActiveAgent().Verbose());
-      printf("%s· verbose %s%s\n", DIM(),
-             session.ActiveAgent().Verbose()
-                 ? "ON — full reasoning and expanded bounded tool output"
-                 : "off — compact reasoning and compact tool output",
-             RST());
       break;
     case SlashCommandId::kHelp:
       PrintCommandHelp();
@@ -177,11 +157,7 @@ bool RunSlashCommand(AppSession& session, const ParsedSlashCommand& command,
     case SlashCommandId::kPermissions:
       result = PermissionControl(session.context, {{"mode", command.argument}});
       session.ActiveAgent().ApprovalChanged();
-      if (session.context.channel == nullptr) {
-        printf("%s\n", TerminalSafe(JsonDump(result, 2)).c_str());
-        fflush(stdout);
-      }
-      return false;
+      return;
     case SlashCommandId::kConfig: {
       json request = {{"kind", "config"}};
       if (!command.argument.empty()) {
@@ -204,11 +180,7 @@ bool RunSlashCommand(AppSession& session, const ParsedSlashCommand& command,
                             {"unset", unset}}})}});
       }
       result = SessionControl(session, request);
-      if (session.context.channel == nullptr) {
-        printf("%s\n", TerminalSafe(JsonDump(result, 2)).c_str());
-        fflush(stdout);
-      }
-      return false;
+      return;
     }
     case SlashCommandId::kHttp: {
       auto exchanges = session.ActiveAgent().HttpExchanges();
@@ -238,13 +210,13 @@ bool RunSlashCommand(AppSession& session, const ParsedSlashCommand& command,
             printf("\n");
             fflush(stdout);
           }
-          return false;
+          return;
         }
       }
       {
         printf("%s\n", JsonDump(result).c_str());
       }
-      return false;
+      return;
     }
     case SlashCommandId::kYolo:
       result = PermissionControl(session.context,
@@ -267,13 +239,7 @@ bool RunSlashCommand(AppSession& session, const ParsedSlashCommand& command,
       result = PromptCommand(command.argument, [&session](const json& request) {
         return session.ActiveAgent().PromptConfiguration(request);
       });
-      if (!session.context.channel) {
-        printf("%s\n", TerminalSafe(result.contains("error")
-                                        ? JsonValue(result, "error", "")
-                                        : JsonValue(result, "effective", ""))
-                           .c_str());
-      }
-      return false;
+      return;
     case SlashCommandId::kMemory:
     case SlashCommandId::kSkills:
     case SlashCommandId::kSchedule:
@@ -282,13 +248,10 @@ bool RunSlashCommand(AppSession& session, const ParsedSlashCommand& command,
           : command.spec->id == SlashCommandId::kSkills ? "skills"
                                                         : "schedule",
           command.argument);
-      if (!session.context.channel) {
-        printf("%s\n", TerminalSafe(JsonDump(result, 2)).c_str());
-      }
-      return false;
+      return;
     case SlashCommandId::kTools:
       HandleTools(session, command.argument);
-      return false;
+      return;
     case SlashCommandId::kStatus:
       HandleStatus(session);
       break;
@@ -303,19 +266,19 @@ bool RunSlashCommand(AppSession& session, const ParsedSlashCommand& command,
       result = ActivityCommand(session, command);
       printf("%s", TerminalSafe(ActivityText(result)).c_str());
       fflush(stdout);
-      return false;
+      return;
     case SlashCommandId::kPeers:
       result = SessionSlashPeers();
       printf("%s", TerminalSafe(SessionText(result)).c_str());
       fflush(stdout);
-      return false;
+      return;
     case SlashCommandId::kTell: {
       result = SessionSlashTell(command.argument);
       printf("%s\n", TerminalSafe(JsonValue(result, "output",
                                             JsonValue(result, "error", "")))
                          .c_str());
       fflush(stdout);
-      return false;
+      return;
     }
     case SlashCommandId::kLink: {
       result = SessionSlashLink(command.argument);
@@ -323,7 +286,7 @@ bool RunSlashCommand(AppSession& session, const ParsedSlashCommand& command,
                                             JsonValue(result, "error", "")))
                          .c_str());
       fflush(stdout);
-      return false;
+      return;
     }
     case SlashCommandId::kDiff:
     case SlashCommandId::kInit:
@@ -336,7 +299,7 @@ bool RunSlashCommand(AppSession& session, const ParsedSlashCommand& command,
   // stdout and only sees what has left the buffer.
   fflush(stdout);
   result = CommandResult(session, command);
-  return false;
+  return;
 }
 
 }  // namespace uagent

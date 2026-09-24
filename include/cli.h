@@ -59,6 +59,10 @@ struct SlashCommandSpec {
   const char* argument;
   const char* description;
   bool inspect_result = true;  // Queries may open a result viewer.
+  // Conversation navigation a client performs itself; a runtime refuses it.
+  bool client_only = false;
+  // Only meaningful at a terminal, so the browser does not offer it.
+  bool terminal_only = false;
 };
 
 struct ParsedSlashCommand {
@@ -67,6 +71,13 @@ struct ParsedSlashCommand {
 };
 
 ParsedSlashCommand ParseSlashCommand(const std::string& input);
+// "/fork [TITLE] [@TURN]": a trailing @N (or a bare number) forks at user
+// turn N, otherwise the whole session. Shared by every client.
+struct ForkArgument {
+  std::string title;
+  int64_t turn = 0;
+};
+ForkArgument ParseForkArgument(const std::string& argument);
 // The turn a prompt command stands for; empty for a local action.
 std::string SlashCommandPrompt(const ParsedSlashCommand& command);
 void PrintCommandHelp();
@@ -100,10 +111,11 @@ std::string InputPrompt(const char* label = "");
 // ready: callers differ in how they sanitize it, and the composer's mapping of
 // newlines to a glyph is what keeps the echo on the rows it drew.
 std::string UserEchoRow(const std::string& prompt, const std::string& text);
-std::string ReadInputLine(const std::string& prompt, bool* eof,
-                          bool keep_history = true,
-                          const std::string& initial = "");
 std::string ReadInteraction(InteractionRequest request, bool* eof);
+// The question with its one-keystroke answers, "[y] Allow once  [n] Deny",
+// the way every terminal renders a decision. Numbered lists are printed by
+// the command that asks, so only letter-keyed options become hints.
+std::string DecisionPrompt(const std::string& prompt, const json& options);
 std::string ReadChoiceLine(const std::string& prompt, bool& cancelled,
                            bool& eof);
 std::string ReadChoiceLine(InteractionRequest request, bool& cancelled,

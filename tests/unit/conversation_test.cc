@@ -1006,31 +1006,26 @@ void TestRewindAndShare() {
   CHECK(markdown.find("sys") == std::string::npos);
   const std::string source = (workspace.workspace / "live.json").string();
   CHECK(SessionStore::Save(source, record).Ok());
-  // Rewind to turn 3 drops it and keeps identity, title and lineage empty.
-  json rewound = SessionStore::Rewind(source, 3);
-  CHECK(!rewound.contains("error"));
-  auto reloaded = SessionStore::Inspect(source);
-  CHECK(reloaded.record.has_value());
-  CHECK(reloaded.record->state.messages.size() == 6);
-  CHECK(reloaded.record->metadata.turns == 2);
-  CHECK(reloaded.record->metadata.session_id == "live-1");
-  CHECK(reloaded.record->metadata.title == "live title");
-  CHECK(reloaded.record->metadata.parent_session_id.empty());
-  CHECK(JsonValue(reloaded.record->state.display["facts"]["reset-boundary"],
-                  "turn", int64_t{0}) == 3);
+  // Rewinding truncates before a user turn; the live /rewind path shares it.
+  auto restore = [&](Conversation& conversation) {
+    return conversation.Restore(
+        record.state.messages, record.state.message_kinds, record.state.archive,
+        record.state.archive_dropped_segments, record.state.tool_displays,
+        record.state.display);
+  };
+  Conversation rewound;
+  CHECK(restore(rewound));
+  CHECK(rewound.TruncateBeforeUserTurn(3));
+  CHECK(rewound.Size() == 6);
   // Attachments count as user turns: rewinding to 2 keeps the prefix
   // before it, including turn 1's assistant reply.
-  CHECK(!SessionStore::Rewind(source, 2).contains("error"));
-  auto prefix = SessionStore::Inspect(source);
-  CHECK(prefix.record->state.messages.size() == 3);
-  CHECK(prefix.record->metadata.turns == 1);
-  CHECK(JsonValue(prefix.record->state.display["facts"]["reset-boundary"],
-                  "turn", int64_t{0}) == 2);
+  CHECK(rewound.TruncateBeforeUserTurn(2));
+  CHECK(rewound.Size() == 3);
   // Out of range and non-positive turns stay errors, never truncations.
-  CHECK(SessionStore::Rewind(source, 9).contains("error"));
-  CHECK(SessionStore::Rewind(source, 0).contains("error"));
-  CHECK(SessionStore::Rewind(source, -1).contains("error"));
-  CHECK(SessionStore::Inspect(source).record->state.messages.size() == 3);
+  for (int64_t turn : {int64_t{9}, int64_t{0}, int64_t{-1}}) {
+    CHECK(!rewound.TruncateBeforeUserTurn(turn));
+  }
+  CHECK(rewound.Size() == 3);
   // The file export lands next to the session and renders its title.
   json shared = SessionStore::Share(source);
   CHECK(!shared.contains("error"));

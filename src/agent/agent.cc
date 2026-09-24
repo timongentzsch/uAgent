@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <filesystem>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <string_view>

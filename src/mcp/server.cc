@@ -6,7 +6,6 @@
 #include <poll.h>
 #include <signal.h>
 #include <spawn.h>
-#include <sys/resource.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -55,6 +54,9 @@ void McpShutdownGroup(const std::vector<McpServer*>& servers) {
   for (McpServer* server : servers) server->Escalate(SIGTERM);
   wait_all(kMcpTermGrace);
   for (McpServer* server : servers) {
+    // A pump outlives the server only while a detached descendant still
+    // holds the server's stderr open.
+    if (server->log_pid > 0) kill(server->log_pid, SIGKILL);
     if (server->pid <= 0) continue;
     kill(-server->pid, SIGKILL);
     kill(server->pid, SIGKILL);
@@ -78,12 +80,20 @@ void McpServer::Escalate(int signal_number) {
 }
 
 bool McpServer::Reaped() {
-  if (pid <= 0) return true;
-  int status = 0;
-  pid_t result = WaitPid(pid, &status, WNOHANG);
-  if (result != pid && !(result < 0 && errno == ECHILD)) return false;
-  TrackPid(g_mcp_pids, kMcpMax, pid, /*add=*/false);
-  pid = -1;
+  auto gone = [](pid_t child) {
+    int status = 0;
+    pid_t result = WaitPid(child, &status, WNOHANG);
+    return result == child || (result < 0 && errno == ECHILD);
+  };
+  if (pid > 0) {
+    if (!gone(pid)) return false;
+    TrackPid(g_mcp_pids, kMcpMax, pid, /*add=*/false);
+    pid = -1;
+  }
+  if (log_pid > 0) {
+    if (!gone(log_pid)) return false;
+    log_pid = -1;
+  }
   return true;
 }
 
@@ -161,8 +171,41 @@ bool McpSpawn(McpServer& s, const std::string& cmd,
   // nonblocking writes: a blocking write() of a large request would ignore
   // the drain in mcp_write and reintroduce the two-full-pipes deadlock
   fcntl(in_write.Get(), F_SETFL, O_NONBLOCK);
-  Fd errfd(open(McpLogPath(s.name).c_str(), O_CREAT | O_WRONLY | O_TRUNC,
-                kPrivateFileMode));
+  // stderr goes through the same rotating log pump detached terminals use, so
+  // only the log is bounded. A file-size rlimit would instead have capped
+  // every file the server and its children write.
+  Fd errfd;
+  pid_t log_pid = -1;
+  int errp[2];
+  if (pipe(errp) == 0) {
+    Fd err_read(errp[0]), err_write(errp[1]);
+    fcntl(err_read.Get(), F_SETFD, FD_CLOEXEC);
+    fcntl(err_write.Get(), F_SETFD, FD_CLOEXEC);
+    const std::string log_path = McpLogPath(s.name);
+    const std::string bytes = std::to_string(log_bytes);
+    const std::string& self = ExecutablePath();
+    char* pump_argv[] = {const_cast<char*>(self.c_str()),
+                         const_cast<char*>("--log-pump"),
+                         const_cast<char*>(log_path.c_str()),
+                         const_cast<char*>(bytes.c_str()), nullptr};
+    posix_spawn_file_actions_t actions;
+    posix_spawnattr_t attributes;
+    posix_spawn_file_actions_init(&actions);
+    posix_spawn_file_actions_adddup2(&actions, err_read.Get(), 0);
+    posix_spawnattr_init(&attributes);
+    // Own group, like the server: terminal Ctrl+C must not cut the log.
+    posix_spawnattr_setflags(&attributes, POSIX_SPAWN_SETPGROUP);
+    posix_spawnattr_setpgroup(&attributes, 0);
+    if (posix_spawn(&log_pid, self.c_str(), &actions, &attributes, pump_argv,
+                    environ) == 0) {
+      errfd = std::move(err_write);
+    } else {
+      log_pid = -1;
+    }
+    posix_spawnattr_destroy(&attributes);
+    posix_spawn_file_actions_destroy(&actions);
+  }
+  if (!errfd) errfd.Reset(open("/dev/null", O_WRONLY | O_CLOEXEC));
   ChildEnvironment child_environment(env);
   // Build every allocation-backed child input before fork. µAgent is
   // multithreaded here, so the child may only use async-signal-safe operations
@@ -175,7 +218,11 @@ bool McpSpawn(McpServer& s, const std::string& cmd,
   }
   argv.push_back(nullptr);
   pid_t pid = fork();
-  if (pid < 0) return false;
+  if (pid < 0) {
+    errfd.Reset();  // EOF lets the pump exit; Reaped() collects it later
+    s.log_pid = log_pid;
+    return false;
+  }
   if (pid == 0) {
     // Between fork and exec: explicit moves only, and every path ends in
     // _exit, so no destructor is relied upon.
@@ -190,9 +237,6 @@ bool McpSpawn(McpServer& s, const std::string& cmd,
     close(in_write.Get());
     close(out_read.Get());
     close(out_write.Get());
-    struct rlimit file_limit = {static_cast<rlim_t>(log_bytes),
-                                static_cast<rlim_t>(log_bytes)};
-    setrlimit(RLIMIT_FSIZE, &file_limit);
     if (!cwd.empty() && chdir(cwd.c_str()) != 0) _exit(126);
     environ = child_environment.Data();
     signal(SIGINT, SIG_DFL);
@@ -203,6 +247,7 @@ bool McpSpawn(McpServer& s, const std::string& cmd,
   out_write.Reset();
   errfd.Reset();
   s.pid = pid;
+  s.log_pid = log_pid;
   s.in = std::move(in_write);
   s.out = std::move(out_read);
   s.alive = true;

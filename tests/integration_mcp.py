@@ -332,6 +332,48 @@ def test_mcp_tool_round_trip(root, home, *, binary):
         assert_true("probe_echo" in names, names)
 
 
+def test_mcp_log_bound_does_not_limit_server_files(root, home, *, binary):
+    workspace = root / "mcp-log-bound"
+    workspace.mkdir()
+    artifact = workspace / "artifact.bin"
+    fake = workspace / "fake_mcp.py"
+    fake.write_text(
+        "import json, sys\n"
+        "for line in sys.stdin:\n"
+        "    message = json.loads(line)\n"
+        "    if 'id' not in message:\n"
+        "        continue\n"
+        "    if message.get('method') == 'server/discover':\n"
+        f"        open({str(artifact)!r}, 'wb').write(b'x' * 65536)\n"
+        "        sys.stderr.write('noise ' * 20000)\n"
+        "        sys.stderr.flush()\n"
+        "        result = {'supportedVersions': ['2026-07-28'], "
+        "'capabilities': {'tools': {}}}\n"
+        "    elif message.get('method') == 'tools/list':\n"
+        "        result = {'tools': []}\n"
+        "    else:\n"
+        "        result = {}\n"
+        "    print(json.dumps({'jsonrpc': '2.0', 'id': message['id'], 'result': result}), "
+        "flush=True)\n",
+        encoding="utf-8",
+    )
+    (workspace / ".mcp.json").write_text(
+        json.dumps({"mcpServers": {"probe": {"command": sys.executable, "args": [str(fake)]}}}),
+        encoding="utf-8",
+    )
+    with Server([event({"content": "done"})]) as server:
+        env = base_env(home, server.url)
+        env["UAGENT_MCP_LOG_BYTES"] = "4096"
+        result = run(workspace, env, "--trust-project-config", "-p", "probe", binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+    # The server's own files are unbounded; only its stderr log is capped.
+    assert_true(artifact.stat().st_size == 65536, artifact.stat().st_size)
+    logs = list((home / ".uagent" / "mcp").glob("probe-*.log*"))
+    assert_true(logs, "no MCP stderr log")
+    log_bytes = sum(path.stat().st_size for path in logs)
+    assert_true(0 < log_bytes <= 4096, log_bytes)
+
+
 def test_optional_mcp_servers_share_startup_grace(root, home, *, binary):
     workspace = root / "mcp-optional-startup"
     workspace.mkdir()

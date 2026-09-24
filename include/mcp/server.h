@@ -36,6 +36,8 @@ void McpShutdown(McpServer& server);
 struct McpServer {
   std::string name;
   pid_t pid = -1;
+  // `uagent --log-pump` bounding the server's stderr; exits at stderr EOF.
+  pid_t log_pid = -1;
   // in: we write (the server's stdin) · out: we read (its stdout)
   Fd in, out;
   bool alive = false;

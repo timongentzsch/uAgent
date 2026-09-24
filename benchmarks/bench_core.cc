@@ -46,16 +46,14 @@ void Report(const char* name, size_t iterations, double milliseconds) {
             << " ops/s\n";
 }
 
-void BenchmarkStream(bool tty, bool render = true) {
-  bool prior_tty = g_tty;
-  g_tty = tty;
+// Streamed deltas are observation events; clients render them elsewhere, so
+// this measures decoding plus event delivery in the runtime process.
+void BenchmarkStream() {
   ChatResult result;
   StreamCtx stream;
   stream.res = &result;
   stream.status = 200;
   stream.started = std::chrono::steady_clock::now();
-  // Rendering is no longer a StreamCtx flag: the stream emits observation
-  // events and the terminal presenter owned by Observability draws them.
   Observability observability;
   SetObservability(&observability);
   const std::string event =
@@ -69,14 +67,13 @@ void BenchmarkStream(bool tty, bool render = true) {
   if (saved < 0 || null < 0 || dup2(null, STDOUT_FILENO) < 0) {
     if (null >= 0) close(null);
     if (saved >= 0) close(saved);
-    g_tty = prior_tty;
     perror("cannot redirect benchmark output");
     return;
   }
   close(null);
   double milliseconds = 0;
   {
-    ResponseObservation response(render, /*verbose=*/false, "benchmark");
+    ResponseObservation response(/*verbose=*/false, "benchmark");
     milliseconds = Measure(kEvents, [&] {
       size_t fed = stream.Feed(event.data(), event.size());
       return fed == event.size() ? size_t{1} : size_t{0};
@@ -87,17 +84,11 @@ void BenchmarkStream(bool tty, bool render = true) {
   fflush(stdout);
   if (dup2(saved, STDOUT_FILENO) < 0) {
     close(saved);
-    g_tty = prior_tty;
     perror("cannot restore benchmark output");
     return;
   }
   close(saved);
-  g_tty = prior_tty;
-
-  const char* name = !render ? "SSE + headless"
-                     : tty   ? "SSE + TTY Markdown"
-                             : "SSE + plain";
-  Report(name, kEvents, milliseconds);
+  Report("SSE + headless", kEvents, milliseconds);
 }
 
 // Burst benchmark through actual event delivery, comparing identical main
@@ -168,9 +159,7 @@ int RunBenchmarks() {
   Report("tool-result cap", kIterations,
          Measure(kIterations, [&] { return CapResult(large).size(); }));
 
-  BenchmarkStream(false);
-  BenchmarkStream(true);
-  BenchmarkStream(false, false);
+  BenchmarkStream();
   BenchmarkActivity(false);
   BenchmarkActivity(true);
 

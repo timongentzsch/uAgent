@@ -51,3 +51,39 @@ before a request is sent.
 Capacity limits, timeouts and retention caps are operational policies. Their
 defaults and bounds live in the configuration registry and are documented in
 `OPERATIONS.md`; they are not presented as measurements.
+
+## Activity display verification
+
+Local macOS release build and Chromium, 2026-09-24, hermetic mock workload:
+
+| Browser workload | Captions off | Captions on |
+| --- | ---: | ---: |
+| Answer mock words / second | 1,000 | 1,000 |
+| Reasoning mock words / second | 1,000 | 1,000 |
+| Duration | 5.001s | 5.001s |
+| Delivered events | 538 | 544 |
+| p95 frame gap | 16.7ms | 16.8ms |
+| Longest frame gap | 16.8ms | 16.8ms |
+| Input round trip during stream | 26.6ms | 14.3ms |
+
+Both workloads include tool calls/results and progress reports for two children.
+They enter the real browser event reducer/rendering path through a simulated SSE
+source. Timing variation is not evidence that captions improve performance.
+The native benchmark separately delivers 30,000 fragments through three concurrent
+Observability instances (main plus two children): baseline 22.15ms / 63ms process
+CPU; captions 18.55ms / 55ms CPU, with 162 status events. This is a burst microbenchmark,
+not an end-to-end network or provider throughput claim. Actual SSE decoding is
+covered by the adjacent stream benchmark and provider integration fixtures.
+
+Caption policy retains at most 192 bytes of an incomplete line and 160 bytes of
+excerpt (`kActivityLineBytes`, `kActivityLabelBytes`), plus active call identities.
+Long lines are skipped until their boundary. Text is processed incrementally;
+unchanged labels emit no status event. Full reasoning is governed by the existing
+response cap. Interleaved parts/final corrections can require a complete display
+snapshot; ordinary deltas remain incremental. Part metadata preserves provenance,
+not hidden reasoning. The transcript and native signed replay remain separate.
+
+These measurements show headroom for this desktop workload. They do not measure
+mobile hardware, real provider tokenization, network stalls or Google/Safari
+behavior on a physical phone. Chromium and WebKit checks cover composer density,
+layout bounds and dialog focus; the iPhone keyboard still needs device testing.

@@ -582,6 +582,15 @@ bool Agent::DegradeAndRetry(const ChatResult& result) {
     changed(rejected);
     return true;
   }
+  if (rejected == RejectedCapability::kReasoningSummary &&
+      !result.semantic_progress && result.content.empty() &&
+      result.reasoning.empty() && result.tool_calls.empty() &&
+      result.usage.empty()) {
+    api_.capabilities.reasoning_summary = false;
+    api_.capabilities.model_features["reasoning_summary"] = false;
+    changed(rejected);
+    return true;
+  }
   return false;
 }
 

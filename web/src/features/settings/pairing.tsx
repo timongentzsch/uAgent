@@ -1,6 +1,6 @@
 import { useState } from "preact/hooks";
 import { api } from "../../state/api.ts";
-import { Mark } from "../../shared/ui.tsx";
+import { Mark, Input } from "../../shared/ui.tsx";
 export default function Pairing({
   paired,
   report,
@@ -41,7 +41,7 @@ export default function Pairing({
       >
         <label>
           Single-use pairing code
-          <input
+          <Input
             autoComplete="off"
             spellcheck={false}
             value={code}

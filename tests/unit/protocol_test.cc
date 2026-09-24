@@ -569,6 +569,21 @@ void TestCommandAndDisplayRegistries() {
 }
 
 void TestModelCatalogParsing() {
+  const auto anthropic = ParseModels(
+      {{"data",
+        json::array({{{"id", "test"},
+                      {"display_name", "Readable name"},
+                      {"capabilities",
+                       {{"thinking",
+                         {{"types", {{"adaptive", {{"supported", true}}}}}}},
+                        {"effort",
+                         {{"low", {{"supported", true}}},
+                          {"high", {{"supported", false}}}}}}}}})}});
+  REQUIRE(anthropic && anthropic->size() == 1);
+  CHECK((*anthropic)[0].name == "Readable name");
+  CHECK((*anthropic)[0].features["adaptive_thinking"] == true);
+  CHECK((*anthropic)[0].features["reasoning_summary"] == true);
+  CHECK((*anthropic)[0].efforts == std::vector<std::string>({"low"}));
   auto models = ParseModels(
       {{"data",
         json::array({{{"id", "vendor/beta"}},

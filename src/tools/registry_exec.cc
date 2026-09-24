@@ -97,6 +97,11 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
       {"description",
        "Activity intent only; does not change permissions. Default execute."}};
   run.parameters["properties"]["intent"] = intent_schema;
+  const json description_schema = {
+      {"type", json::array({"string", "null"})},
+      {"description",
+       "Optional short action label, e.g. Running tests. Display only."}};
+  run.parameters["properties"]["description"] = description_schema;
 
   // ToolRunScratch runs a .py under uv when it is there and falls back to
   // python3 otherwise, so a host with neither can only ever answer this tool
@@ -135,6 +140,7 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
             }));
     python.declared_intent = true;
     python.parameters["properties"]["intent"] = intent_schema;
+    python.parameters["properties"]["description"] = description_schema;
     python.mutating = true;
     python.capabilities = Capability(ToolCapability::kExecute) |
                           Capability(ToolCapability::kMutate);

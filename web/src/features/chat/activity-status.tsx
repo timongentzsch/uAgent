@@ -80,8 +80,13 @@ export function ActivityStatus({
       <StatusLed
         state={running && !pending ? "running" : present ? "active" : "idle"}
       />
-      {pending ? "Needs your input" : phase}
-      {counts && ` · ${counts}`}
+      <span
+        class="activity-caption"
+        title={pending ? "Needs your input" : phase}
+      >
+        {pending ? "Needs your input" : phase}
+      </span>
+      {counts && <span class="activity-counts"> · {counts}</span>}
     </span>
   );
 }

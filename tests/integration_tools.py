@@ -1014,3 +1014,32 @@ def test_approval_remembers_exact_action_and_forwards_a_refusal(root, home, *, b
         # The refusal reached the model as guidance rather than a bare denial.
         assert_true(refusal.get("steered"), (refusal, output))
         assert_true(b"approval-done" in output, output)
+
+
+def test_execution_description_is_display_only(root, home, *, binary):
+    descriptions = ["Checking test output", {"invalid": "display metadata"}]
+    steps = []
+    for index, description in enumerate(descriptions):
+        steps.append(
+            tool_call("run", {"command": f"printf label-proof-{index}", "description": description})
+        )
+    steps.append(event({"content": "description-ok"}))
+    with Server(steps) as server:
+        result = run(
+            root, base_env(home, server.url), "--yolo", "-p", "exercise labels", binary=binary
+        )
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true("description-ok" in result.stdout, result.stdout)
+        final = server.requests[-1][1]
+        assert_true(
+            any("label-proof-0" in output for output in tool_results(final["messages"])), final
+        )
+        assert_true(
+            any("label-proof-1" in output for output in tool_results(final["messages"])), final
+        )
+        replay = [
+            json.loads(call["function"]["arguments"])["description"]
+            for message in final["messages"]
+            for call in message.get("tool_calls", [])
+        ]
+        assert_true(replay == descriptions, replay)

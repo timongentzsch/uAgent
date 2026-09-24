@@ -20,6 +20,7 @@
 #include "include/api/wire.h"
 #include "include/core/checked.h"
 #include "include/core/events.h"
+#include "include/core/limits.h"
 #include "include/core/strings.h"
 #include "include/transport/sse.h"
 
@@ -50,6 +51,12 @@ struct StreamCtx {
   std::string timeout_reason;
   SseParser sse;
   std::vector<SseEvent> events;  // reused across write callbacks
+  struct ReasoningSpan {
+    size_t offset = 0, bytes = 0;
+    bool complete = false;
+  };
+  std::map<std::string, ReasoningSpan> reasoning_parts;
+  bool tool_arguments_started = false;
 
   // Hold leading content back while it could still be any tool protocol, so
   // neither our fallback blocks nor malformed provider markup flashes as an
@@ -71,12 +78,62 @@ struct StreamCtx {
     Emit(std::move(event));
   }
 
-  void OutputReasoning(const std::string& value) {
+  void OutputReasoning(const ReasoningDelta& fragment) {
+    if (fragment.text.empty() && !reasoning_parts.contains(fragment.part)) {
+      return;
+    }
+    auto [found, inserted] = reasoning_parts.try_emplace(fragment.part);
+    ReasoningSpan& span = found->second;
+    if (span.complete && !fragment.complete) return;
+    std::string addition = fragment.text;
+    size_t erase = 0;
+    std::string separator;
+    if (inserted) {
+      if (!res->reasoning.empty()) separator = "\n\n";
+      span.offset = res->reasoning.size();
+    } else if (fragment.snapshot) {
+      const std::string_view previous(res->reasoning.data() + span.offset,
+                                      span.bytes);
+      if (addition == previous && span.complete == fragment.complete) return;
+      if (addition.starts_with(previous)) {
+        addition.erase(0, span.bytes);
+      } else {
+        erase = span.bytes;
+      }
+    } else if (span.complete) {
+      return;
+    }
+    const size_t offset = erase ? span.offset : span.offset + span.bytes;
+    const bool reset = offset != res->reasoning.size() || erase > 0;
+    const std::string patch = separator + addition;
+    res->reasoning.replace(offset, erase, patch);
+    for (auto& [key, other] : reasoning_parts) {
+      if (key != fragment.part && other.offset >= offset) {
+        other.offset = other.offset - erase + patch.size();
+      }
+    }
+    if (inserted) span.offset += separator.size();
+    span.bytes = span.bytes - erase + addition.size();
+    span.complete = fragment.complete;
     json data = event_context;
-    data["text"] = value;
-    data["offset"] = res->reasoning.size() - value.size();
+    data["text"] = reset ? res->reasoning : patch;
+    if (reset) data["append_text"] = patch;  // Append-only terminal stream.
+    if (erase) data["corrected"] = true;
+    data["offset"] = reset ? 0 : offset;
+    data["reset"] = reset;
+    data["part"] = fragment.part;
+    data["reasoning_kind"] = fragment.kind;
+    // Captions consume new text only; a corrected final snapshot resets its
+    // bounded line reader. Transcript reconciliation never enters replay.
+    const bool complete_line =
+        fragment.complete && span.bytes <= kActivityLineBytes;
+    data["reasoning_text"] =
+        complete_line ? res->reasoning.substr(span.offset, span.bytes)
+                      : addition;
+    data["reasoning_reset"] = erase > 0 || complete_line;
+    data["complete"] = fragment.complete;
     Event event{EventId::kReasoningDelta, std::move(data)};
-    event.text = value;
+    event.text = patch;
     Emit(std::move(event));
   }
 
@@ -115,9 +172,12 @@ struct StreamCtx {
       data.update(event_context);
       Emit(Event{EventId::kHostedToolActivity, std::move(data)});
     }
-    if (!delta.reasoning.empty()) {
-      res->reasoning += delta.reasoning;
-      OutputReasoning(delta.reasoning);
+    for (const ReasoningDelta& fragment : delta.reasoning_parts) {
+      OutputReasoning(fragment);
+    }
+    if (delta.tool_arguments && !tool_arguments_started) {
+      tool_arguments_started = true;
+      Emit(Event{EventId::kToolArguments, event_context});
     }
     if (!delta.content.empty()) EmitContent(delta.content);
     if (observe_progress) {

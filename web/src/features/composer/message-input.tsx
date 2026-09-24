@@ -1,11 +1,5 @@
 import type { JSX, RefObject } from "preact";
-import { useLayoutEffect, useRef } from "preact/hooks";
-import { observeResize } from "../../shared/layout.ts";
-
-function resize(element: HTMLTextAreaElement) {
-  element.style.height = "0px";
-  element.style.height = `${element.scrollHeight}px`;
-}
+import { Textarea } from "../../shared/form-controls.tsx";
 
 // Main and child composers share growth, IME handling and submit semantics.
 export default function MessageInput({
@@ -19,27 +13,13 @@ export default function MessageInput({
   resizeKey?: number;
   submit: (event: Event) => void;
 }) {
-  const local = useRef<HTMLTextAreaElement>(null);
-  const ref = inputRef || local;
-  useLayoutEffect(() => {
-    const element = ref.current;
-    if (!element) return;
-    resize(element);
-  }, [props.value, resizeKey]);
-  useLayoutEffect(() => {
-    const element = ref.current;
-    if (!element) return;
-    let width = element.clientWidth;
-    return observeResize(() => {
-      if (element.clientWidth === width) return;
-      width = element.clientWidth;
-      resize(element);
-    }, element.parentElement!);
-  }, []);
   return (
-    <textarea
+    <Textarea
+      class="message-input"
+      grow
+      resizeKey={resizeKey}
       {...props}
-      ref={ref}
+      inputRef={inputRef}
       onKeyDown={(event) => {
         onKeyDown?.(event);
         if (

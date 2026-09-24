@@ -88,6 +88,7 @@ struct SessionCommandResult {
 
 struct HostWaitState {
   std::vector<std::string> paths;
+  std::map<std::string, FileStamp> observed;
   std::chrono::steady_clock::time_point deadline;
   bool wake = false;
 };

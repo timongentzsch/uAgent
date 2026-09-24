@@ -22,6 +22,8 @@ namespace uagent {
   X(TestCapsAndEscaping)                         \
   X(TestFileTools)                               \
   X(TestMathTransliteration)                     \
+  X(TestActivityProjection)                      \
+  X(TestReasoningPartReconciliation)             \
   X(TestHostedSearchStatusRow)                   \
   X(TestActivityBar)                             \
   X(TestDiffLineColoring)                        \

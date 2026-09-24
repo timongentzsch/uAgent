@@ -17,14 +17,11 @@ bool PrintSearchReceipt(int64_t searches, const json& annotations,
 
 void PrintCitationSources(const json& annotations);
 
-// Generic plain-text activity normalization: collapse whitespace and drop
-// common lightweight formatting punctuation. It never branches on provider,
-// model, or inferred reasoning syntax.
-std::string StripDisplayMarkdown(const std::string& text);
-
 // Unified-diff line styling shared by change receipts and approval previews.
 const char* DiffLineStyle(std::string_view line);
 std::string ColorizeDiffLines(std::string_view text);
+
+class TerminalSpinner;
 
 class TerminalPresenter {
  public:
@@ -41,6 +38,7 @@ class TerminalPresenter {
  private:
   struct State;
   std::unique_ptr<State> state_;
+  std::unique_ptr<TerminalSpinner> spinner_;
 };
 
 void PrintMessageHeader();

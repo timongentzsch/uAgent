@@ -81,6 +81,9 @@ inline constexpr int64_t kUsageProgressIntervalMs = 100;
 inline constexpr size_t kUsageProgressBytes = KiB(1);
 inline constexpr int64_t kStreamBatchIntervalMs = 12;
 inline constexpr size_t kStreamBatchBytes = KiB(8);
+// Short activity captions are presentation policies, not model limits.
+inline constexpr size_t kActivityLabelBytes = 160;
+inline constexpr size_t kActivityLineBytes = 192;
 
 // Turn-loop recovery stages. A valid repeated call gets two model-facing
 // corrections before the high ceiling prevents an unbounded paid loop.

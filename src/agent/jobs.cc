@@ -184,6 +184,16 @@ std::string CollectSessionOutput(const ProcessSupervisor& supervisor,
   }
   for (;;) {
     uint64_t generation = supervisor.Generation();
+    // Observe stop conditions before draining. A marker or exit arriving
+    // after a drain must not end this poll without returning its new bytes.
+    bool terminal = false;
+    bool matched = false;
+    {
+      std::lock_guard<std::mutex> lock(job.session->mutex);
+      terminal = ActivityTerminal(job.session->state);
+      matched = !until.empty() &&
+                job.session->until_window.find(until) != std::string::npos;
+    }
     std::string chunk = DrainActivityOutput(job, cap);
     if (chunk != kNoNewActivityOutput) {
       collected.Push(chunk);
@@ -195,15 +205,8 @@ std::string CollectSessionOutput(const ProcessSupervisor& supervisor,
     // Materialising the buffer is not free, so every exit test below shares one
     // snapshot per iteration.
     std::string snapshot = collected.Snapshot();
-    bool terminal = false;
-    bool matched = false;
-    {
-      std::lock_guard<std::mutex> lock(job.session->mutex);
-      terminal = ActivityTerminal(job.session->state);
-      matched = !until.empty() &&
-                (snapshot.find(until) != std::string::npos ||
-                 job.session->until_window.find(until) != std::string::npos);
-    }
+    matched = matched ||
+              (!until.empty() && snapshot.find(until) != std::string::npos);
     // keep=false is the abort case: an interrupted wait reports only that,
     // leaving the captured bytes for the next read.
     auto finish = [&](std::string_view note, bool keep = true) {

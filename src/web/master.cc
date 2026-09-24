@@ -427,7 +427,8 @@ class Master {
         if (stopping_) break;
         auto wait = host_.RunSchedules(recovered);
         if (wait.wake) host_wake_.Wake();
-        WaitForAnyFileChange(wait.paths, wait.deadline, host_wake_.read.Get());
+        WaitForAnyFileChange(wait.paths, wait.deadline, host_wake_.read.Get(),
+                             wait.observed);
         host_wake_.Drain();
       }
     });

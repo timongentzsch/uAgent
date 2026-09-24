@@ -6,7 +6,7 @@ import type {
   ToolCatalogue,
   ToolCatalogueItem,
 } from "../../shared/types.ts";
-import { LoadError, Select, Spinner } from "../../shared/ui.tsx";
+import { LoadError, Select, Spinner, Input } from "../../shared/ui.tsx";
 import { command } from "../../state/api.ts";
 
 const labels: Record<string, string> = {
@@ -225,7 +225,7 @@ export default function Tools({
             });
           }}
         >
-          <input
+          <Input
             aria-label="New tool category"
             placeholder="New category"
             value={categoryName}
@@ -254,7 +254,7 @@ export default function Tools({
                 });
             }}
           >
-            <input
+            <Input
               name="name"
               aria-label={`Name for ${category.name}`}
               defaultValue={category.name}
@@ -283,7 +283,7 @@ export default function Tools({
         </p>
       )}
       {error && <LoadError error={error} />}
-      <input
+      <Input
         class="tools-search"
         type="search"
         value={query}
@@ -306,7 +306,7 @@ export default function Tools({
                 class={`tool-choice ${!tool.available ? "locked" : ""}`}
               >
                 <label class="tool-toggle">
-                  <input
+                  <Input
                     type="checkbox"
                     checked={tool.active}
                     disabled={locked || !tool.available}

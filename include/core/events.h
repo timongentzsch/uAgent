@@ -32,6 +32,7 @@ enum class EventId : uint16_t {
   kTurnStopped,
   kTurnCompleted,
   kToolCall,
+  kToolStarted,
   kToolResult,
   kActivityCompleted,
   kCapabilityChanged,
@@ -40,6 +41,9 @@ enum class EventId : uint16_t {
   kAnswer,
   kError,
   kResponseStarted,
+  kToolArguments,
+  kResponseRetry,
+  kActivityStatus,
   kReasoningDelta,
   kAnswerDelta,
   kHostedToolActivity,
@@ -165,6 +169,7 @@ struct AppEvent {
 using EventSubscriber = std::function<void(const AppEvent&)>;
 
 class TerminalPresenter;
+class ActivityProjection;
 
 // Bounded metadata-only session journal. It never enters model context and is
 // flushed as a private sidecar beside the existing format-3 session snapshot.
@@ -220,6 +225,8 @@ class Observability {
   JsonEventStream json_;
   SessionJournal journal_;
   std::unique_ptr<TerminalPresenter> terminal_;
+  std::unique_ptr<ActivityProjection> activity_;
+  bool render_activity_ = false;
   std::vector<std::pair<uint64_t, EventSubscriber>> subscribers_;
   // Serializes subscriber delivery without holding the sink/state mutex.
   // Recursive so a callback may emit or unsubscribe itself.

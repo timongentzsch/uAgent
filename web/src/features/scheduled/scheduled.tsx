@@ -6,7 +6,15 @@ import type {
 } from "../../shared/types.ts";
 import { useEffect, useState } from "preact/hooks";
 import { Plus, ArrowLeft, Play, Square } from "lucide-preact";
-import { Field, Select, Modal, LoadError, Spinner } from "../../shared/ui.tsx";
+import {
+  Field,
+  Select,
+  Modal,
+  LoadError,
+  Spinner,
+  Input,
+  Textarea,
+} from "../../shared/ui.tsx";
 import { Menu, MenuItem } from "../../shared/popover.tsx";
 import { Popover } from "../../shared/popover.tsx";
 import ModelPicker from "../settings/model-picker.tsx";
@@ -250,7 +258,7 @@ export default function Scheduled({
                 )}
                 <div class="field-row">
                   <Field label="Name">
-                    <input
+                    <Input
                       value={task.name}
                       onInput={(event) =>
                         edit({ name: event.currentTarget.value })
@@ -264,7 +272,7 @@ export default function Scheduled({
                   />
                 </div>
                 <Field label="Instructions">
-                  <textarea
+                  <Textarea
                     rows={5}
                     value={task.prompt}
                     onInput={(event) =>
@@ -300,7 +308,7 @@ export default function Scheduled({
                   </Field>
                   {task.schedule.type === "once" ? (
                     <Field label="Date and time · your timezone">
-                      <input
+                      <Input
                         type="datetime-local"
                         value={localInput(task.schedule.at)}
                         onChange={(event) =>
@@ -315,7 +323,7 @@ export default function Scheduled({
                     </Field>
                   ) : task.schedule.type === "interval" ? (
                     <Field label="Every · minutes">
-                      <input
+                      <Input
                         type="number"
                         min={1}
                         max={525600}
@@ -330,7 +338,7 @@ export default function Scheduled({
                   ) : (
                     <>
                       <Field label="Time">
-                        <input
+                        <Input
                           type="time"
                           value={task.schedule.time}
                           onChange={(event) =>
@@ -339,7 +347,7 @@ export default function Scheduled({
                         />
                       </Field>
                       <Field label="Timezone">
-                        <input
+                        <Input
                           value={task.schedule.timezone}
                           onChange={(event) =>
                             rule({ timezone: event.currentTarget.value })

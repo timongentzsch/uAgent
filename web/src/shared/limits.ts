@@ -17,3 +17,6 @@ export const progressiveMarkdownIntervalMs = 120;
 export const progressiveMarkdownScanLines = 40;
 export const retainedBackgroundViews = 4;
 export const commandReceiptWaitMs = 30_000;
+
+// Mobile Safari avoids focus zoom for an editable layout font of at least 16px.
+export const focusFontFloor = 16;

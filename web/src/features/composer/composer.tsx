@@ -2,7 +2,7 @@ import type { ConnectionPhase } from "../../shared/connection-status.tsx";
 import "./attachments.css";
 import { useCommandSuggestions } from "./command-suggestions.tsx";
 import { parseSlash } from "./slash.ts";
-import { Deferred, Field, Select, Spinner } from "../../shared/ui.tsx";
+import { Deferred, Field, Select, Spinner, Input } from "../../shared/ui.tsx";
 import { bytes } from "../../shared/quantities.ts";
 import type {
   SlashCommand,
@@ -328,7 +328,7 @@ export default function Composer({
                   )}
                   <span title={asset.name}>
                     {renaming === asset.id && !asset.pending ? (
-                      <input
+                      <Input
                         aria-label={`Rename ${asset.name}`}
                         defaultValue={asset.name}
                         // eslint-disable-next-line jsx-a11y/no-autofocus
@@ -387,7 +387,7 @@ export default function Composer({
           <div class="composer-actions">
             <label class="file-button icon-button" title="Attach files">
               <Paperclip />
-              <input
+              <Input
                 type="file"
                 aria-label="Attach files"
                 multiple

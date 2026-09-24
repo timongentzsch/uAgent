@@ -32,6 +32,8 @@ struct WireRequest {
   bool native_web_search = false;
   bool function_web_search = true;
   bool include_web_search_sources = false;
+  bool reasoning_summary = false;
+  bool adaptive_thinking = false;
 };
 
 bool WireSupportsHostedTool(WireApi wire_api, HostedTool tool);
@@ -77,12 +79,24 @@ struct HostedToolDelta {
   int64_t source_count = -1;  // negative when the provider did not say
 };
 
+struct ReasoningDelta {
+  std::string part, kind, text;
+  bool complete = false;
+  bool snapshot = false;
+};
+
 struct WireStreamDelta {
   std::string content;
   std::string reasoning;
+  std::vector<ReasoningDelta> reasoning_parts;
+  bool tool_arguments = false;
   bool activity = false;
   std::optional<HostedToolDelta> hosted_tool;
 };
+
+void AddReasoningDelta(WireStreamDelta& delta, std::string part,
+                       std::string kind, std::string text,
+                       bool complete = false, bool snapshot = false);
 
 // The observable payload of a hosted-tool step. The query is deliberately
 // absent: it would be the one piece of model-chosen prose on a spine whose

@@ -44,11 +44,15 @@
 }
 .document-input {
   flex: 1;
-  min-height: min(14rem, calc(var(--viewport-height) * 0.3));
+  --input-min-height: min(14rem, calc(var(--viewport-height) * 0.3));
+  min-height: var(--input-min-height);
   flex-shrink: 0;
-  resize: none;
   font-family: inherit;
   line-height: 1.6;
+}
+.document-input > textarea {
+  height: calc(100% / var(--input-scale));
+  resize: none;
 }
 .document-preview {
   flex: 1;

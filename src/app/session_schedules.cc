@@ -264,6 +264,9 @@ HostWaitState SessionHost::RunSchedules(bool& recovered) {
       }
       replay_.Publish(epoch_, "", "", std::move(event), false);
     }
+    // The CLI may queue a run after this tick, before the file watcher opens.
+    // Compare against the store version actually processed by this host.
+    wait.observed.emplace(SchedulePath(), schedule_stamp_);
   }
   wait.paths = InvalidationPaths(projects);
   return wait;

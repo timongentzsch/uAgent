@@ -540,3 +540,38 @@ test("closing a view aborts its pending command wait", async () => {
     globalThis.fetch = original;
   }
 });
+
+test("reasoning final corrections replace the preview and activity retains provenance", () => {
+  const events = [
+    { type: "response.started", data: { response_id: "r" } },
+    {
+      type: "response.reasoning.delta",
+      data: { response_id: "r", text: "Draft" },
+    },
+    {
+      type: "response.reasoning.delta",
+      data: { response_id: "r", text: "Final", reset: true },
+    },
+    {
+      type: "response.reasoning.delta",
+      data: { response_id: "r", text: " summary" },
+    },
+  ];
+  assert.equal(liveBlocks(events)[0].reasoning, "Final summary");
+  const detail = {
+    source: "model_intent",
+    label: "Running · Checking tests",
+    active_tools: 2,
+  };
+  const next = applySessionEvent(
+    { cursor: 0, metadata: { id: "s" } },
+    {
+      kind: "activity",
+      phase: "tool",
+      activity: detail.label,
+      activity_detail: detail,
+    },
+  );
+  assert.equal(next.state.phase, "tool");
+  assert.deepEqual(next.state.activity_detail, detail);
+});

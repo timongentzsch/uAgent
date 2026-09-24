@@ -192,14 +192,21 @@ WireStreamDelta DecodeOpenAiStreamEvent(std::string_view data,
       event_delta["reasoning_content"].is_string()) {
     direct_reasoning = event_delta["reasoning_content"].get<std::string>();
   }
-  if (!direct_reasoning.empty()) {
-    delta.reasoning = std::move(direct_reasoning);
-    delta.activity = true;
-  } else if (!details_reasoning.empty()) {
-    // Some OpenRouter providers stream normalized reasoning only through
-    // reasoning_details, without the convenience `reasoning` field.
-    delta.reasoning = std::move(details_reasoning);
-    delta.activity = true;
+  if (!details_reasoning.empty()) {
+    for (const json& detail : event_delta["reasoning_details"]) {
+      const std::string type = JsonValue(detail, "type", "");
+      const bool summary = type == "reasoning.summary";
+      if (!summary && type != "reasoning.text") continue;
+      const std::string text =
+          JsonValue(detail, summary ? "summary" : "text", "");
+      if (text.empty()) continue;
+      const std::string part =
+          type + "/" + std::to_string(JsonValue(detail, "index", int64_t{-1}));
+      AddReasoningDelta(delta, part, summary ? "summary" : "reasoning", text);
+    }
+  } else if (!direct_reasoning.empty()) {
+    AddReasoningDelta(delta, "reasoning", "reasoning",
+                      std::move(direct_reasoning));
   }
   if (event_delta.contains("content") && event_delta["content"].is_string()) {
     delta.content = event_delta["content"].get<std::string>();
@@ -210,7 +217,8 @@ WireStreamDelta DecodeOpenAiStreamEvent(std::string_view data,
     return delta;
   }
 
-  delta.activity = delta.activity || !event_delta["tool_calls"].empty();
+  delta.tool_arguments = !event_delta["tool_calls"].empty();
+  delta.activity = delta.activity || delta.tool_arguments;
   for (const json& tool_call : event_delta["tool_calls"]) {
     if (!tool_call.is_object()) continue;
     int64_t index = JsonValue(tool_call, "index", int64_t{-1});

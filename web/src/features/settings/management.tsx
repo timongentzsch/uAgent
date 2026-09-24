@@ -1,7 +1,7 @@
 import type { CommandResults } from "../../shared/types.ts";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { manage } from "../../state/api.ts";
-import { Field, Select } from "../../shared/ui.tsx";
+import { Field, Select, Input } from "../../shared/ui.tsx";
 import "./management.css";
 
 export function useLibrary(
@@ -61,7 +61,7 @@ export function ProjectField({
   useLayoutEffect(() => setDraft(value), [value]);
   return (
     <Field label="Project">
-      <input
+      <Input
         list="management-projects"
         value={draft}
         onInput={(event) => setDraft(event.currentTarget.value)}

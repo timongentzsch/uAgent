@@ -460,6 +460,10 @@ json ProcessSupervisor::ActivityViews() const {
       std::string progress = job.session->transcript.TailLine();
       if (job.kind != ActivityKind::kSubagent ||
           progress.starts_with(kHeadlessProgressPrefix)) {
+        if (job.kind == ActivityKind::kSubagent) {
+          progress.erase(
+              0, std::char_traits<char>::length(kHeadlessProgressPrefix));
+        }
         row["progress"] = Utf8Trunc(progress, 240);
       }
       if (job.session->stop_requested) row["status"] = "stopping";

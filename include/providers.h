@@ -24,6 +24,7 @@ struct ModelRoute {
   bool hosted_web_search = false;
   std::vector<std::string> supported_efforts;
   json input_modalities = nullptr;
+  json features = nullptr;
 };
 
 struct NamedProvider {
@@ -32,6 +33,7 @@ struct NamedProvider {
   ProviderProtocol protocol = ProviderProtocol::kOpenAi;
   WireApi wire_api = WireApi::kChatCompletions;
   bool hosted_web_search = false;
+  json features = nullptr;
 };
 
 struct ProviderCatalog {
@@ -47,6 +49,7 @@ struct ModelInfo {
   // Display name from the catalog (`name`); empty when the provider sends
   // none. Never used as an id — search and selection stay id-based.
   std::string name = "";
+  json features = nullptr;
 };
 
 struct ModelCandidate {
@@ -122,6 +125,7 @@ struct SideRoute {
   WireApi wire_api = WireApi::kChatCompletions;
   bool hosted_web_search = false;
   bool unresolved = false;
+  json features = nullptr;
 };
 
 SideRoute ResolveSideRoute(const Api& api,

@@ -30,6 +30,7 @@ enum class RejectedCapability : uint8_t {
   kVideoInput,
   kParallelTools,
   kStreamUsage,
+  kReasoningSummary,
 };
 
 const char* ProviderProtocolName(ProviderProtocol protocol);
@@ -49,6 +50,9 @@ struct ProviderCapabilities {
   bool native_tools = true;
   bool parallel_tools = true;
   bool stream_usage_option = true;
+  bool reasoning_summary = false;
+  bool adaptive_thinking = false;
+  json model_features = nullptr;
   json input_modalities = nullptr;
   bool image_input = true;
   // Document parts, which not every route accepts even when it takes images.
@@ -85,6 +89,7 @@ struct ProviderCapabilities {
     return tool == HostedTool::kWebSearch && hosted_web_search;
   }
   void SetInputModalities(const json& modalities);
+  void SetModelFeatures(const json& features);
   void ResetNegotiated();
   void Observe(const ChatResult& result);
   json DiagnosticJson() const;

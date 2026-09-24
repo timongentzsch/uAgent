@@ -72,7 +72,11 @@ void TestWireAdapters() {
   WireRequest responses_request{"gpt-test", messages, schemas, "high",
                                 4096,       true,     true,    false,
                                 true,       true,     true};
+  CHECK(!EncodeWireRequest(WireApi::kResponses, responses_request)["reasoning"]
+             .contains("summary"));
+  responses_request.reasoning_summary = true;
   json responses = EncodeWireRequest(WireApi::kResponses, responses_request);
+  CHECK(responses["reasoning"]["summary"] == "auto");
   CHECK(responses["model"] == "gpt-test");
   CHECK(responses["store"] == false);
   CHECK(responses["max_output_tokens"] == 4096);
@@ -106,6 +110,8 @@ void TestWireAdapters() {
                                 2048,          true,
                                 true,          false,
                                 true,          true};
+  anthropic_request.adaptive_thinking = true;
+  anthropic_request.reasoning_summary = true;
   json anthropic =
       EncodeWireRequest(WireApi::kAnthropicMessages, anthropic_request);
   CHECK(anthropic["system"][0]["text"] == "baseline");
@@ -113,6 +119,10 @@ void TestWireAdapters() {
   CHECK(anthropic["max_tokens"] == 2048);
   CHECK(anthropic["cache_control"]["type"] == "ephemeral");
   CHECK(anthropic["thinking"]["type"] == "adaptive");
+  CHECK(anthropic["thinking"]["display"] == "summarized");
+  anthropic_request.adaptive_thinking = false;
+  CHECK(!EncodeWireRequest(WireApi::kAnthropicMessages, anthropic_request)
+             .contains("thinking"));
   CHECK(anthropic["output_config"]["effort"] == "high");
   CHECK(anthropic["messages"][0]["content"][1]["type"] == "image");
   CHECK(anthropic["messages"][0]["content"][2]["type"] == "document");

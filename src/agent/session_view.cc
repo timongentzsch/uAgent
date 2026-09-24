@@ -206,7 +206,9 @@ bool ApplySessionEvent(json& state, const std::string& type, const json& data) {
         const char* bytes = answer ? "text_bytes" : "reasoning_bytes";
         const std::string current = JsonValue(*found, field, "");
         const std::string delta = JsonValue(data, "text", "");
-        if (data.contains("offset")) {
+        if (!answer && JsonValue(data, "reset", false)) {
+          (*found)[field] = delta;
+        } else if (data.contains("offset")) {
           const size_t offset = JsonValue(data, "offset", size_t{0});
           // A checkpoint may already contain this delta. Only append the
           // still-missing suffix when its overlapping bytes agree; a gap or

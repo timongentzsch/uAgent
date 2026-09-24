@@ -1,11 +1,56 @@
 # Agent activity labels and provider reasoning
 
-Research and implementation proposal, 2026-09-23. This feature is **not yet
-implemented**. The reconnect/loading fixes in the current UI refactor are
-separate. Scope of this comparison: provider requests/stream decoding,
-reasoning replay, tool dispatch/presentation, status delivery, retries and
-stream rendering. This is a source review, not a benchmark of oh-my-pi or an
-exhaustive audit of either project.
+Implementation and comparison, updated 2026-09-24. The five implementation
+steps below are complete. One core activity projection now serves terminal,
+web and process-child progress. Source review covers provider requests/stream
+decoding, replay, dispatch, status, retries and rendering; it is not an
+exhaustive audit of either harness.
+
+## Implemented contract
+
+- `tool.call` means preparing; `tool.started` is emitted immediately before
+  execution. Occurrence IDs keep parallel calls independent. Decisions,
+  provider retry waits and terminal events override the caption.
+- Native read/write/search use existing tool summaries. Optional `description`
+  on `run` and `scratch` supplies model-authored display intent; it is stripped
+  before validation, approval and execution. Original arguments remain in
+  provider replay. This adds 240 serialized schema bytes across both tools,
+  no extra inference request and no inferred token/cost claim.
+- Responses summary parts, Anthropic readable thinking and OpenRouter
+  text/summary details share part reconciliation. Final-only text, corrections,
+  duplicate finals and interleaving update the display; opaque/signed replay
+  remains provider-native. Verbose terminal output is append-only; provider
+  corrections are marked explicitly rather than replaying a whole snapshot.
+- Official OpenAI Responses routes request `reasoning.summary: auto` unless
+  effort is `none`. Compatible routes opt in through `features.reasoning_summary`
+  in provider/model configuration or `UAGENT_MODEL_FEATURES`. A structured
+  unsupported summary/whole-reasoning-field rejection disables summary requests
+  for that route/session
+  and retries only before any semantic progress.
+- Anthropic Models API adaptive-thinking/effort capabilities are read from
+  catalog metadata. Adaptive thinking requires an advertised capability plus
+  an explicit positive effort; supported summaries request `display: summarized`.
+  An explicit effort is passed through even without adaptive metadata rather
+  than silently ignored. No model names, extra thinking budget or beta update
+  channel are inferred to improve a caption. Explicit route features override
+  catalog metadata; capability rejection survives a catalog refresh.
+- Short complete readable lines/headings are a documented display heuristic.
+  A missing/long/incomplete line falls back to Thinking. Transport reconnection
+  and provider retry remain separate. Labels never establish execution success.
+- Process children reuse their existing bounded progress log; persistent child
+  inspection reads the same status from its worker snapshot. The popup says
+  latest reported activity: this does not create a new child subscription.
+- Shared form controls, including search/settings and both composers, paint text
+  at the selected density while keeping the layout font at least 16px on touch
+  devices. Noninteractive dialog
+  headings/containers have no focus outline; keyboard controls retain theirs.
+
+Regression coverage includes core projection and CLI parity, signed replay,
+provider capability fallback, invalid display metadata, retry state, browser
+zoom/focus and the mixed streaming workload in `web/tests/performance.spec.js`.
+See [measurements](MEASUREMENTS.md#activity-display-verification) for benchmark
+scope and limits. Physical iPhone focus behavior and real-provider latency
+remain outside the desktop/mock checks.
 
 ## What oh-my-pi actually does
 
@@ -45,7 +90,7 @@ Provider contracts: [OpenAI reasoning summaries](https://developers.openai.com/a
 [Anthropic thinking](https://platform.claude.com/docs/en/build-with-claude/thinking),
 [OpenRouter reasoning](https://openrouter.ai/docs/guides/best-practices/reasoning-tokens).
 
-## Comparison with µAgent
+## Comparison with µAgent before this implementation
 
 | Area | Current evidence | Decision |
 | --- | --- | --- |
@@ -67,7 +112,7 @@ Local anchors: `src/api/wire_request.cc`, `src/api/wire_stream.cc`,
 `src/agent/tool_loop.cc`, `src/app/session_worker.cc`, `include/api/retry.h`,
 `src/agent/turn.cc`, `include/core/limits.h`.
 
-## Recommended implementation
+## Implementation steps
 
 ### 1. Make observed actions useful first
 
@@ -146,6 +191,5 @@ animation/polling loop.
   against the same workload without labels; do not equate a desktop mock with
   real provider or iPhone performance.
 
-Implement in this order. The agent loop needs targeted lifecycle events and
-provider fidelity fixes; this review does not justify replacing the whole loop
-or importing oh-my-pi's abstraction layers.
+These changes retain the agent loop and existing transport batching. Parking
+a repeatedly polled live activity remains a separate behavior change.

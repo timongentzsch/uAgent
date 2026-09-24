@@ -13,6 +13,7 @@
 #include "include/agent/tool_presentation.h"
 #include "include/api/openai_stream.h"
 #include "include/api/retry.h"
+#include "include/core/activity.h"
 #include "include/core/term.h"
 #include "include/tools/files.h"
 #include "include/tools/registry.h"
@@ -20,6 +21,61 @@
 #include "tests/unit/test_support.h"
 
 namespace uagent {
+
+void TestReasoningPartReconciliation() {
+  ChatResult result;
+  StreamCtx stream;
+  stream.res = &result;
+  stream.OutputReasoning({"a", "summary", "", false, true});
+  stream.OutputReasoning({"a", "summary", "First"});
+  stream.OutputReasoning({"b", "summary", "Second"});
+  stream.OutputReasoning({"a", "summary", " part"});
+  CHECK(result.reasoning == "First part\n\nSecond");
+  stream.OutputReasoning({"a", "summary", "First part", true, true});
+  stream.OutputReasoning({"a", "summary", "First part", true, true});
+  CHECK(result.reasoning == "First part\n\nSecond");
+  stream.OutputReasoning({"a", "summary", "Corrected", true, true});
+  stream.OutputReasoning({"b", "summary", "", true, true});
+  CHECK(result.reasoning == "Corrected\n\n");
+  stream.OutputReasoning({"a", "summary", "late"});
+  CHECK(result.reasoning == "Corrected\n\n");
+
+  ChatResult final;
+  StreamCtx responses;
+  responses.res = &final;
+  responses.wire_api = WireApi::kResponses;
+  const json item = {
+      {"type", "reasoning"},
+      {"id", "reason-1"},
+      {"encrypted_content", "opaque-signed"},
+      {"summary", json::array({{{"type", "summary_text"},
+                                {"text", "Final-only summary"}}})}};
+  responses.HandleEvent(
+      {"",
+       JsonDump({{"type", "response.completed"},
+                 {"response", {{"output", json::array({item})}}}}),
+       ""});
+  CHECK(final.reasoning == "Final-only summary");
+  CHECK(final.replay["items"][0] == item);
+
+  ChatResult router;
+  StreamCtx chat;
+  chat.res = &router;
+  for (const auto& text : {"Check ", "code"}) {
+    json detail = {
+        {"type", "reasoning.summary"}, {"index", 0}, {"summary", text}};
+    if (text == std::string("Check ")) detail["id"] = "first-chunk-only";
+    chat.HandleEvent(
+        {"",
+         JsonDump({{"choices",
+                    {{{"delta",
+                       {{"reasoning", text},
+                        {"reasoning_details", json::array({detail})}}}}}}}),
+         ""});
+  }
+  CHECK(router.reasoning == "Check code");
+  CHECK(router.reasoning_details[0]["summary"] == "Check code");
+}
 
 void TestSseChunkPartitions() {
   auto event = [](const json& value, const char* ending = "\n\n") {
@@ -190,13 +246,12 @@ void TestSseChunkPartitions() {
 
   // Display normalization for the reasoning ticker: decoration and line
   // structure collapse, but text that only looks like markup is preserved.
-  CHECK(StripDisplayMarkdown("first line\nlatest line\n") ==
-        "first line latest line");
-  CHECK(StripDisplayMarkdown("  padded latest  ") == "padded latest");
-  CHECK(StripDisplayMarkdown(
+  CHECK(ActivityLabel("first line\nlatest line\n") == "first line latest line");
+  CHECK(ActivityLabel("  padded latest  ") == "padded latest");
+  CHECK(ActivityLabel(
             "**Map invariants****Detail implementation****Plan provider**") ==
         "Map invariants Detail implementation Plan provider");
-  CHECK(StripDisplayMarkdown("C# and snake_case use 2*3") ==
+  CHECK(ActivityLabel("C# and snake_case use 2*3") ==
         "C# and snake_case use 2*3");
 
   std::string final_line =

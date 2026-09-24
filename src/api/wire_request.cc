@@ -364,16 +364,24 @@ json RequestEnvelope(WireApi wire_api, const WireRequest& request, json tools) {
     if (!request.reasoning_effort.empty()) {
       body["reasoning"] = {{"effort", request.reasoning_effort}};
     }
+    if (request.reasoning_summary && request.reasoning_effort != "none") {
+      body["reasoning"]["summary"] = "auto";
+    }
   } else {
     body["cache_control"] = {{"type", "ephemeral"}};
     body["max_tokens"] = request.max_output_tokens > 0
                              ? request.max_output_tokens
                              : int64_t{8192};
-    if (request.reasoning_effort == "low" ||
-        request.reasoning_effort == "medium" ||
-        request.reasoning_effort == "high" ||
-        request.reasoning_effort == "max") {
-      body["thinking"] = {{"type", "adaptive"}};
+    if (!request.reasoning_effort.empty() &&
+        request.reasoning_effort != "none") {
+      if (request.adaptive_thinking) {
+        body["thinking"] = {{"type", "adaptive"}};
+        if (request.reasoning_summary) {
+          body["thinking"]["display"] = "summarized";
+        }
+      }
+      // Effort is an explicit user setting; pass it through even when the
+      // route has not advertised adaptive thinking, rather than ignore it.
       body["output_config"] = {{"effort", request.reasoning_effort}};
     }
   }
@@ -554,7 +562,9 @@ json Api::BuildRequestBody(const json& messages, const json& tool_schemas,
                       capabilities.stream_usage_option,
                       native_web,
                       allow_function_web,
-                      capabilities.web_search_sources};
+                      capabilities.web_search_sources,
+                      capabilities.reasoning_summary,
+                      capabilities.adaptive_thinking};
   json body = cache ? cache->Encode(capabilities.wire_api, request)
                     : EncodeWireRequest(capabilities.wire_api, request);
   if (capabilities.wire_api != WireApi::kChatCompletions) {

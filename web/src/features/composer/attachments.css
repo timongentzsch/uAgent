@@ -50,7 +50,7 @@
 .chip-name:disabled {
   cursor: default;
 }
-.file-chip input[aria-label^="Rename"] {
+.file-chip .text-control {
   width: 12ch;
   max-width: 100%;
   font: inherit;

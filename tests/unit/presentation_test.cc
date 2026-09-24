@@ -11,6 +11,7 @@
 #include "include/agent/child_agent.h"
 #include "include/agent/tool_presentation.h"
 #include "include/app/options.h"
+#include "include/core/activity.h"
 #include "include/core/term.h"
 #include "include/tools/registry.h"
 #include "include/ui/display.h"
@@ -365,78 +366,54 @@ void TestDiffLineColoring() {
 // the search takes. The row is ephemeral on purpose -- several searches a turn
 // would otherwise each leave a permanent line behind.
 void TestHostedSearchStatusRow() {
-  bool prior = g_tty;
-  FixedWidth columns(80);
+  const bool prior = g_tty;
   g_tty = true;
-
   TerminalPresenter presenter;
-  auto respond = [&] {
-    Event started{EventId::kResponseStarted};
-    started.render = true;
-    started.text = kWaitingActivity;
-    presenter.Consume(started);
+  ActivityProjection projection;
+  auto send = [&](EventId id, json data = json::object()) {
+    data["turn"] = 1;
+    Event event{id, data};
+    event.render = true;
+    presenter.Consume(event);
+    if (projection.Consume(id, data)) {
+      Event status{EventId::kActivityStatus, projection.Status()};
+      status.render = true;
+      presenter.Consume(status);
+    }
   };
-  auto search = [&](const char* id, const char* phase) {
-    presenter.Consume(
-        Event{EventId::kHostedToolActivity,
-              {{"tool", "web_search"}, {"id", id}, {"phase", phase}}});
-  };
-  auto think = [&](std::string_view text) {
-    Event delta{EventId::kReasoningDelta};
-    delta.text = text;
-    presenter.Consume(delta);
-  };
-
-  // Working -> searching the web -> thinking -> answer.
-  respond();
-  CHECK(CurrentTerminalActivity() == kWaitingActivity);
-  search("ws_1", "started");
-  CHECK(CurrentTerminalActivity() == "searching the web");
-  CHECK(!CurrentTerminalActivityRolling());
-  // Reasoning arriving mid-search grows the buffer without taking the row.
-  think("checking the release notes");
-  CHECK(CurrentTerminalActivity() == "searching the web");
-  search("ws_1", "completed");
-  CHECK(CurrentTerminalActivityRolling());
-  Event answer{EventId::kAnswerDelta};
-  answer.text = "done";
-  presenter.Consume(answer);
+  send(EventId::kTurnStarted);
+  send(EventId::kResponseStarted);
+  CHECK(CurrentTerminalActivity() == "Waiting for model");
+  send(EventId::kHostedToolActivity, {{"id", "a"}, {"phase", "started"}});
+  send(EventId::kHostedToolActivity, {{"id", "b"}, {"phase", "searching"}});
+  send(EventId::kReasoningDelta, {{"text", "**Checking release notes**\n"}});
+  CHECK(CurrentTerminalActivity() == "Searching the web");
+  send(EventId::kHostedToolActivity, {{"id", "a"}, {"phase", "completed"}});
+  CHECK(CurrentTerminalActivity() == "Searching the web");
+  send(EventId::kHostedToolActivity, {{"id", "b"}, {"phase", "failed"}});
+  CHECK(CurrentTerminalActivity() == "Thinking · Checking release notes");
+  send(EventId::kAnswerDelta);
   CHECK(CurrentTerminalActivity().empty());
-  presenter.Consume(Event{EventId::kResponseFinished});
-
-  // A search opening after reasoning takes the row back, and hands it to the
-  // ticker rather than to the base label when it ends.
-  respond();
-  think("weighing options");
-  CHECK(CurrentTerminalActivityRolling());
-  search("ws_2", "searching");
-  CHECK(CurrentTerminalActivity() == "searching the web");
-  search("ws_2", "completed");
-  CHECK(CurrentTerminalActivityRolling());
-  presenter.Consume(Event{EventId::kResponseFinished});
-
-  // Overlapping searches share the row; only the last to finish releases it.
-  respond();
-  search("ws_3", "started");
-  search("ws_4", "started");
-  search("ws_3", "completed");
-  CHECK(CurrentTerminalActivity() == "searching the web");
-  search("ws_4", "failed");
-  CHECK(CurrentTerminalActivity() == kWaitingActivity);
-
-  // A completion for a search that never opened cannot strand the row.
-  search("ws_5", "completed");
-  CHECK(CurrentTerminalActivity() == kWaitingActivity);
-  presenter.Consume(Event{EventId::kResponseFinished});
-
-  // A response that ends mid-search stops the row with it: nothing outlives
-  // the response that owns it.
-  respond();
-  search("ws_6", "searching");
-  CHECK(CurrentTerminalActivity() == "searching the web");
-  presenter.Consume(Event{EventId::kResponseFinished});
+  send(EventId::kTurnStopped);
   CHECK(CurrentTerminalActivity().empty());
-
+  const std::string corrected = CaptureStdout([&] {
+    TerminalPresenter verbose;
+    verbose.Consume(
+        AppEvent{1, "", "response.started", {{"verbose", true}}, false});
+    verbose.Consume(AppEvent{
+        2, "", "response.reasoning.delta", {{"text", "original"}}, false});
+    verbose.Consume(AppEvent{3,
+                             "",
+                             "response.reasoning.delta",
+                             {{"text", "complete reconciled snapshot"},
+                              {"append_text", "revision"},
+                              {"corrected", true}},
+                             false});
+    verbose.Finish();
+  });
+  CHECK(corrected.find("[Updated provider reasoning]") != std::string::npos);
+  CHECK(corrected.find("revision") != std::string::npos);
+  CHECK(corrected.find("complete reconciled snapshot") == std::string::npos);
   g_tty = prior;
 }
 

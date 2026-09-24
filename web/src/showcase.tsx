@@ -11,14 +11,12 @@ import {
   Skeleton,
   Spinner,
   Toggle,
+  Input,
+  Textarea,
 } from "./shared/ui.tsx";
 import { Menu, MenuItem } from "./shared/popover.tsx";
-import { applyTheme } from "./shared/layout.ts";
-import {
-  applyZoom,
-  normalizeZoom,
-  SizeControls,
-} from "./shared/size-controls.tsx";
+import { applyTheme, applyZoom, normalizeZoom } from "./shared/layout.ts";
+import { SizeControls } from "./shared/size-controls.tsx";
 import { readStored, writeStored } from "./state/store.ts";
 import BrowserInput from "./features/browser/input.tsx";
 import "./shared/style.css";
@@ -68,7 +66,7 @@ function DelayedContent() {
   return ready ? (
     <div class="settings-fields">
       <Field label="Loaded value">
-        <input defaultValue="Content arrived without resizing the shell" />
+        <Input defaultValue="Content arrived without resizing the shell" />
       </Field>
       <p>
         This example deliberately delays content so layout changes are easy to
@@ -218,7 +216,7 @@ function Showcase() {
         </div>
         <div class="showcase-grid showcase-grid-two">
           <Field label="Text" help="Short supporting text belongs below.">
-            <input defaultValue="Editable value" />
+            <Input defaultValue="Editable value" />
           </Field>
           <Field label="Selection">
             <Select defaultValue="balanced">
@@ -228,7 +226,16 @@ function Showcase() {
             </Select>
           </Field>
           <Field label="Search">
-            <input type="search" placeholder="Find something…" />
+            <Input type="search" placeholder="Find something…" />
+          </Field>
+          <Field label="Number">
+            <Input type="number" defaultValue="42" />
+          </Field>
+          <Field label="Password">
+            <Input type="password" defaultValue="example" />
+          </Field>
+          <Field label="Date and time">
+            <Input type="datetime-local" defaultValue="2026-09-24T12:00" />
           </Field>
           <Toggle
             label="Example setting"
@@ -237,7 +244,7 @@ function Showcase() {
             onChange={(event) => setEnabled(event.currentTarget.checked)}
           />
           <Field label="Long text">
-            <textarea rows={4} defaultValue="Multiline content" />
+            <Textarea rows={4} defaultValue="Multiline content" />
           </Field>
         </div>
       </section>

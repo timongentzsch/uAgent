@@ -262,7 +262,6 @@
   padding-top: var(--gap);
 }
 
-.guidance-form textarea {
-  resize: vertical;
-  min-height: calc(var(--control) * 2);
+.guidance-form .message-input {
+  --input-min-height: calc(var(--control) * 2);
 }

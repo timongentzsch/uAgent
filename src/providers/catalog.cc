@@ -113,8 +113,9 @@ ProviderCatalog LoadProviderCatalog() {
     bool hosted_web_search =
         HasHostedTool(JsonValue(provider, "hosted_tools", json::array()),
                       HostedTool::kWebSearch);
-    catalog.providers.push_back({provider_name, base_url, api_key, context,
-                                 protocol, *wire_api, hosted_web_search});
+    catalog.providers.push_back(
+        {provider_name, base_url, api_key, context, protocol, *wire_api,
+         hosted_web_search, JsonValue(provider, "features", json(nullptr))});
     if (!provider.contains("models") || !provider["models"].is_object()) {
       continue;
     }
@@ -127,10 +128,15 @@ ProviderCatalog LoadProviderCatalog() {
       route.protocol = protocol;
       route.wire_api = *wire_api;
       route.hosted_web_search = hosted_web_search;
+      route.features = JsonValue(provider, "features", json(nullptr));
       if (spec.is_string()) {
         route.model = spec.get<std::string>();
       } else if (spec.is_object()) {
         route.model = JsonValue(spec, "id", "");
+        if (const json* features = JsonObject(spec, "features")) {
+          if (!route.features.is_object()) route.features = json::object();
+          route.features.update(*features);
+        }
         route.effort = JsonValue(spec, "effort", "");
         route.context = JsonValue(spec, "context", context);
         if (spec.contains("wire_api")) {
@@ -214,7 +220,29 @@ std::optional<std::vector<ModelInfo>> ParseModels(const json& response) {
     std::string id = JsonValue(model, "id", "");
     if (id.empty()) continue;
     ModelInfo info{std::move(id), {}, {}, CatalogContextLength(model)};
-    info.name = JsonValue(model, "name", "");
+    info.name = JsonValue(model, "name", JsonValue(model, "display_name", ""));
+    info.features = JsonValue(model, "features", json(nullptr));
+    if (const json* capabilities = JsonObject(model, "capabilities")) {
+      if (const json* thinking = JsonObject(*capabilities, "thinking")) {
+        if (const json* types = JsonObject(*thinking, "types")) {
+          if (const json* adaptive = JsonObject(*types, "adaptive")) {
+            if (!info.features.is_object()) info.features = json::object();
+            const bool supported = JsonValue(*adaptive, "supported", false);
+            info.features["adaptive_thinking"] = supported;
+            info.features["reasoning_summary"] = supported;
+          }
+        }
+      }
+      if (const json* effort = JsonObject(*capabilities, "effort")) {
+        for (const char* level : kReasoningEfforts) {
+          if (const json* support = JsonObject(*effort, level)) {
+            if (JsonValue(*support, "supported", false)) {
+              info.efforts.emplace_back(level);
+            }
+          }
+        }
+      }
+    }
     const json* modalities = JsonArray(model, "input_modalities");
     if (const json* architecture = JsonObject(model, "architecture")) {
       if (!modalities) {
@@ -233,6 +261,7 @@ std::optional<std::vector<ModelInfo>> ParseModels(const json& response) {
       }
     }
     if (efforts) {
+      info.efforts.clear();
       for (const json& effort : *efforts) {
         if (effort.is_string() && ValidEffort(effort.get<std::string>())) {
           info.efforts.push_back(effort.get<std::string>());

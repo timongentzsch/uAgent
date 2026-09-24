@@ -433,6 +433,25 @@ void TestRuntimeOwnershipHelpers() {
   // Native tool calls are not a negotiable capability: a route that rejects
   // them has no fallback to degrade to, so this stays an ordinary error and
   // the turn reports the provider's own message.
+  auto summaries =
+      CapabilitiesForRoute(ProviderProtocol::kOpenAi,
+                           "https://api.openai.com/v1", WireApi::kResponses);
+  CHECK(summaries.reasoning_summary);
+  CHECK(!CapabilitiesForRoute(ProviderProtocol::kOpenAi,
+                              "https://proxy.test/v1", WireApi::kResponses)
+             .reasoning_summary);
+  rejected.error = "Unsupported parameter: reasoning.summary";
+  CHECK(RejectedRouteCapability(rejected, summaries) ==
+        RejectedCapability::kReasoningSummary);
+  rejected.error =
+      "Unsupported parameter: 'reasoning' is not supported with this model";
+  CHECK(RejectedRouteCapability(rejected, summaries) ==
+        RejectedCapability::kReasoningSummary);
+  summaries.SetModelFeatures({{"reasoning_summary", false}});
+  summaries.SetModelFeatures(
+      {{"reasoning_summary", true}, {"adaptive_thinking", true}});
+  CHECK(!summaries.reasoning_summary);
+  CHECK(summaries.adaptive_thinking);
   rejected.error = "This model does not support tool calling";
   CHECK(RejectedRouteCapability(rejected, generic) ==
         RejectedCapability::kNone);

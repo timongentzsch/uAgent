@@ -154,10 +154,14 @@ export function liveBlocks(events: HostEvent[], prior: Block[] = []): Block[] {
             }
           : {
               activity: data.activity,
+              agent_id: data.agent_id,
+              activity_id: data.activity_id,
               text:
-                typeof data.result === "string"
-                  ? data.result
-                  : JSON.stringify(data.result) || "",
+                typeof data.text === "string"
+                  ? data.text
+                  : typeof data.result === "string"
+                    ? data.result
+                    : JSON.stringify(data.result) || "",
               status:
                 data.completion_status || String(data.status || "running"),
               duration_ms: data.duration_ms,

@@ -1,1 +1,0 @@
-import{F as e}from"./ui-D2Xcb8p_.js";var t=e({name:`square`,size:24,node:[[`rect`,{width:`18`,height:`18`,x:`3`,y:`3`,rx:`2`,key:`afitv7`}]]});export{t};

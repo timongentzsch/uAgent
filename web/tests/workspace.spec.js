@@ -199,11 +199,13 @@ test("unread completions, background activity and conversation lifecycle", async
   await expect(
     page.getByRole("button", { name: "Activity", exact: true }),
   ).toContainText("1 command");
-  await page.getByRole("button", { name: "Activity", exact: true }).click();
+  // "Now" lists the running command; its row opens the inspector sheet.
+  const now = page.getByRole("button", { name: "Activity", exact: true });
+  await now.click();
   const activity = page
     .locator(".activity-row")
     .filter({ hasText: "BROWSER_ACTIVITY" });
-  await activity.locator("button").first().click();
+  await activity.locator(".activity-open").click();
   await expect(page.getByRole("dialog").locator(".detail-command")).toHaveText(
     "printf BROWSER_ACTIVITY; sleep 10",
   );
@@ -211,14 +213,15 @@ test("unread completions, background activity and conversation lifecycle", async
     .getByRole("dialog")
     .getByRole("button", { name: /^Close / })
     .click();
+  await now.click();
   await activity.getByRole("button", { name: /^Stop / }).click();
+  await expect(page.locator(".composer .activity-toggle")).not.toContainText(
+    "1 command",
+  );
+  // Finished work leaves "now"; its call's row stops reading as running.
   await expect(
-    page.getByRole("button", { name: "Activity", exact: true }),
-  ).not.toContainText("1 command");
-  await page
-    .getByRole("button", { name: /Show \d+ completed \/ idle/ })
-    .click();
-  await expect(activity).toContainText("stopped");
+    page.locator(".tool-disclosure").filter({ hasText: "BROWSER_ACTIVITY" }),
+  ).not.toContainText("running");
   await expect(page.locator(".composer .status-led.active")).toBeVisible();
   await conversationMenu.click();
   await page

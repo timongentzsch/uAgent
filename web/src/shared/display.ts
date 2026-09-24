@@ -21,15 +21,6 @@ export function diffLineClass(line: string, first: boolean): string {
   return "diff-ctx";
 }
 
-export function stringifyArgs(args: unknown): string {
-  if (typeof args === "string") return args;
-  try {
-    return JSON.stringify(args, null, 2);
-  } catch {
-    return String(args ?? "");
-  }
-}
-
 // Live vocabulary is single-sourced here: anything without a terminal
 // state (started but unfinished, or facts not yet recorded) reads as
 // running. Diagnostics (statistics/raw) keep the exact stored value.

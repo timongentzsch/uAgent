@@ -1,38 +1,29 @@
-/* Background activity: inline panel under the composer status line plus the
-   Activity / Subagent / Memory modal. One spacing owner per surface. */
+/* "Now" popover on the status line, and the inspector sheet. */
 
-.activities,
-.activity-panel {
+.activities {
   min-width: 0;
   max-width: 100%;
 }
 
-.activity-panel {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-2);
+.activity-popover {
+  width: calc(380rem / 14);
+  padding: var(--space-2);
 }
 
-/* Inline list owns its scroll; the toggle below it never scrolls. */
 .activity-list {
   min-width: 0;
   list-style: none;
-  margin: var(--space-2) 0 0;
+  margin: 0;
   padding: 0;
-  max-height: min(calc(160rem / 14), calc(var(--viewport-height) * 0.2));
-  overflow: auto;
-  border-top: 1px solid var(--line);
-}
-
-.activity-empty {
-  padding: var(--space-4) var(--space-1);
 }
 
 .activity-row {
   display: flex;
   min-width: 0;
   align-items: center;
-  border-bottom: 1px solid var(--line);
+}
+.activity-row + .activity-row {
+  border-top: 1px solid var(--line);
 }
 
 .activity-open {
@@ -63,15 +54,7 @@
   font-size: 0.75rem;
 }
 
-.activity-past-toggle {
-  justify-self: start;
-  font-size: 0.8rem;
-  min-height: calc(32rem / 14);
-}
-
-/* Modal: single grid, zero child margins, sections carry the labels. */
-/* Subagent/activity modal carries a full thread: widen toward the chat
-   measure so rows wrap like the transcript instead of a narrow card. */
+/* Inspector: one column, zero child margins, sections carry the labels. */
 .activity-view > .dialog-body {
   display: flex;
   flex-direction: column;
@@ -87,6 +70,15 @@
   min-width: 0;
   min-height: 0;
   flex: 1;
+}
+
+.activity-detail[hidden] {
+  display: none;
+}
+
+/* Pages (tool input/output, statistics) scroll as a whole. */
+.activity-page {
+  overflow: auto;
 }
 
 .activity-back {

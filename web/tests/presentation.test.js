@@ -5,10 +5,7 @@ import {
   statusLine,
   diffLineClass,
 } from "../src/shared/display.ts";
-import {
-  getToolPreview,
-  getToolRow,
-} from "../src/features/chat/tool-preview.ts";
+import { getToolRow } from "../src/features/chat/tool-preview.ts";
 import { liveBlocks, reconcileBlock } from "../src/state/store.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -266,92 +263,6 @@ test("running rows never read as not recorded", () => {
   assert.equal(
     statusLine({ status: undefined, duration_ms: 1500 }),
     "Done \u00b7 1.5s",
-  );
-  const preview = getToolPreview({
-    kind: "tool_result",
-    name: "run",
-    status: "not recorded",
-    arguments: { command: "sleep 60" },
-  });
-  assert.equal(preview.title, "$ sleep 60");
-  assert.equal(preview.subtitle, "Running\u2026");
-});
-
-test("activity rows name the operation, including retained string arguments", () => {
-  // Live blocks carry parsed objects; retained blocks carry a truncated
-  // JSON string. Both must render what the call actually does.
-  assert.equal(
-    getToolPreview({
-      kind: "tool_result",
-      name: "activity",
-      arguments: { operation: "poll", id: 12 },
-    }).title,
-    "Poll activity 12",
-  );
-  assert.equal(
-    getToolPreview({
-      kind: "tool_result",
-      name: "activity",
-      arguments: JSON.stringify({ operation: "poll", id: 12 }),
-    }).title,
-    "Poll activity 12",
-  );
-  assert.equal(
-    getToolPreview({
-      kind: "tool_result",
-      name: "activity",
-      arguments: { operation: "poll", id: 12, until: "READY\nnoise" },
-    }).title,
-    "Await READY \u00b7 activity 12",
-  );
-  assert.equal(
-    getToolPreview({
-      kind: "tool_result",
-      name: "activity",
-      arguments: { operation: "wait", mode: "any", ids: [1, 2] },
-    }).title,
-    "Wait for any \u00b7 1, 2",
-  );
-  assert.equal(
-    getToolPreview({
-      kind: "tool_result",
-      name: "activity",
-      arguments: { operation: "stop", id: 7 },
-    }).title,
-    "Stop activity 7",
-  );
-  assert.equal(
-    getToolPreview({
-      kind: "tool_result",
-      name: "activity",
-      arguments: { operation: "list" },
-    }).title,
-    "List activities",
-  );
-  assert.equal(
-    getToolPreview({
-      kind: "tool_result",
-      name: "activity",
-      arguments: { operation: "write", id: 3, chars: "hello" },
-    }).title,
-    "Write 5 B \u2192 activity 3",
-  );
-  assert.equal(
-    getToolPreview({
-      kind: "tool_result",
-      name: "activity",
-      arguments: "{}",
-    }).title,
-    "Activity",
-  );
-  // String arguments rescue the other tools too.
-  assert.equal(
-    getToolPreview({
-      kind: "tool_result",
-      name: "run",
-      arguments: JSON.stringify({ command: "sleep 60" }),
-    }).title,
-    "$ sleep 60",
   );
 });
 
@@ -878,7 +789,7 @@ test("absent fields never wipe present ones across paths", () => {
   assert.equal(rows[1].status, "success");
 });
 
-test("tool rows title from the native label, else local synthesis", () => {
+test("tool rows title from the native label, else the tool name", () => {
   const base = {
     kind: "tool_result",
     name: "read_path",
@@ -886,20 +797,12 @@ test("tool rows title from the native label, else local synthesis", () => {
     text: "local first line\nsecond",
     status: "success",
   };
-  // Sessions saved before activity labels synthesize from the arguments; a
-  // bare-name replay title never shadows that.
-  assert.equal(getToolRow(base).title, "Read a.txt");
-  assert.equal(
-    getToolRow({ ...base, replay: { title: "[2] read_path" } }).title,
-    "Read a.txt",
-  );
-  // The native activity label is the live receipt and always wins.
+  assert.equal(getToolRow(base).title, "read_path");
   const receipt = getToolRow({
     ...base,
-    activity: { label: "◆ memory created · project/proof" },
-    replay: { title: "memory", summary: "" },
+    activity: { label: "Memory created · project/proof" },
   });
-  assert.equal(receipt.title, "◆ memory created · project/proof");
+  assert.equal(receipt.title, "Memory created · project/proof");
 });
 
 test("consecutive tools stay flat rows in order", () => {

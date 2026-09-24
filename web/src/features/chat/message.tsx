@@ -195,10 +195,10 @@ function MessageView({
               onClick={() => activity(block)}
             >
               {block.memory
-                ? "View current memory"
+                ? "Open memory"
                 : block.agent_id
-                  ? "View subagent"
-                  : "View activity"}
+                  ? "Open agent"
+                  : "Open activity"}
             </button>
           )}
       </EventRow>
@@ -282,6 +282,11 @@ function MessageView({
                 retry={() => setRetry(retry + 1)}
                 online={online}
                 inspect={inspect}
+                open={
+                  activity && (block.agent_id || block.activity_id)
+                    ? () => activity(block)
+                    : undefined
+                }
                 onToggle={(event) => setExpanded(event.currentTarget.open)}
               />
               <MessageMenu

@@ -1051,8 +1051,8 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
       return describe(arguments);
     }
     const std::string name = JsonValue(arguments, "name", "");
-    const std::string task = FirstLine(JsonValue(arguments, "prompt", ""));
-    return name.empty() ? task : name + ": " + task;
+    return (name.empty() ? std::string("Subagent") : name) + " · " +
+           FirstLine(JsonValue(arguments, "prompt", ""));
   };
   tool.present = [](const json& arguments) {
     json parts = json::array();

@@ -11,7 +11,6 @@ import type {
   Draft,
   Act,
   Report,
-  Block,
   SessionStatus,
 } from "../../shared/types.ts";
 import type { JSX } from "preact";
@@ -28,6 +27,7 @@ import { command } from "../../state/api.ts";
 import { dedupeName, encodeMention, matchMention } from "./mention.ts";
 import { Popover } from "../../shared/popover.tsx";
 import Activities from "../chat/activity-status.tsx";
+import type { InspectorTarget } from "../chat/inspector.tsx";
 import MessageInput from "./message-input.tsx";
 import ModelControl from "./model-control.tsx";
 import { ContextSummary, SessionSummary } from "../chat/session-summary.tsx";
@@ -53,8 +53,7 @@ export default function Composer({
   following,
   jump,
   unseen = 0,
-  activityTarget,
-  clearActivity,
+  openInspector,
   showContext,
   showStatistics,
   openBrowser,
@@ -76,8 +75,7 @@ export default function Composer({
   following: boolean;
   jump: () => void;
   unseen?: number;
-  activityTarget: Block | null;
-  clearActivity: () => void;
+  openInspector: (target: InspectorTarget) => void;
   showContext: () => void;
   showStatistics: () => void;
   openBrowser: () => void;
@@ -522,9 +520,7 @@ export default function Composer({
       )}
       <Activities
         collaborators={state?.collaborators || []}
-        target={activityTarget}
-        clearTarget={clearActivity}
-        cwd={session.cwd || ""}
+        open={openInspector}
         session={session}
         online={online}
         report={report}

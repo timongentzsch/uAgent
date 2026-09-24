@@ -396,13 +396,17 @@ export function Modal({
   className = "",
   size = "compact",
   layout = "content",
+  actions,
 }: {
   title: string;
   children: ComponentChildren;
   close: () => void;
   className?: string;
   size?: "compact" | "medium" | "wide" | "browser";
-  layout?: "content" | "panel";
+  // "sheet": full height at the right edge (full screen on a phone).
+  layout?: "content" | "panel" | "sheet";
+  // Header controls beside Close, for actions on the dialog's subject.
+  actions?: ComponentChildren;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
@@ -444,6 +448,7 @@ export function Modal({
         <h2 id={titleId} ref={heading} tabIndex={-1}>
           {title}
         </h2>
+        {actions && <span class="dialog-header-actions">{actions}</span>}
         <IconButton label={`Close ${title.toLowerCase()}`} onClick={close}>
           <X />
         </IconButton>

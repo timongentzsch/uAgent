@@ -1825,7 +1825,7 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
   await expect(
     page
       .locator(".tool-disclosure")
-      .filter({ hasText: "◆ memory created · project/browser-proof" }),
+      .filter({ hasText: "Memory created · project/browser-proof" }),
   ).toBeVisible();
   await expect(page.locator(".composer .status-led.active")).toBeVisible();
   await page.locator(".transcript").evaluate((element) => {
@@ -1844,7 +1844,7 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
   await expect(
     page
       .locator(".tool-disclosure")
-      .filter({ hasText: "◆ memory created · project/browser-proof" }),
+      .filter({ hasText: "Memory created · project/browser-proof" }),
   ).toBeVisible();
   await expect
     .poll(() =>
@@ -2102,17 +2102,6 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
   await expect(
     page.getByRole("heading", { name: "Verified response" }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Activity", exact: true }).click();
-  const list = page.locator(".activity-panel");
-  expect(
-    await list.evaluate((node) => node.scrollWidth <= node.clientWidth + 1),
-  ).toBe(true);
-  await page.setViewportSize({ width: 2048, height: 844 });
-  expect(
-    await list.evaluate((node) => node.scrollWidth <= node.clientWidth + 1),
-  ).toBe(true);
-  await page.setViewportSize({ width: 390, height: 844 });
-  await list.getByRole("button", { name: /Show .*completed/ }).click();
   // Force a retained older page so its control must share the thread's scroll.
   await page.route("**/api/command", async (route) => {
     const body = route.request().postDataJSON();
@@ -2126,11 +2115,19 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
     }
     await route.fulfill({ response, json: value });
   });
-  await list
-    .getByRole("button")
-    .filter({ hasText: "Review the full task." })
+  // The subagent's own tool row opens it; the row names the task and links
+  // to the agent instead of repeating its whole answer.
+  const subagentRow = page
+    .locator(".tool-disclosure")
+    .filter({ hasText: "Subagent · Review the full task." });
+  await subagentRow.locator("summary").click();
+  await expect(subagentRow).not.toContainText("resume with subagent");
+  await subagentRow
+    .getByRole("button", { name: "Open agent", exact: true })
     .click();
-  const detail = page.getByRole("dialog", { name: "Subagent", exact: true });
+  // One sheet; its title follows the page shown in it.
+  const detail = page.locator("dialog.activity-view");
+  await expect(detail.locator(":scope > header > h2")).toHaveText("Subagent");
   await expect(
     detail.getByLabel("Estimated context", { exact: true }),
   ).toHaveText(/est\. ctx [\d.]+k?\/[\d.]+[kM]? · \d+% left/);
@@ -2169,41 +2166,30 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
   await toolRow
     .getByRole("button", { name: "Tool input/output", exact: true })
     .click();
-  const toolView = page.getByRole("dialog", {
-    name: "Tool input/output",
-    exact: true,
-  });
-  await expect(toolView).toBeVisible();
-  // Stacked, not swapped: the subagent dialog stays open underneath.
-  await expect(
-    page.getByRole("dialog", { name: "Subagent", exact: true }),
-  ).toBeVisible();
-  await toolView
-    .getByRole("button", { name: "Close tool input/output", exact: true })
-    .click();
-  await expect(toolView).toHaveCount(0);
+  // A page inside the same sheet, never a second dialog; Back returns.
+  const heading = detail.locator(":scope > header > h2");
+  await expect(heading).toHaveText("Tool input/output");
+  await expect(page.locator("dialog[open]")).toHaveCount(1);
+  await detail.getByRole("button", { name: "Back", exact: true }).click();
+  await expect(heading).toHaveText("Subagent");
   await detail
     .getByRole("button", { name: "Session statistics", exact: true })
     .click();
-  const stats = page.getByRole("dialog", {
-    name: "Subagent statistics",
-    exact: true,
-  });
+  const stats = detail;
+  await expect(heading).toHaveText("Subagent statistics");
   await expect(stats.locator("dt").filter({ hasText: /^Cost$/ })).toBeVisible();
   await expect(
     stats.getByText("Parent turn time", { exact: true }),
   ).toBeVisible();
   await expect(stats.getByText("Model time", { exact: true })).toBeVisible();
-  const statsBody = stats.locator(":scope > .dialog-body");
+  const statsBody = stats.locator(".activity-page");
   await expect(statsBody).toHaveCSS("overflow-y", "auto");
   await statsBody.hover();
   await page.mouse.wheel(0, 600);
   await expect
     .poll(() => statsBody.evaluate((node) => node.scrollTop))
     .toBeGreaterThan(0);
-  await stats
-    .getByRole("button", { name: "Close subagent statistics" })
-    .click();
+  await detail.getByRole("button", { name: "Back", exact: true }).click();
   await expect(detail).toHaveCSS("outline-style", "none");
   await expect(detail.locator(":scope > header > h2")).toHaveCSS(
     "outline-style",
@@ -2225,9 +2211,7 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
     stats.getByText("Model at completion", { exact: true }),
   ).toBeVisible();
   await expect(stats.getByText("TTFT", { exact: true })).toBeVisible();
-  await stats
-    .getByRole("button", { name: "Close subagent statistics" })
-    .click();
+  await detail.getByRole("button", { name: "Back", exact: true }).click();
   await detail
     .getByRole("button", { name: "Model and effort", exact: true })
     .click();

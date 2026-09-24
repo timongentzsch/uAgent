@@ -422,6 +422,8 @@ export interface EventData extends Omit<Partial<Exchange>, "status"> {
   arguments?: JSONValue;
   view?: ToolView;
   result?: JSONValue;
+  agent_id?: string;
+  activity_id?: number;
   preview_truncated?: boolean;
   completion_status?: string;
   status?: string | number;

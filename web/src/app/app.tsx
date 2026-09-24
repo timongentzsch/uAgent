@@ -49,6 +49,8 @@ import {
   normalizeTimePrefs,
   type TimePrefs,
 } from "../shared/time.ts";
+import type { InspectorTarget } from "../features/chat/inspector.tsx";
+import { LiveActivities } from "../state/live-activities.ts";
 import { useTranscriptHistory } from "../state/use-transcript-history.ts";
 import { prependHistoryPage } from "../state/history-page.ts";
 import "../shared/style.css";
@@ -62,6 +64,7 @@ import {
   pairing,
   promptDialog,
   rawDialog,
+  inspectorDialog,
   scheduledModule,
   settingsDialog,
   toolsDialog,
@@ -149,7 +152,7 @@ function App() {
   const [theme, setTheme] = useState(
     () => localStorage.getItem("uagent-theme") || "system",
   );
-  const [activityTarget, setActivityTarget] = useState<Block | null>(null);
+  const [inspector, setInspector] = useState<InspectorTarget | null>(null);
   const snapshot = snapshots[selected];
   const session =
     snapshot?.metadata ||
@@ -591,9 +594,11 @@ function App() {
     }
   }
   const inspect = useCallback(
-    (id: string) => {
-      setModal({ type: "raw", id, session: selected });
-    },
+    (id: string) =>
+      setInspector({
+        title: id.startsWith("t-") ? "Tool input/output" : "Full content",
+        raw: { id, session: selected },
+      }),
     [selected],
   );
   // The shared transcript controller retains the visible block through
@@ -877,36 +882,40 @@ function App() {
                     node detaches, so queued scrolls from it can never
                     rewrite the live one, and each surface keeps its own
                     DOM state (expansion, disclosure, scroll). */}
-                <Deferred
-                  key={selected}
-                  load={chat}
-                  fallback={
-                    <div className="transcript">
-                      <div className="transcript-content">
-                        <Spinner label="Loading conversation…" surface />
+                <LiveActivities.Provider
+                  value={online ? snapshot?.state?.activities || [] : []}
+                >
+                  <Deferred
+                    key={selected}
+                    load={chat}
+                    fallback={
+                      <div className="transcript">
+                        <div className="transcript-content">
+                          <Spinner label="Loading conversation…" surface />
+                        </div>
                       </div>
-                    </div>
-                  }
-                  scroller={transcript}
-                  content={transcriptContent}
-                  attachScroller={attachScroller}
-                  attachContent={attachContent}
-                  preserveWhile={preserveWhile}
-                  selected={selected}
-                  snapshot={snapshot}
-                  loadError={loadErrors[selected]}
-                  blocks={blocks}
-                  session={session}
-                  online={online}
-                  loadSnapshot={load}
-                  older={older}
-                  report={report}
-                  recall={recallGuidance}
-                  inspect={inspect}
-                  http={showMessageHttp}
-                  activity={setActivityTarget}
-                  statistics={showMessageStatistics}
-                />
+                    }
+                    scroller={transcript}
+                    content={transcriptContent}
+                    attachScroller={attachScroller}
+                    attachContent={attachContent}
+                    preserveWhile={preserveWhile}
+                    selected={selected}
+                    snapshot={snapshot}
+                    loadError={loadErrors[selected]}
+                    blocks={blocks}
+                    session={session}
+                    online={online}
+                    loadSnapshot={load}
+                    older={older}
+                    report={report}
+                    recall={recallGuidance}
+                    inspect={inspect}
+                    http={showMessageHttp}
+                    activity={(block: Block) => setInspector({ block })}
+                    statistics={showMessageStatistics}
+                  />
+                </LiveActivities.Provider>
                 <Deferred
                   load={composer}
                   fallback={null}
@@ -933,8 +942,7 @@ function App() {
                     jumpToLatest();
                     load(selected).catch(report);
                   }}
-                  activityTarget={activityTarget}
-                  clearActivity={() => setActivityTarget(null)}
+                  openInspector={setInspector}
                   showStatistics={() =>
                     setModal({ type: "statistics", session_id: selected })
                   }
@@ -1002,6 +1010,21 @@ function App() {
             />
           )}
         </Modal>
+      )}
+      {inspector && session && (
+        <Deferred
+          load={inspectorDialog}
+          fallback={null}
+          target={inspector}
+          items={online ? snapshot?.state?.activities || [] : []}
+          collaborators={snapshot?.state?.collaborators || []}
+          cwd={session.cwd || ""}
+          running={running}
+          session={session}
+          online={online}
+          report={report}
+          close={() => setInspector(null)}
+        />
       )}
       {modal?.type === "browser" && (
         <Modal

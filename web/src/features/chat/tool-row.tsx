@@ -3,6 +3,10 @@ import DiffView from "./diff-view.tsx";
 import Markdown from "../../shared/markdown-view.tsx";
 import { cleanText } from "../../shared/display.ts";
 import type { PresentedBlock, ToolPart } from "../../shared/types.ts";
+import { useContext } from "preact/hooks";
+import { LiveActivities } from "../../state/live-activities.ts";
+import { duration } from "../../shared/duration.ts";
+import { active } from "./activity-status.tsx";
 
 // A fence longer than any backtick run in the body, so code never ends early.
 function fenced(text: string, language = "") {
@@ -59,6 +63,7 @@ export function ToolRow({
   retry,
   online,
   inspect,
+  open,
   onToggle,
 }: {
   block: PresentedBlock;
@@ -73,15 +78,32 @@ export function ToolRow({
   retry: () => void;
   online: boolean;
   inspect?: (id: string) => void;
+  // Opens the agent or activity this call started in the inspector.
+  open?: () => void;
   onToggle: (event: { currentTarget: { open: boolean } }) => void;
 }) {
+  // A call that started background work stays live until that work ends.
+  const live = useContext(LiveActivities).find((item) =>
+    block.agent_id
+      ? item.agent_id === block.agent_id
+      : !!block.activity_id && item.id === block.activity_id,
+  );
+  const working = !!live && active(live);
+  if (working) {
+    subtitle = [
+      live.status,
+      live.started_ms && duration(Math.max(0, Date.now() - live.started_ms)),
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  }
   return (
     <DisclosureRow
       className="tool-disclosure"
       label={title}
       status={subtitle}
       icon={
-        running ? (
+        running || working ? (
           <span class="status-led running" aria-hidden="true" />
         ) : undefined
       }
@@ -111,7 +133,15 @@ export function ToolRow({
         )}
         {expanding && <Skeleton label="Loading full tool output…" />}
         {loadError && <LoadError error={loadError} retry={retry} />}
-        {!diffOnly &&
+        {open ? (
+          <>
+            {text && <p>{cleanText(text).split("\n")[0]}</p>}
+            <button type="button" onClick={open}>
+              {block.agent_id ? "Open agent" : "Open activity"}
+            </button>
+          </>
+        ) : (
+          !diffOnly &&
           (text ? (
             block.view?.output === "markdown" ? (
               <div class="tool-output">
@@ -126,7 +156,8 @@ export function ToolRow({
                 Output is not loaded. Open the full tool input/output.
               </p>
             )
-          ))}
+          ))
+        )}
         {block.change && <DiffView text={cleanText(block.change)} />}
         {inspect && (
           <button

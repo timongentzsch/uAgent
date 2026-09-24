@@ -179,8 +179,8 @@ def test_multiline_bracketed_paste(root, home, *, binary):
         )
         assert_true(code == 0, output)
         assert_true(b"multiline-paste-ok" in output, output)
-        # The 24-column status truncates after the estimate label.
-        assert_true(b"est. ct" in output, output)
+        # A 24-column status keeps its never-dropped segments: state and route.
+        assert_true(b"Ready \xc2\xb7 test\x1b[K" in output, output)
         assert_true(b"\x1b[?2004h" in output and b"\x1b[?2004l" in output, output)
         # The echoed turn is banded to the right edge on every row it spans,
         # and the band is always closed again.

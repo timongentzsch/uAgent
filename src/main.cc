@@ -129,9 +129,11 @@ int Main(int argc, char** argv) {
   if (argc > 1 && std::string_view(argv[1]) == "--session-worker") {
     return session::WorkerMain(argc, argv);
   }
+#ifdef UAGENT_WEB
   if (argc == 2 && std::string_view(argv[1]) == "--browser-service") {
     return browser::ServiceMain(3);
   }
+#endif
   Observability observability;
   SetObservability(&observability);
   ParsedOptions parsed = ParseOptions(argc, argv);

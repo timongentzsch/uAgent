@@ -252,7 +252,10 @@ if(UAGENT_WEB)
                          "${_web_generated}")
   target_link_libraries(uagent_web PUBLIC uagent_core)
   target_include_directories(uagent_web SYSTEM PRIVATE third_party/cpp-httplib)
+  # The browser appliance only runs under the web host, so builds without it
+  # leave the browser unreferenced and the linker drops it.
   target_compile_definitions(uagent PRIVATE UAGENT_WEB)
+  target_compile_definitions(uagent_app PRIVATE UAGENT_WEB)
   target_link_libraries(uagent PRIVATE uagent_web)
   if(UAGENT_WEB_PUSH)
     find_package(OpenSSL 3 REQUIRED COMPONENTS Crypto)

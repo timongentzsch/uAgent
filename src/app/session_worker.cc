@@ -143,9 +143,11 @@ class WorkerChannel final : public ApplicationChannel {
       SendState();
     }
     if (event.type == "turn.completed" || event.type == "turn.stopped") {
+#ifdef UAGENT_WEB
       if (browser_session_) {
         browser::Request({{"op", "release"}, {"session_id", id_}}, 1000);
       }
+#endif
     }
     if (event.type == "activity.status") {
       std::lock_guard lock(mutex_);
@@ -673,7 +675,7 @@ class WorkerChannel final : public ApplicationChannel {
   std::mutex mutex_, control_mutex_;
   bool closed_ = false, busy_ = true;
   bool turn_active_ = false;
-  bool browser_session_ = false;
+  [[maybe_unused]] bool browser_session_ = false;  // web builds only
   bool reply_cancelled_ = false;
   bool ready_ = false;
   json notices_ = json::array();

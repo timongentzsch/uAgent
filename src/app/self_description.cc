@@ -360,8 +360,10 @@ json ToolSurfaceJson() {
       SubagentTool(api, supervisor, {}, {}, /*debug=*/false),
       "delegation depth");
   conditional.emplace_back(SessionTool(), "always");
+#ifdef UAGENT_WEB
   conditional.emplace_back(BrowserTool(""),
                            "browser appliance, top-level web session");
+#endif
   conditional.emplace_back(SkillTool({}, {}), "skills installed");
 
   json out = json::array();

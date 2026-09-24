@@ -68,17 +68,14 @@ test.describe("phone browser viewer", () => {
     const dialog = page.getByRole("dialog", { name: "Browser" });
     await expect(dialog.getByLabel("Browser trackpad")).toBeVisible();
     await expect(dialog.getByLabel("Browser viewport")).toBeVisible();
-    await expect(
-      dialog.getByRole("button", { name: "Trackpad" }),
-    ).toHaveAttribute("aria-pressed", "true");
+    // Touch devices always get the trackpad; there is nothing to toggle.
+    await expect(dialog.getByRole("button", { name: "Trackpad" })).toHaveCount(
+      0,
+    );
     await expect(dialog.getByRole("button", { name: "Left" })).toBeVisible();
     await expect(dialog.getByRole("button", { name: "Right" })).toBeVisible();
-    await dialog.getByRole("button", { name: "Trackpad" }).click();
-    await expect(dialog.getByLabel("Browser trackpad")).toHaveCount(0);
-    await dialog.getByRole("button", { name: "Trackpad" }).click();
-    await dialog.getByRole("button", { name: "Text & keys" }).click();
-    await expect(dialog.getByLabel("Text for Chrome")).toBeVisible();
-    await expect(dialog.getByLabel("Browser trackpad")).toBeVisible();
+    for (const name of ["Keyboard", "Copy", "Paste", "Keys"])
+      await expect(dialog.getByRole("button", { name })).toBeVisible();
     await expect(dialog.getByRole("button", { name: "Done" })).toBeVisible();
     await page.setViewportSize({ width: 390, height: 600 });
     await expect(page.locator("html")).toHaveCSS("--viewport-height", "600px");
@@ -127,10 +124,9 @@ test("watches an active agent without taking control", async ({
   await expect(
     dialog.getByRole("button", { name: "Take control" }),
   ).toBeVisible();
-  await expect(dialog.getByRole("button", { name: "Text & keys" })).toHaveCount(
-    0,
-  );
-  await expect(dialog.getByRole("button", { name: "Trackpad" })).toHaveCount(0);
+  for (const name of ["Keyboard", "Copy", "Paste", "Keys"])
+    await expect(dialog.getByRole("button", { name })).toHaveCount(0);
+  await expect(dialog.getByLabel("Browser trackpad")).toHaveCount(0);
 });
 
 test("creates and selects a persistent Chrome profile", async ({
@@ -390,4 +386,90 @@ test.describe("real noVNC input in a mobile modal", () => {
     });
     expect(errors).toEqual([]);
   });
+});
+
+const controlledBrowser = (page) =>
+  page.route("**/api/browser/status", (route) =>
+    route.fulfill({
+      json: {
+        ok: true,
+        mode: "human",
+        running: true,
+        controller: true,
+        generation: 1,
+      },
+    }),
+  );
+
+test.describe("phone browser keyboard", () => {
+  test.use({
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true,
+  });
+
+  test("types live into Chrome with special keys and a sticky Ctrl", async ({
+    page,
+    session,
+    browserName,
+  }) => {
+    test.skip(browserName !== "chromium", "needs CDP text insertion");
+    const { serveFramebuffer } = await import("./rfb-fixture.js");
+    const remote = await serveFramebuffer(page);
+    await controlledBrowser(page);
+    await page.goto(`/#session=${session.id}`);
+    await remote.prepare();
+    await page.getByRole("button", { name: "Open browser" }).click();
+    const dialog = page.getByRole("dialog", { name: "Browser", exact: true });
+    await expect(dialog.getByText("Connected", { exact: true })).toBeVisible();
+    await dialog.getByRole("button", { name: "Keyboard" }).click();
+    await expect(dialog.getByLabel("Type into Chrome")).toBeFocused();
+    const pressed = () =>
+      remote.keys.filter((key) => key.down).map((key) => key.keysym);
+    await page.keyboard.insertText("Hé");
+    await page.keyboard.press("Escape");
+    await expect.poll(pressed).toEqual([0x48, 0xe9, 0xff1b]);
+    // Special-key buttons keep the keyboard open; Ctrl applies once.
+    await dialog.getByRole("button", { name: "Ctrl" }).click();
+    await expect(dialog.getByLabel("Type into Chrome")).toBeFocused();
+    await page.keyboard.insertText("a");
+    await page.keyboard.insertText("b");
+    await expect
+      .poll(pressed)
+      .toEqual([0x48, 0xe9, 0xff1b, 0xffe3, 0x61, 0x62]);
+  });
+});
+
+test("desktop Copy and Paste carry text between Chrome and the device", async ({
+  page,
+  context,
+  session,
+  browserName,
+}) => {
+  test.skip(browserName !== "chromium", "clipboard permissions");
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  const { serveFramebuffer } = await import("./rfb-fixture.js");
+  const remote = await serveFramebuffer(page);
+  await controlledBrowser(page);
+  await page.goto(`/#session=${session.id}`);
+  await remote.prepare();
+  await page.getByRole("button", { name: "Open browser" }).click();
+  const dialog = page.getByRole("dialog", { name: "Browser", exact: true });
+  await expect(dialog.getByText("Connected", { exact: true })).toBeVisible();
+  await expect(dialog.getByLabel("Browser trackpad")).toHaveCount(0);
+  await expect(dialog.getByRole("button", { name: "Keyboard" })).toHaveCount(0);
+
+  await page.evaluate(() => navigator.clipboard.writeText("from device"));
+  await dialog.getByRole("button", { name: "Paste" }).click();
+  await expect.poll(() => remote.clipboard.client).toBe("from device");
+  await expect
+    .poll(() => remote.keys.some((key) => key.down && key.keysym === 0x76))
+    .toBe(true);
+
+  remote.clipboard.server = "from chrome";
+  await dialog.getByRole("button", { name: "Copy" }).click();
+  await expect(dialog.getByText("Copied to this device.")).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+    "from chrome",
+  );
 });

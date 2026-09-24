@@ -37,6 +37,7 @@
   background: var(--bg);
 }
 .browser-viewer {
+  position: relative;
   display: grid;
   gap: var(--gap);
   min-width: 0;
@@ -135,6 +136,24 @@
 .browser-text-actions > button,
 .browser-key-actions > button {
   flex: 1 1 auto;
+}
+/* Shown while the on-screen keyboard is open, directly above it. */
+.browser-key-actions {
+  order: 3;
+}
+.browser-viewer > [role="status"] {
+  order: 5;
+}
+/* Focus target that opens the on-screen keyboard: focusable, invisible and
+   never hit-tested. The shared field keeps its 16px focus floor on touch. */
+.browser-keyboard-input {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 1px;
+  opacity: 0;
+  clip-path: inset(50%);
+  pointer-events: none;
 }
 @media (max-width: 600px) {
   .browser-trackpad {

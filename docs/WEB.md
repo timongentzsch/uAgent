@@ -63,16 +63,20 @@ browser security checks are disabled. Google may reject automation-controlled
 browsers; see its [supported browser guidance](https://support.google.com/accounts/answer/7675428?co=GENIE.Platform%3DDesktop&hl=en).
 Account-specific sign-in acceptance still needs a real user check.
 On a phone the display is view-only: pinch to zoom and drag the zoomed view to
-pan. The separate **Trackpad** uses one finger for the remote pointer, a tap for
-left click, a two-finger tap for right click and a two-finger drag for scrolling.
-Hold **Left** while moving on the trackpad for drag, resize or text selection.
-The trackpad pointer stays visible in the browser dialog, and a zoomed display
-pans to follow it. **Text & keys** opens a
-phone text field, clipboard transfer and useful
-keys; **Address** focuses Chrome's URL field. Copy in Chrome before loading
-its clipboard into the field. Text moves only when you choose a transfer
-action; it is not synced automatically with the phone clipboard. Browser
-clipboard transfer uses the existing private VNC connection.
+pan. The trackpad below it is always shown on touch devices: one finger moves
+the remote pointer, a tap is a left click, a two-finger tap a right click and a
+two-finger drag scrolls. Hold **Left** while moving for drag, resize or text
+selection. The pointer stays visible in the browser dialog, and a zoomed
+display pans to follow it. **Keyboard** opens the on-screen keyboard and types
+live into Chrome; while it is open a row adds Esc, Tab, arrows and a one-shot
+**Ctrl**. **Keys** offers the same keys plus **Address bar**, **Select all**
+and **Send text…** for dictation or other composed input.
+**Copy** copies Chrome's selection to this device and **Paste** sends this
+device's clipboard into Chrome, on desktop and phone alike. On desktop,
+Ctrl/⌘+C, X and V inside the viewer do the same; ⌘ acts as Ctrl for the Linux
+Chrome. The clipboard changes only on those actions and travels over the
+existing private VNC connection; a browser that denies clipboard access falls
+back to a text field.
 The service exposes neither a CDP TCP port nor a VNC TCP port.
 Chrome's sandbox requires a narrow [seccomp profile](../deploy/NOTICE.md)
 that permits user namespace creation. The Compose stack applies it without

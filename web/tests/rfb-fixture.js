@@ -2,9 +2,14 @@
 // negotiated display scale and encoded pointer coordinates. No client mocking.
 export async function serveFramebuffer(page) {
   const pointers = [];
+  // Key events as {keysym, down}; the latest client clipboard text.
+  const keys = [];
+  const clipboard = { client: "", server: null };
+  let current = null;
   const width = 800,
     height = 500;
   await page.routeWebSocket(/\/api\/browser\/viewer/, (socket) => {
+    current = socket;
     let stage = 0,
       pending = Buffer.alloc(0),
       painted = false;
@@ -47,9 +52,29 @@ export async function serveFramebuffer(page) {
                     ? 8
                     : kind === 5
                       ? 6
-                      : 0;
+                      : kind === 6 && pending.length >= 8
+                        ? 8 + pending.readUInt32BE(4)
+                        : kind === 6
+                          ? -1
+                          : 0;
+          if (length < 0) return;
           if (!length) throw new Error(`Unexpected client RFB message ${kind}`);
           if (pending.length < length) return;
+          if (kind === 4) {
+            const key = { down: !!pending[1], keysym: pending.readUInt32BE(4) };
+            keys.push(key);
+            // Chrome answers Ctrl+C with a clipboard update when one is set.
+            const ctrl = keys.filter((item) => item.keysym === 0xffe3);
+            if (
+              key.down &&
+              (key.keysym === 0x63 || key.keysym === 0x78) &&
+              ctrl.at(-1)?.down &&
+              clipboard.server !== null
+            )
+              socket.send(cutText(clipboard.server));
+          }
+          if (kind === 6)
+            clipboard.client = pending.subarray(8, length).toString("latin1");
           if (kind === 5)
             pointers.push({
               buttons: pending[1],
@@ -72,6 +97,9 @@ export async function serveFramebuffer(page) {
   });
   return {
     pointers,
+    keys,
+    clipboard,
+    sendClipboard: (text) => current?.send(cutText(text)),
     width,
     height,
     prepare: () =>
@@ -109,6 +137,15 @@ export async function serveFramebuffer(page) {
       }),
   };
 }
+
+// ServerCutText: type 3, three padding bytes, length, Latin-1 text.
+const cutText = (text) => {
+  const body = Buffer.from(text, "latin1");
+  const header = Buffer.alloc(8);
+  header[0] = 3;
+  header.writeUInt32BE(body.length, 4);
+  return Buffer.concat([header, body]);
+};
 
 export const touch = (locator, type, pointerId, x, y) =>
   locator.dispatchEvent(type, {

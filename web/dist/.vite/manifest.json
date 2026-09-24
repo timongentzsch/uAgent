@@ -54,19 +54,19 @@
     "file": "assets/attachments-By6-qNSM.css",
     "src": "_attachments-By6-qNSM.css"
   },
-  "_browser-DQS1ufRm.js": {
-    "file": "assets/browser-DQS1ufRm.js",
+  "_browser-B7OWmZCA.css": {
+    "file": "assets/browser-B7OWmZCA.css",
+    "src": "_browser-B7OWmZCA.css"
+  },
+  "_browser-C5BuXlOt.js": {
+    "file": "assets/browser-C5BuXlOt.js",
     "name": "browser",
     "imports": [
       "_ui-xh8cva7h.js"
     ],
     "css": [
-      "assets/browser-f9aOzFRU.css"
+      "assets/browser-B7OWmZCA.css"
     ]
-  },
-  "_browser-f9aOzFRU.css": {
-    "file": "assets/browser-f9aOzFRU.css",
-    "src": "_browser-f9aOzFRU.css"
   },
   "_channel-Dvk07fpO.js": {
     "file": "assets/channel-Dvk07fpO.js",
@@ -787,7 +787,7 @@
     ]
   },
   "index.html": {
-    "file": "assets/index-BucYPfGZ.js",
+    "file": "assets/index-Ct-OFDtL.js",
     "name": "index",
     "src": "index.html",
     "isEntry": true,
@@ -1803,14 +1803,15 @@
     ]
   },
   "src/features/browser/browser.tsx": {
-    "file": "assets/browser-CLEyjr2j.js",
+    "file": "assets/browser-Cb5fZOwA.js",
     "name": "browser",
     "src": "src/features/browser/browser.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_ui-xh8cva7h.js",
       "_api-CVshwK70.js",
-      "_browser-DQS1ufRm.js",
+      "_popover-DIF2uMfn.js",
+      "_browser-C5BuXlOt.js",
       "_connection-status-B9CjkfPo.js"
     ]
   },
@@ -2208,7 +2209,7 @@
     ]
   },
   "ui.html": {
-    "file": "assets/ui-Dp8r69ZD.js",
+    "file": "assets/ui-BXhkyNUk.js",
     "name": "ui",
     "src": "ui.html",
     "isEntry": true,
@@ -2220,7 +2221,7 @@
       "_plus-CUN2HcSE.js",
       "_layout-tLNc0o4h.js",
       "_size-controls-DTS-hZHz.js",
-      "_browser-DQS1ufRm.js"
+      "_browser-C5BuXlOt.js"
     ],
     "css": [
       "assets/ui-DtV2Ev_L.css"

@@ -68,9 +68,11 @@ def test_yolo_toggle_refreshes_approval_state(root, home, *, binary):
 def test_command_help(root, home, *, binary):
     with Server([event({"content": "unused"})]) as server:
         result = run_dialog(
-            root, base_env(home, server.url), "/models\n/wat\n/recap\n/help\n/q\n", binary=binary
+            root, base_env(home, server.url), "/models\n/wat\n/recap\n/help\n/exit\n", binary=binary
         )
         assert_true(result.returncode == 0, result.stderr)
+        # Every quit alias detaches locally instead of reaching the runtime.
+        assert_true("use conversation controls" not in result.stdout, result.stdout)
         assert_true("unknown command /wat; use /help" in result.stdout, result.stdout)
         assert_true("unknown command /recap; use /help" in result.stdout, result.stdout)
         assert_true("commands\n" in result.stdout, result.stdout)

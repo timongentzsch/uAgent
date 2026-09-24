@@ -15,6 +15,7 @@
 #include "include/agent/session_store.h"
 #include "include/agent/session_view.h"
 #include "include/app/session.h"
+#include "include/cli.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
@@ -216,7 +217,8 @@ class Terminal {
         composer_.Mount(InputPrompt());
       }
       std::string text = Trim(input.text);
-      if (text == "/q" || text == "/quit") break;
+      const ParsedSlashCommand slash = ParseSlashCommand(text);
+      if (slash.spec && slash.spec->id == SlashCommandId::kQuit) break;
       if (text == "/clear" || text.starts_with("/clear ")) {
         // Screen only: the session keeps running underneath.
         if (raw_) {

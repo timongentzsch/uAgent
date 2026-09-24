@@ -48,12 +48,12 @@ inline std::string ContextSummary(int64_t used, int64_t window = 0) {
 // identity first; transient work state gets its own line while a turn runs.
 struct StatusView {
   // What the session is doing between turns: Ready, Interrupted, Connecting.
-  std::string activity;
+  std::string activity{};
   int64_t context_used = 0;
   int64_t context_window = 0;
   // The active route in schema form, [provider/]model[:variant][:effort], so
   // the row shows a selection the user could paste back into --model.
-  std::string model;
+  std::string model{};
   // The effective approval mode, as ApprovalModeName spells it.
   std::string approval = "ask";
   bool verbose = false;
@@ -122,7 +122,7 @@ struct ActivityView {
   int64_t context_window = 0;
   // The active route in schema form, the same string StatusView::model
   // spells, so both rows name the route identically.
-  std::string model;
+  std::string model{};
   size_t background = 0;
   size_t foreground = 0;
   // Delegated children, counted apart from `background` so the row can say
@@ -132,7 +132,7 @@ struct ActivityView {
   bool interrupting = false;
   // The newest child's progress, "<id>: <line>". Terminal output from another
   // process: rendered through TerminalSafe, never raw.
-  std::string subagent;
+  std::string subagent{};
 };
 
 // The working row: spinner frame, activity label, and the same "drop what does

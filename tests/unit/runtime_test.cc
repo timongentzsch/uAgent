@@ -176,8 +176,6 @@ void TestRuntimeOwnershipHelpers() {
       {"UAGENT_SESSION_ARCHIVE_BYTES", "-1"},
       {"UAGENT_WEB_SEARCH_MODEL", "vendor/search"},
       {"UAGENT_WEB_SEARCH_BACKEND", "off"},
-      {"UAGENT_WEB_SEARCH_URL", "https://search.example/v1"},
-      {"UAGENT_WEB_SEARCH_API_KEY", "secret-search-key"},
       {"UAGENT_WEB_SEARCH_EFFORT", "low"},
       {"UAGENT_WEB_SEARCH_ENGINE", "invalid"},
       {"UAGENT_WEB_SEARCH_CONTEXT_SIZE", "huge"},
@@ -201,8 +199,6 @@ void TestRuntimeOwnershipHelpers() {
   CHECK(config.session_archive_bytes == 0);
   CHECK(config.web_search_model == "vendor/search");
   CHECK(config.web_search_backend == "off");
-  CHECK(config.web_search_url == "https://search.example/v1");
-  CHECK(config.web_search_api_key == "secret-search-key");
   CHECK(config.web_search_effort == "low");
   CHECK(config.web_search_engine == "auto");
   CHECK(config.web_search_context_size.empty());
@@ -221,8 +217,6 @@ void TestRuntimeOwnershipHelpers() {
   CHECK(diagnostics.value("mcp_roots", "") == config.mcp_roots);
   CHECK(diagnostics.value("tool_trace_protect_chars", int64_t{0}) == 1234);
   CHECK(diagnostics.value("tool_trace_prune_min_chars", int64_t{0}) == 5678);
-  CHECK(diagnostics.value("web_search_api_key", "") == "<set>");
-  CHECK(JsonDump(diagnostics).find("secret-search-key") == std::string::npos);
   for (const auto& entry : kRuntimeEnv) unsetenv(entry.first);
   setenv("UAGENT_OPENROUTER_VARIANT", "invalid", 1);
   CHECK(RuntimeConfig::FromEnvironment().openrouter_variant.empty());
@@ -1012,6 +1006,8 @@ void TestEffectiveConfigReload() {
   TestWorkspace workspace("effective-config");
   ScopedEnv scoped_steps("UAGENT_MAX_STEPS", "9");
   ScopedEnv scoped_model("UAGENT_MODEL");
+  ScopedEnv scoped_route_key("OPENROUTER_API_KEY");
+  ScopedEnv scoped_review_url("UAGENT_PERMISSION_URL");
   std::string path = UagentConfigPath();
   CHECK(ToolWriteFile(
             path,
@@ -1022,9 +1018,9 @@ void TestEffectiveConfigReload() {
             "UAGENT_MCP_SERVERS=9\n"
             "UAGENT_MODEL=initial-model\n"
             "UAGENT_SESSION_BUDGET=1\n"
-            "UAGENT_WEB_SEARCH_URL=https://user:pass@search.example/v1\n"
-            "search_secret=private-search-key\n"
-            "UAGENT_WEB_SEARCH_API_KEY=$search_secret\n")
+            "UAGENT_PERMISSION_URL=https://user:pass@review.example/v1\n"
+            "route_secret=private-route-key\n"
+            "OPENROUTER_API_KEY=$route_secret\n")
             .output.starts_with("wrote "));
   // The CLI layer outranks the environment and both config files.
   ConfigManager manager = ConfigManager::Capture(
@@ -1044,9 +1040,8 @@ void TestEffectiveConfigReload() {
   CHECK(diagnostic["provenance"]["max_steps"] == "environment");
   CHECK(diagnostic["provenance"]["max_tool_calls"] == "global-config");
   CHECK(diagnostic["provenance"]["request_bytes"] == "default");
-  CHECK(diagnostic["configured"]["web_search_api_key"] == "<set>");
   std::string shown = JsonDump(diagnostic);
-  CHECK(shown.find("private-search-key") == std::string::npos);
+  CHECK(shown.find("private-route-key") == std::string::npos);
   CHECK(shown.find("user:pass") == std::string::npos);
 
   CHECK(ToolWriteFile(path,
@@ -1055,7 +1050,7 @@ void TestEffectiveConfigReload() {
                       "UAGENT_SESSION_TOKEN_BUDGET=250\n"
                       "UAGENT_MCP_SERVERS=10\n"
                       "UAGENT_MODEL=next-model\n"
-                      "UAGENT_WEB_SEARCH_API_KEY=changed-secret\n")
+                      "OPENROUTER_API_KEY=changed-secret\n")
             .output.starts_with("wrote "));
   std::optional<ConfigReload> reload = manager.Reload(active);
   REQUIRE(reload.has_value());
@@ -1071,7 +1066,7 @@ void TestEffectiveConfigReload() {
   CHECK(std::find(reload->deferred.begin(), reload->deferred.end(),
                   "UAGENT_MODEL") != reload->deferred.end());
   CHECK(std::find(reload->deferred.begin(), reload->deferred.end(),
-                  "web_search_api_key") != reload->deferred.end());
+                  "OPENROUTER_API_KEY") != reload->deferred.end());
   CHECK(
       JsonDump(manager.DiagnosticJson(reload->active)).find("changed-secret") ==
       std::string::npos);

@@ -82,14 +82,9 @@ WebSearchRoute SelectWebSearchRoute(
         selection.effort};
   };
 
-  // Most explicit first: a configured search endpoint, then the conversation's
-  // own route, then any OpenRouter-protocol provider, then the built-in route.
+  // The conversation's own route, then any OpenRouter-protocol provider, then
+  // the built-in route.
   std::vector<WebSearchRoute> candidates;
-  if (!config.web_search_url.empty() && !config.web_search_api_key.empty()) {
-    candidates.push_back(candidate(StripTrailingSlashes(config.web_search_url),
-                                   config.web_search_api_key,
-                                   DefaultSearchModel()));
-  }
   if (api.capabilities.OpenRouter()) {
     candidates.push_back(candidate(api.base_url, api.api_key, api.model));
   }

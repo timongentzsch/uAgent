@@ -695,8 +695,8 @@ def test_context_command_shows_memory_and_skills(root, home, *, binary):
     global_config = home / ".uagent" / ".config"
     global_config.parent.mkdir(parents=True, exist_ok=True)
     global_config.write_text(
-        "UAGENT_WEB_SEARCH_API_KEY=context-secret-sentinel\n"
-        "UAGENT_WEB_SEARCH_URL=https://user:pass@search.example/v1\n",
+        "OPENROUTER_API_KEY=context-secret-sentinel\n"
+        "UAGENT_PERMISSION_URL=https://user:pass@review.example/v1\n",
         encoding="utf-8",
     )
     skill = workspace / ".uagent" / "skills" / "context-demo"
@@ -729,7 +729,6 @@ def test_context_command_shows_memory_and_skills(root, home, *, binary):
         assert_true(b'"name": "memory"' in output, output)
         assert_true(b'"name": "skill"' in output, output)
         assert_true(b'"UAGENT_MODEL": "environment"' in output, output)
-        assert_true(b'"web_search_api_key": "<set>"' in output, output)
         assert_true(b"context-secret-sentinel" not in output, output)
         assert_true(b"user:pass" not in output, output)
         assert_true(b'"enabled": true' in output, output)

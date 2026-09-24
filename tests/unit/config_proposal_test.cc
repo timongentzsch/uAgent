@@ -91,7 +91,7 @@ void TestConfigProposalAndCommit() {
       "# keep me\n"
       "# COMMENT_API_KEY=not-an-assignment\n"
       "UAGENT_MAX_TOOL_CALLS=40\n"
-      "UAGENT_WEB_SEARCH_API_KEY=canary-secret\n"
+      "OPENROUTER_API_KEY=canary-secret\n"
       "QWEN_GPU_API_KEY=adjacent-provider-secret\n"
       "UAGENT_PROVIDERS='{\"old\":{\"base_url\":\"https://old.example/v1\","
       "\"api_key\":\"existing-provider-secret\"},\"gpu\":{\"base_url\":"
@@ -101,6 +101,8 @@ void TestConfigProposalAndCommit() {
   ScopedEnv no_custom("UAGENT_CONFIG_FILE");
   ScopedEnv no_override("UAGENT_MAX_TOOL_CALLS");
   ScopedEnv no_providers("UAGENT_PROVIDERS");
+  // Initialize exports file values into the process environment.
+  ScopedEnv no_route_key("OPENROUTER_API_KEY");
   ConfigManager manager = ConfigManager::Capture(false, {});
   RuntimeConfig active = manager.Initialize();
 
@@ -113,14 +115,14 @@ void TestConfigProposalAndCommit() {
 
   // A credential may never arrive through a tool argument.
   ConfigProposal secret = PrepareConfigProposal(
-      ConfigProposalScope::kUser,
-      {{"UAGENT_WEB_SEARCH_API_KEY", "leaked", false}}, manager, active, false);
+      ConfigProposalScope::kUser, {{"OPENROUTER_API_KEY", "leaked", false}},
+      manager, active, false);
   CHECK(!secret.ok);
   CHECK(secret.error.find("credential") != std::string::npos);
   auto human_secret = PrepareConfigProposal(
       ConfigProposalScope::kUser,
-      {{"UAGENT_WEB_SEARCH_API_KEY", "human-secret-replacement", false}},
-      manager, active, false, true);
+      {{"OPENROUTER_API_KEY", "human-secret-replacement", false}}, manager,
+      active, false, true);
   CHECK(human_secret.ok);
   CHECK(human_secret.Preview().find("human-secret-replacement") ==
         std::string::npos);
@@ -131,8 +133,8 @@ void TestConfigProposalAndCommit() {
 
   // Removing a credential does not carry one through the tool arguments.
   ConfigProposal unset_secret = PrepareConfigProposal(
-      ConfigProposalScope::kUser, {{"UAGENT_WEB_SEARCH_API_KEY", "", true}},
-      manager, active, false);
+      ConfigProposalScope::kUser, {{"OPENROUTER_API_KEY", "", true}}, manager,
+      active, false);
   CHECK(unset_secret.ok);
   CHECK(unset_secret.Preview().find("canary-secret") == std::string::npos);
 

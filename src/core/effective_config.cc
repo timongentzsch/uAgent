@@ -61,10 +61,6 @@ std::vector<std::string> DifferentKeys(const RuntimeConfig& configured,
     auto found = actual.find(key);
     if (found == actual.end() || *found != value) keys.push_back(key);
   }
-  if (configured.web_search_api_key != active.web_search_api_key &&
-      std::find(keys.begin(), keys.end(), "web_search_api_key") == keys.end()) {
-    keys.emplace_back("web_search_api_key");
-  }
   return keys;
 }
 

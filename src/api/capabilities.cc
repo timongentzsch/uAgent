@@ -99,7 +99,6 @@ void ProviderCapabilities::SetModelFeatures(const json& features) {
 }
 
 void ProviderCapabilities::ResetNegotiated() {
-  native_tools = true;
   parallel_tools = true;
   stream_usage_option = wire_api == WireApi::kChatCompletions && !OpenRouter();
   image_input = true;
@@ -129,7 +128,6 @@ json ProviderCapabilities::DiagnosticJson() const {
   return {{"protocol", ProviderProtocolName(protocol)},
           {"wire_api", WireApiName(wire_api)},
           {"hosted_tools", HostedToolsJson(hosted_web_search)},
-          {"native_tools", native_tools},
           {"parallel_tools", parallel_tools},
           {"stream_usage_option", stream_usage_option},
           {"reasoning_summary", reasoning_summary},
@@ -140,7 +138,6 @@ json ProviderCapabilities::DiagnosticJson() const {
           {"video_input", video_input},
           {"input_modalities", input_modalities},
           {"web_search_sources", web_search_sources},
-          {"model_catalog_required", model_catalog_required},
           {"raw_slash_models", raw_slash_models},
           {"reasoning_object", reasoning_object},
           {"reasoning_replay_text", reasoning_replay_text},
@@ -164,7 +161,6 @@ ProviderCapabilities CapabilitiesForRoute(ProviderProtocol protocol,
   capabilities.wire_api = wire_api;
   capabilities.hosted_web_search = hosted_web_search;
   if (protocol == ProviderProtocol::kOpenRouter) {
-    capabilities.model_catalog_required = false;
     capabilities.raw_slash_models = true;
     capabilities.reasoning_object = true;
     capabilities.reasoning_replay_text = true;
@@ -179,8 +175,6 @@ ProviderCapabilities CapabilitiesForRoute(ProviderProtocol protocol,
     capabilities.max_completion_tokens = true;
   }
   if (wire_api == WireApi::kResponses) {
-    capabilities.reasoning_object = true;
-    capabilities.max_completion_tokens = true;
     capabilities.web_search_sources = OpenaiUrl(base_url);
     capabilities.reasoning_summary = OpenaiUrl(base_url);
   }

@@ -110,10 +110,7 @@ int64_t SubagentCallsPerTurn() {
   return LongSetting(Cfg("UAGENT_SUBAGENT_CALLS_PER_TURN"));
 }
 
-int64_t PersistentMax() {
-  int64_t max = LongSetting(Cfg("UAGENT_PERSISTENT_MAX"));
-  return max < 1 ? 1 : (max > 8 ? 8 : max);
-}
+int64_t PersistentMax() { return LongSetting(Cfg("UAGENT_PERSISTENT_MAX")); }
 
 // -1 omits the cap so the provider applies its own maximum; a fixed cap would
 // also clamp any thinking budget derived from it.

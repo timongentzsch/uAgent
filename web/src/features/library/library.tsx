@@ -564,7 +564,6 @@ export default function Library({
             ) : (
               <Field label="Name">
                 <Input
-                  // eslint-disable-next-line jsx-a11y/no-autofocus
                   autoFocus
                   value={rename}
                   onInput={(event) => setRename(event.currentTarget.value)}

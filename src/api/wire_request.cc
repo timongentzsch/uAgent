@@ -304,12 +304,10 @@ json AnthropicMessages(const json& canonical, std::string& system) {
 }
 
 json RequestTools(WireApi wire_api, const WireRequest& request) {
-  json tools = request.native_tools
-                   ? FunctionTools(wire_api, request.tool_schemas,
-                                   (wire_api != WireApi::kChatCompletions &&
-                                    request.native_web_search) ||
-                                       !request.function_web_search)
-                   : json::array();
+  json tools = FunctionTools(
+      wire_api, request.tool_schemas,
+      (wire_api != WireApi::kChatCompletions && request.native_web_search) ||
+          !request.function_web_search);
   if (request.native_web_search) {
     if (wire_api == WireApi::kResponses) {
       tools.push_back({{"type", "web_search"}});
@@ -465,8 +463,8 @@ json WireRequestCache::Encode(WireApi wire_api, const WireRequest& request) {
   if (!role.empty()) encoded_messages_ += "],\"role\":" + JsonDump(role) + "}";
   encoded_messages_ += ']';
 
-  json key = json::array({request.native_tools, request.native_web_search,
-                          request.function_web_search});
+  json key =
+      json::array({request.native_web_search, request.function_web_search});
   if (key != tool_key_ || schemas_ != request.tool_schemas) {
     encoded_tools_ = JsonDump(RequestTools(wire_api, request));
     tool_key_ = std::move(key);
@@ -523,8 +521,7 @@ json Api::BuildRequestBody(const json& messages, const json& tool_schemas,
   bool native_web = NativeHostedTool(HostedTool::kWebSearch);
   bool allow_function_web = config.web_search_backend != "off";
   bool function_web = false;
-  if (allow_function_web && capabilities.native_tools &&
-      tool_schemas.is_array()) {
+  if (allow_function_web && tool_schemas.is_array()) {
     for (const json& tool : tool_schemas) {
       const json* function = JsonObject(tool, "function");
       function_web =
@@ -534,19 +531,19 @@ json Api::BuildRequestBody(const json& messages, const json& tool_schemas,
   }
   if (web_available) *web_available = native_web || function_web;
 
-  WireRequest request{RequestModel(),
-                      messages,
-                      tool_schemas,
-                      reasoning_effort,
-                      MaxOutputTokens(),
-                      capabilities.native_tools,
-                      capabilities.parallel_tools,
-                      capabilities.stream_usage_option,
-                      native_web,
-                      allow_function_web,
-                      capabilities.web_search_sources,
-                      capabilities.reasoning_summary,
-                      capabilities.adaptive_thinking};
+  WireRequest request{
+      .model = RequestModel(),
+      .messages = messages,
+      .tool_schemas = tool_schemas,
+      .reasoning_effort = reasoning_effort,
+      .max_output_tokens = MaxOutputTokens(),
+      .parallel_tools = capabilities.parallel_tools,
+      .stream_usage = capabilities.stream_usage_option,
+      .native_web_search = native_web,
+      .function_web_search = allow_function_web,
+      .include_web_search_sources = capabilities.web_search_sources,
+      .reasoning_summary = capabilities.reasoning_summary,
+      .adaptive_thinking = capabilities.adaptive_thinking};
   json body = cache ? cache->Encode(capabilities.wire_api, request)
                     : EncodeWireRequest(capabilities.wire_api, request);
   if (capabilities.wire_api != WireApi::kChatCompletions) {

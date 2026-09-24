@@ -332,7 +332,6 @@ export default function Composer({
                       <Input
                         aria-label={`Rename ${asset.name}`}
                         defaultValue={asset.name}
-                        // eslint-disable-next-line jsx-a11y/no-autofocus
                         autoFocus
                         onKeyDown={(event) => {
                           if (event.key === "Enter")

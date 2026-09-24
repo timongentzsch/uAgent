@@ -44,16 +44,6 @@ export function stringifyArgs(args: unknown): string {
   }
 }
 
-// Readable preview without the full formatJSON pretty-printer (which stays
-// in a lazy chunk). Expanded views can upgrade to formatBody on demand.
-export function previewBody(text = ""): string {
-  return cleanText(text);
-}
-
-export function formatDuration(milliseconds?: number): string {
-  return duration(milliseconds);
-}
-
 // Live vocabulary is single-sourced here: anything without a terminal
 // state (started but unfinished, or facts not yet recorded) reads as
 // running. Diagnostics (statistics/raw) keep the exact stored value.

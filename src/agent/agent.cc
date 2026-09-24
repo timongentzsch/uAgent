@@ -378,8 +378,7 @@ size_t Agent::RequestContextBytes(size_t schema_bytes,
                                   const json* messages) const {
   size_t bytes =
       JsonEstimatedBytes(messages ? *messages : conversation_.Messages());
-  return api_.capabilities.native_tools ? SaturatingAdd(bytes, schema_bytes)
-                                        : bytes;
+  return SaturatingAdd(bytes, schema_bytes);
 }
 
 int64_t Agent::ContextUsed() const {

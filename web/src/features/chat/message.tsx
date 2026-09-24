@@ -30,14 +30,13 @@ import {
 } from "../../shared/ui.tsx";
 import { MessageMenu } from "./message-menu.tsx";
 import { useBlockReader } from "../../state/block-reader.ts";
+import { duration } from "../../shared/duration.ts";
 import { getToolRow } from "./tool-preview.ts";
 import { ToolRow } from "./tool-row.tsx";
 import {
   formatDateTime,
-  formatDuration,
   formatTime,
   isRunningStatus,
-  previewBody,
   statusLine,
   stringifyArgs,
 } from "../../shared/display.ts";
@@ -154,11 +153,11 @@ function MessageView({
   ]);
   const argumentsText = stringifyArgs(block.arguments);
   const input = useMemo(
-    () => (expanded ? previewBody(argumentsText) : ""),
+    () => (expanded ? cleanText(argumentsText) : ""),
     [expanded, argumentsText],
   );
   const output = useMemo(
-    () => (expanded ? previewBody(text) : ""),
+    () => (expanded ? cleanText(text) : ""),
     [expanded, text],
   );
   if (block.kind === "compaction" && block.compaction)
@@ -175,7 +174,7 @@ function MessageView({
         </p>
         <p class="muted">
           {block.compaction.automatic ? "Automatic" : "Manual"} ·{" "}
-          {formatDuration(block.compaction.duration_ms)}
+          {duration(block.compaction.duration_ms)}
         </p>
       </EventRow>
     );

@@ -72,7 +72,6 @@ export default function ConversationActions({
         <label>
           Conversation name
           <Input
-            // eslint-disable-next-line jsx-a11y/no-autofocus
             autoFocus
             value={title}
             onInput={(event) => setTitle(event.currentTarget.value)}

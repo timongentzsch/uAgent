@@ -107,9 +107,6 @@ std::string InputPrompt(const char* label = "");
 // ready: callers differ in how they sanitize it, and the composer's mapping of
 // newlines to a glyph is what keeps the echo on the rows it drew.
 std::string UserEchoRow(const std::string& prompt, const std::string& text);
-std::string ReadInputLine(const std::string& prompt, bool* eof,
-                          bool keep_history = true,
-                          const std::string& initial = "");
 std::string ReadInteraction(InteractionRequest request, bool* eof);
 std::string ReadChoiceLine(const std::string& prompt, bool& cancelled,
                            bool& eof);

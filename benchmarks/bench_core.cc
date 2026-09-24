@@ -172,9 +172,12 @@ int RunBenchmarks() {
   const std::string benchmark_model = "benchmark-model";
   constexpr size_t kWireIterations = 1000;
   auto wire_benchmark = [&](WireApi wire_api, const char* name) {
-    WireRequest request{
-        benchmark_model, history, no_tools, "high", 4096, true, true, true,
-        false,           true};
+    WireRequest request{.model = benchmark_model,
+                        .messages = history,
+                        .tool_schemas = no_tools,
+                        .reasoning_effort = "high",
+                        .max_output_tokens = 4096,
+                        .stream_usage = true};
     Report(name, kWireIterations, Measure(kWireIterations, [&] {
              return JsonDump(EncodeWireRequest(wire_api, request)).size();
            }));

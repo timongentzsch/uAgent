@@ -26,7 +26,6 @@ struct WireRequest {
   const json& tool_schemas;
   std::string_view reasoning_effort;
   int64_t max_output_tokens = -1;
-  bool native_tools = true;
   bool parallel_tools = true;
   bool stream_usage = false;
   bool native_web_search = false;

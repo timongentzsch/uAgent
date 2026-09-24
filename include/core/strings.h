@@ -72,12 +72,6 @@ std::string DisplayTrunc(std::string s, size_t columns);
 std::string DisplayTail(std::string text, size_t columns);
 std::string ActivityLabel(const std::string& label, size_t columns);
 
-// Window of up to `columns` display columns starting at display column `start`
-// (left edge), never splitting a UTF-8 codepoint. Short text is returned
-// left-aligned. Used by the rolling reasoning ticker.
-std::string DisplayWindow(const std::string& text, size_t start,
-                          size_t columns);
-
 // Wrap ANSI-free display text into rows each bounded by `columns` display
 // columns, never splitting a UTF-8 codepoint. Used for line-wrapping terminal
 // input/output where DisplayTrunc (ellipsis truncation) is not wanted.
@@ -161,9 +155,7 @@ std::string TruncatedHash(std::string_view data, size_t chars);
 
 // Delimiter splits without allocating or disagreeing on npos handling.
 // BeforeFirst("project/name", '/') -> "project"; no delimiter -> whole.
-// AfterFirst("key=value", '=') -> "value"; no delimiter -> empty.
 std::string_view BeforeFirst(std::string_view s, char delim) noexcept;
-std::string_view AfterFirst(std::string_view s, char delim) noexcept;
 // Scope prefix of a `scope/name` key ("project" in "project/foo").
 // No '/' -> whole input; empty input -> empty.
 std::string_view ScopePrefix(std::string_view key) noexcept;

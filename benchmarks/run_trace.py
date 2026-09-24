@@ -101,7 +101,7 @@ def trace_metrics(
             else:
                 current_messages += int(data.get("new_message_bytes") or 0)
                 message_bytes = current_messages
-            schema_bytes = int(data.get("schema_bytes") or 0) if data.get("native_tools") else 0
+            schema_bytes = int(data.get("schema_bytes") or 0)
             context_bytes.append(message_bytes + schema_bytes)
         elif name == "model_response":
             model_duration_ms += float(data.get("end_to_end_ms") or data.get("duration_ms") or 0)

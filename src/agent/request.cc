@@ -114,10 +114,7 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
                                   ? available_schemas_.Bytes()
                                   : JsonEstimatedBytes(schemas);
   const size_t message_bytes = JsonEstimatedBytes(messages);
-  const size_t estimated_bytes =
-      api_.capabilities.native_tools
-          ? SaturatingAdd(message_bytes, schema_bytes)
-          : message_bytes;
+  const size_t estimated_bytes = SaturatingAdd(message_bytes, schema_bytes);
   if (Debug().Enabled()) {
     // A full snapshot after any shrink plus per-step deltas reconstructs every
     // request without re-dumping the whole history on every step.
@@ -131,7 +128,6 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
         {"total_messages", conversation_.Size()},
         {"tool_schemas", schemas.size()},
         {"schema_bytes", schema_bytes},
-        {"native_tools", api_.capabilities.native_tools},
         {"parallel_tools", api_.capabilities.parallel_tools},
         {"include_usage", api_.capabilities.stream_usage_option},
         {"system_revision", adaptive_system_ ? adaptive_system_->revision : 0}};
@@ -345,9 +341,8 @@ std::string Agent::AnalyzeImageContent(const json& content,
       ResolveSideRoute(api_, catalog.models, catalog.providers, image_model);
   Api vision(api_.config);
   ApplySideRoute(vision, route);
-  // The route decides where the request goes; these three facts are true of
+  // The route decides where the request goes; these facts are true of
   // any vision side call regardless of provider.
-  vision.capabilities.native_tools = false;
   vision.capabilities.parallel_tools = false;
   vision.capabilities.image_input = true;
 

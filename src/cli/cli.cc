@@ -242,13 +242,6 @@ std::string UserEchoRow(const std::string& prompt, const std::string& text) {
   return row + EraseToEol() + RST();
 }
 
-std::string ReadInputLine(const std::string& prompt, bool* eof,
-                          bool keep_history, const std::string& initial) {
-  return ReadInteraction(
-      {.prompt = prompt, .keep_history = keep_history, .initial = initial},
-      eof);
-}
-
 std::string ReadInteraction(InteractionRequest request, bool* eof) {
   static std::atomic<uint64_t> sequence{0};
   if (request.id.empty()) {

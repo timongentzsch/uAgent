@@ -47,7 +47,6 @@ struct ProviderCapabilities {
   bool hosted_web_search = false;
 
   // Request features that may be downgraded after a structured rejection.
-  bool native_tools = true;
   bool parallel_tools = true;
   bool stream_usage_option = true;
   bool reasoning_summary = false;
@@ -62,7 +61,6 @@ struct ProviderCapabilities {
   bool video_input = true;
 
   // Stable route dialect features.
-  bool model_catalog_required = true;
   bool raw_slash_models = false;
   bool reasoning_object = false;
   bool reasoning_replay_text = false;

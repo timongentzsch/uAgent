@@ -363,13 +363,6 @@ class UsageAccumulator {
     return usage;
   }
 
-  RouteUsage TakeRoutes() {
-    std::lock_guard<std::mutex> lock(mutex_);
-    RouteUsage routes;
-    routes.swap(routes_);
-    return routes;
-  }
-
   // Usage, route attribution, parent-turn attribution and child statistics
   // are one accounting record. Taking them under one lock prevents a producer
   // from landing between separate drains and losing its route or turn.

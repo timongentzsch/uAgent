@@ -52,8 +52,6 @@ export interface Statistics {
   side_tool_calls?: number;
   side_model_calls?: number;
   side_duration_ms?: number;
-  side_model_ms?: number;
-  side_tool_ms?: number;
 }
 export interface Exchange {
   id: string;

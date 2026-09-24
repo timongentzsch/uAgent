@@ -45,7 +45,7 @@ export function writeStored(
 // after newer rows. Detail ids are response-scoped when facts resolve,
 // so a differing detail id on both sides vetoes the match — repeated
 // provider call ids across turns must never cross-merge.
-function rejoinsToolRow(changed: any, item: any): boolean {
+function rejoinsToolRow(changed?: Block, item?: Block): boolean {
   if (!changed || !item) return false;
   // Single identity, occurrence first: same-response siblings must never
   // rejoin each other, only the row carrying the occurrence (or, without

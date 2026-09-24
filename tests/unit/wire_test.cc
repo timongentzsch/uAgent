@@ -69,9 +69,13 @@ void TestWireAdapters() {
         {"tool_call_id", "call-1"},
         {"content", "contents"}}});
 
-  WireRequest responses_request{"gpt-test", messages, schemas, "high",
-                                4096,       true,     true,    false,
-                                true,       true,     true};
+  WireRequest responses_request{.model = "gpt-test",
+                                .messages = messages,
+                                .tool_schemas = schemas,
+                                .reasoning_effort = "high",
+                                .max_output_tokens = 4096,
+                                .native_web_search = true,
+                                .include_web_search_sources = true};
   CHECK(!EncodeWireRequest(WireApi::kResponses, responses_request)["reasoning"]
              .contains("summary"));
   responses_request.reasoning_summary = true;
@@ -105,11 +109,12 @@ void TestWireAdapters() {
                                 {"id", "call-1"},
                                 {"name", "read_path"},
                                 {"input", {{"path", "README.md"}}}}})}};
-  WireRequest anthropic_request{"claude-test", anthropic_messages,
-                                schemas,       "high",
-                                2048,          true,
-                                true,          false,
-                                true,          true};
+  WireRequest anthropic_request{.model = "claude-test",
+                                .messages = anthropic_messages,
+                                .tool_schemas = schemas,
+                                .reasoning_effort = "high",
+                                .max_output_tokens = 2048,
+                                .native_web_search = true};
   anthropic_request.adaptive_thinking = true;
   anthropic_request.reasoning_summary = true;
   json anthropic =
@@ -133,8 +138,12 @@ void TestWireAdapters() {
   CHECK(anthropic["tools"].size() == 2);
   CHECK(WireEndpoint(WireApi::kAnthropicMessages) == "/messages");
 
-  WireRequest chat_request{"chat-test", messages, schemas, "",   -1,
-                           true,        true,     true,    true, true};
+  WireRequest chat_request{.model = "chat-test",
+                           .messages = messages,
+                           .tool_schemas = schemas,
+                           .reasoning_effort = "",
+                           .stream_usage = true,
+                           .native_web_search = true};
   json chat = EncodeWireRequest(WireApi::kChatCompletions, chat_request);
   CHECK(chat.contains("messages"));
   CHECK(!chat["messages"][2].contains(kWireReplayField));
@@ -749,9 +758,6 @@ void TestWireCacheParity() {
     parity();
     history.erase(history.begin() + 3, history.end());
     parity();
-    switched.capabilities.native_tools = false;
-    parity();
-    switched.capabilities.native_tools = true;
     switched.capabilities.parallel_tools = false;
     parity();
     switched.capabilities.parallel_tools = true;

@@ -423,32 +423,6 @@ std::string ActivityLabel(const std::string& label, size_t columns) {
   return prefix + tail;
 }
 
-std::string DisplayWindow(const std::string& text, size_t start,
-                          size_t columns) {
-  if (columns == 0 || text.empty()) return "";
-  std::mbstate_t state{};
-  size_t offset = 0;
-  size_t width = 0;
-  size_t begin = 0;
-  // Walk to the codepoint that begins at or just before `start` columns.
-  while (offset < text.size()) {
-    Glyph glyph = NextGlyph(text, offset, state, /*skip_ansi=*/true);
-    if (width + glyph.width > start) break;
-    width += glyph.width;
-    offset += glyph.bytes;
-    begin = offset;
-  }
-  // Extend to at most `columns` display columns.
-  size_t max_width = width + columns;
-  while (offset < text.size()) {
-    Glyph glyph = NextGlyph(text, offset, state, /*skip_ansi=*/true);
-    if (width + glyph.width > max_width) break;
-    width += glyph.width;
-    offset += glyph.bytes;
-  }
-  return text.substr(begin, offset - begin);
-}
-
 std::string SpinnerLabel(const std::string& label) {
   return ActivityLabel(label, TerminalWidth(12));
 }
@@ -533,11 +507,6 @@ bool OpenaiUrl(std::string url) {
 std::string_view BeforeFirst(std::string_view s, char delim) noexcept {
   size_t pos = s.find(delim);
   return pos == std::string_view::npos ? s : s.substr(0, pos);
-}
-
-std::string_view AfterFirst(std::string_view s, char delim) noexcept {
-  size_t pos = s.find(delim);
-  return pos == std::string_view::npos ? std::string_view{} : s.substr(pos + 1);
 }
 
 std::string_view ScopePrefix(std::string_view key) noexcept {

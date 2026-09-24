@@ -213,10 +213,6 @@ button:enabled:active,
 .destructive {
   color: var(--removed);
 }
-.compact-button {
-  min-height: 1.8rem;
-  font-size: var(--font-small);
-}
 button[aria-busy="true"] {
   display: inline-flex;
   align-items: center;
@@ -1286,11 +1282,6 @@ dialog section {
 @keyframes skeleton-pulse {
   to {
     opacity: 0.6;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .skeleton > div {
-    animation: none;
   }
 }
 .skeleton span {

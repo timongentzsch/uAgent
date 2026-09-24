@@ -33,7 +33,13 @@ import { Globe2, Menu, Settings } from "lucide-preact";
 // the initial bundle and break the CSS size budget.
 const markdownView = () => import("../shared/markdown-view.tsx");
 import { StatisticsLoading } from "../shared/statistics-layout.tsx";
-import { applyZoom, normalizeZoom } from "../shared/layout.ts";
+import {
+  applyTheme,
+  applyZoom,
+  normalizeZoom,
+  observeCompact,
+  trackViewport,
+} from "../shared/layout.ts";
 
 import { useHost } from "../state/use-host.ts";
 import { parseSlash } from "../features/composer/slash.ts";
@@ -210,27 +216,17 @@ function App() {
     ]);
   }, []);
   useEffect(() => {
-    let viewport: (() => void) | undefined;
-    let compact: (() => void) | undefined;
-    import("../shared/layout.ts").then(({ trackViewport, observeCompact }) => {
-      viewport = trackViewport();
-      compact = observeCompact((value) => {
-        setCompact(value);
-        setDrawer(false);
-      });
+    const viewport = trackViewport();
+    const compact = observeCompact((value) => {
+      setCompact(value);
+      setDrawer(false);
     });
     return () => {
-      viewport?.();
-      compact?.();
+      viewport();
+      compact();
     };
   }, []);
-  useEffect(() => {
-    let stop: (() => void) | undefined;
-    import("../shared/layout.ts").then(
-      ({ applyTheme }) => (stop = applyTheme(theme)),
-    );
-    return () => stop?.();
-  }, [theme]);
+  useEffect(() => applyTheme(theme), [theme]);
   useEffect(() => {
     let stop: (() => void) | undefined;
     import("../shared/pwa.ts").then(
@@ -1010,7 +1006,6 @@ function App() {
             <label>
               Directory on the host
               <Input
-                // eslint-disable-next-line jsx-a11y/no-autofocus
                 autoFocus
                 value={folder}
                 onInput={(event) => setFolder(event.currentTarget.value)}

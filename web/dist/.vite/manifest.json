@@ -61,19 +61,19 @@
     "file": "assets/attachments-By6-qNSM.css",
     "src": "_attachments-By6-qNSM.css"
   },
-  "_browser-aLhgopbI.js": {
-    "file": "assets/browser-aLhgopbI.js",
+  "_browser-BERRaKuu.js": {
+    "file": "assets/browser-BERRaKuu.js",
     "name": "browser",
     "imports": [
       "_ui-Ca6YsEiZ.js"
     ],
     "css": [
-      "assets/browser-zdlZNDs1.css"
+      "assets/browser-D23QF_vn.css"
     ]
   },
-  "_browser-zdlZNDs1.css": {
-    "file": "assets/browser-zdlZNDs1.css",
-    "src": "_browser-zdlZNDs1.css"
+  "_browser-D23QF_vn.css": {
+    "file": "assets/browser-D23QF_vn.css",
+    "src": "_browser-D23QF_vn.css"
   },
   "_channel-Dvk07fpO.js": {
     "file": "assets/channel-Dvk07fpO.js",
@@ -779,28 +779,28 @@
       "_limits-DNQcmWGQ.js"
     ]
   },
-  "_style-BY3X8Tj8.css": {
-    "file": "assets/style-BY3X8Tj8.css",
-    "src": "_style-BY3X8Tj8.css"
-  },
-  "_style-CQ7y8LyH.js": {
-    "file": "assets/style-CQ7y8LyH.js",
+  "_style-CuN3udIp.js": {
+    "file": "assets/style-CuN3udIp.js",
     "name": "style",
     "css": [
-      "assets/style-BY3X8Tj8.css"
+      "assets/style-LWbhmWjb.css"
     ]
+  },
+  "_style-LWbhmWjb.css": {
+    "file": "assets/style-LWbhmWjb.css",
+    "src": "_style-LWbhmWjb.css"
   },
   "_ui-Ca6YsEiZ.js": {
     "file": "assets/ui-Ca6YsEiZ.js",
     "name": "ui"
   },
   "index.html": {
-    "file": "assets/index-d7IMXCBe.js",
+    "file": "assets/index-DodMVPv6.js",
     "name": "index",
     "src": "index.html",
     "isEntry": true,
     "imports": [
-      "_style-CQ7y8LyH.js",
+      "_style-CuN3udIp.js",
       "_ui-Ca6YsEiZ.js",
       "_store-C3eWjjPG.js",
       "_api-B17OK55B.js",
@@ -1811,14 +1811,15 @@
     ]
   },
   "src/features/browser/browser.tsx": {
-    "file": "assets/browser-BSbmXl1m.js",
+    "file": "assets/browser-BKuqJxfq.js",
     "name": "browser",
     "src": "src/features/browser/browser.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_ui-Ca6YsEiZ.js",
       "_api-B17OK55B.js",
-      "_browser-aLhgopbI.js",
+      "_popover-C_XrKKkT.js",
+      "_browser-BERRaKuu.js",
       "_connection-status-Bx6k562B.js"
     ]
   },
@@ -2204,18 +2205,18 @@
     ]
   },
   "ui.html": {
-    "file": "assets/ui-BrZMkqo5.js",
+    "file": "assets/ui-YReTI7XH.js",
     "name": "ui",
     "src": "ui.html",
     "isEntry": true,
     "imports": [
-      "_style-CQ7y8LyH.js",
+      "_style-CuN3udIp.js",
       "_ui-Ca6YsEiZ.js",
       "_store-C3eWjjPG.js",
       "_popover-C_XrKKkT.js",
       "_plus-MhiQgEbS.js",
       "_size-controls-C5mHYkMy.js",
-      "_browser-aLhgopbI.js"
+      "_browser-BERRaKuu.js"
     ],
     "css": [
       "assets/ui-DtV2Ev_L.css"

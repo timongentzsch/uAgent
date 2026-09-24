@@ -1,10 +1,32 @@
+/* Screen first: the panel and viewer fill the dialog, and on a phone the
+   trackpad takes whatever height the screen leaves. */
+.browser-view > .dialog-body {
+  display: flex;
+  flex-direction: column;
+}
 .browser-panel {
-  display: grid;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
   gap: var(--gap);
   min-width: 0;
+  min-height: 0;
 }
 .browser-panel > p {
   max-width: 72ch;
+}
+.browser-profile-panel {
+  width: calc(320rem / 14);
+}
+/* One line above the screen: who drives, the page, and the profile menu. */
+.browser-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  min-width: 0;
+}
+.browser-bar > small {
+  flex: 1;
 }
 .browser-profile {
   display: grid;
@@ -28,19 +50,14 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.browser-panel > .dialog-actions {
-  position: sticky;
-  bottom: calc(-1 * var(--surface-inset));
-  z-index: 1;
-  padding-block: var(--gap);
-  border-top: 1px solid var(--line);
-  background: var(--bg);
-}
 .browser-viewer {
+  flex: 1;
   position: relative;
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: var(--gap);
   min-width: 0;
+  min-height: 0;
 }
 .browser-screen {
   order: 1;
@@ -61,6 +78,7 @@
 }
 .browser-trackpad {
   order: 3;
+  flex: 1;
   display: grid;
   grid-template-rows: minmax(calc(96rem / 14), 1fr) auto;
   min-height: min(calc(240rem / 14), 34dvh);
@@ -172,6 +190,7 @@
   }
   .browser-view-controls > button {
     flex: 1;
+    white-space: nowrap;
   }
   .browser-view-controls small {
     flex-basis: 100%;

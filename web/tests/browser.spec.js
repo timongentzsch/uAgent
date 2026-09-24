@@ -76,11 +76,13 @@ test.describe("phone browser viewer", () => {
     await expect(dialog.getByRole("button", { name: "Right" })).toBeVisible();
     for (const name of ["Keyboard", "Copy", "Paste"])
       await expect(dialog.getByRole("button", { name })).toBeVisible();
-    await expect(dialog.getByRole("button", { name: "Done" })).toBeVisible();
+    await expect(
+      dialog.getByRole("button", { name: "Hand back" }),
+    ).toBeVisible();
     await page.setViewportSize({ width: 390, height: 600 });
     await expect(page.locator("html")).toHaveCSS("--viewport-height", "600px");
     const done = await dialog
-      .getByRole("button", { name: "Done" })
+      .getByRole("button", { name: "Hand back" })
       .boundingBox();
     expect(done.y + done.height).toBeLessThanOrEqual(600);
     await expect(
@@ -120,7 +122,7 @@ test("watches an active agent without taking control", async ({
   const dialog = page.getByRole("dialog", { name: "Browser" });
   await expect(dialog.getByLabel("Read-only browser display")).toBeVisible();
   await expect(dialog.getByLabel("Browser viewport")).toHaveCount(1);
-  await expect(dialog.getByText(/Watching agent/)).toBeVisible();
+  await expect(dialog.getByText(/Agent working/)).toBeVisible();
   await expect(
     dialog.getByRole("button", { name: "Take control" }),
   ).toBeVisible();
@@ -178,6 +180,8 @@ test("creates and selects a persistent Chrome profile", async ({
   await page.goto(`/#session=${session.id}`);
   await page.getByRole("button", { name: "Open browser" }).click();
   const dialog = page.getByRole("dialog", { name: "Browser" });
+  // Profile actions are rare; they live in one menu above the screen.
+  await dialog.getByRole("button", { name: "Profiles" }).click();
   await dialog.getByRole("button", { name: "New profile" }).click();
   await dialog.getByLabel("New Chrome profile name").fill("Work");
   await dialog.getByRole("button", { name: "Create and use" }).click();
@@ -223,7 +227,8 @@ test("profile sign-in explicitly reopens Chrome and returns the same profile", a
   await page.goto(`/#session=${session.id}`);
   await page.getByRole("button", { name: "Open browser" }).click();
   const dialog = page.getByRole("dialog", { name: "Browser", exact: true });
-  // Sign-in sits in the profile row, beside New profile.
+  // Sign-in sits in the profile menu, beside New profile.
+  await dialog.getByRole("button", { name: "Profiles" }).click();
   await expect(
     dialog
       .locator(".browser-profile-controls")
@@ -232,11 +237,13 @@ test("profile sign-in explicitly reopens Chrome and returns the same profile", a
   await dialog
     .getByRole("button", { name: "Sign in to profile", exact: true })
     .click();
-  await expect(dialog.getByText(/Done reopens this profile/)).toBeVisible();
+  await expect(
+    dialog.getByText(/Hand back reopens this profile/),
+  ).toBeVisible();
   await expect(
     dialog.getByRole("button", { name: "Sign in to profile", exact: true }),
   ).toHaveCount(0);
-  await dialog.getByRole("button", { name: "Done", exact: true }).click();
+  await dialog.getByRole("button", { name: "Hand back", exact: true }).click();
   await expect(
     dialog.getByRole("button", { name: "Take control", exact: true }),
   ).toBeVisible();

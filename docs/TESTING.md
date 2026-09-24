@@ -27,7 +27,7 @@ tests; `-LE source` excludes them.
 | `behavior_eval` | scenario scores against the committed baseline |
 | `token_audit` | request and schema sizes against the committed baseline |
 | `eval_harness_self_test`, `session_metrics_self_test` | measurement tooling (label `source`) |
-| `ci_changes`, `consumer_boundary`, `wire_contract` | CI path selection and source contracts (label `source`) |
+| `ci_changes`, `layer_boundary`, `wire_contract` | CI path selection and source contracts (label `source`) |
 | `benchmarks` | native micro-benchmarks; only with `UAGENT_BUILD_BENCHMARKS=ON` |
 
 Run a subset of unit or integration cases with `--list`, `--test NAME`, or

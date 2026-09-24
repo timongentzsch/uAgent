@@ -31,7 +31,6 @@
 #include "include/core/strings.h"
 #include "include/core/term.h"
 #include "include/core/time.h"
-#include "include/md.h"
 #include "include/media/attachments.h"
 #include "include/providers.h"
 #include "src/agent/turn_internal.h"
@@ -517,7 +516,7 @@ void Agent::Turn(const std::string& user_input, json user_content, json images,
     }
 
     PushAssistantMessage(response, calls);
-    flow = calls.empty() ? FinishWithProse(response, state, loop)
+    flow = calls.empty() ? FinishWithProse(state, loop)
                          : ExecuteToolCalls(calls, state, loop);
     if (flow == StepFlow::kEndTurn) break;
   }

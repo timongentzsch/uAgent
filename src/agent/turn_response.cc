@@ -28,7 +28,6 @@
 #include "include/core/strings.h"
 #include "include/core/term.h"
 #include "include/core/time.h"
-#include "include/md.h"
 #include "include/media/attachments.h"
 #include "include/providers.h"
 #include "src/agent/turn_internal.h"
@@ -342,15 +341,7 @@ void Agent::PushAssistantMessage(ChatResult& response,
 }
 
 // Plain prose and no call: the turn is done unless steering reopened it.
-// Plain prose and no call: the turn is done unless steering reopened it.
-Agent::StepFlow Agent::FinishWithProse(ChatResult& response,
-                                       TurnExecution& state, StepState& loop) {
-  // Content that looked like a tool call was held back from the stream; if it
-  // didn't parse into one, it's prose -- show it now.
-  if (response.suppressed) {
-    MdPrint(response.content);
-    printf("\n");
-  }
+Agent::StepFlow Agent::FinishWithProse(TurnExecution& state, StepState& loop) {
   if (ApplyQueuedSteering(loop)) return StepFlow::kNextStep;
   if (SteeringState().Requested()) return InterruptTurn(state);
   state.complete = true;

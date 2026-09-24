@@ -248,8 +248,7 @@ class Agent {
                                  TurnExecution& state, StepState& loop);
   void PushAssistantMessage(ChatResult& response,
                             const std::vector<ToolCall>& calls);
-  StepFlow FinishWithProse(ChatResult& response, TurnExecution& state,
-                           StepState& loop);
+  StepFlow FinishWithProse(TurnExecution& state, StepState& loop);
   StepFlow ExecuteToolCalls(const std::vector<ToolCall>& calls,
                             TurnExecution& state, StepState& loop);
 

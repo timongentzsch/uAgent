@@ -137,11 +137,6 @@ std::string NormalizeModelId(std::string model);
 const ProviderTemplate* FindProviderTemplateForUrl(const std::string& url);
 // The built-in default template (OpenRouter) for unattributed endpoints.
 const ProviderTemplate& DefaultProviderTemplate();
-// Default model route when nothing is configured: DeepSeek flash through
-// OpenRouter auto-routing. One constant so the template, the search fallback
-// and future side-model defaults cannot drift apart.
-inline constexpr const char* kDefaultModelRoute =
-    "~deepseek/deepseek-flash-latest";
 bool ApplyProviderTemplate(Api& api, const ProviderTemplate& provider);
 std::string ModelPreferencePath();
 bool PersistableSelection(const std::string& selection);

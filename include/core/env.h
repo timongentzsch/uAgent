@@ -15,6 +15,12 @@
 
 namespace uagent {
 
+// Default model route when nothing is configured: DeepSeek flash through
+// OpenRouter auto-routing. One constant so the provider template and side-model
+// defaults cannot drift apart.
+inline constexpr const char* kDefaultModelRoute =
+    "~deepseek/deepseek-flash-latest";
+
 std::string EnvStr(const char* name, const std::string& dflt = "");
 
 int64_t EnvLong(const char* name, int64_t dflt);

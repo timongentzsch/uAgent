@@ -15,7 +15,6 @@
 #include "include/core/limits.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
-#include "include/providers.h"
 
 namespace uagent {
 

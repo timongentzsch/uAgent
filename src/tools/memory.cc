@@ -23,7 +23,6 @@
 #include <vector>
 
 #include "include/agent/memory_store.h"
-#include "include/app/library.h"
 #include "include/core/checked.h"
 #include "include/core/debug.h"
 #include "include/core/env.h"
@@ -31,6 +30,7 @@
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/lease.h"
+#include "include/core/library.h"
 #include "include/core/limits.h"
 #include "include/core/project.h"
 #include "include/core/strings.h"

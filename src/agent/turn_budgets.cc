@@ -28,7 +28,6 @@
 #include "include/core/strings.h"
 #include "include/core/term.h"
 #include "include/core/time.h"
-#include "include/md.h"
 #include "include/media/attachments.h"
 #include "include/providers.h"
 #include "src/agent/turn_internal.h"

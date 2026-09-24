@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/file_services.h"
 #include "include/agent/jobs.h"
 #include "include/core/debug.h"
 #include "include/core/env.h"
@@ -30,7 +31,6 @@
 #include "include/core/platform.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
-#include "include/tools/files.h"
 
 namespace uagent {
 

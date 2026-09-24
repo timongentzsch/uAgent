@@ -105,6 +105,7 @@ add_library(
   src/core/events.cc
   src/core/file_watch.cc
   src/core/fs.cc
+  src/core/library.cc
   src/core/platform_posix.cc
   src/core/sandbox.cc
   src/core/sandbox_posix.cc
@@ -137,6 +138,8 @@ target_link_libraries(uagent_toolcore PUBLIC uagent_api)
 
 add_library(
   uagent_agent
+  src/agent/activity_completion.cc
+  src/agent/activity_log.cc
   src/agent/agent.cc
   src/agent/child_agent.cc
   src/agent/conversation.cc
@@ -171,8 +174,6 @@ add_library(
   src/mcp/server.cc
   src/tools/adapt_system.cc
   src/tools/browser.cc
-  src/tools/activity_completion.cc
-  src/tools/activity_log.cc
   src/tools/collaborator_runtime.cc
   src/tools/files.cc
   src/tools/image_result.cc
@@ -188,7 +189,6 @@ add_library(
   src/tools/shell.cc
   src/tools/session.cc
   src/tools/subagent.cc
-  src/tools/tool.cc
   src/tools/web_fetch.cc
   src/tools/web_search.cc)
 target_link_libraries(uagent_tools PUBLIC uagent_agent)
@@ -375,10 +375,10 @@ if(BUILD_TESTING)
            COMMAND ${Python3_EXECUTABLE}
                    ${CMAKE_CURRENT_SOURCE_DIR}/tests/ci_changes_test.py)
   set_tests_properties(ci_changes PROPERTIES LABELS source)
-  add_test(NAME consumer_boundary
+  add_test(NAME layer_boundary
            COMMAND ${Python3_EXECUTABLE}
                    ${CMAKE_CURRENT_SOURCE_DIR}/tests/boundary_test.py)
-  set_tests_properties(consumer_boundary PROPERTIES LABELS source)
+  set_tests_properties(layer_boundary PROPERTIES LABELS source)
   add_test(NAME wire_contract
            COMMAND ${Python3_EXECUTABLE}
                    ${CMAKE_CURRENT_SOURCE_DIR}/tests/wire_contract_test.py)

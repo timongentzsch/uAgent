@@ -48,7 +48,9 @@ CMake mirrors the dependency DAG; each library links the one above it:
 `uagent_core` is an INTERFACE umbrella over `uagent_app`; tests, benchmarks,
 fuzzers and `uagent_web` link it. Public headers live under `include/`
 (top-level facades plus `include/<module>/`); only module-private shared
-declarations stay in `src/<module>/*_internal.h`. The web bundle embeds
+declarations stay in `src/<module>/*_internal.h`. `tests/boundary_test.py`
+rejects any new include that points up this order; its `KNOWN` set lists the
+remaining exceptions. The web bundle embeds
 `web/dist` or fails with instructions (`npm run build` in `web/`, or
 `-DUAGENT_WEB=OFF`).
 

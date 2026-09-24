@@ -7,12 +7,12 @@
 #include <utility>
 
 #include "include/agent/prompt.h"
-#include "include/app/library.h"
 #include "include/cli.h"
 #include "include/core/config_document.h"
 #include "include/core/events.h"
 #include "include/core/fs.h"
 #include "include/core/lease.h"
+#include "include/core/library.h"
 #include "include/tools/files.h"
 
 namespace uagent {

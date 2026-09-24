@@ -25,9 +25,12 @@ const configuration = () => import("./configuration.tsx");
 import { api, command } from "../../state/api.ts";
 import { ArrowLeft, Palette } from "lucide-preact";
 import { applyUpdate } from "../../shared/pwa.ts";
+import type { TimePrefs } from "../../shared/time.ts";
 export default function Settings({
   theme,
   setTheme,
+  timePrefs,
+  setTimePrefs,
   zoom,
   setZoom,
   installed,
@@ -51,6 +54,8 @@ export default function Settings({
 }: {
   theme: string;
   setTheme: Dispatch<StateUpdater<string>>;
+  timePrefs: TimePrefs;
+  setTimePrefs: Dispatch<StateUpdater<TimePrefs>>;
   zoom: number;
   setZoom: Dispatch<StateUpdater<number>>;
   installed: boolean;
@@ -162,6 +167,40 @@ export default function Settings({
               </Select>
             </Field>
             <SizeControls zoom={zoom} change={setZoom} />
+            <Field label="Clock">
+              <Select
+                aria-label="Clock"
+                value={timePrefs.clock}
+                onChange={(event) =>
+                  setTimePrefs({
+                    ...timePrefs,
+                    clock: event.currentTarget.value as TimePrefs["clock"],
+                  })
+                }
+              >
+                <option value="system">System</option>
+                <option value="12">12-hour</option>
+                <option value="24">24-hour</option>
+              </Select>
+            </Field>
+            <Field label="Timestamps">
+              <Select
+                aria-label="Timestamps"
+                value={timePrefs.style}
+                onChange={(event) =>
+                  setTimePrefs({
+                    ...timePrefs,
+                    style: event.currentTarget.value as TimePrefs["style"],
+                  })
+                }
+              >
+                <option value="smart">
+                  Smart · time today, date when older
+                </option>
+                <option value="relative">Relative · 5 min ago</option>
+                <option value="absolute">Absolute · full date and time</option>
+              </Select>
+            </Field>
             {permission === null ? (
               error ? (
                 <LoadError

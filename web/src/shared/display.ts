@@ -21,20 +21,6 @@ export function diffLineClass(line: string, first: boolean): string {
   return "diff-ctx";
 }
 
-export function formatTime(iso?: string): string {
-  if (!iso) return "—";
-  const time = new Date(iso);
-  if (Number.isNaN(time.getTime())) return "—";
-  return time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-}
-
-export function formatDateTime(iso?: string): string {
-  if (!iso) return "Not recorded";
-  const time = new Date(iso);
-  if (Number.isNaN(time.getTime())) return "Not recorded";
-  return time.toLocaleString();
-}
-
 export function stringifyArgs(args: unknown): string {
   if (typeof args === "string") return args;
   try {

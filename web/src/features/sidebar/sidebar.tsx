@@ -18,20 +18,10 @@ import {
   CalendarClock,
 } from "lucide-preact";
 import { command } from "../../state/api.ts";
-import { Mark, Input } from "../../shared/ui.tsx";
+import { Mark, Input, Time } from "../../shared/ui.tsx";
 import FolderLabel from "./folder-label.tsx";
 import { Menu, MenuItem } from "../../shared/popover.tsx";
 import { ActivityStatus, active } from "../chat/activity-status.tsx";
-const shortDate = new Intl.DateTimeFormat(undefined, {
-  day: "numeric",
-  month: "short",
-  hour: "2-digit",
-  minute: "2-digit",
-});
-const fullDate = new Intl.DateTimeFormat(undefined, {
-  dateStyle: "medium",
-  timeStyle: "medium",
-});
 export function ConversationMenu({
   item,
   online,
@@ -244,12 +234,7 @@ export default function Sidebar({
                       pending={online && item.pending}
                     />
                     {item.updated ? (
-                      <time
-                        dateTime={new Date(item.updated).toISOString()}
-                        title={fullDate.format(item.updated)}
-                      >
-                        {shortDate.format(item.updated)}
-                      </time>
+                      <Time value={item.updated} />
                     ) : (
                       "New conversation"
                     )}

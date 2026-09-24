@@ -6,6 +6,7 @@ import {
 } from "preact";
 import { failure } from "./types.ts";
 import {
+  useContext,
   useEffect,
   useId,
   useLayoutEffect,
@@ -20,6 +21,27 @@ import { Input } from "./form-controls.tsx";
 
 import { cleanText } from "./display.ts";
 export { cleanText };
+import {
+  TimePrefsContext,
+  formatFullMoment,
+  formatMoment,
+  useNow,
+} from "./time.ts";
+
+// Every timestamp in the app: formatted by the viewer's time preferences,
+// with the full moment on hover. `value` is an ISO string or epoch ms.
+export function Time({ value }: { value?: string | number }) {
+  const prefs = useContext(TimePrefsContext);
+  const now = useNow(prefs.style !== "absolute");
+  if (value == null || value === "") return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return (
+    <time dateTime={date.toISOString()} title={formatFullMoment(date, prefs)}>
+      {formatMoment(date, prefs, now)}
+    </time>
+  );
+}
 export async function copyText(text: string) {
   if (navigator.clipboard) return navigator.clipboard.writeText(text);
   // Clipboard API requires HTTPS; tailnet HTTP still supports user-initiated copy.
@@ -315,14 +337,7 @@ export function DisclosureRow({
           {label}
         </span>
         {status && <small>{status}</small>}
-        {time && (
-          <time dateTime={time}>
-            {new Date(time).toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-            })}
-          </time>
-        )}
+        <Time value={time} />
       </summary>
       {mounted && <div class="disclosure-body">{children}</div>}
     </details>

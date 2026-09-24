@@ -23,18 +23,14 @@ import {
   LoadError,
   EventRow,
   ErrorBoundary,
+  Time,
 } from "../../shared/ui.tsx";
 import { MessageMenu } from "./message-menu.tsx";
 import { useBlockReader } from "../../state/block-reader.ts";
 import { duration } from "../../shared/duration.ts";
 import { getToolRow } from "./tool-preview.ts";
 import { ToolRow } from "./tool-row.tsx";
-import {
-  formatDateTime,
-  formatTime,
-  isRunningStatus,
-  statusLine,
-} from "../../shared/display.ts";
+import { isRunningStatus, statusLine } from "../../shared/display.ts";
 
 // Inline @-mention reference. Resolves against the message's own files so
 // a renamed file shows its current name; a removed one degrades to muted
@@ -244,11 +240,7 @@ function MessageView({
               })}
             </span>
           )}
-          {
-            <time dateTime={block.time} title={formatDateTime(block.time)}>
-              {formatTime(block.time)}
-            </time>
-          }
+          <Time value={block.time} />
           {recall &&
             online &&
             block.status === "Guidance queued" &&

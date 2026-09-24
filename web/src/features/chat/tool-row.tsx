@@ -1,7 +1,7 @@
-import { DisclosureRow, Skeleton, LoadError } from "../../shared/ui.tsx";
+import { DisclosureRow, Skeleton, LoadError, Time } from "../../shared/ui.tsx";
 import DiffView from "./diff-view.tsx";
 import Markdown from "../../shared/markdown-view.tsx";
-import { cleanText, formatDateTime } from "../../shared/display.ts";
+import { cleanText } from "../../shared/display.ts";
 import type { PresentedBlock, ToolPart } from "../../shared/types.ts";
 
 // A fence longer than any backtick run in the body, so code never ends early.
@@ -90,11 +90,18 @@ export function ToolRow({
       <div class="tool-body">
         <p class="small muted">
           {block.name}
-          {block.source?.time &&
-            ` · called ${formatDateTime(block.source.time)}`}
-          {block.result_loaded &&
-            block.time &&
-            ` · completed ${formatDateTime(block.time)}`}
+          {block.source?.time && (
+            <>
+              {" · called "}
+              <Time value={block.source.time} />
+            </>
+          )}
+          {block.result_loaded && block.time && (
+            <>
+              {" · completed "}
+              <Time value={block.time} />
+            </>
+          )}
         </p>
         {!diffOnly && <ToolInput parts={block.view?.input || []} />}
         {!online && block.truncated && text == null && (

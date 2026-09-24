@@ -44,6 +44,11 @@ import {
 import { useHost } from "../state/use-host.ts";
 import { parseSlash } from "../features/composer/slash.ts";
 import { dedupeName } from "../features/composer/mention.ts";
+import {
+  TimePrefsContext,
+  normalizeTimePrefs,
+  type TimePrefs,
+} from "../shared/time.ts";
 import { useTranscriptHistory } from "../state/use-transcript-history.ts";
 import { prependHistoryPage } from "../state/history-page.ts";
 import "../shared/style.css";
@@ -134,6 +139,13 @@ function App() {
   const [install, setInstall] = useState<InstallPrompt | null>(null);
   const [update, setUpdate] = useState<ServiceWorker | null>(null);
   const [notificationMode, setNotificationMode] = useState(false);
+  const [timePrefs, setTimePrefs] = useState<TimePrefs>(() =>
+    normalizeTimePrefs(readStored(localStorage, "uagent-time", {})),
+  );
+  useEffect(
+    () => writeStored(localStorage, "uagent-time", timePrefs),
+    [timePrefs],
+  );
   const [theme, setTheme] = useState(
     () => localStorage.getItem("uagent-theme") || "system",
   );
@@ -701,7 +713,7 @@ function App() {
   );
 
   return (
-    <>
+    <TimePrefsContext.Provider value={timePrefs}>
       {(error || notice) && (
         <div role={error ? "alert" : "status"} class="error-banner">
           <span>{error || notice}</span>
@@ -1098,6 +1110,8 @@ function App() {
             fallback={<Spinner label="Loading settings…" surface />}
             theme={theme}
             setTheme={setTheme}
+            timePrefs={timePrefs}
+            setTimePrefs={setTimePrefs}
             zoom={zoom}
             setZoom={setZoom}
             installed={installed}
@@ -1143,7 +1157,7 @@ function App() {
           )}
         </Modal>
       )}
-    </>
+    </TimePrefsContext.Provider>
   );
 }
 render(

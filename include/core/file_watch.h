@@ -5,6 +5,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -33,10 +34,12 @@ FileWaitResult WaitForFileChange(
 
 // Host coordination waits on several files/directories and its own shutdown
 // pipe. Native targets use one kqueue/inotify instance; other POSIX targets use
-// the same bounded fallback as the single-file API.
+// the same bounded fallback as the single-file API. Callers processing state
+// before waiting can pass the stamps they read, closing that notification gap.
 FileWaitResult WaitForAnyFileChange(
     const std::vector<std::string>& paths,
-    std::chrono::steady_clock::time_point deadline, int wake_fd = -1);
+    std::chrono::steady_clock::time_point deadline, int wake_fd = -1,
+    const std::map<std::string, FileStamp>& prior = {});
 
 }  // namespace uagent
 

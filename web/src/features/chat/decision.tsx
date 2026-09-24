@@ -1,6 +1,6 @@
 import type { Pending, Act, Report } from "../../shared/types.ts";
 import { useState } from "preact/hooks";
-import { cleanText, Select } from "../../shared/ui.tsx";
+import { cleanText, Select, Input, Textarea } from "../../shared/ui.tsx";
 
 export default function Decision({
   pending,
@@ -63,7 +63,7 @@ export default function Decision({
         {pending.kind === "editor" ? (
           <label>
             System prompt
-            <textarea
+            <Textarea
               rows={12}
               value={reply}
               onInput={(event) => setReply(event.currentTarget.value)}
@@ -93,7 +93,7 @@ export default function Decision({
         ) : (
           <label>
             Response
-            <input
+            <Input
               aria-label="Response"
               name="reply"
               autoComplete="off"
@@ -105,7 +105,7 @@ export default function Decision({
         {reply === "guidance" && (
           <label>
             Guidance
-            <input
+            <Input
               value={guidance}
               onInput={(event) => setGuidance(event.currentTarget.value)}
               required

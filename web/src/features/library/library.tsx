@@ -2,7 +2,15 @@ import { manage } from "../../state/api.ts";
 import type { LibraryItem } from "../../shared/types.ts";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { Plus, ArrowLeft, ChevronDown, Pencil } from "lucide-preact";
-import { Field, LoadError, Modal, Select, Spinner } from "../../shared/ui.tsx";
+import {
+  Field,
+  LoadError,
+  Modal,
+  Select,
+  Spinner,
+  Input,
+  Textarea,
+} from "../../shared/ui.tsx";
 import { LibraryRows } from "../../shared/loading.tsx";
 import { Menu, MenuItem } from "../../shared/popover.tsx";
 import { readStored, writeStored } from "../../state/store.ts";
@@ -264,7 +272,7 @@ export default function Library({
           class={`management-body ${item || loading ? "has-selection" : ""}`}
         >
           <div class="management-list">
-            <input
+            <Input
               aria-label="Search library"
               type="search"
               placeholder="Search…"
@@ -394,7 +402,7 @@ export default function Library({
                 {!item.key ? (
                   <div class="field-row">
                     <Field label="Name">
-                      <input
+                      <Input
                         value={name}
                         onInput={(event) => setName(event.currentTarget.value)}
                       />
@@ -440,7 +448,7 @@ export default function Library({
                     <Markdown text={content} />
                   </div>
                 ) : (
-                  <textarea
+                  <Textarea
                     class="document-input"
                     aria-label="Document content"
                     value={content}
@@ -555,7 +563,7 @@ export default function Library({
               </p>
             ) : (
               <Field label="Name">
-                <input
+                <Input
                   // eslint-disable-next-line jsx-a11y/no-autofocus
                   autoFocus
                   value={rename}

@@ -1,23 +1,6 @@
-import { Field } from "./ui.tsx";
+import { Field, Input } from "./ui.tsx";
 
-export const minimumZoom = 50;
-export const maximumZoom = 200;
-const conversationMeasure = 1040;
-export const zoomChanged = "uagent:zoom";
-
-export function normalizeZoom(value: number) {
-  return Math.min(maximumZoom, Math.max(minimumZoom, value || 100));
-}
-
-export function applyZoom(value: number) {
-  const zoom = normalizeZoom(value);
-  document.documentElement.style.setProperty("--zoom", String(zoom / 100));
-  document.documentElement.style.setProperty(
-    "--conversation-measure",
-    `${(conversationMeasure * 100) / zoom}px`,
-  );
-  dispatchEvent(new Event(zoomChanged));
-}
+import { minimumZoom, maximumZoom } from "./layout.ts";
 
 export function SizeControls({
   zoom = 100,
@@ -33,7 +16,7 @@ export function SizeControls({
         value={`${zoom}%`}
         help="Scales the entire interface, conversation included — like browser zoom."
       >
-        <input
+        <Input
           type="range"
           aria-label="Zoom"
           aria-valuetext={`${zoom}%`}

@@ -40,8 +40,9 @@ exhaustive audit of either harness.
 - Process children reuse their existing bounded progress log; persistent child
   inspection reads the same status from its worker snapshot. The popup says
   latest reported activity: this does not create a new child subscription.
-- Shared composer scaling now paints text at the selected density while keeping
-  the editable layout font at least 16px on touch devices. Noninteractive dialog
+- Shared form controls, including search/settings and both composers, paint text
+  at the selected density while keeping the layout font at least 16px on touch
+  devices. Noninteractive dialog
   headings/containers have no focus outline; keyboard controls retain theirs.
 
 Regression coverage includes core projection and CLI parity, signed replay,

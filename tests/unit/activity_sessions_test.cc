@@ -111,6 +111,15 @@ void TestSignalAndFileWatch() {
     watcher.join();
     CHECK(file_changed == FileWaitResult::kChanged);
 
+    // A write between processing state and opening the watcher must wake the
+    // host too. Sampling only on entry would mistake these bytes for old data.
+    observed = SnapshotFile(watched_path);
+    CHECK(write(watched_fd, "queued", 6) == 6);
+    CHECK(WaitForAnyFileChange(
+              {watched_path},
+              std::chrono::steady_clock::now() + std::chrono::seconds(2), -1,
+              {{watched_path, observed}}) == FileWaitResult::kChanged);
+
     observed = SnapshotFile(watched_path);
     FileWaitResult steering_changed = FileWaitResult::kTimedOut;
     std::thread steering_watcher([&] {

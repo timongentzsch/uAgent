@@ -45,7 +45,6 @@
   /* Controls and spacing use rem throughout so zoom also changes density.
      Fixed pixel floors made the 50–75% range mostly cosmetic. */
   --control: 2.2rem;
-  --input-font-min: 0px;
   --font-small: 0.85rem;
   --popover-gap: var(--space-4);
   --dialog-width: calc(560rem / 14);
@@ -291,9 +290,11 @@ input[type="range"] {
   display: block;
   min-width: 0;
 }
+.select {
+  --input-padding-end: calc(34rem / 14);
+}
 .select select {
   appearance: none;
-  padding-inline-end: calc(34rem / 14);
 }
 .select > .lucide {
   position: absolute;
@@ -521,7 +522,7 @@ pre code {
   font-size: 0.8rem;
   padding-inline: var(--space-3);
 }
-.search input {
+.search .text-control {
   font-size: 0.8rem;
 }
 .sidebar nav {
@@ -737,32 +738,39 @@ pre code {
   border: 1px solid transparent;
   background: var(--raised);
 }
-.message-input {
+.text-control {
   display: block;
   --input-scale: 1;
   --input-min-height: var(--control);
+  --input-padding-y: var(--space-2);
+  --input-padding-start: var(--space-4);
+  min-width: 0;
+  min-height: var(--input-min-height);
+  width: 100%;
+  overflow: clip;
+}
+.text-control > :is(input, textarea, select) {
+  display: block;
+  width: calc(100% / var(--input-scale));
+  min-height: calc(var(--input-min-height) / var(--input-scale));
+  max-height: calc(var(--input-max-height) / var(--input-scale));
+  padding-block: calc(var(--input-padding-y) / var(--input-scale));
+  padding-inline: calc(var(--input-padding-start) / var(--input-scale))
+    calc(var(--input-padding-end, var(--space-4)) / var(--input-scale));
+  border-width: calc(1px / var(--input-scale));
+  transform: scale(var(--input-scale));
+  transform-origin: top left;
+  outline-offset: -2px;
+}
+.message-input {
   --input-max-height: min(
     calc(160rem / 14),
     calc(var(--viewport-height) * 0.25)
   );
-  --input-padding-y: var(--space-2);
-  min-width: 0;
-  width: 100%;
   font-size: calc(16rem / 14);
-  overflow: clip;
 }
-:root .message-input > textarea {
-  display: block;
+.message-input > textarea {
   resize: none;
-  width: calc(100% / var(--input-scale));
-  min-height: calc(var(--input-min-height) / var(--input-scale));
-  max-height: calc(var(--input-max-height) / var(--input-scale));
-  padding: calc(var(--input-padding-y) / var(--input-scale))
-    calc(var(--space-4) / var(--input-scale));
-  font-size: calc(1em / var(--input-scale));
-  transform: scale(var(--input-scale));
-  transform-origin: top left;
-  outline-offset: -2px;
   overflow: auto;
 }
 .composer > form > .message-input {
@@ -1162,8 +1170,7 @@ dialog section {
   overflow: auto;
   border-right: 1px solid var(--line);
 }
-.management-list > input,
-.management-list > .select {
+.management-list > .text-control {
   margin-bottom: var(--gap);
   width: 100%;
 }
@@ -1323,13 +1330,6 @@ dialog section {
 @media (pointer: coarse) {
   :root {
     --control: calc(44rem / 14);
-    /* A CSS-pixel font floor prevents mobile Safari focus zoom at low density. */
-    --input-font-min: 16px;
-  }
-  :root input,
-  :root select,
-  :root textarea {
-    font-size: max(1rem, var(--input-font-min));
   }
   .activity-toggle,
   .metrics > button {

@@ -1,7 +1,7 @@
 import { useState } from "preact/hooks";
 import type { StatisticsModal } from "../../shared/types.ts";
 import { command } from "../../state/api.ts";
-import { LoadError } from "../../shared/ui.tsx";
+import { LoadError, Input } from "../../shared/ui.tsx";
 export default function ConversationActions({
   modal,
   online,
@@ -71,7 +71,7 @@ export default function ConversationActions({
       {modal.type === "rename" ? (
         <label>
           Conversation name
-          <input
+          <Input
             // eslint-disable-next-line jsx-a11y/no-autofocus
             autoFocus
             value={title}

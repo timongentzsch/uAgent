@@ -9,7 +9,7 @@ import type {
 import "./configuration.css";
 import { useEffect, useState } from "preact/hooks";
 import { command } from "../../state/api.ts";
-import { Select, Spinner, LoadError } from "../../shared/ui.tsx";
+import { Select, Spinner, LoadError, Input } from "../../shared/ui.tsx";
 
 const stringify = (value?: JSONValue) =>
   value == null
@@ -65,7 +65,7 @@ function Setting({
             <option value="1">On</option>
           </Select>
         ) : (
-          <input
+          <Input
             id={id}
             type={
               secret
@@ -205,7 +205,7 @@ export default function Configuration({
       </label>
       <label>
         Find a setting
-        <input
+        <Input
           type="search"
           value={query}
           onInput={(event) => setQuery(event.currentTarget.value)}

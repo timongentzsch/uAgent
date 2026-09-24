@@ -24,6 +24,7 @@ import {
   IconButton,
   Spinner,
   preloadDeferred,
+  Input,
 } from "../shared/ui.tsx";
 import { Globe2, Menu, Settings } from "lucide-preact";
 // Prefetch helpers live next to the renderer so marker regexes stay in one
@@ -31,7 +32,7 @@ import { Globe2, Menu, Settings } from "lucide-preact";
 // the initial bundle and break the CSS size budget.
 const markdownView = () => import("../shared/markdown-view.tsx");
 import { StatisticsLoading } from "../shared/statistics-layout.tsx";
-import { applyZoom, normalizeZoom } from "../shared/size-controls.tsx";
+import { applyZoom, normalizeZoom } from "../shared/layout.ts";
 
 import { useHost } from "../state/use-host.ts";
 import { parseSlash } from "../features/composer/slash.ts";
@@ -1007,7 +1008,7 @@ function App() {
           <form onSubmit={create}>
             <label>
               Directory on the host
-              <input
+              <Input
                 // eslint-disable-next-line jsx-a11y/no-autofocus
                 autoFocus
                 value={folder}

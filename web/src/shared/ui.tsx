@@ -7,8 +7,11 @@ import {
   useRef,
   useState,
 } from "preact/hooks";
-import { ChevronDown, ChevronRight, X, Check, Copy } from "lucide-preact";
+import { ChevronRight, X, Check, Copy } from "lucide-preact";
 import { markPath } from "./mark.ts";
+
+export { Input, Textarea, Select } from "./form-controls.tsx";
+import { Input } from "./form-controls.tsx";
 
 import { cleanText } from "./display.ts";
 export { cleanText };
@@ -77,18 +80,6 @@ export function Mark({ className = "" }: { className?: string }) {
     </svg>
   );
 }
-export function Select({
-  children,
-  className = "",
-  ...props
-}: JSX.SelectHTMLAttributes<HTMLSelectElement>) {
-  return (
-    <span class={`select ${className}`}>
-      <select {...props}>{children}</select>
-      <ChevronDown aria-hidden="true" />
-    </span>
-  );
-}
 export function Field({
   label,
   value,
@@ -121,7 +112,7 @@ export function Toggle({
 }) {
   return (
     <label class="toggle-row">
-      <input type="checkbox" {...props} />
+      <Input type="checkbox" {...props} />
       <span>
         <strong>{label}</strong>
         {help && <small class="muted">{help}</small>}

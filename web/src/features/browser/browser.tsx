@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import type { Report, Session } from "../../shared/types.ts";
 import { api, command } from "../../state/api.ts";
 import RFB from "@novnc/novnc";
-import { Spinner } from "../../shared/ui.tsx";
+import { Spinner, Input, Textarea, Select } from "../../shared/ui.tsx";
 import BrowserInput from "./input.tsx";
 import "./browser.css";
 
@@ -190,9 +190,9 @@ function Viewer({ report, readOnly }: { report: Report; readOnly: boolean }) {
       {showText && !readOnly && (
         <div class="browser-text-panel">
           <label for="browser-text">Text for Chrome</label>
-          <textarea
+          <Textarea
             id="browser-text"
-            ref={textBox}
+            inputRef={textBox}
             value={text}
             onInput={(event) => setText(event.currentTarget.value)}
             placeholder="Type or paste text here"
@@ -449,7 +449,7 @@ export default function BrowserPanel({
         <div class="browser-profile">
           <label for="browser-profile-select">Chrome profile</label>
           <div class="browser-profile-controls">
-            <select
+            <Select
               id="browser-profile-select"
               value={status.profile_id || "default"}
               disabled={busy || !canChangeProfile}
@@ -462,7 +462,7 @@ export default function BrowserPanel({
                   {profile.name}
                 </option>
               ))}
-            </select>
+            </Select>
             <button
               type="button"
               disabled={busy || !canChangeProfile}
@@ -476,7 +476,7 @@ export default function BrowserPanel({
           )}
           {addingProfile && (
             <form class="browser-profile-create" onSubmit={createProfile}>
-              <input
+              <Input
                 aria-label="New Chrome profile name"
                 value={profileName}
                 onInput={(event) => setProfileName(event.currentTarget.value)}

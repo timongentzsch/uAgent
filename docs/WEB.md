@@ -189,9 +189,13 @@ dialog headers stay fixed while their bodies scroll above the phone's home
 indicator.
 Dialog focus starts at its title, and nested dialogs return focus without
 outlining their container. Only interactive keyboard targets show focus rings.
-Main and subagent composers scale their painted text with interface density.
-On touch devices the shared input retains a layout font of at least 16px and
-compensates a CSS transform with matching width, padding and height. This follows
+All editable fields use the shared `Input`, `Textarea` and `Select` controls,
+including search, settings, editors and both composers. They scale painted text
+with interface density. On touch devices they retain a layout font of at least
+16px and compensate a CSS transform with matching width, padding and height.
+The UI showcase includes the same controls; a source check prevents screens from
+adding native fields that bypass this behavior. Browser checks cover displayed
+text and geometry at 50%, 75%, 100%, 150% and 200%. This follows
 WebKit's use of the [layout font size](https://github.com/WebKit/WebKit/blob/main/Source/WebKit/WebProcess/WebPage/ios/WebPageIOS.mm#L2690)
 for its [focus zoom calculation](https://github.com/WebKit/WebKit/blob/main/Source/WebKit/UIProcess/API/ios/WKWebViewIOS.mm#L1767),
 while preserving user pinch zoom. Physical iPhone/PWA testing remains necessary

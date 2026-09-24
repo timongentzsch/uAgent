@@ -69,7 +69,7 @@
   margin-top: 0.2em;
 }
 
-.tool-choice select {
+.tool-choice .select {
   justify-self: end;
 }
 
@@ -81,8 +81,8 @@
   margin-top: var(--space-2);
 }
 
-.tool-categories form input,
-.tool-category span {
+.tool-categories form > .text-control,
+.tool-category > span {
   min-width: 0;
   flex: 1;
 }

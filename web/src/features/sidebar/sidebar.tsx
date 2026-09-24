@@ -18,7 +18,7 @@ import {
   CalendarClock,
 } from "lucide-preact";
 import { command } from "../../state/api.ts";
-import { Mark } from "../../shared/ui.tsx";
+import { Mark, Input } from "../../shared/ui.tsx";
 import FolderLabel from "./folder-label.tsx";
 import { Menu, MenuItem } from "../../shared/popover.tsx";
 import { ActivityStatus, active } from "../chat/activity-status.tsx";
@@ -202,7 +202,7 @@ export default function Sidebar({
       </div>
       <label class="search">
         <span class="sr-only">Find a session</span>
-        <input
+        <Input
           type="search"
           value={search}
           onInput={(event) => setSearch(event.currentTarget.value)}

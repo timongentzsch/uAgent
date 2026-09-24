@@ -28,8 +28,7 @@
   flex-wrap: wrap;
   gap: var(--gap);
 }
-.config-value input,
-.config-value .select {
+.config-value > .text-control {
   flex: 1;
   min-width: calc(100rem / 14);
 }

@@ -17,8 +17,8 @@
   flex-wrap: wrap;
   gap: var(--gap);
 }
-.browser-profile-controls select,
-.browser-profile-create input {
+.browser-profile-controls .text-control,
+.browser-profile-create .text-control {
   flex: 1 1 12rem;
   min-width: 0;
 }
@@ -125,10 +125,11 @@
   border: 1px solid var(--line);
   background: var(--surface);
 }
+.browser-text-panel .text-control {
+  --input-min-height: calc(90rem / 14);
+  --input-max-height: 20dvh;
+}
 .browser-text-panel textarea {
-  width: 100%;
-  min-height: 90px;
-  max-height: 20dvh;
   resize: vertical;
 }
 .browser-text-actions > button,

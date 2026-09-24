@@ -106,6 +106,17 @@ test("library drafts, shared controls and scheduled results", async ({
   await editor.fill(
     "# Durable lesson\n\nKeep native controls shared.\n\n| Scope | Rule |\n| --- | --- |\n| All clients | Shared events |\n\n```js\nconst shared = true;\n```",
   );
+  // The textarea fills the flex editor after the shared native-control wrapper.
+  await expect
+    .poll(() =>
+      editor.evaluate((node) =>
+        Math.abs(
+          node.getBoundingClientRect().height -
+            node.parentElement.getBoundingClientRect().height,
+        ),
+      ),
+    )
+    .toBeLessThan(1);
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(
     page.locator(".library-row").filter({ hasText: "browser-lesson" }),

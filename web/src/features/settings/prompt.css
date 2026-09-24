@@ -15,11 +15,11 @@
   padding: var(--gap);
   border: 1px solid var(--line);
 }
+.prompt-editor .text-control {
+  --input-min-height: 18rem;
+}
 .prompt-editor textarea {
-  width: 100%;
-  min-height: 18rem;
   resize: vertical;
-  font: inherit;
 }
 .prompt-sources {
   font-size: 0.75rem;

@@ -12,6 +12,7 @@
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
+#include <map>
 #include <string>
 #include <utility>
 #include <vector>
@@ -180,13 +181,18 @@ FileWaitResult WaitNative(const std::string& path, const FileStamp& observed,
 
 FileWaitResult WaitForAnyFileChange(
     const std::vector<std::string>& paths,
-    std::chrono::steady_clock::time_point deadline, int wake_fd) {
+    std::chrono::steady_clock::time_point deadline, int wake_fd,
+    const std::map<std::string, FileStamp>& prior) {
   if (std::chrono::steady_clock::now() >= deadline) {
     return FileWaitResult::kTimedOut;
   }
   std::vector<FileStamp> observed;
   observed.reserve(paths.size());
-  for (const std::string& path : paths) observed.push_back(SnapshotFile(path));
+  for (const std::string& path : paths) {
+    const auto found = prior.find(path);
+    observed.push_back(found == prior.end() ? SnapshotFile(path)
+                                            : found->second);
+  }
   const std::vector<std::string> targets = WatchTargets(paths);
   // Preserve enough descriptors for the HTTP/runtime paths under conservative
   // process limits. The fallback still observes the host wake and rechecks.

@@ -5,6 +5,11 @@ on:
     branches: [master, dev]
     tags: ["v*"]
   pull_request:
+  # The slow scans a pull request skips (full clang-tidy, coverage, thread
+  # sanitizer, the CLI-only build) still run on every push above and weekly.
+  schedule:
+    - cron: "23 4 * * 1"
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
@@ -95,7 +100,9 @@ jobs:
             exit 1
           fi
       - name: CLI-only build
-        if: matrix.build_type == 'Release' && matrix.target == 'linux-x86_64'
+        if: >-
+          github.event_name != 'pull_request' &&
+          matrix.build_type == 'Release' && matrix.target == 'linux-x86_64'
         run: |
           cmake -S . -B build/cli-only -DCMAKE_BUILD_TYPE=Release -DUAGENT_WEB=OFF -DUAGENT_WARNINGS_AS_ERRORS=ON
           cmake --build build/cli-only --parallel 4
@@ -151,7 +158,9 @@ jobs:
 
   thread-sanitizer:
     needs: changes
-    if: needs.changes.outputs.native == 'true'
+    # One run proves little about a race, so it watches every push and the
+    # weekly run instead of gating each pull request.
+    if: needs.changes.outputs.native == 'true' && github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     # Instrumented, and now driving real subprocesses, so the terminal cases
@@ -204,7 +213,8 @@ jobs:
 
   coverage:
     needs: changes
-    if: needs.changes.outputs.native == 'true'
+    # A trend floor rather than a correctness gate: pushes and weekly.
+    if: needs.changes.outputs.native == 'true' && github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
@@ -288,12 +298,13 @@ jobs:
           npm run notices --prefix web
           npm run size --prefix web
           git diff --exit-code -- web/dist web/THIRD_PARTY_NOTICES.md
-      - name: Build native push variant
+      # Only the host the browser tests drive; build-and-test already runs
+      # the native suites against the same Web Push build.
+      - name: Build native push host
         run: |
           sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev libssl-dev
           cmake --preset release -DUAGENT_WEB_PUSH=ON
-          cmake --build --preset release --parallel 4
-          ctest --preset release -j 2 -R '^(core|integration_web|web_push)$'
+          cmake --build --preset release --target uagent --parallel 4
       - name: Browser integration against native host
         run: |
           npm exec --prefix web -- playwright install --with-deps chromium webkit
@@ -311,12 +322,14 @@ jobs:
     needs: changes
     if: needs.changes.outputs.native == 'true'
     runs-on: ubuntu-24.04
-    # The full clang-tidy scan now covers 155 translation units. The prior
-    # 15-minute limit stopped a healthy run at 142/155, so keep one bounded
-    # budget that can finish the repository-wide analysis on shared runners.
+    # The full clang-tidy scan covers ~155 translation units and needs most of
+    # this budget; a pull request checks only the lines it changes.
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
       - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           version: "0.11.28"
@@ -337,7 +350,19 @@ jobs:
           include src tests benchmarks
       - name: Configure clang-tidy
         run: cmake --preset tidy
+      # Findings outside the changed lines (a header change, a function that
+      # grew past a limit) surface in the full scan on the next push.
+      - name: Check C++ semantics and naming (changed lines)
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: >-
+          git diff -U0 --no-color "$BASE_SHA" HEAD --
+          '*.cc' '*.h'
+          | uvx --from clang-tidy==22.1.8 clang-tidy-diff.py
+          -p1 -path build/tidy -only-check-in-db -quiet -hide-progress -j 4
       - name: Check C++ semantics and naming
+        if: github.event_name != 'pull_request'
         run: >-
           uvx --from clang-tidy==22.1.8 run-clang-tidy.py
           -p build/tidy

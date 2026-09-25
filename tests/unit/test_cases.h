@@ -84,6 +84,7 @@ namespace uagent {
   X(TestPythonTool)                              \
   X(TestMemoryAlwaysOnSelection)                 \
   X(TestEarlyTurnInterruption)                   \
+  X(TestLocalAbortIsolation)                     \
   X(TestRuntimeOwnershipHelpers)                 \
   X(TestPermissionAndToolCategoryPolicy)         \
   X(TestAttributedUsageAccumulator)              \

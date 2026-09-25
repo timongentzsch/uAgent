@@ -273,16 +273,21 @@ CURLcode PerformWithAbortWake(CURLM* multi, CURL* easy,
 
   int running = 0;
   CURLMcode multi_result = curl_multi_perform(multi, &running);
+  // A local canceller (see LocalAbort) has no wake descriptor, so its
+  // thread polls in short slices and never waits on the shared pipe.
+  const bool local = g_local_abort != nullptr;
   while (multi_result == CURLM_OK && running > 0 && !AbortRequested() &&
          !StreamDeadlineExpired(context)) {
     curl_waitfd wake = {AbortWakeFd(), CURL_WAIT_POLLIN, 0};
     int descriptors = 0;
+    const int timeout = local ? std::min(CurlPollTimeout(multi, context), 250)
+                              : CurlPollTimeout(multi, context);
 #if LIBCURL_VERSION_NUM >= 0x074200
-    multi_result = curl_multi_poll(
-        multi, &wake, 1, CurlPollTimeout(multi, context), &descriptors);
+    multi_result = curl_multi_poll(multi, local ? nullptr : &wake,
+                                   local ? 0 : 1, timeout, &descriptors);
 #else
-    multi_result = curl_multi_wait(
-        multi, &wake, 1, CurlPollTimeout(multi, context), &descriptors);
+    multi_result = curl_multi_wait(multi, local ? nullptr : &wake,
+                                   local ? 0 : 1, timeout, &descriptors);
 #endif
     if ((wake.revents & CURL_WAIT_POLLIN) && !AbortRequested()) {
       NormalizeAbortWake();
@@ -729,13 +734,20 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
 bool Api::WaitForRetry(std::chrono::milliseconds delay) const {
   auto deadline = std::chrono::steady_clock::now() + delay;
   bool cancelled = RunCancellable([&] {
-    pollfd wake = {AbortWakeFd(), POLLIN, 0};
+    // A local canceller ignores the shared pipe (poll skips a negative fd)
+    // and rechecks its flag in short slices instead.
+    const bool local = g_local_abort != nullptr;
+    pollfd wake = {local ? -1 : AbortWakeFd(), POLLIN, 0};
     for (;;) {
       auto now = std::chrono::steady_clock::now();
       if (now >= deadline || AbortRequested()) break;
-      int ready = poll(&wake, 1, PollTimeoutMs(deadline));
+      int ready = poll(&wake, 1,
+                       local ? std::min(PollTimeoutMs(deadline), 250)
+                             : PollTimeoutMs(deadline));
       if (ready < 0 && errno == EINTR) continue;
-      if (ready <= 0) break;
+      if (ready < 0) break;
+      if (ready == 0)
+        continue;  // a slice elapsed; the loop checks the deadline
       if (AbortRequested()) break;
       NormalizeAbortWake();
       wake.revents = 0;

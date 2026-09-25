@@ -24,6 +24,7 @@ volatile sig_atomic_t g_streaming = 0;
 volatile sig_atomic_t g_terminal_resized = 0;
 std::atomic_flag g_signal_abort = ATOMIC_FLAG_INIT;
 std::atomic<bool> g_thread_abort{false};
+thread_local std::atomic<bool>* g_local_abort = nullptr;
 volatile sig_atomic_t g_mcp_pids[kMcpMax] = {};
 volatile sig_atomic_t g_bg_pids[kBgMax] = {};
 bool g_tty = false;
@@ -216,12 +217,18 @@ void WakeProcessWaits() {
 }
 
 void ClearAbort() {
+  if (g_local_abort) {
+    g_local_abort->store(false, std::memory_order_relaxed);
+    return;
+  }
   g_thread_abort.store(false, std::memory_order_relaxed);
   g_signal_abort.clear(std::memory_order_relaxed);
 }
 
 void NormalizeAbortWake() {
-  if (AbortRequested()) return;
+  // The wake pipe belongs to the shared abort; a local canceller never drains
+  // a byte meant for the main turn.
+  if (g_local_abort || AbortRequested()) return;
   DrainDescriptor(AbortWakeFd());
   if (AbortRequested()) WakeDescriptor(g_abort_wake_write);
 }

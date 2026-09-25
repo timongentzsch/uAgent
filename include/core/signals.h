@@ -48,7 +48,25 @@ extern volatile sig_atomic_t g_bg_pids[kBgMax];
 // concurrently, so writers serialise here; the handler only ever reads.
 void TrackPid(volatile sig_atomic_t* slots, int count, pid_t pid, bool add);
 
+// A request running beside the main turn (a /btw side question) must neither
+// see nor clear the turn's abort: while a LocalAbort is alive, its thread
+// cancels through its own flag and leaves the shared abort state alone.
+extern thread_local std::atomic<bool>* g_local_abort;
+class LocalAbort {
+ public:
+  explicit LocalAbort(std::atomic<bool>& flag) : prior_(g_local_abort) {
+    g_local_abort = &flag;
+  }
+  ~LocalAbort() { g_local_abort = prior_; }
+  LocalAbort(const LocalAbort&) = delete;
+  LocalAbort& operator=(const LocalAbort&) = delete;
+
+ private:
+  std::atomic<bool>* prior_;
+};
+
 inline bool AbortRequested() {
+  if (g_local_abort) return g_local_abort->load(std::memory_order_relaxed);
   return g_signal_abort.test(std::memory_order_relaxed) ||
          g_thread_abort.load(std::memory_order_relaxed);
 }
@@ -103,9 +121,10 @@ void InstallSuspendHandlers();
 // caller owns the abort flag because an outer operation may need to observe it.
 template <class F>
 inline bool RunCancellable(F&& fn) {
-  g_streaming = 1;
+  const bool shared = g_local_abort == nullptr;
+  if (shared) g_streaming = 1;
   if (!AbortRequested()) fn();
-  g_streaming = 0;
+  if (shared) g_streaming = 0;
   return AbortRequested();
 }
 

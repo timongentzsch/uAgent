@@ -399,8 +399,18 @@ class Agent {
   json last_stop_;
   json turn_side_statistics_ = json::object();
   KeepFile keep_tool_file_;
+  // What a side question needs, captured on the turn thread so the side
+  // thread never reads the live route or conversation.
+  struct SideContext {
+    json messages, tools;
+    RuntimeConfig config;
+    std::string base_url, api_key, model, reasoning_effort, session_id;
+    std::vector<std::string> supported_reasoning_efforts;
+    int64_t ctx_window = 0;
+    ProviderCapabilities capabilities;
+  };
   mutable std::mutex side_mutex_;
-  std::shared_ptr<const json> side_context_;
+  std::shared_ptr<const SideContext> side_context_;
 };
 
 }  // namespace uagent

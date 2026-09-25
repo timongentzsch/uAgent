@@ -71,17 +71,25 @@ Agent::Agent(Api& api, std::vector<Tool>& tools, ProcessSupervisor& processes,
 json Agent::DisplaySnapshot() const { return ConversationView(conversation_); }
 
 void Agent::PublishSideContext(const json* tools) {
+  auto context = std::make_shared<SideContext>();
+  context->messages = conversation_.Messages();
+  context->config = api_.config;
+  context->base_url = api_.base_url;
+  context->api_key = api_.api_key;
+  context->model = api_.model;
+  context->reasoning_effort = api_.reasoning_effort;
+  context->supported_reasoning_efforts = api_.supported_reasoning_efforts;
+  context->ctx_window = api_.ctx_window;
+  context->capabilities = api_.capabilities;
+  context->session_id = session_id_;
   std::lock_guard lock(side_mutex_);
-  auto context = std::make_shared<json>(json{
-      {"messages", conversation_.Messages()},
-      {"tools",
-       tools ? *tools
-             : (side_context_ ? (*side_context_)["tools"] : json::array())}});
+  context->tools =
+      tools ? *tools : (side_context_ ? side_context_->tools : json::array());
   side_context_ = std::move(context);
 }
 
 json Agent::SideQuestion(const std::string& question) const {
-  std::shared_ptr<const json> context;
+  std::shared_ptr<const SideContext> context;
   {
     std::lock_guard lock(side_mutex_);
     context = side_context_;
@@ -90,7 +98,7 @@ json Agent::SideQuestion(const std::string& question) const {
   // Same prefix and tools as the last request, so the prompt cache serves it;
   // attachments are prepared per request, so a side question reads text only.
   json messages = json::array();
-  for (json message : (*context)["messages"]) {
+  for (json message : context->messages) {
     if (const json* parts = JsonArray(message, "content")) {
       std::string text;
       for (const json& part : *parts) {
@@ -109,16 +117,17 @@ json Agent::SideQuestion(const std::string& question) const {
         "call tools. Neither this question nor your answer is added to the "
         "conversation.\n\n" +
             question}});
-  Api side(api_.config);
-  side.base_url = api_.base_url;
-  side.api_key = api_.api_key;
-  side.model = api_.model;
-  side.reasoning_effort = api_.reasoning_effort;
-  side.supported_reasoning_efforts = api_.supported_reasoning_efforts;
-  side.ctx_window = api_.ctx_window;
-  side.capabilities = api_.capabilities;
+  Api side(context->config);
+  side.base_url = context->base_url;
+  side.api_key = context->api_key;
+  side.model = context->model;
+  side.reasoning_effort = context->reasoning_effort;
+  side.supported_reasoning_efforts = context->supported_reasoning_efforts;
+  side.ctx_window = context->ctx_window;
+  side.capabilities = context->capabilities;
   QuietEvents quiet;
-  ChatResult result = side.Chat(messages, (*context)["tools"], 0, session_id_);
+  ChatResult result =
+      side.Chat(messages, context->tools, 0, context->session_id);
   if (!result.error.empty()) return {{"error", result.error}};
   std::string answer = result.content;
   if (!result.tool_calls.empty()) {
@@ -165,6 +174,7 @@ void Agent::Reset() {
   if (adaptive_system_) adaptive_system_->Reset();
   last_sent_prompt_.clear();
   conversation_.Reset(BaselineMessages(), BaselineKinds());
+  PublishSideContext();
   turn_search_trace_.Reset();
   session_usage_ = Usage{};
   api_.session_cost = 0;
@@ -358,6 +368,7 @@ bool Agent::Load(const std::string& path, const std::string& expected_cwd,
   }
   if (next.Owns(lock_path)) writer_.Swap(next);
   conversation_ = std::move(restored);
+  PublishSideContext();
   last_sent_prompt_ = std::move(record.state.last_sent_prompt);
   if (adaptive_system_) {
     adaptive_system_->instructions = std::move(record.state.adaptive_system);
@@ -420,6 +431,7 @@ bool Agent::RewindToTurn(int64_t turn, std::string& error) {
   total_user_turns_ = turn - 1;
   turn_id_ = turn - 1;
   logged_msgs_ = std::min(logged_msgs_, conversation_.Size());
+  PublishSideContext();
   conversation_.RecordDisplay(
       "reset-boundary", {{"turn", turn}, {"time", UtcStamp("%Y%m%dT%H%M%SZ")}});
   ++revision_;

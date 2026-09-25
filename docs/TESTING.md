@@ -164,22 +164,23 @@ python3 benchmarks/session_metrics.py --cohort ID --json /tmp/sessions.json
 `.github/changes.py` selects jobs for pull requests. Changes only under `docs/`
 or to top-level `README.md`, `CHANGELOG.md`, `CONTRIBUTING.md`, `SECURITY.md`
 or `LICENSE` run the Python job alone; adding `web/` changes adds the web job.
-Any other path runs every job. Pushes to `master` and `dev`, and tags, always
-run everything.
+Any other path runs every job. Pushes to `master`, tags and the weekly run
+always run everything.
 
 | Job | Runs |
 | --- | --- |
-| `build-and-test` | Release builds on Linux x86_64, Linux ARM64 and macOS ARM64; `ctest -LE source`; generated-reference check; CLI-only build; packaging |
+| `build-and-test` | Release builds on Linux x86_64, Linux ARM64 and macOS ARM64; `ctest -LE source`; generated-reference check; CLI-only build (push and weekly); packaging |
 | `sanitizers` | `sanitize` preset, `ctest -LE source` |
-| `thread-sanitizer` | `tsan` preset: `core`, `integration_runtime`, `integration_tools`, `integration_web` |
+| `thread-sanitizer` | `tsan` preset: `core`, `integration_runtime`, `integration_tools`, `integration_web`; push and weekly only |
 | `fuzzers` | SSE and input-decoder smoke runs |
-| `coverage` | `core` and integration groups with a branch report |
+| `coverage` | `core` and integration groups with a branch report; push and weekly only |
 | `python` | Ruff check and format; `ctest -L source` |
-| `cpp-style` | clang-format, cpplint and clang-tidy |
-| `web` | format, Node tests, bundle and notices check, push build, Playwright |
+| `cpp-style` | clang-format, cpplint and clang-tidy (a pull request's changed lines; the whole tree on push and weekly) |
+| `web` | format, Node tests, bundle and notices check, Web Push host build, Playwright |
 | `CI result` | fails if any required job failed or was cancelled |
 
-Require `CI result` in branch protection. Superseded runs are cancelled.
+The `master requires CI` ruleset requires `CI result`, so a red run blocks a
+merge. Superseded runs are cancelled.
 CodeQL runs in its own workflow on pushes, pull requests and weekly.
 
 ## Guidelines

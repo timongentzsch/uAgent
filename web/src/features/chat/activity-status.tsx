@@ -107,8 +107,9 @@ export function ActivityStatus({
     </span>
   );
 }
-// "Now": what is running, plus persistent sidekicks that stay resumable.
-// Finished work lives in the conversation; nothing here is history.
+// What is running and persistent sidekicks, then idle agents -- the same set
+// as /agents -- since those stay resumable. Finished commands live only in
+// the conversation.
 export default function Activities({
   children,
   open,
@@ -127,14 +128,19 @@ export default function Activities({
   ).filter(
     (item) => active(item) || (item as ActivityDetail).persistent === true,
   );
+  const rows = [
+    ...now,
+    ...withCollaborators([], props.collaborators || []).filter(
+      (agent) => !now.some((item) => item.agent_id === agent.agent_id),
+    ),
+  ];
   const status = <ActivityStatus {...props} announce />;
   return (
     <div class="activities">
       <div class="status-line">
-        {now.length ? (
+        {rows.length ? (
           <Popover
             label="Activity"
-            title="Running now"
             side="top"
             align="start"
             buttonClass="quiet activity-toggle"
@@ -148,7 +154,7 @@ export default function Activities({
           >
             {(close) => (
               <ul class="activity-list">
-                {now.map((item) => (
+                {rows.map((item) => (
                   <ActivityRow
                     key={String(item.id ?? item.agent_id ?? item.label)}
                     item={item}

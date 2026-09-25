@@ -2271,6 +2271,16 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
   await expect(page.locator(".composer").getByRole("status")).toHaveText(
     "Ready",
   );
+  // A finished subagent stays reachable from the status line, like /agents.
+  await page.getByRole("button", { name: "Activity", exact: true }).click();
+  const idle = page.locator(".activity-popover .activity-open");
+  await expect(idle).toHaveCount(1);
+  await expect(idle).toContainText("idle");
+  await idle.click();
+  await expect(detail.locator(":scope > header > h2")).toHaveText("Subagent");
+  await detail
+    .getByRole("button", { name: "Close subagent", exact: true })
+    .click();
   await composer.fill("/compact");
   await composer.press("Enter");
   await expect(

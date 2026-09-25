@@ -175,6 +175,9 @@ def test_multiline_bracketed_paste(root, home, *, binary):
             base_env(home, server.url),
             [(paste, b"second"), (b"\n", b"multiline-paste-ok"), b"\x04"],
             columns=24,
+            # Paste once the worker is ready, so its status line is drawn
+            # before the turn replaces it, however slow the build.
+            startup_marker=b"Ready",
             binary=binary,
         )
         assert_true(code == 0, output)

@@ -69,7 +69,12 @@ test("mobile chrome keeps an opaque safe area and applies appearance before app 
     await expect(drawer).toBeVisible();
     const drawerBox = await drawer.boundingBox();
     expect(drawerBox.y).toBe(47);
-    expect(drawerBox.y + drawerBox.height).toBeLessThanOrEqual(844 - 34);
+    // The drawer runs to the bottom edge; its content stays above the inset.
+    expect(drawerBox.y + drawerBox.height).toBe(844);
+    const footer = await drawer
+      .getByText("Connected", { exact: true })
+      .boundingBox();
+    expect(footer.y + footer.height).toBeLessThanOrEqual(844 - 34);
     expect(
       await drawer.evaluate((element) => {
         const style = getComputedStyle(element, "::backdrop");
@@ -2313,21 +2318,52 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
 test("a long agent state truncates instead of wrapping the phone status line", async ({
   page,
   session,
+  command,
 }) => {
+  await command("model", {
+    session_id: session.id,
+    generation: session.generation,
+    operation: "select",
+    model: "mock/model-b",
+  });
+  await command("permissions", {
+    session_id: session.id,
+    generation: session.generation,
+    mode: "yolo",
+  });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/#session=${session.id}`);
   const line = page.locator(".composer .status-line");
   await expect(line).toBeVisible();
   const single = (await line.boundingBox()).height;
-  await page
-    .locator(".composer .activity-caption")
-    .evaluate(
-      (node) =>
-        (node.textContent = "Waiting for approval to run the long command"),
-    );
-  expect((await line.boundingBox()).height).toBe(single);
-  const caption = page.locator(".composer .activity-caption");
-  expect(
-    await caption.evaluate((node) => node.scrollWidth > node.clientWidth),
-  ).toBe(true);
+  // One line, and the state ends before the metrics begin: idle (plain text)
+  // and while work runs (the state becomes the popover's button).
+  const fits = async () => {
+    await page
+      .locator(".composer .activity-caption")
+      .evaluate(
+        (node) =>
+          (node.textContent =
+            "Running · Run · cd /home/dev/Software/project && rg -l --no-messages"),
+      );
+    expect((await line.boundingBox()).height).toBe(single);
+    const state = await page
+      .locator(".composer .activity-toggle")
+      .boundingBox();
+    const metrics = await page.locator(".composer .metrics").boundingBox();
+    expect(state.x + state.width).toBeLessThanOrEqual(metrics.x + 1);
+    expect(
+      await page
+        .locator(".composer .activity-caption")
+        .evaluate((node) => node.scrollWidth > node.clientWidth),
+    ).toBe(true);
+  };
+  await fits();
+  const prompt = page.getByLabel("Message or guidance");
+  await prompt.fill("Background activity probe");
+  await prompt.press("Enter");
+  await expect(
+    page.getByRole("button", { name: "Activity", exact: true }),
+  ).toBeVisible();
+  await fits();
 });

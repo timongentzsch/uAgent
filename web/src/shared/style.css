@@ -859,9 +859,19 @@ pre code {
   padding-top: var(--space-2);
 }
 /* One line at any width: a long state ("Waiting for approval…") truncates
-   before the row would wrap under the metrics. */
+   before the row would wrap under the metrics. While work runs the state is
+   the popover's button, which must shrink with its wrapper, not overflow. */
 .status-line > :first-child {
+  flex: 0 1 auto;
   min-width: 0;
+}
+.status-line > .popover-control {
+  display: flex;
+}
+.status-line > .popover-control > .activity-toggle {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
 }
 .activity-toggle {
   display: flex;
@@ -889,16 +899,22 @@ pre code {
 .activity-counts {
   flex-shrink: 0;
 }
+/* State and metrics share a narrow line in proportion to their text, each
+   truncating its own. */
 .metrics {
   display: flex;
   align-items: center;
-  flex-shrink: 0;
+  flex: 0 1 auto;
+  min-width: 0;
   font-size: 0.7rem;
 }
 .metrics > button {
   font-size: inherit;
   min-height: calc(24rem / 14);
+  min-width: 0;
   padding: 0 var(--space-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 .unread-dot {
@@ -1384,13 +1400,16 @@ dialog section {
   .conversation-head {
     padding-inline: var(--surface-inset);
   }
+  /* Full height like the phone sheet: its surface runs under the home
+     indicator while its content stays above it. */
   dialog.sidebar.drawer[open] {
     top: calc(var(--viewport-top) + var(--safe-top));
     left: calc(var(--viewport-left) + var(--safe-left));
     transform: none;
     margin: 0;
-    height: var(--content-height);
-    max-height: var(--content-height);
+    height: calc(var(--content-height) + var(--safe-bottom));
+    max-height: none;
+    padding-bottom: var(--safe-bottom);
     width: min(calc(320rem / 14), calc(var(--content-width) - 2 * var(--pad)));
     gap: 0;
   }

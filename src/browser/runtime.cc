@@ -23,6 +23,7 @@
 #include "include/browser/browser.h"
 #include "include/core/fs.h"
 #include "include/core/platform.h"
+#include "include/core/time.h"
 #include "include/tools/files.h"
 
 namespace uagent::browser {
@@ -463,6 +464,8 @@ json Runtime::Status(bool include_page) {
   json result = {{"ok", true},
                  {"running", running},
                  {"mode", mode_},
+                 {"waiting",
+                  mode_ == "human" && NowMillis() < agent_waiting_until_ms_},
                  {"session_id", agent_session_},
                  {"interaction_id", interaction_},
                  {"viewer", viewer_},
@@ -605,6 +608,7 @@ json Runtime::Execute(const json& command) {
     std::string session = JsonValue(command, "session_id", "");
     if (!session::OpaqueId(session)) return {{"error", "invalid session"}};
     if (mode_ == "human") {
+      agent_waiting_until_ms_ = NowMillis() + 2000;
       return {{"error", "human controls the browser; wait for Done"}};
     }
     if (!agent_session_.empty() && agent_session_ != session) {
@@ -649,8 +653,8 @@ json Runtime::Execute(const json& command) {
   if (op == "viewer") {
     const std::string role = JsonValue(command, "role", "control");
     if (role == "observe") {
-      if (mode_ != "agent" || !Alive(chrome_pid_) || !Alive(vnc_pid_)) {
-        return {{"error", "the agent is not using the browser"}};
+      if (!Alive(chrome_pid_) || !Alive(vnc_pid_)) {
+        return {{"error", "the browser is not running"}};
       }
       return Status(false);
     }
@@ -664,6 +668,13 @@ json Runtime::Execute(const json& command) {
     if (viewer_ == JsonValue(command, "device", "") &&
         generation_ == JsonValue(command, "generation", uint64_t{0})) {
       viewer_.clear();
+      // Closing the viewer hands control back, unless a login/MFA request
+      // or profile sign-in is still waiting on the human's Done.
+      if (mode_ == "human" && interaction_.empty() && !profile_setup_) {
+        mode_ = agent_session_.empty() ? "idle" : "agent";
+        observation_.clear();
+        SaveHandover();
+      }
       ++generation_;
     }
     return Status();
@@ -754,6 +765,7 @@ json Runtime::Execute(const json& command) {
   }
   std::string error;
   if (mode_ == "human") {
+    agent_waiting_until_ms_ = NowMillis() + 2000;
     return {{"error", "human controls the browser; wait for Done"}};
   }
   if (!Start(error)) return {{"error", error}};

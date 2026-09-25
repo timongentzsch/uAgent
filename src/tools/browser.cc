@@ -12,10 +12,14 @@
 #include "include/browser/browser.h"
 #include "include/cli.h"
 #include "include/core/fs.h"
+#include "include/core/signals.h"
 #include "include/tools/image_result.h"
 
 namespace uagent {
 namespace {
+constexpr int kBrowserRetryMs = 250;
+constexpr int kBrowserWaitMs = 120000;
+
 ToolResult Handover(const std::string& session_id, const std::string& reason) {
   std::string interaction = session::RandomToken(16);
   json outcome = browser::Request({{"op", "request_human"},
@@ -29,7 +33,7 @@ ToolResult Handover(const std::string& session_id, const std::string& reason) {
       {.id = interaction,
        .kind = "browser",
        .prompt =
-           reason + ". Open the browser viewer and choose Done when finished."},
+           reason + ". Open the browser and choose Hand back when finished."},
       &eof);
   json status;
   for (int attempt = 0; attempt < 250; ++attempt) {
@@ -104,19 +108,19 @@ Tool BrowserTool(std::string session_id) {
       return Handover(session_id, JsonValue(args, "reason",
                                             "Please finish in the browser"));
     }
+    // While the human drives, wait for them to hand back or close the
+    // viewer; each retry tells their viewer that the agent is waiting.
     json outcome = browser::Request(command, 30000);
-    if (JsonValue(outcome, "error", "") ==
-        "human controls the browser; wait for Done") {
-      json current = browser::Request(
-          {{"op", "agent_status"}, {"session_id", session_id}}, 1000);
-      if (current.value("ok", false) &&
-          JsonValue(current, "mode", "") != "human") {
-        outcome = browser::Request(command, 30000);
+    for (int waited = 0; JsonValue(outcome, "error", "") ==
+                             "human controls the browser; wait for Done";
+         waited += kBrowserRetryMs) {
+      if (waited >= kBrowserWaitMs || AbortRequested() || context.Expired()) {
+        return ToolFailure(
+            ToolErrorCode::kRemoteError,
+            "error: the user is still using the browser; try again later");
       }
-      if (JsonValue(outcome, "error", "") ==
-          "human controls the browser; wait for Done") {
-        return Handover(session_id, "Browser control moved to a paired device");
-      }
+      poll(nullptr, 0, kBrowserRetryMs);
+      outcome = browser::Request(command, 30000);
     }
     if (auto error = JsonValue(outcome, "error", ""); !error.empty()) {
       return ToolFailure(ToolErrorCode::kRemoteError, "error: " + error);

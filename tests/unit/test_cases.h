@@ -8,6 +8,7 @@ namespace uagent {
   X(TestBrowserHandoverRecovery)                 \
   X(TestBrowserProfiles)                         \
   X(TestBrowserProfileSignIn)                    \
+  X(TestBrowserHandBackOnClose)                  \
   X(TestForeignToolMarkup)                       \
   X(TestToolResults)                             \
   X(TestToolViews)                               \

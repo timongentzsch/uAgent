@@ -137,6 +137,40 @@ test("watches an active agent without taking control", async ({
   await expect(viewport).not.toHaveAttribute("content", /user-scalable=no/);
 });
 
+for (const [label, status, driver] of [
+  ["watches a running browser nobody drives", { mode: "idle" }, /Watching/],
+  [
+    "tells the driver when the agent waits for the browser",
+    { mode: "human", controller: true, leased: true, waiting: true },
+    /Agent is waiting/,
+  ],
+]) {
+  test(label, async ({ page, session }) => {
+    await page.route("**/api/browser/status", (route) =>
+      route.fulfill({
+        json: {
+          ok: true,
+          running: true,
+          generation: 4,
+          profile_id: "default",
+          profiles: [{ id: "default", name: "Default" }],
+          ...status,
+        },
+      }),
+    );
+    await page.goto(`/#session=${session.id}`);
+    await page.getByRole("button", { name: "Open browser" }).click();
+    const dialog = page.getByRole("dialog", { name: "Browser" });
+    await expect(dialog.getByText(driver)).toBeVisible();
+    await expect(dialog.getByLabel("Browser viewport")).toHaveCount(1);
+    await expect(
+      dialog.getByRole("button", {
+        name: status.controller ? "Hand back" : "Take control",
+      }),
+    ).toBeVisible();
+  });
+}
+
 test("creates and selects a persistent Chrome profile", async ({
   page,
   session,

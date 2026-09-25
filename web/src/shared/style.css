@@ -605,6 +605,17 @@ pre code {
 .status-led.running {
   animation: led-breathe 1.6s ease-in-out infinite;
 }
+/* A corner dot on an icon button, e.g. the agent using the browser. */
+.browser-toggle {
+  position: relative;
+}
+.browser-toggle > .status-led {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  width: var(--space-3);
+  height: var(--space-3);
+}
 @keyframes led-breathe {
   50% {
     opacity: 0.35;

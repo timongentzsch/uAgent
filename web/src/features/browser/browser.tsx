@@ -38,6 +38,7 @@ interface BrowserStatus {
   ok?: boolean;
   running?: boolean;
   mode?: "idle" | "agent" | "human";
+  waiting?: boolean;
   controller?: boolean;
   leased?: boolean;
   session_id?: string;
@@ -582,17 +583,21 @@ export default function BrowserPanel({
       setBusy(false);
     }
   };
-  const viewing =
-    status.controller || (status.mode === "agent" && status.running);
+  // Watching never takes control: the screen shows whenever Chrome runs.
+  const viewing = status.controller || status.running;
   const otherDevice =
     status.mode === "human" && status.leased && !status.controller;
   const driver = status.controller
-    ? "You're driving"
+    ? status.waiting
+      ? "Agent is waiting · hand back when done"
+      : "You're driving"
     : otherDevice
       ? "Another device is driving"
       : status.mode === "agent" && status.running
         ? "Agent working"
-        : "Idle";
+        : status.running
+          ? "Watching"
+          : "Idle";
   const canChangeProfile =
     status.controller ||
     (status.mode === "idle" && !status.running && !status.leased);
@@ -710,8 +715,8 @@ export default function BrowserPanel({
       )}
       {otherDevice ? (
         <p>
-          Another device controls the browser. Its connection can close without
-          resuming the agent.
+          Another device controls the browser. Closing the browser there hands
+          it back to the agent.
         </p>
       ) : viewing ? (
         <Viewer

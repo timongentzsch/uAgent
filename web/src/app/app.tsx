@@ -28,6 +28,7 @@ import {
   ErrorBoundary,
 } from "../shared/ui.tsx";
 import { Globe2, Menu, Settings } from "lucide-preact";
+import { StatusLed } from "../shared/connection-status.tsx";
 // Prefetch helpers live next to the renderer so marker regexes stay in one
 // place. Loaded dynamically: a static import would drag markdown.css into
 // the initial bundle and break the CSS size budget.
@@ -186,6 +187,10 @@ function App() {
   );
   const view = snapshot?.state?.view;
   const streamed = snapshot?.streamed || noBlocks;
+  // The browser icon shows when this conversation's agent is using it.
+  const browsing = streamed.some(
+    (block) => block.name === "browser" && block.status === "running",
+  );
   const blocks = useMemo(
     () => [
       ...(view?.blocks || []),
@@ -856,10 +861,14 @@ function App() {
               </div>
               {browserAvailable && (
                 <IconButton
-                  label="Open browser"
+                  label={
+                    browsing ? "Open browser, agent working" : "Open browser"
+                  }
+                  class="browser-toggle"
                   onClick={() => setModal({ type: "browser" })}
                 >
                   <Globe2 aria-hidden="true" />
+                  {browsing && <StatusLed state="running" />}
                 </IconButton>
               )}
               {compact && (

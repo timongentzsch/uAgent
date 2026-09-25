@@ -4,6 +4,7 @@
 
 #include <poll.h>
 
+#include <chrono>
 #include <cstdint>
 #include <string>
 #include <utility>
@@ -133,10 +134,12 @@ Tool BrowserTool(std::string session_id) {
     // While the human drives, wait for them to hand back or close the
     // viewer; each retry tells their viewer that the agent is waiting.
     json outcome = browser::Request(command, 30000);
-    for (int waited = 0; JsonValue(outcome, "error", "") ==
-                         "human controls the browser; wait for Done";
-         waited += kBrowserRetryMs) {
-      if (waited >= kBrowserWaitMs || AbortRequested() || context.Expired()) {
+    const auto give_up = std::chrono::steady_clock::now() +
+                         std::chrono::milliseconds(kBrowserWaitMs);
+    while (JsonValue(outcome, "error", "") ==
+           "human controls the browser; wait for Done") {
+      if (std::chrono::steady_clock::now() >= give_up || AbortRequested() ||
+          context.Expired()) {
         return ToolFailure(
             ToolErrorCode::kRemoteError,
             "error: the user is still using the browser; try again later");

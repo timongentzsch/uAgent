@@ -32,8 +32,9 @@ void TestToolExecutionPolicy() {
   // Without an intent, only a command that just looks reads as explore.
   CHECK(ToolActivityCategory(
             shell, {{"command", "ls -la | head && git log"}}) == "explore");
-  for (const char* command : {"npm test", "rm -rf out", "cat a > b",
-                              "git commit -m x", "ls $(pwd)"}) {
+  for (const char* command :
+       {"npm test", "rm -rf out", "cat a > b", "git commit -m x", "ls $(pwd)",
+        "find . -delete", "git branch -D main"}) {
     CHECK(ToolActivityCategory(shell, {{"command", command}}) == "run");
   }
   std::vector<json> activities;

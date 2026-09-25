@@ -327,11 +327,13 @@ namespace {
 // A shell line that only looks: every segment of a pipeline or command list
 // starts with a read-only program. Anything else, or anything unsure, runs.
 bool ReadOnlyCommand(const std::string& command) {
+  // Programs with no mode that changes anything (find and fd can -delete or
+  // -exec, git branch can -D, so they run).
   static const std::set<std::string, std::less<>> kLooks = {
-      "cat", "cd",  "du", "echo", "fd",   "file", "find", "grep", "head",
-      "ls",  "pwd", "rg", "stat", "tail", "tree", "wc",   "which"};
+      "cat", "cd", "du",   "echo", "file", "grep", "head", "ls",
+      "pwd", "rg", "stat", "tail", "tree", "wc",   "which"};
   static const std::set<std::string, std::less<>> kGitLooks = {
-      "blame", "branch", "diff", "grep", "log", "ls-files", "show", "status"};
+      "blame", "diff", "grep", "log", "ls-files", "show", "status"};
   if (command.find_first_of("<>`$") != std::string::npos) return false;
   bool any = false;
   size_t start = 0;

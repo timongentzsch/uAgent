@@ -845,7 +845,10 @@ json Runtime::Execute(const json& command) {
   } else if (op == "click") {
     if (observation_.empty() ||
         observation_ != JsonValue(command, "view_id", "")) {
-      return {{"error", "observe the current tab before clicking"}};
+      // The model has to pass the view_id its latest observe returned.
+      return {{"error", observation_.empty()
+                            ? "observe the current tab before clicking"
+                            : "click needs view_id from the latest observe"}};
     }
     int x, y;
     if (!Coordinate(command, "x", x) || !Coordinate(command, "y", y)) {
@@ -893,7 +896,10 @@ json Runtime::Execute(const json& command) {
   } else if (op == "scroll") {
     if (observation_.empty() ||
         observation_ != JsonValue(command, "view_id", "")) {
-      return {{"error", "observe the current tab before scrolling"}};
+      // The model has to pass the view_id its latest observe returned.
+      return {{"error", observation_.empty()
+                            ? "observe the current tab before scrolling"
+                            : "scroll needs view_id from the latest observe"}};
     }
     int x = JsonValue(command, "x", 640), y = JsonValue(command, "y", 400);
     int delta = JsonValue(command, "delta_y", 0);

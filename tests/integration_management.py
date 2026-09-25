@@ -6,7 +6,15 @@ import signal
 import subprocess
 import threading
 
-from integration_support import Server, assert_true, base_env, budget, event, wait_until
+from integration_support import (
+    Server,
+    assert_true,
+    base_env,
+    budget,
+    event,
+    tool_call,
+    wait_until,
+)
 from web_support import web_host
 
 
@@ -207,6 +215,37 @@ def test_scheduled_run_native_session_and_restart(root, home, *, binary):
                 timeout=10,
             )
             assert_true(len(provider.requests) == 1, "restart submitted the same run again")
+
+
+def test_scheduled_run_completes_beside_a_detached_server(root, home, *, binary):
+    """A server the task leaves running must not hold its run open."""
+
+    def respond(_index, body):
+        if any(message.get("role") == "tool" for message in body["messages"]):
+            return event({"content": "Server left running"})
+        return tool_call("run", {"command": "sleep 60", "detach": True}, call_id="serve")
+
+    with Server([respond]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, _, env):
+            client.pair(code)
+            task = dict(
+                name="Serve",
+                prompt="Start a server",
+                cwd=str(root),
+                environment="local",
+                permissions="yolo",
+                schedule=dict(type="interval", seconds=3600),
+            )
+            item = client.command("schedule", action="save", revision="", task=task)["result"][
+                "item"
+            ]
+            run = control(binary, root, env, "schedule", action="run", key=item["id"])["run"]
+
+            def completed():
+                runs = client.command("schedule", action="list")["result"]["runs"]
+                return any(r["id"] == run["id"] and r["status"] == "completed" for r in runs)
+
+            wait_until(completed, lambda: client.command("schedule", action="list"), timeout=20)
 
 
 def test_scheduled_runtime_survives_web_restart(root, home, *, binary):

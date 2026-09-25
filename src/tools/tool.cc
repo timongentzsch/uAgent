@@ -42,12 +42,6 @@ const char* ToolErrorCodeName(ToolErrorCode code) {
   return "internal";
 }
 
-std::string ToolErrorText(std::string_view message) {
-  std::string out(kToolErrorPrefix);
-  out += message;
-  return out;
-}
-
 ToolArgumentIssue ArgumentIssue(std::string code, std::string message,
                                 std::string field) {
   return {std::move(code), std::move(message), std::move(field)};
@@ -516,11 +510,6 @@ const Tool* FindTool(const std::vector<Tool>& tools, const std::string& name) {
     if (t.name == name) return &t;
   }
   return nullptr;
-}
-
-std::string InvalidToolArgument(const Tool& tool, const json& args) {
-  auto issue = FindToolArgumentIssue(tool, args);
-  return issue ? issue->message : std::string();
 }
 
 json ToolSchema(const Tool& tool) {

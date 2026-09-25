@@ -8,11 +8,9 @@
 #include <termios.h>
 
 #include <chrono>
-#include <condition_variable>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
-#include <mutex>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -161,39 +159,6 @@ class RawComposer {
   bool input_limit_bell_ = false;
   // Ctrl+X seen, waiting to learn whether it opens the editor.
   bool editor_prefix_ = false;
-};
-
-// Hands a synchronous input request from a worker thread to the composer
-// thread and blocks until it is answered.
-class InputBroker {
- public:
-  InputBroker();
-  ~InputBroker();
-
-  std::string Read(const std::string& prompt, bool* eof, bool keep_history,
-                   const std::string& initial, bool editor = false);
-  void DrainWake() const;
-  bool Take(std::string& prompt, std::string& initial, bool& keep_history,
-            bool* editor = nullptr);
-  void Answer(std::string answer, bool eof);
-  void Notify() const;
-  void Shutdown();
-
-  int ReadFd() const { return wake_read_.Get(); }
-
- private:
-  Fd wake_read_, wake_write_;
-  mutable std::mutex mutex_;
-  std::condition_variable changed_;
-  std::string prompt_;
-  std::string initial_;
-  std::string answer_;
-  bool keep_history_ = false;
-  bool editor_ = false;
-  bool pending_ = false;
-  bool answered_ = false;
-  bool eof_ = false;
-  bool shutdown_ = false;
 };
 
 }  // namespace uagent

@@ -53,6 +53,16 @@ inline bool WaitForActivityDrain(
   }
 }
 
+// The completion notes a caller would see: each header over its output.
+std::vector<std::string> CompletionNotes(ProcessSupervisor& supervisor) {
+  std::vector<std::string> notes;
+  for (const BackgroundCompletion& completion :
+       BgTakeCompletedDetails(supervisor)) {
+    notes.push_back(BgResultHeader(completion) + "\n" + completion.output);
+  }
+  return notes;
+}
+
 }  // namespace
 
 void TestSignalAndFileWatch() {
@@ -399,7 +409,7 @@ void TestActivityStateGraph() {
   REQUIRE(job.has_value());
   CHECK(supervisor.Find(id).has_value());
   CHECK(supervisor.ActivityViews()[0]["status"] == "stopped");
-  CHECK(BgTakeCompleted(supervisor).empty());
+  CHECK(CompletionNotes(supervisor).empty());
   // Rows carry the full command (bounded) beside the 160-char label, so the
   // activity popup never degrades to the abbreviated label once inspect can
   // no longer reach a finished job.
@@ -784,7 +794,7 @@ void TestActivityWaitAndDelivery() {
       WaitForActivityDrain(bounded_completion, bounded_jobs[0]);
     }
     std::vector<std::string> bounded_notes =
-        BgTakeCompleted(bounded_completion);
+        CompletionNotes(bounded_completion);
     CHECK(bounded_notes.size() == 1);
     CHECK(!bounded_notes.empty() && bounded_notes[0].size() < 6500);
     CHECK(!bounded_notes.empty() &&
@@ -905,7 +915,7 @@ void TestActivityWaitAndDelivery() {
     });
     std::thread drainer([&] {
       while (!start.load(std::memory_order_acquire)) std::this_thread::yield();
-      automatic = BgTakeCompleted(delivery_race);
+      automatic = CompletionNotes(delivery_race);
     });
     start.store(true, std::memory_order_release);
     waiter.join();
@@ -986,7 +996,7 @@ void TestDetachedActivityOwnership() {
     CHECK(WaitPid(job.pid, &status) < 0);
     CHECK(errno == ECHILD);
 
-    std::vector<std::string> completed = BgTakeCompleted(reaped_completion);
+    std::vector<std::string> completed = CompletionNotes(reaped_completion);
     CHECK(completed.size() == 1);
     CHECK(!completed.empty() &&
           completed.front().find("reaped-detached") != std::string::npos);

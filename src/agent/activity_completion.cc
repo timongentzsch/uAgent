@@ -167,12 +167,6 @@ std::vector<std::string> TakeCompleted(
 
 }  // namespace
 
-std::vector<std::string> BgTakeCompleted(ProcessSupervisor& supervisor,
-                                         std::string_view kind) {
-  return TakeCompleted(supervisor, kind, nullptr, nullptr,
-                       AutomaticResultCap());
-}
-
 std::vector<BackgroundCompletion> BgTakeCompletedDetails(
     ProcessSupervisor& supervisor, std::string_view kind) {
   std::vector<BackgroundCompletion> details;

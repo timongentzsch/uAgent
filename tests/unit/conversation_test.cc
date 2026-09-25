@@ -49,7 +49,7 @@ void TestConversation() {
                     MessageKind::kInternal);
   conversation.Push({{"role", "system"}, {"content", "[runtime advisory]"}},
                     MessageKind::kRuntimeContext);
-  conversation.Upsert(
+  conversation.UpsertTail(
       {{"role", "user"}, {"content", "[runtime advisory updated]"}},
       MessageKind::kRuntimeContext);
   conversation.Push({{"role", "assistant"}, {"content", "answer"}},

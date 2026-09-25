@@ -119,8 +119,6 @@ size_t TerminalWidth(int64_t reserved = 0);
 std::string TerminalSummary(const std::string& text,
                             size_t reserved_columns = 0);
 
-std::string SpinnerLabel(const std::string& label);
-
 inline constexpr uint64_t kFnv1aOffsetBasis = 1469598103934665603ULL;
 inline constexpr uint64_t kFnv1aPrime = 1099511628211ULL;
 uint64_t Fnv1aUpdate(uint64_t hash, const char* data, size_t size);

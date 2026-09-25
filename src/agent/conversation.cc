@@ -427,16 +427,6 @@ void Conversation::PushWithDisplayId(json message, MessageKind kind,
   }
 }
 
-void Conversation::Upsert(json message, MessageKind kind) {
-  for (size_t index = kinds_.size(); index > 0; --index) {
-    if (kinds_[index - 1] == kind) {
-      Set(index - 1, std::move(message), kind);
-      return;
-    }
-  }
-  Push(std::move(message), kind);
-}
-
 // Keep only the latest runtime context. Refreshing it preserves the system
 // prefix, but removing its old position invalidates the following history.
 void Conversation::UpsertTail(json message, MessageKind kind) {

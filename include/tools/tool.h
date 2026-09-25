@@ -41,13 +41,9 @@ enum class ToolErrorCode {
 
 const char* ToolErrorCodeName(ToolErrorCode code);
 
-// Single spelling of the human-facing failure prefix. ToolFailure and its
-// siblings do not auto-prepend: existing call sites already carry the prefix
-// and mass rewording would churn golden outputs. New code should build
-// messages via ToolErrorText so the envelope stays greppable in one place.
+// The human-facing failure prefix. ToolFailure and its siblings do not
+// auto-prepend it: call sites spell it in their messages.
 inline constexpr std::string_view kToolErrorPrefix = "error: ";
-
-std::string ToolErrorText(std::string_view message);
 
 struct ToolArgumentIssue {
   std::string code;
@@ -311,9 +307,6 @@ std::string ToolTitle(const Tool& tool);
 // Structured argument validation against a tool's JSON schema.
 std::optional<ToolArgumentIssue> FindToolArgumentIssue(const Tool& tool,
                                                        const json& args);
-
-// Compatibility helper for callers that only need the human-readable error.
-std::string InvalidToolArgument(const Tool& tool, const json& args);
 
 // Pull the tool's `clamped_arguments` back inside their schema bounds. Runs
 // before validation, so an overshooting hint is honoured at the bound. Each

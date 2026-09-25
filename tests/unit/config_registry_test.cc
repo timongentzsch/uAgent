@@ -95,8 +95,8 @@ constexpr GetterCheck kIntGetters[] = {
 };
 
 std::vector<std::string> DirectRuntimeSettingLookups(std::string_view source) {
-  constexpr std::string_view kFunctions[] = {
-      "EnvStr", "EnvLong", "EnvDouble", "EnvBool", "getenv", "ReadStringArray"};
+  constexpr std::string_view kFunctions[] = {"EnvStr", "EnvLong", "EnvBool",
+                                             "getenv", "ReadStringArray"};
   std::vector<std::string> names;
   for (std::string_view function : kFunctions) {
     size_t offset = 0;

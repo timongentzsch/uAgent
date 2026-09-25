@@ -83,6 +83,16 @@ def answer(handler, body):
             {"command": "printf BROWSER_ACTIVITY; sleep 10", "yield_ms": 250},
             call_id="browser-activity",
         )
+    if "Artifact probe" in prompt:
+        done = {message.get("tool_call_id") for message in body["messages"]}
+        if "artifact-write" not in done:
+            return tool_call(
+                "write_file",
+                {"path": "report.html", "content": "<h1>ARTIFACT_REPORT</h1>"},
+                call_id="artifact-write",
+            )
+        if "artifact-share" not in done:
+            return tool_call("artifact", {"path": "report.html"}, call_id="artifact-share")
     if "request approval" in prompt and not any(
         message.get("role") == "tool" for message in body["messages"]
     ):

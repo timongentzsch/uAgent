@@ -11,26 +11,38 @@ import type {
   Asset,
   SessionRef,
   Exchange,
+  LinkPart,
   Report,
 } from "../../shared/types.ts";
 import { useEffect, useMemo, useState } from "preact/hooks";
-import { Activity as ActivityIcon, Brain, Minimize2, X } from "lucide-preact";
+import { Minimize2, X } from "lucide-preact";
 import {
   DisclosureRow,
   Mark,
   cleanText,
-  Skeleton,
-  LoadError,
   EventRow,
   ErrorBoundary,
   Time,
 } from "../../shared/ui.tsx";
 import { MessageMenu } from "./message-menu.tsx";
+import { StatusLed } from "../../shared/connection-status.tsx";
 import { useBlockReader } from "../../state/block-reader.ts";
 import { duration } from "../../shared/duration.ts";
-import { getToolRow } from "./tool-preview.ts";
-import { ToolRow } from "./tool-row.tsx";
+import { ToolInline, ToolRow } from "./tool-row.tsx";
 import { isRunningStatus, statusLine } from "../../shared/display.ts";
+
+// The inspector opens a block's own work; a link part names it.
+function linkTarget(block: Block, link: LinkPart): Block {
+  return {
+    ...block,
+    agent_id: link.to === "agent" ? String(link.id) : undefined,
+    activity_id: link.to === "activity" ? Number(link.id) : undefined,
+    memory:
+      link.to === "memory"
+        ? { action: "", key: String(link.id), automatic: false }
+        : undefined,
+  };
+}
 
 // Inline @-mention reference. Resolves against the message's own files so
 // a renamed file shows its current name; a removed one degrades to muted
@@ -164,45 +176,6 @@ function MessageView({
         </p>
       </EventRow>
     );
-  if (block.kind === "activity")
-    return (
-      <EventRow
-        title={
-          block.activity?.label ||
-          cleanText(text).split("\n")[0] ||
-          "Background activity"
-        }
-        time={block.time}
-        status={
-          isRunningStatus(block.status) && block.duration_ms == null
-            ? "Running\u2026"
-            : block.status
-        }
-        icon={block.memory ? <Brain /> : <ActivityIcon />}
-        messageId={block.key || block.id}
-        onToggle={(event) => setExpanded(event.currentTarget.open)}
-      >
-        {expanding && <Skeleton label="Loading event details…" />}
-        {loadError && (
-          <LoadError error={loadError} retry={() => setRetry(retry + 1)} />
-        )}
-        <Markdown text={cleanText(text)} />
-        {activity &&
-          (block.memory?.key || block.agent_id || block.activity_id) && (
-            <button
-              class="quiet"
-              disabled={!online}
-              onClick={() => activity(block)}
-            >
-              {block.memory
-                ? "Open memory"
-                : block.agent_id
-                  ? "Open agent"
-                  : "Open activity"}
-            </button>
-          )}
-      </EventRow>
-    );
   if (block.summary)
     return (
       <TurnFooter summary={block.summary} open={() => statistics?.(block)} />
@@ -210,6 +183,8 @@ function MessageView({
   // Attribution, not authorship: user uploads read as "you"; every agent
   // row carries the mark. The header below is identical on every row — no
   // per-step variants, so chrome and spacing can never drift apart.
+  // Receipts (memory saves, finished background work) read as tool rows.
+  const row = tool || block.kind === "activity";
   const userOwned =
     block.kind === "user" ||
     (block.kind === "attachment" && block.origin !== "tool");
@@ -217,7 +192,7 @@ function MessageView({
     block.kind === "assistant" ||
     (block.kind === "attachment" && block.origin === "tool");
   const actor =
-    userOwned || tool
+    userOwned || row
       ? userOwned
         ? "you"
         : null
@@ -227,9 +202,9 @@ function MessageView({
   return (
     <article
       data-message-id={block.key || block.id}
-      className={`message ${tool ? "tool" : userOwned ? "user" : "response"}${block.turn_root === block.id ? " turn-start" : ""}`}
+      className={`message ${row ? "tool" : userOwned ? "user" : "response"}${block.turn_root === block.id ? " turn-start" : ""}`}
     >
-      {!tool && (
+      {!row && (
         <header>
           {actor === Mark ? <Mark /> : actor && <span>{actor}</span>}
           {block.status && (
@@ -262,41 +237,41 @@ function MessageView({
           />
         </header>
       )}
-      {tool &&
+      {row &&
         (() => {
-          const row = getToolRow(block);
           const running =
             block.duration_ms == null && isRunningStatus(block.status);
           return (
-            <div class="tool-row-head">
-              <ToolRow
+            <>
+              <div class="tool-row-head">
+                <ToolRow
+                  block={block}
+                  running={running}
+                  output={output}
+                  text={text}
+                  expanding={expanding}
+                  loadError={loadError}
+                  retry={() => setRetry(retry + 1)}
+                  online={online}
+                  inspect={inspect}
+                  onToggle={(event) => setExpanded(event.currentTarget.open)}
+                />
+                <MessageMenu
+                  label="Tool menu"
+                  block={block}
+                  statistics={statistics}
+                  http={http}
+                />
+              </div>
+              <ToolInline
                 block={block}
-                title={row.title}
-                subtitle={row.subtitle}
-                running={running}
-                diffOnly={row.diffOnly}
-                output={output}
                 text={text}
-                expanding={expanding}
-                loadError={loadError}
-                retry={() => setRetry(retry + 1)}
+                running={running}
                 online={online}
-                inspect={inspect}
                 assets={`/api/sessions/${session.id}/assets/`}
-                open={
-                  activity && (block.agent_id || block.activity_id)
-                    ? () => activity(block)
-                    : undefined
-                }
-                onToggle={(event) => setExpanded(event.currentTarget.open)}
+                open={activity && ((link) => activity(linkTarget(block, link)))}
               />
-              <MessageMenu
-                label="Tool menu"
-                block={block}
-                statistics={statistics}
-                http={http}
-              />
-            </div>
+            </>
           );
         })()}
       {block.reasoning && (
@@ -314,7 +289,7 @@ function MessageView({
           />
         </DisclosureRow>
       )}
-      {!tool &&
+      {!row &&
         text &&
         splitMentionTokens(text).map((part, index) =>
           "text" in part ? (
@@ -377,7 +352,7 @@ function MessageView({
             ))}
         </div>
       )}
-      {!tool && block.truncated && (
+      {!row && block.truncated && (
         <button
           disabled={expanding}
           onClick={async () => {
@@ -416,6 +391,12 @@ function MessageView({
 
 type MessageProps = ComponentProps<typeof MessageView>;
 
+// An Explored row changes when a step is added or one of them settles.
+const stepsKey = (block: PresentedBlock) =>
+  (block.children || [])
+    .map((step) => `${step.key || step.id}:${step.status}:${step.duration_ms}`)
+    .join();
+
 function messagePropsEqual(before: MessageProps, after: MessageProps): boolean {
   const x = before.block;
   const y = after.block;
@@ -441,8 +422,9 @@ function messagePropsEqual(before: MessageProps, after: MessageProps): boolean {
     x.name === y.name &&
     x.detail_id === y.detail_id &&
     x.call_id === y.call_id &&
-    x.activity_id === y.activity_id &&
-    x.agent_id === y.agent_id &&
+    x.parts === y.parts &&
+    x.tail === y.tail &&
+    stepsKey(x) === stepsKey(y) &&
     (x.files?.length || 0) === (y.files?.length || 0) &&
     (x.http?.length || 0) === (y.http?.length || 0) &&
     x.arguments === y.arguments &&
@@ -467,10 +449,50 @@ export class Message extends Component<MessageProps> {
   render(props: MessageProps) {
     return (
       <ErrorBoundary>
-        <MessageView {...props} />
+        {props.block.kind === "explore" ? (
+          <ExploredRow {...props} />
+        ) : (
+          <MessageView {...props} />
+        )}
       </ErrorBoundary>
     );
   }
+}
+
+// A run of read-only calls as one row: "Explored · 3 files, 2 searches",
+// expanding to the calls themselves.
+function ExploredRow(props: MessageProps) {
+  const steps = props.block.children || [];
+  const running = steps.some(
+    (step) => step.duration_ms == null && isRunningStatus(step.status),
+  );
+  const files = steps.filter((step) => step.name === "read_path").length;
+  const searches = steps.filter((step) => step.name === "grep").length;
+  const other = steps.length - files - searches;
+  const counts = [
+    files && `${count(files)} file${files === 1 ? "" : "s"}`,
+    searches && `${count(searches)} search${searches === 1 ? "" : "es"}`,
+    other && `${count(other)} other`,
+  ]
+    .filter(Boolean)
+    .join(", ");
+  return (
+    <article
+      data-message-id={props.block.key}
+      className="message tool explored"
+    >
+      <DisclosureRow
+        className="tool-disclosure"
+        label={running ? "Exploring" : "Explored"}
+        status={counts}
+        icon={<StatusLed state={running ? "running" : "active"} />}
+      >
+        {steps.map((step) => (
+          <Message key={step.key || step.id} {...props} block={step} />
+        ))}
+      </DisclosureRow>
+    </article>
+  );
 }
 
 export type MessageRowsProps = Omit<ComponentProps<typeof Message>, "block"> & {

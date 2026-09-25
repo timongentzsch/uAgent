@@ -143,6 +143,11 @@ Tool AdaptSystemTool(AdaptiveSystemState& state, PromptController control) {
     return JsonValue(args, "action", "set") + " · " +
            JsonValue(args, "scope", "conversation") + " system prompt";
   };
+  tool.header = [](const json& args) {
+    return json{{"verb", {"Adapting", "Adapted"}},
+                {"target",
+                 JsonValue(args, "scope", "conversation") + " system prompt"}};
+  };
   return tool;
 }
 

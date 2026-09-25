@@ -442,13 +442,24 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
       metrics[name].composer.y + metrics[name].composer.height,
     ).toBeLessThanOrEqual(metrics[name].viewport.height + 1);
     if (await page.locator(".message.user").count()) {
-      const user = await page.locator(".message.user").first().boundingBox();
-      const response = await page
-        .locator(".message.response")
-        .first()
-        .boundingBox();
-      expect(Math.abs(user.x - response.x)).toBeLessThan(2);
-      expect(Math.abs(user.width - response.width)).toBeLessThan(2);
+      // Rows off screen may still report the pre-resize layout for a frame,
+      // so wait for the two to settle like the composer check above.
+      await expect
+        .poll(async () => {
+          const user = await page
+            .locator(".message.user")
+            .first()
+            .boundingBox();
+          const response = await page
+            .locator(".message.response")
+            .first()
+            .boundingBox();
+          return Math.max(
+            Math.abs(user.x - response.x),
+            Math.abs(user.width - response.width),
+          );
+        })
+        .toBeLessThan(2);
       await expect(page.locator(".message.user").first()).toHaveCSS(
         "text-align",
         "left",
@@ -1808,7 +1819,13 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
   const prompt = page.getByLabel("Message or guidance");
   await prompt.fill("Exploration probe");
   await prompt.press("Enter");
-  await expect(page.locator(".transcript .tool-disclosure")).toHaveCount(2);
+  // Two read-only calls fold into one Explored row that expands to both.
+  const explored = page.locator(".transcript .explored");
+  await expect(explored).toHaveCount(1);
+  await expect(explored.locator("summary").first()).toContainText("Explored");
+  await explored.locator("summary").first().click();
+  await expect(explored.locator(".message.tool")).toHaveCount(2);
+  await explored.locator("summary").first().click();
   await expect(
     page.getByRole("heading", { name: "Verified response" }),
   ).toBeVisible();
@@ -1839,7 +1856,7 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
   await expect(
     page
       .locator(".tool-disclosure")
-      .filter({ hasText: "Memory created · project/browser-proof" }),
+      .filter({ hasText: "Saved memory project/browser-proof" }),
   ).toBeVisible();
   await expect(page.locator(".composer .status-led.active")).toBeVisible();
   await page.locator(".transcript").evaluate((element) => {
@@ -1849,7 +1866,7 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
     page.getByRole("button", { name: "Jump to latest" }),
   ).toBeVisible();
   await page.reload();
-  await expect(page.locator(".transcript .tool-disclosure")).toHaveCount(3);
+  await expect(page.locator(".transcript > * .tool-disclosure")).toHaveCount(2);
   // Retained history replays through the live pipeline: one row per call,
   // none stuck on Running.
   await expect(
@@ -1858,7 +1875,7 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
   await expect(
     page
       .locator(".tool-disclosure")
-      .filter({ hasText: "Memory created · project/browser-proof" }),
+      .filter({ hasText: "Saved memory project/browser-proof" }),
   ).toBeVisible();
   await expect
     .poll(() =>
@@ -2129,12 +2146,11 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
     }
     await route.fulfill({ response, json: value });
   });
-  // The subagent's own tool row opens it; the row names the task and links
-  // to the agent instead of repeating its whole answer.
+  // The subagent's own tool row opens it: the row names the task and keeps
+  // a visible link to the agent instead of repeating its whole answer.
   const subagentRow = page
-    .locator(".tool-disclosure")
-    .filter({ hasText: "Subagent · Review the full task." });
-  await subagentRow.locator("summary").click();
+    .locator(".message.tool")
+    .filter({ hasText: /Delegated .*Review the full task\./ });
   await expect(subagentRow).not.toContainText("resume with subagent");
   await subagentRow
     .getByRole("button", { name: "Open agent", exact: true })
@@ -2314,14 +2330,16 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
     .click();
   await composer.fill("Background activity probe");
   await composer.press("Enter");
+  // A finished background task reads like any tool row, its last output
+  // lines visible without expanding.
   const receipt = page
-    .locator(".event-row")
-    .filter({ hasText: "Background task" });
+    .locator(".message.tool")
+    .filter({ hasText: "BROWSER_ACTIVITY" })
+    .filter({ hasText: "Finished" });
   await expect(receipt).toBeVisible({ timeout: 15000 });
-  await receipt.locator("summary").click();
-  await expect(receipt).toContainText("BROWSER_ACTIVITY");
+  await expect(receipt.locator("summary")).toContainText("Finished");
   await expect(
-    receipt.getByRole("button", { name: "Full tool input/output" }),
+    receipt.getByRole("button", { name: "Tool input/output" }),
   ).toHaveCount(0);
   await page.screenshot({
     path: testInfo.outputPath("async-receipt-phone.png"),

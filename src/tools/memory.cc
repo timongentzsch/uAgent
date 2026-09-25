@@ -333,6 +333,7 @@ ToolResult AccessMemory(const std::string& name, const std::string& scope,
   if (action != "unchanged") {
     LibraryChanged();
     saved.display = "Memory " + action + " · " + event.key;
+    saved.parts = json::array({LinkPart("memory", event.key, "Open memory")});
   }
   return saved;
 }

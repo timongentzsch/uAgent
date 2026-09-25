@@ -99,10 +99,29 @@ export interface ToolCall {
 export type ToolPart =
   | { kind: "command"; text: string }
   | { kind: "code"; text: string; language?: string; label?: string }
-  | { kind: "fields"; rows: [string, string][] };
+  | { kind: "fields"; rows: [string, string][] }
+  | FilePart
+  | LinkPart;
+export interface FilePart {
+  kind: "file";
+  id: string;
+  name: string;
+  mime: string;
+  bytes: number;
+}
+export interface LinkPart {
+  kind: "link";
+  to: "agent" | "activity" | "memory";
+  id: string | number;
+  label: string;
+}
+// "Editing a.ts" while running, "Edited a.ts" after; input shows on expand
+// and a "tail" result keeps its last lines visible.
 export interface ToolView {
-  input: ToolPart[];
-  output: "text" | "markdown";
+  verb?: [string, string];
+  target?: string;
+  input?: ToolPart[];
+  output?: "text" | "markdown" | "tail";
 }
 export interface TurnSummary {
   usage_reported?: boolean;
@@ -186,8 +205,10 @@ export interface Block {
   reply_excerpt?: string;
   activity_id?: number;
   agent_id?: string;
-  // A file the call shared with the person (artifact tool).
-  file?: { id: string; name: string; mime: string; bytes: number };
+  // Parts that stay visible on the row: files shared, work started.
+  parts?: ToolPart[];
+  // The end of a result whose text preview holds only its start.
+  tail?: string;
   command?: string;
 }
 export interface PresentedBlock extends Block {
@@ -426,7 +447,7 @@ export interface EventData extends Omit<Partial<Exchange>, "status"> {
   result?: JSONValue;
   agent_id?: string;
   activity_id?: number;
-  file?: Block["file"];
+  parts?: Block["parts"];
   preview_truncated?: boolean;
   completion_status?: string;
   status?: string | number;

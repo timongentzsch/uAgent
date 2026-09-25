@@ -199,8 +199,8 @@ class Master {
           "default-src 'none'; script-src 'self'; style-src 'self' "
           "'unsafe-inline'; font-src 'self'; img-src 'self' blob: data:; "
           "connect-src "
-          "'self'; manifest-src 'self'; worker-src 'self'; base-uri 'none'; "
-          "form-action 'self'; frame-ancestors 'none'"}});
+          "'self'; manifest-src 'self'; worker-src 'self'; frame-src 'self'; "
+          "base-uri 'none'; form-action 'self'; frame-ancestors 'none'"}});
     server_.set_pre_routing_handler([this](const Request& request,
                                            Response& response) {
       const std::string* expected_origin = ExpectedOrigin(request);
@@ -1011,10 +1011,16 @@ void Master::AssetRead(const Request& request, Response& response) {
   const bool html = mime == "text/html";
   const bool inline_view = !request.has_param("download") &&
                            (image || html || mime == "application/pdf");
-  response.set_header("X-Content-Type-Options", "nosniff");
+  // Replace the app's policy rather than add to it: browsers enforce every
+  // CSP header, so the app's would block the file's own scripts and forbid
+  // the conversation from framing its preview.
+  response.headers.erase("Content-Security-Policy");
   if (html) {
     response.set_header("Content-Security-Policy",
-                        "sandbox allow-scripts allow-forms allow-popups");
+                        "sandbox allow-scripts allow-forms allow-popups; "
+                        "frame-ancestors 'self'");
+  } else if (inline_view) {
+    response.set_header("Content-Security-Policy", "frame-ancestors 'self'");
   }
   if (!inline_view) {
     std::string name = JsonValue(asset, "name", "download");

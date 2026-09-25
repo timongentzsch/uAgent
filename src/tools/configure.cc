@@ -186,6 +186,11 @@ Tool UagentTool(SelfDescriptionProvider describe,
     tool.parameters["properties"].erase("changes");
   }
   tool.available_in_lean = false;
+  tool.header = [](const json& arguments) {
+    return JsonValue(arguments, "action", "") == "inspect"
+               ? json{{"verb", {"Inspecting", "Inspected"}}}
+               : json{{"verb", {"Configuring", "Configured"}}};
+  };
   return tool;
 }
 

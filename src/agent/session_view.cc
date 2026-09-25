@@ -375,6 +375,8 @@ json DisplayBlock(const Conversation& conversation, uint64_t sequence,
                           "source_call_ids",
                           "compaction",
                           "memory",
+                          "view",
+                          "parts",
                           "response_id",
                           "content_revision",
                           "content_complete",
@@ -465,8 +467,16 @@ json DisplayBlock(const Conversation& conversation, uint64_t sequence,
     }
     block["detail_id"] = detail_id;
     block["change"] = Utf8Trunc(JsonValue(detail, "change", ""), kPreviewChars);
-    for (const char* key : {"agent_id", "activity_id", "file"}) {
-      if (detail.contains(key)) block[key] = detail[key];
+    if (detail.contains("parts")) block["parts"] = detail["parts"];
+    // The preview keeps the start of a long result; its end is where a
+    // command reports how it went, so rows can show that tail.
+    if (text.size() > kPreviewChars) {
+      size_t start = text.size() - 512;
+      while (start < text.size() &&
+             (static_cast<unsigned char>(text[start]) & 0xC0) == 0x80) {
+        ++start;
+      }
+      block["tail"] = text.substr(start);
     }
     block["artifact"] = detail.contains("artifact");
     if (detail.contains("result_replay")) {

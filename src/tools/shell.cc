@@ -330,7 +330,7 @@ ShellCommandResult StartDetachedShell(ProcessSupervisor& supervisor,
       ToolSuccess("[detached] pid " + std::to_string(pid) + ", log: " + log +
                   " — activity id " + std::to_string(pid) +
                   "; verify readiness with activity output");
-  detached.facts = {{"activity_id", pid}};
+  detached.parts = json::array({LinkPart("activity", pid, "Open activity")});
   return {std::move(detached), std::nullopt, /*launched=*/true};
 }
 
@@ -549,7 +549,8 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
         "; completion is added to the next natural model call without "
         "starting one; inspect activity output for progress/readiness, or "
         "wait when the next step is blocked");
-    started.facts = {{"activity_id", activity_id}};
+    started.parts =
+        json::array({LinkPart("activity", activity_id, "Open activity")});
     return {std::move(started), std::nullopt, /*launched=*/true};
   }
   std::string initial_output;
@@ -565,7 +566,8 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
                        "for output";
   if (!initial_output.empty()) output += "\n" + initial_output;
   ToolResult running = ToolSuccess(std::move(output));
-  running.facts = {{"activity_id", activity_id}};
+  running.parts =
+      json::array({LinkPart("activity", activity_id, "Open activity")});
   return {std::move(running), std::nullopt, /*launched=*/true};
 }
 

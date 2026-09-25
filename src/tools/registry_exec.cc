@@ -86,6 +86,8 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
     return std::nullopt;
   };
   run.summary = [](const json& a) { return JsonValue(a, "command", ""); };
+  run.header = Verbs("Running", "Ran");
+  run.output_view = "tail";
   run.timeout_s = 0;  // bounded by the turn; Escape remains responsive
   // Each call owns its process group and log, so independent commands
   // (network fetches especially) overlap instead of queueing.
@@ -152,6 +154,8 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
       return JsonValue(a, "path", "") +
              ScratchArgvLabel(JsonValue(a, "args", json(nullptr)));
     };
+    python.header = Verbs("Running", "Ran");
+    python.output_view = "tail";
     python.present = [](const json& a) {
       return json::array(
           {CommandPart(JsonValue(a, "path", "") +

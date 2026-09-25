@@ -98,6 +98,27 @@ Tool BrowserTool(std::string session_id) {
     return action == "open" ? "browser open " + JsonValue(args, "url", "")
                             : "browser " + action;
   };
+  tool.header = [](const json& args) {
+    const std::string action = JsonValue(args, "action", "");
+    if (action == "open") {
+      return json{{"verb", {"Opening", "Opened"}},
+                  {"target", JsonValue(args, "url", "")}};
+    }
+    if (action == "type") {
+      return json{{"verb", {"Typing", "Typed"}},
+                  {"target", FirstLine(JsonValue(args, "text", ""))}};
+    }
+    const json verb = action == "observe" ? json{"Looking at", "Looked at"}
+                      : action == "click" ? json{"Clicking in", "Clicked in"}
+                      : action == "press"
+                          ? json{"Pressing a key in", "Pressed a key in"}
+                      : action == "scroll" ? json{"Scrolling", "Scrolled"}
+                      : action == "request_human"
+                          ? json{"Asking you to use", "Asked you to use"}
+                      : action == "release" ? json{"Releasing", "Released"}
+                                            : json{"Checking", "Checked"};
+    return json{{"verb", verb}, {"target", "the browser"}};
+  };
   tool.run = [session_id = std::move(session_id)](const json& args,
                                                   const ToolContext& context) {
     const std::string action = JsonValue(args, "action", "");
@@ -112,7 +133,7 @@ Tool BrowserTool(std::string session_id) {
     // viewer; each retry tells their viewer that the agent is waiting.
     json outcome = browser::Request(command, 30000);
     for (int waited = 0; JsonValue(outcome, "error", "") ==
-                             "human controls the browser; wait for Done";
+                         "human controls the browser; wait for Done";
          waited += kBrowserRetryMs) {
       if (waited >= kBrowserWaitMs || AbortRequested() || context.Expired()) {
         return ToolFailure(

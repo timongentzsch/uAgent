@@ -80,9 +80,9 @@ struct ToolResult {
   // registry cap; a bounded richer result can raise it.
   int64_t result_chars = -1;
   std::string display;  // optional terminal-only receipt
-  // Display-only facts for the transcript row, never model-facing: links to
-  // the work a call started (agent_id, activity_id) and shared files (file).
-  json facts = nullptr;
+  // Display-only view parts shown on the row without expanding it, never
+  // model-facing: links to work the call started and files it shared.
+  json parts = nullptr;
   bool no_change = false;  // activity poll found nothing new
   bool activity_terminal = false;
 
@@ -153,6 +153,9 @@ struct Tool {
   // How a call's input reads to a person, as ToolView parts. Unset means the
   // generic view: short strings and scalars as fields, long text as code.
   using Present = std::function<json(const json&)>;
+  // The row's headline: {"verb": [present, past], "target"?}. Without a
+  // target the summary is used; unset means "Calling/Called <title>".
+  using Header = std::function<json(const json&)>;
 
   std::string name;
   std::string title;     // short human label, derived from name by default
@@ -163,11 +166,14 @@ struct Tool {
   bool declared_intent = false;  // presentation only, never authority
   Approval mutates;  // argument-dependent mutation (e.g. memory save)
   Run run;
-  Canonicalize canonicalize;     // materialized provider args -> operation args
-  Validate validate;             // semantic issue before approval/execution
-  Summary summary;               // args -> one-line display
-  Present present;               // args -> ToolView input parts
-  bool markdown_output = false;  // the result reads as Markdown, not a log
+  Canonicalize canonicalize;  // materialized provider args -> operation args
+  Validate validate;          // semantic issue before approval/execution
+  Summary summary;            // args -> one-line display
+  Present present;            // args -> ToolView input parts
+  Header header;              // args -> ToolView verb and target
+  // How the result reads: "text" (a log, expanded on demand), "markdown", or
+  // "tail" (its last lines stay visible, e.g. a command's output).
+  std::string output_view = "text";
   bool redact_invalid_arguments = false;  // hide raw rejected arguments
   bool parallel_safe = false;             // safe beside another tool call
   uint32_t capabilities = kAllToolCapabilities;  // required to expose
@@ -267,16 +273,24 @@ json ToolParameters(const Tool& tool);
 std::string ToolSummary(const Tool& t, const json& args);
 
 // What every client renders for a call, from a closed vocabulary:
-//   {"input": [part...], "output": "text" | "markdown"}
-// where a part is one of
+//   {"verb": [present, past], "target", "input": [part...],
+//    "output": "text" | "markdown" | "tail"}
+// The headline reads "Editing a.ts" while running and "Edited a.ts" after;
+// `input` shows on expand. A part is one of
 //   {"kind": "command", "text"}                  a shell line, verbatim
 //   {"kind": "code", "text", "language", "label"} a body: script, JSON, prose
 //   {"kind": "fields", "rows": [[label, value]]}  small scalar arguments
+//   {"kind": "file", "id", "name", "mime", "bytes"} a file the user can open
+//   {"kind": "link", "to": "agent"|"activity"|"memory", "id", "label"}
+// File and link parts come from ToolResult.parts and stay visible on the row.
 // The result itself is the tool message (or its diff), so it is not repeated
 // here. `tool` may be null for a call whose tool is gone: the generic view.
 json ToolView(const Tool* tool, const json& args);
 json CommandPart(std::string text);
 json CodePart(std::string text, std::string language, std::string label = "");
+json LinkPart(std::string to, json id, std::string label);
+// A header with a fixed verb pair; the target is the call's summary.
+Tool::Header Verbs(std::string present, std::string past);
 // Generic parts for `args`, leaving out `skip` (arguments another part or the
 // result already shows). Labels (`intent`, `description`) are never repeated.
 json GenericInputParts(const json& args,

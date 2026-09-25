@@ -149,3 +149,20 @@ their own contract; `run` and `scratch` take an optional `intent` (default
 successful exploration in one batch folds into one row in the web UI and a
 compact terminal summary; changes, failures and approval prompts stay visible.
 `/verbose` shows full detail in the terminal.
+
+## How a call reads
+
+Each tool declares how its row reads, as data both clients render the same
+way (`ToolView` in `include/tools/tool.h`):
+
+- A headline of verb and target: "Editing src/a.ts" while it runs, "Edited
+  src/a.ts" after. Tools without their own verbs read "Called <tool>".
+- Visible without expanding: a change's diff, the last lines of a command's
+  output, and the parts the call produced. A shared file previews inline
+  (images, sandboxed HTML, PDF on desktop) with Open and Download; started
+  work links to its agent, activity or memory.
+- On expand: the call's input (a command, code or fields) and its full
+  output.
+
+Consecutive read-only calls fold into one "Explored" row. Memory saves and
+finished background work use the same row.

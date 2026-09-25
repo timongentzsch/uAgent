@@ -132,7 +132,7 @@ json ToolResultData(const CallTask& task, const ToolCall& call, int64_t turn,
        task.result.artifact ? task.result.artifact->path : std::string()},
       {"artifact_bytes",
        task.result.artifact ? task.result.artifact->bytes : uint64_t{0}}};
-  if (task.result.facts.is_object()) data.update(task.result.facts);
+  if (task.result.parts.is_array()) data["parts"] = task.result.parts;
   // The operation is a schema enum, not an argument value. It is enough to
   // distinguish a quiet poll from a wait without journalling ids or input.
   if (call.name == "activity" && task.args.is_object()) {

@@ -880,6 +880,17 @@ void Agent::ReportMemoryCompletion(BackgroundCompletion& completion) {
     if (!event.key.empty()) line += " · " + event.key;
     const bool changed = event.action == "created" ||
                          event.action == "updated" || event.action == "deleted";
+    // The same row shape as a memory tool call: verb, key, link.
+    const json verb =
+        event.action == "created"   ? json{"Saving memory", "Saved memory"}
+        : event.action == "updated" ? json{"Updating memory", "Updated memory"}
+        : event.action == "deleted" ? json{"Forgetting memory", "Forgot memory"}
+        : warning ? json{"Saving memory", "Could not save memory"}
+                  : json{"Checking memory", "Checked memory"};
+    json parts = json::array();
+    if (!event.key.empty() && event.action != "deleted") {
+      parts.push_back(LinkPart("memory", event.key, "Open memory"));
+    }
     json block = conversation_.RecordEntry(
         {{"text", line + (event.preview.empty() ? "" : "\n" + event.preview)},
          {"memory",
@@ -887,6 +898,9 @@ void Agent::ReportMemoryCompletion(BackgroundCompletion& completion) {
            {"key", event.key},
            {"automatic", event.automatic},
            {"minor", minor}}},
+         {"view",
+          {{"verb", verb}, {"target", event.key}, {"output", "markdown"}}},
+         {"parts", std::move(parts)},
          {"activity",
           {{"category", changed ? "change" : "explore"}, {"label", line}}},
          {"status", warning ? "failed" : "completed"},
@@ -943,8 +957,21 @@ void Agent::DeliverActivityCompletions(
     record.activity = completion_activity;
     std::string text = record.title + (succeeded ? " completed" : " failed");
     if (!completion.output.empty()) text += "\n" + completion.output;
+    const bool agent = completion.kind == ActivityKind::kSubagent &&
+                       !completion.source_id.empty();
     json block = conversation_.RecordEntry(
         {{"text", std::move(text)},
+         {"view",
+          {{"verb",
+            json{agent ? "Delegating" : "Running",
+                 succeeded ? (agent ? "Delegated" : "Finished") : "Failed"}},
+           {"target", Utf8Trunc(label.empty() ? record.title : label, 160)},
+           {"output", "tail"}}},
+         {"parts",
+          json::array(
+              {agent ? LinkPart("agent", completion.source_id, "Open agent")
+                     : LinkPart("activity", completion.activity_id,
+                                "Open activity")})},
          {"activity_id", completion.activity_id},
          // The full command travels with the record (bounded): rows and
          // titles abbreviate, but the popup and history must not lose it

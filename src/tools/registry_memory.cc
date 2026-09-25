@@ -70,6 +70,17 @@ void RegisterMemoryTool(std::vector<Tool>& tools) {
   memory.summary = [](const json& a) {
     return JsonValue(a, "action", "") + " " + JsonValue(a, "key", "");
   };
+  memory.header = [](const json& a) {
+    const std::string action = JsonValue(a, "action", "");
+    const json verb =
+        action == "set"      ? json{"Saving memory", "Saved memory"}
+        : action == "forget" ? json{"Forgetting memory", "Forgot memory"}
+        : action == "get"    ? json{"Reading memory", "Read memory"}
+        : action == "list"   ? json{"Listing memories", "Listed memories"}
+                             : json{"Searching memory", "Searched memory"};
+    return json{{"verb", verb},
+                {"target", JsonValue(a, "key", JsonValue(a, "query", ""))}};
+  };
 }
 
 }  // namespace uagent

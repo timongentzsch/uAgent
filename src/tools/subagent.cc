@@ -924,7 +924,8 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
               "\n[collaborator " + collaborator_id +
               (lifecycle.empty() ? "; runtime unavailable]"
                                  : "; persistent runtime retained]");
-          result.facts = {{"agent_id", collaborator_id}};
+          result.parts =
+              json::array({LinkPart("agent", collaborator_id, "Open agent")});
           return result;
         }
         std::string command = ChildAgentCommand(debug, prompt, child_model);
@@ -985,8 +986,8 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
           if (saved.Ok()) {
             result.output += "\n[collaborator " + collaborator_id +
                              "; resume with subagent operation=followup]";
-            if (!result.facts.is_object()) result.facts = json::object();
-            result.facts["agent_id"] = collaborator_id;
+            result.parts =
+                json::array({LinkPart("agent", collaborator_id, "Open agent")});
           } else {
             result.output +=
                 "\n[warning: collaborator metadata was not saved: " +
@@ -1054,6 +1055,22 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
     return (name.empty() ? std::string("Subagent") : name) + " · " +
            FirstLine(JsonValue(arguments, "prompt", ""));
   };
+  tool.header = [](const json& arguments) {
+    const std::string operation = JsonValue(arguments, "operation", "spawn");
+    const std::string name = JsonValue(arguments, "name", "");
+    const std::string task = FirstLine(JsonValue(arguments, "prompt", ""));
+    if (operation == "list") {
+      return json{{"verb", {"Listing", "Listed"}}, {"target", "agents"}};
+    }
+    if (operation == "message") {
+      return json{{"verb", {"Messaging", "Messaged"}},
+                  {"target", JsonValue(arguments, "id", name)}};
+    }
+    return json{
+        {"verb", operation == "followup" ? json{"Following up", "Followed up"}
+                                         : json{"Delegating", "Delegated"}},
+        {"target", name.empty() ? task : name + ": " + task}};
+  };
   tool.present = [](const json& arguments) {
     json parts = json::array();
     const std::string prompt = JsonValue(arguments, "prompt", "");
@@ -1063,7 +1080,7 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
     }
     return parts;
   };
-  tool.markdown_output = true;
+  tool.output_view = "markdown";
   // The summary names the model and the brief; what it cannot show is the
   // authority handed over with them. The child runs with automatic approvals,
   // so approving the spawn approves every tool call that child then decides

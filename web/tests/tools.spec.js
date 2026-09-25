@@ -41,3 +41,58 @@ test("tool catalogue reports exact schema bytes and persists selection", async (
     dialog.getByRole("heading", { name: "Project work" }),
   ).toBeVisible();
 });
+
+test("a shared file previews inline in the conversation, sandboxed", async ({
+  page,
+  session,
+  command,
+}) => {
+  await command("model", {
+    session_id: session.id,
+    generation: session.generation,
+    operation: "select",
+    model: "mock/model-b",
+  });
+  await command("permissions", {
+    session_id: session.id,
+    generation: session.generation,
+    mode: "yolo",
+  });
+  await page.goto(`/#session=${session.id}`);
+  const prompt = page.getByLabel("Message or guidance");
+  await prompt.fill("Artifact probe");
+  await prompt.press("Enter");
+  // The write shows its diff and the share its preview, neither expanded.
+  await expect(page.locator(".tool-inline .diff").first()).toContainText(
+    "ARTIFACT_REPORT",
+  );
+  const file = page.locator(".tool-inline .tool-file");
+  await expect(file).toContainText("report.html");
+  const frame = file.locator("iframe");
+  await expect(frame).toHaveAttribute(
+    "sandbox",
+    "allow-scripts allow-forms allow-popups",
+  );
+  await expect(
+    page.frameLocator(".tool-file iframe").getByText("ARTIFACT_REPORT"),
+  ).toBeVisible();
+  // An opaque origin: the file's scripts can never read this device's session.
+  const preview = page.frames().find((item) => item.url().includes("/assets/"));
+  expect(
+    await preview.evaluate(() => {
+      try {
+        return document.cookie;
+      } catch {
+        return "blocked";
+      }
+    }),
+  ).toBe("blocked");
+  await expect(file.getByRole("link", { name: "Open" })).toHaveAttribute(
+    "target",
+    "_blank",
+  );
+  await expect(file.getByRole("link", { name: "Download" })).toHaveAttribute(
+    "href",
+    /\?download=1$/,
+  );
+});

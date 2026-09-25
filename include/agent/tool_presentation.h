@@ -35,8 +35,7 @@ PresentationRecord ToolCallPresentation(const CallTask& task,
 // Stored transcript path: same row as a live call, from replay data.
 PresentationRecord ToolCallPresentation(const std::string& name,
                                         const json& arguments,
-                                        const std::vector<Tool>& tools,
-                                        const std::string& ordinal = "");
+                                        const std::vector<Tool>& tools);
 
 PresentationRecord ToolResultPresentation(const CallTask& task,
                                           const ToolCall& call,

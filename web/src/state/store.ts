@@ -154,9 +154,7 @@ export function liveBlocks(events: HostEvent[], prior: Block[] = []): Block[] {
             }
           : {
               activity: data.activity,
-              agent_id: data.agent_id,
-              activity_id: data.activity_id,
-              file: data.file,
+              parts: data.parts,
               text:
                 typeof data.text === "string"
                   ? data.text

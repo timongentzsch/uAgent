@@ -1,6 +1,6 @@
 export type ConnectionPhase =
   "connected" | "connecting" | "reconnecting" | "disconnected";
-export type LedState = "idle" | "active" | "running";
+export type LedState = "idle" | "active" | "running" | "failed";
 
 export function StatusLed({ state }: { state: LedState }) {
   return <span class={`status-led ${state}`} aria-hidden="true" />;

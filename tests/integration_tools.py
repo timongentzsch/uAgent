@@ -111,7 +111,7 @@ def test_full_run_and_python_terminal_trace(root, home, *, binary):
             "printf 'shell-two",
             "shell-one",
             "shell-two",
-            "scratch(trace.py)",
+            "Running trace.py",
             "python-one",
             "python-two",
             "trace-ok",
@@ -765,7 +765,7 @@ def test_self_configuration_asks_even_under_yolo(root, home, *, binary):
         assert_true(output.count(b"- UAGENT_MAX_TOOL_CALLS=40") == 1, output)
         assert_true(b"\x1b[31m- UAGENT_MAX_TOOL_CALLS=40" in output, output)
         assert_true(b"\x1b[32m+ UAGENT_MAX_TOOL_CALLS=200" in output, output)
-        assert_true(b"uagent(user " in output, output)
+        assert_true(b"Configuring user " in output, output)
         written = config.read_text()
         assert_true("UAGENT_MAX_TOOL_CALLS=200" in written, written)
         assert_true("# keep me" in written, written)
@@ -1002,7 +1002,7 @@ def test_approval_remembers_exact_action_and_forwards_a_refusal(root, home, *, b
         assert_true(b"[y] Allow once" in output and b"[n] Deny" in output, output)
         # Reaching rm proves the exact repeat ran without consuming the refusal;
         # rm is a different command, so that refusal is delivered there.
-        assert_true(b"run(rm -rf /tmp/uagent-nothing)" in output, output)
+        assert_true(b"Running rm -rf /tmp/uagent-nothing" in output, output)
         # The refusal reached the model as guidance rather than a bare denial.
         assert_true(refusal.get("steered"), (refusal, output))
         assert_true(b"approval-done" in output, output)

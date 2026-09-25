@@ -85,7 +85,7 @@ void Agent::AppendToolResult(const ToolCall& call, const std::string& result,
     }
   }
   if (original.artifact) facts["artifact"] = original.artifact->path;
-  if (original.facts.is_object()) facts.update(original.facts);
+  if (original.parts.is_array()) facts["parts"] = original.parts;
   facts["call_id"] = call.id;
   facts["response_id"] = call.response_id;
   facts["occurrence_id"] = call.occurrence_id;
@@ -253,6 +253,7 @@ bool Agent::RunCalls(
     }
     call_event.presentation = ToolCallPresentation(task, call);
     if (call_event.presentation) {
+      call_event.data["view"] = call_event.presentation->view;
       // --resume replays the row from facts: same title/summary/flags the
       // live printer saw, so history matches execution exactly.
       conversation_.RecordDisplay(

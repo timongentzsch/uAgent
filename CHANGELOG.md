@@ -16,6 +16,17 @@
 
 ### Added
 
+- Tool rows read as a headline ("Edited src/a.ts +12 −3") with a status dot.
+  Diffs, a command's last output lines, shared files and links to started
+  work stay visible without expanding. Consecutive read-only calls fold into
+  one "Explored" row, and memory and background receipts use the same row.
+  The terminal prints the same headline, tail and links.
+- A file the agent shares previews inline in the conversation: images,
+  sandboxed HTML (its own scripts now run) and PDFs on desktop.
+- Closing the browser hands control back to the agent; an agent step waits
+  while you drive instead of asking, and the browser can be watched without
+  taking control. The browser icon shows when the agent is using it.
+
 - Web Push is built into release archives and the Docker image.
 - Tool rows show each call the way the tool describes it: a command verbatim,
   a script as highlighted code, small arguments as fields, and Markdown

@@ -396,6 +396,11 @@ Tool SessionTool() {
         return ToolSuccess(combined);
       });
   tool.available_in_lean = true;
+  tool.header = [](const json& arguments) {
+    return JsonValue(arguments, "operation", "") == "list"
+               ? json{{"verb", {"Listing", "Listed"}}, {"target", "sessions"}}
+               : json{{"verb", {"Messaging", "Messaged"}}};
+  };
   return tool;
 }
 

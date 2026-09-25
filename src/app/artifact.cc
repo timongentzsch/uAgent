@@ -42,10 +42,12 @@ Tool ArtifactTool(const std::string& session_path) {
             ToolSuccess("shared " + JsonValue(stored.value, "name", "") + " (" +
                         FmtCount(static_cast<int64_t>(bytes.size())) +
                         " bytes); the user can open or download it");
-        result.facts = {{"file", std::move(stored.value)}};
+        stored.value["kind"] = "file";
+        result.parts = json::array({std::move(stored.value)});
         return result;
       });
   tool.summary = [](const json& args) { return JsonValue(args, "path", ""); };
+  tool.header = Verbs("Sharing", "Shared");
   // Sharing reads the file out to the person's devices: the same path policy
   // as read_path, so a file outside the workspace or µAgent's own
   // configuration never leaves without approval.

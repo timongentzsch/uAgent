@@ -436,10 +436,31 @@ json GenericInputParts(const json& args,
   return parts;
 }
 
+json LinkPart(std::string to, json id, std::string label) {
+  return {{"kind", "link"},
+          {"to", std::move(to)},
+          {"id", std::move(id)},
+          {"label", std::move(label)}};
+}
+
+Tool::Header Verbs(std::string present, std::string past) {
+  return [present = std::move(present), past = std::move(past)](const json&) {
+    return json{{"verb", {present, past}}};
+  };
+}
+
 json ToolView(const Tool* tool, const json& args) {
-  return {{"input", tool && tool->present ? tool->present(args)
-                                          : GenericInputParts(args)},
-          {"output", tool && tool->markdown_output ? "markdown" : "text"}};
+  json view = tool && tool->header ? tool->header(args) : json::object();
+  if (!view.contains("verb")) {
+    const std::string title = tool ? ToolTitle(*tool) : "tool";
+    view["verb"] = {"Calling " + title, "Called " + title};
+  }
+  if (!view.contains("target") && tool)
+    view["target"] = ToolSummary(*tool, args);
+  view["input"] =
+      tool && tool->present ? tool->present(args) : GenericInputParts(args);
+  view["output"] = tool ? tool->output_view : "text";
+  return view;
 }
 
 const Tool* FindTool(const std::vector<Tool>& tools, const std::string& name) {

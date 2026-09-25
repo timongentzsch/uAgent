@@ -209,7 +209,36 @@ export function presentMessages(blocks: Block[]): PresentedBlock[] {
       rows.push(row);
     }
   }
-  return rows;
+  return foldExploration(rows);
+}
+
+// Consecutive read-only calls fold into one "Explored" row, as Codex and
+// opencode do; a call with something to show (a file, a link) stays its own
+// row. A single call is not worth a group.
+function foldExploration(rows: PresentedBlock[]): PresentedBlock[] {
+  const folded: PresentedBlock[] = [];
+  let run: PresentedBlock[] = [];
+  const flush = () => {
+    if (run.length > 1) {
+      const key = `explore-${run[0].key || run[0].id}`;
+      folded.push({ id: key, key, kind: "explore", children: run });
+    } else folded.push(...run);
+    run = [];
+  };
+  for (const row of rows) {
+    if (
+      row.kind === "tool_result" &&
+      row.activity?.category === "explore" &&
+      !row.parts?.length
+    )
+      run.push(row);
+    else {
+      flush();
+      folded.push(row);
+    }
+  }
+  flush();
+  return folded;
 }
 
 export type TextPart =

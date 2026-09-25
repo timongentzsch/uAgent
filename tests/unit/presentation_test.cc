@@ -291,7 +291,14 @@ void TestReplayBlocksMirrorLiveRows() {
   });
   CHECK(drawn.find("all three read\n") != std::string::npos);
   CHECK(drawn.find("[1] read_path(a.txt)") != std::string::npos);
-  CHECK(drawn.find("Exploring") != std::string::npos);
+  // A view names the call the way the web row does: verb and target.
+  json with_view = tools;
+  with_view[0]["view"] = {{"verb", {"Reading", "Read"}}, {"target", "a.txt"}};
+  drawn = CaptureStdout([&] {
+    presenter.Block(
+        {{"kind", "assistant"}, {"text", ""}, {"tools", with_view}});
+  });
+  CHECK(drawn.find("Reading a.txt") != std::string::npos);
   // Tool-only assistant blocks print rows with no bare mark line, like live.
   drawn = CaptureStdout([&] {
     presenter.Block({{"kind", "assistant"}, {"text", ""}, {"tools", tools}});

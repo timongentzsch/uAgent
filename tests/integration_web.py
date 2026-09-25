@@ -966,7 +966,12 @@ def test_web_artifact_is_shared_sandboxed_and_downloadable(root, home, *, binary
                     "shared" in json.dumps(value) and not value["metadata"]["turn_active"]
                 ),
             )
-            files = [b["file"] for b in value["state"]["view"]["blocks"] if b.get("file")]
+            files = [
+                part
+                for block in value["state"]["view"]["blocks"]
+                for part in block.get("parts") or []
+                if part["kind"] == "file"
+            ]
             assert_true(len(files) == 1 and files[0]["name"] == "report.html", files)
             url = f"/api/sessions/{session['id']}/assets/{files[0]['id']}"
             status, body, headers = client.request(url)

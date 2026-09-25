@@ -343,6 +343,10 @@ test("readable bodies decode text and nested JSON without losing lexical facts",
   );
 });
 
+// Pairing tests read identities; an Explored group only wraps them.
+const flat = (rows) =>
+  rows.flatMap((row) => (row.kind === "explore" ? row.children : [row]));
+
 test("reversed tool results join by ID as flat rows", () => {
   const group = { id: "a", label: "Explored · 2 calls" };
   const blocks = [
@@ -372,7 +376,7 @@ test("reversed tool results join by ID as flat rows", () => {
     { id: "answer", kind: "assistant", text: "Done" },
     { id: "failed", kind: "tool_result", status: "failed", text: "error" },
   ];
-  const rows = presentMessages(blocks);
+  const rows = flat(presentMessages(blocks));
   assert.deepEqual(
     rows.map((row) => row.id),
     ["request", "result-a", "result-b", "answer", "failed"],
@@ -382,7 +386,7 @@ test("reversed tool results join by ID as flat rows", () => {
     ["A", "B"],
   );
   assert.equal(rows[2].name, "run");
-  assert.deepEqual(presentMessages(structuredClone(blocks)), rows);
+  assert.deepEqual(flat(presentMessages(structuredClone(blocks))), rows);
   assert.ok(!blocks[1].children);
 });
 
@@ -452,7 +456,7 @@ test("occurrence identities isolate repeated provider call IDs", () => {
       text: "later",
     },
   ];
-  const first = presentMessages(blocks);
+  const first = flat(presentMessages(blocks));
   assert.deepEqual(
     first.map((row) => [row.key, row.text]),
     [
@@ -465,7 +469,7 @@ test("occurrence identities isolate repeated provider call IDs", () => {
   );
   assert.equal(first.at(-1).key, "response-2:1");
   assert.equal(first.at(-1).text, "later");
-  const checkpoint = presentMessages(structuredClone(blocks));
+  const checkpoint = flat(presentMessages(structuredClone(blocks)));
   assert.deepEqual(
     checkpoint.map((row) => row.key),
     first.map((row) => row.key),
@@ -789,20 +793,50 @@ test("absent fields never wipe present ones across paths", () => {
   assert.equal(rows[1].status, "success");
 });
 
-test("tool rows title from the native label, else the tool name", () => {
+test("tool rows read as the view's verb and target", () => {
   const base = {
     kind: "tool_result",
-    name: "read_path",
-    arguments: { path: "a.txt" },
-    text: "local first line\nsecond",
+    name: "edit_file",
+    text: "ok",
     status: "success",
   };
-  assert.equal(getToolRow(base).title, "read_path");
-  const receipt = getToolRow({
+  assert.equal(getToolRow(base).title, "edit_file");
+  assert.equal(
+    getToolRow({ ...base, activity: { label: "Edited a.txt" } }).title,
+    "Edited a.txt",
+  );
+  const view = { verb: ["Editing", "Edited"], target: "a.txt" };
+  assert.equal(getToolRow({ ...base, view }, true).title, "Editing a.txt");
+  const done = getToolRow({
     ...base,
-    activity: { label: "Memory created · project/proof" },
+    view,
+    change: "Edited a.txt (+2 -1)\n@@ -1 +1 @@\n-old\n+new\n+more",
   });
-  assert.equal(receipt.title, "Memory created · project/proof");
+  assert.equal(done.title, "Edited a.txt");
+  assert.match(done.subtitle, /^\+2 \u22121 · /);
+});
+
+test("consecutive read-only calls fold into one explored row", () => {
+  const explore = { category: "explore" };
+  const rows = presentMessages([
+    { id: "u1", kind: "user", text: "go" },
+    { id: "t1", kind: "tool_result", call_id: "c1", activity: explore },
+    { id: "t2", kind: "tool_result", call_id: "c2", activity: explore },
+    {
+      id: "t3",
+      kind: "tool_result",
+      call_id: "c3",
+      activity: { category: "change" },
+    },
+  ]);
+  assert.deepEqual(
+    rows.map((row) => row.kind),
+    ["user", "explore", "tool_result"],
+  );
+  assert.deepEqual(
+    rows[1].children.map((row) => row.id),
+    ["t1", "t2"],
+  );
 });
 
 test("consecutive tools stay flat rows in order", () => {

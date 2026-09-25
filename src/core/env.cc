@@ -88,11 +88,6 @@ std::string SubagentModel() {
   return StringSetting(Cfg("UAGENT_SUBAGENT_MODEL"));
 }
 
-std::string TitleModel() {
-  std::string model = StringSetting(Cfg("UAGENT_TITLE_MODEL"));
-  return model.empty() ? kDefaultModelRoute : model;
-}
-
 int64_t SubagentTimeoutSeconds() {
   return LongSetting(Cfg("UAGENT_SUBAGENT_TIMEOUT"));
 }

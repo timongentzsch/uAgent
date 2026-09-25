@@ -13,7 +13,6 @@ Every setting below is read from the running binary's registry. `takes effect` i
 - budget
 - tools
 - delegation
-- session
 - search
 - memory
 - skills
@@ -116,12 +115,6 @@ Every setting below is read from the running binary's registry. `takes effect` i
 | `UAGENT_TEAM` | string | empty | restart-required | team id shared by peer collaborators |
 | `UAGENT_SUBAGENT_MODEL` | string | empty | restart-required | default model route for delegated children |
 | `UAGENT_TOOLSET` | string | empty | restart-required | lean withholds implementation tools from this process |
-
-## session
-
-| Setting | Type | Default | Takes effect | Description |
-| --- | --- | --- | --- | --- |
-| `UAGENT_TITLE_MODEL` | string | empty | restart-required | model route for background session titles; empty uses the shared default route |
 
 ## search
 

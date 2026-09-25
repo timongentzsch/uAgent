@@ -49,7 +49,6 @@ int64_t SubagentTimeoutSeconds();
 int64_t SubagentCallsPerTurn();
 int64_t PersistentMax();
 std::string SubagentModel();
-std::string TitleModel();
 int64_t MaxOutputTokens();
 bool SteeringEnabled();
 bool SandboxEnabled();

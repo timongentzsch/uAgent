@@ -1070,13 +1070,4 @@ void TestSessionPrefixMatch() {
   CHECK(MatchSessionPrefix("   ").empty());
 }
 
-// All side-model defaults resolve through one route: an explicit title
-// model wins, an empty setting follows the shared flash default.
-void TestTitleModelDefault() {
-  ScopedEnv unset("UAGENT_TITLE_MODEL");
-  CHECK(TitleModel() == kDefaultModelRoute);
-  ScopedEnv set("UAGENT_TITLE_MODEL", "custom/route");
-  CHECK(TitleModel() == "custom/route");
-}
-
 }  // namespace uagent

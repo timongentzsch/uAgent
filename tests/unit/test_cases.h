@@ -101,7 +101,6 @@ namespace uagent {
   X(TestForkAtTurnAndLineage)                    \
   X(TestRewindAndShare)                          \
   X(TestSessionPrefixMatch)                      \
-  X(TestTitleModelDefault)                       \
   X(TestAttachmentDeliveryAnnouncements)         \
   X(TestDisplayFactEvictionKeepsSmallReceipts)   \
   X(TestAttachmentHistoryRendering)              \

@@ -122,6 +122,8 @@
 
 ### Removed
 
+- `UAGENT_TITLE_MODEL`: it was documented but never read; titles use the
+  conversation's route.
 - `/trace`: the tool input/output view and `/verbose` show the same detail;
   headless `--json` keeps its `trace` field.
 - The self-improvement controller and its skill; trace metrics and live

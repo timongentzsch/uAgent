@@ -1,9 +1,8 @@
 import { test, expect } from "./fixtures.js";
 
-for (const viewport of [
-  { width: 1440, height: 900 },
-  { width: 390, height: 844 },
-]) {
+// The phone size is covered by "keeps touch and text controls inside the
+// dialog", with the same bounds checks and its controls.
+for (const viewport of [{ width: 1440, height: 900 }]) {
   test(`browser panel fits the viewport at ${viewport.width}px`, async ({
     page,
     session,

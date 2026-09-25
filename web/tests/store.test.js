@@ -118,6 +118,8 @@ test("rendering escapes HTML and never loads remote images", async () => {
   assert.ok(!html.includes("<img"));
   assert.ok(!html.includes('href="javascript:'));
   assert.ok(html.includes("&lt;img"));
+  // A blocked image keeps its alt text as a readable placeholder.
+  assert.ok(html.includes("[image: private]"));
   for (const url of [
     "javascript:x",
     "data:text/html,x",

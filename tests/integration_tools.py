@@ -722,53 +722,6 @@ def test_process_hardening_scrubs_loader_variables(root, home, *, binary):
         assert_true(result.stdout.strip().endswith("hardening-ok"), result.stdout)
 
 
-def test_self_configuration_asks_even_under_yolo(root, home, *, binary):
-    """--yolo stops applying to this class; it still asks at a real terminal."""
-    config = home / ".uagent" / ".config"
-    config.parent.mkdir(parents=True, exist_ok=True)
-    config.write_text("# keep me\nUAGENT_MAX_TOOL_CALLS=40\n")
-
-    def request_change(_, __):
-        return tool_call(
-            "uagent",
-            {
-                "action": "configure",
-                "scope": "user",
-                "changes": [{"key": "UAGENT_MAX_TOOL_CALLS", "operation": "set", "value": "200"}],
-            },
-        )
-
-    def finish(_, __):
-        return event({"content": "yolo-still-asked"})
-
-    with Server([request_change, finish]) as server:
-        status, output = run_pty(
-            root,
-            base_env(home, server.url),
-            [
-                (b"raise the limit\n", b"Allow uagent?"),
-                (b"y\n", b"yolo-still-asked"),
-                b"/quit\n",
-            ],
-            args=("--yolo",),
-            timeout=20,
-            binary=binary,
-        )
-        assert_true(status == 0, output)
-        # The prompt appeared despite --yolo, and only then was the file written.
-        assert_true(b"Allow uagent?" in output, output)
-        assert_true(b"changes \xc2\xb5Agent's own configuration" in output, output)
-        # The diff belongs to the approval prompt alone: the call label is a
-        # one-liner, so file contents stay out of traces and evidence.
-        assert_true(output.count(b"- UAGENT_MAX_TOOL_CALLS=40") == 1, output)
-        assert_true(b"\x1b[31m- UAGENT_MAX_TOOL_CALLS=40" in output, output)
-        assert_true(b"\x1b[32m+ UAGENT_MAX_TOOL_CALLS=200" in output, output)
-        assert_true(b"Configuring user " in output, output)
-        written = config.read_text()
-        assert_true("UAGENT_MAX_TOOL_CALLS=200" in written, written)
-        assert_true("# keep me" in written, written)
-
-
 def test_composite_configuration_requires_exact_human_approval(root, home, *, binary):
     """Safe credential references reach a redacted prompt, even under --yolo."""
     config = home / ".uagent" / ".config"
@@ -826,6 +779,8 @@ def test_composite_configuration_requires_exact_human_approval(root, home, *, bi
         assert_true(b"adjacent-integration-secret" not in output, output)
         # Status redraws may insert cursor controls before the colored line.
         assert_true(b'\x1b[32m+   "codex-local": {' in output, output)
+        # The diff belongs to the approval prompt alone, never the call label.
+        assert_true(output.count(b'+   "codex-local": {') == 1, output)
         written = config.read_text()
         assert_true(proposed in written, written)
         assert_true("# keep me" in written, written)

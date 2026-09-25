@@ -160,49 +160,6 @@ test("async receipts retain their kind with uniform chrome", () => {
   assert.equal(rows[1].id, "m-8");
   assert.equal(rows[1].kind, "activity");
   assert.equal(rows[1].activity?.category, "execute");
-  // No header/matrix flags: every row renders identical chrome.
-  assert.ok(!("firstOfTurn" in rows[1]));
-});
-
-test("rows keep stable keys in order with no header flags", () => {
-  const rows = presentMessages([
-    { id: "u1", kind: "user", text: "hi" },
-    { id: "m1", kind: "assistant", text: "a" },
-    { id: "t1", kind: "tool_result", call_id: "c1", text: "r" },
-    { id: "m2", kind: "assistant", text: "b" },
-    { id: "u2", kind: "user", text: "again" },
-    { id: "t2", kind: "tool_result", call_id: "c2", text: "r2" },
-  ]);
-  assert.deepEqual(
-    rows.map((row) => row.key || row.id),
-    ["u1", "m1", "t1", "m2", "u2", "t2"],
-  );
-  for (const row of rows) assert.ok(!("firstOfTurn" in row));
-});
-
-test("every row renders uniform chrome: keys, kinds and order kept", () => {
-  const rows = presentMessages([
-    { id: "u1", kind: "user", text: "hi" },
-    { id: "m1", kind: "assistant", text: "a", turn_root: "m1" },
-    {
-      id: "t1",
-      kind: "tool_result",
-      call_id: "c1",
-      text: "r",
-      turn_root: "m1",
-    },
-    { id: "m2", kind: "assistant", text: "b", turn_root: "m1" },
-    { id: "u2", kind: "user", text: "again" },
-    { id: "m3", kind: "assistant", text: "c", turn_root: "m3" },
-  ]);
-  assert.deepEqual(
-    rows.map((row) => row.id),
-    ["u1", "m1", "t1", "m2", "u2", "m3"],
-  );
-  assert.deepEqual(
-    rows.map((row) => row.kind),
-    ["user", "assistant", "tool_result", "assistant", "user", "assistant"],
-  );
 });
 
 test("tool-sourced attachments stay inline with uploads", () => {

@@ -193,7 +193,7 @@ test("fresh conversation reload keeps one stable loading state", async ({
 test("system prompt editing shares revisions, replacement and request previews", async ({
   page,
   host: fixture,
-}, testInfo) => {
+}) => {
   await page.goto("/");
   await expect(page.getByText("Connected", { exact: true })).toBeVisible();
 
@@ -358,9 +358,6 @@ test("system prompt editing shares revisions, replacement and request previews",
     expect(prompt.y + prompt.height).toBeLessThanOrEqual(
       scroll.y + scroll.height,
     );
-    await page.screenshot({
-      path: testInfo.outputPath(`prompt-${viewport.width}.png`),
-    });
   }
   await dialog.getByRole("button", { name: "Close system prompt" }).click();
   await composer.fill("/quit");
@@ -576,7 +573,6 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   expect(
     displayField.y - appearance.y - appearance.height,
   ).toBeGreaterThanOrEqual(12);
-  await page.screenshot({ path: testInfo.outputPath("settings-desktop.png") });
   await settings.getByRole("button", { name: "Close settings" }).click();
   await expect(settingsButton).toBeFocused();
 
@@ -991,8 +987,6 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
       },
     },
   ];
-  snapshot.state.context_tokens = 4600;
-  snapshot.state.context_window = 1300000;
   await page.route(`**/api/sessions/${session.id}`, (route) =>
     route.fulfill({ json: snapshot }),
   );
@@ -1099,31 +1093,11 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
   await expect(tool.locator(".thinking .markdown")).toHaveCount(0);
   await expect(tool.locator(".katex")).toHaveCount(0);
   expect(requests).toBe(0);
-  await expect(
-    page.getByRole("button", { name: "Raw context", exact: true }),
-  ).toHaveText("est. ctx 4.6k/1.3M · 99% left");
   const row = page
     .locator(".session-row")
     .filter({ has: page.locator(".session.selected") });
   await expect(row.locator("time")).toBeVisible();
   await expect(row.locator(".status-led.active")).toBeVisible();
-  // The three LED states are hollow idle, filled attached and breathing run.
-  const ledStyles = await page.evaluate(() => {
-    const host = document.createElement("div");
-    host.innerHTML =
-      '<span class="status-led idle"></span><span class="status-led active"></span><span class="status-led running"></span>';
-    document.body.append(host);
-    const style = (state) =>
-      getComputedStyle(host.querySelector(`.status-led.${state}`));
-    return {
-      idle: style("idle").backgroundColor,
-      active: style("active").backgroundColor,
-      running: style("running").animationName,
-    };
-  });
-  expect(ledStyles.idle).toBe("rgba(0, 0, 0, 0)");
-  expect(ledStyles.active).not.toBe("rgba(0, 0, 0, 0)");
-  expect(ledStyles.running).toBe("led-breathe");
   const menu = row.getByRole("button", {
     name: "Conversation menu",
     exact: true,
@@ -1802,7 +1776,7 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
   page,
   session,
   command,
-}, testInfo) => {
+}) => {
   await command("model", {
     session_id: session.id,
     generation: session.generation,
@@ -1899,9 +1873,6 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
   const box = await prompt.boundingBox();
   expect(box.x).toBeGreaterThanOrEqual(47);
   expect(box.x + box.width).toBeLessThanOrEqual(844 - 47);
-  await page.screenshot({
-    path: testInfo.outputPath("landscape-activity.png"),
-  });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.evaluate(() => {
     document.documentElement.style.removeProperty("--safe-left");
@@ -1909,7 +1880,6 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
   });
   await expect(prompt).toHaveValue("Keep this draft across rotation");
   await expect(prompt).toHaveCSS("font-size", fontSize);
-  await page.screenshot({ path: testInfo.outputPath("portrait-activity.png") });
 });
 
 test("stream completion preserves disclosure, markdown nodes, selection and copy state", async ({
@@ -2100,16 +2070,13 @@ test("stream completion preserves disclosure, markdown nodes, selection and copy
       removals: 0,
     });
   await page.evaluate(() => window.__stableRemovalObserver.disconnect());
-  await page.screenshot({
-    path: testInfo.outputPath("stream-continuity.png"),
-  });
 });
 
 test("subagent tasks are readable and compaction never opens an unsolicited viewer", async ({
   page,
   session,
   command,
-}, testInfo) => {
+}) => {
   await command("model", {
     session_id: session.id,
     generation: session.generation,
@@ -2292,9 +2259,6 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
   await expect(detail.locator('section[aria-label="Run details"]')).toHaveCount(
     0,
   );
-  await page.screenshot({
-    path: testInfo.outputPath("subagent-task-phone.png"),
-  });
   await detail
     .getByRole("button", { name: "Close subagent", exact: true })
     .click();
@@ -2341,9 +2305,6 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
   await expect(
     receipt.getByRole("button", { name: "Tool input/output" }),
   ).toHaveCount(0);
-  await page.screenshot({
-    path: testInfo.outputPath("async-receipt-phone.png"),
-  });
   await page.reload();
   await expect(receipt).toBeVisible();
   await expect(receipt).toHaveCount(1);

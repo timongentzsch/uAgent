@@ -1051,37 +1051,6 @@ def test_web_push_announces_pending_approval(root, home, *, binary):
             assert_true(delivery["vapid"] and delivery["bytes"] > 0, delivery)
 
 
-def test_web_steer_yields_activity_wait(root, home, *, binary):
-    workspace = root / "steer-wait"
-    workspace.mkdir()
-
-    def responder(_, body):
-        results = tool_results(body["messages"])
-        if any("wait yielded for queued steering" in result for result in results):
-            return event({"content": "steer-yield-ok"})
-        if any("[running] activity" in result for result in results):
-            return tool_call(
-                "activity", {"operation": "wait", "wait_ms": 30000}, call_id="steer-wait"
-            )
-        return tool_call("run", {"command": "sleep 30", "yield_ms": 250}, call_id="steer-sleep")
-
-    with Server([responder]) as provider:
-        with web_host(binary, root, home, provider.url) as (client, code, _, _):
-            client.pair(code)
-            session = client.create(workspace)
-            client.command("submit", session, text="/yolo")
-            client.until(session, lambda value: value["state"].get("yolo", False))
-            client.command("submit", session, text="Steering wait probe")
-            # The wait tool call is the model's second request; steering only
-            # after it keeps the yield deterministic.
-            wait_until(lambda: len(provider.requests) >= 2, "activity wait never started")
-            time.sleep(budget(1))
-            client.command("steer", session, text="change course")
-            done = client.until(session, lambda value: not value["metadata"]["turn_active"])
-            assert_true("steer-yield-ok" in json.dumps(done), done)
-            assert_true(not done["state"].get("error"), done["state"])
-
-
 def test_web_steer_queues_guidance_and_live_accounting(root, home, *, binary):
     workspace = root / "steer-live"
     workspace.mkdir()

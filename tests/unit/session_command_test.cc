@@ -52,7 +52,6 @@ void TestSessionCommandKinds() {
     CHECK(parsed.kind == want);
     CHECK(error.empty());
     CHECK(parsed.request_id == kRequest);
-    CHECK(std::string(SessionCommandKindName(want)) == kind);
   }
   // Missing or unrecognized kinds flow through as kUnknown so the caller
   // answers "unsupported command" with an outcome instead of dropping.
@@ -172,13 +171,7 @@ void TestReceiptLogBackpressure() {
 }
 
 void TestHostCommandKinds() {
-  // Every kind round-trips through its wire name; unknown names stay unknown.
-  for (int raw = 0;
-       raw < static_cast<int>(session::SessionCommandKind::kUnknown); ++raw) {
-    const auto kind = static_cast<session::SessionCommandKind>(raw);
-    CHECK(session::ParseSessionCommandKind(
-              session::SessionCommandKindName(kind)) == kind);
-  }
+  // Unknown names stay unknown.
   CHECK(session::ParseSessionCommandKind("teleport") ==
         session::SessionCommandKind::kUnknown);
   // The host runs close, guide and saved-session management itself and

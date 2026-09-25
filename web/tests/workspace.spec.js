@@ -4,7 +4,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 test("appearance and configuration remain usable at large scales", async ({
   page,
   session,
-}, testInfo) => {
+}) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/#session=${session.id}`);
   await expect(page.locator(".composer .status-led.active")).toBeVisible();
@@ -25,7 +25,6 @@ test("appearance and configuration remain usable at large scales", async ({
   await expect(
     page.getByText("Scales the entire interface, conversation included"),
   ).toBeVisible();
-  await page.screenshot({ path: testInfo.outputPath("settings-mobile.png") });
   const interfaceText = await page
     .locator(".conversation-head h1")
     .evaluate((element) => getComputedStyle(element).fontSize);

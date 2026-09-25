@@ -49,7 +49,6 @@ enum class SessionCommandKind {
   kUnknown,
 };
 
-const char* SessionCommandKindName(SessionCommandKind kind);
 SessionCommandKind ParseSessionCommandKind(std::string_view kind);
 bool ForwardsToWorker(SessionCommandKind kind);
 

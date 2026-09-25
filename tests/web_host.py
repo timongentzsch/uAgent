@@ -112,8 +112,6 @@ def answer(handler, body):
             + "```text\nunfinished-looking content retained safely\n```\n\n"
             + "[continuity]: https://example.com/continuity\n"
         )
-    if "Diagram probe" in prompt:
-        content += "\n```mermaid\nflowchart LR\n  A[Request] --> B[Response]\n```\n"
     write_sse_sequence(
         handler,
         [

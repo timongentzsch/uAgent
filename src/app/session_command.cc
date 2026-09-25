@@ -53,11 +53,6 @@ const KindRow* FindKind(SessionCommandKind kind) {
 
 }  // namespace
 
-const char* SessionCommandKindName(SessionCommandKind kind) {
-  const KindRow* row = FindKind(kind);
-  return row ? row->name.data() : "";
-}
-
 SessionCommandKind ParseSessionCommandKind(std::string_view kind) {
   for (const KindRow& row : kKinds) {
     if (row.name == kind) return row.kind;

@@ -11,7 +11,7 @@ const pointer = async (locator, type, pointerId, x, y) =>
 
 test("static UI showcase renders shared flat controls and scales them", async ({
   page,
-}, testInfo) => {
+}) => {
   await page.setViewportSize({ width: 1100, height: 900 });
   await page.addInitScript(() => localStorage.setItem("uagent-theme", "dark"));
   await page.goto("/ui.html");
@@ -73,10 +73,6 @@ test("static UI showcase renders shared flat controls and scales them", async ({
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
-  await page.screenshot({
-    path: testInfo.outputPath("ui-showcase.png"),
-    fullPage: true,
-  });
 });
 
 test.describe("browser input showcase on a phone", () => {

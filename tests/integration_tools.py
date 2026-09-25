@@ -102,9 +102,7 @@ def test_full_run_and_python_terminal_trace(root, home, *, binary):
     ) as server:
         env = base_env(home, server.url)
         env["UAGENT_TOOL_BATCH_RESULT_CHARS"] = "8"
-        result = run_dialog(
-            root, env, "/verbose\ntrace\n/q\n", "--yolo", timeout=20, binary=binary
-        )
+        result = run_dialog(root, env, "/verbose\ntrace\n/q\n", "--yolo", timeout=20, binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         for expected in (
             "printf 'shell-one",

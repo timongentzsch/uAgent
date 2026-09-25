@@ -70,9 +70,7 @@ test("transcript renders while dialog chunks are held", async ({
   await expect(page.locator(".transcript .tool-disclosure")).toHaveCount(1, {
     timeout: 60000,
   });
-  await expect(page.locator(".transcript .explored")).toContainText(
-    "Explored",
-  );
+  await expect(page.locator(".transcript .explored")).toContainText("Explored");
   await expect(
     page.getByRole("button", { name: "Turn statistics" }).first(),
   ).toBeVisible({ timeout: 30000 });

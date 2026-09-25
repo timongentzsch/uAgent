@@ -746,8 +746,9 @@ bool Api::WaitForRetry(std::chrono::milliseconds delay) const {
                              : PollTimeoutMs(deadline));
       if (ready < 0 && errno == EINTR) continue;
       if (ready < 0) break;
-      if (ready == 0)
+      if (ready == 0) {
         continue;  // a slice elapsed; the loop checks the deadline
+      }
       if (AbortRequested()) break;
       NormalizeAbortWake();
       wake.revents = 0;

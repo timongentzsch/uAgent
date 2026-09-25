@@ -1,6 +1,8 @@
 // Copyright 2026 Timon Gentzsch
 #include "include/app/schedule.h"
 
+#include <fcntl.h>
+
 #include <algorithm>
 #include <chrono>
 #include <ctime>
@@ -39,9 +41,12 @@ json Public(json store) {
 }
 json Mutate(const std::function<json(json&)>& change) {
   std::string error;
-  FileLease lease;
-  if (!lease.Acquire(UagentDir("scheduled") + "/write.lock", error)) {
-    return {{"error", error}};
+  // Wait for the lock: the host claims runs the moment a CLI write lands,
+  // while that writer may still hold it; failing fast stranded the run.
+  Fd lock(open((UagentDir("scheduled") + "/write.lock").c_str(),
+               O_RDWR | O_CREAT | O_CLOEXEC | O_NOFOLLOW, kPrivateFileMode));
+  if (!lock || !LockFileExclusive(lock.Get())) {
+    return {{"error", "cannot lock scheduled tasks"}};
   }
   auto store = ReadSchedules();
   if (store.contains("error")) return store;

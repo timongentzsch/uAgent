@@ -226,8 +226,7 @@ bool Agent::RunCalls(
         valid ? RequiredApproval(*tool, arguments) : ApprovalClass::kNone;
     task.activity = {
         {"id", call.id},
-        {"category",
-         valid ? ToolActivityCategory(*tool, arguments) : "execute"},
+        {"category", valid ? ToolActivityCategory(*tool, arguments) : "run"},
         {"label", task.label},
         {"groupable", valid &&
                           (required == ApprovalClass::kNone ||

@@ -322,8 +322,8 @@
   align-items: baseline;
   gap: var(--space-2) var(--space-4);
 }
-/* Steps inside an Explored row sit flush under its label. */
-.explored .message {
+/* Steps inside a group row sit flush under its label. */
+.group .message {
   padding-left: 0;
   padding-right: 0;
 }

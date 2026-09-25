@@ -98,6 +98,7 @@ Tool BrowserTool(std::string session_id) {
     return action == "open" ? "browser open " + JsonValue(args, "url", "")
                             : "browser " + action;
   };
+  tool.intent = "research";
   tool.header = [](const json& args) {
     const std::string action = JsonValue(args, "action", "");
     if (action == "open") {

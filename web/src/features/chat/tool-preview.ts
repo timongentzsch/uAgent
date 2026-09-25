@@ -10,17 +10,22 @@ export interface ToolRow {
   subtitle: string;
 }
 
-// "+12 −3" from a change receipt: its first line is the summary, the rest
-// the diff with its own +/- lines.
-export function diffStat(change = "") {
+// Lines added and removed in a change receipt: its first line is the
+// summary, the rest the diff with its own +/- lines.
+export function diffCounts(change = ""): [number, number] {
   let added = 0;
   let removed = 0;
   for (const line of change.split("\n").slice(1)) {
     if (line.startsWith("+") && !line.startsWith("+++")) added++;
     else if (line.startsWith("-") && !line.startsWith("---")) removed++;
   }
-  return added || removed ? `+${added} −${removed}` : "";
+  return [added, removed];
 }
+
+export const formatStat = ([added, removed]: [number, number]) =>
+  added || removed ? `+${added} −${removed}` : "";
+
+export const diffStat = (change = "") => formatStat(diffCounts(change));
 
 export function getToolRow(block: Block, running = false): ToolRow {
   const verb = block.view?.verb;

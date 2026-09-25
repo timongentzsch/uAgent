@@ -154,6 +154,7 @@ void RegisterActivityTool(std::vector<Tool>& tools,
     }
     return std::nullopt;
   };
+  activity.intent = "run";
   activity.header = [](const json& a) {
     const std::string operation = JsonValue(a, "operation", "");
     const std::string id = std::to_string(JsonValue(a, "id", int64_t{0}));

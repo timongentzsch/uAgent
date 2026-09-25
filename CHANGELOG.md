@@ -18,8 +18,12 @@
 
 - Tool rows read as a headline ("Edited src/a.ts +12 −3") with a status dot.
   Diffs, a command's last output lines, shared files and links to started
-  work stay visible without expanding. Consecutive read-only calls fold into
-  one "Explored" row, and memory and background receipts use the same row.
+  work stay visible without expanding; a command's output is one scrollable
+  box. Every call carries an intent (explore, research, edit, verify, run,
+  setup, delegate), declared by `run`/`scratch` or inferred from read-only
+  commands, and consecutive calls of one intent fold into Explored,
+  Researched, Verified or Edited. Memory and background receipts use the
+  same row.
   The terminal prints the same headline, tail and links.
 - A file the agent shares previews inline in the conversation: images,
   sandboxed HTML (its own scripts now run) and PDFs on desktop.

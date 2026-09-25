@@ -143,12 +143,18 @@ depend on the conversation model. `UAGENT_WEB_SEARCH_BACKEND=off` withholds it.
 
 ## Presentation
 
-Each call is recorded as `explore`, `change` or `execute`. Native tools use
-their own contract; `run` and `scratch` take an optional `intent` (default
-`execute`) that labels the activity and never changes permissions. Adjacent
-successful exploration in one batch folds into one row in the web UI and a
-compact terminal summary; changes, failures and approval prompts stay visible.
-`/verbose` shows full detail in the terminal.
+Each call carries an intent: `explore` (read, list, search), `research`
+(web search, fetch, browser), `edit`, `verify` (test, lint, build), `run`,
+`setup` (install, configure) or `delegate`; memory and shared files keep their
+own rows. Native tools know theirs. `run` and `scratch` take an optional
+`intent` from the model; without one, a command made only of read-only
+programs (`ls`, `cat`, `rg`, `git log`, …) reads as `explore`, anything else
+as `run`. Intent labels and groups calls and never changes permissions.
+
+Adjacent successful calls of one intent fold into one row: Explored,
+Researched, Verified or Edited, in the web UI and as a compact terminal
+summary. A failure or an approval prompt keeps its own row. `/verbose` shows
+full detail in the terminal.
 
 ## How a call reads
 
@@ -157,12 +163,12 @@ way (`ToolView` in `include/tools/tool.h`):
 
 - A headline of verb and target: "Editing src/a.ts" while it runs, "Edited
   src/a.ts" after. Tools without their own verbs read "Called <tool>".
-- Visible without expanding: a change's diff, the last lines of a command's
-  output, and the parts the call produced. A shared file previews inline
+- Visible without expanding: a change's diff, a command's output, and the
+  parts the call produced. A shared file previews inline
   (images, sandboxed HTML, PDF on desktop) with Open and Download; started
   work links to its agent, activity or memory.
 - On expand: the call's input (a command, code or fields) and its full
   output.
 
-Consecutive read-only calls fold into one "Explored" row. Memory saves and
-finished background work use the same row.
+Commands keep their output in one scrollable box under the row, opened at the
+end. Memory saves and finished background work use the same row.

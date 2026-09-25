@@ -96,9 +96,11 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
   run.declared_intent = true;
   const json intent_schema = {
       {"type", "string"},
-      {"enum", json::array({"explore", "change", "execute"})},
+      {"enum", CommandIntents()},
       {"description",
-       "Activity intent only; does not change permissions. Default execute."}};
+       "What the command is for: explore (read/list/search), research, edit, "
+       "verify (test/lint/build), run, setup (install/configure). Display "
+       "and grouping only; never changes permissions."}};
   run.parameters["properties"]["intent"] = intent_schema;
   const json description_schema = {
       {"type", json::array({"string", "null"})},

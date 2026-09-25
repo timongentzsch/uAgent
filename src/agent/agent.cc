@@ -878,8 +878,6 @@ void Agent::ReportMemoryCompletion(BackgroundCompletion& completion) {
     }
     std::string line = "Memory " + label;
     if (!event.key.empty()) line += " · " + event.key;
-    const bool changed = event.action == "created" ||
-                         event.action == "updated" || event.action == "deleted";
     // The same row shape as a memory tool call: verb, key, link.
     const json verb =
         event.action == "created"   ? json{"Saving memory", "Saved memory"}
@@ -901,8 +899,7 @@ void Agent::ReportMemoryCompletion(BackgroundCompletion& completion) {
          {"view",
           {{"verb", verb}, {"target", event.key}, {"output", "markdown"}}},
          {"parts", std::move(parts)},
-         {"activity",
-          {{"category", changed ? "change" : "explore"}, {"label", line}}},
+         {"activity", {{"category", "memory"}, {"label", line}}},
          {"status", warning ? "failed" : "completed"},
          {"turn_root", turn_root_}});
     Emit(Event{EventId::kMessageChanged, {{"block", block}}});
@@ -952,8 +949,10 @@ void Agent::DeliverActivityCompletions(
                             : completion.display_label;
     if (!label.empty()) record.title += " · " + Utf8Trunc(label, 160);
     record.summary = Utf8Trunc(FirstLine(completion.output), size_t{512});
-    const json completion_activity = {{"category", "execute"},
-                                      {"label", record.title}};
+    const json completion_activity = {
+        {"category",
+         completion.kind == ActivityKind::kSubagent ? "delegate" : "run"},
+        {"label", record.title}};
     record.activity = completion_activity;
     std::string text = record.title + (succeeded ? " completed" : " failed");
     if (!completion.output.empty()) text += "\n" + completion.output;

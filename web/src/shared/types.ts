@@ -71,7 +71,9 @@ export interface Exchange {
   reply_excerpt?: string;
 }
 export interface ToolActivity {
-  category?: "explore" | "change" | "execute";
+  // The call's intent: explore, research, edit, verify, run, setup,
+  // delegate, memory or share (older sessions: change, execute).
+  category?: string;
   label?: string;
   group?: { id: string; label: string };
 }

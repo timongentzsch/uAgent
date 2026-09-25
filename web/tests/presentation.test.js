@@ -302,7 +302,7 @@ test("readable bodies decode text and nested JSON without losing lexical facts",
 
 // Pairing tests read identities; an Explored group only wraps them.
 const flat = (rows) =>
-  rows.flatMap((row) => (row.kind === "explore" ? row.children : [row]));
+  rows.flatMap((row) => (row.kind === "group" ? row.children : [row]));
 
 test("reversed tool results join by ID as flat rows", () => {
   const group = { id: "a", label: "Explored · 2 calls" };
@@ -773,7 +773,7 @@ test("tool rows read as the view's verb and target", () => {
   assert.match(done.subtitle, /^\+2 \u22121 · /);
 });
 
-test("consecutive read-only calls fold into one explored row", () => {
+test("consecutive read-only calls fold into one group row", () => {
   const explore = { category: "explore" };
   const rows = presentMessages([
     { id: "u1", kind: "user", text: "go" },
@@ -788,7 +788,7 @@ test("consecutive read-only calls fold into one explored row", () => {
   ]);
   assert.deepEqual(
     rows.map((row) => row.kind),
-    ["user", "explore", "tool_result"],
+    ["user", "group", "tool_result"],
   );
   assert.deepEqual(
     rows[1].children.map((row) => row.id),
@@ -815,4 +815,28 @@ test("consecutive tools stay flat rows in order", () => {
     rows.map((row) => row.id),
     ["u1", "t1", "t2", "a1", "m1", "t3", "m2"],
   );
+});
+
+test("groups follow the intent and a failed check keeps its own row", () => {
+  const call = (id, category, status = "success") => ({
+    id,
+    kind: "tool_result",
+    call_id: id,
+    status,
+    activity: { category },
+  });
+  const rows = presentMessages([
+    call("v1", "verify"),
+    call("v2", "verify"),
+    call("v3", "verify", "failed"),
+    call("e1", "edit"),
+    call("e2", "edit"),
+    call("r1", "run"),
+    call("r2", "run"),
+  ]);
+  assert.deepEqual(
+    rows.map((row) => row.children?.map((step) => step.id) || row.id),
+    [["v1", "v2"], "v3", ["e1", "e2"], "r1", "r2"],
+  );
+  assert.equal(rows[0].activity.category, "verify");
 });

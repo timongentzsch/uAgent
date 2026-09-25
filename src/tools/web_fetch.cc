@@ -293,6 +293,7 @@ Tool WebFetchTool(Api& api) {
   t.summary = [](const json& a) { return JsonValue(a, "url", ""); };
   t.output_view = "markdown";
   t.header = Verbs("Fetching", "Fetched");
+  t.intent = "research";
   return t;
 }
 

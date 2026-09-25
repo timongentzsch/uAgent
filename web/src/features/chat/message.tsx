@@ -25,6 +25,7 @@ import {
   Time,
 } from "../../shared/ui.tsx";
 import { MessageMenu } from "./message-menu.tsx";
+import { diffCounts, formatStat } from "./tool-preview.ts";
 import { StatusLed } from "../../shared/connection-status.tsx";
 import { useBlockReader } from "../../state/block-reader.ts";
 import { duration } from "../../shared/duration.ts";
@@ -395,7 +396,7 @@ function MessageView({
 
 type MessageProps = ComponentProps<typeof MessageView>;
 
-// An Explored row changes when a step is added or one of them settles.
+// A group row changes when a step is added or one of them settles.
 const stepsKey = (block: PresentedBlock) =>
   (block.children || [])
     .map((step) => `${step.key || step.id}:${step.status}:${step.duration_ms}`)
@@ -453,8 +454,8 @@ export class Message extends Component<MessageProps> {
   render(props: MessageProps) {
     return (
       <ErrorBoundary>
-        {props.block.kind === "explore" ? (
-          <ExploredRow {...props} />
+        {props.block.kind === "group" ? (
+          <GroupRow {...props} />
         ) : (
           <MessageView {...props} />
         )}
@@ -463,32 +464,74 @@ export class Message extends Component<MessageProps> {
   }
 }
 
-// A run of read-only calls as one row: "Explored · 3 files, 2 searches",
-// expanding to the calls themselves.
-function ExploredRow(props: MessageProps) {
+// The native four group labels, present while a step runs, past after.
+const GROUP_VERBS: Record<string, [string, string]> = {
+  explore: ["Exploring", "Explored"],
+  research: ["Researching", "Researched"],
+  verify: ["Verifying", "Verified"],
+  edit: ["Editing", "Edited"],
+};
+
+const plural = (n: number, one: string, many = `${one}s`) =>
+  n ? `${count(n)} ${n === 1 ? one : many}` : "";
+
+// What a group did, in its own terms: files and searches explored, pages
+// researched, each check with its result, lines edited.
+function groupSummary(intent: string, steps: PresentedBlock[]) {
+  const named = (...names: string[]) =>
+    steps.filter((step) => names.includes(step.name || "")).length;
+  if (intent === "verify")
+    return steps
+      .map((step) => {
+        const target = (step.view?.target || step.name || "").split("\n")[0];
+        const short = target.length > 24 ? `${target.slice(0, 23)}…` : target;
+        return `${short} ${isRunningStatus(step.status) ? "…" : "✓"}`;
+      })
+      .join(", ");
+  if (intent === "edit") {
+    const total = steps.reduce<[number, number]>(
+      (sum, step) => {
+        const [added, removed] = diffCounts(step.change);
+        return [sum[0] + added, sum[1] + removed];
+      },
+      [0, 0],
+    );
+    return [plural(steps.length, "file"), formatStat(total)]
+      .filter(Boolean)
+      .join(" · ");
+  }
+  const counts =
+    intent === "research"
+      ? [
+          plural(named("web_search"), "search", "searches"),
+          plural(steps.length - named("web_search"), "page"),
+        ]
+      : [
+          plural(named("read_path"), "file"),
+          plural(named("grep"), "search", "searches"),
+          plural(steps.length - named("read_path", "grep"), "command"),
+        ];
+  return counts.filter(Boolean).join(", ");
+}
+
+// A run of same-intent calls as one row, expanding to the calls themselves.
+function GroupRow(props: MessageProps) {
   const steps = props.block.children || [];
+  const intent = props.block.activity?.category || "explore";
   const running = steps.some(
     (step) => step.duration_ms == null && isRunningStatus(step.status),
   );
-  const files = steps.filter((step) => step.name === "read_path").length;
-  const searches = steps.filter((step) => step.name === "grep").length;
-  const other = steps.length - files - searches;
-  const counts = [
-    files && `${count(files)} file${files === 1 ? "" : "s"}`,
-    searches && `${count(searches)} search${searches === 1 ? "" : "es"}`,
-    other && `${count(other)} other`,
-  ]
-    .filter(Boolean)
-    .join(", ");
+  const [present, past] = GROUP_VERBS[intent] || GROUP_VERBS.explore;
   return (
     <article
       data-message-id={props.block.key}
-      className="message tool explored"
+      data-intent={intent}
+      className="message tool group"
     >
       <DisclosureRow
         className="tool-disclosure"
-        label={running ? "Exploring" : "Explored"}
-        status={counts}
+        label={running ? present : past}
+        status={groupSummary(intent, steps)}
         icon={<StatusLed state={running ? "running" : "active"} />}
       >
         {steps.map((step) => (

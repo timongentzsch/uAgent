@@ -1794,7 +1794,7 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
   await prompt.fill("Exploration probe");
   await prompt.press("Enter");
   // Two read-only calls fold into one Explored row that expands to both.
-  const explored = page.locator(".transcript .explored");
+  const explored = page.locator(".transcript .group");
   await expect(explored).toHaveCount(1);
   await expect(explored.locator("summary").first()).toContainText("Explored");
   await explored.locator("summary").first().click();

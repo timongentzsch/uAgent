@@ -70,6 +70,7 @@ void RegisterMemoryTool(std::vector<Tool>& tools) {
   memory.summary = [](const json& a) {
     return JsonValue(a, "action", "") + " " + JsonValue(a, "key", "");
   };
+  memory.intent = "memory";
   memory.header = [](const json& a) {
     const std::string action = JsonValue(a, "action", "");
     const json verb =

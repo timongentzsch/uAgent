@@ -265,6 +265,7 @@ Tool WebSearchTool(Api& api, UsageAccumulator& usage,
   };
   t.parallel_safe = true;
   t.header = Verbs("Searching the web for", "Searched the web for");
+  t.intent = "research";
   t.parameters["properties"]["queries"]["maxItems"] =
       std::min<int64_t>(4, api.config.web_search_max_uses);
   // The configured budget is per attempt (see Api::Post); the tool deadline

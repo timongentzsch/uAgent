@@ -209,33 +209,41 @@ export function presentMessages(blocks: Block[]): PresentedBlock[] {
       rows.push(row);
     }
   }
-  return foldExploration(rows);
+  return foldGroups(rows);
 }
 
-// Consecutive read-only calls fold into one "Explored" row, as Codex and
-// opencode do; a call with something to show (a file, a link) stays its own
-// row. A single call is not worth a group.
-function foldExploration(rows: PresentedBlock[]): PresentedBlock[] {
+// Intents whose consecutive calls read as one step (the native four).
+const GROUPED = new Set(["explore", "research", "verify", "edit"]);
+
+// Consecutive calls of one groupable intent fold into one row ("Explored",
+// "Verified"...), as Codex and opencode do. A failure or a call with
+// something to show (a file, a link) keeps its own row; one call is no group.
+function foldGroups(rows: PresentedBlock[]): PresentedBlock[] {
   const folded: PresentedBlock[] = [];
   let run: PresentedBlock[] = [];
   const flush = () => {
     if (run.length > 1) {
-      const key = `explore-${run[0].key || run[0].id}`;
-      folded.push({ id: key, key, kind: "explore", children: run });
+      const key = `group-${run[0].key || run[0].id}`;
+      folded.push({
+        id: key,
+        key,
+        kind: "group",
+        activity: { category: run[0].activity?.category },
+        children: run,
+      });
     } else folded.push(...run);
     run = [];
   };
   for (const row of rows) {
-    if (
+    const intent = row.activity?.category || "";
+    const joins =
       row.kind === "tool_result" &&
-      row.activity?.category === "explore" &&
-      !row.parts?.length
-    )
-      run.push(row);
-    else {
-      flush();
-      folded.push(row);
-    }
+      GROUPED.has(intent) &&
+      !row.parts?.length &&
+      !/fail|error|timed_out|denied|cancel/i.test(row.status || "");
+    if (!joins || (run.length && run[0].activity?.category !== intent)) flush();
+    if (joins) run.push(row);
+    else folded.push(row);
   }
   flush();
   return folded;

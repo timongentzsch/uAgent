@@ -4,6 +4,9 @@
 
 #include <algorithm>
 #include <cctype>
+#include <functional>
+#include <set>
+#include <sstream>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -314,16 +317,58 @@ bool ToolCallBlocks(const Tool& tool, const json& arguments) {
 
 // Contract-defined for native operations; arbitrary execution may declare its
 // purpose. Neither this label nor a successful exit proves absence of effects.
+const json& CommandIntents() {
+  static const json intents = {"explore", "research", "edit",
+                               "verify",  "run",      "setup"};
+  return intents;
+}
+
+namespace {
+// A shell line that only looks: every segment of a pipeline or command list
+// starts with a read-only program. Anything else, or anything unsure, runs.
+bool ReadOnlyCommand(const std::string& command) {
+  static const std::set<std::string, std::less<>> kLooks = {
+      "cat", "cd",  "du", "echo", "fd",   "file", "find", "grep", "head",
+      "ls",  "pwd", "rg", "stat", "tail", "tree", "wc",   "which"};
+  static const std::set<std::string, std::less<>> kGitLooks = {
+      "blame", "branch", "diff", "grep", "log", "ls-files", "show", "status"};
+  if (command.find_first_of("<>`$") != std::string::npos) return false;
+  bool any = false;
+  size_t start = 0;
+  while (start <= command.size()) {
+    size_t end = command.find_first_of("|;&\n", start);
+    if (end == std::string::npos) end = command.size();
+    std::istringstream words(command.substr(start, end - start));
+    std::string program, sub;
+    words >> program >> sub;
+    if (!program.empty()) {
+      if (program == "git" ? !kGitLooks.contains(sub)
+                           : !kLooks.contains(program)) {
+        return false;
+      }
+      any = true;
+    }
+    start = command.find_first_not_of("|;&\n", end);
+    if (start == std::string::npos) break;
+  }
+  return any;
+}
+}  // namespace
+
 std::string ToolActivityCategory(const Tool& tool, const json& args) {
   if (tool.declared_intent) {
-    std::string intent = JsonValue(args, "intent", "execute");
-    return intent == "explore" || intent == "change" ? intent : "execute";
+    const std::string intent = JsonValue(args, "intent", "");
+    for (const json& known : CommandIntents()) {
+      if (known == intent) return intent;
+    }
+    return ReadOnlyCommand(JsonValue(args, "command", "")) ? "explore" : "run";
   }
-  if (tool.capabilities & (Capability(ToolCapability::kExecute) |
-                           Capability(ToolCapability::kDelegate))) {
-    return "execute";
+  if (!tool.intent.empty()) return tool.intent;
+  if (tool.capabilities & Capability(ToolCapability::kDelegate)) {
+    return "delegate";
   }
-  return ToolMutates(tool, args) ? "change" : "explore";
+  if (tool.capabilities & Capability(ToolCapability::kExecute)) return "run";
+  return ToolMutates(tool, args) ? "edit" : "explore";
 }
 
 // The authority a call needs. A tool may escalate specific arguments; nothing

@@ -161,6 +161,10 @@ export default function Inspector({
   const [busy, setBusy] = useState(false);
   const inspection = useRef(0);
   const inspectionRequest = useRef<AbortController>();
+  // Progress ticks can outpace a refresh: one runs at a time and the latest
+  // tick waits for it, instead of each tick aborting the one before.
+  const refreshing = useRef(false);
+  const queuedRefresh = useRef<ActivityDetail | null>(null);
 
   useEffect(
     () => () => {
@@ -186,6 +190,11 @@ export default function Inspector({
     before?: number,
     refresh = false,
   ) {
+    if (refresh && refreshing.current) {
+      queuedRefresh.current = item;
+      return;
+    }
+    refreshing.current = refresh;
     const version = ++inspection.current;
     inspectionRequest.current?.abort();
     const controller = new AbortController();
@@ -213,6 +222,13 @@ export default function Inspector({
       if (version === inspection.current && !refresh) setError(failure);
     } finally {
       if (version === inspection.current && !refresh) setLoading(false);
+      if (refresh) {
+        refreshing.current = false;
+        const queued = queuedRefresh.current;
+        queuedRefresh.current = null;
+        if (queued && version === inspection.current)
+          inspect(queued, undefined, true).catch(report);
+      }
     }
   }
 
@@ -239,8 +255,7 @@ export default function Inspector({
       label: block.activity?.label || "Recorded event",
       status: block.status,
       memory: block.memory,
-      command:
-        (block as unknown as { command?: string }).command || item?.command,
+      command: block.command || item?.command,
       output: block.text,
     };
     if (item || block.agent_id || block.memory) inspect(receipt).catch(report);
@@ -390,7 +405,12 @@ export default function Inspector({
           error={error}
           inspect={inspect}
           report={report}
-          navigate={setDetail}
+          navigate={(next) => {
+            // A newer page wins over any load still in flight.
+            ++inspection.current;
+            inspectionRequest.current?.abort();
+            setDetail(next);
+          }}
           page={setPage}
           loadDetail={loadDetail}
           hidden={!!page}
@@ -538,7 +558,7 @@ function DetailBody({
             agent_id: block.agent_id,
             label: block.activity?.label || "Subagent",
             status: block.status,
-            command: (block as unknown as { command?: string }).command,
+            command: block.command,
             output: block.text,
           },
           undefined,

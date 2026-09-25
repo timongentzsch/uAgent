@@ -1,7 +1,8 @@
+import { Fragment } from "preact";
 import { DisclosureRow, Skeleton, LoadError, Time } from "../../shared/ui.tsx";
 import DiffView from "./diff-view.tsx";
 import Markdown from "../../shared/markdown-view.tsx";
-import { cleanText } from "../../shared/display.ts";
+import { cleanText, isFailedStatus } from "../../shared/display.ts";
 import type {
   FilePart,
   LinkPart,
@@ -45,10 +46,10 @@ export function ToolInput({ parts }: { parts: ToolPart[] }) {
         ) : part.kind === "fields" ? (
           <dl class="tool-fields" key={index}>
             {part.rows.map(([label, value]) => (
-              <>
+              <Fragment key={label}>
                 <dt>{label}</dt>
                 <dd>{cleanText(value)}</dd>
-              </>
+              </Fragment>
             ))}
           </dl>
         ) : null,
@@ -147,7 +148,7 @@ export function ToolRow({
       .filter(Boolean)
       .join(" · ");
   }
-  const failed = /fail|error|timed_out|denied/i.test(block.status || "");
+  const failed = isFailedStatus(block.status);
   const diff = block.change?.includes("\n") ? block.change : "";
   return (
     <DisclosureRow

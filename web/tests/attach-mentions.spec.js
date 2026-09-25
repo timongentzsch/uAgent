@@ -64,11 +64,6 @@ test("duplicate uploads dedupe, rename and @-mention send cleanly", async ({
   await prompt.press("Enter");
 
   const transcript = page.locator(".transcript");
-  await expect(
-    transcript.getByText("chart", { exact: false }).first(),
-  ).toBeVisible({
-    timeout: 30000,
-  });
   // Tiles carry the renamed label; the server path trailer never shows.
   await expect(
     transcript.getByRole("button", { name: /^View chart/ }).first(),

@@ -1,3 +1,4 @@
+import { storage } from "../shared/storage.ts";
 import type {
   AppModal,
   JSONValue,
@@ -10,11 +11,18 @@ import type {
   Act,
   CommandKind,
   CommandFields,
+  Activity,
 } from "../shared/types.ts";
 import { failure } from "../shared/types.ts";
 import type { JSX } from "preact";
 import { render } from "preact";
-import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "preact/hooks";
 import { readStored, writeStored } from "../state/store.ts";
 import { api, command, requestId } from "../state/api.ts";
 import {
@@ -89,6 +97,9 @@ if (typeof history !== "undefined") history.scrollRestoration = "manual";
 
 const emptyDraft = (): Draft => ({ text: "", files: [] });
 const noBlocks: Block[] = [];
+// One empty list, so an idle context value never changes identity.
+const NO_ACTIVITIES: Activity[] = [];
+
 function App() {
   const [page, setPage] = useState<"chat" | "library" | "scheduled">("chat");
   const [drawer, setDrawer] = useState(false);
@@ -150,20 +161,17 @@ function App() {
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [zoom, setZoom] = useState(() =>
-    normalizeZoom(readStored<number>(localStorage, "uagent-zoom", 100)),
+    normalizeZoom(readStored<number>(storage, "uagent-zoom", 100)),
   );
   const [install, setInstall] = useState<InstallPrompt | null>(null);
   const [update, setUpdate] = useState<ServiceWorker | null>(null);
   const [notificationMode, setNotificationMode] = useState(false);
   const [timePrefs, setTimePrefs] = useState<TimePrefs>(() =>
-    normalizeTimePrefs(readStored(localStorage, "uagent-time", {})),
+    normalizeTimePrefs(readStored(storage, "uagent-time", {})),
   );
-  useEffect(
-    () => writeStored(localStorage, "uagent-time", timePrefs),
-    [timePrefs],
-  );
+  useEffect(() => writeStored(storage, "uagent-time", timePrefs), [timePrefs]);
   const [theme, setTheme] = useState(
-    () => localStorage.getItem("uagent-theme") || "system",
+    () => storage.getItem("uagent-theme") || "system",
   );
   const [inspector, setInspector] = useState<InspectorTarget | null>(null);
   const snapshot = snapshots[selected];
@@ -230,7 +238,7 @@ function App() {
     setDrafts((current) => ({ ...current, [id]: value }));
   }
   useEffect(() => {
-    writeStored(localStorage, "uagent-zoom", zoom);
+    writeStored(storage, "uagent-zoom", zoom);
     applyZoom(zoom);
   }, [zoom]);
   // The shared transcript controller restores a returning conversation.
@@ -524,37 +532,41 @@ function App() {
   // Recall returns queued guidance to the composer while it is still
   // queued. Delivered guidance belongs to the turn; dropping the row is
   // then the only correct move.
-  const recallGuidance = useCallback(
-    async (block: Block) => {
-      const target = block.request_id;
-      if (!target || block.status !== "Guidance queued" || !online) return;
-      const text = block.text || "";
-      const id = selected;
-      try {
-        await act("recall", { target_id: target });
-      } catch (error) {
-        const issue = failure(error);
-        if (!/already delivered/i.test(issue.message)) {
-          report(error);
-          return;
-        }
-      }
-      setOutgoing((items) =>
-        items.filter((item) => item.request_id !== target),
-      );
-      if (text) {
-        setDrafts((current) => {
-          const prior = current[id]?.text || "";
-          const next = prior ? `${prior}\n${text}` : text;
-          return {
-            ...current,
-            [id]: { ...(current[id] || emptyDraft()), text: next },
-          };
-        });
-      }
-    },
-    [online, selected, act, report],
+  // Rows skip re-rendering on equal props, so the callbacks they get must
+  // stay the same function; they read the latest state through a ref.
+  const latest = useRef({ online, selected, act, report });
+  latest.current = { online, selected, act, report };
+  const openActivity = useCallback(
+    (block: Block) => setInspector({ block }),
+    [],
   );
+  const recallGuidance = useCallback(async (block: Block) => {
+    const { online, selected, act, report } = latest.current;
+    const target = block.request_id;
+    if (!target || block.status !== "Guidance queued" || !online) return;
+    const text = block.text || "";
+    const id = selected;
+    try {
+      await act("recall", { target_id: target });
+    } catch (error) {
+      const issue = failure(error);
+      if (!/already delivered/i.test(issue.message)) {
+        report(error);
+        return;
+      }
+    }
+    setOutgoing((items) => items.filter((item) => item.request_id !== target));
+    if (text) {
+      setDrafts((current) => {
+        const prior = current[id]?.text || "";
+        const next = prior ? `${prior}\n${text}` : text;
+        return {
+          ...current,
+          [id]: { ...(current[id] || emptyDraft()), text: next },
+        };
+      });
+    }
+  }, []);
   async function upload(files: File[]) {
     if (!session || !online || uploading || !files.length) return;
     const id = selected;
@@ -923,7 +935,9 @@ function App() {
                     rewrite the live one, and each surface keeps its own
                     DOM state (expansion, disclosure, scroll). */}
                   <LiveActivities.Provider
-                    value={online ? snapshot?.state?.activities || [] : []}
+                    value={
+                      (online && snapshot?.state?.activities) || NO_ACTIVITIES
+                    }
                   >
                     <Deferred
                       key={selected}
@@ -952,7 +966,7 @@ function App() {
                       recall={recallGuidance}
                       inspect={inspect}
                       http={showMessageHttp}
-                      activity={(block: Block) => setInspector({ block })}
+                      activity={openActivity}
                       statistics={showMessageStatistics}
                     />
                   </LiveActivities.Provider>

@@ -321,7 +321,7 @@ function MessageView({
       {block.deliveries
         ?.filter((item) => !AS_SENT.has(item.delivery))
         .map((item) => (
-          <p class="small muted">
+          <p class="small muted" key={item.name}>
             {item.name} · {item.delivery}
           </p>
         ))}
@@ -373,11 +373,20 @@ function MessageView({
 
 type MessageProps = ComponentProps<typeof MessageView>;
 
-// A group row changes when a step is added or one of them settles.
-const stepsKey = (block: PresentedBlock) =>
-  (block.children || [])
-    .map((step) => `${step.key || step.id}:${step.status}:${step.duration_ms}`)
-    .join();
+// A group row changes when any of its steps would.
+function stepsEqual(before: MessageProps, after: MessageProps): boolean {
+  const x = before.block.children || [];
+  const y = after.block.children || [];
+  return (
+    x.length === y.length &&
+    x.every((step, index) =>
+      messagePropsEqual(
+        { ...before, block: step },
+        { ...after, block: y[index] },
+      ),
+    )
+  );
+}
 
 function messagePropsEqual(before: MessageProps, after: MessageProps): boolean {
   const x = before.block;
@@ -406,7 +415,11 @@ function messagePropsEqual(before: MessageProps, after: MessageProps): boolean {
     x.call_id === y.call_id &&
     x.parts === y.parts &&
     x.tail === y.tail &&
-    stepsKey(x) === stepsKey(y) &&
+    x.deliveries === y.deliveries &&
+    x.unavailable_images === y.unavailable_images &&
+    x.origin === y.origin &&
+    x.request_id === y.request_id &&
+    stepsEqual(before, after) &&
     (x.files?.length || 0) === (y.files?.length || 0) &&
     (x.http?.length || 0) === (y.http?.length || 0) &&
     x.arguments === y.arguments &&

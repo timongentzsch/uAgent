@@ -24,6 +24,10 @@ export function diffLineClass(line: string, first: boolean): string {
 // Live vocabulary is single-sourced here: anything without a terminal
 // state (started but unfinished, or facts not yet recorded) reads as
 // running. Diagnostics (statistics/raw) keep the exact stored value.
+// A call that went wrong, as opposed to one the user cancelled.
+export const isFailedStatus = (status?: string) =>
+  /fail|error|timed_out|denied/i.test(status || "");
+
 export function isRunningStatus(status?: string): boolean {
   if (!status) return true;
   const state = status.trim().toLowerCase();

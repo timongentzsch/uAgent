@@ -1,3 +1,4 @@
+import { isFailedStatus } from "../../shared/display.ts";
 import type { Block, PresentedBlock } from "../../shared/types.ts";
 import { isRunningStatus } from "../../shared/display.ts";
 
@@ -271,7 +272,8 @@ function foldGroups(rows: PresentedBlock[]): PresentedBlock[] {
       GROUPED.has(intent) &&
       !row.parts?.length &&
       !row.files?.length &&
-      !/fail|error|timed_out|denied|cancel/i.test(row.status || "");
+      !isFailedStatus(row.status) &&
+      !/cancel/i.test(row.status || "");
     if (!joins || (run.length && run[0].activity?.category !== intent)) flush();
     if (joins) run.push(row);
     else folded.push(row);

@@ -289,9 +289,11 @@ bool Runtime::Start(std::string& error, bool profile_setup) {
   // Manual profile setup uses ordinary Chrome, without a debugging endpoint.
   // Both modes own the same profile exclusively and restore its saved tabs.
   std::vector<std::string> chrome = {
-      "google-chrome-stable",   "--user-data-dir=" + profile,
-      "--no-first-run",         "--no-default-browser-check",
-      "--window-size=1280,800", "--ozone-platform=x11",
+      "google-chrome-stable", "--user-data-dir=" + profile, "--no-first-run",
+      "--no-default-browser-check",
+      // Pin the window to the display: with no window manager Chrome would
+      // restore its saved placement, leaving black root at the edges.
+      "--window-position=0,0", "--window-size=1280,800", "--ozone-platform=x11",
       "--password-store=basic", "--restore-last-session"};
   if (profile_setup) {
     chrome_pid_ = Launch(chrome);

@@ -120,7 +120,8 @@ def test_reasoning_modes_render_consistently(root, home, *, binary):
             env,
             [
                 (b"/verbose\n", b"verbose ON"),
-                (b"go\n", b"Final answer"),
+                # Quit once the turn has settled, however slow the build.
+                (b"go\n", b"Final answer", b"Ready", None),
                 b"/q\n",
             ],
             timeout=10,
@@ -138,7 +139,7 @@ def test_reasoning_modes_render_consistently(root, home, *, binary):
             env,
             [
                 (b"go\n", b"provider normalization phases"),
-                (b"", b"Final answer"),
+                (b"", b"Final answer", b"Ready", None),
                 b"/q\n",
             ],
             timeout=10,

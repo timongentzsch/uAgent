@@ -455,8 +455,9 @@ json ToolView(const Tool* tool, const json& args) {
     const std::string title = tool ? ToolTitle(*tool) : "tool";
     view["verb"] = {"Calling " + title, "Called " + title};
   }
-  if (!view.contains("target") && tool)
+  if (!view.contains("target") && tool) {
     view["target"] = ToolSummary(*tool, args);
+  }
   view["input"] =
       tool && tool->present ? tool->present(args) : GenericInputParts(args);
   view["output"] = tool ? tool->output_view : "text";

@@ -805,7 +805,7 @@
     "name": "ui"
   },
   "index.html": {
-    "file": "assets/index-_bmixLJ6.js",
+    "file": "assets/index-CON8DOF1.js",
     "name": "index",
     "src": "index.html",
     "isEntry": true,
@@ -1867,7 +1867,7 @@
     ]
   },
   "src/features/chat/inspector.tsx": {
-    "file": "assets/inspector-N3GO51w9.js",
+    "file": "assets/inspector-C5vUlhic.js",
     "name": "inspector",
     "src": "src/features/chat/inspector.tsx",
     "isDynamicEntry": true,

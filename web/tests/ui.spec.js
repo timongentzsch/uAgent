@@ -2106,10 +2106,15 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
     page.getByRole("heading", { name: "Verified response" }),
   ).toBeVisible();
   // Force a retained older page so its control must share the thread's scroll.
+  // The first load is held, to see the sheet's layout while it loads.
+  let releaseFirst;
+  const firstLoad = new Promise((resolve) => (releaseFirst = resolve));
+  let loads = 0;
   await page.route("**/api/command", async (route) => {
     const body = route.request().postDataJSON();
     if (body.kind !== "activity" || body.operation !== "inspect" || body.detail)
       return route.continue();
+    if (loads++ === 0) await firstLoad;
     const response = await route.fetch();
     const value = await response.json();
     if (value.result?.conversation) {
@@ -2130,6 +2135,20 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
   // One sheet; its title follows the page shown in it.
   const detail = page.locator("dialog.activity-view");
   await expect(detail.locator(":scope > header > h2")).toHaveText("Subagent");
+  // While the thread loads, every section already holds its final place:
+  // the thread shows a skeleton and the guidance form sits where it stays.
+  await expect(detail.getByText("Loading the thread…")).toBeVisible();
+  const place = () =>
+    Promise.all(
+      [".child-thread", ".guidance-form"].map((selector) =>
+        detail.locator(selector).boundingBox(),
+      ),
+    );
+  const loadingPlace = await place();
+  releaseFirst();
+  await expect(detail.locator(".child-thread .message").first()).toBeVisible();
+  expect(await place()).toEqual(loadingPlace);
+  await expect(detail.getByText("Process output")).toHaveCount(0);
   await expect(
     detail.getByLabel("Estimated context", { exact: true }),
   ).toHaveText(/est\. ctx [\d.]+k?\/[\d.]+[kM]? · \d+% left/);

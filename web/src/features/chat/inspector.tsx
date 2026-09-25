@@ -35,6 +35,7 @@ import {
   IconButton,
   LoadError,
   Modal,
+  Skeleton,
   Spinner,
 } from "../../shared/ui.tsx";
 import {
@@ -462,7 +463,6 @@ function DetailBody({
 }) {
   const isAgent = !!detail.agent_id && !detail.memory;
   const isLive = active(current);
-  const bare = !detail.conversation && !detail.output && !detail.task;
   // Thread follows the live edge exactly like the transcript (same
   // hook, keyed by agent): growth pins while sticky, any upward move
   // breaks, and the jump button below re-pins.
@@ -602,7 +602,6 @@ function DetailBody({
         </button>
       )}
       {error && <LoadError error={error} retry={() => inspect(detail)} />}
-      {loading && bare && !error && <Spinner label="Loading…" surface />}
       {meta.length > 0 && <p class="detail-meta">{meta.join(" · ")}</p>}
 
       {isAgent && (
@@ -650,7 +649,8 @@ function DetailBody({
         </details>
       )}
 
-      {!detail.conversation &&
+      {!isAgent &&
+        !detail.conversation &&
         (detail.command ? (
           <section aria-label="Command">
             <pre class="detail-command" tabIndex={0}>
@@ -697,6 +697,8 @@ function DetailBody({
                   activity={openNested}
                   statistics={showTurnStats}
                 />
+              ) : loading ? (
+                <Skeleton label="Loading the thread…" />
               ) : (
                 <p class="muted">Waiting for the subagent transcript…</p>
               )}
@@ -735,13 +737,19 @@ function DetailBody({
         </section>
       )}
 
+      {/* Each section holds its place from the first frame: content
+          replaces the skeleton instead of pushing the layout around. */}
       {detail.memory ? (
         <section aria-label="Memory">
           <p class="muted">
             Current memory · {detail.memory.key}. It may have changed since this
             event.
           </p>
-          <Markdown text={detail.output || ""} />
+          {loading && !detail.output ? (
+            <Skeleton label="Loading the memory…" />
+          ) : (
+            <Markdown text={detail.output || ""} />
+          )}
         </section>
       ) : (
         !isAgent &&
@@ -749,18 +757,13 @@ function DetailBody({
           <section aria-label="Output">
             {detail.output ? (
               <pre>{cleanText(detail.output)}</pre>
+            ) : loading ? (
+              <Skeleton label="Loading the output…" />
             ) : (
-              !loading && <p class="muted">No output recorded.</p>
+              <p class="muted">No output recorded.</p>
             )}
           </section>
         )
-      )}
-
-      {detail.conversation && detail.output && (
-        <details>
-          <summary>Process output</summary>
-          <pre>{cleanText(detail.output)}</pre>
-        </details>
       )}
 
       {isAgent && (

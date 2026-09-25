@@ -461,18 +461,18 @@ json Runtime::Status(bool include_page) {
   for (const auto& profile : profiles_) {
     profiles.push_back({{"id", profile.id}, {"name", profile.name}});
   }
-  json result = {{"ok", true},
-                 {"running", running},
-                 {"mode", mode_},
-                 {"waiting",
-                  mode_ == "human" && NowMillis() < agent_waiting_until_ms_},
-                 {"session_id", agent_session_},
-                 {"interaction_id", interaction_},
-                 {"viewer", viewer_},
-                 {"profile_id", selected_profile_},
-                 {"profile_setup", profile_setup_},
-                 {"profiles", profiles},
-                 {"generation", generation_}};
+  json result = {
+      {"ok", true},
+      {"running", running},
+      {"mode", mode_},
+      {"waiting", mode_ == "human" && NowMillis() < agent_waiting_until_ms_},
+      {"session_id", agent_session_},
+      {"interaction_id", interaction_},
+      {"viewer", viewer_},
+      {"profile_id", selected_profile_},
+      {"profile_setup", profile_setup_},
+      {"profiles", profiles},
+      {"generation", generation_}};
   if (!profile_error_.empty()) result["error"] = profile_error_;
   if (running && include_page && !profile_setup_) {
     json targets = Call("Target.getTargets");

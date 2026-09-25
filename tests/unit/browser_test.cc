@@ -214,7 +214,6 @@ void TestBrowserProfileSignIn() {
             .value("mode", "") == "idle");
 }
 
-
 // Closing the controlling viewer hands the browser back, watching never takes
 // control, and an agent call made meanwhile is reported as waiting.
 void TestBrowserHandBackOnClose() {

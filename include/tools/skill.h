@@ -211,6 +211,7 @@ inline Tool SkillTool(std::vector<Skill> skills,
     std::string name = JsonValue(a, "name", "");
     return name.empty() ? JsonValue(a, "query", "list") : name;
   };
+  t.header = Verbs("Loading skill", "Loaded skill");
   return t;
 }
 

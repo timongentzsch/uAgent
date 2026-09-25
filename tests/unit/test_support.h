@@ -22,6 +22,8 @@
 #include <utility>
 #include <vector>
 
+#include "include/tools/tool.h"
+
 namespace uagent {
 
 // Scale a millisecond deadline for an instrumented build, mirroring the Python
@@ -128,6 +130,12 @@ extern int failures;
 // Records a failure and returns whether the condition held; the run continues
 // so one execution reports every failure rather than the first.
 bool Check(bool condition, const char* expression, const char* file, int line);
+
+// The schema error a tool call would get, or empty when the arguments fit.
+inline std::string InvalidToolArgument(const Tool& tool, const json& args) {
+  auto issue = FindToolArgumentIssue(tool, args);
+  return issue ? issue->message : std::string();
+}
 
 }  // namespace uagent
 

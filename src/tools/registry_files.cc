@@ -93,6 +93,7 @@ void RegisterFileTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
   // avoids paying another model round merely to continue an ordinary source
   // file while keeping every other tool on the global result cap.
   read.result_chars = ReadFileResultChars();
+  read.header = Verbs("Reading", "Read");
 
   Tool& write = path_tool(MakeTool(
       "write_file",
@@ -111,6 +112,10 @@ void RegisterFileTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
   write.mutates = outside_scratch;
   write.capabilities = Capability(ToolCapability::kMutate);
   write.available_in_lean = false;
+  write.header = [](const json& a) {
+    return json{{"verb", {"Writing", "Wrote"}},
+                {"target", JsonValue(a, "path", "")}};
+  };
   write.summary = [](const json& a) {
     return "write " + JsonValue(a, "path", "") + " · " +
            FmtBytes(static_cast<int64_t>(
@@ -146,6 +151,10 @@ void RegisterFileTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
   edit.mutates = outside_scratch;
   edit.capabilities = Capability(ToolCapability::kMutate);
   edit.available_in_lean = false;
+  edit.header = [](const json& a) {
+    return json{{"verb", {"Editing", "Edited"}},
+                {"target", JsonValue(a, "path", "")}};
+  };
   edit.summary = [](const json& a) {
     size_t count = 0;
     auto edits = a.find("edits");
@@ -177,6 +186,7 @@ void RegisterFileTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
   remove.mutating = true;
   remove.capabilities = Capability(ToolCapability::kMutate);
   remove.available_in_lean = false;
+  remove.header = Verbs("Deleting", "Deleted");
   remove.approval_preview = [](const json& a) {
     std::string path = JsonValue(a, "path", "");
     auto prev = DiffableContents(path);
@@ -215,6 +225,11 @@ void RegisterFileTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
   // in recent context collapses to a receipt, so a search that found anything
   // new is always resent in full.
   grep.dedupe_output = true;
+  grep.header = [](const json& a) {
+    return json{{"verb", {"Searching", "Searched"}},
+                {"target", "/" + JsonValue(a, "pattern", "") + "/ in " +
+                               JsonValue(a, "path", ".")}};
+  };
   grep.summary = [](const json& a) {
     std::string mode = JsonValue(a, "mode", "content");
     return "search " + (mode == "files" ? std::string("files ") : "") + "/" +

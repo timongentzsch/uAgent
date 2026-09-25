@@ -13,6 +13,7 @@
 
 #include "include/agent.h"
 #include "include/agent/dispatch.h"
+#include "include/agent/session_view.h"
 #include "include/agent/tool_presentation.h"
 #include "include/core/activity.h"
 #include "include/core/events.h"
@@ -63,12 +64,13 @@ void Agent::AppendToolResult(const ToolCall& call, const std::string& result,
   conversation_.RecordToolDisplay(call.id,
                                   original.Ok() ? original.display : "");
   conversation_.AddStatistics({{"tool_results", 1}, {"tool_ms", duration_ms}});
-  json facts = {{"name", call.name},
-                {"status", CompletionStatusName(original.status)},
-                {"duration_ms", duration_ms},
-                {"output", Utf8Trunc(original.output, kPreviewChars)},
-                {"truncated", original.output.size() > kPreviewChars},
-                {"change", Utf8Trunc(original.display, kChangePreviewChars)}};
+  json facts = {
+      {"name", call.name},
+      {"status", CompletionStatusName(original.status)},
+      {"duration_ms", duration_ms},
+      {"output", Utf8Trunc(StripModelHints(original.output), kPreviewChars)},
+      {"truncated", original.output.size() > kPreviewChars},
+      {"change", Utf8Trunc(original.display, kChangePreviewChars)}};
   if (retain_exchanges_) {
     json exchange = {
         {"request", {{"name", call.name}, {"arguments", call.args}}},
@@ -83,6 +85,7 @@ void Agent::AppendToolResult(const ToolCall& call, const std::string& result,
     }
   }
   if (original.artifact) facts["artifact"] = original.artifact->path;
+  if (original.parts.is_array()) facts["parts"] = original.parts;
   facts["call_id"] = call.id;
   facts["response_id"] = call.response_id;
   facts["occurrence_id"] = call.occurrence_id;
@@ -223,8 +226,7 @@ bool Agent::RunCalls(
         valid ? RequiredApproval(*tool, arguments) : ApprovalClass::kNone;
     task.activity = {
         {"id", call.id},
-        {"category",
-         valid ? ToolActivityCategory(*tool, arguments) : "execute"},
+        {"category", valid ? ToolActivityCategory(*tool, arguments) : "run"},
         {"label", task.label},
         {"groupable", valid &&
                           (required == ApprovalClass::kNone ||
@@ -250,6 +252,7 @@ bool Agent::RunCalls(
     }
     call_event.presentation = ToolCallPresentation(task, call);
     if (call_event.presentation) {
+      call_event.data["view"] = call_event.presentation->view;
       // --resume replays the row from facts: same title/summary/flags the
       // live printer saw, so history matches execution exactly.
       conversation_.RecordDisplay(

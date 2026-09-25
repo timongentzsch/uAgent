@@ -30,12 +30,6 @@ int64_t EnvLong(const char* name, int64_t dflt) {
   return ParseInt64(v, value) ? value : dflt;
 }
 
-double EnvDouble(const char* name, double dflt) {
-  const char* v = getenv(name);
-  double value = 0;
-  return ParseFiniteDouble(v, value) ? value : dflt;
-}
-
 int64_t ToolResultCap() { return LongSetting(Cfg("UAGENT_TOOL_RESULT_CHARS")); }
 
 int64_t ToolBatchResultCap() {
@@ -86,11 +80,6 @@ int64_t SubagentMaxToolCalls() {
 
 std::string SubagentModel() {
   return StringSetting(Cfg("UAGENT_SUBAGENT_MODEL"));
-}
-
-std::string TitleModel() {
-  std::string model = StringSetting(Cfg("UAGENT_TITLE_MODEL"));
-  return model.empty() ? kDefaultModelRoute : model;
 }
 
 int64_t SubagentTimeoutSeconds() {

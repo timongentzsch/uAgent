@@ -23,6 +23,7 @@
 #include "include/browser/browser.h"
 #include "include/core/fs.h"
 #include "include/core/platform.h"
+#include "include/core/time.h"
 #include "include/tools/files.h"
 
 namespace uagent::browser {
@@ -288,9 +289,13 @@ bool Runtime::Start(std::string& error, bool profile_setup) {
   // Manual profile setup uses ordinary Chrome, without a debugging endpoint.
   // Both modes own the same profile exclusively and restore its saved tabs.
   std::vector<std::string> chrome = {
-      "google-chrome-stable",   "--user-data-dir=" + profile,
-      "--no-first-run",         "--no-default-browser-check",
-      "--window-size=1280,800", "--ozone-platform=x11",
+      "google-chrome-stable", "--user-data-dir=" + profile, "--no-first-run",
+      "--no-default-browser-check",
+      // Cover the whole 1280x800 display. With no window manager Chrome
+      // restores its saved placement unless pinned, and it shrinks a window
+      // that would exactly fill the screen by one pixel (1279x799), leaving
+      // a black line; one pixel past the edge is kept as asked.
+      "--window-position=0,0", "--window-size=1281,801", "--ozone-platform=x11",
       "--password-store=basic", "--restore-last-session"};
   if (profile_setup) {
     chrome_pid_ = Launch(chrome);
@@ -460,16 +465,18 @@ json Runtime::Status(bool include_page) {
   for (const auto& profile : profiles_) {
     profiles.push_back({{"id", profile.id}, {"name", profile.name}});
   }
-  json result = {{"ok", true},
-                 {"running", running},
-                 {"mode", mode_},
-                 {"session_id", agent_session_},
-                 {"interaction_id", interaction_},
-                 {"viewer", viewer_},
-                 {"profile_id", selected_profile_},
-                 {"profile_setup", profile_setup_},
-                 {"profiles", profiles},
-                 {"generation", generation_}};
+  json result = {
+      {"ok", true},
+      {"running", running},
+      {"mode", mode_},
+      {"waiting", mode_ == "human" && NowMillis() < agent_waiting_until_ms_},
+      {"session_id", agent_session_},
+      {"interaction_id", interaction_},
+      {"viewer", viewer_},
+      {"profile_id", selected_profile_},
+      {"profile_setup", profile_setup_},
+      {"profiles", profiles},
+      {"generation", generation_}};
   if (!profile_error_.empty()) result["error"] = profile_error_;
   if (running && include_page && !profile_setup_) {
     json targets = Call("Target.getTargets");
@@ -605,6 +612,7 @@ json Runtime::Execute(const json& command) {
     std::string session = JsonValue(command, "session_id", "");
     if (!session::OpaqueId(session)) return {{"error", "invalid session"}};
     if (mode_ == "human") {
+      agent_waiting_until_ms_ = NowMillis() + 2000;
       return {{"error", "human controls the browser; wait for Done"}};
     }
     if (!agent_session_.empty() && agent_session_ != session) {
@@ -649,8 +657,8 @@ json Runtime::Execute(const json& command) {
   if (op == "viewer") {
     const std::string role = JsonValue(command, "role", "control");
     if (role == "observe") {
-      if (mode_ != "agent" || !Alive(chrome_pid_) || !Alive(vnc_pid_)) {
-        return {{"error", "the agent is not using the browser"}};
+      if (!Alive(chrome_pid_) || !Alive(vnc_pid_)) {
+        return {{"error", "the browser is not running"}};
       }
       return Status(false);
     }
@@ -664,6 +672,13 @@ json Runtime::Execute(const json& command) {
     if (viewer_ == JsonValue(command, "device", "") &&
         generation_ == JsonValue(command, "generation", uint64_t{0})) {
       viewer_.clear();
+      // Closing the viewer hands control back, unless a login/MFA request
+      // or profile sign-in is still waiting on the human's Done.
+      if (mode_ == "human" && interaction_.empty() && !profile_setup_) {
+        mode_ = agent_session_.empty() ? "idle" : "agent";
+        observation_.clear();
+        SaveHandover();
+      }
       ++generation_;
     }
     return Status();
@@ -754,6 +769,7 @@ json Runtime::Execute(const json& command) {
   }
   std::string error;
   if (mode_ == "human") {
+    agent_waiting_until_ms_ = NowMillis() + 2000;
     return {{"error", "human controls the browser; wait for Done"}};
   }
   if (!Start(error)) return {{"error", error}};
@@ -831,7 +847,10 @@ json Runtime::Execute(const json& command) {
   } else if (op == "click") {
     if (observation_.empty() ||
         observation_ != JsonValue(command, "view_id", "")) {
-      return {{"error", "observe the current tab before clicking"}};
+      // The model has to pass the view_id its latest observe returned.
+      return {{"error", observation_.empty()
+                            ? "observe the current tab before clicking"
+                            : "click needs view_id from the latest observe"}};
     }
     int x, y;
     if (!Coordinate(command, "x", x) || !Coordinate(command, "y", y)) {
@@ -879,7 +898,10 @@ json Runtime::Execute(const json& command) {
   } else if (op == "scroll") {
     if (observation_.empty() ||
         observation_ != JsonValue(command, "view_id", "")) {
-      return {{"error", "observe the current tab before scrolling"}};
+      // The model has to pass the view_id its latest observe returned.
+      return {{"error", observation_.empty()
+                            ? "observe the current tab before scrolling"
+                            : "scroll needs view_id from the latest observe"}};
     }
     int x = JsonValue(command, "x", 640), y = JsonValue(command, "y", 400);
     int delta = JsonValue(command, "delta_y", 0);

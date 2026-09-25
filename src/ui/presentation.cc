@@ -410,6 +410,7 @@ void TerminalPresenter::Block(const json& block) {
       record.summary = JsonValue(*replay, "summary", "");
       record.output = JsonValue(block, "text", "");
       record.change = JsonValue(block, "change", "");
+      record.view = {{"parts", JsonValue(block, "parts", json::array())}};
       const std::string status = JsonValue(block, "status", "");
       record.status = status == "success"     ? PresentationStatus::kSucceeded
                       : status == "cancelled" ? PresentationStatus::kCancelled
@@ -460,6 +461,48 @@ std::string InputPartsText(const json& view) {
   }
   return text;
 }
+// What stays visible under a result row: a command's last output lines
+// (already printed in full when detailed) and the parts the call produced.
+std::string ResultExtras(const PresentationRecord& record, bool detailed) {
+  std::string text;
+  if (!detailed && JsonValue(record.view, "output", "") == "tail") {
+    std::vector<std::string> lines;
+    std::istringstream input(record.output);
+    for (std::string line; std::getline(input, line);) {
+      if (!Trim(line).empty()) lines.push_back(line);
+    }
+    constexpr size_t kTailLines = 3;
+    for (size_t i = lines.size() > kTailLines ? lines.size() - kTailLines : 0;
+         i < lines.size(); ++i) {
+      text +=
+          std::string(DIM()) + "    " + TerminalSafe(lines[i]) + RST() + "\n";
+    }
+  }
+  if (const json* parts = JsonArray(record.view, "parts")) {
+    for (const json& part : *parts) {
+      const std::string kind = JsonValue(part, "kind", "");
+      std::string line;
+      if (kind == "file") {
+        line = JsonValue(part, "name", "") + " · " +
+               FmtBytes(JsonValue(part, "bytes", int64_t{0})) +
+               " · open it in the web app";
+      } else if (kind == "link") {
+        const std::string to = JsonValue(part, "to", "");
+        const std::string id = part.contains("id") && part["id"].is_string()
+                                   ? part["id"].get<std::string>()
+                                   : JsonDump(part.value("id", json()));
+        line = to == "agent"      ? "/agents " + id
+               : to == "activity" ? "/ps " + id
+                                  : "memory " + id;
+      }
+      if (!line.empty()) {
+        text += std::string(DIM()) + AsciiGlyphs("    ↳ ") +
+                TerminalSafe(line) + RST() + "\n";
+      }
+    }
+  }
+  return text;
+}
 }  // namespace
 
 void PrintPresentation(const PresentationRecord& record,
@@ -481,13 +524,17 @@ void PrintPresentation(const PresentationRecord& record,
       return;
     }
     if (record.poll) return;
-    std::string category = JsonValue(record.activity, "category", "");
-    std::string prefix = category == "explore"  ? "Exploring · "
-                         : category == "change" ? "Editing · "
-                                                : "";
-    std::string body = AsciiGlyphs("→ ") + prefix + TerminalSafe(record.title);
+    // "→ Editing src/a.ts": the view's verb and target, like the web row.
+    const json* verb = JsonArray(record.view, "verb");
+    std::string body =
+        AsciiGlyphs("→ ") + (verb && !verb->empty() && (*verb)[0].is_string()
+                                 ? TerminalSafe((*verb)[0].get<std::string>())
+                                 : TerminalSafe(record.title));
     if (record.multiline && !record.detail.empty()) {
       body += '\n' + TerminalSafe(record.detail);
+    } else if (const std::string target = JsonValue(record.view, "target", "");
+               verb && !target.empty()) {
+      body += ' ' + TerminalSafe(FirstLine(target));
     } else if (!record.summary.empty()) {
       body += '(' + TerminalSafe(record.summary) + ')';
     }
@@ -539,16 +586,19 @@ void PrintPresentation(const PresentationRecord& record,
   std::string prefix = AsciiGlyphs("  ← ") + TerminalSafe(record.title);
   if (detailed && record.output.find('\n') != std::string::npos) {
     WriteTerminalRecord(std::string(style) + prefix + RST() + "\n" +
-                        TerminalSafe(record.output) + "\n");
+                        TerminalSafe(record.output) + "\n" +
+                        ResultExtras(record, detailed));
     return;
   }
   if (detailed && !record.output.empty()) {
     WriteTerminalRecord(std::string(style) + prefix + ": " +
-                        TerminalSafe(record.output) + RST() + "\n");
+                        TerminalSafe(record.output) + RST() + "\n" +
+                        ResultExtras(record, detailed));
     return;
   }
   WriteTerminalRecord(std::string(style) + prefix + ": " +
-                      TerminalSafe(record.summary) + RST() + "\n");
+                      TerminalSafe(record.summary) + RST() + "\n" +
+                      ResultExtras(record, detailed));
 }
 
 }  // namespace uagent

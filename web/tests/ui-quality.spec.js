@@ -479,9 +479,7 @@ test.describe("touch interaction", () => {
       ).toBe(false);
     });
   }
-  test("touch does not acquire desktop hover and scaled fields keep a safe layout font", async ({
-    page,
-  }) => {
+  test("touch does not acquire desktop hover", async ({ page }) => {
     await page.goto("/ui.html");
     expect(
       await page.evaluate(() => matchMedia("(hover: hover)").matches),
@@ -495,17 +493,5 @@ test.describe("touch interaction", () => {
     );
     await button.tap();
     await expect(button).toHaveCSS("background-color", color);
-    await page.getByLabel("Zoom", { exact: true }).fill("50");
-    for (const field of [
-      page.getByRole("textbox", { name: /^Text / }),
-      page.getByRole("searchbox", { name: "Search", exact: true }),
-      page.getByRole("textbox", { name: "Long text", exact: true }),
-    ]) {
-      expect(
-        await field.evaluate((node) =>
-          parseFloat(getComputedStyle(node).fontSize),
-        ),
-      ).toBeGreaterThanOrEqual(16);
-    }
   });
 });

@@ -16,6 +16,25 @@
 
 ### Added
 
+- Tool rows read as a headline ("Edited src/a.ts +12 −3") with a status dot.
+  Diffs, a command's last output lines, shared files and links to started
+  work stay visible without expanding; a command's output is one scrollable
+  box. Every call carries an intent (explore, research, edit, verify, run,
+  setup, delegate), declared by `run`/`scratch` or inferred from read-only
+  commands, and consecutive calls of one intent fold into Explored,
+  Researched, Verified or Edited. Memory and background receipts use the
+  same row.
+  The terminal prints the same headline, tail and links.
+- A file the agent shares previews inline in the conversation: images,
+  sandboxed HTML (its own scripts now run) and PDFs on desktop.
+- Attachments read the same everywhere: images as thumbnails that open an
+  in-app viewer, other files as cards naming their type and size. Images a
+  tool adds to context (a browser screenshot, a read image) show on that
+  tool's row, and the composer keeps its files in one scrolling strip.
+- Closing the browser hands control back to the agent; an agent step waits
+  while you drive instead of asking, and the browser can be watched without
+  taking control. The browser icon shows when the agent is using it.
+
 - Web Push is built into release archives and the Docker image.
 - Tool rows show each call the way the tool describes it: a command verbatim,
   a script as highlighted code, small arguments as fields, and Markdown
@@ -111,6 +130,10 @@
 
 ### Removed
 
+- `UAGENT_TITLE_MODEL`: it was documented but never read; titles use the
+  conversation's route.
+- `/trace`: the tool input/output view and `/verbose` show the same detail;
+  headless `--json` keeps its `trace` field.
 - The self-improvement controller and its skill; trace metrics and live
   authority checks moved to `benchmarks/`.
 - The GitHub `action.yml`.

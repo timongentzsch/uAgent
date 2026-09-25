@@ -4,6 +4,9 @@
 
 #include <algorithm>
 #include <cctype>
+#include <functional>
+#include <set>
+#include <sstream>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -37,12 +40,6 @@ const char* ToolErrorCodeName(ToolErrorCode code) {
       return "internal";
   }
   return "internal";
-}
-
-std::string ToolErrorText(std::string_view message) {
-  std::string out(kToolErrorPrefix);
-  out += message;
-  return out;
 }
 
 ToolArgumentIssue ArgumentIssue(std::string code, std::string message,
@@ -314,16 +311,60 @@ bool ToolCallBlocks(const Tool& tool, const json& arguments) {
 
 // Contract-defined for native operations; arbitrary execution may declare its
 // purpose. Neither this label nor a successful exit proves absence of effects.
+const json& CommandIntents() {
+  static const json kIntents = {"explore", "research", "edit",
+                                "verify",  "run",      "setup"};
+  return kIntents;
+}
+
+namespace {
+// A shell line that only looks: every segment of a pipeline or command list
+// starts with a read-only program. Anything else, or anything unsure, runs.
+bool ReadOnlyCommand(const std::string& command) {
+  // Programs with no mode that changes anything (find and fd can -delete or
+  // -exec, git branch can -D, so they run).
+  static const std::set<std::string, std::less<>> kLooks = {
+      "cat", "cd", "du",   "echo", "file", "grep", "head", "ls",
+      "pwd", "rg", "stat", "tail", "tree", "wc",   "which"};
+  static const std::set<std::string, std::less<>> kGitLooks = {
+      "blame", "diff", "grep", "log", "ls-files", "show", "status"};
+  if (command.find_first_of("<>`$") != std::string::npos) return false;
+  bool any = false;
+  size_t start = 0;
+  while (start <= command.size()) {
+    size_t end = command.find_first_of("|;&\n", start);
+    if (end == std::string::npos) end = command.size();
+    std::istringstream words(command.substr(start, end - start));
+    std::string program, sub;
+    words >> program >> sub;
+    if (!program.empty()) {
+      if (program == "git" ? !kGitLooks.contains(sub)
+                           : !kLooks.contains(program)) {
+        return false;
+      }
+      any = true;
+    }
+    start = command.find_first_not_of("|;&\n", end);
+    if (start == std::string::npos) break;
+  }
+  return any;
+}
+}  // namespace
+
 std::string ToolActivityCategory(const Tool& tool, const json& args) {
   if (tool.declared_intent) {
-    std::string intent = JsonValue(args, "intent", "execute");
-    return intent == "explore" || intent == "change" ? intent : "execute";
+    std::string intent = JsonValue(args, "intent", "");
+    for (const json& known : CommandIntents()) {
+      if (known == intent) return intent;
+    }
+    return ReadOnlyCommand(JsonValue(args, "command", "")) ? "explore" : "run";
   }
-  if (tool.capabilities & (Capability(ToolCapability::kExecute) |
-                           Capability(ToolCapability::kDelegate))) {
-    return "execute";
+  if (!tool.intent.empty()) return tool.intent;
+  if (tool.capabilities & Capability(ToolCapability::kDelegate)) {
+    return "delegate";
   }
-  return ToolMutates(tool, args) ? "change" : "explore";
+  if (tool.capabilities & Capability(ToolCapability::kExecute)) return "run";
+  return ToolMutates(tool, args) ? "edit" : "explore";
 }
 
 // The authority a call needs. A tool may escalate specific arguments; nothing
@@ -436,10 +477,32 @@ json GenericInputParts(const json& args,
   return parts;
 }
 
+json LinkPart(std::string to, json id, std::string label) {
+  return {{"kind", "link"},
+          {"to", std::move(to)},
+          {"id", std::move(id)},
+          {"label", std::move(label)}};
+}
+
+Tool::Header Verbs(std::string present, std::string past) {
+  return [present = std::move(present), past = std::move(past)](const json&) {
+    return json{{"verb", {present, past}}};
+  };
+}
+
 json ToolView(const Tool* tool, const json& args) {
-  return {{"input", tool && tool->present ? tool->present(args)
-                                          : GenericInputParts(args)},
-          {"output", tool && tool->markdown_output ? "markdown" : "text"}};
+  json view = tool && tool->header ? tool->header(args) : json::object();
+  if (!view.contains("verb")) {
+    const std::string title = tool ? ToolTitle(*tool) : "tool";
+    view["verb"] = {"Calling " + title, "Called " + title};
+  }
+  if (!view.contains("target") && tool) {
+    view["target"] = ToolSummary(*tool, args);
+  }
+  view["input"] =
+      tool && tool->present ? tool->present(args) : GenericInputParts(args);
+  view["output"] = tool ? tool->output_view : "text";
+  return view;
 }
 
 const Tool* FindTool(const std::vector<Tool>& tools, const std::string& name) {
@@ -447,11 +510,6 @@ const Tool* FindTool(const std::vector<Tool>& tools, const std::string& name) {
     if (t.name == name) return &t;
   }
   return nullptr;
-}
-
-std::string InvalidToolArgument(const Tool& tool, const json& args) {
-  auto issue = FindToolArgumentIssue(tool, args);
-  return issue ? issue->message : std::string();
 }
 
 json ToolSchema(const Tool& tool) {

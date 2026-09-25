@@ -23,14 +23,9 @@ void PrintConversationHistory(const Conversation& conversation,
 std::string AttachmentDeliveryRows(const json& deliveries);
 void PrintModelContext(const json& request);
 
-// Terminal rendering of an archived tool trace. The facts come from
-// agent/trace.h; the agent itself never prints.
+// Terminal line for a stored tool call; the agent itself never prints.
 std::string PrintToolCallSummary(const json& call,
                                  const std::vector<Tool>& tools);
-void PrintTraceToolCall(const json& call, const std::vector<Tool>& tools,
-                        const std::string& ordinal);
-void PrintTraceToolResult(const json& call, const std::string& ordinal);
-void PrintLatestTrace(const json& archive, const std::vector<Tool>& tools);
 
 }  // namespace uagent
 

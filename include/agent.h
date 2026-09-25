@@ -11,6 +11,8 @@
 #include <chrono>
 #include <cstdint>
 #include <functional>
+#include <memory>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -96,9 +98,19 @@ class Agent {
   // lives in ui/; the agent only supplies facts.
   const Conversation& History() const { return conversation_; }
   const std::vector<Tool>& Tools() const { return tools_; }
-  const json& TraceArchive() const { return conversation_.Archive(); }
   json DisplaySnapshot() const;
-  json RawExchange(const std::string& id, size_t offset = 0) const;
+  // /btw: one tool-less model call over the conversation as of the last
+  // request or turn end, never recorded. Safe beside a running turn.
+  json SideQuestion(const std::string& question) const;
+  // Snapshot the conversation (and the tools last offered, when given) for
+  // SideQuestion; called by the turn thread only.
+  void PublishSideContext(const json* tools = nullptr);
+  // Snapshots a file a tool added to context where the user's clients can
+  // show it, returning its asset ({id, name, mime, bytes}) or null. Set by a
+  // session with an asset store; without one, tool files stay model-only.
+  using KeepFile =
+      std::function<json(const std::string& path, const std::string& name)>;
+  void KeepToolFiles(KeepFile keep) { keep_tool_file_ = std::move(keep); }
   void RetainExchanges(bool enabled) {
     retain_exchanges_ = enabled;
     api_.capture_http = enabled;
@@ -386,6 +398,19 @@ class Agent {
   std::string last_error_;
   json last_stop_;
   json turn_side_statistics_ = json::object();
+  KeepFile keep_tool_file_;
+  // What a side question needs, captured on the turn thread so the side
+  // thread never reads the live route or conversation.
+  struct SideContext {
+    json messages, tools;
+    RuntimeConfig config;
+    std::string base_url, api_key, model, reasoning_effort, session_id;
+    std::vector<std::string> supported_reasoning_efforts;
+    int64_t ctx_window = 0;
+    ProviderCapabilities capabilities;
+  };
+  mutable std::mutex side_mutex_;
+  std::shared_ptr<const SideContext> side_context_;
 };
 
 }  // namespace uagent

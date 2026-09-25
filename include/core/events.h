@@ -248,6 +248,15 @@ class Observability {
 void SetObservability(Observability* observability) noexcept;
 Observability* ActiveObservability() noexcept;
 void Emit(Event event) noexcept;
+// Drops every event this thread emits while it lives: a side question's model
+// call must not stream into the conversation it is asking about.
+class QuietEvents {
+ public:
+  QuietEvents();
+  ~QuietEvents();
+  QuietEvents(const QuietEvents&) = delete;
+  QuietEvents& operator=(const QuietEvents&) = delete;
+};
 
 class ResponseObservation {
  public:

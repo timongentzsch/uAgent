@@ -264,10 +264,6 @@ std::string NormalizeModelQuery(std::string query) {
 // ("muse-spark"). Unify separators before the fallback comparison so both
 // spellings match; the exact substring check above runs first and is
 // unchanged for id-style queries.
-// Users type display names with spaces ("Muse Spark") while ids use hyphens
-// ("muse-spark"). Unify separators before the fallback comparison so both
-// spellings match; the exact substring check above runs first and is
-// unchanged for id-style queries.
 std::string SearchKey(std::string text) {
   for (char& c : text) {
     if (c == ' ' || c == '_' || c == '-') c = '-';

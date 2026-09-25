@@ -8,9 +8,11 @@ namespace uagent {
   X(TestBrowserHandoverRecovery)                 \
   X(TestBrowserProfiles)                         \
   X(TestBrowserProfileSignIn)                    \
+  X(TestBrowserHandBackOnClose)                  \
   X(TestForeignToolMarkup)                       \
   X(TestToolResults)                             \
   X(TestToolViews)                               \
+  X(TestModelHints)                              \
   X(TestRegistries)                              \
   X(TestCommandAndDisplayRegistries)             \
   X(TestModelCatalogParsing)                     \
@@ -46,6 +48,7 @@ namespace uagent {
   X(TestReceiptLog)                              \
   X(TestReceiptLogBackpressure)                  \
   X(TestHostCommandKinds)                        \
+  X(TestToolCopiesKeepRoomForUserFiles)          \
   X(TestSandboxPolicy)                           \
   X(TestSandboxRendering)                        \
   X(TestSandboxTrampolineArgs)                   \
@@ -82,6 +85,7 @@ namespace uagent {
   X(TestPythonTool)                              \
   X(TestMemoryAlwaysOnSelection)                 \
   X(TestEarlyTurnInterruption)                   \
+  X(TestLocalAbortIsolation)                     \
   X(TestRuntimeOwnershipHelpers)                 \
   X(TestPermissionAndToolCategoryPolicy)         \
   X(TestAttributedUsageAccumulator)              \
@@ -99,7 +103,6 @@ namespace uagent {
   X(TestForkAtTurnAndLineage)                    \
   X(TestRewindAndShare)                          \
   X(TestSessionPrefixMatch)                      \
-  X(TestTitleModelDefault)                       \
   X(TestAttachmentDeliveryAnnouncements)         \
   X(TestDisplayFactEvictionKeepsSmallReceipts)   \
   X(TestAttachmentHistoryRendering)              \

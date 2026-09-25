@@ -46,10 +46,10 @@ enum class SlashCommandId {
   kStatus,
   kTell,
   kTools,
-  kTrace,
   kDebugConfig,
   kVariant,
   kVerbose,
+  kBtw,
   kYolo,
 };
 

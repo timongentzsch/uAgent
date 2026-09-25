@@ -1,3 +1,4 @@
+import { storage } from "./storage.ts";
 export const minimumZoom = 50;
 export const maximumZoom = 200;
 const conversationMeasure = 1040;
@@ -211,7 +212,7 @@ export function applyTheme(theme: string) {
     )!.content = resolved === "dark" ? "#000000" : "#ffffff";
   };
   apply();
-  localStorage.setItem("uagent-theme", theme);
+  storage.setItem("uagent-theme", theme);
   media.addEventListener("change", apply);
   return () => media.removeEventListener("change", apply);
 }

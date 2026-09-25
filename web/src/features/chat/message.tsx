@@ -2,7 +2,7 @@ import "../composer/attachments.css";
 import { TurnFooter } from "./turn-footer.tsx";
 import Markdown, { prepareMarkdown } from "../../shared/markdown-view.tsx";
 import "./message.css";
-import { bytes, count } from "../../shared/quantities.ts";
+import { count } from "../../shared/quantities.ts";
 import { Component, type ComponentProps } from "preact";
 import { presentMessages, splitMentionTokens } from "./message-view.ts";
 import type {
@@ -11,26 +11,39 @@ import type {
   Asset,
   SessionRef,
   Exchange,
+  LinkPart,
   Report,
 } from "../../shared/types.ts";
 import { useEffect, useMemo, useState } from "preact/hooks";
-import { Activity as ActivityIcon, Brain, Minimize2, X } from "lucide-preact";
+import { Minimize2, X } from "lucide-preact";
 import {
   DisclosureRow,
   Mark,
   cleanText,
-  Skeleton,
-  LoadError,
   EventRow,
   ErrorBoundary,
   Time,
 } from "../../shared/ui.tsx";
 import { MessageMenu } from "./message-menu.tsx";
+import { AttachmentList, ImageTile } from "../../shared/attachments.tsx";
+import { diffCounts, formatStat } from "./tool-preview.ts";
 import { useBlockReader } from "../../state/block-reader.ts";
 import { duration } from "../../shared/duration.ts";
-import { getToolRow } from "./tool-preview.ts";
-import { ToolRow } from "./tool-row.tsx";
+import { ToolInline, ToolRow } from "./tool-row.tsx";
 import { isRunningStatus, statusLine } from "../../shared/display.ts";
+
+// The inspector opens a block's own work; a link part names it.
+function linkTarget(block: Block, link: LinkPart): Block {
+  return {
+    ...block,
+    agent_id: link.to === "agent" ? String(link.id) : undefined,
+    activity_id: link.to === "activity" ? Number(link.id) : undefined,
+    memory:
+      link.to === "memory"
+        ? { action: "", key: String(link.id), automatic: false }
+        : undefined,
+  };
+}
 
 // Inline @-mention reference. Resolves against the message's own files so
 // a renamed file shows its current name; a removed one degrades to muted
@@ -55,19 +68,19 @@ function MentionFile({
   if (!file) return <span class="muted">@{alt} (attachment removed)</span>;
   const href = `/api/sessions/${sessionId}/assets/${file.id}`;
   return file.image && online ? (
-    <img
-      class="mention-image"
-      src={href}
-      alt={file.name}
-      title={file.name}
-      loading="lazy"
-    />
+    <span class="mention-image">
+      <ImageTile src={href} name={file.name} />
+    </span>
   ) : (
     <a class="file-chip mention-chip" href={href} download={file.name}>
       @{file.name}
     </a>
   );
 }
+
+// Deliveries worth a line: how the model got a file only when it was not
+// the file itself (a reference, a vision-model description).
+const AS_SENT = new Set(["Image", "Document", "Text", "Audio", "Video"]);
 
 function MessageView({
   block,
@@ -99,6 +112,8 @@ function MessageView({
   const [full, setFull] = useState<string | null>(null);
   const [expanding, setExpanding] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  // A command's output box can ask for the full text without expanding.
+  const [wantFull, setWantFull] = useState(false);
   const [loadError, setLoadError] = useState<unknown>(null);
   const [retry, setRetry] = useState(0);
   const text = full ?? block.text;
@@ -108,7 +123,7 @@ function MessageView({
     if (
       !online ||
       (!tool && block.kind !== "activity") ||
-      !expanded ||
+      !(expanded || wantFull) ||
       !block.truncated ||
       full !== null
     )
@@ -136,6 +151,7 @@ function MessageView({
     online,
     tool,
     expanded,
+    wantFull,
     block.truncated,
     block.detail_id,
     block.call_id,
@@ -164,45 +180,6 @@ function MessageView({
         </p>
       </EventRow>
     );
-  if (block.kind === "activity")
-    return (
-      <EventRow
-        title={
-          block.activity?.label ||
-          cleanText(text).split("\n")[0] ||
-          "Background activity"
-        }
-        time={block.time}
-        status={
-          isRunningStatus(block.status) && block.duration_ms == null
-            ? "Running\u2026"
-            : block.status
-        }
-        icon={block.memory ? <Brain /> : <ActivityIcon />}
-        messageId={block.key || block.id}
-        onToggle={(event) => setExpanded(event.currentTarget.open)}
-      >
-        {expanding && <Skeleton label="Loading event details…" />}
-        {loadError && (
-          <LoadError error={loadError} retry={() => setRetry(retry + 1)} />
-        )}
-        <Markdown text={cleanText(text)} />
-        {activity &&
-          (block.memory?.key || block.agent_id || block.activity_id) && (
-            <button
-              class="quiet"
-              disabled={!online}
-              onClick={() => activity(block)}
-            >
-              {block.memory
-                ? "View current memory"
-                : block.agent_id
-                  ? "View subagent"
-                  : "View activity"}
-            </button>
-          )}
-      </EventRow>
-    );
   if (block.summary)
     return (
       <TurnFooter summary={block.summary} open={() => statistics?.(block)} />
@@ -210,6 +187,8 @@ function MessageView({
   // Attribution, not authorship: user uploads read as "you"; every agent
   // row carries the mark. The header below is identical on every row — no
   // per-step variants, so chrome and spacing can never drift apart.
+  // Receipts (memory saves, finished background work) read as tool rows.
+  const row = tool || block.kind === "activity";
   const userOwned =
     block.kind === "user" ||
     (block.kind === "attachment" && block.origin !== "tool");
@@ -217,7 +196,7 @@ function MessageView({
     block.kind === "assistant" ||
     (block.kind === "attachment" && block.origin === "tool");
   const actor =
-    userOwned || tool
+    userOwned || row
       ? userOwned
         ? "you"
         : null
@@ -227,9 +206,9 @@ function MessageView({
   return (
     <article
       data-message-id={block.key || block.id}
-      className={`message ${tool ? "tool" : userOwned ? "user" : "response"}${block.turn_root === block.id ? " turn-start" : ""}`}
+      className={`message ${row ? "tool" : userOwned ? "user" : "response"}${block.turn_root === block.id ? " turn-start" : ""}`}
     >
-      {!tool && (
+      {!row && (
         <header>
           {actor === Mark ? <Mark /> : actor && <span>{actor}</span>}
           {block.status && (
@@ -262,35 +241,42 @@ function MessageView({
           />
         </header>
       )}
-      {tool &&
+      {row &&
         (() => {
-          const row = getToolRow(block);
           const running =
             block.duration_ms == null && isRunningStatus(block.status);
           return (
-            <div class="tool-row-head">
-              <ToolRow
+            <>
+              <div class="tool-row-head">
+                <ToolRow
+                  block={block}
+                  running={running}
+                  output={output}
+                  text={text}
+                  expanding={expanding}
+                  loadError={loadError}
+                  retry={() => setRetry(retry + 1)}
+                  online={online}
+                  inspect={inspect}
+                  onToggle={(event) => setExpanded(event.currentTarget.open)}
+                />
+                <MessageMenu
+                  label="Tool menu"
+                  block={block}
+                  statistics={statistics}
+                  http={http}
+                />
+              </div>
+              <ToolInline
                 block={block}
-                title={row.title}
-                subtitle={row.subtitle}
-                running={running}
-                diffOnly={row.diffOnly}
-                output={output}
                 text={text}
-                expanding={expanding}
-                loadError={loadError}
-                retry={() => setRetry(retry + 1)}
+                loaded={full !== null}
+                loadFull={() => setWantFull(true)}
                 online={online}
-                inspect={inspect}
-                onToggle={(event) => setExpanded(event.currentTarget.open)}
+                assets={`/api/sessions/${session.id}/assets/`}
+                open={activity && ((link) => activity(linkTarget(block, link)))}
               />
-              <MessageMenu
-                label="Tool menu"
-                block={block}
-                statistics={statistics}
-                http={http}
-              />
-            </div>
+            </>
           );
         })()}
       {block.reasoning && (
@@ -308,7 +294,7 @@ function MessageView({
           />
         </DisclosureRow>
       )}
-      {!tool &&
+      {!row &&
         text &&
         splitMentionTokens(text).map((part, index) =>
           "text" in part ? (
@@ -332,46 +318,23 @@ function MessageView({
             />
           ),
         )}
-      {block.deliveries?.map((item) => (
-        <p class="small muted">
-          {item.name} · {item.delivery}
-        </p>
-      ))}
+      {block.deliveries
+        ?.filter((item) => !AS_SENT.has(item.delivery))
+        .map((item) => (
+          <p class="small muted" key={item.name}>
+            {item.name} · {item.delivery}
+          </p>
+        ))}
       {!online && !!block.files?.length && (
         <p class="small muted">Attachments are available when connected.</p>
       )}
-      {!!block.files?.length && (
-        <div class="attachments">
-          {block.files
-            .filter((file) => typeof file === "object")
-            .map((file) => (
-              <a
-                class="file-chip"
-                key={file.id}
-                aria-disabled={!online}
-                onClick={(event) => {
-                  if (!online) event.preventDefault();
-                }}
-                href={`/api/sessions/${session.id}/assets/${file.id}`}
-                download={file.name}
-              >
-                {online && file.image && (
-                  <img
-                    loading="lazy"
-                    src={`/api/sessions/${session.id}/assets/${file.id}`}
-                    alt={file.name}
-                  />
-                )}
-                <span>
-                  <span title={`${file.bytes.toLocaleString()} bytes`}>
-                    {file.name} · {bytes(file.bytes)}
-                  </span>
-                </span>
-              </a>
-            ))}
-        </div>
+      {online && !!block.files?.length && !row && (
+        <AttachmentList
+          files={block.files.filter((file) => typeof file === "object")}
+          href={(id) => `/api/sessions/${session.id}/assets/${id}`}
+        />
       )}
-      {!tool && block.truncated && (
+      {!row && block.truncated && (
         <button
           disabled={expanding}
           onClick={async () => {
@@ -410,9 +373,28 @@ function MessageView({
 
 type MessageProps = ComponentProps<typeof MessageView>;
 
+// Every block field counts, so a new field can never be silently ignored.
+// Only arrays the projection rebuilds on each pass compare by content.
+function blockEqual(x: PresentedBlock, y: PresentedBlock): boolean {
+  const a = x as unknown as Record<string, unknown>;
+  const b = y as unknown as Record<string, unknown>;
+  for (const key of new Set([...Object.keys(a), ...Object.keys(b)])) {
+    if (a[key] === b[key]) continue;
+    const before = (a[key] || []) as PresentedBlock[];
+    const after = (b[key] || []) as PresentedBlock[];
+    if (key === "children") {
+      if (
+        before.length !== after.length ||
+        !before.every((step, index) => blockEqual(step, after[index]))
+      )
+        return false;
+    } else if (key !== "files" && key !== "http") return false;
+    else if (before.length !== after.length) return false;
+  }
+  return true;
+}
+
 function messagePropsEqual(before: MessageProps, after: MessageProps): boolean {
-  const x = before.block;
-  const y = after.block;
   return (
     before.online === after.online &&
     before.session.id === after.session.id &&
@@ -424,30 +406,7 @@ function messagePropsEqual(before: MessageProps, after: MessageProps): boolean {
     before.activity === after.activity &&
     before.recall === after.recall &&
     before.http === after.http &&
-    x.kind === y.kind &&
-    x.text === y.text &&
-    x.reasoning === y.reasoning &&
-    !!x.streaming === !!y.streaming &&
-    x.status === y.status &&
-    x.truncated === y.truncated &&
-    x.error === y.error &&
-    x.time === y.time &&
-    x.name === y.name &&
-    x.detail_id === y.detail_id &&
-    x.call_id === y.call_id &&
-    x.activity_id === y.activity_id &&
-    x.agent_id === y.agent_id &&
-    (x.files?.length || 0) === (y.files?.length || 0) &&
-    (x.http?.length || 0) === (y.http?.length || 0) &&
-    x.arguments === y.arguments &&
-    x.view === y.view &&
-    x.summary === y.summary &&
-    x.compaction === y.compaction &&
-    x.memory === y.memory &&
-    x.replay?.title === y.replay?.title &&
-    x.replay?.summary === y.replay?.summary &&
-    (x.duration_ms ?? null) === (y.duration_ms ?? null) &&
-    (x.change ?? "") === (y.change ?? "")
+    blockEqual(before.block, after.block)
   );
 }
 
@@ -461,10 +420,91 @@ export class Message extends Component<MessageProps> {
   render(props: MessageProps) {
     return (
       <ErrorBoundary>
-        <MessageView {...props} />
+        {props.block.kind === "group" ? (
+          <GroupRow {...props} />
+        ) : (
+          <MessageView {...props} />
+        )}
       </ErrorBoundary>
     );
   }
+}
+
+// The native four group labels, present while a step runs, past after.
+const GROUP_VERBS: Record<string, [string, string]> = {
+  explore: ["Exploring", "Explored"],
+  research: ["Researching", "Researched"],
+  verify: ["Verifying", "Verified"],
+  edit: ["Editing", "Edited"],
+};
+
+const plural = (n: number, one: string, many = `${one}s`) =>
+  n ? `${count(n)} ${n === 1 ? one : many}` : "";
+
+// What a group did, in its own terms: files and searches explored, pages
+// researched, each check with its result, lines edited.
+function groupSummary(intent: string, steps: PresentedBlock[]) {
+  const named = (...names: string[]) =>
+    steps.filter((step) => names.includes(step.name || "")).length;
+  if (intent === "verify")
+    return steps
+      .map((step) => {
+        const target = (step.view?.target || step.name || "").split("\n")[0];
+        const short = target.length > 24 ? `${target.slice(0, 23)}…` : target;
+        return `${short} ${isRunningStatus(step.status) ? "…" : "✓"}`;
+      })
+      .join(", ");
+  if (intent === "edit") {
+    const total = steps.reduce<[number, number]>(
+      (sum, step) => {
+        const [added, removed] = diffCounts(step.change);
+        return [sum[0] + added, sum[1] + removed];
+      },
+      [0, 0],
+    );
+    return [plural(steps.length, "file"), formatStat(total)]
+      .filter(Boolean)
+      .join(" · ");
+  }
+  const counts =
+    intent === "research"
+      ? [
+          plural(named("web_search"), "search", "searches"),
+          plural(steps.length - named("web_search"), "page"),
+        ]
+      : [
+          plural(named("read_path"), "file"),
+          plural(named("grep"), "search", "searches"),
+          plural(steps.length - named("read_path", "grep"), "command"),
+        ];
+  return counts.filter(Boolean).join(", ");
+}
+
+// A run of same-intent calls as one row, expanding to the calls themselves.
+function GroupRow(props: MessageProps) {
+  const steps = props.block.children || [];
+  const intent = props.block.activity?.category || "explore";
+  const running = steps.some(
+    (step) => step.duration_ms == null && isRunningStatus(step.status),
+  );
+  const [present, past] = GROUP_VERBS[intent] || GROUP_VERBS.explore;
+  return (
+    <article
+      data-message-id={props.block.key}
+      data-intent={intent}
+      className="message tool group"
+    >
+      <DisclosureRow
+        className={`tool-disclosure${running ? " running" : ""}`}
+        label={running ? present : past}
+        status={groupSummary(intent, steps)}
+      >
+        {steps.map((step) => (
+          <Message key={step.key || step.id} {...props} block={step} />
+        ))}
+      </DisclosureRow>
+    </article>
+  );
 }
 
 export type MessageRowsProps = Omit<ComponentProps<typeof Message>, "block"> & {

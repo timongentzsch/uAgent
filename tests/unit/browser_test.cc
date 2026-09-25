@@ -147,11 +147,10 @@ void TestBrowserProfiles() {
             .contains("error"));
 }
 
-void TestBrowserProfileSignIn() {
+namespace {
+// Puts the fake X server, VNC and Chrome from tests/fixtures on `bin`.
+void InstallFakeBrowser(const std::filesystem::path& bin) {
   namespace fs = std::filesystem;
-  TestWorkspace workspace("browser-signin");
-  const auto directory = fs::canonical(workspace.root) / "browser";
-  const auto bin = workspace.root / "bin";
   fs::create_directory(bin);
   for (const char* name : {"xauth", "Xtigervnc", "google-chrome-stable"}) {
     const auto path = bin / name;
@@ -160,6 +159,15 @@ void TestBrowserProfileSignIn() {
         path);
     fs::permissions(path, fs::perms::owner_all);
   }
+}
+}  // namespace
+
+void TestBrowserProfileSignIn() {
+  namespace fs = std::filesystem;
+  TestWorkspace workspace("browser-signin");
+  const auto directory = fs::canonical(workspace.root) / "browser";
+  const auto bin = workspace.root / "bin";
+  InstallFakeBrowser(bin);
   ScopedEnv configured("UAGENT_BROWSER_DATA", directory.string());
   ScopedEnv search("PATH", bin.string() + ":" + getenv("PATH"));
   ScopedEnv display("DISPLAY");
@@ -204,6 +212,44 @@ void TestBrowserProfileSignIn() {
   CHECK(controlled == std::vector<bool>({true, false, true}));
   CHECK(runtime.Execute({{"op", "done"}, {"device", kDevice}})
             .value("mode", "") == "idle");
+}
+
+// Closing the controlling viewer hands the browser back, watching never takes
+// control, and an agent call made meanwhile is reported as waiting.
+void TestBrowserHandBackOnClose() {
+  namespace fs = std::filesystem;
+  TestWorkspace workspace("browser-handback");
+  const auto bin = workspace.root / "bin";
+  InstallFakeBrowser(bin);
+  ScopedEnv configured("UAGENT_BROWSER_DATA",
+                       (fs::canonical(workspace.root) / "browser").string());
+  ScopedEnv search("PATH", bin.string() + ":" + getenv("PATH"));
+  ScopedEnv display("DISPLAY");
+  ScopedEnv authority("XAUTHORITY");
+  constexpr const char* kDevice = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  constexpr const char* kSession = "cccccccccccccccccccccccccccccccc";
+  browser::Runtime runtime;
+  auto taken = runtime.Execute({{"op", "takeover"}, {"device", kDevice}});
+  CHECK(taken.value("mode", "") == "human");
+  CHECK(!runtime.Execute({{"op", "viewer"}, {"role", "observe"}})
+             .contains("error"));
+  CHECK(runtime.Execute({{"op", "tabs"}, {"session_id", kSession}})
+            .contains("error"));
+  CHECK(runtime.Execute({{"op", "status"}}).value("waiting", false));
+  auto closed = runtime.Execute({{"op", "viewer_disconnected"},
+                                 {"device", kDevice},
+                                 {"generation", taken["generation"]}});
+  CHECK(closed.value("mode", "") == "idle");
+  CHECK(!closed.value("waiting", true));
+  CHECK(!runtime.Execute({{"op", "tabs"}, {"session_id", kSession}})
+             .contains("error"));
+  taken = runtime.Execute({{"op", "takeover"}, {"device", kDevice}});
+  CHECK(taken.value("mode", "") == "human");
+  closed = runtime.Execute({{"op", "viewer_disconnected"},
+                            {"device", kDevice},
+                            {"generation", taken["generation"]}});
+  CHECK(closed.value("mode", "") == "agent");
+  runtime.Shutdown();
 }
 
 }  // namespace uagent

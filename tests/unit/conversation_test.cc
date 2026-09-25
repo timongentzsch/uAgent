@@ -49,7 +49,7 @@ void TestConversation() {
                     MessageKind::kInternal);
   conversation.Push({{"role", "system"}, {"content", "[runtime advisory]"}},
                     MessageKind::kRuntimeContext);
-  conversation.Upsert(
+  conversation.UpsertTail(
       {{"role", "user"}, {"content", "[runtime advisory updated]"}},
       MessageKind::kRuntimeContext);
   conversation.Push({{"role", "assistant"}, {"content", "answer"}},
@@ -804,6 +804,14 @@ void TestDisplayFactEvictionKeepsSmallReceipts() {
       JsonValue(conversation.DisplayFacts(), id.c_str(), json::object()),
       "deliveries", json::array());
   CHECK(kept == receipt);
+  // The fact just written is never its own victim, even when it is the
+  // largest: a committed response keeps the id that rejoins its live row.
+  conversation.RecordDisplay(
+      "m-latest", {{"response_id", "r-1"},
+                   {"reasoning", std::string(size_t{60} * 1024, 'y')}});
+  CHECK(JsonValue(
+            JsonValue(conversation.DisplayFacts(), "m-latest", json::object()),
+            "response_id", "") == "r-1");
   CHECK(JsonEstimatedBytes(conversation.DisplayFacts()) <=
         size_t{4} * 1024 * 1024);
   // Count pressure with only tiny facts left still makes progress by
@@ -1068,15 +1076,6 @@ void TestSessionPrefixMatch() {
   CHECK(MatchSessionPrefix("zzz").empty());
   CHECK(MatchSessionPrefix("").empty());
   CHECK(MatchSessionPrefix("   ").empty());
-}
-
-// All side-model defaults resolve through one route: an explicit title
-// model wins, an empty setting follows the shared flash default.
-void TestTitleModelDefault() {
-  ScopedEnv unset("UAGENT_TITLE_MODEL");
-  CHECK(TitleModel() == kDefaultModelRoute);
-  ScopedEnv set("UAGENT_TITLE_MODEL", "custom/route");
-  CHECK(TitleModel() == "custom/route");
 }
 
 }  // namespace uagent

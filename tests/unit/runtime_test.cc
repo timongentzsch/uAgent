@@ -63,6 +63,25 @@ void TestEarlyTurnInterruption() {
   }
 }
 
+// A side question's thread has its own stop: the main turn's abort does not
+// reach it, clearing its stop leaves the main turn's intact, and its flag
+// alone cancels it.
+void TestLocalAbortIsolation() {
+  ClearAbort();
+  RequestAbort();
+  std::atomic<bool> side{false};
+  std::thread([&] {
+    LocalAbort local(side);
+    CHECK(!AbortRequested());
+    ClearAbort();
+    side = true;
+    CHECK(AbortRequested());
+  }).join();
+  CHECK(AbortRequested());
+  ClearAbort();
+  CHECK(!AbortRequested());
+}
+
 void TestRuntimeOwnershipHelpers() {
   {
     ScopedEnv scale("UAGENT_TEST_TIMEOUT_SCALE", "6");

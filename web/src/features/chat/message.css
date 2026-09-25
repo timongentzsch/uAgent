@@ -118,6 +118,35 @@
 .tool-row-head > .tool-disclosure {
   min-width: 0;
 }
+/* Status only when it matters: a running headline shimmers softly and a
+   failed one reads in the error colour; a finished one needs no mark. */
+.tool-disclosure.running > summary .disclosure-label {
+  background: linear-gradient(
+      90deg,
+      var(--muted) 30%,
+      var(--text) 50%,
+      var(--muted) 70%
+    )
+    0 0 / 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: tool-shimmer 2s linear infinite;
+}
+@keyframes tool-shimmer {
+  to {
+    background-position: -150% 0;
+  }
+}
+.tool-disclosure.failed > summary .disclosure-label,
+.tool-failed {
+  color: var(--removed);
+}
+.tool-failed {
+  width: 0.9em;
+  height: 0.9em;
+  flex: none;
+}
 .tool-disclosure > summary small {
   min-width: 0;
   max-width: 32ch;
@@ -246,4 +275,77 @@
   .turn-tokens {
     display: none;
   }
+}
+
+/* /btw: a dismissible card above the composer, outside the conversation. */
+.side-answer {
+  max-height: calc(var(--viewport-height) * 0.35);
+  overflow: auto;
+  margin-bottom: var(--gap);
+  padding: var(--space-2) var(--space-4) var(--space-4);
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+.side-answer > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap);
+}
+
+/* What a row keeps visible without expanding: diff, output tail, parts.
+   It lines up under the row's label, past the dot and chevron. */
+.tool-inline {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-2);
+  margin: var(--space-1) 0 var(--space-2) var(--space-6);
+  min-width: 0;
+}
+.tool-inline > .diff,
+.tool-inline > .tool-console,
+.tool-inline > .tool-file {
+  justify-self: stretch;
+  margin: 0;
+}
+.tool-inline > .tool-link {
+  min-height: 0;
+  padding: 0;
+  text-decoration: underline;
+}
+/* A command's output: one terminal-like box, about six lines tall, that
+   scrolls back through the rest without scrolling the conversation. */
+.tool-console {
+  max-height: calc(6lh + 2 * var(--space-4));
+  overflow: auto;
+  overscroll-behavior: contain;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.tool-console > .tool-link {
+  display: block;
+}
+/* A file the agent shared: a preview where it is safe, then name, size,
+   open and download. */
+.tool-file {
+  display: grid;
+  gap: var(--space-2);
+  max-width: calc(560rem / 14);
+}
+.tool-file > iframe {
+  width: 100%;
+  height: calc(240rem / 14);
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+.tool-file > figcaption {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2) var(--space-4);
+}
+/* Steps inside a group row sit flush under its label. */
+.group .message {
+  padding-left: 0;
+  padding-right: 0;
 }

@@ -924,6 +924,8 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
               "\n[collaborator " + collaborator_id +
               (lifecycle.empty() ? "; runtime unavailable]"
                                  : "; persistent runtime retained]");
+          result.parts =
+              json::array({LinkPart("agent", collaborator_id, "Open agent")});
           return result;
         }
         std::string command = ChildAgentCommand(debug, prompt, child_model);
@@ -984,6 +986,8 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
           if (saved.Ok()) {
             result.output += "\n[collaborator " + collaborator_id +
                              "; resume with subagent operation=followup]";
+            result.parts =
+                json::array({LinkPart("agent", collaborator_id, "Open agent")});
           } else {
             result.output +=
                 "\n[warning: collaborator metadata was not saved: " +
@@ -1040,8 +1044,43 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
     if (!id.empty()) label += " · " + id;
     return "[" + label + "] " + prompt;
   };
-  tool.summary = describe;
-  tool.markdown_output = true;
+  // Rows and traces name the work; approval_preview keeps the full form with
+  // the route and flags, since that is what a person approves.
+  tool.summary = [describe](const json& arguments) {
+    const std::string operation = JsonValue(arguments, "operation", "spawn");
+    if (operation == "list" || operation == "message") {
+      return describe(arguments);
+    }
+    const std::string name = JsonValue(arguments, "name", "");
+    return (name.empty() ? std::string("Subagent") : name) + " · " +
+           FirstLine(JsonValue(arguments, "prompt", ""));
+  };
+  tool.header = [](const json& arguments) {
+    const std::string operation = JsonValue(arguments, "operation", "spawn");
+    const std::string name = JsonValue(arguments, "name", "");
+    const std::string task = FirstLine(JsonValue(arguments, "prompt", ""));
+    if (operation == "list") {
+      return json{{"verb", {"Listing", "Listed"}}, {"target", "agents"}};
+    }
+    if (operation == "message") {
+      return json{{"verb", {"Messaging", "Messaged"}},
+                  {"target", JsonValue(arguments, "id", name)}};
+    }
+    return json{
+        {"verb", operation == "followup" ? json{"Following up", "Followed up"}
+                                         : json{"Delegating", "Delegated"}},
+        {"target", name.empty() ? task : name + ": " + task}};
+  };
+  tool.present = [](const json& arguments) {
+    json parts = json::array();
+    const std::string prompt = JsonValue(arguments, "prompt", "");
+    if (!prompt.empty()) parts.push_back(CodePart(prompt, "markdown", "task"));
+    for (json& part : GenericInputParts(arguments, {"prompt"})) {
+      parts.push_back(std::move(part));
+    }
+    return parts;
+  };
+  tool.output_view = "markdown";
   // The summary names the model and the brief; what it cannot show is the
   // authority handed over with them. The child runs with automatic approvals,
   // so approving the spawn approves every tool call that child then decides

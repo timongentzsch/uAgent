@@ -16,7 +16,6 @@
 #include "include/core/fs.h"
 #include "include/core/limits.h"
 #include "include/core/strings.h"
-#include "include/tools/tool.h"
 
 namespace uagent {
 namespace {
@@ -128,6 +127,9 @@ bool IsBlankLine(std::string_view line) {
 // the text they typed, with the attachments shown from their own records.
 std::string DisplayText(const json& message) {
   std::string text = Text(message);
+  if (JsonValue(message, "role", "") == "tool") {
+    return StripModelHints(std::move(text));
+  }
   const json* content = JsonArray(message, "content");
   if (!content) return text;
   for (const json& part : *content) {
@@ -373,6 +375,8 @@ json DisplayBlock(const Conversation& conversation, uint64_t sequence,
                           "source_call_ids",
                           "compaction",
                           "memory",
+                          "view",
+                          "parts",
                           "response_id",
                           "content_revision",
                           "content_complete",
@@ -426,20 +430,12 @@ json DisplayBlock(const Conversation& conversation, uint64_t sequence,
                       Utf8Trunc(JsonValue(function, "arguments", ""), 1024)},
                      {"status", JsonValue(detail, "status", "running")}};
         tool["activity"] = JsonValue(detail, "activity", json::object());
-        // Kept receipts replay the exact live row; sessions saved before
-        // replay facts fall back to the legacy synthesis in the presenter.
+        // Kept receipts replay the exact live row and its view.
         if (detail.contains("call_replay")) {
           tool["replay"] = detail["call_replay"];
-        }
-        // Calls recorded before views existed get the generic one.
-        const json replay = JsonValue(detail, "call_replay", json::object());
-        if (const json* recorded = JsonObject(replay, "view")) {
-          tool["view"] = *recorded;
-        } else {
-          const std::string raw = JsonValue(function, "arguments", "");
-          json parsed = json::parse(raw, nullptr, false);
-          tool["view"] =
-              ToolView(nullptr, parsed.is_discarded() ? json(raw) : parsed);
+          if (const json* view = JsonObject(detail["call_replay"], "view")) {
+            tool["view"] = *view;
+          }
         }
         if (detail.contains("exchange_path")) {
           tool["exchange_path"] = detail["exchange_path"];
@@ -471,6 +467,17 @@ json DisplayBlock(const Conversation& conversation, uint64_t sequence,
     }
     block["detail_id"] = detail_id;
     block["change"] = Utf8Trunc(JsonValue(detail, "change", ""), kPreviewChars);
+    if (detail.contains("parts")) block["parts"] = detail["parts"];
+    // The preview keeps the start of a long result; its end is where a
+    // command reports how it went, so rows can show that tail.
+    if (text.size() > kPreviewChars) {
+      size_t start = text.size() - 512;
+      while (start < text.size() &&
+             (static_cast<unsigned char>(text[start]) & 0xC0) == 0x80) {
+        ++start;
+      }
+      block["tail"] = text.substr(start);
+    }
     block["artifact"] = detail.contains("artifact");
     if (detail.contains("result_replay")) {
       block["replay"] = detail["result_replay"];
@@ -654,6 +661,23 @@ json ConversationExchange(const Conversation& conversation,
           {"bytes", text.size()},
           {"more", end < text.size()}};
 }
+std::string StripModelHints(std::string text) {
+  for (std::string_view hint :
+       {"[running] activity ", "[started] subagent id ", "[detached] pid "}) {
+    if (text.starts_with(hint)) {
+      const size_t end = text.find('\n');
+      text.erase(0, end == std::string::npos ? text.size() : end + 1);
+      break;
+    }
+  }
+  const size_t line = text.rfind("\n[collaborator ");
+  if (line != std::string::npos && text.back() == ']' &&
+      text.find('\n', line + 1) == std::string::npos) {
+    text.resize(line);
+  }
+  return text;
+}
+
 std::string StripAttachedTrailer(const std::string& text) {
   constexpr std::string_view kMarker = "\n\nAttached:\n";
   const size_t marker = text.rfind(kMarker);

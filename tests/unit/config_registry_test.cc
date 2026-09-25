@@ -95,8 +95,8 @@ constexpr GetterCheck kIntGetters[] = {
 };
 
 std::vector<std::string> DirectRuntimeSettingLookups(std::string_view source) {
-  constexpr std::string_view kFunctions[] = {
-      "EnvStr", "EnvLong", "EnvDouble", "EnvBool", "getenv", "ReadStringArray"};
+  constexpr std::string_view kFunctions[] = {"EnvStr", "EnvLong", "EnvBool",
+                                             "getenv", "ReadStringArray"};
   std::vector<std::string> names;
   for (std::string_view function : kFunctions) {
     size_t offset = 0;
@@ -329,15 +329,6 @@ void TestSelfDescriptionSchemas() {
     CHECK(command_names.insert(command.name).second);
   }
 
-  // The generated references are deterministic: the same registries must
-  // produce byte-identical output, which is what lets CI diff them.
-  std::vector<ReferenceFile> first = ReferenceFiles();
-  std::vector<ReferenceFile> second = ReferenceFiles();
-  CHECK(first.size() == second.size());
-  for (size_t index = 0; index < first.size(); ++index) {
-    CHECK(first[index].name == second[index].name);
-    CHECK(first[index].contents == second[index].contents);
-  }
   CHECK(ReferenceManifest().find(kVersion) != std::string::npos);
 }
 

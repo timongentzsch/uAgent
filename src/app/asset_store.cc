@@ -87,6 +87,44 @@ bool ValidAssetName(const std::string& name) {
   return true;
 }
 
+// Keeps tool copies within half the session's count and bytes, removing
+// the oldest first, so there is room for one more of `incoming` bytes.
+void EvictToolCopies(const std::string& folder, size_t incoming) {
+  struct Copy {
+    std::filesystem::file_time_type time;
+    std::filesystem::path metadata;
+    size_t bytes;
+  };
+  std::vector<Copy> copies;
+  size_t total = 0;
+  std::error_code ec;
+  for (const auto& entry : std::filesystem::directory_iterator(folder, ec)) {
+    if (entry.path().extension() != ".json") continue;
+    std::string text, error;
+    if (!ReadRegularFile(entry.path().string(), 1024, text, error)) continue;
+    const json record = json::parse(text, nullptr, false);
+    if (!JsonValue(record, "tool_copy", false)) continue;
+    const auto bytes = JsonValue(record, "bytes", size_t{0});
+    copies.push_back({entry.last_write_time(ec), entry.path(), bytes});
+    total += bytes;
+  }
+  std::sort(copies.begin(), copies.end(),
+            [](const Copy& a, const Copy& b) { return a.time < b.time; });
+  size_t kept = copies.size();
+  for (const Copy& copy : copies) {
+    if (kept < kMaxSessionAssets / 2 &&
+        total + incoming <= kSessionAssetBytes / 2) {
+      break;
+    }
+    auto data = copy.metadata;
+    data.replace_extension(".data");
+    std::filesystem::remove(data, ec);
+    std::filesystem::remove(copy.metadata, ec);
+    total -= std::min(total, copy.bytes);
+    --kept;
+  }
+}
+
 void UnclaimLocked(std::vector<std::pair<std::string, json>>& claims,
                    size_t count) {
   for (size_t i = 0; i < count && i < claims.size(); ++i) {
@@ -97,8 +135,14 @@ void UnclaimLocked(std::vector<std::pair<std::string, json>>& claims,
 
 }  // namespace
 
+AssetStore& SessionAssets() {
+  static AssetStore store;
+  return store;
+}
+
 AssetStoreResult AssetStore::Store(const std::string& session_path,
-                                   const std::string& bytes, std::string name) {
+                                   const std::string& bytes, std::string name,
+                                   bool committed, bool tool_copy) {
   std::lock_guard assets(mutex_);
   const std::string folder = session_path + ".assets";
   if (!EnsurePrivateDirectory(folder)) {
@@ -139,6 +183,7 @@ AssetStoreResult AssetStore::Store(const std::string& session_path,
       if (bytes_ >= kGlobalAssetBytes) break;
     }
   }
+  if (tool_copy) EvictToolCopies(folder, bytes.size());
   AssetUsage usage = InspectAssets(folder, true);
   if (!usage.valid || usage.count >= kMaxSessionAssets ||
       bytes.size() >
@@ -166,12 +211,14 @@ AssetStoreResult AssetStore::Store(const std::string& session_path,
     return {{}, "cannot persist upload", 500};
   }
   bytes_ += bytes.size();
-  if (!ToolWritePrivateFile(stem + ".json", JsonDump({{"mime", mime},
-                                                      {"name", name},
-                                                      {"image", image},
-                                                      {"extension", ".data"},
-                                                      {"bytes", bytes.size()},
-                                                      {"committed", false}}))
+  if (!ToolWritePrivateFile(stem + ".json",
+                            JsonDump({{"mime", mime},
+                                      {"name", name},
+                                      {"image", image},
+                                      {"extension", ".data"},
+                                      {"bytes", bytes.size()},
+                                      {"committed", committed},
+                                      {"tool_copy", tool_copy}}))
            .Ok()) {
     return {{}, "cannot persist upload metadata", 500};
   }

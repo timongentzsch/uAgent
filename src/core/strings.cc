@@ -423,10 +423,6 @@ std::string ActivityLabel(const std::string& label, size_t columns) {
   return prefix + tail;
 }
 
-std::string SpinnerLabel(const std::string& label) {
-  return ActivityLabel(label, TerminalWidth(12));
-}
-
 uint64_t Fnv1aUpdate(uint64_t hash, const char* data, size_t size) {
   for (size_t i = 0; i < size; ++i) {
     hash ^= static_cast<unsigned char>(data[i]);

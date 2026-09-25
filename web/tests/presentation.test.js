@@ -5,10 +5,7 @@ import {
   statusLine,
   diffLineClass,
 } from "../src/shared/display.ts";
-import {
-  getToolPreview,
-  getToolRow,
-} from "../src/features/chat/tool-preview.ts";
+import { getToolRow } from "../src/features/chat/tool-preview.ts";
 import { liveBlocks, reconcileBlock } from "../src/state/store.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -163,49 +160,6 @@ test("async receipts retain their kind with uniform chrome", () => {
   assert.equal(rows[1].id, "m-8");
   assert.equal(rows[1].kind, "activity");
   assert.equal(rows[1].activity?.category, "execute");
-  // No header/matrix flags: every row renders identical chrome.
-  assert.ok(!("firstOfTurn" in rows[1]));
-});
-
-test("rows keep stable keys in order with no header flags", () => {
-  const rows = presentMessages([
-    { id: "u1", kind: "user", text: "hi" },
-    { id: "m1", kind: "assistant", text: "a" },
-    { id: "t1", kind: "tool_result", call_id: "c1", text: "r" },
-    { id: "m2", kind: "assistant", text: "b" },
-    { id: "u2", kind: "user", text: "again" },
-    { id: "t2", kind: "tool_result", call_id: "c2", text: "r2" },
-  ]);
-  assert.deepEqual(
-    rows.map((row) => row.key || row.id),
-    ["u1", "m1", "t1", "m2", "u2", "t2"],
-  );
-  for (const row of rows) assert.ok(!("firstOfTurn" in row));
-});
-
-test("every row renders uniform chrome: keys, kinds and order kept", () => {
-  const rows = presentMessages([
-    { id: "u1", kind: "user", text: "hi" },
-    { id: "m1", kind: "assistant", text: "a", turn_root: "m1" },
-    {
-      id: "t1",
-      kind: "tool_result",
-      call_id: "c1",
-      text: "r",
-      turn_root: "m1",
-    },
-    { id: "m2", kind: "assistant", text: "b", turn_root: "m1" },
-    { id: "u2", kind: "user", text: "again" },
-    { id: "m3", kind: "assistant", text: "c", turn_root: "m3" },
-  ]);
-  assert.deepEqual(
-    rows.map((row) => row.id),
-    ["u1", "m1", "t1", "m2", "u2", "m3"],
-  );
-  assert.deepEqual(
-    rows.map((row) => row.kind),
-    ["user", "assistant", "tool_result", "assistant", "user", "assistant"],
-  );
 });
 
 test("tool-sourced attachments stay inline with uploads", () => {
@@ -266,92 +220,6 @@ test("running rows never read as not recorded", () => {
   assert.equal(
     statusLine({ status: undefined, duration_ms: 1500 }),
     "Done \u00b7 1.5s",
-  );
-  const preview = getToolPreview({
-    kind: "tool_result",
-    name: "run",
-    status: "not recorded",
-    arguments: { command: "sleep 60" },
-  });
-  assert.equal(preview.title, "$ sleep 60");
-  assert.equal(preview.subtitle, "Running\u2026");
-});
-
-test("activity rows name the operation, including retained string arguments", () => {
-  // Live blocks carry parsed objects; retained blocks carry a truncated
-  // JSON string. Both must render what the call actually does.
-  assert.equal(
-    getToolPreview({
-      kind: "tool_result",
-      name: "activity",
-      arguments: { operation: "poll", id: 12 },
-    }).title,
-    "Poll activity 12",
-  );
-  assert.equal(
-    getToolPreview({
-      kind: "tool_result",
-      name: "activity",
-      arguments: JSON.stringify({ operation: "poll", id: 12 }),
-    }).title,
-    "Poll activity 12",
-  );
-  assert.equal(
-    getToolPreview({
-      kind: "tool_result",
-      name: "activity",
-      arguments: { operation: "poll", id: 12, until: "READY\nnoise" },
-    }).title,
-    "Await READY \u00b7 activity 12",
-  );
-  assert.equal(
-    getToolPreview({
-      kind: "tool_result",
-      name: "activity",
-      arguments: { operation: "wait", mode: "any", ids: [1, 2] },
-    }).title,
-    "Wait for any \u00b7 1, 2",
-  );
-  assert.equal(
-    getToolPreview({
-      kind: "tool_result",
-      name: "activity",
-      arguments: { operation: "stop", id: 7 },
-    }).title,
-    "Stop activity 7",
-  );
-  assert.equal(
-    getToolPreview({
-      kind: "tool_result",
-      name: "activity",
-      arguments: { operation: "list" },
-    }).title,
-    "List activities",
-  );
-  assert.equal(
-    getToolPreview({
-      kind: "tool_result",
-      name: "activity",
-      arguments: { operation: "write", id: 3, chars: "hello" },
-    }).title,
-    "Write 5 B \u2192 activity 3",
-  );
-  assert.equal(
-    getToolPreview({
-      kind: "tool_result",
-      name: "activity",
-      arguments: "{}",
-    }).title,
-    "Activity",
-  );
-  // String arguments rescue the other tools too.
-  assert.equal(
-    getToolPreview({
-      kind: "tool_result",
-      name: "run",
-      arguments: JSON.stringify({ command: "sleep 60" }),
-    }).title,
-    "$ sleep 60",
   );
 });
 
@@ -432,6 +300,10 @@ test("readable bodies decode text and nested JSON without losing lexical facts",
   );
 });
 
+// Pairing tests read identities; an Explored group only wraps them.
+const flat = (rows) =>
+  rows.flatMap((row) => (row.kind === "group" ? row.children : [row]));
+
 test("reversed tool results join by ID as flat rows", () => {
   const group = { id: "a", label: "Explored · 2 calls" };
   const blocks = [
@@ -461,7 +333,7 @@ test("reversed tool results join by ID as flat rows", () => {
     { id: "answer", kind: "assistant", text: "Done" },
     { id: "failed", kind: "tool_result", status: "failed", text: "error" },
   ];
-  const rows = presentMessages(blocks);
+  const rows = flat(presentMessages(blocks));
   assert.deepEqual(
     rows.map((row) => row.id),
     ["request", "result-a", "result-b", "answer", "failed"],
@@ -471,7 +343,7 @@ test("reversed tool results join by ID as flat rows", () => {
     ["A", "B"],
   );
   assert.equal(rows[2].name, "run");
-  assert.deepEqual(presentMessages(structuredClone(blocks)), rows);
+  assert.deepEqual(flat(presentMessages(structuredClone(blocks))), rows);
   assert.ok(!blocks[1].children);
 });
 
@@ -541,7 +413,7 @@ test("occurrence identities isolate repeated provider call IDs", () => {
       text: "later",
     },
   ];
-  const first = presentMessages(blocks);
+  const first = flat(presentMessages(blocks));
   assert.deepEqual(
     first.map((row) => [row.key, row.text]),
     [
@@ -554,7 +426,7 @@ test("occurrence identities isolate repeated provider call IDs", () => {
   );
   assert.equal(first.at(-1).key, "response-2:1");
   assert.equal(first.at(-1).text, "later");
-  const checkpoint = presentMessages(structuredClone(blocks));
+  const checkpoint = flat(presentMessages(structuredClone(blocks)));
   assert.deepEqual(
     checkpoint.map((row) => row.key),
     first.map((row) => row.key),
@@ -878,28 +750,50 @@ test("absent fields never wipe present ones across paths", () => {
   assert.equal(rows[1].status, "success");
 });
 
-test("tool rows title from the native label, else local synthesis", () => {
+test("tool rows read as the view's verb and target", () => {
   const base = {
     kind: "tool_result",
-    name: "read_path",
-    arguments: { path: "a.txt" },
-    text: "local first line\nsecond",
+    name: "edit_file",
+    text: "ok",
     status: "success",
   };
-  // Sessions saved before activity labels synthesize from the arguments; a
-  // bare-name replay title never shadows that.
-  assert.equal(getToolRow(base).title, "Read a.txt");
+  assert.equal(getToolRow(base).title, "edit_file");
   assert.equal(
-    getToolRow({ ...base, replay: { title: "[2] read_path" } }).title,
-    "Read a.txt",
+    getToolRow({ ...base, activity: { label: "Edited a.txt" } }).title,
+    "Edited a.txt",
   );
-  // The native activity label is the live receipt and always wins.
-  const receipt = getToolRow({
+  const view = { verb: ["Editing", "Edited"], target: "a.txt" };
+  assert.equal(getToolRow({ ...base, view }, true).title, "Editing a.txt");
+  const done = getToolRow({
     ...base,
-    activity: { label: "◆ memory created · project/proof" },
-    replay: { title: "memory", summary: "" },
+    view,
+    change: "Edited a.txt (+2 -1)\n@@ -1 +1 @@\n-old\n+new\n+more",
   });
-  assert.equal(receipt.title, "◆ memory created · project/proof");
+  assert.equal(done.title, "Edited a.txt");
+  assert.match(done.subtitle, /^\+2 \u22121 · /);
+});
+
+test("consecutive read-only calls fold into one group row", () => {
+  const explore = { category: "explore" };
+  const rows = presentMessages([
+    { id: "u1", kind: "user", text: "go" },
+    { id: "t1", kind: "tool_result", call_id: "c1", activity: explore },
+    { id: "t2", kind: "tool_result", call_id: "c2", activity: explore },
+    {
+      id: "t3",
+      kind: "tool_result",
+      call_id: "c3",
+      activity: { category: "change" },
+    },
+  ]);
+  assert.deepEqual(
+    rows.map((row) => row.kind),
+    ["user", "group", "tool_result"],
+  );
+  assert.deepEqual(
+    rows[1].children.map((row) => row.id),
+    ["t1", "t2"],
+  );
 });
 
 test("consecutive tools stay flat rows in order", () => {
@@ -921,4 +815,28 @@ test("consecutive tools stay flat rows in order", () => {
     rows.map((row) => row.id),
     ["u1", "t1", "t2", "a1", "m1", "t3", "m2"],
   );
+});
+
+test("groups follow the intent and a failed check keeps its own row", () => {
+  const call = (id, category, status = "success") => ({
+    id,
+    kind: "tool_result",
+    call_id: id,
+    status,
+    activity: { category },
+  });
+  const rows = presentMessages([
+    call("v1", "verify"),
+    call("v2", "verify"),
+    call("v3", "verify", "failed"),
+    call("e1", "edit"),
+    call("e2", "edit"),
+    call("r1", "run"),
+    call("r2", "run"),
+  ]);
+  assert.deepEqual(
+    rows.map((row) => row.children?.map((step) => step.id) || row.id),
+    [["v1", "v2"], "v3", ["e1", "e2"], "r1", "r2"],
+  );
+  assert.equal(rows[0].activity.category, "verify");
 });

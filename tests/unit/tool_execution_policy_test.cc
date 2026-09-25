@@ -24,11 +24,19 @@ void TestToolExecutionPolicy() {
   Tool shell;
   shell.mutating = true;
   shell.declared_intent = true;
-  CHECK(ToolActivityCategory(shell, json::object()) == "execute");
-  CHECK(ToolActivityCategory(shell, {{"intent", "explore"}}) == "explore");
+  CHECK(ToolActivityCategory(shell, json::object()) == "run");
+  CHECK(ToolActivityCategory(shell, {{"intent", "verify"}}) == "verify");
   CHECK(RequiredApproval(shell, {{"intent", "explore"}}) ==
         ApprovalClass::kYoloEligibleMutation);
-  CHECK(ToolActivityCategory(shell, {{"intent", "invalid"}}) == "execute");
+  CHECK(ToolActivityCategory(shell, {{"intent", "invalid"}}) == "run");
+  // Without an intent, only a command that just looks reads as explore.
+  CHECK(ToolActivityCategory(
+            shell, {{"command", "ls -la | head && git log"}}) == "explore");
+  for (const char* command :
+       {"npm test", "rm -rf out", "cat a > b", "git commit -m x", "ls $(pwd)",
+        "find . -delete", "git branch -D main"}) {
+    CHECK(ToolActivityCategory(shell, {{"command", command}}) == "run");
+  }
   std::vector<json> activities;
   for (const char* id : {"a", "b", "c", "d", "e", "f"}) {
     activities.push_back({{"id", id},

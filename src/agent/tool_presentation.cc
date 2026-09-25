@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "include/agent/protocol.h"
+#include "include/agent/session_view.h"
 #include "include/core/json.h"
 #include "include/core/limits.h"
 #include "include/core/strings.h"
@@ -58,17 +59,17 @@ PresentationRecord ToolCallPresentation(const CallTask& task,
   record.poll =
       IsActivityPoll(task);  // outcome unknown until result; see below
   record.view = ToolView(task.tool, task.args);
+  // A rejected call shows the arguments it sent, not a confident headline.
+  if (task.issue) record.view.erase("verb");
   SetCallLabel(record, task.label);
   return record;
 }
 
 PresentationRecord ToolCallPresentation(const std::string& name,
                                         const json& arguments,
-                                        const std::vector<Tool>& tools,
-                                        const std::string& ordinal) {
+                                        const std::vector<Tool>& tools) {
   CallTask task;
   task.tool = FindTool(tools, name);
-  task.ordinal = ordinal;
   task.args = arguments;
   task.label = task.tool && arguments.is_object()
                    ? ToolSummary(*task.tool, arguments)
@@ -87,6 +88,9 @@ PresentationRecord ToolResultPresentation(const CallTask& task,
   record.id = call.id;
   record.activity = task.activity;
   record.title = task.ordinal + call.name;
+  // How the result reads, and the parts that stay visible on its row.
+  record.view = {{"output", task.tool ? task.tool->output_view : "text"}};
+  if (task.result.parts.is_array()) record.view["parts"] = task.result.parts;
   if (task.result.status == CompletionStatus::kCancelled) {
     record.status = PresentationStatus::kCancelled;
   } else if (!task.result.Ok()) {
@@ -118,7 +122,7 @@ PresentationRecord ToolResultPresentation(const CallTask& task,
 
   bool truncated = model_output.size() < task.result.output.size();
   record.summary = ToolResultSummary(task.result, model_output, truncated);
-  record.output = model_output;
+  record.output = StripModelHints(model_output);
   return record;
 }
 

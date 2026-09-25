@@ -143,19 +143,19 @@ export default function Tools({
     }
   };
 
+  const categoryLabel = (id: string) =>
+    labels[id] ||
+    categories.categories.find((item) => item.id === id)?.name ||
+    id;
   const groups = useMemo(() => {
     const found = new Map<string, ToolCatalogueItem[]>();
     const needle = query.trim().toLowerCase();
     for (const tool of catalogue?.tools || []) {
       const category =
         categories.assignments[tool.name] || tool.category || "workspace";
-      const categoryLabel =
-        labels[category] ||
-        categories.categories.find((item) => item.id === category)?.name ||
-        category;
       if (
         needle &&
-        !`${tool.name} ${tool.title} ${tool.description} ${tool.provider} ${categoryLabel}`
+        !`${tool.name} ${tool.title} ${tool.description} ${tool.provider} ${categoryLabel(category)}`
           .toLowerCase()
           .includes(needle)
       )
@@ -294,12 +294,7 @@ export default function Tools({
       <div class="tool-groups">
         {groups.map(([category, tools]) => (
           <section class="tool-group" key={category}>
-            <h3>
-              {labels[category] ||
-                categories.categories.find((item) => item.id === category)
-                  ?.name ||
-                category}
-            </h3>
+            <h3>{categoryLabel(category)}</h3>
             {tools.map((tool) => (
               <div
                 key={tool.name}

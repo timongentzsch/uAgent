@@ -7,10 +7,13 @@ import { drawCursor, hiddenCursor, type CursorShape } from "./cursor.ts";
 // The pointer scales with the screen like a native one; below this it stops
 // shrinking, so it stays findable on a phone.
 const POINTER_MIN_SCALE = 0.45;
+// One wheel notch per this many trackpad pixels, as noVNC counts a wheel.
+const WHEEL_STEP_PX = 50;
 
 export default function BrowserInput({
   screen,
   target,
+  pointer,
   disabled,
   showTrackpad,
   readOnly,
@@ -18,6 +21,8 @@ export default function BrowserInput({
 }: {
   screen: RefObject<HTMLDivElement>;
   target: RefObject<HTMLDivElement>;
+  // Where the trackpad's pointer goes: a framebuffer pixel and held buttons.
+  pointer: (x: number, y: number, mask: number) => void;
   disabled: boolean;
   showTrackpad: boolean;
   readOnly: boolean;
@@ -28,10 +33,12 @@ export default function BrowserInput({
   const marker = useRef<HTMLCanvasElement>(null);
   const reveal = useRef<(point: { x: number; y: number }) => void>(() => {});
   const pressedButton = useRef<number | null>(null);
+  const wheelDelta = useRef(0);
 
   const canvas = () => target.current?.querySelector("canvas");
+  // RFB button bits: 1 left, 2 middle, 4 right (DOM numbers right as 2).
   const buttonMask = (button: number) =>
-    button === 0 ? 1 : button === 2 ? 2 : 4;
+    button === 0 ? 1 : button === 2 ? 4 : 2;
   const pointerPoint = () => {
     const element = canvas();
     const visible = screen.current?.getBoundingClientRect();
@@ -46,24 +53,18 @@ export default function BrowserInput({
       visible,
     };
   };
-  const mouse = (
-    kind: "mousedown" | "mouseup" | "mousemove",
-    button = 0,
-    buttons = 0,
-  ) => {
-    const point = pointerPoint();
-    if (!point) return;
-    point.element.dispatchEvent(
-      new MouseEvent(kind, {
-        bubbles: true,
-        cancelable: true,
-        clientX: point.x,
-        clientY: point.y,
-        button,
-        buttons,
-      }),
+  // The pointer at its exact framebuffer pixel, with the given buttons held.
+  const send = (mask: number) => {
+    const element = canvas();
+    if (!element) return;
+    pointer(
+      Math.round(cursor.current.x * (element.width - 1)),
+      Math.round(cursor.current.y * (element.height - 1)),
+      mask,
     );
   };
+  const held = () =>
+    pressedButton.current === null ? 0 : buttonMask(pressedButton.current);
   const paintPointer = () => {
     const point = pointerPoint();
     if (!point || !marker.current) return;
@@ -81,9 +82,7 @@ export default function BrowserInput({
   };
   const refreshPointer = () => {
     paintPointer();
-    const button = pressedButton.current;
-    if (disabled) return;
-    mouse("mousemove", 0, button === null ? 0 : buttonMask(button));
+    if (!disabled) send(held());
   };
   const move = (dx: number, dy: number) => {
     if (disabled) return;
@@ -103,36 +102,31 @@ export default function BrowserInput({
     if (next) reveal.current({ x: next.x, y: next.y });
     refreshPointer();
   };
+  // VNC scrolls in notches: a press and release of button 4 (up) or 5 (down).
   const wheel = (dy: number) => {
-    const point = pointerPoint();
-    if (!point || disabled) return;
-    point.element.dispatchEvent(
-      new WheelEvent("wheel", {
-        bubbles: true,
-        cancelable: true,
-        clientX: point.x,
-        clientY: point.y,
-        deltaY: dy,
-      }),
-    );
+    if (disabled) return;
+    wheelDelta.current += dy;
+    while (Math.abs(wheelDelta.current) >= WHEEL_STEP_PX) {
+      const down = wheelDelta.current > 0;
+      send(held() | (down ? 1 << 4 : 1 << 3));
+      send(held());
+      wheelDelta.current -= down ? WHEEL_STEP_PX : -WHEEL_STEP_PX;
+    }
   };
   const press = (button: number) => {
     if (disabled || pressedButton.current !== null) return;
     pressedButton.current = button;
-    mouse("mousedown", button, buttonMask(button));
+    send(buttonMask(button));
   };
   const release = () => {
-    const button = pressedButton.current;
-    if (button === null) return;
-    mouse("mouseup", button, 0);
+    if (pressedButton.current === null) return;
     pressedButton.current = null;
-    refreshPointer();
+    send(0);
   };
   const click = (button: number) => {
     if (disabled) return;
-    mouse("mousedown", button, buttonMask(button));
-    mouse("mouseup", button, 0);
-    refreshPointer();
+    send(buttonMask(button));
+    send(0);
   };
 
   useEffect(() => {

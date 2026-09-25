@@ -1,9 +1,4 @@
-import type {
-  Block,
-  Collaborator,
-  HostEvent,
-  Snapshot,
-} from "../shared/types.ts";
+import type { Block, HostEvent, Snapshot } from "../shared/types.ts";
 import {
   maxLivePreviewChars,
   retainedBackgroundViews,
@@ -154,10 +149,13 @@ export function liveBlocks(events: HostEvent[], prior: Block[] = []): Block[] {
             }
           : {
               activity: data.activity,
+              parts: data.parts,
               text:
-                typeof data.result === "string"
-                  ? data.result
-                  : JSON.stringify(data.result) || "",
+                typeof data.text === "string"
+                  ? data.text
+                  : typeof data.result === "string"
+                    ? data.result
+                    : JSON.stringify(data.result) || "",
               status:
                 data.completion_status || String(data.status || "running"),
               duration_ms: data.duration_ms,
@@ -289,7 +287,7 @@ export function applySessionEvent(
   if (event.type === "collaborator.changed" && data.collaborator) {
     state = { ...(state || {}) };
     const collaborators = [...(state.collaborators || [])];
-    const changed = data.collaborator as unknown as Collaborator;
+    const changed = data.collaborator;
     const index = collaborators.findIndex((item) => item.id === changed.id);
     if (data.removed) {
       if (index >= 0) collaborators.splice(index, 1);

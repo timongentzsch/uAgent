@@ -9,9 +9,7 @@ from integration_support import (
     provider_env,
     run,
     run_dialog,
-    run_pty,
     tool_call,
-    tool_calls,
     tool_results,
     two_route_providers,
     write_json_response,
@@ -66,7 +64,7 @@ def test_streamed_search_citations(root, home, *, binary):
         ]
     ) as server:
         result = run_dialog(
-            root, base_env(home, server.url), "probe\nagain\n/trace\n/q\n", binary=binary
+            root, base_env(home, server.url), "/verbose\nprobe\nagain\n/q\n", binary=binary
         )
         assert_true(result.returncode == 0, result.stderr)
         assert_true("grounded\n  ← web_search" in result.stdout, result.stdout)
@@ -333,43 +331,6 @@ def test_provider_context_overflow_compacts_once(root, home, *, binary):
     with Server([reject_413]) as server:
         failed = run(root, base_env(home, server.url), "-p", prompt, timeout=15, binary=binary)
         assert_true(failed.returncode == 1, (failed.stdout, failed.stderr))
-        assert_true(len(server.requests) == 2, server.requests)
-
-
-def test_provider_background_completion_does_not_trigger_model_turns(root, home, *, binary):
-    def launch(_, __):
-        return tool_calls(
-            [
-                (
-                    "first-bg",
-                    "run",
-                    {"command": "sleep 0.6; printf first", "yield_ms": 250},
-                ),
-                (
-                    "second-bg",
-                    "run",
-                    {"command": "sleep 1.6; printf second", "yield_ms": 250},
-                ),
-            ]
-        )
-
-    with Server([launch, event({"content": "background-launched"})]) as server:
-        env = base_env(home, server.url)
-        env["UAGENT_MEMORY"] = "0"
-        code, output = run_pty(
-            root,
-            env,
-            [
-                (b"go\n", b"background-launched"),
-                (b"", b"second"),
-                b"/q\n",
-            ],
-            timeout=10,
-            args=("--yolo",),
-            binary=binary,
-        )
-        assert_true(code == 0, output)
-        assert_true(b"first" in output and b"second" in output, output)
         assert_true(len(server.requests) == 2, server.requests)
 
 

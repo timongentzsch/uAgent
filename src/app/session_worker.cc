@@ -299,6 +299,9 @@ class WorkerChannel final : public ApplicationChannel {
   void SetActivityControl(
       const std::function<json(const json&)>& control) override {
     std::lock_guard lock(control_mutex_);
+    // A side question runs inside the application; it ends before the
+    // application's control does.
+    StopSideQuestion();
     activity_control_ = control;
   }
 
@@ -309,6 +312,10 @@ class WorkerChannel final : public ApplicationChannel {
       transient_changed_.notify_all();
     }
     if (transient_thread_.joinable()) transient_thread_.join();
+    {
+      std::lock_guard control(control_mutex_);
+      StopSideQuestion();
+    }
     {
       std::lock_guard transient_lock(transient_mutex_);
       FlushTransientEvents();
@@ -467,6 +474,15 @@ class WorkerChannel final : public ApplicationChannel {
   std::mutex transient_mutex_;
   std::condition_variable transient_changed_;
   std::thread transient_thread_;
+  std::thread side_thread_;
+  std::atomic<bool> side_busy_{false};
+  std::atomic<bool> side_cancel_{false};
+  // Cancels a running side question and waits for its thread; the request
+  // notices within one poll slice.
+  void StopSideQuestion() {
+    side_cancel_ = true;
+    if (side_thread_.joinable()) side_thread_.join();
+  }
   std::unordered_set<std::string> sent_delta_keys_;
   std::chrono::steady_clock::time_point delta_started_{};
   std::chrono::steady_clock::time_point usage_sent_{};
@@ -573,6 +589,30 @@ class WorkerChannel final : public ApplicationChannel {
       case SessionCommandKind::kRefresh: {
         SendState();
         break;
+      }
+      case SessionCommandKind::kSide: {
+        // A model call takes seconds: it runs beside this reader so stop,
+        // interrupt and replies are never queued behind it.
+        lock.unlock();
+        std::lock_guard control(control_mutex_);
+        if (!activity_control_ || side_busy_) {
+          CompleteControl(request, {{"error", activity_control_
+                                                  ? "a side question is running"
+                                                  : "session not ready"}});
+          return true;
+        }
+        if (side_thread_.joinable()) side_thread_.join();
+        side_busy_ = true;
+        side_cancel_ = false;
+        side_thread_ = std::thread(
+            [this, request, raw = parsed.raw, ask = activity_control_] {
+              // Its own stop flag: the main turn's Escape and the worker's
+              // shutdown abort never reach it, nor does it clear theirs.
+              LocalAbort local(side_cancel_);
+              CompleteControl(request, ask(raw));
+              side_busy_ = false;
+            });
+        return true;
       }
       case SessionCommandKind::kPermissions:
       case SessionCommandKind::kActivity: {

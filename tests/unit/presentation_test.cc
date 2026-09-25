@@ -10,6 +10,7 @@
 #include <string>
 
 #include "include/agent/child_agent.h"
+#include "include/agent/session_view.h"
 #include "include/agent/tool_presentation.h"
 #include "include/app/options.h"
 #include "include/core/activity.h"
@@ -290,7 +291,14 @@ void TestReplayBlocksMirrorLiveRows() {
   });
   CHECK(drawn.find("all three read\n") != std::string::npos);
   CHECK(drawn.find("[1] read_path(a.txt)") != std::string::npos);
-  CHECK(drawn.find("Exploring") != std::string::npos);
+  // A view names the call the way the web row does: verb and target.
+  json with_view = tools;
+  with_view[0]["view"] = {{"verb", {"Reading", "Read"}}, {"target", "a.txt"}};
+  drawn = CaptureStdout([&] {
+    presenter.Block(
+        {{"kind", "assistant"}, {"text", ""}, {"tools", with_view}});
+  });
+  CHECK(drawn.find("Reading a.txt") != std::string::npos);
   // Tool-only assistant blocks print rows with no bare mark line, like live.
   drawn = CaptureStdout([&] {
     presenter.Block({{"kind", "assistant"}, {"text", ""}, {"tools", tools}});
@@ -369,6 +377,21 @@ void TestToolViews() {
   CHECK(ToolView(&run, {{"command", command}})["input"][0]["text"] == command);
   // Unparseable arguments still render, as the raw text.
   CHECK(ToolView(nullptr, json("{broken"))["input"][0]["text"] == "{broken");
+}
+
+// The resume hint is for the model; rows link to the agent through facts.
+void TestModelHints() {
+  CHECK(StripModelHints("done\n[collaborator agent-1; resume with subagent "
+                        "operation=followup]") == "done");
+  CHECK(StripModelHints("done\n[collaborator agent-1; persistent runtime "
+                        "retained]") == "done");
+  // Only a final line is a trailer; the same text elsewhere is content.
+  CHECK(StripModelHints("[collaborator x]\nmore") == "[collaborator x]\nmore");
+  // A started-work hint gives way to the output; the row links the work.
+  CHECK(StripModelHints("[running] activity 7; poll or wait\nServing") ==
+        "Serving");
+  CHECK(StripModelHints("[started] subagent id 7; wait").empty());
+  CHECK(StripModelHints("plain") == "plain");
 }
 
 void TestDiffLineColoring() {

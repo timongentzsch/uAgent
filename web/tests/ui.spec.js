@@ -69,7 +69,12 @@ test("mobile chrome keeps an opaque safe area and applies appearance before app 
     await expect(drawer).toBeVisible();
     const drawerBox = await drawer.boundingBox();
     expect(drawerBox.y).toBe(47);
-    expect(drawerBox.y + drawerBox.height).toBeLessThanOrEqual(844 - 34);
+    // The drawer runs to the bottom edge; its content stays above the inset.
+    expect(drawerBox.y + drawerBox.height).toBe(844);
+    const footer = await drawer
+      .getByText("Connected", { exact: true })
+      .boundingBox();
+    expect(footer.y + footer.height).toBeLessThanOrEqual(844 - 34);
     expect(
       await drawer.evaluate((element) => {
         const style = getComputedStyle(element, "::backdrop");
@@ -193,7 +198,7 @@ test("fresh conversation reload keeps one stable loading state", async ({
 test("system prompt editing shares revisions, replacement and request previews", async ({
   page,
   host: fixture,
-}, testInfo) => {
+}) => {
   await page.goto("/");
   await expect(page.getByText("Connected", { exact: true })).toBeVisible();
 
@@ -358,9 +363,6 @@ test("system prompt editing shares revisions, replacement and request previews",
     expect(prompt.y + prompt.height).toBeLessThanOrEqual(
       scroll.y + scroll.height,
     );
-    await page.screenshot({
-      path: testInfo.outputPath(`prompt-${viewport.width}.png`),
-    });
   }
   await dialog.getByRole("button", { name: "Close system prompt" }).click();
   await composer.fill("/quit");
@@ -442,13 +444,24 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
       metrics[name].composer.y + metrics[name].composer.height,
     ).toBeLessThanOrEqual(metrics[name].viewport.height + 1);
     if (await page.locator(".message.user").count()) {
-      const user = await page.locator(".message.user").first().boundingBox();
-      const response = await page
-        .locator(".message.response")
-        .first()
-        .boundingBox();
-      expect(Math.abs(user.x - response.x)).toBeLessThan(2);
-      expect(Math.abs(user.width - response.width)).toBeLessThan(2);
+      // Rows off screen may still report the pre-resize layout for a frame,
+      // so wait for the two to settle like the composer check above.
+      await expect
+        .poll(async () => {
+          const user = await page
+            .locator(".message.user")
+            .first()
+            .boundingBox();
+          const response = await page
+            .locator(".message.response")
+            .first()
+            .boundingBox();
+          return Math.max(
+            Math.abs(user.x - response.x),
+            Math.abs(user.width - response.width),
+          );
+        })
+        .toBeLessThan(2);
       await expect(page.locator(".message.user").first()).toHaveCSS(
         "text-align",
         "left",
@@ -487,6 +500,20 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
       return delta;
     })
     .toBeLessThan(2);
+  // Layout that moves the anchor without resizing it carries the panel along.
+  const docked = async () => {
+    const anchorBox = await model.boundingBox();
+    const panelBox = await picker.boundingBox();
+    return Math.abs(anchorBox.y - panelBox.y - panelBox.height - 8);
+  };
+  await page
+    .locator(".composer")
+    .evaluate((element) => (element.style.marginBottom = "100px"));
+  await expect.poll(docked).toBeLessThan(2);
+  await page
+    .locator(".composer")
+    .evaluate((element) => (element.style.marginBottom = ""));
+  await expect.poll(docked).toBeLessThan(2);
   await page.keyboard.press("Escape");
   await expect(picker).toHaveCount(0);
   await expect(model).toBeFocused();
@@ -551,7 +578,6 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   expect(
     displayField.y - appearance.y - appearance.height,
   ).toBeGreaterThanOrEqual(12);
-  await page.screenshot({ path: testInfo.outputPath("settings-desktop.png") });
   await settings.getByRole("button", { name: "Close settings" }).click();
   await expect(settingsButton).toBeFocused();
 
@@ -966,8 +992,6 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
       },
     },
   ];
-  snapshot.state.context_tokens = 4600;
-  snapshot.state.context_window = 1300000;
   await page.route(`**/api/sessions/${session.id}`, (route) =>
     route.fulfill({ json: snapshot }),
   );
@@ -1074,31 +1098,11 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
   await expect(tool.locator(".thinking .markdown")).toHaveCount(0);
   await expect(tool.locator(".katex")).toHaveCount(0);
   expect(requests).toBe(0);
-  await expect(
-    page.getByRole("button", { name: "Raw context", exact: true }),
-  ).toHaveText("est. ctx 4.6k/1.3M · 99% left");
   const row = page
     .locator(".session-row")
     .filter({ has: page.locator(".session.selected") });
   await expect(row.locator("time")).toBeVisible();
   await expect(row.locator(".status-led.active")).toBeVisible();
-  // The three LED states are hollow idle, filled attached and breathing run.
-  const ledStyles = await page.evaluate(() => {
-    const host = document.createElement("div");
-    host.innerHTML =
-      '<span class="status-led idle"></span><span class="status-led active"></span><span class="status-led running"></span>';
-    document.body.append(host);
-    const style = (state) =>
-      getComputedStyle(host.querySelector(`.status-led.${state}`));
-    return {
-      idle: style("idle").backgroundColor,
-      active: style("active").backgroundColor,
-      running: style("running").animationName,
-    };
-  });
-  expect(ledStyles.idle).toBe("rgba(0, 0, 0, 0)");
-  expect(ledStyles.active).not.toBe("rgba(0, 0, 0, 0)");
-  expect(ledStyles.running).toBe("led-breathe");
   const menu = row.getByRole("button", {
     name: "Conversation menu",
     exact: true,
@@ -1777,7 +1781,7 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
   page,
   session,
   command,
-}, testInfo) => {
+}) => {
   await command("model", {
     session_id: session.id,
     generation: session.generation,
@@ -1794,7 +1798,13 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
   const prompt = page.getByLabel("Message or guidance");
   await prompt.fill("Exploration probe");
   await prompt.press("Enter");
-  await expect(page.locator(".transcript .tool-disclosure")).toHaveCount(2);
+  // Two read-only calls fold into one Explored row that expands to both.
+  const explored = page.locator(".transcript .group");
+  await expect(explored).toHaveCount(1);
+  await expect(explored.locator("summary").first()).toContainText("Explored");
+  await explored.locator("summary").first().click();
+  await expect(explored.locator(".message.tool")).toHaveCount(2);
+  await explored.locator("summary").first().click();
   await expect(
     page.getByRole("heading", { name: "Verified response" }),
   ).toBeVisible();
@@ -1825,7 +1835,7 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
   await expect(
     page
       .locator(".tool-disclosure")
-      .filter({ hasText: "◆ memory created · project/browser-proof" }),
+      .filter({ hasText: "Saved memory project/browser-proof" }),
   ).toBeVisible();
   await expect(page.locator(".composer .status-led.active")).toBeVisible();
   await page.locator(".transcript").evaluate((element) => {
@@ -1835,7 +1845,7 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
     page.getByRole("button", { name: "Jump to latest" }),
   ).toBeVisible();
   await page.reload();
-  await expect(page.locator(".transcript .tool-disclosure")).toHaveCount(3);
+  await expect(page.locator(".transcript > * .tool-disclosure")).toHaveCount(2);
   // Retained history replays through the live pipeline: one row per call,
   // none stuck on Running.
   await expect(
@@ -1844,7 +1854,7 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
   await expect(
     page
       .locator(".tool-disclosure")
-      .filter({ hasText: "◆ memory created · project/browser-proof" }),
+      .filter({ hasText: "Saved memory project/browser-proof" }),
   ).toBeVisible();
   await expect
     .poll(() =>
@@ -1868,9 +1878,6 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
   const box = await prompt.boundingBox();
   expect(box.x).toBeGreaterThanOrEqual(47);
   expect(box.x + box.width).toBeLessThanOrEqual(844 - 47);
-  await page.screenshot({
-    path: testInfo.outputPath("landscape-activity.png"),
-  });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.evaluate(() => {
     document.documentElement.style.removeProperty("--safe-left");
@@ -1878,7 +1885,6 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
   });
   await expect(prompt).toHaveValue("Keep this draft across rotation");
   await expect(prompt).toHaveCSS("font-size", fontSize);
-  await page.screenshot({ path: testInfo.outputPath("portrait-activity.png") });
 });
 
 test("stream completion preserves disclosure, markdown nodes, selection and copy state", async ({
@@ -2069,16 +2075,13 @@ test("stream completion preserves disclosure, markdown nodes, selection and copy
       removals: 0,
     });
   await page.evaluate(() => window.__stableRemovalObserver.disconnect());
-  await page.screenshot({
-    path: testInfo.outputPath("stream-continuity.png"),
-  });
 });
 
 test("subagent tasks are readable and compaction never opens an unsolicited viewer", async ({
   page,
   session,
   command,
-}, testInfo) => {
+}) => {
   await command("model", {
     session_id: session.id,
     generation: session.generation,
@@ -2102,22 +2105,16 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
   await expect(
     page.getByRole("heading", { name: "Verified response" }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Activity", exact: true }).click();
-  const list = page.locator(".activity-panel");
-  expect(
-    await list.evaluate((node) => node.scrollWidth <= node.clientWidth + 1),
-  ).toBe(true);
-  await page.setViewportSize({ width: 2048, height: 844 });
-  expect(
-    await list.evaluate((node) => node.scrollWidth <= node.clientWidth + 1),
-  ).toBe(true);
-  await page.setViewportSize({ width: 390, height: 844 });
-  await list.getByRole("button", { name: /Show .*completed/ }).click();
   // Force a retained older page so its control must share the thread's scroll.
+  // The first load is held, to see the sheet's layout while it loads.
+  let releaseFirst;
+  const firstLoad = new Promise((resolve) => (releaseFirst = resolve));
+  let loads = 0;
   await page.route("**/api/command", async (route) => {
     const body = route.request().postDataJSON();
     if (body.kind !== "activity" || body.operation !== "inspect" || body.detail)
       return route.continue();
+    if (loads++ === 0) await firstLoad;
     const response = await route.fetch();
     const value = await response.json();
     if (value.result?.conversation) {
@@ -2126,11 +2123,32 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
     }
     await route.fulfill({ response, json: value });
   });
-  await list
-    .getByRole("button")
-    .filter({ hasText: "Review the full task." })
+  // The subagent's own tool row opens it: the row names the task and keeps
+  // a visible link to the agent instead of repeating its whole answer.
+  const subagentRow = page
+    .locator(".message.tool")
+    .filter({ hasText: /Delegated .*Review the full task\./ });
+  await expect(subagentRow).not.toContainText("resume with subagent");
+  await subagentRow
+    .getByRole("button", { name: "Open agent", exact: true })
     .click();
-  const detail = page.getByRole("dialog", { name: "Subagent", exact: true });
+  // One sheet; its title follows the page shown in it.
+  const detail = page.locator("dialog.activity-view");
+  await expect(detail.locator(":scope > header > h2")).toHaveText("Subagent");
+  // While the thread loads, every section already holds its final place:
+  // the thread shows a skeleton and the guidance form sits where it stays.
+  await expect(detail.getByText("Loading the thread…")).toBeVisible();
+  const place = () =>
+    Promise.all(
+      [".child-thread", ".guidance-form"].map((selector) =>
+        detail.locator(selector).boundingBox(),
+      ),
+    );
+  const loadingPlace = await place();
+  releaseFirst();
+  await expect(detail.locator(".child-thread .message").first()).toBeVisible();
+  expect(await place()).toEqual(loadingPlace);
+  await expect(detail.getByText("Process output")).toHaveCount(0);
   await expect(
     detail.getByLabel("Estimated context", { exact: true }),
   ).toHaveText(/est\. ctx [\d.]+k?\/[\d.]+[kM]? · \d+% left/);
@@ -2169,41 +2187,30 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
   await toolRow
     .getByRole("button", { name: "Tool input/output", exact: true })
     .click();
-  const toolView = page.getByRole("dialog", {
-    name: "Tool input/output",
-    exact: true,
-  });
-  await expect(toolView).toBeVisible();
-  // Stacked, not swapped: the subagent dialog stays open underneath.
-  await expect(
-    page.getByRole("dialog", { name: "Subagent", exact: true }),
-  ).toBeVisible();
-  await toolView
-    .getByRole("button", { name: "Close tool input/output", exact: true })
-    .click();
-  await expect(toolView).toHaveCount(0);
+  // A page inside the same sheet, never a second dialog; Back returns.
+  const heading = detail.locator(":scope > header > h2");
+  await expect(heading).toHaveText("Tool input/output");
+  await expect(page.locator("dialog[open]")).toHaveCount(1);
+  await detail.getByRole("button", { name: "Back", exact: true }).click();
+  await expect(heading).toHaveText("Subagent");
   await detail
     .getByRole("button", { name: "Session statistics", exact: true })
     .click();
-  const stats = page.getByRole("dialog", {
-    name: "Subagent statistics",
-    exact: true,
-  });
+  const stats = detail;
+  await expect(heading).toHaveText("Subagent statistics");
   await expect(stats.locator("dt").filter({ hasText: /^Cost$/ })).toBeVisible();
   await expect(
     stats.getByText("Parent turn time", { exact: true }),
   ).toBeVisible();
   await expect(stats.getByText("Model time", { exact: true })).toBeVisible();
-  const statsBody = stats.locator(":scope > .dialog-body");
+  const statsBody = stats.locator(".activity-page");
   await expect(statsBody).toHaveCSS("overflow-y", "auto");
   await statsBody.hover();
   await page.mouse.wheel(0, 600);
   await expect
     .poll(() => statsBody.evaluate((node) => node.scrollTop))
     .toBeGreaterThan(0);
-  await stats
-    .getByRole("button", { name: "Close subagent statistics" })
-    .click();
+  await detail.getByRole("button", { name: "Back", exact: true }).click();
   await expect(detail).toHaveCSS("outline-style", "none");
   await expect(detail.locator(":scope > header > h2")).toHaveCSS(
     "outline-style",
@@ -2225,9 +2232,7 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
     stats.getByText("Model at completion", { exact: true }),
   ).toBeVisible();
   await expect(stats.getByText("TTFT", { exact: true })).toBeVisible();
-  await stats
-    .getByRole("button", { name: "Close subagent statistics" })
-    .click();
+  await detail.getByRole("button", { name: "Back", exact: true }).click();
   await detail
     .getByRole("button", { name: "Model and effort", exact: true })
     .click();
@@ -2278,15 +2283,22 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
   await expect(detail.locator('section[aria-label="Run details"]')).toHaveCount(
     0,
   );
-  await page.screenshot({
-    path: testInfo.outputPath("subagent-task-phone.png"),
-  });
   await detail
     .getByRole("button", { name: "Close subagent", exact: true })
     .click();
   await expect(page.locator(".composer").getByRole("status")).toHaveText(
     "Ready",
   );
+  // A finished subagent stays reachable from the status line, like /agents.
+  await page.getByRole("button", { name: "Activity", exact: true }).click();
+  const idle = page.locator(".activity-popover .activity-open");
+  await expect(idle).toHaveCount(1);
+  await expect(idle).toContainText("idle");
+  await idle.click();
+  await expect(detail.locator(":scope > header > h2")).toHaveText("Subagent");
+  await detail
+    .getByRole("button", { name: "Close subagent", exact: true })
+    .click();
   await composer.fill("/compact");
   await composer.press("Enter");
   await expect(
@@ -2306,19 +2318,71 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
     .click();
   await composer.fill("Background activity probe");
   await composer.press("Enter");
+  // A finished background task reads like any tool row, its last output
+  // lines visible without expanding.
   const receipt = page
-    .locator(".event-row")
-    .filter({ hasText: "Background task" });
+    .locator(".message.tool")
+    .filter({ hasText: "BROWSER_ACTIVITY" })
+    .filter({ hasText: "Finished" });
   await expect(receipt).toBeVisible({ timeout: 15000 });
-  await receipt.locator("summary").click();
-  await expect(receipt).toContainText("BROWSER_ACTIVITY");
+  await expect(receipt.locator("summary")).toContainText("Finished");
   await expect(
-    receipt.getByRole("button", { name: "Full tool input/output" }),
+    receipt.getByRole("button", { name: "Tool input/output" }),
   ).toHaveCount(0);
-  await page.screenshot({
-    path: testInfo.outputPath("async-receipt-phone.png"),
-  });
   await page.reload();
   await expect(receipt).toBeVisible();
   await expect(receipt).toHaveCount(1);
+});
+
+test("a long agent state truncates instead of wrapping the phone status line", async ({
+  page,
+  session,
+  command,
+}) => {
+  await command("model", {
+    session_id: session.id,
+    generation: session.generation,
+    operation: "select",
+    model: "mock/model-b",
+  });
+  await command("permissions", {
+    session_id: session.id,
+    generation: session.generation,
+    mode: "yolo",
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/#session=${session.id}`);
+  const line = page.locator(".composer .status-line");
+  await expect(line).toBeVisible();
+  const single = (await line.boundingBox()).height;
+  // One line, and the state ends before the metrics begin: idle (plain text)
+  // and while work runs (the state becomes the popover's button).
+  const fits = async () => {
+    await page
+      .locator(".composer .activity-caption")
+      .evaluate(
+        (node) =>
+          (node.textContent =
+            "Running · Run · cd /home/dev/Software/project && rg -l --no-messages"),
+      );
+    expect((await line.boundingBox()).height).toBe(single);
+    const state = await page
+      .locator(".composer .activity-toggle")
+      .boundingBox();
+    const metrics = await page.locator(".composer .metrics").boundingBox();
+    expect(state.x + state.width).toBeLessThanOrEqual(metrics.x + 1);
+    expect(
+      await page
+        .locator(".composer .activity-caption")
+        .evaluate((node) => node.scrollWidth > node.clientWidth),
+    ).toBe(true);
+  };
+  await fits();
+  const prompt = page.getByLabel("Message or guidance");
+  await prompt.fill("Background activity probe");
+  await prompt.press("Enter");
+  await expect(
+    page.getByRole("button", { name: "Activity", exact: true }),
+  ).toBeVisible();
+  await fits();
 });

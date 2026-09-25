@@ -38,11 +38,12 @@ export async function api<T = unknown>(
     result.network = true;
     throw result;
   });
-  const data = await response.json();
-  if (!response.ok || data.accepted === false) {
-    const error = failure(new Error(data.error || `HTTP ${response.status}`));
+  // A proxy's HTML error page still carries its status to the caller.
+  const data = await response.json().catch(() => null);
+  if (!response.ok || !data || data.accepted === false) {
+    const error = failure(new Error(data?.error || `HTTP ${response.status}`));
     error.status = response.status;
-    error.rejected = data.accepted === false;
+    error.rejected = data?.accepted === false;
     throw error;
   }
   if (data.v !== undefined && data.v !== protocol)

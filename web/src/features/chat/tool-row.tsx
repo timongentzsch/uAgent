@@ -1,8 +1,22 @@
+import { Fragment } from "preact";
 import { DisclosureRow, Skeleton, LoadError, Time } from "../../shared/ui.tsx";
 import DiffView from "./diff-view.tsx";
 import Markdown from "../../shared/markdown-view.tsx";
-import { cleanText } from "../../shared/display.ts";
-import type { PresentedBlock, ToolPart } from "../../shared/types.ts";
+import { cleanText, isFailedStatus } from "../../shared/display.ts";
+import type {
+  FilePart,
+  LinkPart,
+  PresentedBlock,
+  ToolPart,
+} from "../../shared/types.ts";
+import { X } from "lucide-preact";
+import { AttachmentList, ImageTile } from "../../shared/attachments.tsx";
+import { useContext, useLayoutEffect, useRef } from "preact/hooks";
+import { LiveActivities } from "../../state/live-activities.ts";
+import { duration } from "../../shared/duration.ts";
+import { bytes } from "../../shared/quantities.ts";
+import { active } from "./activity-status.tsx";
+import { getToolRow } from "./tool-preview.ts";
 
 // A fence longer than any backtick run in the body, so code never ends early.
 function fenced(text: string, language = "") {
@@ -29,29 +43,80 @@ export function ToolInput({ parts }: { parts: ToolPart[] }) {
             {part.label && <figcaption>{part.label}</figcaption>}
             <Markdown text={fenced(cleanText(part.text), part.language)} />
           </figure>
-        ) : (
+        ) : part.kind === "fields" ? (
           <dl class="tool-fields" key={index}>
             {part.rows.map(([label, value]) => (
-              <>
+              <Fragment key={label}>
                 <dt>{label}</dt>
                 <dd>{cleanText(value)}</dd>
-              </>
+              </Fragment>
             ))}
           </dl>
-        ),
+        ) : null,
       )}
     </>
   );
 }
 
-// One chrome for every tool call and result. Titles and the diff-only choice
-// come from getToolRow; how input and output read comes from the native view.
+// A link part opens the work it names in the inspector.
+export type OpenLink = (link: LinkPart) => void;
+
+const DIFF_LINES = 40;
+
+// A command's output as a terminal shows it: one box that opens scrolled to
+// the end and scrolls back through everything the row holds. A long result
+// keeps only its start and end in the row, so earlier output loads on demand.
+function OutputBox({
+  text,
+  more,
+  online,
+  loadFull,
+}: {
+  text: string;
+  more: boolean;
+  online: boolean;
+  loadFull: () => void;
+}) {
+  const box = useRef<HTMLPreElement>(null);
+  useLayoutEffect(() => {
+    if (box.current) box.current.scrollTop = box.current.scrollHeight;
+  }, [text]);
+  return (
+    <pre class="tool-console" ref={box} tabIndex={0} aria-label="Output">
+      {more && (
+        <button
+          type="button"
+          class="quiet tool-link"
+          disabled={!online}
+          onClick={loadFull}
+        >
+          Load earlier output
+        </button>
+      )}
+      {text}
+    </pre>
+  );
+}
+
+// The work a row started, while it still runs: its LED and elapsed time.
+function useLive(block: PresentedBlock) {
+  const link = block.parts?.find(
+    (part): part is LinkPart => part.kind === "link",
+  );
+  const live = useContext(LiveActivities).find((item) =>
+    link?.to === "agent"
+      ? item.agent_id === String(link.id)
+      : link?.to === "activity" && item.id === Number(link.id),
+  );
+  return live && active(live) ? live : undefined;
+}
+
+// One chrome for every tool call and receipt: the view's verb and target,
+// and on expand its input, full output and raw record. Status shows only
+// when it matters: a running headline shimmers, a failed one says so.
 export function ToolRow({
   block,
-  title,
-  subtitle,
   running,
-  diffOnly,
   output,
   text,
   expanding,
@@ -62,10 +127,7 @@ export function ToolRow({
   onToggle,
 }: {
   block: PresentedBlock;
-  title: string;
-  subtitle: string;
   running: boolean;
-  diffOnly: boolean;
   output: string;
   text?: string;
   expanding: boolean;
@@ -75,16 +137,25 @@ export function ToolRow({
   inspect?: (id: string) => void;
   onToggle: (event: { currentTarget: { open: boolean } }) => void;
 }) {
+  const live = useLive(block);
+  // Work the call started keeps the row in the present tense until it ends.
+  let { title, subtitle } = getToolRow(block, running || !!live);
+  if (live) {
+    subtitle = [
+      live.status,
+      live.started_ms && duration(Math.max(0, Date.now() - live.started_ms)),
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  }
+  const failed = isFailedStatus(block.status);
+  const diff = block.change?.includes("\n") ? block.change : "";
   return (
     <DisclosureRow
-      className="tool-disclosure"
+      className={`tool-disclosure${running || live ? " running" : failed ? " failed" : ""}`}
       label={title}
       status={subtitle}
-      icon={
-        running ? (
-          <span class="status-led running" aria-hidden="true" />
-        ) : undefined
-      }
+      icon={failed ? <X class="tool-failed" aria-label="Failed" /> : undefined}
       onToggle={onToggle}
     >
       <div class="tool-body">
@@ -103,7 +174,7 @@ export function ToolRow({
             </>
           )}
         </p>
-        {!diffOnly && <ToolInput parts={block.view?.input || []} />}
+        <ToolInput parts={block.view?.input || []} />
         {!online && block.truncated && text == null && (
           <p class="small muted">
             Recent output only. Connect to load the full result.
@@ -111,24 +182,25 @@ export function ToolRow({
         )}
         {expanding && <Skeleton label="Loading full tool output…" />}
         {loadError && <LoadError error={loadError} retry={retry} />}
-        {!diffOnly &&
-          (text ? (
-            block.view?.output === "markdown" ? (
-              <div class="tool-output">
-                <Markdown text={output} />
-              </div>
-            ) : (
-              <pre class="tool-output">{output}</pre>
-            )
+        {block.view?.output === "tail" ? null : text ? (
+          block.view?.output === "markdown" ? (
+            <div class="tool-output">
+              <Markdown text={output} />
+            </div>
           ) : (
-            block.result_loaded === false && (
-              <p class="muted">
-                Output is not loaded. Open the full tool input/output.
-              </p>
-            )
-          ))}
-        {block.change && <DiffView text={cleanText(block.change)} />}
-        {inspect && (
+            <pre class="tool-output">{output}</pre>
+          )
+        ) : (
+          block.result_loaded === false && (
+            <p class="muted">
+              Output is not loaded. Open the full tool input/output.
+            </p>
+          )
+        )}
+        {diff.split("\n").length > DIFF_LINES && (
+          <DiffView text={cleanText(diff)} />
+        )}
+        {inspect && block.kind === "tool_result" && (
           <button
             onClick={() => inspect(block.detail_id || `t-${block.call_id}`)}
           >
@@ -137,5 +209,112 @@ export function ToolRow({
         )}
       </div>
     </DisclosureRow>
+  );
+}
+
+// What stays visible under a row without expanding it: a change's diff, a
+// command's output, and the files and work the call produced.
+export function ToolInline({
+  block,
+  text,
+  loaded,
+  loadFull,
+  online,
+  assets,
+  open,
+}: {
+  block: PresentedBlock;
+  text?: string;
+  loaded: boolean;
+  loadFull: () => void;
+  online: boolean;
+  assets: string;
+  open?: OpenLink;
+}) {
+  const diff = block.change?.includes("\n") ? block.change : "";
+  const lines = diff.split("\n");
+  // Until the full text loads, a truncated result shows its end.
+  const more = !!block.truncated && !loaded;
+  const output =
+    block.view?.output === "tail"
+      ? cleanText((more && block.tail) || text || "").trim()
+      : "";
+  const parts = block.parts || [];
+  const files = (block.files || []).filter((file) => typeof file === "object");
+  if (!diff && !output && !parts.length && !files.length) return null;
+  return (
+    <div class="tool-inline">
+      {diff && (
+        <DiffView text={cleanText(lines.slice(0, DIFF_LINES).join("\n"))} />
+      )}
+      {lines.length > DIFF_LINES && (
+        <p class="small muted">
+          {lines.length - DIFF_LINES} more lines · expand the row for the full
+          diff
+        </p>
+      )}
+      {output && (
+        <OutputBox
+          text={output}
+          more={more}
+          online={online}
+          loadFull={loadFull}
+        />
+      )}
+      {files.length > 0 && (
+        <AttachmentList files={files} href={(id) => `${assets}${id}`} />
+      )}
+      {parts.map((part, index) =>
+        part.kind === "file" ? (
+          <SharedFile key={index} file={part} href={`${assets}${part.id}`} />
+        ) : part.kind === "link" && open ? (
+          <button
+            key={index}
+            type="button"
+            class="quiet tool-link"
+            disabled={!online}
+            onClick={() => open(part)}
+          >
+            {part.label}
+          </button>
+        ) : null,
+      )}
+    </div>
+  );
+}
+
+// A file the agent shared: previewed where the browser can show it safely
+// (images; HTML in a sandboxed frame the server also sandboxes; PDF on a
+// desktop), then its name, size and Open / Download.
+function SharedFile({ file, href }: { file: FilePart; href: string }) {
+  const touch = matchMedia("(pointer: coarse)").matches;
+  const preview = file.mime.startsWith("image/") ? (
+    <ImageTile src={href} name={file.name} />
+  ) : file.mime === "text/html" ? (
+    <iframe
+      src={href}
+      title={file.name}
+      sandbox="allow-scripts allow-forms allow-popups"
+      loading="lazy"
+    />
+  ) : file.mime === "application/pdf" && !touch ? (
+    <iframe src={href} title={file.name} loading="lazy" />
+  ) : null;
+  return (
+    <figure class="tool-file">
+      {preview}
+      <figcaption>
+        <strong>{cleanText(file.name)}</strong>
+        <span class="muted">{bytes(file.bytes)}</span>
+        {/^(image\/|application\/pdf$|text\/html$)/.test(file.mime) && (
+          <a href={href} target="_blank" rel="noopener">
+            Open
+          </a>
+        )}
+        <a href={`${href}?download=1`} download={file.name}>
+          Download
+        </a>
+      </figcaption>
+    </figure>
   );
 }

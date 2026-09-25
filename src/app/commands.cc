@@ -93,6 +93,7 @@ void RunSlashCommand(AppSession& session, const ParsedSlashCommand& command,
     case SlashCommandId::kSessions:
     case SlashCommandId::kFork:
     case SlashCommandId::kVerbose:
+    case SlashCommandId::kBtw:
       result = {{"error", "this command belongs to the client"}};
       return;
     case SlashCommandId::kClear:
@@ -122,23 +123,6 @@ void RunSlashCommand(AppSession& session, const ParsedSlashCommand& command,
       result = SessionControl(session, {{"kind", "share"}});
       return;
     }
-    case SlashCommandId::kTrace:
-      if (!command.argument.empty()) {
-        size_t offset = 0;
-        do {
-          result = session.ActiveAgent().RawExchange(command.argument, offset);
-          printf("%s", TerminalSafe(JsonValue(result, "text",
-                                              JsonValue(result, "error", "")))
-                           .c_str());
-          offset = JsonValue(result, "next", size_t{0});
-        } while (JsonValue(result, "more", false));
-        printf("\n");
-        fflush(stdout);
-        return;
-      }
-      PrintLatestTrace(session.ActiveAgent().TraceArchive(),
-                       session.context.tools);
-      break;
     case SlashCommandId::kVariant:
       HandleVariant(session, command.argument);
       break;

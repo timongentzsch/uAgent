@@ -71,7 +71,9 @@ export interface Exchange {
   reply_excerpt?: string;
 }
 export interface ToolActivity {
-  category?: "explore" | "change" | "execute";
+  // The call's intent: explore, research, edit, verify, run, setup,
+  // delegate, memory or share (older sessions: change, execute).
+  category?: string;
   label?: string;
   group?: { id: string; label: string };
 }
@@ -99,10 +101,29 @@ export interface ToolCall {
 export type ToolPart =
   | { kind: "command"; text: string }
   | { kind: "code"; text: string; language?: string; label?: string }
-  | { kind: "fields"; rows: [string, string][] };
+  | { kind: "fields"; rows: [string, string][] }
+  | FilePart
+  | LinkPart;
+export interface FilePart {
+  kind: "file";
+  id: string;
+  name: string;
+  mime: string;
+  bytes: number;
+}
+export interface LinkPart {
+  kind: "link";
+  to: "agent" | "activity" | "memory";
+  id: string | number;
+  label: string;
+}
+// "Editing a.ts" while running, "Edited a.ts" after; input shows on expand
+// and a "tail" result keeps its last lines visible.
 export interface ToolView {
-  input: ToolPart[];
-  output: "text" | "markdown";
+  verb?: [string, string];
+  target?: string;
+  input?: ToolPart[];
+  output?: "text" | "markdown" | "tail";
 }
 export interface TurnSummary {
   usage_reported?: boolean;
@@ -159,6 +180,8 @@ export interface Block {
   incoming?: number;
   files?: Asset[];
   origin?: string;
+  // Tool calls whose results added these files to context.
+  source_call_ids?: string[];
   unavailable_images?: number;
   tools?: ToolCall[];
   call_id?: string;
@@ -186,6 +209,10 @@ export interface Block {
   reply_excerpt?: string;
   activity_id?: number;
   agent_id?: string;
+  // Parts that stay visible on the row: files shared, work started.
+  parts?: ToolPart[];
+  // The end of a result whose text preview holds only its start.
+  tail?: string;
   command?: string;
 }
 export interface PresentedBlock extends Block {
@@ -422,6 +449,9 @@ export interface EventData extends Omit<Partial<Exchange>, "status"> {
   arguments?: JSONValue;
   view?: ToolView;
   result?: JSONValue;
+  agent_id?: string;
+  activity_id?: number;
+  parts?: Block["parts"];
   preview_truncated?: boolean;
   completion_status?: string;
   status?: string | number;
@@ -573,6 +603,7 @@ export interface CommandResults {
   fork: { id: string };
   rewind: { turns: number };
   share: { path: string };
+  side: { answer: string };
   create: never;
   activate: never;
   close: never;

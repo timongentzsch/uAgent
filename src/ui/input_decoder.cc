@@ -139,7 +139,11 @@ size_t TerminalInputDecoder::CompleteCsiBytes() const {
   if (pending_.size() < 3 || pending_[0] != 0x1b || pending_[1] != '[') {
     return 0;
   }
-  for (size_t index = 2; index < pending_.size(); ++index) {
+  // Look for the final byte only within the sequence bound: an over-long
+  // CSI is cut at the bound however the bytes arrive, so a final byte past
+  // it must not complete the sequence when everything came in one read.
+  const size_t end = std::min(pending_.size(), kInputSequenceBytes);
+  for (size_t index = 2; index < end; ++index) {
     if (pending_[index] >= 0x40 && pending_[index] <= 0x7e) return index + 1;
   }
   return 0;

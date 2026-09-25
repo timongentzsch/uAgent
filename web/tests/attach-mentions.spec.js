@@ -64,17 +64,12 @@ test("duplicate uploads dedupe, rename and @-mention send cleanly", async ({
   await prompt.press("Enter");
 
   const transcript = page.locator(".transcript");
+  // Tiles carry the renamed label; the server path trailer never shows.
   await expect(
-    transcript.getByText("chart", { exact: false }).first(),
-  ).toBeVisible({
-    timeout: 30000,
-  });
-  // Gallery echoes the renamed label; the server path trailer never shows.
-  await expect(
-    transcript.locator(".file-chip", { hasText: "chart" }).first(),
+    transcript.getByRole("button", { name: /^View chart/ }).first(),
   ).toBeVisible({ timeout: 30000 });
   expect(await transcript.textContent()).not.toContain('path "');
-  await expect(transcript.locator("img.mention-image")).toHaveCount(1);
+  await expect(transcript.locator(".mention-image img")).toHaveCount(1);
 });
 
 test("removed attachment degrades the token instead of breaking", async ({
@@ -127,7 +122,7 @@ test("steer carries files when idle converts to a turn", async ({
   );
   const transcript = page.locator(".transcript");
   await expect(
-    transcript.locator(".file-chip", { hasText: "steer.png" }).first(),
+    transcript.getByRole("button", { name: "View steer.png" }).first(),
   ).toBeVisible({ timeout: 60000 });
   expect(await transcript.textContent()).not.toContain('path "');
 });

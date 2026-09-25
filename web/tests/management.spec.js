@@ -79,7 +79,7 @@ for (const surface of [
 test("library drafts, shared controls and scheduled results", async ({
   page,
   host: fixture,
-}, testInfo) => {
+}) => {
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.route("**/sw.js", (route) =>
@@ -131,7 +131,6 @@ test("library drafts, shared controls and scheduled results", async ({
     "collapse",
   );
   await expect(page.locator(".document-preview .code-copy")).toHaveCount(1);
-  await page.screenshot({ path: testInfo.outputPath("library-desktop.png") });
   await expect(
     page.getByRole("button", { name: /^(Source|Preview)$/ }),
   ).toHaveCount(0);
@@ -254,7 +253,6 @@ test("library drafts, shared controls and scheduled results", async ({
   expect(save.x - cancel.x - cancel.width).toBeGreaterThan(0);
   expect(save.y).toBe(cancel.y);
   expect(save.height).toBe(cancel.height);
-  await page.screenshot({ path: testInfo.outputPath("library-mobile.png") });
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(editor).toHaveCount(0);
   await expect(page.locator(".document-preview")).toHaveText(
@@ -331,6 +329,5 @@ test("library drafts, shared controls and scheduled results", async ({
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
-  await page.screenshot({ path: testInfo.outputPath("schedule-mobile.png") });
   expect(errors).toEqual([]);
 });

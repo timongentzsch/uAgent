@@ -6,10 +6,12 @@ import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import { failure, type Report, type Session } from "../../shared/types.ts";
 import { api, command } from "../../state/api.ts";
 import RFB from "@novnc/novnc";
-import { Spinner, Input, Textarea, Select } from "../../shared/ui.tsx";
-import { ClipboardPaste, Copy, Keyboard } from "lucide-preact";
+import { Input, Select, Spinner, Textarea } from "../../shared/ui.tsx";
+import { Popover } from "../../shared/popover.tsx";
+import type { ComponentChildren } from "preact";
+import { ChevronDown, ClipboardPaste, Copy, Keyboard } from "lucide-preact";
 import BrowserInput from "./input.tsx";
-import { observeCursor, type CursorShape } from "./cursor.ts";
+import { observeCursor, type CursorShape, sendPointer } from "./cursor.ts";
 import "./browser.css";
 
 const VIEWER_RECONNECT_DELAY_MS = 1_000;
@@ -36,6 +38,7 @@ interface BrowserStatus {
   ok?: boolean;
   running?: boolean;
   mode?: "idle" | "agent" | "human";
+  waiting?: boolean;
   controller?: boolean;
   leased?: boolean;
   session_id?: string;
@@ -68,7 +71,16 @@ const SPECIAL_KEYS: Record<string, [string, number, string]> = {
   ArrowRight: ["→", X11_KEYSYM.right, "ArrowRight"],
 };
 
-function Viewer({ report, readOnly }: { report: Report; readOnly: boolean }) {
+function Viewer({
+  report,
+  readOnly,
+  primary,
+}: {
+  report: Report;
+  readOnly: boolean;
+  // The hand-over action (Take control / Hand back), last in the toolbar.
+  primary?: ComponentChildren;
+}) {
   const screen = useRef<HTMLDivElement>(null);
   const target = useRef<HTMLDivElement>(null);
   const viewer = useRef<RFB | null>(null);
@@ -283,6 +295,9 @@ function Viewer({ report, readOnly }: { report: Report; readOnly: boolean }) {
       <BrowserInput
         screen={screen}
         target={target}
+        pointer={(x, y, mask) => {
+          if (viewer.current) sendPointer(viewer.current, x, y, mask);
+        }}
         disabled={!live}
         showTrackpad={touch && !readOnly}
         readOnly={readOnly}
@@ -290,13 +305,7 @@ function Viewer({ report, readOnly }: { report: Report; readOnly: boolean }) {
       />
       <div class="browser-view-controls">
         <small class="muted">
-          {readOnly ? (
-            <>
-              Watching agent · <ConnectionStatus phase={connection} />
-            </>
-          ) : (
-            <ConnectionStatus phase={connection} />
-          )}
+          <ConnectionStatus phase={connection} />
         </small>
         {!readOnly && (
           <>
@@ -332,6 +341,7 @@ function Viewer({ report, readOnly }: { report: Report; readOnly: boolean }) {
             </button>
           </>
         )}
+        {primary}
       </div>
       {touch && !readOnly && (
         <Textarea
@@ -448,7 +458,7 @@ export default function BrowserPanel({
   const [status, setStatus] = useState<BrowserStatus>({});
   const [busy, setBusy] = useState(false);
   const [addingProfile, setAddingProfile] = useState(false);
-  const [profileName, setProfileName] = useState("");
+  const [newProfile, setNewProfile] = useState("");
   const lifetime = useRef(new AbortController());
   const inFlight = useRef<Promise<void> | null>(null);
   // While the viewer is open a pinch zooms the remote display, not the page.
@@ -560,12 +570,12 @@ export default function BrowserPanel({
     event.preventDefault();
     setBusy(true);
     try {
-      const created = await send("create_profile", { name: profileName });
+      const created = await send("create_profile", { name: newProfile });
       if ("result" in created && created.result.created_profile_id) {
         await send("select_profile", {
           profile_id: created.result.created_profile_id,
         });
-        setProfileName("");
+        setNewProfile("");
         setAddingProfile(false);
       }
       await refresh(true);
@@ -576,147 +586,157 @@ export default function BrowserPanel({
       setBusy(false);
     }
   };
-  if (!status.ok && !status.mode)
-    return <Spinner label="Loading browser…" surface />;
+  // Watching never takes control: the screen shows whenever Chrome runs.
+  const viewing = status.controller || status.running;
+  const otherDevice =
+    status.mode === "human" && status.leased && !status.controller;
+  const driver = status.controller
+    ? status.waiting
+      ? "Agent is waiting · hand back when done"
+      : "You're driving"
+    : otherDevice
+      ? "Another device is driving"
+      : status.mode === "agent" && status.running
+        ? "Agent working"
+        : status.running
+          ? "Watching"
+          : "Idle";
   const canChangeProfile =
     status.controller ||
     (status.mode === "idle" && !status.running && !status.leased);
-  return (
-    <section class="browser-panel">
-      {!status.controller && (
-        <p class="muted">
-          This is the Chrome profile the agent uses. Take control and choose
-          Sign in to profile to save your logins, including MFA. One paired
-          device controls it at a time.
-        </p>
-      )}
-      {status.error && <p role="alert">{status.error}</p>}
-      {status.profiles && (
-        <div class="browser-profile">
-          <label for="browser-profile-select">Chrome profile</label>
-          <div class="browser-profile-controls">
-            <Select
-              id="browser-profile-select"
-              value={status.profile_id || "default"}
-              disabled={busy || !canChangeProfile}
-              onChange={(event) =>
-                void selectProfile(event.currentTarget.value)
-              }
-            >
-              {status.profiles.map((profile) => (
-                <option key={profile.id} value={profile.id}>
-                  {profile.name}
-                </option>
-              ))}
-            </Select>
+  const profileName =
+    status.profiles?.find((profile) => profile.id === status.profile_id)
+      ?.name || "Default";
+  const primary = status.controller ? (
+    <button
+      class="primary"
+      disabled={busy}
+      title="Hand the browser back to the agent"
+      onClick={() => void control("done")}
+    >
+      Hand back
+    </button>
+  ) : (
+    !otherDevice && (
+      <button
+        class="primary"
+        disabled={busy}
+        onClick={() => void control("takeover")}
+      >
+        Take control
+      </button>
+    )
+  );
+  // Profile switching, creation, sign-in and stopping are rare; they live in
+  // one header menu so the screen keeps the space.
+  const profileMenu = status.profiles && (
+    <Popover
+      label="Profiles"
+      buttonClass="quiet with-icon"
+      panelClass="browser-profile-panel"
+      trigger={
+        <>
+          <span>{profileName}</span>
+          <ChevronDown aria-hidden="true" />
+        </>
+      }
+    >
+      <div class="browser-profile">
+        <Select
+          aria-label="Chrome profile"
+          value={status.profile_id || "default"}
+          disabled={busy || !canChangeProfile}
+          onChange={(event) => void selectProfile(event.currentTarget.value)}
+        >
+          {status.profiles.map((profile) => (
+            <option key={profile.id} value={profile.id}>
+              {profile.name}
+            </option>
+          ))}
+        </Select>
+        {!canChangeProfile && !status.error && (
+          <small class="muted">Take control to switch profiles.</small>
+        )}
+        <div class="browser-profile-controls">
+          <button
+            type="button"
+            disabled={busy || !canChangeProfile}
+            onClick={() => setAddingProfile(!addingProfile)}
+          >
+            New profile
+          </button>
+          {status.controller && !status.profile_setup && (
             <button
               type="button"
-              disabled={busy || !canChangeProfile}
-              aria-label="New profile"
-              onClick={() => setAddingProfile(!addingProfile)}
-            >
-              New
-            </button>
-            {status.controller && !status.profile_setup && (
-              <button
-                type="button"
-                disabled={busy}
-                title="Reopens this profile for manual sign-in. The agent waits until you choose Done."
-                aria-label="Sign in to profile"
-                onClick={() => void control("setup_profile")}
-              >
-                Sign in
-              </button>
-            )}
-          </div>
-          {!canChangeProfile && !status.error && (
-            <small class="muted">Take control to switch profiles.</small>
-          )}
-          {addingProfile && (
-            <form class="browser-profile-create" onSubmit={createProfile}>
-              <Input
-                aria-label="New Chrome profile name"
-                value={profileName}
-                onInput={(event) => setProfileName(event.currentTarget.value)}
-                placeholder="e.g. Work or Personal"
-                required
-              />
-              <button type="submit" disabled={busy || !profileName.trim()}>
-                Create and use
-              </button>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => setAddingProfile(false)}
-              >
-                Cancel
-              </button>
-            </form>
-          )}
-        </div>
-      )}
-      {status.url && (
-        <p class="browser-location" title={status.title}>
-          {status.url}
-        </p>
-      )}
-      {status.controller && status.profile_setup && (
-        <p role="status">
-          Sign in to your sites in Chrome. Done reopens this profile for the
-          agent with your saved logins.
-        </p>
-      )}
-      {status.mode === "human" && status.leased && !status.controller ? (
-        <p>
-          Another device controls the browser. Its connection can close without
-          resuming the agent.
-        </p>
-      ) : status.controller || (status.mode === "agent" && status.running) ? (
-        <>
-          <Viewer
-            key={`${status.generation}-${status.mode}`}
-            report={report}
-            readOnly={!status.controller}
-          />
-          <div class="dialog-actions">
-            {status.controller ? (
-              <button
-                class="primary"
-                disabled={busy}
-                onClick={() => void control("done")}
-              >
-                Done
-              </button>
-            ) : (
-              <button
-                class="primary"
-                disabled={busy}
-                onClick={() => void control("takeover")}
-              >
-                Take control
-              </button>
-            )}
-          </div>
-        </>
-      ) : (
-        <div class="dialog-actions">
-          {status.mode === "human" ||
-          status.mode === "idle" ||
-          status.mode === "agent" ? (
-            <button
-              class="primary"
               disabled={busy}
-              onClick={() => void control("takeover")}
+              title="Reopens this profile for manual sign-in. The agent waits until you hand back."
+              onClick={() => void control("setup_profile")}
             >
-              Take control
+              Sign in to profile
             </button>
-          ) : null}
+          )}
           {status.running && status.mode === "idle" && (
             <button disabled={busy} onClick={() => void control("stop")}>
               Stop browser
             </button>
           )}
         </div>
+        {addingProfile && (
+          <form class="browser-profile-create" onSubmit={createProfile}>
+            <Input
+              aria-label="New Chrome profile name"
+              value={newProfile}
+              onInput={(event) => setNewProfile(event.currentTarget.value)}
+              placeholder="e.g. Work or Personal"
+              required
+            />
+            <button type="submit" disabled={busy || !newProfile.trim()}>
+              Create and use
+            </button>
+          </form>
+        )}
+      </div>
+    </Popover>
+  );
+  if (!status.ok && !status.mode)
+    return <Spinner label="Loading browser…" surface />;
+  return (
+    <section class="browser-panel">
+      <div class="browser-bar">
+        <small class="muted browser-location" title={status.url}>
+          {driver}
+          {status.url && ` · ${status.url}`}
+        </small>
+        {profileMenu}
+      </div>
+      {status.error && <p role="alert">{status.error}</p>}
+      {status.controller && status.profile_setup && (
+        <p role="status">
+          Sign in to your sites in Chrome. Hand back reopens this profile for
+          the agent with your saved logins.
+        </p>
+      )}
+      {otherDevice ? (
+        <p>
+          Another device controls the browser. Closing the browser there hands
+          it back to the agent.
+        </p>
+      ) : viewing ? (
+        <Viewer
+          key={`${status.generation}-${status.mode}`}
+          report={report}
+          readOnly={!status.controller}
+          primary={primary}
+        />
+      ) : (
+        <>
+          <p class="muted">
+            This is the Chrome profile the agent uses. Take control and sign in
+            to save your logins, including MFA. One paired device controls it at
+            a time.
+          </p>
+          <div class="browser-view-controls">{primary}</div>
+        </>
       )}
     </section>
   );

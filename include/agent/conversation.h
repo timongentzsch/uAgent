@@ -84,7 +84,6 @@ class Conversation {
   // post-compaction re-push). The id counter advances past it so fresh
   // mints stay unique.
   void PushWithDisplayId(json message, MessageKind kind, uint64_t id);
-  void Upsert(json message, MessageKind kind);
   void UpsertTail(json message, MessageKind kind);
   void Set(size_t index, json message, MessageKind kind);
   void Erase(size_t begin, size_t end);

@@ -26,6 +26,7 @@ per-conversation choices made with `/tools`.
 | `memory` | list, search and read memory; write when the user asks | full toolset, memory enabled |
 | `uagent` | inspect this build (status, flags, commands, config, tools, prompt, routes); change settings | full toolset |
 | `web_fetch` | read one public http(s) URL as text | always |
+| `artifact` | hand the user a file to open or download (HTML runs sandboxed, PDFs and images open inline); snapshot into the session's assets | a session with a client |
 | `web_search` | cited web search through OpenRouter's hosted search | an OpenRouter-protocol route or search endpoint |
 | `session` | list linked sessions and message them | always |
 | `subagent` | delegate a subtask to a durable collaborator | delegation depth below `UAGENT_SUBAGENT_DEPTH` |
@@ -142,9 +143,32 @@ depend on the conversation model. `UAGENT_WEB_SEARCH_BACKEND=off` withholds it.
 
 ## Presentation
 
-Each call is recorded as `explore`, `change` or `execute`. Native tools use
-their own contract; `run` and `scratch` take an optional `intent` (default
-`execute`) that labels the activity and never changes permissions. Adjacent
-successful exploration in one batch folds into one row in the web UI and a
-compact terminal summary; changes, failures and approval prompts stay visible.
-`/trace` and `/verbose` show full detail in the terminal.
+Each call carries an intent: `explore` (read, list, search), `research`
+(web search, fetch, browser), `edit`, `verify` (test, lint, build), `run`,
+`setup` (install, configure) or `delegate`; memory and shared files keep their
+own rows. Native tools know theirs. `run` and `scratch` take an optional
+`intent` from the model; without one, a command made only of read-only
+programs (`ls`, `cat`, `rg`, `git log`, …) reads as `explore`, anything else
+as `run`. Intent labels and groups calls and never changes permissions.
+
+Adjacent successful calls of one intent fold into one row: Explored,
+Researched, Verified or Edited, in the web UI and as a compact terminal
+summary. A failure or an approval prompt keeps its own row. `/verbose` shows
+full detail in the terminal.
+
+## How a call reads
+
+Each tool declares how its row reads, as data both clients render the same
+way (`ToolView` in `include/tools/tool.h`):
+
+- A headline of verb and target: "Editing src/a.ts" while it runs, "Edited
+  src/a.ts" after. Tools without their own verbs read "Called <tool>".
+- Visible without expanding: a change's diff, a command's output, and the
+  parts the call produced. A shared file previews inline
+  (images, sandboxed HTML, PDF on desktop) with Open and Download; started
+  work links to its agent, activity or memory.
+- On expand: the call's input (a command, code or fields) and its full
+  output.
+
+Commands keep their output in one scrollable box under the row, opened at the
+end. Memory saves and finished background work use the same row.

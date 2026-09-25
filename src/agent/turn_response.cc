@@ -22,6 +22,7 @@
 #include "include/core/debug.h"
 #include "include/core/env.h"
 #include "include/core/events.h"
+#include "include/core/limits.h"
 #include "include/core/signals.h"
 #include "include/core/skills.h"
 #include "include/core/steering.h"
@@ -164,8 +165,6 @@ Agent::StepFlow Agent::HandleFailedResponse(ChatResult& response,
 
 // Text that imitates a tool protocol but parses as nothing. One correction is
 // worth sending; a second means the model will not recover.
-// Text that imitates a tool protocol but parses as nothing. One correction is
-// worth sending; a second means the model will not recover.
 Agent::StepFlow Agent::HandleUnparsedToolMarkup(TurnExecution& state,
                                                 StepState& loop) {
   if (!loop.markup_recovered) {
@@ -185,10 +184,6 @@ Agent::StepFlow Agent::HandleUnparsedToolMarkup(TurnExecution& state,
   return StepFlow::kEndTurn;
 }
 
-// A completion with no answer and no call carries nothing to react to, so the
-// first one is replayed unchanged, a repeat earns a guiding note, and only a
-// third ends the turn: a barren provider response must not cost the work this
-// turn has already done.
 // A completion with no answer and no call carries nothing to react to, so the
 // first one is replayed unchanged, a repeat earns a guiding note, and only a
 // third ends the turn: a barren provider response must not cost the work this
@@ -226,9 +221,6 @@ Agent::StepFlow Agent::HandleEmptyResponse(const ChatResult& response,
   return StepFlow::kNextStep;
 }
 
-// A provider stop is separate from transport success. Salvage complete calls
-// only for truncation; otherwise one bounded continuation prevents a partial
-// prose response or an unfamiliar stop reason from being accepted as final.
 // A provider stop is separate from transport success. Salvage complete calls
 // only for truncation; otherwise one bounded continuation prevents a partial
 // prose response or an unfamiliar stop reason from being accepted as final.
@@ -329,9 +321,10 @@ void Agent::PushAssistantMessage(ChatResult& response,
                                  1000 / response.duration_ms;
   }
   conversation_.RecordDisplay(conversation_.LastDisplayId(), std::move(facts));
+  // Only the preview the view shows is kept; more would crowd out other facts.
   conversation_.RecordDisplay(
       conversation_.LastDisplayId(),
-      {{"reasoning", Utf8Trunc(response.reasoning, size_t{48} * 1024)},
+      {{"reasoning", Utf8Trunc(response.reasoning, kPreviewChars)},
        {"reasoning_available", !response.reasoning.empty()},
        {"reasoning_revision", 1},
        {"reasoning_complete", true},

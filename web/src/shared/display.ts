@@ -21,18 +21,13 @@ export function diffLineClass(line: string, first: boolean): string {
   return "diff-ctx";
 }
 
-export function stringifyArgs(args: unknown): string {
-  if (typeof args === "string") return args;
-  try {
-    return JSON.stringify(args, null, 2);
-  } catch {
-    return String(args ?? "");
-  }
-}
-
 // Live vocabulary is single-sourced here: anything without a terminal
 // state (started but unfinished, or facts not yet recorded) reads as
 // running. Diagnostics (statistics/raw) keep the exact stored value.
+// A call that went wrong, as opposed to one the user cancelled.
+export const isFailedStatus = (status?: string) =>
+  /fail|error|timed_out|denied/i.test(status || "");
+
 export function isRunningStatus(status?: string): boolean {
   if (!status) return true;
   const state = status.trim().toLowerCase();

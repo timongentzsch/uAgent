@@ -86,6 +86,8 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
     return std::nullopt;
   };
   run.summary = [](const json& a) { return JsonValue(a, "command", ""); };
+  run.header = Verbs("Running", "Ran");
+  run.output_view = "tail";
   run.timeout_s = 0;  // bounded by the turn; Escape remains responsive
   // Each call owns its process group and log, so independent commands
   // (network fetches especially) overlap instead of queueing.
@@ -94,9 +96,11 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
   run.declared_intent = true;
   const json intent_schema = {
       {"type", "string"},
-      {"enum", json::array({"explore", "change", "execute"})},
+      {"enum", CommandIntents()},
       {"description",
-       "Activity intent only; does not change permissions. Default execute."}};
+       "What the command is for: explore (read/list/search), research, edit, "
+       "verify (test/lint/build), run, setup (install/configure). Display "
+       "and grouping only; never changes permissions."}};
   run.parameters["properties"]["intent"] = intent_schema;
   const json description_schema = {
       {"type", json::array({"string", "null"})},
@@ -152,6 +156,8 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
       return JsonValue(a, "path", "") +
              ScratchArgvLabel(JsonValue(a, "args", json(nullptr)));
     };
+    python.header = Verbs("Running", "Ran");
+    python.output_view = "tail";
     python.present = [](const json& a) {
       return json::array(
           {CommandPart(JsonValue(a, "path", "") +

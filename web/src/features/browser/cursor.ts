@@ -1,4 +1,4 @@
-import type RFB from "@novnc/novnc";
+import RFB from "@novnc/novnc";
 
 // The remote pointer as the RFB Cursor pseudo-encoding delivers it: the image
 // Chrome itself shows (arrow, I-beam, hand, resize), with its hotspot.
@@ -18,20 +18,40 @@ type Change = (
   height: number,
 ) => void;
 
+// The noVNC internals the phone viewer relies on, in one place. noVNC 1.7
+// has no public API for either; if an upgrade removes them, these checks
+// fail closed and the browser tests fail.
+interface RfbInternals {
+  _cursor?: { change?: Change; _canvas?: HTMLCanvasElement };
+  _sock?: unknown;
+  _rfbConnectionState?: string;
+}
+const internals = (rfb: RFB) => rfb as unknown as RfbInternals;
+
 // noVNC hands the server's pointer to its internal Cursor through change()
-// and has no public event for it. On touch devices that Cursor paints a
-// fixed canvas under document.body, which a modal dialog covers, so the
-// viewer draws the pointer itself -- as Guacamole does, in a layer of the
-// scaled display. This is the one private seam; if a noVNC upgrade removes
-// it, the viewer keeps its own arrow and the browser test fails.
+// and has no public event for it. On touch devices that Cursor paints its
+// own fixed canvas into document.body at the remote's native size, which
+// shows behind the modal; the viewer hides it and draws the pointer itself,
+// in a layer of the scaled display, as Guacamole does.
 export function observeCursor(rfb: RFB, onShape: (shape: CursorShape) => void) {
-  const cursor = (rfb as unknown as { _cursor?: { change?: Change } })._cursor;
+  const cursor = internals(rfb)._cursor;
   const change = cursor?.change;
   if (!cursor || typeof change !== "function") return;
+  if (cursor._canvas) cursor._canvas.style.display = "none";
   cursor.change = (rgba, hotX, hotY, width, height) => {
     change.call(cursor, rgba, hotX, hotY, width, height);
     onShape({ rgba, hotX, hotY, width, height });
   };
+}
+
+// The trackpad's pointer, sent the way a native client sends it: one RFB
+// PointerEvent at an exact framebuffer pixel. Going through noVNC's mouse
+// handling instead meant synthetic DOM events, a round trip through its
+// scaling, its move throttle and a document-wide capture on press.
+export function sendPointer(rfb: RFB, x: number, y: number, mask: number) {
+  const { _sock: sock, _rfbConnectionState: state } = internals(rfb);
+  if (rfb.viewOnly || state !== "connected" || !sock) return;
+  RFB.messages.pointerEvent(sock, Math.round(x), Math.round(y), mask);
 }
 
 // An all-transparent image is how the server hides the pointer, e.g. while

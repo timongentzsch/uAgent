@@ -120,7 +120,8 @@ def test_reasoning_modes_render_consistently(root, home, *, binary):
             env,
             [
                 (b"/verbose\n", b"verbose ON"),
-                (b"go\n", b"Final answer"),
+                # Quit once the turn has settled, however slow the build.
+                (b"go\n", b"Final answer", b"Ready", None),
                 b"/q\n",
             ],
             timeout=10,
@@ -138,7 +139,7 @@ def test_reasoning_modes_render_consistently(root, home, *, binary):
             env,
             [
                 (b"go\n", b"provider normalization phases"),
-                (b"", b"Final answer"),
+                (b"", b"Final answer", b"Ready", None),
                 b"/q\n",
             ],
             timeout=10,
@@ -175,6 +176,9 @@ def test_multiline_bracketed_paste(root, home, *, binary):
             base_env(home, server.url),
             [(paste, b"second"), (b"\n", b"multiline-paste-ok"), b"\x04"],
             columns=24,
+            # Paste once the worker is ready, so its status line is drawn
+            # before the turn replaces it, however slow the build.
+            startup_marker=b"Ready",
             binary=binary,
         )
         assert_true(code == 0, output)
@@ -385,7 +389,7 @@ def test_multiline_run_keeps_action_color(root, home, *, binary):
         )
         # Empty SIGCHLD wake slots must not write their marker byte to PTY fd 0.
         assert_true(b"\x01" not in output, output)
-        first = b"\x1b[1m\xe2\x86\x92 run\r\n\x1b[1m# color-segment-000"
+        first = b"\x1b[1m\xe2\x86\x92 Running\r\n\x1b[1m# color-segment-000"
         assert_true(code == 0 and first in output, output)
         for index in range(90):
             marker = f"\x1b[1m# color-segment-{index:03d}".encode()

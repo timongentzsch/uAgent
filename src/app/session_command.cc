@@ -36,6 +36,7 @@ constexpr KindRow kKinds[] = {
     {"fork", SessionCommandKind::kFork, true},
     {"rewind", SessionCommandKind::kRewind, true},
     {"share", SessionCommandKind::kShare, true},
+    {"side", SessionCommandKind::kSide, true},
     {"prompt", SessionCommandKind::kPrompt, true},
     {"submit", SessionCommandKind::kSubmit, true},
     {"create", SessionCommandKind::kCreate, false},
@@ -51,11 +52,6 @@ const KindRow* FindKind(SessionCommandKind kind) {
 }
 
 }  // namespace
-
-const char* SessionCommandKindName(SessionCommandKind kind) {
-  const KindRow* row = FindKind(kind);
-  return row ? row->name.data() : "";
-}
 
 SessionCommandKind ParseSessionCommandKind(std::string_view kind) {
   for (const KindRow& row : kKinds) {

@@ -54,6 +54,8 @@ class Runtime {
   std::string mode_ = "idle";
   bool profile_setup_ = false;
   uint64_t generation_ = 0;
+  // An agent call retries while the human drives; each retry extends this.
+  int64_t agent_waiting_until_ms_ = 0;
 };
 
 }  // namespace uagent::browser

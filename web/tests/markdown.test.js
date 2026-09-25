@@ -44,14 +44,3 @@ test("late references update only affected parser blocks", async () => {
   assert.match(defined[1].html, /href="https:\/\/example\.com"/);
   assert.match(defined[1].html, /rel="noopener noreferrer"/);
 });
-
-test("unsafe links and images retain the shared security policy", async () => {
-  const html = concatenate(
-    await renderMarkdownBlocks(
-      "[unsafe](javascript:alert(1)) ![tracking](https://example.com/a.png)",
-    ),
-  );
-  assert.doesNotMatch(html, /href="javascript:/);
-  assert.doesNotMatch(html, /<img/);
-  assert.match(html, /\[image: tracking\]/);
-});

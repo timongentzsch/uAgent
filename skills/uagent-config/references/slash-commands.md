@@ -39,7 +39,7 @@
 | `/status` | show current session configuration and token usage |
 | `/tell ID TEXT` | message a linked session |
 | `/tools [on|off NAME|profile NAME|reset]` | inspect or choose tools for this conversation |
-| `/trace [CALL_ID]` | show latest trace or full tool request/response |
 | `/variant MODE` | set OpenRouter provider routing |
+| `/btw QUESTION` | ask a side question without adding it to the conversation |
 | `/verbose` | toggle full reasoning and expanded tool output |
 | `/yolo` | toggle automatic approval |

@@ -16,10 +16,12 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <chrono>
 #include <condition_variable>
 #include <cstddef>
 #include <cstdio>
+#include <cstring>
 #include <deque>
 #include <filesystem>
 #include <map>
@@ -199,8 +201,8 @@ class Master {
           "default-src 'none'; script-src 'self'; style-src 'self' "
           "'unsafe-inline'; font-src 'self'; img-src 'self' blob: data:; "
           "connect-src "
-          "'self'; manifest-src 'self'; worker-src 'self'; base-uri 'none'; "
-          "form-action 'self'; frame-ancestors 'none'"}});
+          "'self'; manifest-src 'self'; worker-src 'self'; frame-src 'self'; "
+          "base-uri 'none'; form-action 'self'; frame-ancestors 'none'"}});
     server_.set_pre_routing_handler([this](const Request& request,
                                            Response& response) {
       const std::string* expected_origin = ExpectedOrigin(request);
@@ -627,11 +629,10 @@ class Master {
   std::string executable_, directory_, local_, local_authority_, origin_,
       authority_, epoch_, secret_, pair_;
   session::SessionHost host_;
-  Clock::time_point pair_deadline_{}, auth_window_{}, scanned_{};
+  Clock::time_point pair_deadline_{}, auth_window_{};
   int auth_attempts_ = 0;
   httplib::Server server_;
-  std::mutex mutex_, scan_mutex_;
-  std::map<std::string, FileStamp> history_directories_;
+  std::mutex mutex_;
   Pipe host_wake_;
   std::vector<Device> devices_;
   size_t sse_count_ = 0;
@@ -1005,9 +1006,47 @@ void Master::AssetRead(const Request& request, Response& response) {
     Error(response, "invalid image asset", 415);
     return;
   }
-  if (!image) response.set_header("Content-Disposition", "attachment");
+  // Images, PDFs and HTML open in the browser; HTML runs sandboxed in an
+  // opaque origin, so its scripts can never read this device's session or
+  // call the API. Everything else, or ?download, is saved under its name.
+  const bool html = mime == "text/html";
+  const bool inline_view = !request.has_param("download") &&
+                           (image || html || mime == "application/pdf");
+  // Replace the app's policy rather than add to it: browsers enforce every
+  // CSP header, so the app's would block the file's own scripts and forbid
+  // the conversation from framing its preview. HTML runs its scripts in an
+  // opaque origin; anything else, SVG included, may run none at all.
+  response.headers.erase("Content-Security-Policy");
+  response.set_header("Content-Security-Policy",
+                      html ? "sandbox allow-scripts allow-forms allow-popups; "
+                             "frame-ancestors 'self'"
+                      : mime == "image/svg+xml"
+                          ? "sandbox; default-src 'none'; img-src data:; "
+                            "style-src 'unsafe-inline'; frame-ancestors 'self'"
+                          : "default-src 'none'; frame-ancestors 'self'");
+  if (!inline_view) {
+    // RFC 6266: an ASCII fallback for old clients, the exact UTF-8 name
+    // percent-encoded for the rest.
+    const std::string name = JsonValue(asset, "name", "download");
+    std::string fallback, encoded;
+    for (const char ch : name) {
+      const auto byte = static_cast<unsigned char>(ch);
+      fallback += byte < 32 || byte > 126 || ch == '"' || ch == '\\' ? '_' : ch;
+      if (std::isalnum(byte) || std::strchr("-._~", ch) != nullptr) {
+        encoded += ch;
+      } else {
+        constexpr char kHex[] = "0123456789ABCDEF";
+        encoded += '%';
+        encoded += kHex[byte >> 4];
+        encoded += kHex[byte & 15];
+      }
+    }
+    response.set_header("Content-Disposition",
+                        "attachment; filename=\"" + fallback +
+                            "\"; filename*=UTF-8''" + encoded);
+  }
   response.set_content(std::move(bytes),
-                       image ? mime : "application/octet-stream");
+                       inline_view || html ? mime : "application/octet-stream");
 }
 
 }  // namespace

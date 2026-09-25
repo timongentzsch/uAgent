@@ -35,8 +35,13 @@ class AssetStore {
   // Persists one upload into session_path + ".assets". The caller checks
   // session liveness before and after; uncommitted uploads older than a day
   // are reaped by the quota scan, so a lost race only costs bytes, not truth.
+  // `committed`: kept for the session's life (a shared artifact) rather
+  // than waiting for a message to claim it. `tool_copy`: a display copy of a
+  // file a tool read (a screenshot); these share half the session's budget,
+  // oldest evicted first, so they never crowd out the user's own files.
   AssetStoreResult Store(const std::string& session_path,
-                         const std::string& bytes, std::string name);
+                         const std::string& bytes, std::string name,
+                         bool committed = false, bool tool_copy = false);
   // Resolves attachment id claims into command["attachments"], runs gate
   // (the host's session-liveness check) before committing anything, then
   // size-checks and commits. gate's non-empty return aborts uncommitted.
@@ -57,6 +62,9 @@ class AssetStore {
   std::chrono::steady_clock::time_point scanned_{};
   size_t bytes_ = 0;
 };
+
+// The process's one store, so its quota scan is shared across callers.
+AssetStore& SessionAssets();
 
 }  // namespace uagent::session
 

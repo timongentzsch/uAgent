@@ -102,21 +102,16 @@ def test_full_run_and_python_terminal_trace(root, home, *, binary):
     ) as server:
         env = base_env(home, server.url)
         env["UAGENT_TOOL_BATCH_RESULT_CHARS"] = "8"
-        result = run_dialog(
-            root, env, "/verbose\ntrace\n/trace\n/q\n", "--yolo", timeout=20, binary=binary
-        )
+        result = run_dialog(root, env, "/verbose\ntrace\n/q\n", "--yolo", timeout=20, binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         for expected in (
             "printf 'shell-one",
             "printf 'shell-two",
             "shell-one",
             "shell-two",
-            "scratch(trace.py)",
+            "Running trace.py",
             "python-one",
             "python-two",
-            "latest trace · turn 1 · 3 tools",
-            "→ [1] run",
-            "← [3] scratch",
             "trace-ok",
         ):
             assert_true(expected in result.stdout, result.stdout)
@@ -302,12 +297,10 @@ def test_skill_tool_offers_and_opens(root, home, *, binary):
         code, output = run_pty(
             workspace,
             base_env(home, server.url),
-            # /trace must describe a finished turn. The composer stays visible
-            # while the worker is active, so wait for its idle status after the
-            # answer before typing the command, then keep EOF behind its body.
+            # Verbose output shows the opened skill body in the tool result.
             [
+                (b"/verbose\n", b"verbose ON"),
                 (b"reply\n", b"skill-ok", b"Ready", None),
-                (b"/trace\n", b"demo-body-sentinel"),
                 b"\x04",
             ],
             columns=24,
@@ -316,10 +309,7 @@ def test_skill_tool_offers_and_opens(root, home, *, binary):
         assert_true(code == 0, output)
         assert_true(b"skill-ok" in output, output)
         assert_true(b"demo" in output, output)
-        assert_true(
-            output.find(b"demo-body-sentinel") > output.find(b"skill-ok"),
-            output,
-        )
+        assert_true(b"demo-body-sentinel" in output, output)
 
 
 def test_tool_trace_repeated_rounds_are_telemetry_only(root, home, *, binary):
@@ -732,53 +722,6 @@ def test_process_hardening_scrubs_loader_variables(root, home, *, binary):
         assert_true(result.stdout.strip().endswith("hardening-ok"), result.stdout)
 
 
-def test_self_configuration_asks_even_under_yolo(root, home, *, binary):
-    """--yolo stops applying to this class; it still asks at a real terminal."""
-    config = home / ".uagent" / ".config"
-    config.parent.mkdir(parents=True, exist_ok=True)
-    config.write_text("# keep me\nUAGENT_MAX_TOOL_CALLS=40\n")
-
-    def request_change(_, __):
-        return tool_call(
-            "uagent",
-            {
-                "action": "configure",
-                "scope": "user",
-                "changes": [{"key": "UAGENT_MAX_TOOL_CALLS", "operation": "set", "value": "200"}],
-            },
-        )
-
-    def finish(_, __):
-        return event({"content": "yolo-still-asked"})
-
-    with Server([request_change, finish]) as server:
-        status, output = run_pty(
-            root,
-            base_env(home, server.url),
-            [
-                (b"raise the limit\n", b"Allow uagent?"),
-                (b"y\n", b"yolo-still-asked"),
-                b"/quit\n",
-            ],
-            args=("--yolo",),
-            timeout=20,
-            binary=binary,
-        )
-        assert_true(status == 0, output)
-        # The prompt appeared despite --yolo, and only then was the file written.
-        assert_true(b"Allow uagent?" in output, output)
-        assert_true(b"changes \xc2\xb5Agent's own configuration" in output, output)
-        # The diff belongs to the approval prompt alone: the call label is a
-        # one-liner, so file contents stay out of traces and evidence.
-        assert_true(output.count(b"- UAGENT_MAX_TOOL_CALLS=40") == 1, output)
-        assert_true(b"\x1b[31m- UAGENT_MAX_TOOL_CALLS=40" in output, output)
-        assert_true(b"\x1b[32m+ UAGENT_MAX_TOOL_CALLS=200" in output, output)
-        assert_true(b"uagent(user " in output, output)
-        written = config.read_text()
-        assert_true("UAGENT_MAX_TOOL_CALLS=200" in written, written)
-        assert_true("# keep me" in written, written)
-
-
 def test_composite_configuration_requires_exact_human_approval(root, home, *, binary):
     """Safe credential references reach a redacted prompt, even under --yolo."""
     config = home / ".uagent" / ".config"
@@ -836,6 +779,8 @@ def test_composite_configuration_requires_exact_human_approval(root, home, *, bi
         assert_true(b"adjacent-integration-secret" not in output, output)
         # Status redraws may insert cursor controls before the colored line.
         assert_true(b'\x1b[32m+   "codex-local": {' in output, output)
+        # The diff belongs to the approval prompt alone, never the call label.
+        assert_true(output.count(b'+   "codex-local": {') == 1, output)
         written = config.read_text()
         assert_true(proposed in written, written)
         assert_true("# keep me" in written, written)
@@ -1010,7 +955,7 @@ def test_approval_remembers_exact_action_and_forwards_a_refusal(root, home, *, b
         assert_true(b"[y] Allow once" in output and b"[n] Deny" in output, output)
         # Reaching rm proves the exact repeat ran without consuming the refusal;
         # rm is a different command, so that refusal is delivered there.
-        assert_true(b"run(rm -rf /tmp/uagent-nothing)" in output, output)
+        assert_true(b"Running rm -rf /tmp/uagent-nothing" in output, output)
         # The refusal reached the model as guidance rather than a bare denial.
         assert_true(refusal.get("steered"), (refusal, output))
         assert_true(b"approval-done" in output, output)

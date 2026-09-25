@@ -125,8 +125,6 @@ ToolResult ToolActivityWait(ProcessSupervisor& supervisor,
 ToolResult ToolActivityStop(ProcessSupervisor& supervisor, int64_t id);
 std::string BgResultHeader(const BgJob& job);
 std::string BgResultHeader(const BackgroundCompletion& completion);
-std::vector<std::string> BgTakeCompleted(ProcessSupervisor& supervisor,
-                                         std::string_view kind = {});
 std::vector<BackgroundCompletion> BgTakeCompletedDetails(
     ProcessSupervisor& supervisor, std::string_view kind = {});
 void BgShutdownAll(ProcessSupervisor& supervisor);

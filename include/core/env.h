@@ -26,8 +26,6 @@ std::string EnvStr(const char* name, const std::string& dflt = "");
 
 int64_t EnvLong(const char* name, int64_t dflt);
 
-double EnvDouble(const char* name, double dflt);
-
 // Accessors shared by their consumers and the session_ready diagnostic.
 int64_t ToolResultCap();
 int64_t ToolBatchResultCap();
@@ -49,7 +47,6 @@ int64_t SubagentTimeoutSeconds();
 int64_t SubagentCallsPerTurn();
 int64_t PersistentMax();
 std::string SubagentModel();
-std::string TitleModel();
 int64_t MaxOutputTokens();
 bool SteeringEnabled();
 bool SandboxEnabled();

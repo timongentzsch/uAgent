@@ -586,8 +586,15 @@ void SetObservability(Observability* observability) noexcept {
 
 Observability* ActiveObservability() noexcept { return g_observability; }
 
+namespace {
+thread_local bool g_quiet = false;
+}  // namespace
+
+QuietEvents::QuietEvents() { g_quiet = true; }
+QuietEvents::~QuietEvents() { g_quiet = false; }
+
 void Emit(Event event) noexcept {
-  if (g_observability) g_observability->Emit(std::move(event));
+  if (g_observability && !g_quiet) g_observability->Emit(std::move(event));
 }
 
 ResponseObservation::ResponseObservation(const std::string& label, json context)

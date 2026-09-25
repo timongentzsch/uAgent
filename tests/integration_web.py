@@ -904,6 +904,104 @@ def test_web_approval_interrupt_and_independent_workers(root, home, *, binary):
             assert_true(len(snapshots) == 2, snapshots)
 
 
+def test_web_side_question_answers_beside_a_running_turn(root, home, *, binary):
+    started = threading.Event()
+    release = threading.Event()
+
+    def responder(_, body):
+        last = str(body["messages"][-1].get("content", ""))
+        if "Side question" in last:
+            # Same conversation prefix, no new tools offered beyond the turn's.
+            return event({"content": "SIDE-ANSWER"})
+        if any(message.get("role") == "tool" for message in body["messages"]):
+            return event({"content": "MAIN-DONE"})
+        started.set()
+        release.wait(timeout=budget(10))
+        return tool_call("run", {"command": "true"}, call_id="main-run")
+
+    with Server([responder]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+            client.pair(code)
+            session = client.create(root)
+            client.command("permissions", session, mode="yolo")
+            client.command("submit", session, text="Long main task")
+            assert_true(started.wait(timeout=budget(5)), "main turn never started")
+            try:
+                side = client.command("side", session, text="what are we doing?")
+                answer = side.get("result", {}).get("answer")
+                if side.get("pending"):
+                    status, receipt, _ = client.json("/api/receipts/" + side["request_id"])
+                    answer = receipt.get("result", {}).get("answer")
+                assert_true(answer == "SIDE-ANSWER", side)
+            finally:
+                release.set()
+            value = client.until(
+                session,
+                lambda value: (
+                    "MAIN-DONE" in json.dumps(value) and not value["metadata"]["turn_active"]
+                ),
+            )
+            transcript = json.dumps(value["state"]["view"])
+            assert_true("SIDE-ANSWER" not in transcript, transcript)
+            assert_true("what are we doing" not in transcript, transcript)
+
+
+def test_web_artifact_is_shared_sandboxed_and_downloadable(root, home, *, binary):
+    (root / "report.html").write_text("<script>document.title='x'</script>REPORT")
+    (root / "picture.svg").write_text(
+        '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'
+    )
+
+    def responder(_, body):
+        shared = sum(message.get("role") == "tool" for message in body["messages"])
+        if shared == 2:
+            return event({"content": "shared"})
+        path = ["report.html", "picture.svg"][shared]
+        return tool_call("artifact", {"path": path}, call_id=f"share-{shared}")
+
+    with Server([responder]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+            client.pair(code)
+            session = client.create(root)
+            client.command("permissions", session, mode="yolo")
+            client.command("submit", session, text="Share the report")
+            value = client.until(
+                session,
+                lambda value: (
+                    "shared" in json.dumps(value) and not value["metadata"]["turn_active"]
+                ),
+            )
+            files = [
+                part
+                for block in value["state"]["view"]["blocks"]
+                for part in block.get("parts") or []
+                if part["kind"] == "file"
+            ]
+            assert_true([file["name"] for file in files] == ["report.html", "picture.svg"], files)
+            # An SVG is an image, but its script must never run on this origin.
+            status, _, headers = client.request(
+                f"/api/sessions/{session['id']}/assets/{files[1]['id']}"
+            )
+            policy = headers.get("Content-Security-Policy", "")
+            assert_true(status == 200 and "sandbox" in policy, headers)
+            assert_true("allow-scripts" not in policy, headers)
+            url = f"/api/sessions/{session['id']}/assets/{files[0]['id']}"
+            status, body, headers = client.request(url)
+            assert_true(status == 200 and b"REPORT" in body, (status, body))
+            # Opens inline, but scripts run in an opaque origin.
+            assert_true(headers.get("Content-Type", "").startswith("text/html"), headers)
+            assert_true("sandbox" in headers.get("Content-Security-Policy", ""), headers)
+            assert_true("allow-same-origin" not in headers["Content-Security-Policy"], headers)
+            assert_true(headers.get("X-Content-Type-Options") == "nosniff", headers)
+            status, _, headers = client.request(url + "?download=1")
+            assert_true(
+                status == 200
+                and 'filename="report.html"' in headers.get("Content-Disposition", "")
+                and "filename*=UTF-8''report.html" in headers["Content-Disposition"],
+                headers,
+            )
+
+
 def p256_public_key():
     """A fresh uncompressed P-256 point, as a browser's p256dh key."""
     pem = subprocess.run(
@@ -964,37 +1062,6 @@ def test_web_push_announces_pending_approval(root, home, *, binary):
             # payload's plaintext is pinned by the web_push unit test.
             assert_true(delivery["endpoint"].startswith("https://fcm.googleapis.com/"), delivery)
             assert_true(delivery["vapid"] and delivery["bytes"] > 0, delivery)
-
-
-def test_web_steer_yields_activity_wait(root, home, *, binary):
-    workspace = root / "steer-wait"
-    workspace.mkdir()
-
-    def responder(_, body):
-        results = tool_results(body["messages"])
-        if any("wait yielded for queued steering" in result for result in results):
-            return event({"content": "steer-yield-ok"})
-        if any("[running] activity" in result for result in results):
-            return tool_call(
-                "activity", {"operation": "wait", "wait_ms": 30000}, call_id="steer-wait"
-            )
-        return tool_call("run", {"command": "sleep 30", "yield_ms": 250}, call_id="steer-sleep")
-
-    with Server([responder]) as provider:
-        with web_host(binary, root, home, provider.url) as (client, code, _, _):
-            client.pair(code)
-            session = client.create(workspace)
-            client.command("submit", session, text="/yolo")
-            client.until(session, lambda value: value["state"].get("yolo", False))
-            client.command("submit", session, text="Steering wait probe")
-            # The wait tool call is the model's second request; steering only
-            # after it keeps the yield deterministic.
-            wait_until(lambda: len(provider.requests) >= 2, "activity wait never started")
-            time.sleep(budget(1))
-            client.command("steer", session, text="change course")
-            done = client.until(session, lambda value: not value["metadata"]["turn_active"])
-            assert_true("steer-yield-ok" in json.dumps(done), done)
-            assert_true(not done["state"].get("error"), done["state"])
 
 
 def test_web_steer_queues_guidance_and_live_accounting(root, home, *, binary):

@@ -1,3 +1,4 @@
+import { storage } from "./shared/storage.ts";
 import { render } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { Check, Copy, Plus } from "lucide-preact";
@@ -48,6 +49,11 @@ function BrowserInputSample() {
       <BrowserInput
         screen={screen}
         target={target}
+        // No connection here: record what a server would receive.
+        pointer={(x, y, mask) =>
+          ((globalThis as { browserPointer?: number[][] }).browserPointer ??=
+            []).push([x, y, mask])
+        }
         disabled={false}
         showTrackpad
         readOnly={false}
@@ -81,10 +87,10 @@ function DelayedContent() {
 
 function Showcase() {
   const [theme, setTheme] = useState(
-    () => localStorage.getItem("uagent-theme") || "system",
+    () => storage.getItem("uagent-theme") || "system",
   );
   const [zoom, setZoom] = useState(() =>
-    normalizeZoom(readStored<number>(localStorage, "uagent-zoom", 100)),
+    normalizeZoom(readStored<number>(storage, "uagent-zoom", 100)),
   );
   const [enabled, setEnabled] = useState(true);
   const [dialog, setDialog] = useState<
@@ -93,7 +99,7 @@ function Showcase() {
 
   useEffect(() => applyTheme(theme), [theme]);
   useEffect(() => {
-    writeStored(localStorage, "uagent-zoom", zoom);
+    writeStored(storage, "uagent-zoom", zoom);
     applyZoom(zoom);
   }, [zoom]);
 

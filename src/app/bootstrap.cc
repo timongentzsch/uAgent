@@ -19,7 +19,10 @@
 
 #include "include/agent/prompt.h"
 #include "include/api.h"
+#include "include/app/artifact.h"
+#include "include/app/asset_store.h"
 #include "include/app/reference.h"
+#include "include/app/session.h"
 #include "include/browser/browser.h"
 #include "include/cli.h"
 #include "include/core/config.h"
@@ -235,6 +238,10 @@ std::vector<Tool> BuildTools(AppContext& context,
   // Reading a named URL needs no hosted route, so it does not follow search's
   // availability.
   tools.push_back(WebFetchTool(api));
+  if (context.channel && !context.channel->SessionPath().empty() &&
+      AgentDepth() == 0) {
+    tools.push_back(ArtifactTool(context.channel->SessionPath()));
+  }
 #ifdef UAGENT_WEB  // the web host starts the browser and serves its viewer
   if (!browser::DataDirectory().empty() && context.options.browser_session &&
       context.channel && !context.channel->SessionPath().empty() &&
@@ -703,6 +710,22 @@ BootstrapResult Bootstrap(Options options, const char* executable,
       context->runtime.side_usage, MakeApprover(app), MakeToolRefresher(app),
       std::move(instructions), std::move(skills),
       &context->runtime.adaptive_system);
+  if (context->channel && !context->channel->SessionPath().empty()) {
+    context->agent->KeepToolFiles([session_path =
+                                       context->channel->SessionPath()](
+                                      const std::string& path,
+                                      const std::string& name) -> json {
+      std::string bytes, read_error;
+      if (!ReadRegularFile(path, session::kUploadBytes, bytes, read_error)) {
+        return nullptr;
+      }
+      session::AssetStoreResult stored = session::SessionAssets().Store(
+          session_path, bytes,
+          name.empty() ? std::filesystem::path(path).filename().string() : name,
+          /*committed=*/true, /*tool_copy=*/true);
+      return stored.error.empty() ? std::move(stored.value) : json(nullptr);
+    });
+  }
   LogReady(*context);
   return {std::move(context), {}, 0};
 }

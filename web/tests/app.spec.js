@@ -220,6 +220,14 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
   await expect(
     page.getByText(/^Transcript saved to .*\.share\.md$/),
   ).toBeVisible();
+  // /btw answers above the composer and never joins the conversation.
+  const messages = await page.locator(".message").count();
+  await composerInput.fill("/btw what did we just do?");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(page.locator(".side-answer")).toContainText("Verified response");
+  expect(await page.locator(".message").count()).toBe(messages);
+  await page.getByRole("button", { name: "Dismiss side answer" }).click();
+  await expect(page.locator(".side-answer")).toHaveCount(0);
   const toolResult = page.locator(".message.tool").last();
   await expect(toolResult).toContainText("Created browser-proof.txt");
   await toolResult.locator(".tool-disclosure > summary").click();

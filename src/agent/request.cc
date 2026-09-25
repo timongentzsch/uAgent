@@ -106,6 +106,7 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
     }
   }
   const json& messages = projected.is_null() ? source : projected;
+  PublishSideContext(&schemas);
   if (!messages.empty()) {
     last_sent_prompt_ = JsonValue(messages[0], "content", "");
   }

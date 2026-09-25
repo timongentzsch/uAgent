@@ -154,6 +154,28 @@ void RegisterActivityTool(std::vector<Tool>& tools,
     }
     return std::nullopt;
   };
+  activity.intent = "run";
+  activity.header = [](const json& a) {
+    const std::string operation = JsonValue(a, "operation", "");
+    const std::string id = std::to_string(JsonValue(a, "id", int64_t{0}));
+    if (operation == "list") {
+      return json{{"verb", {"Listing", "Listed"}}, {"target", "activities"}};
+    }
+    if (operation == "wait") {
+      return json{{"verb", {"Waiting for", "Waited for"}},
+                  {"target", "activities"}};
+    }
+    if (operation == "stop") {
+      return json{{"verb", {"Stopping", "Stopped"}},
+                  {"target", "activity " + id}};
+    }
+    if (operation == "write" || operation == "resize") {
+      return json{{"verb", {"Sending input to", "Sent input to"}},
+                  {"target", "activity " + id}};
+    }
+    return json{{"verb", {"Checking", "Checked"}},
+                {"target", "activity " + id}};
+  };
   activity.summary = [](const json& a) {
     std::string operation = JsonValue(a, "operation", "");
     int64_t id = JsonValue(a, "id", int64_t{0});

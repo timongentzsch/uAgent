@@ -259,11 +259,10 @@ def test_input_steering_yields_activity_wait(root, home, *, binary):
             root,
             base_env(home, server.url),
             [
-                # Wait for the activity tool CALL, not the substring: the
-                # startup banner lists "activity" and the run result says
-                # "[running] activity <id>", so a bare marker fires before the
-                # model has issued the wait and steering lands a round early.
-                (b"start\n", b"activity(wait"),
+                # Wait for the activity tool CALL row, not a bare "activity":
+                # the banner and the run result mention it before the model
+                # has issued the wait, so steering would land a round early.
+                (b"start\n", b"Waiting for activities"),
                 (b"change course\n", b"steering-wait-ok"),
                 b"/q\n",
             ],

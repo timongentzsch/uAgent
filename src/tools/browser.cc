@@ -4,6 +4,7 @@
 
 #include <poll.h>
 
+#include <chrono>
 #include <cstdint>
 #include <string>
 #include <utility>
@@ -12,10 +13,14 @@
 #include "include/browser/browser.h"
 #include "include/cli.h"
 #include "include/core/fs.h"
+#include "include/core/signals.h"
 #include "include/tools/image_result.h"
 
 namespace uagent {
 namespace {
+constexpr int kBrowserRetryMs = 250;
+constexpr int kBrowserWaitMs = 120000;
+
 ToolResult Handover(const std::string& session_id, const std::string& reason) {
   std::string interaction = session::RandomToken(16);
   json outcome = browser::Request({{"op", "request_human"},
@@ -29,7 +34,7 @@ ToolResult Handover(const std::string& session_id, const std::string& reason) {
       {.id = interaction,
        .kind = "browser",
        .prompt =
-           reason + ". Open the browser viewer and choose Done when finished."},
+           reason + ". Open the browser and choose Hand back when finished."},
       &eof);
   json status;
   for (int attempt = 0; attempt < 250; ++attempt) {
@@ -94,6 +99,28 @@ Tool BrowserTool(std::string session_id) {
     return action == "open" ? "browser open " + JsonValue(args, "url", "")
                             : "browser " + action;
   };
+  tool.intent = "research";
+  tool.header = [](const json& args) {
+    const std::string action = JsonValue(args, "action", "");
+    if (action == "open") {
+      return json{{"verb", {"Opening", "Opened"}},
+                  {"target", JsonValue(args, "url", "")}};
+    }
+    if (action == "type") {
+      return json{{"verb", {"Typing", "Typed"}},
+                  {"target", FirstLine(JsonValue(args, "text", ""))}};
+    }
+    const json verb = action == "observe" ? json{"Looking at", "Looked at"}
+                      : action == "click" ? json{"Clicking in", "Clicked in"}
+                      : action == "press"
+                          ? json{"Pressing a key in", "Pressed a key in"}
+                      : action == "scroll" ? json{"Scrolling", "Scrolled"}
+                      : action == "request_human"
+                          ? json{"Asking you to use", "Asked you to use"}
+                      : action == "release" ? json{"Releasing", "Released"}
+                                            : json{"Checking", "Checked"};
+    return json{{"verb", verb}, {"target", "the browser"}};
+  };
   tool.run = [session_id = std::move(session_id)](const json& args,
                                                   const ToolContext& context) {
     const std::string action = JsonValue(args, "action", "");
@@ -104,19 +131,21 @@ Tool BrowserTool(std::string session_id) {
       return Handover(session_id, JsonValue(args, "reason",
                                             "Please finish in the browser"));
     }
+    // While the human drives, wait for them to hand back or close the
+    // viewer; each retry tells their viewer that the agent is waiting.
     json outcome = browser::Request(command, 30000);
-    if (JsonValue(outcome, "error", "") ==
-        "human controls the browser; wait for Done") {
-      json current = browser::Request(
-          {{"op", "agent_status"}, {"session_id", session_id}}, 1000);
-      if (current.value("ok", false) &&
-          JsonValue(current, "mode", "") != "human") {
-        outcome = browser::Request(command, 30000);
+    const auto give_up = std::chrono::steady_clock::now() +
+                         std::chrono::milliseconds(kBrowserWaitMs);
+    while (JsonValue(outcome, "error", "") ==
+           "human controls the browser; wait for Done") {
+      if (std::chrono::steady_clock::now() >= give_up || AbortRequested() ||
+          context.Expired()) {
+        return ToolFailure(
+            ToolErrorCode::kRemoteError,
+            "error: the user is still using the browser; try again later");
       }
-      if (JsonValue(outcome, "error", "") ==
-          "human controls the browser; wait for Done") {
-        return Handover(session_id, "Browser control moved to a paired device");
-      }
+      poll(nullptr, 0, kBrowserRetryMs);
+      outcome = browser::Request(command, 30000);
     }
     if (auto error = JsonValue(outcome, "error", ""); !error.empty()) {
       return ToolFailure(ToolErrorCode::kRemoteError, "error: " + error);

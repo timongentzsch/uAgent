@@ -1,3 +1,4 @@
+import { storage } from "../shared/storage.ts";
 import type {
   JSONValue,
   Snapshot,
@@ -48,7 +49,7 @@ export function useHost(
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [error, setError] = useState("");
   const [unread, setUnread] = useState(
-    () => new Set(readStored<string[]>(localStorage, "uagent-unread", [])),
+    () => new Set(readStored<string[]>(storage, "uagent-unread", [])),
   );
   const [outgoing, setOutgoing] = useState(() =>
     readStored<Outgoing[]>(sessionStorage, "uagent-outgoing", []),
@@ -64,7 +65,7 @@ export function useHost(
   const subscribed = useRef(false);
   const reading = useRef(false);
   const readCounts = useRef(
-    readStored<Record<string, number>>(localStorage, "uagent-read", {}),
+    readStored<Record<string, number>>(storage, "uagent-read", {}),
   );
   const outgoingRef = useRef(outgoing);
   const localRequests = useRef(new Set<string>());
@@ -73,9 +74,12 @@ export function useHost(
   outgoingRef.current = outgoing;
   reading.current =
     readingConversation && following && document.visibilityState === "visible";
+  // A failed request means offline only when the event stream agrees; with
+  // the stream open it was one request, reported like any other failure.
   const report = useCallback((error: unknown) => {
     const issue = failure(error);
-    if (issue.network) setOnline(false);
+    if (issue.network && stream.current?.readyState !== EventSource.OPEN)
+      setOnline(false);
     else setError(issue.message);
   }, []);
   const snapshot = snapshots[selected];
@@ -133,6 +137,7 @@ export function useHost(
   const forget = useCallback((id: string) => {
     loads.current.delete(id);
     delete live.current[id];
+    delete readCounts.current[id];
     setLoadErrors((prior) => {
       const next = { ...prior };
       delete next[id];
@@ -581,7 +586,7 @@ export function useHost(
     if (selected && authenticated) load(selected).catch(() => {});
   }, [selected, authenticated, load, report]);
   useEffect(() => {
-    writeStored(localStorage, "uagent-unread", [...unread]);
+    writeStored(storage, "uagent-unread", [...unread]);
   }, [unread]);
   useEffect(() => {
     writeStored(sessionStorage, "uagent-outgoing", outgoing);
@@ -597,7 +602,7 @@ export function useHost(
     const incoming = snapshot.metadata?.incoming || 0;
     if ((readCounts.current[selected] || 0) < incoming) {
       readCounts.current[selected] = incoming;
-      writeStored(localStorage, "uagent-read", readCounts.current);
+      writeStored(storage, "uagent-read", readCounts.current);
     }
     setUnread((prior) => {
       if (!prior.has(selected)) return prior;

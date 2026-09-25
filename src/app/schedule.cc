@@ -1,11 +1,16 @@
 // Copyright 2026 Timon Gentzsch
 #include "include/app/schedule.h"
 
+#include <fcntl.h>
+#include <sys/file.h>
+
 #include <algorithm>
+#include <cerrno>
 #include <chrono>
 #include <ctime>
 #include <set>
 #include <string>
+#include <thread>
 
 #include "include/app/control.h"
 #include "include/core/fs.h"
@@ -39,10 +44,21 @@ json Public(json store) {
 }
 json Mutate(const std::function<json(json&)>& change) {
   std::string error;
-  FileLease lease;
-  if (!lease.Acquire(UagentDir("scheduled") + "/write.lock", error)) {
-    return {{"error", error}};
+  // Wait for the lock: the host claims runs the moment a CLI write lands,
+  // while that writer may still hold it; failing fast stranded the run. The
+  // wait is bounded so a writer stopped with Ctrl+Z cannot block the host.
+  Fd lock(open((UagentDir("scheduled") + "/write.lock").c_str(),
+               O_RDWR | O_CREAT | O_CLOEXEC | O_NOFOLLOW, kPrivateFileMode));
+  const auto give_up =
+      std::chrono::steady_clock::now() + std::chrono::seconds(5);
+  while (lock && flock(lock.Get(), LOCK_EX | LOCK_NB) != 0) {
+    if ((errno != EWOULDBLOCK && errno != EINTR) ||
+        std::chrono::steady_clock::now() >= give_up) {
+      return {{"error", "scheduled tasks are busy; try again"}};
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
   }
+  if (!lock) return {{"error", "cannot lock scheduled tasks"}};
   auto store = ReadSchedules();
   if (store.contains("error")) return store;
   auto before = store;

@@ -40,6 +40,7 @@ enum class SessionCommandKind {
   kFork,
   kRewind,
   kShare,
+  kSide,
   kPrompt,
   kSubmit,
   kCreate,
@@ -48,7 +49,6 @@ enum class SessionCommandKind {
   kUnknown,
 };
 
-const char* SessionCommandKindName(SessionCommandKind kind);
 SessionCommandKind ParseSessionCommandKind(std::string_view kind);
 bool ForwardsToWorker(SessionCommandKind kind);
 

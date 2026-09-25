@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <filesystem>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -69,10 +70,70 @@ Agent::Agent(Api& api, std::vector<Tool>& tools, ProcessSupervisor& processes,
 
 json Agent::DisplaySnapshot() const { return ConversationView(conversation_); }
 
-json Agent::RawExchange(const std::string& id, size_t offset) const {
-  return ConversationExchange(
-      conversation_,
-      id.starts_with("m-") || id.starts_with("t-") ? id : "t-" + id, offset);
+void Agent::PublishSideContext(const json* tools) {
+  auto context = std::make_shared<SideContext>();
+  context->messages = conversation_.Messages();
+  context->config = api_.config;
+  context->base_url = api_.base_url;
+  context->api_key = api_.api_key;
+  context->model = api_.model;
+  context->reasoning_effort = api_.reasoning_effort;
+  context->supported_reasoning_efforts = api_.supported_reasoning_efforts;
+  context->ctx_window = api_.ctx_window;
+  context->capabilities = api_.capabilities;
+  context->session_id = session_id_;
+  std::lock_guard lock(side_mutex_);
+  context->tools =
+      tools ? *tools : (side_context_ ? side_context_->tools : json::array());
+  side_context_ = std::move(context);
+}
+
+json Agent::SideQuestion(const std::string& question) const {
+  std::shared_ptr<const SideContext> context;
+  {
+    std::lock_guard lock(side_mutex_);
+    context = side_context_;
+  }
+  if (!context) return {{"error", "nothing to ask about yet"}};
+  // Same prefix and tools as the last request, so the prompt cache serves it;
+  // attachments are prepared per request, so a side question reads text only.
+  json messages = json::array();
+  for (json message : context->messages) {
+    if (const json* parts = JsonArray(message, "content")) {
+      std::string text;
+      for (const json& part : *parts) {
+        if (JsonValue(part, "type", "") == "text") {
+          text += JsonValue(part, "text", "");
+        }
+      }
+      message["content"] = std::move(text);
+    }
+    messages.push_back(std::move(message));
+  }
+  messages.push_back(
+      {{"role", "user"},
+       {"content",
+        "Side question. Answer briefly from this conversation only; do not "
+        "call tools. Neither this question nor your answer is added to the "
+        "conversation.\n\n" +
+            question}});
+  Api side(context->config);
+  side.base_url = context->base_url;
+  side.api_key = context->api_key;
+  side.model = context->model;
+  side.reasoning_effort = context->reasoning_effort;
+  side.supported_reasoning_efforts = context->supported_reasoning_efforts;
+  side.ctx_window = context->ctx_window;
+  side.capabilities = context->capabilities;
+  QuietEvents quiet;
+  ChatResult result =
+      side.Chat(messages, context->tools, 0, context->session_id);
+  if (!result.error.empty()) return {{"error", result.error}};
+  std::string answer = result.content;
+  if (!result.tool_calls.empty()) {
+    answer += "\n\n(The model tried to use tools; nothing was run.)";
+  }
+  return {{"answer", std::move(answer)}, {"usage", result.usage}};
 }
 
 void Agent::PublishMessage(const std::string& request_id) {
@@ -113,6 +174,7 @@ void Agent::Reset() {
   if (adaptive_system_) adaptive_system_->Reset();
   last_sent_prompt_.clear();
   conversation_.Reset(BaselineMessages(), BaselineKinds());
+  PublishSideContext();
   turn_search_trace_.Reset();
   session_usage_ = Usage{};
   api_.session_cost = 0;
@@ -306,6 +368,7 @@ bool Agent::Load(const std::string& path, const std::string& expected_cwd,
   }
   if (next.Owns(lock_path)) writer_.Swap(next);
   conversation_ = std::move(restored);
+  PublishSideContext();
   last_sent_prompt_ = std::move(record.state.last_sent_prompt);
   if (adaptive_system_) {
     adaptive_system_->instructions = std::move(record.state.adaptive_system);
@@ -368,6 +431,7 @@ bool Agent::RewindToTurn(int64_t turn, std::string& error) {
   total_user_turns_ = turn - 1;
   turn_id_ = turn - 1;
   logged_msgs_ = std::min(logged_msgs_, conversation_.Size());
+  PublishSideContext();
   conversation_.RecordDisplay(
       "reset-boundary", {{"turn", turn}, {"time", UtcStamp("%Y%m%dT%H%M%SZ")}});
   ++revision_;
@@ -818,20 +882,25 @@ void Agent::ReportMemoryCompletion(BackgroundCompletion& completion) {
   {
     bool warning =
         event.action == "failed" || event.action == "receipt_unavailable";
-    const char* mark = warning ? "!" : "◇";
-    if (event.action == "created" || event.action == "updated") mark = "◆";
     std::string label = event.action;
     if (event.action == "no_change") {
       label = "extraction complete · nothing saved";
     } else if (event.action == "receipt_unavailable") {
       label = "extraction complete · receipt unavailable";
     }
-    std::string line = std::string(mark) + " memory " + label;
+    std::string line = "Memory " + label;
     if (!event.key.empty()) line += " · " + event.key;
-    const bool changed = event.action == "created" ||
-                         event.action == "updated" || event.action == "deleted";
-    std::string web_label = "memory " + label;
-    if (!event.key.empty()) web_label += " · " + event.key;
+    // The same row shape as a memory tool call: verb, key, link.
+    const json verb =
+        event.action == "created"   ? json{"Saving memory", "Saved memory"}
+        : event.action == "updated" ? json{"Updating memory", "Updated memory"}
+        : event.action == "deleted" ? json{"Forgetting memory", "Forgot memory"}
+        : warning ? json{"Saving memory", "Could not save memory"}
+                  : json{"Checking memory", "Checked memory"};
+    json parts = json::array();
+    if (!event.key.empty() && event.action != "deleted") {
+      parts.push_back(LinkPart("memory", event.key, "Open memory"));
+    }
     json block = conversation_.RecordEntry(
         {{"text", line + (event.preview.empty() ? "" : "\n" + event.preview)},
          {"memory",
@@ -839,9 +908,10 @@ void Agent::ReportMemoryCompletion(BackgroundCompletion& completion) {
            {"key", event.key},
            {"automatic", event.automatic},
            {"minor", minor}}},
-         {"activity",
-          {{"category", changed ? "change" : "explore"},
-           {"label", std::move(web_label)}}},
+         {"view",
+          {{"verb", verb}, {"target", event.key}, {"output", "markdown"}}},
+         {"parts", std::move(parts)},
+         {"activity", {{"category", "memory"}, {"label", line}}},
          {"status", warning ? "failed" : "completed"},
          {"turn_root", turn_root_}});
     Emit(Event{EventId::kMessageChanged, {{"block", block}}});
@@ -891,13 +961,28 @@ void Agent::DeliverActivityCompletions(
                             : completion.display_label;
     if (!label.empty()) record.title += " · " + Utf8Trunc(label, 160);
     record.summary = Utf8Trunc(FirstLine(completion.output), size_t{512});
-    const json completion_activity = {{"category", "execute"},
-                                      {"label", record.title}};
+    const json completion_activity = {
+        {"category",
+         completion.kind == ActivityKind::kSubagent ? "delegate" : "run"},
+        {"label", record.title}};
     record.activity = completion_activity;
     std::string text = record.title + (succeeded ? " completed" : " failed");
     if (!completion.output.empty()) text += "\n" + completion.output;
+    const bool agent = completion.kind == ActivityKind::kSubagent &&
+                       !completion.source_id.empty();
     json block = conversation_.RecordEntry(
         {{"text", std::move(text)},
+         {"view",
+          {{"verb",
+            json{agent ? "Delegating" : "Running",
+                 succeeded ? (agent ? "Delegated" : "Finished") : "Failed"}},
+           {"target", Utf8Trunc(label.empty() ? record.title : label, 160)},
+           {"output", "tail"}}},
+         {"parts",
+          json::array(
+              {agent ? LinkPart("agent", completion.source_id, "Open agent")
+                     : LinkPart("activity", completion.activity_id,
+                                "Open activity")})},
          {"activity_id", completion.activity_id},
          // The full command travels with the record (bounded): rows and
          // titles abbreviate, but the popup and history must not lose it
@@ -996,12 +1081,23 @@ bool Agent::DrainAttachments() {
       conversation_.Push({{"role", "user"}, {"content", std::move(content)}},
                          MessageKind::kAttachment);
       json call_ids = json::array();
+      json files = json::array();
       for (const Attachment& attachment : sourced) {
         call_ids.push_back(attachment.source_call_id);
+        // The tool's row shows the file, so a client needs its own copy.
+        json kept = keep_tool_file_
+                        ? keep_tool_file_(attachment.path, attachment.name)
+                        : json(nullptr);
+        if (kept.is_object()) {
+          kept["image"] = attachment.image;
+          files.push_back(std::move(kept));
+        }
       }
-      conversation_.RecordDisplay(
-          conversation_.LastDisplayId(),
-          {{"origin", "tool"}, {"source_call_ids", std::move(call_ids)}});
+      json facts = {{"origin", "tool"},
+                    {"source_call_ids", std::move(call_ids)}};
+      if (!files.empty()) facts["files"] = std::move(files);
+      conversation_.RecordDisplay(conversation_.LastDisplayId(),
+                                  std::move(facts));
     } else {
       conversation_.Push(HarnessMessage("[attachment failed] " + error),
                          MessageKind::kInternal);

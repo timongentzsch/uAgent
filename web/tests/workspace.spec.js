@@ -4,7 +4,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 test("appearance and configuration remain usable at large scales", async ({
   page,
   session,
-}, testInfo) => {
+}) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/#session=${session.id}`);
   await expect(page.locator(".composer .status-led.active")).toBeVisible();
@@ -25,7 +25,6 @@ test("appearance and configuration remain usable at large scales", async ({
   await expect(
     page.getByText("Scales the entire interface, conversation included"),
   ).toBeVisible();
-  await page.screenshot({ path: testInfo.outputPath("settings-mobile.png") });
   const interfaceText = await page
     .locator(".conversation-head h1")
     .evaluate((element) => getComputedStyle(element).fontSize);
@@ -199,11 +198,13 @@ test("unread completions, background activity and conversation lifecycle", async
   await expect(
     page.getByRole("button", { name: "Activity", exact: true }),
   ).toContainText("1 command");
-  await page.getByRole("button", { name: "Activity", exact: true }).click();
+  // "Now" lists the running command; its row opens the inspector sheet.
+  const now = page.getByRole("button", { name: "Activity", exact: true });
+  await now.click();
   const activity = page
     .locator(".activity-row")
     .filter({ hasText: "BROWSER_ACTIVITY" });
-  await activity.locator("button").first().click();
+  await activity.locator(".activity-open").click();
   await expect(page.getByRole("dialog").locator(".detail-command")).toHaveText(
     "printf BROWSER_ACTIVITY; sleep 10",
   );
@@ -211,14 +212,15 @@ test("unread completions, background activity and conversation lifecycle", async
     .getByRole("dialog")
     .getByRole("button", { name: /^Close / })
     .click();
+  await now.click();
   await activity.getByRole("button", { name: /^Stop / }).click();
+  await expect(page.locator(".composer .activity-toggle")).not.toContainText(
+    "1 command",
+  );
+  // Finished work leaves "now"; its call's row stops reading as running.
   await expect(
-    page.getByRole("button", { name: "Activity", exact: true }),
-  ).not.toContainText("1 command");
-  await page
-    .getByRole("button", { name: /Show \d+ completed \/ idle/ })
-    .click();
-  await expect(activity).toContainText("stopped");
+    page.locator(".tool-disclosure").filter({ hasText: "BROWSER_ACTIVITY" }),
+  ).not.toContainText("running");
   await expect(page.locator(".composer .status-led.active")).toBeVisible();
   await conversationMenu.click();
   await page

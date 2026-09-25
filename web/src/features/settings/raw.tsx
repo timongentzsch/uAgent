@@ -219,7 +219,8 @@ export default function Raw({
             link.href = url;
             link.download = `${exchange?.id || id || "result"}-${tab}.txt`;
             link.click();
-            setTimeout(() => URL.revokeObjectURL(url), 0);
+            // Some browsers start the download after click() returns.
+            setTimeout(() => URL.revokeObjectURL(url), 30_000);
           }}
         >
           <Download />

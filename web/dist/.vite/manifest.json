@@ -650,8 +650,8 @@
     "file": "assets/message-B79ztpda.css",
     "src": "_message-B79ztpda.css"
   },
-  "_message-BLjAsxFC.js": {
-    "file": "assets/message-BLjAsxFC.js",
+  "_message-BEgnC3Kw.js": {
+    "file": "assets/message-BEgnC3Kw.js",
     "name": "message",
     "imports": [
       "_ui-Ca6YsEiZ.js",
@@ -805,7 +805,7 @@
     "name": "ui"
   },
   "index.html": {
-    "file": "assets/index-BZcMbtan.js",
+    "file": "assets/index-DctXxRIq.js",
     "name": "index",
     "src": "index.html",
     "isEntry": true,
@@ -1837,13 +1837,13 @@
     ]
   },
   "src/features/chat/chat.tsx": {
-    "file": "assets/chat-LIxoT-Aq.js",
+    "file": "assets/chat-CuMo-V32.js",
     "name": "chat",
     "src": "src/features/chat/chat.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_ui-Ca6YsEiZ.js",
-      "_message-BLjAsxFC.js"
+      "_message-BEgnC3Kw.js"
     ]
   },
   "src/features/chat/conversation-actions.tsx": {
@@ -1867,7 +1867,7 @@
     ]
   },
   "src/features/chat/inspector.tsx": {
-    "file": "assets/inspector-9W6dtCdp.js",
+    "file": "assets/inspector-B5tLOFZe.js",
     "name": "inspector",
     "src": "src/features/chat/inspector.tsx",
     "isDynamicEntry": true,
@@ -1877,7 +1877,7 @@
       "_activity-status-DEVanXVz.js",
       "_session-summary-CN-_Zl3t.js",
       "_arrow-left-B1lzZ2we.js",
-      "_message-BLjAsxFC.js",
+      "_message-BEgnC3Kw.js",
       "_square-v-iY6tzD.js",
       "_display-DD7RcVmk.js",
       "_quantities-CUEaPVqX.js",

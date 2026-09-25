@@ -78,6 +78,10 @@ function MentionFile({
   );
 }
 
+// Deliveries worth a line: how the model got a file only when it was not
+// the file itself (a reference, a vision-model description).
+const AS_SENT = new Set(["Image", "Document", "Text", "Audio", "Video"]);
+
 function MessageView({
   block,
   online,
@@ -314,11 +318,13 @@ function MessageView({
             />
           ),
         )}
-      {block.deliveries?.map((item) => (
-        <p class="small muted">
-          {item.name} · {item.delivery}
-        </p>
-      ))}
+      {block.deliveries
+        ?.filter((item) => !AS_SENT.has(item.delivery))
+        .map((item) => (
+          <p class="small muted">
+            {item.name} · {item.delivery}
+          </p>
+        ))}
       {!online && !!block.files?.length && (
         <p class="small muted">Attachments are available when connected.</p>
       )}

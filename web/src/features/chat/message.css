@@ -118,6 +118,35 @@
 .tool-row-head > .tool-disclosure {
   min-width: 0;
 }
+/* Status only when it matters: a running headline shimmers softly and a
+   failed one reads in the error colour; a finished one needs no mark. */
+.tool-disclosure.running > summary .disclosure-label {
+  background: linear-gradient(
+      90deg,
+      var(--muted) 30%,
+      var(--text) 50%,
+      var(--muted) 70%
+    )
+    0 0 / 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: tool-shimmer 2s linear infinite;
+}
+@keyframes tool-shimmer {
+  to {
+    background-position: -150% 0;
+  }
+}
+.tool-disclosure.failed > summary .disclosure-label,
+.tool-failed {
+  color: var(--removed);
+}
+.tool-failed {
+  width: 0.9em;
+  height: 0.9em;
+  flex: none;
+}
 .tool-disclosure > summary small {
   min-width: 0;
   max-width: 32ch;

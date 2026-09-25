@@ -27,7 +27,6 @@ import {
 import { MessageMenu } from "./message-menu.tsx";
 import { AttachmentList, ImageTile } from "../../shared/attachments.tsx";
 import { diffCounts, formatStat } from "./tool-preview.ts";
-import { StatusLed } from "../../shared/connection-status.tsx";
 import { useBlockReader } from "../../state/block-reader.ts";
 import { duration } from "../../shared/duration.ts";
 import { ToolInline, ToolRow } from "./tool-row.tsx";
@@ -501,10 +500,9 @@ function GroupRow(props: MessageProps) {
       className="message tool group"
     >
       <DisclosureRow
-        className="tool-disclosure"
+        className={`tool-disclosure${running ? " running" : ""}`}
         label={running ? present : past}
         status={groupSummary(intent, steps)}
-        icon={<StatusLed state={running ? "running" : "active"} />}
       >
         {steps.map((step) => (
           <Message key={step.key || step.id} {...props} block={step} />

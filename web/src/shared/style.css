@@ -605,10 +605,6 @@ pre code {
 .status-led.running {
   animation: led-breathe 1.6s ease-in-out infinite;
 }
-.status-led.failed {
-  background: var(--removed);
-  border-color: var(--removed);
-}
 /* A corner dot on an icon button, e.g. the agent using the browser. */
 .browser-toggle {
   position: relative;

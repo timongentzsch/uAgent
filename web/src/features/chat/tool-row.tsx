@@ -8,7 +8,7 @@ import type {
   PresentedBlock,
   ToolPart,
 } from "../../shared/types.ts";
-import { StatusLed } from "../../shared/connection-status.tsx";
+import { X } from "lucide-preact";
 import { AttachmentList, ImageTile } from "../../shared/attachments.tsx";
 import { useContext, useLayoutEffect, useRef } from "preact/hooks";
 import { LiveActivities } from "../../state/live-activities.ts";
@@ -110,8 +110,9 @@ function useLive(block: PresentedBlock) {
   return live && active(live) ? live : undefined;
 }
 
-// One chrome for every tool call and receipt: a status dot, the view's verb
-// and target, and on expand its input, full output and raw record.
+// One chrome for every tool call and receipt: the view's verb and target,
+// and on expand its input, full output and raw record. Status shows only
+// when it matters: a running headline shimmers, a failed one says so.
 export function ToolRow({
   block,
   running,
@@ -150,14 +151,10 @@ export function ToolRow({
   const diff = block.change?.includes("\n") ? block.change : "";
   return (
     <DisclosureRow
-      className="tool-disclosure"
+      className={`tool-disclosure${running || live ? " running" : failed ? " failed" : ""}`}
       label={title}
       status={subtitle}
-      icon={
-        <StatusLed
-          state={running || live ? "running" : failed ? "failed" : "active"}
-        />
-      }
+      icon={failed ? <X class="tool-failed" aria-label="Failed" /> : undefined}
       onToggle={onToggle}
     >
       <div class="tool-body">

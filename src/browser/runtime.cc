@@ -291,9 +291,11 @@ bool Runtime::Start(std::string& error, bool profile_setup) {
   std::vector<std::string> chrome = {
       "google-chrome-stable", "--user-data-dir=" + profile, "--no-first-run",
       "--no-default-browser-check",
-      // Pin the window to the display: with no window manager Chrome would
-      // restore its saved placement, leaving black root at the edges.
-      "--window-position=0,0", "--window-size=1280,800", "--ozone-platform=x11",
+      // Cover the whole 1280x800 display. With no window manager Chrome
+      // restores its saved placement unless pinned, and it shrinks a window
+      // that would exactly fill the screen by one pixel (1279x799), leaving
+      // a black line; one pixel past the edge is kept as asked.
+      "--window-position=0,0", "--window-size=1281,801", "--ozone-platform=x11",
       "--password-store=basic", "--restore-last-session"};
   if (profile_setup) {
     chrome_pid_ = Launch(chrome);

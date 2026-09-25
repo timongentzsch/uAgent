@@ -11,7 +11,7 @@ import { Popover } from "../../shared/popover.tsx";
 import type { ComponentChildren } from "preact";
 import { ChevronDown, ClipboardPaste, Copy, Keyboard } from "lucide-preact";
 import BrowserInput from "./input.tsx";
-import { observeCursor, type CursorShape } from "./cursor.ts";
+import { observeCursor, type CursorShape, sendPointer } from "./cursor.ts";
 import "./browser.css";
 
 const VIEWER_RECONNECT_DELAY_MS = 1_000;
@@ -295,6 +295,9 @@ function Viewer({
       <BrowserInput
         screen={screen}
         target={target}
+        pointer={(x, y, mask) => {
+          if (viewer.current) sendPointer(viewer.current, x, y, mask);
+        }}
         disabled={!live}
         showTrackpad={touch && !readOnly}
         readOnly={readOnly}

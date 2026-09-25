@@ -450,6 +450,15 @@ test.describe("real noVNC input in a mobile modal", () => {
     await touch(right, "pointerdown", 4, button.x + 5, button.y + 5);
     await touch(right, "pointerup", 4, button.x + 5, button.y + 5);
     expect(remote.pointers.some((point) => point.buttons === 4)).toBe(true);
+    // noVNC's own touch cursor (a fixed canvas on the body, drawn at the
+    // remote's native size) never shows beside the viewer's pointer.
+    expect(
+      await page.evaluate(() =>
+        [...document.querySelectorAll("body > canvas")].every(
+          (node) => getComputedStyle(node).display === "none",
+        ),
+      ),
+    ).toBe(true);
     await dialog.screenshot({
       path: testInfo.outputPath("visible-vnc-cursor.png"),
     });

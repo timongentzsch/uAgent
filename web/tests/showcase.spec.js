@@ -87,22 +87,16 @@ test.describe("browser input showcase on a phone", () => {
     await page.getByRole("button", { name: "Open browser input" }).click();
     const canvas = page.locator(".showcase-browser-input .browser-rfb canvas");
     await expect(canvas).toBeVisible();
-    await canvas.evaluate((element) => {
-      globalThis.browserInputEvents = [];
-      for (const type of ["mousedown", "mouseup", "mousemove", "wheel"])
-        element.addEventListener(type, (event) => {
-          globalThis.browserInputEvents.push({
-            type,
-            button: event.button,
-            buttons: event.buttons,
-            x: event.clientX,
-            y: event.clientY,
-            deltaY: event.deltaY || 0,
-          });
-        });
-    });
+    // What a VNC server would receive: [x, y, button mask] at framebuffer
+    // pixels of the 800x500 sample screen.
     const takeEvents = () =>
-      page.evaluate(() => globalThis.browserInputEvents.splice(0));
+      page.evaluate(() =>
+        (globalThis.browserPointer ?? []).splice(0).map(([x, y, mask]) => ({
+          x,
+          y,
+          mask,
+        })),
+      );
     const pad = page.getByLabel("Browser trackpad");
     await pad.scrollIntoViewIfNeeded();
     await page.evaluate(
@@ -120,19 +114,13 @@ test.describe("browser input showcase on a phone", () => {
 
     await pointer(pad, "pointerdown", 1, x, y);
     await pointer(pad, "pointerup", 1, x, y);
-    expect((await takeEvents()).slice(0, 2)).toMatchObject([
-      { type: "mousedown", button: 0, buttons: 1 },
-      { type: "mouseup", button: 0, buttons: 0 },
-    ]);
+    expect((await takeEvents()).map(({ mask }) => mask)).toEqual([1, 0]);
 
     await pointer(pad, "pointerdown", 2, x - 25, y);
     await pointer(pad, "pointerdown", 3, x + 25, y);
     await pointer(pad, "pointerup", 2, x - 25, y);
     await pointer(pad, "pointerup", 3, x + 25, y);
-    expect((await takeEvents()).slice(0, 2)).toMatchObject([
-      { type: "mousedown", button: 2, buttons: 2 },
-      { type: "mouseup", button: 2, buttons: 0 },
-    ]);
+    expect((await takeEvents()).map(({ mask }) => mask)).toEqual([4, 0]);
 
     await pointer(pad, "pointerdown", 4, x - 25, y + 30);
     await pointer(pad, "pointerdown", 5, x + 25, y + 30);
@@ -140,9 +128,12 @@ test.describe("browser input showcase on a phone", () => {
     await pointer(pad, "pointermove", 5, x + 25, y - 30);
     await pointer(pad, "pointerup", 4, x - 25, y - 30);
     await pointer(pad, "pointerup", 5, x + 25, y - 30);
-    expect(await takeEvents()).toEqual(
-      expect.arrayContaining([expect.objectContaining({ type: "wheel" })]),
-    );
+    // Scrolling is wheel notches: button 4 (up) or 5 (down) pressed briefly.
+    expect(
+      (await takeEvents()).some(
+        ({ mask }) => mask & (1 << 3) || mask & (1 << 4),
+      ),
+    ).toBe(true);
 
     const left = page.getByRole("button", { name: "Left", exact: true });
     const right = page.getByRole("button", { name: "Right", exact: true });
@@ -167,20 +158,17 @@ test.describe("browser input showcase on a phone", () => {
       leftBox.y + leftBox.height / 2,
     );
     const drag = await takeEvents();
-    expect(drag[0]).toMatchObject({ type: "mousedown", buttons: 1 });
-    expect(drag).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ type: "mousemove", buttons: 1 }),
-      ]),
-    );
-    expect(drag.at(-2)).toMatchObject({ type: "mouseup", buttons: 0 });
-    const lastMove = drag.findLast(({ type }) => type === "mousemove");
-    expect(
-      await page.evaluate(
-        ({ x, y }) => document.elementFromPoint(x, y)?.tagName,
-        lastMove,
-      ),
-    ).toBe("CANVAS");
+    expect(drag[0].mask).toBe(1);
+    // The button stays held while the pointer moves, then lets go.
+    const held = drag.filter(({ mask }) => mask === 1);
+    expect(held.some(({ x }) => x !== drag[0].x)).toBe(true);
+    expect(drag.at(-1).mask).toBe(0);
+    for (const { x, y } of drag) {
+      expect(x).toBeGreaterThanOrEqual(0);
+      expect(x).toBeLessThanOrEqual(799);
+      expect(y).toBeGreaterThanOrEqual(0);
+      expect(y).toBeLessThanOrEqual(499);
+    }
 
     await pointer(
       left,
@@ -196,11 +184,7 @@ test.describe("browser input showcase on a phone", () => {
       leftBox.x + leftBox.width / 2,
       leftBox.y + leftBox.height / 2,
     );
-    expect((await takeEvents()).map(({ type }) => type)).toEqual([
-      "mousedown",
-      "mouseup",
-      "mousemove",
-    ]);
+    expect((await takeEvents()).map(({ mask }) => mask)).toEqual([1, 0]);
 
     await pointer(
       left,
@@ -210,11 +194,7 @@ test.describe("browser input showcase on a phone", () => {
       leftBox.y + leftBox.height / 2,
     );
     await page.evaluate(() => dispatchEvent(new Event("blur")));
-    expect((await takeEvents()).map(({ type }) => type)).toEqual([
-      "mousedown",
-      "mouseup",
-      "mousemove",
-    ]);
+    expect((await takeEvents()).map(({ mask }) => mask)).toEqual([1, 0]);
 
     const viewport = page.getByLabel("Browser viewport");
     const viewBox = await viewport.boundingBox();
@@ -283,8 +263,7 @@ test.describe("browser input showcase on a phone", () => {
     expect(
       await target.evaluate((element) => element.style.transform),
     ).not.toBe(zoomTransform);
-    expect((await takeEvents()).every(({ type }) => type === "mousemove")).toBe(
-      true,
-    );
+    // View gestures pan and zoom the picture; they never press a button.
+    expect((await takeEvents()).every(({ mask }) => mask === 0)).toBe(true);
   });
 });

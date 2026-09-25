@@ -74,8 +74,8 @@
     "file": "assets/browser-D23QF_vn.css",
     "src": "_browser-D23QF_vn.css"
   },
-  "_browser-xTGjBpCs.js": {
-    "file": "assets/browser-xTGjBpCs.js",
+  "_browser-DATkqdS6.js": {
+    "file": "assets/browser-DATkqdS6.js",
     "name": "browser",
     "imports": [
       "_ui-BKaMWZaA.js"
@@ -805,7 +805,7 @@
     "name": "ui"
   },
   "index.html": {
-    "file": "assets/index-CqcAPWYl.js",
+    "file": "assets/index-BUj8icpr.js",
     "name": "index",
     "src": "index.html",
     "isEntry": true,
@@ -1824,7 +1824,7 @@
     ]
   },
   "src/features/browser/browser.tsx": {
-    "file": "assets/browser-D1yxT36h.js",
+    "file": "assets/browser-BOlI0mGz.js",
     "name": "browser",
     "src": "src/features/browser/browser.tsx",
     "isDynamicEntry": true,
@@ -1833,7 +1833,7 @@
       "_api-DFQT3Ll-.js",
       "_popover-Bg9AdWmb.js",
       "_connection-status-DWfHvNtI.js",
-      "_browser-xTGjBpCs.js"
+      "_browser-DATkqdS6.js"
     ]
   },
   "src/features/chat/chat.tsx": {
@@ -2230,7 +2230,7 @@
     ]
   },
   "ui.html": {
-    "file": "assets/ui-CrjhWqDD.js",
+    "file": "assets/ui-D5hNFRIT.js",
     "name": "ui",
     "src": "ui.html",
     "isEntry": true,
@@ -2241,7 +2241,7 @@
       "_popover-Bg9AdWmb.js",
       "_plus-CR0tgdK_.js",
       "_size-controls-CPlglWiu.js",
-      "_browser-xTGjBpCs.js"
+      "_browser-DATkqdS6.js"
     ],
     "css": [
       "assets/ui-DtV2Ev_L.css"

@@ -49,6 +49,11 @@ function BrowserInputSample() {
       <BrowserInput
         screen={screen}
         target={target}
+        // No connection here: record what a server would receive.
+        pointer={(x, y, mask) =>
+          ((globalThis as { browserPointer?: number[][] }).browserPointer ??=
+            []).push([x, y, mask])
+        }
         disabled={false}
         showTrackpad
         readOnly={false}

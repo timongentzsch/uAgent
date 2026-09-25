@@ -16,10 +16,12 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <chrono>
 #include <condition_variable>
 #include <cstddef>
 #include <cstdio>
+#include <cstring>
 #include <deque>
 #include <filesystem>
 #include <map>
@@ -1013,24 +1015,36 @@ void Master::AssetRead(const Request& request, Response& response) {
                            (image || html || mime == "application/pdf");
   // Replace the app's policy rather than add to it: browsers enforce every
   // CSP header, so the app's would block the file's own scripts and forbid
-  // the conversation from framing its preview.
+  // the conversation from framing its preview. HTML runs its scripts in an
+  // opaque origin; anything else, SVG included, may run none at all.
   response.headers.erase("Content-Security-Policy");
-  if (html) {
-    response.set_header("Content-Security-Policy",
-                        "sandbox allow-scripts allow-forms allow-popups; "
-                        "frame-ancestors 'self'");
-  } else if (inline_view) {
-    response.set_header("Content-Security-Policy", "frame-ancestors 'self'");
-  }
+  response.set_header("Content-Security-Policy",
+                      html ? "sandbox allow-scripts allow-forms allow-popups; "
+                             "frame-ancestors 'self'"
+                      : mime == "image/svg+xml"
+                          ? "sandbox; default-src 'none'; img-src data:; "
+                            "style-src 'unsafe-inline'; frame-ancestors 'self'"
+                          : "default-src 'none'; frame-ancestors 'self'");
   if (!inline_view) {
-    std::string name = JsonValue(asset, "name", "download");
-    for (char& ch : name) {
-      if (ch == '"' || ch == '\\' || static_cast<unsigned char>(ch) < 32) {
-        ch = '_';
+    // RFC 6266: an ASCII fallback for old clients, the exact UTF-8 name
+    // percent-encoded for the rest.
+    const std::string name = JsonValue(asset, "name", "download");
+    std::string fallback, encoded;
+    for (const char ch : name) {
+      const auto byte = static_cast<unsigned char>(ch);
+      fallback += byte < 32 || byte > 126 || ch == '"' || ch == '\\' ? '_' : ch;
+      if (std::isalnum(byte) || std::strchr("-._~", ch) != nullptr) {
+        encoded += ch;
+      } else {
+        constexpr char kHex[] = "0123456789ABCDEF";
+        encoded += '%';
+        encoded += kHex[byte >> 4];
+        encoded += kHex[byte & 15];
       }
     }
     response.set_header("Content-Disposition",
-                        "attachment; filename=\"" + name + "\"");
+                        "attachment; filename=\"" + fallback +
+                            "\"; filename*=UTF-8''" + encoded);
   }
   response.set_content(std::move(bytes),
                        inline_view || html ? mime : "application/octet-stream");

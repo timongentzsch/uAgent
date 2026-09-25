@@ -948,11 +948,16 @@ def test_web_side_question_answers_beside_a_running_turn(root, home, *, binary):
 
 def test_web_artifact_is_shared_sandboxed_and_downloadable(root, home, *, binary):
     (root / "report.html").write_text("<script>document.title='x'</script>REPORT")
+    (root / "picture.svg").write_text(
+        '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'
+    )
 
     def responder(_, body):
-        if any(message.get("role") == "tool" for message in body["messages"]):
+        shared = sum(message.get("role") == "tool" for message in body["messages"])
+        if shared == 2:
             return event({"content": "shared"})
-        return tool_call("artifact", {"path": "report.html"}, call_id="share")
+        path = ["report.html", "picture.svg"][shared]
+        return tool_call("artifact", {"path": path}, call_id=f"share-{shared}")
 
     with Server([responder]) as provider:
         with web_host(binary, root, home, provider.url) as (client, code, _, _):
@@ -972,7 +977,14 @@ def test_web_artifact_is_shared_sandboxed_and_downloadable(root, home, *, binary
                 for part in block.get("parts") or []
                 if part["kind"] == "file"
             ]
-            assert_true(len(files) == 1 and files[0]["name"] == "report.html", files)
+            assert_true([file["name"] for file in files] == ["report.html", "picture.svg"], files)
+            # An SVG is an image, but its script must never run on this origin.
+            status, _, headers = client.request(
+                f"/api/sessions/{session['id']}/assets/{files[1]['id']}"
+            )
+            policy = headers.get("Content-Security-Policy", "")
+            assert_true(status == 200 and "sandbox" in policy, headers)
+            assert_true("allow-scripts" not in policy, headers)
             url = f"/api/sessions/{session['id']}/assets/{files[0]['id']}"
             status, body, headers = client.request(url)
             assert_true(status == 200 and b"REPORT" in body, (status, body))
@@ -984,7 +996,8 @@ def test_web_artifact_is_shared_sandboxed_and_downloadable(root, home, *, binary
             status, _, headers = client.request(url + "?download=1")
             assert_true(
                 status == 200
-                and 'filename="report.html"' in headers.get("Content-Disposition", ""),
+                and 'filename="report.html"' in headers.get("Content-Disposition", "")
+                and "filename*=UTF-8''report.html" in headers["Content-Disposition"],
                 headers,
             )
 

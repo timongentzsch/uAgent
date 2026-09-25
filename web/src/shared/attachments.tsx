@@ -65,7 +65,15 @@ export function ImageTile({ src, name }: ViewedImage) {
       aria-label={`View ${name}`}
       onClick={() => view({ src, name })}
     >
-      <img src={src} alt={name} loading="lazy" />
+      <img
+        src={src}
+        alt={name}
+        loading="lazy"
+        // A display copy the host no longer keeps leaves no broken image.
+        onError={(event) =>
+          event.currentTarget.parentElement?.setAttribute("hidden", "")
+        }
+      />
     </button>
   );
 }

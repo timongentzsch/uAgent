@@ -719,11 +719,10 @@ BootstrapResult Bootstrap(Options options, const char* executable,
       if (!ReadRegularFile(path, session::kUploadBytes, bytes, read_error)) {
         return nullptr;
       }
-      session::AssetStore store;
-      session::AssetStoreResult stored = store.Store(
+      session::AssetStoreResult stored = session::SessionAssets().Store(
           session_path, bytes,
           name.empty() ? std::filesystem::path(path).filename().string() : name,
-          /*committed=*/true);
+          /*committed=*/true, /*tool_copy=*/true);
       return stored.error.empty() ? std::move(stored.value) : json(nullptr);
     });
   }

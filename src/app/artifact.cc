@@ -30,8 +30,7 @@ Tool ArtifactTool(const std::string& session_path) {
           return ToolFailure(ToolErrorCode::kInvalidArguments,
                              "error: " + error);
         }
-        session::AssetStore store;
-        session::AssetStoreResult stored = store.Store(
+        session::AssetStoreResult stored = session::SessionAssets().Store(
             session_path, bytes, std::filesystem::path(path).filename(),
             /*committed=*/true);
         if (!stored.error.empty()) {

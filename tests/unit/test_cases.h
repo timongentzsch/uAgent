@@ -48,6 +48,7 @@ namespace uagent {
   X(TestReceiptLog)                              \
   X(TestReceiptLogBackpressure)                  \
   X(TestHostCommandKinds)                        \
+  X(TestToolCopiesKeepRoomForUserFiles)          \
   X(TestSandboxPolicy)                           \
   X(TestSandboxRendering)                        \
   X(TestSandboxTrampolineArgs)                   \

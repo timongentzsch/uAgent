@@ -7,9 +7,13 @@
 
 #include "include/app/session_command.h"
 
+#include <filesystem>
 #include <string>
 #include <utility>
 
+#include "include/app/asset_store.h"
+#include "include/core/fs.h"
+#include "include/core/limits.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {
@@ -193,6 +197,24 @@ void TestHostCommandKinds() {
                      session::SessionCommandKind::kUnknown}) {
     CHECK(!session::ForwardsToWorker(local));
   }
+}
+
+// Display copies of tool files (screenshots) evict their oldest instead of
+// filling the session's quota, so the user's own uploads always fit.
+void TestToolCopiesKeepRoomForUserFiles() {
+  TestWorkspace workspace("asset-tool-copies");
+  const std::string session = UagentDir("history") + "/project/web-a.json";
+  session::AssetStore store;
+  for (size_t i = 0; i < kMaxSessionAssets + 8; ++i) {
+    CHECK(store.Store(session, "shot", "shot.png", true, true).error.empty());
+  }
+  size_t copies = 0;
+  for (const auto& entry :
+       std::filesystem::directory_iterator(session + ".assets")) {
+    copies += entry.path().extension() == ".data";
+  }
+  CHECK(copies <= kMaxSessionAssets / 2);
+  CHECK(store.Store(session, "mine", "notes.txt", true).error.empty());
 }
 
 }  // namespace uagent

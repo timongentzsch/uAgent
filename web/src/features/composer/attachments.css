@@ -6,8 +6,16 @@
   max-height: calc(var(--viewport-height) * 0.16);
   overflow: auto;
 }
+/* Before sending: one strip that scrolls sideways, never another line. */
 .composer .attachments {
+  flex-wrap: nowrap;
+  max-height: none;
   padding: var(--space-2) var(--space-4);
+  overscroll-behavior-x: contain;
+}
+.composer .file-chip {
+  flex: none;
+  max-width: calc(220rem / 14);
 }
 .file-chip {
   display: inline-flex;
@@ -32,10 +40,10 @@
   color: var(--muted);
   font-size: 0.7rem;
 }
-.file-chip img {
+.file-chip .attachment-tile {
   width: calc(36rem / 14);
   height: calc(36rem / 14);
-  object-fit: cover;
+  border: 0;
 }
 /* Rename control: reads as the file name until focused. */
 .chip-name {
@@ -55,14 +63,100 @@
   max-width: 100%;
   font: inherit;
 }
-/* Inline @-mention references inside message text. */
+/* Files in the conversation: image tiles that open the viewer, then cards
+   naming each other file's type and size. */
+.attachment-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+}
+.attachment-tile {
+  display: block;
+  width: calc(96rem / 14);
+  height: calc(72rem / 14);
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  cursor: zoom-in;
+}
+.attachment-tile img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.attachment-card {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: min(calc(220rem / 14), 100%);
+  height: calc(72rem / 14);
+  padding: 0 var(--space-4);
+  border: 1px solid var(--line);
+  background: var(--raised);
+  color: inherit;
+  text-decoration: none;
+  font-size: 0.8rem;
+}
+.attachment-card > svg {
+  flex: none;
+}
+.attachment-card > span {
+  display: grid;
+  min-width: 0;
+}
+.attachment-card strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.attachment-card small {
+  color: var(--muted);
+}
+/* Inline @-mention images keep their shape at a readable size. */
 .mention-image {
   display: block;
+  margin: var(--space-2) 0;
+}
+.mention-image > .attachment-tile,
+.tool-file > .attachment-tile {
+  width: auto;
+  height: auto;
   max-width: min(100%, calc(320rem / 14));
+}
+.mention-image img,
+.tool-file > .attachment-tile img {
+  height: auto;
   max-height: calc(180rem / 14);
   object-fit: contain;
-  border: 1px solid var(--line);
-  margin: var(--space-2) 0;
+}
+.tool-file > .attachment-tile {
+  max-width: 100%;
+}
+.tool-file > .attachment-tile img {
+  max-height: calc(320rem / 14);
+}
+/* The viewer: the image fits the dialog; tapping it closes. */
+.image-view > .dialog-body {
+  display: grid;
+  place-items: center;
+  flex: 1;
+  min-height: 0;
+  padding: 0;
+  background: var(--surface);
+}
+.image-view .dialog-body > img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  cursor: zoom-out;
+}
+.image-view .dialog-header-actions > a {
+  padding: 0 var(--space-3);
 }
 .mention-chip {
   vertical-align: baseline;

@@ -180,6 +180,8 @@ export interface Block {
   incoming?: number;
   files?: Asset[];
   origin?: string;
+  // Tool calls whose results added these files to context.
+  source_call_ids?: string[];
   unavailable_images?: number;
   tools?: ToolCall[];
   call_id?: string;

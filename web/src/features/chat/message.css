@@ -303,18 +303,11 @@
   gap: var(--space-2);
   max-width: calc(560rem / 14);
 }
-.tool-file > img,
 .tool-file > iframe {
   width: 100%;
+  height: calc(240rem / 14);
   border: 1px solid var(--line);
   background: var(--surface);
-}
-.tool-file > img {
-  max-height: calc(320rem / 14);
-  object-fit: contain;
-}
-.tool-file > iframe {
-  height: calc(240rem / 14);
 }
 .tool-file > figcaption {
   display: flex;

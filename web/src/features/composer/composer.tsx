@@ -1,4 +1,5 @@
 import type { ConnectionPhase } from "../../shared/connection-status.tsx";
+import { ImageTile } from "../../shared/attachments.tsx";
 import "./attachments.css";
 import { useCommandSuggestions } from "./command-suggestions.tsx";
 import { parseSlash } from "./slash.ts";
@@ -362,8 +363,8 @@ export default function Composer({
                   aria-busy={asset.pending || undefined}
                 >
                   {asset.image && !asset.pending ? (
-                    <img
-                      alt={asset.name}
+                    <ImageTile
+                      name={asset.name}
                       src={`/api/sessions/${session.id}/assets/${asset.id}`}
                     />
                   ) : (

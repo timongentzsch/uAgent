@@ -1069,12 +1069,23 @@ bool Agent::DrainAttachments() {
       conversation_.Push({{"role", "user"}, {"content", std::move(content)}},
                          MessageKind::kAttachment);
       json call_ids = json::array();
+      json files = json::array();
       for (const Attachment& attachment : sourced) {
         call_ids.push_back(attachment.source_call_id);
+        // The tool's row shows the file, so a client needs its own copy.
+        json kept = keep_tool_file_
+                        ? keep_tool_file_(attachment.path, attachment.name)
+                        : json(nullptr);
+        if (kept.is_object()) {
+          kept["image"] = attachment.image;
+          files.push_back(std::move(kept));
+        }
       }
-      conversation_.RecordDisplay(
-          conversation_.LastDisplayId(),
-          {{"origin", "tool"}, {"source_call_ids", std::move(call_ids)}});
+      json facts = {{"origin", "tool"},
+                    {"source_call_ids", std::move(call_ids)}};
+      if (!files.empty()) facts["files"] = std::move(files);
+      conversation_.RecordDisplay(conversation_.LastDisplayId(),
+                                  std::move(facts));
     } else {
       conversation_.Push(HarnessMessage("[attachment failed] " + error),
                          MessageKind::kInternal);

@@ -27,6 +27,10 @@
   The terminal prints the same headline, tail and links.
 - A file the agent shares previews inline in the conversation: images,
   sandboxed HTML (its own scripts now run) and PDFs on desktop.
+- Attachments read the same everywhere: images as thumbnails that open an
+  in-app viewer, other files as cards naming their type and size. Images a
+  tool adds to context (a browser screenshot, a read image) show on that
+  tool's row, and the composer keeps its files in one scrolling strip.
 - Closing the browser hands control back to the agent; an agent step waits
   while you drive instead of asking, and the browser can be watched without
   taking control. The browser icon shows when the agent is using it.

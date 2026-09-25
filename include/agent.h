@@ -105,6 +105,12 @@ class Agent {
   // Snapshot the conversation (and the tools last offered, when given) for
   // SideQuestion; called by the turn thread only.
   void PublishSideContext(const json* tools = nullptr);
+  // Snapshots a file a tool added to context where the user's clients can
+  // show it, returning its asset ({id, name, mime, bytes}) or null. Set by a
+  // session with an asset store; without one, tool files stay model-only.
+  using KeepFile =
+      std::function<json(const std::string& path, const std::string& name)>;
+  void KeepToolFiles(KeepFile keep) { keep_tool_file_ = std::move(keep); }
   void RetainExchanges(bool enabled) {
     retain_exchanges_ = enabled;
     api_.capture_http = enabled;
@@ -392,6 +398,7 @@ class Agent {
   std::string last_error_;
   json last_stop_;
   json turn_side_statistics_ = json::object();
+  KeepFile keep_tool_file_;
   mutable std::mutex side_mutex_;
   std::shared_ptr<const json> side_context_;
 };

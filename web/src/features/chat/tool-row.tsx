@@ -9,6 +9,7 @@ import type {
   ToolPart,
 } from "../../shared/types.ts";
 import { StatusLed } from "../../shared/connection-status.tsx";
+import { AttachmentList, ImageTile } from "../../shared/attachments.tsx";
 import { useContext, useLayoutEffect, useRef } from "preact/hooks";
 import { LiveActivities } from "../../state/live-activities.ts";
 import { duration } from "../../shared/duration.ts";
@@ -241,7 +242,8 @@ export function ToolInline({
       ? cleanText((more && block.tail) || text || "").trim()
       : "";
   const parts = block.parts || [];
-  if (!diff && !output && !parts.length) return null;
+  const files = (block.files || []).filter((file) => typeof file === "object");
+  if (!diff && !output && !parts.length && !files.length) return null;
   return (
     <div class="tool-inline">
       {diff && (
@@ -261,9 +263,12 @@ export function ToolInline({
           loadFull={loadFull}
         />
       )}
+      {files.length > 0 && (
+        <AttachmentList files={files} href={(id) => `${assets}${id}`} />
+      )}
       {parts.map((part, index) =>
         part.kind === "file" ? (
-          <FileCard key={index} file={part} href={`${assets}${part.id}`} />
+          <SharedFile key={index} file={part} href={`${assets}${part.id}`} />
         ) : part.kind === "link" && open ? (
           <button
             key={index}
@@ -283,10 +288,10 @@ export function ToolInline({
 // A file the agent shared: previewed where the browser can show it safely
 // (images; HTML in a sandboxed frame the server also sandboxes; PDF on a
 // desktop), then its name, size and Open / Download.
-function FileCard({ file, href }: { file: FilePart; href: string }) {
+function SharedFile({ file, href }: { file: FilePart; href: string }) {
   const touch = matchMedia("(pointer: coarse)").matches;
   const preview = file.mime.startsWith("image/") ? (
-    <img src={href} alt={file.name} loading="lazy" />
+    <ImageTile src={href} name={file.name} />
   ) : file.mime === "text/html" ? (
     <iframe
       src={href}

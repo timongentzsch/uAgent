@@ -2,7 +2,7 @@ import "../composer/attachments.css";
 import { TurnFooter } from "./turn-footer.tsx";
 import Markdown, { prepareMarkdown } from "../../shared/markdown-view.tsx";
 import "./message.css";
-import { bytes, count } from "../../shared/quantities.ts";
+import { count } from "../../shared/quantities.ts";
 import { Component, type ComponentProps } from "preact";
 import { presentMessages, splitMentionTokens } from "./message-view.ts";
 import type {
@@ -25,6 +25,7 @@ import {
   Time,
 } from "../../shared/ui.tsx";
 import { MessageMenu } from "./message-menu.tsx";
+import { AttachmentList, ImageTile } from "../../shared/attachments.tsx";
 import { diffCounts, formatStat } from "./tool-preview.ts";
 import { StatusLed } from "../../shared/connection-status.tsx";
 import { useBlockReader } from "../../state/block-reader.ts";
@@ -68,13 +69,9 @@ function MentionFile({
   if (!file) return <span class="muted">@{alt} (attachment removed)</span>;
   const href = `/api/sessions/${sessionId}/assets/${file.id}`;
   return file.image && online ? (
-    <img
-      class="mention-image"
-      src={href}
-      alt={file.name}
-      title={file.name}
-      loading="lazy"
-    />
+    <span class="mention-image">
+      <ImageTile src={href} name={file.name} />
+    </span>
   ) : (
     <a class="file-chip mention-chip" href={href} download={file.name}>
       @{file.name}
@@ -326,36 +323,11 @@ function MessageView({
       {!online && !!block.files?.length && (
         <p class="small muted">Attachments are available when connected.</p>
       )}
-      {!!block.files?.length && (
-        <div class="attachments">
-          {block.files
-            .filter((file) => typeof file === "object")
-            .map((file) => (
-              <a
-                class="file-chip"
-                key={file.id}
-                aria-disabled={!online}
-                onClick={(event) => {
-                  if (!online) event.preventDefault();
-                }}
-                href={`/api/sessions/${session.id}/assets/${file.id}`}
-                download={file.name}
-              >
-                {online && file.image && (
-                  <img
-                    loading="lazy"
-                    src={`/api/sessions/${session.id}/assets/${file.id}`}
-                    alt={file.name}
-                  />
-                )}
-                <span>
-                  <span title={`${file.bytes.toLocaleString()} bytes`}>
-                    {file.name} · {bytes(file.bytes)}
-                  </span>
-                </span>
-              </a>
-            ))}
-        </div>
+      {online && !!block.files?.length && !row && (
+        <AttachmentList
+          files={block.files.filter((file) => typeof file === "object")}
+          href={(id) => `/api/sessions/${session.id}/assets/${id}`}
+        />
       )}
       {!row && block.truncated && (
         <button

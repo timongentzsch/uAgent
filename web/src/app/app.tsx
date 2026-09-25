@@ -29,6 +29,11 @@ import {
 } from "../shared/ui.tsx";
 import { Globe2, Menu, Settings } from "lucide-preact";
 import { StatusLed } from "../shared/connection-status.tsx";
+import {
+  ImageViewer,
+  ImageViewerDialog,
+  type ViewedImage,
+} from "../shared/attachments.tsx";
 // Prefetch helpers live next to the renderer so marker regexes stay in one
 // place. Loaded dynamically: a static import would drag markdown.css into
 // the initial bundle and break the CSS size budget.
@@ -93,6 +98,8 @@ function App() {
   const [modal, setModal] = useState<AppModal | null>(null);
   const [browserAvailable, setBrowserAvailable] = useState(false);
   const [notice, setNotice] = useState("");
+  // The one image viewer every tile opens.
+  const [viewed, setViewed] = useState<ViewedImage | null>(null);
   const [side, setSide] = useState<{
     question: string;
     answer?: string;
@@ -747,480 +754,487 @@ function App() {
 
   return (
     <TimePrefsContext.Provider value={timePrefs}>
-      {(error || notice) && (
-        <div role={error ? "alert" : "status"} class="error-banner">
-          <span>{error || notice}</span>
-          <button
-            onClick={() => {
-              setError("");
-              setNotice("");
-            }}
-          >
-            Dismiss
-          </button>
-        </div>
-      )}
-      {/* A waiting service worker means this view is stale (notably in an
+      <ImageViewer.Provider value={setViewed}>
+        {(error || notice) && (
+          <div role={error ? "alert" : "status"} class="error-banner">
+            <span>{error || notice}</span>
+            <button
+              onClick={() => {
+                setError("");
+                setNotice("");
+              }}
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+        {/* A waiting service worker means this view is stale (notably in an
           installed PWA with no chrome to pull-to-refresh). Surface it
           here, not only in Settings, so reloads actually pick up fixes. */}
-      {update && (
-        <div role="status" class="update-banner">
-          <span>Update available with the latest fixes.</span>
-          {(() => {
-            const blocked = Object.values(drafts).some(
-              (item) => item.text || item.files.length,
-            )
-              ? "Send or copy unsent drafts first."
-              : uploading
-                ? "Wait for uploads to finish."
-                : Object.values(snapshots).some((item) => item.pending)
-                  ? "Wait for the running turn to finish."
-                  : "";
-            return (
-              <button
-                class="primary"
-                disabled={!!blocked}
-                title={blocked || "Reloads this view with the latest fixes."}
-                onClick={() =>
-                  import("../shared/pwa.ts").then(({ applyUpdate }) =>
-                    applyUpdate(update),
-                  )
-                }
-              >
-                Refresh now
-              </button>
-            );
-          })()}
-        </div>
-      )}
-      {authenticated === false ? (
-        <Deferred
-          load={pairing}
-          paired={refresh}
-          report={report}
-          fallback={<Spinner label="Loading connection form…" surface />}
-        />
-      ) : authenticated === null ? (
-        <main class="shell loading-shell">
-          {!compact && (
-            <aside class="sidebar" aria-hidden="true">
-              <div class="sidebar-head">
-                <Mark />
-              </div>
-            </aside>
-          )}
-          <div class="conversation">
-            <header class="conversation-head">
-              <div>
-                <h1>Your workspace</h1>
-              </div>
-            </header>
-            <div class="transcript">
-              <div class="transcript-content">
-                <Spinner label="Loading conversation…" surface />
-              </div>
-            </div>
-            <div class="composer loading-composer" aria-hidden="true" />
-          </div>
-        </main>
-      ) : (
-        <div class="shell">
-          {!compact ? (
-            <aside class="sidebar" aria-label="Projects and sessions">
-              {sidebar}
-            </aside>
-          ) : (
-            drawer && (
-              <Modal
-                title="Sessions"
-                className="sidebar drawer"
-                close={() => setDrawer(false)}
-              >
-                {sidebar}
-              </Modal>
-            )
-          )}
-          <main class="conversation">
-            <header class="conversation-head">
-              {compact && (
-                <IconButton
-                  label="Open sessions"
-                  onClick={() => setDrawer(true)}
-                >
-                  <Menu aria-hidden="true" />
-                </IconButton>
-              )}
-              <div>
-                <h1 title={session?.cwd}>
-                  {page === "library"
-                    ? "Library"
-                    : page === "scheduled"
-                      ? "Scheduled"
-                      : session?.title || "Your workspace"}
-                </h1>
-              </div>
-              {browserAvailable && (
-                <IconButton
-                  label={
-                    browsing ? "Open browser, agent working" : "Open browser"
+        {update && (
+          <div role="status" class="update-banner">
+            <span>Update available with the latest fixes.</span>
+            {(() => {
+              const blocked = Object.values(drafts).some(
+                (item) => item.text || item.files.length,
+              )
+                ? "Send or copy unsent drafts first."
+                : uploading
+                  ? "Wait for uploads to finish."
+                  : Object.values(snapshots).some((item) => item.pending)
+                    ? "Wait for the running turn to finish."
+                    : "";
+              return (
+                <button
+                  class="primary"
+                  disabled={!!blocked}
+                  title={blocked || "Reloads this view with the latest fixes."}
+                  onClick={() =>
+                    import("../shared/pwa.ts").then(({ applyUpdate }) =>
+                      applyUpdate(update),
+                    )
                   }
-                  class="browser-toggle"
-                  onClick={() => setModal({ type: "browser" })}
                 >
-                  <Globe2 aria-hidden="true" />
-                  {browsing && <StatusLed state="running" />}
-                </IconButton>
-              )}
-              {compact && (
-                <div class="conversation-head-actions">
-                  <IconButton
-                    label="Settings"
-                    onClick={() => open({ type: "settings" })}
-                  >
-                    <Settings aria-hidden="true" />
-                  </IconButton>
+                  Refresh now
+                </button>
+              );
+            })()}
+          </div>
+        )}
+        {authenticated === false ? (
+          <Deferred
+            load={pairing}
+            paired={refresh}
+            report={report}
+            fallback={<Spinner label="Loading connection form…" surface />}
+          />
+        ) : authenticated === null ? (
+          <main class="shell loading-shell">
+            {!compact && (
+              <aside class="sidebar" aria-hidden="true">
+                <div class="sidebar-head">
+                  <Mark />
                 </div>
-              )}
-              {page === "chat" && session && conversationMenu(session)}
-            </header>
-            {page !== "chat" ? (
-              <Deferred
-                key={page}
-                load={page === "library" ? libraryModule : scheduledModule}
-                projects={projects}
-                cwd={session?.cwd || projects[0] || ""}
-                online={online}
-                version={managementVersion}
-                scheduled={catalogue.scheduled}
-                unread={unread}
-                choose={choose}
-                refresh={refresh}
-                fallback={
-                  <div class="management">
-                    <Spinner
-                      label={
-                        page === "library"
-                          ? "Loading library…"
-                          : "Loading scheduled tasks…"
-                      }
-                      surface
-                    />
+              </aside>
+            )}
+            <div class="conversation">
+              <header class="conversation-head">
+                <div>
+                  <h1>Your workspace</h1>
+                </div>
+              </header>
+              <div class="transcript">
+                <div class="transcript-content">
+                  <Spinner label="Loading conversation…" surface />
+                </div>
+              </div>
+              <div class="composer loading-composer" aria-hidden="true" />
+            </div>
+          </main>
+        ) : (
+          <div class="shell">
+            {!compact ? (
+              <aside class="sidebar" aria-label="Projects and sessions">
+                {sidebar}
+              </aside>
+            ) : (
+              drawer && (
+                <Modal
+                  title="Sessions"
+                  className="sidebar drawer"
+                  close={() => setDrawer(false)}
+                >
+                  {sidebar}
+                </Modal>
+              )
+            )}
+            <main class="conversation">
+              <header class="conversation-head">
+                {compact && (
+                  <IconButton
+                    label="Open sessions"
+                    onClick={() => setDrawer(true)}
+                  >
+                    <Menu aria-hidden="true" />
+                  </IconButton>
+                )}
+                <div>
+                  <h1 title={session?.cwd}>
+                    {page === "library"
+                      ? "Library"
+                      : page === "scheduled"
+                        ? "Scheduled"
+                        : session?.title || "Your workspace"}
+                  </h1>
+                </div>
+                {browserAvailable && (
+                  <IconButton
+                    label={
+                      browsing ? "Open browser, agent working" : "Open browser"
+                    }
+                    class="browser-toggle"
+                    onClick={() => setModal({ type: "browser" })}
+                  >
+                    <Globe2 aria-hidden="true" />
+                    {browsing && <StatusLed state="running" />}
+                  </IconButton>
+                )}
+                {compact && (
+                  <div class="conversation-head-actions">
+                    <IconButton
+                      label="Settings"
+                      onClick={() => open({ type: "settings" })}
+                    >
+                      <Settings aria-hidden="true" />
+                    </IconButton>
                   </div>
-                }
-              />
-            ) : session ? (
-              <>
-                {/* Remount the transcript per session: a stale surface's
+                )}
+                {page === "chat" && session && conversationMenu(session)}
+              </header>
+              {page !== "chat" ? (
+                <Deferred
+                  key={page}
+                  load={page === "library" ? libraryModule : scheduledModule}
+                  projects={projects}
+                  cwd={session?.cwd || projects[0] || ""}
+                  online={online}
+                  version={managementVersion}
+                  scheduled={catalogue.scheduled}
+                  unread={unread}
+                  choose={choose}
+                  refresh={refresh}
+                  fallback={
+                    <div class="management">
+                      <Spinner
+                        label={
+                          page === "library"
+                            ? "Loading library…"
+                            : "Loading scheduled tasks…"
+                        }
+                        surface
+                      />
+                    </div>
+                  }
+                />
+              ) : session ? (
+                <>
+                  {/* Remount the transcript per session: a stale surface's
                     node detaches, so queued scrolls from it can never
                     rewrite the live one, and each surface keeps its own
                     DOM state (expansion, disclosure, scroll). */}
-                <LiveActivities.Provider
-                  value={online ? snapshot?.state?.activities || [] : []}
-                >
-                  <Deferred
-                    key={selected}
-                    load={chat}
-                    fallback={
-                      <div className="transcript">
-                        <div className="transcript-content">
-                          <Spinner label="Loading conversation…" surface />
+                  <LiveActivities.Provider
+                    value={online ? snapshot?.state?.activities || [] : []}
+                  >
+                    <Deferred
+                      key={selected}
+                      load={chat}
+                      fallback={
+                        <div className="transcript">
+                          <div className="transcript-content">
+                            <Spinner label="Loading conversation…" surface />
+                          </div>
                         </div>
-                      </div>
-                    }
-                    scroller={transcript}
-                    content={transcriptContent}
-                    attachScroller={attachScroller}
-                    attachContent={attachContent}
-                    preserveWhile={preserveWhile}
-                    selected={selected}
-                    snapshot={snapshot}
-                    loadError={loadErrors[selected]}
-                    blocks={blocks}
-                    session={session}
-                    online={online}
-                    loadSnapshot={load}
-                    older={older}
-                    report={report}
-                    recall={recallGuidance}
-                    inspect={inspect}
-                    http={showMessageHttp}
-                    activity={(block: Block) => setInspector({ block })}
-                    statistics={showMessageStatistics}
-                  />
-                </LiveActivities.Provider>
-                {side && (
+                      }
+                      scroller={transcript}
+                      content={transcriptContent}
+                      attachScroller={attachScroller}
+                      attachContent={attachContent}
+                      preserveWhile={preserveWhile}
+                      selected={selected}
+                      snapshot={snapshot}
+                      loadError={loadErrors[selected]}
+                      blocks={blocks}
+                      session={session}
+                      online={online}
+                      loadSnapshot={load}
+                      older={older}
+                      report={report}
+                      recall={recallGuidance}
+                      inspect={inspect}
+                      http={showMessageHttp}
+                      activity={(block: Block) => setInspector({ block })}
+                      statistics={showMessageStatistics}
+                    />
+                  </LiveActivities.Provider>
+                  {side && (
+                    <Deferred
+                      load={sideAnswer}
+                      fallback={null}
+                      question={side.question}
+                      answer={side.answer}
+                      close={() => setSide(null)}
+                    />
+                  )}
                   <Deferred
-                    load={sideAnswer}
+                    load={composer}
                     fallback={null}
-                    question={side.question}
-                    answer={side.answer}
-                    close={() => setSide(null)}
+                    session={session}
+                    commands={catalogue.commands || []}
+                    snapshot={snapshot}
+                    online={online}
+                    connection={connection}
+                    draft={draft}
+                    setDraft={setDraft}
+                    upload={upload}
+                    uploading={uploading}
+                    busy={busy}
+                    submit={submit}
+                    act={act}
+                    report={report}
+                    following={following}
+                    unseen={unseen}
+                    // Optimistic: pin to the end synchronously (<1 frame),
+                    // refresh the snapshot in the background. jumpToLatest
+                    // is idempotent and load() dedupes in flight, so rapid
+                    // presses stay a single pin + a single fetch.
+                    jump={() => {
+                      jumpToLatest();
+                      load(selected).catch(report);
+                    }}
+                    openInspector={setInspector}
+                    showStatistics={() =>
+                      setModal({ type: "statistics", session_id: selected })
+                    }
+                    showContext={showContext}
+                    zoom={zoom}
+                    openBrowser={() => setModal({ type: "browser" })}
                   />
-                )}
-                <Deferred
-                  load={composer}
-                  fallback={null}
-                  session={session}
-                  commands={catalogue.commands || []}
-                  snapshot={snapshot}
-                  online={online}
-                  connection={connection}
-                  draft={draft}
-                  setDraft={setDraft}
-                  upload={upload}
-                  uploading={uploading}
-                  busy={busy}
-                  submit={submit}
-                  act={act}
-                  report={report}
-                  following={following}
-                  unseen={unseen}
-                  // Optimistic: pin to the end synchronously (<1 frame),
-                  // refresh the snapshot in the background. jumpToLatest
-                  // is idempotent and load() dedupes in flight, so rapid
-                  // presses stay a single pin + a single fetch.
-                  jump={() => {
-                    jumpToLatest();
-                    load(selected).catch(report);
-                  }}
-                  openInspector={setInspector}
-                  showStatistics={() =>
-                    setModal({ type: "statistics", session_id: selected })
-                  }
-                  showContext={showContext}
-                  zoom={zoom}
-                  openBrowser={() => setModal({ type: "browser" })}
-                />
-              </>
-            ) : (
-              <div class="empty">
-                <Mark className="cursor-mark" />
-                <h1>Your projects. One workspace.</h1>
-                <p>
-                  Open a saved session or start in any directory on your host.
-                </p>
-                <button
-                  class="primary"
-                  onClick={() => setModal({ type: "new" })}
-                  disabled={!online}
-                >
-                  New conversation
-                </button>
-              </div>
-            )}
-          </main>
-        </div>
-      )}
-      {(modal?.type === "statistics" ||
-        modal?.type === "rename" ||
-        modal?.type === "delete") && (
-        <Modal
-          title={
-            modal.type === "rename"
-              ? "Rename conversation"
-              : modal.type === "delete"
-                ? "Delete conversation"
-                : "block_id" in modal && modal.block_id
-                  ? "Message statistics"
-                  : "Conversation statistics"
-          }
-          layout={modal.type === "statistics" ? "panel" : "content"}
-          close={() => setModal(null)}
-        >
-          {modal.type === "statistics" ? (
-            <Deferred
-              load={statisticsDialog}
-              fallback={<StatisticsLoading turn={!!modal.block_id} />}
-              modal={modal}
-              loadSnapshot={load}
-            />
-          ) : (
-            <Deferred
-              load={conversationActions}
-              fallback={
-                <Spinner label="Loading conversation actions…" surface />
-              }
-              key={`${modal.type}-${modal.session.id}`}
-              modal={modal}
-              close={() => setModal(null)}
-              online={online}
-              changed={async (kind: string, id: string) => {
-                if (kind === "delete") forget(id);
-                await refresh();
-              }}
-            />
-          )}
-        </Modal>
-      )}
-      {inspector && session && (
-        <Deferred
-          load={inspectorDialog}
-          fallback={null}
-          target={inspector}
-          items={online ? snapshot?.state?.activities || [] : []}
-          collaborators={snapshot?.state?.collaborators || []}
-          cwd={session.cwd || ""}
-          running={running}
-          session={session}
-          online={online}
-          report={report}
-          close={() => setInspector(null)}
-        />
-      )}
-      {modal?.type === "browser" && (
-        <Modal
-          title="Browser"
-          className="browser-view"
-          size="browser"
-          layout="panel"
-          close={() => setModal(null)}
-        >
-          <Deferred
-            load={browserDialog}
-            fallback={<Spinner label="Loading browser…" surface />}
-            sessions={catalogue.sessions}
-            report={report}
-          />
-        </Modal>
-      )}
-      {modal?.type === "new" && (
-        <Modal title="New conversation" close={() => setModal(null)}>
-          <form onSubmit={create}>
-            <label>
-              Directory on the host
-              <Input
-                autoFocus
-                value={folder}
-                onInput={(event) => setFolder(event.currentTarget.value)}
-                placeholder="/path/to/project"
-                required
-                autoComplete="off"
-              />
-            </label>
-            <p class="muted">
-              Any accessible directory works, including a folder outside Git.
-              Multiple conversations can work in the same folder.
-            </p>
-            <button class="primary" disabled={busy || !online}>
-              Start conversation
-            </button>
-          </form>
-        </Modal>
-      )}
-      {modal?.type === "raw" && (
-        <Modal
-          title={
-            modal.context
-              ? "Raw context"
-              : modal.exchanges !== undefined
-                ? "HTTP request/response"
-                : modal.id?.startsWith("t-")
-                  ? "Tool input/output"
-                  : "Full content"
-          }
-          className="raw-view"
-          size="wide"
-          layout="panel"
-          close={() => setModal(null)}
-        >
-          <Deferred
-            load={rawDialog}
-            prompt={() => setModal({ type: "prompt" })}
-            fallback={<Spinner label="Loading full body…" surface />}
-            id={modal.id}
-            session={modal.session}
-            value={modal.value}
-            exchanges={modal.exchanges}
-            latest={
-              modal.session ? snapshots[modal.session]?.state?.http : undefined
+                </>
+              ) : (
+                <div class="empty">
+                  <Mark className="cursor-mark" />
+                  <h1>Your projects. One workspace.</h1>
+                  <p>
+                    Open a saved session or start in any directory on your host.
+                  </p>
+                  <button
+                    class="primary"
+                    onClick={() => setModal({ type: "new" })}
+                    disabled={!online}
+                  >
+                    New conversation
+                  </button>
+                </div>
+              )}
+            </main>
+          </div>
+        )}
+        {(modal?.type === "statistics" ||
+          modal?.type === "rename" ||
+          modal?.type === "delete") && (
+          <Modal
+            title={
+              modal.type === "rename"
+                ? "Rename conversation"
+                : modal.type === "delete"
+                  ? "Delete conversation"
+                  : "block_id" in modal && modal.block_id
+                    ? "Message statistics"
+                    : "Conversation statistics"
             }
-            context={modal.context}
-            prepare={modal.prepare}
-            part={modal.part}
-          />
-        </Modal>
-      )}
-      {modal?.type === "prompt" && (
-        <Modal
-          title="System prompt"
-          className="prompt-view"
-          size="wide"
-          layout="panel"
-          close={() => setModal(null)}
-        >
+            layout={modal.type === "statistics" ? "panel" : "content"}
+            close={() => setModal(null)}
+          >
+            {modal.type === "statistics" ? (
+              <Deferred
+                load={statisticsDialog}
+                fallback={<StatisticsLoading turn={!!modal.block_id} />}
+                modal={modal}
+                loadSnapshot={load}
+              />
+            ) : (
+              <Deferred
+                load={conversationActions}
+                fallback={
+                  <Spinner label="Loading conversation actions…" surface />
+                }
+                key={`${modal.type}-${modal.session.id}`}
+                modal={modal}
+                close={() => setModal(null)}
+                online={online}
+                changed={async (kind: string, id: string) => {
+                  if (kind === "delete") forget(id);
+                  await refresh();
+                }}
+              />
+            )}
+          </Modal>
+        )}
+        {inspector && session && (
           <Deferred
-            load={promptDialog}
-            fallback={<Spinner label="Loading system prompt…" surface />}
+            load={inspectorDialog}
+            fallback={null}
+            target={inspector}
+            items={online ? snapshot?.state?.activities || [] : []}
+            collaborators={snapshot?.state?.collaborators || []}
+            cwd={session.cwd || ""}
+            running={running}
             session={session}
-            projects={projects}
             online={online}
-            version={managementVersion}
-            scope={modal.scope}
-            edit={modal.edit}
-            lastSent={snapshot?.state?.system_prompt}
+            report={report}
+            close={() => setInspector(null)}
           />
-        </Modal>
-      )}
-      {modal?.type === "settings" && (
-        <Modal
-          title="Settings"
-          className="settings-view"
-          size="medium"
-          layout="panel"
-          close={() => setModal(null)}
-        >
-          <Deferred
-            load={settingsDialog}
-            fallback={<Spinner label="Loading settings…" surface />}
-            theme={theme}
-            setTheme={setTheme}
-            timePrefs={timePrefs}
-            setTimePrefs={setTimePrefs}
-            zoom={zoom}
-            setZoom={setZoom}
-            installed={installed}
-            install={install}
-            setInstall={setInstall}
-            ios={ios}
-            update={update}
-            drafts={drafts}
-            uploading={uploading}
-            snapshots={snapshots}
-            catalogue={catalogue}
-            online={online}
-            notificationMode={notificationMode}
-            setNotificationMode={setNotificationMode}
-            notifications={notifications}
-            refresh={refresh}
-            selected={selected}
-            session={session}
-            logout={logout}
-            prompt={() => setModal({ type: "prompt" })}
-          />
-        </Modal>
-      )}
-      {modal?.type === "tools" && (
-        <Modal
-          title="Tools"
-          className="tools-view"
-          size="medium"
-          layout="panel"
-          close={() => setModal(null)}
-        >
-          {toolsSession ? (
+        )}
+        {modal?.type === "browser" && (
+          <Modal
+            title="Browser"
+            className="browser-view"
+            size="browser"
+            layout="panel"
+            close={() => setModal(null)}
+          >
             <Deferred
-              load={toolsDialog}
-              fallback={<Spinner label="Loading tools…" surface />}
-              session={toolsSession}
-              online={online}
-              busy={!!toolsSession.turn_active || !!toolsSnapshot?.pending}
-              changed={() => load(toolsSessionId)}
+              load={browserDialog}
+              fallback={<Spinner label="Loading browser…" surface />}
+              sessions={catalogue.sessions}
+              report={report}
             />
-          ) : (
-            <p class="muted">Open a conversation to choose its tools.</p>
-          )}
-        </Modal>
-      )}
+          </Modal>
+        )}
+        {modal?.type === "new" && (
+          <Modal title="New conversation" close={() => setModal(null)}>
+            <form onSubmit={create}>
+              <label>
+                Directory on the host
+                <Input
+                  autoFocus
+                  value={folder}
+                  onInput={(event) => setFolder(event.currentTarget.value)}
+                  placeholder="/path/to/project"
+                  required
+                  autoComplete="off"
+                />
+              </label>
+              <p class="muted">
+                Any accessible directory works, including a folder outside Git.
+                Multiple conversations can work in the same folder.
+              </p>
+              <button class="primary" disabled={busy || !online}>
+                Start conversation
+              </button>
+            </form>
+          </Modal>
+        )}
+        {modal?.type === "raw" && (
+          <Modal
+            title={
+              modal.context
+                ? "Raw context"
+                : modal.exchanges !== undefined
+                  ? "HTTP request/response"
+                  : modal.id?.startsWith("t-")
+                    ? "Tool input/output"
+                    : "Full content"
+            }
+            className="raw-view"
+            size="wide"
+            layout="panel"
+            close={() => setModal(null)}
+          >
+            <Deferred
+              load={rawDialog}
+              prompt={() => setModal({ type: "prompt" })}
+              fallback={<Spinner label="Loading full body…" surface />}
+              id={modal.id}
+              session={modal.session}
+              value={modal.value}
+              exchanges={modal.exchanges}
+              latest={
+                modal.session
+                  ? snapshots[modal.session]?.state?.http
+                  : undefined
+              }
+              context={modal.context}
+              prepare={modal.prepare}
+              part={modal.part}
+            />
+          </Modal>
+        )}
+        {modal?.type === "prompt" && (
+          <Modal
+            title="System prompt"
+            className="prompt-view"
+            size="wide"
+            layout="panel"
+            close={() => setModal(null)}
+          >
+            <Deferred
+              load={promptDialog}
+              fallback={<Spinner label="Loading system prompt…" surface />}
+              session={session}
+              projects={projects}
+              online={online}
+              version={managementVersion}
+              scope={modal.scope}
+              edit={modal.edit}
+              lastSent={snapshot?.state?.system_prompt}
+            />
+          </Modal>
+        )}
+        {modal?.type === "settings" && (
+          <Modal
+            title="Settings"
+            className="settings-view"
+            size="medium"
+            layout="panel"
+            close={() => setModal(null)}
+          >
+            <Deferred
+              load={settingsDialog}
+              fallback={<Spinner label="Loading settings…" surface />}
+              theme={theme}
+              setTheme={setTheme}
+              timePrefs={timePrefs}
+              setTimePrefs={setTimePrefs}
+              zoom={zoom}
+              setZoom={setZoom}
+              installed={installed}
+              install={install}
+              setInstall={setInstall}
+              ios={ios}
+              update={update}
+              drafts={drafts}
+              uploading={uploading}
+              snapshots={snapshots}
+              catalogue={catalogue}
+              online={online}
+              notificationMode={notificationMode}
+              setNotificationMode={setNotificationMode}
+              notifications={notifications}
+              refresh={refresh}
+              selected={selected}
+              session={session}
+              logout={logout}
+              prompt={() => setModal({ type: "prompt" })}
+            />
+          </Modal>
+        )}
+        {modal?.type === "tools" && (
+          <Modal
+            title="Tools"
+            className="tools-view"
+            size="medium"
+            layout="panel"
+            close={() => setModal(null)}
+          >
+            {toolsSession ? (
+              <Deferred
+                load={toolsDialog}
+                fallback={<Spinner label="Loading tools…" surface />}
+                session={toolsSession}
+                online={online}
+                busy={!!toolsSession.turn_active || !!toolsSnapshot?.pending}
+                changed={() => load(toolsSessionId)}
+              />
+            ) : (
+              <p class="muted">Open a conversation to choose its tools.</p>
+            )}
+          </Modal>
+        )}
+        {viewed && (
+          <ImageViewerDialog image={viewed} close={() => setViewed(null)} />
+        )}
+      </ImageViewer.Provider>
     </TimePrefsContext.Provider>
   );
 }

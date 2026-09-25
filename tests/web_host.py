@@ -2,6 +2,7 @@
 """Mock-backed host for browser tests; never calls an external model."""
 
 import argparse
+import base64
 import json
 import pathlib
 import signal
@@ -83,6 +84,10 @@ def answer(handler, body):
             {"command": "printf BROWSER_ACTIVITY; sleep 10", "yield_ms": 250},
             call_id="browser-activity",
         )
+    if "Image probe" in prompt and not any(
+        message.get("tool_call_id") == "image-read" for message in body["messages"]
+    ):
+        return tool_call("read_path", {"path": "shot.png"}, call_id="image-read")
     if "Artifact probe" in prompt:
         done = {message.get("tool_call_id") for message in body["messages"]}
         if "artifact-write" not in done:
@@ -155,6 +160,13 @@ with (
     home.mkdir()
     project = root / "project"
     project.mkdir()
+    # A real image for the read-path attachment scenario ("Image probe").
+    (project / "shot.png").write_bytes(
+        base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9Q"
+            "DwADhgGAWjR9awAAAABJRU5ErkJggg=="
+        )
+    )
     providers = {
         "mock": {
             "base_url": provider.url,

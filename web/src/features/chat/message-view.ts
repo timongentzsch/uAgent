@@ -209,7 +209,37 @@ export function presentMessages(blocks: Block[]): PresentedBlock[] {
       rows.push(row);
     }
   }
-  return foldGroups(rows);
+  return foldGroups(attachToolFiles(rows));
+}
+
+// Files a tool added to context (a browser screenshot, a read image) belong
+// on the row of the call that produced them, not in a row of their own.
+function attachToolFiles(rows: PresentedBlock[]): PresentedBlock[] {
+  const byCall = new Map<string, number>();
+  const kept: PresentedBlock[] = [];
+  for (const row of rows) {
+    const owner = row.source_call_ids
+      ?.map((id) => byCall.get(id))
+      .find((index) => index !== undefined);
+    if (
+      row.kind === "attachment" &&
+      row.origin === "tool" &&
+      owner !== undefined
+    ) {
+      const files = (row.files || []).filter(
+        (file) => typeof file === "object",
+      );
+      kept[owner] = {
+        ...kept[owner],
+        files: [...(kept[owner].files || []), ...files],
+      };
+      continue;
+    }
+    if (row.kind === "tool_result" && row.call_id)
+      byCall.set(row.call_id, kept.length);
+    kept.push(row);
+  }
+  return kept;
 }
 
 // Intents whose consecutive calls read as one step (the native four).
@@ -240,6 +270,7 @@ function foldGroups(rows: PresentedBlock[]): PresentedBlock[] {
       row.kind === "tool_result" &&
       GROUPED.has(intent) &&
       !row.parts?.length &&
+      !row.files?.length &&
       !/fail|error|timed_out|denied|cancel/i.test(row.status || "");
     if (!joins || (run.length && run[0].activity?.category !== intent)) flush();
     if (joins) run.push(row);

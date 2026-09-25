@@ -101,7 +101,7 @@ Common slash commands:
 | --- | --- |
 | `/model`, `/models`, `/effort`, `/variant` | Choose route, model, reasoning effort or OpenRouter routing |
 | `/attach PATH`, `/diff`, `/review`, `/init` | Attach a file, show the git diff, review changes, write `AGENTS.md` |
-| `/status`, `/context`, `/cost`, `/trace`, `/http` | Inspect configuration, the model request, spend and captured traffic |
+| `/status`, `/context`, `/cost`, `/http` | Inspect configuration, the model request, spend and captured traffic |
 | `/ps`, `/agents`, `/tools`, `/permissions`, `/yolo` | Manage background work, collaborators, tools and approval mode |
 | `/sessions`, `/new`, `/fork`, `/rewind`, `/compact`, `/share` | Manage sessions and context |
 | `/memory`, `/skills`, `/schedule`, `/prompt`, `/config` | Manage memory, skills, scheduled tasks, system prompt and settings |

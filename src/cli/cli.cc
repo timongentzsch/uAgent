@@ -123,8 +123,6 @@ constexpr SlashCommandSpec kSlashCommands[] = {
     {SlashCommandId::kTell, "/tell", "ID TEXT", "message a linked session"},
     {SlashCommandId::kTools, "/tools", "[on|off NAME|profile NAME|reset]",
      "inspect or choose tools for this conversation"},
-    {SlashCommandId::kTrace, "/trace", "[CALL_ID]",
-     "show latest trace or full tool request/response"},
     {SlashCommandId::kVariant, "/variant", "MODE",
      "set OpenRouter provider routing", false},
     {SlashCommandId::kBtw, "/btw", "QUESTION",

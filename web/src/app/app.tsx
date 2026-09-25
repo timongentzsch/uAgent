@@ -387,8 +387,7 @@ function App() {
         exchanges: [exchanges[index - 1]],
         part: part as "request" | "response",
       });
-    } else if (name === "/trace" && argument) inspect(argument);
-    else return false;
+    } else return false;
     return true;
   }
   async function submit(event: Event) {

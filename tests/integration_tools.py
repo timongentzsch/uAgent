@@ -103,7 +103,7 @@ def test_full_run_and_python_terminal_trace(root, home, *, binary):
         env = base_env(home, server.url)
         env["UAGENT_TOOL_BATCH_RESULT_CHARS"] = "8"
         result = run_dialog(
-            root, env, "/verbose\ntrace\n/trace\n/q\n", "--yolo", timeout=20, binary=binary
+            root, env, "/verbose\ntrace\n/q\n", "--yolo", timeout=20, binary=binary
         )
         assert_true(result.returncode == 0, result.stderr)
         for expected in (
@@ -114,9 +114,6 @@ def test_full_run_and_python_terminal_trace(root, home, *, binary):
             "scratch(trace.py)",
             "python-one",
             "python-two",
-            "latest trace · turn 1 · 3 tools",
-            "→ [1] run",
-            "← [3] scratch",
             "trace-ok",
         ):
             assert_true(expected in result.stdout, result.stdout)
@@ -302,12 +299,10 @@ def test_skill_tool_offers_and_opens(root, home, *, binary):
         code, output = run_pty(
             workspace,
             base_env(home, server.url),
-            # /trace must describe a finished turn. The composer stays visible
-            # while the worker is active, so wait for its idle status after the
-            # answer before typing the command, then keep EOF behind its body.
+            # Verbose output shows the opened skill body in the tool result.
             [
+                (b"/verbose\n", b"verbose ON"),
                 (b"reply\n", b"skill-ok", b"Ready", None),
-                (b"/trace\n", b"demo-body-sentinel"),
                 b"\x04",
             ],
             columns=24,
@@ -316,10 +311,7 @@ def test_skill_tool_offers_and_opens(root, home, *, binary):
         assert_true(code == 0, output)
         assert_true(b"skill-ok" in output, output)
         assert_true(b"demo" in output, output)
-        assert_true(
-            output.find(b"demo-body-sentinel") > output.find(b"skill-ok"),
-            output,
-        )
+        assert_true(b"demo-body-sentinel" in output, output)
 
 
 def test_tool_trace_repeated_rounds_are_telemetry_only(root, home, *, binary):

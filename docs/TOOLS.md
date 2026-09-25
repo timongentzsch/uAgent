@@ -148,4 +148,4 @@ their own contract; `run` and `scratch` take an optional `intent` (default
 `execute`) that labels the activity and never changes permissions. Adjacent
 successful exploration in one batch folds into one row in the web UI and a
 compact terminal summary; changes, failures and approval prompts stay visible.
-`/trace` and `/verbose` show full detail in the terminal.
+`/verbose` shows full detail in the terminal.

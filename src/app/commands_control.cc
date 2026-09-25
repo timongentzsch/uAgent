@@ -51,8 +51,6 @@ json CommandResult(const AppSession& session,
                           DescriptionInputs(session));
     case SlashCommandId::kTools:
       return DescribeSelf(SelfTopic::kTools, "", DescriptionInputs(session));
-    case SlashCommandId::kTrace:
-      return {{"trace", session.ActiveAgent().LatestToolTrace()}};
     case SlashCommandId::kContext:
       return {
           {"effective_config", session.context.config_manager.DiagnosticJson(

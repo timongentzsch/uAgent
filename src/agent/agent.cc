@@ -127,12 +127,6 @@ json Agent::SideQuestion(const std::string& question) const {
   return {{"answer", std::move(answer)}, {"usage", result.usage}};
 }
 
-json Agent::RawExchange(const std::string& id, size_t offset) const {
-  return ConversationExchange(
-      conversation_,
-      id.starts_with("m-") || id.starts_with("t-") ? id : "t-" + id, offset);
-}
-
 void Agent::PublishMessage(const std::string& request_id) {
   ++revision_;
   auto kind = conversation_.KindAt(conversation_.Size() - 1);

@@ -98,7 +98,6 @@ class Agent {
   // lives in ui/; the agent only supplies facts.
   const Conversation& History() const { return conversation_; }
   const std::vector<Tool>& Tools() const { return tools_; }
-  const json& TraceArchive() const { return conversation_.Archive(); }
   json DisplaySnapshot() const;
   // /btw: one tool-less model call over the conversation as of the last
   // request or turn end, never recorded. Safe beside a running turn.
@@ -106,7 +105,6 @@ class Agent {
   // Snapshot the conversation (and the tools last offered, when given) for
   // SideQuestion; called by the turn thread only.
   void PublishSideContext(const json* tools = nullptr);
-  json RawExchange(const std::string& id, size_t offset = 0) const;
   void RetainExchanges(bool enabled) {
     retain_exchanges_ = enabled;
     api_.capture_http = enabled;

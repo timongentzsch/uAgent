@@ -111,6 +111,8 @@
 
 ### Removed
 
+- `/trace`: the tool input/output view and `/verbose` show the same detail;
+  headless `--json` keeps its `trace` field.
 - The self-improvement controller and its skill; trace metrics and live
   authority checks moved to `benchmarks/`.
 - The GitHub `action.yml`.

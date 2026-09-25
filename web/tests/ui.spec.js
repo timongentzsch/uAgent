@@ -487,6 +487,20 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
       return delta;
     })
     .toBeLessThan(2);
+  // Layout that moves the anchor without resizing it carries the panel along.
+  const docked = async () => {
+    const anchorBox = await model.boundingBox();
+    const panelBox = await picker.boundingBox();
+    return Math.abs(anchorBox.y - panelBox.y - panelBox.height - 8);
+  };
+  await page
+    .locator(".composer")
+    .evaluate((element) => (element.style.marginBottom = "100px"));
+  await expect.poll(docked).toBeLessThan(2);
+  await page
+    .locator(".composer")
+    .evaluate((element) => (element.style.marginBottom = ""));
+  await expect.poll(docked).toBeLessThan(2);
   await page.keyboard.press("Escape");
   await expect(picker).toHaveCount(0);
   await expect(model).toBeFocused();

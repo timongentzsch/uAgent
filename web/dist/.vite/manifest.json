@@ -10,13 +10,13 @@
     "file": "assets/_baseUniq-DR4vVjyC.js",
     "name": "_baseUniq"
   },
-  "_activity-status-CcYaAlSk.js": {
-    "file": "assets/activity-status-CcYaAlSk.js",
+  "_activity-status-DEVanXVz.js": {
+    "file": "assets/activity-status-DEVanXVz.js",
     "name": "activity-status",
     "imports": [
       "_ui-Ca6YsEiZ.js",
       "_api-B17OK55B.js",
-      "_popover-C_XrKKkT.js",
+      "_popover-CToGQMHl.js",
       "_square-v-iY6tzD.js",
       "_display-DD7RcVmk.js",
       "_connection-status-Bx6k562B.js",
@@ -637,14 +637,14 @@
       "node_modules/@mermaid-js/parser/dist/chunks/mermaid-parser.core/cynefin-OW5HDTMX.mjs"
     ]
   },
-  "_message-BklhOAml.js": {
-    "file": "assets/message-BklhOAml.js",
+  "_message-Bd-g2F_o.js": {
+    "file": "assets/message-Bd-g2F_o.js",
     "name": "message",
     "imports": [
       "_ui-Ca6YsEiZ.js",
       "_api-B17OK55B.js",
-      "_activity-status-CcYaAlSk.js",
-      "_popover-C_XrKKkT.js",
+      "_activity-status-DEVanXVz.js",
+      "_popover-CToGQMHl.js",
       "_display-DD7RcVmk.js",
       "_live-activities-BR2hQWdM.js",
       "_quantities-CUEaPVqX.js",
@@ -695,8 +695,8 @@
       "_ui-Ca6YsEiZ.js"
     ]
   },
-  "_popover-C_XrKKkT.js": {
-    "file": "assets/popover-C_XrKKkT.js",
+  "_popover-CToGQMHl.js": {
+    "file": "assets/popover-CToGQMHl.js",
     "name": "popover",
     "imports": [
       "_ui-Ca6YsEiZ.js"
@@ -722,12 +722,12 @@
     "file": "assets/rough.esm-Dy-Kn_BL.js",
     "name": "rough.esm"
   },
-  "_session-summary-IErw1Soa.js": {
-    "file": "assets/session-summary-IErw1Soa.js",
+  "_session-summary-LCxE2PSW.js": {
+    "file": "assets/session-summary-LCxE2PSW.js",
     "name": "session-summary",
     "imports": [
       "_ui-Ca6YsEiZ.js",
-      "_popover-C_XrKKkT.js",
+      "_popover-CToGQMHl.js",
       "_preload-helper-Czpn1I53.js",
       "_quantities-CUEaPVqX.js",
       "_loading-CelPS2ii.js"
@@ -795,7 +795,7 @@
     "name": "ui"
   },
   "index.html": {
-    "file": "assets/index-DUlZGSwg.js",
+    "file": "assets/index-BadM21Fx.js",
     "name": "index",
     "src": "index.html",
     "isEntry": true,
@@ -1812,26 +1812,26 @@
     ]
   },
   "src/features/browser/browser.tsx": {
-    "file": "assets/browser-BKuqJxfq.js",
+    "file": "assets/browser-C0gbEPtT.js",
     "name": "browser",
     "src": "src/features/browser/browser.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_ui-Ca6YsEiZ.js",
       "_api-B17OK55B.js",
-      "_popover-C_XrKKkT.js",
+      "_popover-CToGQMHl.js",
       "_browser-BERRaKuu.js",
       "_connection-status-Bx6k562B.js"
     ]
   },
   "src/features/chat/chat.tsx": {
-    "file": "assets/chat-DdNexYF5.js",
+    "file": "assets/chat-COJme4hE.js",
     "name": "chat",
     "src": "src/features/chat/chat.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_ui-Ca6YsEiZ.js",
-      "_message-BklhOAml.js"
+      "_message-Bd-g2F_o.js"
     ]
   },
   "src/features/chat/conversation-actions.tsx": {
@@ -1855,16 +1855,16 @@
     ]
   },
   "src/features/chat/inspector.tsx": {
-    "file": "assets/inspector-BWZelvs7.js",
+    "file": "assets/inspector-Dh_ErqN2.js",
     "name": "inspector",
     "src": "src/features/chat/inspector.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_ui-Ca6YsEiZ.js",
       "_api-B17OK55B.js",
-      "_message-BklhOAml.js",
-      "_activity-status-CcYaAlSk.js",
-      "_session-summary-IErw1Soa.js",
+      "_message-Bd-g2F_o.js",
+      "_activity-status-DEVanXVz.js",
+      "_session-summary-LCxE2PSW.js",
       "_arrow-left-B1lzZ2we.js",
       "_square-v-iY6tzD.js",
       "_display-DD7RcVmk.js",
@@ -1891,16 +1891,16 @@
     ]
   },
   "src/features/composer/composer.tsx": {
-    "file": "assets/composer-BoW0XzSK.js",
+    "file": "assets/composer-FgQF5c1J.js",
     "name": "composer",
     "src": "src/features/composer/composer.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_ui-Ca6YsEiZ.js",
       "_api-B17OK55B.js",
-      "_activity-status-CcYaAlSk.js",
-      "_session-summary-IErw1Soa.js",
-      "_popover-C_XrKKkT.js",
+      "_activity-status-DEVanXVz.js",
+      "_session-summary-LCxE2PSW.js",
+      "_popover-CToGQMHl.js",
       "_square-v-iY6tzD.js",
       "_mention-D08lr6wL.js",
       "_preload-helper-Czpn1I53.js",
@@ -1915,7 +1915,7 @@
     ]
   },
   "src/features/library/library.tsx": {
-    "file": "assets/library-BJZ8B1Mz.js",
+    "file": "assets/library-BWuqK-I1.js",
     "name": "library",
     "src": "src/features/library/library.tsx",
     "isDynamicEntry": true,
@@ -1924,7 +1924,7 @@
       "_store-CJw9jaZH.js",
       "_api-B17OK55B.js",
       "_arrow-left-B1lzZ2we.js",
-      "_popover-C_XrKKkT.js",
+      "_popover-CToGQMHl.js",
       "_folder-label-DWiITQK_.js",
       "_plus-MhiQgEbS.js",
       "_quantities-CUEaPVqX.js",
@@ -1937,7 +1937,7 @@
     ]
   },
   "src/features/scheduled/scheduled.tsx": {
-    "file": "assets/scheduled-piMDJLWd.js",
+    "file": "assets/scheduled-XJ2Pc1Qi.js",
     "name": "scheduled",
     "src": "src/features/scheduled/scheduled.tsx",
     "isDynamicEntry": true,
@@ -1946,7 +1946,7 @@
       "_store-CJw9jaZH.js",
       "_api-B17OK55B.js",
       "_arrow-left-B1lzZ2we.js",
-      "_popover-C_XrKKkT.js",
+      "_popover-CToGQMHl.js",
       "_plus-MhiQgEbS.js",
       "_square-v-iY6tzD.js",
       "_management-Dd1UCKIY.js",
@@ -2062,15 +2062,15 @@
     ]
   },
   "src/features/sidebar/sidebar.tsx": {
-    "file": "assets/sidebar-CwYdfZjx.js",
+    "file": "assets/sidebar-A-HCO4oZ.js",
     "name": "sidebar",
     "src": "src/features/sidebar/sidebar.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_ui-Ca6YsEiZ.js",
       "_api-B17OK55B.js",
-      "_activity-status-CcYaAlSk.js",
-      "_popover-C_XrKKkT.js",
+      "_activity-status-DEVanXVz.js",
+      "_popover-CToGQMHl.js",
       "_folder-label-DWiITQK_.js",
       "_plus-MhiQgEbS.js",
       "_settings-B5UFnXsU.js",
@@ -2217,7 +2217,7 @@
     ]
   },
   "ui.html": {
-    "file": "assets/ui-N_CXuNAJ.js",
+    "file": "assets/ui-5ALftN8J.js",
     "name": "ui",
     "src": "ui.html",
     "isEntry": true,
@@ -2225,7 +2225,7 @@
       "_style-D9X3IVts.js",
       "_ui-Ca6YsEiZ.js",
       "_store-CJw9jaZH.js",
-      "_popover-C_XrKKkT.js",
+      "_popover-CToGQMHl.js",
       "_plus-MhiQgEbS.js",
       "_size-controls-C5mHYkMy.js",
       "_browser-BERRaKuu.js"

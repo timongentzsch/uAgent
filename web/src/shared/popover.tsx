@@ -67,21 +67,24 @@ export function Popover({
       )
       ?.focus({ preventScroll: true });
     const stopObserving = observeResize(place, element, button);
-    const scroll = (event: Event) => {
-      if (!(event.target instanceof Node) || !element.contains(event.target))
-        place();
-    };
+    // Follow the anchor wherever layout or scrolling moves it, as
+    // floating-ui's autoUpdate does: one rect read per frame while open.
+    let anchorAt = "";
+    let frame = requestAnimationFrame(function follow() {
+      const { x, y } = button.getBoundingClientRect();
+      if (anchorAt !== (anchorAt = `${x},${y}`)) place();
+      frame = requestAnimationFrame(follow);
+    });
     const toggled = (event: ToggleEvent) => {
       if (event.newState === "closed") setOpen(false);
     };
     element.addEventListener("toggle", toggled);
     const stopViewport = observeViewport(place);
-    document.addEventListener("scroll", scroll, true);
     return () => {
       stopObserving();
+      cancelAnimationFrame(frame);
       element.removeEventListener("toggle", toggled);
       stopViewport();
-      document.removeEventListener("scroll", scroll, true);
     };
   }, [open]);
   return (

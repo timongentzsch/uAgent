@@ -646,12 +646,8 @@
       "node_modules/@mermaid-js/parser/dist/chunks/mermaid-parser.core/cynefin-OW5HDTMX.mjs"
     ]
   },
-  "_message-B79ztpda.css": {
-    "file": "assets/message-B79ztpda.css",
-    "src": "_message-B79ztpda.css"
-  },
-  "_message-D3RKa42L.js": {
-    "file": "assets/message-D3RKa42L.js",
+  "_message-7TwmGeQZ.js": {
+    "file": "assets/message-7TwmGeQZ.js",
     "name": "message",
     "imports": [
       "_ui-BKaMWZaA.js",
@@ -670,6 +666,10 @@
       "assets/attachments-BIteUWDi.css",
       "assets/message-B79ztpda.css"
     ]
+  },
+  "_message-B79ztpda.css": {
+    "file": "assets/message-B79ztpda.css",
+    "src": "_message-B79ztpda.css"
   },
   "_message-view-avA6zg3u.js": {
     "file": "assets/message-view-avA6zg3u.js",
@@ -805,7 +805,7 @@
     "name": "ui"
   },
   "index.html": {
-    "file": "assets/index-CON8DOF1.js",
+    "file": "assets/index-DoTiwmwX.js",
     "name": "index",
     "src": "index.html",
     "isEntry": true,
@@ -1837,13 +1837,13 @@
     ]
   },
   "src/features/chat/chat.tsx": {
-    "file": "assets/chat-B0xCeNM_.js",
+    "file": "assets/chat-CNnY8FDc.js",
     "name": "chat",
     "src": "src/features/chat/chat.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_ui-BKaMWZaA.js",
-      "_message-D3RKa42L.js"
+      "_message-7TwmGeQZ.js"
     ]
   },
   "src/features/chat/conversation-actions.tsx": {
@@ -1867,7 +1867,7 @@
     ]
   },
   "src/features/chat/inspector.tsx": {
-    "file": "assets/inspector-C5vUlhic.js",
+    "file": "assets/inspector-DhrU2Kj7.js",
     "name": "inspector",
     "src": "src/features/chat/inspector.tsx",
     "isDynamicEntry": true,
@@ -1877,7 +1877,7 @@
       "_activity-status-8tq1zM2A.js",
       "_session-summary-D6jkXgsk.js",
       "_arrow-left-B9bNSBGn.js",
-      "_message-D3RKa42L.js",
+      "_message-7TwmGeQZ.js",
       "_square-C8OQ9rC0.js",
       "_display-BsP-h6cH.js",
       "_quantities-CUEaPVqX.js",
@@ -2062,7 +2062,7 @@
     ]
   },
   "src/features/settings/tools.tsx": {
-    "file": "assets/tools-DZRVFtNs.js",
+    "file": "assets/tools-DKFKHy84.js",
     "name": "tools",
     "src": "src/features/settings/tools.tsx",
     "isDynamicEntry": true,

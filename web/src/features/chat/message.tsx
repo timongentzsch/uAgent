@@ -373,24 +373,28 @@ function MessageView({
 
 type MessageProps = ComponentProps<typeof MessageView>;
 
-// A group row changes when any of its steps would.
-function stepsEqual(before: MessageProps, after: MessageProps): boolean {
-  const x = before.block.children || [];
-  const y = after.block.children || [];
-  return (
-    x.length === y.length &&
-    x.every((step, index) =>
-      messagePropsEqual(
-        { ...before, block: step },
-        { ...after, block: y[index] },
-      ),
-    )
-  );
+// Every block field counts, so a new field can never be silently ignored.
+// Only arrays the projection rebuilds on each pass compare by content.
+function blockEqual(x: PresentedBlock, y: PresentedBlock): boolean {
+  const a = x as unknown as Record<string, unknown>;
+  const b = y as unknown as Record<string, unknown>;
+  for (const key of new Set([...Object.keys(a), ...Object.keys(b)])) {
+    if (a[key] === b[key]) continue;
+    const before = (a[key] || []) as PresentedBlock[];
+    const after = (b[key] || []) as PresentedBlock[];
+    if (key === "children") {
+      if (
+        before.length !== after.length ||
+        !before.every((step, index) => blockEqual(step, after[index]))
+      )
+        return false;
+    } else if (key !== "files" && key !== "http") return false;
+    else if (before.length !== after.length) return false;
+  }
+  return true;
 }
 
 function messagePropsEqual(before: MessageProps, after: MessageProps): boolean {
-  const x = before.block;
-  const y = after.block;
   return (
     before.online === after.online &&
     before.session.id === after.session.id &&
@@ -402,35 +406,7 @@ function messagePropsEqual(before: MessageProps, after: MessageProps): boolean {
     before.activity === after.activity &&
     before.recall === after.recall &&
     before.http === after.http &&
-    x.kind === y.kind &&
-    x.text === y.text &&
-    x.reasoning === y.reasoning &&
-    !!x.streaming === !!y.streaming &&
-    x.status === y.status &&
-    x.truncated === y.truncated &&
-    x.error === y.error &&
-    x.time === y.time &&
-    x.name === y.name &&
-    x.detail_id === y.detail_id &&
-    x.call_id === y.call_id &&
-    x.parts === y.parts &&
-    x.tail === y.tail &&
-    x.deliveries === y.deliveries &&
-    x.unavailable_images === y.unavailable_images &&
-    x.origin === y.origin &&
-    x.request_id === y.request_id &&
-    stepsEqual(before, after) &&
-    (x.files?.length || 0) === (y.files?.length || 0) &&
-    (x.http?.length || 0) === (y.http?.length || 0) &&
-    x.arguments === y.arguments &&
-    x.view === y.view &&
-    x.summary === y.summary &&
-    x.compaction === y.compaction &&
-    x.memory === y.memory &&
-    x.replay?.title === y.replay?.title &&
-    x.replay?.summary === y.replay?.summary &&
-    (x.duration_ms ?? null) === (y.duration_ms ?? null) &&
-    (x.change ?? "") === (y.change ?? "")
+    blockEqual(before.block, after.block)
   );
 }
 

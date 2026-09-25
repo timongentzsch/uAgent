@@ -165,8 +165,6 @@ Agent::StepFlow Agent::HandleFailedResponse(ChatResult& response,
 
 // Text that imitates a tool protocol but parses as nothing. One correction is
 // worth sending; a second means the model will not recover.
-// Text that imitates a tool protocol but parses as nothing. One correction is
-// worth sending; a second means the model will not recover.
 Agent::StepFlow Agent::HandleUnparsedToolMarkup(TurnExecution& state,
                                                 StepState& loop) {
   if (!loop.markup_recovered) {
@@ -186,10 +184,6 @@ Agent::StepFlow Agent::HandleUnparsedToolMarkup(TurnExecution& state,
   return StepFlow::kEndTurn;
 }
 
-// A completion with no answer and no call carries nothing to react to, so the
-// first one is replayed unchanged, a repeat earns a guiding note, and only a
-// third ends the turn: a barren provider response must not cost the work this
-// turn has already done.
 // A completion with no answer and no call carries nothing to react to, so the
 // first one is replayed unchanged, a repeat earns a guiding note, and only a
 // third ends the turn: a barren provider response must not cost the work this
@@ -227,9 +221,6 @@ Agent::StepFlow Agent::HandleEmptyResponse(const ChatResult& response,
   return StepFlow::kNextStep;
 }
 
-// A provider stop is separate from transport success. Salvage complete calls
-// only for truncation; otherwise one bounded continuation prevents a partial
-// prose response or an unfamiliar stop reason from being accepted as final.
 // A provider stop is separate from transport success. Salvage complete calls
 // only for truncation; otherwise one bounded continuation prevents a partial
 // prose response or an unfamiliar stop reason from being accepted as final.

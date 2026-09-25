@@ -629,11 +629,10 @@ class Master {
   std::string executable_, directory_, local_, local_authority_, origin_,
       authority_, epoch_, secret_, pair_;
   session::SessionHost host_;
-  Clock::time_point pair_deadline_{}, auth_window_{}, scanned_{};
+  Clock::time_point pair_deadline_{}, auth_window_{};
   int auth_attempts_ = 0;
   httplib::Server server_;
-  std::mutex mutex_, scan_mutex_;
-  std::map<std::string, FileStamp> history_directories_;
+  std::mutex mutex_;
   Pipe host_wake_;
   std::vector<Device> devices_;
   size_t sse_count_ = 0;

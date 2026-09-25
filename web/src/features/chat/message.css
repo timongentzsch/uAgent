@@ -274,7 +274,7 @@
   min-width: 0;
 }
 .tool-inline > .diff,
-.tool-inline > .tool-tail,
+.tool-inline > .tool-console,
 .tool-inline > .tool-file {
   justify-self: stretch;
   margin: 0;
@@ -284,10 +284,17 @@
   padding: 0;
   text-decoration: underline;
 }
-.tool-tail {
-  color: var(--muted);
+/* A command's output: one terminal-like box, about six lines tall, that
+   scrolls back through the rest without scrolling the conversation. */
+.tool-console {
+  max-height: calc(6lh + 2 * var(--space-4));
+  overflow: auto;
+  overscroll-behavior: contain;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+.tool-console > .tool-link {
+  display: block;
 }
 /* A file the agent shared: a preview where it is safe, then name, size,
    open and download. */

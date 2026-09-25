@@ -122,7 +122,7 @@ PresentationRecord ToolResultPresentation(const CallTask& task,
 
   bool truncated = model_output.size() < task.result.output.size();
   record.summary = ToolResultSummary(task.result, model_output, truncated);
-  record.output = StripToolTrailer(model_output);
+  record.output = StripModelHints(model_output);
   return record;
 }
 

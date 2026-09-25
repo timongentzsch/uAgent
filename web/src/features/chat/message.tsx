@@ -111,6 +111,8 @@ function MessageView({
   const [full, setFull] = useState<string | null>(null);
   const [expanding, setExpanding] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  // A command's output box can ask for the full text without expanding.
+  const [wantFull, setWantFull] = useState(false);
   const [loadError, setLoadError] = useState<unknown>(null);
   const [retry, setRetry] = useState(0);
   const text = full ?? block.text;
@@ -120,7 +122,7 @@ function MessageView({
     if (
       !online ||
       (!tool && block.kind !== "activity") ||
-      !expanded ||
+      !(expanded || wantFull) ||
       !block.truncated ||
       full !== null
     )
@@ -148,6 +150,7 @@ function MessageView({
     online,
     tool,
     expanded,
+    wantFull,
     block.truncated,
     block.detail_id,
     block.call_id,
@@ -266,7 +269,8 @@ function MessageView({
               <ToolInline
                 block={block}
                 text={text}
-                running={running}
+                loaded={full !== null}
+                loadFull={() => setWantFull(true)}
                 online={online}
                 assets={`/api/sessions/${session.id}/assets/`}
                 open={activity && ((link) => activity(linkTarget(block, link)))}

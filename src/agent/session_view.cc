@@ -128,7 +128,7 @@ bool IsBlankLine(std::string_view line) {
 std::string DisplayText(const json& message) {
   std::string text = Text(message);
   if (JsonValue(message, "role", "") == "tool") {
-    return StripToolTrailer(std::move(text));
+    return StripModelHints(std::move(text));
   }
   const json* content = JsonArray(message, "content");
   if (!content) return text;
@@ -661,7 +661,15 @@ json ConversationExchange(const Conversation& conversation,
           {"bytes", text.size()},
           {"more", end < text.size()}};
 }
-std::string StripToolTrailer(std::string text) {
+std::string StripModelHints(std::string text) {
+  for (std::string_view hint :
+       {"[running] activity ", "[started] subagent id ", "[detached] pid "}) {
+    if (text.starts_with(hint)) {
+      const size_t end = text.find('\n');
+      text.erase(0, end == std::string::npos ? text.size() : end + 1);
+      break;
+    }
+  }
   const size_t line = text.rfind("\n[collaborator ");
   if (line != std::string::npos && text.back() == ']' &&
       text.find('\n', line + 1) == std::string::npos) {

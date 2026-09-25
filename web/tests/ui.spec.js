@@ -2309,3 +2309,25 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
   await expect(receipt).toBeVisible();
   await expect(receipt).toHaveCount(1);
 });
+
+test("a long agent state truncates instead of wrapping the phone status line", async ({
+  page,
+  session,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/#session=${session.id}`);
+  const line = page.locator(".composer .status-line");
+  await expect(line).toBeVisible();
+  const single = (await line.boundingBox()).height;
+  await page
+    .locator(".composer .activity-caption")
+    .evaluate(
+      (node) =>
+        (node.textContent = "Waiting for approval to run the long command"),
+    );
+  expect((await line.boundingBox()).height).toBe(single);
+  const caption = page.locator(".composer .activity-caption");
+  expect(
+    await caption.evaluate((node) => node.scrollWidth > node.clientWidth),
+  ).toBe(true);
+});

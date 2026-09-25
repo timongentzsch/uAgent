@@ -862,6 +862,11 @@ pre code {
   min-width: 0;
   padding-top: var(--space-2);
 }
+/* One line at any width: a long state ("Waiting for approval…") truncates
+   before the row would wrap under the metrics. */
+.status-line > :first-child {
+  min-width: 0;
+}
 .activity-toggle {
   display: flex;
   align-items: center;
@@ -1441,10 +1446,6 @@ dialog section {
     padding-inline: var(--space-2);
     font-size: 0.75rem;
     gap: var(--space-2);
-  }
-  .status-line {
-    flex-wrap: wrap;
-    gap: 0 var(--gap);
   }
   .metrics {
     font-size: 0.65rem;

@@ -68,7 +68,7 @@ void Agent::AppendToolResult(const ToolCall& call, const std::string& result,
       {"name", call.name},
       {"status", CompletionStatusName(original.status)},
       {"duration_ms", duration_ms},
-      {"output", Utf8Trunc(StripToolTrailer(original.output), kPreviewChars)},
+      {"output", Utf8Trunc(StripModelHints(original.output), kPreviewChars)},
       {"truncated", original.output.size() > kPreviewChars},
       {"change", Utf8Trunc(original.display, kChangePreviewChars)}};
   if (retain_exchanges_) {

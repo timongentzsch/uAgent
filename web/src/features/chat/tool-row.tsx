@@ -9,7 +9,7 @@ import type {
   ToolPart,
 } from "../../shared/types.ts";
 import { StatusLed } from "../../shared/connection-status.tsx";
-import { useContext } from "preact/hooks";
+import { useContext, useLayoutEffect, useRef } from "preact/hooks";
 import { LiveActivities } from "../../state/live-activities.ts";
 import { duration } from "../../shared/duration.ts";
 import { bytes } from "../../shared/quantities.ts";
@@ -60,14 +60,40 @@ export function ToolInput({ parts }: { parts: ToolPart[] }) {
 export type OpenLink = (link: LinkPart) => void;
 
 const DIFF_LINES = 40;
-const TAIL_LINES = 3;
 
-function lastLines(text: string, count: number) {
-  return text
-    .split("\n")
-    .filter((line) => line.trim())
-    .slice(-count)
-    .join("\n");
+// A command's output as a terminal shows it: one box that opens scrolled to
+// the end and scrolls back through everything the row holds. A long result
+// keeps only its start and end in the row, so earlier output loads on demand.
+function OutputBox({
+  text,
+  more,
+  online,
+  loadFull,
+}: {
+  text: string;
+  more: boolean;
+  online: boolean;
+  loadFull: () => void;
+}) {
+  const box = useRef<HTMLPreElement>(null);
+  useLayoutEffect(() => {
+    if (box.current) box.current.scrollTop = box.current.scrollHeight;
+  }, [text]);
+  return (
+    <pre class="tool-console" ref={box} tabIndex={0} aria-label="Output">
+      {more && (
+        <button
+          type="button"
+          class="quiet tool-link"
+          disabled={!online}
+          onClick={loadFull}
+        >
+          Load earlier output
+        </button>
+      )}
+      {text}
+    </pre>
+  );
 }
 
 // The work a row started, while it still runs: its LED and elapsed time.
@@ -157,7 +183,7 @@ export function ToolRow({
         )}
         {expanding && <Skeleton label="Loading full tool output…" />}
         {loadError && <LoadError error={loadError} retry={retry} />}
-        {text ? (
+        {block.view?.output === "tail" ? null : text ? (
           block.view?.output === "markdown" ? (
             <div class="tool-output">
               <Markdown text={output} />
@@ -188,30 +214,34 @@ export function ToolRow({
 }
 
 // What stays visible under a row without expanding it: a change's diff, a
-// command's last lines, and the files and work the call produced.
+// command's output, and the files and work the call produced.
 export function ToolInline({
   block,
   text,
-  running,
+  loaded,
+  loadFull,
   online,
   assets,
   open,
 }: {
   block: PresentedBlock;
   text?: string;
-  running: boolean;
+  loaded: boolean;
+  loadFull: () => void;
   online: boolean;
   assets: string;
   open?: OpenLink;
 }) {
   const diff = block.change?.includes("\n") ? block.change : "";
   const lines = diff.split("\n");
-  const tail =
-    block.view?.output === "tail" && !running
-      ? lastLines(cleanText(block.tail ?? text ?? ""), TAIL_LINES)
+  // Until the full text loads, a truncated result shows its end.
+  const more = !!block.truncated && !loaded;
+  const output =
+    block.view?.output === "tail"
+      ? cleanText((more && block.tail) || text || "").trim()
       : "";
   const parts = block.parts || [];
-  if (!diff && !tail && !parts.length) return null;
+  if (!diff && !output && !parts.length) return null;
   return (
     <div class="tool-inline">
       {diff && (
@@ -223,7 +253,14 @@ export function ToolInline({
           diff
         </p>
       )}
-      {tail && <pre class="tool-tail">{tail}</pre>}
+      {output && (
+        <OutputBox
+          text={output}
+          more={more}
+          online={online}
+          loadFull={loadFull}
+        />
+      )}
       {parts.map((part, index) =>
         part.kind === "file" ? (
           <FileCard key={index} file={part} href={`${assets}${part.id}`} />

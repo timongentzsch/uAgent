@@ -380,14 +380,18 @@ void TestToolViews() {
 }
 
 // The resume hint is for the model; rows link to the agent through facts.
-void TestToolTrailer() {
-  CHECK(StripToolTrailer("done\n[collaborator agent-1; resume with subagent "
-                         "operation=followup]") == "done");
-  CHECK(StripToolTrailer("done\n[collaborator agent-1; persistent runtime "
-                         "retained]") == "done");
+void TestModelHints() {
+  CHECK(StripModelHints("done\n[collaborator agent-1; resume with subagent "
+                        "operation=followup]") == "done");
+  CHECK(StripModelHints("done\n[collaborator agent-1; persistent runtime "
+                        "retained]") == "done");
   // Only a final line is a trailer; the same text elsewhere is content.
-  CHECK(StripToolTrailer("[collaborator x]\nmore") == "[collaborator x]\nmore");
-  CHECK(StripToolTrailer("plain") == "plain");
+  CHECK(StripModelHints("[collaborator x]\nmore") == "[collaborator x]\nmore");
+  // A started-work hint gives way to the output; the row links the work.
+  CHECK(StripModelHints("[running] activity 7; poll or wait\nServing") ==
+        "Serving");
+  CHECK(StripModelHints("[started] subagent id 7; wait").empty());
+  CHECK(StripModelHints("plain") == "plain");
 }
 
 void TestDiffLineColoring() {

@@ -12,7 +12,7 @@ namespace uagent {
   X(TestForeignToolMarkup)                       \
   X(TestToolResults)                             \
   X(TestToolViews)                               \
-  X(TestToolTrailer)                             \
+  X(TestModelHints)                              \
   X(TestRegistries)                              \
   X(TestCommandAndDisplayRegistries)             \
   X(TestModelCatalogParsing)                     \

@@ -318,9 +318,9 @@ bool ToolCallBlocks(const Tool& tool, const json& arguments) {
 // Contract-defined for native operations; arbitrary execution may declare its
 // purpose. Neither this label nor a successful exit proves absence of effects.
 const json& CommandIntents() {
-  static const json intents = {"explore", "research", "edit",
-                               "verify",  "run",      "setup"};
-  return intents;
+  static const json kIntents = {"explore", "research", "edit",
+                                "verify",  "run",      "setup"};
+  return kIntents;
 }
 
 namespace {
@@ -357,7 +357,7 @@ bool ReadOnlyCommand(const std::string& command) {
 
 std::string ToolActivityCategory(const Tool& tool, const json& args) {
   if (tool.declared_intent) {
-    const std::string intent = JsonValue(args, "intent", "");
+    std::string intent = JsonValue(args, "intent", "");
     for (const json& known : CommandIntents()) {
       if (known == intent) return intent;
     }

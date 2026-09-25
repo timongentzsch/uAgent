@@ -346,11 +346,14 @@ void Conversation::RecordDisplay(const std::string& key, json facts) {
   // Metadata is independently bounded. Evict the largest fact first: fat
   // tool rows yield the most headroom, while tiny control receipts
   // (attachment deliveries) survive pressure that used to delete them by
-  // key order and re-trigger their notices on every later step.
+  // key order and re-trigger their notices on every later step. The fact
+  // just written never goes: a fresh response would otherwise lose the id
+  // that rejoins its live row.
   while (display_facts_.size() > kFactCount || display_bytes_ > kDisplayBytes) {
     auto victim = display_facts_.end();
     size_t victim_bytes = 0;
     for (auto it = display_facts_.begin(); it != display_facts_.end(); ++it) {
+      if (it.key() == key) continue;
       size_t candidate = 0;
       if (const auto sized = fact_bytes_.find(it.key());
           sized != fact_bytes_.end()) {
@@ -367,6 +370,7 @@ void Conversation::RecordDisplay(const std::string& key, json facts) {
     if (victim == display_facts_.end()) break;
     if (victim_bytes <= kTinyFactBytes && display_bytes_ <= kDisplayBytes) {
       victim = display_facts_.begin();
+      if (victim.key() == key) ++victim;
       if (const auto sized = fact_bytes_.find(victim.key());
           sized != fact_bytes_.end()) {
         victim_bytes = sized->second;

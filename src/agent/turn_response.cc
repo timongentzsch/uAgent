@@ -22,6 +22,7 @@
 #include "include/core/debug.h"
 #include "include/core/env.h"
 #include "include/core/events.h"
+#include "include/core/limits.h"
 #include "include/core/signals.h"
 #include "include/core/skills.h"
 #include "include/core/steering.h"
@@ -329,9 +330,10 @@ void Agent::PushAssistantMessage(ChatResult& response,
                                  1000 / response.duration_ms;
   }
   conversation_.RecordDisplay(conversation_.LastDisplayId(), std::move(facts));
+  // Only the preview the view shows is kept; more would crowd out other facts.
   conversation_.RecordDisplay(
       conversation_.LastDisplayId(),
-      {{"reasoning", Utf8Trunc(response.reasoning, size_t{48} * 1024)},
+      {{"reasoning", Utf8Trunc(response.reasoning, kPreviewChars)},
        {"reasoning_available", !response.reasoning.empty()},
        {"reasoning_revision", 1},
        {"reasoning_complete", true},

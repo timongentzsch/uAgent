@@ -680,7 +680,10 @@ export type StatisticsModal =
       type: "statistics";
       session_id: string;
       block_id?: string;
+      // What block_id names: a turn (its footer) or one message.
+      unit?: StatisticsUnit;
     };
+export type StatisticsUnit = "Turn" | "Message";
 export interface RawOptions {
   part?: "request" | "response";
   session?: string;

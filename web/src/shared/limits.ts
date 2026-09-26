@@ -2,6 +2,9 @@
 // limits live in the C++ config registry; these bounds protect local UI state.
 export const maxLocalRequests = 256;
 export const maxAttentionReceipts = 256;
+export const maxHttpExchanges = 64;
+export const maxRecalledPromptSessions = 32;
+export const reconnectMaxDelayMs = 30_000;
 export const maxTranscriptBookmarks = 20;
 export const maxLivePreviewChars = 64 * 1024;
 export const maxDiagramSourceChars = 20_000;

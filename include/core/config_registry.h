@@ -87,6 +87,12 @@ inline constexpr std::string_view kWebSearchEngines[] = {
 inline constexpr std::string_view kWebSearchContextSizes[] = {"low", "medium",
                                                               "high"};
 
+// Default model route when nothing is configured: DeepSeek flash through
+// OpenRouter auto-routing. One constant so the provider template and side-model
+// defaults cannot drift apart.
+inline constexpr const char* kDefaultModelRoute =
+    "~deepseek/deepseek-flash-latest";
+
 // Sent when a route has no credential; local OpenAI-compatible servers accept
 // any bearer value, and "no key configured" checks compare against it.
 inline constexpr char kPlaceholderApiKey[] = "sk-noop";
@@ -594,6 +600,10 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                   "https://openrouter.ai/api/alpha",
                   ReloadPolicy::kNextUserTurn, Sensitivity::kPublic,
                   "behaviour", "OpenRouter Decisions API base URL"),
+    registry::Str("UAGENT_TITLE_MODEL", "title_model", kDefaultModelRoute,
+                  ReloadPolicy::kNextUserTurn, Sensitivity::kPublic,
+                  "behaviour",
+                  "model route that names new sessions, or off"),
     registry::Str("UAGENT_TOOL_CAPABILITIES", {}, "",
                   ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
                   "behaviour", "restrict the exposed tool capability set"),

@@ -206,6 +206,7 @@ Every setting below is read from the running binary's registry. `takes effect` i
 | `UAGENT_APPROVAL` | string | empty | next-user-turn | ask, auto reviewer, or yolo for ordinary mutations |
 | `UAGENT_PERMISSION_MODEL` | string | `~typesafe/jev-latest` | next-user-turn | OpenRouter Decisions model used by auto permissions |
 | `UAGENT_PERMISSION_URL` | string | `https://openrouter.ai/api/alpha` | next-user-turn | OpenRouter Decisions API base URL |
+| `UAGENT_TITLE_MODEL` | string | `~deepseek/deepseek-flash-latest` | next-user-turn | model route that names new sessions, or off |
 | `UAGENT_TOOL_CAPABILITIES` | string | empty | restart-required | restrict the exposed tool capability set |
 | `UAGENT_SHELL_ENV_ALLOW` | string | empty | restart-required | comma-separated sensitive variables approved shells may inherit |
 | `UAGENT_TRUST_PROJECT_CONFIG` | boolean | `0` | restart-required | trust this workspace's .mcp.json and config |

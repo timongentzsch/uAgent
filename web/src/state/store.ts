@@ -2,6 +2,7 @@ import type { Block, HostEvent, Snapshot } from "../shared/types.ts";
 import {
   maxLivePreviewChars,
   retainedBackgroundViews,
+  maxHttpExchanges,
 } from "../shared/limits.ts";
 export function readStored<T>(
   storage: Pick<Storage, "getItem">,
@@ -298,18 +299,25 @@ export function applySessionEvent(
     }
     state.collaborators = collaborators;
   }
-  if (event.type === "http.exchange" && data.id && data.state)
+  // Each exchange updates in place by id; earlier attempts stay reachable
+  // through /http INDEX until the next published state replaces the list.
+  if (event.type === "http.exchange" && data.id && data.state) {
+    const exchange = {
+      ...data,
+      id: data.id,
+      state: data.state,
+      status: typeof data.status === "number" ? data.status : undefined,
+    };
+    const prior = state?.http || [];
+    const at = prior.findIndex((item) => item.id === data.id);
     state = {
       ...(state || {}),
-      http: [
-        {
-          ...data,
-          id: data.id,
-          state: data.state,
-          status: typeof data.status === "number" ? data.status : undefined,
-        },
-      ],
+      http:
+        at < 0
+          ? [...prior, exchange].slice(-maxHttpExchanges)
+          : prior.map((item, index) => (index === at ? exchange : item)),
     };
+  }
   if (event.type === "config.changed" && data.permissions)
     state = { ...(state || {}), permissions: data.permissions };
   if (event.type === "message.changed" && data.block) {

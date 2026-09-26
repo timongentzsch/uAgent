@@ -2280,3 +2280,40 @@ def test_persistent_guidance_requires_its_command_receipt(root, home, *, binary)
             finally:
                 release.set()
             web.until(session, lambda value: value["metadata"]["status"] == "idle")
+
+
+def test_web_session_title_generation_respects_rename(root, home, *, binary):
+    release = threading.Event()
+    served = []
+
+    def route(_, body):
+        if body.get("model") != "titler":
+            return event({"content": "Recorded answer"})
+        # A title for the second session waits until the user has renamed it.
+        if "rename me" in json.dumps(body["messages"]):
+            release.wait(budget(10))
+        served.append(body)
+        return event({"content": '"Investigate browser efficiency."'})
+
+    with Server([route]) as provider:
+        with web_host(
+            binary, root, home, provider.url, extra_env={"UAGENT_TITLE_MODEL": "titler"}
+        ) as (client, code, _, _):
+            client.pair(code)
+            named = client.create(root)
+            client.command("submit", named, text="why is the browser slow on this page")
+            # Quotes and the trailing period are stripped from the model's answer.
+            client.until(
+                named,
+                lambda value: value["metadata"]["title"] == "Investigate browser efficiency",
+            )
+            kept = client.create(root)
+            client.command("submit", kept, text="please rename me afterwards")
+            client.until(kept, lambda value: value["metadata"]["status"] == "idle")
+            client.command("rename", kept, title="Mine")
+            release.set()
+            wait_until(lambda: len(served) == 2, lambda: served)
+            # The late title reaches the runtime and must not replace the rename.
+            time.sleep(0.5)
+            title = client.snapshot(kept)["metadata"]["title"]
+            assert_true(title == "Mine", title)

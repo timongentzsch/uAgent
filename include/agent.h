@@ -14,6 +14,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -130,6 +131,9 @@ class Agent {
     custom_title_ = true;
     ++revision_;
   }
+  // Name new sessions with UAGENT_TITLE_MODEL in the background. Only
+  // persistent interactive hosts enable it; one-shot runs keep the first line.
+  void GenerateTitles(bool enabled) { generate_titles_ = enabled; }
 
   json ModelRequest();
 
@@ -178,6 +182,9 @@ class Agent {
   // kAttachment kind for the request pipeline and carry an origin fact
   // so the view attributes them to the agent instead.
   bool DrainUserAttachments(std::vector<Attachment>& attachments);
+  // Starts the side call that names this session; DrainBackground applies
+  // its answer unless the user renamed the session meanwhile.
+  void StartTitle(const std::string& user_input);
 
   // one user turn: stream, run tools, repeat until prose; prints as it goes
   void Turn(const std::string& user_input, json user_content = nullptr,
@@ -411,6 +418,12 @@ class Agent {
   };
   mutable std::mutex side_mutex_;
   std::shared_ptr<const SideContext> side_context_;
+  bool generate_titles_ = false;
+  std::mutex title_mutex_;
+  std::string generated_title_;
+  // Last member: destroying or replacing it stops and joins the call before
+  // the fields it writes go away.
+  std::jthread title_thread_;
 };
 
 }  // namespace uagent

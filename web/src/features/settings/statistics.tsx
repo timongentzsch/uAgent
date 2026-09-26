@@ -74,7 +74,7 @@ export default function Statistics({
   ) : error ? (
     <LoadError error={error} retry={() => setAttempt(attempt + 1)} />
   ) : (
-    <StatisticsLoading turn={!!modal.block_id} />
+    <StatisticsLoading unit={modal.unit} />
   );
 }
 
@@ -92,16 +92,22 @@ export function StatisticsContent({
   const flattened = presented.flatMap((row) =>
     row.children ? [row, ...row.children] : [row],
   );
-  const block =
-    scope === "turn"
-      ? flattened.find(
-          (row) =>
-            row.key === blockId ||
-            row.id === blockId ||
-            row.response_id === blockId ||
-            row.occurrence_id === blockId,
-        )
-      : undefined;
+  const target = blockId
+    ? flattened.find(
+        (row) =>
+          row.key === blockId ||
+          row.id === blockId ||
+          row.response_id === blockId ||
+          row.occurrence_id === blockId,
+      )
+    : undefined;
+  // A turn's footer carries its summary; any other row is one message.
+  const unit = !blockId
+    ? undefined
+    : target && !target.summary
+      ? "Message"
+      : "Turn";
+  const block = scope === "turn" ? target : undefined;
   const missingTurn = blockId && scope === "turn" && !block;
   const stats = state?.statistics;
   const summary = block?.summary;
@@ -192,11 +198,11 @@ export function StatisticsContent({
           ],
         ];
   return (
-    <StatisticsLayout turn={!!blockId} scope={scope} change={setScope}>
+    <StatisticsLayout unit={unit} scope={scope} change={setScope}>
       {missingTurn ? (
         <p role="status">
-          This turn is outside the loaded history. Load its retained messages
-          and try again, or select Session.
+          This {unit?.toLowerCase()} is outside the loaded history. Load its
+          retained messages and try again, or select Session.
         </p>
       ) : (
         <>

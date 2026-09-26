@@ -18,7 +18,6 @@ import { useEffect, useMemo, useState } from "preact/hooks";
 import { Minimize2, X } from "lucide-preact";
 import {
   DisclosureRow,
-  Mark,
   cleanText,
   EventRow,
   ErrorBoundary,
@@ -184,8 +183,8 @@ function MessageView({
     return (
       <TurnFooter summary={block.summary} open={() => statistics?.(block)} />
     );
-  // Attribution, not authorship: user uploads read as "you"; every agent
-  // row carries the mark. The header below is identical on every row — no
+  // Attribution, not authorship: the user's bar and agent rows carry no
+  // label; only other kinds name themselves. The header below is identical on every row — no
   // per-step variants, so chrome and spacing can never drift apart.
   // Receipts (memory saves, finished background work) read as tool rows.
   const row = tool || block.kind === "activity";
@@ -195,14 +194,7 @@ function MessageView({
   const agentRow =
     block.kind === "assistant" ||
     (block.kind === "attachment" && block.origin === "tool");
-  const actor =
-    userOwned || row
-      ? userOwned
-        ? "you"
-        : null
-      : block.kind === "assistant" || agentRow
-        ? Mark
-        : block.kind;
+  const actor = userOwned || row || agentRow ? null : block.kind;
   return (
     <article
       data-message-id={block.key || block.id}
@@ -210,7 +202,7 @@ function MessageView({
     >
       {!row && (
         <header>
-          {actor === Mark ? <Mark /> : actor && <span>{actor}</span>}
+          {actor && <span class="actor">{actor}</span>}
           {block.status && (
             <span class="muted">
               {statusLine({

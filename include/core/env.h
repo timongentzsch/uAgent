@@ -16,12 +16,6 @@
 
 namespace uagent {
 
-// Default model route when nothing is configured: DeepSeek flash through
-// OpenRouter auto-routing. One constant so the provider template and side-model
-// defaults cannot drift apart.
-inline constexpr const char* kDefaultModelRoute =
-    "~deepseek/deepseek-flash-latest";
-
 std::string EnvStr(const char* name, const std::string& dflt = "");
 
 int64_t EnvLong(const char* name, int64_t dflt);
@@ -217,6 +211,8 @@ struct RuntimeConfig : TurnBudgets {
       RegistryDefault<std::string_view>("UAGENT_WEB_SEARCH_CONTEXT_SIZE")};
   std::string image_model{
       RegistryDefault<std::string_view>("UAGENT_IMAGE_MODEL")};
+  std::string title_model{
+      RegistryDefault<std::string_view>("UAGENT_TITLE_MODEL")};
   // OpenRouter file-parser engine for documents a model cannot read natively:
   // cloudflare-ai (free), mistral-ocr (scans, billed per page) or native.
   std::string pdf_engine{

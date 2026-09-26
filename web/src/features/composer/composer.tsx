@@ -27,12 +27,13 @@ import {
 import { command } from "../../state/api.ts";
 import { dedupeName, encodeMention, matchMention } from "./mention.ts";
 import { Popover } from "../../shared/popover.tsx";
-import Activities from "../chat/activity-status.tsx";
+import Activities, { ActivityButton } from "../chat/activity-status.tsx";
 import type { InspectorTarget } from "../chat/inspector.tsx";
 import MessageInput from "./message-input.tsx";
 import ModelControl from "./model-control.tsx";
 import { ContextSummary, SessionSummary } from "../chat/session-summary.tsx";
 const decisionPanel = () => import("../chat/decision.tsx");
+import { maxRecalledPromptSessions } from "../../shared/limits.ts";
 // Prompts sent from this page per session, oldest first: Up and Down recall
 // them the way the terminal composer does.
 const sentPrompts = new Map<string, string[]>();
@@ -186,8 +187,13 @@ export default function Composer({
     } else {
       if (draft.text.trim()) {
         const past = sentPrompts.get(session.id) || [];
-        if (past.at(-1) !== draft.text)
+        if (past.at(-1) !== draft.text) {
+          // Re-insert so Map order is recency; the oldest session drops out.
+          sentPrompts.delete(session.id);
           sentPrompts.set(session.id, [...past, draft.text].slice(-100));
+          if (sentPrompts.size > maxRecalledPromptSessions)
+            sentPrompts.delete(sentPrompts.keys().next().value!);
+        }
       }
       recalled.current = -1;
       submit(event);
@@ -245,6 +251,13 @@ export default function Composer({
           <ArrowDown />
         </button>
       )}
+      <Activities
+        present={online && !!session?.presence}
+        connection={connection}
+        phase={detached || state?.activity || (state ? "Ready" : "Loading…")}
+        running={online && running}
+        pending={online ? pending : null}
+      />
       {pending?.kind === "browser" ? (
         <section class="decision" aria-label="Browser needs you">
           <h2>Continue in the browser</h2>
@@ -519,19 +532,15 @@ export default function Composer({
           </div>
         </form>
       )}
-      <Activities
-        collaborators={state?.collaborators || []}
-        open={openInspector}
-        session={session}
-        online={online}
-        report={report}
-        items={online ? state?.activities || [] : []}
-        present={online && !!session?.presence}
-        connection={connection}
-        phase={detached || state?.activity || (state ? "Ready" : "Loading…")}
-        running={online && running}
-        pending={online ? pending : null}
-      >
+      <div class="composer-metrics">
+        <ActivityButton
+          collaborators={state?.collaborators || []}
+          open={openInspector}
+          session={session}
+          online={online}
+          report={report}
+          items={online ? state?.activities || [] : []}
+        />
         <div class="metrics">
           <ContextSummary state={state} open={showContext} online={online} />
           <SessionSummary state={state} open={showStatistics} />
@@ -541,7 +550,7 @@ export default function Composer({
             </span>
           )}
         </div>
-      </Activities>
+      </div>
     </section>
   );
 }

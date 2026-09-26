@@ -5,7 +5,6 @@ import {
   type ConnectionPhase,
 } from "../../shared/connection-status.tsx";
 import { count } from "../../shared/quantities.ts";
-import type { ComponentChildren } from "preact";
 import type {
   Activity,
   ActivityDetail,
@@ -17,7 +16,8 @@ import type {
 import {
   ArrowDownToLine,
   Bot,
-  ChevronDown,
+  ChevronUp,
+  Layers,
   Square,
   Terminal,
 } from "lucide-preact";
@@ -107,21 +107,42 @@ export function ActivityStatus({
     </span>
   );
 }
-// What is running and persistent sidekicks, then idle agents -- the same set
-// as /agents -- since those stay resumable. Finished commands live only in
-// the conversation.
+// The state above the input: counts live on ActivityButton below it.
 export default function Activities({
-  children,
-  open,
-  ...props
-}: ActivityProps & {
+  phase,
+  running,
+  pending,
+  present,
+  connection,
+}: {
   running?: boolean;
   phase?: string;
   pending?: Pending | null;
   present?: boolean;
   connection?: ConnectionPhase;
-  children?: ComponentChildren;
 }) {
+  return (
+    <div class="activities">
+      <div class="status-line">
+        <span class="activity-toggle">
+          <ActivityStatus
+            phase={phase}
+            running={running}
+            pending={pending}
+            present={present}
+            connection={connection}
+            announce
+          />
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// Always under the input: what is running and persistent sidekicks, then
+// idle agents -- the same set as /agents -- since those stay resumable.
+// Finished commands live only in the conversation.
+export function ActivityButton({ open, ...props }: ActivityProps) {
   const now = withCollaborators(
     props.items || [],
     props.collaborators || [],
@@ -134,48 +155,53 @@ export default function Activities({
       (agent) => !now.some((item) => item.agent_id === agent.agent_id),
     ),
   ];
-  const status = <ActivityStatus {...props} announce />;
+  const counts = activityLabel(rows);
   return (
-    <div class="activities">
-      <div class="status-line">
-        {rows.length ? (
-          <Popover
-            label="Activity"
-            side="top"
-            align="start"
-            buttonClass="quiet activity-toggle"
-            panelClass="activity-popover"
-            trigger={
-              <>
-                {status}
-                <ChevronDown />
-              </>
-            }
-          >
-            {(close) => (
-              <ul class="activity-list">
-                {rows.map((item) => (
-                  <ActivityRow
-                    key={String(item.id ?? item.agent_id ?? item.label)}
-                    item={item}
-                    session={props.session}
-                    online={props.online}
-                    report={props.report}
-                    open={() => {
-                      close();
-                      open({ item });
-                    }}
-                  />
-                ))}
-              </ul>
-            )}
-          </Popover>
+    <Popover
+      label="Activity"
+      side="top"
+      align="start"
+      buttonClass={`quiet activity-button${counts ? "" : " idle"}`}
+      panelClass="activity-popover"
+      trigger={
+        <>
+          <Layers aria-hidden="true" />
+          {counts ? (
+            <span>{counts}</span>
+          ) : (
+            <span>
+              <span class="long">No background work</span>
+              <span class="short">Idle</span>
+            </span>
+          )}
+          <ChevronUp aria-hidden="true" />
+        </>
+      }
+    >
+      {(close) =>
+        rows.length ? (
+          <ul class="activity-list">
+            {rows.map((item) => (
+              <ActivityRow
+                key={String(item.id ?? item.agent_id ?? item.label)}
+                item={item}
+                session={props.session}
+                online={props.online}
+                report={props.report}
+                open={() => {
+                  close();
+                  open({ item });
+                }}
+              />
+            ))}
+          </ul>
         ) : (
-          <span class="activity-toggle">{status}</span>
-        )}
-        {children}
-      </div>
-    </div>
+          <p class="muted small">
+            Nothing running. Background commands and sidekicks appear here.
+          </p>
+        )
+      }
+    </Popover>
   );
 }
 

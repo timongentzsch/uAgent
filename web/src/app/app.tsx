@@ -153,9 +153,13 @@ function App() {
       setBrowserAvailable(false);
       return;
     }
+    let active = true;
     api("/api/browser/status")
-      .then(() => setBrowserAvailable(true))
-      .catch(() => setBrowserAvailable(false));
+      .then(() => active && setBrowserAvailable(true))
+      .catch(() => active && setBrowserAvailable(false));
+    return () => {
+      active = false;
+    };
   }, [authenticated, online]);
   const [folder, setFolder] = useState("");
   const [busy, setBusy] = useState(false);
@@ -197,6 +201,7 @@ function App() {
         type: "statistics",
         session_id: selected,
         block_id: block.occurrence_id || block.response_id || block.id,
+        unit: block.summary ? "Turn" : "Message",
       }),
     [selected],
   );
@@ -1042,8 +1047,8 @@ function App() {
                 ? "Rename conversation"
                 : modal.type === "delete"
                   ? "Delete conversation"
-                  : "block_id" in modal && modal.block_id
-                    ? "Message statistics"
+                  : "unit" in modal && modal.unit
+                    ? `${modal.unit} statistics`
                     : "Conversation statistics"
             }
             layout={modal.type === "statistics" ? "panel" : "content"}
@@ -1052,7 +1057,7 @@ function App() {
             {modal.type === "statistics" ? (
               <Deferred
                 load={statisticsDialog}
-                fallback={<StatisticsLoading turn={!!modal.block_id} />}
+                fallback={<StatisticsLoading unit={modal.unit} />}
                 modal={modal}
                 loadSnapshot={load}
               />

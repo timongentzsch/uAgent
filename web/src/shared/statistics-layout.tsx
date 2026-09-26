@@ -1,21 +1,23 @@
 import type { ComponentChildren } from "preact";
+import type { StatisticsUnit } from "./types.ts";
 import { Spinner } from "./ui.tsx";
 
-// Code loading, data loading and loaded statistics share the same toolbar.
+// Code loading, data loading and loaded statistics share the same toolbar;
+// a unit (the turn or message opened) adds its scope beside Session.
 export function StatisticsLayout({
-  turn,
+  unit,
   scope,
   change,
   children,
 }: {
-  turn: boolean;
+  unit?: StatisticsUnit;
   scope: "turn" | "session";
   change?: (scope: "turn" | "session") => void;
   children: ComponentChildren;
 }) {
   return (
     <>
-      {turn && (
+      {unit && (
         <div class="dialog-actions" role="group" aria-label="Statistics scope">
           {(["turn", "session"] as const).map((value) => (
             <button
@@ -25,7 +27,7 @@ export function StatisticsLayout({
               aria-pressed={scope === value}
               onClick={() => change?.(value)}
             >
-              {value === "turn" ? "Turn" : "Session"}
+              {value === "turn" ? unit : "Session"}
             </button>
           ))}
         </div>
@@ -35,9 +37,9 @@ export function StatisticsLayout({
   );
 }
 
-export function StatisticsLoading({ turn = false }: { turn?: boolean }) {
+export function StatisticsLoading({ unit }: { unit?: StatisticsUnit }) {
   return (
-    <StatisticsLayout turn={turn} scope={turn ? "turn" : "session"}>
+    <StatisticsLayout unit={unit} scope={unit ? "turn" : "session"}>
       <Spinner label="Loading statistics…" surface />
     </StatisticsLayout>
   );

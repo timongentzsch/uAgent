@@ -363,6 +363,7 @@ void Agent::Turn(const std::string& user_input, json user_content, json images,
       (!custom_title_ && GenericSessionTitle(session_title_) &&
        title.size() >= kGenericTitleReplacementMinChars &&
        !GenericSessionTitle(title))) {
+    if (generate_titles_ && !GenericSessionTitle(title)) StartTitle(user_input);
     session_title_ = std::move(title);
   }
   std::string local_time = LocalStamp();

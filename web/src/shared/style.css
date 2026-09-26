@@ -365,7 +365,11 @@ pre code {
   overflow-wrap: normal;
   display: block;
 }
+/* One auto grid column: unwrappable lines size it to the longest one, and
+   it stretches to the box when all are short, so every line's shading runs
+   the full scroll width. */
 .diff {
+  display: grid;
   white-space: pre;
   overflow-wrap: normal;
   padding: 0;
@@ -681,7 +685,7 @@ pre code {
 .transcript-content {
   display: flex;
   flex-direction: column;
-  gap: var(--gap);
+  gap: var(--space-1);
   min-height: 100%;
 }
 .transcript-content > p,
@@ -856,22 +860,12 @@ pre code {
   justify-content: space-between;
   gap: var(--gap);
   min-width: 0;
-  padding-top: var(--space-2);
+  padding-bottom: var(--space-2);
 }
-/* One line at any width: a long state ("Waiting for approval…") truncates
-   before the row would wrap under the metrics. While work runs the state is
-   the popover's button, which must shrink with its wrapper, not overflow. */
+/* One line at any width: a long state ("Waiting for approval…") truncates. */
 .status-line > :first-child {
   flex: 0 1 auto;
   min-width: 0;
-}
-.status-line > .popover-control {
-  display: flex;
-}
-.status-line > .popover-control > .activity-toggle {
-  min-width: 0;
-  max-width: 100%;
-  overflow: hidden;
 }
 .activity-toggle {
   display: flex;
@@ -899,8 +893,54 @@ pre code {
 .activity-counts {
   flex-shrink: 0;
 }
-/* State and metrics share a narrow line in proportion to their text, each
-   truncating its own. */
+/* Under the input: background work left, never shrinking; context and
+   session totals right, truncating first on a narrow line. */
+.composer-metrics {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--gap);
+  min-width: 0;
+  padding-top: var(--space-1);
+}
+.composer-metrics > .popover-control {
+  display: flex;
+  flex: none;
+}
+.activity-button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  min-height: calc(24rem / 14);
+  padding: 0 var(--space-3);
+  font-size: 0.7rem;
+}
+.activity-button > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.activity-button > svg {
+  flex: none;
+  width: 1.1em;
+  height: 1.1em;
+}
+.activity-button.idle {
+  color: var(--muted);
+}
+.activity-button .short {
+  display: none;
+}
+@media (max-width: 600px) {
+  .activity-button .long {
+    display: none;
+  }
+  .activity-button .short {
+    display: inline;
+  }
+}
 .metrics {
   display: flex;
   align-items: center;
@@ -1144,15 +1184,6 @@ dialog section {
 .settings-fields > button {
   text-align: start;
 }
-.settings-section {
-  border-top: 1px solid var(--line);
-  margin-top: var(--pad);
-  padding-top: var(--space-2);
-}
-.settings-section > summary {
-  cursor: pointer;
-  padding: var(--space-3) 0;
-}
 .stats {
   margin: 0;
 }
@@ -1389,6 +1420,7 @@ dialog section {
     --control: calc(44rem / 14);
   }
   .activity-toggle,
+  .activity-button,
   .metrics > button {
     min-height: calc(32rem / 14);
   }

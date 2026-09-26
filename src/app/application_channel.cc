@@ -63,6 +63,7 @@ int Application::FinishInteractive(int status) {
 int Application::RunChannel() {
   if (!ResumeAtStartup()) return FinishInteractive(2);
   persist_ = true;
+  agent_.GenerateTitles(true);
   EnsureSessionPath();
   if (!PathExists(session_file_) && !channel_->InitialTitle().empty()) {
     agent_.Rename(channel_->InitialTitle());

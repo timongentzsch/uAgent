@@ -333,6 +333,7 @@ constexpr FieldBinding<std::string> kStringOptions[] = {
     {&Cfg("UAGENT_WEB_SEARCH_CONTEXT_SIZE"),
      &RuntimeConfig::web_search_context_size},
     {&Cfg("UAGENT_IMAGE_MODEL"), &RuntimeConfig::image_model},
+    {&Cfg("UAGENT_TITLE_MODEL"), &RuntimeConfig::title_model},
     {&Cfg("UAGENT_PDF_ENGINE"), &RuntimeConfig::pdf_engine},
     {&Cfg("UAGENT_MCP_ROOTS"), &RuntimeConfig::mcp_roots},
 };

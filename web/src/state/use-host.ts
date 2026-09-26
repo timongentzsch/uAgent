@@ -21,7 +21,7 @@ import {
 } from "./store.ts";
 import { api, protocol, receiveOutcome } from "./api.ts";
 import { selectedFromURL, writeSelection } from "../shared/navigation.ts";
-import { maxLocalRequests } from "../shared/limits.ts";
+import { maxLocalRequests, reconnectMaxDelayMs } from "../shared/limits.ts";
 import type { ConnectionPhase } from "../shared/connection-status.tsx";
 
 // One SSE subscription owns host snapshots, command receipts and read state.
@@ -46,7 +46,10 @@ export function useHost(
   });
   const [snapshots, setSnapshots] = useState<Record<string, Snapshot>>({});
   const [selected, setSelected] = useState(selectedFromURL);
-  const [drafts, setDrafts] = useState<Record<string, Draft>>({});
+  // Unsent drafts survive an evicted or reloaded app; logout clears them.
+  const [drafts, setDrafts] = useState(() =>
+    readStored<Record<string, Draft>>(storage, "uagent-drafts", {}),
+  );
   const [error, setError] = useState("");
   const [unread, setUnread] = useState(
     () => new Set(readStored<string[]>(storage, "uagent-unread", [])),
@@ -58,6 +61,11 @@ export function useHost(
   const stream = useRef<EventSource>();
   const reconnecting = useRef(false);
   const refreshAgain = useRef(false);
+  // A failed load retries on its own, backing off to reconnectMaxDelayMs.
+  const retry = useRef<{
+    attempt: number;
+    timer?: ReturnType<typeof setTimeout>;
+  }>({ attempt: 0 });
   const live = useRef<Record<string, Snapshot>>({});
   const selection = useRef(selected);
   const flush = useRef((_id?: string) => {});
@@ -169,6 +177,7 @@ export function useHost(
     }
   }, []);
   const refresh = useCallback(async () => {
+    clearTimeout(retry.current.timer);
     setManagementVersion((value) => value + 1);
     if (reconnecting.current) {
       refreshAgain.current = true;
@@ -186,6 +195,7 @@ export function useHost(
         signal,
       });
       if (signal.aborted) return;
+      retry.current.attempt = 0;
       revoked.current = false;
       catalogueRef.current = list;
       setCatalogue(list);
@@ -509,6 +519,14 @@ export function useHost(
       } else {
         report(error);
         if (!catalogueRef.current) setAuthenticated((prior) => prior ?? false);
+        const delay = Math.min(
+          reconnectMaxDelayMs,
+          1000 * 2 ** retry.current.attempt++,
+        );
+        retry.current.timer = setTimeout(
+          () => refresh(),
+          delay * (0.5 + Math.random() / 2),
+        );
       }
     } finally {
       reconnecting.current = false;
@@ -569,6 +587,7 @@ export function useHost(
       });
     };
     return () => {
+      clearTimeout(retry.current.timer);
       lifetime.current.abort();
       stream.current?.close();
       cancelAnimationFrame(frame);
@@ -591,6 +610,17 @@ export function useHost(
   useEffect(() => {
     writeStored(sessionStorage, "uagent-outgoing", outgoing);
   }, [outgoing]);
+  useEffect(() => {
+    writeStored(
+      storage,
+      "uagent-drafts",
+      Object.fromEntries(
+        Object.entries(drafts).filter(
+          ([, draft]) => draft.text || draft.files.length,
+        ),
+      ),
+    );
+  }, [drafts]);
   useEffect(() => {
     if (
       !readingConversation ||

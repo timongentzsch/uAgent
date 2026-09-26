@@ -9,6 +9,11 @@ test("appearance and configuration remain usable at large scales", async ({
   await page.goto(`/#session=${session.id}`);
   await expect(page.locator(".composer .status-led.active")).toBeVisible();
   await page.getByRole("button", { name: "Settings", exact: true }).click();
+  // A phone opens settings on its section list.
+  await page
+    .locator(".settings-nav")
+    .getByRole("button", { name: "General", exact: true })
+    .click();
   await expect(page.getByLabel("Appearance")).toHaveValue("system");
   await page.emulateMedia({ colorScheme: "dark" });
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
@@ -81,8 +86,10 @@ test("appearance and configuration remain usable at large scales", async ({
   await page.getByLabel("Zoom", { exact: true }).fill("100");
   await expect(page.locator("html")).toHaveCSS("--zoom", "1");
   await expect(composer).toHaveCSS("font-size", originalText);
+  await page.getByRole("button", { name: "Back", exact: true }).click();
   await page
-    .getByRole("button", { name: "Advanced configuration", exact: true })
+    .locator(".settings-nav")
+    .getByRole("button", { name: "Advanced", exact: true })
     .click();
   await page.getByLabel("Find a setting").fill("UAGENT_MAX_STEPS");
   await page.getByLabel("UAGENT_MAX_STEPS", { exact: false }).fill("23");
@@ -94,6 +101,10 @@ test("appearance and configuration remain usable at large scales", async ({
     "active at the next user turn",
   );
   await page.getByRole("button", { name: "Back", exact: true }).click();
+  await page
+    .locator(".settings-nav")
+    .getByRole("button", { name: "General", exact: true })
+    .click();
   await page.getByLabel("Appearance").selectOption("light");
   await page.emulateMedia({ colorScheme: "dark" });
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");

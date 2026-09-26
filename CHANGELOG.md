@@ -61,6 +61,13 @@
   size-budgeted vision flow, so providers only ever see supported bytes.
   Unconvertible files fail with an actionable error instead of degrading
   the route.
+- New sessions are named in the background from the first real prompt by
+  `UAGENT_TITLE_MODEL` (default the latest DeepSeek Flash route; `off`
+  keeps the first line). A rename always wins over a late title.
+- A persistent work button under the input counts running commands and
+  sidekicks and opens their list; it stays clickable when idle.
+- Settings open as sections in a sidebar (General, Models, Permissions,
+  Agent, Devices, Advanced, Developer); phones drill in from a list.
 
 ### Changed
 
@@ -127,6 +134,13 @@
   tool arguments, including activity waits.
 - Complete MCP discovery, subscriptions and bounded input continuations while
   preserving tool arguments, response correlation and cancellation.
+- The conversation is compact: no marks or indents, a one-line user bar,
+  a reply's time and menu on hover, and about half the spacing.
+- The status line sits above the input; context and session totals stay
+  below it.
+- An expanded tool row is one column: short arguments and a raw link join
+  its info line, and the command and output boxes align. A failed call
+  reads red without an icon.
 
 ### Removed
 
@@ -160,6 +174,14 @@
 - Preserve model/tool Unicode content when UI symbols fall back to ASCII.
 - Wake the idle terminal when SIGINT reaches another thread, so the second
   Ctrl+C exits reliably and restores terminal modes.
+- Unsent drafts survive a reload or an evicted installed app, and a failed
+  reconnect retries with backoff.
+- `/http INDEX` keeps every exchange of the turn, not just the latest.
+- Diff shading runs to the end of long lines when scrolled.
+- Message statistics are titled and scoped as a message, turn statistics
+  as a turn.
+- The installed iOS app draws under a dark status bar, the page has a
+  favicon, and the UI showcase allows pinch-zoom.
 
 ## v1.0.0 - 2026-09-03
 

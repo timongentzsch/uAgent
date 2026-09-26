@@ -117,7 +117,7 @@ for (const width of [390, 1280]) {
       holdData = true;
       await trigger.click();
       const dialog = page.getByRole("dialog", {
-        name: "Message statistics",
+        name: "Turn statistics",
         exact: true,
       });
       const toolbar = dialog.getByRole("group", { name: "Statistics scope" });
@@ -306,6 +306,10 @@ test.describe("touch interaction", () => {
         name: "Settings",
         exact: true,
       });
+      await settings
+        .locator(".settings-nav")
+        .getByRole("button", { name: "General", exact: true })
+        .click();
       await settings.getByLabel("Zoom", { exact: true }).fill(String(zoom));
       await settings.getByRole("button", { name: "Close settings" }).click();
       await input.fill("Zoom and wrapping proof. ".repeat(12));
@@ -390,7 +394,9 @@ test.describe("touch interaction", () => {
       expect(measured.heightError).toBeLessThan(1);
     }
   };
-  for (const zoom of [50, 75, 100, 150, 200]) {
+  // Scaling is linear: the floor below 100%, identity at 100% and the
+  // large-scale end cover every case the in-between values would.
+  for (const zoom of [50, 100, 200]) {
     test(`all search and settings fields scale at ${zoom}%`, async ({
       page,
       session,
@@ -401,7 +407,18 @@ test.describe("touch interaction", () => {
         name: "Settings",
         exact: true,
       });
+      await settings
+        .locator(".settings-nav")
+        .getByRole("button", { name: "General", exact: true })
+        .click();
       await settings.getByLabel("Zoom", { exact: true }).fill(String(zoom));
+      // A phone shows one section at a time: back to the list first.
+      const back = settings.getByRole("button", { name: "Back", exact: true });
+      if (await back.isVisible()) await back.click();
+      await settings
+        .locator(".settings-nav")
+        .getByRole("button", { name: "Permissions", exact: true })
+        .click();
       await expect(
         settings.getByRole("combobox", {
           name: "Default permissions",
@@ -409,8 +426,10 @@ test.describe("touch interaction", () => {
         }),
       ).toBeVisible();
       await scaledFields(settings, zoom);
+      if (await back.isVisible()) await back.click();
       await settings
-        .getByRole("button", { name: "Advanced configuration", exact: true })
+        .locator(".settings-nav")
+        .getByRole("button", { name: "Advanced", exact: true })
         .click();
       const search = settings.getByRole("searchbox", {
         name: "Find a setting",

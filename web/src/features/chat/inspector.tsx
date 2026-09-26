@@ -385,7 +385,11 @@ export default function Inspector({
                 )}
                 <Deferred
                   load={statisticsDialog}
-                  fallback={<StatisticsLoading turn={!!page.stats?.blockId} />}
+                  fallback={
+                    <StatisticsLoading
+                      unit={page.stats?.blockId ? "Turn" : undefined}
+                    />
+                  }
                   state={childStateOf(detail)}
                   blockId={page.stats?.blockId}
                 />

@@ -26,6 +26,27 @@ import { api, command } from "../../state/api.ts";
 import { ArrowLeft, Palette } from "lucide-preact";
 import { applyUpdate } from "../../shared/pwa.ts";
 import type { TimePrefs } from "../../shared/time.ts";
+import type { ConfigSetting } from "../../shared/types.ts";
+
+const SECTIONS = [
+  ["general", "General"],
+  ["models", "Models"],
+  ["permissions", "Permissions"],
+  ["agent", "Agent"],
+  ["devices", "Devices"],
+  ["advanced", "Advanced"],
+  ["developer", "Developer"],
+] as const;
+type Section = (typeof SECTIONS)[number][0];
+// Sections embed the registry settings they own; Advanced lists them all.
+const models = (setting: ConfigSetting) =>
+  setting.category === "route" || setting.name.endsWith("_MODEL");
+const permissions = (setting: ConfigSetting) =>
+  setting.name.startsWith("UAGENT_PERMISSION_");
+const agent = (setting: ConfigSetting) =>
+  ["memory", "skills", "delegation"].includes(setting.category) &&
+  !setting.name.endsWith("_MODEL");
+const CONFIG = { models, permissions, agent, advanced: undefined };
 export default function Settings({
   theme,
   setTheme,
@@ -77,14 +98,15 @@ export default function Settings({
   logout: () => Promise<void>;
   prompt: () => void;
 }) {
-  const [advanced, setAdvanced] = useState(false);
+  // Null until a section is picked: a phone shows the section list first.
+  const [section, setSection] = useState<Section | null>(null);
   const [error, setError] = useState<unknown>(null);
   const report = setError;
   const [attempt, setAttempt] = useState(0);
   const body = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    body.current?.closest(".dialog-body")?.scrollTo(0, 0);
-  }, [advanced]);
+    body.current?.scrollTo(0, 0);
+  }, [section]);
   const [permission, setPermission] = useState<string | null>(null);
   const [savingPermission, setSavingPermission] = useState(false);
   const [rules, setRules] = useState<PermissionRules | null>(null);
@@ -130,194 +152,133 @@ export default function Settings({
       active = false;
     };
   }, [online, session?.cwd]);
-  return (
-    <div ref={body} class="settings-content">
-      {advanced ? (
-        <>
-          <div class="subview-head">
-            <button
-              type="button"
-              class="quiet with-icon"
-              onClick={() => setAdvanced(false)}
-            >
-              <ArrowLeft aria-hidden="true" />
-              Back
-            </button>
-            <h3>Advanced configuration</h3>
-          </div>
-          <Deferred
-            load={configuration}
-            session={session}
-            online={online}
-            fallback={<Spinner label="Loading configuration…" surface />}
-          />
-        </>
-      ) : (
-        <>
-          <div class="settings-fields">
-            <Field label="Appearance">
-              <Select
-                aria-label="Appearance"
-                value={theme}
-                onChange={(event) => setTheme(event.currentTarget.value)}
-              >
-                <option value="system">System</option>
-                <option value="dark">Dark</option>
-                <option value="light">Light</option>
-              </Select>
-            </Field>
-            <SizeControls zoom={zoom} change={setZoom} />
-            <Field label="Clock">
-              <Select
-                aria-label="Clock"
-                value={timePrefs.clock}
-                onChange={(event) =>
-                  setTimePrefs({
-                    ...timePrefs,
-                    clock: event.currentTarget.value as TimePrefs["clock"],
-                  })
-                }
-              >
-                <option value="system">System</option>
-                <option value="12">12-hour</option>
-                <option value="24">24-hour</option>
-              </Select>
-            </Field>
-            <Field label="Timestamps">
-              <Select
-                aria-label="Timestamps"
-                value={timePrefs.style}
-                onChange={(event) =>
-                  setTimePrefs({
-                    ...timePrefs,
-                    style: event.currentTarget.value as TimePrefs["style"],
-                  })
-                }
-              >
-                <option value="smart">
-                  Smart · time today, date when older
-                </option>
-                <option value="relative">Relative · 5 min ago</option>
-                <option value="absolute">Absolute · full date and time</option>
-              </Select>
-            </Field>
-            {permission === null ? (
-              error ? (
-                <LoadError
-                  error={error}
-                  retry={() => setAttempt(attempt + 1)}
-                />
-              ) : (
-                <Field label="Default permissions" help={permissionHelp}>
-                  <Skeleton
-                    rows={1}
-                    className="control-skeleton"
-                    label="Loading default permissions…"
-                  />
-                </Field>
-              )
+  const pane = {
+    general: (
+      <div class="settings-fields">
+        <Field label="Appearance">
+          <Select
+            aria-label="Appearance"
+            value={theme}
+            onChange={(event) => setTheme(event.currentTarget.value)}
+          >
+            <option value="system">System</option>
+            <option value="dark">Dark</option>
+            <option value="light">Light</option>
+          </Select>
+        </Field>
+        <SizeControls zoom={zoom} change={setZoom} />
+        <Field label="Clock">
+          <Select
+            aria-label="Clock"
+            value={timePrefs.clock}
+            onChange={(event) =>
+              setTimePrefs({
+                ...timePrefs,
+                clock: event.currentTarget.value as TimePrefs["clock"],
+              })
+            }
+          >
+            <option value="system">System</option>
+            <option value="12">12-hour</option>
+            <option value="24">24-hour</option>
+          </Select>
+        </Field>
+        <Field label="Timestamps">
+          <Select
+            aria-label="Timestamps"
+            value={timePrefs.style}
+            onChange={(event) =>
+              setTimePrefs({
+                ...timePrefs,
+                style: event.currentTarget.value as TimePrefs["style"],
+              })
+            }
+          >
+            <option value="smart">Smart · time today, date when older</option>
+            <option value="relative">Relative · 5 min ago</option>
+            <option value="absolute">Absolute · full date and time</option>
+          </Select>
+        </Field>
+      </div>
+    ),
+    models: null,
+    permissions: (
+      <>
+        <div class="settings-fields">
+          {permission === null ? (
+            error ? (
+              <LoadError error={error} retry={() => setAttempt(attempt + 1)} />
             ) : (
               <Field label="Default permissions" help={permissionHelp}>
-                <Select
-                  aria-label="Default permissions"
-                  value={permission}
-                  disabled={!online || savingPermission}
-                  onChange={async (event) => {
-                    const value = event.currentTarget.value;
-                    setSavingPermission(true);
-                    setError(null);
-                    try {
-                      const result = await command("config", null, {
-                        operation: "apply",
-                        scope: "user",
-                        changes: [{ key: "UAGENT_APPROVAL", value }],
-                      });
-                      if (result.pending)
-                        throw new Error(
-                          "The change is still pending. Reopen settings to check its status.",
-                        );
-                      setPermission(value);
-                    } catch (failure) {
-                      setError(failure);
-                    } finally {
-                      setSavingPermission(false);
-                    }
-                  }}
-                >
-                  <option value="ask">Ask</option>
-                  <option value="auto">Auto · review ordinary approvals</option>
-                  <option value="yolo">
-                    YOLO · automatic ordinary approvals
-                  </option>
-                </Select>
+                <Skeleton
+                  rows={1}
+                  className="control-skeleton"
+                  label="Loading default permissions…"
+                />
               </Field>
-            )}
-            {permission !== null && error && <LoadError error={error} />}
-            <button type="button" onClick={prompt}>
-              System prompt
-            </button>
-            <button type="button" onClick={() => setAdvanced(true)}>
-              Advanced configuration
-            </button>
-          </div>
-          <details class="settings-section">
-            <summary>Design and development</summary>
-            <a
-              class="button-link with-icon"
-              href="/ui.html"
-              target="_blank"
-              rel="noreferrer"
-            >
-              <Palette aria-hidden="true" />
-              UI showcase
-            </a>
-          </details>
-          {session?.cwd && (
-            <details class="settings-section">
-              <summary>
-                Remembered permissions
-                {rules?.rules.length ? ` · ${rules.rules.length}` : ""}
-              </summary>
-              <p class="muted">
-                Exact actions allowed for this repository. Tool definitions and
-                arguments must still match.
-              </p>
-              {ruleError && <LoadError error={ruleError} />}
-              {rules?.rules.map((rule) => (
-                <div class="device" key={rule.key}>
-                  <span>
-                    <strong>{rule.tool}</strong>
-                    <small class="muted">{rule.preview}</small>
-                  </span>
-                  <button
-                    disabled={!online}
-                    onClick={() => {
-                      setRuleError(null);
-                      command("permission_rules", null, {
-                        action: "delete",
-                        key: rule.key,
-                        cwd: session.cwd,
-                      })
-                        .then((response) => {
-                          if (!response.pending) setRules(response.result);
-                        })
-                        .catch(setRuleError);
-                    }}
-                  >
-                    Forget
-                  </button>
-                </div>
-              ))}
-              {rules && !rules.rules.length && (
-                <p class="muted">No remembered actions.</p>
-              )}
-              {!!rules?.rules.length && (
+            )
+          ) : (
+            <Field label="Default permissions" help={permissionHelp}>
+              <Select
+                aria-label="Default permissions"
+                value={permission}
+                disabled={!online || savingPermission}
+                onChange={async (event) => {
+                  const value = event.currentTarget.value;
+                  setSavingPermission(true);
+                  setError(null);
+                  try {
+                    const result = await command("config", null, {
+                      operation: "apply",
+                      scope: "user",
+                      changes: [{ key: "UAGENT_APPROVAL", value }],
+                    });
+                    if (result.pending)
+                      throw new Error(
+                        "The change is still pending. Reopen settings to check its status.",
+                      );
+                    setPermission(value);
+                  } catch (failure) {
+                    setError(failure);
+                  } finally {
+                    setSavingPermission(false);
+                  }
+                }}
+              >
+                <option value="ask">Ask</option>
+                <option value="auto">Auto · review ordinary approvals</option>
+                <option value="yolo">
+                  YOLO · automatic ordinary approvals
+                </option>
+              </Select>
+            </Field>
+          )}
+          {permission !== null && error && <LoadError error={error} />}
+        </div>
+        {session?.cwd && (
+          <section>
+            <h3>
+              Remembered for this repository
+              {rules?.rules.length ? ` · ${rules.rules.length}` : ""}
+            </h3>
+            <p class="muted">
+              Exact actions allowed for this repository. Tool definitions and
+              arguments must still match.
+            </p>
+            {ruleError && <LoadError error={ruleError} />}
+            {rules?.rules.map((rule) => (
+              <div class="device" key={rule.key}>
+                <span>
+                  <strong>{rule.tool}</strong>
+                  <small class="muted">{rule.preview}</small>
+                </span>
                 <button
                   disabled={!online}
                   onClick={() => {
                     setRuleError(null);
                     command("permission_rules", null, {
-                      action: "clear",
+                      action: "delete",
+                      key: rule.key,
                       cwd: session.cwd,
                     })
                       .then((response) => {
@@ -326,193 +287,271 @@ export default function Settings({
                       .catch(setRuleError);
                   }}
                 >
-                  Forget all for this repository
+                  Forget
                 </button>
-              )}
-            </details>
-          )}
-          <details class="settings-section">
-            <summary>Install</summary>
-            {installed ? (
-              <p>Running as an installed app.</p>
-            ) : install ? (
+              </div>
+            ))}
+            {rules && !rules.rules.length && (
+              <p class="muted">No remembered actions.</p>
+            )}
+            {!!rules?.rules.length && (
               <button
-                onClick={async () => {
-                  try {
-                    await install.prompt();
-                  } catch (error) {
-                    report(error);
-                  }
-                  setInstall(null);
+                disabled={!online}
+                onClick={() => {
+                  setRuleError(null);
+                  command("permission_rules", null, {
+                    action: "clear",
+                    cwd: session.cwd,
+                  })
+                    .then((response) => {
+                      if (!response.pending) setRules(response.result);
+                    })
+                    .catch(setRuleError);
                 }}
               >
-                Install µAgent
+                Forget all for this repository
               </button>
-            ) : (
-              <p>
-                {ios
-                  ? "In Safari, choose Share → Add to Home Screen. Open the installed app and pair it if needed."
-                  : "Use your browser’s install option where supported. Installation needs a trusted HTTPS origin or localhost."}
-              </p>
             )}
-          </details>
-          {update && (
-            <section>
-              <h3>Update available</h3>
-              <p>
-                Updating reloads this view. Send or copy unsent drafts first.
-              </p>
-              <button
-                disabled={
-                  Object.values(drafts).some(
-                    (item) => item.text || item.files.length,
-                  ) ||
-                  uploading ||
-                  Object.values(snapshots).some((item) => item.pending)
-                }
-                onClick={() => applyUpdate(update)}
-              >
-                Apply update
-              </button>
-            </section>
-          )}
-          <details class="settings-section">
-            <summary>Notifications</summary>
-            <p>
-              {catalogue.capabilities.push
-                ? "Background push is available for supported installed browsers."
-                : "Notifications are available while this view is connected."}
-            </p>
+          </section>
+        )}
+      </>
+    ),
+    agent: (
+      <>
+        <button type="button" onClick={prompt}>
+          Edit system prompt
+        </button>
+      </>
+    ),
+    devices: (
+      <>
+        {update && (
+          <section>
+            <h3>Update available</h3>
+            <p>Updating reloads this view. Send or copy unsent drafts first.</p>
             <button
               disabled={
-                !online ||
-                !isSecureContext ||
-                !("Notification" in globalThis) ||
-                !("serviceWorker" in navigator)
+                Object.values(drafts).some(
+                  (item) => item.text || item.files.length,
+                ) ||
+                uploading ||
+                Object.values(snapshots).some((item) => item.pending)
               }
+              onClick={() => applyUpdate(update)}
+            >
+              Apply update
+            </button>
+          </section>
+        )}
+        <section>
+          <h3>Install</h3>
+          {installed ? (
+            <p>Running as an installed app.</p>
+          ) : install ? (
+            <button
               onClick={async () => {
                 try {
-                  if (catalogue.capabilities.subscribed || notificationMode) {
-                    await api("/api/push/subscriptions", undefined, {
-                      method: "DELETE",
-                    });
-                    const registration =
-                      await navigator.serviceWorker.getRegistration();
-                    await (
-                      await registration?.pushManager?.getSubscription()
-                    )?.unsubscribe();
-                    setNotificationMode(false);
-                    notifications.current = false;
+                  await install.prompt();
+                } catch (error) {
+                  report(error);
+                }
+                setInstall(null);
+              }}
+            >
+              Install µAgent
+            </button>
+          ) : (
+            <p>
+              {ios
+                ? "In Safari, choose Share → Add to Home Screen. Open the installed app and pair it if needed."
+                : "Use your browser’s install option where supported. Installation needs a trusted HTTPS origin or localhost."}
+            </p>
+          )}
+        </section>
+        <section>
+          <h3>Notifications</h3>
+          <p>
+            {catalogue.capabilities.push
+              ? "Background push is available for supported installed browsers."
+              : "Notifications are available while this view is connected."}
+          </p>
+          <button
+            disabled={
+              !online ||
+              !isSecureContext ||
+              !("Notification" in globalThis) ||
+              !("serviceWorker" in navigator)
+            }
+            onClick={async () => {
+              try {
+                if (catalogue.capabilities.subscribed || notificationMode) {
+                  await api("/api/push/subscriptions", undefined, {
+                    method: "DELETE",
+                  });
+                  const registration =
+                    await navigator.serviceWorker.getRegistration();
+                  await (
+                    await registration?.pushManager?.getSubscription()
+                  )?.unsubscribe();
+                  setNotificationMode(false);
+                  notifications.current = false;
+                } else {
+                  if ((await Notification.requestPermission()) !== "granted")
+                    throw new Error("Notification permission was not granted.");
+                  if (
+                    catalogue.capabilities.push &&
+                    "PushManager" in globalThis
+                  ) {
+                    const registration = await navigator.serviceWorker.ready;
+                    const key = (catalogue.capabilities.vapid_public_key || "")
+                      .replace(/-/g, "+")
+                      .replace(/_/g, "/");
+                    const subscription =
+                      (await registration.pushManager.getSubscription()) ||
+                      (await registration.pushManager.subscribe({
+                        userVisibleOnly: true,
+                        applicationServerKey: Uint8Array.from(
+                          atob(key),
+                          (value) => value.charCodeAt(0),
+                        ),
+                      }));
+                    await api("/api/push/subscriptions", subscription.toJSON());
                   } else {
-                    if ((await Notification.requestPermission()) !== "granted")
-                      throw new Error(
-                        "Notification permission was not granted.",
-                      );
-                    if (
-                      catalogue.capabilities.push &&
-                      "PushManager" in globalThis
-                    ) {
-                      const registration = await navigator.serviceWorker.ready;
-                      const key = (
-                        catalogue.capabilities.vapid_public_key || ""
-                      )
-                        .replace(/-/g, "+")
-                        .replace(/_/g, "/");
-                      const subscription =
-                        (await registration.pushManager.getSubscription()) ||
-                        (await registration.pushManager.subscribe({
-                          userVisibleOnly: true,
-                          applicationServerKey: Uint8Array.from(
-                            atob(key),
-                            (value) => value.charCodeAt(0),
-                          ),
-                        }));
-                      await api(
-                        "/api/push/subscriptions",
-                        subscription.toJSON(),
-                      );
-                    } else {
-                      setNotificationMode(true);
-                      notifications.current = true;
-                    }
+                    setNotificationMode(true);
+                    notifications.current = true;
                   }
-                  await refresh();
+                }
+                await refresh();
+              } catch (failure) {
+                report(failure);
+              }
+            }}
+          >
+            {catalogue.capabilities.subscribed || notificationMode
+              ? "Mute this device"
+              : catalogue.capabilities.push
+                ? "Enable background notifications"
+                : "Enable connected-view notifications"}
+          </button>
+          {(catalogue.capabilities.subscribed || notificationMode) && (
+            <button
+              disabled={!online || !selected}
+              onClick={async () => {
+                try {
+                  if (catalogue.capabilities.subscribed)
+                    await command("test_notification", session);
+                  else
+                    (await navigator.serviceWorker.ready).active?.postMessage({
+                      type: "ATTENTION",
+                      id: crypto.randomUUID(),
+                      session_id: selected,
+                    });
                 } catch (failure) {
                   report(failure);
                 }
               }}
             >
-              {catalogue.capabilities.subscribed || notificationMode
-                ? "Mute this device"
-                : catalogue.capabilities.push
-                  ? "Enable background notifications"
-                  : "Enable connected-view notifications"}
+              Send test notification
             </button>
-            {(catalogue.capabilities.subscribed || notificationMode) && (
-              <button
-                disabled={!online || !selected}
-                onClick={async () => {
-                  try {
-                    if (catalogue.capabilities.subscribed)
-                      await command("test_notification", session);
-                    else
-                      (await navigator.serviceWorker.ready).active?.postMessage(
-                        {
-                          type: "ATTENTION",
-                          id: crypto.randomUUID(),
-                          session_id: selected,
-                        },
-                      );
-                  } catch (failure) {
-                    report(failure);
+          )}
+          <p class="muted">
+            {catalogue.capabilities.subscribed
+              ? "Background notifications enabled for this device."
+              : notificationMode
+                ? "Connected-view notifications enabled. Delivery requires this browser view to remain connected."
+                : "Notifications are muted for this device."}{" "}
+            Focus settings, power management and network conditions can delay
+            delivery. On iOS, enable notifications from the installed Home
+            Screen app.
+          </p>
+          {!catalogue.capabilities.push && (
+            <details>
+              <summary>Host details</summary>
+              <p>{catalogue.capabilities.push_reason}</p>
+            </details>
+          )}
+        </section>
+        <section>
+          <h3>Paired devices</h3>
+          {catalogue.devices.map((device) => (
+            <div class="device" key={device.id}>
+              <span>
+                {device.name}
+                {device.id === catalogue.device ? " · this device" : ""}
+              </span>
+              {device.id !== catalogue.device && (
+                <button
+                  onClick={() =>
+                    command("revoke_device", null, { device_id: device.id })
+                      .then(refresh)
+                      .catch(report)
                   }
-                }}
-              >
-                Send test notification
-              </button>
-            )}
-            <p class="muted">
-              {catalogue.capabilities.subscribed
-                ? "Background notifications enabled for this device."
-                : notificationMode
-                  ? "Connected-view notifications enabled. Delivery requires this browser view to remain connected."
-                  : "Notifications are muted for this device."}{" "}
-              Focus settings, power management and network conditions can delay
-              delivery. On iOS, enable notifications from the installed Home
-              Screen app.
-            </p>
-            {!catalogue.capabilities.push && (
-              <details>
-                <summary>Host details</summary>
-                <p>{catalogue.capabilities.push_reason}</p>
-              </details>
-            )}
-          </details>
-          <details class="settings-section">
-            <summary>Paired devices</summary>
-            {catalogue.devices.map((device) => (
-              <div class="device" key={device.id}>
-                <span>
-                  {device.name}
-                  {device.id === catalogue.device ? " · this device" : ""}
-                </span>
-                {device.id !== catalogue.device && (
-                  <button
-                    onClick={() =>
-                      command("revoke_device", null, { device_id: device.id })
-                        .then(refresh)
-                        .catch(report)
-                    }
-                  >
-                    Revoke
-                  </button>
-                )}
-              </div>
-            ))}
-            <button onClick={logout}>Log out this device</button>
-          </details>
-        </>
-      )}
+                >
+                  Revoke
+                </button>
+              )}
+            </div>
+          ))}
+          <button onClick={logout}>Log out this device</button>
+        </section>
+      </>
+    ),
+    advanced: null,
+    developer: (
+      <>
+        <a
+          class="button-link with-icon"
+          href="/ui.html"
+          target="_blank"
+          rel="noreferrer"
+        >
+          <Palette aria-hidden="true" />
+          UI showcase
+        </a>
+      </>
+    ),
+  };
+  const current = section || "general";
+  return (
+    <div class="settings-content" data-drilled={section ? "" : undefined}>
+      <nav class="settings-nav" aria-label="Settings sections">
+        {SECTIONS.map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            class="quiet"
+            aria-current={id === current ? "page" : undefined}
+            onClick={() => setSection(id)}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
+      <div ref={body} class="settings-pane">
+        <div class="subview-head">
+          <button
+            type="button"
+            class="quiet with-icon settings-back"
+            onClick={() => setSection(null)}
+          >
+            <ArrowLeft aria-hidden="true" />
+            Back
+          </button>
+          <h3>{SECTIONS.find(([id]) => id === current)![1]}</h3>
+        </div>
+        {pane[current]}
+        {/* One instance in one slot: switching sections refilters the
+            catalogue it already loaded instead of fetching it again. */}
+        {current in CONFIG && (
+          <Deferred
+            load={configuration}
+            session={session}
+            online={online}
+            filter={CONFIG[current as keyof typeof CONFIG]}
+            fallback={<Spinner label="Loading configuration…" surface />}
+          />
+        )}
+      </div>
     </div>
   );
 }

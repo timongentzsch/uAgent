@@ -117,12 +117,16 @@ function Setting({
     </div>
   );
 }
+// With a filter, a settings section embeds just its settings as one flat
+// list; without one, every setting is searchable by category.
 export default function Configuration({
   session,
   online,
+  filter,
 }: {
   session?: Session;
   online: boolean;
+  filter?: (setting: ConfigSetting) => boolean;
 }) {
   const [data, setData] = useState<ConfigurationData | null>(null);
   const [error, setError] = useState<unknown>(null);
@@ -180,6 +184,7 @@ export default function Configuration({
   }
   const groups = new Map<string, ConfigSetting[]>();
   for (const setting of data?.settings || []) {
+    if (filter && !filter(setting)) continue;
     if (
       !`${setting.name} ${setting.description}`
         .toLowerCase()
@@ -203,40 +208,47 @@ export default function Configuration({
           </option>
         </Select>
       </label>
-      <label>
-        Find a setting
-        <Input
-          type="search"
-          value={query}
-          onInput={(event) => setQuery(event.currentTarget.value)}
-        />
-      </label>
+      {!filter && (
+        <label>
+          Find a setting
+          <Input
+            type="search"
+            value={query}
+            onInput={(event) => setQuery(event.currentTarget.value)}
+          />
+        </label>
+      )}
       {receipt && <p role="status">{receipt}</p>}
       {error ? (
         <LoadError error={error} retry={() => setAttempt(attempt + 1)} />
       ) : (
         !data && <Spinner label="Loading configuration…" surface />
       )}
-      {[...groups].map(([category, settings]) => (
-        <details key={category} open={!!query}>
-          <summary>
-            {category} · {count(settings.length)}
-          </summary>
-          {settings.map((setting) => (
-            <Setting
-              key={[scope, setting.name, stringify(setting.value)].join(":")}
-              setting={setting}
-              scope={scope}
-              busy={
-                busy ||
-                !online ||
-                (scope === "project" && (!target || !data?.project_trusted))
-              }
-              save={save}
-            />
-          ))}
-        </details>
-      ))}
+      {[...groups].map(([category, settings]) => {
+        const rows = settings.map((setting) => (
+          <Setting
+            key={[scope, setting.name, stringify(setting.value)].join(":")}
+            setting={setting}
+            scope={scope}
+            busy={
+              busy ||
+              !online ||
+              (scope === "project" && (!target || !data?.project_trusted))
+            }
+            save={save}
+          />
+        ));
+        return filter ? (
+          rows
+        ) : (
+          <details key={category} open={!!query}>
+            <summary>
+              {category} · {count(settings.length)}
+            </summary>
+            {rows}
+          </details>
+        );
+      })}
     </section>
   );
 }

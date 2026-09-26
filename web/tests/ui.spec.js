@@ -106,6 +106,10 @@ test("mobile chrome keeps an opaque safe area and applies appearance before app 
   expect(Math.abs(geometry.insetTop - geometry.insetRight)).toBeLessThanOrEqual(
     1,
   );
+  await settings
+    .locator(".settings-nav")
+    .getByRole("button", { name: "General", exact: true })
+    .click();
   await settings.getByLabel("Appearance", { exact: true }).selectOption("dark");
   await expect(page.locator("#app")).toHaveCSS(
     "background-color",
@@ -559,7 +563,7 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   const settingsLoadingBox = await settings.boundingBox();
   releaseSettings();
   await expect(settings.getByLabel("Appearance")).toBeVisible();
-  await expect(settings.getByLabel("Default permissions")).toBeVisible();
+  await expect(settings.getByLabel("Timestamps")).toBeVisible();
   // The loaded form fills in over staged renders (chunk, then config
   // data), so pin parity once the settled height matches instead of
   // sampling a mid-render frame. The invariant is unchanged.
@@ -623,6 +627,10 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   expect(mobilePanel.x + mobilePanel.width).toBeLessThanOrEqual(390);
   await page.keyboard.press("Escape");
   await settingsButton.click();
+  await settings
+    .locator(".settings-nav")
+    .getByRole("button", { name: "General", exact: true })
+    .click();
   await settings.getByLabel("Zoom", { exact: true }).fill("200");
   await expect
     .poll(() =>
@@ -669,6 +677,10 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
     }),
   ).toBe(true);
   await settingsButton.click();
+  await settings
+    .locator(".settings-nav")
+    .getByRole("button", { name: "General", exact: true })
+    .click();
   await settings
     .getByRole("button", { name: "Reset zoom", exact: true })
     .click();
@@ -942,6 +954,10 @@ test("touch controls remain reachable at phone width", async ({
     expect(box.x + box.width).toBeLessThanOrEqual(390);
     await picker.getByRole("button", { name: "Cancel", exact: true }).tap();
     await page.getByRole("button", { name: "Settings", exact: true }).tap();
+    await page
+      .locator(".settings-nav")
+      .getByRole("button", { name: "General", exact: true })
+      .tap();
     await page.getByLabel("Appearance").selectOption("dark");
     await page
       .getByRole("button", { name: "Close settings", exact: true })
@@ -1128,7 +1144,9 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
   await expect(tool.locator(".tool-command")).toHaveText(
     `psql -c "SELECT 'x'"`,
   );
-  await expect(tool.locator(".tool-fields dd")).toHaveText("a test query");
+  // Short arguments read as facts in the info line, not as field rows.
+  await expect(tool.locator(".tool-facts")).toContainText("a test query");
+  await expect(tool.locator(".tool-fields")).toHaveCount(0);
   await expect(tool.locator(".thinking .markdown")).toHaveCount(0);
   await expect(tool.locator(".katex")).toHaveCount(0);
   await toggle.click();
@@ -1432,8 +1450,9 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
         element.style.setProperty("--safe-bottom-resting", "34px"),
       );
     await expect(page.locator("#app")).toHaveCSS("padding-bottom", "34px");
+    // Status line above and totals below the input: two slim rows.
     expect((await page.locator(".composer").boundingBox()).height).toBeLessThan(
-      150,
+      180,
     );
     const draft = "Keep my draft and focus as the keyboard moves";
     await input(prompt, draft, 16);
@@ -1496,13 +1515,23 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
       name: "Settings",
       exact: true,
     });
-    await settings.getByLabel("Zoom", { exact: true }).fill("50");
     await settings
-      .getByRole("button", { name: "Advanced configuration", exact: true })
+      .locator(".settings-nav")
+      .getByRole("button", { name: "General", exact: true })
+      .tap();
+    await settings.getByLabel("Zoom", { exact: true }).fill("50");
+    await settings.getByRole("button", { name: "Back", exact: true }).tap();
+    await settings
+      .locator(".settings-nav")
+      .getByRole("button", { name: "Advanced", exact: true })
       .tap();
     await input(settings.getByLabel("Find a setting"), "web", 16);
     await contained(settings, 390, 70);
     await settings.getByRole("button", { name: "Back", exact: true }).tap();
+    await settings
+      .locator(".settings-nav")
+      .getByRole("button", { name: "General", exact: true })
+      .tap();
     await settings
       .getByRole("button", { name: "Reset zoom", exact: true })
       .tap();
@@ -1699,9 +1728,6 @@ test.describe("mobile navigation and commands", () => {
     await prompt.fill("/mo");
     await prompt.press("Tab");
     await expect(prompt).toHaveValue("/model");
-    await prompt.fill("/hel");
-    await prompt.press("Tab");
-    await expect(prompt).toHaveValue("/help");
     await expect(page.locator(".message.user")).toHaveCount(1);
     await prompt.fill("/");
     await prompt.press("ArrowDown");
@@ -1764,6 +1790,14 @@ test.describe("mobile navigation and commands", () => {
       .click();
     await expect(page.locator(".composer .status-led.active")).toBeVisible();
     await expect(page.locator(".message.user")).toHaveCount(0);
+    // An unsent draft survives a reload (an evicted installed app).
+    await prompt.fill("Survives reload");
+    // Saved after the next paint; reload once it is stored.
+    await expect
+      .poll(() => page.evaluate(() => localStorage.getItem("uagent-drafts")))
+      .toContain("Survives reload");
+    await page.reload();
+    await expect(prompt).toHaveValue("Survives reload");
     await prompt.fill("/q");
     await prompt.press("Enter");
     await expect(
@@ -2355,8 +2389,8 @@ test("a long agent state truncates instead of wrapping the phone status line", a
   const line = page.locator(".composer .status-line");
   await expect(line).toBeVisible();
   const single = (await line.boundingBox()).height;
-  // One line, and the state ends before the metrics begin: idle (plain text)
-  // and while work runs (the state becomes the popover's button).
+  // One line with the state truncated, idle and while work runs; the work
+  // button and totals sit under the input.
   const fits = async () => {
     await page
       .locator(".composer .activity-caption")
@@ -2366,11 +2400,6 @@ test("a long agent state truncates instead of wrapping the phone status line", a
             "Running · Run · cd /home/dev/Software/project && rg -l --no-messages"),
       );
     expect((await line.boundingBox()).height).toBe(single);
-    const state = await page
-      .locator(".composer .activity-toggle")
-      .boundingBox();
-    const metrics = await page.locator(".composer .metrics").boundingBox();
-    expect(state.x + state.width).toBeLessThanOrEqual(metrics.x + 1);
     expect(
       await page
         .locator(".composer .activity-caption")

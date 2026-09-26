@@ -1,12 +1,81 @@
+/* Section nav beside one scrolling pane; on a phone the nav is the first
+   screen and a section drills in with Back. */
+dialog.settings-view {
+  --dialog-width: calc(880rem / 14);
+}
+.settings-view > .dialog-body {
+  display: flex;
+  padding: 0;
+  overflow: hidden;
+}
+.settings-content {
+  flex: 1;
+  display: grid;
+  grid-template-columns: calc(168rem / 14) minmax(0, 1fr);
+  min-height: 0;
+}
+.settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--surface-inset);
+  border-right: 1px solid var(--line);
+  overflow: auto;
+}
+.settings-nav > button {
+  display: flex;
+  justify-content: flex-start;
+  text-align: start;
+}
+.settings-nav > button[aria-current="page"] {
+  background: var(--raised);
+}
+/* Advanced and Developer are the escape hatches, set apart from the rest. */
+.settings-nav > button:nth-child(6) {
+  margin-top: var(--pad);
+}
+.settings-pane {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding: 0 var(--surface-inset) var(--surface-inset);
+}
 .subview-head {
   display: flex;
   align-items: center;
   gap: var(--gap);
   position: sticky;
-  top: calc(-1 * var(--pad));
+  top: 0;
   background: var(--bg);
   padding: var(--space-4) 0;
   z-index: 1;
+}
+.settings-back {
+  display: none;
+}
+@media (max-width: 600px) {
+  .settings-content {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .settings-content[data-drilled] > .settings-nav,
+  .settings-content:not([data-drilled]) > .settings-pane {
+    display: none;
+  }
+  .settings-nav {
+    border-right: 0;
+  }
+  .settings-content:not([data-drilled]) .settings-nav > button {
+    background: none;
+  }
+  .settings-nav > button::after {
+    /* Decorative: empty alt text keeps it out of the accessible name. */
+    content: "›" / "";
+    margin-left: auto;
+  }
+  .settings-back {
+    display: inline-flex;
+  }
 }
 .device {
   display: flex;

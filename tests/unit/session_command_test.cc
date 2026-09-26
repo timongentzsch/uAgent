@@ -7,13 +7,21 @@
 
 #include "include/app/session_command.h"
 
+#include <algorithm>
 #include <filesystem>
+#include <functional>
+#include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "include/app/asset_store.h"
+#include "include/app/commands.h"
+#include "include/app/session_host.h"
+#include "include/core/events.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
+#include "tests/unit/terminal_test_support.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {
@@ -215,6 +223,258 @@ void TestToolCopiesKeepRoomForUserFiles() {
   }
   CHECK(copies <= kMaxSessionAssets / 2);
   CHECK(store.Store(session, "mine", "notes.txt", true).error.empty());
+}
+
+void TestCommandReplies() {
+  TestWorkspace workspace("command-replies");
+  Observability observability;
+  AppContext context(RuntimeConfig{}, ConfigManager::Capture(false, {}),
+                     Options{}, observability, nullptr);
+  context.runtime.api.model = "test-model";
+  context.agent = std::make_unique<Agent>(
+      context.runtime.api, context.tools, context.runtime.processes,
+      context.runtime.side_usage,
+      [](const Tool&, const json&, int64_t) { return false; });
+  std::vector<Attachment> attachments;
+  std::string path;
+  uint64_t revision = 0;
+  AppSession session{context, attachments, path, revision};
+  CHECK(CaptureStdout([&] {
+          for (const auto& [command, label] :
+               std::vector<std::pair<std::string, std::string>>{
+                   {"/help", "/attach PATH"},
+                   {"/status", "test-model"},
+                   {"/cost", "no session spend"},
+                   {"/context", "model request"},
+                   {"/tools", "tools"},
+                   {"/attach", "no pending attachments"}}) {
+            const auto reply =
+                RunSlashCommand(session, ParseSlashCommand(command));
+            CHECK(reply.output.find(label) != std::string::npos);
+            CHECK(reply.result.is_object());
+            if (command == "/context") {
+              CHECK(reply.result.contains("effective_config"));
+              CHECK(reply.result["model_request"]["model"] == "test-model");
+            }
+          }
+          CommandReply reply;
+          reply.Print("%s %d", "formatted", 42);
+          CHECK(reply.output == "formatted 42");
+          reply.Print("%s", std::string(KiB(80), 'x').c_str());
+          reply.Print("discarded");
+          CHECK(reply.output.size() == KiB(64));
+        }).empty());
+}
+
+void TestSavedHistoryInvalidation() {
+  TestWorkspace workspace("history-cache");
+  const std::string folder =
+      UagentDir(kHistoryDir) + "/" + WorkspaceId(CanonicalCwd());
+  CreatePrivateDirectories(folder);
+  const std::string path = folder + "/history.json";
+  SessionRecord record;
+  record.metadata = {.cwd = CanonicalCwd(),
+                     .model = "test",
+                     .session_id = "history",
+                     .turns = 1,
+                     .title = "history"};
+  record.state.messages = json::array({{{"role", "system"}, {"content", "sys"}},
+                                       {{"role", "user"}, {"content", "old"}}});
+  record.state.message_kinds = {MessageKind::kSystem, MessageKind::kUser};
+  REQUIRE(SessionStore::Save(path, record).Ok());
+  session::SessionHost host("test", 4096);
+  host.RefreshCatalogue(true);
+  const auto id = HashHex(path);
+  const auto snapshot = host.Snapshot(id, {});
+  REQUIRE(snapshot.status == 200);
+  CHECK(snapshot.value["state"]["view"]["blocks"][0]["text"] == "old");
+  CHECK(host.Snapshot(id, {}).value == snapshot.value);
+  // Equal-length replacement still invalidates through the file identity.
+  record.state.messages[1]["content"] = "new";
+  REQUIRE(SessionStore::Save(path, record).Ok());
+  CHECK(host.Snapshot(id, {}).value["state"]["view"]["blocks"][0]["text"] ==
+        "new");
+  session::SnapshotQuery detail{.has_detail = true, .detail = "m-2"};
+  CHECK(host.Snapshot(id, detail).value["text"] == "new");
+  std::string error;
+  REQUIRE(AtomicWriteFile(path, "corrupt", 0600, false, error));
+  CHECK(host.Snapshot(id, {}).status == 422);
+  REQUIRE(SessionStore::Save(path, record).Ok());
+  CHECK(host.Snapshot(id, detail).value["text"] == "new");
+  // A symlink to the cached inode must not bypass the regular-file reader.
+  const std::string moved = path + ".moved";
+  std::filesystem::rename(path, moved);
+  std::filesystem::create_symlink(moved, path);
+  CHECK(host.Snapshot(id, {}).status == 422);
+  std::filesystem::remove(path);
+  CHECK(host.Snapshot(id, {}).value["state"].empty());
+}
+
+void TestSessionPersistence() {
+  TestWorkspace workspace("session-persistence");
+  ScopedEnv session_path("UAGENT_INTERNAL_SESSION_PATH");
+  const auto prior_approval = CurrentApprovalMode();
+  class Channel final : public ApplicationChannel {
+   public:
+    std::string path;
+    std::function<std::optional<ApplicationInput>()> next;
+    std::function<void(const json&)> complete;
+    std::optional<ApplicationInput> NextInput() override { return next(); }
+    std::string SessionPath() const override { return path; }
+    std::string ReadInteraction(const InteractionRequest&, bool*) override {
+      return {};
+    }
+    void CompleteControl(const std::string&, const json& result) override {
+      complete(result);
+    }
+  } channel;
+  channel.path = (workspace.workspace / "session.json").string();
+  Observability observation;
+  observation.EnableTerminal(false);
+  RuntimeConfig config;
+  config.memory_generate = false;
+  AppContext context(config, ConfigManager::Capture(false, {}), Options{},
+                     observation, &channel);
+  context.runtime.api.model = "test-model";
+  context.agent = std::make_unique<Agent>(
+      context.runtime.api, context.tools, context.runtime.processes,
+      context.runtime.side_usage,
+      [](const Tool&, const json&, int64_t) { return false; });
+  const std::vector<json> requests = {
+      {{"kind", "tools"}},
+      {{"kind", "permissions"}},
+      {{"kind", "model"}, {"operation", "catalog"}},
+      {{"kind", "permissions"}, {"mode", "ask"}},
+      {{"kind", "tools"}, {"operation", "profile"}, {"profile", "minimal"}},
+      {{"kind", "share"}},
+      {{"kind", "fork"}, {"title", "child"}},
+      {{"kind", "tools"}}};
+  size_t sent = 0, completed = 0;
+  FileStamp before;
+  channel.next = [&]() -> std::optional<ApplicationInput> {
+    if (sent == requests.size()) return std::nullopt;
+    before = SnapshotFile(channel.path);
+    CHECK(before.size > 0);
+    // Even a read-only command must flush events pending at its boundary.
+    observation.Emit(Event{EventId::kConfigChanged, {{"source", "pending"}}});
+    if (sent == requests.size() - 1) std::filesystem::remove(channel.path);
+    return ApplicationInput{.control = requests[sent++]};
+  };
+  channel.complete = [&](const json& result) {
+    CHECK(!result.contains("error"));
+    const size_t index = completed++;
+    const bool changed = index == 3 || index == 4 || index == 7;
+    CHECK((SnapshotFile(channel.path) != before) == changed);
+    const auto loaded = SessionStore::Inspect(channel.path);
+    CHECK(loaded.record.has_value());
+    if (loaded.record) {
+      CHECK(loaded.record->state.messages.size() == 1);
+      const auto& settings =
+          loaded.record->state.display["facts"]["session-settings"];
+      CHECK(settings["permissions"] == (index < 3 ? "default" : "ask"));
+      if (index >= 4) CHECK(settings["tools"]["profile"] == "minimal");
+    }
+    std::string journal, error;
+    CHECK(ReadRegularFile(channel.path + ".events.jsonl", KiB(256), journal,
+                          error));
+    CHECK(journal.find("pending") != std::string::npos);
+    if (index == 5 || index == 6) CHECK(PathExists(result.value("path", "")));
+  };
+  CHECK(RunApplication(context) == 0);
+  CHECK(completed == requests.size());
+
+  // A failed journal write cannot acknowledge the new revision as saved.
+  std::vector<Attachment> attachments;
+  uint64_t saved = context.agent->Revision();
+  AppSession session{context, attachments, channel.path, saved};
+  auto resumed = SessionStore::Inspect(channel.path);
+  REQUIRE(resumed.record.has_value());
+  resumed.record->state.messages.push_back(
+      {{"role", "user"}, {"content", "rewind"}});
+  resumed.record->state.message_kinds.push_back(MessageKind::kUser);
+  resumed.record->state.display = json::object();
+  REQUIRE(SessionStore::Save(channel.path, *resumed.record).Ok());
+  std::string error;
+  REQUIRE(context.agent->Load(channel.path, CanonicalCwd(), error));
+  CHECK(SessionControl(session, {{"kind", "rewind"}, {"turn", 1}})["rewound"] ==
+        true);
+  const auto rewound = SessionStore::Inspect(channel.path);
+  REQUIRE(rewound.record.has_value());
+  CHECK(rewound.record->state.messages.size() == 1);
+  const FileStamp checkpoint = SnapshotFile(channel.path);
+  CHECK(session.Save(error));
+  CHECK(SnapshotFile(channel.path) == checkpoint);
+
+  context.agent->Rename("retry after journal failure");
+  const std::string journal = channel.path + ".events.jsonl";
+  std::filesystem::remove(journal);
+  std::filesystem::create_directory(journal);
+  CHECK(!session.Save(error));
+  CHECK(saved != context.agent->Revision());
+  std::filesystem::remove(journal);
+  CHECK(session.Save(error));
+  CHECK(saved == context.agent->Revision());
+  SetApprovalMode(prior_approval);
+}
+
+void TestSessionCatalogueCache() {
+  TestWorkspace workspace("catalogue-cache");
+  const std::string folder = UagentDir(kHistoryDir);
+  CreatePrivateDirectories(folder);
+  const std::string path = folder + "/session.json";
+  SessionRecord record;
+  record.metadata = {.cwd = CanonicalCwd(),
+                     .model = "test",
+                     .session_id = "session",
+                     .turns = 2,
+                     .title = "old"};
+  record.state.messages =
+      json::array({{{"role", "system"}, {"content", "sys"}}});
+  record.state.message_kinds = {MessageKind::kSystem};
+  REQUIRE(SessionStore::Save(path, record).Ok());
+  SessionCatalogue catalogue;
+  auto scan = [&](SessionScope scope = SessionScope::kAll) {
+    const auto rows = catalogue.List(scope);
+    const auto fresh = ListSessions(scope);
+    CHECK(rows.size() == fresh.size());
+    for (size_t i = 0; i < std::min(rows.size(), fresh.size()); ++i) {
+      CHECK(rows[i].path == fresh[i].path);
+      CHECK(rows[i].title == fresh[i].title);
+      CHECK(rows[i].cwd == fresh[i].cwd);
+      CHECK(rows[i].turns == fresh[i].turns);
+      CHECK(rows[i].incoming == fresh[i].incoming);
+      CHECK(rows[i].bytes == fresh[i].bytes);
+      CHECK(rows[i].mtime == fresh[i].mtime);
+      CHECK(rows[i].error == fresh[i].error);
+    }
+    return rows;
+  };
+  REQUIRE(scan().size() == 1);
+  CHECK(scan()[0].title == "old");
+  const auto modified = std::filesystem::last_write_time(path);
+  record.metadata.title = "new";
+  REQUIRE(SessionStore::Save(path, record).Ok());
+  std::filesystem::last_write_time(path, modified);
+  CHECK(scan()[0].title == "new");
+  record.metadata.cwd = (workspace.root / "elsewhere").string();
+  REQUIRE(SessionStore::Save(folder + "/foreign.json", record).Ok());
+  CHECK(scan().size() == 2);
+  CHECK(scan(SessionScope::kWorkspace).size() == 1);
+  CHECK(scan().size() == 2);
+  std::string error;
+  REQUIRE(AtomicWriteFile(path, "corrupt", 0600, false, error));
+  CHECK(!scan()[0].error.empty());
+  REQUIRE(SessionStore::Save(path, record).Ok());
+  CHECK(scan()[0].error.empty());
+  const std::string moved = path + ".moved";
+  std::filesystem::rename(path, moved);
+  std::filesystem::create_symlink(moved, path);
+  CHECK(scan().size() == 1);
+  std::filesystem::remove(path);
+  std::filesystem::remove(folder + "/foreign.json");
+  CHECK(scan().empty());
+  REQUIRE(SessionStore::Save(path, record).Ok());
+  CHECK(scan().size() == 1);
 }
 
 }  // namespace uagent

@@ -1,17 +1,21 @@
 // Copyright 2026 Timon Gentzsch
 
+#include "include/transport/session.h"
+
 #include <fcntl.h>
 #include <poll.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <array>
 #include <cerrno>
 #include <chrono>
 #include <string>
 #include <utility>
 
-#include "include/app/session.h"
 #include "include/core/platform.h"
+#include "include/core/signals.h"
+#include "include/core/time.h"
 
 namespace uagent::session {
 std::string RandomToken(size_t bytes) {
@@ -99,49 +103,54 @@ bool WriteFrame(int fd, std::string line) {
   return true;
 }
 
+bool FrameBuffer::Feed(std::string_view bytes,
+                       const std::function<bool(json)>& receive) {
+  pending_.append(bytes);
+  size_t begin = 0;
+  for (;;) {
+    const size_t end = pending_.find('\n', begin);
+    if (end == std::string::npos) break;
+    if (end - begin > limit_) return false;
+    json frame = json::parse(
+        pending_.begin() + static_cast<std::ptrdiff_t>(begin),
+        pending_.begin() + static_cast<std::ptrdiff_t>(end), nullptr, false);
+    if (!frame.is_object() || JsonValue(frame, "v", 0) != kProtocol ||
+        !receive(std::move(frame)))
+      return false;
+    begin = end + 1;
+  }
+  pending_.erase(0, begin);
+  return pending_.size() <= limit_;
+}
+
 void ReadFrames(int fd, int stop_fd, size_t limit,
-                const std::function<bool(json)>& receive) {
-  std::string pending;
+                const std::function<bool(json)>& receive,
+                std::chrono::steady_clock::time_point deadline,
+                bool interruptible) {
+  FrameBuffer pending(limit);
   char buffer[kIoBufferBytes];
   for (;;) {
+    if (interruptible && AbortRequested()) return;
+    int timeout = deadline == std::chrono::steady_clock::time_point::max()
+                      ? -1
+                      : PollTimeoutMs(deadline);
+    if (timeout == 0) return;
+    if (timeout > 0 || interruptible) {
+      timeout = timeout < 0 ? 100 : std::min(timeout, 100);
+    }
     pollfd waits[] = {{fd, POLLIN, 0}, {stop_fd, POLLIN, 0}};
-    int ready = poll(waits, 2, -1);
-    if (ready < 0 && errno == EINTR) {
-      continue;
-    }
-    if (ready < 0 || waits[1].revents != 0) {
+    int ready = poll(waits, 2, timeout);
+    if (ready < 0 && errno == EINTR) continue;
+    if (ready < 0 || waits[1].revents ||
+        (waits[0].revents & (POLLERR | POLLNVAL)))
       return;
-    }
+    if (!(waits[0].revents & (POLLIN | POLLHUP))) continue;
     ssize_t count = read(fd, buffer, sizeof buffer);
-    if (count < 0 && (errno == EINTR || errno == EAGAIN)) {
-      continue;
-    }
-    if (count <= 0) {
+    if (count < 0 && (errno == EINTR || errno == EAGAIN)) continue;
+    if (count <= 0 ||
+        !pending.Feed(std::string_view(buffer, static_cast<size_t>(count)),
+                      receive))
       return;
-    }
-    pending.append(buffer, static_cast<size_t>(count));
-    size_t begin = 0;
-    for (;;) {
-      size_t end = pending.find('\n', begin);
-      if (end == std::string::npos) {
-        break;
-      }
-      if (end - begin > limit) {
-        return;
-      }
-      json frame = json::parse(
-          pending.begin() + static_cast<std::ptrdiff_t>(begin),
-          pending.begin() + static_cast<std::ptrdiff_t>(end), nullptr, false);
-      if (!frame.is_object() || JsonValue(frame, "v", 0) != kProtocol ||
-          !receive(std::move(frame))) {
-        return;
-      }
-      begin = end + 1;
-    }
-    pending.erase(0, begin);
-    if (pending.size() > limit) {
-      return;
-    }
   }
 }
 }  // namespace uagent::session

@@ -273,6 +273,9 @@ class Agent {
 
   ChatResult Chat(const char* purpose, int64_t step, const json& schemas,
                   const json* request_messages = nullptr);
+  // Leaves projected null when the source already needs no preparation.
+  std::string PrepareRequestMessages(const json& source, json& projected,
+                                     bool analyze, json* deliveries = nullptr);
   json CompactionMessages() const;
   // Retained recent user instructions for the post-compaction context.
   // Optionally fills retained_ids with the source display id per message
@@ -409,12 +412,9 @@ class Agent {
   // What a side question needs, captured on the turn thread so the side
   // thread never reads the live route or conversation.
   struct SideContext {
-    json messages, tools;
-    RuntimeConfig config;
-    std::string base_url, api_key, model, reasoning_effort, session_id;
-    std::vector<std::string> supported_reasoning_efforts;
-    int64_t ctx_window = 0;
-    ProviderCapabilities capabilities;
+    std::shared_ptr<const json> messages, tools;
+    ApiSettings api;
+    std::string session_id;
   };
   mutable std::mutex side_mutex_;
   std::shared_ptr<const SideContext> side_context_;

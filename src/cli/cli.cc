@@ -194,24 +194,6 @@ ForkArgument ParseForkArgument(const std::string& argument) {
   return fork;
 }
 
-void PrintCommandHelp() {
-  size_t width = 0;
-  for (const SlashCommandSpec& command : kSlashCommands) {
-    if (!*command.description) continue;
-    width = std::max(
-        width, strlen(command.name) +
-                   (*command.argument ? strlen(command.argument) + 1 : 0));
-  }
-  printf("%scommands%s\n", BOLD(), RST());
-  for (const SlashCommandSpec& command : kSlashCommands) {
-    if (!*command.description) continue;
-    std::string usage = command.name;
-    if (*command.argument) usage += " " + std::string(command.argument);
-    printf("  %s%-*s%s  %s%s%s\n", BOLD(), static_cast<int>(width),
-           usage.c_str(), RST(), DIM(), command.description, RST());
-  }
-}
-
 void SetInteractiveReadHandler(InteractiveReadHandler handler) {
   ReadHandler() = std::move(handler);
 }

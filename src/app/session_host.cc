@@ -92,10 +92,6 @@ void SessionHost::Stop() {
   changed_.notify_all();
 }
 
-std::vector<SessionInfo> SessionHost::DiscoverSessions() const {
-  return ListSessions(SessionScope::kAll);
-}
-
 void SessionHost::LoadDrafts() {
   std::error_code ec;
   const std::string folder = directory_ + "/drafts";
@@ -147,7 +143,7 @@ bool SessionHost::RefreshCatalogue(bool force) {
     return false;
   }
   scanned_ = std::chrono::steady_clock::now();
-  const auto list = DiscoverSessions();
+  const auto list = catalogue_.List(SessionScope::kAll);
   std::lock_guard lock(mutex_);
   bool changed = false;
   for (const SessionInfo& item : list) {

@@ -25,7 +25,6 @@
 #include <utility>
 #include <vector>
 
-#include "include/app/session.h"
 #include "include/browser/runtime.h"
 #include "include/core/platform.h"
 

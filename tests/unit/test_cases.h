@@ -42,6 +42,12 @@ namespace uagent {
   X(TestProjectConfigTrustRestamp)               \
   X(TestConfigRegistryContract)                  \
   X(TestRuntimeConfigCoherence)                  \
+  X(TestSavedHistoryInvalidation)                \
+  X(TestSavedTranscriptIndex)                    \
+  X(TestSessionPersistence)                      \
+  X(TestSessionCatalogueCache)                   \
+  X(TestCommandReplies)                          \
+  X(TestSessionFramePartitions)                  \
   X(TestSessionCommandKinds)                     \
   X(TestSessionCommandFields)                    \
   X(TestSessionCommandRejects)                   \

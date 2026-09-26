@@ -14,13 +14,13 @@
 #include "include/agent/child_agent.h"
 #include "include/agent/file_services.h"
 #include "include/agent/session_store.h"
-#include "include/app/session.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/limits.h"
 #include "include/core/strings.h"
 #include "include/core/time.h"
+#include "include/transport/session.h"
 
 namespace uagent {
 namespace {

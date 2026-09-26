@@ -4,44 +4,49 @@
 
 #include <algorithm>
 #include <cctype>
-#include <chrono>
+#include <cstdarg>
 #include <cstdio>
-#include <filesystem>
-#include <map>
-#include <optional>
 #include <sstream>
 #include <string>
 #include <utility>
-#include <vector>
 
-#include "include/agent/child_agent.h"
-#include "include/agent/jobs.h"
-#include "include/agent/process.h"
 #include "include/agent/session_store.h"
 #include "include/agent/session_view.h"
-#include "include/app/config_proposal.h"
 #include "include/app/control.h"
 #include "include/app/prompt_control.h"
 #include "include/app/self_description.h"
-#include "include/core/debug.h"
-#include "include/core/env.h"
 #include "include/core/events.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
-#include "include/core/sandbox.h"
-#include "include/core/signals.h"
+#include "include/core/limits.h"
 #include "include/core/steering.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
-#include "include/media/attachments.h"
 #include "include/providers.h"
-#include "include/tools/memory.h"
 #include "include/tools/session.h"
-#include "include/tools/subagent.h"
-#include "include/ui/conversation.h"
-#include "include/ui/sessions.h"
 #include "src/app/commands_internal.h"
+
 namespace uagent {
+
+void CommandReply::Print(const char* format, ...) {
+  constexpr size_t kOutputBytes = KiB(64);
+  if (output.size() >= kOutputBytes) return;
+  va_list args;
+  va_start(args, format);
+  va_list copy;
+  va_copy(copy, args);
+  const int needed = vsnprintf(nullptr, 0, format, copy);
+  va_end(copy);
+  if (needed > 0) {
+    const size_t start = output.size();
+    const size_t count =
+        std::min(static_cast<size_t>(needed), kOutputBytes - start);
+    output.resize(start + count + 1);
+    vsnprintf(output.data() + start, count + 1, format, args);
+    output.resize(start + count);
+  }
+  va_end(args);
+}
 
 void LoadSessionJournal(AppSession& session, const std::string& previous_path) {
   const json settings = session.ActiveAgent().SessionSettings();
@@ -85,8 +90,10 @@ void LoadSessionJournal(AppSession& session, const std::string& previous_path) {
               {"messages", session.ActiveAgent().MessageCount()}}});
 }
 
-void RunSlashCommand(AppSession& session, const ParsedSlashCommand& command,
-                     json& result) {
+CommandReply RunSlashCommand(AppSession& session,
+                             const ParsedSlashCommand& command) {
+  CommandReply reply;
+  json& result = reply.result;
   switch (command.spec->id) {
     case SlashCommandId::kQuit:
     case SlashCommandId::kReset:
@@ -95,11 +102,10 @@ void RunSlashCommand(AppSession& session, const ParsedSlashCommand& command,
     case SlashCommandId::kVerbose:
     case SlashCommandId::kBtw:
       result = {{"error", "this command belongs to the client"}};
-      return;
+      return reply;
     case SlashCommandId::kClear:
-      printf("\033[H\033[2J");
-      fflush(stdout);
-      return;
+      reply.Print("\033[H\033[2J");
+      return reply;
     case SlashCommandId::kRewind: {
       std::string arg = Trim(command.argument);
       if (arg.starts_with("@")) arg = Trim(arg.substr(1));
@@ -110,38 +116,50 @@ void RunSlashCommand(AppSession& session, const ParsedSlashCommand& command,
       }
       if (turn <= 0) {
         result = {{"error", "usage: /rewind [@]TURN"}};
-        return;
+        return reply;
       }
       result = SessionControl(session, {{"kind", "rewind"}, {"turn", turn}});
-      return;
+      return reply;
     }
     case SlashCommandId::kShare: {
       if (!command.argument.empty()) {
         result = {{"error", "usage: /share"}};
-        return;
+        return reply;
       }
       result = SessionControl(session, {{"kind", "share"}});
-      return;
+      return reply;
     }
     case SlashCommandId::kVariant:
-      HandleVariant(session, command.argument);
+      HandleVariant(session, command.argument, reply);
       break;
-    case SlashCommandId::kHelp:
-      PrintCommandHelp();
+    case SlashCommandId::kHelp: {
+      result =
+          DescribeSelf(SelfTopic::kCommands, "", DescriptionInputs(session));
+      size_t width = 0;
+      for (const auto& row : result["commands"]) {
+        width = std::max(width, JsonValue(row, "usage", "").size());
+      }
+      reply.Print("%scommands%s\n", BOLD(), RST());
+      for (const auto& row : result["commands"]) {
+        reply.Print("  %s%-*s%s  %s%s%s\n", BOLD(), static_cast<int>(width),
+                    JsonValue(row, "usage", "").c_str(), RST(), DIM(),
+                    JsonValue(row, "description", "").c_str(), RST());
+      }
       break;
+    }
     case SlashCommandId::kModels:
-      HandleModels(session, command.argument);
+      HandleModels(session, command.argument, reply);
       break;
     case SlashCommandId::kModel:
-      HandleModel(session, command.argument);
+      HandleModel(session, command.argument, reply);
       break;
     case SlashCommandId::kEffort:
-      HandleEffort(session, command.argument);
+      HandleEffort(session, command.argument, reply);
       break;
     case SlashCommandId::kPermissions:
       result = PermissionControl(session.context, {{"mode", command.argument}});
       session.ActiveAgent().ApprovalChanged();
-      return;
+      return reply;
     case SlashCommandId::kConfig: {
       json request = {{"kind", "config"}};
       if (!command.argument.empty()) {
@@ -164,7 +182,7 @@ void RunSlashCommand(AppSession& session, const ParsedSlashCommand& command,
                             {"unset", unset}}})}});
       }
       result = SessionControl(session, request);
-      return;
+      return reply;
     }
     case SlashCommandId::kHttp: {
       auto exchanges = session.ActiveAgent().HttpExchanges();
@@ -180,50 +198,48 @@ void RunSlashCommand(AppSession& session, const ParsedSlashCommand& command,
           result = {{"error", "Use /http INDEX request|response"}};
         } else {
           result = exchanges[index - 1];
-          {
-            printf("%s\n", TerminalSafe(JsonDump(result, 2)).c_str());
-            size_t offset = 0;
-            for (;;) {
-              auto page = ReadPrivateArtifact(
-                  JsonValue(result, (part + "_path").c_str(), ""), offset);
-              printf("%s", TerminalSafe(JsonValue(page, "text", JsonDump(page)))
-                               .c_str());
-              if (!JsonValue(page, "more", false)) break;
-              offset = JsonValue(page, "next", offset);
-            }
-            printf("\n");
-            fflush(stdout);
+          reply.Print("%s\n", TerminalSafe(JsonDump(result, 2)).c_str());
+          size_t offset = 0;
+          for (;;) {
+            auto page = ReadPrivateArtifact(
+                JsonValue(result, (part + "_path").c_str(), ""), offset);
+            reply.Print(
+                "%s",
+                TerminalSafe(JsonValue(page, "text", JsonDump(page))).c_str());
+            if (!JsonValue(page, "more", false)) break;
+            offset = JsonValue(page, "next", offset);
           }
-          return;
+          reply.Print("\n");
+          return reply;
         }
       }
-      {
-        printf("%s\n", JsonDump(result).c_str());
-      }
-      return;
+      reply.Print("%s\n", JsonDump(result).c_str());
+      return reply;
     }
     case SlashCommandId::kYolo:
       result = PermissionControl(session.context,
                                  {{"mode", ApprovalIsYolo() ? "ask" : "yolo"}});
       session.ActiveAgent().ApprovalChanged();
-      printf("%s· yolo %s%s\n", DIM(),
-             ApprovalIsYolo() ? "ON — automatic ordinary approvals" : "off",
-             RST());
+      reply.Print(
+          "%s· yolo %s%s\n", DIM(),
+          ApprovalIsYolo() ? "ON — automatic ordinary approvals" : "off",
+          RST());
       break;
     case SlashCommandId::kCompact:
-      HandleCompact(session);
+      session.ActiveAgent().Compact();
+      SteeringState().Take();
       break;
     case SlashCommandId::kContext:
-      HandleContext(session);
+      HandleContext(session, reply);
       break;
     case SlashCommandId::kCost:
-      HandleCost(session);
+      HandleCost(session, reply);
       break;
     case SlashCommandId::kPrompt:
       result = PromptCommand(command.argument, [&session](const json& request) {
         return session.ActiveAgent().PromptConfiguration(request);
       });
-      return;
+      return reply;
     case SlashCommandId::kMemory:
     case SlashCommandId::kSkills:
     case SlashCommandId::kSchedule:
@@ -232,45 +248,49 @@ void RunSlashCommand(AppSession& session, const ParsedSlashCommand& command,
           : command.spec->id == SlashCommandId::kSkills ? "skills"
                                                         : "schedule",
           command.argument);
-      return;
+      return reply;
     case SlashCommandId::kTools:
-      HandleTools(session, command.argument);
-      return;
+      HandleTools(session, command.argument, reply);
+      return reply;
     case SlashCommandId::kStatus:
-      HandleStatus(session);
+      HandleStatus(session, reply);
       break;
     case SlashCommandId::kDebugConfig:
-      HandleDebugConfig(session, command.argument);
+      HandleDebugConfig(session, command.argument, reply);
       break;
     case SlashCommandId::kAttach:
-      HandleAttach(session, command.argument);
+      HandleAttach(session, command.argument, reply);
+      result = {{"attachments", json::array()}};
+      for (const Attachment& attachment : session.attachments) {
+        result["attachments"].push_back({{"name", attachment.name},
+                                         {"path", attachment.path},
+                                         {"mime", attachment.mime}});
+      }
       break;
     case SlashCommandId::kProcesses:
     case SlashCommandId::kAgents:
       result = ActivityCommand(session, command);
-      printf("%s", TerminalSafe(ActivityText(result)).c_str());
-      fflush(stdout);
-      return;
+      reply.Print("%s", TerminalSafe(ActivityText(result)).c_str());
+      return reply;
     case SlashCommandId::kPeers:
       result = SessionSlashPeers();
-      printf("%s", TerminalSafe(SessionText(result)).c_str());
-      fflush(stdout);
-      return;
+      reply.Print("%s", TerminalSafe(SessionText(result)).c_str());
+      return reply;
     case SlashCommandId::kTell: {
       result = SessionSlashTell(command.argument);
-      printf("%s\n", TerminalSafe(JsonValue(result, "output",
-                                            JsonValue(result, "error", "")))
-                         .c_str());
-      fflush(stdout);
-      return;
+      reply.Print("%s\n",
+                  TerminalSafe(JsonValue(result, "output",
+                                         JsonValue(result, "error", "")))
+                      .c_str());
+      return reply;
     }
     case SlashCommandId::kLink: {
       result = SessionSlashLink(command.argument);
-      printf("%s\n", TerminalSafe(JsonValue(result, "output",
-                                            JsonValue(result, "error", "")))
-                         .c_str());
-      fflush(stdout);
-      return;
+      reply.Print("%s\n",
+                  TerminalSafe(JsonValue(result, "output",
+                                         JsonValue(result, "error", "")))
+                      .c_str());
+      return reply;
     }
     case SlashCommandId::kDiff:
     case SlashCommandId::kInit:
@@ -279,11 +299,8 @@ void RunSlashCommand(AppSession& session, const ParsedSlashCommand& command,
       // dispatcher ever sees them.
       break;
   }
-  // Notices above are written with bare printf; the interactive composer owns
-  // stdout and only sees what has left the buffer.
-  fflush(stdout);
-  result = CommandResult(session, command);
-  return;
+  if (result.is_null()) result = json::object();
+  return reply;
 }
 
 }  // namespace uagent

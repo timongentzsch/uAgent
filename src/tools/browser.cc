@@ -9,12 +9,12 @@
 #include <string>
 #include <utility>
 
-#include "include/app/session.h"
 #include "include/browser/browser.h"
 #include "include/cli.h"
 #include "include/core/fs.h"
 #include "include/core/signals.h"
 #include "include/tools/image_result.h"
+#include "include/transport/session.h"
 
 namespace uagent {
 namespace {

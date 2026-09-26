@@ -25,24 +25,28 @@ namespace uagent {
 struct StreamCtx;
 class HttpExchange;
 
-// Single-owner client. Calls are intentionally serialized so one easy handle
-// can retain libcurl's connection cache between requests; Api is not reentrant
-// or thread-safe.
-class Api {
- public:
+// Copyable request settings; transport handles and accumulated usage stay
+// with the single-owner client. Side requests snapshot this exact route.
+struct ApiSettings {
   std::string base_url, api_key, model, reasoning_effort;
   std::vector<std::string> supported_reasoning_efforts;
   int64_t ctx_window = 0;
   ProviderCapabilities capabilities;
+  RuntimeConfig config;
+};
+
+// Calls are serialized so one easy handle retains its connection cache.
+class Api : public ApiSettings {
+ public:
   double session_cost = 0;
   int64_t session_generated_tokens = 0;
 
   explicit Api(RuntimeConfig config = RuntimeConfig::FromEnvironment());
+  explicit Api(ApiSettings settings);
   ~Api();
   Api(const Api&) = delete;
   Api& operator=(const Api&) = delete;
 
-  RuntimeConfig config;
   bool capture_http = false;
   std::function<void(const json&, size_t)> observe_progress;
   json exchange_context = json::object();

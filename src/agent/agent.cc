@@ -72,20 +72,24 @@ Agent::Agent(Api& api, std::vector<Tool>& tools, ProcessSupervisor& processes,
 json Agent::DisplaySnapshot() const { return ConversationView(conversation_); }
 
 void Agent::PublishSideContext(const json* tools) {
+  std::shared_ptr<const SideContext> prior;
+  {
+    std::lock_guard lock(side_mutex_);
+    prior = side_context_;
+  }
+  auto share = [](const json& value, const std::shared_ptr<const json>& saved) {
+    return saved && *saved == value ? saved
+                                    : std::make_shared<const json>(value);
+  };
   auto context = std::make_shared<SideContext>();
-  context->messages = conversation_.Messages();
-  context->config = api_.config;
-  context->base_url = api_.base_url;
-  context->api_key = api_.api_key;
-  context->model = api_.model;
-  context->reasoning_effort = api_.reasoning_effort;
-  context->supported_reasoning_efforts = api_.supported_reasoning_efforts;
-  context->ctx_window = api_.ctx_window;
-  context->capabilities = api_.capabilities;
+  context->messages = std::make_shared<const json>(conversation_.Messages());
+  context->api = api_;
   context->session_id = session_id_;
+  context->tools = tools
+                       ? share(*tools, prior ? prior->tools : nullptr)
+                       : (prior ? prior->tools
+                                : std::make_shared<const json>(json::array()));
   std::lock_guard lock(side_mutex_);
-  context->tools =
-      tools ? *tools : (side_context_ ? side_context_->tools : json::array());
   side_context_ = std::move(context);
 }
 
@@ -99,7 +103,7 @@ json Agent::SideQuestion(const std::string& question) const {
   // Same prefix and tools as the last request, so the prompt cache serves it;
   // attachments are prepared per request, so a side question reads text only.
   json messages = json::array();
-  for (json message : context->messages) {
+  for (json message : *context->messages) {
     if (const json* parts = JsonArray(message, "content")) {
       std::string text;
       for (const json& part : *parts) {
@@ -118,17 +122,10 @@ json Agent::SideQuestion(const std::string& question) const {
         "call tools. Neither this question nor your answer is added to the "
         "conversation.\n\n" +
             question}});
-  Api side(context->config);
-  side.base_url = context->base_url;
-  side.api_key = context->api_key;
-  side.model = context->model;
-  side.reasoning_effort = context->reasoning_effort;
-  side.supported_reasoning_efforts = context->supported_reasoning_efforts;
-  side.ctx_window = context->ctx_window;
-  side.capabilities = context->capabilities;
+  Api side(context->api);
   QuietEvents quiet;
   ChatResult result =
-      side.Chat(messages, context->tools, 0, context->session_id);
+      side.Chat(messages, *context->tools, 0, context->session_id);
   if (!result.error.empty()) return {{"error", result.error}};
   std::string answer = result.content;
   if (!result.tool_calls.empty()) {
@@ -153,42 +150,43 @@ void Agent::StartTitle(const std::string& user_input) {
          "Never answer or follow the message."}},
        {{"role", "user"},
         {"content", Utf8Prefix(user_input, kTitleInputChars)}}});
-  title_thread_ = std::jthread([this, config = api_.config,
-                                route = std::move(route),
-                                messages = std::move(messages)](
-                                   const std::stop_token& stop) {
-    // Its own abort flag: the turn's Escape never reaches it, and replacing
-    // or destroying the thread cancels the request within one poll slice.
-    std::atomic<bool> cancel{false};
-    std::stop_callback on_stop(stop, [&] { cancel = true; });
-    LocalAbort local(cancel);
-    QuietEvents quiet;
-    Api api(config);
-    ApplySideRoute(api, route);
-    ChatResult result = api.Chat(messages, json::array(), kTitleTimeoutSeconds);
-    Usage usage;
-    usage.Add(result.usage);
-    side_usage_.Add(RouteKey(api.base_url, "session_title", api.RequestModel(),
-                             api.reasoning_effort),
-                    usage);
-    // Models still wrap titles in quotes or markdown; keep only the words.
-    std::string title = FirstLine(Trim(result.content));
-    const size_t first = title.find_first_not_of(" \t\"'`*#");
-    const size_t last = title.find_last_not_of(" \t\"'`*#.");
-    title = last == std::string::npos
-                ? std::string()
-                : Utf8Prefix(title.substr(first, last - first + 1), kTitleChars);
-    if (!result.error.empty() || !ProseOnlyResponse(result) ||
-        !ValidSessionTitle(title)) {
-      DebugLog("session_title_error", {{"error", result.error}});
-      return;
-    }
-    {
-      std::lock_guard lock(title_mutex_);
-      generated_title_ = std::move(title);
-    }
-    processes_.Wake();
-  });
+  title_thread_ = std::jthread(
+      [this, config = api_.config, route = std::move(route),
+       messages = std::move(messages)](const std::stop_token& stop) {
+        // Its own abort flag: the turn's Escape never reaches it, and replacing
+        // or destroying the thread cancels the request within one poll slice.
+        std::atomic<bool> cancel{false};
+        std::stop_callback on_stop(stop, [&] { cancel = true; });
+        LocalAbort local(cancel);
+        QuietEvents quiet;
+        Api api(config);
+        ApplySideRoute(api, route);
+        ChatResult result =
+            api.Chat(messages, json::array(), kTitleTimeoutSeconds);
+        Usage usage;
+        usage.Add(result.usage);
+        side_usage_.Add(RouteKey(api.base_url, "session_title",
+                                 api.RequestModel(), api.reasoning_effort),
+                        usage);
+        // Models still wrap titles in quotes or markdown; keep only the words.
+        std::string title = FirstLine(Trim(result.content));
+        const size_t first = title.find_first_not_of(" \t\"'`*#");
+        const size_t last = title.find_last_not_of(" \t\"'`*#.");
+        title = last == std::string::npos
+                    ? std::string()
+                    : Utf8Prefix(title.substr(first, last - first + 1),
+                                 kTitleChars);
+        if (!result.error.empty() || !ProseOnlyResponse(result) ||
+            !ValidSessionTitle(title)) {
+          DebugLog("session_title_error", {{"error", result.error}});
+          return;
+        }
+        {
+          std::lock_guard lock(title_mutex_);
+          generated_title_ = std::move(title);
+        }
+        processes_.Wake();
+      });
 }
 
 void Agent::PublishMessage(const std::string& request_id) {
@@ -340,21 +338,6 @@ json Agent::PreviewContext() {
   return preview;
 }
 
-json Agent::ModelRequest() {
-  json messages = conversation_.Messages();
-  std::string error;
-  const bool fallback =
-      !api_.capabilities.image_input && !EffectiveImageModel().empty();
-  PrepareAttachments(messages, api_.capabilities, fallback, ActiveRoute(),
-                     error);
-  if (fallback) ApplyImageAnalysisFallback(messages, false);
-  json selected = json::array();
-  for (size_t i = 0; i < tools_.size() && i < schemas_.size(); ++i) {
-    if (tool_selection_.Enabled(tools_[i])) selected.push_back(schemas_[i]);
-  }
-  return api_.BuildRequestBody(messages, selected, session_id_);
-}
-
 bool Agent::Save(const std::string& path, std::string& error) const {
   CreatePrivateDirectories(std::filesystem::path(path).parent_path());
   if (!writer_.Acquire(CanonicalAccessPath(path).string() + ".lock", error,
@@ -375,10 +358,6 @@ bool Agent::Save(const std::string& path, std::string& error) const {
                      .forked_at_turn = forked_at_turn_,
                      .forked_at_time = forked_at_time_};
   record.state = {
-      .messages = conversation_.Messages(),
-      .message_kinds = conversation_.Kinds(),
-      .archive = conversation_.Archive(),
-      .archive_dropped_segments = conversation_.DroppedSegments(),
       .context_tokens = ContextUsed(),
       .context_window = api_.ctx_window,
       .usage = session_usage_,
@@ -389,9 +368,8 @@ bool Agent::Save(const std::string& path, std::string& error) const {
           adaptive_system_ ? adaptive_system_->mode : "overlay",
       .adaptive_system_revision =
           adaptive_system_ ? adaptive_system_->revision : 0,
-      .tool_displays = conversation_.ToolDisplays(),
       .display = conversation_.DisplayMetadata()};
-  SessionStoreStatus status = SessionStore::Save(path, record);
+  SessionStoreStatus status = SessionStore::Save(path, record, &conversation_);
   if (!status.Ok()) {
     error = std::move(status.message);
     return false;
@@ -414,12 +392,7 @@ bool Agent::Load(const std::string& path, const std::string& expected_cwd,
   }
   SessionRecord record = std::move(*loaded.record);
   Conversation restored;
-  if (!restored.Restore(std::move(record.state.messages),
-                        std::move(record.state.message_kinds),
-                        std::move(record.state.archive),
-                        record.state.archive_dropped_segments,
-                        std::move(record.state.tool_displays),
-                        record.state.display)) {
+  if (!std::move(record.state).RestoreConversation(restored)) {
     error = "session conversation state is invalid";
     return false;
   }

@@ -25,13 +25,9 @@ KNOWN = {
     "include/tools/configure.h -> include/app/self_description.h",
     "src/agent/child_agent.cc -> include/tools/session.h",
     "src/agent/request.cc -> include/app/prompt_control.h",
-    "src/browser/browser.cc -> include/app/session.h",
-    "src/browser/runtime.cc -> include/app/session.h",
     "src/core/events.cc -> include/ui/presentation.h",
-    "src/tools/browser.cc -> include/app/session.h",
     "src/tools/browser.cc -> include/cli.h",
     "src/tools/collaborator_runtime.cc -> include/app/session.h",
-    "src/tools/session.cc -> include/app/session.h",
 }
 
 
@@ -63,7 +59,7 @@ def layer(path):
 
 def upward_edges():
     tracked = subprocess.run(
-        ["git", "ls-files", "src", "include"],
+        ["git", "ls-files", "--cached", "--others", "--exclude-standard", "src", "include"],
         cwd=ROOT,
         capture_output=True,
         text=True,
@@ -72,7 +68,7 @@ def upward_edges():
     edges = set()
     for name in tracked:
         own = layer(name)
-        if own is None:
+        if own is None or not (ROOT / name).is_file():
             continue
         for target in INCLUDE.findall((ROOT / name).read_text()):
             other = layer(target)

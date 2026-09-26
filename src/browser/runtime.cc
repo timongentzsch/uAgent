@@ -19,12 +19,12 @@
 #include <utility>
 #include <vector>
 
-#include "include/app/session.h"
 #include "include/browser/browser.h"
 #include "include/core/fs.h"
 #include "include/core/platform.h"
 #include "include/core/time.h"
 #include "include/tools/files.h"
+#include "include/transport/session.h"
 
 namespace uagent::browser {
 namespace {

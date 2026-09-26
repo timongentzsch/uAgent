@@ -21,7 +21,6 @@ void PrintConversationHistory(const Conversation& conversation,
 // One dim "name · delivery" row per recorded attachment delivery, mirroring
 // the web message gallery. Empty when there is nothing to show.
 std::string AttachmentDeliveryRows(const json& deliveries);
-void PrintModelContext(const json& request);
 
 // Terminal line for a stored tool call; the agent itself never prints.
 std::string PrintToolCallSummary(const json& call,

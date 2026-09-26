@@ -1,6 +1,6 @@
-import { isFailedStatus } from "../../shared/display.ts";
+import { isFailedStatus, isRunningStatus } from "../../shared/display.ts";
+import { defined, toolIdentityKeys } from "../../state/blocks.ts";
 import type { Block, PresentedBlock } from "../../shared/types.ts";
-import { isRunningStatus } from "../../shared/display.ts";
 
 // Flat, stable, uniform rows. Every row renders the same chrome, so there is
 // no header/matrix state to derive (and nothing to drift). Two things
@@ -22,69 +22,24 @@ export function presentMessages(blocks: Block[]): PresentedBlock[] {
   // provider ids across turns stay isolated by the user-boundary reset
   // below, and retries rejoin their call.
   const calls = new Map<string, number>();
-  const strongKeysOf = (
-    row: Pick<
-      PresentedBlock,
-      "occurrence_id" | "response_id" | "call_id" | "detail_id"
-    >,
-  ): string[] => {
-    const keys: string[] = [];
-    if (row.occurrence_id) keys.push(`o:${row.occurrence_id}`);
-    if (row.call_id && row.response_id)
-      keys.push(`r:${row.response_id}:${row.call_id}`);
-    if (row.detail_id) keys.push(`d:${row.detail_id}`);
-    return keys;
-  };
-  const weakKeysOf = (row: Pick<PresentedBlock, "call_id">): string[] =>
-    row.call_id ? [`c:${row.call_id}`] : [];
-  // Splits only rejoin on strong identity: a call record must never glue
-  // itself to an unrelated orphan that merely shares a bare call id.
-  const findStrong = (
-    row: Pick<
-      PresentedBlock,
-      "occurrence_id" | "response_id" | "call_id" | "detail_id"
-    >,
-  ): number | undefined => {
-    for (const key of strongKeysOf(row)) {
+  const find = (row: Block, strongOnly = false): number | undefined => {
+    for (const key of toolIdentityKeys(row, strongOnly)) {
       const index = calls.get(key);
       if (index !== undefined && rows[index]) return index;
     }
     return undefined;
   };
-  // Plain result rows seek their call on every key, weakest last.
-  const find = (
-    row: Pick<
-      PresentedBlock,
-      "occurrence_id" | "response_id" | "call_id" | "detail_id"
-    >,
-  ): number | undefined => {
-    for (const key of [...strongKeysOf(row), ...weakKeysOf(row)]) {
-      const index = calls.get(key);
-      if (index !== undefined && rows[index]) return index;
-    }
-    return undefined;
-  };
-  const register = (
-    row: Pick<
-      PresentedBlock,
-      "occurrence_id" | "response_id" | "call_id" | "detail_id"
-    >,
-    index: number,
-  ) => {
-    for (const key of strongKeysOf(row)) {
+  const register = (row: Block, index: number) => {
+    for (const key of toolIdentityKeys(row, true)) {
       if (!calls.has(key)) calls.set(key, index);
     }
-    // Positional fallback: later rows in the same turn supersede.
-    for (const key of weakKeysOf(row)) calls.set(key, index);
+    // Bare call ids are positional within a turn; the latest row wins.
+    if (row.call_id) calls.set(`c:${row.call_id}`, index);
   };
   // A completed row never regresses: a stale call-state arrival (still
   // "Running", no duration) must not wipe the result that already
   // landed from another path. Absent fields never wipe present ones:
   // live frames omit keys the retained path carries and vice versa.
-  const defined = (patch: Partial<PresentedBlock>) =>
-    Object.fromEntries(
-      Object.entries(patch).filter(([, value]) => value !== undefined),
-    );
   const mergeToolRow = (into: PresentedBlock, from: PresentedBlock) => {
     const patch = defined(from) as Partial<PresentedBlock>;
     if (from.receipt_missing) {
@@ -152,60 +107,37 @@ export function presentMessages(blocks: Block[]): PresentedBlock[] {
         (tool.response_id || block.response_id
           ? `${tool.response_id || block.response_id}:${callId}`
           : `t-${callId}`);
-      const probe = {
+      const details = defined({
         occurrence_id: occurrenceId,
         response_id: tool.response_id || block.response_id,
         call_id: callId,
-        detail_id: tool.detail_id,
-      };
-      // The result may already be here (retained result before its call
-      // on reconnect): fold the call record into it instead of pushing
-      // a stuck "Running" twin. Call records only fill gaps — status,
-      // text and duration belong to results.
-      const at = findStrong(probe);
-      if (at !== undefined) {
-        const prev = rows[at];
-        rows[at] = {
-          ...prev,
-          ...defined({
-            occurrence_id: probe.occurrence_id,
-            response_id: probe.response_id,
-            call_id: probe.call_id,
-            detail_id: probe.detail_id,
-            name: tool.name,
-            activity: tool.activity,
-            arguments: tool.arguments,
-            view: tool.view,
-            time: block.time,
-            turn_root: block.turn_root,
-            reply_to: block.reply_to,
-            reply_excerpt: block.reply_excerpt,
-            source: block,
-          }),
-        };
-        register(rows[at], at);
-        continue;
-      }
-      const row: PresentedBlock = {
-        kind: "tool_result",
-        id: occurrenceId,
-        key: occurrenceId,
-        call_id: callId,
-        occurrence_id: occurrenceId,
-        response_id: tool.response_id || block.response_id,
         detail_id: tool.detail_id,
         name: tool.name,
         activity: tool.activity,
         arguments: tool.arguments,
         view: tool.view,
-        status: tool.status,
         time: block.time,
         turn_root: block.turn_root,
         reply_to: block.reply_to,
         reply_excerpt: block.reply_excerpt,
         source: block,
+      });
+      const row: PresentedBlock = {
+        ...details,
+        kind: "tool_result",
+        id: occurrenceId,
+        key: occurrenceId,
+        status: tool.status,
         result_loaded: false,
       };
+      // Calls fill identity/presentation gaps in a result that arrived first;
+      // status, text, duration and the stable row key still belong to the result.
+      const at = find(row, true);
+      if (at !== undefined) {
+        rows[at] = { ...rows[at], ...details };
+        register(rows[at], at);
+        continue;
+      }
       register(row, rows.length);
       rows.push(row);
     }

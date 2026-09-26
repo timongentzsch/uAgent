@@ -43,6 +43,36 @@ std::vector<std::string> PromptPaths(const std::vector<std::string>& projects) {
   return paths;
 }
 }  // namespace
+std::shared_ptr<const SessionHost::SavedHistory> SessionHost::ReadHistory(
+    const std::string& path) {
+  const FileStamp stamp = SnapshotFile(path);
+  std::error_code error;
+  const bool regular = std::filesystem::is_regular_file(
+      std::filesystem::symlink_status(path, error));
+  {
+    std::lock_guard lock(history_mutex_);
+    if (regular && history_ && history_->path == path &&
+        history_->stamp == stamp) {
+      return history_;
+    }
+  }
+  auto history = std::make_shared<SavedHistory>();
+  history->path = path;
+  history->stamp = stamp;
+  history->loaded = SessionStore::Inspect(path);
+  auto& loaded = history->loaded;
+  if (loaded.record && !std::move(loaded.record->state)
+                            .RestoreConversation(history->conversation)) {
+    loaded = {{SessionStoreError::kCorrupt, "invalid conversation metadata"},
+              std::nullopt};
+  }
+  if (regular && loaded.record && SnapshotFile(path) == stamp) {
+    std::lock_guard lock(history_mutex_);
+    history_ = history;
+  }
+  return history;
+}
+
 std::vector<json> SessionHost::RefreshInvalidations(
     const std::vector<std::string>& projects) {
   std::vector<json> events;
@@ -115,8 +145,8 @@ SnapshotResult SessionHost::Snapshot(const std::string& id,
       exchange = FindHttpExchange(session->state, query.http);
     }
     if (exchange.is_null()) {
-      std::lock_guard reading(history_mutex_);
-      auto loaded = SessionStore::Inspect(session->path);
+      auto history = ReadHistory(session->path);
+      const auto& loaded = history->loaded;
       if (loaded.record) {
         const json& display = loaded.record->state.display;
         exchange =
@@ -199,36 +229,27 @@ SnapshotResult SessionHost::Snapshot(const std::string& id,
               200};
     }
   }
-  std::lock_guard reading(history_mutex_);
-  auto loaded = SessionStore::Inspect(session->path);
+  auto history = ReadHistory(session->path);
+  const auto& loaded = history->loaded;
   json state = json::object();
   if (loaded.record) {
-    auto& record = *loaded.record;
-    Conversation conversation;
-    if (!conversation.Restore(std::move(record.state.messages),
-                              std::move(record.state.message_kinds),
-                              std::move(record.state.archive),
-                              record.state.archive_dropped_segments,
-                              std::move(record.state.tool_displays),
-                              record.state.display)) {
-      return {{{"error", "invalid conversation metadata"}}, 422};
-    }
+    const auto& record = *loaded.record;
+    const auto& conversation = history->conversation;
     if (query.has_detail) {
       size_t offset = ClampedOffset(query.offset);
       json detail =
-          query.raw ? ConversationExchange(conversation, query.detail, offset)
+          query.raw ? history->view.Exchange(query.detail, offset)
           : query.artifact
               ? ReadPrivateArtifact(
                     JsonValue(JsonValue(conversation.DisplayFacts(),
                                         query.detail.c_str(), json::object()),
                               "artifact", ""),
                     offset)
-              : ConversationDetail(conversation, query.detail, offset);
+              : history->view.Detail(query.detail, offset);
       const int status = detail.contains("error") ? 404 : 200;
       return {std::move(detail), status};
     }
-    state = {{"view", ConversationView(
-                          conversation,
+    state = {{"view", history->view.Page(
                           static_cast<uint64_t>(ClampedOffset(query.before)))},
              {"usage", UsageJson(record.state.usage)},
              {"context_tokens", record.state.context_tokens},

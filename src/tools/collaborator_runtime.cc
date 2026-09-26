@@ -30,41 +30,6 @@ namespace {
 
 using Clock = std::chrono::steady_clock;
 
-bool NextFrame(int fd, std::string& input, Clock::time_point deadline,
-               json& frame, bool interruptible) {
-  for (;;) {
-    const size_t newline = input.find('\n');
-    if (newline != std::string::npos) {
-      if (newline > session::kFrameBytes) return false;
-      frame = json::parse(input.substr(0, newline), nullptr, false);
-      input.erase(0, newline + 1);
-      return frame.is_object() &&
-             JsonValue(frame, "v", 0) == session::kProtocol;
-    }
-    if (input.size() > session::kFrameBytes || Clock::now() >= deadline) {
-      return false;
-    }
-    if (interruptible && AbortRequested()) return false;
-    const auto remaining =
-        std::chrono::duration_cast<std::chrono::milliseconds>(deadline -
-                                                              Clock::now());
-    pollfd ready{fd, POLLIN, 0};
-    const int wait = static_cast<int>(
-        std::clamp<int64_t>(remaining.count(), int64_t{1}, int64_t{100}));
-    const int found = poll(&ready, 1, wait);
-    if (found < 0 && errno == EINTR) continue;
-    if (found < 0 || (ready.revents & (POLLERR | POLLNVAL))) {
-      return false;
-    }
-    if (!(ready.revents & (POLLIN | POLLHUP))) continue;
-    char buffer[8192];
-    const ssize_t count = read(fd, buffer, sizeof buffer);
-    if (count < 0 && (errno == EINTR || errno == EAGAIN)) continue;
-    if (count <= 0) return false;
-    input.append(buffer, static_cast<size_t>(count));
-  }
-}
-
 json Command(const std::string& path, const std::string& generation,
              session::Connection& connection, std::string kind,
              std::string text, Clock::time_point deadline, bool checkpoint,
@@ -81,51 +46,54 @@ json Command(const std::string& path, const std::string& generation,
             {"uncertain", true}};
   }
   if (submitted) *submitted = true;
-  std::string input;
   json latest = json::object();
   bool accepted = false;
   const bool wait_idle =
       JsonValue(command, "kind", "") == "refresh" && !observe_busy;
-  for (;;) {
-    json frame;
-    if (!NextFrame(connection.socket.Get(), input, deadline, frame,
-                   checkpoint)) {
-      return {{"command_error", "collaborator did not reach a checkpoint"},
-              {"uncertain", true}};
-    }
-    const std::string frame_kind = JsonValue(frame, "kind", "");
-    if (frame_kind == "outcome" &&
-        JsonValue(frame, "request_id", "") == request) {
-      if (!JsonValue(frame, "accepted", false)) {
-        std::string reason = JsonValue(frame, "error", "");
-        return {
-            {"command_error", reason.empty() ? "command rejected" : reason}};
-      }
-      if (JsonValue(frame, "pending", false)) continue;
-      accepted = true;
-      if (!checkpoint && (!wait_idle || !JsonValue(latest, "busy", true))) {
-        return latest;
-      }
-    }
-    if (frame_kind != "state") continue;
-    latest = JsonValue(frame, "state", json::object());
-    latest["busy"] = JsonValue(frame, "busy", false);
-    if ((!checkpoint && accepted && !JsonValue(frame, "busy", true)) ||
-        (checkpoint && JsonValue(frame, "checkpoint", false) &&
-         JsonValue(frame, "completed_request_id", "") == request)) {
-      return latest;
-    }
-  }
+  bool completed = false;
+  session::ReadFrames(
+      connection.socket.Get(), -1, session::kFrameBytes,
+      [&](json frame) {
+        const std::string frame_kind = JsonValue(frame, "kind", "");
+        if (frame_kind == "outcome" &&
+            JsonValue(frame, "request_id", "") == request) {
+          if (!JsonValue(frame, "accepted", false)) {
+            std::string reason = JsonValue(frame, "error", "");
+            latest = {{"command_error",
+                       reason.empty() ? "command rejected" : reason}};
+            completed = true;
+            return false;
+          }
+          if (JsonValue(frame, "pending", false)) return true;
+          accepted = true;
+          if (!checkpoint && (!wait_idle || !JsonValue(latest, "busy", true))) {
+            completed = true;
+            return false;
+          }
+        }
+        if (frame_kind != "state") return true;
+        latest = JsonValue(frame, "state", json::object());
+        latest["busy"] = JsonValue(frame, "busy", false);
+        if ((!checkpoint && accepted && !JsonValue(frame, "busy", true)) ||
+            (checkpoint && JsonValue(frame, "checkpoint", false) &&
+             JsonValue(frame, "completed_request_id", "") == request)) {
+          completed = true;
+          return false;
+        }
+        return true;
+      },
+      deadline, checkpoint);
+  return completed ? latest
+                   : json{{"command_error",
+                           "collaborator did not reach a checkpoint"},
+                          {"uncertain", true}};
 }
 
 std::string LastAnswer(const std::string& path) {
   auto loaded = SessionStore::Inspect(path);
   if (!loaded.record) return {};
   Conversation conversation;
-  const auto& state = loaded.record->state;
-  if (!conversation.Restore(state.messages, state.message_kinds, state.archive,
-                            state.archive_dropped_segments, state.tool_displays,
-                            state.display)) {
+  if (!std::move(loaded.record->state).RestoreConversation(conversation)) {
     return {};
   }
   return conversation.LastAssistantText();

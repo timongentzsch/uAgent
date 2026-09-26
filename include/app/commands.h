@@ -29,12 +29,19 @@ struct AppSession {
   AppRuntime& Runtime() const { return context.runtime; }
   Api& ApiClient() const { return context.runtime.api; }
   Agent& ActiveAgent() const { return *context.agent; }
+  // Save changed state and flush pending journal events before acknowledging.
+  bool Save(std::string& error, bool force = false);
 };
 
-// Fills the semantic result a client receives in command.completed; text the
-// command prints becomes that event's output.
-void RunSlashCommand(AppSession& session, const ParsedSlashCommand& command,
-                     json& result);
+// One operation supplies both the structured result and its terminal text.
+// Output is bounded without redirecting process-wide stdout.
+struct CommandReply {
+  json result;
+  std::string output;
+  void Print(const char* format, ...) __attribute__((format(printf, 2, 3)));
+};
+CommandReply RunSlashCommand(AppSession& session,
+                             const ParsedSlashCommand& command);
 
 // Adopts the journal of a session that was just resumed into.
 void LoadSessionJournal(AppSession& session, const std::string& previous_path);

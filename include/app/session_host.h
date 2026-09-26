@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "include/agent/session_store.h"
+#include "include/agent/session_view.h"
 #include "include/app/asset_store.h"
 #include "include/app/options.h"
 #include "include/app/outcome_store.h"
@@ -138,7 +139,19 @@ class SessionHost {
   std::atomic<bool> stopping_{false};
   std::map<std::string, std::shared_ptr<HostSession>> sessions_;
   std::mutex scan_mutex_;
+  SessionCatalogue catalogue_;
   std::mutex history_mutex_;
+  struct SavedHistory {
+    std::string path;
+    FileStamp stamp;
+    SessionLoadResult loaded;
+    Conversation conversation;
+    TranscriptView view{conversation};
+  };
+  // One immutable saved transcript; readers can finish after it is replaced.
+  // Loading and rendering never hold the cache or host mutex.
+  std::shared_ptr<const SavedHistory> history_;
+  std::shared_ptr<const SavedHistory> ReadHistory(const std::string& path);
   std::chrono::steady_clock::time_point scanned_{};
   OutcomeStore outcomes_;
   FileStamp library_stamp_, schedule_stamp_;
@@ -150,7 +163,6 @@ class SessionHost {
   };
   std::vector<RunUpdate> run_updates_;
   void RecordRun(const RunUpdate& update);
-  std::vector<SessionInfo> DiscoverSessions() const;
   bool PublishMetadata(const std::string& id, HostSession& session);
   std::shared_ptr<HostSession> CreateSession(const std::string& cwd,
                                              const std::string& path,

@@ -75,17 +75,20 @@ constexpr Field kHeaderFields[] = {
     {kSessionHeaderTurns, json::value_t::number_integer, true},
     {kSessionHeaderTitle, json::value_t::string, true}};
 
-bool ValidState(const json& value) {
-  if (!HasFields(value, kStateFields)) return false;
-  const auto adaptive = value.find("adaptive_system");
-  if (adaptive != value.end() &&
-      adaptive->get_ref<const std::string&>().size() > kAdaptiveSystemBytes) {
-    return false;
-  }
-  const auto mode = JsonValue(value, "adaptive_system_mode", "overlay");
-  if (mode != "overlay" && mode != "replace") return false;
-  return !value["messages"].empty() &&
-         value["message_kinds"].size() == value["messages"].size();
+bool ValidState(const SessionState& state,
+                const Conversation* conversation = nullptr) {
+  const json& messages =
+      conversation ? conversation->Messages() : state.messages;
+  return messages.is_array() && !messages.empty() &&
+         (conversation ? conversation->Kinds() : state.message_kinds).size() ==
+             messages.size() &&
+         (conversation ? conversation->Archive() : state.archive).is_array() &&
+         (conversation ? conversation->ToolDisplays() : state.tool_displays)
+             .is_object() &&
+         state.display.is_object() &&
+         state.adaptive_system.size() <= kAdaptiveSystemBytes &&
+         (state.adaptive_system_mode == "overlay" ||
+          state.adaptive_system_mode == "replace");
 }
 
 bool ValidHeader(const json& header) {
@@ -105,39 +108,59 @@ json HeaderJson(const SessionMetadata& metadata) {
           {kSessionHeaderForkTime, metadata.forked_at_time}};
 }
 
-json StateJson(const SessionState& state) {
-  return {{"messages", state.messages},
-          {"message_kinds", MessageKindsJson(state.message_kinds)},
-          {"archive", state.archive},
-          {"archive_dropped_segments", state.archive_dropped_segments},
-          {"context_tokens", state.context_tokens},
-          {"context_window", state.context_window},
-          {"usage", UsageJson(state.usage)},
-          {"route_usage", RouteUsageJson(state.route_usage)},
-          {"last_sent_prompt", state.last_sent_prompt},
-          {"adaptive_system", state.adaptive_system},
-          {"adaptive_system_mode", state.adaptive_system_mode},
-          {"adaptive_system_revision", state.adaptive_system_revision},
-          {"tool_displays", state.tool_displays},
-          {"display", state.display}};
+std::string StateText(const SessionState& state,
+                      const Conversation* conversation) {
+  json value = {
+      {"message_kinds", MessageKindsJson(conversation ? conversation->Kinds()
+                                                      : state.message_kinds)},
+      {"archive_dropped_segments", conversation
+                                       ? conversation->DroppedSegments()
+                                       : state.archive_dropped_segments},
+      {"context_tokens", state.context_tokens},
+      {"context_window", state.context_window},
+      {"usage", UsageJson(state.usage)},
+      {"route_usage", RouteUsageJson(state.route_usage)},
+      {"last_sent_prompt", state.last_sent_prompt},
+      {"adaptive_system", state.adaptive_system},
+      {"adaptive_system_mode", state.adaptive_system_mode},
+      {"adaptive_system_revision", state.adaptive_system_revision}};
+  // Serialize borrowed arrays directly: the live transcript stays in place.
+  std::string text = JsonDump(value);
+  text.pop_back();
+  for (const auto& [name, field] :
+       {std::pair{"display", &state.display},
+        {"messages",
+         conversation ? &conversation->Messages() : &state.messages},
+        {"archive", conversation ? &conversation->Archive() : &state.archive},
+        {"tool_displays", conversation ? &conversation->ToolDisplays()
+                                       : &state.tool_displays}}) {
+    text += "," + JsonDump(name) + ":" + JsonDump(*field);
+  }
+  return text + "}";
 }
 
 }  // namespace
 
+bool SessionState::RestoreConversation(Conversation& conversation) && {
+  return conversation.Restore(std::move(messages), std::move(message_kinds),
+                              std::move(archive), archive_dropped_segments,
+                              std::move(tool_displays), display);
+}
+
 SessionStoreStatus SessionStore::Save(const std::string& path,
-                                      const SessionRecord& record) {
+                                      const SessionRecord& record,
+                                      const Conversation* conversation) {
   json header = HeaderJson(record.metadata);
   header["incoming"] =
       JsonValue(JsonValue(record.state.display, "statistics", json::object()),
                 "incoming", uint64_t{0});
-  json state = StateJson(record.state);
   // The header is built from a typed struct; only the state can be incomplete.
-  if (!ValidState(state)) {
+  if (!ValidState(record.state, conversation)) {
     return Error(SessionStoreError::kInvalid,
                  "refusing to save incomplete session state");
   }
   std::string header_text = JsonDump(header);
-  std::string body = JsonDump(state);
+  std::string body = StateText(record.state, conversation);
   if (header_text.size() >= kSessionHeaderBytes ||
       body.size() > kSessionReadBytes -
                         std::min(kSessionReadBytes, header_text.size() + 1)) {
@@ -200,7 +223,7 @@ SessionLoadResult SessionStore::Inspect(const std::string& path) {
   }
 
   json state = json::parse(body, nullptr, false);
-  if (state.is_discarded() || !ValidState(state)) {
+  if (state.is_discarded() || !HasFields(state, kStateFields)) {
     return {Error(SessionStoreError::kCorrupt,
                   "session payload is invalid or incomplete"),
             std::nullopt};
@@ -248,11 +271,22 @@ SessionLoadResult SessionStore::Inspect(const std::string& path) {
   if (state.contains("tool_displays")) {
     record.state.tool_displays = std::move(state["tool_displays"]);
   }
-  record.state.display = JsonValue(state, "display", json::object());
+  if (state.contains("display")) {
+    record.state.display = std::move(state["display"]);
+  }
+  if (!ValidState(record.state)) {
+    return {Error(SessionStoreError::kCorrupt,
+                  "session payload is invalid or incomplete"),
+            std::nullopt};
+  }
   return {{}, std::move(record)};
 }
 
 std::vector<SessionInfo> ListSessions(SessionScope scope) {
+  return SessionCatalogue{}.List(scope);
+}
+
+std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
   namespace fs = std::filesystem;
   constexpr size_t kCatalogueLimit = 4096;
   const std::string current = CanonicalCwd();
@@ -270,6 +304,7 @@ std::vector<SessionInfo> ListSessions(SessionScope scope) {
     }
   }
   std::vector<SessionInfo> out;
+  std::map<std::string, Entry> next;
   for (const fs::path& directory : directories) {
     if (!fs::is_directory(fs::symlink_status(directory, ec))) continue;
     for (const auto& entry : fs::directory_iterator(directory, ec)) {
@@ -280,6 +315,15 @@ std::vector<SessionInfo> ListSessions(SessionScope scope) {
       }
       SessionInfo item;
       item.path = entry.path().string();
+      const FileStamp stamp = SnapshotFile(item.path);
+      auto cached = entries_.find(item.path);
+      if (cached != entries_.end() && cached->second.stamp == stamp) {
+        if (scope == SessionScope::kAll || cached->second.info.cwd == current) {
+          out.push_back(cached->second.info);
+          next.insert(entries_.extract(cached));
+        }
+        continue;
+      }
       item.mtime = entry.last_write_time(ec);
       auto bytes = entry.file_size(ec);
       item.bytes =
@@ -306,10 +350,15 @@ std::vector<SessionInfo> ListSessions(SessionScope scope) {
         }
       }
       if (scope == SessionScope::kAll || item.cwd == current) {
+        if (stamp.size >= 0 && item.error.empty() &&
+            SnapshotFile(item.path) == stamp) {
+          next.emplace(item.path, Entry{stamp, item});
+        }
         out.push_back(std::move(item));
       }
     }
   }
+  entries_ = std::move(next);
   std::sort(out.begin(), out.end(),
             [](const SessionInfo& a, const SessionInfo& b) {
               return a.mtime == b.mtime ? a.path < b.path : a.mtime > b.mtime;

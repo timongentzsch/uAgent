@@ -3,11 +3,34 @@
 #ifndef UAGENT_INCLUDE_AGENT_SESSION_VIEW_H_
 #define UAGENT_INCLUDE_AGENT_SESSION_VIEW_H_
 #include <cstdint>
+#include <map>
+#include <mutex>
 #include <string>
 
 #include "include/agent/conversation.h"
 #include "include/core/json.h"
 namespace uagent {
+struct TranscriptEntry {
+  const json* message;
+  std::string kind;
+};
+
+// Borrows a conversation that must stay alive and unchanged after the first
+// query. The index is built only when paging or a fallback lookup needs it.
+class TranscriptView {
+ public:
+  explicit TranscriptView(const Conversation& conversation);
+  json Page(uint64_t before = 0) const;
+  json Detail(const std::string& id, size_t offset = 0) const;
+  json Exchange(const std::string& id, size_t offset = 0) const;
+
+ private:
+  const Conversation& conversation_;
+  const std::map<uint64_t, TranscriptEntry>& Index() const;
+  mutable std::once_flag indexed_;
+  mutable std::map<uint64_t, TranscriptEntry> entries_;
+};
+
 // Presentation projection only: no system prompts, opaque provider replay,
 // base64 images, or arbitrary-path links. Full retained details are paged.
 json ConversationView(const Conversation& conversation, uint64_t before = 0);

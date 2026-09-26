@@ -330,8 +330,9 @@ CURLcode RunTransfer(CURLM* multi, CURL* handle, curl_slist* headers,
 
 }  // namespace
 
-Api::Api(RuntimeConfig runtime_config)
-    : Api(ApiSettings{.config = std::move(runtime_config)}) {}
+Api::Api(RuntimeConfig runtime_config) : Api(ApiSettings{}) {
+  config = std::move(runtime_config);
+}
 
 Api::Api(ApiSettings settings)
     : ApiSettings(std::move(settings)),

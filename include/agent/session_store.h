@@ -88,7 +88,7 @@ struct SessionMetadata {
 
 struct SessionState {
   json messages = json::array();
-  std::vector<MessageKind> message_kinds;
+  std::vector<MessageKind> message_kinds{};
   json archive = json::array();
   int64_t archive_dropped_segments = 0;
   int64_t context_tokens = 0;

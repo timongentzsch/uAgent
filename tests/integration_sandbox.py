@@ -257,7 +257,7 @@ def test_sandbox_reads_stay_open(root, home, *, binary):
     assert_true("read-me-marker" in output, f"a sandboxed command could not read: {output}")
 
 
-def browser_reach(root, home, env, profile, *, binary, approve=False, yolo=False):
+def browser_reach(root, env, profile, *, binary, approve=False, yolo=False):
     """What a command could get at in the browser profile, as marker names.
 
     Each probe writes its marker only on success, into the workspace, so a
@@ -341,12 +341,12 @@ def test_sandbox_hides_the_browser_profile(root, home, *, binary):
             expected.add("connect")
     try:
         env = sandbox_env(home, "", UAGENT_BROWSER_DATA=str(profile))
-        reached = browser_reach(root, home, env, profile, binary=binary)
+        reached = browser_reach(root, env, profile, binary=binary)
         assert_true(reached == expected, f"confined: reached {sorted(reached)}")
         for case in ("off", "approve", "yolo"):
             case_env = dict(env, UAGENT_SANDBOX="0") if case == "off" else env
             options = {} if case == "off" else {case: True}
-            reached = browser_reach(root, home, case_env, profile, binary=binary, **options)
+            reached = browser_reach(root, case_env, profile, binary=binary, **options)
             assert_true(reached == everything, f"{case}: reached only {sorted(reached)}")
             profile.with_name("browser.moved").rename(profile)
     finally:

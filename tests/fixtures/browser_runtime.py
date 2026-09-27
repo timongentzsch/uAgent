@@ -42,9 +42,13 @@ while chunk := os.read(3, 4096):
             log.write(json.dumps(command) + "\n")
         result = {}
         if command["method"] == "Page.getNavigationHistory":
-            result = {"currentIndex": 1, "entries": [
-                {"id": 1, "url": "chrome://password-manager/passwords"},
-                {"id": 2, "url": "https://example.com/"}]}
+            result = {
+                "currentIndex": 1,
+                "entries": [
+                    {"id": 1, "url": "chrome://password-manager/passwords"},
+                    {"id": 2, "url": "https://example.com/"},
+                ],
+            }
         elif command["method"] == "Target.getTargets":
             result = {"targetInfos": [{"targetId": "tab", "type": "page", "url": "about:blank"}]}
         elif command["method"] == "Target.attachToTarget":

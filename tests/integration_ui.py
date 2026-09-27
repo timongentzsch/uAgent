@@ -998,9 +998,12 @@ def test_cli_mcp_config_and_restart(root, home, *, binary):
     )
     try:
         with Server(
-            [lambda _, _body: event({"content": "Before restart"}), lambda _, body: event(
-                {"content": "history kept" if "Before restart" in json.dumps(body) else "lost"}
-            )]
+            [
+                lambda _, _body: event({"content": "Before restart"}),
+                lambda _, body: event(
+                    {"content": "history kept" if "Before restart" in json.dumps(body) else "lost"}
+                ),
+            ]
         ) as server:
             result = run_dialog(
                 root,

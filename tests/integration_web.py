@@ -2347,7 +2347,10 @@ def test_web_mcp_overview_toggles_and_restarts(root, home, *, binary):
     )
     global_config = home / ".mcp.json"
     global_config.write_text(json.dumps({"mcpServers": {"probe": server, "extra": server}}))
-    status = lambda value: {row["name"]: row for row in value["state"]["mcp"]}
+
+    def status(value):
+        return {row["name"]: row for row in value["state"]["mcp"]}
+
     try:
         with Server([lambda _, _body: event({"content": "unused"})]) as provider:
             with web_host(binary, root, home, provider.url) as (client, code, _, _):
@@ -2357,8 +2360,9 @@ def test_web_mcp_overview_toggles_and_restarts(root, home, *, binary):
                 client.command("reply", session, interaction_id=value["pending"]["id"], text="y")
                 value = client.until(
                     session,
-                    lambda value: value["metadata"]["status"] == "idle"
-                    and "mcp" in value.get("state", {}),
+                    lambda value: (
+                        value["metadata"]["status"] == "idle" and "mcp" in value.get("state", {})
+                    ),
                 )
                 rows = status(value)
                 assert_true(rows["probe"]["state"] == "ready", rows)
@@ -2396,7 +2400,9 @@ def test_web_mcp_overview_toggles_and_restarts(root, home, *, binary):
                 assert_true(rows["broken"]["state"] == "failed", rows)
 
                 # A global server is switched in the user's own file.
-                client.command("tools", session, operation="mcp_enable", name="extra", enabled=False)
+                client.command(
+                    "tools", session, operation="mcp_enable", name="extra", enabled=False
+                )
                 saved = json.loads(global_config.read_text())
                 assert_true(saved["mcpServers"]["extra"]["disabled"] is True, saved)
                 assert_true("disabled" not in saved["mcpServers"]["probe"], saved)
@@ -2407,6 +2413,7 @@ def test_web_mcp_overview_toggles_and_restarts(root, home, *, binary):
 def test_web_restarts_conversations_and_itself(root, home, *, binary):
     project = root / "restarts"
     project.mkdir()
+
     def slow(_, _body):
         time.sleep(1.5)
         return event({"content": "Slow answer"})
@@ -2418,8 +2425,10 @@ def test_web_restarts_conversations_and_itself(root, home, *, binary):
             client.command("submit", session, text="Remember this")
             value = client.until(
                 session,
-                lambda value: value["metadata"]["status"] == "idle"
-                and "Remembered answer" in json.dumps(value),
+                lambda value: (
+                    value["metadata"]["status"] == "idle"
+                    and "Remembered answer" in json.dumps(value)
+                ),
             )
             generation = value["metadata"]["generation"]
 
@@ -2428,8 +2437,10 @@ def test_web_restarts_conversations_and_itself(root, home, *, binary):
             assert_true(result == {"restarting": 1, "deferred": 0}, result)
             value = client.until(
                 session,
-                lambda value: value["metadata"].get("generation") not in ("", generation)
-                and value["metadata"]["status"] == "idle",
+                lambda value: (
+                    value["metadata"].get("generation") not in ("", generation)
+                    and value["metadata"]["status"] == "idle"
+                ),
             )
             assert_true("Remembered answer" in json.dumps(value), value)
             other = client.command("restart_conversations", cwd=str(root / "elsewhere"))
@@ -2444,8 +2455,10 @@ def test_web_restarts_conversations_and_itself(root, home, *, binary):
             assert_true(result == {"restarting": 0, "deferred": 1}, result)
             value = client.until(
                 session,
-                lambda value: value["metadata"].get("generation") not in ("", generation)
-                and value["metadata"]["status"] == "idle",
+                lambda value: (
+                    value["metadata"].get("generation") not in ("", generation)
+                    and value["metadata"]["status"] == "idle"
+                ),
             )
             assert_true("Slow answer" in json.dumps(value), value)
 

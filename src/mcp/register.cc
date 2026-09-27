@@ -18,8 +18,8 @@
 #include "include/core/config.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
-#include "include/core/limits.h"
 #include "include/core/json.h"
+#include "include/core/limits.h"
 #include "include/core/time.h"
 #include "include/mcp/config.h"
 #include "include/mcp/discover.h"
@@ -211,9 +211,8 @@ std::string ConfigDir(const McpServer& server) {
 void Restart(std::vector<Tool>& tools, McpRuntime& runtime,
              const McpServer& old, const RuntimeConfig& config) {
   const std::string provider = "mcp:" + old.name;
-  if (std::erase_if(tools, [&](const Tool& tool) {
-        return tool.provider == provider;
-      })) {
+  if (std::erase_if(
+          tools, [&](const Tool& tool) { return tool.provider == provider; })) {
     runtime.registry_changed = true;
   }
   auto fresh = std::make_unique<McpServer>();
@@ -249,8 +248,7 @@ void Restart(std::vector<Tool>& tools, McpRuntime& runtime,
 }
 
 // Sets or clears `disabled` for one server in the file that defines it.
-bool WriteDisabled(const McpServer& server, bool disabled,
-                   std::string& error) {
+bool WriteDisabled(const McpServer& server, bool disabled, std::string& error) {
   const std::string dir = ConfigDir(server);
   const bool project = dir == CanonicalCwd() && dir != UserHome();
   const std::string path = dir + "/.mcp.json";
@@ -262,8 +260,9 @@ bool WriteDisabled(const McpServer& server, bool disabled,
   json trust, file;
   if (project) {
     if (!ProjectConfigTrusted() || !ProjectTrustSnapshot(trust, error)) {
-      error = "this project's MCP config changed since it was trusted; "
-              "start a new conversation to review it";
+      error =
+          "this project's MCP config changed since it was trusted; "
+          "start a new conversation to review it";
       return false;
     }
     file = trust["mcp"];
@@ -315,10 +314,10 @@ json McpStatus(const McpRuntime& runtime, const std::vector<Tool>& tools) {
     const McpServer& server = *owned;
     const bool disabled = JsonValue(server.config, "disabled", false);
     const std::string state =
-        server.alive ? (server.startup == McpStartupState::kReady ? "ready"
-                                                                  : "starting")
-        : disabled   ? "disabled"
-                     : "failed";
+        server.alive
+            ? (server.startup == McpStartupState::kReady ? "ready" : "starting")
+        : disabled ? "disabled"
+                   : "failed";
     const std::string provider = "mcp:" + server.name;
     std::string command = JsonValue(server.config, "command", "");
     for (const json& arg : JsonValue(server.config, "args", json::array())) {
@@ -332,10 +331,10 @@ json McpStatus(const McpRuntime& runtime, const std::vector<Tool>& tools) {
         {"state", state},
         {"command", command},
         {"overrides", JsonValue(server.config, "__uagent_overrides", false)},
-        {"tools", std::count_if(tools.begin(), tools.end(),
-                                [&](const Tool& tool) {
-                                  return tool.provider == provider;
-                                })}};
+        {"tools",
+         std::count_if(tools.begin(), tools.end(), [&](const Tool& tool) {
+           return tool.provider == provider;
+         })}};
     if (state == "failed") {
       // A server that exited on its own usually said why on its last line.
       std::string log = LogTail(server.name), reason = server.error;

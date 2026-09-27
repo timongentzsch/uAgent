@@ -17,5 +17,5 @@ struct ViewerSession {
 // Chrome only while that device controls the browser.
 ViewerSession RelayBrowserViewer(httplib::ws::WebSocket& socket,
                                  const std::string& device);
-}
+}  // namespace uagent::web
 #endif

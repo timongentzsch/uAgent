@@ -383,8 +383,8 @@ void TestConfigurationResetKeepsSecrets() {
     }
     return json();
   };
-  json got = ConfigurationControl({{"operation", "get"}}, manager, active,
-                                  false);
+  json got =
+      ConfigurationControl({{"operation", "get"}}, manager, active, false);
   CHECK(find(got, "UAGENT_MAX_TOOL_CALLS")["user"] == "40");
   CHECK(!find(got, "UAGENT_MAX_TOOL_CALLS").contains("project"));
   CHECK(find(got, "OPENROUTER_API_KEY")["user"] == true);

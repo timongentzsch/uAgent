@@ -180,9 +180,11 @@ bool StartService(const std::string& executable, int64_t idle_minutes,
                   const_cast<char*>("--browser-service"), nullptr};
   std::vector<std::string> environment = {
       "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-      "HOME=" + DataDirectory(), "UAGENT_BROWSER_DATA=" + DataDirectory(),
+      "HOME=" + DataDirectory(),
+      "UAGENT_BROWSER_DATA=" + DataDirectory(),
       "UAGENT_BROWSER_IDLE_MINUTES=" + std::to_string(idle_minutes),
-      "LANG=C.UTF-8", "TMPDIR=/tmp"};
+      "LANG=C.UTF-8",
+      "TMPDIR=/tmp"};
   std::vector<char*> envp;
   envp.reserve(environment.size() + 1);
   for (auto& setting : environment) envp.push_back(setting.data());

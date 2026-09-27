@@ -58,8 +58,8 @@ json SessionControl(AppSession& session, const json& request) {
   if (kind == "tools" &&
       JsonValue(request, "operation", "").starts_with("mcp_")) {
     AppContext& app = session.context;
-    json result = McpControl(request, app.tools, app.runtime.mcp,
-                             app.runtime.config);
+    json result =
+        McpControl(request, app.tools, app.runtime.mcp, app.runtime.config);
     if (app.runtime.mcp.registry_changed) {
       ApplyToolPolicy(app.tools, app.tool_policy);
       app.session_approvals.clear();

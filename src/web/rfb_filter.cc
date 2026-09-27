@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <string>
+#include <utility>
 
 namespace uagent::web {
 namespace {

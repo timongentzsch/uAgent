@@ -37,8 +37,7 @@ struct Lease {
   bool controller = false;
 };
 std::optional<Lease> ReadLease(const std::string& device) {
-  json status =
-      browser::Request({{"op", "viewer"}, {"device", device}}, 1000);
+  json status = browser::Request({{"op", "viewer"}, {"device", device}}, 1000);
   if (!status.value("ok", false)) return std::nullopt;
   return Lease{JsonValue(status, "display", uint64_t{0}),
                JsonValue(status, "generation", uint64_t{0}),

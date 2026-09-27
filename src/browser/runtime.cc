@@ -545,10 +545,10 @@ bool Runtime::AttachPage(const std::string& target, std::string& error) {
     error = enabled;
     return false;
   }
-  if (auto installed = CdError(Call("Page.addScriptToEvaluateOnNewDocument",
-                                    {{"source", kSecretScript},
-                                     {"runImmediately", true}},
-                                    attached_session));
+  if (auto installed =
+          CdError(Call("Page.addScriptToEvaluateOnNewDocument",
+                       {{"source", kSecretScript}, {"runImmediately", true}},
+                       attached_session));
       !installed.empty()) {
     target_ = previous;
     error = installed;
@@ -566,19 +566,18 @@ json Runtime::Status(bool include_page) {
   for (const auto& profile : profiles_) {
     profiles.push_back({{"id", profile.id}, {"name", profile.name}});
   }
-  json result = {
-      {"ok", true},
-      {"running", running},
-      {"mode", mode_},
-      {"waiting", mode_ == "human" && !interaction_.empty()},
-      {"session_id", agent_session_},
-      {"interaction_id", interaction_},
-      {"viewer", viewer_},
-      {"profile_id", selected_profile_},
-      {"profile_setup", profile_setup_},
-      {"profiles", profiles},
-      {"generation", generation_},
-      {"display", display_}};
+  json result = {{"ok", true},
+                 {"running", running},
+                 {"mode", mode_},
+                 {"waiting", mode_ == "human" && !interaction_.empty()},
+                 {"session_id", agent_session_},
+                 {"interaction_id", interaction_},
+                 {"viewer", viewer_},
+                 {"profile_id", selected_profile_},
+                 {"profile_setup", profile_setup_},
+                 {"profiles", profiles},
+                 {"generation", generation_},
+                 {"display", display_}};
   if (!profile_error_.empty()) result["error"] = profile_error_;
   if (running && include_page && !profile_setup_) {
     json targets = Call("Target.getTargets");
@@ -945,7 +944,8 @@ json Runtime::Execute(const json& command) {
     const json* result = JsonObject(history, "result");
     const json* entries = result ? JsonArray(*result, "entries") : nullptr;
     const int current = result ? JsonValue(*result, "currentIndex", -1) : -1;
-    if (!entries || current < 1 || current >= static_cast<int>(entries->size())) {
+    if (!entries || current < 1 ||
+        current >= static_cast<int>(entries->size())) {
       return {{"error", CdError(history).empty() ? "there is no previous page"
                                                  : CdError(history)}};
     }
@@ -957,11 +957,11 @@ json Runtime::Execute(const json& command) {
       return {{"error", "the previous page is not HTTP(S)"}};
     }
     observation_.clear();
-    reply = Call("Page.navigateToHistoryEntry",
-                 {{"entryId",
-                   JsonValue((*entries)[static_cast<size_t>(current - 1)],
-                             "id", 0)}},
-                 page_session_);
+    reply = Call(
+        "Page.navigateToHistoryEntry",
+        {{"entryId",
+          JsonValue((*entries)[static_cast<size_t>(current - 1)], "id", 0)}},
+        page_session_);
   } else if (op == "click") {
     if (observation_.empty() ||
         observation_ != JsonValue(command, "view_id", "")) {
@@ -1090,8 +1090,8 @@ json Runtime::Probe() {
   }
   if (linked == 1 && target_ == action_target_) {
     std::string error;
-    if (auto reason = CdError(
-            Call("Target.activateTarget", {{"targetId", follow}}));
+    if (auto reason =
+            CdError(Call("Target.activateTarget", {{"targetId", follow}}));
         !reason.empty()) {
       return {{"error", reason}};
     }
@@ -1136,9 +1136,8 @@ json Runtime::Observe() {
   // device-independent pixels relative to the document.
   double zoom = JsonValue(*viewport, "zoom", 1.0);
   if (zoom <= 0) zoom = 1;
-  if (auto masked = CdError(Call("Runtime.evaluate",
-                                 {{"expression", kSecretScript}},
-                                 page_session_));
+  if (auto masked = CdError(Call(
+          "Runtime.evaluate", {{"expression", kSecretScript}}, page_session_));
       !masked.empty()) {
     return {{"error", masked}};
   }
@@ -1154,8 +1153,8 @@ json Runtime::Observe() {
                    page_session_);
   const json* image_result = JsonObject(shot, "result");
   if (!image_result) {
-    return {{"error",
-             CdError(shot).empty() ? "screenshot failed" : CdError(shot)}};
+    return {
+        {"error", CdError(shot).empty() ? "screenshot failed" : CdError(shot)}};
   }
   json page = Call("Runtime.evaluate",
                    {{"expression", kPageScript}, {"returnByValue", true}},

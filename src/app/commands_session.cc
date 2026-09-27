@@ -279,13 +279,14 @@ void HandleConfig(AppSession& session, const std::string& argument,
     const std::string how = JsonValue(effect, "effect", "");
     restart |= how == "needs a restart";
     reply.Print("%s· %s: %s%s\n", DIM(),
-                TerminalSafe(JsonValue(effect, "key", "")).c_str(),
-                how.c_str(), RST());
+                TerminalSafe(JsonValue(effect, "key", "")).c_str(), how.c_str(),
+                RST());
   }
   if (restart) {
-    reply.Print("%s· /restart applies it here; new conversations have it "
-                "already%s\n",
-                YEL(), RST());
+    reply.Print(
+        "%s· /restart applies it here; new conversations have it "
+        "already%s\n",
+        YEL(), RST());
   }
   if (!argument.empty()) return;
   size_t changed = 0;
@@ -296,17 +297,19 @@ void HandleConfig(AppSession& session, const std::string& argument,
     const json& value = setting["value"];
     reply.Print("%s = %s%s · %s%s\n",
                 TerminalSafe(JsonValue(setting, "name", "")).c_str(), DIM(),
-                value.is_null() ? "configured"
-                                : TerminalSafe(value.is_string()
-                                                   ? value.get<std::string>()
-                                                   : JsonDump(value))
-                                      .c_str(),
+                value.is_null()
+                    ? "configured"
+                    : TerminalSafe(value.is_string() ? value.get<std::string>()
+                                                     : JsonDump(value))
+                          .c_str(),
                 source.c_str(), RST());
   }
-  if (!changed) reply.Print("%s· every setting is at its default%s\n", DIM(), RST());
-  reply.Print("%s· /config user|project KEY=VALUE, unset KEY, or reset "
-              "(keeps secrets)%s\n",
-              DIM(), RST());
+  if (!changed)
+    reply.Print("%s· every setting is at its default%s\n", DIM(), RST());
+  reply.Print(
+      "%s· /config user|project KEY=VALUE, unset KEY, or reset "
+      "(keeps secrets)%s\n",
+      DIM(), RST());
 }
 
 // This repository's remembered actions, numbered so one can be forgotten,
@@ -323,7 +326,8 @@ void HandlePermissionRules(const std::string& argument, CommandReply& reply) {
                index <= static_cast<int64_t>(rules.size())) {
       listed = PermissionRulesControl(
           {{"action", "delete"},
-           {"key", JsonValue(rules[static_cast<size_t>(index - 1)], "key", "")}});
+           {"key",
+            JsonValue(rules[static_cast<size_t>(index - 1)], "key", "")}});
     } else {
       listed = {{"error", "usage: /permissions forget N|all"}};
     }
@@ -362,11 +366,11 @@ void HandleMcp(AppSession& session, const std::string& argument,
       return;
     }
     json done = SessionControl(
-        session, {{"kind", "tools"},
-                  {"operation",
-                   operation == "retry" ? "mcp_restart" : "mcp_enable"},
-                  {"name", name},
-                  {"enabled", operation == "on"}});
+        session,
+        {{"kind", "tools"},
+         {"operation", operation == "retry" ? "mcp_restart" : "mcp_enable"},
+         {"name", name},
+         {"enabled", operation == "on"}});
     if (done.contains("error")) {
       reply.Print("%serror: %s%s\n", RED(),
                   TerminalSafe(JsonValue(done, "error", "")).c_str(), RST());
@@ -376,8 +380,8 @@ void HandleMcp(AppSession& session, const std::string& argument,
   const json servers = McpStatus(app.runtime.mcp, app.tools);
   reply.result = {{"mcp", servers}};
   if (servers.empty()) {
-    reply.Print("%s· no MCP servers (~/.mcp.json, ./.mcp.json)%s\n",
-                DIM(), RST());
+    reply.Print("%s· no MCP servers (~/.mcp.json, ./.mcp.json)%s\n", DIM(),
+                RST());
   }
   for (const json& server : servers) {
     const std::string state = JsonValue(server, "state", "");

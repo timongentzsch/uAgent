@@ -32,9 +32,8 @@ ToolResult Handover(const std::string& session_id, const std::string& reason) {
     return ToolFailure(ToolErrorCode::kRemoteError, "error: " + error);
   }
   bool eof = false;
-  std::string answer =
-      ReadInteraction({.id = interaction, .kind = "browser", .prompt = reason},
-                      &eof);
+  std::string answer = ReadInteraction(
+      {.id = interaction, .kind = "browser", .prompt = reason}, &eof);
   json status;
   for (int attempt = 0; attempt < 250; ++attempt) {
     status = browser::Request({{"op", "status"}});
@@ -60,18 +59,18 @@ ToolResult Handover(const std::string& session_id, const std::string& reason) {
 ToolResult Observation(const std::string& session_id, const std::string& lead,
                        const ToolContext& context) {
   const std::string done = lead.empty() ? "" : lead + "\n";
-  json outcome = browser::Request({{"op", "observe"}, {"session_id", session_id}});
-  json current = outcome.contains("error")
-                     ? json::object()
-                     : browser::Request(
-                           {{"op", "agent_status"}, {"session_id", session_id}},
-                           1000);
+  json outcome =
+      browser::Request({{"op", "observe"}, {"session_id", session_id}});
+  json current =
+      outcome.contains("error")
+          ? json::object()
+          : browser::Request(
+                {{"op", "agent_status"}, {"session_id", session_id}}, 1000);
   std::string failed = JsonValue(outcome, "error", "");
-  if (failed.empty() &&
-      (!current.value("ok", false) ||
-       JsonValue(current, "generation", uint64_t{0}) !=
-           JsonValue(outcome, "generation", uint64_t{0}) ||
-       JsonValue(current, "session_id", "") != session_id)) {
+  if (failed.empty() && (!current.value("ok", false) ||
+                         JsonValue(current, "generation", uint64_t{0}) !=
+                             JsonValue(outcome, "generation", uint64_t{0}) ||
+                         JsonValue(current, "session_id", "") != session_id)) {
     failed = "browser control changed; observe again";
   }
   if (failed.empty() && JsonValue(outcome, "image", "").empty()) {
@@ -116,24 +115,25 @@ ToolResult Observation(const std::string& session_id, const std::string& lead,
 // so the human's viewer and takeover are never blocked behind the wait.
 // Returns what the wait learned about tabs and time, as lines for the model.
 std::string Settle(const std::string& session_id, const ToolContext& context) {
-  const auto deadline = std::chrono::steady_clock::now() +
-                        std::chrono::milliseconds(kSettleMs);
+  const auto deadline =
+      std::chrono::steady_clock::now() + std::chrono::milliseconds(kSettleMs);
   std::string previous, notes;
   int quiet = 0;
   json opened = json::array();
   for (;;) {
-    json probe = browser::Request({{"op", "probe"}, {"session_id", session_id}},
-                                  5000);
+    json probe =
+        browser::Request({{"op", "probe"}, {"session_id", session_id}}, 5000);
     if (auto error = JsonValue(probe, "error", ""); !error.empty()) {
       return notes + "Waiting for the page stopped: " + error + ".\n";
     }
     if (const json* tab = JsonObject(probe, "switched")) {
-      notes += "It opened a new tab, now active: " + JsonValue(*tab, "url", "") +
-               "\n";
+      notes +=
+          "It opened a new tab, now active: " + JsonValue(*tab, "url", "") +
+          "\n";
     }
     if (const json* tabs = JsonArray(probe, "opened")) opened = *tabs;
-    const std::string state = JsonValue(probe, "doc", "") + "|" +
-                              JsonValue(probe, "sig", "");
+    const std::string state =
+        JsonValue(probe, "doc", "") + "|" + JsonValue(probe, "sig", "");
     const bool loaded = JsonValue(probe, "ready", "") == "complete" &&
                         !probe.value("loading", false);
     quiet = loaded && state == previous ? quiet + 1 : 0;
@@ -173,27 +173,27 @@ Tool BrowserTool(std::string session_id) {
       "MFA, captchas, bot checks or payment confirmation, call request_human "
       "with a reason naming the site and step; it waits until the user hands "
       "back. Never ask for credentials in chat.";
-  tool.parameters = {{"type", "object"},
-                     {"properties",
-                      {{"action",
-                        {{"type", "string"},
-                         {"enum",
-                          {"status", "open", "tabs", "observe", "click", "type",
-                           "press", "scroll", "back", "request_human",
-                           "release"}}}},
-                       {"url", {{"type", "string"}}},
-                       {"target_id", {{"type", "string"}}},
-                       {"view_id", {{"type", "string"}}},
-                       {"x", {{"type", "integer"}}},
-                       {"y", {{"type", "integer"}}},
-                       {"delta_y", {{"type", "integer"}}},
-                       {"text", {{"type", "string"}}},
-                       {"key",
-                        {{"type", "string"},
-                         {"enum", {"Enter", "Tab", "Escape", "Backspace"}}}},
-                       {"reason", {{"type", "string"}}}}},
-                     {"required", {"action"}},
-                     {"additionalProperties", false}};
+  tool.parameters = {
+      {"type", "object"},
+      {"properties",
+       {{"action",
+         {{"type", "string"},
+          {"enum",
+           {"status", "open", "tabs", "observe", "click", "type", "press",
+            "scroll", "back", "request_human", "release"}}}},
+        {"url", {{"type", "string"}}},
+        {"target_id", {{"type", "string"}}},
+        {"view_id", {{"type", "string"}}},
+        {"x", {{"type", "integer"}}},
+        {"y", {{"type", "integer"}}},
+        {"delta_y", {{"type", "integer"}}},
+        {"text", {{"type", "string"}}},
+        {"key",
+         {{"type", "string"},
+          {"enum", {"Enter", "Tab", "Escape", "Backspace"}}}},
+        {"reason", {{"type", "string"}}}}},
+      {"required", {"action"}},
+      {"additionalProperties", false}};
   tool.mutates = [](const json& args) {
     std::string action = JsonValue(args, "action", "");
     if (action == "tabs") return !JsonValue(args, "target_id", "").empty();
@@ -225,7 +225,7 @@ Tool BrowserTool(std::string session_id) {
                       : action == "press"
                           ? json{"Pressing a key in", "Pressed a key in"}
                       : action == "scroll" ? json{"Scrolling", "Scrolled"}
-                      : action == "back"   ? json{"Going back in", "Went back in"}
+                      : action == "back" ? json{"Going back in", "Went back in"}
                       : action == "request_human"
                           ? json{"Asking you to use", "Asked you to use"}
                       : action == "release" ? json{"Releasing", "Released"}

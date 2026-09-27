@@ -31,7 +31,8 @@ void TestBrowserInputFilter() {
       "abc",
       11);
   // Watching: only display messages pass.
-  CHECK(filter.Push(update + key + pointer + clipboard + update, output, false));
+  CHECK(
+      filter.Push(update + key + pointer + clipboard + update, output, false));
   CHECK(output == update + update);
   CHECK(filter.Release().empty());
 
@@ -268,13 +269,13 @@ void TestBrowserHandBackOnClose() {
                       {"generation", taken["generation"]}})
             .value("mode", "") == "human");
   // Nor can one that last saw an earlier lease of this display.
-  CHECK(runtime
-            .Execute({{"op", "viewer_disconnected"},
-                      {"device", kDevice},
-                      {"display", taken["display"]},
-                      {"generation",
-                       taken.value("generation", uint64_t{0}) - 1}})
-            .value("mode", "") == "human");
+  CHECK(
+      runtime
+          .Execute({{"op", "viewer_disconnected"},
+                    {"device", kDevice},
+                    {"display", taken["display"]},
+                    {"generation", taken.value("generation", uint64_t{0}) - 1}})
+          .value("mode", "") == "human");
   auto closed = runtime.Execute({{"op", "viewer_disconnected"},
                                  {"device", kDevice},
                                  {"display", taken["display"]},
@@ -326,10 +327,10 @@ void TestBrowserSecretMaskAndBack() {
     const json command = json::parse(line);
     const std::string method = command.value("method", "");
     if (method == "Page.addScriptToEvaluateOnNewDocument") {
-      masked = command["params"].value("runImmediately", false) &&
-               command["params"]
-                       .value("source", "")
-                       .find("-webkit-text-security") != std::string::npos;
+      masked =
+          command["params"].value("runImmediately", false) &&
+          command["params"].value("source", "").find("-webkit-text-security") !=
+              std::string::npos;
     }
     navigated = navigated || method == "Page.navigateToHistoryEntry";
   }

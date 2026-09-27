@@ -1,3 +1,4 @@
+// Copyright 2026 Timon Gentzsch
 #ifndef UAGENT_INCLUDE_WEB_RFB_FILTER_H_
 #define UAGENT_INCLUDE_WEB_RFB_FILTER_H_
 

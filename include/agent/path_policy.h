@@ -66,8 +66,7 @@ inline bool HiddenPath(const std::string& path) {
 inline std::optional<ToolArgumentIssue> RefuseHidden(const json& args) {
   if (!HiddenPath(JsonValue(args, "path", "."))) return std::nullopt;
   return ArgumentIssue("policy.hidden",
-                       "the browser profile is private to the browser",
-                       "path");
+                       "the browser profile is private to the browser", "path");
 }
 
 // Checked again when the call runs, not only when it is validated: an earlier

@@ -49,13 +49,13 @@ json ConfigurationControl(const json& request, const ConfigManager& manager,
     }
     // A reset of a scope that overrides nothing has nothing to write.
     if (!changes.empty()) {
-      auto proposal = PrepareConfigProposal(scope, changes, manager,
-                                            project_trusted, true);
+      auto proposal =
+          PrepareConfigProposal(scope, changes, manager, project_trusted, true);
       if (!proposal.ok) return {{"error", proposal.error}};
       if (!CommitConfigProposal(proposal, error)) return {{"error", error}};
       for (const auto& effect : proposal.effects) {
-        effects.push_back({{"key", effect.key},
-                           {"effect", ConfigEffectName(effect.effect)}});
+        effects.push_back(
+            {{"key", effect.key}, {"effect", ConfigEffectName(effect.effect)}});
       }
     }
   } else if (operation != "get") {
@@ -79,8 +79,8 @@ json ConfigurationControl(const json& request, const ConfigManager& manager,
     auto value = configured.values.find(name);
     // What each file sets; a secret reports only that it is set.
     const bool secret = descriptor->sensitivity != Sensitivity::kPublic;
-    for (const auto& [scope, values] : {std::pair{"user", &user},
-                                        std::pair{"project", &project}}) {
+    for (const auto& [scope, values] :
+         {std::pair{"user", &user}, std::pair{"project", &project}}) {
       auto own = values->find(name);
       if (own == values->end() || own->second.empty()) continue;
       setting[scope] = secret ? json(true) : json(own->second);

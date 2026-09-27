@@ -258,10 +258,9 @@ bool McpAdvanceStartup(std::vector<Tool>& tools, McpServer& server,
       server.startup = McpStartupState::kDiscoveringTools;
     }
     if (!error.empty()) {
-      McpError(server.name,
-               state == McpResponseState::kClosed
-                   ? error + McpStderrHint(server.name)
-                   : error);
+      McpError(server.name, state == McpResponseState::kClosed
+                                ? error + McpStderrHint(server.name)
+                                : error);
       server.error = error;
       server.Shutdown();
       return false;

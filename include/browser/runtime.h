@@ -4,6 +4,8 @@
 
 #include <sys/types.h>
 
+#include <chrono>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -20,6 +22,9 @@ class Runtime {
   ~Runtime();
   json Execute(const json& command);
   void Shutdown();
+  // Stops Chrome and Xvnc after `limit` without browser work, unless a human
+  // holds or is asked for the browser. The next action starts them again.
+  void StopIfIdle(std::chrono::minutes limit);
 
  private:
   bool Start(std::string& error, bool profile_setup = false);
@@ -30,6 +35,9 @@ class Runtime {
   bool AttachPage(const std::string& target, std::string& error);
   bool Agent(const json& command, std::string& error);
   json Status(bool include_page = true);
+  json PageTargets();
+  json Probe();
+  json Observe();
   bool SaveHandover() const;
   bool SaveProfiles() const;
   std::string ProfilePath() const;
@@ -53,9 +61,18 @@ class Runtime {
   std::string profile_error_;
   std::string mode_ = "idle";
   bool profile_setup_ = false;
+  bool loading_ = false;
+  std::chrono::steady_clock::time_point used_ =
+      std::chrono::steady_clock::now();
+  // Bumps on every lease or tab change; guards observations.
   uint64_t generation_ = 0;
-  // An agent call retries while the human drives; each retry extends this.
-  int64_t agent_waiting_until_ms_ = 0;
+  // Bumps only when Chrome and Xvnc launch; a viewer stays connected across
+  // control changes and reconnects only for a new display.
+  uint64_t display_ = 0;
+  // Page targets before the latest action and the tab that performed it, so
+  // a probe can follow the one tab that action opened.
+  std::set<std::string> known_targets_;
+  std::string action_target_;
 };
 
 }  // namespace uagent::browser

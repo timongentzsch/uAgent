@@ -55,6 +55,8 @@ struct HostSession {
   std::vector<std::string> awaiting;
   std::atomic<bool> exited{false};
   bool connecting = false, closing = false;
+  // Settings that need a restart changed: recycle this runtime once idle.
+  bool restart = false;
 
   ~HostSession();
   bool Send(json frame);
@@ -109,6 +111,9 @@ class SessionHost {
   void LoadDrafts();
   bool RefreshCatalogue(bool force = false);
   void RefreshPresence();
+  // Marks running runtimes (all, or those in `cwd`) for a fresh start that
+  // keeps their history: idle ones now, busy ones when their turn ends.
+  json RestartRunning(const std::string& cwd);
   json CommandOutcome(const std::string& worker_request,
                       const std::string& client_request) const {
     return outcomes_.CommandOutcome(worker_request, client_request);

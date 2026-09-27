@@ -7,7 +7,11 @@ import type {
 import { useEffect, useState } from "preact/hooks";
 import { Plus, ArrowLeft, Play, Square } from "lucide-preact";
 import {
+  Actions,
+  Button,
+  EmptyState,
   Field,
+  IconButton,
   Select,
   Modal,
   LoadError,
@@ -171,8 +175,9 @@ export default function Scheduled({
         <p class="muted">
           Runs while the uAgent host is open. Your browser can close.
         </p>
-        <button
-          class="primary with-icon"
+        <Button
+          variant="primary"
+          class="with-icon"
           disabled={!online || busy}
           onClick={() => {
             chooseTask(blank(cwd || projects[0] || ""));
@@ -180,7 +185,7 @@ export default function Scheduled({
         >
           <Plus />
           New task
-        </button>
+        </Button>
       </div>
       {scheduled?.error ? (
         <LoadError error={scheduled.error} retry={refresh} />
@@ -189,14 +194,14 @@ export default function Scheduled({
       ) : (
         <div class={`management-body ${task ? "has-selection" : ""}`}>
           <div class="management-list">
-            <button
+            <Button
               class={`library-row ${!task ? "selected" : ""}`}
               onClick={() => setTask(null)}
             >
               All runs
-            </button>
+            </Button>
             {scheduled.tasks.map((entry) => (
-              <button
+              <Button
                 key={entry.id}
                 class={`library-row ${task?.id === entry.id ? "selected" : ""}`}
                 disabled={busy}
@@ -214,22 +219,26 @@ export default function Scheduled({
                       run.task_id === entry.id && unread.has(run.session_id),
                   ) && <span class="unread-dot" aria-label="Unread results" />}
                 </small>
-              </button>
+              </Button>
             ))}
             {!scheduled.tasks.length && (
-              <p class="muted">
+              <EmptyState>
                 Schedule a recurring review or a one-off task.
-              </p>
+              </EmptyState>
             )}
           </div>
           <fieldset disabled={busy} class="management-editor schedule-editor">
             {task && (
               <>
                 <div class="editor-head">
-                  <button class="quiet with-icon" onClick={() => setTask(null)}>
+                  <Button
+                    variant="quiet"
+                    class="with-icon"
+                    onClick={() => setTask(null)}
+                  >
                     <ArrowLeft />
                     All runs
-                  </button>
+                  </Button>
                   <strong>{task.id ? task.name : "New task"}</strong>
                   {task.id && (
                     <Menu label="Task menu">
@@ -253,7 +262,7 @@ export default function Scheduled({
                 {changed && (
                   <p role="status">
                     This task changed. Your draft is retained.{" "}
-                    <button onClick={discard}>Reload</button>
+                    <Button onClick={discard}>Reload</Button>
                   </p>
                 )}
                 <div class="field-row">
@@ -362,7 +371,7 @@ export default function Scheduled({
                   <div class="weekdays" role="group" aria-label="Weekdays">
                     {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(
                       (day, index) => (
-                        <button
+                        <Button
                           aria-pressed={task.schedule.days?.includes(index)}
                           onClick={() =>
                             rule({
@@ -375,7 +384,7 @@ export default function Scheduled({
                           }
                         >
                           {day}
-                        </button>
+                        </Button>
                       ),
                     )}
                   </div>
@@ -462,11 +471,11 @@ export default function Scheduled({
                   )}
                 </Popover>
                 <div class="editor-actions">
-                  <button disabled={busy} onClick={discard}>
+                  <Button disabled={busy} onClick={discard}>
                     Cancel
-                  </button>
+                  </Button>
                   {task.id && (
-                    <button
+                    <Button
                       class="with-icon"
                       disabled={
                         !online ||
@@ -481,10 +490,10 @@ export default function Scheduled({
                     >
                       <Play />
                       Run now
-                    </button>
+                    </Button>
                   )}
-                  <button
-                    class="primary"
+                  <Button
+                    variant="primary"
                     disabled={
                       !online ||
                       busy ||
@@ -498,7 +507,7 @@ export default function Scheduled({
                     onClick={() => action("save")}
                   >
                     {busy ? "Saving…" : "Save"}
-                  </button>
+                  </Button>
                 </div>
               </>
             )}
@@ -506,14 +515,14 @@ export default function Scheduled({
             <div class="run-history">
               <h2>{task ? "Run history" : "All runs"}</h2>
               {!runs.length ? (
-                <p class="muted">
+                <EmptyState>
                   Results appear here. Missed runs are skipped; interrupted runs
                   wait for your review.
-                </p>
+                </EmptyState>
               ) : (
                 runs.map((run) => (
                   <div class="run-row" key={run.id}>
-                    <button
+                    <Button
                       disabled={
                         run.session_available === false ||
                         ["queued", "starting", "missed", "skipped"].includes(
@@ -535,16 +544,15 @@ export default function Scheduled({
                         {run.status} · {dateTime(run.scheduled_for)}
                       </small>
                       {run.error && <small>{run.error}</small>}
-                    </button>
+                    </Button>
                     {taskActive(run.status) && (
-                      <button
-                        class="quiet icon-button"
-                        aria-label="Stop run"
+                      <IconButton
+                        label="Stop run"
                         disabled={!online || busy || run.status === "stopping"}
                         onClick={() => action("stop", run.id)}
                       >
                         <Square />
-                      </button>
+                      </IconButton>
                     )}
                   </div>
                 ))
@@ -567,14 +575,16 @@ export default function Scheduled({
               kept.
             </p>
             {error && <LoadError error={error} />}
-            <div class="dialog-actions">
-              <button type="button" onClick={() => setConfirm(false)}>
-                Cancel
-              </button>
-              <button class="primary" disabled={busy || !online} type="submit">
+            <Actions>
+              <Button onClick={() => setConfirm(false)}>Cancel</Button>
+              <Button
+                type="submit"
+                variant="primary"
+                disabled={busy || !online}
+              >
                 Delete
-              </button>
-            </div>
+              </Button>
+            </Actions>
           </form>
         </Modal>
       )}

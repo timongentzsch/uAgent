@@ -186,17 +186,34 @@ test("browser shell keeps its bounds through cold code and data loading", async 
     await trigger.press("Enter");
     const dialog = page.getByRole("dialog", { name: "Browser", exact: true });
     await expect(dialog.getByRole("status")).toHaveText("Loading browser…");
-    const shell = await geometry(dialog);
+    // The loading frame is the live panel's geometry: screen, bar, action.
+    const parts = async () => [
+      await geometry(dialog),
+      await geometry(dialog.locator(".browser-screen")),
+      await geometry(dialog.locator(".browser-bar")),
+      await geometry(dialog.locator(".browser-primary")),
+    ];
+    const shell = await parts();
+    const chunk = manifest["src/features/browser/browser.tsx"].file;
     releaseCode();
     await expect
-      .poll(() => page.locator('link[href*="browser-"]').count())
-      .toBeGreaterThan(0);
-    expect(await geometry(dialog)).toEqual(shell);
+      .poll(() =>
+        page.evaluate(
+          (file) =>
+            performance
+              .getEntriesByType("resource")
+              .some((entry) => entry.name.endsWith(file)),
+          chunk,
+        ),
+      )
+      .toBe(true);
+    expect(await parts()).toEqual(shell);
     releaseData();
+    await expect(dialog.getByText("Stopped", { exact: true })).toBeVisible();
     await expect(
-      dialog.getByRole("button", { name: "Take control" }),
+      dialog.getByRole("button", { name: "Take over" }),
     ).toBeVisible();
-    expect(await geometry(dialog)).toEqual(shell);
+    expect(await parts()).toEqual(shell);
     await page.keyboard.press("Escape");
     await expect(dialog).toHaveCount(0);
     await expect(trigger).toBeFocused();
@@ -421,7 +438,7 @@ test.describe("touch interaction", () => {
         .click();
       await expect(
         settings.getByRole("combobox", {
-          name: "Default permissions",
+          name: "UAGENT_APPROVAL",
           exact: true,
         }),
       ).toBeVisible();
@@ -436,12 +453,12 @@ test.describe("touch interaction", () => {
       });
       await search.fill("timeout");
       await expect(
-        settings.locator('.config-row input[type="number"]').first(),
+        settings.locator('.setting-row input[type="number"]').first(),
       ).toBeVisible();
       await scaledFields(settings, zoom);
       await search.fill("memory");
       await expect(
-        settings.locator(".config-row select").first(),
+        settings.locator('.setting-row [role="switch"]').first(),
       ).toBeVisible();
       await scaledFields(settings, zoom);
       await settings.getByRole("button", { name: "Close settings" }).click();
@@ -513,4 +530,45 @@ test.describe("touch interaction", () => {
     await button.tap();
     await expect(button).toHaveCSS("background-color", color);
   });
+});
+
+test("phone header keeps its buttons in place from loading to ready", async ({
+  page,
+  session,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(() => localStorage.setItem("uagent-browser", "1"));
+  let release;
+  const gate = new Promise((resolve) => (release = resolve));
+  await page.route("**/api/sessions?refresh=1", async (route) => {
+    const response = await route.fetch();
+    await gate;
+    await route.fulfill({ response });
+  });
+  await page.route("**/api/browser/status", (route) =>
+    route.fulfill({ json: { ok: true, mode: "idle", running: false } }),
+  );
+  const head = page.locator(".conversation-head");
+  const buttons = () =>
+    head
+      .locator("button")
+      .evaluateAll((nodes) =>
+        nodes.map((node) => Math.round(node.getBoundingClientRect().x)),
+      );
+  try {
+    await page.goto(`/#session=${session.id}`);
+    const booting = head.locator(".text-skeleton");
+    await expect(booting).toBeVisible();
+    const loading = await buttons();
+    // Menu, browser, settings and the conversation menu, all reserved.
+    expect(loading).toHaveLength(4);
+    release();
+    await expect(booting).toHaveCount(0);
+    await expect(
+      head.getByRole("button", { name: "Open browser" }),
+    ).toBeEnabled();
+    expect(await buttons()).toEqual(loading);
+  } finally {
+    release();
+  }
 });

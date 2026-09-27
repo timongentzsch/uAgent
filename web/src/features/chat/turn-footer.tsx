@@ -1,6 +1,7 @@
 import { duration } from "../../shared/duration.ts";
 import { count } from "../../shared/quantities.ts";
 import type { TurnSummary } from "../../shared/types.ts";
+import { Button } from "../../shared/ui.tsx";
 
 // Turn footer button. Lives apart from statistics.tsx (the lazily loaded
 // statistics dialog): every transcript message row renders this, so a
@@ -14,8 +15,9 @@ export function TurnFooter({
   open: () => void;
 }) {
   return (
-    <button
-      class="quiet turn-summary"
+    <Button
+      variant="quiet"
+      class="turn-summary"
       onClick={open}
       aria-label="Turn statistics"
     >
@@ -32,6 +34,6 @@ export function TurnFooter({
       {summary.outcome !== "complete" && summary.outcome !== "completed" && (
         <span> · {summary.outcome}</span>
       )}
-    </button>
+    </Button>
   );
 }

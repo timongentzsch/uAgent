@@ -35,7 +35,8 @@ inline constexpr std::string_view kKnown[] = {"type",
                                               "trust",
                                               "required",
                                               "disabled",
-                                              "__uagent_config_dir"};
+                                              "__uagent_config_dir",
+                                              "__uagent_overrides"};
 
 inline bool McpValidateServerConfig(const std::string& name, const json& conf,
                                     std::string& error) {
@@ -206,7 +207,11 @@ inline json McpLoadConfig(const json& trusted_project, size_t max_bytes) {
                   ? json::object()
                   : annotate(read(home_dir + "/.mcp.json"), home_dir);
   for (auto& [name, conf] : home.items()) {
-    if (!cfg.contains(name)) cfg[name] = conf;
+    if (!cfg.contains(name)) {
+      cfg[name] = conf;
+    } else if (cfg[name].is_object()) {
+      cfg[name]["__uagent_overrides"] = true;
+    }
   }
   return cfg;
 }

@@ -106,13 +106,24 @@ also go in `.env.appliance`; keep that file private.
 ### Agent and human control
 
 The web-only `browser` tool drives the same visible tab as the viewer using
-native CDP over Chrome's inherited pipes. Opening the browser while the agent
-works shows a read-only viewer. **Take control** pauses agent input and enables
-local input; **Done** hands control back. When the agent calls `browser` with
-`request_human`, the conversation shows **Open browser**: take control,
-complete the interaction, then choose **Done**. Only the paired device that
-took control can finish it. Closing the viewer or losing its connection keeps
-the agent paused. Use **Stop browser** when idle to release resources.
+native CDP over Chrome's inherited pipes. Each action waits for the page to
+settle and returns a fresh screenshot; a tab the action opens becomes the
+active tab. Pages that look like a bot check or rate limit are flagged as a
+suspected block, so the agent can hand off or try another source.
+
+Opening the browser while the agent works shows the live screen, read-only.
+**Take over** pauses the agent and enables local input; **Done** hands control
+back. Watching and driving share one connection, so the screen never reloads
+on a hand-over. While you drive, agent actions fail at once and tell the
+agent to call `request_human`. When the agent calls `request_human` (login,
+MFA, a captcha or bot check, a payment confirmation), the conversation shows
+its reason and **Open browser**, which opens the browser already in your
+control; **Done** returns you to the chat. Only the paired device that took
+control can finish it. Closing the viewer or losing its connection keeps the
+agent paused. Chrome stops by itself after `UAGENT_BROWSER_IDLE_MINUTES`
+(default 15; 0 keeps it running) without browser work, unless you control it
+or the agent is waiting for you, and starts again on the next action. **Stop
+browser** in the status menu releases it at once.
 
 **Chrome profile** selects which login the agent and viewer share; **New
 profile** creates another persistent login. Switching requires control and
@@ -121,9 +132,9 @@ restarts Chrome in the chosen profile. `/data/browser/profile` is the
 `/data/browser/profiles.json` records names and the current selection. Back up
 the whole `/data` volume to preserve every login.
 
-For account setup, take control and choose **Sign in to profile**. This reopens
-the selected profile in ordinary Chrome without a debugging connection. Sign in
-and complete MFA, then choose **Done** to reopen the same profile for the agent.
+For account setup, take over and choose **Sign in to profile** in the status
+menu. This reopens the selected profile in ordinary Chrome without a debugging
+connection. Sign in and complete MFA, then choose **Done** to reopen the same profile for the agent.
 Chrome restores saved tabs; finish unsaved page edits before switching. No
 cookies are copied between profiles and no browser security checks are
 disabled. Google may still reject automation-controlled browsers; see its
@@ -131,19 +142,24 @@ disabled. Google may still reject automation-controlled browsers; see its
 
 ### Viewer controls
 
+The screen takes the whole browser sheet; one bar below holds the status menu
+(page, profiles, stop), the tools and **Take over**/**Done**. On a phone the
+sheet is full screen in both orientations.
+
 | Control | Behavior |
 | --- | --- |
-| Display (touch) | View-only: pinch to zoom, drag the zoomed view to pan |
-| Trackpad (touch) | One finger moves the pointer, tap left-clicks, two-finger tap right-clicks, two-finger drag scrolls; hold **Left** to drag or select |
-| **Keyboard** (touch) | Opens the on-screen keyboard and types live; adds an Esc/Tab/arrows row and a one-shot **Ctrl** |
+| Tap (touch) | Clicks where the finger lands |
+| Drag (touch) | Scrolls the page under the finger |
+| Hold, then drag (touch) | Holds the left button: select text, move sliders, press and hold |
+| Two-finger tap (touch) | Right-click |
+| Pinch (touch) | Zooms and pans this device's view; nothing reaches Chrome |
+| **Keyboard** (touch) | Opens the on-screen keyboard and types live; the bar becomes Esc, Tab, arrows and a one-shot **Ctrl** |
 | **Copy** / **Paste** | Copy Chrome's selection to this device / send this device's clipboard to Chrome |
-| **Keys** | Esc, Tab, Enter, ⌫, arrows, **Address bar**, **Select all**, **Send text…** (for dictation or composed input) |
 | Ctrl/⌘+C, X, V (desktop) | Sync clipboards inside the viewer; ⌘ maps to Ctrl for the Linux Chrome |
 
-On touch devices the pointer is Chrome's own cursor (arrow, I-beam, hand), drawn
-at the display's scale; a zoomed display pans to follow it. The clipboard
-changes only on these actions and travels over the private VNC connection; a
-browser that denies clipboard access falls back to a text field.
+The clipboard changes only on these actions and travels over the private VNC
+connection. A browser that denies clipboard access shows a small card over the
+screen to paste into or copy from.
 
 ### Isolation
 
@@ -154,11 +170,36 @@ If the host disables unprivileged user namespaces, takeover fails and the
 browser stays stopped.
 
 The image runs the web host, agent workers and browser service under one
-nonroot UID and is designed for one human with multiple paired devices. That
-UID can read the browser profile and the private service socket, including
-through an approved shell command. Pairing protects the web routes; it is not
-an operating-system boundary between agent workers and Chrome. Use an isolated
-Docker host.
+nonroot UID and is designed for one human with multiple paired devices.
+Pairing protects the web routes; the agent's commands are kept out of the
+browser profile separately:
+
+- With the sandbox on, agent commands cannot read the browser data directory
+  (saved logins, cookies) or connect to its sockets, and the file tools refuse
+  it; yolo, `run(sandbox=false)` and a disabled sandbox lift that, as they
+  lift the sandbox. See [SECURITY.md](../SECURITY.md#sandboxing). Keep it
+  outside the sandbox's writable roots, e.g. `~/.uagent/browser`.
+- Screenshots draw every password field as dots, including one a site's
+  reveal toggle switched to text; autofill still works. Fields in cross-site
+  iframes and shadow roots are not masked.
+- `back` refuses history entries that are not HTTP(S), like `open`.
+
+Passwords follow Chrome's own model: sign the profile into your Google account
+and manage logins at [passwords.google.com](https://passwords.google.com). The
+managed policy blocks Chrome's local password and autofill pages,
+`view-source:` and DevTools. The Docker image contains it; on a native install,
+copy it once:
+
+```sh
+sudo install -D -m 0644 deploy/chrome-policy.json \
+  /etc/opt/chrome/policies/managed/uagent.json
+```
+
+On Linux before 7.1 (Landlock ABI 9) the sockets stay reachable: the agent can
+drive the browser, which it may do anyway, but with the policy installed it
+reaches neither DevTools nor the password pages.
+
+Use an isolated Docker host.
 
 Run `deploy/footprint.sh` before opening Chrome, during a viewer session and
 after **Stop browser** to compare image size, packages, processes and container
@@ -220,8 +261,22 @@ responses.
   and input. Ordinary subagent follow-ups can select another model; persistent
   agents keep their runtime model. Process children show statistics from their
   latest saved checkpoint and label them as such.
-- Settings contain appearance, interface zoom, default permissions and
-  registered configuration. Memory, skills, schedules and system prompts have
+- Settings contain this device's display settings and every registered
+  setting. Each row shows its current value, the default included, and
+  **Reset** while the edited scope changes it; saving the inherited value
+  removes the change. Values set by the environment or command line are
+  shown locked. **Reset all to defaults** (Advanced) resets a scope, and in
+  User defaults this device's display settings too; API keys are kept. A
+  change that needs a restart offers it: running conversations restart once
+  idle and keep their history, and the web host re-execs itself for its own
+  settings. The terminal has the same through `/config`, `/restart`, `/mcp`
+  and `/permissions rules`. **MCP servers** lists the open conversation's
+  servers under *Global* (`~/.mcp.json`) or *This project* (`.mcp.json`),
+  with each one's state, tools and, when it failed, its reason and stderr
+  tail. **Retry** starts a failed server again; the switch sets `disabled` in
+  the file that defines the server and applies at once. A project file is
+  only edited while it still matches what was trusted, and trust follows
+  that one edit. Memory, skills, schedules and system prompts have
   dedicated editors; see [Library and scheduled tasks](MANAGEMENT.md) and
   [System prompts](SYSTEM_PROMPTS.md).
 
@@ -253,11 +308,14 @@ input and [Operations](OPERATIONS.md) for extraction and fallback limits.
 
 ## Offline behavior
 
-There is no offline conversation storage. Transcripts, drafts and history need
-a live host connection; while disconnected, commands are disabled until
-reconnect refreshes authoritative state. The service worker precaches the shell
-and core conversation assets; optional renderers enter a bounded runtime cache
-after first use. Signing out clears local UI state.
+There is no offline conversation storage. Transcripts and history need a live
+host connection; while disconnected, commands are disabled until reconnect
+refreshes authoritative state. The browser keeps only unsent drafts and the
+last conversation list (titles and folders, without scheduled runs), so a
+reload paints the sidebar, title and composer at once, inert until the host
+answers. The service worker precaches the shell and core conversation assets;
+optional renderers enter a bounded runtime cache after first use. Signing out
+or a revoked device clears local UI state.
 
 ## Bounds
 
@@ -313,8 +371,11 @@ Feature modules render the store. Shared controls, popovers, spinners and
 spacing tokens keep layout changes centralized; editable fields must use the
 shared `Input`, `Textarea` and `Select` controls (`web/tests/form-controls.test.js`
 rejects native fields). The `Modal` shell owns dialog size, so loading and
-loaded states share geometry; unknown content uses one spinner, and skeletons
-are reserved for known shapes. `/ui.html` renders the real shared components,
+loaded states share geometry. A placeholder renders the loaded layout's own
+elements with placeholder text (`.text-skeleton`) where data goes, so filling
+in never moves a line; unknown content (a document, a live screen) uses one
+spinner. The shell, sidebar and composer ship in the entry bundle and render
+from the first frame; dialog and page chunks are warmed shortly after boot. `/ui.html` renders the real shared components,
 including the browser viewer controls, without a host connection for visual
 review.
 

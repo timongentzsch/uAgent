@@ -6,6 +6,10 @@ requires-tools: run, attach
 
 # Browser automation
 
+When the `browser` tool is available (the web appliance), use it instead: it
+drives the user's shared, signed-in Chrome, and its description covers tabs,
+bot checks and hand-off. This skill is for everything else.
+
 Use `playwright-cli` through `run`; do not add a browser MCP server. µAgent sets
 a unique `PLAYWRIGHT_CLI_SESSION`, so commands reuse one managed browser daemon
 without sharing state with another agent process.

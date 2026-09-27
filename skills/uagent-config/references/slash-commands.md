@@ -9,11 +9,12 @@
 | `/attach PATH|clear` | attach a file to the next turn |
 | `/compact` | summarize conversation to prevent hitting the context limit |
 | `/context` | show current model request |
-| `/config [user|project KEY=VALUE|unset KEY]` | inspect or change configuration |
+| `/config [user|project KEY=VALUE|unset KEY|reset]` | show changed settings, change one, or reset a scope |
 | `/fork [TITLE] [@TURN]` | branch this conversation, optionally at user turn N |
 | `/rewind [@TURN]` | rewind this conversation to user turn N |
 | `/share` | export transcript as markdown |
-| `/permissions [default|ask|auto|yolo]` | show or change permission mode |
+| `/permissions [default|ask|auto|yolo|rules|forget N|forget all]` | show or change permission mode, or this repository's remembered actions |
+| `/rename TITLE` | rename this conversation |
 | `/prompt [show|edit|set|reset] [--scope global|project|conversation] [--mode overlay|replace] [--file PATH]` | inspect or edit the system prompt |
 | `/http [INDEX [request|response]]` | inspect captured HTTP attempts (latest by default) |
 | `/diff` | show git diff (including untracked files) |
@@ -39,6 +40,8 @@
 | `/status` | show current session configuration and token usage |
 | `/tell ID TEXT` | message a linked session |
 | `/tools [on|off NAME|profile NAME|reset]` | inspect or choose tools for this conversation |
+| `/mcp [retry|on|off NAME]` | show MCP servers; retry one or switch it on or off |
+| `/restart` | restart this conversation to apply settings that need it |
 | `/variant MODE` | set OpenRouter provider routing |
 | `/btw QUESTION` | ask a side question without adding it to the conversation |
 | `/verbose` | toggle full reasoning and expanded tool output |

@@ -281,6 +281,21 @@ class Terminal {
         }
         continue;
       }
+      if (text == "/restart") {
+        // A fresh runtime for this conversation, e.g. after a setting that
+        // needs a restart; its history is kept.
+        {
+          std::lock_guard lock(mutex_);
+          if (!waiting_.empty() || running_) {
+            WriteTerminalRecord(
+                "· turn active; interrupt it before restarting\n");
+            continue;
+          }
+          next_ = "/restart";
+        }
+        Send({{"kind", "close"}});
+        break;
+      }
       if (text == "/reset" || text == "/new" || text == "/sessions" ||
           text.starts_with("/sessions ") || text == "/resume" ||
           text.starts_with("/resume ")) {
@@ -654,7 +669,15 @@ int TerminalMain(Options options) {
     int result = terminal.Run(options.attach_paths);
     options.attach_paths.clear();
     if (result || terminal.Next().empty()) return result;
-    if (terminal.Next() == "/reset") {
+    if (terminal.Next() == "/restart") {
+      // The runtime was asked to close; once it is gone the next Open
+      // starts a fresh one on the same history.
+      for (int attempt = 0; attempt < 100 && PathExists(SocketPath(path));
+           ++attempt) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+      }
+      printf("· restarted\n");
+    } else if (terminal.Next() == "/reset") {
       path.clear();
     } else {
       path = terminal.Next();

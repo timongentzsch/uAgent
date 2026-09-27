@@ -45,6 +45,8 @@ void RegisterFileTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
       return PathApprovalClass(JsonValue(args, "path", "."),
                                PathAccess::kWrite);
     };
+    tool.validate = RefuseHidden;
+    tool.run = RefusingHidden(std::move(tool.run));
     return AddTool(tools, std::move(tool));
   };
   // Scripts under .uagent/scratch are the agent's own working files: writing

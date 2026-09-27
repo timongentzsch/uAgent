@@ -17,10 +17,12 @@ import type {
 import { useEffect, useMemo, useState } from "preact/hooks";
 import { Minimize2, X } from "lucide-preact";
 import {
+  Button,
   DisclosureRow,
   cleanText,
   EventRow,
   ErrorBoundary,
+  IconButton,
   Time,
 } from "../../shared/ui.tsx";
 import { MessageMenu } from "./message-menu.tsx";
@@ -53,20 +55,18 @@ function MentionFile({
   alt,
   files,
   sessionId,
-  online,
 }: {
   id: string;
   alt: string;
   files?: (Asset | string)[];
   sessionId: string;
-  online: boolean;
 }) {
   const file = files?.find(
     (item): item is Asset => typeof item === "object" && item.id === id,
   );
   if (!file) return <span class="muted">@{alt} (attachment removed)</span>;
   const href = `/api/sessions/${sessionId}/assets/${file.id}`;
-  return file.image && online ? (
+  return file.image ? (
     <span class="mention-image">
       <ImageTile src={href} name={file.name} />
     </span>
@@ -216,14 +216,13 @@ function MessageView({
             online &&
             block.status === "Guidance queued" &&
             block.request_id && (
-              <button
-                class="quiet icon-button"
-                aria-label="Recall guidance to composer"
+              <IconButton
+                label="Recall guidance to composer"
                 title="Recall to composer"
                 onClick={() => recall(block)}
               >
                 <X aria-hidden="true" />
-              </button>
+              </IconButton>
             )}
           <MessageMenu
             label="Message menu"
@@ -306,7 +305,6 @@ function MessageView({
               alt={part.mention.alt}
               files={block.files}
               sessionId={session.id}
-              online={online}
             />
           ),
         )}
@@ -327,7 +325,7 @@ function MessageView({
         />
       )}
       {!row && block.truncated && (
-        <button
+        <Button
           disabled={expanding}
           onClick={async () => {
             if (full !== null) {
@@ -350,7 +348,7 @@ function MessageView({
             : full !== null
               ? "Show less"
               : "Show full message"}
-        </button>
+        </Button>
       )}
       {block.error && <p role="status">{block.error}</p>}
       {(block.unavailable_images || 0) > 0 && (

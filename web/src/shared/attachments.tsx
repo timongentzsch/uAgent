@@ -4,8 +4,9 @@
 import { createContext, type ComponentChildren } from "preact";
 import { useContext } from "preact/hooks";
 import { FileText } from "lucide-preact";
-import { Modal, cleanText } from "./ui.tsx";
+import { Button, Modal, cleanText } from "./ui.tsx";
 import { bytes } from "./quantities.ts";
+import { ZoomSurface } from "./zoom-surface.tsx";
 
 export interface ViewedImage {
   src: string;
@@ -17,7 +18,8 @@ export const ImageViewer = createContext<(image: ViewedImage) => void>(
   () => {},
 );
 
-// Fits the image to the screen; the browser's own pinch zoom still works.
+// A full-bleed viewer: the image at natural size, never upscaled, with its
+// own pinch, double-tap and trackpad zoom. Tap around it to close.
 export function ImageViewerDialog({
   image,
   close,
@@ -29,7 +31,6 @@ export function ImageViewerDialog({
     <Modal
       title={image.name}
       close={close}
-      size="wide"
       layout="panel"
       className="image-view"
       actions={
@@ -43,7 +44,9 @@ export function ImageViewerDialog({
         </>
       }
     >
-      <img src={image.src} alt={image.name} onClick={close} />
+      <ZoomSurface key={image.src} label={image.name} dismiss={close}>
+        <img src={image.src} alt={image.name} draggable={false} />
+      </ZoomSurface>
     </Modal>
   );
 }
@@ -58,8 +61,7 @@ export function fileType(name: string, size?: number) {
 export function ImageTile({ src, name }: ViewedImage) {
   const view = useContext(ImageViewer);
   return (
-    <button
-      type="button"
+    <Button
       class="attachment-tile"
       title={name}
       aria-label={`View ${name}`}
@@ -74,7 +76,7 @@ export function ImageTile({ src, name }: ViewedImage) {
           event.currentTarget.parentElement?.setAttribute("hidden", "")
         }
       />
-    </button>
+    </Button>
   );
 }
 

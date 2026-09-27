@@ -1,7 +1,7 @@
 import { useState } from "preact/hooks";
 import type { StatisticsModal } from "../../shared/types.ts";
 import { command } from "../../state/api.ts";
-import { LoadError, Input } from "../../shared/ui.tsx";
+import { Actions, Button, LoadError, Input } from "../../shared/ui.tsx";
 export default function ConversationActions({
   modal,
   online,
@@ -91,19 +91,18 @@ export default function ConversationActions({
             : ""}
         </p>
       )}
-      <div class="dialog-actions">
-        <button type="button" onClick={close}>
-          Cancel
-        </button>
-        <button
-          class="primary"
+      <Actions>
+        <Button onClick={close}>Cancel</Button>
+        <Button
+          type="submit"
+          variant="primary"
           disabled={
             !online || busy || (modal.type === "rename" && !title.trim())
           }
         >
           {modal.type === "rename" ? "Save name" : "Delete permanently"}
-        </button>
-      </div>
+        </Button>
+      </Actions>
     </form>
   );
 }

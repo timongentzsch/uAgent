@@ -1,5 +1,11 @@
 import { Fragment } from "preact";
-import { DisclosureRow, Skeleton, LoadError, Time } from "../../shared/ui.tsx";
+import {
+  Button,
+  DisclosureRow,
+  Skeleton,
+  LoadError,
+  Time,
+} from "../../shared/ui.tsx";
 import DiffView from "./diff-view.tsx";
 import Markdown from "../../shared/markdown-view.tsx";
 import { cleanText, isFailedStatus } from "../../shared/display.ts";
@@ -83,14 +89,14 @@ function OutputBox({
   return (
     <pre class="tool-console" ref={box} tabIndex={0} aria-label="Output">
       {more && (
-        <button
-          type="button"
-          class="quiet tool-link"
+        <Button
+          variant="quiet"
+          class="tool-link"
           disabled={!online}
           onClick={loadFull}
         >
           Load earlier output
-        </button>
+        </Button>
       )}
       {text}
     </pre>
@@ -195,14 +201,14 @@ export function ToolRow({
           {inspect && block.kind === "tool_result" && (
             <>
               {" · "}
-              <button
-                type="button"
-                class="quiet tool-link"
+              <Button
+                variant="quiet"
+                class="tool-link"
                 aria-label="Tool input/output"
                 onClick={() => inspect(block.detail_id || `t-${block.call_id}`)}
               >
                 raw
-              </button>
+              </Button>
             </>
           )}
         </p>
@@ -293,15 +299,15 @@ export function ToolInline({
         part.kind === "file" ? (
           <SharedFile key={index} file={part} href={`${assets}${part.id}`} />
         ) : part.kind === "link" && open ? (
-          <button
+          <Button
             key={index}
-            type="button"
-            class="quiet tool-link"
+            variant="quiet"
+            class="tool-link"
             disabled={!online}
             onClick={() => open(part)}
           >
             {part.label}
-          </button>
+          </Button>
         ) : null,
       )}
     </div>

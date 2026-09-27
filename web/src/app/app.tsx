@@ -30,12 +30,14 @@ import {
   Modal,
   Deferred,
   IconButton,
+  Button,
+  EmptyState,
   Spinner,
   preloadDeferred,
   Input,
   ErrorBoundary,
 } from "../shared/ui.tsx";
-import { Globe2, Menu, Settings } from "lucide-preact";
+import { Ellipsis, Globe2, Menu, Settings } from "lucide-preact";
 import { StatusLed } from "../shared/connection-status.tsx";
 import {
   ImageViewer,
@@ -47,11 +49,21 @@ import {
 // the initial bundle and break the CSS size budget.
 const markdownView = () => import("../shared/markdown-view.tsx");
 import { StatisticsLoading } from "../shared/statistics-layout.tsx";
+import { useDismiss } from "../shared/dismiss.ts";
+import {
+  ComposerLoading,
+  SettingsLoading,
+  TranscriptLoading,
+} from "../shared/loading.tsx";
+import Sidebar, { ConversationMenu } from "../features/sidebar/sidebar.tsx";
+import Composer from "../features/composer/composer.tsx";
+import { BrowserLoading } from "../features/browser/frame.tsx";
 import {
   applyTheme,
   applyZoom,
+  lockPageZoom,
   normalizeZoom,
-  observeCompact,
+  useMedia,
   trackViewport,
 } from "../shared/layout.ts";
 
@@ -71,10 +83,8 @@ import "../shared/style.css";
 import {
   chat,
   browserDialog,
-  composer,
   conversationActions,
   libraryModule,
-  menuModule,
   pairing,
   promptDialog,
   rawDialog,
@@ -83,7 +93,6 @@ import {
   scheduledModule,
   settingsDialog,
   toolsDialog,
-  sidebarModule,
   statisticsDialog,
 } from "./dialogs.ts";
 
@@ -100,14 +109,31 @@ const noBlocks: Block[] = [];
 // One empty list, so an idle context value never changes identity.
 const NO_ACTIVITIES: Activity[] = [];
 
+const BROWSER_KEY = "uagent-browser";
+
+// The conversation menu's button, inert, until the session is known.
+function MenuPlaceholder() {
+  return (
+    <IconButton label="Conversation menu" disabled>
+      <Ellipsis aria-hidden="true" />
+    </IconButton>
+  );
+}
+
 function App() {
   const [page, setPage] = useState<"chat" | "library" | "scheduled">("chat");
+  // Library and Scheduled sit above the conversation: back returns to it.
+  useDismiss(page !== "chat", () => setPage("chat"));
   const [drawer, setDrawer] = useState(false);
-  const [compact, setCompact] = useState(
-    () => matchMedia("(max-width: 900px)").matches,
-  );
+  const compact = useMedia("(max-width: 900px)");
+  // The drawer belongs to the compact layout; a wider window drops it.
+  useEffect(() => setDrawer(false), [compact]);
   const [modal, setModal] = useState<AppModal | null>(null);
-  const [browserAvailable, setBrowserAvailable] = useState(false);
+  // Remembered per device, so the header's browser slot is right from the
+  // first frame instead of appearing once the host answers.
+  const [browserAvailable, setBrowserAvailable] = useState(
+    () => storage.getItem(BROWSER_KEY) === "1",
+  );
   const [notice, setNotice] = useState("");
   // The one image viewer every tile opens.
   const [viewed, setViewed] = useState<ViewedImage | null>(null);
@@ -149,14 +175,16 @@ function App() {
     reset,
   } = useHost(onResult, page === "chat");
   useEffect(() => {
-    if (authenticated !== true || !online) {
-      setBrowserAvailable(false);
-      return;
-    }
+    if (authenticated !== true || !online) return;
     let active = true;
+    const known = (available: boolean) => {
+      if (!active) return;
+      setBrowserAvailable(available);
+      storage.setItem(BROWSER_KEY, available ? "1" : "0");
+    };
     api("/api/browser/status")
-      .then(() => active && setBrowserAvailable(true))
-      .catch(() => active && setBrowserAvailable(false));
+      .then(() => known(true))
+      .catch(() => known(false));
     return () => {
       active = false;
     };
@@ -182,6 +210,10 @@ function App() {
   const session =
     snapshot?.metadata ||
     catalogue.sessions.find((item) => item.id === selected);
+  // Until the catalogue answers, the shell renders with placeholders in the
+  // places data will fill; a conversation in the URL keeps its surfaces.
+  const booting = authenticated === null;
+  const opening = booting && !!selected;
   const toolsSessionId = modal?.type === "tools" ? modal.session_id : "";
   const toolsSnapshot = snapshots[toolsSessionId];
   const toolsSession =
@@ -254,22 +286,28 @@ function App() {
     // the plain-to-markdown height wave across the first seconds and
     // fights the bottom pin). Marker-based chunks warm per text below.
     Promise.allSettled([
-      preloadDeferred(sidebarModule),
       preloadDeferred(chat),
-      preloadDeferred(composer),
       markdownView().then((view) => view.prefetchMarkdown()),
     ]);
+    // What a click opens, parsed once the shell has settled (the service
+    // worker already holds it), so a first open shows content, not a
+    // placeholder for its code.
+    const warm = setTimeout(
+      () =>
+        [
+          settingsDialog,
+          libraryModule,
+          scheduledModule,
+          statisticsDialog,
+          toolsDialog,
+          promptDialog,
+        ].forEach((load) => preloadDeferred<never>(load).catch(() => {})),
+      2000,
+    );
+    return () => clearTimeout(warm);
   }, []);
   useEffect(() => {
-    const viewport = trackViewport();
-    const compact = observeCompact((value) => {
-      setCompact(value);
-      setDrawer(false);
-    });
-    return () => {
-      viewport();
-      compact();
-    };
+    return trackViewport();
   }, []);
   useEffect(() => applyTheme(theme), [theme]);
   useEffect(() => {
@@ -297,17 +335,9 @@ function App() {
       )
         choose(event.data.id);
     };
-    const back = () => {
-      setPage("chat");
-      setDrawer(false);
-      setModal(null);
-    };
     navigator.serviceWorker?.addEventListener("message", openSession);
-    addEventListener("popstate", back);
-    return () => {
+    return () =>
       navigator.serviceWorker?.removeEventListener("message", openSession);
-      removeEventListener("popstate", back);
-    };
   }, []);
   async function choose(id: string) {
     setNotice("");
@@ -709,9 +739,7 @@ function App() {
     setModal(value);
   };
   const conversationMenu = (item: Session) => (
-    <Deferred
-      load={menuModule}
-      fallback={null}
+    <ConversationMenu
       item={item}
       online={online}
       refresh={refresh}
@@ -736,9 +764,8 @@ function App() {
     ),
   ];
   const sidebar = (
-    <Deferred
-      load={sidebarModule}
-      fallback={<Spinner label="Loading sessions…" surface />}
+    <Sidebar
+      loading={booting}
       page={page}
       navigate={(value) => {
         setPage(value);
@@ -772,52 +799,57 @@ function App() {
   return (
     <TimePrefsContext.Provider value={timePrefs}>
       <ImageViewer.Provider value={setViewed}>
-        {(error || notice) && (
-          <div role={error ? "alert" : "status"} class="error-banner">
-            <span>{error || notice}</span>
-            <button
-              onClick={() => {
-                setError("");
-                setNotice("");
-              }}
-            >
-              Dismiss
-            </button>
-          </div>
-        )}
-        {/* A waiting service worker means this view is stale (notably in an
+        {/* Notices float over the app, never push it down. */}
+        <div class="toasts">
+          {(error || notice) && (
+            <div role={error ? "alert" : "status"} class="error-banner">
+              <span>{error || notice}</span>
+              <Button
+                onClick={() => {
+                  setError("");
+                  setNotice("");
+                }}
+              >
+                Dismiss
+              </Button>
+            </div>
+          )}
+          {/* A waiting service worker means this view is stale (notably in an
           installed PWA with no chrome to pull-to-refresh). Surface it
           here, not only in Settings, so reloads actually pick up fixes. */}
-        {update && (
-          <div role="status" class="update-banner">
-            <span>Update available with the latest fixes.</span>
-            {(() => {
-              const blocked = Object.values(drafts).some(
-                (item) => item.text || item.files.length,
-              )
-                ? "Send or copy unsent drafts first."
-                : uploading
-                  ? "Wait for uploads to finish."
-                  : Object.values(snapshots).some((item) => item.pending)
-                    ? "Wait for the running turn to finish."
-                    : "";
-              return (
-                <button
-                  class="primary"
-                  disabled={!!blocked}
-                  title={blocked || "Reloads this view with the latest fixes."}
-                  onClick={() =>
-                    import("../shared/pwa.ts").then(({ applyUpdate }) =>
-                      applyUpdate(update),
-                    )
-                  }
-                >
-                  Refresh now
-                </button>
-              );
-            })()}
-          </div>
-        )}
+          {update && (
+            <div role="status" class="update-banner">
+              <span>Update available with the latest fixes.</span>
+              {(() => {
+                const blocked = Object.values(drafts).some(
+                  (item) => item.text || item.files.length,
+                )
+                  ? "Send or copy unsent drafts first."
+                  : uploading
+                    ? "Wait for uploads to finish."
+                    : Object.values(snapshots).some((item) => item.pending)
+                      ? "Wait for the running turn to finish."
+                      : "";
+                return (
+                  <Button
+                    variant="primary"
+                    disabled={!!blocked}
+                    title={
+                      blocked || "Reloads this view with the latest fixes."
+                    }
+                    onClick={() =>
+                      import("../shared/pwa.ts").then(({ applyUpdate }) =>
+                        applyUpdate(update),
+                      )
+                    }
+                  >
+                    Refresh now
+                  </Button>
+                );
+              })()}
+            </div>
+          )}
+        </div>
         {authenticated === false ? (
           <Deferred
             load={pairing}
@@ -825,29 +857,6 @@ function App() {
             report={report}
             fallback={<Spinner label="Loading connection form…" surface />}
           />
-        ) : authenticated === null ? (
-          <main class="shell loading-shell">
-            {!compact && (
-              <aside class="sidebar" aria-hidden="true">
-                <div class="sidebar-head">
-                  <Mark />
-                </div>
-              </aside>
-            )}
-            <div class="conversation">
-              <header class="conversation-head">
-                <div>
-                  <h1>Your workspace</h1>
-                </div>
-              </header>
-              <div class="transcript">
-                <div class="transcript-content">
-                  <Spinner label="Loading conversation…" surface />
-                </div>
-              </div>
-              <div class="composer loading-composer" aria-hidden="true" />
-            </div>
-          </main>
         ) : (
           <div class="shell">
             {!compact ? (
@@ -877,11 +886,19 @@ function App() {
                 )}
                 <div>
                   <h1 title={session?.cwd}>
-                    {page === "library"
-                      ? "Library"
-                      : page === "scheduled"
-                        ? "Scheduled"
-                        : session?.title || "Your workspace"}
+                    {page === "library" ? (
+                      "Library"
+                    ) : page === "scheduled" ? (
+                      "Scheduled"
+                    ) : session ? (
+                      session.title || "Your workspace"
+                    ) : opening ? (
+                      <span class="text-skeleton" aria-hidden="true">
+                        Loading conversation
+                      </span>
+                    ) : (
+                      "Your workspace"
+                    )}
                   </h1>
                 </div>
                 {browserAvailable && (
@@ -890,6 +907,7 @@ function App() {
                       browsing ? "Open browser, agent working" : "Open browser"
                     }
                     class="browser-toggle"
+                    disabled={booting}
                     onClick={() => setModal({ type: "browser" })}
                   >
                     <Globe2 aria-hidden="true" />
@@ -906,7 +924,12 @@ function App() {
                     </IconButton>
                   </div>
                 )}
-                {page === "chat" && session && conversationMenu(session)}
+                {page === "chat" &&
+                  (session ? (
+                    conversationMenu(session)
+                  ) : opening ? (
+                    <MenuPlaceholder />
+                  ) : null)}
               </header>
               {page !== "chat" ? (
                 <Deferred
@@ -940,9 +963,7 @@ function App() {
                     rewrite the live one, and each surface keeps its own
                     DOM state (expansion, disclosure, scroll). */}
                   <LiveActivities.Provider
-                    value={
-                      (online && snapshot?.state?.activities) || NO_ACTIVITIES
-                    }
+                    value={snapshot?.state?.activities || NO_ACTIVITIES}
                   >
                     <Deferred
                       key={selected}
@@ -950,7 +971,7 @@ function App() {
                       fallback={
                         <div className="transcript">
                           <div className="transcript-content">
-                            <Spinner label="Loading conversation…" surface />
+                            <TranscriptLoading />
                           </div>
                         </div>
                       }
@@ -984,9 +1005,7 @@ function App() {
                       close={() => setSide(null)}
                     />
                   )}
-                  <Deferred
-                    load={composer}
-                    fallback={null}
+                  <Composer
                     session={session}
                     commands={catalogue.commands || []}
                     snapshot={snapshot}
@@ -1016,8 +1035,21 @@ function App() {
                     }
                     showContext={showContext}
                     zoom={zoom}
-                    openBrowser={() => setModal({ type: "browser" })}
+                    openBrowser={() =>
+                      setModal({ type: "browser", handoff: true })
+                    }
                   />
+                </>
+              ) : opening ? (
+                // A reload on a conversation: its surfaces, before the
+                // catalogue names the session.
+                <>
+                  <div class="transcript">
+                    <div class="transcript-content">
+                      <TranscriptLoading />
+                    </div>
+                  </div>
+                  <ComposerLoading />
                 </>
               ) : (
                 <div class="empty">
@@ -1026,13 +1058,13 @@ function App() {
                   <p>
                     Open a saved session or start in any directory on your host.
                   </p>
-                  <button
-                    class="primary"
+                  <Button
+                    variant="primary"
                     onClick={() => setModal({ type: "new" })}
                     disabled={!online}
                   >
                     New conversation
-                  </button>
+                  </Button>
                 </div>
               )}
             </main>
@@ -1084,7 +1116,7 @@ function App() {
             load={inspectorDialog}
             fallback={null}
             target={inspector}
-            items={online ? snapshot?.state?.activities || [] : []}
+            items={snapshot?.state?.activities || []}
             collaborators={snapshot?.state?.collaborators || []}
             cwd={session.cwd || ""}
             running={running}
@@ -1099,14 +1131,16 @@ function App() {
             title="Browser"
             className="browser-view"
             size="browser"
-            layout="panel"
+            layout={compact ? "sheet" : "panel"}
             close={() => setModal(null)}
           >
             <Deferred
               load={browserDialog}
-              fallback={<Spinner label="Loading browser…" surface />}
+              fallback={<BrowserLoading />}
               sessions={catalogue.sessions}
               report={report}
+              close={() => setModal(null)}
+              handoff={modal.handoff}
             />
           </Modal>
         )}
@@ -1128,9 +1162,13 @@ function App() {
                 Any accessible directory works, including a folder outside Git.
                 Multiple conversations can work in the same folder.
               </p>
-              <button class="primary" disabled={busy || !online}>
+              <Button
+                type="submit"
+                variant="primary"
+                disabled={busy || !online}
+              >
                 Start conversation
-              </button>
+              </Button>
             </form>
           </Modal>
         )}
@@ -1194,13 +1232,14 @@ function App() {
           <Modal
             title="Settings"
             className="settings-view"
-            size="medium"
-            layout="panel"
+            layout="sheet"
+            header={false}
             close={() => setModal(null)}
           >
             <Deferred
               load={settingsDialog}
-              fallback={<Spinner label="Loading settings…" surface />}
+              ownsDialog
+              fallback={<SettingsLoading />}
               theme={theme}
               setTheme={setTheme}
               timePrefs={timePrefs}
@@ -1246,7 +1285,7 @@ function App() {
                 changed={() => load(toolsSessionId)}
               />
             ) : (
-              <p class="muted">Open a conversation to choose its tools.</p>
+              <EmptyState>Open a conversation to choose its tools.</EmptyState>
             )}
           </Modal>
         )}
@@ -1257,6 +1296,7 @@ function App() {
     </TimePrefsContext.Provider>
   );
 }
+lockPageZoom();
 render(
   <ErrorBoundary>
     <App />

@@ -18,7 +18,7 @@ import {
   CalendarClock,
 } from "lucide-preact";
 import { command } from "../../state/api.ts";
-import { Mark, Input, Time } from "../../shared/ui.tsx";
+import { Mark, Input, Time, Button, IconButton } from "../../shared/ui.tsx";
 import FolderLabel from "./folder-label.tsx";
 import { Menu, MenuItem } from "../../shared/popover.tsx";
 import { ActivityStatus, active } from "../chat/activity-status.tsx";
@@ -111,7 +111,34 @@ export function ConversationMenu({
   );
 }
 
+// Before the catalogue arrives: a folder and a few rows in the rows' own
+// elements, so the list fills in without a single line moving.
+function SessionsLoading() {
+  return (
+    <section aria-hidden="true">
+      <h2>
+        <span class="text-skeleton">project folder</span>
+      </h2>
+      {["A conversation title", "Another title here", "A short one"].map(
+        (title) => (
+          <div class="session-row" key={title}>
+            <div class="session">
+              <span>
+                <span class="text-skeleton">{title}</span>
+              </span>
+              <small>
+                <span class="text-skeleton">11:00 PM</span>
+              </small>
+            </div>
+          </div>
+        ),
+      )}
+    </section>
+  );
+}
+
 export default function Sidebar({
+  loading,
   sessions,
   selected,
   unread,
@@ -126,6 +153,7 @@ export default function Sidebar({
   navigate,
   scheduledUnread,
 }: {
+  loading: boolean;
   page: string;
   navigate: (page: "chat" | "library" | "scheduled") => void;
   scheduledUnread: boolean;
@@ -164,22 +192,29 @@ export default function Sidebar({
         >
           <Mark />
         </a>
-        <button class="quiet with-icon" onClick={create} disabled={!online}>
+        <Button
+          variant="quiet"
+          class="with-icon"
+          onClick={create}
+          disabled={!online}
+        >
           <Plus />
           New conversation
-        </button>
+        </Button>
       </div>
       <div class="sidebar-sections">
-        <button
-          class="quiet with-icon"
+        <Button
+          variant="quiet"
+          class="with-icon"
           aria-current={page === "library" ? "page" : undefined}
           onClick={() => navigate("library")}
         >
           <Library />
           Library
-        </button>
-        <button
-          class="quiet with-icon"
+        </Button>
+        <Button
+          variant="quiet"
+          class="with-icon"
           aria-current={page === "scheduled" ? "page" : undefined}
           onClick={() => navigate("scheduled")}
         >
@@ -188,7 +223,7 @@ export default function Sidebar({
           {scheduledUnread && (
             <span class="unread-dot" aria-label="Unread scheduled results" />
           )}
-        </button>
+        </Button>
       </div>
       <label class="search">
         <span class="sr-only">Find a session</span>
@@ -199,7 +234,8 @@ export default function Sidebar({
           placeholder="Find a conversation…"
         />
       </label>
-      <nav>
+      <nav aria-busy={loading || undefined}>
+        {loading && !sessions.length && <SessionsLoading />}
         {[...groups].map(([cwd, items]) => (
           <section key={cwd}>
             <h2>
@@ -207,7 +243,7 @@ export default function Sidebar({
             </h2>
             {items.map((item) => (
               <div class="session-row" key={item.id}>
-                <button
+                <Button
                   class={`session ${item.id === selected ? "selected" : ""}`}
                   onClick={() => choose(item.id)}
                   aria-current={item.id === selected ? "page" : undefined}
@@ -242,7 +278,7 @@ export default function Sidebar({
                       <span title={item.error}> · Needs attention</span>
                     )}
                   </small>
-                </button>
+                </Button>
                 {menu(item)}
               </div>
             ))}
@@ -254,22 +290,12 @@ export default function Sidebar({
           phase={connection}
           className={`connection ${online ? "connected" : ""}`}
         />
-        <button
-          class="quiet icon-button"
-          onClick={refresh}
-          aria-label="Refresh"
-          title="Refresh"
-        >
+        <IconButton label="Refresh" onClick={refresh}>
           <RefreshCw />
-        </button>
-        <button
-          class="quiet icon-button"
-          onClick={settings}
-          aria-label="Settings"
-          title="Settings"
-        >
+        </IconButton>
+        <IconButton label="Settings" onClick={settings}>
           <Settings />
-        </button>
+        </IconButton>
       </footer>
     </>
   );

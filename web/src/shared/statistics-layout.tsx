@@ -1,6 +1,6 @@
 import type { ComponentChildren } from "preact";
 import type { StatisticsUnit } from "./types.ts";
-import { Spinner } from "./ui.tsx";
+import { Button } from "./ui.tsx";
 
 // Code loading, data loading and loaded statistics share the same toolbar;
 // a unit (the turn or message opened) adds its scope beside Session.
@@ -20,15 +20,14 @@ export function StatisticsLayout({
       {unit && (
         <div class="dialog-actions" role="group" aria-label="Statistics scope">
           {(["turn", "session"] as const).map((value) => (
-            <button
-              type="button"
+            <Button
               key={value}
               disabled={!change}
               aria-pressed={scope === value}
               onClick={() => change?.(value)}
             >
               {value === "turn" ? unit : "Session"}
-            </button>
+            </Button>
           ))}
         </div>
       )}
@@ -37,10 +36,28 @@ export function StatisticsLayout({
   );
 }
 
+// The rows each scope lists (its own, then usage), with placeholder text.
+const ROWS = { Turn: 16, Message: 13, Session: 15 };
 export function StatisticsLoading({ unit }: { unit?: StatisticsUnit }) {
   return (
     <StatisticsLayout unit={unit} scope={unit ? "turn" : "session"}>
-      <Spinner label="Loading statistics…" surface />
+      <span class="sr-only" role="status" aria-busy="true">
+        Loading statistics…
+      </span>
+      <dl class="stats" aria-hidden="true">
+        {Array.from({ length: ROWS[unit || "Session"] }, (_, index) => (
+          <div key={index}>
+            <dt>
+              <span class="text-skeleton">
+                {index % 3 ? "Model calls" : "Input tokens (all)"}
+              </span>
+            </dt>
+            <dd>
+              <span class="text-skeleton">000</span>
+            </dd>
+          </div>
+        ))}
+      </dl>
     </StatisticsLayout>
   );
 }

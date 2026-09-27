@@ -50,7 +50,8 @@ follow the permission mode (`/permissions`, `UAGENT_APPROVAL`):
   always for that exact action in this repository. A remembered rule covers
   the tool's provider, schema, approval class and arguments, so a change to
   any of them asks again. Rules live in `~/.uagent/config/permissions.json`
-  and can be removed from the web Settings page.
+  and can be removed from the web Settings page or with `/permissions rules`
+  and `/permissions forget N|all`.
 - **Auto** sends the user request and a bounded preview of the action to
   OpenRouter's Decisions API (`UAGENT_PERMISSION_MODEL`, default
   `~typesafe/jev-latest`; `UAGENT_PERMISSION_URL`) and follows its allow, ask
@@ -81,8 +82,9 @@ environment described in [SECURITY.md](../SECURITY.md).
   context is returned as a short receipt.
 - `run`, `scratch` and `grep` execute inside the OS sandbox: writes are
   limited to the workspace, temporary directories and package caches; reads
-  and, by default, the network stay open. See
-  [SECURITY.md](../SECURITY.md) for the full policy.
+  and, by default, the network stay open, except for the browser profile,
+  which the file tools refuse too. See [SECURITY.md](../SECURITY.md) for the
+  full policy.
 
 ## Activities
 

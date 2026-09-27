@@ -1,8 +1,9 @@
 import { storage } from "./shared/storage.ts";
 import { render } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
-import { Check, Copy, Plus } from "lucide-preact";
+import { Check, Copy, Plus, Wrench } from "lucide-preact";
 import {
+  Actions,
   Button,
   Field,
   IconButton,
@@ -11,18 +12,40 @@ import {
   Select,
   Skeleton,
   Spinner,
-  Toggle,
+  Group,
+  Row,
+  SettingRow,
+  Switch,
   Input,
   Textarea,
+  ValueSelect,
+  SectionTitle,
+  EmptyState,
+  LoadError,
+  EventRow,
+  DisclosureRow,
+  Time,
+  CodeCopy,
 } from "./shared/ui.tsx";
-import { Menu, MenuItem } from "./shared/popover.tsx";
+import { Menu, MenuItem, Popover } from "./shared/popover.tsx";
+import { ConnectionStatus, StatusLed } from "./shared/connection-status.tsx";
 import { applyTheme, applyZoom, normalizeZoom } from "./shared/layout.ts";
-import { SizeControls } from "./shared/size-controls.tsx";
+import { ZoomSlider } from "./shared/zoom-slider.tsx";
 import { readStored, writeStored } from "./state/store.ts";
-import BrowserInput from "./features/browser/input.tsx";
+import BrowserTouch from "./features/browser/touch.tsx";
+import { BrowserFrame, BrowserTools } from "./features/browser/frame.tsx";
+import { ImageViewerDialog } from "./shared/attachments.tsx";
+import "./features/composer/attachments.css";
+import "./features/chat/message.css";
 import "./shared/style.css";
-import "./features/browser/browser.css";
 import "./showcase.css";
+
+// A 400x300 image: small enough that a large screen shows it unscaled.
+const SAMPLE_IMAGE = `data:image/svg+xml,${encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300">' +
+    '<rect width="400" height="300" fill="#3b82f6"/>' +
+    '<circle cx="200" cy="150" r="80" fill="#fff"/></svg>',
+)}`;
 
 function BrowserInputSample() {
   const screen = useRef<HTMLDivElement>(null);
@@ -33,7 +56,6 @@ function BrowserInputSample() {
     canvas.width = 800;
     canvas.height = 500;
     canvas.style.width = "100%";
-    canvas.style.height = "100%";
     const context = canvas.getContext("2d")!;
     context.fillStyle = "#e2e2e2";
     context.fillRect(0, 0, canvas.width, canvas.height);
@@ -45,21 +67,33 @@ function BrowserInputSample() {
     target.current.append(canvas);
   }, []);
   return (
-    <div class="showcase-browser-input">
-      <BrowserInput
-        screen={screen}
-        target={target}
-        // No connection here: record what a server would receive.
-        pointer={(x, y, mask) =>
-          ((globalThis as { browserPointer?: number[][] }).browserPointer ??=
-            []).push([x, y, mask])
-        }
-        disabled={false}
-        showTrackpad
-        readOnly={false}
-        cursorShape={null}
-      />
-    </div>
+    <BrowserFrame
+      screen={
+        <BrowserTouch
+          screen={screen}
+          target={target}
+          label="Browser viewport"
+          // No connection here: record what a server would receive.
+          pointer={(x, y, mask) =>
+            ((globalThis as { browserPointer?: number[][] }).browserPointer ??=
+              []).push([Math.round(x), Math.round(y), mask])
+          }
+        />
+      }
+      bar={
+        <>
+          <div class="popover-control browser-status-menu">
+            <Button variant="quiet" class="with-icon browser-status">
+              <span>Driving</span>
+            </Button>
+          </div>
+          <BrowserTools disabled={false} />
+          <Button variant="primary" class="browser-primary">
+            Done
+          </Button>
+        </>
+      }
+    />
   );
 }
 
@@ -94,7 +128,7 @@ function Showcase() {
   );
   const [enabled, setEnabled] = useState(true);
   const [dialog, setDialog] = useState<
-    "example" | "browser" | "loading" | null
+    "example" | "browser" | "loading" | "image" | null
   >(null);
 
   useEffect(() => applyTheme(theme), [theme]);
@@ -140,7 +174,30 @@ function Showcase() {
             </Field>
           </div>
           <div class="showcase-card">
-            <SizeControls zoom={zoom} change={setZoom} />
+            <Group>
+              <SettingRow
+                name="Zoom"
+                htmlFor="zoom"
+                detail="A changed setting offers Reset."
+                overridden={zoom !== 100}
+                reset={() => setZoom(100)}
+              >
+                <ZoomSlider zoom={zoom} change={setZoom} />
+              </SettingRow>
+              <SettingRow
+                name="Locked setting"
+                locked="Set by the environment; change it there."
+                overridden
+                reset={() => {}}
+              >
+                <Switch
+                  label="Locked setting"
+                  checked
+                  disabled
+                  onChange={() => {}}
+                />
+              </SettingRow>
+            </Group>
           </div>
         </div>
         <div class="token-grid" aria-label="Color tokens">
@@ -188,6 +245,12 @@ function Showcase() {
               <IconButton label="Copy example">
                 <Copy aria-hidden="true" />
               </IconButton>
+              <Popover
+                label="Example popover"
+                trigger={<Wrench aria-hidden="true" />}
+              >
+                <p>Anchored panel content.</p>
+              </Popover>
               <Menu label="Example menu">
                 <MenuItem>First action</MenuItem>
                 <MenuItem>Second action</MenuItem>
@@ -244,12 +307,6 @@ function Showcase() {
           <Field label="Date and time">
             <Input type="datetime-local" defaultValue="2026-09-24T12:00" />
           </Field>
-          <Toggle
-            label="Example setting"
-            help="A short description of the resulting behavior."
-            checked={enabled}
-            onChange={(event) => setEnabled(event.currentTarget.checked)}
-          />
           <Field label="Long text">
             <Textarea rows={4} defaultValue="Multiline content" />
           </Field>
@@ -274,11 +331,84 @@ function Showcase() {
           </div>
           <div class="update-banner showcase-banner" role="status">
             <span>Update available with the latest fixes.</span>
-            <button class="primary">Refresh now</button>
+            <Button variant="primary">Refresh now</Button>
           </div>
           <div class="showcase-card status-sample">
-            <span class="status-led active" aria-hidden="true" />
-            Connected
+            <ConnectionStatus phase="connected" />
+            <ConnectionStatus phase="reconnecting" />
+            <span>
+              <StatusLed state="running" /> Running ·{" "}
+              <Time value={Date.now()} />
+            </span>
+            <span>
+              <StatusLed state="failed" /> Failed
+            </span>
+          </div>
+          <div class="showcase-card">
+            <LoadError
+              error={new Error("The host did not answer.")}
+              retry={() => {}}
+            />
+          </div>
+          <div class="showcase-card">
+            Copy feedback <CodeCopy text="example" />
+          </div>
+        </div>
+      </section>
+
+      <section class="showcase-section">
+        <div class="showcase-section-head">
+          <div>
+            <h2>Lists and rows</h2>
+            <p>
+              Flat grouped rows carry a value, a switch or a destination;
+              disclosures reveal detail in place.
+            </p>
+          </div>
+        </div>
+        <div class="showcase-grid showcase-grid-two">
+          <div>
+            <Group
+              title="Grouped rows"
+              footer="Help text belongs below a group."
+            >
+              <Row
+                label="Example setting"
+                detail="A short description of the resulting behavior."
+              >
+                <Switch
+                  label="Example setting"
+                  checked={enabled}
+                  onChange={setEnabled}
+                />
+              </Row>
+              <Row label="Choice">
+                <ValueSelect aria-label="Choice" value="auto">
+                  <option value="ask">Ask</option>
+                  <option value="auto">Auto</option>
+                </ValueSelect>
+              </Row>
+              <Row label="Destination" onClick={() => {}} />
+              <Row
+                label="Expandable"
+                detail="Opens its detail below the row."
+                expanded
+                onClick={() => {}}
+              />
+              <Row label="Remove this device" destructive onClick={() => {}} />
+            </Group>
+            <SectionTitle>Section title</SectionTitle>
+            <EmptyState action={<Button>Create one</Button>}>
+              Nothing here yet.
+            </EmptyState>
+          </div>
+          <div class="showcase-card">
+            <DisclosureRow label="Disclosure row" status="done">
+              <p>Detail revealed in place.</p>
+            </DisclosureRow>
+            <EventRow title="Event row" icon={<Check aria-hidden="true" />}>
+              <p>What happened, in detail.</p>
+            </EventRow>
           </div>
         </div>
       </section>
@@ -302,10 +432,20 @@ function Showcase() {
         <div class="showcase-section-head">
           <div>
             <h2>Remote browser input</h2>
-            <p>View gestures and relative pointer controls remain separate.</p>
+            <p>Tap clicks, drag scrolls, hold-drag drags, pinch zooms.</p>
           </div>
         </div>
         <Button onClick={() => setDialog("browser")}>Open browser input</Button>
+      </section>
+
+      <section class="showcase-section">
+        <div class="showcase-section-head">
+          <div>
+            <h2>Image viewer</h2>
+            <p>Full bleed; pinch, double-tap or Ctrl+scroll to zoom.</p>
+          </div>
+        </div>
+        <Button onClick={() => setDialog("image")}>Open image viewer</Button>
       </section>
 
       {dialog === "example" && (
@@ -313,12 +453,12 @@ function Showcase() {
           <p>
             A modal uses the same controls and spacing tokens as every page.
           </p>
-          <div class="dialog-actions">
-            <button onClick={() => setDialog(null)}>Cancel</button>
-            <button class="primary" onClick={() => setDialog(null)}>
+          <Actions>
+            <Button onClick={() => setDialog(null)}>Cancel</Button>
+            <Button variant="primary" onClick={() => setDialog(null)}>
               Confirm
-            </button>
-          </div>
+            </Button>
+          </Actions>
         </Modal>
       )}
       {dialog === "loading" && (
@@ -331,11 +471,18 @@ function Showcase() {
           <DelayedContent />
         </Modal>
       )}
+      {dialog === "image" && (
+        <ImageViewerDialog
+          image={{ src: SAMPLE_IMAGE, name: "sample.svg" }}
+          close={() => setDialog(null)}
+        />
+      )}
       {dialog === "browser" && (
         <Modal
           title="Browser input"
+          className="browser-view"
           size="browser"
-          layout="panel"
+          layout="sheet"
           close={() => setDialog(null)}
         >
           <BrowserInputSample />

@@ -57,6 +57,8 @@ Tool ArtifactTool(const std::string& session_path) {
   tool.approval_class = [](const json& args) {
     return PathApprovalClass(JsonValue(args, "path", ""), PathAccess::kRead);
   };
+  tool.validate = RefuseHidden;
+  tool.run = RefusingHidden(std::move(tool.run));
   tool.capabilities = Capability(ToolCapability::kInspect);
   tool.parallel_safe = true;
   return tool;

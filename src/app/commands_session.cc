@@ -9,6 +9,7 @@
 
 #include "include/agent/child_agent.h"
 #include "include/app/commands.h"
+#include "include/app/permissions.h"
 #include "include/app/self_description.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
@@ -16,6 +17,7 @@
 #include "include/core/steering.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
+#include "include/mcp/register.h"
 #include "include/providers.h"
 #include "include/tools/subagent.h"
 #include "include/ui/display.h"
@@ -235,6 +237,165 @@ void HandleDebugConfig(const AppSession& session, const std::string& argument,
       "%s\u00b7 precedence: command line, process environment, trusted "
       "project config, user config, built-in default%s\n",
       DIM(), RST());
+}
+
+// The settings a layer changes, as text: what differs from its default and
+// where it comes from, then how a change takes effect.
+void HandleConfig(AppSession& session, const std::string& argument,
+                  CommandReply& reply) {
+  json request = {{"kind", "config"}};
+  if (!argument.empty()) {
+    std::istringstream input(argument);
+    std::string scope, change;
+    input >> scope;
+    std::getline(input, change);
+    change = Trim(change);
+    const bool unset = change.starts_with("unset ");
+    const size_t equal = change.find('=');
+    if (unset) change = Trim(change.substr(6));
+    request.update({{"scope", scope}});
+    if (change == "reset") {
+      request["operation"] = "reset";
+    } else {
+      request.update(
+          {{"operation", "apply"},
+           {"changes",
+            json::array({{{"key", unset ? change : change.substr(0, equal)},
+                          {"value", unset || equal == std::string::npos
+                                        ? ""
+                                        : change.substr(equal + 1)},
+                          {"unset", unset}}})}});
+    }
+  }
+  reply.result = SessionControl(session, request);
+  const json& result = reply.result;
+  if (result.contains("error")) {
+    reply.Print("%serror: %s%s\n", RED(),
+                TerminalSafe(JsonValue(result, "error", "")).c_str(), RST());
+    return;
+  }
+  bool restart = false;
+  for (const json& effect : JsonValue(result, "effects", json::array())) {
+    const std::string how = JsonValue(effect, "effect", "");
+    restart |= how == "needs a restart";
+    reply.Print("%s· %s: %s%s\n", DIM(),
+                TerminalSafe(JsonValue(effect, "key", "")).c_str(),
+                how.c_str(), RST());
+  }
+  if (restart) {
+    reply.Print("%s· /restart applies it here; new conversations have it "
+                "already%s\n",
+                YEL(), RST());
+  }
+  if (!argument.empty()) return;
+  size_t changed = 0;
+  for (const json& setting : JsonValue(result, "settings", json::array())) {
+    const std::string source = JsonValue(setting, "source", "default");
+    if (source == "default") continue;
+    ++changed;
+    const json& value = setting["value"];
+    reply.Print("%s = %s%s · %s%s\n",
+                TerminalSafe(JsonValue(setting, "name", "")).c_str(), DIM(),
+                value.is_null() ? "configured"
+                                : TerminalSafe(value.is_string()
+                                                   ? value.get<std::string>()
+                                                   : JsonDump(value))
+                                      .c_str(),
+                source.c_str(), RST());
+  }
+  if (!changed) reply.Print("%s· every setting is at its default%s\n", DIM(), RST());
+  reply.Print("%s· /config user|project KEY=VALUE, unset KEY, or reset "
+              "(keeps secrets)%s\n",
+              DIM(), RST());
+}
+
+// This repository's remembered actions, numbered so one can be forgotten,
+// as in the web settings.
+void HandlePermissionRules(const std::string& argument, CommandReply& reply) {
+  json listed = PermissionRulesControl({{"action", "list"}});
+  if (argument != "rules" && !listed.contains("error")) {
+    const std::string which = Trim(argument.substr(6));
+    int64_t index = 0;
+    const json& rules = listed["rules"];
+    if (which == "all") {
+      listed = PermissionRulesControl({{"action", "clear"}});
+    } else if (ParseInt64(which.c_str(), index) && index >= 1 &&
+               index <= static_cast<int64_t>(rules.size())) {
+      listed = PermissionRulesControl(
+          {{"action", "delete"},
+           {"key", JsonValue(rules[static_cast<size_t>(index - 1)], "key", "")}});
+    } else {
+      listed = {{"error", "usage: /permissions forget N|all"}};
+    }
+  }
+  reply.result = listed;
+  if (listed.contains("error")) {
+    reply.Print("%serror: %s%s\n", RED(),
+                TerminalSafe(JsonValue(listed, "error", "")).c_str(), RST());
+    return;
+  }
+  const json& rules = listed["rules"];
+  if (rules.empty()) {
+    reply.Print("%s· no remembered actions for this repository%s\n", DIM(),
+                RST());
+  }
+  for (size_t i = 0; i < rules.size(); ++i) {
+    reply.Print("%zu. %s %s· %s%s\n", i + 1,
+                TerminalSafe(JsonValue(rules[i], "tool", "")).c_str(), DIM(),
+                TerminalSafe(JsonValue(rules[i], "preview", "")).c_str(),
+                RST());
+  }
+}
+
+// The same overview as the web settings: each server by scope, its state,
+// and why it is not running; retry, on and off act on one server.
+void HandleMcp(AppSession& session, const std::string& argument,
+               CommandReply& reply) {
+  AppContext& app = session.context;
+  if (!argument.empty()) {
+    std::istringstream input(argument);
+    std::string operation, name, extra;
+    input >> operation >> name >> extra;
+    if ((operation != "retry" && operation != "on" && operation != "off") ||
+        name.empty() || !extra.empty()) {
+      reply.Print("%serror: usage: /mcp [retry|on|off NAME]%s\n", RED(), RST());
+      return;
+    }
+    json done = SessionControl(
+        session, {{"kind", "tools"},
+                  {"operation",
+                   operation == "retry" ? "mcp_restart" : "mcp_enable"},
+                  {"name", name},
+                  {"enabled", operation == "on"}});
+    if (done.contains("error")) {
+      reply.Print("%serror: %s%s\n", RED(),
+                  TerminalSafe(JsonValue(done, "error", "")).c_str(), RST());
+      return;
+    }
+  }
+  const json servers = McpStatus(app.runtime.mcp, app.tools);
+  reply.result = {{"mcp", servers}};
+  if (servers.empty()) {
+    reply.Print("%s· no MCP servers (~/.mcp.json, ./.mcp.json)%s\n",
+                DIM(), RST());
+  }
+  for (const json& server : servers) {
+    const std::string state = JsonValue(server, "state", "");
+    const char* color = state == "ready"      ? GREEN()
+                        : state == "failed"   ? RED()
+                        : state == "starting" ? YEL()
+                                              : DIM();
+    std::string detail =
+        state == "ready"
+            ? std::to_string(JsonValue(server, "tools", int64_t{0})) + " tools"
+        : state == "failed" ? JsonValue(server, "error", "")
+                            : state;
+    if (JsonValue(server, "overrides", false)) detail += " · overrides global";
+    reply.Print("%s●%s %s %s· %s · %s%s\n", color, RST(),
+                TerminalSafe(JsonValue(server, "name", "")).c_str(), DIM(),
+                JsonValue(server, "scope", "").c_str(),
+                TerminalSafe(detail).c_str(), RST());
+  }
 }
 
 void HandleTools(AppSession& session, const std::string& argument,

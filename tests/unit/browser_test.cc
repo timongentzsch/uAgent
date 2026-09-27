@@ -15,12 +15,12 @@
 
 namespace uagent {
 
-void TestBrowserViewOnlyFilter() {
-  web::RfbViewOnlyFilter filter;
+void TestBrowserInputFilter() {
+  web::RfbInputFilter filter;
   std::string output;
-  CHECK(filter.Push("RFB 003.", output));
+  CHECK(filter.Push("RFB 003.", output, false));
   CHECK(output == "RFB 003.");
-  CHECK(filter.Push(std::string("008\n\x01\x01", 6), output));
+  CHECK(filter.Push(std::string("008\n\x01\x01", 6), output, false));
   CHECK(output == std::string("008\n\x01\x01", 6));
 
   const std::string update("\x03\x01\0\0\0\0\x05\0\x03\x20", 10);
@@ -30,22 +30,42 @@ void TestBrowserViewOnlyFilter() {
       "\x06\0\0\0\0\0\0\x03"
       "abc",
       11);
-  CHECK(filter.Push(update + key + pointer + clipboard + update, output));
+  // Watching: only display messages pass.
+  CHECK(filter.Push(update + key + pointer + clipboard + update, output, false));
   CHECK(output == update + update);
+  CHECK(filter.Release().empty());
 
   const std::string encodings("\x02\0\0\x01\0\0\0\0", 8);
-  CHECK(filter.Push(encodings.substr(0, 3), output));
+  CHECK(filter.Push(encodings.substr(0, 3), output, false));
   CHECK(output.empty());
-  CHECK(filter.Push(encodings.substr(3), output));
+  CHECK(filter.Push(encodings.substr(3), output, false));
   CHECK(output == encodings);
+
+  // Control arrives mid-stream, inside a fragmented message: framing holds,
+  // and the held key and button are lifted when control ends.
+  const std::string held = key + pointer;
+  CHECK(filter.Push(held.substr(0, 5), output, true));
+  CHECK(output.empty());
+  CHECK(filter.Push(held.substr(5), output, true));
+  CHECK(output == held);
+  CHECK(filter.Release() == std::string("\x04\0\0\0\0\0\0\x61", 8) +
+                                std::string("\x05\0\0\x10\0\x20", 6));
+  CHECK(filter.Release().empty());
+  CHECK(filter.Push(key + update, output, false));
+  CHECK(output == update);
+  // A QEMU extended key is lifted in its own form, scan code included.
+  const std::string qemu_down("\xff\0\0\x01\0\0\xff\xe1\0\0\0\x2a", 12);
+  CHECK(filter.Push(qemu_down, output, true));
+  CHECK(filter.Release() ==
+        std::string("\xff\0\0\0\0\0\xff\xe1\0\0\0\x2a", 12));
 
   const std::string extended_clipboard(
       "\x06\0\0\0\xff\xff\xff\xfc"
       "data",
       12);
-  CHECK(filter.Push(extended_clipboard, output));
+  CHECK(filter.Push(extended_clipboard, output, false));
   CHECK(output.empty());
-  CHECK(!filter.Push(std::string("\x07", 1), output));
+  CHECK(!filter.Push(std::string("\x07", 1), output, true));
 }
 
 void TestBrowserHandoverRecovery() {
@@ -215,7 +235,8 @@ void TestBrowserProfileSignIn() {
 }
 
 // Closing the controlling viewer hands the browser back, watching never takes
-// control, and an agent call made meanwhile is reported as waiting.
+// control, and an agent call made meanwhile fails at once instead of waiting.
+// An idle browser stops only while no human holds it.
 void TestBrowserHandBackOnClose() {
   namespace fs = std::filesystem;
   TestWorkspace workspace("browser-handback");
@@ -231,13 +252,32 @@ void TestBrowserHandBackOnClose() {
   browser::Runtime runtime;
   auto taken = runtime.Execute({{"op", "takeover"}, {"device", kDevice}});
   CHECK(taken.value("mode", "") == "human");
-  CHECK(!runtime.Execute({{"op", "viewer"}, {"role", "observe"}})
-             .contains("error"));
+  CHECK(runtime.Execute({{"op", "viewer"}, {"device", kDevice}})
+            .value("controller", false));
+  CHECK(!runtime.Execute({{"op", "viewer"}, {"device", kSession}})
+             .value("controller", true));
   CHECK(runtime.Execute({{"op", "tabs"}, {"session_id", kSession}})
-            .contains("error"));
-  CHECK(runtime.Execute({{"op", "status"}}).value("waiting", false));
+            .value("error", "")
+            .starts_with("the user controls the browser"));
+  CHECK(!runtime.Execute({{"op", "status"}}).value("waiting", true));
+  // A stale viewer of an earlier display cannot hand back this one.
+  CHECK(runtime
+            .Execute({{"op", "viewer_disconnected"},
+                      {"device", kDevice},
+                      {"display", taken.value("display", uint64_t{0}) + 1},
+                      {"generation", taken["generation"]}})
+            .value("mode", "") == "human");
+  // Nor can one that last saw an earlier lease of this display.
+  CHECK(runtime
+            .Execute({{"op", "viewer_disconnected"},
+                      {"device", kDevice},
+                      {"display", taken["display"]},
+                      {"generation",
+                       taken.value("generation", uint64_t{0}) - 1}})
+            .value("mode", "") == "human");
   auto closed = runtime.Execute({{"op", "viewer_disconnected"},
                                  {"device", kDevice},
+                                 {"display", taken["display"]},
                                  {"generation", taken["generation"]}});
   CHECK(closed.value("mode", "") == "idle");
   CHECK(!closed.value("waiting", true));
@@ -247,8 +287,54 @@ void TestBrowserHandBackOnClose() {
   CHECK(taken.value("mode", "") == "human");
   closed = runtime.Execute({{"op", "viewer_disconnected"},
                             {"device", kDevice},
+                            {"display", taken["display"]},
                             {"generation", taken["generation"]}});
   CHECK(closed.value("mode", "") == "agent");
+  // An idle Chrome stops but keeps the agent's lease, and the next action
+  // starts it again; one a human controls never stops.
+  runtime.StopIfIdle(std::chrono::minutes(0));
+  CHECK(!runtime.Execute({{"op", "status"}}).value("running", true));
+  CHECK(runtime.Execute({{"op", "status"}}).value("mode", "") == "agent");
+  CHECK(!runtime.Execute({{"op", "tabs"}, {"session_id", kSession}})
+             .contains("error"));
+  CHECK(runtime.Execute({{"op", "takeover"}, {"device", kDevice}})
+            .value("running", false));
+  runtime.StopIfIdle(std::chrono::minutes(0));
+  CHECK(runtime.Execute({{"op", "status"}}).value("running", false));
+  runtime.Shutdown();
+}
+
+// Every attached page masks password fields before anything is drawn, and
+// back refuses a history entry the agent could not open by URL.
+void TestBrowserSecretMaskAndBack() {
+  namespace fs = std::filesystem;
+  TestWorkspace workspace("browser-secrets");
+  const auto bin = workspace.root / "bin";
+  InstallFakeBrowser(bin);
+  const auto directory = fs::canonical(workspace.root) / "browser";
+  ScopedEnv configured("UAGENT_BROWSER_DATA", directory.string());
+  ScopedEnv search("PATH", bin.string() + ":" + getenv("PATH"));
+  ScopedEnv display("DISPLAY");
+  ScopedEnv authority("XAUTHORITY");
+  constexpr const char* kSession = "cccccccccccccccccccccccccccccccc";
+  browser::Runtime runtime;
+  CHECK(runtime.Execute({{"op", "back"}, {"session_id", kSession}})
+            .value("error", "") == "the previous page is not HTTP(S)");
+  bool masked = false, navigated = false;
+  std::ifstream log(directory / "profile" / "cdp.jsonl");
+  for (std::string line; std::getline(log, line);) {
+    const json command = json::parse(line);
+    const std::string method = command.value("method", "");
+    if (method == "Page.addScriptToEvaluateOnNewDocument") {
+      masked = command["params"].value("runImmediately", false) &&
+               command["params"]
+                       .value("source", "")
+                       .find("-webkit-text-security") != std::string::npos;
+    }
+    navigated = navigated || method == "Page.navigateToHistoryEntry";
+  }
+  CHECK(masked);
+  CHECK(!navigated);
   runtime.Shutdown();
 }
 

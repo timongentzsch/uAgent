@@ -82,10 +82,13 @@ test.describe("browser input showcase on a phone", () => {
     hasTouch: true,
   });
 
-  test("keeps view gestures separate from trackpad input", async ({ page }) => {
+  test("direct touch maps to exact pixels and never leaves a button held", async ({
+    page,
+  }) => {
     await page.goto("/ui.html");
     await page.getByRole("button", { name: "Open browser input" }).click();
-    const canvas = page.locator(".showcase-browser-input .browser-rfb canvas");
+    const viewport = page.getByLabel("Browser viewport");
+    const canvas = viewport.locator(".browser-rfb canvas");
     await expect(canvas).toBeVisible();
     // What a VNC server would receive: [x, y, button mask] at framebuffer
     // pixels of the 800x500 sample screen.
@@ -97,173 +100,112 @@ test.describe("browser input showcase on a phone", () => {
           mask,
         })),
       );
-    const pad = page.getByLabel("Browser trackpad");
-    await pad.scrollIntoViewIfNeeded();
-    await page.evaluate(
-      () =>
-        new Promise((resolve) =>
-          requestAnimationFrame(() => requestAnimationFrame(resolve)),
-        ),
-    );
-    await takeEvents();
-    const box = await pad.boundingBox();
-    const trackpadBox = await page.locator(".browser-trackpad").boundingBox();
-    expect(trackpadBox.height).toBeGreaterThan(trackpadBox.width / 2);
-    const x = box.x + box.width / 2;
-    const y = box.y + box.height / 2;
+    const box = await canvas.boundingBox();
+    const at = (fx, fy) => [box.x + box.width * fx, box.y + box.height * fy];
 
-    await pointer(pad, "pointerdown", 1, x, y);
-    await pointer(pad, "pointerup", 1, x, y);
-    expect((await takeEvents()).map(({ mask }) => mask)).toEqual([1, 0]);
+    // A tap is a click at the pixel under the finger.
+    await pointer(viewport, "pointerdown", 1, ...at(0.5, 0.5));
+    await pointer(viewport, "pointerup", 1, ...at(0.5, 0.5));
+    const tap = await takeEvents();
+    expect(tap.map(({ mask }) => mask)).toEqual([0, 1, 0]);
+    expect(Math.abs(tap[0].x - 400)).toBeLessThanOrEqual(2);
+    expect(Math.abs(tap[0].y - 250)).toBeLessThanOrEqual(2);
 
-    await pointer(pad, "pointerdown", 2, x - 25, y);
-    await pointer(pad, "pointerdown", 3, x + 25, y);
-    await pointer(pad, "pointerup", 2, x - 25, y);
-    await pointer(pad, "pointerup", 3, x + 25, y);
-    expect((await takeEvents()).map(({ mask }) => mask)).toEqual([4, 0]);
-
-    await pointer(pad, "pointerdown", 4, x - 25, y + 30);
-    await pointer(pad, "pointerdown", 5, x + 25, y + 30);
-    await pointer(pad, "pointermove", 4, x - 25, y - 30);
-    await pointer(pad, "pointermove", 5, x + 25, y - 30);
-    await pointer(pad, "pointerup", 4, x - 25, y - 30);
-    await pointer(pad, "pointerup", 5, x + 25, y - 30);
-    // Scrolling is wheel notches: button 4 (up) or 5 (down) pressed briefly.
-    expect(
-      (await takeEvents()).some(
-        ({ mask }) => mask & (1 << 3) || mask & (1 << 4),
-      ),
-    ).toBe(true);
-
-    const left = page.getByRole("button", { name: "Left", exact: true });
-    const right = page.getByRole("button", { name: "Right", exact: true });
-    const leftBox = await left.boundingBox();
-    const rightBox = await right.boundingBox();
-    expect(Math.abs(leftBox.width - rightBox.width)).toBeLessThan(1);
-    await pointer(
-      left,
-      "pointerdown",
-      6,
-      leftBox.x + leftBox.width / 2,
-      leftBox.y + leftBox.height / 2,
-    );
-    await pointer(pad, "pointerdown", 7, x, y);
-    await pointer(pad, "pointermove", 7, x + 60, y + 20);
-    await pointer(pad, "pointerup", 7, x + 60, y + 20);
-    await pointer(
-      left,
-      "pointerup",
-      6,
-      leftBox.x + leftBox.width / 2,
-      leftBox.y + leftBox.height / 2,
-    );
-    const drag = await takeEvents();
-    expect(drag[0].mask).toBe(1);
-    // The button stays held while the pointer moves, then lets go.
-    const held = drag.filter(({ mask }) => mask === 1);
-    expect(held.some(({ x }) => x !== drag[0].x)).toBe(true);
-    expect(drag.at(-1).mask).toBe(0);
-    for (const { x, y } of drag) {
-      expect(x).toBeGreaterThanOrEqual(0);
-      expect(x).toBeLessThanOrEqual(799);
-      expect(y).toBeGreaterThanOrEqual(0);
-      expect(y).toBeLessThanOrEqual(499);
+    // A held press is released on cancel and when the window loses focus.
+    for (const end of ["pointercancel", "blur"]) {
+      await pointer(viewport, "pointerdown", 2, ...at(0.3, 0.3));
+      await page.waitForTimeout(500);
+      if (end === "blur")
+        await page.evaluate(() => dispatchEvent(new Event("blur")));
+      else await pointer(viewport, end, 2, ...at(0.3, 0.3));
+      expect((await takeEvents()).map(({ mask }) => mask)).toEqual([1, 0]);
     }
 
-    await pointer(
-      left,
-      "pointerdown",
-      8,
-      leftBox.x + leftBox.width / 2,
-      leftBox.y + leftBox.height / 2,
-    );
-    await pointer(
-      left,
-      "pointercancel",
-      8,
-      leftBox.x + leftBox.width / 2,
-      leftBox.y + leftBox.height / 2,
-    );
-    expect((await takeEvents()).map(({ mask }) => mask)).toEqual([1, 0]);
+    // A held drag that ends past the screen's edge still lets go, there.
+    await pointer(viewport, "pointerdown", 4, ...at(0.5, 0.9));
+    await page.waitForTimeout(500);
+    const below = [box.x + box.width / 2, box.y + box.height + 40];
+    await pointer(viewport, "pointermove", 4, ...below);
+    await pointer(viewport, "pointerup", 4, ...below);
+    const edge = await takeEvents();
+    expect(edge.map(({ mask }) => mask)).toEqual([1, 1, 0]);
+    expect(edge.at(-1).y).toBe(499);
 
-    await pointer(
-      left,
-      "pointerdown",
-      12,
-      leftBox.x + leftBox.width / 2,
-      leftBox.y + leftBox.height / 2,
-    );
-    await page.evaluate(() => dispatchEvent(new Event("blur")));
-    expect((await takeEvents()).map(({ mask }) => mask)).toEqual([1, 0]);
-
-    const viewport = page.getByLabel("Browser viewport");
-    const viewBox = await viewport.boundingBox();
-    const target = page.locator(".showcase-browser-input .browser-rfb");
-    await takeEvents();
-    await pointer(
-      viewport,
-      "pointerdown",
-      9,
-      viewBox.x + viewBox.width * 0.35,
-      viewBox.y + viewBox.height / 2,
-    );
-    await pointer(
-      viewport,
-      "pointerdown",
-      10,
-      viewBox.x + viewBox.width * 0.65,
-      viewBox.y + viewBox.height / 2,
-    );
-    await pointer(
-      viewport,
-      "pointermove",
-      9,
-      viewBox.x + viewBox.width * 0.2,
-      viewBox.y + viewBox.height / 2,
-    );
-    await pointer(
-      viewport,
-      "pointermove",
-      10,
-      viewBox.x + viewBox.width * 0.8,
-      viewBox.y + viewBox.height / 2,
-    );
-    const zoomed = await target.evaluate(
-      (element) =>
-        element.getBoundingClientRect().width /
-        element.parentElement.getBoundingClientRect().width,
-    );
-    expect(zoomed).toBeGreaterThan(1);
-    const zoomTransform = await target.evaluate(
-      (element) => element.style.transform,
-    );
-    await pointer(
-      viewport,
-      "pointerup",
-      9,
-      viewBox.x + viewBox.width * 0.2,
-      viewBox.y + viewBox.height / 2,
-    );
-    await pointer(
-      viewport,
-      "pointerup",
-      10,
-      viewBox.x + viewBox.width * 0.8,
-      viewBox.y + viewBox.height / 2,
-    );
-    await pointer(viewport, "pointerdown", 11, viewBox.x + 120, viewBox.y + 80);
-    await pointer(
-      viewport,
-      "pointermove",
-      11,
-      viewBox.x + 150,
-      viewBox.y + 100,
-    );
-    await pointer(viewport, "pointerup", 11, viewBox.x + 150, viewBox.y + 100);
-    expect(
-      await target.evaluate((element) => element.style.transform),
-    ).not.toBe(zoomTransform);
-    // View gestures pan and zoom the picture; they never press a button.
-    expect((await takeEvents()).every(({ mask }) => mask === 0)).toBe(true);
+    // A tap off the letterboxed screen sends nothing.
+    const view = await viewport.boundingBox();
+    const outside = [view.x + view.width / 2, view.y + view.height - 4];
+    if (outside[1] > box.y + box.height) {
+      await pointer(viewport, "pointerdown", 3, ...outside);
+      await pointer(viewport, "pointerup", 3, ...outside);
+      expect(await takeEvents()).toEqual([]);
+    }
   });
 });
+
+for (const [label, viewport, touch] of [
+  ["on a desktop", { width: 1440, height: 900 }, false],
+  ["on a phone", { width: 390, height: 844 }, true],
+]) {
+  test.describe(`image viewer ${label}`, () => {
+    test.use({ viewport, isMobile: touch, hasTouch: touch });
+
+    test("fills the screen, never upscales, zooms and closes", async ({
+      page,
+    }) => {
+      await page.goto("/ui.html");
+      await page.getByRole("button", { name: "Open image viewer" }).click();
+      const dialog = page.getByRole("dialog", { name: "sample.svg" });
+      const image = dialog.getByRole("img", { name: "sample.svg" });
+      await expect(image).toBeVisible();
+      // Full bleed: the viewer is the screen, with no frame around it.
+      const box = await dialog.boundingBox();
+      expect([box.x, box.y, box.width, box.height].map(Math.round)).toEqual([
+        0,
+        0,
+        viewport.width,
+        viewport.height,
+      ]);
+      // Natural size when it fits; scaled down (never up) when it does not.
+      const shown = await image.boundingBox();
+      expect(shown.width).toBeLessThanOrEqual(400 + 0.5);
+      expect(Math.abs(shown.width / shown.height - 4 / 3)).toBeLessThan(0.01);
+      const surface = dialog.getByRole("group", { name: "sample.svg" });
+      const center = [shown.x + shown.width / 2, shown.y + shown.height / 2];
+      const zoomed = async () =>
+        (await image.boundingBox()).width / shown.width;
+      if (touch) {
+        // Pinch zooms the image; a double-tap returns it to fit.
+        await pointer(surface, "pointerdown", 1, center[0] - 20, center[1]);
+        await pointer(surface, "pointerdown", 2, center[0] + 20, center[1]);
+        await pointer(surface, "pointermove", 1, center[0] - 60, center[1]);
+        await pointer(surface, "pointermove", 2, center[0] + 60, center[1]);
+        await pointer(surface, "pointerup", 1, center[0] - 60, center[1]);
+        await pointer(surface, "pointerup", 2, center[0] + 60, center[1]);
+        expect(await zoomed()).toBeGreaterThan(2.5);
+        // Real taps (captured, so later events target the surface) on the
+        // image double-tap back to fit instead of closing the viewer.
+        await page.touchscreen.tap(...center);
+        await page.touchscreen.tap(...center);
+        await expect.poll(zoomed).toBeCloseTo(1, 1);
+        await expect(dialog).toBeVisible();
+      } else {
+        // Ctrl+scroll is a trackpad pinch; a double-click toggles zoom.
+        await page.mouse.move(...center);
+        await page.keyboard.down("Control");
+        await page.mouse.wheel(0, -100);
+        await page.keyboard.up("Control");
+        await expect.poll(zoomed).toBeGreaterThan(2);
+        await page.mouse.dblclick(...center);
+        await expect.poll(zoomed).toBeCloseTo(1, 1);
+        await expect(dialog).toBeVisible();
+      }
+      // A tap on the empty space around the image closes the viewer.
+      const view = await surface.boundingBox();
+      if (touch) {
+        await pointer(surface, "pointerdown", 5, view.x + 4, view.y + 4);
+        await pointer(surface, "pointerup", 5, view.x + 4, view.y + 4);
+      } else await page.mouse.click(view.x + 4, view.y + 4);
+      await expect(dialog).toHaveCount(0);
+    });
+  });
+}

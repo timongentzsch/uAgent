@@ -4,11 +4,12 @@
 namespace uagent {
 // The suite in run order: declarations and dispatch expand from this list.
 #define UAGENT_TESTS(X)                          \
-  X(TestBrowserViewOnlyFilter)                   \
+  X(TestBrowserInputFilter)                      \
   X(TestBrowserHandoverRecovery)                 \
   X(TestBrowserProfiles)                         \
   X(TestBrowserProfileSignIn)                    \
   X(TestBrowserHandBackOnClose)                  \
+  X(TestBrowserSecretMaskAndBack)                \
   X(TestForeignToolMarkup)                       \
   X(TestToolResults)                             \
   X(TestToolViews)                               \
@@ -40,6 +41,7 @@ namespace uagent {
   X(TestConfigDocumentPreservesFile)             \
   X(TestConfigProposalAndCommit)                 \
   X(TestProjectConfigTrustRestamp)               \
+  X(TestConfigurationResetKeepsSecrets)          \
   X(TestConfigRegistryContract)                  \
   X(TestRuntimeConfigCoherence)                  \
   X(TestSavedHistoryInvalidation)                \
@@ -58,6 +60,7 @@ namespace uagent {
   X(TestSandboxPolicy)                           \
   X(TestSandboxRendering)                        \
   X(TestSandboxTrampolineArgs)                   \
+  X(TestSandboxHiddenPaths)                      \
   X(TestSandboxProbe)                            \
   X(TestStrictBooleanSettings)                   \
   X(TestSelfDescriptionSchemas)                  \

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "preact/hooks";
 import mermaid from "mermaid";
-import { CodeCopy, Modal } from "./ui.tsx";
+import { Button, CodeCopy, Modal } from "./ui.tsx";
 import {
   maxDiagramCacheEntries,
   maxDiagramEdges,
@@ -126,8 +126,9 @@ export default function Diagram({ source }: { source: string }) {
     <div class="diagram">
       <div class="diagram-preview">
         {url ? (
-          <button
-            class="quiet diagram-open"
+          <Button
+            variant="quiet"
+            class="diagram-open"
             aria-label="Expand diagram"
             onClick={() => setExpanded(true)}
           >
@@ -137,7 +138,7 @@ export default function Diagram({ source }: { source: string }) {
               width={size.width || undefined}
               height={size.height || undefined}
             />
-          </button>
+          </Button>
         ) : (
           <p class="muted small" role="status">
             {error || "Rendering diagram…"}

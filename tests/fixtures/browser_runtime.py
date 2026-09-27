@@ -38,8 +38,14 @@ while chunk := os.read(3, 4096):
     while b"\0" in pending:
         packet, pending = pending.split(b"\0", 1)
         command = json.loads(packet)
+        with (profile / "cdp.jsonl").open("a") as log:
+            log.write(json.dumps(command) + "\n")
         result = {}
-        if command["method"] == "Target.getTargets":
+        if command["method"] == "Page.getNavigationHistory":
+            result = {"currentIndex": 1, "entries": [
+                {"id": 1, "url": "chrome://password-manager/passwords"},
+                {"id": 2, "url": "https://example.com/"}]}
+        elif command["method"] == "Target.getTargets":
             result = {"targetInfos": [{"targetId": "tab", "type": "page", "url": "about:blank"}]}
         elif command["method"] == "Target.attachToTarget":
             result = {"sessionId": "attached"}

@@ -1,32 +1,24 @@
-.markdown,
-.markdown-stream {
+.markdown {
   line-height: 1.55;
   min-width: 0;
 }
-.markdown p:first-child,
-.markdown-stream p:first-child {
+.markdown p:first-child {
   margin-top: 0;
 }
-.markdown p:last-child,
-.markdown-stream p:last-child {
+.markdown p:last-child {
   margin-bottom: 0;
 }
-.markdown h1,
-.markdown-stream h1 {
+.markdown h1 {
   font-size: 1.4em;
 }
-.markdown h2,
-.markdown-stream h2 {
+.markdown h2 {
   font-size: 1.2em;
 }
-.markdown h3,
-.markdown-stream h3 {
+.markdown h3 {
   font-size: 1.1em;
 }
 .markdown ul,
-.markdown ol,
-.markdown-stream ul,
-.markdown-stream ol {
+.markdown ol {
   padding-left: var(--space-12);
 }
 .table-scroll {
@@ -34,30 +26,25 @@
   overflow-x: auto;
   max-width: 100%;
 }
-.markdown table,
-.markdown-stream table {
+.markdown table {
   width: 100%;
   border-collapse: collapse;
 }
 .markdown th,
-.markdown td,
-.markdown-stream th,
-.markdown-stream td {
+.markdown td {
   border: 1px solid var(--line);
   padding: var(--space-2) var(--space-4);
   /* Preserve intrinsic word widths; wide tables scroll in their wrapper. */
   overflow-wrap: normal;
   word-break: normal;
 }
-.markdown blockquote,
-.markdown-stream blockquote {
+.markdown blockquote {
   border-left: 2px solid var(--accent);
   padding-left: var(--space-6);
   margin-left: 0;
   color: var(--muted);
 }
-.markdown img,
-.markdown-stream img {
+.markdown img {
   max-width: 100%;
 }
 .katex-display,
@@ -156,4 +143,15 @@
   display: block;
   max-width: none;
   margin: auto;
+}
+/* New blocks of a streaming reply fade in; existing ones never re-animate
+   (they keep their element) and nothing animates height, so the transcript
+   keeps its scroll anchoring. */
+.markdown[data-streaming] > div {
+  transition: opacity var(--motion-base) var(--ease-out);
+}
+@starting-style {
+  .markdown[data-streaming] > div {
+    opacity: 0;
+  }
 }

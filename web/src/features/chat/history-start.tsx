@@ -1,4 +1,5 @@
 import type { View } from "../../shared/types.ts";
+import { Button } from "../../shared/ui.tsx";
 
 export default function HistoryStart({
   view,
@@ -14,15 +15,15 @@ export default function HistoryStart({
   return (
     <>
       {view?.more && (
-        <button
-          type="button"
-          class="quiet history-button"
-          disabled={!online || loading}
-          aria-busy={loading || undefined}
+        <Button
+          variant="quiet"
+          class="history-button"
+          disabled={!online}
+          busy={loading}
           onClick={load}
         >
           {loading ? "Loading older messages…" : "Load older retained messages"}
-        </button>
+        </Button>
       )}
       {(view?.dropped_segments || 0) > 0 && (
         <p class="retention">

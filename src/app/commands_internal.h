@@ -33,6 +33,11 @@ void HandleContext(AppSession& session, CommandReply& reply);
 void HandleStatus(const AppSession& session, CommandReply& reply);
 void HandleDebugConfig(const AppSession& session, const std::string& argument,
                        CommandReply& reply);
+void HandleConfig(AppSession& session, const std::string& argument,
+                  CommandReply& reply);
+void HandleMcp(AppSession& session, const std::string& argument,
+               CommandReply& reply);
+void HandlePermissionRules(const std::string& argument, CommandReply& reply);
 void HandleTools(AppSession& session, const std::string& argument,
                  CommandReply& reply);
 json AgentsJson(const AppSession& session);

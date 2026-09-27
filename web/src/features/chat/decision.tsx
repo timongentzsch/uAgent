@@ -1,6 +1,13 @@
 import type { Pending, Act, Report } from "../../shared/types.ts";
 import { useState } from "preact/hooks";
-import { cleanText, Select, Input, Textarea } from "../../shared/ui.tsx";
+import {
+  Actions,
+  Button,
+  cleanText,
+  Select,
+  Input,
+  Textarea,
+} from "../../shared/ui.tsx";
 
 export default function Decision({
   pending,
@@ -74,11 +81,10 @@ export default function Decision({
             void send(guidance);
           }}
         >
-          <div class="dialog-actions">
+          <Actions>
             {options.map((item) => (
-              <button
-                type="button"
-                class={item.value === "y" ? "primary" : undefined}
+              <Button
+                variant={item.value === "y" ? "primary" : "secondary"}
                 aria-pressed={
                   item.value === "guidance" ? reply === "guidance" : undefined
                 }
@@ -90,15 +96,19 @@ export default function Decision({
                 }
               >
                 {item.label}
-              </button>
+              </Button>
             ))}
-          </div>
+          </Actions>
           {reply === "guidance" && (
             <>
               {guidanceInput}
-              <button class="primary" disabled={!online || sending}>
+              <Button
+                type="submit"
+                variant="primary"
+                disabled={!online || sending}
+              >
                 Send guidance
-              </button>
+              </Button>
             </>
           )}
         </form>
@@ -147,9 +157,8 @@ export default function Decision({
               />
             </label>
           )}
-          <div class="dialog-actions">
-            <button
-              type="button"
+          <Actions>
+            <Button
               onClick={() =>
                 act("reply", {
                   interaction_id: pending.id,
@@ -160,11 +169,15 @@ export default function Decision({
               disabled={!online}
             >
               Cancel
-            </button>
-            <button class="primary" disabled={!online || sending || !reply}>
+            </Button>
+            <Button
+              type="submit"
+              variant="primary"
+              disabled={!online || sending || !reply}
+            >
               Send response
-            </button>
-          </div>
+            </Button>
+          </Actions>
         </form>
       )}
     </section>

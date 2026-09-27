@@ -245,6 +245,22 @@ HostWaitState SessionHost::RunSchedules(bool& recovered) {
       activate(session, false, "interrupted");
     }
     for (const auto& session : tick.activate) activate(session, true, "failed");
+    // A restart asked for during a turn happens once that turn has ended.
+    std::vector<std::shared_ptr<HostSession>> restarting;
+    for (const auto& [id, session] : sessions_) {
+      if (session->restart && !session->turn_active && session->pid > 0 &&
+          !session->exited && !session->closing) {
+        restarting.push_back(session);
+      }
+    }
+    for (const auto& session : restarting) {
+      std::string error;
+      if (ActivateLocked(session, error, lock, false) &&
+          PublishMetadata(session->id, *session)) {
+        changed_.notify_all();
+        wait.wake = true;
+      }
+    }
     wait.deadline = NextScheduleDeadline();
     for (const auto& [id, session] : sessions_) {
       projects.push_back(session->cwd);

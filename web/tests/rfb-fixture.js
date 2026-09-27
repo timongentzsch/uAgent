@@ -6,10 +6,13 @@ export async function serveFramebuffer(page) {
   const keys = [];
   const clipboard = { client: "", server: null };
   let current = null;
+  // Viewer connections so far; control changes must not open new ones.
+  const connections = { count: 0 };
   const width = 800,
     height = 500;
   await page.routeWebSocket(/\/api\/browser\/viewer/, (socket) => {
     current = socket;
+    connections.count++;
     let stage = 0,
       pending = Buffer.alloc(0),
       painted = false;
@@ -96,6 +99,7 @@ export async function serveFramebuffer(page) {
     });
   });
   return {
+    connections,
     pointers,
     keys,
     clipboard,

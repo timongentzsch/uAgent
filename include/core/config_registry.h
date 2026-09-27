@@ -82,6 +82,7 @@ inline constexpr std::string_view kOpenRouterVariants[] = {"nitro", "floor",
                                                            "exacto"};
 inline constexpr std::string_view kWebSearchBackends[] = {"auto", "openrouter",
                                                           "off"};
+inline constexpr std::string_view kApprovalModes[] = {"ask", "auto", "yolo"};
 inline constexpr std::string_view kWebSearchEngines[] = {
     "auto", "native", "exa", "firecrawl", "parallel", "perplexity"};
 inline constexpr std::string_view kWebSearchContextSizes[] = {"low", "medium",
@@ -194,6 +195,12 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                   Sensitivity::kPublic, "web",
                   "private browser profile and service directory; empty "
                   "disables the browser appliance",
+                  kScopeUser),
+    registry::Int("UAGENT_BROWSER_IDLE_MINUTES", {}, 15, 0, 10080,
+                  ReloadPolicy::kRestartRequired, "web",
+                  "minutes without browser work before Chrome stops to free "
+                  "memory; it starts again on the next action; 0 keeps it "
+                  "running",
                   kScopeUser),
     registry::Int("UAGENT_WEB_PORT", {}, 8080, 1024, 65535,
                   ReloadPolicy::kRestartRequired, "web",
@@ -588,10 +595,12 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                   "experiment: JSON file replacing base prompt sections so a "
                   "variant can be measured without a rebuild; prompt text "
                   "only"),
-    registry::Str("UAGENT_APPROVAL", "approval", "",
-                  ReloadPolicy::kNextUserTurn, Sensitivity::kPublic,
-                  "behaviour",
-                  "ask, auto reviewer, or yolo for ordinary mutations"),
+    registry::Choice(
+        registry::Str("UAGENT_APPROVAL", "approval", "ask",
+                      ReloadPolicy::kNextUserTurn, Sensitivity::kPublic,
+                      "behaviour",
+                      "ask, auto reviewer, or yolo for ordinary mutations"),
+        kApprovalModes),
     registry::Str("UAGENT_PERMISSION_MODEL", "permission_model",
                   "~typesafe/jev-latest", ReloadPolicy::kNextUserTurn,
                   Sensitivity::kPublic, "behaviour",

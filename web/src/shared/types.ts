@@ -375,7 +375,19 @@ export interface State {
   context_window?: number;
   permissions?: Permissions;
   http?: Exchange[];
+  mcp?: McpServer[];
   error?: string;
+}
+export interface McpServer {
+  name: string;
+  scope: "global" | "project";
+  file: string;
+  state: "ready" | "starting" | "disabled" | "failed";
+  command: string;
+  overrides: boolean;
+  tools: number;
+  error?: string;
+  log?: string;
 }
 export type ExecutionPhase =
   | "idle"
@@ -539,9 +551,12 @@ export interface ConfigSetting {
   default?: JSONValue;
   source: string;
   takes_effect: string;
-  set?: boolean;
   minimum?: number;
   maximum?: number;
+  choices?: string[];
+  // What each config file sets; a secret reports only `true`.
+  user?: JSONValue;
+  project?: JSONValue;
 }
 export interface ConfigChange {
   key: string;
@@ -596,6 +611,8 @@ export interface CommandResults {
   models: ModelCatalogue;
   model: ModelCatalogue;
   config: Configuration;
+  restart_conversations: { restarting: number; deferred: number };
+  restart_host: { restarting: boolean };
   tools: ToolCatalogue;
   tool_categories: ToolCategories;
   activity: ActivityDetail;
@@ -694,7 +711,8 @@ export interface RawOptions {
   prepare?: SessionRef;
 }
 export type AppModal =
-  | { type: "browser" }
+  // handoff: opened for the agent's request (take control, close on Done).
+  | { type: "browser"; handoff?: boolean }
   | { type: "prompt"; scope?: string; edit?: boolean }
   | StatisticsModal
   | ({ type: "raw" } & RawOptions)

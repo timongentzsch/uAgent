@@ -101,8 +101,10 @@ test("mobile chrome keeps an opaque safe area and applies appearance before app 
       insetRight: box.right - close.right - gutter,
     };
   });
-  expect(geometry.top).toBeGreaterThanOrEqual(47 + 8);
-  expect(geometry.bottom).toBeLessThanOrEqual(844 - 34 - 8);
+  // A full-screen sheet on a phone: from the safe top to the bottom edge
+  // (its own surface runs under the home indicator).
+  expect(Math.abs(geometry.top - 47)).toBeLessThanOrEqual(1);
+  expect(Math.abs(geometry.bottom - 844)).toBeLessThanOrEqual(1);
   expect(Math.abs(geometry.insetTop - geometry.insetRight)).toBeLessThanOrEqual(
     1,
   );
@@ -129,11 +131,12 @@ test("mobile chrome keeps an opaque safe area and applies appearance before app 
     style.setProperty("--safe-right", "47px");
   });
   await expect(page.locator("html")).toHaveCSS("--viewport-height", "390px");
+  // A sheet fills the safe area: clear of the notch and home indicator.
   const landscape = await settings.boundingBox();
-  expect(landscape.y).toBeGreaterThanOrEqual(8);
-  expect(landscape.y + landscape.height).toBeLessThanOrEqual(390 - 21 - 8);
-  expect(landscape.x).toBeGreaterThanOrEqual(47 + 8);
-  expect(landscape.x + landscape.width).toBeLessThanOrEqual(844 - 47 - 8);
+  expect(landscape.y).toBeGreaterThanOrEqual(0);
+  expect(landscape.y + landscape.height).toBeLessThanOrEqual(390 - 21 + 1);
+  expect(landscape.x).toBeGreaterThanOrEqual(47 - 1);
+  expect(landscape.x + landscape.width).toBeLessThanOrEqual(844 - 47 + 1);
 });
 
 test("fresh conversation reload keeps one stable loading state", async ({
@@ -171,22 +174,27 @@ test("fresh conversation reload keeps one stable loading state", async ({
   try {
     await page.goto(`/#session=${session.id}`);
     await sawCatalogue;
-    const loader = page.locator(".conversation .loading-indicator");
-    await expect(loader).toHaveText("Loading conversation…");
-    await expect(page.locator(".conversation .skeleton")).toHaveCount(0);
+    // One transcript placeholder, in one place, through the catalogue, the
+    // snapshot and the chat chunk: loading never restarts or moves.
+    const loader = page.locator(".conversation .transcript-skeleton");
+    const status = page.locator(".conversation [role=status]", {
+      hasText: "Loading conversation…",
+    });
+    await expect(loader).toHaveCount(1);
+    await expect(status).toHaveCount(1);
     const first = await loader.boundingBox();
 
     releaseCatalogue();
     await sawSnapshot;
-    await expect(loader).toHaveText("Loading conversation…");
-    await expect(page.locator(".conversation .skeleton")).toHaveCount(0);
+    await expect(loader).toHaveCount(1);
 
     releaseSnapshot();
-    await expect(loader).toHaveText("Loading conversation…");
+    await expect(loader).toHaveCount(1);
+    await expect(status).toHaveCount(1);
     const second = await loader.boundingBox();
     expect(Math.abs(first.x - second.x)).toBeLessThan(1);
     expect(Math.abs(first.y - second.y)).toBeLessThan(1);
-    await expect(page.locator(".conversation .skeleton")).toHaveCount(0);
+    expect(Math.abs(first.width - second.width)).toBeLessThan(1);
 
     releaseChat();
     await expect(
@@ -644,18 +652,14 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
     const app = document.getElementById("app");
     const appBounds = app.getBoundingClientRect();
     const appStyle = getComputedStyle(app);
-    const inset =
-      (parseFloat(getComputedStyle(document.documentElement).fontSize) * 8) /
-      14;
     return {
       left: bounds.left - appBounds.left - parseFloat(appStyle.paddingLeft),
       right: appBounds.right - parseFloat(appStyle.paddingRight) - bounds.right,
-      inset,
     };
   });
-  expect(dialogGutter.left).toBeGreaterThanOrEqual(dialogGutter.inset - 1);
-  expect(dialogGutter.right).toBeGreaterThanOrEqual(dialogGutter.inset - 1);
-  expect(Math.abs(dialogGutter.left - dialogGutter.right)).toBeLessThan(1);
+  // Edge to edge on a phone, at any zoom: a sheet, not an inset card.
+  expect(Math.abs(dialogGutter.left)).toBeLessThan(1);
+  expect(Math.abs(dialogGutter.right)).toBeLessThan(1);
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,
@@ -682,7 +686,7 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
     .getByRole("button", { name: "General", exact: true })
     .click();
   await settings
-    .getByRole("button", { name: "Reset zoom", exact: true })
+    .getByRole("button", { name: "Reset Zoom", exact: true })
     .click();
   await settings.getByRole("button", { name: "Close settings" }).click();
   await page.setViewportSize({ width: 844, height: 390 });
@@ -1437,11 +1441,12 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
   };
   try {
     await page.goto(`${fixture.origin}/#session=${session.id}`);
-    // The page stays pinch-zoomable; only the browser viewer locks it.
-    await expect(page.locator('meta[name="viewport"]')).not.toHaveAttribute(
+    // An app, not a page: the interface never pinch- or double-tap-zooms.
+    await expect(page.locator('meta[name="viewport"]')).toHaveAttribute(
       "content",
-      /user-scalable=no/,
+      /maximum-scale=1, user-scalable=no/,
     );
+    await expect(page.locator("html")).toHaveCSS("touch-action", "pan-x pan-y");
     const prompt = page.getByLabel("Message or guidance");
     await expect(prompt).toBeVisible();
     await page
@@ -1533,7 +1538,7 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
       .getByRole("button", { name: "General", exact: true })
       .tap();
     await settings
-      .getByRole("button", { name: "Reset zoom", exact: true })
+      .getByRole("button", { name: "Reset Zoom", exact: true })
       .tap();
     await settings
       .getByRole("button", { name: "Close settings", exact: true })
@@ -1639,13 +1644,18 @@ test.describe("mobile navigation and commands", () => {
     const prompt = page.getByLabel("Message or guidance");
     await expect(prompt).toBeVisible();
     await expect(page.locator(".composer .status-led.active")).toBeVisible();
+    // On a soft keyboard return writes a new line; Send sends.
+    const send = page.getByRole("button", { name: "Send", exact: true });
     await prompt.fill("/model mock/model-b");
     await prompt.press("Enter");
+    await expect(prompt).toHaveValue("/model mock/model-b\n");
+    await prompt.fill("/model mock/model-b");
+    await send.tap();
     await expect(
       page.getByRole("button", { name: "Model and effort", exact: true }),
     ).toContainText("model-b");
     await prompt.fill("Navigation message");
-    await prompt.press("Enter");
+    await send.tap();
     await expect(
       page.getByRole("heading", { name: "Verified response" }),
     ).toBeVisible();
@@ -1738,25 +1748,25 @@ test.describe("mobile navigation and commands", () => {
     await page.getByRole("option", { name: /\/status/ }).tap();
     await expect(prompt).toHaveValue("/status");
     await expect(prompt).toBeFocused();
-    await prompt.press("Enter");
+    await send.tap();
     await expect(
       page.getByRole("dialog", { name: "Full content" }),
     ).toContainText('"topic": "status"');
     await page.keyboard.press("Escape");
     await prompt.fill("/ctx");
-    await prompt.press("Enter");
+    await send.tap();
     await expect(
       page.getByRole("dialog", { name: "Raw context", exact: true }),
     ).toBeVisible();
     await page.keyboard.press("Escape");
     await prompt.fill("/commands");
-    await prompt.press("Enter");
+    await send.tap();
     await expect(
       page.getByRole("dialog", { name: "Full content" }),
     ).toContainText("/permissions");
     await page.keyboard.press("Escape");
     await prompt.fill("/http 1 response");
-    await prompt.press("Enter");
+    await send.tap();
     await expect(
       page
         .getByRole("dialog")
@@ -1766,16 +1776,16 @@ test.describe("mobile navigation and commands", () => {
     await page.keyboard.press("Escape");
     const chooser = page.waitForEvent("filechooser");
     await prompt.fill("/attach");
-    await prompt.press("Enter");
+    await send.tap();
     await (await chooser).setFiles([]);
     await prompt.fill("/fork Slash fork");
-    await prompt.press("Enter");
+    await send.tap();
     await expect(page.locator(".conversation-head h1")).toHaveText(
       "Slash fork",
     );
     await expect(page.locator(".composer .status-led.active")).toBeVisible();
     await prompt.fill("/sessions");
-    await prompt.press("Enter");
+    await send.tap();
     await expect(page.getByLabel("Find a session")).toBeVisible();
     await page
       .getByRole("button", { name: "Close sessions", exact: true })
@@ -1799,7 +1809,7 @@ test.describe("mobile navigation and commands", () => {
     await page.reload();
     await expect(prompt).toHaveValue("Survives reload");
     await prompt.fill("/q");
-    await prompt.press("Enter");
+    await send.tap();
     await expect(
       page.getByRole("button", { name: "Resume in this host directory" }),
     ).toBeVisible();
@@ -1871,6 +1881,21 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
       .locator(".tool-disclosure")
       .filter({ hasText: "Saved memory project/browser-proof" }),
   ).toBeVisible();
+  // Its detail reads top-down: key, one caption, then the memory itself
+  // directly below (not floated to the middle of the sheet).
+  await page.getByRole("button", { name: "Open memory" }).first().click();
+  const memory = page.getByRole("dialog", { name: "Memory" });
+  await expect(memory).toBeVisible();
+  const section = memory.getByRole("region", { name: "Memory" });
+  await expect(section.locator(".detail-label")).toHaveText(
+    "project/browser-proof",
+  );
+  await expect(memory.getByText(/Current memory/)).toHaveCount(0);
+  const caption = await section.locator(".detail-meta").boundingBox();
+  const body = await section.locator(".markdown").boundingBox();
+  expect(body.y - (caption.y + caption.height)).toBeLessThan(24);
+  await page.keyboard.press("Escape");
+  await expect(memory).toHaveCount(0);
   await expect(page.locator(".composer .status-led.active")).toBeVisible();
   await page.locator(".transcript").evaluate((element) => {
     element.scrollTop = 0;

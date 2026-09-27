@@ -244,7 +244,7 @@ const char* ApprovalModeName(ApprovalMode mode) {
 }
 
 bool ParseApprovalMode(std::string_view value, ApprovalMode& mode) {
-  if (value.empty() || value == "prompt" || value == "ask") {
+  if (value.empty() || value == "ask") {
     mode = ApprovalMode::kAsk;
     return true;
   }

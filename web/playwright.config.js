@@ -16,13 +16,18 @@ export default defineConfig({
   // app code serializes everything serializable, and a single retry
   // covers the residual race without hiding systematic failures.
   retries: process.env.CI ? 2 : 1,
-  use: { trace: "retain-on-failure", screenshot: "only-on-failure" },
+  // Geometry assertions must not sample a surface mid-transition.
+  use: {
+    trace: "retain-on-failure",
+    screenshot: "only-on-failure",
+    reducedMotion: "reduce",
+  },
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
     {
       name: "webkit",
       testMatch:
-        "**/{ui,ui-quality,browser,showcase,history-anchor,scroll-restore,scroll-stick}.spec.js",
+        "**/{ui,ui-quality,browser,showcase,dismiss,history-anchor,scroll-restore,scroll-stick}.spec.js",
       use: { ...devices["Desktop Safari"] },
     },
   ],

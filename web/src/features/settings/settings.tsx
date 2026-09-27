@@ -1,8 +1,6 @@
 import "./settings.css";
-import { SizeControls } from "../../shared/size-controls.tsx";
+import { ZoomSlider } from "../../shared/zoom-slider.tsx";
 
-const permissionHelp =
-  "Used by new conversations and conversations that inherit the default. Auto sends the current request and action preview to the configured reviewer.";
 import type { Dispatch, StateUpdater, MutableRef } from "preact/hooks";
 import type {
   InstallPrompt,
@@ -13,35 +11,42 @@ import type {
   Session,
 } from "../../shared/types.ts";
 import {
+  Button,
   Deferred,
-  Field,
-  Select,
-  Skeleton,
-  Spinner,
+  DialogHeader,
+  Group,
   LoadError,
+  Row,
+  SettingRow,
+  Switch,
+  ValueSelect,
 } from "../../shared/ui.tsx";
 import { useEffect, useRef, useState } from "preact/hooks";
+import { SettingRowsLoading } from "../../shared/loading.tsx";
 const configuration = () => import("./configuration.tsx");
 import { api, command } from "../../state/api.ts";
-import { ArrowLeft, Palette } from "lucide-preact";
+import { ChevronLeft } from "lucide-preact";
+import { SECTIONS, SettingsNav, type Section } from "./settings-nav.tsx";
+import { useMedia } from "../../shared/layout.ts";
+import { McpServers } from "./mcp.tsx";
 import { applyUpdate } from "../../shared/pwa.ts";
-import type { TimePrefs } from "../../shared/time.ts";
+import { useDismiss } from "../../shared/dismiss.ts";
+import { defaultTimePrefs, type TimePrefs } from "../../shared/time.ts";
 import type { ConfigSetting } from "../../shared/types.ts";
 
-const SECTIONS = [
-  ["general", "General"],
-  ["models", "Models"],
-  ["permissions", "Permissions"],
-  ["agent", "Agent"],
-  ["devices", "Devices"],
-  ["advanced", "Advanced"],
-  ["developer", "Developer"],
-] as const;
-type Section = (typeof SECTIONS)[number][0];
+// This device's display settings and their defaults: stored in the browser,
+// shown and reset like every other setting.
+const DISPLAY = { theme: "system", zoom: 100 } as const;
+const TIMESTAMP_STYLES: Record<TimePrefs["style"], string> = {
+  smart: "Time today, the date when older.",
+  relative: "How long ago, e.g. 5 min ago.",
+  absolute: "The full date and time.",
+};
 // Sections embed the registry settings they own; Advanced lists them all.
 const models = (setting: ConfigSetting) =>
   setting.category === "route" || setting.name.endsWith("_MODEL");
 const permissions = (setting: ConfigSetting) =>
+  setting.name === "UAGENT_APPROVAL" ||
   setting.name.startsWith("UAGENT_PERMISSION_");
 const agent = (setting: ConfigSetting) =>
   ["memory", "skills", "delegation"].includes(setting.category) &&
@@ -98,40 +103,19 @@ export default function Settings({
   logout: () => Promise<void>;
   prompt: () => void;
 }) {
-  // Null until a section is picked: a phone shows the section list first.
+  // Null until a section is picked: a phone shows the section list first,
+  // and a picked section is a layer the back gesture returns from.
   const [section, setSection] = useState<Section | null>(null);
+  const phone = useMedia("(max-width: 600px)");
+  useDismiss(phone && section !== null, () => setSection(null));
   const [error, setError] = useState<unknown>(null);
   const report = setError;
-  const [attempt, setAttempt] = useState(0);
   const body = useRef<HTMLDivElement>(null);
   useEffect(() => {
     body.current?.scrollTo(0, 0);
   }, [section]);
-  const [permission, setPermission] = useState<string | null>(null);
-  const [savingPermission, setSavingPermission] = useState(false);
   const [rules, setRules] = useState<PermissionRules | null>(null);
   const [ruleError, setRuleError] = useState<unknown>(null);
-  useEffect(() => {
-    if (!online) return;
-    let active = true;
-    setError(null);
-    command("config", null, { name: "UAGENT_APPROVAL" })
-      .then((response) => {
-        if (!active) return;
-        if (response.pending)
-          throw new Error("Permissions are still loading. Try again shortly.");
-        const configured = response.result.settings[0]?.value;
-        setPermission(
-          configured === "yolo" || configured === "auto" ? configured : "ask",
-        );
-      })
-      .catch((failure) => {
-        if (active) setError(failure);
-      });
-    return () => {
-      active = false;
-    };
-  }, [attempt, online]);
   useEffect(() => {
     if (!online || !session?.cwd) {
       setRules(null);
@@ -152,127 +136,150 @@ export default function Settings({
       active = false;
     };
   }, [online, session?.cwd]);
+  // Turning notifications on subscribes this device to push where the host
+  // offers it, otherwise to notifications while this view is connected.
+  const notificationsOn =
+    !!catalogue.capabilities.subscribed || notificationMode;
+  async function setNotifications(on: boolean) {
+    try {
+      if (!on) {
+        await api("/api/push/subscriptions", undefined, { method: "DELETE" });
+        const registration = await navigator.serviceWorker.getRegistration();
+        await (
+          await registration?.pushManager?.getSubscription()
+        )?.unsubscribe();
+        setNotificationMode(false);
+        notifications.current = false;
+      } else {
+        if ((await Notification.requestPermission()) !== "granted")
+          throw new Error("Notification permission was not granted.");
+        if (catalogue.capabilities.push && "PushManager" in globalThis) {
+          const registration = await navigator.serviceWorker.ready;
+          const key = (catalogue.capabilities.vapid_public_key || "")
+            .replace(/-/g, "+")
+            .replace(/_/g, "/");
+          const subscription =
+            (await registration.pushManager.getSubscription()) ||
+            (await registration.pushManager.subscribe({
+              userVisibleOnly: true,
+              applicationServerKey: Uint8Array.from(atob(key), (value) =>
+                value.charCodeAt(0),
+              ),
+            }));
+          await api("/api/push/subscriptions", subscription.toJSON());
+        } else {
+          setNotificationMode(true);
+          notifications.current = true;
+        }
+      }
+      await refresh();
+    } catch (failure) {
+      report(failure);
+    }
+  }
+  const pendingWork =
+    Object.values(drafts).some((item) => item.text || item.files.length) ||
+    uploading ||
+    Object.values(snapshots).some((item) => item.pending);
   const pane = {
     general: (
-      <div class="settings-fields">
-        <Field label="Appearance">
-          <Select
-            aria-label="Appearance"
-            value={theme}
-            onChange={(event) => setTheme(event.currentTarget.value)}
+      <>
+        <Group title="Display" footer="Saved on this device.">
+          <SettingRow
+            name="Appearance"
+            htmlFor="appearance"
+            overridden={theme !== DISPLAY.theme}
+            reset={() => setTheme(DISPLAY.theme)}
           >
-            <option value="system">System</option>
-            <option value="dark">Dark</option>
-            <option value="light">Light</option>
-          </Select>
-        </Field>
-        <SizeControls zoom={zoom} change={setZoom} />
-        <Field label="Clock">
-          <Select
-            aria-label="Clock"
-            value={timePrefs.clock}
-            onChange={(event) =>
-              setTimePrefs({
-                ...timePrefs,
-                clock: event.currentTarget.value as TimePrefs["clock"],
-              })
+            <ValueSelect
+              id="appearance"
+              value={theme}
+              onChange={(event) => setTheme(event.currentTarget.value)}
+            >
+              <option value="system">System</option>
+              <option value="dark">Dark</option>
+              <option value="light">Light</option>
+            </ValueSelect>
+          </SettingRow>
+          <SettingRow
+            name="Clock"
+            htmlFor="clock"
+            overridden={timePrefs.clock !== defaultTimePrefs.clock}
+            reset={() =>
+              setTimePrefs({ ...timePrefs, clock: defaultTimePrefs.clock })
             }
           >
-            <option value="system">System</option>
-            <option value="12">12-hour</option>
-            <option value="24">24-hour</option>
-          </Select>
-        </Field>
-        <Field label="Timestamps">
-          <Select
-            aria-label="Timestamps"
-            value={timePrefs.style}
-            onChange={(event) =>
-              setTimePrefs({
-                ...timePrefs,
-                style: event.currentTarget.value as TimePrefs["style"],
-              })
+            <ValueSelect
+              id="clock"
+              value={timePrefs.clock}
+              onChange={(event) =>
+                setTimePrefs({
+                  ...timePrefs,
+                  clock: event.currentTarget.value as TimePrefs["clock"],
+                })
+              }
+            >
+              <option value="system">System</option>
+              <option value="12">12-hour</option>
+              <option value="24">24-hour</option>
+            </ValueSelect>
+          </SettingRow>
+          <SettingRow
+            name="Timestamps"
+            htmlFor="timestamps"
+            detail={TIMESTAMP_STYLES[timePrefs.style]}
+            overridden={timePrefs.style !== defaultTimePrefs.style}
+            reset={() =>
+              setTimePrefs({ ...timePrefs, style: defaultTimePrefs.style })
             }
           >
-            <option value="smart">Smart · time today, date when older</option>
-            <option value="relative">Relative · 5 min ago</option>
-            <option value="absolute">Absolute · full date and time</option>
-          </Select>
-        </Field>
-      </div>
+            <ValueSelect
+              id="timestamps"
+              value={timePrefs.style}
+              onChange={(event) =>
+                setTimePrefs({
+                  ...timePrefs,
+                  style: event.currentTarget.value as TimePrefs["style"],
+                })
+              }
+            >
+              <option value="smart">Smart</option>
+              <option value="relative">Relative</option>
+              <option value="absolute">Absolute</option>
+            </ValueSelect>
+          </SettingRow>
+          <SettingRow
+            name="Zoom"
+            htmlFor="zoom"
+            detail="Scales the entire interface, conversation included — like browser zoom."
+            overridden={zoom !== DISPLAY.zoom}
+            reset={() => setZoom(DISPLAY.zoom)}
+          >
+            <ZoomSlider zoom={zoom} change={setZoom} />
+          </SettingRow>
+        </Group>
+      </>
     ),
     models: null,
     permissions: (
       <>
-        <div class="settings-fields">
-          {permission === null ? (
-            error ? (
-              <LoadError error={error} retry={() => setAttempt(attempt + 1)} />
-            ) : (
-              <Field label="Default permissions" help={permissionHelp}>
-                <Skeleton
-                  rows={1}
-                  className="control-skeleton"
-                  label="Loading default permissions…"
-                />
-              </Field>
-            )
-          ) : (
-            <Field label="Default permissions" help={permissionHelp}>
-              <Select
-                aria-label="Default permissions"
-                value={permission}
-                disabled={!online || savingPermission}
-                onChange={async (event) => {
-                  const value = event.currentTarget.value;
-                  setSavingPermission(true);
-                  setError(null);
-                  try {
-                    const result = await command("config", null, {
-                      operation: "apply",
-                      scope: "user",
-                      changes: [{ key: "UAGENT_APPROVAL", value }],
-                    });
-                    if (result.pending)
-                      throw new Error(
-                        "The change is still pending. Reopen settings to check its status.",
-                      );
-                    setPermission(value);
-                  } catch (failure) {
-                    setError(failure);
-                  } finally {
-                    setSavingPermission(false);
-                  }
-                }}
-              >
-                <option value="ask">Ask</option>
-                <option value="auto">Auto · review ordinary approvals</option>
-                <option value="yolo">
-                  YOLO · automatic ordinary approvals
-                </option>
-              </Select>
-            </Field>
-          )}
-          {permission !== null && error && <LoadError error={error} />}
-        </div>
         {session?.cwd && (
-          <section>
-            <h3>
-              Remembered for this repository
-              {rules?.rules.length ? ` · ${rules.rules.length}` : ""}
-            </h3>
-            <p class="muted">
-              Exact actions allowed for this repository. Tool definitions and
-              arguments must still match.
-            </p>
-            {ruleError && <LoadError error={ruleError} />}
+          <Group
+            title={`Remembered for this repository${
+              rules?.rules.length ? ` · ${rules.rules.length}` : ""
+            }`}
+            footer="Exact actions allowed for this repository. Tool definitions and arguments must still match."
+          >
+            {ruleError && (
+              <div class="group-block">
+                <LoadError error={ruleError} />
+              </div>
+            )}
             {rules?.rules.map((rule) => (
-              <div class="device" key={rule.key}>
-                <span>
-                  <strong>{rule.tool}</strong>
-                  <small class="muted">{rule.preview}</small>
-                </span>
-                <button
+              <Row key={rule.key} label={rule.tool} detail={rule.preview}>
+                <Button
+                  variant="quiet"
+                  size="compact"
                   disabled={!online}
                   onClick={() => {
                     setRuleError(null);
@@ -288,14 +295,16 @@ export default function Settings({
                   }}
                 >
                   Forget
-                </button>
-              </div>
+                </Button>
+              </Row>
             ))}
             {rules && !rules.rules.length && (
-              <p class="muted">No remembered actions.</p>
+              <Row label="No remembered actions." />
             )}
             {!!rules?.rules.length && (
-              <button
+              <Row
+                label="Forget all for this repository"
+                destructive
                 disabled={!online}
                 onClick={() => {
                   setRuleError(null);
@@ -308,133 +317,100 @@ export default function Settings({
                     })
                     .catch(setRuleError);
                 }}
-              >
-                Forget all for this repository
-              </button>
+              />
             )}
-          </section>
+          </Group>
         )}
       </>
     ),
     agent: (
-      <>
-        <button type="button" onClick={prompt}>
-          Edit system prompt
-        </button>
-      </>
+      <Group>
+        <Row
+          label="System prompt"
+          detail="The instructions every conversation starts from."
+          onClick={prompt}
+        />
+      </Group>
     ),
     devices: (
       <>
+        {error && <LoadError error={error} />}
         {update && (
-          <section>
-            <h3>Update available</h3>
-            <p>Updating reloads this view. Send or copy unsent drafts first.</p>
-            <button
-              disabled={
-                Object.values(drafts).some(
-                  (item) => item.text || item.files.length,
-                ) ||
-                uploading ||
-                Object.values(snapshots).some((item) => item.pending)
-              }
+          <Group
+            title="Update"
+            footer="Updating reloads this view. Send or copy unsent drafts first."
+          >
+            <Row
+              label="Apply update"
+              disabled={pendingWork}
               onClick={() => applyUpdate(update)}
-            >
-              Apply update
-            </button>
-          </section>
+            />
+          </Group>
         )}
-        <section>
-          <h3>Install</h3>
+        <Group title="Install">
           {installed ? (
-            <p>Running as an installed app.</p>
+            <Row label="Installed" detail="Running as an installed app." />
           ) : install ? (
-            <button
+            <Row
+              label="Install µAgent"
               onClick={async () => {
                 try {
                   await install.prompt();
-                } catch (error) {
-                  report(error);
+                } catch (failure) {
+                  report(failure);
                 }
                 setInstall(null);
               }}
-            >
-              Install µAgent
-            </button>
+            />
           ) : (
-            <p>
-              {ios
-                ? "In Safari, choose Share → Add to Home Screen. Open the installed app and pair it if needed."
-                : "Use your browser’s install option where supported. Installation needs a trusted HTTPS origin or localhost."}
-            </p>
-          )}
-        </section>
-        <section>
-          <h3>Notifications</h3>
-          <p>
-            {catalogue.capabilities.push
-              ? "Background push is available for supported installed browsers."
-              : "Notifications are available while this view is connected."}
-          </p>
-          <button
-            disabled={
-              !online ||
-              !isSecureContext ||
-              !("Notification" in globalThis) ||
-              !("serviceWorker" in navigator)
-            }
-            onClick={async () => {
-              try {
-                if (catalogue.capabilities.subscribed || notificationMode) {
-                  await api("/api/push/subscriptions", undefined, {
-                    method: "DELETE",
-                  });
-                  const registration =
-                    await navigator.serviceWorker.getRegistration();
-                  await (
-                    await registration?.pushManager?.getSubscription()
-                  )?.unsubscribe();
-                  setNotificationMode(false);
-                  notifications.current = false;
-                } else {
-                  if ((await Notification.requestPermission()) !== "granted")
-                    throw new Error("Notification permission was not granted.");
-                  if (
-                    catalogue.capabilities.push &&
-                    "PushManager" in globalThis
-                  ) {
-                    const registration = await navigator.serviceWorker.ready;
-                    const key = (catalogue.capabilities.vapid_public_key || "")
-                      .replace(/-/g, "+")
-                      .replace(/_/g, "/");
-                    const subscription =
-                      (await registration.pushManager.getSubscription()) ||
-                      (await registration.pushManager.subscribe({
-                        userVisibleOnly: true,
-                        applicationServerKey: Uint8Array.from(
-                          atob(key),
-                          (value) => value.charCodeAt(0),
-                        ),
-                      }));
-                    await api("/api/push/subscriptions", subscription.toJSON());
-                  } else {
-                    setNotificationMode(true);
-                    notifications.current = true;
-                  }
-                }
-                await refresh();
-              } catch (failure) {
-                report(failure);
+            <Row
+              label="Install"
+              detail={
+                ios
+                  ? "In Safari, choose Share → Add to Home Screen. Open the installed app and pair it if needed."
+                  : "Use your browser’s install option where supported. Installation needs a trusted HTTPS origin or localhost."
               }
-            }}
+            />
+          )}
+        </Group>
+        <Group
+          title="Notifications"
+          footer={
+            <>
+              {catalogue.capabilities.subscribed
+                ? "Background notifications enabled for this device."
+                : notificationMode
+                  ? "Connected-view notifications enabled. Delivery requires this browser view to remain connected."
+                  : "Notifications are muted for this device."}{" "}
+              Focus settings, power management and network conditions can delay
+              delivery. On iOS, enable notifications from the installed Home
+              Screen app.
+            </>
+          }
+        >
+          <Row
+            label="Notifications"
+            detail={
+              catalogue.capabilities.push
+                ? "Background push, for supported installed browsers."
+                : "While this view is connected."
+            }
           >
-            {catalogue.capabilities.subscribed || notificationMode
-              ? "Mute this device"
-              : catalogue.capabilities.push
-                ? "Enable background notifications"
-                : "Enable connected-view notifications"}
-          </button>
-          {(catalogue.capabilities.subscribed || notificationMode) && (
-            <button
+            <Switch
+              label="Notifications"
+              checked={notificationsOn}
+              disabled={
+                !online ||
+                !isSecureContext ||
+                !("Notification" in globalThis) ||
+                !("serviceWorker" in navigator)
+              }
+              onChange={(on) => void setNotifications(on)}
+            />
+          </Row>
+          {notificationsOn && (
+            <Row
+              label="Send test notification"
               disabled={!online || !selected}
               onClick={async () => {
                 try {
@@ -450,37 +426,28 @@ export default function Settings({
                   report(failure);
                 }
               }}
-            >
-              Send test notification
-            </button>
+            />
           )}
-          <p class="muted">
-            {catalogue.capabilities.subscribed
-              ? "Background notifications enabled for this device."
-              : notificationMode
-                ? "Connected-view notifications enabled. Delivery requires this browser view to remain connected."
-                : "Notifications are muted for this device."}{" "}
-            Focus settings, power management and network conditions can delay
-            delivery. On iOS, enable notifications from the installed Home
-            Screen app.
-          </p>
           {!catalogue.capabilities.push && (
-            <details>
-              <summary>Host details</summary>
-              <p>{catalogue.capabilities.push_reason}</p>
-            </details>
+            <Row
+              label="Why no background push"
+              detail={catalogue.capabilities.push_reason}
+            />
           )}
-        </section>
-        <section>
-          <h3>Paired devices</h3>
+        </Group>
+        <Group title="Paired devices">
           {catalogue.devices.map((device) => (
-            <div class="device" key={device.id}>
-              <span>
-                {device.name}
-                {device.id === catalogue.device ? " · this device" : ""}
-              </span>
+            <Row
+              key={device.id}
+              label={device.name}
+              detail={
+                device.id === catalogue.device ? "This device" : undefined
+              }
+            >
               {device.id !== catalogue.device && (
-                <button
+                <Button
+                  variant="quiet"
+                  size="compact"
                   onClick={() =>
                     command("revoke_device", null, { device_id: device.id })
                       .then(refresh)
@@ -488,70 +455,89 @@ export default function Settings({
                   }
                 >
                   Revoke
-                </button>
+                </Button>
               )}
-            </div>
+            </Row>
           ))}
-          <button onClick={logout}>Log out this device</button>
-        </section>
+          <Row label="Log out this device" destructive onClick={logout} />
+        </Group>
       </>
+    ),
+    mcp: (
+      <McpServers
+        session={session}
+        state={snapshots[selected]?.state}
+        online={online}
+      />
     ),
     advanced: null,
     developer: (
-      <>
-        <a
-          class="button-link with-icon"
+      <Group>
+        <Row
+          label="UI showcase"
+          detail="Every shared control, in both themes."
           href="/ui.html"
-          target="_blank"
-          rel="noreferrer"
-        >
-          <Palette aria-hidden="true" />
-          UI showcase
-        </a>
-      </>
+        />
+      </Group>
     ),
   };
   const current = section || "general";
+  const title = SECTIONS.find(([id]) => id === current)![1];
+  const drilled = phone && section !== null;
   return (
-    <div class="settings-content" data-drilled={section ? "" : undefined}>
-      <nav class="settings-nav" aria-label="Settings sections">
-        {SECTIONS.map(([id, label]) => (
-          <button
-            key={id}
-            type="button"
-            class="quiet"
-            aria-current={id === current ? "page" : undefined}
-            onClick={() => setSection(id)}
-          >
-            {label}
-          </button>
-        ))}
-      </nav>
-      <div ref={body} class="settings-pane">
-        <div class="subview-head">
-          <button
-            type="button"
-            class="quiet with-icon settings-back"
-            onClick={() => setSection(null)}
-          >
-            <ArrowLeft aria-hidden="true" />
-            Back
-          </button>
-          <h3>{SECTIONS.find(([id]) => id === current)![1]}</h3>
+    <>
+      <DialogHeader
+        title={drilled ? title : "Settings"}
+        leading={
+          drilled && (
+            <Button
+              variant="quiet"
+              class="with-icon settings-back"
+              onClick={() => setSection(null)}
+            >
+              <ChevronLeft aria-hidden="true" />
+              Back
+            </Button>
+          )
+        }
+      />
+      <div
+        class="dialog-body settings-content"
+        data-drilled={section ? "" : undefined}
+      >
+        <SettingsNav
+          current={phone ? undefined : current}
+          select={setSection}
+        />
+        <div ref={body} class="settings-pane">
+          {!phone && <h3 class="settings-pane-title">{title}</h3>}
+          {/* One instance in one slot: switching sections refilters the
+              catalogue it already loaded instead of fetching it again. */}
+          {current in CONFIG && (
+            <Deferred
+              load={configuration}
+              session={session}
+              online={online}
+              sessions={catalogue.sessions}
+              display={{
+                changed:
+                  Number(theme !== DISPLAY.theme) +
+                  Number(zoom !== DISPLAY.zoom) +
+                  Number(timePrefs.clock !== defaultTimePrefs.clock) +
+                  Number(timePrefs.style !== defaultTimePrefs.style),
+                reset: () => {
+                  setTheme(DISPLAY.theme);
+                  setZoom(DISPLAY.zoom);
+                  setTimePrefs(defaultTimePrefs);
+                },
+              }}
+              filter={CONFIG[current as keyof typeof CONFIG]}
+              fallback={<SettingRowsLoading />}
+            />
+          )}
+          {pane[current]}
         </div>
-        {pane[current]}
-        {/* One instance in one slot: switching sections refilters the
-            catalogue it already loaded instead of fetching it again. */}
-        {current in CONFIG && (
-          <Deferred
-            load={configuration}
-            session={session}
-            online={online}
-            filter={CONFIG[current as keyof typeof CONFIG]}
-            fallback={<Spinner label="Loading configuration…" surface />}
-          />
-        )}
       </div>
-    </div>
+    </>
   );
 }

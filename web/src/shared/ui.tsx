@@ -1,8 +1,10 @@
 import {
   Component,
+  createContext,
   type ComponentChildren,
   type ComponentType,
   type JSX,
+  type RefObject,
 } from "preact";
 import { failure } from "./types.ts";
 import {
@@ -15,9 +17,11 @@ import {
 } from "preact/hooks";
 import { ChevronRight, X, Check, Copy } from "lucide-preact";
 import { markPath } from "./mark.ts";
+import { animateOut, motionMs } from "./motion.ts";
+import { useDismiss } from "./dismiss.ts";
 
 export { Input, Textarea, Select } from "./form-controls.tsx";
-import { Input } from "./form-controls.tsx";
+import { Input, Select } from "./form-controls.tsx";
 
 import { cleanText } from "./display.ts";
 export { cleanText };
@@ -73,6 +77,7 @@ export function CodeCopy({ text }: { text: string }) {
   return (
     <>
       <IconButton
+        class="swap-feedback"
         label={status || "Copy code"}
         onClick={async () => {
           try {
@@ -129,23 +134,200 @@ export function Field({
     </label>
   );
 }
-export function Toggle({
+// A setting that is on or off, as a native switch. Applies on change.
+export function Switch({
   label,
-  help,
-  ...props
-}: JSX.InputHTMLAttributes<HTMLInputElement> & {
+  checked,
+  onChange,
+  disabled,
+}: {
   label: string;
-  help?: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  disabled?: boolean;
 }) {
   return (
-    <label class="toggle-row">
-      <Input type="checkbox" {...props} />
-      <span>
-        <strong>{label}</strong>
-        {help && <small class="muted">{help}</small>}
-      </span>
-    </label>
+    <span class="switch">
+      <Input
+        type="checkbox"
+        role="switch"
+        aria-label={label}
+        checked={checked}
+        disabled={disabled}
+        onChange={(event) => onChange(event.currentTarget.checked)}
+      />
+    </span>
   );
+}
+
+// A choice shown as a row's trailing value; still a native select, so a
+// phone opens its own picker.
+export function ValueSelect(
+  props: JSX.SelectHTMLAttributes<HTMLSelectElement>,
+) {
+  return <Select {...props} class="value-select" />;
+}
+
+// The one caption over a group of rows or a section.
+export function SectionTitle({ children }: { children: ComponentChildren }) {
+  return <h3 class="section-title">{children}</h3>;
+}
+
+// Rows on one inset card, with an optional caption and a help line below.
+export function Group({
+  title,
+  footer,
+  children,
+}: {
+  title?: string;
+  footer?: ComponentChildren;
+  children: ComponentChildren;
+}) {
+  return (
+    <section class="group" aria-label={title}>
+      {title && <SectionTitle>{title}</SectionTitle>}
+      <div class="group-rows">{children}</div>
+      {footer && <p class="group-footer">{footer}</p>}
+    </section>
+  );
+}
+
+// One setting or destination: a label (and detail line), then its value or
+// control. With `onClick` the whole row is the button and shows a chevron.
+export function Row({
+  label,
+  detail,
+  children,
+  onClick,
+  destructive = false,
+  current,
+  href,
+  disabled,
+  expanded,
+}: {
+  label: ComponentChildren;
+  detail?: ComponentChildren;
+  children?: ComponentChildren;
+  onClick?: () => void;
+  // A link out instead of an action.
+  href?: string;
+  disabled?: boolean;
+  destructive?: boolean;
+  // The destination shown beside the list (a two-column layout).
+  current?: boolean;
+  // A disclosure: detail opens in place below the row.
+  expanded?: boolean;
+}) {
+  const body = (
+    <>
+      <span class="row-text">
+        <span class="row-label">{label}</span>
+        {detail && <small class="row-detail">{detail}</small>}
+      </span>
+      {children && <span class="row-value">{children}</span>}
+    </>
+  );
+  const chevron = <ChevronRight aria-hidden="true" class="row-chevron" />;
+  return href ? (
+    <a class="row button-link" href={href} target="_blank" rel="noreferrer">
+      {body}
+      {chevron}
+    </a>
+  ) : onClick ? (
+    <Button
+      variant="quiet"
+      class={`row${destructive ? " destructive-row" : ""}`}
+      aria-current={current ? "page" : undefined}
+      aria-expanded={expanded}
+      disabled={disabled}
+      onClick={onClick}
+    >
+      {body}
+      {chevron}
+    </Button>
+  ) : (
+    <div class="row">{body}</div>
+  );
+}
+
+// The frame every setting shares, wherever its value lives: label and
+// detail, its control, a ✓ after a save, and Reset while the value differs
+// from the one it would otherwise inherit. A locked value is set somewhere
+// this interface cannot change, and says where.
+export function SettingRow({
+  name,
+  label = name,
+  htmlFor,
+  detail,
+  overridden = false,
+  locked,
+  saved = false,
+  disabled,
+  reset,
+  children,
+}: {
+  // Names the setting for assistive technology, e.g. "Reset Zoom".
+  name: string;
+  label?: ComponentChildren;
+  htmlFor?: string;
+  detail?: ComponentChildren;
+  overridden?: boolean;
+  locked?: string;
+  saved?: boolean;
+  disabled?: boolean;
+  reset: () => void;
+  children: ComponentChildren;
+}) {
+  return (
+    <div class="row setting-row">
+      <span class="row-text">
+        <label class="row-label" htmlFor={htmlFor}>
+          {label}
+          {saved && (
+            <Check class="setting-saved" aria-label="Saved" role="img" />
+          )}
+        </label>
+        {detail && <small class="row-detail">{detail}</small>}
+        {locked && <small class="row-detail">{locked}</small>}
+      </span>
+      <span class="row-value setting-value">
+        {children}
+        {overridden && !locked && (
+          <Button
+            variant="quiet"
+            size="compact"
+            class="setting-reset"
+            aria-label={`Reset ${name}`}
+            disabled={disabled}
+            onClick={reset}
+          >
+            Reset
+          </Button>
+        )}
+      </span>
+    </div>
+  );
+}
+
+// Nothing to show yet: one line, and what to do about it.
+export function EmptyState({
+  children,
+  action,
+}: {
+  children: ComponentChildren;
+  action?: ComponentChildren;
+}) {
+  return (
+    <div class="empty-state">
+      <p>{children}</p>
+      {action}
+    </div>
+  );
+}
+
+// A dialog's or form's buttons, trailing and in reading order.
+export function Actions({ children }: { children: ComponentChildren }) {
+  return <div class="dialog-actions">{children}</div>;
 }
 export function Skeleton({
   rows = 3,
@@ -375,7 +557,11 @@ export function IconButton({
   label,
   children,
   ...props
-}: JSX.ButtonHTMLAttributes<HTMLButtonElement> & { label: string }) {
+}: JSX.ButtonHTMLAttributes<HTMLButtonElement> & {
+  label: string;
+  // Quiet unless it is the surface's main action (Send).
+  variant?: "primary" | "quiet";
+}) {
   return (
     <Button
       variant="quiet"
@@ -389,6 +575,44 @@ export function IconButton({
   );
 }
 
+// What a dialog's header needs, for content that draws its own (a settings
+// sheet whose title and back button follow its navigation).
+const DialogContext = createContext<{
+  title: string;
+  titleId: string;
+  heading: RefObject<HTMLHeadingElement>;
+  close: () => void;
+} | null>(null);
+
+// The one dialog header: title, optional leading control (Back) and actions,
+// then Close. Modal renders it unless its content renders its own.
+export function DialogHeader({
+  title,
+  leading,
+  actions,
+}: {
+  title: string;
+  leading?: ComponentChildren;
+  actions?: ComponentChildren;
+}) {
+  const dialog = useContext(DialogContext)!;
+  return (
+    <header>
+      {leading}
+      <h2 id={dialog.titleId} ref={dialog.heading} tabIndex={-1}>
+        {title}
+      </h2>
+      {actions && <span class="dialog-header-actions">{actions}</span>}
+      <IconButton
+        label={`Close ${dialog.title.toLowerCase()}`}
+        onClick={dialog.close}
+      >
+        <X />
+      </IconButton>
+    </header>
+  );
+}
+
 export function Modal({
   title,
   children,
@@ -397,6 +621,7 @@ export function Modal({
   size = "compact",
   layout = "content",
   actions,
+  header = true,
 }: {
   title: string;
   children: ComponentChildren;
@@ -407,10 +632,24 @@ export function Modal({
   layout?: "content" | "panel" | "sheet";
   // Header controls beside Close, for actions on the dialog's subject.
   actions?: ComponentChildren;
+  // False when the content renders its own DialogHeader and .dialog-body.
+  header?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   const titleId = useId();
+  // Every way the person closes it (Close, Escape, the back gesture) plays
+  // the exit first; a parent that unmounts it (a swap) is instant.
+  const leaving = useRef(false);
+  const mounted = useRef(true);
+  const requestClose = () => {
+    if (leaving.current) return;
+    if (!motionMs("base")) return close();
+    leaving.current = true;
+    // A parent that replaced this dialog meanwhile owns its state now.
+    void animateOut(ref.current).then(() => mounted.current && close());
+  };
+  useDismiss(true, requestClose);
   useLayoutEffect(() => {
     const prior = document.activeElement;
     const dialog = ref.current;
@@ -419,6 +658,7 @@ export function Modal({
     // Tab still reaches Close; native modality and focus restoration remain.
     heading.current?.focus({ preventScroll: true });
     return () => {
+      mounted.current = false;
       dialog?.close();
       const target =
         prior instanceof HTMLElement && prior.isConnected
@@ -438,22 +678,32 @@ export function Modal({
       class={className}
       data-size={size}
       data-layout={layout}
-      aria-labelledby={titleId}
+      // A content-drawn header's title follows its navigation; the dialog
+      // keeps its own name.
+      aria-labelledby={header ? titleId : undefined}
+      aria-label={header ? undefined : title}
       onCancel={(event) => {
         event.preventDefault();
-        close();
+        requestClose();
       }}
     >
-      <header>
-        <h2 id={titleId} ref={heading} tabIndex={-1}>
-          {title}
-        </h2>
-        {actions && <span class="dialog-header-actions">{actions}</span>}
-        <IconButton label={`Close ${title.toLowerCase()}`} onClick={close}>
-          <X />
-        </IconButton>
-      </header>
-      <div class="dialog-body">{children}</div>
+      <DialogContext.Provider
+        value={{
+          title,
+          titleId,
+          heading,
+          close: requestClose,
+        }}
+      >
+        {header ? (
+          <>
+            <DialogHeader title={title} actions={actions} />
+            <div class="dialog-body">{children}</div>
+          </>
+        ) : (
+          children
+        )}
+      </DialogContext.Provider>
     </dialog>
   );
 }
@@ -474,11 +724,15 @@ export async function preloadDeferred<P extends object>(
 export function Deferred<P extends object>({
   load,
   fallback,
+  ownsDialog = false,
   ...props
 }: P & {
   load: () => Promise<{ default: ComponentType<P> }>;
   fallback?: ComponentChildren;
+  // The whole content of a Modal with header={false}.
+  ownsDialog?: boolean;
 }) {
+  const dialog = useContext(DialogContext);
   const [Component, setComponent] = useState<ComponentType<P> | null>(
     () => (modules.get(load) as ComponentType<P> | undefined) || null,
   );
@@ -501,7 +755,18 @@ export function Deferred<P extends object>({
   return Component ? (
     <Component {...(props as P)} />
   ) : error ? (
-    <LoadError error={error} retry={() => setAttempt(attempt + 1)} />
+    // The content of a headerless dialog: a failed load still shows the
+    // dialog's title and Close.
+    ownsDialog && dialog ? (
+      <>
+        <DialogHeader title={dialog.title} />
+        <div class="dialog-body">
+          <LoadError error={error} retry={() => setAttempt(attempt + 1)} />
+        </div>
+      </>
+    ) : (
+      <LoadError error={error} retry={() => setAttempt(attempt + 1)} />
+    )
   ) : fallback === undefined ? (
     <Spinner surface />
   ) : (

@@ -15,6 +15,7 @@
 #include "include/core/json.h"
 #include "include/core/steering.h"
 #include "include/core/strings.h"
+#include "include/mcp/register.h"
 #include "include/providers.h"
 #include "include/tools/subagent.h"
 #include "src/app/commands_internal.h"
@@ -54,6 +55,17 @@ json SessionControl(AppSession& session, const json& request) {
     return session.ActiveAgent().PromptConfiguration(request);
   }
   if (kind == "permissions") return PermissionControl(session.context, request);
+  if (kind == "tools" &&
+      JsonValue(request, "operation", "").starts_with("mcp_")) {
+    AppContext& app = session.context;
+    json result = McpControl(request, app.tools, app.runtime.mcp,
+                             app.runtime.config);
+    if (app.runtime.mcp.registry_changed) {
+      ApplyToolPolicy(app.tools, app.tool_policy);
+      app.session_approvals.clear();
+    }
+    return result;
+  }
   if (kind == "tools") {
     json result = session.ActiveAgent().ConfigureTools(request);
     if (!result.contains("error") &&

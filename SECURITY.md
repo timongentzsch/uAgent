@@ -95,15 +95,26 @@ exception, because a detached job's log pump writes there. `/status` names the
 mechanism; `/context` lists every writable root. A requested root that is
 refused is reported at startup.
 
-Reads are **not** restricted on either platform: a confined
-`cat ~/.uagent/.config` still pulls the file into model context. Outbound
-network access is allowed by default because git, npm and pip need it;
+Reads are **not** restricted on either platform, except for the browser
+profile: a confined `cat ~/.uagent/.config` still pulls the file into model
+context.
+
+With the sandbox on, commands cannot read the browser data directory
+(`UAGENT_BROWSER_DATA`) or connect to its sockets, and the file tools refuse
+it; yolo, `run(sandbox=false)` and a disabled sandbox lift that, as they lift
+the sandbox itself. Linux uses Landlock (sockets from Linux 7.1, ABI 9), macOS
+Seatbelt. Keep the directory outside the sandbox's writable roots, e.g.
+`~/.uagent/browser`. See [the web guide](docs/WEB.md#isolation).
+
+Outbound network access is allowed by default because git, npm and pip need it;
 `UAGENT_SANDBOX_NET=0` denies all IP traffic on macOS and outbound TCP on
 Linux, where Landlock cannot express the rest.
 
 A workspace's `.uagent/.config`, `.uagent/system-prompt.json` and `.mcp.json`
 are carved out of the writable workspace on macOS only. Landlock has no deny
 rule, so the same guarantee on Linux would mean not granting the workspace.
+On Linux, a command that changes one of them still revokes project trust, so
+the next launch asks again.
 The built-in file tools and the `uagent` tool still reach these files, with
 mandatory human approval for each change.
 

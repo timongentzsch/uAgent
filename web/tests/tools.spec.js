@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures.js";
+import { readFile, writeFile } from "node:fs/promises";
 
 test("tool catalogue reports exact schema bytes and persists selection", async ({
   page,
@@ -149,6 +150,83 @@ test("files read as tiles and cards, tool images sit on their row, and every ima
   await read.locator(".attachment-tile").click();
   const viewer = page.getByRole("dialog", { name: "shot.png" });
   await expect(viewer.locator("img")).toBeVisible();
+  // A click on the image is for zooming; one beside it closes the viewer.
   await viewer.locator("img").click();
+  await expect(viewer).toBeVisible();
+  const surface = await viewer.getByRole("group").boundingBox();
+  await page.mouse.click(surface.x + 4, surface.y + 4);
   await expect(viewer).toHaveCount(0);
+});
+
+// Settings lists the open conversation's MCP servers by the file that defines
+// them; the switch edits that file and applies to the conversation at once.
+test("MCP servers show their state and switch on and off", async ({
+  page,
+  host,
+  command,
+  request,
+}) => {
+  const server = `${host.home}/fake_mcp.py`;
+  await writeFile(
+    server,
+    [
+      "import json, sys",
+      "for line in sys.stdin:",
+      "    message = json.loads(line)",
+      "    if 'id' not in message: continue",
+      "    method = message.get('method')",
+      "    result = {'supportedVersions': ['2026-07-28'], 'capabilities': {'tools': {}}} if method == 'server/discover' else {'tools': [{'name': 'echo', 'inputSchema': {'type': 'object'}}]} if method == 'tools/list' else {}",
+      "    print(json.dumps({'jsonrpc': '2.0', 'id': message['id'], 'result': result}), flush=True)",
+    ].join("\n"),
+  );
+  const config = `${host.home}/.mcp.json`;
+  await writeFile(
+    config,
+    JSON.stringify({
+      mcpServers: {
+        probe: { command: "python3", args: [server] },
+        broken: { command: `${host.home}/missing`, required: false },
+      },
+    }),
+  );
+  let { session } = await command("create", { cwd: host.project });
+  ({ session } = await command("activate", { session_id: session.id }));
+  await expect
+    .poll(async () => {
+      const response = await request.get(`/api/sessions/${session.id}`);
+      return (await response.json()).metadata.status;
+    })
+    .toBe("idle");
+  await page.goto(`/#session=${session.id}`);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const settings = page.getByRole("dialog", { name: "Settings", exact: true });
+  await settings.getByRole("button", { name: "MCP servers" }).click();
+
+  const global = settings.getByRole("region", {
+    name: "Global · all projects",
+  });
+  await expect(global).toContainText("~/.mcp.json");
+  await expect(
+    settings.getByRole("region", { name: /^This project · / }),
+  ).toContainText("No project servers");
+  const probe = global.getByRole("button", { name: /probe/ });
+  await expect(probe).toContainText("1 tool");
+  await expect(global.getByRole("button", { name: /broken/ })).toContainText(
+    /exited|failed/i,
+  );
+
+  await probe.click();
+  await global.getByRole("switch", { name: "Enable probe" }).uncheck();
+  await expect(probe).toContainText("Disabled");
+  expect(
+    JSON.parse(await readFile(config, "utf8")).mcpServers.probe.disabled,
+  ).toBe(true);
+  await global.getByRole("switch", { name: "Enable probe" }).check();
+  await expect(probe).toContainText("1 tool");
+
+  await global.getByRole("button", { name: /broken/ }).click();
+  await global.getByRole("button", { name: "Retry" }).click();
+  await expect(global.getByRole("button", { name: /broken/ })).toContainText(
+    /exited|failed/i,
+  );
 });

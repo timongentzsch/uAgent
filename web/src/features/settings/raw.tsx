@@ -2,7 +2,15 @@ import "./raw.css";
 import type { RawOptions, Exchange, JSONValue } from "../../shared/types.ts";
 import { useEffect, useId, useMemo, useState } from "preact/hooks";
 import { Download } from "lucide-preact";
-import { Field, Select, LoadError, Spinner, Time } from "../../shared/ui.tsx";
+import {
+  Actions,
+  Button,
+  Field,
+  Select,
+  LoadError,
+  Spinner,
+  Time,
+} from "../../shared/ui.tsx";
 import { readPages, command } from "../../state/api.ts";
 import { formatBody } from "../../shared/format.ts";
 import { formatEventStream } from "../../state/event-stream.ts";
@@ -144,7 +152,7 @@ export default function Raw({
             }}
           >
             {(["request", "response"] as const).map((name) => (
-              <button
+              <Button
                 type="button"
                 id={`${prefix}-${name}`}
                 role="tab"
@@ -156,7 +164,7 @@ export default function Raw({
                 onClick={() => setTab(name)}
               >
                 {name === "request" ? "Request" : "Response"}
-              </button>
+              </Button>
             ))}
           </div>
         )}
@@ -169,7 +177,7 @@ export default function Raw({
           <p class="muted small">This capture is incomplete.</p>
         )}
       </div>
-      {context && prompt && <button onClick={prompt}>System prompt</button>}
+      {context && prompt && <Button onClick={prompt}>System prompt</Button>}
       <div
         class="raw-body"
         id={`${prefix}-body`}
@@ -193,10 +201,10 @@ export default function Raw({
           <pre>{text}</pre>
         )}
       </div>
-      <footer class="dialog-actions">
+      <Actions>
         <div class="raw-tabs" role="group" aria-label="Body display">
           {([false, true] as const).map((raw) => (
-            <button
+            <Button
               type="button"
               key={String(raw)}
               disabled={body === undefined}
@@ -204,10 +212,10 @@ export default function Raw({
               onClick={() => setSource(raw)}
             >
               {raw ? "Source" : stream ? "Events" : "Readable"}
-            </button>
+            </Button>
           ))}
         </div>
-        <button
+        <Button
           type="button"
           class="with-icon"
           disabled={body === undefined}
@@ -225,8 +233,8 @@ export default function Raw({
         >
           <Download />
           Download
-        </button>
-      </footer>
+        </Button>
+      </Actions>
     </div>
   );
 }

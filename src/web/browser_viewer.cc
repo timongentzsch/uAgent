@@ -12,6 +12,8 @@
 #include <atomic>
 #include <chrono>
 #include <cstring>
+#include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 #include <utility>
@@ -22,42 +24,84 @@
 
 namespace uagent::web {
 namespace {
+// How often the relay re-reads the lease; input follows control within this.
+constexpr int kLeaseCheckMs = 250;
+
 Fd ConnectRfb() { return ConnectUnix(browser::RfbPath()); }
-bool StillViews(const std::string& device, const std::string& role,
-                uint64_t generation) {
-  json status = browser::Request(
-      {{"op", "viewer"}, {"device", device}, {"role", role}}, 1000);
-  return status.value("ok", false) &&
-         JsonValue(status, "generation", uint64_t{0}) == generation;
+
+// The display this device views and whether it drives it, or nullopt once
+// the browser stops.
+struct Lease {
+  uint64_t display = 0;
+  uint64_t generation = 0;
+  bool controller = false;
+};
+std::optional<Lease> ReadLease(const std::string& device) {
+  json status =
+      browser::Request({{"op", "viewer"}, {"device", device}}, 1000);
+  if (!status.value("ok", false)) return std::nullopt;
+  return Lease{JsonValue(status, "display", uint64_t{0}),
+               JsonValue(status, "generation", uint64_t{0}),
+               status.value("controller", false)};
+}
+
+bool WriteAll(int fd, const std::string& data) {
+  size_t sent = 0;
+  while (sent < data.size()) {
+    pollfd ready{fd, POLLOUT, 0};
+    if (poll(&ready, 1, 2000) <= 0) return false;
+    ssize_t n = write(fd, data.data() + sent, data.size() - sent);
+    if (n <= 0) return false;
+    sent += static_cast<size_t>(n);
+  }
+  return true;
 }
 }  // namespace
 
-uint64_t RelayBrowserViewer(httplib::ws::WebSocket& socket,
-                            const std::string& device,
-                            const std::string& role) {
-  json status =
-      browser::Request({{"op", "viewer"}, {"device", device}, {"role", role}});
-  if (!status.value("ok", false)) {
+ViewerSession RelayBrowserViewer(httplib::ws::WebSocket& socket,
+                                 const std::string& device) {
+  const std::optional<Lease> initial = ReadLease(device);
+  if (!initial) {
     socket.close(httplib::ws::CloseStatus::PolicyViolation);
-    return 0;
+    return {};
   }
-  const uint64_t generation = JsonValue(status, "generation", uint64_t{0});
+  const uint64_t display = initial->display;
   Fd rfb = ConnectRfb();
   if (!rfb) {
     socket.close(httplib::ws::CloseStatus::GoingAway);
-    return 0;
+    return {};
   }
   std::atomic<bool> stopped{false};
+  // Input to Chrome has one filter and one writer: this device's messages
+  // while it drives, and the release that lifts whatever it still holds the
+  // moment control moves away, even if it sends nothing more.
+  std::mutex input;
+  RfbInputFilter filter;
+  bool driving = initial->controller;
+  uint64_t generation = initial->generation;
+  const auto release = [&] {
+    if (driving) WriteAll(rfb.Get(), filter.Release());
+    driving = false;
+  };
   std::thread output([&] {
     char buffer[65536];
     auto next_check = std::chrono::steady_clock::now();
     while (!stopped) {
       pollfd ready{rfb.Get(), POLLIN, 0};
-      int result = poll(&ready, 1, 500);
+      int result = poll(&ready, 1, kLeaseCheckMs);
       if (std::chrono::steady_clock::now() >= next_check) {
-        if (!StillViews(device, role, generation)) break;
-        next_check =
-            std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
+        // A new display (Chrome restarted) needs a fresh RFB session; a
+        // control change only gates input on this one.
+        auto lease = ReadLease(device);
+        if (!lease || lease->display != display) break;
+        {
+          std::lock_guard lock(input);
+          generation = lease->generation;
+          if (!lease->controller) release();
+          driving = lease->controller;
+        }
+        next_check = std::chrono::steady_clock::now() +
+                     std::chrono::milliseconds(kLeaseCheckMs);
       }
       if (result < 0) break;
       if (result == 0) continue;
@@ -67,33 +111,27 @@ uint64_t RelayBrowserViewer(httplib::ws::WebSocket& socket,
     stopped = true;
     socket.close(httplib::ws::CloseStatus::GoingAway);
   });
-  std::string data;
-  RfbViewOnlyFilter view_only;
+  std::string data, forwarded;
   while (!stopped) {
     auto result = socket.read(data);
-    if (result != httplib::ws::ReadResult::Binary || data.size() > 262144 ||
-        !StillViews(device, role, generation)) {
+    if (result != httplib::ws::ReadResult::Binary || data.size() > 262144) {
       break;
     }
-    std::string filtered;
-    if (role == "observe") {
-      if (!view_only.Push(data, filtered)) break;
-      data = std::move(filtered);
+    std::lock_guard lock(input);
+    if (!filter.Push(data, forwarded, driving) ||
+        !WriteAll(rfb.Get(), forwarded)) {
+      break;
     }
-    size_t sent = 0;
-    while (sent < data.size()) {
-      pollfd ready{rfb.Get(), POLLOUT, 0};
-      if (poll(&ready, 1, 2000) <= 0) break;
-      ssize_t n = write(rfb.Get(), data.data() + sent, data.size() - sent);
-      if (n <= 0) break;
-      sent += static_cast<size_t>(n);
-    }
-    if (sent != data.size()) break;
   }
   stopped = true;
+  {
+    std::lock_guard lock(input);
+    release();
+  }
   shutdown(rfb.Get(), SHUT_RDWR);
   socket.close();
   output.join();
-  return generation;
+  std::lock_guard lock(input);
+  return {display, generation};
 }
 }  // namespace uagent::web

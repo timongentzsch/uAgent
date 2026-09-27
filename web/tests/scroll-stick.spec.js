@@ -40,12 +40,16 @@ test("progressive rendering retains text while syntax highlighting loads", async
   });
   try {
     await startLongProbe(page, session, command);
-    const stream = page.locator(".message.response .markdown-stream");
+    const stream = page.locator(".message.response .markdown[data-streaming]");
     await expect
       .poll(async () => (await stream.textContent())?.length || 0)
       .toBeGreaterThan(2000);
-    // A pending rich prefix must remain in the plain tail until it can paint.
+    // Content stays visible while highlighting is still loading.
     await expect(stream).toContainText("print('stable copy control')");
+    // Code streams inside its block, not as raw fenced text, and offers no
+    // copy until its fence closes.
+    await expect(stream.locator(".code-block").first()).toBeVisible();
+    await expect(stream).not.toContainText("```");
     release();
     await expect(page.locator(".composer .status-led.running")).toBeHidden();
     const final = page.locator(".message.response > .markdown");

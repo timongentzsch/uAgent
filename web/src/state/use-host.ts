@@ -21,8 +21,14 @@ import {
 } from "./store.ts";
 import { api, protocol, receiveOutcome } from "./api.ts";
 import { selectedFromURL, writeSelection } from "../shared/navigation.ts";
-import { maxLocalRequests, reconnectMaxDelayMs } from "../shared/limits.ts";
+import {
+  maxLocalRequests,
+  reconnectGraceMs,
+  reconnectMaxDelayMs,
+} from "../shared/limits.ts";
 import type { ConnectionPhase } from "../shared/connection-status.tsx";
+
+const CATALOGUE_KEY = "uagent-catalogue";
 
 // One SSE subscription owns host snapshots, command receipts and read state.
 export function useHost(
@@ -34,15 +40,24 @@ export function useHost(
   const [online, setOnline] = useState(false);
   const [connecting, setConnecting] = useState(true);
   const connectedOnce = useRef(false);
+  // Resuming usually catches up within a second; only a slower reconnect is
+  // worth a label. Mutations stay gated on `online` either way.
+  const [slowReconnect, setSlowReconnect] = useState(false);
   const [loadErrors, setLoadErrors] = useState<Record<string, unknown>>({});
   const revoked = useRef(false);
   const catalogueRef = useRef<Catalogue>();
   const loads = useRef(new Map<string, Promise<Snapshot>>());
   const lifetime = useRef(new AbortController());
-  const [catalogue, setCatalogue] = useState<Catalogue>({
-    sessions: [],
-    capabilities: {},
-    devices: [],
+  // The last list this device saw paints the sidebar, title and composer
+  // from the first frame of a reload; the host's answer replaces it, and
+  // everything stays inert until then (`online` is false).
+  const [catalogue, setCatalogue] = useState<Catalogue>(() => {
+    const sessions = readStored<Catalogue["sessions"]>(
+      storage,
+      CATALOGUE_KEY,
+      [],
+    );
+    return { sessions, capabilities: {}, devices: [] };
   });
   const [snapshots, setSnapshots] = useState<Record<string, Snapshot>>({});
   const [selected, setSelected] = useState(selectedFromURL);
@@ -512,6 +527,7 @@ export function useHost(
         revoked.current = true;
         catalogueRef.current = undefined;
         setCatalogue({ sessions: [], devices: [], capabilities: {} });
+        storage.removeItem(CATALOGUE_KEY);
         setDrafts({});
         setAuthenticated(false);
         live.current = {};
@@ -604,6 +620,18 @@ export function useHost(
   useEffect(() => {
     if (selected && authenticated) load(selected).catch(() => {});
   }, [selected, authenticated, load, report]);
+  // Only what the sidebar lists: scheduled runs and their tasks stay out.
+  useEffect(() => {
+    if (!authenticated) return;
+    const runs = new Set(
+      catalogue.scheduled?.runs?.map((run) => run.session_id),
+    );
+    writeStored(
+      storage,
+      CATALOGUE_KEY,
+      catalogue.sessions.filter((item) => !item.task_id && !runs.has(item.id)),
+    );
+  }, [authenticated, catalogue.sessions, catalogue.scheduled]);
   useEffect(() => {
     writeStored(storage, "uagent-unread", [...unread]);
   }, [unread]);
@@ -669,6 +697,7 @@ export function useHost(
     revoked.current = true;
     catalogueRef.current = undefined;
     setCatalogue({ sessions: [], devices: [], capabilities: {} });
+    storage.removeItem(CATALOGUE_KEY);
     setOnline(false);
     setConnecting(false);
     connectedOnce.current = false;
@@ -676,6 +705,12 @@ export function useHost(
     writeSelection("", true);
     setSelected("");
   }
+  useEffect(() => {
+    setSlowReconnect(false);
+    if (online) return;
+    const timer = setTimeout(() => setSlowReconnect(true), reconnectGraceMs);
+    return () => clearTimeout(timer);
+  }, [online]);
   return {
     managementVersion,
     authenticated,
@@ -684,7 +719,9 @@ export function useHost(
       ? "connected"
       : connecting
         ? connectedOnce.current
-          ? "reconnecting"
+          ? slowReconnect
+            ? "reconnecting"
+            : "connected"
           : "connecting"
         : "disconnected") as ConnectionPhase,
     loadErrors,

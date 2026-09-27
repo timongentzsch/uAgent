@@ -97,6 +97,7 @@ CommandReply RunSlashCommand(AppSession& session,
   switch (command.spec->id) {
     case SlashCommandId::kQuit:
     case SlashCommandId::kReset:
+    case SlashCommandId::kRestart:
     case SlashCommandId::kSessions:
     case SlashCommandId::kFork:
     case SlashCommandId::kVerbose:
@@ -157,33 +158,28 @@ CommandReply RunSlashCommand(AppSession& session,
       HandleEffort(session, command.argument, reply);
       break;
     case SlashCommandId::kPermissions:
+      if (command.argument == "rules" ||
+          command.argument.starts_with("forget")) {
+        HandlePermissionRules(command.argument, reply);
+        return reply;
+      }
       result = PermissionControl(session.context, {{"mode", command.argument}});
       session.ActiveAgent().ApprovalChanged();
       return reply;
-    case SlashCommandId::kConfig: {
-      json request = {{"kind", "config"}};
-      if (!command.argument.empty()) {
-        std::istringstream input(command.argument);
-        std::string scope, change;
-        input >> scope;
-        std::getline(input, change);
-        change = Trim(change);
-        bool unset = change.starts_with("unset ");
-        size_t equal = change.find('=');
-        if (unset) change = Trim(change.substr(6));
-        request.update(
-            {{"operation", "apply"},
-             {"scope", scope},
-             {"changes",
-              json::array({{{"key", unset ? change : change.substr(0, equal)},
-                            {"value", unset || equal == std::string::npos
-                                          ? ""
-                                          : change.substr(equal + 1)},
-                            {"unset", unset}}})}});
+    case SlashCommandId::kRename:
+      if (Trim(command.argument).empty()) {
+        result = {{"error", "usage: /rename TITLE"}};
+      } else {
+        session.ActiveAgent().Rename(Trim(command.argument));
+        result = {{"title", Trim(command.argument)}};
       }
-      result = SessionControl(session, request);
       return reply;
-    }
+    case SlashCommandId::kConfig:
+      HandleConfig(session, command.argument, reply);
+      return reply;
+    case SlashCommandId::kMcp:
+      HandleMcp(session, command.argument, reply);
+      return reply;
     case SlashCommandId::kHttp: {
       auto exchanges = session.ActiveAgent().HttpExchanges();
       if (exchanges.empty()) {

@@ -11,6 +11,9 @@ export const count = (value?: number) =>
   value !== undefined && Number.isFinite(value) && value >= 0
     ? scaled(value, ["", "k", "M", "B", "T", "P", "E"])
     : "Not recorded";
+// "1 tool", "3 tools": a count with its noun, regular plurals only.
+export const plural = (value: number, noun: string) =>
+  `${count(value)} ${noun}${value === 1 ? "" : "s"}`;
 export const bytes = (value: number) =>
   Number.isFinite(value) && value >= 0
     ? scaled(value, ["B", "kB", "MB", "GB", "TB", "PB", "EB"], " ")

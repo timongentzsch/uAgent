@@ -6,7 +6,7 @@ import type {
   ToolCatalogue,
   ToolCatalogueItem,
 } from "../../shared/types.ts";
-import { LoadError, Select, Spinner, Input } from "../../shared/ui.tsx";
+import { Button, LoadError, Select, Input } from "../../shared/ui.tsx";
 import { command } from "../../state/api.ts";
 
 const labels: Record<string, string> = {
@@ -28,6 +28,76 @@ const categoryOrder = [
   "system",
   "mcp",
 ];
+
+const NOTE =
+  "Changes apply between turns. Keeping a stable set improves prompt cache reuse.";
+
+// The catalogue's layout while it loads: the fixed parts as they are, tool
+// rows with placeholder text.
+function ToolsLoading() {
+  return (
+    <div class="tools-content">
+      <span class="sr-only" role="status" aria-busy="true">
+        Loading tools…
+      </span>
+      <div class="tools-summary" aria-hidden="true">
+        <div>
+          <strong>
+            <span class="text-skeleton">00 of 00 active</span>
+          </strong>
+          <small class="muted">
+            <span class="text-skeleton">00,000 serialized schema bytes</span>
+          </small>
+        </div>
+        <Select aria-label="Tool profile" disabled>
+          <option>Default</option>
+        </Select>
+      </div>
+      <p class="muted tools-note">{NOTE}</p>
+      <details class="tool-categories">
+        <summary>Categories</summary>
+      </details>
+      <Input
+        class="tools-search"
+        type="search"
+        placeholder="Find a tool…"
+        aria-label="Find a tool"
+        disabled
+      />
+      <div class="tool-groups" aria-hidden="true">
+        <section class="tool-group">
+          <h3>
+            <span class="text-skeleton">Workspace</span>
+          </h3>
+          {["Read Path", "Write File", "Edit File", "Delete File"].map(
+            (title) => (
+              <div key={title} class="tool-choice">
+                <label class="tool-toggle">
+                  <Input type="checkbox" disabled />
+                  <span>
+                    <span class="tool-choice-head">
+                      <strong>
+                        <span class="text-skeleton">{title}</span>
+                      </strong>
+                    </span>
+                    <span class="tool-description">
+                      <span class="text-skeleton">
+                        What the tool does and when the agent should use it.
+                      </span>
+                    </span>
+                  </span>
+                </label>
+                <Select disabled>
+                  <option>Default</option>
+                </Select>
+              </div>
+            ),
+          )}
+        </section>
+      </div>
+    </div>
+  );
+}
 
 export default function Tools({
   session,
@@ -178,7 +248,7 @@ export default function Tools({
     });
   }, [catalogue, categories, query]);
 
-  if (!catalogue && !error) return <Spinner label="Loading tools…" surface />;
+  if (!catalogue && !error) return <ToolsLoading />;
   if (!catalogue) return <LoadError error={error} />;
   const locked = !online || busy || !!saving;
   const saved = catalogue.full_schema_bytes - catalogue.schema_bytes;
@@ -209,10 +279,7 @@ export default function Tools({
           ))}
         </Select>
       </div>
-      <p class="muted tools-note">
-        Changes apply between turns. Keeping a stable set improves prompt cache
-        reuse.
-      </p>
+      <p class="muted tools-note">{NOTE}</p>
       <details class="tool-categories">
         <summary>Categories</summary>
         <form
@@ -232,9 +299,12 @@ export default function Tools({
             disabled={!online || categorySaving}
             onInput={(event) => setCategoryName(event.currentTarget.value)}
           />
-          <button disabled={!online || categorySaving || !categoryName.trim()}>
+          <Button
+            type="submit"
+            disabled={!online || categorySaving || !categoryName.trim()}
+          >
             Add
-          </button>
+          </Button>
         </form>
         {categories.categories.map((category) => (
           <form
@@ -260,10 +330,12 @@ export default function Tools({
               defaultValue={category.name}
               disabled={!online || categorySaving}
             />
-            <button disabled={!online || categorySaving}>Rename</button>
-            <button
+            <Button type="submit" disabled={!online || categorySaving}>
+              Rename
+            </Button>
+            <Button
               type="button"
-              class="quiet"
+              variant="quiet"
               disabled={!online || categorySaving}
               onClick={() =>
                 updateCategories({
@@ -273,7 +345,7 @@ export default function Tools({
               }
             >
               Delete
-            </button>
+            </Button>
           </form>
         ))}
       </details>

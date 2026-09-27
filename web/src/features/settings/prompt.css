@@ -15,7 +15,7 @@
   padding: var(--gap);
   border: 1px solid var(--line);
 }
-.prompt-editor .text-control {
+.prompt-editor .text-control:has(> textarea) {
   --input-min-height: 18rem;
 }
 .prompt-editor textarea {

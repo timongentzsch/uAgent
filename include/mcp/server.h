@@ -58,6 +58,9 @@ struct McpServer {
   json startup_tools = json::array();
   std::string startup_cursor;
   std::set<std::string> startup_cursors;
+  // Why a configured server is not running: invalid config, skipped, or the
+  // start failure. Kept for the settings overview; empty while it runs.
+  std::string error;
 
   ~McpServer() { Shutdown(); }
 
@@ -96,7 +99,18 @@ class McpRuntime {
     return servers_;
   }
 
+  // Swaps in a fresh server; the old one shuts down as it is destroyed.
+  void Replace(const McpServer& old, std::unique_ptr<McpServer> fresh) {
+    for (auto& server : servers_) {
+      if (server.get() == &old) server = std::move(fresh);
+    }
+  }
+
   void ShutdownAll();
+
+  // A control between turns changed the tool registry; the next refresh
+  // reports it so policy and schemas are rebuilt.
+  bool registry_changed = false;
 
  private:
   std::vector<std::unique_ptr<McpServer>> servers_;

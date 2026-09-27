@@ -1,14 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  acceleratedPointerDelta,
   BROWSER_GESTURE,
+  wheelNotches,
+} from "../src/features/browser/gestures.ts";
+import {
+  MAXIMUM_ZOOM,
   constrainView,
   panView,
   pinchView,
-} from "../src/features/browser/gestures.ts";
+} from "../src/shared/zoom.ts";
 
-test("browser view stays inside the display at every scale", () => {
+test("a zoomed view stays inside its surface at every scale", () => {
   assert.deepEqual(constrainView({ scale: 0.5, x: 20, y: 20 }, 400, 250), {
     scale: 1,
     x: 0,
@@ -22,7 +25,7 @@ test("browser view stays inside the display at every scale", () => {
   assert.deepEqual(
     constrainView({ scale: 20, x: -9_000, y: -9_000 }, 400, 250),
     {
-      scale: BROWSER_GESTURE.maximumViewScale,
+      scale: MAXIMUM_ZOOM,
       x: -1_600,
       y: -1_000,
     },
@@ -46,24 +49,18 @@ test("pinch keeps its content anchor and one-finger pan remains bounded", () => 
   });
 });
 
-test("trackpad acceleration is bounded and preserves direction", () => {
-  assert.deepEqual(acceleratedPointerDelta(0, 0, 16), { x: 0, y: 0 });
-  const normal = acceleratedPointerDelta(8, -4, 16);
-  assert(normal.x > 0);
-  assert(normal.y < 0);
-  const fast = acceleratedPointerDelta(1_000, 0, 1);
-  assert.equal(fast.x, 1_000 * BROWSER_GESTURE.pointerMaximumGain);
-});
-
-test("cursor follow pans only at viewport edges and cannot leave the desktop", async () => {
-  const { followPointer } = await import("../src/features/browser/gestures.ts");
-  const view = { scale: 3, x: -200, y: -100 };
-  assert.deepEqual(followPointer(view, 400, 250, { x: 200, y: 125 }), view);
-  const next = followPointer(view, 400, 250, { x: 410, y: -10 });
-  assert.equal(next.x, -234);
-  assert.equal(next.y, -66);
-  assert.deepEqual(
-    followPointer({ scale: 1, x: 0, y: 0 }, 400, 250, { x: 500, y: -100 }),
-    { scale: 1, x: 0, y: 0 },
-  );
+test("finger travel becomes natural-scroll wheel notches", () => {
+  const step = BROWSER_GESTURE.wheelStepPx;
+  // Finger up: the content follows it, so Chrome scrolls down (button 5).
+  assert.deepEqual(wheelNotches({ x: 0, y: -2.5 * step }), {
+    masks: [1 << 4, 1 << 4],
+    rest: { x: 0, y: -0.5 * step },
+  });
+  // Finger down and left: scroll up (button 4) and right (button 7).
+  assert.deepEqual(wheelNotches({ x: -step, y: step }).masks, [1 << 3, 1 << 6]);
+  // Under one step nothing is sent and the travel carries over.
+  assert.deepEqual(wheelNotches({ x: 3, y: -5 }), {
+    masks: [],
+    rest: { x: 3, y: -5 },
+  });
 });

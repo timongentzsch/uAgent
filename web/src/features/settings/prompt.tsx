@@ -9,10 +9,12 @@ import type {
 import { readStored, writeStored } from "../../state/store.ts";
 import { command } from "../../state/api.ts";
 import {
+  Actions,
+  Button,
   Field,
   Select,
   LoadError,
-  Spinner,
+  Skeleton,
   Textarea,
 } from "../../shared/ui.tsx";
 import { ProjectField } from "./management.tsx";
@@ -135,6 +137,19 @@ export default function PromptEditor({
     }
   }
   const shown = preview || data;
+  const tabs = (disabled: boolean) => (
+    <div class="prompt-tabs segmented" aria-label="Prompt view">
+      {["instructions", "effective"].map((name) => (
+        <Button
+          aria-pressed={pane === name}
+          disabled={disabled}
+          onClick={() => setPane(name)}
+        >
+          {name === "instructions" ? "Instructions" : "Effective prompt"}
+        </Button>
+      ))}
+    </div>
+  );
   return (
     <div class="prompt-editor">
       <div class="prompt-controls">
@@ -170,7 +185,30 @@ export default function PromptEditor({
       ) : error ? (
         <LoadError error={error} retry={() => setAttempt(attempt + 1)} />
       ) : !data ? (
-        !error && <Spinner label="Loading system prompt…" surface />
+        // The loaded layout, with placeholder text where the prompt goes.
+        <>
+          <span class="sr-only" role="status" aria-busy="true">
+            Loading system prompt…
+          </span>
+          <p class="muted" aria-hidden="true">
+            <span class="text-skeleton">
+              Next request · runtime and repository context included.
+            </span>
+          </p>
+          {tabs(true)}
+          <div class={`prompt-columns ${pane}`} aria-hidden="true">
+            {["Instructions", "Effective prompt"].map((title) => (
+              <section key={title}>
+                <h3>
+                  <span class="text-skeleton">{title}</span>
+                </h3>
+                <pre>
+                  <Skeleton decorative rows={6} />
+                </pre>
+              </section>
+            ))}
+          </div>
+        </>
       ) : (
         <>
           <p class="muted">
@@ -181,25 +219,16 @@ export default function PromptEditor({
             <p role="status">
               Changed elsewhere. Your draft is retained; reload and compare
               before saving.
-              <button
+              <Button
                 onClick={() =>
                   update({ ...draft, revision: data.item.revision })
                 }
               >
                 Use my draft against the latest version
-              </button>
+              </Button>
             </p>
           )}
-          <div class="prompt-tabs segmented" aria-label="Prompt view">
-            {["instructions", "effective"].map((name) => (
-              <button
-                aria-pressed={pane === name}
-                onClick={() => setPane(name)}
-              >
-                {name === "instructions" ? "Instructions" : "Effective prompt"}
-              </button>
-            ))}
-          </div>
+          {tabs(false)}
           <div class={`prompt-columns ${pane}`}>
             <section>
               <h3>
@@ -292,36 +321,36 @@ export default function PromptEditor({
               )}
             </section>
           </div>
-          <div class="dialog-actions">
+          <Actions>
             {data.item.mode !== "inherit" && (
-              <button
+              <Button
                 disabled={!online || busy}
                 onClick={() => perform("reset")}
               >
                 Reset to inherited
-              </button>
+              </Button>
             )}
             {draft ? (
               <>
-                <button disabled={busy} onClick={() => update(null)}>
+                <Button disabled={busy} onClick={() => update(null)}>
                   Discard edit
-                </button>
-                <button
+                </Button>
+                <Button
                   disabled={!online || busy}
                   onClick={() => perform("preview")}
                 >
                   Preview changes
-                </button>
-                <button
+                </Button>
+                <Button
                   disabled={!online || busy}
-                  class="primary"
+                  variant="primary"
                   onClick={() => perform("set")}
                 >
                   Save
-                </button>
+                </Button>
               </>
             ) : (
-              <button
+              <Button
                 disabled={!online || busy}
                 onClick={() => {
                   update(editable(data));
@@ -331,9 +360,9 @@ export default function PromptEditor({
                 {data.item.mode === "inherit"
                   ? "Edit inherited prompt"
                   : "Edit"}
-              </button>
+              </Button>
             )}
-          </div>
+          </Actions>
           <small class="muted">
             Saves apply to the next model request. Unsent edits stay in this
             browser tab.

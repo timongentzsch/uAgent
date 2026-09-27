@@ -14,6 +14,7 @@
 #include "include/core/steering.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
+#include "include/mcp/register.h"
 #include "include/providers.h"
 #include "include/tools/memory.h"
 #include "include/tools/subagent.h"
@@ -97,6 +98,7 @@ json Application::BuildChannelState() const {
   state["statistics"] = agent_.Statistics();
   state["http"] = agent_.HttpExchanges();
   state["permissions"] = PermissionControl(context_, json::object());
+  state["mcp"] = McpStatus(runtime_.mcp, context_.tools);
   state["efforts"] = json::array({"default"});
   for (const char* effort : kReasoningEfforts) {
     if (SupportsReasoningEffort(api_, effort)) {

@@ -1,6 +1,7 @@
 // Copyright 2026 Timon Gentzsch
 
 #include <fcntl.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include <cerrno>
@@ -13,6 +14,7 @@
 #include <vector>
 
 #if defined(__linux__)
+#include <dirent.h>
 #include <sys/prctl.h>
 #include <sys/syscall.h>
 #endif
@@ -62,9 +64,9 @@ constexpr uint32_t kRulePathBeneath = 1;
 
 // Read, directory-read and execute are deliberately absent: an access right
 // left out of handled_access_fs is never checked, which leaves reads exactly as
-// unrestricted as the macOS profile's (allow default) leaves them. It also
-// keeps every rule below grantable, since allowed_access must be a subset of
-// what the ruleset handles.
+// unrestricted as the macOS profile's (allow default) leaves them -- except
+// under a hidden path, below. It also keeps every rule below grantable, since
+// allowed_access must be a subset of what the ruleset handles.
 constexpr uint64_t kWriteAccess = (1ULL << 1) |   // WRITE_FILE
                                   (1ULL << 4) |   // REMOVE_DIR
                                   (1ULL << 5) |   // REMOVE_FILE
@@ -82,6 +84,17 @@ constexpr uint64_t kAccessRefer = 1ULL << 13;
 constexpr uint64_t kAccessTruncate = 1ULL << 14;
 // IOCTL_DEV (bit 15) is never handled: the tty ioctls an interactive command
 // issues are not writes to confine, and handling the bit would break them.
+// Reading a file, and from ABI 9 connecting to a unix socket, are handled
+// only to hide paths, and granted everywhere else. Listing stays unhandled:
+// a name is not a secret, and handling it would make every ancestor of a
+// hidden path unlistable.
+constexpr uint64_t kAccessReadFile = 1ULL << 2;
+constexpr uint64_t kAccessResolveUnix = 1ULL << 16;
+// The rights a rule on a non-directory may carry: EXECUTE, WRITE_FILE,
+// READ_FILE, TRUNCATE, IOCTL_DEV and RESOLVE_UNIX.
+constexpr uint64_t kFileAccess = (1ULL << 0) | (1ULL << 1) | kAccessReadFile |
+                                 kAccessTruncate | (1ULL << 15) |
+                                 kAccessResolveUnix;
 
 constexpr uint64_t kAccessBindTcp = 1ULL << 0;
 constexpr uint64_t kAccessConnectTcp = 1ULL << 1;
@@ -118,13 +131,65 @@ bool Fatal(const char* what) {
   return false;
 }
 
+// Grants `access` beneath `root`, except beneath any hidden path. Landlock
+// has no deny form, so a root holding a hidden path is granted child by
+// child, recursing only down the one branch that leads to it. Rules bind to
+// inodes, so renaming a hidden directory later does not uncover it.
+bool AddRulesExcept(int ruleset, const std::string& root, uint64_t access,
+                    const std::vector<std::string>& hidden) {
+  bool holds_hidden = false;
+  for (const std::string& path : hidden) {
+    if (SandboxPathWithin(root, path)) return true;
+    holds_hidden = holds_hidden || SandboxPathWithin(path, root);
+  }
+  // Not followed: a symlink's target is granted, or not, where it really is.
+  Fd parent(open(root.c_str(), O_PATH | O_NOFOLLOW | O_CLOEXEC));
+  struct stat info{};
+  // A root that does not exist grants nothing, which is stricter than the
+  // policy asked for and so cannot open a hole. Skipping it keeps optional
+  // roots -- an unset $TMPDIR, a cache dir nobody has created yet -- from
+  // turning into a refusal to run.
+  if (!parent || fstat(parent.Get(), &info) != 0 || S_ISLNK(info.st_mode)) {
+    return true;
+  }
+  if (!holds_hidden) {
+    PathBeneathAttr rule{};
+    rule.allowed_access = S_ISDIR(info.st_mode) ? access : access & kFileAccess;
+    rule.parent_fd = parent.Get();
+    if (rule.allowed_access != 0 &&
+        syscall(kAddRule, ruleset, kRulePathBeneath, &rule, 0U) != 0) {
+      return Fatal("landlock_add_rule");
+    }
+    return true;
+  }
+  DIR* directory = opendir(root.c_str());
+  if (!directory) return Fatal("opendir");
+  std::vector<std::string> children;
+  while (const dirent* entry = readdir(directory)) {
+    const std::string name = entry->d_name;
+    if (name == "." || name == "..") continue;
+    children.push_back(root == "/" ? "/" + name : root + "/" + name);
+  }
+  closedir(directory);
+  for (const std::string& child : children) {
+    if (!AddRulesExcept(ruleset, child, access, hidden)) return false;
+  }
+  return true;
+}
+
 bool ApplyLandlock(const SandboxPolicy& policy) {
   const int abi = LandlockAbi();
   if (abi < 0) return Fatal("landlock probe");
   if (!policy.allow_network && abi < 4) return Fatal("network confinement");
 
+  // Reading, and from ABI 9 connecting to a unix socket, are handled only to
+  // hide paths: granted everywhere except beneath them.
+  const uint64_t hides =
+      policy.hidden.empty()
+          ? 0
+          : kAccessReadFile | (abi >= 9 ? kAccessResolveUnix : 0);
   RulesetAttr attr{};
-  attr.handled_access_fs = HandledFsAccess(abi);
+  attr.handled_access_fs = HandledFsAccess(abi) | hides;
   if (!policy.allow_network) {
     attr.handled_access_net = kAccessBindTcp | kAccessConnectTcp;
   }
@@ -135,19 +200,15 @@ bool ApplyLandlock(const SandboxPolicy& policy) {
   Fd ruleset(static_cast<int>(syscall(kCreateRuleset, &attr, attr_size, 0U)));
   if (!ruleset) return Fatal("landlock_create_ruleset");
 
+  // A writable root that holds a hidden path is granted around it too.
   for (const std::string& root : policy.writable_roots) {
-    Fd parent(open(root.c_str(), O_PATH | O_CLOEXEC));
-    // A root that does not exist grants nothing, which is stricter than the
-    // policy asked for and so cannot open a hole. Skipping it keeps optional
-    // roots -- an unset $TMPDIR, a cache dir nobody has created yet -- from
-    // turning into a refusal to run.
-    if (!parent) continue;
-    PathBeneathAttr rule{};
-    rule.allowed_access = attr.handled_access_fs;
-    rule.parent_fd = parent.Get();
-    if (syscall(kAddRule, ruleset.Get(), kRulePathBeneath, &rule, 0U) != 0) {
-      return Fatal("landlock_add_rule");
+    if (!AddRulesExcept(ruleset.Get(), root, HandledFsAccess(abi),
+                        policy.hidden)) {
+      return false;
     }
+  }
+  if (hides && !AddRulesExcept(ruleset.Get(), "/", hides, policy.hidden)) {
+    return false;
   }
   // No net rule is ever added: handling the two TCP access rights with no rule
   // granting them is itself the deny, and an allow-network policy handles
@@ -329,8 +390,10 @@ json SandboxDiagnosticJson() {
 
 std::vector<std::string> SandboxWrapperArgv(const SandboxStatus& status) {
   if (status.mode != SandboxMode::kEnforced) return {};
+  SandboxPolicy policy = status.policy;
+  policy.hidden = HiddenPaths();
 #if defined(__APPLE__)
-  std::string profile = SeatbeltProfile(status.policy);
+  std::string profile = SeatbeltProfile(policy);
   // An oversized profile renders empty rather than truncated, and a truncated
   // profile is a weaker one. No wrapper here would mean no confinement, so the
   // caller is told to refuse instead.
@@ -346,7 +409,7 @@ std::vector<std::string> SandboxWrapperArgv(const SandboxStatus& status) {
   std::string self = SelfExecutablePath();
   if (self.empty()) return {};
   std::vector<std::string> argv{std::move(self), "--sandbox-child"};
-  std::vector<std::string> words = EncodeSandboxPolicy(status.policy);
+  std::vector<std::string> words = EncodeSandboxPolicy(policy);
   argv.insert(argv.end(), std::make_move_iterator(words.begin()),
               std::make_move_iterator(words.end()));
   argv.emplace_back("--");
@@ -354,6 +417,15 @@ std::vector<std::string> SandboxWrapperArgv(const SandboxStatus& status) {
 #else
   return {};
 #endif
+}
+
+std::vector<std::string> HiddenPaths() {
+  const std::string browser = EnvStr("UAGENT_BROWSER_DATA");
+  if (browser.empty() || browser.front() != '/') return {};
+  std::string canonical = CanonicalAccessPath(browser).string();
+  struct stat info{};
+  if (lstat(canonical.c_str(), &info) != 0) return {};
+  return {std::move(canonical)};
 }
 
 int SandboxChildMain(int argc, char** argv) {

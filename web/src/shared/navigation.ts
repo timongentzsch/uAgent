@@ -1,3 +1,5 @@
+import { entry } from "./dismiss.ts";
+
 export const selectedFromURL = () =>
   new URLSearchParams(location.hash.slice(1)).get("session") || "";
 
@@ -6,5 +8,5 @@ export function writeSelection(id: string, replace = false) {
   const hash = id ? `#session=${encodeURIComponent(id)}` : "";
   if (location.hash === hash) return;
   const url = `${location.pathname}${location.search}${hash}`;
-  history[replace ? "replaceState" : "pushState"](null, "", url);
+  history[replace ? "replaceState" : "pushState"](entry(), "", url);
 }

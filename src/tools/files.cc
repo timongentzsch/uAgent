@@ -642,7 +642,7 @@ std::optional<std::string> SmallDirectoryPreview(
     fs::path entry_path = fs::path(dir) / entry;
     std::error_code type_error;
     if (!fs::is_regular_file(fs::symlink_status(entry_path, type_error)) ||
-        type_error) {
+        type_error || HiddenPath(entry_path.string())) {
       return std::nullopt;
     }
     std::error_code size_error;

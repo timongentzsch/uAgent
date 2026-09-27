@@ -4,7 +4,7 @@ import {
   StatusLed,
   type ConnectionPhase,
 } from "../../shared/connection-status.tsx";
-import { count } from "../../shared/quantities.ts";
+import { plural } from "../../shared/quantities.ts";
 import type {
   Activity,
   ActivityDetail,
@@ -21,7 +21,7 @@ import {
   Square,
   Terminal,
 } from "lucide-preact";
-import { cleanText, IconButton } from "../../shared/ui.tsx";
+import { cleanText, Button, IconButton } from "../../shared/ui.tsx";
 import { Popover } from "../../shared/popover.tsx";
 import { command } from "../../state/api.ts";
 import { duration } from "../../shared/duration.ts";
@@ -60,8 +60,8 @@ export function activityLabel(items: Activity[] = []) {
   const agents = running.filter((item) => item.kind === "agent").length;
   const commands = running.length - agents;
   return [
-    agents && `${count(agents)} agent${agents === 1 ? "" : "s"}`,
-    commands && `${count(commands)} command${commands === 1 ? "" : "s"}`,
+    agents && plural(agents, "agent"),
+    commands && plural(commands, "command"),
   ]
     .filter(Boolean)
     .join(" · ");
@@ -229,9 +229,9 @@ function ActivityRow({
     }).catch(report);
   return (
     <li class="activity-row">
-      <button
-        type="button"
-        class="quiet activity-open"
+      <Button
+        variant="quiet"
+        class="activity-open"
         disabled={!online}
         onClick={open}
       >
@@ -246,7 +246,7 @@ function ActivityRow({
             {item.progress && ` · ${cleanText(item.progress)}`}
           </small>
         </span>
-      </button>
+      </Button>
       {active(item) && item.kind !== "agent" && item.detached === false && (
         <IconButton
           label="Move to background"

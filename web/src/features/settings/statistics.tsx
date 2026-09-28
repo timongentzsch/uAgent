@@ -1,49 +1,19 @@
 import { duration } from "../../shared/duration.ts";
-import { cost, count } from "../../shared/quantities.ts";
-import type {
-  Usage,
-  StatisticsModal,
-  Snapshot,
-  State,
-} from "../../shared/types.ts";
+import { count } from "../../shared/quantities.ts";
+import type { StatisticsModal, Snapshot, State } from "../../shared/types.ts";
 import { useEffect, useState } from "preact/hooks";
 import { LoadError, Time } from "../../shared/ui.tsx";
-import type { ComponentChildren } from "preact";
 import {
+  Rows,
   StatisticsLayout,
   StatisticsLoading,
+  UsageRows,
+  type Row,
 } from "../../shared/statistics-layout.tsx";
 import { presentMessages } from "../chat/message-view.ts";
 
 const rate = (value?: number) =>
   value && value > 0 ? `${count(value)} tok/s` : "Not recorded";
-type Row = [string, ComponentChildren];
-function Rows({ rows }: { rows: Row[] }) {
-  return (
-    <dl class="stats">
-      {rows.map(([label, value]) => (
-        <div key={label}>
-          <dt>{label}</dt>
-          <dd>{value}</dd>
-        </div>
-      ))}
-    </dl>
-  );
-}
-function UsageRows({ usage }: { usage?: Usage }) {
-  return (
-    <Rows
-      rows={[
-        ["Input tokens (uncached)", count(usage?.input)],
-        ["Output tokens", count(usage?.output)],
-        ["Reasoning tokens", count(usage?.reasoning)],
-        ["Cache read tokens", count(usage?.cache_read)],
-        ["Cache write tokens", count(usage?.cache_write)],
-        ["Cost", usage?.cost_reported ? cost(usage.cost) : "Not reported"],
-      ]}
-    />
-  );
-}
 export default function Statistics({
   modal,
   loadSnapshot,

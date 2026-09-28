@@ -1,1 +1,0 @@
-import{B as e,O as t,st as n}from"./ui-BzXK1yse.js";function r({zoom:r=100,change:i}){return e(n,{children:[e(t,{id:`zoom`,type:`range`,"aria-valuetext":`${r}%`,min:50,max:200,step:`1`,value:r,disabled:!i,onInput:e=>i?.(Number(e.currentTarget.value))}),e(`span`,{class:`zoom-value`,children:[r,`%`]})]})}export{r as t};

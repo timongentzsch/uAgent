@@ -21,7 +21,7 @@ import {
   Square,
   Terminal,
 } from "lucide-preact";
-import { cleanText, Button, IconButton } from "../../shared/ui.tsx";
+import { cleanText, Button, IconButton, DataText } from "../../shared/ui.tsx";
 import { Popover } from "../../shared/popover.tsx";
 import { command } from "../../state/api.ts";
 import { duration } from "../../shared/duration.ts";
@@ -167,11 +167,17 @@ export function ActivityButton({ open, ...props }: ActivityProps) {
         <>
           <Layers aria-hidden="true" />
           {counts ? (
-            <span>{counts}</span>
+            <span>
+              <DataText>{counts}</DataText>
+            </span>
           ) : (
             <span>
-              <span class="long">No background work</span>
-              <span class="short">Idle</span>
+              <span class="long">
+                <DataText>No background work</DataText>
+              </span>
+              <span class="short">
+                <DataText>Idle</DataText>
+              </span>
             </span>
           )}
           <ChevronUp aria-hidden="true" />

@@ -1,7 +1,7 @@
 import type { State } from "../../shared/types.ts";
 import { cost, count } from "../../shared/quantities.ts";
 import { contextSummary } from "../../state/context.ts";
-import { Button } from "../../shared/ui.tsx";
+import { Button, DataText } from "../../shared/ui.tsx";
 
 export function ContextSummary({
   state,
@@ -22,11 +22,11 @@ export function ContextSummary({
       disabled={!online}
       onClick={open}
     >
-      {summary}
+      <DataText>{summary}</DataText>
     </Button>
   ) : (
     <span title={title} aria-label="Estimated context">
-      {summary}
+      <DataText>{summary}</DataText>
     </span>
   );
 }
@@ -40,8 +40,11 @@ export function SessionSummary({
 }) {
   return (
     <Button variant="quiet" onClick={open} aria-label="Session statistics">
-      Session · {count(state?.statistics?.recorded_turns ?? state?.turns)} turns
-      {state?.usage?.cost_reported ? ` · ${cost(state.usage.cost)}` : ""}
+      <DataText>
+        Session · {count(state?.statistics?.recorded_turns ?? state?.turns)}{" "}
+        turns
+        {state?.usage?.cost_reported ? ` · ${cost(state.usage.cost)}` : ""}
+      </DataText>
     </Button>
   );
 }

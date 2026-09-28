@@ -1517,41 +1517,16 @@ dialog section {
   animation: skeleton-pulse 1.6s ease-in-out infinite alternate;
   user-select: none;
 }
-.control-skeleton {
-  padding: 0;
+/* A view drawn from sample data (shared/placeholder.tsx): it lays out like
+   the loaded view, and fields keep their box but not the sample's value. */
+.placeholder {
+  display: contents;
 }
-/* A request bubble, then reply lines, at the transcript's own measure. */
-.transcript-skeleton {
-  max-width: var(--conversation-measure);
-  margin-inline: auto;
-  padding: var(--pad);
+.placeholder :is(input, textarea, select) {
+  color: transparent;
 }
-.transcript-skeleton > div {
-  gap: var(--space-6);
-}
-.transcript-skeleton span:first-child {
-  width: 45%;
-  height: calc(2 * var(--control) / 2.2);
-  margin-inline-start: auto;
-  margin-block-end: var(--space-6);
-}
-.control-skeleton span {
-  height: var(--control);
-  width: 100%;
-}
-/* Structural mirrors use the live surface geometry and reserve only
-   data-dependent rows. */
-.title-skeleton,
-.meta-skeleton {
-  padding: 0;
-}
-.title-skeleton span {
-  height: 1em;
-  width: 42%;
-}
-.meta-skeleton span {
-  height: 0.75em;
-  width: 68%;
+.placeholder ::placeholder {
+  color: var(--muted);
 }
 
 @media (pointer: coarse) {

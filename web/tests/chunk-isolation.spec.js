@@ -13,7 +13,6 @@ test("transcript renders while dialog chunks are held", async ({
     await readFile(new URL("../dist/.vite/manifest.json", import.meta.url)),
   );
   const chunks = {
-    chat: "src/features/chat/chat.tsx",
     "model-picker": "src/features/settings/model-picker.tsx",
     settings: "src/features/settings/settings.tsx",
     statistics: "src/features/settings/statistics.tsx",
@@ -43,7 +42,6 @@ test("transcript renders while dialog chunks are held", async ({
   // response commit is sufficient to release the shell chunks without making
   // navigation wait on the resources this test is intentionally gating.
   await page.goto(`/#session=${session.id}`, { waitUntil: "commit" });
-  await release("chat");
   const prompt = page.getByLabel("Message or guidance");
   await expect(prompt).toBeVisible();
 

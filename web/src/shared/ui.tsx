@@ -19,6 +19,8 @@ import { ChevronRight, X, Check, Copy } from "lucide-preact";
 import { markPath } from "./mark.ts";
 import { animateOut, motionMs } from "./motion.ts";
 import { useDismiss } from "./dismiss.ts";
+import { DataText } from "./placeholder.tsx";
+export { Placeholder, DataText, usePlaceholder } from "./placeholder.tsx";
 
 export { Input, Textarea, Select } from "./form-controls.tsx";
 import { Input, Select } from "./form-controls.tsx";
@@ -42,7 +44,7 @@ export function Time({ value }: { value?: string | number }) {
   if (Number.isNaN(date.getTime())) return null;
   return (
     <time dateTime={date.toISOString()} title={formatFullMoment(date, prefs)}>
-      {formatMoment(date, prefs, now)}
+      <DataText>{formatMoment(date, prefs, now)}</DataText>
     </time>
   );
 }
@@ -170,7 +172,11 @@ export function ValueSelect(
 
 // The one caption over a group of rows or a section.
 export function SectionTitle({ children }: { children: ComponentChildren }) {
-  return <h3 class="section-title">{children}</h3>;
+  return (
+    <h3 class="section-title">
+      <DataText>{children}</DataText>
+    </h3>
+  );
 }
 
 // Rows on one inset card, with an optional caption and a help line below.
@@ -221,8 +227,14 @@ export function Row({
   const body = (
     <>
       <span class="row-text">
-        <span class="row-label">{label}</span>
-        {detail && <small class="row-detail">{detail}</small>}
+        <span class="row-label">
+          <DataText>{label}</DataText>
+        </span>
+        {detail && (
+          <small class="row-detail">
+            <DataText>{detail}</DataText>
+          </small>
+        )}
       </span>
       {children && <span class="row-value">{children}</span>}
     </>
@@ -282,12 +294,16 @@ export function SettingRow({
     <div class="row setting-row">
       <span class="row-text">
         <label class="row-label" htmlFor={htmlFor}>
-          {label}
+          <DataText>{label}</DataText>
           {saved && (
             <Check class="setting-saved" aria-label="Saved" role="img" />
           )}
         </label>
-        {detail && <small class="row-detail">{detail}</small>}
+        {detail && (
+          <small class="row-detail">
+            <DataText>{detail}</DataText>
+          </small>
+        )}
         {locked && <small class="row-detail">{locked}</small>}
       </span>
       <span class="row-value setting-value">
@@ -329,37 +345,29 @@ export function EmptyState({
 export function Actions({ children }: { children: ComponentChildren }) {
   return <div class="dialog-actions">{children}</div>;
 }
+// Lines of text whose length is unknown until they load (a tool's full
+// output, a thread). Known shapes draw themselves (see <Placeholder>).
 export function Skeleton({
   rows = 3,
-  className = "",
   label = "Loading…",
-  decorative = false,
   delayMs = 150,
 }: {
   rows?: number;
-  className?: string;
   label?: string;
-  decorative?: boolean;
   delayMs?: number;
 }) {
-  // Announced loaders wait out fast resolves: a skeleton that lives for
-  // a single frame IS the flash. Structural mirrors stay immediate
-  // (decorative) because they are the geometry reservation.
-  const [visible, setVisible] = useState(decorative || delayMs <= 0);
+  // A skeleton that lives for a single frame IS the flash: wait out fast
+  // resolves.
+  const [visible, setVisible] = useState(delayMs <= 0);
   useEffect(() => {
-    if (decorative || delayMs <= 0) return;
+    if (delayMs <= 0) return;
     const timer = setTimeout(() => setVisible(true), delayMs);
     return () => clearTimeout(timer);
-  }, [decorative, delayMs]);
+  }, [delayMs]);
   if (!visible) return null;
   return (
-    <div
-      class={`skeleton ${className}`}
-      role={decorative ? undefined : "status"}
-      aria-busy={decorative ? undefined : "true"}
-      aria-hidden={decorative || undefined}
-    >
-      {!decorative && <small class="loading-label">{label}</small>}
+    <div class="skeleton" role="status" aria-busy="true">
+      <small class="loading-label">{label}</small>
       <div aria-hidden="true">
         {Array.from({ length: rows }, (_, index) => (
           <span key={index} />

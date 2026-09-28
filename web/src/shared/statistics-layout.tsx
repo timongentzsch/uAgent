@@ -1,6 +1,40 @@
 import type { ComponentChildren } from "preact";
-import type { StatisticsUnit } from "./types.ts";
-import { Button } from "./ui.tsx";
+import type { StatisticsUnit, Usage } from "./types.ts";
+import { Button, DataText, Placeholder } from "./ui.tsx";
+import { cost, count } from "./quantities.ts";
+
+// Labelled values, the one shape every statistics scope lists.
+export type Row = [string, ComponentChildren];
+export function Rows({ rows }: { rows: Row[] }) {
+  return (
+    <dl class="stats">
+      {rows.map(([label, value]) => (
+        <div key={label}>
+          <dt>
+            <DataText>{label}</DataText>
+          </dt>
+          <dd>
+            <DataText>{value}</DataText>
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+export function UsageRows({ usage }: { usage?: Usage }) {
+  return (
+    <Rows
+      rows={[
+        ["Input tokens (uncached)", count(usage?.input)],
+        ["Output tokens", count(usage?.output)],
+        ["Reasoning tokens", count(usage?.reasoning)],
+        ["Cache read tokens", count(usage?.cache_read)],
+        ["Cache write tokens", count(usage?.cache_write)],
+        ["Cost", usage?.cost_reported ? cost(usage.cost) : "Not reported"],
+      ]}
+    />
+  );
+}
 
 // Code loading, data loading and loaded statistics share the same toolbar;
 // a unit (the turn or message opened) adds its scope beside Session.
@@ -36,28 +70,20 @@ export function StatisticsLayout({
   );
 }
 
-// The rows each scope lists (its own, then usage), with placeholder text.
-const ROWS = { Turn: 16, Message: 13, Session: 15 };
+// How many rows each scope lists before its usage rows.
+const SCOPE_ROWS = { Turn: 10, Message: 7, Session: 9 };
 export function StatisticsLoading({ unit }: { unit?: StatisticsUnit }) {
   return (
     <StatisticsLayout unit={unit} scope={unit ? "turn" : "session"}>
-      <span class="sr-only" role="status" aria-busy="true">
-        Loading statistics…
-      </span>
-      <dl class="stats" aria-hidden="true">
-        {Array.from({ length: ROWS[unit || "Session"] }, (_, index) => (
-          <div key={index}>
-            <dt>
-              <span class="text-skeleton">
-                {index % 3 ? "Model calls" : "Input tokens (all)"}
-              </span>
-            </dt>
-            <dd>
-              <span class="text-skeleton">000</span>
-            </dd>
-          </div>
-        ))}
-      </dl>
+      <Placeholder label="Loading statistics…">
+        <Rows
+          rows={Array.from(
+            { length: SCOPE_ROWS[unit || "Session"] },
+            (_, index): Row => [`Recorded value ${index}`, "Not recorded"],
+          )}
+        />
+        <UsageRows />
+      </Placeholder>
     </StatisticsLayout>
   );
 }

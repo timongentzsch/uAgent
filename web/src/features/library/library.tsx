@@ -13,8 +13,9 @@ import {
   Input,
   Textarea,
   Spinner,
+  DataText,
+  Placeholder,
 } from "../../shared/ui.tsx";
-import { LibraryRows } from "../../shared/loading.tsx";
 import { Menu, MenuItem } from "../../shared/popover.tsx";
 import { readStored, writeStored } from "../../state/store.ts";
 import { bytes } from "../../shared/quantities.ts";
@@ -34,6 +35,19 @@ type Draft = {
   name: string;
   scope: string;
 };
+// Rows drawn while the list loads (see <Placeholder>).
+const SAMPLE = ["An item name", "A longer item name here", "A name"].map(
+  (name, index): LibraryItem => ({
+    key: `placeholder-${index}`,
+    name,
+    path: "",
+    scope: "project",
+    source: "project",
+    writable: false,
+    revision: "",
+  }),
+);
+
 export default function Library({
   projects,
   cwd: initial,
@@ -203,27 +217,35 @@ export default function Library({
   );
   function rows(group?: string) {
     if (listError) return null;
-    if (!data) return <LibraryRows />;
-    const entries = group
-      ? items.filter((entry) => entry.scope === group)
-      : items;
-    return entries.length ? (
-      entries.map((entry) => (
-        <Button
-          key={entry.key}
-          class={`library-row ${item?.key === entry.key ? "selected" : ""}`}
-          disabled={busy}
-          onClick={() => select(entry)}
-        >
-          <span>{entry.name}</span>
-          <small>
+    const entries = !data
+      ? SAMPLE
+      : group
+        ? items.filter((entry) => entry.scope === group)
+        : items;
+    const list = entries.map((entry) => (
+      <Button
+        key={entry.key}
+        class={`library-row ${item?.key === entry.key ? "selected" : ""}`}
+        disabled={busy}
+        onClick={() => select(entry)}
+      >
+        <span>
+          <DataText>{entry.name}</DataText>
+        </span>
+        <small>
+          <DataText>
             {group ? entry.source : `${entry.scope} · ${entry.source}`}
             {entry.status && entry.status !== "available"
               ? ` · ${entry.status}`
               : ""}
-          </small>
-        </Button>
-      ))
+          </DataText>
+        </small>
+      </Button>
+    ));
+    if (!data)
+      return <Placeholder label="Loading library…">{list}</Placeholder>;
+    return entries.length ? (
+      list
     ) : (
       <EmptyState>
         No {kind === "memory" ? "memories" : "skills"} found.

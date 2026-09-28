@@ -6,7 +6,6 @@ export const libraryModule = () => import("../features/library/library.tsx");
 export const scheduledModule = () =>
   import("../features/scheduled/scheduled.tsx");
 export const pairing = () => import("../features/settings/pairing.tsx");
-export const chat = () => import("../features/chat/chat.tsx");
 export const browserDialog = () => import("../features/browser/browser.tsx");
 export const rawDialog = () => import("../features/settings/raw.tsx");
 export const inspectorDialog = () => import("../features/chat/inspector.tsx");

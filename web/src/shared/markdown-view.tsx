@@ -7,7 +7,7 @@ import {
 import { Component, type ComponentType } from "preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { MarkdownBlock } from "./markdown.ts";
-import { CodeCopy, LoadError } from "./ui.tsx";
+import { CodeCopy, LoadError, DataText, usePlaceholder } from "./ui.tsx";
 
 type Renderer = typeof import("./markdown.ts");
 let renderer: Promise<Renderer> | undefined;
@@ -197,18 +197,36 @@ class RenderedBlock extends Component<RenderedBlockProps> {
   }
 }
 
-export default function Markdown({
-  text,
-  streaming,
-  progressive = true,
-}: {
+type MarkdownProps = {
   text: string;
   streaming?: boolean;
   // False keeps the plain-text-while-streaming path: hidden surfaces
   // (e.g. reasoning inside a never-opened disclosure) must not pay
   // renderer work for content the user may never see.
   progressive?: boolean;
-}) {
+};
+
+// Inside a Placeholder the text is sample prose: its paragraphs as bars in
+// the rendered container, with no parser work.
+export default function Markdown(props: MarkdownProps) {
+  return usePlaceholder() ? (
+    <div class="markdown">
+      {props.text.split(/\n{2,}/).map((paragraph, index) => (
+        <p key={index}>
+          <DataText>{paragraph}</DataText>
+        </p>
+      ))}
+    </div>
+  ) : (
+    <RenderedMarkdown {...props} />
+  );
+}
+
+function RenderedMarkdown({
+  text,
+  streaming,
+  progressive = true,
+}: MarkdownProps) {
   const [rendered, setRendered] = useState<{
     text: string;
     blocks: MarkdownBlock[];

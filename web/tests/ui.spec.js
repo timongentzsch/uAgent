@@ -145,10 +145,8 @@ test("fresh conversation reload keeps one stable loading state", async ({
 }) => {
   let releaseCatalogue;
   let releaseSnapshot;
-  let releaseChat;
   const catalogueGate = new Promise((resolve) => (releaseCatalogue = resolve));
   const snapshotGate = new Promise((resolve) => (releaseSnapshot = resolve));
-  const chatGate = new Promise((resolve) => (releaseChat = resolve));
   let catalogueRequested;
   let snapshotRequested;
   const sawCatalogue = new Promise((resolve) => (catalogueRequested = resolve));
@@ -166,17 +164,12 @@ test("fresh conversation reload keeps one stable loading state", async ({
     await snapshotGate;
     await route.fulfill({ response });
   });
-  await page.route("**/assets/chat-*.js", async (route) => {
-    await chatGate;
-    await route.continue();
-  });
-
   try {
     await page.goto(`/#session=${session.id}`);
     await sawCatalogue;
-    // One transcript placeholder, in one place, through the catalogue, the
-    // snapshot and the chat chunk: loading never restarts or moves.
-    const loader = page.locator(".conversation .transcript-skeleton");
+    // One transcript placeholder, in one place, through the catalogue and
+    // the snapshot: loading never restarts or moves.
+    const loader = page.locator(".conversation .placeholder .message").first();
     const status = page.locator(".conversation [role=status]", {
       hasText: "Loading conversation…",
     });
@@ -187,23 +180,19 @@ test("fresh conversation reload keeps one stable loading state", async ({
     releaseCatalogue();
     await sawSnapshot;
     await expect(loader).toHaveCount(1);
-
-    releaseSnapshot();
-    await expect(loader).toHaveCount(1);
     await expect(status).toHaveCount(1);
     const second = await loader.boundingBox();
     expect(Math.abs(first.x - second.x)).toBeLessThan(1);
     expect(Math.abs(first.y - second.y)).toBeLessThan(1);
     expect(Math.abs(first.width - second.width)).toBeLessThan(1);
 
-    releaseChat();
+    releaseSnapshot();
     await expect(
       page.getByRole("heading", { name: "What are we working on?" }),
     ).toBeVisible();
   } finally {
     releaseCatalogue();
     releaseSnapshot();
-    releaseChat();
   }
 });
 
@@ -1177,13 +1166,10 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
       document.documentElement.dataset.theme = value;
     }, theme);
     await page.setViewportSize({ width: 390, height: 600 });
-    const bars = picker.locator(".skeleton > div");
-    expect(
-      await bars
-        .first()
-        .evaluate((element) => getComputedStyle(element).animationName),
-    ).toBe("none");
-    await expect(picker).toContainText("loading…");
+    await expect(picker.getByRole("status")).toHaveAccessibleName(
+      "Loading models…",
+    );
+    await expect(picker.locator(".placeholder select")).toHaveCount(3);
   }
   await page.evaluate(() => {
     document.documentElement.dataset.theme = "light";

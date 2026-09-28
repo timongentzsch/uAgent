@@ -29,6 +29,7 @@ import {
   Mark,
   Modal,
   Deferred,
+  Placeholder,
   IconButton,
   Button,
   EmptyState,
@@ -50,13 +51,13 @@ import {
 const markdownView = () => import("../shared/markdown-view.tsx");
 import { StatisticsLoading } from "../shared/statistics-layout.tsx";
 import { useDismiss } from "../shared/dismiss.ts";
-import {
-  ComposerLoading,
-  SettingsLoading,
-  TranscriptLoading,
-} from "../shared/loading.tsx";
+import { SettingsLoading } from "../shared/loading.tsx";
 import Sidebar, { ConversationMenu } from "../features/sidebar/sidebar.tsx";
 import Composer from "../features/composer/composer.tsx";
+import Chat, {
+  TranscriptPlaceholder,
+  prepareHistoryBlocks,
+} from "../features/chat/chat.tsx";
 import { BrowserLoading } from "../features/browser/frame.tsx";
 import {
   applyTheme,
@@ -81,7 +82,6 @@ import { useTranscriptHistory } from "../state/use-transcript-history.ts";
 import { prependHistoryPage } from "../state/history-page.ts";
 import "../shared/style.css";
 import {
-  chat,
   browserDialog,
   conversationActions,
   libraryModule,
@@ -286,7 +286,6 @@ function App() {
     // the plain-to-markdown height wave across the first seconds and
     // fights the bottom pin). Marker-based chunks warm per text below.
     Promise.allSettled([
-      preloadDeferred(chat),
       markdownView().then((view) => view.prefetchMarkdown()),
     ]);
     // What a click opens, parsed once the shell has settled (the service
@@ -690,9 +689,7 @@ function App() {
     const before = view.before;
     const id = selected;
     const value = await api<Snapshot>(`/api/sessions/${id}?before=${before}`);
-    await chat().then((view) =>
-      view.prepareHistoryBlocks(value.state?.view?.blocks || []),
-    );
+    await prepareHistoryBlocks(value.state?.view?.blocks || []);
     updateView(id, (current) => {
       if (
         !value.state?.view ||
@@ -796,6 +793,42 @@ function App() {
     />
   );
 
+  // The conversation's composer; before the session is known, the same
+  // composer drawn from a sample (see <Placeholder>).
+  const composerFor = (item: Session) => (
+    <Composer
+      session={item}
+      commands={catalogue.commands || []}
+      snapshot={snapshot}
+      online={online}
+      connection={connection}
+      draft={draft}
+      setDraft={setDraft}
+      upload={upload}
+      uploading={uploading}
+      busy={busy}
+      submit={submit}
+      act={act}
+      report={report}
+      following={following}
+      unseen={unseen}
+      // Optimistic: pin to the end synchronously (<1 frame),
+      // refresh the snapshot in the background. jumpToLatest
+      // is idempotent and load() dedupes in flight, so rapid
+      // presses stay a single pin + a single fetch.
+      jump={() => {
+        jumpToLatest();
+        load(selected).catch(report);
+      }}
+      openInspector={setInspector}
+      showStatistics={() =>
+        setModal({ type: "statistics", session_id: selected })
+      }
+      showContext={showContext}
+      zoom={zoom}
+      openBrowser={() => setModal({ type: "browser", handoff: true })}
+    />
+  );
   return (
     <TimePrefsContext.Provider value={timePrefs}>
       <ImageViewer.Provider value={setViewed}>
@@ -965,16 +998,8 @@ function App() {
                   <LiveActivities.Provider
                     value={snapshot?.state?.activities || NO_ACTIVITIES}
                   >
-                    <Deferred
+                    <Chat
                       key={selected}
-                      load={chat}
-                      fallback={
-                        <div className="transcript">
-                          <div className="transcript-content">
-                            <TranscriptLoading />
-                          </div>
-                        </div>
-                      }
                       scroller={transcript}
                       content={transcriptContent}
                       attachScroller={attachScroller}
@@ -1005,40 +1030,7 @@ function App() {
                       close={() => setSide(null)}
                     />
                   )}
-                  <Composer
-                    session={session}
-                    commands={catalogue.commands || []}
-                    snapshot={snapshot}
-                    online={online}
-                    connection={connection}
-                    draft={draft}
-                    setDraft={setDraft}
-                    upload={upload}
-                    uploading={uploading}
-                    busy={busy}
-                    submit={submit}
-                    act={act}
-                    report={report}
-                    following={following}
-                    unseen={unseen}
-                    // Optimistic: pin to the end synchronously (<1 frame),
-                    // refresh the snapshot in the background. jumpToLatest
-                    // is idempotent and load() dedupes in flight, so rapid
-                    // presses stay a single pin + a single fetch.
-                    jump={() => {
-                      jumpToLatest();
-                      load(selected).catch(report);
-                    }}
-                    openInspector={setInspector}
-                    showStatistics={() =>
-                      setModal({ type: "statistics", session_id: selected })
-                    }
-                    showContext={showContext}
-                    zoom={zoom}
-                    openBrowser={() =>
-                      setModal({ type: "browser", handoff: true })
-                    }
-                  />
+                  {composerFor(session)}
                 </>
               ) : opening ? (
                 // A reload on a conversation: its surfaces, before the
@@ -1046,10 +1038,12 @@ function App() {
                 <>
                   <div class="transcript">
                     <div class="transcript-content">
-                      <TranscriptLoading />
+                      <TranscriptPlaceholder session={{ id: selected }} />
                     </div>
                   </div>
-                  <ComposerLoading />
+                  <Placeholder label="Loading composer…">
+                    {composerFor({ id: selected, generation: "placeholder" })}
+                  </Placeholder>
                 </>
               ) : (
                 <div class="empty">

@@ -11,6 +11,7 @@ import {
   Select,
   Input,
   Spinner,
+  DataText,
 } from "../../shared/ui.tsx";
 import { bytes } from "../../shared/quantities.ts";
 import type {
@@ -478,7 +479,9 @@ export default function Composer({
               trigger={
                 <>
                   <Shield />
-                  <span>{permissionLabel}</span>
+                  <span>
+                    <DataText>{permissionLabel}</DataText>
+                  </span>
                 </>
               }
             >

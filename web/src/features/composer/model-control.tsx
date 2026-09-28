@@ -1,7 +1,7 @@
 import type { ComponentProps } from "preact";
 import type ModelPicker from "../settings/model-picker.tsx";
 import { Gauge, ChevronDown } from "lucide-preact";
-import { Deferred } from "../../shared/ui.tsx";
+import { Deferred, DataText } from "../../shared/ui.tsx";
 import { ModelLoading } from "../../shared/loading.tsx";
 import { Popover } from "../../shared/popover.tsx";
 
@@ -22,7 +22,9 @@ export default function ModelControl(
       trigger={
         <>
           <Gauge />
-          <span>{label}</span>
+          <span>
+            <DataText>{label}</DataText>
+          </span>
           <ChevronDown />
         </>
       }

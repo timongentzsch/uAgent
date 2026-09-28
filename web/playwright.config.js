@@ -22,6 +22,12 @@ export default defineConfig({
     screenshot: "only-on-failure",
     reducedMotion: "reduce",
   },
+  // The UI showcase (ui.html) is not part of the product build.
+  webServer: {
+    command: "npx vite --port 5174 --strictPort --host 127.0.0.1",
+    url: "http://127.0.0.1:5174/ui.html",
+    reuseExistingServer: !process.env.CI,
+  },
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
     {

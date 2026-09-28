@@ -475,15 +475,6 @@ export default function Settings({
       />
     ),
     advanced: null,
-    developer: (
-      <Group>
-        <Row
-          label="UI showcase"
-          detail="Every shared control, in both themes."
-          href="/ui.html"
-        />
-      </Group>
-    ),
   };
   const current = section || "general";
   const title = SECTIONS.find(([id]) => id === current)![1];

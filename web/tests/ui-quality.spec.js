@@ -1,4 +1,4 @@
-import { test, expect } from "./fixtures.js";
+import { test, expect, SHOWCASE_URL } from "./fixtures.js";
 import { readFile } from "node:fs/promises";
 
 const geometry = (locator) =>
@@ -226,7 +226,7 @@ test("browser shell keeps its bounds through cold code and data loading", async 
 test("loading showcase keeps a fixed shell and keyboard focus", async ({
   page,
 }) => {
-  await page.goto("/ui.html");
+  await page.goto(SHOWCASE_URL);
   const trigger = page.getByRole("button", { name: "Open loading dialog" });
   await trigger.focus();
   await trigger.press("Enter");
@@ -501,7 +501,7 @@ test.describe("touch interaction", () => {
           }),
           contentType: "image/png",
         });
-      await page.goto("/ui.html");
+      await page.goto(SHOWCASE_URL);
       await page.getByLabel("Zoom", { exact: true }).fill(String(zoom));
       await scaledFields(page, zoom);
       await page
@@ -516,7 +516,7 @@ test.describe("touch interaction", () => {
     });
   }
   test("touch does not acquire desktop hover", async ({ page }) => {
-    await page.goto("/ui.html");
+    await page.goto(SHOWCASE_URL);
     expect(
       await page.evaluate(() => matchMedia("(hover: hover)").matches),
     ).toBe(false);

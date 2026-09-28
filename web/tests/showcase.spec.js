@@ -1,4 +1,4 @@
-import { test, expect } from "./fixtures.js";
+import { showcaseTest as test, expect, SHOWCASE_URL } from "./fixtures.js";
 
 const pointer = async (locator, type, pointerId, x, y) =>
   locator.dispatchEvent(type, {
@@ -14,7 +14,7 @@ test("static UI showcase renders shared flat controls and scales them", async ({
 }) => {
   await page.setViewportSize({ width: 1100, height: 900 });
   await page.addInitScript(() => localStorage.setItem("uagent-theme", "dark"));
-  await page.goto("/ui.html");
+  await page.goto(SHOWCASE_URL);
 
   await expect(
     page.getByRole("heading", { name: "µAgent UI showcase", exact: true }),
@@ -85,7 +85,7 @@ test.describe("browser input showcase on a phone", () => {
   test("direct touch maps to exact pixels and never leaves a button held", async ({
     page,
   }) => {
-    await page.goto("/ui.html");
+    await page.goto(SHOWCASE_URL);
     await page.getByRole("button", { name: "Open browser input" }).click();
     const viewport = page.getByLabel("Browser viewport");
     const canvas = viewport.locator(".browser-rfb canvas");
@@ -152,7 +152,7 @@ for (const [label, viewport, touch] of [
     test("fills the screen, never upscales, zooms and closes", async ({
       page,
     }) => {
-      await page.goto("/ui.html");
+      await page.goto(SHOWCASE_URL);
       await page.getByRole("button", { name: "Open image viewer" }).click();
       const dialog = page.getByRole("dialog", { name: "sample.svg" });
       const image = dialog.getByRole("img", { name: "sample.svg" });

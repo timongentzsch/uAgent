@@ -81,7 +81,6 @@ import { LiveActivities } from "../state/live-activities.ts";
 import { useTranscriptHistory } from "../state/use-transcript-history.ts";
 import { prependHistoryPage } from "../state/history-page.ts";
 import { maxDraftFiles, maxUploadBytes } from "../shared/limits.ts";
-import "../shared/style.css";
 import {
   browserDialog,
   conversationActions,

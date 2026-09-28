@@ -37,7 +37,6 @@ import { BrowserFrame, BrowserTools } from "./features/browser/frame.tsx";
 import { ImageViewerDialog } from "./shared/attachments.tsx";
 import "./features/composer/attachments.css";
 import "./features/chat/message.css";
-import "./shared/style.css";
 import "./showcase.css";
 
 // A 400x300 image: small enough that a large screen shows it unscaled.

@@ -13,15 +13,24 @@ export const withoutServiceWorker = (page) =>
     route.fulfill({ contentType: "text/javascript", body: "" }),
   );
 
+// The UI showcase is a development page: the Vite dev server serves it
+// (see playwright.config.js), not the native host.
+export const SHOWCASE_URL = "http://127.0.0.1:5174/ui.html";
+
+// No test may end with an uncaught page error.
+const failOnPageErrors = async ({ page }, use) => {
+  const errors = [];
+  page.on("pageerror", (error) => errors.push(error.stack || error.message));
+  await use(page);
+  expect(errors, "uncaught page errors").toEqual([]);
+};
+
+// Showcase-only tests: no native host.
+export const showcaseTest = base.extend({ page: failOnPageErrors });
+
 export const test = base.extend({
   paired: [true, { option: true }],
-  // No test may end with an uncaught page error.
-  page: async ({ page }, use) => {
-    const errors = [];
-    page.on("pageerror", (error) => errors.push(error.stack || error.message));
-    await use(page);
-    expect(errors, "uncaught page errors").toEqual([]);
-  },
+  page: failOnPageErrors,
   host: async ({}, use, testInfo) => {
     const path = testInfo.outputPath("host.json");
     const child = spawn("python3", [

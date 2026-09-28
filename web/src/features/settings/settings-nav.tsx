@@ -1,6 +1,5 @@
 import {
   Bot,
-  Palette,
   Plug,
   ShieldCheck,
   SlidersHorizontal,
@@ -18,7 +17,6 @@ export const SECTIONS = [
   ["mcp", "MCP servers", Plug],
   ["devices", "Devices", Smartphone],
   ["advanced", "Advanced", Wrench],
-  ["developer", "Developer", Palette],
 ] as const;
 export type Section = (typeof SECTIONS)[number][0];
 // The list reads in groups: everyday, the agent, this device, escape hatches.
@@ -26,7 +24,7 @@ const NAV: Section[][] = [
   ["general"],
   ["models", "permissions", "agent", "mcp"],
   ["devices"],
-  ["advanced", "developer"],
+  ["advanced"],
 ];
 
 // Settings and its loading state draw the same list, so it never changes

@@ -102,13 +102,12 @@ json SessionControl(AppSession& session, const json& request) {
 
   if (JsonValue(request, "kind", "") == "activity") {
     if (JsonValue(request, "operation", "") != "followup") {
-      return ActivityControl(session.Runtime().processes, request,
-                             &session.Runtime().collaborator);
+      return ActivityControl(session.Runtime().processes, request);
     }
-    Tool tool = SubagentTool(
-        session.ApiClient(), session.Runtime().processes,
-        session.context.provider.routes, session.context.provider.providers,
-        Debug().Enabled(), &session.Runtime().collaborator);
+    Tool tool =
+        SubagentTool(session.ApiClient(), session.Runtime().processes,
+                     session.context.provider.routes,
+                     session.context.provider.providers, Debug().Enabled());
     json arguments = {{"operation", "followup"},
                       {"agent_id", JsonValue(request, "agent_id", "")},
                       {"prompt", JsonValue(request, "text", "")}};
@@ -148,8 +147,7 @@ json SessionControl(AppSession& session, const json& request) {
                                    session.context.provider.providers)}};
 }
 
-json ActivityControl(ProcessSupervisor& processes, const json& request,
-                     CollaboratorRuntime* runtime) {
+json ActivityControl(ProcessSupervisor& processes, const json& request) {
   std::string operation = JsonValue(request, "operation", "list");
   if (operation == "background") {
     return processes.RequestForegroundBackground()
@@ -163,35 +161,21 @@ json ActivityControl(ProcessSupervisor& processes, const json& request,
   if (operation == "inspect") {
     json result = job ? processes.InspectActivity(id) : json::object();
     if (!agent.empty()) {
-      result.update(InspectCollaborator(processes, agent, request, runtime));
+      result.update(InspectAgent(processes, agent, request));
     }
     return result.empty()
                ? json{{"error", "activity unavailable in this conversation"}}
                : result;
   }
-  if (!job && runtime && !agent.empty()) {
-    ToolResult control;
-    if (operation == "stop") {
-      control = runtime->Stop(agent);
-    } else if (operation == "message" &&
-               !JsonValue(request, "text", "").empty()) {
-      control = MessageCollaborator(processes, runtime, agent,
-                                    JsonValue(request, "text", ""));
-    } else {
-      return {{"error", "unsupported activity operation"}};
-    }
-    return control.Ok()
-               ? json{{"output", control.output}, {"operation", operation}}
-               : json{{"error", control.output}};
-  }
-  if (!job) return {{"error", "activity unavailable in this conversation"}};
   ToolResult result;
-  if (operation == "stop") {
+  if (operation == "message" && !agent.empty() &&
+      !JsonValue(request, "text", "").empty()) {
+    // An idle child is messaged by id; ownership is its header's to decide.
+    result = MessageAgent(processes, agent, JsonValue(request, "text", ""));
+  } else if (!job) {
+    return {{"error", "activity unavailable in this conversation"}};
+  } else if (operation == "stop") {
     result = ToolActivityStop(processes, id);
-  } else if (operation == "message" && !job->source_id.empty() &&
-             !JsonValue(request, "text", "").empty()) {
-    result = MessageCollaborator(processes, runtime, job->source_id,
-                                 JsonValue(request, "text", ""));
   } else {
     return {{"error", "unsupported activity operation"}};
   }
@@ -200,9 +184,9 @@ json ActivityControl(ProcessSupervisor& processes, const json& request,
 }
 
 std::string ActivityText(const json& result) {
-  for (const char* key : {"activities", "collaborators"}) {
+  for (const char* key : {"activities", "agents"}) {
     if (const json* rows = JsonArray(result, key)) {
-      const bool agents = std::string_view(key) == "collaborators";
+      const bool agents = std::string_view(key) == "agents";
       std::string text = std::string(agents ? "subagents" : "background work") +
                          " (" + FmtCount(static_cast<int64_t>(rows->size())) +
                          ")\n";
@@ -227,9 +211,6 @@ std::string ActivityText(const json& result) {
             text += " · " + value;
           }
         }
-        if (agents && JsonValue(row, "persistent", false)) {
-          text += " · persistent";
-        }
         text += "\n";
         if (agents) {
           const std::string about =
@@ -252,7 +233,7 @@ json ActivityCommand(AppSession& session, const ParsedSlashCommand& command) {
   auto& processes = session.Runtime().processes;
   if (target.empty()) {
     return command.spec->id == SlashCommandId::kAgents
-               ? json{{"collaborators", AgentsJson(session)}}
+               ? json{{"agents", AgentsJson(session)}}
                : json{{"activities", processes.ActivityViews()}};
   }
   json request = {{"kind", "activity"},

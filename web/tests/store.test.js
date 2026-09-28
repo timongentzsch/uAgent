@@ -461,42 +461,6 @@ test("live context replaces the estimate without accumulating billing tokens", (
   assert.equal(current.state.context_tokens, 1000);
 });
 
-test("collaborator lifecycle events upsert and remove one retained runtime", () => {
-  const current = {
-    state: { collaborators: [{ id: "ordinary", status: "idle" }] },
-  };
-  const running = applySessionEvent(current, {
-    kind: "event",
-    type: "collaborator.changed",
-    data: {
-      collaborator: {
-        id: "sidekick",
-        label: "Review implementation",
-        status: "running",
-        persistent: true,
-      },
-    },
-  });
-  assert.deepEqual(
-    running.state.collaborators.map((item) => item.id),
-    ["ordinary", "sidekick"],
-  );
-  const idle = applySessionEvent(running, {
-    kind: "event",
-    type: "collaborator.changed",
-    data: { collaborator: { id: "sidekick", status: "idle" } },
-  });
-  assert.equal(idle.state.collaborators[1].status, "idle");
-  const removed = applySessionEvent(idle, {
-    kind: "event",
-    type: "collaborator.changed",
-    data: { collaborator: { id: "sidekick" }, removed: true },
-  });
-  assert.deepEqual(removed.state.collaborators, [
-    { id: "ordinary", status: "idle" },
-  ]);
-});
-
 test("HTTP exchanges update in place by id and stay bounded", () => {
   const exchange = (id, state) => ({
     kind: "event",

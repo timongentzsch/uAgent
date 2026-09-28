@@ -58,7 +58,6 @@ class Application {
   std::string request_id_;
   uint64_t message_subscription_ = 0;
   std::string input_error_;
-  json handoff_budget_;
   ApplicationChannel* channel_ = nullptr;
 };
 

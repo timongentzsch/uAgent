@@ -87,7 +87,7 @@ namespace uagent {
   X(TestActivitySessions)                        \
   X(TestActivityDescriptorAndInputPolicy)        \
   X(TestActivityWaitAndDelivery)                 \
-  X(TestCollaboratorMail)                        \
+  X(TestChildSessionsStayOutOfTheCatalogue)      \
   X(TestSessionMail)                             \
   X(TestSessionLinks)                            \
   X(TestToolExecutionPolicy)                     \

@@ -451,15 +451,14 @@ void HandleTools(AppSession& session, const std::string& argument,
   }
 }
 
-// The collaborator records the subagent tool reports, joined with what the
+// The child agents the subagent tool reports, joined with what the
 // supervisor knows about the ones still running. The id is the join key: it is
 // what the spawn stamped on the job, and it is what the human types back.
 json AgentsJson(const AppSession& session) {
   const ProcessSupervisor& processes = session.Runtime().processes;
   std::vector<SubagentView> live = processes.SubagentViews();
   json rows = json::array();
-  for (json& record :
-       CollaboratorSummaries(processes, &session.Runtime().collaborator)) {
+  for (json& record : AgentSummaries(processes)) {
     const std::string id = JsonValue(record, "id", std::string());
     for (const SubagentView& view : live) {
       if (view.source_id != id) continue;

@@ -232,55 +232,26 @@ std::vector<json> LinkedMembers() {
 std::vector<json> SessionSummaries() {
   const std::string me = OwnSessionId();
   std::vector<json> rows;
-  auto push = [&](std::string id, std::string title, std::string kind,
-                  bool linked) {
+  auto push = [&](std::string id, std::string title, bool linked) {
     if (id.empty() || id == me) return;
     for (const json& row : rows) {
       if (JsonValue(row, "id", "") == id) return;
     }
     rows.push_back({{"id", std::move(id)},
                     {"title", std::move(title)},
-                    {"kind", std::move(kind)},
                     {"linked", linked}});
   };
   // Linked first: members may live in other workspaces ListSessions skips.
   for (const json& member : LinkedMembers()) {
     const std::string id = JsonValue(member, "id", "");
-    std::string path = JsonValue(member, "path", "");
-    std::string kind = "session";
-    if (path.find("/collaborators/") != std::string::npos) {
-      kind = "collaborator";
-    }
-    push(id, MemberTitle(id, path), kind, true);
+    push(id, MemberTitle(id, JsonValue(member, "path", "")), true);
   }
   // Then linkable workspace sessions.
   for (const SessionInfo& info : ListSessions()) {
     if (!info.error.empty()) continue;
     std::string stem =
         std::filesystem::path(info.path).filename().stem().string();
-    push(stem, info.title.empty() ? stem : info.title, "session",
-         SharesLink(me, stem));
-  }
-  // Then same-workspace collaborator children (peer-capable via team mesh,
-  // addressable here too).
-  std::error_code error;
-  for (std::filesystem::directory_iterator
-           it(UagentDir("collaborators"), error),
-       end;
-       !error && it != end; it.increment(error)) {
-    std::string name = it->path().filename().string();
-    if (!name.ends_with(".json") || name.find(".mail-") != std::string::npos ||
-        name.ends_with(".session.json")) {
-      continue;
-    }
-    std::ifstream record(it->path());
-    json state = json::parse(record, nullptr, false);
-    if (state.is_discarded() || !state.is_object()) continue;
-    if (JsonValue(state, "cwd", "") != CanonicalCwd()) continue;
-    const std::string id = JsonValue(state, "id", "");
-    std::string title = JsonValue(state, "name", "");
-    if (title.empty()) title = JsonValue(state, "label", id);
-    push(id, title, "collaborator", SharesLink(me, id));
+    push(stem, info.title.empty() ? stem : info.title, SharesLink(me, stem));
   }
   return rows;
 }
@@ -416,7 +387,7 @@ std::string SessionText(const json& result) {
     if (title.empty()) title = id;
     text += (JsonValue(row, "linked", false) ? "" : "[unlinked] ") + title;
     if (title != id) text += " (" + id + ")";
-    text += "  " + JsonValue(row, "kind", "session") + "\n";
+    text += "\n";
   }
   return text;
 }

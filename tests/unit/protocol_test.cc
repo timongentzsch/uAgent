@@ -404,7 +404,7 @@ void TestRegistries() {
   CHECK(subagent_properties["background"]["type"] == "boolean");
   CHECK(
       subagent_properties["background"]["description"].get<std::string>().find(
-          "handoff result directly") != std::string::npos);
+          "answer directly") != std::string::npos);
   CHECK(!subagent_properties.contains("provider"));
   // The grammar for naming a provider-scoped route, not the roster: the roster
   // is what uagent action=inspect topic=routes reports, and enumerating it here

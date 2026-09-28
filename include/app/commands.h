@@ -50,8 +50,7 @@ void SaveSessionSettings(AppSession& session);
 
 json SessionControl(AppSession& session, const json& request);
 json PermissionControl(AppContext& context, const json& request);
-json ActivityControl(ProcessSupervisor& processes, const json& request,
-                     CollaboratorRuntime* runtime = nullptr);
+json ActivityControl(ProcessSupervisor& processes, const json& request);
 std::string ActivityText(const json& result);
 json ActivityCommand(AppSession& session, const ParsedSlashCommand& command);
 

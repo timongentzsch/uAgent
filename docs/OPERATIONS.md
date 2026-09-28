@@ -37,7 +37,7 @@ fixed in the binary.
 | retained finished activities | 16 | |
 | subagent completion in context | 6,000 characters each, 12 KiB per batch | |
 | delegation depth / rounds / tool calls per child | 2 / 100 / 240 | `UAGENT_SUBAGENT_DEPTH`, `UAGENT_SUBAGENT_MAX_STEPS`, `UAGENT_SUBAGENT_MAX_TOOL_CALLS` |
-| subagent launches per turn / persistent sidekicks | 32 / 3 | |
+| subagent launches per turn | 32 | |
 | memory size / count per scope / always-on slice | 2 KiB / 32 / 2 KiB | |
 | memory extraction | 32 KiB of one session after 6 idle hours | `UAGENT_MEMORY_IDLE_SECONDS` |
 | memory event audit | 256 KiB | |

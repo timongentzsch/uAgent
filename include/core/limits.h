@@ -46,7 +46,7 @@ inline constexpr size_t kMaxSkillFiles = 128;
 inline constexpr int kMaxSkillFileDepth = 4;
 inline constexpr size_t kLibraryNameChars = 100;
 inline constexpr size_t kMaxSessionAssets = 64;
-inline constexpr size_t kMaxCollaboratorRecords = 100;
+inline constexpr size_t kMaxAgentRecords = 100;
 inline constexpr size_t kMaxToolDisplays = 128;
 inline constexpr size_t kMaxToolsPerMessage = 32;
 inline constexpr size_t kMaxActiveExchanges = 32;
@@ -178,7 +178,6 @@ inline constexpr int64_t kGrepResults = 200;
 inline constexpr int64_t kBashLogBytes = MiB(64);
 // Delegation and hosted search.
 inline constexpr int64_t kSubagentCallsPerTurn = 32;
-inline constexpr size_t kPersistentMax = 3;
 inline constexpr int64_t kWebSearchTimeoutSeconds = 60;
 inline constexpr int64_t kWebSearchMaxTokens = 5000;
 inline constexpr int64_t kWebSearchCalls = 4;

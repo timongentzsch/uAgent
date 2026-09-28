@@ -20,7 +20,6 @@
 #include <fstream>
 #include <functional>
 #include <istream>
-#include <map>
 #include <queue>
 #include <string>
 #include <string_view>
@@ -278,85 +277,6 @@ void PruneArtifactTree(const std::string& dir, int64_t max_age_days,
   });
 }
 
-void PruneCollaboratorTree(const std::string& dir, int64_t max_age_days,
-                           int64_t max_records) {
-  namespace fs = std::filesystem;
-  struct Record {
-    fs::file_time_type modified = fs::file_time_type::min();
-    std::vector<fs::path> files;
-  };
-  std::map<std::string, Record, std::less<>> records;
-  ForEachTreeEntry(dir, [&](const fs::directory_entry& entry) {
-    std::error_code ec;
-    if (entry.is_symlink(ec)) return;
-    if (entry.is_directory(ec)) {
-      chmod(entry.path().c_str(), kPrivateDirMode);
-      return;
-    }
-    if (!entry.is_regular_file(ec)) return;
-    chmod(entry.path().c_str(), kPrivateFileMode);
-    std::string name = entry.path().filename().string();
-    constexpr std::string_view kSessionSuffix = ".session.json";
-    constexpr std::string_view kCommsSuffix = ".comms.jsonl";
-    constexpr std::string_view kRecordSuffix = ".json";
-    size_t suffix =
-        name.ends_with(kCommsSuffix) ? kCommsSuffix.size()
-        : name.ends_with(kSessionSuffix)
-            ? kSessionSuffix.size()
-            : (name.ends_with(kRecordSuffix) ? kRecordSuffix.size() : 0);
-    if (suffix == 0) return;
-    std::error_code time_error;
-    fs::file_time_type modified = entry.last_write_time(time_error);
-    if (time_error) return;
-    std::string base = name.substr(0, name.size() - suffix);
-    // Undelivered mail belongs to its recipient's group, so it ages out with
-    // the record and, while it is fresh, keeps that record from looking stale.
-    if (size_t mail = base.find(".mail-"); mail != std::string::npos) {
-      base.resize(mail);
-    }
-    Record& record = records[base];
-    record.modified = std::max(record.modified, modified);
-    record.files.push_back(entry.path());
-  });
-
-  auto remove_record = [](const Record& record) {
-    for (const fs::path& path : record.files) {
-      std::error_code remove_error;
-      fs::remove(path, remove_error);
-    }
-  };
-  auto cutoff = fs::file_time_type::clock::now() -
-                std::chrono::hours(24 * std::max(int64_t{1}, max_age_days));
-  std::vector<std::string_view> kept;
-  kept.reserve(records.size());
-  for (const auto& [id, record] : records) {
-    if (record.modified < cutoff) {
-      remove_record(record);
-    } else {
-      kept.push_back(id);
-    }
-  }
-  if (max_records <= 0 || kept.size() <= static_cast<size_t>(max_records)) {
-    return;
-  }
-  // Newest first, ties broken by id. std::sort is not stable, so without a
-  // total order two records stamped in the same filesystem tick could prune in
-  // either direction from one run to the next -- which is why this keeps ids
-  // rather than record addresses.
-  std::sort(kept.begin(), kept.end(),
-            [&records](std::string_view a, std::string_view b) {
-              const Record& left = records.find(a)->second;
-              const Record& right = records.find(b)->second;
-              if (left.modified != right.modified) {
-                return left.modified > right.modified;
-              }
-              return a < b;
-            });
-  for (size_t i = static_cast<size_t>(max_records); i < kept.size(); ++i) {
-    remove_record(records.find(kept[i])->second);
-  }
-}
-
 }  // namespace
 
 void PruneSessionJournalOrphans(const std::string& dir) {
@@ -387,7 +307,6 @@ void MaintainArtifacts() {
                     kDebugFiles);
   PruneArtifactTree(UagentDir(kBgDir), kBgDays, kBgFiles);
   PruneArtifactTree(UagentDir(kArtifactsDir), kBgDays, kBgFiles);
-  PruneCollaboratorTree(UagentDir("collaborators"), kDebugDays, kDebugFiles);
   PruneArtifactTree(UagentDir(kMcpDir), kMcpLogDays, kMcpLogFiles);
 }
 

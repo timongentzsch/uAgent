@@ -451,8 +451,7 @@ export function useHost(
           }));
         } else if (
           event.kind === "activity" ||
-          event.type === "activities.changed" ||
-          event.type === "collaborator.changed"
+          event.type === "activities.changed"
         ) {
           if (current)
             live.current[id] = {

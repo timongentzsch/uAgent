@@ -1182,7 +1182,7 @@ function App() {
             fallback={null}
             target={inspector}
             items={snapshot?.state?.activities || []}
-            collaborators={snapshot?.state?.collaborators || []}
+            agents={snapshot?.state?.agents || []}
             cwd={session.cwd || ""}
             running={running}
             session={session}

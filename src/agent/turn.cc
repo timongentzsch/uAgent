@@ -148,11 +148,9 @@ bool Agent::ApplyQueuedSteering(StepState& loop) {
 // Everything that happens before the model call: steering, a refreshed system
 // message, the budget gates, and the schemas this step is allowed to offer.
 Agent::StepFlow Agent::PrepareStep(TurnExecution& state, StepState& loop) {
-  // A collaborator's parent can speak to it mid-run; the guidance arrives as
-  // steering and is applied by the very next statement, so nothing it queues
-  // can strand at the end of a headless turn.
-  DrainCollaboratorMailIntoSteering();
-  // Same for linked peer sessions: file mail drained as ordinary steering.
+  // A delegated child's parent and linked peer sessions can speak to it
+  // mid-run; file mail arrives as steering and is applied by the very next
+  // statement, so nothing it queues can strand at the end of a headless turn.
   DrainSessionMailIntoSteering();
   ApplyQueuedSteering(loop);
   RefreshSystemMessage();

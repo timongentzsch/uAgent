@@ -29,13 +29,18 @@ inline constexpr const char* kSessionHeaderTitle = "title";
 inline constexpr const char* kSessionHeaderParent = "parent_session_id";
 inline constexpr const char* kSessionHeaderForkTurn = "forked_at_turn";
 inline constexpr const char* kSessionHeaderForkTime = "forked_at_time";
+// Present only on a delegated child: who spawned it and in what role
+// (parent, name, description, directive, mode, model, route, label, memory).
+// Children are addressed by their parent, never listed as sessions.
+inline constexpr const char* kSessionHeaderDelegation = "delegation";
 // Optional lineage: empty/zero when this session was never forked. Unknown
 // to older readers, which ignore extra header fields.
 inline constexpr int64_t kSessionFormat = 3;
 inline constexpr size_t kSessionHeaderBytes = size_t{16} * 1024;
 inline constexpr size_t kSessionReadBytes = size_t{64} * 1024 * 1024;
 
-enum class SessionScope { kWorkspace, kAll };
+// kChildren: this workspace's delegated children, which the other scopes skip.
+enum class SessionScope { kWorkspace, kAll, kChildren };
 
 struct SessionInfo {
   std::string path, cwd, title;
@@ -44,7 +49,12 @@ struct SessionInfo {
   int64_t bytes = 0;
   std::filesystem::file_time_type mtime;
   std::string error;
+  json delegation = json::object();
 };
+
+// The first line of a session file when it is a valid header, else an empty
+// object. Bounded: it never reads the transcript.
+json SessionHeader(const std::string& path);
 
 // A read-only catalogue: bounded headers, one known directory level, no links.
 std::vector<SessionInfo> ListSessions(
@@ -84,6 +94,7 @@ struct SessionMetadata {
   std::string parent_session_id{};
   int64_t forked_at_turn = 0;
   std::string forked_at_time{};
+  json delegation = json::object();
 };
 
 struct SessionState {

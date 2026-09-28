@@ -19,7 +19,6 @@ from integration_support import (
     session_files,
     timeout_setting,
     tool_call,
-    tool_results,
     wait_until,
     write_json_response,
     write_mcp_server,
@@ -2186,100 +2185,6 @@ def test_web_slash_registry_and_attachment_retention(root, home, *, binary):
             text = "\n".join(block.get("text", "") for block in content)
             assert_true(attached.name in text and attached.read_text() in text, content)
             assert_true(not any(block["type"] == "file" for block in content), content)
-
-
-def test_persistent_guidance_requires_its_command_receipt(root, home, *, binary):
-    from session_support import SessionClient, runtime_directory
-
-    started, release = threading.Event(), threading.Event()
-
-    def answer(_, body):
-        if any(message.get("content") == "retained worker" for message in body["messages"]):
-            started.set()
-            assert release.wait(budget(10))
-            return event({"content": "worker finished"})
-        if tool_results(body["messages"]):
-            return event({"content": "parent finished"})
-        return tool_call("subagent", {"persistent": True, "prompt": "retained worker"})
-
-    with Server([answer]) as provider:
-        with web_host(binary, root, home, provider.url) as (web, code, _, _):
-            web.pair(code)
-            session = web.create(root)
-            web.command("permissions", session, mode="yolo")
-            web.command("submit", session, text="delegate")
-            try:
-                if not started.wait(budget(5)):
-                    raise AssertionError(web.snapshot(session))
-                snapshot = web.until(session, lambda value: value["state"].get("collaborators"))
-                child = snapshot["state"]["collaborators"][0]
-                live = web.command("activity", session, operation="inspect", agent_id=child["id"])
-                assert_true(live["result"].get("statistics_live"), live)
-                for field in (
-                    "usage",
-                    "statistics",
-                    "turns",
-                    "route",
-                    "context_tokens",
-                    "context_window",
-                ):
-                    assert_true(field in live["result"], live)
-                blocks = live["result"]["conversation"]["blocks"]
-                assert_true(
-                    any("retained worker" in block.get("text", "") for block in blocks), blocks
-                )
-                paths = [
-                    path
-                    for path in runtime_directory(home).glob("*.sock")
-                    if path.stem != session["id"]
-                ]
-                assert_true(len(paths) == 1, paths)
-                client = SessionClient(paths[0])
-                try:
-                    for index in range(8):
-                        command = client.send("guide", text=f"guidance {index}")
-                        receipt = client.until(
-                            lambda frame, request=command["request_id"]: (
-                                frame.get("request_id") == request
-                            )
-                        )
-                        assert_true(receipt.get("accepted"), receipt)
-                finally:
-                    client.close()
-                # The worker still streams its cached state before replying to
-                # every new connection. That state is not a command receipt.
-                result = web.command(
-                    "activity",
-                    session,
-                    operation="message",
-                    agent_id=child["id"],
-                    text="overflow guidance",
-                )
-                if result.get("pending"):
-                    request_id = result["request_id"]
-                    wait_until(
-                        lambda: not web.json(f"/api/receipts/{request_id}")[1].get("pending"),
-                        "collaborator message receipt did not complete",
-                    )
-                    result = web.json(f"/api/receipts/{request_id}")[1]
-                assert_true("queued message" in result["result"]["output"], result)
-                communication = web.command(
-                    "activity", session, operation="inspect", agent_id=child["id"]
-                )["result"]["communication"]
-                assert_true(
-                    communication[-1]["from"] == "parent"
-                    and communication[-1]["to"] == child["id"]
-                    and communication[-1]["text"] == "overflow guidance",
-                    communication,
-                )
-                mail = list((home / ".uagent/collaborators").glob("*.mail-*.json"))
-                assert_true(
-                    not mail or (len(mail) == 1 and "overflow guidance" in mail[0].read_text()),
-                    mail,
-                )
-            finally:
-                release.set()
-            web.until(session, lambda value: value["metadata"]["status"] == "idle")
 
 
 def test_web_session_title_generation_respects_rename(root, home, *, binary):

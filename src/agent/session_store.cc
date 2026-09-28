@@ -97,16 +97,20 @@ bool ValidHeader(const json& header) {
 }
 
 json HeaderJson(const SessionMetadata& metadata) {
-  return {{"format", kSessionFormat},
-          {kSessionHeaderCwd, metadata.cwd},
-          {kSessionHeaderModel, metadata.model},
-          {kSessionHeaderSessionId, metadata.session_id},
-          {kSessionHeaderTurns, metadata.turns},
-          {kSessionHeaderTitle, metadata.title},
-          {"custom_title", metadata.custom_title},
-          {kSessionHeaderParent, metadata.parent_session_id},
-          {kSessionHeaderForkTurn, metadata.forked_at_turn},
-          {kSessionHeaderForkTime, metadata.forked_at_time}};
+  json header = {{"format", kSessionFormat},
+                 {kSessionHeaderCwd, metadata.cwd},
+                 {kSessionHeaderModel, metadata.model},
+                 {kSessionHeaderSessionId, metadata.session_id},
+                 {kSessionHeaderTurns, metadata.turns},
+                 {kSessionHeaderTitle, metadata.title},
+                 {"custom_title", metadata.custom_title},
+                 {kSessionHeaderParent, metadata.parent_session_id},
+                 {kSessionHeaderForkTurn, metadata.forked_at_turn},
+                 {kSessionHeaderForkTime, metadata.forked_at_time}};
+  if (!metadata.delegation.empty()) {
+    header[kSessionHeaderDelegation] = metadata.delegation;
+  }
+  return header;
 }
 
 std::string StateText(const SessionState& state,
@@ -251,6 +255,8 @@ SessionLoadResult SessionStore::Inspect(const std::string& path) {
       JsonValue(header, kSessionHeaderForkTurn, int64_t{0});
   record.metadata.forked_at_time =
       JsonValue(header, kSessionHeaderForkTime, "");
+  record.metadata.delegation =
+      JsonValue(header, kSessionHeaderDelegation, json::object());
   record.state.messages = std::move(state["messages"]);
   record.state.message_kinds = std::move(message_kinds);
   record.state.archive = std::move(state["archive"]);
@@ -283,6 +289,17 @@ SessionLoadResult SessionStore::Inspect(const std::string& path) {
   return {{}, std::move(record)};
 }
 
+json SessionHeader(const std::string& path) {
+  std::string prefix, error;
+  if (!ReadRegularFile(path, kSessionHeaderBytes, prefix, error, true)) {
+    return json::object();
+  }
+  const size_t newline = prefix.find('\n');
+  if (newline == std::string::npos) return json::object();
+  json header = json::parse(prefix.substr(0, newline), nullptr, false);
+  return ValidHeader(header) ? header : json::object();
+}
+
 std::vector<SessionInfo> ListSessions(SessionScope scope) {
   return SessionCatalogue{}.List(scope);
 }
@@ -294,7 +311,7 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
   const fs::path base = fs::path(GlobalBase()) / kHistoryDir;
   std::vector<fs::path> directories{base};
   std::error_code ec;
-  if (scope == SessionScope::kWorkspace) {
+  if (scope != SessionScope::kAll) {
     directories.push_back(base / WorkspaceId(current));
   } else {
     for (const auto& entry : fs::directory_iterator(base, ec)) {
@@ -304,6 +321,10 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
       }
     }
   }
+  const auto listed = [&](const SessionInfo& info) {
+    return (scope == SessionScope::kAll || info.cwd == current) &&
+           info.delegation.empty() != (scope == SessionScope::kChildren);
+  };
   std::vector<SessionInfo> out;
   std::map<std::string, Entry> next;
   for (const fs::path& directory : directories) {
@@ -319,7 +340,7 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
       const FileStamp stamp = SnapshotFile(item.path);
       auto cached = entries_.find(item.path);
       if (cached != entries_.end() && cached->second.stamp == stamp) {
-        if (scope == SessionScope::kAll || cached->second.info.cwd == current) {
+        if (listed(cached->second.info)) {
           out.push_back(cached->second.info);
           next.insert(entries_.extract(cached));
         }
@@ -329,16 +350,8 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
       auto bytes = entry.file_size(ec);
       item.bytes =
           ec ? 0 : static_cast<int64_t>(std::min(bytes, uintmax_t{INT64_MAX}));
-      std::string prefix, error;
-      json header;
-      if (ReadRegularFile(item.path, kSessionHeaderBytes, prefix, error,
-                          true)) {
-        size_t newline = prefix.find('\n');
-        if (newline != std::string::npos) {
-          header = json::parse(prefix.substr(0, newline), nullptr, false);
-        }
-      }
-      if (!ValidHeader(header)) {
+      const json header = SessionHeader(item.path);
+      if (header.empty()) {
         item.title = entry.path().filename().string();
         item.error = "invalid or oversized session header";
       } else {
@@ -346,11 +359,13 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
         item.title = JsonValue(header, kSessionHeaderTitle, "(untitled)");
         item.turns = JsonValue(header, kSessionHeaderTurns, int64_t{0});
         item.incoming = JsonValue(header, "incoming", uint64_t{0});
+        item.delegation =
+            JsonValue(header, kSessionHeaderDelegation, json::object());
         if (JsonValue(header, "format", int64_t{0}) != kSessionFormat) {
           item.error = "unsupported session format";
         }
       }
-      if (scope == SessionScope::kAll || item.cwd == current) {
+      if (listed(item)) {
         if (stamp.size >= 0 && item.error.empty() &&
             SnapshotFile(item.path) == stamp) {
           next.emplace(item.path, Entry{stamp, item});

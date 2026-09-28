@@ -38,8 +38,8 @@ int Application::FinishHeadless(std::string answer, std::string error,
 }
 
 int Application::RunHeadless() {
-  // Internal collaborator sessions are explicit durable conversations even
-  // though ordinary one-shot `-p` calls remain ephemeral.
+  // Delegated children are durable conversations even though ordinary
+  // one-shot `-p` calls remain ephemeral.
   persist_ = !session_file_.empty();
   json content;
   if (!attachments_.empty()) {

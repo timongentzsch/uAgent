@@ -33,7 +33,6 @@ struct ApplicationInput {
   std::string text{};
   std::string request_id{};
   json control{};
-  json budget{};
   std::vector<Attachment> attachments{};
   bool wake = false;
   std::optional<std::string> title{};

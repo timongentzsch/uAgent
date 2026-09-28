@@ -249,15 +249,14 @@ export interface Activity {
   // A command the turn is still waiting on, until moved to the background.
   detached?: boolean;
 }
-export interface Collaborator {
+// A child session this conversation delegated to, running or resumable.
+export interface Agent {
   id: string;
   label?: string;
   name?: string;
   description?: string;
-  team?: string;
   model?: string;
   status?: string;
-  persistent?: boolean;
 }
 export interface ActivityDetail extends Activity {
   activity_detail?: ActivityStatusDetail | null;
@@ -266,9 +265,7 @@ export interface ActivityDetail extends Activity {
   context_window?: number;
   statistics_live?: boolean;
   route?: string;
-  persistent?: boolean;
   olderWindow?: boolean;
-  communication?: { from: string; to: string; text: string; time: string }[];
   body?: BodyPage;
   command?: string;
   memory?: Block["memory"];
@@ -370,7 +367,7 @@ export interface State {
   statistics?: Statistics;
   activity?: string;
   activities?: Activity[];
-  collaborators?: Collaborator[];
+  agents?: Agent[];
   context_tokens?: number;
   context_window?: number;
   permissions?: Permissions;
@@ -478,8 +475,6 @@ export interface EventData extends Omit<Partial<Exchange>, "status"> {
   };
   error?: string;
   activities?: Activity[];
-  collaborator?: Collaborator;
-  removed?: boolean;
   permissions?: Permissions;
 }
 // Host envelopes and native EventEmitter payloads share the same SSE channel.

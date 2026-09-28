@@ -263,10 +263,9 @@ std::vector<Tool> BuildTools(AppContext& context,
     if (!error.empty()) return {};
   }
   if (CanDelegate()) {
-    tools.push_back(SubagentTool(api, runtime.processes,
-                                 context.provider.routes,
-                                 context.provider.providers,
-                                 context.options.debug, &runtime.collaborator));
+    tools.push_back(
+        SubagentTool(api, runtime.processes, context.provider.routes,
+                     context.provider.providers, context.options.debug));
   }
   // Peer sessions are text-only and isolation-gated by links, so the session
   // tool is safe in every toolset, lean included.

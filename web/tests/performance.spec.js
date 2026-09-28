@@ -87,15 +87,16 @@ for (const labels of [false, true])
             const nextAction = Math.floor(due / 1000);
             if (nextAction !== action) {
               action = nextAction;
-              for (const id of ["child-a", "child-b"])
-                send("collaborator.changed", {
-                  collaborator: {
-                    id,
-                    name: id,
-                    status: "running",
-                    progress: `Thinking · Reviewing module ${action}`,
-                  },
-                });
+              send("activities.changed", {
+                activities: ["child-a", "child-b"].map((id, index) => ({
+                  id: index + 1,
+                  kind: "agent",
+                  agent_id: id,
+                  name: id,
+                  status: "running",
+                  progress: `Thinking · Reviewing module ${action}`,
+                })),
+              });
               for (const id of ["a", "b"])
                 send("tool.call", {
                   response_id: response,

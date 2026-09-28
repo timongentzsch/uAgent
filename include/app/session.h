@@ -12,7 +12,6 @@ namespace uagent::session {
 std::string SocketPath(const std::string& path);
 struct Connection {
   Fd socket;
-  Fd owner;  // Delegated runtime lifetime; close when the parent session exits.
   std::string generation;
   int pid = -1;
   // FileIdentity of the executable the worker started from, from its hello.

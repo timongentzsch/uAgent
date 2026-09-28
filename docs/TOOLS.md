@@ -29,7 +29,7 @@ per-conversation choices made with `/tools`.
 | `artifact` | hand the user a file to open or download (HTML runs sandboxed, PDFs and images open inline); snapshot into the session's assets | a session with a client |
 | `web_search` | cited web search through OpenRouter's hosted search | an OpenRouter-protocol route or search endpoint |
 | `session` | list linked sessions and message them | always |
-| `subagent` | delegate a subtask to a durable collaborator | delegation depth below `UAGENT_SUBAGENT_DEPTH` |
+| `subagent` | delegate a subtask to a durable child session | delegation depth below `UAGENT_SUBAGENT_DEPTH` |
 | `skill` | load an installed skill | a usable skill is installed |
 | `adapt_system` | read and revise the system prompt | `UAGENT_ADAPT_SYSTEM=1`; see [SYSTEM_PROMPTS.md](SYSTEM_PROMPTS.md) |
 | `browser` | drive the shared Chrome of the browser appliance | top-level web sessions with `UAGENT_BROWSER_DATA`; see [WEB.md](WEB.md) |
@@ -112,16 +112,13 @@ non-PTY activity is rejected.
 ## Delegation
 
 `subagent` defaults to `operation=spawn` and returns an activity ID and a
-durable collaborator ID.
+durable agent ID.
 
-- `followup` resumes the collaborator's private conversation and prepends its
+- `followup` resumes the child's private conversation and prepends its
   stored `directive`; an empty directive clears it.
 - `message` delivers one-shot guidance at the child's next step, or at the next
   follow-up when it is idle.
-- `list` reports this workspace's collaborators with model, toolset and state.
-- `persistent=true` keeps one blocking collaborator's session worker and
-  processes alive between handoffs; its model, mode and limits are fixed at
-  spawn. Stop it through `subagent`.
+- `list` reports this session's children with model, toolset and state.
 - Use `activity` to wait for, read or stop ordinary children. `/agents` shows
   the same records.
 

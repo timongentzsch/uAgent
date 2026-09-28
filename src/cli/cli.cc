@@ -59,7 +59,7 @@ class ScopedCookedInput {
 constexpr SlashCommandSpec kSlashCommands[] = {
     {SlashCommandId::kAgents, "/agents",
      "[ID [output|stop|message TEXT|followup TEXT]]",
-     "inspect, guide or resume delegated collaborators"},
+     "inspect, guide or resume delegated agents"},
     {SlashCommandId::kAttach, "/attach", "PATH|clear",
      "attach a file to the next turn", false},
     {SlashCommandId::kCompact, "/compact", "",

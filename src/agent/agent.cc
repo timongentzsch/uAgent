@@ -15,6 +15,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/child_agent.h"
 #include "include/agent/jobs.h"
 #include "include/agent/memory_store.h"
 #include "include/agent/protocol.h"
@@ -357,7 +358,8 @@ bool Agent::Save(const std::string& path, std::string& error) const {
                      .custom_title = custom_title_,
                      .parent_session_id = parent_session_id_,
                      .forked_at_turn = forked_at_turn_,
-                     .forked_at_time = forked_at_time_};
+                     .forked_at_time = forked_at_time_,
+                     .delegation = OwnDelegation()};
   record.state = {
       .context_tokens = ContextUsed(),
       .context_window = api_.ctx_window,

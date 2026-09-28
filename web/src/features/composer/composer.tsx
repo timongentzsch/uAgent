@@ -541,7 +541,7 @@ export default function Composer({
       )}
       <div class="composer-metrics">
         <ActivityButton
-          collaborators={state?.collaborators || []}
+          agents={state?.agents || []}
           open={openInspector}
           session={session}
           online={online}

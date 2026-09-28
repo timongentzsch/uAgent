@@ -297,23 +297,6 @@ bool ApplySessionEvent(json& state, const std::string& type, const json& data) {
     MergeDisplayBlock(state["view"], data["block"]);
   } else if (type == "activities.changed") {
     state["activities"] = data["activities"];
-  } else if (type == "collaborator.changed") {
-    json& rows = state["collaborators"];
-    if (!rows.is_array()) rows = json::array();
-    const json& changed = data["collaborator"];
-    const std::string id = JsonValue(changed, "id", "");
-    auto found = std::find_if(rows.begin(), rows.end(), [&](const json& row) {
-      return JsonValue(row, "id", "") == id;
-    });
-    if (JsonValue(data, "removed", false)) {
-      if (found != rows.end()) rows.erase(found);
-    } else if (!id.empty()) {
-      if (found == rows.end()) {
-        rows.push_back(changed);
-      } else {
-        *found = changed;
-      }
-    }
   } else if (type == "http.exchange") {
     state["http"] = json::array({data});
   } else if (type == "config.changed" && data.contains("permissions")) {

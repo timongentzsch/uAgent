@@ -18,7 +18,7 @@
 
 namespace uagent::session {
 
-// Every command kind a client can send. The host runs close, guide and the
+// Every command kind a client can send. The host runs close and the
 // saved-session kinds (create, delete, activate) itself; the rest are
 // forwarded to the worker, which answers anything it does not run as
 // "unsupported command".
@@ -27,7 +27,6 @@ enum class SessionCommandKind {
   kInterrupt,
   kReply,
   kSteer,
-  kGuide,
   kRecall,
   kRename,
   kRefresh,
@@ -62,7 +61,6 @@ struct SessionCommand {
   bool cancelled = false;
   bool has_attachments = false;
   // Null when absent, matching JsonValue(command, "budget", json{}).
-  json budget;
   json raw;
 };
 

@@ -27,6 +27,14 @@
   longer read. `web_fetch` follows `UAGENT_ATTACHMENT_MB`, and delegated
   children never inline always-on memory.
 - The delegation depth handed to child processes is `UAGENT_INTERNAL_DEPTH`.
+- Delegated children are ordinary saved sessions: each lives in the
+  workspace's history with a `delegation` header naming its parent and role,
+  stays out of the session list, and hears its parent through the same inbox
+  as linked sessions. `~/.uagent/collaborators/` is no longer used and can be
+  deleted.
+- Removed persistent subagents (`persistent=true`), agent teams
+  (`UAGENT_TEAM`, `broadcast`, `hops`) and the `guide` session command.
+  `followup` resumes a child's conversation as before.
 
 ### Fixed
 

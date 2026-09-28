@@ -17,7 +17,6 @@
 #include <utility>
 #include <vector>
 
-#include "include/agent/child_agent.h"
 #include "include/agent/session_store.h"
 #include "include/agent/session_view.h"
 #include "include/app/bootstrap.h"
@@ -79,12 +78,11 @@ json AttachmentsToJson(const std::vector<Attachment>& attachments) {
 class WorkerChannel final : public ApplicationChannel {
  public:
   WorkerChannel(std::string path, std::string id, std::string generation,
-                std::string title, bool delegated, bool browser_session)
+                std::string title, bool browser_session)
       : path_(std::move(path)),
         id_(std::move(id)),
         generation_(std::move(generation)),
         title_(std::move(title)),
-        delegated_(delegated),
         browser_session_(browser_session) {}
   ~WorkerChannel() override { Close(); }
 
@@ -535,18 +533,7 @@ class WorkerChannel final : public ApplicationChannel {
         }
         break;
       }
-      case SessionCommandKind::kSteer:
-      case SessionCommandKind::kGuide: {
-        const bool guide = kind == SessionCommandKind::kGuide;
-        if (guide && parsed.text.empty()) {
-          // Mail-first ping: payload is on disk, just drain it into the queue.
-          // Best-effort from the worker thread; PrepareStep drains again
-          // anyway.
-          lock.unlock();
-          DrainCollaboratorMailIntoSteering();
-          wake_.Wake();
-          return true;
-        }
+      case SessionCommandKind::kSteer: {
         if (!turn_active_ || parsed.text.empty() ||
             SteeringState().QueuedCount() >= 8) {
           error = "guidance requires an active turn and space in its queue";
@@ -561,7 +548,7 @@ class WorkerChannel final : public ApplicationChannel {
           if (ResolveCommandAttachments(parsed.raw, attachments, images,
                                         error)) {
             SteeringState().Queue(
-                std::string(parsed.text), parsed.client_request_id, !guide,
+                std::string(parsed.text), parsed.client_request_id, true,
                 AttachmentsToJson(attachments), std::move(images));
           }
         }
@@ -657,9 +644,6 @@ class WorkerChannel final : public ApplicationChannel {
           error = "session is busy";
         } else {
           ApplicationInput input;
-          if (delegated_) {
-            input.budget = parsed.budget;
-          }
           input.request_id = parsed.client_request_id;
           input.text = parsed.text;
           json images = json::array();
@@ -709,7 +693,6 @@ class WorkerChannel final : public ApplicationChannel {
 
   std::string path_, id_, generation_, title_;
   // Socket callbacks can run while bootstrap initializes the environment.
-  const bool delegated_;
   Pipe wake_;
   std::mutex mutex_, control_mutex_;
   bool closed_ = false, busy_ = true;
@@ -751,28 +734,12 @@ int WorkerMain(int argc, char** argv) {
       }
     }
   }
-  Fd owner(JsonValue(launch, "owner_fd", -1));
   WorkerChannel channel(argv[3], argv[4], RandomToken(16), argv[5],
-                        static_cast<bool>(owner), options.browser_session);
+                        options.browser_session);
   if (!channel.Start()) return 2;
   if (chdir(argv[2]) != 0) {
     channel.Send({{"kind", "error"}, {"error", "workspace is unavailable"}});
     return 2;
-  }
-  // Delegated workers belong to the parent session, even after a parent crash.
-  // The pipe is close-on-exec in the parent and never reaches tool children.
-  Pipe watch_stop;
-  std::thread owner_watch;
-  if (owner) {
-    fcntl(owner.Get(), F_SETFD, FD_CLOEXEC);
-    if (!watch_stop.Open()) return 2;
-    owner_watch = std::thread([&] {
-      pollfd waits[] = {{owner.Get(), POLLIN, 0},
-                        {watch_stop.read.Get(), POLLIN, 0}};
-      while (poll(waits, 2, -1) < 0 && errno == EINTR) {
-      }
-      if (waits[0].revents) channel.Close();
-    });
   }
   Observability observation;
   SetObservability(&observation);
@@ -785,8 +752,6 @@ int WorkerMain(int argc, char** argv) {
   int status = boot.Ok() ? RunApplication(*boot.context) : boot.exit_code;
   if (!boot.Ok()) channel.Send({{"kind", "error"}, {"error", boot.error}});
   boot.context.reset();
-  watch_stop.Wake();
-  if (owner_watch.joinable()) owner_watch.join();
   observation.Unsubscribe(subscriber);
   SetObservability(nullptr);
   return status;

@@ -5,13 +5,12 @@ import HistoryStart from "./history-start.tsx";
 import { ContextSummary, SessionSummary } from "./session-summary.tsx";
 import { StatisticsLoading } from "../../shared/statistics-layout.tsx";
 import { useDismiss } from "../../shared/dismiss.ts";
-import { count } from "../../shared/quantities.ts";
 import { duration } from "../../shared/duration.ts";
 import type {
   Activity,
   ActivityDetail,
   Block,
-  Collaborator,
+  Agent,
   JSONValue,
   RawOptions,
   Report,
@@ -42,11 +41,7 @@ import {
   Skeleton,
   Spinner,
 } from "../../shared/ui.tsx";
-import {
-  active,
-  ActivityStatus,
-  withCollaborators,
-} from "./activity-status.tsx";
+import { active, ActivityStatus, withAgents } from "./activity-status.tsx";
 import Markdown from "../../shared/markdown-view.tsx";
 import { MessageRows, prepareHistoryBlocks } from "./message.tsx";
 
@@ -140,7 +135,7 @@ async function fetchActivityDetail(
 export default function Inspector({
   target,
   items,
-  collaborators,
+  agents,
   cwd,
   running,
   session,
@@ -150,7 +145,7 @@ export default function Inspector({
 }: {
   target: InspectorTarget;
   items: Activity[];
-  collaborators: Collaborator[];
+  agents: Agent[];
   cwd: string;
   running?: boolean;
   session: SessionRef;
@@ -158,7 +153,7 @@ export default function Inspector({
   report: Report;
   close: () => void;
 }) {
-  const rows = withCollaborators(items, collaborators);
+  const rows = withAgents(items, agents);
   const [detail, setDetail] = useState<ActivityDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<unknown>(null);
@@ -274,7 +269,7 @@ export default function Inspector({
     }
   }, [target]);
 
-  // The parent stream already reports collaborator and activity progress.
+  // The parent stream already reports agent and activity progress.
   // Refresh an open child only when that authoritative state changes instead
   // of running a second polling clock beside SSE.
   const rowsVersion = rows
@@ -408,7 +403,6 @@ export default function Inspector({
         <DetailBody
           detail={detail}
           current={current}
-          rows={rows}
           running={running}
           online={online}
           session={session}
@@ -436,7 +430,6 @@ export default function Inspector({
 function DetailBody({
   detail,
   current,
-  rows,
   running,
   online,
   session,
@@ -454,7 +447,6 @@ function DetailBody({
   hidden: boolean;
   detail: ActivityDetail;
   current: Activity;
-  rows: Activity[];
   running?: boolean;
   online: boolean;
   session: SessionRef;
@@ -616,11 +608,7 @@ function DetailBody({
 
       {isAgent && (
         <details class="activity-info">
-          <summary>
-            Task and run details
-            {!!detail.communication?.length &&
-              ` · ${count(detail.communication.length)} messages`}
-          </summary>
+          <summary>Task and run details</summary>
           {detail.description && (
             <section aria-label="About">
               <p class="muted">{cleanText(detail.description)}</p>
@@ -628,32 +616,8 @@ function DetailBody({
           )}
           {detail.directive && (
             <section aria-label="Run details">
-              <SectionTitle>Persistent directive</SectionTitle>
+              <SectionTitle>Directive</SectionTitle>
               <Markdown text={detail.directive} />
-            </section>
-          )}
-          {!!detail.communication?.length && (
-            <section aria-label="Agent communication" class="communication">
-              <SectionTitle>Agent communication</SectionTitle>
-              <ol>
-                {detail.communication.map((message, index) => (
-                  <li key={`${message.time}-${index}`}>
-                    <div class="communication-meta">
-                      <strong>
-                        {rows.find((row) => row.agent_id === message.from)
-                          ?.name || message.from}
-                      </strong>
-                      <span aria-hidden="true">→</span>
-                      <strong>
-                        {rows.find((row) => row.agent_id === message.to)
-                          ?.name || message.to}
-                      </strong>
-                      <time dateTime={message.time}>{message.time}</time>
-                    </div>
-                    <p>{cleanText(message.text)}</p>
-                  </li>
-                ))}
-              </ol>
             </section>
           )}
         </details>
@@ -825,7 +789,7 @@ function DetailBody({
               state={childState}
               selection={model || childState.route}
               online={online}
-              running={isLive || !!detail.persistent || sending}
+              running={isLive || sending}
               save={setModel}
             />
             <Button
@@ -849,11 +813,6 @@ function DetailBody({
               open={() => page({ title: "Subagent statistics", stats: {} })}
             />
           </div>
-          {detail.persistent && (
-            <small class="muted">
-              Persistent agents retain their model across follow-ups.
-            </small>
-          )}
           {notice && <p role="status">{notice}</p>}
         </form>
       )}

@@ -200,7 +200,7 @@ inline bool HasUsage(const Usage& usage) {
 }
 
 // Statistics are additive nonnegative counters and durations. These helpers
-// are shared by parent, child and persistent-collaborator accounting so nested
+// are shared by parent and child accounting so nested
 // work cannot gain a different merge or delta rule at each process boundary.
 inline int64_t NonnegativeJsonInteger(const json& value) {
   if (value.is_number_unsigned()) {

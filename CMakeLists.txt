@@ -171,7 +171,6 @@ add_library(
   src/mcp/rpc.cc
   src/mcp/server.cc
   src/tools/adapt_system.cc
-  src/tools/collaborator_runtime.cc
   src/tools/files.cc
   src/tools/image_result.cc
   src/tools/memory.cc

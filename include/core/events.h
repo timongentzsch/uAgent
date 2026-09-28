@@ -56,7 +56,6 @@ enum class EventId : uint16_t {
   kNotice,
   kMessageChanged,
   kActivitiesChanged,
-  kCollaboratorChanged,
   kHttpExchange,
   kUsageUpdated,
   kResponseSources,

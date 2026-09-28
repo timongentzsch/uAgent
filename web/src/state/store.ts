@@ -207,20 +207,6 @@ export function applySessionEvent(
     };
   if (event.type === "activities.changed")
     state = { ...(state || {}), activities: data.activities };
-  if (event.type === "collaborator.changed" && data.collaborator) {
-    state = { ...(state || {}) };
-    const collaborators = [...(state.collaborators || [])];
-    const changed = data.collaborator;
-    const index = collaborators.findIndex((item) => item.id === changed.id);
-    if (data.removed) {
-      if (index >= 0) collaborators.splice(index, 1);
-    } else if (index < 0) {
-      collaborators.push(changed);
-    } else {
-      collaborators[index] = changed;
-    }
-    state.collaborators = collaborators;
-  }
   // Each exchange updates in place by id; earlier attempts stay reachable
   // through /http INDEX until the next published state replaces the list.
   if (event.type === "http.exchange" && data.id && data.state) {

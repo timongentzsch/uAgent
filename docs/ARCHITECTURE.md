@@ -93,18 +93,17 @@ prompt and library invalidation uses the native multi-path watcher and wakes at
 the next actual schedule deadline. Independent conversations may share a project
 folder; edits to shared project files still require coordination.
 
-A normal collaborator follow-up starts a bounded child process from its saved
-conversation. A persistent collaborator instead keeps one same-binary session
-worker and its process supervisor under the parent runtime. Sequential
-handoffs use the worker's ordinary command/checkpoint protocol, so its shell
-and background activities survive between handoffs. Parent shutdown stops that
-worker and its complete process group. A lifetime pipe also closes the worker
-after an abrupt parent exit; it is never inherited by tool executables.
+A delegated child is a headless `-p` run of the same binary, supervised as a
+background activity of its parent. It saves an ordinary session file in the
+workspace's history whose header carries a `delegation` object (parent, name,
+role, directive, mode, model); the catalogue hides such files, and the parent
+finds its children by that header. A follow-up starts a new bounded child
+process from the saved conversation. Parent guidance travels through the same
+session inbox as linked-peer mail and is read at the child's next step.
 
 Headless `-p` runs use the same application, agent and event policies in one
 process. Their bounded invocation and machine-output contract are separate from
-an attached interactive client. Collaborator processes retain their explicit
-supervisor-owned lifetime.
+an attached interactive client.
 
 ## Events and observability
 
@@ -116,8 +115,7 @@ cannot return a tool result or grant authority.
 
 The command side changes state; the event side reports the change.
 `message.changed` updates visible history, `usage.updated` reports current
-provider accounting, `activities.changed` reports supervised work,
-`collaborator.changed` reports retained-worker lifecycle, and interaction
+provider accounting, `activities.changed` reports supervised work, and interaction
 events carry correlated decisions. Final checkpoints reconcile complete state.
 Terminal Markdown/ANSI and browser DOM state are projections, never alternate
 writers.

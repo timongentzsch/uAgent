@@ -20,26 +20,6 @@ from integration_support import (
 from memory_fixture import global_memory_dir, project_memory_dir
 
 
-def test_collaborator_retention_prunes_whole_records(root, home, *, binary):
-    collaborators = home / ".uagent" / "collaborators"
-    collaborators.mkdir(parents=True)
-    now = time.time()
-    # Older than the 14-day debug retention.
-    for index, stamp in (("old", now - 15 * 86400), ("new", now - 60)):
-        (collaborators / f"{index}.json").write_text("{}", encoding="utf-8")
-        (collaborators / f"{index}.session.json").write_text("{}", encoding="utf-8")
-        os.utime(collaborators / f"{index}.json", (stamp, stamp))
-        os.utime(collaborators / f"{index}.session.json", (stamp, stamp))
-
-    with Server([event({"content": "retention-ok"})]) as server:
-        result = run(root, base_env(home, server.url), "-p", "reply", binary=binary)
-        assert_true(result.returncode == 0, result.stderr)
-        assert_true(result.stdout.strip() == "retention-ok", result.stdout)
-
-    remaining = sorted(path.name for path in collaborators.iterdir())
-    assert_true(remaining == ["new.json", "new.session.json"], remaining)
-
-
 def test_project_agent_config_trust(root, home, *, binary):
     workspace = root / "config-workspace"
     (workspace / ".uagent").mkdir(parents=True)

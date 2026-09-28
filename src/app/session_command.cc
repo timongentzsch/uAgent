@@ -23,7 +23,6 @@ constexpr KindRow kKinds[] = {
     {"interrupt", SessionCommandKind::kInterrupt, true},
     {"reply", SessionCommandKind::kReply, true},
     {"steer", SessionCommandKind::kSteer, true},
-    {"guide", SessionCommandKind::kGuide, false},
     {"recall", SessionCommandKind::kRecall, true},
     {"rename", SessionCommandKind::kRename, true},
     {"refresh", SessionCommandKind::kRefresh, true},
@@ -82,7 +81,6 @@ bool ParseSessionCommand(const json& command, const std::string& session_id,
   parsed.operation = JsonValue(command, "operation", "");
   parsed.cancelled = JsonValue(command, "cancelled", false);
   parsed.has_attachments = command.contains("attachments");
-  parsed.budget = JsonValue(command, "budget", json{});
   parsed.raw = command;
   out = std::move(parsed);
   error.clear();

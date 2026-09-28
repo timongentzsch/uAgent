@@ -43,7 +43,6 @@ void TestSessionCommandKinds() {
       {"interrupt", session::SessionCommandKind::kInterrupt},
       {"reply", session::SessionCommandKind::kReply},
       {"steer", session::SessionCommandKind::kSteer},
-      {"guide", session::SessionCommandKind::kGuide},
       {"recall", session::SessionCommandKind::kRecall},
       {"rename", session::SessionCommandKind::kRename},
       {"refresh", session::SessionCommandKind::kRefresh},
@@ -89,7 +88,6 @@ void TestSessionCommandFields() {
   command["operation"] = "followup";
   command["cancelled"] = true;
   command["attachments"] = json::array();
-  command["budget"] = json{{"usd", 1}};
   session::SessionCommand parsed;
   std::string error;
   REQUIRE(session::ParseSessionCommand(command, kSession, kGeneration, parsed,
@@ -101,7 +99,6 @@ void TestSessionCommandFields() {
   CHECK(parsed.operation == "followup");
   CHECK(parsed.cancelled);
   CHECK(parsed.has_attachments);
-  CHECK((parsed.budget == json{{"usd", 1}}));
   // Absent fields read as empty; attachments absence is observable because
   // the submit fast path depends on it.
   session::SessionCommand bare;
@@ -186,7 +183,7 @@ void TestHostCommandKinds() {
   // Unknown names stay unknown.
   CHECK(session::ParseSessionCommandKind("teleport") ==
         session::SessionCommandKind::kUnknown);
-  // The host runs close, guide and saved-session management itself and
+  // The host runs close and saved-session management itself and
   // forwards everything else; a new kind must choose one explicitly.
   int forwarded = 0;
   for (int raw = 0;
@@ -198,7 +195,6 @@ void TestHostCommandKinds() {
   }
   CHECK(forwarded == 17);
   for (auto local : {session::SessionCommandKind::kClose,
-                     session::SessionCommandKind::kGuide,
                      session::SessionCommandKind::kCreate,
                      session::SessionCommandKind::kDelete,
                      session::SessionCommandKind::kActivate,

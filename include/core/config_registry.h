@@ -340,9 +340,6 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
     registry::Int("UAGENT_SUBAGENT_TIMEOUT", {}, 0, 0, kConfigAnyMax,
                   ReloadPolicy::kRestartRequired, "delegation",
                   "wall-clock ceiling per delegated child; 0 is the turn"),
-    registry::Str("UAGENT_TEAM", {}, "", ReloadPolicy::kRestartRequired,
-                  Sensitivity::kPublic, "delegation",
-                  "team id shared by peer collaborators"),
     registry::Fallback(
         registry::Str("UAGENT_SUBAGENT_MODEL", {}, "",
                       ReloadPolicy::kRestartRequired, Sensitivity::kPublic,

@@ -58,7 +58,7 @@ int Application::RunChannel() {
       }
       return answer;
     }
-    return ActivityControl(runtime_.processes, request, &runtime_.collaborator);
+    return ActivityControl(runtime_.processes, request);
   });
   PublishChannelState();
   while (std::optional<ApplicationInput> input = channel_->NextInput()) {
@@ -72,7 +72,6 @@ int Application::RunChannel() {
       AppSession session = Session();
       result = SessionControl(session, input->control);
     } else if (!input->wake) {
-      handoff_budget_ = std::move(input->budget);
       for (auto& attachment : input->attachments) {
         attachments_.push_back(std::move(attachment));
       }
@@ -115,8 +114,7 @@ json Application::BuildChannelState() const {
   state["turns"] = agent_.UserTurns();
   state["turn_active"] = turn_active_;
   state["activities"] = runtime_.processes.ActivityViews();
-  state["collaborators"] =
-      CollaboratorSummaries(runtime_.processes, &runtime_.collaborator);
+  state["agents"] = AgentSummaries(runtime_.processes);
   state["error"] = input_error_.empty() ? agent_.LastError() : input_error_;
   state["title"] = Utf8Prefix(agent_.FirstUserText(), 256);
   state["stop"] = agent_.LastStop();

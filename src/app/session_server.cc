@@ -114,14 +114,7 @@ Connection Open(const std::string& executable, const std::string& cwd,
     return {};
   }
   const std::string launch = folder.string() + "/" + RandomToken(16) + ".json";
-  Pipe owner;
-  const bool delegated = options.overrides.contains("UAGENT_INTERNAL_DEPTH");
-  if (delegated && !owner.Open()) {
-    error = "cannot create collaborator lifetime pipe";
-    return {};
-  }
-  json config = {{"owner_fd", delegated ? 3 : -1},
-                 {"browser_session", options.browser_session},
+  json config = {{"browser_session", options.browser_session},
                  {"overrides", options.overrides},
                  {"yolo", options.yolo},
                  {"debug", options.debug},
@@ -133,7 +126,7 @@ Connection Open(const std::string& executable, const std::string& cwd,
 #ifdef __linux__
   // A service restart kills its cgroup even after setsid(). Give the runtime
   // a user scope so its lifetime belongs to the session, not the web service.
-  if (!delegated && getenv("INVOCATION_ID")) {
+  if (getenv("INVOCATION_ID")) {
     args.insert(args.begin(), {"systemd-run", "--user", "--scope", "--quiet",
                                "--collect", "--expand-environment=no",
                                "--unit=uagent-session-" + HashHex(path) + "-" +
@@ -150,18 +143,12 @@ Connection Open(const std::string& executable, const std::string& cwd,
   for (int fd : {STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO}) {
     posix_spawn_file_actions_addopen(&actions, fd, "/dev/null", O_RDWR, 0);
   }
-  if (delegated) {
-    posix_spawn_file_actions_adddup2(&actions, owner.read.Get(), 3);
-  }
   pid_t pid = -1;
   // This is the same application continuing in its session process. Keep
   // provider credential references and user limits; tool children apply their
   // separate, restricted environment policy when they are dispatched.
-  std::optional<ChildEnvironment> environment;
-  if (delegated) environment.emplace();
-  int status =
-      posix_spawnp(&pid, args.front().c_str(), &actions, nullptr, argv.data(),
-                   environment ? environment->Data() : ProcessEnvironment());
+  int status = posix_spawnp(&pid, args.front().c_str(), &actions, nullptr,
+                            argv.data(), ProcessEnvironment());
   posix_spawn_file_actions_destroy(&actions);
   if (status) {
     unlink(launch.c_str());
@@ -173,10 +160,7 @@ Connection Open(const std::string& executable, const std::string& cwd,
   auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
   while (std::chrono::steady_clock::now() < deadline) {
     connected = Connect(path);
-    if (connected.socket) {
-      connected.owner = std::move(owner.write);
-      return connected;
-    }
+    if (connected.socket) return connected;
     poll(nullptr, 0, 20);
   }
   unlink(launch.c_str());

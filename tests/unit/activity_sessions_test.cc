@@ -1123,59 +1123,40 @@ void TestDetachedActivityOwnership() {
   }
 }
 
-void TestCollaboratorMail() {
+// A delegated child is an ordinary session file whose header names its role.
+// It must never surface as a session of its own, and its parent must find it.
+void TestChildSessionsStayOutOfTheCatalogue() {
   namespace fs = std::filesystem;
-  TestWorkspace workspace("collaborator-mail");
-  const fs::path dir = fs::path(UagentDir("collaborators"));
-  auto texts = [](const std::vector<QueuedMessage>& mails) {
+  TestWorkspace workspace("child-sessions");
+  const fs::path dir =
+      fs::path(UagentDir(kHistoryDir)) / WorkspaceId(CanonicalCwd());
+  fs::create_directories(dir);
+  auto write = [&](const std::string& id, const json& extra) {
+    json header = {{"format", kSessionFormat},
+                   {"cwd", CanonicalCwd()},
+                   {"model", "m"},
+                   {"session_id", id},
+                   {"turns", 1},
+                   {"title", id}};
+    header.update(extra);
+    std::ofstream(dir / (id + ".json")) << JsonDump(header) << "\n{}\n";
+  };
+  write("ordinary", json::object());
+  write("agent-aaaa1111",
+        {{kSessionHeaderDelegation, {{"parent", "p"}, {"name", "reviewer"}}}});
+  auto ids = [](SessionScope scope) {
     std::vector<std::string> out;
-    out.reserve(mails.size());
-    for (auto& mail : mails) out.push_back(mail.text);
+    for (const SessionInfo& info : ListSessions(scope)) {
+      out.push_back(fs::path(info.path).stem().string());
+    }
     return out;
   };
-
-  // Order is the contract: guidance read out of sequence is guidance the
-  // coordinator did not give.
-  CHECK(WriteCollaboratorMail("agent-aaaa1111", "first").Ok());
-  CHECK(WriteCollaboratorMail("agent-aaaa1111", "second").Ok());
-  CHECK(WriteCollaboratorMail("agent-bbbb2222", "other").Ok());
-  std::vector<std::string> taken =
-      texts(TakeCollaboratorMail("agent-aaaa1111"));
-  CHECK(taken == std::vector<std::string>({"first", "second"}));
-  // Consumed on read, and only the addressee's: a second take returns nothing
-  // while the other collaborator's message is still waiting.
-  CHECK(TakeCollaboratorMail("agent-aaaa1111").empty());
-  CHECK(texts(TakeCollaboratorMail("agent-bbbb2222")) ==
-        std::vector<std::string>({"other"}));
-
-  // Unreadable mail is dropped rather than retried: left in place it would be
-  // reread on every step for as long as the record survives.
-  const fs::path corrupt =
-      dir / "agent-cccc3333.mail-19700101T000000Z-1-0000.json";
-  std::ofstream(corrupt) << "{not json";
-  CHECK(TakeCollaboratorMail("agent-cccc3333").empty());
-  CHECK(!fs::exists(corrupt));
-
-  // An id that could not name a file is answered with silence, not a path
-  // assembled out of it.
-  CHECK(TakeCollaboratorMail("../escape").empty());
-
-  // Mail prunes with the record it belongs to, and while it is unread it is
-  // what keeps that record from looking stale.
-  const fs::path record = dir / "agent-dddd4444.json";
-  std::ofstream(record) << "{}\n";
-  const auto stale = fs::file_time_type::clock::now() -
-                     std::chrono::hours(24 * (kDebugDays + 1));
-  fs::last_write_time(record, stale);
-  const fs::path forgotten = dir / "agent-eeee5555.json";
-  std::ofstream(forgotten) << "{}\n";
-  fs::last_write_time(forgotten, stale);
-  CHECK(WriteCollaboratorMail("agent-dddd4444", "still waiting").Ok());
-  MaintainArtifacts();
-  CHECK(fs::exists(record));
-  CHECK(texts(TakeCollaboratorMail("agent-dddd4444")) ==
-        std::vector<std::string>({"still waiting"}));
-  CHECK(!fs::exists(forgotten));
+  CHECK(ids(SessionScope::kWorkspace) == std::vector<std::string>{"ordinary"});
+  CHECK(ids(SessionScope::kAll) == std::vector<std::string>{"ordinary"});
+  const std::vector<SessionInfo> children =
+      ListSessions(SessionScope::kChildren);
+  CHECK(children.size() == 1);
+  CHECK(JsonValue(children[0].delegation, "name", "") == "reviewer");
 }
 
 void TestSessionMail() {

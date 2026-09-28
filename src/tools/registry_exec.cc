@@ -60,7 +60,7 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
               "false runs outside the OS sandbox; always asks a person"}};
     // Mandatory rather than mutating: an approval a person did not give is an
     // approval this must not have. Yolo, remembered grants and headless
-    // sessions all fall to a denial, so a collaborator child cannot unconfine
+    // sessions all fall to a denial, so a delegated child cannot unconfine
     // itself no matter what it was launched with.
     run.approval_class = [](const json& a) {
       return JsonValue(a, "sandbox", true) ? ApprovalClass::kNone

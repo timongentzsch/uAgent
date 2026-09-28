@@ -63,19 +63,20 @@ std::string ChildAgentRecoverEnvelope(std::string output,
 
 std::string ChildAgentStopNote(const json& stop);
 
-// The collaborator record this process is resuming, or empty when this process
-// is not a collaborator. The parent hands it down as a path in the child's
-// environment, so it is validated once here -- inside the collaborators
-// directory, canonicalized -- rather than trusted at each of the places that
-// ask. Memoized: it is fixed for the lifetime of the process, and it answers
-// the question "am I somebody's child" on paths that run every step.
-const std::string& CollaboratorSessionFile();
+// The session file this delegated child runs in, or empty when this process
+// is not a child. The parent hands it down as a path in the child's
+// environment, so it is validated once here -- inside the history directory,
+// canonicalized -- rather than trusted at each of the places that ask.
+// Memoized: it is fixed for the lifetime of the process, and it answers the
+// question "am I somebody's child" on paths that run every step.
+const std::string& DelegatedSessionFile();
+// The role a delegated child was given (the session header's `delegation`
+// object, from UAGENT_INTERNAL_DELEGATION), or an empty object.
+const json& OwnDelegation();
 
-// Id this process runs as (from UAGENT_INTERNAL_SESSION_FILE), or empty.
-std::string OwnCollaboratorId();
-
-// Team this process belongs to (UAGENT_TEAM), empty for the coordinator.
-std::string OwnTeam();
+// The sender a parent's guidance to its child carries. The child accepts it
+// without a link; any other sender needs one.
+inline constexpr std::string_view kParentSender = "parent";
 
 // One queued message from a parent or peer. hops counts forwards for loop
 // clamping.
@@ -85,41 +86,23 @@ struct QueuedMessage {
   int hops = 0;
 };
 
-// Guidance for a collaborator, one message per file beside its record. A file
-// rather than an array in the record because the recipient may be running: two
-// processes appending to one JSON document race, and a running child would not
-// see the result until its next followup either way. The child drains these
-// between steps; a message to an idle collaborator waits for its next
-// followup, which drains the same files.
-ToolResult WriteCollaboratorMail(const std::string& id,
-                                 const std::string& prompt,
-                                 const std::string& from = "", int hops = 0);
-// Oldest first, consumed as they are read. Corrupt mail is dropped rather than
-// retried, the same posture unreadable detached records get.
-std::vector<QueuedMessage> TakeCollaboratorMail(const std::string& id);
-// The child half: queue whatever has arrived as ordinary steering, then unlink.
-// Queue-before-unlink makes redelivery the failure mode rather than loss. A
-// no-op in a process that is not a collaborator.
-void DrainCollaboratorMailIntoSteering();
-
-// Own session file: the collaborator record for delegated children, the
-// saved session file (UAGENT_INTERNAL_SESSION_PATH, exported on first save) for
-// interactive and web sessions. Empty for headless runs that never save.
+// Own session file: the delegated child's, else the saved session file
+// (UAGENT_INTERNAL_SESSION_PATH, exported on first save) for interactive and
+// web sessions. Empty for headless runs that never save.
 std::string OwnSessionFile();
-// Stable peer id: the session file stem (.session.json/.json stripped).
-// Empty when there is no session file yet.
+// Stable session id: the session file stem. Empty without a session file.
 std::string OwnSessionId();
 
-// Inbox lives at sessions/inbox/ so the sessions/ debug pruner never mistakes
-// it, and delivery needs no path lookup: the filename carries the recipient.
+// One inbox for every session, children included: a message is a file, so a
+// running recipient reads it at its next step and an idle one at its next
+// turn.
 ToolResult WriteSessionMail(const std::string& id, const std::string& text,
                             const std::string& from = "", int hops = 0);
-// Oldest first, consumed as they are read. Ungated: the link check happens
-// at drain time so a message sent before linking still arrives after it.
+// Oldest first, consumed as they are read.
 std::vector<QueuedMessage> TakeSessionMail(const std::string& id);
-// Queue arrived peer mail as ordinary steering, skipping senders outside the
-// reader's links. A no-op without a session file. Unlinked mail stays on
-// disk: linking later delivers it.
+// Queue arrived mail as ordinary steering, skipping senders outside the
+// reader's links (a child's parent needs none). A no-op without a session
+// file. Unlinked mail stays on disk: linking later delivers it.
 void DrainSessionMailIntoSteering();
 
 // Under a session budget children run one at a time: two concurrent ones would

@@ -5,7 +5,7 @@
 
 | Command | Description |
 | --- | --- |
-| `/agents [ID [output|stop|message TEXT|followup TEXT]]` | inspect, guide or resume delegated collaborators |
+| `/agents [ID [output|stop|message TEXT|followup TEXT]]` | inspect, guide or resume delegated agents |
 | `/attach PATH|clear` | attach a file to the next turn |
 | `/compact` | summarize conversation to prevent hitting the context limit |
 | `/context` | show current model request |

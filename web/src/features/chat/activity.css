@@ -207,36 +207,6 @@
   overflow: auto;
 }
 
-.communication ol {
-  list-style: none;
-  padding: 0;
-  margin: var(--gap) 0 0;
-}
-
-.communication li {
-  border-top: 1px solid var(--line);
-  padding: var(--gap) 0;
-}
-
-.communication-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  align-items: baseline;
-  font-size: 0.8rem;
-}
-
-.communication-meta time {
-  margin-left: auto;
-  color: var(--muted);
-}
-
-.communication p {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  margin: var(--space-2) 0 0;
-}
-
 .child-thread .history-button {
   justify-self: center;
 }

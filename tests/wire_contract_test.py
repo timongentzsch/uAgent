@@ -19,15 +19,17 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SESSION_UNITS = (
-    "session_host.cc",
-    "session_router.cc",
-    "session_server.cc",
-    "session_snapshot.cc",
-    "session_supervisor.cc",
-    "session_schedules.cc",
-    "session_terminal.cc",
-    "session_transport.cc",
-    "session_worker.cc",
+    "src/app/session_host.cc",
+    "src/app/session_router.cc",
+    "src/app/session_server.cc",
+    "src/app/session_snapshot.cc",
+    "src/app/session_supervisor.cc",
+    "src/app/session_schedules.cc",
+    "src/app/session_terminal.cc",
+    "src/app/session_transport.cc",
+    "src/app/session_worker.cc",
+    # The view reducer builds the `block` patches the host publishes.
+    "src/agent/session_view.cc",
 )
 WEB_STATE = ("web/src/state", "web/src/app")
 # Frame handlers live in the host-data layer; the app shell only issues
@@ -40,6 +42,7 @@ BROWSER_FRAMES = frozenset(
     {
         "activated",
         "activity",
+        "block",
         "closed",
         "deactivated",
         "deleted",
@@ -71,13 +74,17 @@ DOCUMENTED_INTERNAL = frozenset(
     }
 )
 
+# Row kinds the view reducer writes inside `block` frames, spelled like a
+# frame kind in session_view.cc but never one.
+ROW_KINDS = frozenset({"assistant", "tool_result"})
+
 PRODUCED = re.compile(r'\{"kind",\s*"([A-Za-z._-]+)"')
 
 
 def produced_kinds():
     kinds = {}
     for unit in SESSION_UNITS:
-        path = ROOT / "src/app" / unit
+        path = ROOT / unit
         if not path.exists():
             continue
         for lineno, line in enumerate(path.read_text().splitlines(), 1):
@@ -111,7 +118,9 @@ class WireContractTest(unittest.TestCase):
 
     def test_no_undocumented_session_kinds(self):
         produced = produced_kinds()
-        unknown = sorted(k for k in produced if k not in BROWSER_FRAMES | DOCUMENTED_INTERNAL)
+        unknown = sorted(
+            k for k in produced if k not in BROWSER_FRAMES | DOCUMENTED_INTERNAL | ROW_KINDS
+        )
         self.assertEqual(
             unknown,
             [],

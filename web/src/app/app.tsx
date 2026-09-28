@@ -54,6 +54,8 @@ import { useDismiss } from "../shared/dismiss.ts";
 import { SettingsLoading } from "../shared/loading.tsx";
 import Sidebar, { ConversationMenu } from "../features/sidebar/sidebar.tsx";
 import Composer from "../features/composer/composer.tsx";
+import Board, { CoordinatorLayout } from "../features/coordinator/board.tsx";
+import { folderName } from "../features/sidebar/folder-label.tsx";
 import Chat, {
   TranscriptPlaceholder,
   prepareHistoryBlocks,
@@ -355,15 +357,21 @@ function App() {
       setBusy(false);
     }
   }
-  async function startConversation(cwd: string) {
-    const created = await command("create", null, { cwd });
+  // The host returns a folder's existing coordinator rather than a second.
+  async function startConversation(cwd: string, coordinator = false) {
+    const created = await command("create", null, { cwd, coordinator });
     if (created.pending) return;
     setCatalogue((prior) => ({
       ...prior,
-      sessions: [created.session, ...prior.sessions],
+      sessions: [
+        created.session,
+        ...prior.sessions.filter((entry) => entry.id !== created.session.id),
+      ],
     }));
     await choose(created.session.id);
-    await command("activate", created.session);
+    if (created.session.presence !== "active") {
+      await command("activate", created.session);
+    }
     await load(created.session.id);
   }
   // A command with a screen opens it when typed bare; with an argument it
@@ -856,6 +864,7 @@ function App() {
         setFolder(session?.cwd || "");
         open({ type: "new" });
       }}
+      coordinate={(cwd) => startConversation(cwd, true).catch(report)}
     />
   );
 
@@ -989,6 +998,8 @@ function App() {
                       "Library"
                     ) : page === "scheduled" ? (
                       "Scheduled"
+                    ) : session?.kind === "coordinator" ? (
+                      `Coordinator · ${folderName(session.cwd)}`
                     ) : session ? (
                       session.title || "Your workspace"
                     ) : opening ? (
@@ -1057,7 +1068,18 @@ function App() {
                   }
                 />
               ) : session ? (
-                <>
+                <CoordinatorLayout
+                  board={
+                    session.kind === "coordinator" && (
+                      <Board
+                        sessions={catalogue.sessions}
+                        folder={session.cwd || ""}
+                        online={online}
+                        choose={choose}
+                      />
+                    )
+                  }
+                >
                   {/* Remount the transcript per session: a stale surface's
                     node detaches, so queued scrolls from it can never
                     rewrite the live one, and each surface keeps its own
@@ -1099,7 +1121,7 @@ function App() {
                     />
                   )}
                   {composerFor(session)}
-                </>
+                </CoordinatorLayout>
               ) : opening ? (
                 // A reload on a conversation: its surfaces, before the
                 // catalogue names the session.

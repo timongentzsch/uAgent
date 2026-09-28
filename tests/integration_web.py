@@ -2377,3 +2377,32 @@ def test_web_restarts_conversations_and_itself(root, home, *, binary):
             wait_until(restarted, "web host did not come back", timeout=20)
             assert_true(process.poll() is None, "host exited instead of re-exec")
             client.until(session, lambda value: bool(value["metadata"].get("generation")))
+
+
+def test_folder_coordinator_is_one_session_with_its_own_tools(root, home, *, binary):
+    project = root / "coordinated"
+    project.mkdir()
+    with Server([event({"content": "coordinator-ok"})]) as provider:
+        with web_host(binary, root, home, provider.url) as (web, code, _, _env):
+            web.pair(code)
+            first = web.command("create", cwd=str(project), coordinator=True)["session"]
+            again = web.command("create", cwd=str(project), coordinator=True)["session"]
+            assert_true(first["id"] == again["id"], (first, again))
+            assert_true(first["kind"] == "coordinator", first)
+            session = web.command("activate", first)["session"]
+            web.until(session, lambda value: value["metadata"]["status"] == "idle")
+            web.command("submit", session, text="status?")
+            web.until(
+                session,
+                lambda value: any(
+                    block.get("text") == "coordinator-ok"
+                    for block in value["state"]["view"]["blocks"]
+                ),
+            )
+            _, body = provider.requests[-1]
+            names = {tool["function"]["name"] for tool in body.get("tools", [])}
+            assert_true("history" in names and "write_file" not in names, names)
+            _, catalogue, _ = web.json("/api/sessions?refresh=1")
+            listed = catalogue["sessions"]
+            kinds = [item.get("kind") for item in listed if item["cwd"] == str(project.resolve())]
+            assert_true(kinds == ["coordinator"], listed)

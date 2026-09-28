@@ -20,6 +20,7 @@
 #include "include/agent/session_store.h"
 #include "include/agent/session_view.h"
 #include "include/app/bootstrap.h"
+#include "include/app/launch.h"
 #include "include/app/session.h"
 #include "include/app/session_command.h"
 #include "include/browser/browser.h"
@@ -78,13 +79,15 @@ json AttachmentsToJson(const std::vector<Attachment>& attachments) {
 class WorkerChannel final : public ApplicationChannel {
  public:
   WorkerChannel(std::string path, std::string id, std::string generation,
-                std::string title, bool browser_session, bool coordinator)
+                std::string title, bool browser_session, bool coordinator,
+                json thread)
       : path_(std::move(path)),
         id_(std::move(id)),
         generation_(std::move(generation)),
         title_(std::move(title)),
         browser_session_(browser_session),
-        coordinator_(coordinator) {}
+        coordinator_(coordinator),
+        thread_(std::move(thread)) {}
   ~WorkerChannel() override { Close(); }
 
   bool Start() {
@@ -273,6 +276,10 @@ class WorkerChannel final : public ApplicationChannel {
     }
     ready_ = true;
     busy_ = input_.has_value();
+    if (!busy_ && turn_active_ && !thread_.empty()) {
+      NotifyCoordinator(JsonValue(JsonValue(state, "stop", json::object()),
+                                  "reason", "completed"));
+    }
     if (!busy_) {
       // Completion events precede saved display/HTTP metadata. Only the final
       // application checkpoint makes the turn idle and accepts another input.
@@ -318,6 +325,27 @@ class WorkerChannel final : public ApplicationChannel {
     // application's control does.
     StopSideQuestion();
     activity_control_ = control;
+  }
+
+  // A thread's finished turn is an event for its coordinator, delivered to
+  // the coordinator's runtime (started if it sleeps) as labelled guidance.
+  void NotifyCoordinator(const std::string& reason) {
+    const std::string folder = JsonValue(thread_, "folder", "");
+    if (folder.empty()) return;
+    const std::string text =
+        "[thread event, not a user message] Thread " + id_ + " \"" +
+        JsonValue(state_, "title", title_) + "\" finished its turn (" +
+        reason + "). history report shows its answer.";
+    std::thread([folder, text] {
+      std::string error;
+      const std::string path = CoordinatorPath(folder);
+      Connection connection =
+          Open(ExecutablePath(), folder, path, "", Options{}, error);
+      if (connection.socket) {
+        SendWhenReady(connection, path, {{"kind", "steer"}, {"text", text}},
+                      false);
+      }
+    }).detach();
   }
 
   void Close() {
@@ -717,6 +745,7 @@ class WorkerChannel final : public ApplicationChannel {
   bool turn_active_ = false;
   [[maybe_unused]] bool browser_session_ = false;  // web builds only
   const bool coordinator_ = false;
+  const json thread_;
   bool reply_cancelled_ = false;
   bool ready_ = false;
   json notices_ = json::array();
@@ -768,7 +797,8 @@ int WorkerMain(int argc, char** argv) {
   }
   WorkerChannel channel(
       argv[3], argv[4], RandomToken(16), argv[5], options.browser_session,
-      JsonValue(options.session, "kind", "") == kSessionKindCoordinator);
+      JsonValue(options.session, "kind", "") == kSessionKindCoordinator,
+      JsonValue(options.session, "thread", json::object()));
   if (!channel.Start()) return 2;
   if (chdir(argv[2]) != 0) {
     channel.Send({{"kind", "error"}, {"error", "workspace is unavailable"}});

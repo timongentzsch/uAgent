@@ -70,6 +70,8 @@ DOCUMENTED_INTERNAL = frozenset(
         "reply",
         "share",
         "side",
+        # A thread's finished turn, sent to its coordinator's runtime.
+        "steer",
         "submit",
     }
 )

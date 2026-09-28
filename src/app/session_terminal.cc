@@ -17,6 +17,7 @@
 
 #include "include/agent/session_store.h"
 #include "include/agent/session_view.h"
+#include "include/app/coordinator.h"
 #include "include/app/session.h"
 #include "include/cli.h"
 #include "include/core/signals.h"
@@ -283,6 +284,31 @@ class Terminal {
         }
         continue;
       }
+      if (slash.spec && slash.spec->id == SlashCommandId::kBoard) {
+        WriteTerminalRecord(TerminalSafe(CoordinatorBoard(Folder())));
+        continue;
+      }
+      if (slash.spec && (slash.spec->id == SlashCommandId::kCoord ||
+                         slash.spec->id == SlashCommandId::kOpen)) {
+        std::string target;
+        if (slash.spec->id == SlashCommandId::kCoord) {
+          next_folder_ = Folder();
+          target = CoordinatorPath(next_folder_);
+        } else if (target = MatchFolderSession(slash.argument);
+                   target.empty()) {
+          WriteTerminalRecord("· no unique session in /board matches \"" +
+                              TerminalSafe(slash.argument) + "\"\n");
+          continue;
+        }
+        std::lock_guard lock(mutex_);
+        if (!waiting_.empty() || running_) {
+          WriteTerminalRecord(
+              "· turn active; interrupt it before switching sessions\n");
+          continue;
+        }
+        next_ = target;
+        break;
+      }
       if (text == "/restart") {
         // A fresh runtime for this conversation, e.g. after a setting that
         // needs a restart; its history is kept.
@@ -419,6 +445,32 @@ class Terminal {
     return exit_code ? exit_code : failed_ ? 1 : 0;
   }
   const std::string& Next() const { return next_; }
+  // Where Next() opens when it has no file yet (a folder's first coordinator).
+  const std::string& NextFolder() const { return next_folder_; }
+  // The folder whose coordinator this session answers to: a thread's
+  // project, else the session's own folder.
+  std::string Folder() const {
+    const json header = SessionHeader(path_);
+    const std::string folder = JsonValue(
+        JsonValue(header, kSessionHeaderThread, json::object()), "folder", "");
+    if (!folder.empty()) return folder;
+    return JsonValue(header, kSessionHeaderCwd, CanonicalCwd());
+  }
+  // A /board id prefix or a unique title match among the folder's sessions.
+  std::string MatchFolderSession(const std::string& argument) const {
+    const std::string wanted = AsciiLower(Trim(argument));
+    if (wanted.empty()) return "";
+    std::string match;
+    for (const SessionInfo& info : FolderSessions(Folder())) {
+      if (!HashHex(info.path).starts_with(wanted) &&
+          AsciiLower(info.title).find(wanted) == std::string::npos) {
+        continue;
+      }
+      if (!match.empty()) return "";
+      match = info.path;
+    }
+    return match;
+  }
   // What the next session's composer starts with.
   const std::string& Carry() const { return carry_; }
 
@@ -622,6 +674,7 @@ class Terminal {
 
   Connection connection_;
   std::string path_, decision_, draft_, tail_, waiting_, next_, last_status_;
+  std::string next_folder_;
   InteractiveOutput output_;
   RawComposer composer_;
   TerminalPresenter presenter_;
@@ -644,11 +697,85 @@ class Terminal {
   std::set<std::string> own_requests_, echoed_;
 };
 }  // namespace
+int CoordinatorPromptMain(const Options& options) {
+  const std::string cwd = CanonicalCwd();
+  const std::string path = CoordinatorPath(cwd);
+  std::string error;
+  auto connection = Open(ExecutablePath(), cwd, path, "", options, error);
+  if (!connection.socket) {
+    fprintf(stderr, "%s\n", error.c_str());
+    return 1;
+  }
+  auto send = [&](json command) {
+    command["v"] = kProtocol;
+    command["session_id"] = HashHex(path);
+    command["generation"] = connection.generation;
+    command["request_id"] = command.value("request_id", RandomToken(16));
+    return WriteFrame(connection.socket.Get(), command);
+  };
+  const std::string request = RandomToken(16);
+  bool submitted = false, rejected = false;
+  json stop = nullptr;
+  Pipe never;
+  if (!never.Open()) return 1;
+  ReadFrames(connection.socket.Get(), never.read.Get(), kFrameBytes,
+             [&](const json& frame) {
+               const std::string kind = JsonValue(frame, "kind", "");
+               if (kind == "outcome" &&
+                   JsonValue(frame, "request_id", "") == request &&
+                   !JsonValue(frame, "accepted", false)) {
+                 error = JsonValue(frame, "error", "coordinator refused");
+                 rejected = true;
+                 return false;
+               }
+               if (kind != "state") return true;
+               if (!submitted && !JsonValue(frame, "busy", true)) {
+                 submitted = send({{"kind", "submit"},
+                                   {"request_id", request},
+                                   {"text", options.prompt}});
+                 return submitted;
+               }
+               // Nobody is here to approve: a question is declined.
+               if (const json* pending = JsonObject(frame, "pending")) {
+                 fprintf(stderr, "· declined: %s\n",
+                         JsonValue(*pending, "prompt", "approval").c_str());
+                 send({{"kind", "reply"},
+                       {"interaction_id", JsonValue(*pending, "id", "")},
+                       {"text", ""}});
+               }
+               if (JsonValue(frame, "checkpoint", false) &&
+                   JsonValue(frame, "completed_request_id", "") == request) {
+                 stop = JsonValue(frame["state"], "stop", json(nullptr));
+                 return false;
+               }
+               return true;
+             });
+  if (rejected || stop.is_null()) {
+    fprintf(stderr, "%s\n",
+            error.empty() ? "coordinator runtime closed" : error.c_str());
+    return 1;
+  }
+  SessionLoadResult saved = SessionStore::Inspect(path);
+  Conversation conversation;
+  std::string answer;
+  if (saved.record &&
+      std::move(saved.record->state).RestoreConversation(conversation)) {
+    answer = conversation.LastAssistantText();
+  }
+  if (options.json) {
+    printf("%s\n", JsonDump({{"answer", answer},
+                             {"session_id", HashHex(path)},
+                             {"stop", stop}})
+                       .c_str());
+  } else {
+    printf("%s\n", answer.c_str());
+  }
+  return JsonValue(stop, "reason", "") == "completed" ? 0 : 1;
+}
+
 int TerminalMain(Options options) {
-  const bool coordinator =
-      JsonValue(options.session, "kind", "") == kSessionKindCoordinator;
   std::string path;
-  if (coordinator) {
+  if (JsonValue(options.session, "kind", "") == kSessionKindCoordinator) {
     path = CoordinatorPath(CanonicalCwd());
   } else if (options.resume_pick) {
     path = PickSession();
@@ -656,17 +783,12 @@ int TerminalMain(Options options) {
     auto sessions = ListSessions();
     if (!sessions.empty()) path = sessions.front().path;
   }
-  std::string draft;
+  std::string draft, folder = CanonicalCwd();
   for (;;) {
-    std::string cwd = CanonicalCwd();
-    if (!path.empty()) {
-      for (const auto& item : ListSessions(SessionScope::kAll)) {
-        if (item.path == path) {
-          cwd = item.cwd;
-          break;
-        }
-      }
-    }
+    // A saved session reopens in its own folder; so does a coordinator
+    // reached from a session in another directory.
+    std::string cwd =
+        JsonValue(SessionHeader(path), kSessionHeaderCwd, folder);
     if (path.empty()) {
       path = UagentDir(kHistoryDir) + "/" + WorkspaceId(cwd) + "/" +
              MakeSessionId() + ".json";
@@ -677,6 +799,8 @@ int TerminalMain(Options options) {
       fprintf(stderr, "%s\n", error.c_str());
       return 1;
     }
+    const bool coordinator = path == CoordinatorPath(cwd);
+    if (coordinator) printf("%s", TerminalSafe(CoordinatorBoard(cwd)).c_str());
     Terminal terminal(std::move(connection), path, draft);
     int result = terminal.Run(options.attach_paths);
     draft = terminal.Carry();
@@ -695,6 +819,7 @@ int TerminalMain(Options options) {
       if (!coordinator) path.clear();
     } else {
       path = terminal.Next();
+      if (!terminal.NextFolder().empty()) folder = terminal.NextFolder();
     }
   }
 }

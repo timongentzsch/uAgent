@@ -103,6 +103,9 @@ CommandReply RunSlashCommand(AppSession& session,
     case SlashCommandId::kFork:
     case SlashCommandId::kVerbose:
     case SlashCommandId::kBtw:
+    case SlashCommandId::kCoord:
+    case SlashCommandId::kBoard:
+    case SlashCommandId::kOpen:
       result = {{"error", "this command belongs to the client"}};
       return reply;
     case SlashCommandId::kClear:

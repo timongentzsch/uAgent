@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -143,7 +144,19 @@ bool SessionHost::RefreshCatalogue(bool force) {
     return false;
   }
   scanned_ = std::chrono::steady_clock::now();
-  const auto list = catalogue_.List(SessionScope::kAll);
+  auto list = catalogue_.List(SessionScope::kAll);
+  // The catalogue never lists coordinators; each listed folder's one is
+  // found by its path once it has been used.
+  std::set<std::string> folders;
+  for (const SessionInfo& item : list) folders.insert(item.cwd);
+  for (const std::string& folder : folders) {
+    SessionInfo coordinator{.path = CoordinatorPath(folder), .cwd = folder};
+    const json header = SessionHeader(coordinator.path);
+    if (header.empty()) continue;
+    coordinator.title = JsonValue(header, kSessionHeaderTitle, "");
+    coordinator.kind = kSessionKindCoordinator;
+    list.push_back(std::move(coordinator));
+  }
   std::lock_guard lock(mutex_);
   bool changed = false;
   for (const SessionInfo& item : list) {
@@ -160,6 +173,8 @@ bool SessionHost::RefreshCatalogue(bool force) {
       continue;
     }
     session.cwd = item.cwd;
+    session.kind = item.kind;
+    session.folder = JsonValue(item.thread, "folder", "");
     session.incoming = std::max(session.incoming, item.incoming);
     session.title = item.title;
     const FileStamp stamp = SnapshotFile(item.path);
@@ -235,6 +250,8 @@ json SessionHost::Metadata(const HostSession& session) const {
           {"task_id", session.task_id},
           {"run_id", session.run_id},
           {"cwd", session.cwd},
+          {"kind", session.kind},
+          {"folder", session.folder},
           {"title", session.title},
           {"generation", session.generation},
           {"status", session.status},

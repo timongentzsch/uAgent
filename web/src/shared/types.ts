@@ -314,6 +314,9 @@ export interface Session {
   generation?: string;
   title?: string;
   cwd?: string;
+  // A folder's coordinator, or a thread it launched (in `folder`).
+  kind?: "coordinator" | "thread" | "";
+  folder?: string;
   status?: SessionStatus;
   presence?: "active" | "";
   updated?: number;
@@ -661,6 +664,7 @@ export interface CommandFields {
   key?: string;
   value?: string;
   cwd?: string;
+  coordinator?: boolean;
   title?: string;
   device_id?: string;
   text?: string;

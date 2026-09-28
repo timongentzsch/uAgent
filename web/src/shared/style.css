@@ -617,6 +617,119 @@ pre code {
   align-items: center;
   gap: var(--gap);
 }
+/* The folder path truncates first; the coordinator icon keeps its place. */
+.sidebar h2:has(.coordinator-button) {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  padding-block: 0;
+  padding-right: 0;
+}
+.sidebar h2 .folder-label {
+  flex: 1;
+  min-width: 0;
+}
+.coordinator-button {
+  position: relative;
+  flex-shrink: 0;
+  color: var(--muted);
+}
+.coordinator-button.idle svg {
+  opacity: 0.45;
+}
+.coordinator-button.ready {
+  color: var(--accent);
+}
+.coordinator-button.working svg {
+  color: var(--accent);
+  animation: led-breathe 1.6s var(--ease-standard) infinite;
+}
+.coordinator-badge {
+  position: absolute;
+  top: 0;
+  right: 0;
+  min-width: 1.35em;
+  height: 1.35em;
+  padding-inline: var(--space-1);
+  border-radius: 0.7em;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 0.65rem;
+  line-height: 1.35em;
+  text-align: center;
+}
+.thread-mark {
+  color: var(--muted);
+  margin-right: var(--space-2);
+}
+.coordinator-layout {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) calc(240rem / 14);
+}
+.coordinator-chat {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.board {
+  min-height: 0;
+  overflow: auto;
+  border-left: 1px solid var(--line);
+  background: var(--surface);
+  padding: var(--space-4);
+}
+.board section + section {
+  margin-top: var(--space-4);
+}
+.board h2 {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--muted);
+  padding: var(--space-2) var(--space-3);
+}
+.board-empty {
+  color: var(--muted);
+  font-size: 0.8rem;
+  padding: var(--space-2) var(--space-3);
+}
+.board-count {
+  font-variant-numeric: tabular-nums;
+}
+.board-row {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  text-align: left;
+  min-width: 0;
+}
+.board-row > span,
+.board-row small {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.board-row small {
+  color: var(--muted);
+}
+/* On a phone the board is a short strip above the chat. */
+@media (max-width: 600px) {
+  .coordinator-layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .board {
+    order: -1;
+    max-height: 30vh;
+    border-left: 0;
+    border-bottom: 1px solid var(--line);
+  }
+}
 .folder-label > span {
   overflow: hidden;
   text-overflow: ellipsis;

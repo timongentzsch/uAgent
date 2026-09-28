@@ -83,6 +83,8 @@ inline constexpr std::string_view kOpenRouterVariants[] = {"nitro", "floor",
 inline constexpr std::string_view kWebSearchBackends[] = {"auto", "openrouter",
                                                           "off"};
 inline constexpr std::string_view kApprovalModes[] = {"ask", "auto", "yolo"};
+inline constexpr std::string_view kThreadEnvironments[] = {"worktree",
+                                                           "local"};
 inline constexpr std::string_view kWebSearchEngines[] = {
     "auto", "native", "exa", "firecrawl", "parallel", "perplexity"};
 inline constexpr std::string_view kWebSearchContextSizes[] = {"low", "medium",
@@ -358,6 +360,20 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                       "model route of each folder's coordinator; /model "
                       "inside it overrides this for that folder"),
         "UAGENT_MODEL"),
+    registry::Int("UAGENT_COORDINATOR_MAX_THREADS", {}, 5, 1, 64,
+                  ReloadPolicy::kRestartRequired, "coordination",
+                  "threads one coordinator may run at once"),
+    registry::Dbl("UAGENT_COORDINATOR_DAILY_SPEND_USD", {}, 20.0,
+                  ReloadPolicy::kRestartRequired, "coordination",
+                  "reported cost a coordinator's threads may spend per day; "
+                  "0 disables it"),
+    registry::Choice(
+        registry::Str("UAGENT_COORDINATOR_ENVIRONMENT", {}, "worktree",
+                      ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
+                      "coordination",
+                      "where threads run: a fresh git worktree, or the "
+                      "folder itself"),
+        kThreadEnvironments),
 
     // Web search.
     registry::Choice(
@@ -529,6 +545,7 @@ consteval const ConfigDescriptor& Cfg(std::string_view environment) {
 int64_t LongSetting(const ConfigDescriptor& descriptor);
 bool BoolSetting(const ConfigDescriptor& descriptor);
 std::string StringSetting(const ConfigDescriptor& descriptor);
+double DoubleSetting(const ConfigDescriptor& descriptor);
 
 const char* ConfigTypeName(ConfigType type);
 const char* ReloadPolicyName(ReloadPolicy policy);

@@ -11,6 +11,7 @@
 #include "include/agent.h"
 #include "include/agent/child_agent.h"
 #include "include/agent/prompt.h"
+#include "include/agent/session_store.h"
 #include "include/agent/protocol.h"
 #include "include/api/retry.h"
 #include "include/app/prompt_control.h"
@@ -605,8 +606,11 @@ bool Agent::DegradeAndRetry(const ChatResult& result) {
 }
 
 std::string Agent::PromptBase() const {
-  return ApplyPromptOverlay(SystemPromptBase(), PromptOverlay(nullptr),
-                            nullptr) +
+  const bool coordinator =
+      JsonValue(session_role_, "kind", "") == kSessionKindCoordinator;
+  return ApplyPromptOverlay(
+             coordinator ? CoordinatorPromptBase() : SystemPromptBase(),
+             PromptOverlay(nullptr), nullptr) +
          CapabilityPrompt(tools_, &tool_selection_);
 }
 

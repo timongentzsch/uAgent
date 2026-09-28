@@ -21,6 +21,7 @@
 #include "include/agent/session_store.h"
 #include "include/api.h"
 #include "include/app/artifact.h"
+#include "include/app/coordinator.h"
 #include "include/app/asset_store.h"
 #include "include/app/reference.h"
 #include "include/app/session.h"
@@ -271,6 +272,9 @@ std::vector<Tool> BuildTools(AppContext& context,
   // Peer sessions are text-only and isolation-gated by links, so the session
   // tool is safe in every toolset, lean included.
   tools.push_back(SessionTool());
+  if (context.tool_policy.coordinator) {
+    AddCoordinatorTools(tools, CanonicalCwd());
+  }
   if (toolset == "lean") {
     KeepLeanTools(tools);
   }

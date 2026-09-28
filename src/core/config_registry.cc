@@ -39,6 +39,16 @@ std::string StringSetting(const ConfigDescriptor& descriptor) {
                 value ? std::string(*value) : std::string());
 }
 
+double DoubleSetting(const ConfigDescriptor& descriptor) {
+  const double* declared = std::get_if<double>(&descriptor.default_value);
+  double value = declared ? *declared : 0.0;
+  const std::string text = EnvStr(descriptor.EnvName());
+  if (!text.empty() && !ParseFiniteDouble(text.c_str(), value)) {
+    value = declared ? *declared : 0.0;
+  }
+  return value;
+}
+
 const char* ConfigTypeName(ConfigType type) {
   switch (type) {
     case ConfigType::kInt:

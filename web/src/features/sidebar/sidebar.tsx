@@ -16,6 +16,7 @@ import {
   Settings,
   Library,
   CalendarClock,
+  MessagesSquare,
 } from "lucide-preact";
 import { command } from "../../state/api.ts";
 import {
@@ -131,6 +132,41 @@ const SAMPLE: Session[] = [
   updated: Date.now(),
 }));
 
+// A folder's coordinator: faint until used, pulsing while it works, badged
+// with the decisions waiting on you, which a thread cannot proceed without.
+function CoordinatorButton({
+  coordinator,
+  waiting,
+  online,
+  open,
+}: {
+  coordinator?: Session;
+  waiting: number;
+  online: boolean;
+  open: () => void;
+}) {
+  const state = !coordinator
+    ? "idle"
+    : online && coordinator.turn_active
+      ? "working"
+      : "ready";
+  return (
+    <IconButton
+      label={
+        waiting
+          ? `Coordinator: ${waiting} waiting on you`
+          : "Open this folder's coordinator"
+      }
+      class={`coordinator-button ${state}`}
+      onClick={open}
+      disabled={!online}
+    >
+      <MessagesSquare aria-hidden="true" />
+      {waiting > 0 && <span class="coordinator-badge">{waiting}</span>}
+    </IconButton>
+  );
+}
+
 // One conversation in the list: its title, activity and last update.
 function SessionRow({
   item,
@@ -155,6 +191,11 @@ function SessionRow({
         aria-current={selected ? "page" : undefined}
       >
         <span>
+          {item.kind === "thread" && (
+            <span class="thread-mark" aria-label="Thread">
+              ↳
+            </span>
+          )}
           <DataText>{item.title || "Untitled conversation"}</DataText>
           {unread && <span class="unread-dot" aria-label="Unread messages" />}
         </span>
@@ -194,6 +235,7 @@ export default function Sidebar({
   refresh,
   settings,
   create,
+  coordinate,
   page,
   navigate,
   scheduledUnread,
@@ -212,23 +254,42 @@ export default function Sidebar({
   refresh: () => void;
   settings: () => void;
   create: () => void;
+  coordinate: (cwd: string) => void;
 }) {
   const [search, setSearch] = useState("");
   // Until the list arrives, it draws sample rows in its own layout.
   const drawing = loading && !sessions.length;
   const groups = new Map<string, Session[]>();
+  // Each folder's coordinator is its header icon, not a row.
+  const coordinators = new Map<string, Session>();
   for (const item of [...(drawing ? SAMPLE : sessions)]
     .sort((a, b) => (b.updated || 0) - (a.updated || 0))
     .filter((item) =>
       `${item.title} ${item.cwd}`.toLowerCase().includes(search.toLowerCase()),
     )) {
-    if (!groups.has(item.cwd || "")) groups.set(item.cwd || "", []);
-    groups.get(item.cwd || "")!.push(item);
+    const folder = item.folder || item.cwd || "";
+    if (item.kind === "coordinator") {
+      coordinators.set(folder, item);
+      continue;
+    }
+    if (!groups.has(folder)) groups.set(folder, []);
+    groups.get(folder)!.push(item);
   }
   const list = [...groups].map(([cwd, items]) => (
     <section key={cwd}>
       <h2>
         <FolderLabel path={cwd} />
+        {!drawing && (
+          <CoordinatorButton
+            coordinator={coordinators.get(cwd)}
+            waiting={
+              items.filter((item) => item.pending).length +
+              (coordinators.get(cwd)?.pending ? 1 : 0)
+            }
+            online={online}
+            open={() => coordinate(cwd)}
+          />
+        )}
       </h2>
       {items.map((item) => (
         <SessionRow

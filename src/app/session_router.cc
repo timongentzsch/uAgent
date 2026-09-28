@@ -40,9 +40,18 @@ SessionCommandResult SessionHost::ExecuteCommand(
       result.error = "choose an accessible directory on the host";
       return result;
     }
-    auto path = UagentDir(kHistoryDir) + "/" + WorkspaceId(cwd.string()) +
-                "/web-" + RandomToken(16) + ".json";
+    // A folder has one coordinator: asking for it again returns it.
+    const bool coordinator = JsonValue(command, "coordinator", false);
+    auto path = coordinator ? CoordinatorPath(cwd.string())
+                            : UagentDir(kHistoryDir) + "/" +
+                                  WorkspaceId(cwd.string()) + "/web-" +
+                                  RandomToken(16) + ".json";
+    if (auto known = sessions_.find(HashHex(path)); known != sessions_.end()) {
+      result.outcome["session"] = Metadata(*known->second);
+      return result;
+    }
     auto session = CreateSession(cwd.string(), path, "", result.error);
+    if (session && coordinator) session->kind = kSessionKindCoordinator;
     if (session) {
       result.wake = true;
       result.outcome["session"] = Metadata(*session);

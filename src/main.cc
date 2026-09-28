@@ -196,13 +196,16 @@ int Main(int argc, char** argv) {
   }
   const bool json_stream = parsed.options.json_stream;
   if (coordinator) {
-    if (parsed.options.web || !parsed.options.prompt.empty() ||
-        parsed.options.json || json_stream || parsed.options.resume_latest ||
-        parsed.options.resume_pick) {
-      fprintf(stderr, "uagent coord takes session options only\n");
+    if (parsed.options.web || json_stream || parsed.options.resume_latest ||
+        parsed.options.resume_pick ||
+        (parsed.options.json && parsed.options.prompt.empty())) {
+      fprintf(stderr, "uagent coord takes session options, -p and --json\n");
       return 2;
     }
     parsed.options.session = {{"kind", kSessionKindCoordinator}};
+    if (!parsed.options.prompt.empty()) {
+      return session::CoordinatorPromptMain(parsed.options);
+    }
     return session::TerminalMain(std::move(parsed.options));
   }
   if (parsed.options.web) {

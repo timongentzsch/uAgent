@@ -376,10 +376,12 @@ Feature modules render the store. Shared controls, popovers, spinners and
 spacing tokens keep layout changes centralized; editable fields must use the
 shared `Input`, `Textarea` and `Select` controls (`web/tests/form-controls.test.js`
 rejects native fields). The `Modal` shell owns dialog size, so loading and
-loaded states share geometry. A placeholder renders the loaded layout's own
-elements with placeholder text (`.text-skeleton`) where data goes, so filling
-in never moves a line; unknown content (a document, a live screen) uses one
-spinner. The shell, sidebar and composer ship in the entry bundle and render
+loaded states share geometry. A loading state is the loaded view itself,
+rendered from sample data inside `<Placeholder>` (`web/src/shared/placeholder.tsx`):
+primitives draw their data text as bars and the subtree is inert, so a screen
+and its loading state cannot drift apart. Text of unknown length uses
+`Skeleton`, and unknown content (a document, a live screen) uses one spinner.
+The shell, sidebar, transcript and composer ship in the entry bundle and render
 from the first frame; dialog and page chunks are warmed shortly after boot. `/ui.html` renders the real shared components,
 including the browser viewer controls, without a host connection for visual
 review.

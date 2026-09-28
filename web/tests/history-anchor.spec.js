@@ -4,7 +4,6 @@ import { mkdir, writeFile } from "node:fs/promises";
 test("reading a paragraph survives offsetting changes inside one message", async ({
   page,
   host,
-  browserName,
 }) => {
   await page.goto("/");
   await expect(page.getByText("Connected", { exact: true })).toBeVisible();
@@ -94,25 +93,22 @@ test("reading a paragraph survives offsetting changes inside one message", async
     .toBeLessThan(2);
 
   // A real wheel event may coincide with a layout change. The reader's
-  // movement must survive the anchor compensation in both modes. Known gap:
-  // WebKit cancels an in-flight wheel scroll when scrollTop is written, as
-  // compensation does, so there the wheel runs without the layout change.
+  // movement must survive the anchor compensation in both modes, including
+  // on WebKit, which cancels a wheel scroll when scrollTop is written early.
   const beforeWheel = await marker.boundingBox();
-  if (browserName !== "webkit")
-    await box.evaluate((element) => {
-      element.addEventListener(
-        "wheel",
-        () => {
-          // A block above the one being read, in the same message.
-          const row = [...element.querySelectorAll(".message")].find((node) =>
-            node.textContent.includes("Anchor paragraph 15."),
-          );
-          row.querySelectorAll("[data-anchor-id]")[5].style.paddingTop =
-            "200px";
-        },
-        { capture: true, once: true },
-      );
-    });
+  await box.evaluate((element) => {
+    element.addEventListener(
+      "wheel",
+      () => {
+        // A block above the one being read, in the same message.
+        const row = [...element.querySelectorAll(".message")].find((node) =>
+          node.textContent.includes("Anchor paragraph 15."),
+        );
+        row.querySelectorAll("[data-anchor-id]")[5].style.paddingTop = "200px";
+      },
+      { capture: true, once: true },
+    );
+  });
   const bounds = await box.boundingBox();
   await page.mouse.move(
     bounds.x + bounds.width / 2,

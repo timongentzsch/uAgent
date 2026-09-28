@@ -183,9 +183,8 @@ export function trackViewport() {
         `--viewport-${key}`,
         `${value}px`,
       );
-    // No transcript scrollIntoView here: the transcript owns scroll via
-    // the stick and native overflow-anchor; stealing its scroll on focus
-    // caused jumps. Dialog and management surfaces reveal their focused
+    // No transcript scrollIntoView here: the transcript hook owns its
+    // scroll; stealing it on focus caused jumps. Dialog and management surfaces reveal their focused
     // field inside their own body instead (see revealFocusedField).
     revealFocusedField();
   });

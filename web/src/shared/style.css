@@ -744,10 +744,8 @@ pre code {
   text-overflow: ellipsis;
 }
 .transcript {
-  /* Sticky is the default state and the hook owns the bottom
-     uncontested; native anchoring only engages while reading history
-     (the hook toggles it inline). Starting at auto lets the browser
-     fight the first mount pin on reload. */
+  /* The transcript hook owns scrolling: it pins the bottom and keeps the
+     paragraph being read in place. Native anchoring would fight both. */
   overflow-anchor: none;
   flex: 1;
   min-height: 0;

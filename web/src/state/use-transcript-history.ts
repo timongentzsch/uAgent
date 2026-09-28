@@ -19,6 +19,9 @@ type Anchor = {
 const BOOKMARKS_KEY = "uagent-transcript-bookmarks";
 const BOTTOM_BAND = 2;
 const MOVE = 1;
+// A wheel event's own scroll lands shortly after it; WebKit cancels that
+// scroll when scrollTop is written in between, so compensation waits.
+const WHEEL_SETTLE_MS = 120;
 const bookmarks = new Map<string, Bookmark>();
 try {
   for (const [key, value] of Object.entries(
@@ -133,6 +136,9 @@ export function useTranscriptHistory(
   const onFollowRef = useRef(onFollow);
   onFollowRef.current = onFollow;
   const observer = useRef<ResizeObserver | null>(null);
+  const wheelAt = useRef(-Infinity);
+  // A compensation waiting for the wheel's scroll to land.
+  const deferred = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const attachScroller = useCallback((node: HTMLDivElement | null) => {
     scroller.current = node;
@@ -214,6 +220,11 @@ export function useTranscriptHistory(
       selectAnchor();
       return;
     }
+    const waited = performance.now() - wheelAt.current;
+    if (waited < WHEEL_SETTLE_MS) {
+      deferred.current ??= setTimeout(settleWheel, WHEEL_SETTLE_MS - waited);
+      return;
+    }
     let replaced = false;
     if (!current.node.isConnected) {
       const replacement =
@@ -238,6 +249,18 @@ export function useTranscriptHistory(
     current.within = within;
     capture();
   }, [capture, pin, selectAnchor, writeTop]);
+
+  // Applies a waiting compensation now that the wheel's scroll has landed
+  // (its scroll event) or could not (the timer).
+  const settleWheel = () => {
+    if (deferred.current === null) return;
+    clearTimeout(deferred.current);
+    deferred.current = null;
+    wheelAt.current = -Infinity;
+    reconcileRef.current();
+  };
+  const reconcileRef = useRef(reconcile);
+  reconcileRef.current = reconcile;
 
   const observe = useCallback(() => {
     const watch = observer.current;
@@ -341,6 +364,7 @@ export function useTranscriptHistory(
     });
     let touchY = 0;
     const wheel = (event: WheelEvent) => {
+      wheelAt.current = performance.now();
       if (event.deltaY < 0) stopFollowing();
     };
     const touchStart = (event: TouchEvent) => {
@@ -360,6 +384,9 @@ export function useTranscriptHistory(
       if (["ArrowUp", "PageUp", "Home"].includes(event.key)) stopFollowing();
     };
     const scroll = () => {
+      // The wheel's scroll has landed: compensate against the old anchor
+      // before re-anchoring to what is now on screen.
+      settleWheel();
       const top = box.scrollTop;
       const maximum = Math.max(0, box.scrollHeight - box.clientHeight);
       if (following.current) {
@@ -376,7 +403,9 @@ export function useTranscriptHistory(
       }
       lastTop.current = box.scrollTop;
     };
-    box.addEventListener("wheel", wheel, { passive: true });
+    // Capture: the wheel is recorded before anything it triggers (a layout
+    // change, its mutation callbacks) can ask for compensation.
+    box.addEventListener("wheel", wheel, { passive: true, capture: true });
     box.addEventListener("touchstart", touchStart, { passive: true });
     box.addEventListener("touchmove", touchMove, { passive: true });
     box.addEventListener("keydown", keyDown);
@@ -386,7 +415,7 @@ export function useTranscriptHistory(
       mutations.disconnect();
       readiness.disconnect();
       if (observer.current === watch) observer.current = null;
-      box.removeEventListener("wheel", wheel);
+      box.removeEventListener("wheel", wheel, { capture: true });
       box.removeEventListener("touchstart", touchStart);
       box.removeEventListener("touchmove", touchMove);
       box.removeEventListener("keydown", keyDown);

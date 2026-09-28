@@ -25,6 +25,8 @@
 - Files the agent attached mid-turn no longer count as your messages, so
   message numbers, `/fork N`, `/rewind N` and `/share` line up with what
   you wrote.
+- Scrolling with a mouse wheel in Safari is no longer swallowed when
+  content above the paragraph you are reading changes size at that moment.
 - Tall images fit whole in the viewer instead of overflowing it.
 - `/sessions` in a wide browser window focuses the conversation search.
 - The UI showcase no longer throws on load.

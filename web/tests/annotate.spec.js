@@ -126,6 +126,23 @@ test.describe("touch", () => {
     await touch("touchEnd", []);
     await expect(undo).toBeEnabled();
 
+    // Two fingers zoom the image instead of drawing.
+    const zoom = viewer.getByRole("group", { name: "Zoom" });
+    const level = await zoom.locator("output").textContent();
+    await touch("touchStart", [
+      [0.4, 0.5],
+      [0.6, 0.5],
+    ]);
+    for (const spread of [0.15, 0.25, 0.35])
+      await touch("touchMove", [
+        [0.5 - spread, 0.5],
+        [0.5 + spread, 0.5],
+      ]);
+    await touch("touchEnd", []);
+    await expect(zoom.locator("output")).not.toHaveText(level);
+    await zoom.getByRole("button", { name: "Fit" }).click();
+    await expect(zoom.locator("output")).toHaveText(level);
+
     // The toolbar is not what this test covers; right after a synthetic
     // multi-finger sequence, CI's emulated gesture detector can swallow a
     // button tap. The canvas itself is still driven by touch.

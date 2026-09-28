@@ -4,8 +4,6 @@
 }
 .annotator-stage {
   position: relative;
-  display: grid;
-  place-items: center;
   flex: 1;
   min-height: 0;
   overflow: clip;
@@ -23,27 +21,27 @@
 .annotator[data-tool="pin"] canvas {
   cursor: copy;
 }
-/* The note bubble sits beside its pin, kept inside the stage. */
+/* The note bubble sits beside its pin (--x, --y: the pin in the stage),
+   kept inside the stage at any zoom. */
 .annotator-note {
   --note-width: min(calc(240rem / 14), calc(100% - 2 * var(--space-4)));
-  --pin-x: calc(50% - var(--w) / 2 + var(--x));
   position: absolute;
   width: var(--note-width);
   left: clamp(
     var(--space-4),
-    calc(var(--pin-x) + var(--r) + var(--space-4)),
+    calc(var(--x) + var(--r) + var(--space-4)),
     calc(100% - var(--note-width) - var(--space-4))
   );
   top: clamp(
     var(--space-4),
-    calc(50% - var(--h) / 2 + var(--y) - var(--control) / 2),
+    calc(var(--y) - var(--control) / 2),
     calc(100% - var(--control) - var(--space-4))
   );
 }
 .annotator-note[data-side="left"] {
   left: clamp(
     var(--space-4),
-    calc(var(--pin-x) - var(--r) - var(--space-4) - var(--note-width)),
+    calc(var(--x) - var(--r) - var(--space-4) - var(--note-width)),
     calc(100% - var(--note-width) - var(--space-4))
   );
 }

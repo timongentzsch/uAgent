@@ -42,6 +42,8 @@ export function ImageViewerDialog({
   annotate?: (file: File, draftId?: string) => Promise<boolean>;
 }) {
   const [editing, setEditing] = useState(false);
+  // The image's real width, so the zoom level reads as its actual size.
+  const [natural, setNatural] = useState<number>();
   return (
     <Modal
       title={image.name}
@@ -91,8 +93,18 @@ export function ImageViewerDialog({
           }
         />
       ) : (
-        <ZoomSurface key={image.src} label={image.name} dismiss={close}>
-          <img src={image.src} alt={image.name} draggable={false} />
+        <ZoomSurface
+          key={image.src}
+          label={image.name}
+          dismiss={close}
+          natural={natural}
+        >
+          <img
+            src={image.src}
+            alt={image.name}
+            draggable={false}
+            onLoad={(event) => setNatural(event.currentTarget.naturalWidth)}
+          />
         </ZoomSurface>
       )}
     </Modal>

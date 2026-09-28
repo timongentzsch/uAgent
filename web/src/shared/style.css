@@ -1816,15 +1816,41 @@ dialog > header .icon-button {
 .zoom-surface[data-zoomed] {
   cursor: grab;
 }
+/* Drawing: the content sets its own cursor. */
+.zoom-surface[data-draw] {
+  cursor: default;
+}
 .zoom-content {
   width: 100%;
   height: 100%;
   display: grid;
+  /* Definite tracks: without them a tall image's max-height has nothing to
+     resolve against and it overflows the surface. */
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
   place-items: center;
   transform-origin: 0 0;
 }
 .zoom-content[data-glide] {
   transition: transform var(--motion-slow) var(--ease-out);
+}
+/* − level + Fit, floating over the content like a document viewer's. */
+.zoom-controls {
+  position: absolute;
+  right: var(--space-4);
+  bottom: calc(var(--space-4) + var(--safe-bottom));
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  border: 1px solid var(--line);
+  background: var(--raised);
+  cursor: default;
+}
+.zoom-controls output {
+  min-width: 5ch;
+  text-align: center;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
 }
 .zoom-content > img {
   max-width: 100%;

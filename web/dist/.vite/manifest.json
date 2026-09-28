@@ -37,15 +37,15 @@
       "_ui-BbA0W3zX.js"
     ]
   },
-  "_attachments-DgLSjbxa.js": {
-    "file": "assets/attachments-DgLSjbxa.js",
+  "_attachments-DVNGdrDT.js": {
+    "file": "assets/attachments-DVNGdrDT.js",
     "name": "attachments",
     "imports": [
       "_ui-BbA0W3zX.js",
+      "_zoom-surface-ZgcGaQ7E.js",
       "_message-CF4bCCJg.js",
       "_display-BsP-h6cH.js",
       "_quantities-Df0sfHA9.js",
-      "_zoom-BmNavUgv.js",
       "_preload-helper-Czpn1I53.js"
     ],
     "dynamicImports": [
@@ -507,15 +507,15 @@
       "__baseUniq-DR4vVjyC.js"
     ]
   },
-  "_history-page-C6sKHOY7.js": {
-    "file": "assets/history-page-C6sKHOY7.js",
+  "_history-page-CfPVWMNz.js": {
+    "file": "assets/history-page-CfPVWMNz.js",
     "name": "history-page",
     "imports": [
       "_ui-BbA0W3zX.js",
       "_api-C2fRBb_M.js",
       "_loading-C5RVMjvP.js",
       "_popover-DfIo7YNA.js",
-      "_attachments-DgLSjbxa.js",
+      "_attachments-DVNGdrDT.js",
       "_message-CF4bCCJg.js",
       "_square-CQjCCz4p.js",
       "_display-BsP-h6cH.js",
@@ -760,16 +760,16 @@
       "_limits-CqTDrsOA.js"
     ]
   },
-  "_style-BYNmXLrd.js": {
-    "file": "assets/style-BYNmXLrd.js",
+  "_style-4LiUndwj.js": {
+    "file": "assets/style-4LiUndwj.js",
     "name": "style",
     "css": [
-      "assets/style-CoWVAKc1.css"
+      "assets/style-BWZr7jVk.css"
     ]
   },
-  "_style-CoWVAKc1.css": {
-    "file": "assets/style-CoWVAKc1.css",
-    "src": "_style-CoWVAKc1.css"
+  "_style-BWZr7jVk.css": {
+    "file": "assets/style-BWZr7jVk.css",
+    "src": "_style-BWZr7jVk.css"
   },
   "_touch-D8ARUfz-.js": {
     "file": "assets/touch-D8ARUfz-.js",
@@ -801,22 +801,31 @@
       "_ui-BbA0W3zX.js"
     ]
   },
+  "_zoom-surface-ZgcGaQ7E.js": {
+    "file": "assets/zoom-surface-ZgcGaQ7E.js",
+    "name": "zoom-surface",
+    "imports": [
+      "_ui-BbA0W3zX.js",
+      "_plus-CQXUFGrl.js",
+      "_zoom-BmNavUgv.js"
+    ]
+  },
   "index.html": {
-    "file": "assets/index-PtjtU3IW.js",
+    "file": "assets/index-CaTHUrpy.js",
     "name": "index",
     "src": "index.html",
     "isEntry": true,
     "imports": [
-      "_style-BYNmXLrd.js",
+      "_style-4LiUndwj.js",
       "_ui-BbA0W3zX.js",
       "_limits-CqTDrsOA.js",
       "_store-B3KWnoDf.js",
       "_api-C2fRBb_M.js",
-      "_history-page-C6sKHOY7.js",
+      "_history-page-CfPVWMNz.js",
       "_loading-C5RVMjvP.js",
       "_frame-B1iRcR9K.js",
       "_popover-DfIo7YNA.js",
-      "_attachments-DgLSjbxa.js",
+      "_attachments-DVNGdrDT.js",
       "_folder-label-Bgpu03DD.js",
       "_plus-CQXUFGrl.js",
       "_square-CQjCCz4p.js",
@@ -1861,14 +1870,14 @@
     ]
   },
   "src/features/chat/inspector.tsx": {
-    "file": "assets/inspector-BE1NJe7N.js",
+    "file": "assets/inspector-Cigg8xeQ.js",
     "name": "inspector",
     "src": "src/features/chat/inspector.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_ui-BbA0W3zX.js",
       "_api-C2fRBb_M.js",
-      "_history-page-C6sKHOY7.js",
+      "_history-page-CfPVWMNz.js",
       "_arrow-left-BZdxD2-l.js",
       "_square-CQjCCz4p.js",
       "_display-BsP-h6cH.js",
@@ -1894,7 +1903,7 @@
     ]
   },
   "src/features/library/library.tsx": {
-    "file": "assets/library-CVTkL8Hl.js",
+    "file": "assets/library-C0411jy5.js",
     "name": "library",
     "src": "src/features/library/library.tsx",
     "isDynamicEntry": true,
@@ -1990,7 +1999,7 @@
     ]
   },
   "src/features/settings/settings.tsx": {
-    "file": "assets/settings-DD70UM7R.js",
+    "file": "assets/settings-BWdPrcsY.js",
     "name": "settings",
     "src": "src/features/settings/settings.tsx",
     "isDynamicEntry": true,
@@ -2034,17 +2043,18 @@
     ]
   },
   "src/shared/annotate.tsx": {
-    "file": "assets/annotate-BmTbl51E.js",
+    "file": "assets/annotate-zTPHww5H.js",
     "name": "annotate",
     "src": "src/shared/annotate.tsx",
     "isDynamicEntry": true,
     "imports": [
       "_ui-BbA0W3zX.js",
       "_limits-CqTDrsOA.js",
+      "_zoom-surface-ZgcGaQ7E.js",
       "_zoom-BmNavUgv.js"
     ],
     "css": [
-      "assets/annotate-G-Zjstpt.css"
+      "assets/annotate-CRjOIIiJ.css"
     ]
   },
   "src/shared/diagram.tsx": {
@@ -2187,17 +2197,17 @@
     ]
   },
   "ui.html": {
-    "file": "assets/ui-D7jXSGca.js",
+    "file": "assets/ui-a_taq-sw.js",
     "name": "ui",
     "src": "ui.html",
     "isEntry": true,
     "imports": [
-      "_style-BYNmXLrd.js",
+      "_style-4LiUndwj.js",
       "_ui-BbA0W3zX.js",
       "_store-B3KWnoDf.js",
       "_frame-B1iRcR9K.js",
       "_popover-DfIo7YNA.js",
-      "_attachments-DgLSjbxa.js",
+      "_attachments-DVNGdrDT.js",
       "_message-CF4bCCJg.js",
       "_plus-CQXUFGrl.js",
       "_wrench-Bp8gcswb.js",

@@ -6,7 +6,8 @@ import { getStroke } from "perfect-freehand";
 import { MapPin, PenLine, Undo2 } from "lucide-preact";
 import { Button, DialogHeader, IconButton, LoadError, Spinner } from "./ui.tsx";
 import { Input } from "./form-controls.tsx";
-import { capturePointer, TAP_SLOP_PX } from "./zoom.ts";
+import { capturePointer, TAP_SLOP_PX, type ZoomView } from "./zoom.ts";
+import { ZoomSurface } from "./zoom-surface.tsx";
 import { maxUploadBytes } from "./limits.ts";
 import "./annotate.css";
 
@@ -147,7 +148,11 @@ export default function Annotator({
   const [items, setItems] = useState<Item[]>([]);
   const [tool, setTool] = useState<"pen" | "pin">("pen");
   const [editing, setEditing] = useState<number | null>(null);
+  // The fit: image pixels to stage pixels at zoom 1, and the stage's size.
   const [scale, setScale] = useState(0);
+  const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
+  // The zoom over that fit (see ZoomSurface).
+  const [view, setView] = useState<ZoomView>({ scale: 1, x: 0, y: 0 });
   const [busy, setBusy] = useState(false);
   // A failed export keeps the markup on screen, unlike a failed load.
   const [saveError, setSaveError] = useState<unknown>(null);
@@ -183,6 +188,7 @@ export default function Annotator({
     if (!image || !element) return;
     const fit = () => {
       const { width, height } = element.getBoundingClientRect();
+      setStageSize({ width, height });
       setScale(Math.min(width / image.width, height / image.height));
     };
     fit();
@@ -194,7 +200,8 @@ export default function Annotator({
   const draw = () => {
     const element = canvas.current;
     if (!image || !element || !scale) return;
-    const ratio = devicePixelRatio;
+    // Sharp at the current zoom, but never finer than twice the image.
+    const ratio = Math.min(devicePixelRatio * view.scale, 2 / scale);
     const width = Math.round(image.width * scale * ratio);
     const height = Math.round(image.height * scale * ratio);
     // Resizing clears and reallocates; a stroke in progress only repaints.
@@ -204,7 +211,7 @@ export default function Annotator({
     ctx.setTransform(scale * ratio, 0, 0, scale * ratio, 0, 0);
     paint(ctx, image, items, live.current, editing, colors());
   };
-  useLayoutEffect(draw, [image, items, editing, scale]);
+  useLayoutEffect(draw, [image, items, editing, scale, view.scale]);
 
   const undo = () => {
     if (editing === items.length - 1) setEditing(null);
@@ -222,11 +229,13 @@ export default function Annotator({
     return () => removeEventListener("keydown", onKey);
   }, [items, editing]);
 
+  // Screen pixels per image pixel, with the zoom.
+  const pixel = () => scale * view.scale;
   const at = (event: PointerEvent): Point => {
     const rect = canvas.current!.getBoundingClientRect();
     return [
-      (event.clientX - rect.left) / scale,
-      (event.clientY - rect.top) / scale,
+      (event.clientX - rect.left) / pixel(),
+      (event.clientY - rect.top) / pixel(),
       event.pressure || 0.5,
     ];
   };
@@ -273,7 +282,7 @@ export default function Annotator({
     // A finger-sized target even where the badge is drawn small.
     const radius = Math.max(
       metrics(image!.width, image!.height).radius,
-      22 / scale,
+      22 / pixel(),
     );
     const hit = items.findIndex(
       (item) =>
@@ -330,6 +339,11 @@ export default function Annotator({
   }
 
   const pin = editing === null ? null : items[editing];
+  // Where the image sits in the stage: centred at the fit, then zoomed.
+  const origin = image && {
+    x: view.x + (view.scale * (stageSize.width - image.width * scale)) / 2,
+    y: view.y + (view.scale * (stageSize.height - image.height * scale)) / 2,
+  };
   return (
     <>
       <DialogHeader
@@ -365,23 +379,30 @@ export default function Annotator({
                 "--h": `${image.height * scale}px`,
               }}
             >
-              <canvas
-                ref={canvas}
-                aria-label={`Annotate ${name}`}
-                onPointerDown={down}
-                onPointerMove={move}
-                onPointerUp={up}
-                onPointerCancel={lift}
-              />
-              {pin?.kind === "pin" && (
+              <ZoomSurface
+                label={name}
+                draw
+                natural={image.width}
+                onView={setView}
+              >
+                <canvas
+                  ref={canvas}
+                  aria-label={`Annotate ${name}`}
+                  onPointerDown={down}
+                  onPointerMove={move}
+                  onPointerUp={up}
+                  onPointerCancel={lift}
+                />
+              </ZoomSurface>
+              {pin?.kind === "pin" && origin && (
                 <div
                   class="annotator-note"
                   // Opens away from the nearer edge, like the baked label.
                   data-side={pin.x > image.width / 2 ? "left" : "right"}
                   style={{
-                    "--x": `${pin.x * scale}px`,
-                    "--y": `${pin.y * scale}px`,
-                    "--r": `${metrics(image.width, image.height).radius * scale}px`,
+                    "--x": `${origin.x + pin.x * pixel()}px`,
+                    "--y": `${origin.y + pin.y * pixel()}px`,
+                    "--r": `${metrics(image.width, image.height).radius * pixel()}px`,
                   }}
                 >
                   <Input

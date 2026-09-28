@@ -17,11 +17,12 @@ import type {
 import { useEffect, useMemo, useState } from "preact/hooks";
 import { Minimize2, X } from "lucide-preact";
 import {
+  Button,
   DisclosureRow,
-  Mark,
   cleanText,
   EventRow,
   ErrorBoundary,
+  IconButton,
   Time,
 } from "../../shared/ui.tsx";
 import { MessageMenu } from "./message-menu.tsx";
@@ -54,20 +55,18 @@ function MentionFile({
   alt,
   files,
   sessionId,
-  online,
 }: {
   id: string;
   alt: string;
   files?: (Asset | string)[];
   sessionId: string;
-  online: boolean;
 }) {
   const file = files?.find(
     (item): item is Asset => typeof item === "object" && item.id === id,
   );
   if (!file) return <span class="muted">@{alt} (attachment removed)</span>;
   const href = `/api/sessions/${sessionId}/assets/${file.id}`;
-  return file.image && online ? (
+  return file.image ? (
     <span class="mention-image">
       <ImageTile src={href} name={file.name} />
     </span>
@@ -184,8 +183,8 @@ function MessageView({
     return (
       <TurnFooter summary={block.summary} open={() => statistics?.(block)} />
     );
-  // Attribution, not authorship: user uploads read as "you"; every agent
-  // row carries the mark. The header below is identical on every row — no
+  // Attribution, not authorship: the user's bar and agent rows carry no
+  // label; only other kinds name themselves. The header below is identical on every row — no
   // per-step variants, so chrome and spacing can never drift apart.
   // Receipts (memory saves, finished background work) read as tool rows.
   const row = tool || block.kind === "activity";
@@ -195,14 +194,7 @@ function MessageView({
   const agentRow =
     block.kind === "assistant" ||
     (block.kind === "attachment" && block.origin === "tool");
-  const actor =
-    userOwned || row
-      ? userOwned
-        ? "you"
-        : null
-      : block.kind === "assistant" || agentRow
-        ? Mark
-        : block.kind;
+  const actor = userOwned || row || agentRow ? null : block.kind;
   return (
     <article
       data-message-id={block.key || block.id}
@@ -210,7 +202,7 @@ function MessageView({
     >
       {!row && (
         <header>
-          {actor === Mark ? <Mark /> : actor && <span>{actor}</span>}
+          {actor && <span class="actor">{actor}</span>}
           {block.status && (
             <span class="muted">
               {statusLine({
@@ -224,14 +216,13 @@ function MessageView({
             online &&
             block.status === "Guidance queued" &&
             block.request_id && (
-              <button
-                class="quiet icon-button"
-                aria-label="Recall guidance to composer"
+              <IconButton
+                label="Recall guidance to composer"
                 title="Recall to composer"
                 onClick={() => recall(block)}
               >
                 <X aria-hidden="true" />
-              </button>
+              </IconButton>
             )}
           <MessageMenu
             label="Message menu"
@@ -314,7 +305,6 @@ function MessageView({
               alt={part.mention.alt}
               files={block.files}
               sessionId={session.id}
-              online={online}
             />
           ),
         )}
@@ -335,7 +325,7 @@ function MessageView({
         />
       )}
       {!row && block.truncated && (
-        <button
+        <Button
           disabled={expanding}
           onClick={async () => {
             if (full !== null) {
@@ -358,7 +348,7 @@ function MessageView({
             : full !== null
               ? "Show less"
               : "Show full message"}
-        </button>
+        </Button>
       )}
       {block.error && <p role="status">{block.error}</p>}
       {(block.unavailable_images || 0) > 0 && (

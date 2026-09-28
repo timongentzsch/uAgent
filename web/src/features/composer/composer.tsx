@@ -3,7 +3,16 @@ import { ImageTile } from "../../shared/attachments.tsx";
 import "./attachments.css";
 import { useCommandSuggestions } from "./command-suggestions.tsx";
 import { parseSlash } from "./slash.ts";
-import { Deferred, Field, Select, Spinner, Input } from "../../shared/ui.tsx";
+import {
+  Button,
+  Deferred,
+  Field,
+  IconButton,
+  Select,
+  Input,
+  Spinner,
+  DataText,
+} from "../../shared/ui.tsx";
 import { bytes } from "../../shared/quantities.ts";
 import type {
   SlashCommand,
@@ -27,12 +36,13 @@ import {
 import { command } from "../../state/api.ts";
 import { dedupeName, encodeMention, matchMention } from "./mention.ts";
 import { Popover } from "../../shared/popover.tsx";
-import Activities from "../chat/activity-status.tsx";
+import Activities, { ActivityButton } from "../chat/activity-status.tsx";
 import type { InspectorTarget } from "../chat/inspector.tsx";
 import MessageInput from "./message-input.tsx";
 import ModelControl from "./model-control.tsx";
 import { ContextSummary, SessionSummary } from "../chat/session-summary.tsx";
 const decisionPanel = () => import("../chat/decision.tsx");
+import { maxRecalledPromptSessions } from "../../shared/limits.ts";
 // Prompts sent from this page per session, oldest first: Up and Down recall
 // them the way the terminal composer does.
 const sentPrompts = new Map<string, string[]>();
@@ -186,8 +196,13 @@ export default function Composer({
     } else {
       if (draft.text.trim()) {
         const past = sentPrompts.get(session.id) || [];
-        if (past.at(-1) !== draft.text)
+        if (past.at(-1) !== draft.text) {
+          // Re-insert so Map order is recency; the oldest session drops out.
+          sentPrompts.delete(session.id);
           sentPrompts.set(session.id, [...past, draft.text].slice(-100));
+          if (sentPrompts.size > maxRecalledPromptSessions)
+            sentPrompts.delete(sentPrompts.keys().next().value!);
+        }
       }
       recalled.current = -1;
       submit(event);
@@ -213,7 +228,9 @@ export default function Composer({
     setDraft({ ...draft, text: next < 0 ? "" : past[next] });
     return true;
   };
-  const pending = online ? snapshot?.pending : null;
+  // Reconnecting keeps the last known request and activities on screen,
+  // inert (their controls follow `online`), so resuming never reflows.
+  const pending = snapshot?.pending;
   const running = online && !!session.turn_active;
   const state = snapshot?.state;
   // A session without a live worker names its lifecycle state here instead
@@ -239,19 +256,26 @@ export default function Composer({
       }}
     >
       {!following && !pending && (
-        <button class="jump quiet with-icon" onClick={jump}>
+        <Button variant="quiet" class="jump with-icon" onClick={jump}>
           Jump to latest{" "}
           {unseen > 0 && <span aria-hidden="true">({unseen} new)</span>}
           <ArrowDown />
-        </button>
+        </Button>
       )}
+      <Activities
+        present={online && !!session?.presence}
+        connection={connection}
+        phase={detached || state?.activity || (state ? "Ready" : "Loading…")}
+        running={online && running}
+        pending={pending}
+      />
       {pending?.kind === "browser" ? (
         <section class="decision" aria-label="Browser needs you">
           <h2>Continue in the browser</h2>
           <p>{pending.prompt || "The agent needs you to finish in Chrome."}</p>
-          <button class="primary" disabled={!online} onClick={openBrowser}>
+          <Button variant="primary" disabled={!online} onClick={openBrowser}>
             Open browser
-          </button>
+          </Button>
         </section>
       ) : pending ? (
         <Deferred
@@ -267,14 +291,14 @@ export default function Composer({
             </section>
           }
         />
-      ) : online && !session.generation ? (
-        <button
-          class="primary"
+      ) : !session.generation ? (
+        <Button
+          variant="primary"
           disabled={!online}
           onClick={() => command("activate", session).catch(report)}
         >
           Resume in this host directory
-        </button>
+        </Button>
       ) : (
         <form onSubmit={send}>
           {suggestions.list}
@@ -285,9 +309,8 @@ export default function Composer({
               aria-label="Attached files"
             >
               {mentionCandidates.map((item, position) => (
-                <button
+                <Button
                   key={item.id}
-                  type="button"
                   role="option"
                   aria-selected={position === mentionIndex}
                   tabIndex={-1}
@@ -296,7 +319,7 @@ export default function Composer({
                 >
                   <strong>@{item.name}</strong>
                   <span>{bytes(item.bytes)}</span>
-                </button>
+                </Button>
               ))}
             </div>
           )}
@@ -364,6 +387,7 @@ export default function Composer({
                 >
                   {asset.image && !asset.pending ? (
                     <ImageTile
+                      draftId={asset.id}
                       name={asset.name}
                       src={`/api/sessions/${session.id}/assets/${asset.id}`}
                     />
@@ -391,8 +415,7 @@ export default function Composer({
                         }
                       />
                     ) : (
-                      <button
-                        type="button"
+                      <Button
                         class="chip-name"
                         title={`Rename ${asset.name}`}
                         aria-label={`Rename ${asset.name}`}
@@ -400,17 +423,15 @@ export default function Composer({
                         onClick={() => setRenaming(asset.id)}
                       >
                         {asset.name}
-                      </button>
+                      </Button>
                     )}
                     <small>
                       {asset.pending ? "Uploading…" : bytes(asset.bytes)}
                     </small>
                   </span>
                   {!asset.pending && (
-                    <button
-                      type="button"
-                      class="quiet icon-button"
-                      aria-label={`Remove ${asset.name}`}
+                    <IconButton
+                      label={`Remove ${asset.name}`}
                       onClick={() =>
                         setDraft({
                           ...draft,
@@ -421,7 +442,7 @@ export default function Composer({
                       }
                     >
                       <X />
-                    </button>
+                    </IconButton>
                   )}
                 </div>
               ))}
@@ -459,7 +480,9 @@ export default function Composer({
               trigger={
                 <>
                   <Shield />
-                  <span>{permissionLabel}</span>
+                  <span>
+                    <DataText>{permissionLabel}</DataText>
+                  </span>
                 </>
               }
             >
@@ -492,21 +515,18 @@ export default function Composer({
               )}
             </Popover>
             {running && (
-              <button
-                type="button"
-                class="quiet icon-button"
-                aria-label="Stop"
-                title="Stop"
+              <IconButton
+                label="Stop"
                 disabled={!online}
                 onClick={() => act("interrupt").catch(report)}
               >
                 <Square />
-              </button>
+              </IconButton>
             )}
-            <button
-              class="primary icon-button"
-              aria-label={running ? "Send guidance" : "Send"}
-              title={running ? "Send guidance" : "Send"}
+            <IconButton
+              type="submit"
+              variant="primary"
+              label={running ? "Send guidance" : "Send"}
               disabled={
                 !online ||
                 busy ||
@@ -515,23 +535,19 @@ export default function Composer({
               }
             >
               <ArrowUp />
-            </button>
+            </IconButton>
           </div>
         </form>
       )}
-      <Activities
-        collaborators={state?.collaborators || []}
-        open={openInspector}
-        session={session}
-        online={online}
-        report={report}
-        items={online ? state?.activities || [] : []}
-        present={online && !!session?.presence}
-        connection={connection}
-        phase={detached || state?.activity || (state ? "Ready" : "Loading…")}
-        running={online && running}
-        pending={online ? pending : null}
-      >
+      <div class="composer-metrics">
+        <ActivityButton
+          collaborators={state?.collaborators || []}
+          open={openInspector}
+          session={session}
+          online={online}
+          report={report}
+          items={state?.activities || []}
+        />
         <div class="metrics">
           <ContextSummary state={state} open={showContext} online={online} />
           <SessionSummary state={state} open={showStatistics} />
@@ -541,7 +557,7 @@ export default function Composer({
             </span>
           )}
         </div>
-      </Activities>
+      </div>
     </section>
   );
 }

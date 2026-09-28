@@ -457,6 +457,31 @@ void TestFileTools() {
     CHECK(SelfConfigurationPath(custom_config.string()));
   }
 
+  // The browser profile is refused outright, not escalated to approval: by
+  // name, anywhere beneath and through an alias, by every path tool. Its
+  // parent stays readable.
+  {
+    fs::path browser = root / "browser";
+    fs::create_directories(browser / "Default");
+    fs::create_symlink(browser, root / "browser-alias");
+    ScopedEnv configured("UAGENT_BROWSER_DATA", browser.string());
+    const std::string login =
+        (root / "browser-alias/Default/Login Data").string();
+    for (const char* name :
+         {"read_path", "grep", "write_file", "edit_file", "delete_file"}) {
+      const Tool* tool = FindTool(tools, name);
+      REQUIRE(tool && tool->validate);
+      CHECK(tool->validate({{"path", login}}).has_value());
+      CHECK(tool->validate({{"path", browser.string()}}).has_value());
+      CHECK(!tool->validate({{"path", root.string()}}));
+      CHECK(!tool->validate({{"path", (root / "browser-other").string()}}));
+      // A link made after validation, by an earlier call in the same batch,
+      // is refused when the call runs.
+      CHECK(tool->run({{"path", login}, {"pattern", "x"}, {"content", "x"}}, {})
+                .error == ToolErrorCode::kPermissionDenied);
+    }
+  }
+
   fs::path fifo = root / "pipe";
   CHECK(mkfifo(fifo.c_str(), 0600) == 0);
   ToolResult fifo_read = ToolReadFile(fifo.string(), 1, 1);

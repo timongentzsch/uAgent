@@ -7,10 +7,12 @@
 #include <optional>
 #include <string>
 #include <system_error>
+#include <utility>
 
 #include "include/core/config.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
+#include "include/core/sandbox.h"
 #include "include/tools/tool.h"
 
 namespace uagent {
@@ -48,6 +50,35 @@ inline bool SelfConfigurationPath(const std::string& path) {
   // a symlink.
   return std::filesystem::path(path).filename() == ".mcp.json" ||
          candidate.filename() == ".mcp.json";
+}
+
+// The browser profile (HiddenPaths): the file tools refuse it outright rather
+// than asking, and the OS sandbox hides it from commands.
+inline bool HiddenPath(const std::string& path) {
+  if (path.empty()) return false;
+  const std::filesystem::path candidate = CanonicalAccessPath(path);
+  for (const std::string& hidden : HiddenPaths()) {
+    if (PathWithin(candidate, hidden)) return true;
+  }
+  return false;
+}
+
+inline std::optional<ToolArgumentIssue> RefuseHidden(const json& args) {
+  if (!HiddenPath(JsonValue(args, "path", "."))) return std::nullopt;
+  return ArgumentIssue("policy.hidden",
+                       "the browser profile is private to the browser", "path");
+}
+
+// Checked again when the call runs, not only when it is validated: an earlier
+// call in the same batch can have made the path a link to a protected one.
+inline Tool::Run RefusingHidden(Tool::Run run) {
+  return [run = std::move(run)](const json& args, const ToolContext& context) {
+    if (auto refused = RefuseHidden(args)) {
+      return ToolFailure(ToolErrorCode::kPermissionDenied,
+                         "error: " + refused->message);
+    }
+    return run(args, context);
+  };
 }
 
 enum class PathAccess { kRead, kWrite };

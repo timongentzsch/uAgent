@@ -2,6 +2,9 @@ import { test, expect } from "./fixtures.js";
 import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 
+// Library rows the list loaded, not the rows its placeholder draws.
+const LOADED_ROWS = ".library-row:not(.placeholder *)";
+
 for (const surface of [
   { name: "Library", chunk: "library", status: "Loading library…" },
   { name: "Scheduled", chunk: "scheduled", status: "Loading scheduled tasks…" },
@@ -119,7 +122,7 @@ test("library drafts, shared controls and scheduled results", async ({
     .toBeLessThan(1);
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(
-    page.locator(".library-row").filter({ hasText: "browser-lesson" }),
+    page.locator(LOADED_ROWS).filter({ hasText: "browser-lesson" }),
   ).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Durable lesson" }),
@@ -150,7 +153,7 @@ test("library drafts, shared controls and scheduled results", async ({
     name: fixture.project,
     exact: true,
   });
-  await expect(projectGroup.locator("button.library-row")).toContainText(
+  await expect(projectGroup.locator(LOADED_ROWS)).toContainText(
     "browser-lesson",
   );
   await page.getByRole("button", { name: "Edit", exact: true }).click();
@@ -181,9 +184,7 @@ test("library drafts, shared controls and scheduled results", async ({
     await expect(secondGroup.getByRole("status")).toBeVisible();
     // Faithful loading skeleton mirrors the row shell: placeholders only
     // (aria-hidden), never stale entries from the previous project.
-    await expect(
-      secondGroup.locator('.library-row:not([aria-hidden="true"])'),
-    ).toHaveCount(0);
+    await expect(secondGroup.locator(LOADED_ROWS)).toHaveCount(0);
     await expect(secondGroup.getByText("browser-lesson")).toHaveCount(0);
   } finally {
     releaseList();
@@ -192,12 +193,12 @@ test("library drafts, shared controls and scheduled results", async ({
   await expect(
     secondGroup.getByText("No memories found.", { exact: true }),
   ).toBeVisible();
-  await expect(projectGroup.locator(".library-row")).toHaveCount(0);
+  await expect(projectGroup.locator(LOADED_ROWS)).toHaveCount(0);
   await page.getByRole("button", { name: "Add memory", exact: true }).click();
   await page.getByLabel("Name", { exact: true }).fill("browser-lesson");
   await editor.fill("This belongs only to the second project.");
   await page.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(secondGroup.locator("button.library-row")).toContainText(
+  await expect(secondGroup.locator(LOADED_ROWS)).toContainText(
     "browser-lesson",
   );
   const filter = page.getByLabel("Filter library");
@@ -223,22 +224,22 @@ test("library drafts, shared controls and scheduled results", async ({
   await expect(projectGroup).toHaveCount(0);
   await filter.selectOption("all");
   await secondGroup.getByRole("button", { expanded: false }).click();
-  await secondGroup.locator("button.library-row").click();
+  await secondGroup.locator(LOADED_ROWS).click();
   await expect(page.locator(".document-preview")).toHaveText(
     "This belongs only to the second project.",
   );
   await projectGroup.getByRole("button", { expanded: false }).click();
-  await projectGroup.locator("button.library-row").click();
+  await projectGroup.locator(LOADED_ROWS).click();
   await expect(
     page.getByRole("heading", { name: "Durable lesson" }),
   ).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole("button", { name: "Back", exact: true }).click();
   await filter.selectOption(`project:${secondProject}`);
-  await expect(secondGroup.locator("button.library-row")).toBeVisible();
+  await expect(secondGroup.locator(LOADED_ROWS)).toBeVisible();
   await expect(secondGroup.getByRole("status")).toHaveCount(0);
   await expect(projectGroup).toHaveCount(0);
-  await secondGroup.locator("button.library-row").click();
+  await secondGroup.locator(LOADED_ROWS).click();
   await expect(page.locator(".document-preview")).toHaveText(
     "This belongs only to the second project.",
   );
@@ -272,7 +273,7 @@ test("library drafts, shared controls and scheduled results", async ({
   await editor.fill("---\ndescription: Review a change\n---\nCheck the diff.");
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(
-    page.locator(".library-row").filter({ hasText: "browser-review" }),
+    page.locator(LOADED_ROWS).filter({ hasText: "browser-review" }),
   ).toBeVisible();
   await nav.getByRole("button", { name: "Scheduled", exact: true }).click();
   await page.getByRole("button", { name: "New task", exact: true }).click();
@@ -309,9 +310,7 @@ test("library drafts, shared controls and scheduled results", async ({
   await page.getByRole("button", { name: "Task menu", exact: true }).click();
   await page.getByRole("menuitem", { name: "Pause", exact: true }).click();
   await expect(
-    page
-      .locator(".library-row")
-      .filter({ hasText: "Browser scheduled review" }),
+    page.locator(LOADED_ROWS).filter({ hasText: "Browser scheduled review" }),
   ).toContainText("Paused");
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(

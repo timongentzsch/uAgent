@@ -63,6 +63,11 @@ inline constexpr size_t kToolNameChars = 128;
 // observable behavior, even though they do not need runtime configuration.
 inline constexpr size_t kToolDedupeMinChars = 256;
 inline constexpr size_t kGenericTitleReplacementMinChars = 12;
+// Generated session titles: first-message excerpt sent, title kept, and the
+// deadline after which the first line stays.
+inline constexpr size_t kTitleInputChars = 2000;
+inline constexpr size_t kTitleChars = 80;
+inline constexpr int64_t kTitleTimeoutSeconds = 30;
 // Upload and subsequent claim validation must accept the same display names.
 inline constexpr size_t kAssetNameChars = 128;
 inline constexpr size_t kImageAnalysisCacheEntries = 8;

@@ -1,16 +1,20 @@
 import "./markdown.css";
 import {
   maxPreparedMarkdownChars,
-  maxProgressiveMarkdownChars,
-  progressiveMarkdownIntervalMs,
   progressiveMarkdownScanLines,
+  wholeStreamingMarkdownChars,
 } from "./limits.ts";
 import { Component, type ComponentType } from "preact";
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { MarkdownBlock } from "./markdown.ts";
-import { CodeCopy, LoadError } from "./ui.tsx";
+import { CodeCopy, LoadError, DataText, usePlaceholder } from "./ui.tsx";
 
-let renderer: Promise<typeof import("./markdown.ts")> | undefined;
+type Renderer = typeof import("./markdown.ts");
+let renderer: Promise<Renderer> | undefined;
+// Once loaded, streaming renders synchronously in the same frame as the text.
+let loaded: Renderer | undefined;
+const loadRenderer = () =>
+  (renderer ??= import("./markdown.ts").then((module) => (loaded = module)));
 const prepared = new Map<string, MarkdownBlock[]>();
 let preparedChars = 0;
 
@@ -20,8 +24,7 @@ let preparedChars = 0;
 export async function prepareMarkdown(text: string): Promise<MarkdownBlock[]> {
   const cached = prepared.get(text);
   if (cached) return cached;
-  renderer ??= import("./markdown.ts");
-  const blocks = await (await renderer).renderMarkdownBlocks(text);
+  const blocks = await (await loadRenderer()).renderMarkdownBlocks(text);
   if (text.length <= maxPreparedMarkdownChars) {
     // Concurrent preparation may already have inserted this same source.
     if (!prepared.has(text)) preparedChars += text.length;
@@ -40,7 +43,7 @@ export async function prepareMarkdown(text: string): Promise<MarkdownBlock[]> {
 // streams (and once at boot), so the plain-to-markdown switch at
 // completion only pays the parse, never the chunk download.
 export function prefetchMarkdown(text = "") {
-  renderer ??= import("./markdown.ts");
+  void loadRenderer();
   if (/\$|\\[([]/.test(text)) void import("./math.ts");
   if (/```|~~~/.test(text)) void import("./highlight.ts");
 }
@@ -61,11 +64,10 @@ function closedFence(source: string) {
   );
 }
 
-// Progressive streaming split: text through the last blank line whose
-// head has balanced fences, so a streaming pass never renders an open
-// code block. Inline delimiters left unbalanced render literally until
-// the next boundary — progressive enhancement, never a structural
-// flip (block keys stay stable, see renderMarkdownBlocks).
+// Streaming split: the finished part runs through the last blank line whose
+// head has balanced fences; the block still being written after it is
+// rendered from `healTail`, so it reads formatted instead of as raw syntax.
+// Block keys stay stable across frames (see markdownBlocks).
 function balancedFences(head: string): boolean {
   const fences = head.match(/^[ \t]*(```+|~~~+).*$/gm) || [];
   let ticks = 0;
@@ -108,13 +110,24 @@ function escapeHTML(value: string) {
   );
 }
 
-function CodeBlock({ source, html }: { source: string; html: string }) {
+function CodeBlock({
+  source,
+  html,
+  incomplete = false,
+}: {
+  source: string;
+  html: string;
+  // Still streaming: shown as it arrives, copyable once its fence closes.
+  incomplete?: boolean;
+}) {
   return (
-    <div class="code-block">
+    <div class="code-block" data-incomplete={incomplete || undefined}>
       <div dangerouslySetInnerHTML={{ __html: html }} />
-      <span class="code-copy">
-        <CodeCopy text={source} />
-      </span>
+      {!incomplete && (
+        <span class="code-copy">
+          <CodeCopy text={source} />
+        </span>
+      )}
     </div>
   );
 }
@@ -158,8 +171,9 @@ interface RenderedBlockProps {
 class RenderedBlock extends Component<RenderedBlockProps> {
   shouldComponentUpdate(after: RenderedBlockProps) {
     const before = this.props;
+    // Code blocks follow `streaming`: an open fence gains Copy on completion.
     return !(
-      (!before.block.code?.mermaid || before.streaming === after.streaming) &&
+      (!before.block.code || before.streaming === after.streaming) &&
       before.block.html === after.block.html &&
       before.block.source === after.block.source &&
       before.block.code?.mermaid === after.block.code?.mermaid
@@ -168,103 +182,127 @@ class RenderedBlock extends Component<RenderedBlockProps> {
 
   render({ block, streaming }: RenderedBlockProps) {
     if (block.code) {
-      if (block.code.mermaid && (!streaming || closedFence(block.source)))
+      const open = !!streaming && !closedFence(block.source);
+      if (block.code.mermaid && !open)
         return <DiagramLeaf source={block.code.text} />;
-      return <CodeBlock source={block.code.text} html={block.html} />;
+      return (
+        <CodeBlock
+          source={block.code.text}
+          html={block.html}
+          incomplete={open}
+        />
+      );
     }
     return <div dangerouslySetInnerHTML={{ __html: block.html }} />;
   }
 }
 
-export default function Markdown({
-  text,
-  streaming,
-  progressive = true,
-}: {
+type MarkdownProps = {
   text: string;
   streaming?: boolean;
   // False keeps the plain-text-while-streaming path: hidden surfaces
   // (e.g. reasoning inside a never-opened disclosure) must not pay
   // renderer work for content the user may never see.
   progressive?: boolean;
-}) {
+};
+
+// Inside a Placeholder the text is sample prose: its paragraphs as bars in
+// the rendered container, with no parser work.
+export default function Markdown(props: MarkdownProps) {
+  return usePlaceholder() ? (
+    <div class="markdown">
+      {props.text.split(/\n{2,}/).map((paragraph, index) => (
+        <p key={index}>
+          <DataText>{paragraph}</DataText>
+        </p>
+      ))}
+    </div>
+  ) : (
+    <RenderedMarkdown {...props} />
+  );
+}
+
+function RenderedMarkdown({
+  text,
+  streaming,
+  progressive = true,
+}: MarkdownProps) {
   const [rendered, setRendered] = useState<{
     text: string;
     blocks: MarkdownBlock[];
   }>(() => ({ text, blocks: prepared.get(text) || [] }));
   const [error, setError] = useState<unknown>(null);
   const [retry, setRetry] = useState(0);
-  const [streamed, setStreamed] = useState<{
-    head: string;
-    blocks: MarkdownBlock[];
-  }>({ head: "", blocks: [] });
+  const [, setReady] = useState(!!loaded);
   const pending = useRef({ active: true, text, running: false });
   pending.current.text = text;
-  const stream = useRef({
-    text,
-    active: true,
-    timer: 0,
-    lastRun: 0,
+  // The finished part of a streaming reply, parsed once per boundary.
+  const head = useRef<{
+    text: string;
+    blocks: MarkdownBlock[];
+    env: Record<string, unknown>;
+  }>({ text: "", blocks: [], env: {} });
+  // The last streamed frame stays on screen until the final parse lands.
+  const last = useRef<{ text: string; blocks: MarkdownBlock[] }>({
+    text: "",
+    blocks: [],
   });
-  stream.current.text = text;
-  // Parse closed prefixes at the configured interval. The plain remainder
-  // keeps incoming text visible while parsing; block keys preserve already
-  // formatted subtrees during the stream.
+  const live = !!streaming && progressive;
   useEffect(() => {
-    if (
-      !streaming ||
-      !progressive ||
-      text.length > maxProgressiveMarkdownChars
-    ) {
-      setStreamed((previous) =>
-        previous.head ? { head: "", blocks: [] } : previous,
-      );
-      return;
-    }
-    prefetchMarkdown(text);
-    const state = stream.current;
-    if (state.timer) return; // trailing pass already scheduled
-    const wait = Math.max(
-      0,
-      progressiveMarkdownIntervalMs - (Date.now() - state.lastRun),
-    );
-    state.timer = window.setTimeout(() => {
-      state.timer = 0;
-      state.lastRun = Date.now();
-      const head = streamingHead(state.text);
-      if (!head.trim()) return;
-      const pendingRenderer = (renderer ??= import("./markdown.ts"));
-      pendingRenderer
-        .then((module) => module.renderMarkdownBlocks(head))
-        .then((output) => {
-          if (
-            !state.active ||
-            state.text.length > maxProgressiveMarkdownChars ||
-            !state.text.startsWith(head)
-          )
-            return;
-          // Commit the prefix and its blocks together. Until parsing finishes,
-          // the plain tail still contains every byte after the painted prefix.
-          setStreamed((previous) =>
-            previous.head.length >= head.length &&
-            state.text.startsWith(previous.head)
-              ? previous
-              : { head, blocks: output },
-          );
-        })
-        .catch(() => {
-          // Keep the previous progressive frame; the plain tail covers.
-        });
-    }, wait);
+    if (!live || loaded) return;
+    let active = true;
+    void loadRenderer().then(() => active && setReady(true));
     return () => {
-      clearTimeout(state.timer);
-      state.timer = 0;
+      active = false;
     };
-  }, [text, streaming, progressive]);
+  }, [live]);
+  const streamed = useMemo(() => {
+    if (!live || !loaded) return null;
+    const boundary = streamingHead(text);
+    const cached = head.current;
+    if (boundary !== cached.text) {
+      // Long replies append new blocks instead of re-parsing everything.
+      const append =
+        !!cached.text &&
+        boundary.startsWith(cached.text) &&
+        boundary.length > wholeStreamingMarkdownChars;
+      // Appended parts share the head's references (an earlier `[ref]:`).
+      const env = append ? cached.env : {};
+      head.current = {
+        text: boundary,
+        env,
+        blocks: append
+          ? [
+              ...cached.blocks,
+              ...loaded.markdownBlocks(
+                boundary.slice(cached.text.length + 1),
+                cached.text.split("\n").length,
+                env,
+              ),
+            ]
+          : boundary
+            ? loaded.markdownBlocks(boundary, 0, env)
+            : [],
+      };
+    }
+    const tail = text.slice(boundary.length);
+    const offset = boundary ? boundary.split("\n").length - 1 : 0;
+    const blocks = [
+      ...head.current.blocks,
+      ...loaded.markdownBlocks(loaded.healTail(tail), offset, {
+        // Its own copy: a half-typed `[ref]:` in the tail must not stick.
+        references: {
+          ...((head.current.env.references as object | undefined) || {}),
+        },
+      }),
+    ];
+    last.current = { text, blocks };
+    return blocks;
+  }, [text, live, loaded]);
   useEffect(() => {
     // Full render runs when the block completes (and on retry): the
-    // progressive passes above already warmed the renderer chunks, so
-    // completion only pays the parse.
+    // streaming frames already loaded the renderer chunks, so completion
+    // only pays the parse.
     if (streaming) return;
     const state = pending.current;
     if (state.running) return;
@@ -291,26 +329,31 @@ export default function Markdown({
   useEffect(
     () => () => {
       pending.current.active = false;
-      stream.current.active = false;
     },
     [],
   );
-  if (streaming) {
-    const frame = text.startsWith(streamed.head)
-      ? streamed
-      : { head: "", blocks: [] };
-    const startLine = frame.head.split("\n").length - 1;
-    // `.markdown` identifies a completed render. Until then the history
-    // controller uses these source-line anchors to preserve reading position.
-    return (
-      <div class="markdown-stream">
-        {frame.blocks.map((block) => (
-          <div key={block.key} data-anchor-id={block.key.split(":")[0]}>
-            <RenderedBlock block={block} streaming />
-          </div>
-        ))}
-        {plainSegments(text.slice(frame.head.length), startLine).map(
-          (segment) => (
+  // Hidden streaming text (unopened reasoning) stays one plain node.
+  if (streaming && !progressive) return <div class="plain">{text}</div>;
+  const blocks =
+    streamed ||
+    prepared.get(text) ||
+    (rendered.text === text && rendered.blocks.length
+      ? rendered.blocks
+      : null) ||
+    (last.current.text === text ? last.current.blocks : null);
+  // One container from the first token to the final render, so completion
+  // swaps no element; `data-streaming` marks a reply still being written.
+  // Blocks carry source-line anchors the history controller keeps in view.
+  return (
+    <div class="markdown" data-streaming={streaming || undefined}>
+      {blocks
+        ? blocks.map((block) => (
+            <div key={block.key} data-anchor-id={block.key.split(":")[0]}>
+              <RenderedBlock block={block} streaming={streaming} />
+            </div>
+          ))
+        : !error &&
+          plainSegments(text, 0).map((segment) => (
             <div
               key={`plain-${segment.line}`}
               data-anchor-id={String(segment.line)}
@@ -318,20 +361,7 @@ export default function Markdown({
             >
               {segment.text}
             </div>
-          ),
-        )}
-      </div>
-    );
-  }
-  const blocks =
-    prepared.get(text) || (rendered.text === text ? rendered.blocks : []);
-  return blocks.length || error ? (
-    <div class="markdown">
-      {blocks.map((block) => (
-        <div key={block.key} data-anchor-id={block.key.split(":")[0]}>
-          <RenderedBlock block={block} streaming={streaming} />
-        </div>
-      ))}
+          ))}
       {error && (
         <div class="renderer-fallback">
           <LoadError error={error} retry={() => setRetry(retry + 1)} />
@@ -339,7 +369,5 @@ export default function Markdown({
         </div>
       )}
     </div>
-  ) : (
-    <div class="plain">{text}</div>
   );
 }

@@ -9,15 +9,28 @@ import type {
 import { readStored, writeStored } from "../../state/store.ts";
 import { command } from "../../state/api.ts";
 import {
+  Actions,
+  Button,
   Field,
   Select,
   LoadError,
-  Spinner,
   Textarea,
+  DataText,
+  Placeholder,
 } from "../../shared/ui.tsx";
 import { ProjectField } from "./management.tsx";
 import DiffView from "../chat/diff-view.tsx";
 import "./prompt.css";
+
+const SAMPLE: PromptResult = {
+  item: { scope: "global", mode: "inherit", text: "", revision: "" },
+  effective:
+    "The effective prompt is a few paragraphs of instructions, about this long.",
+  inherited: {},
+  sources: [],
+  bytes: 0,
+  digest: "",
+};
 
 export default function PromptEditor({
   session,
@@ -134,7 +147,9 @@ export default function PromptEditor({
       setBusy(false);
     }
   }
-  const shown = preview || data;
+  // Until the document loads, the editor draws a sample (see <Placeholder>).
+  const view = data ?? SAMPLE;
+  const shown = preview || view;
   return (
     <div class="prompt-editor">
       <div class="prompt-controls">
@@ -169,176 +184,182 @@ export default function PromptEditor({
         </section>
       ) : error ? (
         <LoadError error={error} retry={() => setAttempt(attempt + 1)} />
-      ) : !data ? (
-        !error && <Spinner label="Loading system prompt…" surface />
       ) : (
-        <>
-          <p class="muted">
-            {data.preview_kind ||
-              "Next request · runtime and repository context included."}
-          </p>
-          {draft && draft.revision !== data.item.revision && (
-            <p role="status">
-              Changed elsewhere. Your draft is retained; reload and compare
-              before saving.
-              <button
-                onClick={() =>
-                  update({ ...draft, revision: data.item.revision })
-                }
-              >
-                Use my draft against the latest version
-              </button>
+        <Placeholder label="Loading system prompt…" when={!data}>
+          <>
+            <p class="muted">
+              <DataText>
+                {view.preview_kind ||
+                  "Next request · runtime and repository context included."}
+              </DataText>
             </p>
-          )}
-          <div class="prompt-tabs segmented" aria-label="Prompt view">
-            {["instructions", "effective"].map((name) => (
-              <button
-                aria-pressed={pane === name}
-                onClick={() => setPane(name)}
-              >
-                {name === "instructions" ? "Instructions" : "Effective prompt"}
-              </button>
-            ))}
-          </div>
-          <div class={`prompt-columns ${pane}`}>
-            <section>
-              <h3>
-                {scope === "conversation"
-                  ? "This conversation"
-                  : scope === "global"
-                    ? "Global"
-                    : "Project"}{" "}
-                instructions
-              </h3>
+            {draft && draft.revision !== view.item.revision && (
+              <p role="status">
+                Changed elsewhere. Your draft is retained; reload and compare
+                before saving.
+                <Button
+                  onClick={() =>
+                    update({ ...draft, revision: view.item.revision })
+                  }
+                >
+                  Use my draft against the latest version
+                </Button>
+              </p>
+            )}
+            <div class="prompt-tabs segmented" aria-label="Prompt view">
+              {["instructions", "effective"].map((name) => (
+                <Button
+                  aria-pressed={pane === name}
+                  onClick={() => setPane(name)}
+                >
+                  {name === "instructions"
+                    ? "Instructions"
+                    : "Effective prompt"}
+                </Button>
+              ))}
+            </div>
+            <div class={`prompt-columns ${pane}`}>
+              <section>
+                <h3>
+                  {scope === "conversation"
+                    ? "This conversation"
+                    : scope === "global"
+                      ? "Global"
+                      : "Project"}{" "}
+                  instructions
+                </h3>
+                {draft ? (
+                  <>
+                    <Field label="Mode">
+                      <Select
+                        aria-label="Prompt mode"
+                        value={draft.mode}
+                        disabled={busy}
+                        onChange={(event) =>
+                          update({
+                            ...draft,
+                            mode: event.currentTarget
+                              .value as PromptDocument["mode"],
+                          })
+                        }
+                      >
+                        <option value="inherit">Inherit</option>
+                        <option value="overlay">
+                          Overlay · add instructions
+                        </option>
+                        <option value="replace">
+                          Replace inherited prompt
+                        </option>
+                      </Select>
+                    </Field>
+                    <Textarea
+                      aria-label="System prompt text"
+                      value={draft.text}
+                      disabled={busy || draft.mode === "inherit"}
+                      onInput={(event) =>
+                        update({ ...draft, text: event.currentTarget.value })
+                      }
+                    />
+                  </>
+                ) : (
+                  <>
+                    <small class="muted">
+                      {view.item.mode}
+                      {view.item.path && ` · ${view.item.path}`}
+                    </small>
+                    <pre>
+                      {view.item.mode === "inherit"
+                        ? "Using inherited instructions."
+                        : view.item.text || "Empty replacement."}
+                    </pre>
+                  </>
+                )}
+              </section>
+              <section>
+                <h3>
+                  {preview ? "Proposed effective prompt" : "Effective prompt"}
+                </h3>
+                {shown && (
+                  <>
+                    <div class="prompt-sources">
+                      {shown.sources.map((source) => (
+                        <span class={source.active ? "" : "muted"}>
+                          {source.scope}
+                          {source.active
+                            ? ""
+                            : source.mode === "inherit"
+                              ? " · inherit"
+                              : " · overridden"}
+                        </span>
+                      ))}
+                    </div>
+                    {preview?.diff && (
+                      <details open>
+                        <summary>Changes</summary>
+                        <DiffView text={preview.diff} />
+                      </details>
+                    )}
+                    <pre aria-label="Effective system prompt">
+                      <DataText>{shown.effective}</DataText>
+                    </pre>
+                    {view.last_sent && view.last_sent !== shown.effective && (
+                      <details>
+                        <summary>Last sent prompt</summary>
+                        <pre>{view.last_sent}</pre>
+                      </details>
+                    )}
+                  </>
+                )}
+              </section>
+            </div>
+            <Actions>
+              {view.item.mode !== "inherit" && (
+                <Button
+                  disabled={!online || busy}
+                  onClick={() => perform("reset")}
+                >
+                  Reset to inherited
+                </Button>
+              )}
               {draft ? (
                 <>
-                  <Field label="Mode">
-                    <Select
-                      aria-label="Prompt mode"
-                      value={draft.mode}
-                      disabled={busy}
-                      onChange={(event) =>
-                        update({
-                          ...draft,
-                          mode: event.currentTarget
-                            .value as PromptDocument["mode"],
-                        })
-                      }
-                    >
-                      <option value="inherit">Inherit</option>
-                      <option value="overlay">
-                        Overlay · add instructions
-                      </option>
-                      <option value="replace">Replace inherited prompt</option>
-                    </Select>
-                  </Field>
-                  <Textarea
-                    aria-label="System prompt text"
-                    value={draft.text}
-                    disabled={busy || draft.mode === "inherit"}
-                    onInput={(event) =>
-                      update({ ...draft, text: event.currentTarget.value })
-                    }
-                  />
+                  <Button disabled={busy} onClick={() => update(null)}>
+                    Discard edit
+                  </Button>
+                  <Button
+                    disabled={!online || busy}
+                    onClick={() => perform("preview")}
+                  >
+                    Preview changes
+                  </Button>
+                  <Button
+                    disabled={!online || busy}
+                    variant="primary"
+                    onClick={() => perform("set")}
+                  >
+                    Save
+                  </Button>
                 </>
               ) : (
-                <>
-                  <small class="muted">
-                    {data.item.mode}
-                    {data.item.path && ` · ${data.item.path}`}
-                  </small>
-                  <pre>
-                    {data.item.mode === "inherit"
-                      ? "Using inherited instructions."
-                      : data.item.text || "Empty replacement."}
-                  </pre>
-                </>
-              )}
-            </section>
-            <section>
-              <h3>
-                {preview ? "Proposed effective prompt" : "Effective prompt"}
-              </h3>
-              {shown && (
-                <>
-                  <div class="prompt-sources">
-                    {shown.sources.map((source) => (
-                      <span class={source.active ? "" : "muted"}>
-                        {source.scope}
-                        {source.active
-                          ? ""
-                          : source.mode === "inherit"
-                            ? " · inherit"
-                            : " · overridden"}
-                      </span>
-                    ))}
-                  </div>
-                  {preview?.diff && (
-                    <details open>
-                      <summary>Changes</summary>
-                      <DiffView text={preview.diff} />
-                    </details>
-                  )}
-                  <pre aria-label="Effective system prompt">
-                    {shown.effective}
-                  </pre>
-                  {data.last_sent && data.last_sent !== shown.effective && (
-                    <details>
-                      <summary>Last sent prompt</summary>
-                      <pre>{data.last_sent}</pre>
-                    </details>
-                  )}
-                </>
-              )}
-            </section>
-          </div>
-          <div class="dialog-actions">
-            {data.item.mode !== "inherit" && (
-              <button
-                disabled={!online || busy}
-                onClick={() => perform("reset")}
-              >
-                Reset to inherited
-              </button>
-            )}
-            {draft ? (
-              <>
-                <button disabled={busy} onClick={() => update(null)}>
-                  Discard edit
-                </button>
-                <button
+                <Button
                   disabled={!online || busy}
-                  onClick={() => perform("preview")}
+                  onClick={() => {
+                    update(editable(view));
+                    setPane("instructions");
+                  }}
                 >
-                  Preview changes
-                </button>
-                <button
-                  disabled={!online || busy}
-                  class="primary"
-                  onClick={() => perform("set")}
-                >
-                  Save
-                </button>
-              </>
-            ) : (
-              <button
-                disabled={!online || busy}
-                onClick={() => {
-                  update(editable(data));
-                  setPane("instructions");
-                }}
-              >
-                {data.item.mode === "inherit"
-                  ? "Edit inherited prompt"
-                  : "Edit"}
-              </button>
-            )}
-          </div>
-          <small class="muted">
-            Saves apply to the next model request. Unsent edits stay in this
-            browser tab.
-          </small>
-        </>
+                  {view.item.mode === "inherit"
+                    ? "Edit inherited prompt"
+                    : "Edit"}
+                </Button>
+              )}
+            </Actions>
+            <small class="muted">
+              Saves apply to the next model request. Unsent edits stay in this
+              browser tab.
+            </small>
+          </>
+        </Placeholder>
       )}
     </div>
   );

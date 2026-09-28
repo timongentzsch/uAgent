@@ -92,10 +92,6 @@ void SessionHost::Stop() {
   changed_.notify_all();
 }
 
-std::vector<SessionInfo> SessionHost::DiscoverSessions() const {
-  return ListSessions(SessionScope::kAll);
-}
-
 void SessionHost::LoadDrafts() {
   std::error_code ec;
   const std::string folder = directory_ + "/drafts";
@@ -147,7 +143,7 @@ bool SessionHost::RefreshCatalogue(bool force) {
     return false;
   }
   scanned_ = std::chrono::steady_clock::now();
-  const auto list = DiscoverSessions();
+  const auto list = catalogue_.List(SessionScope::kAll);
   std::lock_guard lock(mutex_);
   bool changed = false;
   for (const SessionInfo& item : list) {
@@ -192,6 +188,29 @@ void SessionHost::RefreshPresence() {
     std::string error;
     ActivateLocked(session, error, lock, false);
   }
+}
+
+json SessionHost::RestartRunning(const std::string& cwd) {
+  std::unique_lock lock(mutex_);
+  std::vector<std::shared_ptr<HostSession>> idle;
+  int64_t deferred = 0;
+  for (const auto& [id, session] : sessions_) {
+    if (session->pid <= 0 || session->exited || session->closing ||
+        (!cwd.empty() && session->cwd != cwd)) {
+      continue;
+    }
+    session->restart = true;
+    if (session->turn_active) {
+      ++deferred;
+    } else {
+      idle.push_back(session);
+    }
+  }
+  for (const auto& session : idle) {
+    std::string error;
+    ActivateLocked(session, error, lock, false);
+  }
+  return {{"restarting", idle.size()}, {"deferred", deferred}};
 }
 
 void SessionHost::Shutdown() {

@@ -1,6 +1,7 @@
 import json
 import re
 import signal
+import sys
 import termios
 import time
 
@@ -15,6 +16,7 @@ from integration_support import (
     tool_call,
     wait_for_echo,
     wait_until_stopped,
+    write_mcp_server,
     write_session,
     write_sse_sequence,
 )
@@ -978,3 +980,53 @@ def test_system_prompt_editor_updates_next_request(root, home, *, binary):
         )
         assert_true(code == 0, output)
         assert_true(len(server.requests) == 1, server.requests)
+
+
+def test_cli_mcp_config_and_restart(root, home, *, binary):
+    fake = home / "fake_mcp.py"
+    write_mcp_server(
+        fake,
+        "    if method == 'server/discover':\n"
+        "        result = {'supportedVersions': ['2026-07-28'], 'capabilities': {'tools': {}}}\n"
+        "    elif method == 'tools/list':\n"
+        "        result = {'tools': [{'name': 'echo', 'inputSchema': {'type': 'object'}}]}\n"
+        "    else:\n"
+        "        result = {}\n",
+    )
+    (home / ".mcp.json").write_text(
+        json.dumps({"mcpServers": {"probe": {"command": sys.executable, "args": [str(fake)]}}})
+    )
+    try:
+        with Server(
+            [
+                lambda _, _body: event({"content": "Before restart"}),
+                lambda _, body: event(
+                    {"content": "history kept" if "Before restart" in json.dumps(body) else "lost"}
+                ),
+            ]
+        ) as server:
+            result = run_dialog(
+                root,
+                base_env(home, server.url),
+                "/mcp\n/mcp off probe\n/mcp on probe\n"
+                "/config user UAGENT_MAX_TOKENS=100\n/config\n"
+                "First turn\n/restart\nSecond turn\n"
+                "/config user reset\n/rename Parity check\n/permissions rules\n/q\n",
+                binary=binary,
+            )
+        output = result.stdout
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(re.search(r"probe .*global .*1 tools", output), output)
+        assert_true("disabled" in output, output)
+        assert_true("UAGENT_MAX_TOKENS: needs a restart" in output, output)
+        assert_true("/restart applies it here" in output, output)
+        assert_true(re.search(r"UAGENT_MAX_TOKENS = .*100 .*global-config", output), output)
+        assert_true("history kept" in output, output)
+        assert_true("UAGENT_MAX_TOKENS" not in (home / ".uagent/.config").read_text(), "reset")
+        assert_true("no remembered actions for this repository" in output, output)
+        assert_true(
+            any("Parity check" in path.read_text() for path in session_files(home)),
+            "rename not saved",
+        )
+    finally:
+        (home / ".mcp.json").unlink(missing_ok=True)

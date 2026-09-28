@@ -3,15 +3,19 @@ import type { LibraryItem } from "../../shared/types.ts";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { Plus, ArrowLeft, ChevronDown, Pencil } from "lucide-preact";
 import {
+  Actions,
+  Button,
+  EmptyState,
   Field,
   LoadError,
   Modal,
   Select,
-  Spinner,
   Input,
   Textarea,
+  Spinner,
+  DataText,
+  Placeholder,
 } from "../../shared/ui.tsx";
-import { LibraryRows } from "../../shared/loading.tsx";
 import { Menu, MenuItem } from "../../shared/popover.tsx";
 import { readStored, writeStored } from "../../state/store.ts";
 import { bytes } from "../../shared/quantities.ts";
@@ -31,6 +35,19 @@ type Draft = {
   name: string;
   scope: string;
 };
+// Rows drawn while the list loads (see <Placeholder>).
+const SAMPLE = ["An item name", "A longer item name here", "A name"].map(
+  (name, index): LibraryItem => ({
+    key: `placeholder-${index}`,
+    name,
+    path: "",
+    scope: "project",
+    source: "project",
+    writable: false,
+    revision: "",
+  }),
+);
+
 export default function Library({
   projects,
   cwd: initial,
@@ -200,29 +217,39 @@ export default function Library({
   );
   function rows(group?: string) {
     if (listError) return null;
-    if (!data) return <LibraryRows />;
-    const entries = group
-      ? items.filter((entry) => entry.scope === group)
-      : items;
-    return entries.length ? (
-      entries.map((entry) => (
-        <button
-          key={entry.key}
-          class={`library-row ${item?.key === entry.key ? "selected" : ""}`}
-          disabled={busy}
-          onClick={() => select(entry)}
-        >
-          <span>{entry.name}</span>
-          <small>
+    const entries = !data
+      ? SAMPLE
+      : group
+        ? items.filter((entry) => entry.scope === group)
+        : items;
+    const list = entries.map((entry) => (
+      <Button
+        key={entry.key}
+        class={`library-row ${item?.key === entry.key ? "selected" : ""}`}
+        disabled={busy}
+        onClick={() => select(entry)}
+      >
+        <span>
+          <DataText>{entry.name}</DataText>
+        </span>
+        <small>
+          <DataText>
             {group ? entry.source : `${entry.scope} · ${entry.source}`}
             {entry.status && entry.status !== "available"
               ? ` · ${entry.status}`
               : ""}
-          </small>
-        </button>
-      ))
+          </DataText>
+        </small>
+      </Button>
+    ));
+    if (!data)
+      return <Placeholder label="Loading library…">{list}</Placeholder>;
+    return entries.length ? (
+      list
     ) : (
-      <p class="muted">No {kind === "memory" ? "memories" : "skills"} found.</p>
+      <EmptyState>
+        No {kind === "memory" ? "memories" : "skills"} found.
+      </EmptyState>
     );
   }
   return (
@@ -235,7 +262,7 @@ export default function Library({
               ["skills", "Skills"],
             ] as const
           ).map(([value, label]) => (
-            <button
+            <Button
               disabled={busy}
               aria-pressed={kind === value}
               onClick={() => {
@@ -244,18 +271,19 @@ export default function Library({
               }}
             >
               {label}
-            </button>
+            </Button>
           ))}
         </div>
         <ProjectField value={cwd} projects={folders} change={chooseProject} />
-        <button
-          class="primary with-icon"
+        <Button
+          variant="primary"
+          class="with-icon"
           disabled={!online || !cwd || busy}
           onClick={() => create()}
         >
           <Plus />
           Add {kind === "memory" ? "memory" : "skill"}
-        </button>
+        </Button>
       </div>
       {kind === "memory" && data?.enabled === false && (
         <p class="muted">
@@ -264,9 +292,9 @@ export default function Library({
         </p>
       )}
       {!cwd ? (
-        <div class="empty">
-          <p>Choose a project to browse its library and your global items.</p>
-        </div>
+        <EmptyState>
+          Choose a project to browse its library and your global items.
+        </EmptyState>
       ) : (
         <div
           class={`management-body ${item || loading ? "has-selection" : ""}`}
@@ -322,7 +350,7 @@ export default function Library({
                         aria-label={path}
                       >
                         <h2>
-                          <button
+                          <Button
                             disabled={busy}
                             aria-expanded={path === cwd && expanded}
                             onClick={() =>
@@ -333,7 +361,7 @@ export default function Library({
                           >
                             <FolderLabel path={path} />
                             <ChevronDown aria-hidden="true" />
-                          </button>
+                          </Button>
                         </h2>
                         {path === cwd && expanded && rows("project")}
                       </section>
@@ -349,10 +377,14 @@ export default function Library({
             ) : item ? (
               <>
                 <div class="editor-head">
-                  <button class="quiet with-icon" onClick={() => setItem(null)}>
+                  <Button
+                    variant="quiet"
+                    class="with-icon"
+                    onClick={() => setItem(null)}
+                  >
                     <ArrowLeft />
                     Back
-                  </button>
+                  </Button>
                   <strong>
                     {item.key
                       ? item.name
@@ -418,7 +450,7 @@ export default function Library({
                 {changed && (
                   <p role="status">
                     Changed on disk. Your draft is retained.{" "}
-                    <button
+                    <Button
                       onClick={() => {
                         clearDraft();
                         if (current) select(current);
@@ -426,15 +458,15 @@ export default function Library({
                       }}
                     >
                       Reload
-                    </button>
+                    </Button>
                   </p>
                 )}
                 <div class="document-toolbar">
                   {item.writable && !editing && (
-                    <button class="with-icon" onClick={() => setEditing(true)}>
+                    <Button class="with-icon" onClick={() => setEditing(true)}>
                       <Pencil />
                       Edit
-                    </button>
+                    </Button>
                   )}
                   <small>
                     {bytes(new TextEncoder().encode(content).length)}
@@ -504,7 +536,7 @@ export default function Library({
                     <small class="muted">
                       Saved changes apply to new sessions.
                     </small>
-                    <button
+                    <Button
                       onClick={() => {
                         setContent(item.content || "");
                         clearDraft();
@@ -513,9 +545,9 @@ export default function Library({
                       }}
                     >
                       Cancel
-                    </button>
-                    <button
-                      class="primary"
+                    </Button>
+                    <Button
+                      variant="primary"
                       disabled={
                         !online ||
                         busy ||
@@ -527,15 +559,14 @@ export default function Library({
                       onClick={() => mutate("set")}
                     >
                       {busy ? "Saving…" : "Save"}
-                    </button>
+                    </Button>
                   </div>
                 )}
               </>
             ) : (
-              <div class="empty">
-                <p>Select an item to view or edit it.</p>
-                {error && <LoadError error={error} />}
-              </div>
+              <EmptyState action={!!error && <LoadError error={error} />}>
+                Select an item to view or edit it.
+              </EmptyState>
             )}
           </fieldset>
         </div>
@@ -571,14 +602,16 @@ export default function Library({
               </Field>
             )}
             {error && <LoadError error={error} />}
-            <div class="dialog-actions">
-              <button type="button" onClick={() => setDialog(null)}>
-                Cancel
-              </button>
-              <button class="primary" disabled={busy || !online} type="submit">
+            <Actions>
+              <Button onClick={() => setDialog(null)}>Cancel</Button>
+              <Button
+                type="submit"
+                variant="primary"
+                disabled={busy || !online}
+              >
                 {dialog === "delete" ? "Delete" : "Rename"}
-              </button>
-            </div>
+              </Button>
+            </Actions>
           </form>
         </Modal>
       )}

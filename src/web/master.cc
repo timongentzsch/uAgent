@@ -158,7 +158,8 @@ class Master {
       }
     }
     authority_ = origin_.substr(origin_.find("://") + 3);
-    if (!browser::StartService(executable_, browser_process_, error)) {
+    if (!browser::StartService(executable_, options_.browser_idle_minutes,
+                               browser_process_, error)) {
       return false;
     }
     LoadDevices();
@@ -282,9 +283,6 @@ class Master {
           "/api/browser/viewer",
           [this](const Request& request, httplib::ws::WebSocket& socket) {
             std::string device;
-            const std::string role = request.has_param("role")
-                                         ? request.get_param_value("role")
-                                         : "control";
             {
               std::lock_guard lock(mutex_);
               const std::string* expected_origin = ExpectedOrigin(request);
@@ -293,16 +291,16 @@ class Master {
                 device = DeviceId(request);
               }
             }
-            if (device.empty() || (role != "control" && role != "observe") ||
-                viewer_active_.exchange(true)) {
+            if (device.empty() || viewer_active_.exchange(true)) {
               socket.close(httplib::ws::CloseStatus::PolicyViolation);
               return;
             }
-            uint64_t generation = RelayBrowserViewer(socket, device, role);
-            if (generation && role == "control") {
+            if (auto viewed = RelayBrowserViewer(socket, device);
+                viewed.display) {
               browser::Request({{"op", "viewer_disconnected"},
                                 {"device", device},
-                                {"generation", generation}});
+                                {"display", viewed.display},
+                                {"generation", viewed.generation}});
             }
             viewer_active_ = false;
           });
@@ -480,6 +478,8 @@ class Master {
     return served ? 0 : 1;
   }
 
+  bool Reexec() const { return reexec_; }
+
  private:
   const std::string* ExpectedOrigin(const Request& request) const {
     // Keep loopback available for a local browser or an SSH-forwarded PWA while
@@ -645,6 +645,8 @@ class Master {
   std::map<std::string, Receipt> requests_;
   std::deque<std::string> request_order_;
   std::atomic<bool> stopping_{false};
+  // Set by a restart from the settings: MasterMain re-execs after shutdown.
+  std::atomic<bool> reexec_{false};
   std::unique_ptr<PushSender> push_;
   browser::ServiceProcess browser_process_;
   std::atomic<bool> viewer_active_{false};
@@ -835,6 +837,21 @@ void Master::Command(const Request& request, Response& response) {
         action != "preview") {
       Publish("", "", {{"kind", "management.changed"}});
     }
+  } else if (kind == "restart_conversations") {
+    // Settings that need a restart reach running conversations only through
+    // a fresh runtime; each keeps its history and restarts when idle.
+    lock.unlock();
+    outcome["result"] =
+        host_.RestartRunning(JsonValue(command, "cwd", std::string()));
+    lock.lock();
+  } else if (kind == "restart_host") {
+    // Reply first; the stop lands once this response is on its way.
+    reexec_ = true;
+    outcome["result"] = {{"restarting", true}};
+    std::thread([] {
+      std::this_thread::sleep_for(std::chrono::milliseconds(300));
+      WakeDescriptor(shutdown_fd);
+    }).detach();
   } else if (kind == "config" && JsonValue(command, "session_id", "").empty()) {
     lock.unlock();
     auto manager = ConfigManager::Capture(false, {});
@@ -1051,7 +1068,10 @@ void Master::AssetRead(const Request& request, Response& response) {
 
 }  // namespace
 
-int MasterMain(const WebOptions& options, const char* executable) {
+int MasterMain(const WebOptions& options, char** argv) {
+  if (!options.browser_data.empty()) {
+    browser::SetDataDirectory(options.browser_data);
+  }
   std::string directory = GlobalBase() + "/web";
   if (!EnsurePrivateDirectory(directory)) {
     fprintf(stderr,
@@ -1118,12 +1138,24 @@ int MasterMain(const WebOptions& options, const char* executable) {
             "retry after startup or inspect the owning terminal\n");
     return 2;
   }
-  SetExecutablePath(executable);
-  Master master(options, ExecutablePath(), directory);
-  if (!master.Initialize(error)) {
-    fprintf(stderr, "%s\n", error.c_str());
-    return 1;
+  SetExecutablePath(argv[0]);
+  int code = 1;
+  bool reexec = false;
+  {
+    // The whole master, browser service included, is gone before a re-exec,
+    // so the new one never races the old for the lock or the sockets.
+    Master master(options, ExecutablePath(), directory);
+    if (!master.Initialize(error)) {
+      fprintf(stderr, "%s\n", error.c_str());
+      return 1;
+    }
+    code = master.Run();
+    reexec = master.Reexec();
   }
-  return master.Run();
+  if (!reexec) return code;
+  lease.Reset();
+  execv(ExecutablePath().c_str(), argv);
+  fprintf(stderr, "cannot restart the web host: %s\n", strerror(errno));
+  return 1;
 }
 }  // namespace uagent::web

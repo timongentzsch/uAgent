@@ -6,7 +6,14 @@ import type {
   ToolCatalogue,
   ToolCatalogueItem,
 } from "../../shared/types.ts";
-import { LoadError, Select, Spinner, Input } from "../../shared/ui.tsx";
+import {
+  Button,
+  DataText,
+  Input,
+  LoadError,
+  Placeholder,
+  Select,
+} from "../../shared/ui.tsx";
 import { command } from "../../state/api.ts";
 
 const labels: Record<string, string> = {
@@ -28,6 +35,29 @@ const categoryOrder = [
   "system",
   "mcp",
 ];
+
+// What the list draws while the catalogue loads (see <Placeholder>).
+const SAMPLE: ToolCatalogue = {
+  profile: "default",
+  base_profile: "default",
+  profiles: ["default"],
+  active: 12,
+  available: 12,
+  schema_bytes: 12000,
+  full_schema_bytes: 12000,
+  tools: ["Read Path", "Write File", "Edit File", "Delete File"].map(
+    (title) => ({
+      name: title.toLowerCase().replace(" ", "_"),
+      title,
+      description: "What the tool does and when the agent should use it.",
+      category: "workspace",
+      provider: "builtin",
+      active: true,
+      available: true,
+      schema_bytes: 500,
+    }),
+  ),
+};
 
 export default function Tools({
   session,
@@ -150,7 +180,7 @@ export default function Tools({
   const groups = useMemo(() => {
     const found = new Map<string, ToolCatalogueItem[]>();
     const needle = query.trim().toLowerCase();
-    for (const tool of catalogue?.tools || []) {
+    for (const tool of (catalogue ?? SAMPLE).tools) {
       const category =
         categories.assignments[tool.name] || tool.category || "workspace";
       if (
@@ -178,31 +208,35 @@ export default function Tools({
     });
   }, [catalogue, categories, query]);
 
-  if (!catalogue && !error) return <Spinner label="Loading tools…" surface />;
-  if (!catalogue) return <LoadError error={error} />;
+  if (!catalogue && error) return <LoadError error={error} />;
+  const shown = catalogue ?? SAMPLE;
   const locked = !online || busy || !!saving;
-  const saved = catalogue.full_schema_bytes - catalogue.schema_bytes;
-  return (
+  const saved = shown.full_schema_bytes - shown.schema_bytes;
+  const view = (
     <div class="tools-content">
       <div class="tools-summary">
         <div>
           <strong>
-            {catalogue.active} of {catalogue.available} active
+            <DataText>
+              {shown.active} of {shown.available} active
+            </DataText>
           </strong>
           <small class="muted">
-            {catalogue.schema_bytes.toLocaleString()} serialized schema bytes
-            {saved > 0 && ` · ${saved.toLocaleString()} bytes saved`}
+            <DataText>
+              {shown.schema_bytes.toLocaleString()} serialized schema bytes
+              {saved > 0 && ` · ${saved.toLocaleString()} bytes saved`}
+            </DataText>
           </small>
         </div>
         <Select
           aria-label="Tool profile"
-          value={catalogue.base_profile}
+          value={shown.base_profile}
           disabled={locked}
           onChange={(event) =>
             update({ operation: "profile", profile: event.currentTarget.value })
           }
         >
-          {catalogue.profiles.map((profile) => (
+          {shown.profiles.map((profile) => (
             <option value={profile} key={profile}>
               {profile[0].toUpperCase() + profile.slice(1)}
             </option>
@@ -232,9 +266,12 @@ export default function Tools({
             disabled={!online || categorySaving}
             onInput={(event) => setCategoryName(event.currentTarget.value)}
           />
-          <button disabled={!online || categorySaving || !categoryName.trim()}>
+          <Button
+            type="submit"
+            disabled={!online || categorySaving || !categoryName.trim()}
+          >
             Add
-          </button>
+          </Button>
         </form>
         {categories.categories.map((category) => (
           <form
@@ -260,10 +297,12 @@ export default function Tools({
               defaultValue={category.name}
               disabled={!online || categorySaving}
             />
-            <button disabled={!online || categorySaving}>Rename</button>
-            <button
+            <Button type="submit" disabled={!online || categorySaving}>
+              Rename
+            </Button>
+            <Button
               type="button"
-              class="quiet"
+              variant="quiet"
               disabled={!online || categorySaving}
               onClick={() =>
                 updateCategories({
@@ -273,7 +312,7 @@ export default function Tools({
               }
             >
               Delete
-            </button>
+            </Button>
           </form>
         ))}
       </details>
@@ -294,7 +333,9 @@ export default function Tools({
       <div class="tool-groups">
         {groups.map(([category, tools]) => (
           <section class="tool-group" key={category}>
-            <h3>{categoryLabel(category)}</h3>
+            <h3>
+              <DataText>{categoryLabel(category)}</DataText>
+            </h3>
             {tools.map((tool) => (
               <div
                 key={tool.name}
@@ -315,11 +356,21 @@ export default function Tools({
                   />
                   <span>
                     <span class="tool-choice-head">
-                      <strong>{tool.title}</strong>
-                      <code>{tool.name}</code>
-                      <small>{tool.schema_bytes.toLocaleString()} bytes</small>
+                      <strong>
+                        <DataText>{tool.title}</DataText>
+                      </strong>
+                      <code>
+                        <DataText>{tool.name}</DataText>
+                      </code>
+                      <small>
+                        <DataText>
+                          {tool.schema_bytes.toLocaleString()} bytes
+                        </DataText>
+                      </small>
                     </span>
-                    <span class="tool-description">{tool.description}</span>
+                    <span class="tool-description">
+                      <DataText>{tool.description}</DataText>
+                    </span>
                     {tool.provider !== "builtin" && (
                       <small class="muted">{tool.provider}</small>
                     )}
@@ -354,5 +405,10 @@ export default function Tools({
         {!groups.length && <p class="muted">No matching tools.</p>}
       </div>
     </div>
+  );
+  return (
+    <Placeholder label="Loading tools…" when={!catalogue}>
+      {view}
+    </Placeholder>
   );
 }

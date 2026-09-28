@@ -1,39 +1,84 @@
-import { Field, Skeleton } from "./ui.tsx";
+import {
+  DialogHeader,
+  Field,
+  Group,
+  Input,
+  Placeholder,
+  Select,
+  SettingRow,
+} from "./ui.tsx";
+import "../features/settings/settings.css";
+import { SettingsNav } from "../features/settings/settings-nav.tsx";
+import { useMedia } from "./layout.ts";
 
-const busy = { role: "status", "aria-busy": true } as const;
+// Loading states that must exist before their feature's code: each draws the
+// feature's own primitives from sample data (see <Placeholder>).
+const noop = () => {};
 
-// Placeholders only for known fields and text rows. Feature shells own their
-// real controls; unknown content uses Spinner instead of copying a screen.
-function Control() {
-  return <Skeleton decorative rows={1} className="control-skeleton" />;
-}
-function ModelSkeleton() {
-  // Both callers own the form wrapper and actions. Reserve the optional
-  // variant slot until the catalogue tells us whether it is available.
+// Settings before its code arrives: the same header, section list and pane.
+export function SettingsLoading() {
+  const phone = useMedia("(max-width: 600px)");
   return (
     <>
-      <span className="sr-only" role="status" aria-busy="true">
-        Loading models…
-      </span>
-      <Field label="Model · loading…">
-        <Control />
-      </Field>
-      <div className="field-row" aria-hidden="true">
-        <Field label="Effort">
-          <Control />
-        </Field>
-        <Field label="Variant">
-          <Control />
-        </Field>
+      <DialogHeader title="Settings" />
+      <div class="dialog-body settings-content">
+        <SettingsNav current={phone ? undefined : "general"} select={noop} />
+        <div class="settings-pane">
+          {!phone && <h3 class="settings-pane-title">General</h3>}
+          <Placeholder label="Loading settings…">
+            <SettingRows />
+          </Placeholder>
+        </div>
       </div>
     </>
   );
 }
 
+// Registry settings before they load.
+export function SettingRowsLoading() {
+  return (
+    <Placeholder label="Loading configuration…">
+      <SettingRows />
+    </Placeholder>
+  );
+}
+
+function SettingRows() {
+  return (
+    <Group>
+      {["UAGENT_MODEL", "UAGENT_REASONING_EFFORT", "UAGENT_BASE_URL"].map(
+        (name) => (
+          <SettingRow
+            key={name}
+            name={name}
+            detail="What this setting changes and where it applies"
+            reset={noop}
+          >
+            <Input aria-label={name} />
+          </SettingRow>
+        ),
+      )}
+    </Group>
+  );
+}
+
+// The model form before its catalogue, also its code's fallback.
 export function ModelLoading({ close }: { close: () => void }) {
   return (
     <div class="model-form">
-      <ModelSkeleton />
+      <Placeholder label="Loading models…">
+        <Field label="Model">
+          <Select aria-label="Model" />
+        </Field>
+        <div class="field-row">
+          <Field label="Effort">
+            <Select aria-label="Effort" />
+          </Field>
+          <Field label="Variant">
+            <Select aria-label="Variant" />
+          </Field>
+        </div>
+      </Placeholder>
       <ModelActions close={close} />
     </div>
   );
@@ -65,21 +110,4 @@ export function ModelActions({
       </button>
     </div>
   );
-}
-
-export function LibraryRows({ count = 3 }: { count?: number }) {
-  return (
-    <div {...busy} aria-label="Loading library…">
-      <ManagementRows count={count} />
-    </div>
-  );
-}
-
-function ManagementRows({ count = 3 }: { count?: number }) {
-  return Array.from({ length: count }, (_, i) => (
-    <div key={i} className="library-row" aria-hidden="true">
-      <Skeleton decorative rows={1} className="title-skeleton" />
-      <Skeleton decorative rows={1} className="meta-skeleton" />
-    </div>
-  ));
 }

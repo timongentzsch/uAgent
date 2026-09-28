@@ -5,6 +5,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -120,6 +121,23 @@ void TestSandboxRendering() {
   policy.allow_network = false;
   CHECK(SeatbeltProfile(policy).find("(deny network*)") != std::string::npos);
 
+  // The browser profile is hidden after every allow, so a writable root that
+  // contains it cannot grant it back, and its sockets refuse a connect.
+  policy.writable_roots.emplace_back("/h/.local/share");
+  policy.hidden = {"/h/.local/share/browser"};
+  profile = SeatbeltProfile(policy);
+  size_t hidden = profile.find(
+      "(deny file-read* file-write* (subpath \"/h/.local/share/browser\"))");
+  REQUIRE(hidden != std::string::npos);
+  CHECK(profile.find("(allow file-write* (subpath \"/h/.local/share\"))") <
+        hidden);
+  CHECK(profile.find("(deny network-outbound (remote unix-socket (path-prefix "
+                     "\"/h/.local/share/browser\")))") > hidden);
+  // No ancestor can be renamed, which would carry it out from under the rule.
+  CHECK(profile.find("(deny file-write-unlink (literal \"/h\") (literal "
+                     "\"/h/.local\") (literal \"/h/.local/share\"))") !=
+        std::string::npos);
+
   // Quotes and backslashes in a path must not end the SBPL string early.
   SandboxPolicy quoted;
   quoted.writable_roots = {"/w/we\"ird\\path"};
@@ -165,6 +183,15 @@ void TestSandboxTrampolineArgs() {
   CHECK(round.writable_roots.empty());
   CHECK(consumed == 2);
 
+  // Hidden paths ride after the roots.
+  policy.hidden = {"/b/browser"};
+  words = EncodeSandboxPolicy(policy);
+  words.emplace_back("--");
+  REQUIRE(DecodeSandboxPolicy(words, &decoded, &consumed));
+  CHECK(decoded.hidden == policy.hidden);
+  CHECK(decoded.writable_roots == policy.writable_roots);
+  CHECK(words[consumed] == "--");
+
   // Every malformed form has to fail rather than decode to an empty policy,
   // which the trampoline would enforce as no confinement at all.
   SandboxPolicy ignored;
@@ -192,6 +219,21 @@ void TestSandboxTrampolineArgs() {
   } else {
     CHECK(wrapper.empty());
   }
+}
+
+// The browser profile, canonical, only while it exists.
+void TestSandboxHiddenPaths() {
+  namespace fs = std::filesystem;
+  TestWorkspace test("hidden");
+  const fs::path browser = fs::canonical(test.home) / "browser";
+  {
+    ScopedEnv unset("UAGENT_BROWSER_DATA");
+    CHECK(HiddenPaths().empty());
+  }
+  ScopedEnv configured("UAGENT_BROWSER_DATA", browser.string());
+  CHECK(HiddenPaths().empty());
+  fs::create_directories(browser);
+  CHECK(HiddenPaths() == std::vector<std::string>{browser.string()});
 }
 
 void TestSandboxProbe() {

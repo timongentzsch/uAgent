@@ -6,6 +6,7 @@ import {
   readStored,
 } from "../src/state/store.ts";
 import { api, command, receiveOutcome } from "../src/state/api.ts";
+import { maxHttpExchanges } from "../src/shared/limits.ts";
 import {
   renderMarkdown,
   renderMarkdownBlocks,
@@ -494,6 +495,28 @@ test("collaborator lifecycle events upsert and remove one retained runtime", () 
   assert.deepEqual(removed.state.collaborators, [
     { id: "ordinary", status: "idle" },
   ]);
+});
+
+test("HTTP exchanges update in place by id and stay bounded", () => {
+  const exchange = (id, state) => ({
+    kind: "event",
+    type: "http.exchange",
+    data: { id, state },
+  });
+  let current = applySessionEvent({}, exchange("a", "pending"));
+  current = applySessionEvent(current, exchange("b", "pending"));
+  current = applySessionEvent(current, exchange("a", "done"));
+  assert.deepEqual(
+    current.state.http.map((item) => [item.id, item.state]),
+    [
+      ["a", "done"],
+      ["b", "pending"],
+    ],
+  );
+  for (let index = 0; index <= maxHttpExchanges; index++)
+    current = applySessionEvent(current, exchange(`n${index}`, "done"));
+  assert.equal(current.state.http.length, maxHttpExchanges);
+  assert.equal(current.state.http.at(-1).id, `n${maxHttpExchanges}`);
 });
 
 test("a retained arrival preserves older pages explicitly loaded by the user", () => {

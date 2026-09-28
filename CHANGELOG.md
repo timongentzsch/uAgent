@@ -1,9 +1,14 @@
 # Changelog
 
-## Unreleased
+## v1.1.0 - 2026-09-27
 
 ### Upgrade notes
 
+- `UAGENT_APPROVAL` accepts `ask`, `auto` or `yolo`; the old `prompt`
+  spelling is gone (an unknown value still means `ask`).
+- The web host now reads `UAGENT_WEB_BIND`, `UAGENT_BROWSER_DATA` and
+  `UAGENT_BROWSER_IDLE_MINUTES` from the config file as well, not only from
+  its environment.
 - Running sessions restart on upgrade and installed web apps must reload:
   workers now report their binary in the connection handshake, and the old
   pending-decision field and `.sock.binary` marker are gone.
@@ -16,6 +21,24 @@
 
 ### Added
 
+- Annotate images in the web viewer: pen strokes and numbered pins with
+  notes, attached as a marked-up copy that replaces the draft image.
+- Every setting behaves the same: its value shows as text, default
+  included, with **Reset** while it is changed; values set by the
+  environment are locked. **Reset all to defaults** resets a scope (and this
+  device's display settings) but keeps API keys. A change that needs a
+  restart offers one: running conversations restart when idle and keep
+  their history; the web host re-execs itself for its own settings.
+- Terminal parity: `/config` lists changed settings and resets a scope,
+  `/restart` restarts the conversation, `/mcp [retry|on|off NAME]` mirrors
+  the MCP settings, `/rename TITLE`, and `/permissions rules` / `forget`.
+- Settings → **MCP servers**: every configured server of the open
+  conversation, grouped as global or project, with its state, tools and
+  failure reason. Retry a failed server or switch one off and on; the switch
+  edits `disabled` in the defining `.mcp.json` and applies at once.
+- Chrome stops by itself after `UAGENT_BROWSER_IDLE_MINUTES` (default 15)
+  without browser work, unless a person holds or is asked for it, and starts
+  again on the next action.
 - Tool rows read as a headline ("Edited src/a.ts +12 −3") with a status dot.
   Diffs, a command's last output lines, shared files and links to started
   work stay visible without expanding; a command's output is one scrollable
@@ -61,8 +84,46 @@
   size-budgeted vision flow, so providers only ever see supported bytes.
   Unconvertible files fail with an actionable error instead of degrading
   the route.
+- New sessions are named in the background from the first real prompt by
+  `UAGENT_TITLE_MODEL` (default the latest DeepSeek Flash route; `off`
+  keeps the first line). A rename always wins over a late title.
+- A persistent work button under the input counts running commands and
+  sidekicks and opens their list; it stays clickable when idle.
+- Settings open as sections in a sidebar (General, Models, Permissions,
+  Agent, Devices, Advanced, Developer); phones drill in from a list.
 
 ### Changed
+
+- The agent can use the browser's saved logins but never read them. With the
+  sandbox on, commands cannot read the browser data directory or reach its
+  sockets (Linux 7.1+ via Landlock, macOS via Seatbelt), and the file tools
+  refuse it. Screenshots mask password fields, including revealed ones;
+  `back` refuses non-HTTP(S) history; `deploy/chrome-policy.json` blocks
+  Chrome's local password pages, `view-source:` and DevTools (installed by
+  the Docker image; `install.sh` prints the one-time `sudo` command).
+- Dialogs, sheets, popovers and toasts animate in and out from one set of
+  motion tokens, and the system back gesture closes the topmost dialog, sheet
+  or page. Settings is a full-screen sheet on phones with grouped rows that
+  save themselves. Streaming replies render formatted as they arrive, code
+  inside its box from the first line. Every screen uses the shared controls.
+- The browser opens as one full-screen sheet on phones (landscape too) with a
+  fixed layout: the live screen fills it and one bar holds status, tools and
+  **Take over**/**Done**. Notices and the clipboard card float over the
+  screen, so no state moves anything, and handing control over no longer
+  reconnects the screen. Touch drives Chrome directly: tap clicks, drag
+  scrolls, hold-and-drag drags or selects, two-finger tap right-clicks, pinch
+  zooms. **Open browser** on the agent's request takes over in one tap and
+  **Done** returns to the chat.
+- Browser actions wait for the page to settle and return a fresh screenshot,
+  follow a tab the action opens, add `back`, and flag a suspected bot check or
+  rate limit so the agent can hand off with `request_human` or try another
+  source. While the user drives, actions fail at once instead of waiting.
+  Screenshot pixels now match click coordinates after scrolling.
+- Loading and resuming keep the layout still on phones: the header keeps its
+  buttons from the first frame, the conversation loads behind one skeleton,
+  a resumed app keeps its content and only labels a reconnect that takes
+  longer than a second, and notices float over the app. Return on the phone
+  keyboard writes a new line; Send sends. Dialogs and sheets slide in.
 
 - Approvals ask one plain question; the terminal shows its key hints once and
   the browser shows one button per option.
@@ -127,6 +188,13 @@
   tool arguments, including activity waits.
 - Complete MCP discovery, subscriptions and bounded input continuations while
   preserving tool arguments, response correlation and cancellation.
+- The conversation is compact: no marks or indents, a one-line user bar,
+  a reply's time and menu on hover, and about half the spacing.
+- The status line sits above the input; context and session totals stay
+  below it.
+- An expanded tool row is one column: short arguments and a raw link join
+  its info line, and the command and output boxes align. A failed call
+  reads red without an icon.
 
 ### Removed
 
@@ -160,6 +228,23 @@
 - Preserve model/tool Unicode content when UI symbols fall back to ASCII.
 - Wake the idle terminal when SIGINT reaches another thread, so the second
   Ctrl+C exits reliably and restores terminal modes.
+- Unsent drafts survive a reload or an evicted installed app, and a failed
+  reconnect retries with backoff.
+- `/http INDEX` keeps every exchange of the turn, not just the latest.
+- Diff shading runs to the end of long lines when scrolled.
+- Message statistics are titled and scoped as a message, turn statistics
+  as a turn.
+- The installed iOS app draws under a dark status bar, the page has a
+  favicon, and the UI showcase allows pinch-zoom.
+- Reloading the web UI no longer shifts the layout: the shell renders from the
+  first frame with the last conversation list, title and composer state, and
+  only the transcript fills in. A saved conversation shows **Resume** from the
+  start instead of swapping it in after connecting.
+- Loading placeholders for Settings, configuration rows, statistics, tools and
+  the system prompt match their loaded layouts instead of showing a spinner or
+  generic bars.
+- The system prompt's Scope field no longer renders at the prompt editor's
+  height.
 
 ## v1.0.0 - 2026-09-03
 

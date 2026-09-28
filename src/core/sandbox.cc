@@ -117,17 +117,33 @@ std::string SeatbeltProfile(const SandboxPolicy& policy) {
     out += "(deny file-write* (subpath " + QuoteSbpl(denied) + "))\n";
   }
   if (!policy.allow_network) out += "(deny network*)\n";
+  // Last, so no writable root grants it back. A unix-socket connect is a
+  // network operation to seatbelt, hence the second rule; the rules match
+  // paths, so no ancestor may be renamed out from under them either.
+  for (const std::string& hidden : policy.hidden) {
+    out += "(deny file-read* file-write* (subpath " + QuoteSbpl(hidden) +
+           "))\n(deny network-outbound (remote unix-socket (path-prefix " +
+           QuoteSbpl(hidden) + ")))\n(deny file-write-unlink";
+    for (size_t slash = hidden.find('/', 1); slash != std::string::npos;
+         slash = hidden.find('/', slash + 1)) {
+      out += " (literal " + QuoteSbpl(hidden.substr(0, slash)) + ")";
+    }
+    out += ")\n";
+  }
   if (out.size() > kSeatbeltProfileLimit) return {};
   return out;
 }
 
 std::vector<std::string> EncodeSandboxPolicy(const SandboxPolicy& policy) {
   std::vector<std::string> words;
-  words.reserve(policy.writable_roots.size() + 2);
+  words.reserve(policy.writable_roots.size() + policy.hidden.size() + 2);
   words.emplace_back(policy.allow_network ? "net=1" : "net=0");
   words.emplace_back("roots=" + std::to_string(policy.writable_roots.size()));
   words.insert(words.end(), policy.writable_roots.begin(),
                policy.writable_roots.end());
+  for (const std::string& hidden : policy.hidden) {
+    words.push_back("hide=" + hidden);
+  }
   return words;
 }
 
@@ -157,7 +173,13 @@ bool DecodeSandboxPolicy(const std::vector<std::string>& words,
   if (words.size() < 2 + count) return false;
   auto first = words.begin() + 2;
   policy->writable_roots.assign(first, first + static_cast<ptrdiff_t>(count));
-  *consumed = 2 + count;
+  // Paths are absolute, so a hide word is never the `--` that ends the policy.
+  size_t index = 2 + count;
+  policy->hidden.clear();
+  for (; index < words.size() && words[index].starts_with("hide=/"); ++index) {
+    policy->hidden.push_back(words[index].substr(5));
+  }
+  *consumed = index;
   return true;
 }
 

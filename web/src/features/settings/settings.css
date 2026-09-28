@@ -1,17 +1,109 @@
-.subview-head {
-  display: flex;
+/* Settings is a sheet: one header, a grouped list of sections and the
+   chosen section beside it. On a phone the list is the first screen and a
+   section pushes in over it, with Back in the header. Rows, groups and
+   captions come from the shared primitives; this file only lays them out. */
+dialog.settings-view {
+  --dialog-width: calc(880rem / 14);
+}
+.settings-content {
+  flex: 1;
+  padding: 0;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: calc(240rem / 14) minmax(0, 1fr);
+  min-height: 0;
+  background: var(--bg);
+}
+.settings-nav,
+.settings-pane {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: var(--pad) var(--surface-inset) var(--space-12);
+}
+.settings-nav {
+  border-right: 1px solid var(--line);
+}
+.settings-nav .group {
+  margin-bottom: var(--pad);
+}
+.settings-nav-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-6);
+}
+.settings-nav-label > svg {
+  width: 1.1rem;
+  height: 1.1rem;
+  color: var(--muted);
+}
+.settings-nav .row[aria-current="page"] {
+  background: var(--raised);
+}
+/* Beside the pane the list selects rather than drills in: no chevrons. */
+/* The section list is structured by its groups' gaps alone. */
+.settings-nav .group-rows > * + * {
+  border-top: 0;
+}
+@media (min-width: 601px) {
+  .settings-nav .row-chevron {
+    display: none;
+  }
+}
+.settings-pane-title {
+  margin: 0 0 var(--pad);
+  font-size: 1.2rem;
+}
+/* Content inside a group that is not a row (a slider, an error). */
+.group-block {
+  padding: var(--space-6);
+}
+@media (max-width: 600px) {
+  .settings-content {
+    grid-template-columns: minmax(0, 1fr);
+    padding-bottom: var(--safe-bottom);
+  }
+  .settings-content[data-drilled] > .settings-nav,
+  .settings-content:not([data-drilled]) > .settings-pane {
+    display: none;
+  }
+  .settings-nav {
+    border-right: 0;
+  }
+  /* A section pushes in from the right, as in a native settings app. */
+  .settings-content[data-drilled] > .settings-pane {
+    transition: translate var(--motion-slow) var(--ease-out);
+  }
+  @starting-style {
+    .settings-content[data-drilled] > .settings-pane {
+      translate: 30% 0;
+    }
+  }
+}
+.mcp-name {
+  display: inline-flex;
   align-items: center;
   gap: var(--gap);
-  position: sticky;
-  top: calc(-1 * var(--pad));
-  background: var(--bg);
-  padding: var(--space-4) 0;
-  z-index: 1;
 }
-.device {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--pad);
-  min-height: var(--control);
+.mcp-detail {
+  display: grid;
+  justify-items: start;
+  gap: var(--gap);
+  padding: var(--space-3) var(--space-6) var(--space-6);
+}
+.mcp-detail > code,
+.mcp-log {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  color: var(--muted);
+  font-size: var(--font-small);
+}
+.mcp-log {
+  margin: 0;
+  max-height: calc(160rem / 14);
+  overflow: auto;
+}
+.mcp-detail > .row {
+  padding-inline: 0;
 }

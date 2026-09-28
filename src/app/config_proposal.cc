@@ -300,11 +300,6 @@ bool ValidateValue(const ConfigDescriptor& descriptor, std::string& value,
         }
         return false;
       }
-      if (name == "UAGENT_APPROVAL" && !value.empty() && value != "prompt" &&
-          value != "ask" && value != "auto" && value != "yolo") {
-        error = "UAGENT_APPROVAL expects prompt, ask, auto or yolo";
-        return false;
-      }
       return true;
   }
   return true;

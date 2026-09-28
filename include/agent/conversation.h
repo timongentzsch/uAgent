@@ -35,7 +35,6 @@ enum class ToolPruneMode { kOldResults, kSupersededReads };
 
 class Conversation {
  public:
-  json& Messages() { return messages_; }
   const json& Messages() const { return messages_; }
   const json& Archive() const { return archive_; }
   const std::vector<MessageKind>& Kinds() const { return kinds_; }

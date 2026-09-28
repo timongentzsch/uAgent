@@ -10,6 +10,8 @@ neither the workspace nor under any other default root, so a write to one is
 denied on both platforms.
 """
 
+import os
+import pathlib
 import shlex
 import socket
 import sys
@@ -253,6 +255,102 @@ def test_sandbox_reads_stay_open(root, home, *, binary):
     secret.write_text("read-me-marker\n")
     output = tool_output(root, sandbox_env(home, ""), f"cat {secret}", binary=binary)
     assert_true("read-me-marker" in output, f"a sandboxed command could not read: {output}")
+
+
+def browser_reach(root, env, profile, *, binary, approve=False, yolo=False):
+    """What a command could get at in the browser profile, as marker names.
+
+    Each probe writes its marker only on success, into the workspace, so a
+    probe that was stopped for any reason reads as unreached.
+    """
+    ws = workspace(root)
+    for marker in ws.glob("reach-*"):
+        marker.unlink()
+    connect = "import socket;socket.socket(socket.AF_UNIX).connect('s.sock')"
+    probes = {
+        "list": f"ls {profile} | grep -q Login",
+        "read": f"grep -q login-secret {shlex.quote(str(profile / 'Login Data'))}",
+        "connect": f'(cd {profile} && {sys.executable} -c "{connect}")',
+        # The owner of the profile is this test, which is not the command's
+        # descendant: its /proc root must not reach the files either.
+        "proc": f"grep -q login-secret "
+        f"{shlex.quote(f'/proc/{os.getpid()}/root{profile}/Login Data')}",
+        "control": f"grep -q read-me-marker {root / 'readable.txt'}",
+        # Last, since it succeeds unsandboxed. A renamed profile would be out
+        # from under every rule that names it.
+        "rename": f"mv {profile} {profile}.moved",
+    }
+    command = "; ".join(f"{probe} && echo x > reach-{name}" for name, probe in probes.items())
+    arguments = {"command": command, **({"sandbox": False} if approve else {})}
+    with Server([tool_call("run", arguments), event({"content": "reach-ok"})]) as server:
+        env = dict(env, UAGENT_BASE_URL=server.url)
+        if approve:
+            run_pty(
+                ws,
+                env,
+                [(b"go\n", b"Allow run?  [y] Allow"), (b"y\n", b"reach-ok"), b"", b"/q\n"],
+                timeout=30,
+                binary=binary,
+            )
+        elif yolo:
+            run(ws, env, "--yolo", "-p", "go", timeout=30, binary=binary)
+        else:
+            run_dialog(ws, env, "y\n", "-p", "go", timeout=30, binary=binary)
+    return {marker.name.removeprefix("reach-") for marker in ws.glob("reach-*")}
+
+
+def landlock_abi():
+    """The kernel's Landlock ABI, or 0; decides whether sockets can be hidden."""
+    import ctypes
+
+    abi = ctypes.CDLL(None, use_errno=True).syscall(444, None, 0, 1)
+    return max(abi, 0)
+
+
+def test_sandbox_hides_the_browser_profile(root, home, *, binary):
+    """A sandboxed command cannot read the browser profile; nothing else changes.
+
+    Yolo, a person-approved sandbox=false and a disabled sandbox lift it, as
+    they lift the sandbox itself.
+    """
+    if not sandbox_enforced(root, home, binary=binary):
+        return
+    # Canonical, because both mechanisms match the resolved path.
+    profile = pathlib.Path(os.path.realpath(root)) / "browser"
+    profile.mkdir()
+    (profile / "Login Data").write_text("login-secret\n")
+    (root / "readable.txt").write_text("read-me-marker\n")
+    # Bound and reached by a relative name: the full path can exceed the
+    # small limit a unix socket address has.
+    listener = socket.socket(socket.AF_UNIX)
+    cwd = os.getcwd()
+    os.chdir(profile)
+    try:
+        listener.bind("s.sock")
+    finally:
+        os.chdir(cwd)
+    listener.listen(8)
+    everything = {"list", "read", "connect", "control", "rename"}
+    expected = {"control"}
+    if sys.platform.startswith("linux"):
+        everything.add("proc")
+        # Listing names is allowed there, and Landlock before ABI 9 cannot
+        # refuse a connect to a pathname socket.
+        expected.add("list")
+        if landlock_abi() < 9:
+            expected.add("connect")
+    try:
+        env = sandbox_env(home, "", UAGENT_BROWSER_DATA=str(profile))
+        reached = browser_reach(root, env, profile, binary=binary)
+        assert_true(reached == expected, f"confined: reached {sorted(reached)}")
+        for case in ("off", "approve", "yolo"):
+            case_env = dict(env, UAGENT_SANDBOX="0") if case == "off" else env
+            options = {} if case == "off" else {case: True}
+            reached = browser_reach(root, case_env, profile, binary=binary, **options)
+            assert_true(reached == everything, f"{case}: reached only {sorted(reached)}")
+            profile.with_name("browser.moved").rename(profile)
+    finally:
+        listener.close()
 
 
 def test_sandbox_detached_log_writes_but_records_do_not(root, home, *, binary):

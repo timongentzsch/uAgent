@@ -1,91 +1,26 @@
 // Copyright 2026 Timon Gentzsch
 
-#include <chrono>
-#include <cstdio>
-#include <filesystem>
-#include <map>
-#include <optional>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <utility>
-#include <vector>
 
 #include "include/agent/child_agent.h"
 #include "include/agent/jobs.h"
-#include "include/agent/process.h"
 #include "include/agent/session_store.h"
-#include "include/agent/session_view.h"
 #include "include/app/commands.h"
 #include "include/app/config_proposal.h"
-#include "include/app/control.h"
-#include "include/app/prompt_control.h"
-#include "include/app/self_description.h"
-#include "include/core/debug.h"
-#include "include/core/env.h"
 #include "include/core/events.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
-#include "include/core/sandbox.h"
-#include "include/core/signals.h"
 #include "include/core/steering.h"
 #include "include/core/strings.h"
-#include "include/core/term.h"
-#include "include/media/attachments.h"
+#include "include/mcp/register.h"
 #include "include/providers.h"
-#include "include/tools/memory.h"
 #include "include/tools/subagent.h"
-#include "include/ui/conversation.h"
-#include "include/ui/sessions.h"
 #include "src/app/commands_internal.h"
-namespace uagent {
 
-json CommandResult(const AppSession& session,
-                   const ParsedSlashCommand& command) {
-  switch (command.spec->id) {
-    case SlashCommandId::kHelp:
-      return DescribeSelf(SelfTopic::kCommands, "", DescriptionInputs(session));
-    case SlashCommandId::kStatus:
-      return DescribeSelf(SelfTopic::kStatus, "", DescriptionInputs(session));
-    case SlashCommandId::kDebugConfig:
-      return DescribeSelf(SelfTopic::kConfig, command.argument,
-                          DescriptionInputs(session));
-    case SlashCommandId::kTools:
-      return DescribeSelf(SelfTopic::kTools, "", DescriptionInputs(session));
-    case SlashCommandId::kContext:
-      return {
-          {"effective_config", session.context.config_manager.DiagnosticJson(
-                                   session.Runtime().config)},
-          {"capabilities", session.ApiClient().capabilities.DiagnosticJson()},
-          {"model_request", session.ActiveAgent().ModelRequest()}};
-    case SlashCommandId::kCost:
-      return {{"routes", session.ActiveAgent().RouteUsageJson()},
-              {"total", UsageJson(session.ActiveAgent().SessionUsage())},
-              {"session_budget", session.ApiClient().config.session_budget}};
-    case SlashCommandId::kPrompt:
-    case SlashCommandId::kMemory:
-    case SlashCommandId::kSkills:
-    case SlashCommandId::kSchedule:
-      return json::object();  // management commands return their operation
-                              // result directly
-    case SlashCommandId::kProcesses: {
-      ToolResult activities = ToolActivityList(session.Runtime().processes);
-      return {{"activities", activities.output}};
-    }
-    case SlashCommandId::kAgents:
-      return {{"collaborators", AgentsJson(session)}};
-    case SlashCommandId::kAttach: {
-      json attachments = json::array();
-      for (const Attachment& attachment : session.attachments) {
-        attachments.push_back({{"name", attachment.name},
-                               {"path", attachment.path},
-                               {"mime", attachment.mime}});
-      }
-      return {{"attachments", std::move(attachments)}};
-    }
-    default:
-      return json::object();
-  }
-}
+namespace uagent {
 
 json PermissionControl(AppContext& context, const json& request) {
   std::string mode = JsonValue(request, "mode", "");
@@ -120,6 +55,17 @@ json SessionControl(AppSession& session, const json& request) {
     return session.ActiveAgent().PromptConfiguration(request);
   }
   if (kind == "permissions") return PermissionControl(session.context, request);
+  if (kind == "tools" &&
+      JsonValue(request, "operation", "").starts_with("mcp_")) {
+    AppContext& app = session.context;
+    json result =
+        McpControl(request, app.tools, app.runtime.mcp, app.runtime.config);
+    if (app.runtime.mcp.registry_changed) {
+      ApplyToolPolicy(app.tools, app.tool_policy);
+      app.session_approvals.clear();
+    }
+    return result;
+  }
   if (kind == "tools") {
     json result = session.ActiveAgent().ConfigureTools(request);
     if (!result.contains("error") &&
@@ -128,47 +74,27 @@ json SessionControl(AppSession& session, const json& request) {
     }
     return result;
   }
-  if (kind == "fork") {
-    std::string error;
+  if (kind == "fork" || kind == "rewind" || kind == "share") {
+    const int64_t turn = JsonValue(request, "turn", int64_t{0});
+    if (kind == "rewind" && turn <= 0) {
+      return {{"error", "usage: /rewind [@]TURN"}};
+    }
     if (session.session_file.empty()) {
+      if (kind != "fork") return {{"error", "session has no file yet"}};
       session.session_file = UagentDir(kHistoryDir) + "/" +
                              WorkspaceId(CanonicalCwd()) + "/" +
                              MakeSessionId() + ".json";
     }
-    SaveSessionSettings(session);
-    if (!session.ActiveAgent().Save(session.session_file, error)) {
+    std::string error;
+    if ((kind == "rewind" &&
+         !session.ActiveAgent().RewindToTurn(turn, error)) ||
+        !session.Save(error)) {
       return {{"error", error}};
     }
+    if (kind == "rewind") return {{"rewound", true}, {"turns", turn - 1}};
+    if (kind == "share") return SessionStore::Share(session.session_file);
     return SessionStore::Fork(session.session_file,
-                              JsonValue(request, "title", ""), true,
-                              JsonValue(request, "turn", int64_t{0}));
-  }
-  if (kind == "rewind") {
-    const int64_t turn = JsonValue(request, "turn", int64_t{0});
-    if (turn <= 0) return {{"error", "usage: /rewind [@]TURN"}};
-    if (session.session_file.empty()) {
-      return {{"error", "session has no file yet"}};
-    }
-    std::string error;
-    if (!session.ActiveAgent().RewindToTurn(turn, error)) {
-      return {{"error", error}};
-    }
-    SaveSessionSettings(session);
-    if (!session.ActiveAgent().Save(session.session_file, error)) {
-      return {{"error", error}};
-    }
-    return {{"rewound", true}, {"turns", turn - 1}};
-  }
-  if (kind == "share") {
-    if (session.session_file.empty()) {
-      return {{"error", "session has no file yet"}};
-    }
-    std::string error;
-    SaveSessionSettings(session);
-    if (!session.ActiveAgent().Save(session.session_file, error)) {
-      return {{"error", error}};
-    }
-    return SessionStore::Share(session.session_file);
+                              JsonValue(request, "title", ""), true, turn);
   }
   if (kind == "config") {
     return ConfigurationControl(

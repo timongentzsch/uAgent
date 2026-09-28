@@ -1,35 +1,23 @@
 // Copyright 2026 Timon Gentzsch
 
 #include <algorithm>
-#include <cctype>
+#include <chrono>
 #include <cstdio>
-#include <iomanip>
-#include <optional>
-#include <sstream>
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
 #include "include/agent.h"
 #include "include/agent/protocol.h"
-#include "include/agent/trace.h"
 #include "include/api/citations.h"
 #include "include/api/retry.h"
 #include "include/core/checked.h"
-#include "include/core/config_registry.h"
 #include "include/core/debug.h"
-#include "include/core/env.h"
 #include "include/core/events.h"
-#include "include/core/limits.h"
-#include "include/core/signals.h"
-#include "include/core/skills.h"
+#include "include/core/json.h"
 #include "include/core/steering.h"
 #include "include/core/strings.h"
-#include "include/core/term.h"
-#include "include/core/time.h"
-#include "include/media/attachments.h"
 #include "include/providers.h"
 #include "src/agent/turn_internal.h"
 

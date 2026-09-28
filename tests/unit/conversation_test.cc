@@ -2,6 +2,9 @@
 
 #include "include/ui/conversation.h"
 
+#include <array>
+#include <future>
+#include <map>
 #include <string>
 #include <utility>
 #include <vector>
@@ -424,6 +427,98 @@ void TestConversation() {
   CHECK(projection["blocks"].size() == 64);
   CHECK(projection["more"] == true);
   CHECK(JsonDump(projection).size() < size_t{384} * 1024);
+}
+
+void TestSavedTranscriptIndex() {
+  TestWorkspace workspace("saved-transcript");
+  Conversation conversation;
+  conversation.Reset(
+      json::array({{{"role", "system"}, {"content", "private"}}}),
+      {MessageKind::kSystem});
+  std::map<std::string, std::string> expected;
+  for (int i = 0; i < 140; ++i) {
+    const std::string text = "message " + std::to_string(i) + "\n\"✓\"";
+    conversation.Push({{"role", "user"}, {"content", text}},
+                      MessageKind::kUser);
+    expected.emplace(conversation.LastDisplayId(), text);
+  }
+  conversation.ArchiveAll("retained", 1, 1, int64_t{1024} * 1024);
+  conversation.Set(conversation.Size() - 1,
+                   {{"role", "user"}, {"content", "pruned live copy"}},
+                   MessageKind::kUser);
+  conversation.RecordToolDisplay("call-1", "diff\n-old\n+new");
+  const json exchange = {{"request", {{"name", "read_path"}}},
+                         {"response", "retained output"}};
+  conversation.RecordDisplay(
+      "t-call-1", {{"output", "retained output"}, {"exchange", exchange}});
+  TranscriptView view(conversation);
+  // Simultaneous first readers must see one complete, immutable index.
+  std::array<std::future<bool>, 4> readers;
+  for (auto& reader : readers) {
+    reader = std::async(std::launch::async, [&] {
+      return view.Page()["blocks"].size() == 64 &&
+             view.Detail("m-141")["text"] == expected.at("m-141") &&
+             view.Detail("t-call-1")["text"] == "retained output" &&
+             view.Exchange("t-call-1")["text"] == JsonDump(exchange);
+    });
+  }
+  for (auto& reader : readers) CHECK(reader.get());
+  std::map<std::string, std::string> actual;
+  uint64_t before = 0;
+  for (int i = 0; i < 4; ++i) {
+    const json page = view.Page(before);
+    for (const auto& block : page["blocks"]) {
+      CHECK(actual
+                .emplace(block["id"].get<std::string>(),
+                         block["text"].get<std::string>())
+                .second);
+    }
+    if (!page["more"].get<bool>()) break;
+    before = page["before"].get<uint64_t>();
+  }
+  CHECK(actual == expected);
+  CHECK(view.Page(2)["blocks"].empty());
+  for (const char* id : {"m-1", "m-", "m-02", "m--2", "m-2x",
+                         "m-18446744073709551616", "unknown"}) {
+    CHECK(view.Detail(id)["text"] == "");
+  }
+
+  // Owned and borrowed serialization retain exactly the same full state.
+  SessionRecord record;
+  record.metadata = {.cwd = CanonicalCwd(),
+                     .model = "test",
+                     .session_id = "retained",
+                     .turns = 140,
+                     .title = "saved"};
+  record.state.messages = conversation.Messages();
+  record.state.message_kinds = conversation.Kinds();
+  record.state.archive = conversation.Archive();
+  record.state.tool_displays = conversation.ToolDisplays();
+  record.state.display = conversation.DisplayMetadata();
+  record.state.adaptive_system = "preserve quotes \" and newlines\n";
+  record.state.adaptive_system_revision = 7;
+  const std::string owned = (workspace.workspace / "owned.json").string();
+  const std::string borrowed = (workspace.workspace / "borrowed.json").string();
+  REQUIRE(SessionStore::Save(owned, record).Ok());
+  record.state.messages.clear();
+  record.state.message_kinds.clear();
+  record.state.archive.clear();
+  record.state.tool_displays.clear();
+  REQUIRE(SessionStore::Save(borrowed, record, &conversation).Ok());
+  std::string owned_text, borrowed_text, error;
+  REQUIRE(ReadRegularFile(owned, kSessionReadBytes, owned_text, error));
+  REQUIRE(ReadRegularFile(borrowed, kSessionReadBytes, borrowed_text, error));
+  CHECK(owned_text == borrowed_text);
+  CHECK(SessionStore::Inspect(borrowed).status.Ok());
+  CHECK(conversation.At(140)["content"] == "pruned live copy");
+  CHECK(view.Detail("m-141")["text"] == expected.at("m-141"));
+  const FileStamp saved = SnapshotFile(borrowed);
+  CHECK(SessionStore::Save(borrowed, record).error ==
+        SessionStoreError::kInvalid);
+  record.state.display = json::array();
+  CHECK(SessionStore::Save(borrowed, record, &conversation).error ==
+        SessionStoreError::kInvalid);
+  CHECK(SnapshotFile(borrowed) == saved);
 }
 
 void TestCompactionKeepsDisplayIdentity() {

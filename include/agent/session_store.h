@@ -5,12 +5,14 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <map>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
 
 #include "include/agent/conversation.h"
+#include "include/core/file_watch.h"
 #include "include/core/json.h"
 #include "include/core/usage.h"
 
@@ -48,6 +50,20 @@ struct SessionInfo {
 std::vector<SessionInfo> ListSessions(
     SessionScope scope = SessionScope::kWorkspace);
 
+// Reuse valid headers while their file identity, size and timestamp match.
+// One owner serializes scans; each scan prunes missing or unreadable entries.
+class SessionCatalogue {
+ public:
+  std::vector<SessionInfo> List(SessionScope scope = SessionScope::kWorkspace);
+
+ private:
+  struct Entry {
+    FileStamp stamp;
+    SessionInfo info;
+  };
+  std::map<std::string, Entry> entries_;
+};
+
 enum class SessionStoreError {
   kNone,
   kNotFound,
@@ -65,14 +81,14 @@ struct SessionMetadata {
   int64_t turns = 0;
   std::string title;
   bool custom_title = false;
-  std::string parent_session_id;
+  std::string parent_session_id{};
   int64_t forked_at_turn = 0;
-  std::string forked_at_time;
+  std::string forked_at_time{};
 };
 
 struct SessionState {
   json messages = json::array();
-  std::vector<MessageKind> message_kinds;
+  std::vector<MessageKind> message_kinds{};
   json archive = json::array();
   int64_t archive_dropped_segments = 0;
   int64_t context_tokens = 0;
@@ -87,6 +103,9 @@ struct SessionState {
   // redraw a diff instead of a grey summary line.
   json tool_displays = json::object();
   json display = json::object();
+
+  // Transfer the loaded transcript into its sole runtime owner.
+  bool RestoreConversation(Conversation& conversation) &&;
 };
 
 struct SessionRecord {
@@ -110,8 +129,10 @@ bool ValidSessionTitle(const std::string& title);
 
 class SessionStore {
  public:
+  // A live conversation is borrowed only for this synchronous serialization.
   static SessionStoreStatus Save(const std::string& path,
-                                 const SessionRecord& record);
+                                 const SessionRecord& record,
+                                 const Conversation* conversation = nullptr);
   static SessionLoadResult Load(const std::string& path,
                                 const std::string& expected_cwd);
   static SessionLoadResult Inspect(const std::string& path);

@@ -1,86 +1,31 @@
 // Copyright 2026 Timon Gentzsch
 
-#include <poll.h>
-#include <sys/stat.h>
-#include <unistd.h>
-
 #include <algorithm>
-#include <atomic>
-#include <cerrno>
-#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
-#include <deque>
-#include <filesystem>
-#include <functional>
-#include <map>
 #include <optional>
-#include <sstream>
 #include <string>
-#include <string_view>
-#include <thread>
 #include <utility>
 #include <vector>
 
-#include "include/agent.h"
 #include "include/agent/child_agent.h"
-#include "include/agent/jobs.h"
-#include "include/agent/process.h"
-#include "include/app/bootstrap.h"
-#include "include/app/commands.h"
-#include "include/app/runtime.h"
 #include "include/cli.h"
+#include "include/core/checked.h"
 #include "include/core/debug.h"
 #include "include/core/env.h"
 #include "include/core/events.h"
-#include "include/core/fd.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
-#include "include/core/limits.h"
-#include "include/core/signals.h"
 #include "include/core/steering.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
-#include "include/core/time.h"
-#include "include/mcp/rpc.h"
 #include "include/media/attachments.h"
 #include "include/providers.h"
-#include "include/tools/memory.h"
-#include "include/tools/subagent.h"
-#include "include/ui/display.h"
-#include "include/ui/interactive.h"
 #include "include/ui/sessions.h"
 #include "src/app/application_internal.h"
 
 namespace uagent {
-namespace {
-
-// Slash commands render text for the terminal; channel clients receive the
-// same text inside command.completed. Capture it once at the boundary.
-std::string CaptureCommandOutput(const std::function<void()>& run) {
-  FILE* captured = tmpfile();
-  fflush(stdout);
-  Fd saved(captured ? dup(STDOUT_FILENO) : -1);
-  if (saved) dup2(fileno(captured), STDOUT_FILENO);
-  run();
-  std::string output;
-  if (captured) {
-    fflush(stdout);
-    if (saved) dup2(saved.Get(), STDOUT_FILENO);
-    if (fseek(captured, 0, SEEK_SET) == 0) {
-      output.resize(size_t{64} * 1024);
-      output.resize(fread(output.data(), 1, output.size(), captured));
-    } else {
-      output = "cannot read command output";
-    }
-    fclose(captured);
-  }
-  return Trim(output);
-}
-
-}  // namespace
-
 Application::Application(AppContext& context)
     : context_(context),
       runtime_(context.runtime),
@@ -257,24 +202,14 @@ bool Application::ResumeAtStartup() {
 }
 
 void Application::SaveSession(bool force) {
-  auto session = Session();
-  SaveSessionSettings(session);
-  if ((!persist_ && session_file_.empty()) ||
-      (!force && agent_.MessageCount() <= 1) ||
-      (!force && agent_.Revision() == saved_revision_)) {
-    return;
-  }
+  if (!persist_ && session_file_.empty()) return;
   EnsureSessionPath();
   std::string error;
-  if (!agent_.Save(session_file_, error) ||
-      !context_.observability.Journal().Flush(session_file_ + ".events.jsonl",
-                                              error)) {
+  if (!Session().Save(error, force)) {
     input_error_ = "cannot save session: " + error;
     fprintf(stderr, "%s\n", input_error_.c_str());
     Emit(Event{EventId::kError, {{"error", input_error_}}});
-    return;
   }
-  saved_revision_ = agent_.Revision();
 }
 
 void Application::EnsureSessionPath() {
@@ -352,16 +287,14 @@ void Application::ProcessInput(std::string input) {
   }
   if (command.spec) {
     AppSession session = Session();
-    json result;
-    std::string output = CaptureCommandOutput(
-        [&] { RunSlashCommand(session, command, result); });
+    CommandReply reply = RunSlashCommand(session, command);
     Emit(Event{EventId::kCommandCompleted,
                {{"request_id", request_id_},
                 {"command", command.spec->name},
                 {"argument", command.argument},
                 {"inspect", command.spec->inspect_result},
-                {"output", std::move(output)},
-                {"result", std::move(result)},
+                {"output", Trim(reply.output)},
+                {"result", std::move(reply.result)},
                 {"state", InterfaceState()}}});
     return;
   }

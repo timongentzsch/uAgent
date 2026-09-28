@@ -9,6 +9,11 @@ test("appearance and configuration remain usable at large scales", async ({
   await page.goto(`/#session=${session.id}`);
   await expect(page.locator(".composer .status-led.active")).toBeVisible();
   await page.getByRole("button", { name: "Settings", exact: true }).click();
+  // A phone opens settings on its section list.
+  await page
+    .locator(".settings-nav")
+    .getByRole("button", { name: "General", exact: true })
+    .click();
   await expect(page.getByLabel("Appearance")).toHaveValue("system");
   await page.emulateMedia({ colorScheme: "dark" });
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
@@ -28,11 +33,9 @@ test("appearance and configuration remain usable at large scales", async ({
   const interfaceText = await page
     .locator(".conversation-head h1")
     .evaluate((element) => getComputedStyle(element).fontSize);
-  const resetZoom = page.getByRole("button", {
-    name: "Reset zoom",
-    exact: true,
-  });
-  const normalControl = await resetZoom.evaluate((element) => {
+  // Any text button scales with the interface; Back is always shown here.
+  const textButton = page.getByRole("button", { name: "Back", exact: true });
+  const normalControl = await textButton.evaluate((element) => {
     const style = getComputedStyle(element);
     return {
       height: element.getBoundingClientRect().height,
@@ -53,7 +56,7 @@ test("appearance and configuration remain usable at large scales", async ({
     parseFloat(getComputedStyle(element).fontSize),
   );
   expect(smallText).toBeLessThan(parseFloat(originalText) * 0.7);
-  const smallControl = await resetZoom.evaluate((element) => {
+  const smallControl = await textButton.evaluate((element) => {
     const style = getComputedStyle(element);
     return {
       height: element.getBoundingClientRect().height,
@@ -81,19 +84,50 @@ test("appearance and configuration remain usable at large scales", async ({
   await page.getByLabel("Zoom", { exact: true }).fill("100");
   await expect(page.locator("html")).toHaveCSS("--zoom", "1");
   await expect(composer).toHaveCSS("font-size", originalText);
+  await page.getByRole("button", { name: "Back", exact: true }).click();
   await page
-    .getByRole("button", { name: "Advanced configuration", exact: true })
+    .locator(".settings-nav")
+    .getByRole("button", { name: "Advanced", exact: true })
     .click();
   await page.getByLabel("Find a setting").fill("UAGENT_MAX_STEPS");
-  await page.getByLabel("UAGENT_MAX_STEPS", { exact: false }).fill("23");
-  await page
-    .locator(".config-row")
-    .getByRole("button", { name: "Apply", exact: true })
-    .click();
-  await expect(page.locator(".configuration")).toContainText(
-    "active at the next user turn",
-  );
+  // Settings save themselves: Enter applies the field and shows ✓.
+  const steps = page.getByRole("spinbutton", { name: /^UAGENT_MAX_STEPS/ });
+  await steps.fill("23");
+  await steps.press("Enter");
+  await expect(
+    page.locator(".setting-row").getByRole("img", { name: "Saved" }),
+  ).toBeVisible();
+  // A changed value offers Reset; Reset shows the default again.
+  const reset = page.getByRole("button", { name: "Reset UAGENT_MAX_STEPS" });
+  await reset.click();
+  await expect(reset).toHaveCount(0);
+  // The default shows as the value itself, not as a placeholder.
+  const initial = "0";
+  await expect(steps).toHaveValue(initial);
+  // Typing the default back removes the override instead of pinning it.
+  await steps.fill("23");
+  await steps.press("Enter");
+  await expect(reset).toBeVisible();
+  await steps.fill(initial);
+  await steps.press("Enter");
+  await expect(reset).toHaveCount(0);
+
+  // Reset all asks first, then returns every change to its default.
+  await steps.fill("24");
+  await steps.press("Enter");
+  await expect(reset).toBeVisible();
+  await page.getByRole("button", { name: /Reset all to defaults/ }).click();
+  const confirm = page.getByRole("dialog", { name: "Reset all to defaults" });
+  await expect(confirm).toContainText("API keys");
+  await confirm.getByRole("button", { name: "Reset all", exact: true }).click();
+  await expect(confirm).toHaveCount(0);
+  await expect(reset).toHaveCount(0);
+  await expect(steps).toHaveValue(initial);
   await page.getByRole("button", { name: "Back", exact: true }).click();
+  await page
+    .locator(".settings-nav")
+    .getByRole("button", { name: "General", exact: true })
+    .click();
   await page.getByLabel("Appearance").selectOption("light");
   await page.emulateMedia({ colorScheme: "dark" });
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
@@ -519,4 +553,35 @@ test("load-older holds position, spins, and keeps the newest tail", async ({
     newest || "",
   );
   await page.unroute("**/api/sessions/*?before=*", olderRoute);
+});
+
+// A value set by the environment is shown locked; a saved change that needs
+// a restart offers to restart the running conversations.
+test("locked settings and restart to apply", async ({ page, session }) => {
+  await page.goto(`/#session=${session.id}`);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page
+    .locator(".settings-nav")
+    .getByRole("button", { name: "Advanced", exact: true })
+    .click();
+  const find = page.getByLabel("Find a setting");
+  await find.fill("UAGENT_CONTEXT");
+  const context = page.locator(".setting-row").filter({
+    hasText: "UAGENT_CONTEXT",
+  });
+  await expect(context).toContainText("Set by the environment");
+  await expect(context.getByRole("spinbutton")).toBeDisabled();
+
+  await find.fill("UAGENT_MAX_TOKENS");
+  const tokens = page.getByRole("spinbutton", { name: /^UAGENT_MAX_TOKENS/ });
+  await tokens.fill("1000");
+  await tokens.press("Enter");
+  const notice = page.getByRole("region", { name: "Restart to apply" });
+  await expect(notice).toContainText("UAGENT_MAX_TOKENS");
+  await notice
+    .getByRole("button", { name: /^Restart 1 running conversation/ })
+    .click();
+  await expect(notice).toContainText("Restarted 1 conversation");
+  await page.getByRole("button", { name: "Reset UAGENT_MAX_TOKENS" }).click();
+  await expect(tokens).not.toHaveValue("1000");
 });

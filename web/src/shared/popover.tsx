@@ -1,4 +1,5 @@
 import { observeResize, observeViewport, viewportBounds } from "./layout.ts";
+import { settled } from "./motion.ts";
 import type { ComponentChildren, JSX } from "preact";
 import { useId, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { Ellipsis } from "lucide-preact";
@@ -32,9 +33,15 @@ export function Popover({
   const anchor = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
   const id = useId();
+  // Hiding plays the panel's exit (CSS, allow-discrete); the panel unmounts
+  // once that has finished. Our own close unmounts without waiting for the
+  // toggle event: WebKit drops it when a menu item opens a modal dialog,
+  // which left the menu unable to reopen. Light dismiss uses the event.
+  const unmount = () => void settled(panel.current).then(() => setOpen(false));
   const close = () => {
-    setOpen(false);
+    panel.current?.hidePopover();
     anchor.current?.focus({ preventScroll: true });
+    unmount();
   };
   useLayoutEffect(() => {
     if (!open) return;
@@ -76,7 +83,7 @@ export function Popover({
       frame = requestAnimationFrame(follow);
     });
     const toggled = (event: ToggleEvent) => {
-      if (event.newState === "closed") setOpen(false);
+      if (event.newState === "closed") unmount();
     };
     element.addEventListener("toggle", toggled);
     const stopViewport = observeViewport(place);
@@ -99,7 +106,7 @@ export function Popover({
         aria-controls={open ? id : undefined}
         aria-expanded={open}
         disabled={disabled}
-        onClick={() => setOpen(!open)}
+        onClick={() => (open ? close() : setOpen(true))}
       >
         {trigger}
       </button>

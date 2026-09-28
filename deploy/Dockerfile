@@ -26,6 +26,7 @@ RUN apt-get -o Acquire::Retries=5 update && apt-get -o Acquire::Retries=5 instal
     && rm -f /tmp/chrome.deb \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=native /tmp/uagent-build/uagent /usr/local/bin/uagent
+COPY deploy/chrome-policy.json /etc/opt/chrome/policies/managed/uagent.json
 RUN groupadd --gid 10001 agent && useradd --uid 10001 --gid 10001 \
     --home-dir /data/agent --shell /bin/bash agent \
     && mkdir -p /data/agent /data/browser /workspaces \

@@ -6,6 +6,7 @@ declare module "@novnc/novnc" {
     clipViewport: boolean;
     dragViewport: boolean;
     resizeSession: boolean;
+    background: string;
     clipboardPasteFrom(text: string): void;
     sendKey(keysym: number, code?: string, down?: boolean): void;
     disconnect(): void;

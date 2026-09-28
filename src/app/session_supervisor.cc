@@ -148,8 +148,10 @@ void SessionHost::Received(HostSession* session, json frame) {
       frame["metadata"] = Metadata(*session);
     }
   }
+  // A scheduled run or a pending restart wakes the scheduler, which acts
+  // once the turn has ended.
   replay_.Publish(epoch_, session->id, session->generation, std::move(frame),
-                  !session->run_id.empty());
+                  !session->run_id.empty() || session->restart);
   if (kind == "gap") {
     lock.unlock();
     session->Send({{"kind", "refresh"}, {"request_id", RandomToken(16)}});
@@ -160,19 +162,27 @@ void SessionHost::Received(HostSession* session, json frame) {
 bool SessionHost::RecycleStaleWorkerLocked(
     const std::shared_ptr<HostSession>& session,
     std::unique_lock<std::mutex>& lock) {
-  // A worker from another build of the executable is recycled; one whose
-  // executable cannot be stated right now is left alone.
+  // A worker from another build of the executable is recycled, and so is one
+  // asked to restart; one whose executable cannot be stated is left alone.
   const std::string current = FileIdentity(executable_);
-  if (current.empty() || current == session->binary) return false;
+  if ((current.empty() || current == session->binary) && !session->restart) {
+    return false;
+  }
   // Binary upgraded since this worker spawned: graceful close, then the
   // caller spawns fresh. Same semantics as user-initiated close of a busy
   // session; a worker that ignores close keeps serving (fail open, retried
   // on the next touch).
   DebugLog("worker_binary_recycle", {{"session", session->id}});
+  // Claimed now, so no other pass starts a second recycle while this one
+  // waits; restored if the worker keeps running.
+  const bool restart = std::exchange(session->restart, false);
   session->Send({{"kind", "close"}, {"request_id", RandomToken(16)}});
   changed_.wait_for(lock, kWorkerShutdownTimeout,
                     [&] { return session->exited.load(); });
-  if (!session->exited) return false;
+  if (!session->exited) {
+    session->restart = restart;
+    return false;
+  }
   session->pid = -1;
   if (session->reader.joinable()) {
     lock.unlock();

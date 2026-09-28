@@ -167,10 +167,6 @@ void PrintConversationHistory(const Conversation& conversation,
   footer(UINT64_MAX);
 }
 
-void PrintModelContext(const json& request) {
-  printf("%s\n", TerminalSafe(JsonDump(request, 2)).c_str());
-}
-
 std::string PrintToolCallSummary(const json& call,
                                  const std::vector<Tool>& tools) {
   const json* found = JsonObject(call, "function");

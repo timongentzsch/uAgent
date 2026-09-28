@@ -1,7 +1,10 @@
+import { defined, reconcileBlock, rejoinsToolRow } from "./blocks.ts";
+export { reconcileBlock } from "./blocks.ts";
 import type { Block, HostEvent, Snapshot } from "../shared/types.ts";
 import {
   maxLivePreviewChars,
   retainedBackgroundViews,
+  maxHttpExchanges,
 } from "../shared/limits.ts";
 export function readStored<T>(
   storage: Pick<Storage, "getItem">,
@@ -31,44 +34,8 @@ export function writeStored(
   }
 }
 
-// Only model-invoked calls produce tool rows; async receipts arrive as message.changed.
-// One incremental projection, also used to hydrate the server's replay.
-// A retained block rejoins the live row it completes. Strong keys first;
-// tool rows additionally match on call + detail identity: retained tool
-// blocks can arrive before their occurrence facts are recorded (or via
-// legacy paths), and an unmatched completion would strand its transient
-// after newer rows. Detail ids are response-scoped when facts resolve,
-// so a differing detail id on both sides vetoes the match — repeated
-// provider call ids across turns must never cross-merge.
-function rejoinsToolRow(changed?: Block, item?: Block): boolean {
-  if (!changed || !item) return false;
-  // Single identity, occurrence first: same-response siblings must never
-  // rejoin each other, only the row carrying the occurrence (or, without
-  // one, the whole response).
-  const identity = changed.occurrence_id || changed.response_id;
-  if (
-    identity &&
-    (item.occurrence_id === identity || item.response_id === identity)
-  )
-    return true;
-  return (
-    changed.kind === "tool_result" &&
-    item.kind === "tool_result" &&
-    !!changed.call_id &&
-    item.call_id === changed.call_id &&
-    (changed.detail_id == null ||
-      item.detail_id == null ||
-      item.detail_id === changed.detail_id)
-  );
-}
 export function liveBlocks(events: HostEvent[], prior: Block[] = []): Block[] {
   let blocks = prior;
-  // Frames omit keys other paths carry (slim live frames vs retained
-  // blocks): absent fields must never wipe present ones.
-  const defined = (patch: Partial<Block>) =>
-    Object.fromEntries(
-      Object.entries(patch).filter(([, value]) => value !== undefined),
-    );
   const update = (index: number, change: Partial<Block>) => {
     const next = blocks.slice();
     next[index] = { ...next[index], ...defined(change) };
@@ -180,50 +147,6 @@ export function liveBlocks(events: HostEvent[], prior: Block[] = []): Block[] {
   return blocks.slice(-64);
 }
 
-export function reconcileBlock(
-  prior: Block | undefined,
-  changed: Block,
-): Block {
-  if (!prior) return changed;
-  const sameContent =
-    prior.content_revision === undefined ||
-    prior.content_revision === changed.content_revision;
-  const sameReasoning =
-    prior.reasoning_revision === undefined ||
-    prior.reasoning_revision === changed.reasoning_revision;
-  const priorTextBytes = prior.text_bytes ?? (prior.text || "").length;
-  const changedTextBytes = changed.text_bytes ?? (changed.text || "").length;
-  const priorReasoningBytes =
-    prior.reasoning_bytes ?? (prior.reasoning || "").length;
-  const changedReasoningBytes =
-    changed.reasoning_bytes ?? (changed.reasoning || "").length;
-  const preserveText = sameContent && priorTextBytes > changedTextBytes;
-  const preserveReasoning =
-    sameReasoning && priorReasoningBytes > changedReasoningBytes;
-  // A receipt-less retained block carries the fallback name "tool": keep
-  // the live row's identity, take the retained body.
-  const fallbackName =
-    changed.receipt_missing && prior.name != null ? { name: prior.name } : {};
-  return {
-    ...prior,
-    ...changed,
-    ...fallbackName,
-    text: preserveText ? prior.text : changed.text,
-    reasoning: preserveReasoning ? prior.reasoning : changed.reasoning,
-    truncated: preserveText ? prior.truncated || false : changed.truncated,
-    content_complete: preserveText
-      ? (prior.content_complete ?? !prior.truncated)
-      : changed.content_complete,
-    reasoning_complete: preserveReasoning
-      ? (prior.reasoning_complete ?? true)
-      : changed.reasoning_complete,
-    text_bytes: preserveText ? priorTextBytes : changed.text_bytes,
-    reasoning_bytes: preserveReasoning
-      ? priorReasoningBytes
-      : changed.reasoning_bytes,
-  };
-}
-
 // Merge a fresh snapshot over the live view, keeping older retained pages
 // and never downgrading a fuller block revision. Pure; used by the live
 // event stream, independent of any persistence.
@@ -298,18 +221,25 @@ export function applySessionEvent(
     }
     state.collaborators = collaborators;
   }
-  if (event.type === "http.exchange" && data.id && data.state)
+  // Each exchange updates in place by id; earlier attempts stay reachable
+  // through /http INDEX until the next published state replaces the list.
+  if (event.type === "http.exchange" && data.id && data.state) {
+    const exchange = {
+      ...data,
+      id: data.id,
+      state: data.state,
+      status: typeof data.status === "number" ? data.status : undefined,
+    };
+    const prior = state?.http || [];
+    const at = prior.findIndex((item) => item.id === data.id);
     state = {
       ...(state || {}),
-      http: [
-        {
-          ...data,
-          id: data.id,
-          state: data.state,
-          status: typeof data.status === "number" ? data.status : undefined,
-        },
-      ],
+      http:
+        at < 0
+          ? [...prior, exchange].slice(-maxHttpExchanges)
+          : prior.map((item, index) => (index === at ? exchange : item)),
     };
+  }
   if (event.type === "config.changed" && data.permissions)
     state = { ...(state || {}), permissions: data.permissions };
   if (event.type === "message.changed" && data.block) {

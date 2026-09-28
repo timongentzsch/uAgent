@@ -76,9 +76,16 @@
   display: none;
 }
 
-/* Pages (tool input/output, statistics) scroll as a whole. */
+/* Pages (tool input/output, statistics) scroll as a whole and push in
+   from the right, like a native navigation stack. */
 .activity-page {
   overflow: auto;
+  transition: translate var(--motion-slow) var(--ease-out);
+}
+@starting-style {
+  .activity-page {
+    translate: 30% 0;
+  }
 }
 
 .activity-back {
@@ -101,7 +108,7 @@
 
 .activity-info {
   flex: none;
-  max-height: min(32vh, calc(240rem / 14));
+  max-height: min(calc(var(--viewport-height) * 0.32), calc(240rem / 14));
   overflow: auto;
   border-bottom: 1px solid var(--line);
   padding-bottom: var(--space-2);
@@ -117,22 +124,17 @@
   margin: var(--gap) 0;
 }
 
+/* The growing sections take the remaining height as a column: content
+   starts at the top (a grid would stretch its rows and float it mid-sheet). */
 .activity-detail > section[aria-label="Thread"],
 .activity-detail > section[aria-label="Output"],
 .activity-detail > section[aria-label="Memory"] {
   flex: 1;
   min-height: 0;
   overflow: auto;
-}
-
-.activity-detail > section[aria-label="Thread"] {
   display: flex;
   flex-direction: column;
-}
-
-.activity-detail > section[aria-label="Output"] {
-  display: flex;
-  flex-direction: column;
+  gap: var(--space-2);
 }
 
 .activity-detail > section[aria-label="Output"] > pre {
@@ -140,13 +142,6 @@
   min-height: 0;
   max-height: none;
   overflow: auto;
-}
-
-.activity-detail h3 {
-  font-size: 0.75rem;
-  font-weight: 400;
-  color: var(--muted);
-  margin: 0;
 }
 
 .detail-meta {

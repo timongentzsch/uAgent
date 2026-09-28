@@ -7,6 +7,8 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <charconv>
+#include <iterator>
 #include <map>
 #include <string>
 #include <utility>
@@ -21,10 +23,7 @@ namespace uagent {
 namespace {
 constexpr size_t kViewBytes = size_t{384} * 1024;
 constexpr size_t kViewBlocks = 64;
-struct Entry {
-  const json* message;
-  std::string kind;
-};
+using Entry = TranscriptEntry;
 bool Visible(const Entry& entry) {
   return entry.kind == "user" || entry.kind == "assistant" ||
          entry.kind == "tool_result" || entry.kind == "attachment" ||
@@ -65,6 +64,17 @@ std::map<uint64_t, Entry> Entries(const Conversation& conversation) {
     }
   }
   return entries;
+}
+
+json TextPage(const std::string& text, size_t offset) {
+  offset = std::min(offset, text.size());
+  const size_t end =
+      Utf8BoundaryBefore(text, std::min(text.size(), offset + KiB(16)));
+  offset = Utf8BoundaryAfter(text, offset);
+  return {{"text", text.substr(offset, end >= offset ? end - offset : 0)},
+          {"next", end},
+          {"bytes", text.size()},
+          {"more", end < text.size()}};
 }
 
 std::string Text(const json& message) {
@@ -506,16 +516,23 @@ json LastMessageView(const Conversation& conversation) {
                         : json(nullptr);
 }
 
-json ConversationView(const Conversation& conversation, uint64_t before) {
-  auto entries = Entries(conversation);
+TranscriptView::TranscriptView(const Conversation& conversation)
+    : conversation_(conversation) {}
+
+const std::map<uint64_t, TranscriptEntry>& TranscriptView::Index() const {
+  std::call_once(indexed_, [this] { entries_ = Entries(conversation_); });
+  return entries_;
+}
+
+json TranscriptView::Page(uint64_t before) const {
+  const auto& conversation = conversation_;
   std::vector<json> blocks;
   size_t bytes = 0;
   uint64_t first = 0;
   bool more = false;
-  for (auto it = entries.rbegin(); it != entries.rend(); ++it) {
-    if (before && it->first >= before) {
-      continue;
-    }
+  const auto& entries = Index();
+  auto end = before ? entries.lower_bound(before) : entries.end();
+  for (auto it = std::make_reverse_iterator(end); it != entries.rend(); ++it) {
     const Entry& entry = it->second;
     if (!Visible(entry)) {
       continue;
@@ -540,9 +557,8 @@ json ConversationView(const Conversation& conversation, uint64_t before) {
       {"retention", "Full retained content; missing facts are not inferred."}};
 }
 
-json ConversationDetail(const Conversation& conversation, const std::string& id,
-                        size_t offset) {
-  constexpr size_t kPage = size_t{16} * 1024;
+json TranscriptView::Detail(const std::string& id, size_t offset) const {
+  const auto& conversation = conversation_;
   std::string text;
   const json& facts = conversation.DisplayFacts();
   if (id.starts_with("t-")) {
@@ -553,27 +569,27 @@ json ConversationDetail(const Conversation& conversation, const std::string& id,
       text += "\n\nRecorded change\n" + change;
     }
     if (text.empty()) {
-      for (const auto& [sequence, entry] : Entries(conversation)) {
+      for (const auto& [sequence, entry] : Index()) {
         if (entry.kind == "tool_result" &&
             "t-" + JsonValue(*entry.message, "tool_call_id", "") == id) {
           text = Text(*entry.message);
         }
       }
     }
-  } else {
-    for (const auto& [sequence, entry] : Entries(conversation)) {
-      if (Visible(entry) && "m-" + std::to_string(sequence) == id) {
-        text = DisplayText(*entry.message);
+  } else if (id.starts_with("m-")) {
+    uint64_t sequence = 0;
+    const auto [end, error] =
+        std::from_chars(id.data() + 2, id.data() + id.size(), sequence);
+    if (error == std::errc() && end == id.data() + id.size() &&
+        "m-" + std::to_string(sequence) == id) {
+      const auto& entries = Index();
+      auto entry = entries.find(sequence);
+      if (entry != entries.end() && Visible(entry->second)) {
+        text = DisplayText(*entry->second.message);
       }
     }
   }
-  offset = std::min(offset, text.size());
-  size_t end = Utf8BoundaryBefore(text, std::min(text.size(), offset + kPage));
-  offset = Utf8BoundaryAfter(text, offset);
-  return {{"text", text.substr(offset, end >= offset ? end - offset : 0)},
-          {"next", end},
-          {"bytes", text.size()},
-          {"more", end < text.size()}};
+  return TextPage(text, offset);
 }
 
 json FindHttpExchange(const json& value, const std::string& id) {
@@ -627,8 +643,8 @@ json ReadPrivateArtifact(const std::string& path, size_t offset) {
           {"more", offset + end < size}};
 }
 
-json ConversationExchange(const Conversation& conversation,
-                          const std::string& id, size_t offset) {
+json TranscriptView::Exchange(const std::string& id, size_t offset) const {
+  const auto& conversation = conversation_;
   json facts =
       JsonValue(conversation.DisplayFacts(), id.c_str(), json::object());
   std::string path = JsonValue(facts, "exchange_path", "");
@@ -636,12 +652,12 @@ json ConversationExchange(const Conversation& conversation,
   json exchange = JsonValue(facts, "exchange", json(nullptr));
   if (exchange.is_null()) {
     if (!id.starts_with("t-")) {
-      return ConversationDetail(conversation, id, offset);
+      return Detail(id, offset);
     }
     exchange = {{"request", nullptr},
                 {"response", JsonValue(facts, "output", "")},
                 {"complete", false}};
-    for (const auto& [sequence, entry] : Entries(conversation)) {
+    for (const auto& [sequence, entry] : Index()) {
       if (const json* calls = JsonArray(*entry.message, "tool_calls")) {
         for (const json& call : *calls) {
           if ("t-" + JsonValue(call, "id", "") == id) {
@@ -651,16 +667,20 @@ json ConversationExchange(const Conversation& conversation,
       }
     }
   }
-  std::string text = JsonDump(exchange);
-  offset = std::min(offset, text.size());
-  size_t end = Utf8BoundaryBefore(
-      text, std::min(text.size(), offset + size_t{16} * 1024));
-  offset = Utf8BoundaryAfter(text, offset);
-  return {{"text", text.substr(offset, end - offset)},
-          {"next", end},
-          {"bytes", text.size()},
-          {"more", end < text.size()}};
+  return TextPage(JsonDump(exchange), offset);
 }
+json ConversationView(const Conversation& conversation, uint64_t before) {
+  return TranscriptView(conversation).Page(before);
+}
+json ConversationDetail(const Conversation& conversation, const std::string& id,
+                        size_t offset) {
+  return TranscriptView(conversation).Detail(id, offset);
+}
+json ConversationExchange(const Conversation& conversation,
+                          const std::string& id, size_t offset) {
+  return TranscriptView(conversation).Exchange(id, offset);
+}
+
 std::string StripModelHints(std::string text) {
   for (std::string_view hint :
        {"[running] activity ", "[started] subagent id ", "[detached] pid "}) {

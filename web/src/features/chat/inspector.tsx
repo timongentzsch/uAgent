@@ -4,6 +4,7 @@ import ModelControl from "../composer/model-control.tsx";
 import HistoryStart from "./history-start.tsx";
 import { ContextSummary, SessionSummary } from "./session-summary.tsx";
 import { StatisticsLoading } from "../../shared/statistics-layout.tsx";
+import { useDismiss } from "../../shared/dismiss.ts";
 import { count } from "../../shared/quantities.ts";
 import { duration } from "../../shared/duration.ts";
 import type {
@@ -29,12 +30,15 @@ import { command, readPages, manage } from "../../state/api.ts";
 import { useTranscriptHistory } from "../../state/use-transcript-history.ts";
 import { prependHistoryPage } from "../../state/history-page.ts";
 import {
+  Button,
   cleanText,
   Deferred,
+  EmptyState,
   Field,
   IconButton,
   LoadError,
   Modal,
+  SectionTitle,
   Skeleton,
   Spinner,
 } from "../../shared/ui.tsx";
@@ -159,6 +163,8 @@ export default function Inspector({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [page, setPage] = useState<Page | null>(null);
+  // An inner page is a layer of its own: back returns to the activity.
+  useDismiss(page !== null, () => setPage(null));
   const [busy, setBusy] = useState(false);
   const inspection = useRef(0);
   const inspectionRequest = useRef<AbortController>();
@@ -359,14 +365,14 @@ export default function Inspector({
       {page && (
         <div class="activity-detail activity-page">
           {detail && (
-            <button
-              type="button"
-              class="quiet with-icon activity-back"
+            <Button
+              variant="quiet"
+              class="with-icon activity-back"
               onClick={() => setPage(null)}
             >
               <ArrowLeft aria-hidden="true" />
               Back
-            </button>
+            </Button>
           )}
           {page.raw ? (
             <Deferred
@@ -385,7 +391,11 @@ export default function Inspector({
                 )}
                 <Deferred
                   load={statisticsDialog}
-                  fallback={<StatisticsLoading turn={!!page.stats?.blockId} />}
+                  fallback={
+                    <StatisticsLoading
+                      unit={page.stats?.blockId ? "Turn" : undefined}
+                    />
+                  }
                   state={childStateOf(detail)}
                   blockId={page.stats?.blockId}
                 />
@@ -417,7 +427,7 @@ export default function Inspector({
           hidden={!!page}
         />
       ) : (
-        !page && <Spinner label="Loading…" surface />
+        !page && <Spinner surface />
       )}
     </Modal>
   );
@@ -587,9 +597,9 @@ function DetailBody({
   return (
     <div class="activity-detail" hidden={hidden}>
       {ancestors.length > 0 && (
-        <button
-          type="button"
-          class="quiet with-icon activity-back"
+        <Button
+          variant="quiet"
+          class="with-icon activity-back"
           onClick={() => {
             const parent = ancestors.at(-1);
             if (!parent) return;
@@ -599,7 +609,7 @@ function DetailBody({
         >
           <ArrowLeft aria-hidden="true" />
           Back to {ancestors.at(-1)?.name || "parent agent"}
-        </button>
+        </Button>
       )}
       {error && <LoadError error={error} retry={() => inspect(detail)} />}
       {meta.length > 0 && <p class="detail-meta">{meta.join(" · ")}</p>}
@@ -618,13 +628,13 @@ function DetailBody({
           )}
           {detail.directive && (
             <section aria-label="Run details">
-              <h3>Persistent directive</h3>
+              <SectionTitle>Persistent directive</SectionTitle>
               <Markdown text={detail.directive} />
             </section>
           )}
           {!!detail.communication?.length && (
             <section aria-label="Agent communication" class="communication">
-              <h3>Agent communication</h3>
+              <SectionTitle>Agent communication</SectionTitle>
               <ol>
                 {detail.communication.map((message, index) => (
                   <li key={`${message.time}-${index}`}>
@@ -658,7 +668,8 @@ function DetailBody({
             </pre>
           </section>
         ) : (
-          detail.label && <p class="detail-label">{detail.label}</p>
+          detail.label &&
+          !detail.memory && <p class="detail-label">{detail.label}</p>
         ))}
 
       {!isAgent && !detail.conversation && detail.task && (
@@ -719,9 +730,9 @@ function DetailBody({
             </div>
           </div>
           {!following && (
-            <button
-              type="button"
-              class="jump quiet with-icon"
+            <Button
+              variant="quiet"
+              class="jump with-icon"
               onClick={() => {
                 thread.jumpToLatest();
                 inspect(detail).catch(report);
@@ -732,7 +743,7 @@ function DetailBody({
                 <span aria-hidden="true">({thread.unseen} new)</span>
               )}
               <ArrowDown aria-hidden="true" />
-            </button>
+            </Button>
           )}
         </section>
       )}
@@ -741,9 +752,9 @@ function DetailBody({
           replaces the skeleton instead of pushing the layout around. */}
       {detail.memory ? (
         <section aria-label="Memory">
-          <p class="muted">
-            Current memory · {detail.memory.key}. It may have changed since this
-            event.
+          <p class="detail-label">{detail.memory.key}</p>
+          <p class="detail-meta">
+            Saved memory · it may have changed since this event.
           </p>
           {loading && !detail.output ? (
             <Skeleton label="Loading the memory…" />
@@ -760,7 +771,7 @@ function DetailBody({
             ) : loading ? (
               <Skeleton label="Loading the output…" />
             ) : (
-              <p class="muted">No output recorded.</p>
+              <EmptyState>No output recorded.</EmptyState>
             )}
           </section>
         )
@@ -817,9 +828,9 @@ function DetailBody({
               running={isLive || !!detail.persistent || sending}
               save={setModel}
             />
-            <button
+            <Button
               type="submit"
-              class="primary"
+              variant="primary"
               disabled={
                 !online || sending || !text.trim() || (!isLive && running)
               }
@@ -829,7 +840,7 @@ function DetailBody({
                 : isLive
                   ? "Send guidance"
                   : "Start follow-up"}
-            </button>
+            </Button>
           </div>
           <div class="metrics">
             <ContextSummary state={childState} />

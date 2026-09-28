@@ -1,5 +1,11 @@
 import { Fragment } from "preact";
-import { DisclosureRow, Skeleton, LoadError, Time } from "../../shared/ui.tsx";
+import {
+  Button,
+  DisclosureRow,
+  Skeleton,
+  LoadError,
+  Time,
+} from "../../shared/ui.tsx";
 import DiffView from "./diff-view.tsx";
 import Markdown from "../../shared/markdown-view.tsx";
 import { cleanText, isFailedStatus } from "../../shared/display.ts";
@@ -9,7 +15,6 @@ import type {
   PresentedBlock,
   ToolPart,
 } from "../../shared/types.ts";
-import { X } from "lucide-preact";
 import { AttachmentList, ImageTile } from "../../shared/attachments.tsx";
 import { useContext, useLayoutEffect, useRef } from "preact/hooks";
 import { LiveActivities } from "../../state/live-activities.ts";
@@ -84,14 +89,14 @@ function OutputBox({
   return (
     <pre class="tool-console" ref={box} tabIndex={0} aria-label="Output">
       {more && (
-        <button
-          type="button"
-          class="quiet tool-link"
+        <Button
+          variant="quiet"
+          class="tool-link"
           disabled={!online}
           onClick={loadFull}
         >
           Load earlier output
-        </button>
+        </Button>
       )}
       {text}
     </pre>
@@ -113,7 +118,7 @@ function useLive(block: PresentedBlock) {
 
 // One chrome for every tool call and receipt: the view's verb and target,
 // and on expand its input, full output and raw record. Status shows only
-// when it matters: a running headline shimmers, a failed one says so.
+// when it matters: a running headline shimmers, a failed one reads red.
 export function ToolRow({
   block,
   running,
@@ -150,17 +155,37 @@ export function ToolRow({
   }
   const failed = isFailedStatus(block.status);
   const diff = block.change?.includes("\n") ? block.change : "";
+  // Short one-line arguments read as facts beside the tool's name; long or
+  // multi-line ones stay blocks below.
+  const brief = ([, value]: [string, string]) =>
+    value.length <= 40 && !value.includes("\n");
+  const input = block.view?.input || [];
+  const facts = input.flatMap((part) =>
+    part.kind === "fields" ? part.rows.filter(brief) : [],
+  );
+  const blocks = input
+    .map((part) =>
+      part.kind === "fields"
+        ? { ...part, rows: part.rows.filter((row) => !brief(row)) }
+        : part,
+    )
+    .filter((part) => part.kind !== "fields" || part.rows.length);
   return (
     <DisclosureRow
       className={`tool-disclosure${running || live ? " running" : failed ? " failed" : ""}`}
       label={title}
       status={subtitle}
-      icon={failed ? <X class="tool-failed" aria-label="Failed" /> : undefined}
       onToggle={onToggle}
     >
       <div class="tool-body">
-        <p class="small muted">
+        <p class="small muted tool-facts">
           {block.name}
+          {facts.map(([label, value]) => (
+            <Fragment key={label}>
+              {" · "}
+              {label} {cleanText(value)}
+            </Fragment>
+          ))}
           {block.source?.time && (
             <>
               {" · called "}
@@ -173,8 +198,21 @@ export function ToolRow({
               <Time value={block.time} />
             </>
           )}
+          {inspect && block.kind === "tool_result" && (
+            <>
+              {" · "}
+              <Button
+                variant="quiet"
+                class="tool-link"
+                aria-label="Tool input/output"
+                onClick={() => inspect(block.detail_id || `t-${block.call_id}`)}
+              >
+                raw
+              </Button>
+            </>
+          )}
         </p>
-        <ToolInput parts={block.view?.input || []} />
+        <ToolInput parts={blocks} />
         {!online && block.truncated && text == null && (
           <p class="small muted">
             Recent output only. Connect to load the full result.
@@ -199,13 +237,6 @@ export function ToolRow({
         )}
         {diff.split("\n").length > DIFF_LINES && (
           <DiffView text={cleanText(diff)} />
-        )}
-        {inspect && block.kind === "tool_result" && (
-          <button
-            onClick={() => inspect(block.detail_id || `t-${block.call_id}`)}
-          >
-            Tool input/output
-          </button>
         )}
       </div>
     </DisclosureRow>
@@ -268,15 +299,15 @@ export function ToolInline({
         part.kind === "file" ? (
           <SharedFile key={index} file={part} href={`${assets}${part.id}`} />
         ) : part.kind === "link" && open ? (
-          <button
+          <Button
             key={index}
-            type="button"
-            class="quiet tool-link"
+            variant="quiet"
+            class="tool-link"
             disabled={!online}
             onClick={() => open(part)}
           >
             {part.label}
-          </button>
+          </Button>
         ) : null,
       )}
     </div>

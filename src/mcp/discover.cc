@@ -224,8 +224,8 @@ bool McpAdvanceStartupTools(std::vector<Tool>& tools, McpServer& server,
         McpTryResponse(server, server.tools_list_id, response);
     if (state == McpResponseState::kPending) return false;
     if (state == McpResponseState::kClosed) {
-      McpError(server.name,
-               "tools/list: server exited" + McpStderrHint(server.name));
+      server.error = "tools/list: server exited";
+      McpError(server.name, server.error + McpStderrHint(server.name));
       server.Shutdown();
       return false;
     }
@@ -252,13 +252,16 @@ bool McpAdvanceStartup(std::vector<Tool>& tools, McpServer& server,
     if (state == McpResponseState::kPending) return false;
     std::string error;
     if (state == McpResponseState::kClosed) {
-      error = "server exited" + McpStderrHint(server.name);
+      error = "server exited";
     } else if (McpValidateDiscovery(discovery, error)) {
       server.discovery_id = -1;
       server.startup = McpStartupState::kDiscoveringTools;
     }
     if (!error.empty()) {
-      McpError(server.name, error);
+      McpError(server.name, state == McpResponseState::kClosed
+                                ? error + McpStderrHint(server.name)
+                                : error);
+      server.error = error;
       server.Shutdown();
       return false;
     }
@@ -272,7 +275,7 @@ bool McpAdvanceStartup(std::vector<Tool>& tools, McpServer& server,
 bool McpRefreshTools(std::vector<Tool>& tools, McpRuntime& runtime,
                      const RuntimeConfig& config,
                      std::chrono::steady_clock::time_point turn_deadline) {
-  bool changed = false;
+  bool changed = std::exchange(runtime.registry_changed, false);
   for (const auto& owned : runtime.Servers()) {
     McpServer& server = *owned;
     if (server.alive && server.startup != McpStartupState::kReady) {

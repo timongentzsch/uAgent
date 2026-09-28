@@ -4,6 +4,7 @@ import os
 import signal
 import socket
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -21,6 +22,7 @@ from integration_support import (
     tool_results,
     wait_until,
     write_json_response,
+    write_mcp_server,
     write_sse_sequence,
 )
 from web_support import WebClient, web_host
@@ -2280,3 +2282,198 @@ def test_persistent_guidance_requires_its_command_receipt(root, home, *, binary)
             finally:
                 release.set()
             web.until(session, lambda value: value["metadata"]["status"] == "idle")
+
+
+def test_web_session_title_generation_respects_rename(root, home, *, binary):
+    release = threading.Event()
+    served = []
+
+    def route(_, body):
+        if body.get("model") != "titler":
+            return event({"content": "Recorded answer"})
+        # A title for the second session waits until the user has renamed it.
+        if "rename me" in json.dumps(body["messages"]):
+            release.wait(budget(10))
+        served.append(body)
+        return event({"content": '"Investigate browser efficiency."'})
+
+    with Server([route]) as provider:
+        with web_host(
+            binary, root, home, provider.url, extra_env={"UAGENT_TITLE_MODEL": "titler"}
+        ) as (client, code, _, _):
+            client.pair(code)
+            named = client.create(root)
+            client.command("submit", named, text="why is the browser slow on this page")
+            # Quotes and the trailing period are stripped from the model's answer.
+            client.until(
+                named,
+                lambda value: value["metadata"]["title"] == "Investigate browser efficiency",
+            )
+            kept = client.create(root)
+            client.command("submit", kept, text="please rename me afterwards")
+            client.until(kept, lambda value: value["metadata"]["status"] == "idle")
+            client.command("rename", kept, title="Mine")
+            release.set()
+            wait_until(lambda: len(served) == 2, lambda: served)
+            # The late title reaches the runtime and must not replace the rename.
+            time.sleep(0.5)
+            title = client.snapshot(kept)["metadata"]["title"]
+            assert_true(title == "Mine", title)
+
+
+def test_web_mcp_overview_toggles_and_restarts(root, home, *, binary):
+    project = root / "mcp-overview"
+    project.mkdir()
+    fake = project / "fake_mcp.py"
+    write_mcp_server(
+        fake,
+        "    if method == 'server/discover':\n"
+        "        result = {'supportedVersions': ['2026-07-28'], 'capabilities': {'tools': {}}}\n"
+        "    elif method == 'tools/list':\n"
+        "        result = {'tools': [{'name': 'echo', 'inputSchema': {'type': 'object'}}]}\n"
+        "    else:\n"
+        "        result = {}\n",
+    )
+    server = {"command": sys.executable, "args": [str(fake)]}
+    (project / ".mcp.json").write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "probe": server,
+                    "broken": {"command": str(project / "missing"), "required": False},
+                }
+            }
+        )
+    )
+    global_config = home / ".mcp.json"
+    global_config.write_text(json.dumps({"mcpServers": {"probe": server, "extra": server}}))
+
+    def status(value):
+        return {row["name"]: row for row in value["state"]["mcp"]}
+
+    try:
+        with Server([lambda _, _body: event({"content": "unused"})]) as provider:
+            with web_host(binary, root, home, provider.url) as (client, code, _, _):
+                client.pair(code)
+                session = client.create(project)
+                value = client.until(session, lambda value: bool(value.get("pending")))
+                client.command("reply", session, interaction_id=value["pending"]["id"], text="y")
+                value = client.until(
+                    session,
+                    lambda value: (
+                        value["metadata"]["status"] == "idle" and "mcp" in value.get("state", {})
+                    ),
+                )
+                rows = status(value)
+                assert_true(rows["probe"]["state"] == "ready", rows)
+                assert_true(rows["probe"]["scope"] == "project", rows)
+                assert_true(rows["probe"]["overrides"] and rows["probe"]["tools"] == 1, rows)
+                assert_true(rows["extra"]["scope"] == "global", rows)
+                assert_true(rows["broken"]["state"] == "failed", rows)
+                assert_true(rows["broken"]["error"], rows)
+
+                # Disabling edits the project file, stops the server now and
+                # keeps the workspace trusted.
+                result = client.command(
+                    "tools", session, operation="mcp_enable", name="probe", enabled=False
+                )
+                rows = {row["name"]: row for row in result["result"]["mcp"]}
+                assert_true(rows["probe"]["state"] == "disabled", rows)
+                assert_true(rows["probe"]["tools"] == 0, rows)
+                saved = json.loads((project / ".mcp.json").read_text())
+                assert_true(saved["mcpServers"]["probe"]["disabled"] is True, saved)
+                again = client.create(project)
+                value = client.snapshot(again)
+                assert_true(not value.get("pending"), value)
+
+                result = client.command(
+                    "tools", session, operation="mcp_enable", name="probe", enabled=True
+                )
+                rows = {row["name"]: row for row in result["result"]["mcp"]}
+                assert_true(rows["probe"]["state"] == "ready", rows)
+                assert_true(rows["probe"]["tools"] == 1, rows)
+                saved = json.loads((project / ".mcp.json").read_text())
+                assert_true("disabled" not in saved["mcpServers"]["probe"], saved)
+
+                result = client.command("tools", session, operation="mcp_restart", name="broken")
+                rows = {row["name"]: row for row in result["result"]["mcp"]}
+                assert_true(rows["broken"]["state"] == "failed", rows)
+
+                # A global server is switched in the user's own file.
+                client.command(
+                    "tools", session, operation="mcp_enable", name="extra", enabled=False
+                )
+                saved = json.loads(global_config.read_text())
+                assert_true(saved["mcpServers"]["extra"]["disabled"] is True, saved)
+                assert_true("disabled" not in saved["mcpServers"]["probe"], saved)
+    finally:
+        global_config.unlink(missing_ok=True)
+
+
+def test_web_restarts_conversations_and_itself(root, home, *, binary):
+    project = root / "restarts"
+    project.mkdir()
+
+    def slow(_, _body):
+        time.sleep(1.5)
+        return event({"content": "Slow answer"})
+
+    with Server([lambda _, _body: event({"content": "Remembered answer"}), slow]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, process, _):
+            client.pair(code)
+            session = client.create(project)
+            client.command("submit", session, text="Remember this")
+            value = client.until(
+                session,
+                lambda value: (
+                    value["metadata"]["status"] == "idle"
+                    and "Remembered answer" in json.dumps(value)
+                ),
+            )
+            generation = value["metadata"]["generation"]
+
+            # An idle conversation gets a fresh runtime that keeps its history.
+            result = client.command("restart_conversations")["result"]
+            assert_true(result == {"restarting": 1, "deferred": 0}, result)
+            value = client.until(
+                session,
+                lambda value: (
+                    value["metadata"].get("generation") not in ("", generation)
+                    and value["metadata"]["status"] == "idle"
+                ),
+            )
+            assert_true("Remembered answer" in json.dumps(value), value)
+            other = client.command("restart_conversations", cwd=str(root / "elsewhere"))
+            assert_true(other["result"] == {"restarting": 0, "deferred": 0}, other)
+
+            # A busy conversation finishes its turn first, then restarts.
+            generation = value["metadata"]["generation"]
+            session = value["metadata"]
+            client.command("submit", session, text="Take your time")
+            client.until(session, lambda value: value["metadata"]["turn_active"])
+            result = client.command("restart_conversations")["result"]
+            assert_true(result == {"restarting": 0, "deferred": 1}, result)
+            value = client.until(
+                session,
+                lambda value: (
+                    value["metadata"].get("generation") not in ("", generation)
+                    and value["metadata"]["status"] == "idle"
+                ),
+            )
+            assert_true("Slow answer" in json.dumps(value), value)
+
+            # The host re-execs in place: same process, new epoch, same pairing.
+            discovery = home / ".uagent/web/discovery.json"
+            epoch = json.loads(discovery.read_text())["epoch"]
+            client.command("restart_host")
+
+            def restarted():
+                try:
+                    current = json.loads(discovery.read_text())["epoch"]
+                    return current != epoch and client.json("/api/sessions")[0] == 200
+                except (OSError, ValueError, ConnectionError):
+                    return False
+
+            wait_until(restarted, "web host did not come back", timeout=20)
+            assert_true(process.poll() is None, "host exited instead of re-exec")
+            client.until(session, lambda value: bool(value["metadata"].get("generation")))

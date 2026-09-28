@@ -2,42 +2,27 @@
 
 #include <chrono>
 #include <cinttypes>
-#include <cstdio>
-#include <filesystem>
-#include <map>
-#include <optional>
 #include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "include/agent/child_agent.h"
-#include "include/agent/jobs.h"
-#include "include/agent/process.h"
-#include "include/agent/session_store.h"
-#include "include/agent/session_view.h"
 #include "include/app/commands.h"
-#include "include/app/config_proposal.h"
-#include "include/app/control.h"
-#include "include/app/prompt_control.h"
+#include "include/app/permissions.h"
 #include "include/app/self_description.h"
-#include "include/core/debug.h"
-#include "include/core/env.h"
-#include "include/core/events.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/sandbox.h"
-#include "include/core/signals.h"
 #include "include/core/steering.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
-#include "include/media/attachments.h"
+#include "include/mcp/register.h"
 #include "include/providers.h"
-#include "include/tools/memory.h"
 #include "include/tools/subagent.h"
-#include "include/ui/conversation.h"
-#include "include/ui/sessions.h"
+#include "include/ui/display.h"
 #include "src/app/commands_internal.h"
+
 namespace uagent {
 
 void SaveSessionSettings(AppSession& session) {
@@ -49,44 +34,60 @@ void SaveSessionSettings(AppSession& session) {
        {"tools", session.ActiveAgent().ToolSelectionSettings()}});
 }
 
-void HandleCompact(AppSession& session) {
-  session.ActiveAgent().Compact();
-  SteeringState().Take();
+bool AppSession::Save(std::string& error, bool force) {
+  SaveSessionSettings(*this);
+  if ((force || ActiveAgent().Revision() != saved_revision ||
+       !PathExists(session_file)) &&
+      !ActiveAgent().Save(session_file, error)) {
+    return false;
+  }
+  if (!context.observability.Journal().Flush(session_file + ".events.jsonl",
+                                             error)) {
+    return false;
+  }
+  saved_revision = ActiveAgent().Revision();
+  return true;
 }
 
-void HandleAttach(AppSession& session, const std::string& argument) {
+void HandleAttach(AppSession& session, const std::string& argument,
+                  CommandReply& reply) {
   if (argument.empty()) {
     if (session.attachments.empty()) {
-      printf("%s· no pending attachments%s\n", DIM(), RST());
+      reply.Print("%s· no pending attachments%s\n", DIM(), RST());
     } else {
       for (const Attachment& attachment : session.attachments) {
-        printf("%s· %s (%s)%s\n", DIM(), TerminalSafe(attachment.path).c_str(),
-               attachment.mime.c_str(), RST());
+        reply.Print("%s· %s (%s)%s\n", DIM(),
+                    TerminalSafe(attachment.path).c_str(),
+                    attachment.mime.c_str(), RST());
       }
     }
     return;
   }
   if (argument == "clear") {
     session.attachments.clear();
-    printf("%s· attachments cleared%s\n", DIM(), RST());
+    reply.Print("%s· attachments cleared%s\n", DIM(), RST());
     return;
   }
   Attachment attachment;
   std::string error;
   // Dropped or pasted paths often arrive quoted; accept one pair.
   if (!InspectAttachment(Unquote(argument), attachment, error)) {
-    printf("%s%s%s\n", RED(), error.c_str(), RST());
+    reply.Print("%s%s%s\n", RED(), error.c_str(), RST());
     return;
   }
   session.attachments.push_back(std::move(attachment));
-  printf("%s· attached %s for the next message%s\n", DIM(),
-         session.attachments.back().name.c_str(), RST());
+  reply.Print("%s· attached %s for the next message%s\n", DIM(),
+              session.attachments.back().name.c_str(), RST());
 }
 
-void HandleCost(const AppSession& session) {
-  json routes = session.ActiveAgent().RouteUsageJson();
+void HandleCost(const AppSession& session, CommandReply& reply) {
+  reply.result = {
+      {"routes", session.ActiveAgent().RouteUsageJson()},
+      {"total", UsageJson(session.ActiveAgent().SessionUsage())},
+      {"session_budget", session.ApiClient().config.session_budget}};
+  const json& routes = reply.result["routes"];
   if (routes.empty()) {
-    printf("%s· no session spend yet%s\n", DIM(), RST());
+    reply.Print("%s· no session spend yet%s\n", DIM(), RST());
     return;
   }
   for (const auto& [route, usage] : routes.items()) {
@@ -102,28 +103,33 @@ void HandleCost(const AppSession& session) {
     std::string tokens = TokenSummary(spent);
     std::string cache = CacheSummary(spent);
     if (!cache.empty()) tokens += " · " + cache;
-    printf("%s· %s · %s · %s%s\n", DIM(), TerminalSafe(route).c_str(),
-           tokens.c_str(), cost.c_str(), RST());
+    reply.Print("%s· %s · %s · %s%s\n", DIM(), TerminalSafe(route).c_str(),
+                tokens.c_str(), cost.c_str(), RST());
   }
   const Usage& spent = session.ActiveAgent().SessionUsage();
   std::string totals = TokenSummary(spent);
   std::string session_cache = CacheSummary(spent);
   if (!session_cache.empty()) totals += " · " + session_cache;
-  printf(
+  reply.Print(
       "%s· total · %s · %s", DIM(), totals.c_str(),
       spent.cost_reported ? FmtCost(spent.cost).c_str() : "cost unavailable");
   if (session.ApiClient().config.session_budget > 0) {
-    printf(" / %s", FmtCost(session.ApiClient().config.session_budget).c_str());
+    reply.Print(" / %s",
+                FmtCost(session.ApiClient().config.session_budget).c_str());
   }
-  printf("%s\n", RST());
+  reply.Print("%s\n", RST());
 }
 
 // What the session actually resolved to: the effective configuration with the
 // source of each setting, then the request the model would see.
-void HandleContext(AppSession& session) {
-  json effective =
-      session.context.config_manager.DiagnosticJson(session.Runtime().config);
-  effective["capabilities"] = session.ApiClient().capabilities.DiagnosticJson();
+void HandleContext(AppSession& session, CommandReply& reply) {
+  reply.result = {
+      {"effective_config",
+       session.context.config_manager.DiagnosticJson(session.Runtime().config)},
+      {"capabilities", session.ApiClient().capabilities.DiagnosticJson()},
+      {"model_request", session.ActiveAgent().ModelRequest()}};
+  json effective = reply.result["effective_config"];
+  effective["capabilities"] = reply.result["capabilities"];
   // The writable roots are the whole of what the sandbox permits, so the deep
   // view is the one place they are printed in full.
   effective["sandbox"] = SandboxDiagnosticJson();
@@ -145,10 +151,11 @@ void HandleContext(AppSession& session) {
                           : "<set>"},
       {"credential_source", std::move(credential_source)},
       {"context_window", session.ApiClient().ctx_window}};
-  printf("%seffective configuration%s\n%s\n", BOLD(), RST(),
-         TerminalSafe(JsonDump(effective, 2)).c_str());
-  printf("%smodel request%s\n", BOLD(), RST());
-  PrintModelContext(session.ActiveAgent().ModelRequest());
+  reply.Print("%seffective configuration%s\n%s\n", BOLD(), RST(),
+              TerminalSafe(JsonDump(effective, 2)).c_str());
+  reply.Print("%smodel request%s\n", BOLD(), RST());
+  reply.Print("%s\n",
+              TerminalSafe(JsonDump(reply.result["model_request"], 2)).c_str());
 }
 
 // The startup row is a snapshot; MCP refresh and config reloads change the
@@ -156,17 +163,15 @@ void HandleContext(AppSession& session) {
 
 // /context is the deep live-context view. /status answers the everyday
 // questions in one screen and /debug-config explains provenance.
-void HandleStatus(const AppSession& session) {
-  json status =
-      DescribeSelf(SelfTopic::kStatus, "",
-                   SelfDescriptionInputs{
-                       session.context.config_manager, session.Runtime().config,
-                       session.ApiClient(), session.context.tools});
-  auto row = [](const char* label, const std::string& value) {
-    printf("  %s%-16s%s %s\n", DIM(), label, RST(),
-           TerminalSafe(value).c_str());
+void HandleStatus(const AppSession& session, CommandReply& reply) {
+  reply.result =
+      DescribeSelf(SelfTopic::kStatus, "", DescriptionInputs(session));
+  const json& status = reply.result;
+  auto row = [&reply](const char* label, const std::string& value) {
+    reply.Print("  %s%-16s%s %s\n", DIM(), label, RST(),
+                TerminalSafe(value).c_str());
   };
-  printf("%s\u00b5Agent %s%s\n", BOLD(), kVersion, RST());
+  reply.Print("%s\u00b5Agent %s%s\n", BOLD(), kVersion, RST());
   row("route", JsonValue(status, "route", std::string()));
   row("wire api", JsonValue(status, "wire_api", std::string()));
   row("endpoint", JsonValue(status, "base_url", std::string()));
@@ -191,51 +196,215 @@ void HandleStatus(const AppSession& session) {
   }
 }
 
-void HandleDebugConfig(const AppSession& session, const std::string& argument) {
-  json described =
-      DescribeSelf(SelfTopic::kConfig, argument,
-                   SelfDescriptionInputs{
-                       session.context.config_manager, session.Runtime().config,
-                       session.ApiClient(), session.context.tools});
+void HandleDebugConfig(const AppSession& session, const std::string& argument,
+                       CommandReply& reply) {
+  reply.result =
+      DescribeSelf(SelfTopic::kConfig, argument, DescriptionInputs(session));
+  const json& described = reply.result;
   const json& settings = described["settings"];
   if (settings.empty()) {
-    printf("%s\u00b7 no setting named %s%s\n", RED(),
-           TerminalSafe(argument).c_str(), RST());
+    reply.Print("%s\u00b7 no setting named %s%s\n", RED(),
+                TerminalSafe(argument).c_str(), RST());
     return;
   }
   // Only settings the user actually influenced, unless one was named: the full
   // schema belongs in the generated reference, not in a terminal dump.
   bool named = !argument.empty();
-  printf("%sconfiguration%s\n", BOLD(), RST());
+  reply.Print("%sconfiguration%s\n", BOLD(), RST());
   for (const json& setting : settings) {
     std::string source = JsonValue(setting, "source", std::string("default"));
     if (!named && source == "default") continue;
     std::string name = JsonValue(setting, "name", std::string());
-    printf("  %s%s%s\n", BOLD(), TerminalSafe(name).c_str(), RST());
-    printf("    %ssource%s      %s\n", DIM(), RST(),
-           TerminalSafe(source).c_str());
+    reply.Print("  %s%s%s\n", BOLD(), TerminalSafe(name).c_str(), RST());
+    reply.Print("    %ssource%s      %s\n", DIM(), RST(),
+                TerminalSafe(source).c_str());
     if (setting.contains("active")) {
-      printf("    %sactive%s      %s\n", DIM(), RST(),
-             TerminalSafe(JsonDump(setting["active"])).c_str());
+      reply.Print("    %sactive%s      %s\n", DIM(), RST(),
+                  TerminalSafe(JsonDump(setting["active"])).c_str());
     }
-    printf("    %sdefault%s     %s\n", DIM(), RST(),
-           TerminalSafe(JsonDump(setting["default"])).c_str());
-    printf("    %stakes effect%s %s\n", DIM(), RST(),
-           TerminalSafe(JsonValue(setting, "takes_effect", std::string()))
-               .c_str());
+    reply.Print("    %sdefault%s     %s\n", DIM(), RST(),
+                TerminalSafe(JsonDump(setting["default"])).c_str());
+    reply.Print("    %stakes effect%s %s\n", DIM(), RST(),
+                TerminalSafe(JsonValue(setting, "takes_effect", std::string()))
+                    .c_str());
   }
   const json& restart = described["restart_required"];
   if (restart.is_array() && !restart.empty()) {
-    printf("%s\u00b7 restart required for %zu changed setting%s%s\n", YEL(),
-           restart.size(), restart.size() == 1 ? "" : "s", RST());
+    reply.Print("%s\u00b7 restart required for %zu changed setting%s%s\n",
+                YEL(), restart.size(), restart.size() == 1 ? "" : "s", RST());
   }
-  printf(
+  reply.Print(
       "%s\u00b7 precedence: command line, process environment, trusted "
       "project config, user config, built-in default%s\n",
       DIM(), RST());
 }
 
-void HandleTools(AppSession& session, const std::string& argument) {
+// The settings a layer changes, as text: what differs from its default and
+// where it comes from, then how a change takes effect.
+void HandleConfig(AppSession& session, const std::string& argument,
+                  CommandReply& reply) {
+  json request = {{"kind", "config"}};
+  if (!argument.empty()) {
+    std::istringstream input(argument);
+    std::string scope, change;
+    input >> scope;
+    std::getline(input, change);
+    change = Trim(change);
+    const bool unset = change.starts_with("unset ");
+    const size_t equal = change.find('=');
+    if (unset) change = Trim(change.substr(6));
+    request.update({{"scope", scope}});
+    if (change == "reset") {
+      request["operation"] = "reset";
+    } else {
+      request.update(
+          {{"operation", "apply"},
+           {"changes",
+            json::array({{{"key", unset ? change : change.substr(0, equal)},
+                          {"value", unset || equal == std::string::npos
+                                        ? ""
+                                        : change.substr(equal + 1)},
+                          {"unset", unset}}})}});
+    }
+  }
+  reply.result = SessionControl(session, request);
+  const json& result = reply.result;
+  if (result.contains("error")) {
+    reply.Print("%serror: %s%s\n", RED(),
+                TerminalSafe(JsonValue(result, "error", "")).c_str(), RST());
+    return;
+  }
+  bool restart = false;
+  for (const json& effect : JsonValue(result, "effects", json::array())) {
+    const std::string how = JsonValue(effect, "effect", "");
+    restart |= how == "needs a restart";
+    reply.Print("%s· %s: %s%s\n", DIM(),
+                TerminalSafe(JsonValue(effect, "key", "")).c_str(), how.c_str(),
+                RST());
+  }
+  if (restart) {
+    reply.Print(
+        "%s· /restart applies it here; new conversations have it "
+        "already%s\n",
+        YEL(), RST());
+  }
+  if (!argument.empty()) return;
+  size_t changed = 0;
+  for (const json& setting : JsonValue(result, "settings", json::array())) {
+    const std::string source = JsonValue(setting, "source", "default");
+    if (source == "default") continue;
+    ++changed;
+    const json& value = setting["value"];
+    reply.Print("%s = %s%s · %s%s\n",
+                TerminalSafe(JsonValue(setting, "name", "")).c_str(), DIM(),
+                value.is_null()
+                    ? "configured"
+                    : TerminalSafe(value.is_string() ? value.get<std::string>()
+                                                     : JsonDump(value))
+                          .c_str(),
+                source.c_str(), RST());
+  }
+  if (!changed) {
+    reply.Print("%s· every setting is at its default%s\n", DIM(), RST());
+  }
+  reply.Print(
+      "%s· /config user|project KEY=VALUE, unset KEY, or reset "
+      "(keeps secrets)%s\n",
+      DIM(), RST());
+}
+
+// This repository's remembered actions, numbered so one can be forgotten,
+// as in the web settings.
+void HandlePermissionRules(const std::string& argument, CommandReply& reply) {
+  json listed = PermissionRulesControl({{"action", "list"}});
+  if (argument != "rules" && !listed.contains("error")) {
+    const std::string which = Trim(argument.substr(6));
+    int64_t index = 0;
+    const json& rules = listed["rules"];
+    if (which == "all") {
+      listed = PermissionRulesControl({{"action", "clear"}});
+    } else if (ParseInt64(which.c_str(), index) && index >= 1 &&
+               index <= static_cast<int64_t>(rules.size())) {
+      listed = PermissionRulesControl(
+          {{"action", "delete"},
+           {"key",
+            JsonValue(rules[static_cast<size_t>(index - 1)], "key", "")}});
+    } else {
+      listed = {{"error", "usage: /permissions forget N|all"}};
+    }
+  }
+  reply.result = listed;
+  if (listed.contains("error")) {
+    reply.Print("%serror: %s%s\n", RED(),
+                TerminalSafe(JsonValue(listed, "error", "")).c_str(), RST());
+    return;
+  }
+  const json& rules = listed["rules"];
+  if (rules.empty()) {
+    reply.Print("%s· no remembered actions for this repository%s\n", DIM(),
+                RST());
+  }
+  for (size_t i = 0; i < rules.size(); ++i) {
+    reply.Print("%zu. %s %s· %s%s\n", i + 1,
+                TerminalSafe(JsonValue(rules[i], "tool", "")).c_str(), DIM(),
+                TerminalSafe(JsonValue(rules[i], "preview", "")).c_str(),
+                RST());
+  }
+}
+
+// The same overview as the web settings: each server by scope, its state,
+// and why it is not running; retry, on and off act on one server.
+void HandleMcp(AppSession& session, const std::string& argument,
+               CommandReply& reply) {
+  AppContext& app = session.context;
+  if (!argument.empty()) {
+    std::istringstream input(argument);
+    std::string operation, name, extra;
+    input >> operation >> name >> extra;
+    if ((operation != "retry" && operation != "on" && operation != "off") ||
+        name.empty() || !extra.empty()) {
+      reply.Print("%serror: usage: /mcp [retry|on|off NAME]%s\n", RED(), RST());
+      return;
+    }
+    json done = SessionControl(
+        session,
+        {{"kind", "tools"},
+         {"operation", operation == "retry" ? "mcp_restart" : "mcp_enable"},
+         {"name", name},
+         {"enabled", operation == "on"}});
+    if (done.contains("error")) {
+      reply.Print("%serror: %s%s\n", RED(),
+                  TerminalSafe(JsonValue(done, "error", "")).c_str(), RST());
+      return;
+    }
+  }
+  const json servers = McpStatus(app.runtime.mcp, app.tools);
+  reply.result = {{"mcp", servers}};
+  if (servers.empty()) {
+    reply.Print("%s· no MCP servers (~/.mcp.json, ./.mcp.json)%s\n", DIM(),
+                RST());
+  }
+  for (const json& server : servers) {
+    const std::string state = JsonValue(server, "state", "");
+    const char* color = state == "ready"      ? GREEN()
+                        : state == "failed"   ? RED()
+                        : state == "starting" ? YEL()
+                                              : DIM();
+    std::string detail =
+        state == "ready"
+            ? std::to_string(JsonValue(server, "tools", int64_t{0})) + " tools"
+        : state == "failed" ? JsonValue(server, "error", "")
+                            : state;
+    if (JsonValue(server, "overrides", false)) detail += " · overrides global";
+    reply.Print("%s●%s %s %s· %s · %s%s\n", color, RST(),
+                TerminalSafe(JsonValue(server, "name", "")).c_str(), DIM(),
+                JsonValue(server, "scope", "").c_str(),
+                TerminalSafe(detail).c_str(), RST());
+  }
+}
+
+void HandleTools(AppSession& session, const std::string& argument,
+                 CommandReply& reply) {
   json request = {{"kind", "tools"}, {"operation", "catalog"}};
   if (!argument.empty()) {
     std::istringstream input(argument);
@@ -245,8 +414,8 @@ void HandleTools(AppSession& session, const std::string& argument) {
         (operation != "reset" && operation != "profile" && operation != "on" &&
          operation != "off") ||
         ((operation == "reset") != value.empty())) {
-      printf("%serror: usage: /tools [on|off NAME|profile NAME|reset]%s\n",
-             RED(), RST());
+      reply.Print("%serror: usage: /tools [on|off NAME|profile NAME|reset]%s\n",
+                  RED(), RST());
       return;
     }
     request["operation"] =
@@ -257,25 +426,27 @@ void HandleTools(AppSession& session, const std::string& argument) {
       request["active"] = operation == "on";
     }
   }
-  json result = SessionControl(session, request);
+  reply.result = SessionControl(session, request);
+  const json& result = reply.result;
   if (result.contains("error")) {
-    printf("%serror: %s%s\n", RED(),
-           TerminalSafe(JsonValue(result, "error", "")).c_str(), RST());
+    reply.Print("%serror: %s%s\n", RED(),
+                TerminalSafe(JsonValue(result, "error", "")).c_str(), RST());
     return;
   }
-  printf("%s· %" PRId64 "/%" PRId64 " tools · %s · %" PRId64
-         " serialized schema bytes%s\n",
-         DIM(), JsonValue(result, "active", int64_t{0}),
-         JsonValue(result, "available", int64_t{0}),
-         TerminalSafe(JsonValue(result, "profile", "default")).c_str(),
-         JsonValue(result, "schema_bytes", int64_t{0}), RST());
+  reply.Print("%s· %" PRId64 "/%" PRId64 " tools · %s · %" PRId64
+              " serialized schema bytes%s\n",
+              DIM(), JsonValue(result, "active", int64_t{0}),
+              JsonValue(result, "available", int64_t{0}),
+              TerminalSafe(JsonValue(result, "profile", "default")).c_str(),
+              JsonValue(result, "schema_bytes", int64_t{0}), RST());
   if (const json* tools = JsonArray(result, "tools")) {
     for (const json& tool : *tools) {
-      printf("%s%s %-14s %s · %s%s\n", DIM(),
-             JsonValue(tool, "active", false) ? "●" : "○",
-             TerminalSafe(JsonValue(tool, "name", "")).c_str(),
-             TerminalSafe(JsonValue(tool, "category", "")).c_str(),
-             TerminalSafe(JsonValue(tool, "description", "")).c_str(), RST());
+      reply.Print("%s%s %-14s %s · %s%s\n", DIM(),
+                  JsonValue(tool, "active", false) ? "●" : "○",
+                  TerminalSafe(JsonValue(tool, "name", "")).c_str(),
+                  TerminalSafe(JsonValue(tool, "category", "")).c_str(),
+                  TerminalSafe(JsonValue(tool, "description", "")).c_str(),
+                  RST());
     }
   }
 }

@@ -1,6 +1,7 @@
 // Copyright 2026 Timon Gentzsch
 #ifndef UAGENT_INCLUDE_WEB_PROTOCOL_H_
 #define UAGENT_INCLUDE_WEB_PROTOCOL_H_
+#include <cstdint>
 #include <string>
 
 #include "include/app/session.h"
@@ -27,7 +28,12 @@ struct WebOptions {
   std::string origin;
   std::string push_contact;
   std::string bind = "127.0.0.1";
+  // Resolved from config like the rest, so a restart applies saved values.
+  std::string browser_data;
+  int64_t browser_idle_minutes = 15;
 };
-int MasterMain(const WebOptions& options, const char* executable);
+// argv is the host's own command line: a restart from the settings re-execs
+// it after a clean shutdown.
+int MasterMain(const WebOptions& options, char** argv);
 }  // namespace uagent::web
 #endif

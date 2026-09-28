@@ -62,6 +62,9 @@ uagent --web                             # local browser control center
 sessions across directories on desktop and mobile; see
 [the web guide](docs/WEB.md), including the Docker browser appliance.
 
+Passwords: sign the browser into your Google account and manage logins at
+passwords.google.com. The agent can use saved logins but never read them.
+
 ## Highlights
 
 - One runtime per conversation; terminal and browser clients send commands to
@@ -102,9 +105,9 @@ Common slash commands:
 | `/model`, `/models`, `/effort`, `/variant` | Choose route, model, reasoning effort or OpenRouter routing |
 | `/attach PATH`, `/diff`, `/review`, `/init` | Attach a file, show the git diff, review changes, write `AGENTS.md` |
 | `/status`, `/context`, `/cost`, `/http` | Inspect configuration, the model request, spend and captured traffic |
-| `/ps`, `/agents`, `/tools`, `/permissions`, `/yolo` | Manage background work, collaborators, tools and approval mode |
-| `/sessions`, `/new`, `/fork`, `/rewind`, `/compact`, `/share` | Manage sessions and context |
-| `/memory`, `/skills`, `/schedule`, `/prompt`, `/config` | Manage memory, skills, scheduled tasks, system prompt and settings |
+| `/ps`, `/agents`, `/tools`, `/mcp`, `/permissions`, `/yolo` | Manage background work, collaborators, tools, MCP servers and approval mode |
+| `/sessions`, `/new`, `/rename`, `/fork`, `/rewind`, `/compact`, `/share` | Manage sessions and context |
+| `/memory`, `/skills`, `/schedule`, `/prompt`, `/config`, `/restart` | Manage memory, skills, scheduled tasks, system prompt and settings; restart to apply one |
 | `/btw QUESTION` | Ask a side question about the conversation; the answer is not added to it |
 | `/verbose`, `/clear`, `/help`, `/quit` | Toggle full output, clear the screen, list all commands, detach |
 

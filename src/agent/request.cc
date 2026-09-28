@@ -32,6 +32,38 @@ namespace {
 constexpr int64_t kDefaultResponseReserveDivisor = 4;
 }  // namespace
 
+std::string Agent::PrepareRequestMessages(const json& source, json& projected,
+                                          bool analyze, json* deliveries) {
+  if (std::none_of(source.begin(), source.end(), [](const json& message) {
+        return JsonArray(message, "content") != nullptr;
+      })) {
+    return {};
+  }
+  projected = source;
+  std::string error;
+  const bool fallback =
+      !api_.capabilities.image_input && !EffectiveImageModel().empty();
+  PrepareAttachments(projected, api_.capabilities,
+                     !EffectiveImageModel().empty(), ActiveRoute(), error,
+                     deliveries);
+  if (fallback) {
+    error += ApplyImageAnalysisFallback(projected, analyze, deliveries);
+  }
+  return error;
+}
+
+json Agent::ModelRequest() {
+  json projected;
+  PrepareRequestMessages(conversation_.Messages(), projected, false);
+  json selected = json::array();
+  for (size_t i = 0; i < tools_.size() && i < schemas_.size(); ++i) {
+    if (tool_selection_.Enabled(tools_[i])) selected.push_back(schemas_[i]);
+  }
+  return api_.BuildRequestBody(
+      projected.is_null() ? conversation_.Messages() : projected, selected,
+      session_id_);
+}
+
 ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
                        const json* request_messages) {
   if (api_.config.session_budget > 0 &&
@@ -45,19 +77,10 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
   const json& source =
       request_messages ? *request_messages : conversation_.Messages();
   json projected;
-  if (std::any_of(source.begin(), source.end(), [](const json& message) {
-        return message.contains("content") && message["content"].is_array();
-      })) {
-    projected = source;
-    std::string preparation_error;
-    json deliveries;
-    PrepareAttachments(projected, api_.capabilities,
-                       !EffectiveImageModel().empty(), ActiveRoute(),
-                       preparation_error, &deliveries);
-    if (!api_.capabilities.image_input && !EffectiveImageModel().empty()) {
-      preparation_error +=
-          ApplyImageAnalysisFallback(projected, true, &deliveries);
-    }
+  json deliveries;
+  const std::string preparation_error =
+      PrepareRequestMessages(source, projected, true, &deliveries);
+  if (!projected.is_null()) {
     if (!request_messages && !deliveries.empty()) {
       std::map<std::string, json> grouped;
       const auto& ids = conversation_.DisplayIds();

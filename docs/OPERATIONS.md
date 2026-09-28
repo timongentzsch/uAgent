@@ -205,6 +205,8 @@ and the hermetic suite ([TESTING.md](TESTING.md)).
 - A command refused a write reports the errno plus a `[sandbox: ...]` line.
   `/context` lists the writable roots; widen them with `UAGENT_SANDBOX_WRITE`,
   or run the one command with `run(sandbox=false)`, which always asks a person.
+  The same exemption applies to a command that needs credentials from a
+  protected path (see [Tools](TOOLS.md#files-and-search)).
 - On Linux the sandbox sets `no_new_privs`, so setuid binaries such as `sudo`
   or `ping` fail inside it. Privileged work needs unconfined execution: YOLO,
   `UAGENT_SANDBOX=0` or an approved `run(sandbox=false)`.

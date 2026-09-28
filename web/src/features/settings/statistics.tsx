@@ -1,49 +1,19 @@
 import { duration } from "../../shared/duration.ts";
-import { cost, count } from "../../shared/quantities.ts";
-import type {
-  Usage,
-  StatisticsModal,
-  Snapshot,
-  State,
-} from "../../shared/types.ts";
+import { count } from "../../shared/quantities.ts";
+import type { StatisticsModal, Snapshot, State } from "../../shared/types.ts";
 import { useEffect, useState } from "preact/hooks";
 import { LoadError, Time } from "../../shared/ui.tsx";
-import type { ComponentChildren } from "preact";
 import {
+  Rows,
   StatisticsLayout,
   StatisticsLoading,
+  UsageRows,
+  type Row,
 } from "../../shared/statistics-layout.tsx";
 import { presentMessages } from "../chat/message-view.ts";
 
 const rate = (value?: number) =>
   value && value > 0 ? `${count(value)} tok/s` : "Not recorded";
-type Row = [string, ComponentChildren];
-function Rows({ rows }: { rows: Row[] }) {
-  return (
-    <dl class="stats">
-      {rows.map(([label, value]) => (
-        <div key={label}>
-          <dt>{label}</dt>
-          <dd>{value}</dd>
-        </div>
-      ))}
-    </dl>
-  );
-}
-function UsageRows({ usage }: { usage?: Usage }) {
-  return (
-    <Rows
-      rows={[
-        ["Input tokens (uncached)", count(usage?.input)],
-        ["Output tokens", count(usage?.output)],
-        ["Reasoning tokens", count(usage?.reasoning)],
-        ["Cache read tokens", count(usage?.cache_read)],
-        ["Cache write tokens", count(usage?.cache_write)],
-        ["Cost", usage?.cost_reported ? cost(usage.cost) : "Not reported"],
-      ]}
-    />
-  );
-}
 export default function Statistics({
   modal,
   loadSnapshot,
@@ -74,7 +44,7 @@ export default function Statistics({
   ) : error ? (
     <LoadError error={error} retry={() => setAttempt(attempt + 1)} />
   ) : (
-    <StatisticsLoading turn={!!modal.block_id} />
+    <StatisticsLoading unit={modal.unit} />
   );
 }
 
@@ -92,16 +62,22 @@ export function StatisticsContent({
   const flattened = presented.flatMap((row) =>
     row.children ? [row, ...row.children] : [row],
   );
-  const block =
-    scope === "turn"
-      ? flattened.find(
-          (row) =>
-            row.key === blockId ||
-            row.id === blockId ||
-            row.response_id === blockId ||
-            row.occurrence_id === blockId,
-        )
-      : undefined;
+  const target = blockId
+    ? flattened.find(
+        (row) =>
+          row.key === blockId ||
+          row.id === blockId ||
+          row.response_id === blockId ||
+          row.occurrence_id === blockId,
+      )
+    : undefined;
+  // A turn's footer carries its summary; any other row is one message.
+  const unit = !blockId
+    ? undefined
+    : target && !target.summary
+      ? "Message"
+      : "Turn";
+  const block = scope === "turn" ? target : undefined;
   const missingTurn = blockId && scope === "turn" && !block;
   const stats = state?.statistics;
   const summary = block?.summary;
@@ -192,11 +168,11 @@ export function StatisticsContent({
           ],
         ];
   return (
-    <StatisticsLayout turn={!!blockId} scope={scope} change={setScope}>
+    <StatisticsLayout unit={unit} scope={scope} change={setScope}>
       {missingTurn ? (
         <p role="status">
-          This turn is outside the loaded history. Load its retained messages
-          and try again, or select Session.
+          This {unit?.toLowerCase()} is outside the loaded history. Load its
+          retained messages and try again, or select Session.
         </p>
       ) : (
         <>

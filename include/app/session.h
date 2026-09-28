@@ -7,50 +7,8 @@
 #include <string>
 
 #include "include/app/options.h"
-#include "include/core/fd.h"
-#include "include/core/json.h"
-#include "include/core/limits.h"
+#include "include/transport/session.h"
 namespace uagent::session {
-inline constexpr int kProtocol = 2;
-inline constexpr size_t kFrameBytes = MiB(1);
-inline constexpr size_t kCommandBytes = KiB(512);
-inline constexpr size_t kQueueBytes = MiB(4);
-inline constexpr size_t kUploadBytes = MiB(8);
-inline constexpr size_t kUploadCount = 8;
-inline constexpr size_t kSessionAssetBytes = MiB(64);
-inline constexpr size_t kGlobalAssetBytes = MiB(512);
-inline constexpr size_t kReceiptEntries = 256;
-inline constexpr size_t kMaxClients = 16;
-inline constexpr size_t kMaxSessions = kMaxCatalogueEntries;
-inline constexpr size_t kHelloBytes = KiB(1);
-inline constexpr size_t kOutputCompactBytes = KiB(64);
-inline constexpr size_t kBufferedNotices = 16;
-inline constexpr size_t kIoBufferBytes = KiB(8);
-inline constexpr size_t kWorkerIdentityBytes = 256;
-inline constexpr int kSocketBacklog = 16;
-inline constexpr auto kConnectTimeout = std::chrono::seconds(2);
-inline constexpr auto kConnectPollInterval = std::chrono::milliseconds(100);
-inline constexpr auto kWorkerShutdownTimeout = std::chrono::seconds(5);
-inline constexpr auto kStreamBatchInterval =
-    std::chrono::milliseconds(kStreamBatchIntervalMs);
-inline constexpr auto kUsagePublishInterval =
-    std::chrono::milliseconds(kUsageProgressIntervalMs);
-
-// OS randomness for credentials and opaque identities. Empty on failure.
-std::string RandomToken(size_t bytes = 24);
-bool OpaqueId(std::string_view value);
-bool WriteFrame(int fd, const json& frame);
-bool WriteFrame(int fd, std::string line);
-void ReadFrames(int fd, int stop_fd, size_t limit,
-                const std::function<bool(json)>& receive);
-
-struct Pipe {
-  Fd read, write;
-  bool Open();
-  void Wake() const;
-  void Drain() const;
-};
-
 std::string SocketPath(const std::string& path);
 struct Connection {
   Fd socket;

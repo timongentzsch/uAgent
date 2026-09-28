@@ -4,6 +4,7 @@
 
 #include <sys/types.h>
 
+#include <cstdint>
 #include <string>
 
 #include "include/core/fd.h"
@@ -19,6 +20,9 @@ inline constexpr int kServiceShutdownGraceMs = 3 * kChildShutdownGraceMs;
 // The appliance sets one private directory for its browser profiles.
 // An empty value disables the browser feature in ordinary native installs.
 std::string DataDirectory();
+// The web host resolves its own value from config at startup; everything
+// else reads UAGENT_BROWSER_DATA from the environment.
+void SetDataDirectory(std::string path);
 std::string SocketPath();
 std::string RfbPath();
 bool EnsureDataDirectory(const std::string& path);
@@ -31,8 +35,8 @@ struct ServiceProcess {
 
 // Start the small browser owner alongside the web host. Chrome and Xvnc stay
 // stopped until the first browser action or human takeover.
-bool StartService(const std::string& executable, ServiceProcess& process,
-                  std::string& error);
+bool StartService(const std::string& executable, int64_t idle_minutes,
+                  ServiceProcess& process, std::string& error);
 int ServiceMain(int owner_fd);
 
 // One bounded request/reply per local Unix connection. No generic RPC surface

@@ -3,6 +3,7 @@ import { useLayoutEffect, useRef, useState } from "preact/hooks";
 import type { JSX, RefObject } from "preact";
 import type { SlashCommand } from "../../shared/types.ts";
 import { slashCompletion, slashMatches } from "./slash.ts";
+import { Button } from "../../shared/ui.tsx";
 
 export function useCommandSuggestions(
   commands: SlashCommand[],
@@ -84,8 +85,7 @@ export function useCommandSuggestions(
         ref={list}
       >
         {matches.map((entry, position) => (
-          <button
-            type="button"
+          <Button
             role="option"
             id={`command-${position}`}
             aria-selected={position === index}
@@ -97,7 +97,7 @@ export function useCommandSuggestions(
           >
             <strong>{entry.command}</strong>
             <span>{entry.description}</span>
-          </button>
+          </Button>
         ))}
       </div>
     ),

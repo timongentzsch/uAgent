@@ -2,38 +2,65 @@
 // a thumbnail that opens the in-app viewer, any other file a card naming its
 // type and size that opens or downloads it.
 import { createContext, type ComponentChildren } from "preact";
-import { useContext } from "preact/hooks";
-import { FileText } from "lucide-preact";
-import { Modal, cleanText } from "./ui.tsx";
+import { useContext, useState } from "preact/hooks";
+import { FileText, Pencil } from "lucide-preact";
+import {
+  Button,
+  Deferred,
+  DialogHeader,
+  Modal,
+  Spinner,
+  cleanText,
+} from "./ui.tsx";
 import { bytes } from "./quantities.ts";
+import { ZoomSurface } from "./zoom-surface.tsx";
 
 export interface ViewedImage {
   src: string;
   name: string;
+  // A composer draft's own file, which an annotated copy replaces.
+  draftId?: string;
 }
+
+const annotator = () => import("./annotate.tsx");
 
 // Opens an image in the one viewer the app renders.
 export const ImageViewer = createContext<(image: ViewedImage) => void>(
   () => {},
 );
 
-// Fits the image to the screen; the browser's own pinch zoom still works.
+// A full-bleed viewer: the image at natural size, never upscaled, with its
+// own pinch, double-tap and trackpad zoom. Tap around it to close. With
+// `annotate`, it can switch to markup and attach the marked-up copy.
 export function ImageViewerDialog({
   image,
   close,
+  annotate,
 }: {
   image: ViewedImage;
   close: () => void;
+  annotate?: (file: File, draftId?: string) => Promise<boolean>;
 }) {
+  const [editing, setEditing] = useState(false);
   return (
     <Modal
       title={image.name}
       close={close}
-      size="wide"
       layout="panel"
       className="image-view"
+      header={!editing}
       actions={
         <>
+          {annotate && (
+            <Button
+              variant="quiet"
+              class="with-icon"
+              onClick={() => setEditing(true)}
+            >
+              <Pencil aria-hidden="true" />
+              Annotate
+            </Button>
+          )}
           <a href={image.src} target="_blank" rel="noopener">
             Open
           </a>
@@ -43,7 +70,31 @@ export function ImageViewerDialog({
         </>
       }
     >
-      <img src={image.src} alt={image.name} onClick={close} />
+      {editing && annotate ? (
+        <Deferred
+          load={annotator}
+          ownsDialog
+          src={image.src}
+          name={image.name}
+          cancel={() => setEditing(false)}
+          attach={async (file: File) => {
+            // A failed upload is reported and leaves the markup open.
+            if (await annotate(file, image.draftId)) close();
+          }}
+          fallback={
+            <>
+              <DialogHeader title={image.name} />
+              <div class="dialog-body">
+                <Spinner surface />
+              </div>
+            </>
+          }
+        />
+      ) : (
+        <ZoomSurface key={image.src} label={image.name} dismiss={close}>
+          <img src={image.src} alt={image.name} draggable={false} />
+        </ZoomSurface>
+      )}
     </Modal>
   );
 }
@@ -55,15 +106,14 @@ export function fileType(name: string, size?: number) {
   return size == null ? kind : `${kind} · ${bytes(size)}`;
 }
 
-export function ImageTile({ src, name }: ViewedImage) {
+export function ImageTile({ src, name, draftId }: ViewedImage) {
   const view = useContext(ImageViewer);
   return (
-    <button
-      type="button"
+    <Button
       class="attachment-tile"
       title={name}
       aria-label={`View ${name}`}
-      onClick={() => view({ src, name })}
+      onClick={() => view({ src, name, draftId })}
     >
       <img
         src={src}
@@ -74,7 +124,7 @@ export function ImageTile({ src, name }: ViewedImage) {
           event.currentTarget.parentElement?.setAttribute("hidden", "")
         }
       />
-    </button>
+    </Button>
   );
 }
 

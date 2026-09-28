@@ -31,6 +31,9 @@ struct SandboxPolicy {
   // rights per path with no deny form, so a Linux policy that needs a hole has
   // to not grant the parent in the first place.
   std::vector<std::string> denied_writes;
+  // HiddenPaths(), filled in when a wrapper is built: never read, written or
+  // connected to.
+  std::vector<std::string> hidden;
   bool allow_network = true;
 };
 
@@ -79,7 +82,8 @@ std::string SeatbeltProfile(const SandboxPolicy& policy);
 
 // Round-trip for the Linux self-reexec. The policy travels as separate argv
 // words so that no quoting rule sits between the parent and the trampoline;
-// denied_writes is not carried because Landlock cannot express it.
+// denied_writes is not carried because Landlock cannot express it. One
+// `hide=<path>` word follows per hidden path.
 std::vector<std::string> EncodeSandboxPolicy(const SandboxPolicy& policy);
 // Reads words written by EncodeSandboxPolicy. Reports how many it consumed so
 // the caller can find the command that follows. False leaves *policy
@@ -139,10 +143,13 @@ const SandboxStatus& SandboxRuntime();
 // Shared by session_ready, /status and /context so all three cannot drift.
 json SandboxDiagnosticJson();
 
-// The argv words to put in front of `<shell> -c <command>`. Empty when the
-// status does not enforce, which is what makes an unsandboxed spawn identical
-// to the one this release already ships.
+// The argv words to put in front of `<shell> -c <command>`, hiding
+// HiddenPaths() too. Empty when the status does not enforce.
 std::vector<std::string> SandboxWrapperArgv(const SandboxStatus& status);
+
+// The browser profile (UAGENT_BROWSER_DATA), canonical, when it exists: the
+// file tools refuse it and sandboxed commands cannot read it.
+std::vector<std::string> HiddenPaths();
 
 }  // namespace uagent
 

@@ -118,12 +118,6 @@ body {
   gap: var(--gap);
 }
 
-.showcase-browser-input {
-  display: grid;
-  gap: var(--gap);
-  width: 100%;
-}
-
 @media (max-width: 600px) {
   .showcase {
     padding: var(--pad);

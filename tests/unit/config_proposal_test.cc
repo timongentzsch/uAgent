@@ -362,4 +362,47 @@ void TestProjectConfigTrustRestamp() {
   CHECK(!ProjectConfigTrusted());
 }
 
+// Get reports what each file sets; reset clears a scope's overrides in one
+// write but never its secrets.
+void TestConfigurationResetKeepsSecrets() {
+  TestWorkspace test("config-reset");
+  const std::filesystem::path config = test.home / ".uagent" / ".config";
+  Write(config,
+        "UAGENT_MAX_TOOL_CALLS=40\n"
+        "UAGENT_WEB_SEARCH_BACKEND=off\n"
+        "OPENROUTER_API_KEY=keep-me\n");
+  ScopedEnv no_custom("UAGENT_CONFIG_FILE");
+  ScopedEnv no_calls("UAGENT_MAX_TOOL_CALLS");
+  ScopedEnv no_backend("UAGENT_WEB_SEARCH_BACKEND");
+  ScopedEnv no_key("OPENROUTER_API_KEY");
+  ConfigManager manager = ConfigManager::Capture(false, {});
+  RuntimeConfig active = manager.Read().config;
+  auto find = [](const json& result, const std::string& name) {
+    for (const json& setting : result["settings"]) {
+      if (setting["name"] == name) return setting;
+    }
+    return json();
+  };
+  json got =
+      ConfigurationControl({{"operation", "get"}}, manager, active, false);
+  CHECK(find(got, "UAGENT_MAX_TOOL_CALLS")["user"] == "40");
+  CHECK(!find(got, "UAGENT_MAX_TOOL_CALLS").contains("project"));
+  CHECK(find(got, "OPENROUTER_API_KEY")["user"] == true);
+  CHECK(!find(got, "UAGENT_MAX_STEPS").contains("user"));
+
+  json reset = ConfigurationControl({{"operation", "reset"}, {"scope", "user"}},
+                                    manager, active, false);
+  CHECK(!reset.contains("error"));
+  CHECK(reset["effects"].size() == 2);
+  CHECK(!find(reset, "UAGENT_MAX_TOOL_CALLS").contains("user"));
+  CHECK(find(reset, "OPENROUTER_API_KEY")["user"] == true);
+  CHECK(Read(config).find("OPENROUTER_API_KEY=keep-me") != std::string::npos);
+  CHECK(Read(config).find("UAGENT_MAX_TOOL_CALLS") == std::string::npos);
+  // Nothing left to reset is not an error and writes nothing.
+  json again = ConfigurationControl({{"operation", "reset"}, {"scope", "user"}},
+                                    manager, active, false);
+  CHECK(!again.contains("error"));
+  CHECK(again["effects"].empty());
+}
+
 }  // namespace uagent

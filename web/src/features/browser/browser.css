@@ -1,32 +1,179 @@
-/* Screen first: the panel and viewer fill the dialog, and on a phone the
-   trackpad takes whatever height the screen leaves. */
+/* The browser has one geometry: the remote screen takes all the space and
+   one bar sits below it. Status, notices and the clipboard card overlay the
+   screen; nothing is ever inserted into this flow, so no state moves it. */
+/* On a compact screen the browser takes the whole display, landscape too.
+   Clip, not hidden: focusing an overlay field must never scroll the body. */
+dialog.browser-view[data-layout="sheet"] {
+  --dialog-width: 100vw;
+  border-width: 0;
+}
 .browser-view > .dialog-body {
   display: flex;
-  flex-direction: column;
+  padding: 0;
+  overflow: clip;
 }
 .browser-panel {
   flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: var(--gap);
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
   min-width: 0;
   min-height: 0;
+  margin: 0;
 }
-.browser-panel > p {
-  max-width: 72ch;
+.browser-screen {
+  --browser-ink: #e5e5e5;
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+  background: #171717;
+  color: var(--browser-ink);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
-.browser-profile-panel {
-  width: calc(320rem / 14);
+.browser-rfb {
+  position: absolute;
+  inset: 0;
+  transform-origin: 0 0;
 }
-/* One line above the screen: who drives, the page, and the profile menu. */
+.browser-rfb canvas {
+  display: block;
+}
+
+/* Overlays on the screen: a centred message, a top banner, a bottom toast
+   and the clipboard card. None of them take layout space. */
+.browser-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: var(--gap);
+  margin: 0;
+  padding: var(--pad);
+  max-width: none;
+  text-align: center;
+  color: var(--browser-ink);
+  pointer-events: none;
+}
+.browser-banner,
+.browser-toast {
+  position: absolute;
+  inset-inline: var(--gap);
+  margin: 0;
+  padding: var(--space-4) var(--pad);
+  max-width: none;
+  border-radius: var(--space-4);
+  background: rgb(0 0 0 / 0.78);
+  color: var(--browser-ink);
+  font-size: var(--font-small);
+  text-align: center;
+  pointer-events: none;
+}
+.browser-banner {
+  top: var(--gap);
+}
+.browser-toast {
+  bottom: var(--gap);
+  inset-inline: auto;
+  left: 50%;
+  translate: -50% 0;
+  max-width: calc(100% - 2 * var(--gap));
+}
+.browser-card {
+  position: absolute;
+  inset-inline: var(--gap);
+  bottom: var(--gap);
+  display: grid;
+  gap: var(--gap);
+  padding: var(--pad);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text);
+}
+.browser-card label {
+  font-size: var(--font-small);
+  color: var(--muted);
+}
+.browser-card .text-control {
+  --input-min-height: calc(72rem / 14);
+  --input-max-height: 20dvh;
+}
+.browser-card-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--gap);
+}
+
+/* Where a touch landed; it stays while a hold drags. */
+.browser-touch {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 44px;
+  height: 44px;
+  margin: -22px 0 0 -22px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 0.25);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* The bar: status and profiles on the left, tools, then the one action. It
+   keeps its height while typing, when the special keys take its place. */
 .browser-bar {
   display: flex;
   align-items: center;
-  gap: var(--gap);
+  gap: var(--space-2);
+  min-width: 0;
+  height: calc(var(--control) + 2 * var(--gap));
+  padding: var(--gap) var(--surface-inset);
+  border-top: 1px solid var(--line);
+  background: var(--bg);
+}
+.browser-status-menu {
+  flex: 1;
   min-width: 0;
 }
-.browser-bar > small {
+.browser-status {
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  justify-content: flex-start;
+  gap: var(--space-4);
+  padding-inline: var(--space-4);
+}
+.browser-status > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.browser-status > svg {
+  flex-shrink: 0;
+}
+/* Fixed width, so "Take over" and "Done" swap without moving the bar. */
+.browser-primary {
+  width: calc(9ch + 2 * var(--space-6));
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.browser-keys {
+  display: flex;
   flex: 1;
+  gap: var(--space-2);
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.browser-keys > button {
+  flex: 1 1 0;
+  min-width: 0;
+  padding-inline: var(--space-1);
+}
+
+.browser-profile-panel {
+  width: calc(320rem / 14);
 }
 .browser-profile {
   display: grid;
@@ -39,142 +186,13 @@
   flex-wrap: wrap;
   gap: var(--gap);
 }
-.browser-profile-controls .text-control,
 .browser-profile-create .text-control {
   flex: 1 1 8rem;
   min-width: 0;
 }
-.browser-location {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.browser-viewer {
-  flex: 1;
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: var(--gap);
-  min-width: 0;
-  min-height: 0;
-}
-.browser-screen {
-  order: 1;
-  position: relative;
-  width: 100%;
-  aspect-ratio: 8 / 5;
-  max-height: min(75vh, 800px);
-  overflow: hidden;
-  background: #171717;
-  touch-action: none;
-}
-.browser-rfb {
-  position: absolute;
-  inset: 0;
-}
-.browser-rfb canvas {
-  display: block;
-}
-.browser-trackpad {
-  order: 3;
-  flex: 1;
-  display: grid;
-  grid-template-rows: minmax(calc(96rem / 14), 1fr) auto;
-  min-height: min(calc(240rem / 14), 34dvh);
-  border: 1px solid var(--line);
-  background: var(--surface);
-  touch-action: none;
-  user-select: none;
-  -webkit-user-select: none;
-}
-.browser-trackpad.disabled {
-  opacity: 0.55;
-}
-.browser-trackpad-surface {
-  display: grid;
-  place-items: center;
-  min-height: 0;
-  padding: var(--pad);
-  color: var(--muted);
-  background: var(--surface);
-  touch-action: none;
-  cursor: default;
-}
-.browser-trackpad-surface span {
-  max-width: 30ch;
-  text-align: center;
-  pointer-events: none;
-}
-.browser-trackpad-buttons {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  border-top: 1px solid var(--line);
-}
-.browser-trackpad-buttons > button {
-  min-height: var(--control);
-  border: 0;
-  background: var(--raised);
-  touch-action: none;
-}
-.browser-trackpad-buttons > button + button {
-  border-left: 1px solid var(--line);
-}
-.browser-view-controls {
-  order: 2;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--gap);
-}
-.browser-view-controls small {
-  margin-inline-end: auto;
-}
-.browser-text-actions,
-.browser-key-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--gap);
-}
-.browser-text-panel {
-  order: 4;
-  display: grid;
-  gap: var(--gap);
-  padding: var(--pad);
-  border: 1px solid var(--line);
-  background: var(--surface);
-}
-.browser-text-panel .text-control {
-  --input-min-height: calc(90rem / 14);
-  --input-max-height: 20dvh;
-}
-.browser-text-panel textarea {
-  resize: vertical;
-}
-.browser-text-actions > button,
-.browser-key-actions > button {
-  flex: 1 1 auto;
-}
-/* While the on-screen keyboard is open it covers the lower half of the
-   device: the screen stays in view with the special keys under it, and the
-   trackpad steps aside until typing ends. */
-.browser-key-actions {
-  order: 2;
-}
-.browser-viewer.typing .browser-trackpad,
-.browser-viewer.typing .browser-text-panel,
-.browser-panel:has(> .browser-viewer.typing) > :not(.browser-viewer) {
-  display: none;
-}
-.browser-viewer.typing .browser-view-controls {
-  order: 3;
-}
-.browser-viewer > [role="status"] {
-  order: 5;
-}
+
 /* Focus target that opens the on-screen keyboard: focusable, invisible and
-   never hit-tested. It sits at the top so focusing it scrolls the screen, not
-   the trackpad, into view. The shared field keeps its 16px focus floor on touch. */
+   never hit-tested. The shared field keeps its 16px focus floor on touch. */
 .browser-keyboard-input {
   position: absolute;
   top: 0;
@@ -183,31 +201,4 @@
   opacity: 0;
   clip-path: inset(50%);
   pointer-events: none;
-}
-@media (max-width: 600px) {
-  .browser-trackpad {
-    min-height: min(calc(220rem / 14), 32dvh);
-  }
-  .browser-view-controls > button {
-    flex: 1;
-    white-space: nowrap;
-  }
-  .browser-view-controls small {
-    flex-basis: 100%;
-  }
-}
-
-/* The mobile pointer: the server's own cursor image, drawn in the modal's top
-   layer above the framebuffer and scaled with it. It never intercepts input. */
-.browser-pointer {
-  position: absolute;
-  top: 0;
-  left: 0;
-  pointer-events: none;
-}
-.browser-pointer[hidden] {
-  display: none;
-}
-.browser-screen[data-trackpad] canvas {
-  cursor: none !important;
 }

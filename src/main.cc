@@ -9,6 +9,7 @@
 
 extern char** environ;
 
+#include <algorithm>
 #include <clocale>
 #include <cstdint>
 #include <cstdio>
@@ -222,16 +223,18 @@ int Main(int argc, char** argv) {
       fprintf(stderr, "web port must be between 1024 and 65535\n");
       return 2;
     }
-    const char* configured_bind = getenv("UAGENT_WEB_BIND");
-    std::string bind = configured_bind ? configured_bind : "127.0.0.1";
+    std::string bind = setting("UAGENT_WEB_BIND", "127.0.0.1");
     if (bind != "127.0.0.1" && bind != "0.0.0.0") {
       fprintf(stderr, "web bind must be 127.0.0.1 or 0.0.0.0\n");
       return 2;
     }
+    int64_t idle = 15;
+    ParseInt64(setting("UAGENT_BROWSER_IDLE_MINUTES", "15").c_str(), idle);
     return web::MasterMain(
         {static_cast<int>(port), setting("UAGENT_WEB_ORIGIN"),
-         setting("UAGENT_WEB_PUSH_CONTACT"), bind},
-        argv[0]);
+         setting("UAGENT_WEB_PUSH_CONTACT"), bind,
+         setting("UAGENT_BROWSER_DATA"), std::max<int64_t>(0, idle)},
+        argv);
 #else
     fprintf(stderr, "this build has no web support (UAGENT_WEB=OFF)\n");
     return 2;

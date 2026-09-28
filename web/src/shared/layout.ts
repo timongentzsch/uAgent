@@ -1,3 +1,4 @@
+import { useEffect, useState } from "preact/hooks";
 import { storage } from "./storage.ts";
 export const minimumZoom = 50;
 export const maximumZoom = 200;
@@ -194,11 +195,17 @@ export function trackViewport() {
   };
 }
 
-export function observeCompact(changed: (compact: boolean) => void) {
-  const media = matchMedia("(max-width: 900px)");
-  const update = () => changed(media.matches);
-  media.addEventListener("change", update);
-  return () => media.removeEventListener("change", update);
+// Whether a media query matches, kept current.
+export function useMedia(query: string) {
+  const [matches, setMatches] = useState(() => matchMedia(query).matches);
+  useEffect(() => {
+    const media = matchMedia(query);
+    const update = () => setMatches(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, [query]);
+  return matches;
 }
 
 export function applyTheme(theme: string) {
@@ -215,4 +222,12 @@ export function applyTheme(theme: string) {
   storage.setItem("uagent-theme", theme);
   media.addEventListener("change", apply);
   return () => media.removeEventListener("change", apply);
+}
+
+// Safari still pinches the whole page through its own gesture events, which
+// touch-action does not stop; the app shell must never zoom.
+export function lockPageZoom() {
+  const block = (event: Event) => event.preventDefault();
+  for (const kind of ["gesturestart", "gesturechange"])
+    document.addEventListener(kind, block, { passive: false });
 }

@@ -1,0 +1,11 @@
+{
+  "URLBlocklist": [
+    "chrome://password-manager",
+    "chrome://settings/passwords",
+    "chrome://settings/autofill",
+    "view-source:*"
+  ],
+  "DeveloperToolsAvailability": 2,
+  "PasswordManagerEnabled": true,
+  "PasswordLeakDetectionEnabled": true
+}

@@ -140,6 +140,12 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
   await expect(
     page.getByRole("dialog", { name: "Message statistics" }),
   ).toContainText("mock/model-b:high");
+  // A message's scope is named as such, never "Turn".
+  await expect(
+    page
+      .getByRole("group", { name: "Statistics scope" })
+      .getByRole("button", { name: "Message", exact: true }),
+  ).toBeVisible();
   await expect(page.getByRole("dialog")).toContainText("TTFT");
   await expect(page.getByRole("dialog")).toContainText("tok/s");
   await page

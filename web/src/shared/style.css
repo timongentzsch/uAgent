@@ -17,6 +17,9 @@
   --added-bg: rgba(63, 185, 80, 0.12);
   --removed: #f85149;
   --removed-bg: rgba(248, 81, 73, 0.12);
+  /* Image markup: one colour that reads on any screenshot, in any theme. */
+  --mark: #ff3b30;
+  --on-mark: #fff;
   --on-accent: #000;
   --viewport-height: 100dvh;
   --viewport-width: 100%;
@@ -47,6 +50,14 @@
   --control: 2.2rem;
   --font-small: 0.85rem;
   --popover-gap: var(--space-4);
+  /* Motion: the only durations and easings in the app. Reduced motion
+     zeroes the durations below, which turns every transition off. */
+  --motion-fast: 120ms;
+  --motion-base: 200ms;
+  --motion-slow: 280ms;
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
   --dialog-width: calc(560rem / 14);
   --dialog-height: calc(680rem / 14);
   --gap: var(--space-4);
@@ -94,6 +105,12 @@ body {
 body {
   position: fixed;
   inset: 0;
+}
+/* An app, not a page: nothing pinch- or double-tap-zooms the interface
+   (text size is the app's own setting). Every element inherits this limit;
+   media and the remote screen zoom themselves. */
+html {
+  touch-action: pan-x pan-y;
 }
 #app {
   background: var(--bg);
@@ -144,19 +161,48 @@ input[type="checkbox"] {
   padding: 0;
   accent-color: var(--accent);
 }
-.toggle-row {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--gap);
+/* Switch: the checkbox drawn as a track and knob, with a 44px touch area. */
+.switch {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control);
+}
+.switch > .text-control,
+.switch input[type="checkbox"] {
+  width: auto;
+}
+.switch input[role="switch"] {
+  appearance: none;
+  position: relative;
+  width: calc(40rem / 14);
+  min-width: calc(40rem / 14);
+  height: calc(24rem / 14);
+  min-height: calc(24rem / 14);
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--raised);
   cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-standard);
 }
-.toggle-row > span,
-.toggle-row small {
-  display: block;
-  min-width: 0;
+.switch input[role="switch"]::before {
+  content: "";
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: calc(20rem / 14);
+  height: calc(20rem / 14);
+  border-radius: 50%;
+  background: var(--bg);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.25);
+  transition: translate var(--motion-fast) var(--ease-standard);
 }
-.toggle-row strong {
-  font-weight: 500;
+.switch input[role="switch"]:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.switch input[role="switch"]:checked::before {
+  translate: calc(16rem / 14) 0;
 }
 button,
 .file-button,
@@ -365,7 +411,11 @@ pre code {
   overflow-wrap: normal;
   display: block;
 }
+/* One auto grid column: unwrappable lines size it to the longest one, and
+   it stretches to the box when all are short, so every line's shading runs
+   the full scroll width. */
 .diff {
+  display: grid;
   white-space: pre;
   overflow-wrap: normal;
   padding: 0;
@@ -415,30 +465,57 @@ pre code {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
 }
-.error-banner {
-  flex-shrink: 0;
+/* Error, notice and update banners stack over the top of the app, inside
+   the safe area, so showing or dismissing one never moves the layout. */
+.toasts {
+  /* #app is a size container, so it is the containing block. */
+  position: absolute;
+  z-index: 10;
+  top: calc(var(--safe-top) + var(--gap));
+  left: calc(var(--safe-left) + var(--gap));
+  width: min(calc(640rem / 14), calc(var(--content-width) - 2 * var(--gap)));
+  display: grid;
+  gap: var(--gap);
+  pointer-events: none;
+}
+@media (min-width: 601px) {
+  .toasts {
+    left: calc(var(--safe-left) + var(--content-width) / 2);
+    translate: -50% 0;
+  }
+}
+.error-banner,
+.update-banner {
   padding: var(--space-3) var(--space-6);
-  border-bottom: 1px solid var(--line);
+  border: 1px solid var(--line);
   background: var(--raised);
+  box-shadow: 0 var(--space-2) var(--space-6) rgb(0 0 0 / 0.18);
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--pad);
   font-size: 0.85rem;
-  max-height: 25vh;
+  pointer-events: auto;
+}
+.error-banner,
+.update-banner {
+  transition:
+    opacity var(--motion-base) var(--ease-out),
+    translate var(--motion-slow) var(--ease-out);
+}
+@starting-style {
+  .error-banner,
+  .update-banner {
+    opacity: 0;
+    translate: 0 calc(-8rem / 14);
+  }
+}
+.error-banner {
+  max-height: calc(var(--viewport-height) / 4);
   overflow: auto;
 }
 .update-banner {
-  flex-shrink: 0;
-  padding: var(--space-3) var(--space-6);
-  border-bottom: 1px solid var(--line);
   border-left: 3px solid var(--live);
-  background: var(--raised);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--pad);
-  font-size: 0.85rem;
 }
 .load-error {
   padding: var(--space-4) 0;
@@ -605,6 +682,10 @@ pre code {
 .status-led.running {
   animation: led-breathe 1.6s ease-in-out infinite;
 }
+.status-led.failed {
+  background: var(--removed);
+  border-color: var(--removed);
+}
 /* A corner dot on an icon button, e.g. the agent using the browser. */
 .browser-toggle {
   position: relative;
@@ -681,7 +762,7 @@ pre code {
 .transcript-content {
   display: flex;
   flex-direction: column;
-  gap: var(--gap);
+  gap: var(--space-1);
   min-height: 100%;
 }
 .transcript-content > p,
@@ -736,9 +817,6 @@ pre code {
   background: var(--bg);
   max-height: calc(var(--viewport-height) - calc(100rem / 14));
   overflow: visible;
-}
-.loading-composer {
-  min-height: calc(3.5 * var(--control));
 }
 .composer > form {
   gap: 0;
@@ -850,28 +928,50 @@ pre code {
   background: var(--raised);
   font-size: 0.75rem;
 }
+.jump {
+  transition:
+    opacity var(--motion-base) var(--ease-out),
+    translate var(--motion-base) var(--ease-out);
+}
+@starting-style {
+  .jump {
+    opacity: 0;
+    translate: 0 calc(6rem / 14);
+  }
+}
+/* Swapped feedback icons (Copy → Check) cross in rather than blink. */
+@starting-style {
+  .swap-feedback > svg {
+    opacity: 0;
+    scale: 0.7;
+  }
+}
+.swap-feedback > svg {
+  transition:
+    opacity var(--motion-fast) var(--ease-out),
+    scale var(--motion-fast) var(--ease-out);
+}
+/* A touch press sinks slightly, like a native control. */
+@media (pointer: coarse) {
+  button:enabled {
+    transition: scale var(--motion-fast) var(--ease-standard);
+  }
+  button:enabled:active {
+    scale: 0.97;
+  }
+}
 .status-line {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--gap);
   min-width: 0;
-  padding-top: var(--space-2);
+  padding-bottom: var(--space-2);
 }
-/* One line at any width: a long state ("Waiting for approval…") truncates
-   before the row would wrap under the metrics. While work runs the state is
-   the popover's button, which must shrink with its wrapper, not overflow. */
+/* One line at any width: a long state ("Waiting for approval…") truncates. */
 .status-line > :first-child {
   flex: 0 1 auto;
   min-width: 0;
-}
-.status-line > .popover-control {
-  display: flex;
-}
-.status-line > .popover-control > .activity-toggle {
-  min-width: 0;
-  max-width: 100%;
-  overflow: hidden;
 }
 .activity-toggle {
   display: flex;
@@ -899,8 +999,54 @@ pre code {
 .activity-counts {
   flex-shrink: 0;
 }
-/* State and metrics share a narrow line in proportion to their text, each
-   truncating its own. */
+/* Under the input: background work left, never shrinking; context and
+   session totals right, truncating first on a narrow line. */
+.composer-metrics {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--gap);
+  min-width: 0;
+  padding-top: var(--space-1);
+}
+.composer-metrics > .popover-control {
+  display: flex;
+  flex: none;
+}
+.activity-button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  min-height: calc(24rem / 14);
+  padding: 0 var(--space-3);
+  font-size: 0.7rem;
+}
+.activity-button > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.activity-button > svg {
+  flex: none;
+  width: 1.1em;
+  height: 1.1em;
+}
+.activity-button.idle {
+  color: var(--muted);
+}
+.activity-button .short {
+  display: none;
+}
+@media (max-width: 600px) {
+  .activity-button .long {
+    display: none;
+  }
+  .activity-button .short {
+    display: inline;
+  }
+}
 .metrics {
   display: flex;
   align-items: center;
@@ -977,6 +1123,26 @@ pre code {
   background: var(--surface);
   color: var(--text);
   overflow: auto;
+}
+/* Panels fade in from their anchor and out again. allow-discrete keeps a
+   hidden panel painted until its exit has played. */
+.popover-panel {
+  transition:
+    opacity var(--motion-base) var(--ease-out),
+    translate var(--motion-base) var(--ease-out),
+    display var(--motion-base) allow-discrete,
+    overlay var(--motion-base) allow-discrete;
+}
+.popover-panel:not(:popover-open) {
+  opacity: 0;
+  translate: 0 calc(-4rem / 14);
+  transition-timing-function: var(--ease-in);
+}
+@starting-style {
+  .popover-panel:popover-open {
+    opacity: 0;
+    translate: 0 calc(-4rem / 14);
+  }
 }
 .menu-panel {
   min-width: calc(180rem / 14);
@@ -1136,22 +1302,6 @@ dialog p {
 }
 dialog section {
   margin: var(--pad) 0;
-}
-.settings-fields {
-  display: grid;
-  gap: var(--pad);
-}
-.settings-fields > button {
-  text-align: start;
-}
-.settings-section {
-  border-top: 1px solid var(--line);
-  margin-top: var(--pad);
-  padding-top: var(--space-2);
-}
-.settings-section > summary {
-  cursor: pointer;
-  padding: var(--space-3) 0;
 }
 .stats {
   margin: 0;
@@ -1362,26 +1512,24 @@ dialog section {
   width: 62%;
 }
 
-.control-skeleton {
-  padding: 0;
+/* Placeholder text inside the live element: the element keeps its own font
+   and line metrics, so the row is exactly as tall as when it fills in. */
+.text-skeleton {
+  color: transparent;
+  background: var(--placeholder);
+  animation: skeleton-pulse 1.6s ease-in-out infinite alternate;
+  user-select: none;
 }
-.control-skeleton span {
-  height: var(--control);
-  width: 100%;
+/* A view drawn from sample data (shared/placeholder.tsx): it lays out like
+   the loaded view, and fields keep their box but not the sample's value. */
+.placeholder {
+  display: contents;
 }
-/* Structural mirrors use the live surface geometry and reserve only
-   data-dependent rows. */
-.title-skeleton,
-.meta-skeleton {
-  padding: 0;
+.placeholder :is(input, textarea, select) {
+  color: transparent;
 }
-.title-skeleton span {
-  height: 1em;
-  width: 42%;
-}
-.meta-skeleton span {
-  height: 0.75em;
-  width: 68%;
+.placeholder ::placeholder {
+  color: var(--muted);
 }
 
 @media (pointer: coarse) {
@@ -1389,8 +1537,27 @@ dialog section {
     --control: calc(44rem / 14);
   }
   .activity-toggle,
+  .activity-button,
   .metrics > button {
     min-height: calc(32rem / 14);
+  }
+  /* Dense rows keep their 32px look but take a 44px touch: an invisible
+     hit area extends above and below, never over a neighbour. */
+  :where(
+    .activity-toggle,
+    .activity-button,
+    .metrics > button,
+    .message button
+  ) {
+    position: relative;
+  }
+  .activity-toggle::after,
+  .activity-button::after,
+  .metrics > button::after,
+  .message button::after {
+    content: "";
+    position: absolute;
+    inset: calc((32rem - 44rem) / 28) 0;
   }
 }
 @media (max-width: 900px) {
@@ -1421,9 +1588,6 @@ dialog section {
     padding: var(--space-4);
   }
   .drawer .sidebar-head .brand {
-    display: none;
-  }
-  .loading-shell > .sidebar {
     display: none;
   }
 }
@@ -1467,8 +1631,7 @@ dialog section {
     margin-left: auto;
   }
   .raw-view,
-  .prompt-view,
-  .browser-view {
+  .prompt-view {
     width: calc(var(--content-width) - 2 * var(--dialog-gutter));
     height: calc(var(--content-height) - 2 * var(--dialog-gutter));
   }
@@ -1541,7 +1704,68 @@ dialog section {
     max-height: calc(var(--viewport-height) * 0.18);
   }
 }
+/* Surfaces arrive with a short, native motion and leave the way they
+   came: centred dialogs fade and rise, sheets slide from their edge (from
+   below on a phone) and the drawer from the left. `data-leaving` is set by
+   Modal while it animates out (see shared/motion.ts). */
+dialog[open] {
+  transition:
+    opacity var(--motion-base) var(--ease-out),
+    translate var(--motion-slow) var(--ease-out);
+}
+dialog[open]::backdrop {
+  transition: opacity var(--motion-base) var(--ease-out);
+}
+dialog[open][data-leaving] {
+  opacity: 0;
+  translate: 0 calc(8rem / 14);
+  transition-timing-function: var(--ease-in);
+  transition-duration: var(--motion-base);
+}
+dialog[open][data-leaving]::backdrop {
+  opacity: 0;
+}
+dialog[data-layout="sheet"][open][data-leaving] {
+  opacity: 1;
+  translate: 100% 0;
+}
+dialog.sidebar.drawer[open][data-leaving] {
+  opacity: 1;
+  translate: -100% 0;
+}
+@starting-style {
+  dialog[open] {
+    opacity: 0;
+    translate: 0 calc(12rem / 14);
+  }
+  dialog[open]::backdrop {
+    opacity: 0;
+  }
+  dialog[data-layout="sheet"][open] {
+    opacity: 1;
+    translate: 100% 0;
+  }
+  dialog.sidebar.drawer[open] {
+    opacity: 1;
+    translate: -100% 0;
+  }
+}
+@media (max-width: 600px) {
+  dialog[data-layout="sheet"][open][data-leaving] {
+    translate: 0 100%;
+  }
+  @starting-style {
+    dialog[data-layout="sheet"][open] {
+      translate: 0 100%;
+    }
+  }
+}
 @media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-fast: 0ms;
+    --motion-base: 0ms;
+    --motion-slow: 0ms;
+  }
   *,
   *::before,
   *::after {
@@ -1575,4 +1799,194 @@ dialog > header h2 {
 dialog > header .icon-button {
   width: var(--control);
   height: var(--control);
+}
+
+/* Zoomable media: the content fits the surface at natural size, never
+   upscaled, and scales around the gesture. */
+.zoom-surface {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: zoom-in;
+}
+.zoom-surface[data-zoomed] {
+  cursor: grab;
+}
+.zoom-content {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  transform-origin: 0 0;
+}
+.zoom-content[data-glide] {
+  transition: transform var(--motion-slow) var(--ease-out);
+}
+.zoom-content > img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  -webkit-user-drag: none;
+}
+
+/* Grouped rows: the settings-style list used wherever items are listed
+   with a value or an action. Captions, cards and rows come from here only. */
+.section-title {
+  margin: 0 0 var(--space-3);
+  padding-inline: var(--space-6);
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.group {
+  margin: 0 0 var(--space-12);
+}
+/* Quiet: rows sit on the surface itself, separated by hairlines, with no
+   card around them; only hover and the current item are filled. */
+.group-rows {
+  display: grid;
+}
+.group-rows > * + * {
+  border-top: 1px solid var(--line);
+}
+@media (hover: hover) and (pointer: fine) {
+  button.row:enabled:hover {
+    background: var(--raised);
+  }
+}
+.group-footer {
+  margin: var(--space-3) 0 0;
+  padding-inline: var(--space-6);
+  color: var(--muted);
+  font-size: var(--font-small);
+  overflow-wrap: anywhere;
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  width: 100%;
+  border: 0;
+  min-height: calc(44rem / 14);
+  padding: var(--space-3) var(--space-6);
+  text-align: start;
+  background: transparent;
+}
+.row-text {
+  flex: 1;
+  display: grid;
+  min-width: 0;
+}
+.row-label {
+  overflow-wrap: anywhere;
+}
+.row-detail {
+  color: var(--muted);
+  font-size: var(--font-small);
+  overflow-wrap: anywhere;
+}
+.row-value {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+  max-width: 60%;
+  color: var(--muted);
+}
+.row-chevron {
+  flex-shrink: 0;
+  color: var(--muted);
+  transition: rotate var(--motion-fast) var(--ease-standard);
+}
+.row[aria-expanded="true"] .row-chevron {
+  rotate: 90deg;
+}
+.destructive-row .row-label {
+  color: var(--removed);
+}
+/* A choice shown as a row's value: the native picker, drawn as quiet text
+   with its chevron, not as a field. */
+.text-control.value-select {
+  width: auto;
+}
+.value-select select {
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+  text-align: end;
+  text-align-last: end;
+}
+@media (hover: hover) and (pointer: fine) {
+  .value-select select:hover {
+    color: var(--text);
+  }
+}
+.empty-state {
+  display: grid;
+  justify-items: center;
+  gap: var(--gap);
+  padding: var(--space-12) var(--pad);
+  color: var(--muted);
+  text-align: center;
+}
+.empty-state p {
+  margin: 0;
+}
+/* A setting row: its name may read as code, and its field keeps a usable
+   width beside the text. */
+.setting-row {
+  align-items: flex-start;
+}
+.setting-row code {
+  font-size: 0.9em;
+}
+.setting-saved {
+  width: 1em;
+  height: 1em;
+  margin-inline-start: var(--space-3);
+  vertical-align: -0.125em;
+  color: var(--live);
+}
+@starting-style {
+  .setting-saved {
+    opacity: 0;
+  }
+}
+.setting-saved {
+  transition: opacity var(--motion-fast) var(--ease-out);
+}
+.setting-value > .text-control:not(.value-select) {
+  width: calc(160rem / 14);
+}
+/* On a phone a field or slider takes its own full-width line; a choice
+   stays beside its label like any row value. */
+@media (max-width: 600px) {
+  .setting-row:has(
+    .setting-value > :is(.text-control:not(.value-select), [type="range"])
+  ) {
+    flex-wrap: wrap;
+  }
+  .setting-row:has(
+      .setting-value > :is(.text-control:not(.value-select), [type="range"])
+    )
+    > .row-value {
+    max-width: none;
+    width: 100%;
+  }
+  .setting-value > :is(.text-control:not(.value-select), [type="range"]) {
+    flex: 1;
+    width: auto;
+  }
+}
+.zoom-value {
+  min-width: 4ch;
+  text-align: end;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }

@@ -326,12 +326,9 @@ json InspectCollaborator(const ProcessSupervisor& processes,
     apply_live_state();
     return detail;
   }
-  const auto& record = *loaded.record;
+  auto& record = *loaded.record;
   Conversation conversation;
-  if (!conversation.Restore(record.state.messages, record.state.message_kinds,
-                            record.state.archive,
-                            record.state.archive_dropped_segments,
-                            record.state.tool_displays, record.state.display)) {
+  if (!std::move(record.state).RestoreConversation(conversation)) {
     return {{"error", "invalid child conversation"}};
   }
   const std::string message = JsonValue(request, "detail", "");

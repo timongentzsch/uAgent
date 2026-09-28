@@ -187,7 +187,8 @@ Connection Open(const std::string& executable, const std::string& cwd,
 struct Server::State {
   struct Client {
     Fd fd;
-    std::string input, output;
+    FrameBuffer input{kCommandBytes};
+    std::string output;
     size_t sent = 0;
   };
   Fd listener;
@@ -273,30 +274,16 @@ struct Server::State {
           char buffer[kIoBufferBytes];
           ssize_t bytes = read(client.fd.Get(), buffer, sizeof buffer);
           if (bytes > 0) {
-            client.input.append(buffer, static_cast<size_t>(bytes));
+            if (!client.input.Feed(
+                    std::string_view(buffer, static_cast<size_t>(bytes)),
+                    command)) {
+              client.fd.Reset();
+            }
           } else if (bytes == 0 || (errno != EINTR && errno != EAGAIN)) {
             client.fd.Reset();
           }
-          size_t newline;
-          while (client.fd &&
-                 (newline = client.input.find('\n')) != std::string::npos) {
-            if (newline > kCommandBytes) {
-              client.fd.Reset();
-              break;
-            }
-            json value =
-                json::parse(client.input.substr(0, newline), nullptr, false);
-            client.input.erase(0, newline + 1);
-            if (!value.is_object() || JsonValue(value, "v", 0) != kProtocol ||
-                !command(value)) {
-              client.fd.Reset();
-            }
-          }
         }
-        if (client.input.size() > kCommandBytes ||
-            client.output.size() - client.sent > kQueueBytes) {
-          client.fd.Reset();
-        }
+        if (client.output.size() - client.sent > kQueueBytes) client.fd.Reset();
         if (client.fd && client.sent < client.output.size()) {
           ssize_t bytes =
               write(client.fd.Get(), client.output.data() + client.sent,
@@ -328,8 +315,7 @@ struct Server::State {
         if (fd && clients.size() < kMaxClients) {
           fcntl(fd.Get(), F_SETFL, O_NONBLOCK);
           fcntl(fd.Get(), F_SETFD, FD_CLOEXEC);
-          Client client{std::move(fd),
-                        {},
+          Client client{std::move(fd), FrameBuffer{kCommandBytes},
                         JsonDump({{"v", kProtocol},
                                   {"kind", "hello"},
                                   {"pid", getpid()},

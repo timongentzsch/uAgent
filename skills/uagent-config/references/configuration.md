@@ -27,6 +27,7 @@ Every setting below is read from the running binary's registry. `takes effect` i
 | --- | --- | --- | --- | --- |
 | `UAGENT_WEB_BIND` | string | `127.0.0.1` | restart-required | web listener address: loopback by default, all interfaces only when explicitly configured |
 | `UAGENT_BROWSER_DATA` | string | empty | restart-required | private browser profile and service directory; empty disables the browser appliance |
+| `UAGENT_BROWSER_IDLE_MINUTES` | integer | `15` | restart-required | minutes without browser work before Chrome stops to free memory; it starts again on the next action; 0 keeps it running |
 | `UAGENT_WEB_PORT` | integer | `8080` | restart-required | global web master's loopback port |
 | `UAGENT_WEB_ORIGIN` | string | empty | restart-required | exact browser origin via an explicitly configured HTTPS or tailnet proxy |
 | `UAGENT_WEB_PUSH_CONTACT` | string | empty | restart-required | VAPID mailto or HTTPS contact; empty disables optional native Web Push |
@@ -203,9 +204,10 @@ Every setting below is read from the running binary's registry. `takes effect` i
 | `UAGENT_STEERING` | boolean | `1` | restart-required | accept typed steering during a turn |
 | `UAGENT_ADAPT_SYSTEM` | boolean | `0` | restart-required | expose adapt_system so the model may revise its directive |
 | `UAGENT_PROMPT_OVERLAY` | string | empty | restart-required | experiment: JSON file replacing base prompt sections so a variant can be measured without a rebuild; prompt text only |
-| `UAGENT_APPROVAL` | string | empty | next-user-turn | ask, auto reviewer, or yolo for ordinary mutations |
+| `UAGENT_APPROVAL` | string | `ask` | next-user-turn | ask, auto reviewer, or yolo for ordinary mutations |
 | `UAGENT_PERMISSION_MODEL` | string | `~typesafe/jev-latest` | next-user-turn | OpenRouter Decisions model used by auto permissions |
 | `UAGENT_PERMISSION_URL` | string | `https://openrouter.ai/api/alpha` | next-user-turn | OpenRouter Decisions API base URL |
+| `UAGENT_TITLE_MODEL` | string | `~deepseek/deepseek-flash-latest` | next-user-turn | model route that names new sessions, or off |
 | `UAGENT_TOOL_CAPABILITIES` | string | empty | restart-required | restrict the exposed tool capability set |
 | `UAGENT_SHELL_ENV_ALLOW` | string | empty | restart-required | comma-separated sensitive variables approved shells may inherit |
 | `UAGENT_TRUST_PROJECT_CONFIG` | boolean | `0` | restart-required | trust this workspace's .mcp.json and config |

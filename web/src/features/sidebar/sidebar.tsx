@@ -18,7 +18,15 @@ import {
   CalendarClock,
 } from "lucide-preact";
 import { command } from "../../state/api.ts";
-import { Mark, Input, Time } from "../../shared/ui.tsx";
+import {
+  Mark,
+  Input,
+  Time,
+  Button,
+  IconButton,
+  DataText,
+  Placeholder,
+} from "../../shared/ui.tsx";
 import FolderLabel from "./folder-label.tsx";
 import { Menu, MenuItem } from "../../shared/popover.tsx";
 import { ActivityStatus, active } from "../chat/activity-status.tsx";
@@ -111,7 +119,71 @@ export function ConversationMenu({
   );
 }
 
+// Before the catalogue arrives, the list draws these (see <Placeholder>).
+const SAMPLE: Session[] = [
+  "A conversation title",
+  "Another title about this long",
+  "A short one",
+].map((title, index) => ({
+  id: `placeholder-${index}`,
+  title,
+  cwd: "/project",
+  updated: Date.now(),
+}));
+
+// One conversation in the list: its title, activity and last update.
+function SessionRow({
+  item,
+  selected,
+  unread,
+  online,
+  choose,
+  menu,
+}: {
+  item: Session;
+  selected: boolean;
+  unread: boolean;
+  online: boolean;
+  choose: (id: string) => void;
+  menu: (session: Session) => ComponentChildren;
+}) {
+  return (
+    <div class="session-row">
+      <Button
+        class={`session ${selected ? "selected" : ""}`}
+        onClick={() => choose(item.id)}
+        aria-current={selected ? "page" : undefined}
+      >
+        <span>
+          <DataText>{item.title || "Untitled conversation"}</DataText>
+          {unread && <span class="unread-dot" aria-label="Unread messages" />}
+        </span>
+        <small>
+          <ActivityStatus
+            phase={
+              online &&
+              (item.pending ||
+                item.turn_active ||
+                item.activities?.some(active))
+                ? item.activity || item.status
+                : ""
+            }
+            running={online && item.turn_active}
+            present={online && !!item.presence}
+            items={online ? item.activities || [] : []}
+            pending={online && item.pending}
+          />
+          {item.updated ? <Time value={item.updated} /> : "New conversation"}
+          {item.error && <span title={item.error}> · Needs attention</span>}
+        </small>
+      </Button>
+      {menu(item)}
+    </div>
+  );
+}
+
 export default function Sidebar({
+  loading,
   sessions,
   selected,
   unread,
@@ -126,6 +198,7 @@ export default function Sidebar({
   navigate,
   scheduledUnread,
 }: {
+  loading: boolean;
   page: string;
   navigate: (page: "chat" | "library" | "scheduled") => void;
   scheduledUnread: boolean;
@@ -141,8 +214,10 @@ export default function Sidebar({
   create: () => void;
 }) {
   const [search, setSearch] = useState("");
+  // Until the list arrives, it draws sample rows in its own layout.
+  const drawing = loading && !sessions.length;
   const groups = new Map<string, Session[]>();
-  for (const item of [...sessions]
+  for (const item of [...(drawing ? SAMPLE : sessions)]
     .sort((a, b) => (b.updated || 0) - (a.updated || 0))
     .filter((item) =>
       `${item.title} ${item.cwd}`.toLowerCase().includes(search.toLowerCase()),
@@ -150,6 +225,24 @@ export default function Sidebar({
     if (!groups.has(item.cwd || "")) groups.set(item.cwd || "", []);
     groups.get(item.cwd || "")!.push(item);
   }
+  const list = [...groups].map(([cwd, items]) => (
+    <section key={cwd}>
+      <h2>
+        <FolderLabel path={cwd} />
+      </h2>
+      {items.map((item) => (
+        <SessionRow
+          key={item.id}
+          item={item}
+          selected={item.id === selected}
+          unread={unread.has(item.id)}
+          online={online}
+          choose={choose}
+          menu={menu}
+        />
+      ))}
+    </section>
+  ));
   return (
     <>
       <div class="sidebar-head">
@@ -164,22 +257,29 @@ export default function Sidebar({
         >
           <Mark />
         </a>
-        <button class="quiet with-icon" onClick={create} disabled={!online}>
+        <Button
+          variant="quiet"
+          class="with-icon"
+          onClick={create}
+          disabled={!online}
+        >
           <Plus />
           New conversation
-        </button>
+        </Button>
       </div>
       <div class="sidebar-sections">
-        <button
-          class="quiet with-icon"
+        <Button
+          variant="quiet"
+          class="with-icon"
           aria-current={page === "library" ? "page" : undefined}
           onClick={() => navigate("library")}
         >
           <Library />
           Library
-        </button>
-        <button
-          class="quiet with-icon"
+        </Button>
+        <Button
+          variant="quiet"
+          class="with-icon"
           aria-current={page === "scheduled" ? "page" : undefined}
           onClick={() => navigate("scheduled")}
         >
@@ -188,7 +288,7 @@ export default function Sidebar({
           {scheduledUnread && (
             <span class="unread-dot" aria-label="Unread scheduled results" />
           )}
-        </button>
+        </Button>
       </div>
       <label class="search">
         <span class="sr-only">Find a session</span>
@@ -200,76 +300,21 @@ export default function Sidebar({
         />
       </label>
       <nav>
-        {[...groups].map(([cwd, items]) => (
-          <section key={cwd}>
-            <h2>
-              <FolderLabel path={cwd} />
-            </h2>
-            {items.map((item) => (
-              <div class="session-row" key={item.id}>
-                <button
-                  class={`session ${item.id === selected ? "selected" : ""}`}
-                  onClick={() => choose(item.id)}
-                  aria-current={item.id === selected ? "page" : undefined}
-                >
-                  <span>
-                    {item.title || "Untitled conversation"}
-                    {unread.has(item.id) && (
-                      <span class="unread-dot" aria-label="Unread messages" />
-                    )}
-                  </span>
-                  <small>
-                    <ActivityStatus
-                      phase={
-                        online &&
-                        (item.pending ||
-                          item.turn_active ||
-                          item.activities?.some(active))
-                          ? item.activity || item.status
-                          : ""
-                      }
-                      running={online && item.turn_active}
-                      present={online && !!item.presence}
-                      items={online ? item.activities || [] : []}
-                      pending={online && item.pending}
-                    />
-                    {item.updated ? (
-                      <Time value={item.updated} />
-                    ) : (
-                      "New conversation"
-                    )}
-                    {item.error && (
-                      <span title={item.error}> · Needs attention</span>
-                    )}
-                  </small>
-                </button>
-                {menu(item)}
-              </div>
-            ))}
-          </section>
-        ))}
+        <Placeholder label="Loading conversations…" when={drawing}>
+          {list}
+        </Placeholder>
       </nav>
       <footer>
         <ConnectionStatus
           phase={connection}
           className={`connection ${online ? "connected" : ""}`}
         />
-        <button
-          class="quiet icon-button"
-          onClick={refresh}
-          aria-label="Refresh"
-          title="Refresh"
-        >
+        <IconButton label="Refresh" onClick={refresh}>
           <RefreshCw />
-        </button>
-        <button
-          class="quiet icon-button"
-          onClick={settings}
-          aria-label="Settings"
-          title="Settings"
-        >
+        </IconButton>
+        <IconButton label="Settings" onClick={settings}>
           <Settings />
-        </button>
+        </IconButton>
       </footer>
     </>
   );

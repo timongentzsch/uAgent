@@ -1,457 +1,215 @@
 import { test, expect } from "./fixtures.js";
 
-// The phone size is covered by "keeps touch and text controls inside the
-// dialog", with the same bounds checks and its controls.
-for (const viewport of [{ width: 1440, height: 900 }]) {
-  test(`browser panel fits the viewport at ${viewport.width}px`, async ({
-    page,
-    session,
-  }) => {
-    await page.setViewportSize(viewport);
-    await page.route("**/api/browser/status", (route) =>
-      route.fulfill({
-        json: {
-          ok: true,
-          mode: "idle",
-          running: false,
-          leased: false,
-          profile_id: "default",
-          profiles: [{ id: "default", name: "Default" }],
-        },
-      }),
-    );
-    await page.goto(`/#session=${session.id}`);
-    await page.getByRole("button", { name: "Open browser" }).click();
-    const dialog = page.getByRole("dialog", { name: "Browser" });
-    await expect(
-      dialog.getByRole("button", { name: "Take control" }),
-    ).toBeVisible();
-    const bounds = await dialog.boundingBox();
-    expect(bounds.x).toBeGreaterThanOrEqual(0);
-    expect(bounds.x + bounds.width).toBeLessThanOrEqual(viewport.width);
-    expect(bounds.y).toBeGreaterThanOrEqual(0);
-    expect(bounds.y + bounds.height).toBeLessThanOrEqual(viewport.height);
-    expect(
-      await page.evaluate(() => document.documentElement.scrollWidth),
-    ).toBeLessThanOrEqual(viewport.width);
-  });
-}
-
-test.describe("phone browser viewer", () => {
-  test.use({
-    viewport: { width: 390, height: 844 },
-    isMobile: true,
-    hasTouch: true,
-  });
-
-  test("keeps touch and text controls inside the dialog", async ({
-    page,
-    session,
-  }) => {
-    await page.route("**/api/browser/status", (route) =>
-      route.fulfill({
-        json: {
-          ok: true,
-          mode: "human",
-          running: true,
-          leased: true,
-          controller: true,
-          generation: 1,
-          profile_id: "default",
-          profiles: [{ id: "default", name: "Default" }],
-        },
-      }),
-    );
-    await page.goto(`/#session=${session.id}`);
-    await page.getByRole("button", { name: "Open browser" }).click();
-    const dialog = page.getByRole("dialog", { name: "Browser" });
-    await expect(dialog.getByLabel("Browser trackpad")).toBeVisible();
-    await expect(dialog.getByLabel("Browser viewport")).toBeVisible();
-    // Touch devices always get the trackpad; there is nothing to toggle.
-    await expect(dialog.getByRole("button", { name: "Trackpad" })).toHaveCount(
-      0,
-    );
-    await expect(dialog.getByRole("button", { name: "Left" })).toBeVisible();
-    await expect(dialog.getByRole("button", { name: "Right" })).toBeVisible();
-    for (const name of ["Keyboard", "Copy", "Paste"])
-      await expect(dialog.getByRole("button", { name })).toBeVisible();
-    await expect(
-      dialog.getByRole("button", { name: "Hand back" }),
-    ).toBeVisible();
-    await page.setViewportSize({ width: 390, height: 600 });
-    await expect(page.locator("html")).toHaveCSS("--viewport-height", "600px");
-    const done = await dialog
-      .getByRole("button", { name: "Hand back" })
-      .boundingBox();
-    expect(done.y + done.height).toBeLessThanOrEqual(600);
-    await expect(
-      dialog.getByRole("button", { name: "Actual size" }),
-    ).toHaveCount(0);
-    const bounds = await dialog.boundingBox();
-    expect(bounds.x).toBeGreaterThanOrEqual(0);
-    expect(bounds.x + bounds.width).toBeLessThanOrEqual(390);
-    expect(bounds.y).toBeGreaterThanOrEqual(0);
-    expect(bounds.y + bounds.height).toBeLessThanOrEqual(600);
-    expect(
-      await page.evaluate(() => document.documentElement.scrollWidth),
-    ).toBeLessThanOrEqual(390);
-  });
-});
-
-test("watches an active agent without taking control", async ({
-  page,
-  session,
-}) => {
-  await page.route("**/api/browser/status", (route) =>
-    route.fulfill({
-      json: {
-        ok: true,
-        mode: "agent",
-        running: true,
-        leased: false,
-        controller: false,
-        generation: 3,
-        profile_id: "default",
-        profiles: [{ id: "default", name: "Default" }],
-      },
-    }),
-  );
-  await page.goto(`/#session=${session.id}`);
-  await page.getByRole("button", { name: "Open browser" }).click();
-  const dialog = page.getByRole("dialog", { name: "Browser" });
-  await expect(dialog.getByLabel("Read-only browser display")).toBeVisible();
-  await expect(dialog.getByLabel("Browser viewport")).toHaveCount(1);
-  await expect(dialog.getByText(/Agent working/)).toBeVisible();
-  await expect(
-    dialog.getByRole("button", { name: "Take control" }),
-  ).toBeVisible();
-  for (const name of ["Keyboard", "Copy", "Paste"])
-    await expect(dialog.getByRole("button", { name })).toHaveCount(0);
-  await expect(dialog.getByLabel("Browser trackpad")).toHaveCount(0);
-  // Pinch belongs to the remote display only while the viewer is open.
-  const viewport = page.locator('meta[name="viewport"]');
-  await expect(viewport).toHaveAttribute("content", /user-scalable=no/);
-  await page.keyboard.press("Escape");
-  await expect(dialog).toHaveCount(0);
-  await expect(viewport).not.toHaveAttribute("content", /user-scalable=no/);
-});
-
-for (const [label, status, driver] of [
-  ["watches a running browser nobody drives", { mode: "idle" }, /Watching/],
-  [
-    "tells the driver when the agent waits for the browser",
-    { mode: "human", controller: true, leased: true, waiting: true },
-    /Agent is waiting/,
-  ],
-]) {
-  test(label, async ({ page, session }) => {
-    await page.route("**/api/browser/status", (route) =>
-      route.fulfill({
-        json: {
-          ok: true,
-          running: true,
-          generation: 4,
-          profile_id: "default",
-          profiles: [{ id: "default", name: "Default" }],
-          ...status,
-        },
-      }),
-    );
-    await page.goto(`/#session=${session.id}`);
-    await page.getByRole("button", { name: "Open browser" }).click();
-    const dialog = page.getByRole("dialog", { name: "Browser" });
-    await expect(dialog.getByText(driver)).toBeVisible();
-    await expect(dialog.getByLabel("Browser viewport")).toHaveCount(1);
-    await expect(
-      dialog.getByRole("button", {
-        name: status.controller ? "Hand back" : "Take control",
-      }),
-    ).toBeVisible();
-  });
-}
-
-test("creates and selects a persistent Chrome profile", async ({
-  page,
-  session,
-}) => {
+const profiles = {
+  profile_id: "default",
+  profiles: [{ id: "default", name: "Default" }],
+};
+// Serves a status the test can change; the panel polls it.
+const browserStatus = async (page, initial) => {
   const status = {
     ok: true,
-    mode: "idle",
-    running: false,
-    leased: false,
-    profile_id: "default",
-    profiles: [{ id: "default", name: "Default" }],
-  };
-  const actions = [];
-  await page.route("**/api/browser/status", (route) =>
-    route.fulfill({ json: status }),
-  );
-  await page.route("**/api/command", (route) => {
-    const command = route.request().postDataJSON();
-    actions.push(command.action);
-    if (command.action === "create_profile") {
-      status.profiles.push({
-        id: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        name: command.name.trim(),
-      });
-      return route.fulfill({
-        json: {
-          accepted: true,
-          pending: false,
-          result: {
-            created_profile_id: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-          },
-        },
-      });
-    }
-    if (command.action === "select_profile")
-      status.profile_id = command.profile_id;
-    return route.fulfill({
-      json: { accepted: true, pending: false, result: { ok: true } },
-    });
-  });
-  await page.goto(`/#session=${session.id}`);
-  await page.getByRole("button", { name: "Open browser" }).click();
-  const dialog = page.getByRole("dialog", { name: "Browser" });
-  // Profile actions are rare; they live in one menu above the screen.
-  await dialog.getByRole("button", { name: "Profiles" }).click();
-  await dialog.getByRole("button", { name: "New profile" }).click();
-  await dialog.getByLabel("New Chrome profile name").fill("Work");
-  await dialog.getByRole("button", { name: "Create and use" }).click();
-  await expect(
-    dialog.getByLabel("Chrome profile", { exact: true }),
-  ).toHaveValue("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
-  expect(actions).toEqual(["create_profile", "select_profile"]);
-});
-
-test("profile sign-in explicitly reopens Chrome and returns the same profile", async ({
-  page,
-  session,
-}) => {
-  const status = {
-    ok: true,
-    mode: "human",
-    running: true,
-    controller: true,
-    leased: true,
+    display: 1,
     generation: 1,
-    profile_id: "default",
-    profiles: [{ id: "default", name: "Default" }],
-    profile_setup: false,
+    ...profiles,
+    ...initial,
   };
-  const actions = [];
   await page.route("**/api/browser/status", (route) =>
     route.fulfill({ json: status }),
   );
-  await page.route("**/api/command", (route) => {
-    const { action } = route.request().postDataJSON();
-    actions.push(action);
-    status.profile_setup = action === "setup_profile";
-    status.generation++;
-    if (action === "done") {
-      status.mode = "idle";
-      status.controller = false;
-      status.leased = false;
-    }
-    return route.fulfill({
-      json: { accepted: true, pending: false, result: status },
-    });
-  });
+  return status;
+};
+const openBrowser = async (page, session) => {
   await page.goto(`/#session=${session.id}`);
   await page.getByRole("button", { name: "Open browser" }).click();
-  const dialog = page.getByRole("dialog", { name: "Browser", exact: true });
-  // Sign-in sits in the profile menu, beside New profile.
-  await dialog.getByRole("button", { name: "Profiles" }).click();
-  await expect(
-    dialog
-      .locator(".browser-profile-controls")
-      .getByRole("button", { name: "Sign in to profile", exact: true }),
-  ).toBeVisible();
-  await dialog
-    .getByRole("button", { name: "Sign in to profile", exact: true })
-    .click();
-  await expect(
-    dialog.getByText(/Hand back reopens this profile/),
-  ).toBeVisible();
-  await expect(
-    dialog.getByRole("button", { name: "Sign in to profile", exact: true }),
-  ).toHaveCount(0);
-  await dialog.getByRole("button", { name: "Hand back", exact: true }).click();
-  await expect(
-    dialog.getByRole("button", { name: "Take control", exact: true }),
-  ).toBeVisible();
-  expect(status.profile_id).toBe("default");
-  expect(actions).toEqual(["setup_profile", "done"]);
+  return page.getByRole("dialog", { name: "Browser", exact: true });
+};
+const rect = async (locator) => {
+  const box = await locator.boundingBox();
+  return box && [box.x, box.y, box.width, box.height].map(Math.round);
+};
+
+test("browser panel fits the viewport on a desktop", async ({
+  page,
+  session,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await browserStatus(page, { mode: "idle", running: false, leased: false });
+  const dialog = await openBrowser(page, session);
+  await expect(dialog.getByRole("button", { name: "Take over" })).toBeVisible();
+  await expect(dialog.getByText(/Chrome is stopped/)).toBeVisible();
+  const bounds = await dialog.boundingBox();
+  expect(bounds.x).toBeGreaterThanOrEqual(0);
+  expect(bounds.x + bounds.width).toBeLessThanOrEqual(1440);
+  expect(bounds.y).toBeGreaterThanOrEqual(0);
+  expect(bounds.y + bounds.height).toBeLessThanOrEqual(900);
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(1440);
 });
 
-test.describe("real noVNC input in a mobile modal", () => {
+test.describe("phone browser sheet", () => {
   test.use({
     viewport: { width: 390, height: 844 },
     isMobile: true,
     hasTouch: true,
   });
-  test("paints the pointer above the dialog and follows it at zoom", async ({
+
+  // The screen and the bar keep one geometry from loading to hand-back: no
+  // state inserts anything into the flow, and control changes reuse the one
+  // viewer connection.
+  test("keeps one geometry and one connection through every state", async ({
     page,
     session,
-  }, testInfo) => {
-    const { serveFramebuffer, touch, cursor } =
-      await import("./rfb-fixture.js");
+  }) => {
+    const { serveFramebuffer } = await import("./rfb-fixture.js");
     const remote = await serveFramebuffer(page);
-    const errors = [];
-    page.on("pageerror", (error) => errors.push(error.message));
-    await page.route("**/api/browser/status", (route) =>
-      route.fulfill({
-        json: {
-          ok: true,
-          mode: "human",
-          running: true,
-          controller: true,
-          generation: 1,
-        },
-      }),
-    );
+    const status = await browserStatus(page, {
+      mode: "agent",
+      running: true,
+      controller: false,
+    });
     await page.goto(`/#session=${session.id}`);
     await remote.prepare();
     await page.getByRole("button", { name: "Open browser" }).click();
     const dialog = page.getByRole("dialog", { name: "Browser", exact: true });
-    await expect(dialog.getByText("Connected", { exact: true })).toBeVisible();
-    const marker = dialog.locator(".browser-pointer");
-    await expect(marker).toBeVisible();
+    const screen = dialog.locator(".browser-screen");
+    const bar = dialog.locator(".browser-bar");
+    const primary = dialog.locator(".browser-primary");
+    await expect(dialog.locator(".browser-rfb canvas")).toBeVisible();
+    // Full screen on a phone.
+    expect(await rect(dialog)).toEqual([0, 0, 390, 844]);
+    const geometry = async () => [
+      await rect(screen),
+      await rect(bar),
+      await rect(primary),
+    ];
+    const resting = await geometry();
+    await expect(dialog.getByText("Agent", { exact: true })).toBeVisible();
+    for (const name of ["Keyboard", "Copy", "Paste"])
+      await expect(dialog.getByRole("button", { name })).toBeDisabled();
+
+    Object.assign(status, { mode: "human", controller: true, leased: true });
+    await expect(dialog.getByRole("button", { name: "Done" })).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Paste" })).toBeEnabled();
+    expect(await geometry()).toEqual(resting);
+
+    // The keyboard's special keys replace the bar's contents, same height.
+    await dialog.getByRole("button", { name: "Keyboard" }).click();
+    await expect(dialog.getByLabel("Special keys")).toBeVisible();
+    expect(await rect(bar)).toEqual(resting[1]);
+    expect(await rect(screen)).toEqual(resting[0]);
+    await dialog.getByRole("button", { name: "Hide keyboard" }).click();
+
+    // Without clipboard access, Paste opens a card over the screen.
+    await dialog.getByRole("button", { name: "Paste" }).click();
+    const card = dialog.locator(".browser-card");
+    await expect(card).toBeVisible();
+    expect(await geometry()).toEqual(resting);
+    // Real touches reach the card: the screen's gesture layer lets them by.
+    await card.getByLabel(/Paste here/).tap();
+    await expect(card.getByLabel(/Paste here/)).toBeFocused();
+    await card.getByLabel(/Paste here/).fill("secret");
+    await card.getByRole("button", { name: "Send" }).tap();
+    await expect.poll(() => remote.clipboard.client).toBe("secret");
+    await expect(card).toHaveCount(0);
+
+    Object.assign(status, { mode: "agent", controller: false, leased: false });
+    await expect(
+      dialog.getByRole("button", { name: "Take over" }),
+    ).toBeVisible();
+    expect(await geometry()).toEqual(resting);
+    expect(remote.connections.count).toBe(1);
+    // A new display (Chrome restarted) is the one reason to reconnect.
+    status.display = 2;
+    await expect.poll(() => remote.connections.count).toBe(2);
     expect(
-      await marker.evaluate((node) => !!node.closest("dialog:modal")),
-    ).toBe(true);
-    // The pointer is the server's own cursor image, not a local stand-in.
-    await expect
-      .poll(() => marker.evaluate((node) => [node.width, node.height]))
-      .toEqual([cursor.width, cursor.height]);
-    const hotspot = async () => {
-      const box = await marker.boundingBox();
-      const [x, y] = (await marker.getAttribute("data-hotspot"))
-        .split(",")
-        .map(Number);
-      return { x: box.x + x, y: box.y + y };
-    };
+      await page.evaluate(() => document.documentElement.scrollWidth),
+    ).toBeLessThanOrEqual(390);
+  });
+
+  test("direct touch clicks, scrolls, drags, right-clicks and zooms", async ({
+    page,
+    session,
+  }) => {
+    const { serveFramebuffer, touch } = await import("./rfb-fixture.js");
+    const remote = await serveFramebuffer(page);
+    const errors = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    await browserStatus(page, {
+      mode: "human",
+      running: true,
+      controller: true,
+      leased: true,
+    });
+    await page.goto(`/#session=${session.id}`);
+    await remote.prepare();
+    await page.getByRole("button", { name: "Open browser" }).click();
+    const dialog = page.getByRole("dialog", { name: "Browser", exact: true });
     const viewport = dialog.getByLabel("Browser viewport");
     const canvas = dialog.locator(".browser-rfb canvas");
-    const pad = dialog.getByLabel("Browser trackpad");
-    const move = async (dx, dy) => {
-      const box = await pad.boundingBox();
-      const x = box.x + box.width / 2,
-        y = box.y + box.height / 2;
-      await touch(pad, "pointerdown", 1, x, y);
-      await touch(pad, "pointermove", 1, x + dx, y + dy);
-      await touch(pad, "pointerup", 1, x + dx, y + dy);
-    };
-    const assertPosition = async () => {
-      const point = await hotspot(),
-        display = await canvas.boundingBox();
-      const expected = {
-        x: Math.min(
-          remote.width - 1,
-          Math.round(((point.x - display.x) / display.width) * remote.width),
-        ),
-        y: Math.min(
-          remote.height - 1,
-          Math.round(((point.y - display.y) / display.height) * remote.height),
-        ),
-      };
-      // WebKit can quantize MouseEvent coordinates to CSS pixels; RFB then
-      // quantizes again to framebuffer pixels. Account for the display scale.
-      const pixelQuantization =
-        Math.ceil(
-          Math.max(
-            remote.width / display.width,
-            remote.height / display.height,
-          ),
-        ) + 1;
-      await expect
-        .poll(() => {
-          const actual = remote.pointers.at(-1);
-          return actual
-            ? Math.max(
-                Math.abs(actual.x - expected.x),
-                Math.abs(actual.y - expected.y),
-              )
-            : Infinity;
-        })
-        .toBeLessThanOrEqual(pixelQuantization);
-    };
-    await move(12, 8);
-    await assertPosition();
+    await expect(dialog.getByRole("button", { name: "Paste" })).toBeEnabled();
+    const box = await canvas.boundingBox();
+    const at = (fx, fy) => ({
+      x: box.x + box.width * fx,
+      y: box.y + box.height * fy,
+    });
+    const masks = () => remote.pointers.splice(0).map((p) => p.buttons);
+
+    // Tap: one click exactly where the finger landed.
+    const tap = at(0.25, 0.5);
+    await touch(viewport, "pointerdown", 1, tap.x, tap.y);
+    await touch(viewport, "pointerup", 1, tap.x, tap.y);
+    await expect.poll(() => remote.pointers.length).toBeGreaterThan(2);
+    const last = remote.pointers.at(-1);
+    expect(Math.abs(last.x - remote.width * 0.25)).toBeLessThanOrEqual(3);
+    expect(Math.abs(last.y - remote.height * 0.5)).toBeLessThanOrEqual(3);
+    expect(masks()).toEqual([0, 1, 0]);
+
+    // Drag: wheel notches, content follows the finger (up = scroll down).
+    const from = at(0.5, 0.8);
+    await touch(viewport, "pointerdown", 2, from.x, from.y);
+    await touch(viewport, "pointermove", 2, from.x, from.y - 60);
+    await touch(viewport, "pointermove", 2, from.x, from.y - 120);
+    await touch(viewport, "pointerup", 2, from.x, from.y - 120);
+    await expect.poll(() => remote.pointers.length).toBeGreaterThan(0);
+    const wheel = masks();
+    expect(wheel).toContain(1 << 4);
+    expect(wheel.every((mask) => mask === 0 || mask === 1 << 4)).toBe(true);
+
+    // Hold, then drag: the left button stays down until the finger lifts.
+    const hold = at(0.4, 0.4);
+    await touch(viewport, "pointerdown", 3, hold.x, hold.y);
+    await page.waitForTimeout(500);
+    await touch(viewport, "pointermove", 3, hold.x + 40, hold.y);
+    await touch(viewport, "pointerup", 3, hold.x + 40, hold.y);
+    await expect.poll(() => remote.pointers.at(-1)?.buttons).toBe(0);
+    const dragged = masks();
+    expect(dragged.slice(0, -1).every((mask) => mask === 1)).toBe(true);
+    expect(dragged.length).toBeGreaterThanOrEqual(3);
+
+    // Two-finger tap: a right-click.
+    const left = at(0.45, 0.5),
+      right = at(0.55, 0.5);
+    await touch(viewport, "pointerdown", 4, left.x, left.y);
+    await touch(viewport, "pointerdown", 5, right.x, right.y);
+    await touch(viewport, "pointerup", 4, left.x, left.y);
+    await touch(viewport, "pointerup", 5, right.x, right.y);
+    await expect.poll(() => masks()).toEqual([0, 4, 0]);
+
+    // Pinch: zooms this device's view only; nothing reaches Chrome.
     const view = await viewport.boundingBox();
-    await touch(
-      viewport,
-      "pointerdown",
-      2,
-      view.x + view.width * 0.4,
-      view.y + view.height / 2,
-    );
-    await touch(
-      viewport,
-      "pointerdown",
-      3,
-      view.x + view.width * 0.6,
-      view.y + view.height / 2,
-    );
-    await touch(
-      viewport,
-      "pointermove",
-      2,
-      view.x + view.width * 0.2,
-      view.y + view.height / 2,
-    );
-    await touch(
-      viewport,
-      "pointermove",
-      3,
-      view.x + view.width * 0.8,
-      view.y + view.height / 2,
-    );
-    await touch(
-      viewport,
-      "pointerup",
-      2,
-      view.x + view.width * 0.2,
-      view.y + view.height / 2,
-    );
-    await touch(
-      viewport,
-      "pointerup",
-      3,
-      view.x + view.width * 0.8,
-      view.y + view.height / 2,
-    );
+    const y = view.y + view.height / 2;
+    await touch(viewport, "pointerdown", 6, view.x + view.width * 0.4, y);
+    await touch(viewport, "pointerdown", 7, view.x + view.width * 0.6, y);
+    await touch(viewport, "pointermove", 6, view.x + view.width * 0.2, y);
+    await touch(viewport, "pointermove", 7, view.x + view.width * 0.8, y);
+    await touch(viewport, "pointerup", 6, view.x + view.width * 0.2, y);
+    await touch(viewport, "pointerup", 7, view.x + view.width * 0.8, y);
     await expect
       .poll(async () => (await canvas.boundingBox()).width / view.width)
       .toBeGreaterThan(2);
-    const target = dialog.locator(".browser-rfb");
-    const before = await target.evaluate((node) => node.style.transform);
-    await move(200, 100);
-    await assertPosition();
-    expect(await target.evaluate((node) => node.style.transform)).not.toBe(
-      before,
-    );
-    const point = await hotspot();
-    expect(point.x).toBeGreaterThanOrEqual(view.x);
-    expect(point.x).toBeLessThan(view.x + view.width);
-    expect(point.y).toBeGreaterThanOrEqual(view.y);
-    expect(point.y).toBeLessThan(view.y + view.height);
-    // Like a native pointer, the image past the hotspot may run under the
-    // screen's edge; the screen clips it.
-    expect(
-      await marker.evaluate(
-        (node) =>
-          getComputedStyle(node.closest(".browser-screen")).overflow ===
-          "hidden",
-      ),
-    ).toBe(true);
-    const right = dialog.getByRole("button", { name: "Right", exact: true });
-    const button = await right.boundingBox();
-    await touch(right, "pointerdown", 4, button.x + 5, button.y + 5);
-    await touch(right, "pointerup", 4, button.x + 5, button.y + 5);
-    expect(remote.pointers.some((point) => point.buttons === 4)).toBe(true);
-    // noVNC's own touch cursor (a fixed canvas on the body, drawn at the
-    // remote's native size) never shows beside the viewer's pointer.
+    expect(masks()).toEqual([]);
+    // noVNC's own touch cursor stays hidden behind the modal.
     expect(
       await page.evaluate(() =>
         [...document.querySelectorAll("body > canvas")].every(
@@ -459,31 +217,7 @@ test.describe("real noVNC input in a mobile modal", () => {
         ),
       ),
     ).toBe(true);
-    await dialog.screenshot({
-      path: testInfo.outputPath("visible-vnc-cursor.png"),
-    });
     expect(errors).toEqual([]);
-  });
-});
-
-const controlledBrowser = (page) =>
-  page.route("**/api/browser/status", (route) =>
-    route.fulfill({
-      json: {
-        ok: true,
-        mode: "human",
-        running: true,
-        controller: true,
-        generation: 1,
-      },
-    }),
-  );
-
-test.describe("phone browser keyboard", () => {
-  test.use({
-    viewport: { width: 390, height: 844 },
-    isMobile: true,
-    hasTouch: true,
   });
 
   test("types live into Chrome with special keys and a sticky Ctrl", async ({
@@ -492,28 +226,21 @@ test.describe("phone browser keyboard", () => {
     browserName,
   }) => {
     test.skip(browserName !== "chromium", "needs CDP text insertion");
-    const { serveFramebuffer, cursor } = await import("./rfb-fixture.js");
+    const { serveFramebuffer } = await import("./rfb-fixture.js");
     const remote = await serveFramebuffer(page);
-    await controlledBrowser(page);
+    await browserStatus(page, {
+      mode: "human",
+      running: true,
+      controller: true,
+      leased: true,
+    });
     await page.goto(`/#session=${session.id}`);
     await remote.prepare();
     await page.getByRole("button", { name: "Open browser" }).click();
     const dialog = page.getByRole("dialog", { name: "Browser", exact: true });
-    await expect(dialog.getByText("Connected", { exact: true })).toBeVisible();
-    // The server's pointer shrinks with the remote screen, like Chrome's own.
-    const pointer = dialog.locator(".browser-pointer");
-    await expect
-      .poll(() => pointer.evaluate((node) => node.width))
-      .toBe(cursor.width);
-    const drawn = (await pointer.boundingBox()).width;
-    expect(drawn).toBeLessThan(cursor.width);
-    expect(drawn).toBeGreaterThanOrEqual(cursor.width * 0.45 - 0.5);
     await dialog.getByRole("button", { name: "Keyboard" }).click();
     await expect(dialog.getByLabel("Type into Chrome")).toBeFocused();
-    // Typing keeps the screen in view: the trackpad steps aside.
-    await expect(dialog.getByLabel("Browser trackpad")).toBeHidden();
     await expect(dialog.getByLabel("Browser viewport")).toBeInViewport();
-    await expect(dialog.getByRole("button", { name: "Keys" })).toHaveCount(0);
     const pressed = () =>
       remote.keys.filter((key) => key.down).map((key) => key.keysym);
     await page.keyboard.insertText("Hé");
@@ -530,6 +257,147 @@ test.describe("phone browser keyboard", () => {
   });
 });
 
+test("watches an active agent without taking control", async ({
+  page,
+  session,
+}) => {
+  await browserStatus(page, {
+    mode: "agent",
+    running: true,
+    leased: false,
+    controller: false,
+  });
+  const dialog = await openBrowser(page, session);
+  await expect(dialog.getByLabel("Browser viewport")).toHaveCount(1);
+  await expect(dialog.getByText("Agent", { exact: true })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Take over" })).toBeVisible();
+  for (const name of ["Copy", "Paste"])
+    await expect(dialog.getByRole("button", { name })).toBeDisabled();
+  // The app-wide zoom lock holds with the viewer open and after it closes.
+  const meta = page.locator('meta[name="viewport"]');
+  await expect(meta).toHaveAttribute("content", /user-scalable=no/);
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(meta).toHaveAttribute("content", /user-scalable=no/);
+});
+
+for (const [label, status, state, primary] of [
+  [
+    "watches a running browser nobody drives",
+    { mode: "idle" },
+    "Watching",
+    "Take over",
+  ],
+  [
+    "tells the driver when the agent waits for them",
+    { mode: "human", controller: true, leased: true, waiting: true },
+    "Your turn",
+    "Done",
+  ],
+  [
+    "asks the user to take over when the agent waits",
+    { mode: "human", controller: false, leased: false, waiting: true },
+    "Needs you",
+    "Take over",
+  ],
+]) {
+  test(label, async ({ page, session }) => {
+    await browserStatus(page, { running: true, ...status });
+    const dialog = await openBrowser(page, session);
+    await expect(dialog.getByText(state, { exact: true })).toBeVisible();
+    await expect(dialog.getByLabel("Browser viewport")).toHaveCount(1);
+    await expect(dialog.getByRole("button", { name: primary })).toBeVisible();
+  });
+}
+
+test("creates and selects a persistent Chrome profile", async ({
+  page,
+  session,
+}) => {
+  const status = await browserStatus(page, {
+    mode: "idle",
+    running: false,
+    leased: false,
+  });
+  status.profiles = [{ id: "default", name: "Default" }];
+  const actions = [];
+  await page.route("**/api/command", (route) => {
+    const command = route.request().postDataJSON();
+    actions.push(command.action);
+    if (command.action === "create_profile") {
+      status.profiles.push({
+        id: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        name: command.name.trim(),
+      });
+      return route.fulfill({
+        json: {
+          accepted: true,
+          pending: false,
+          result: { created_profile_id: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+        },
+      });
+    }
+    if (command.action === "select_profile")
+      status.profile_id = command.profile_id;
+    return route.fulfill({
+      json: { accepted: true, pending: false, result: { ok: true } },
+    });
+  });
+  const dialog = await openBrowser(page, session);
+  // Status, page and profiles share the one menu on the status pill.
+  await dialog
+    .getByRole("button", { name: /Browser status and profiles/ })
+    .click();
+  await dialog.getByRole("button", { name: "New profile" }).click();
+  await dialog.getByLabel("New Chrome profile name").fill("Work");
+  await dialog.getByRole("button", { name: "Create and use" }).click();
+  await expect(
+    dialog.getByLabel("Chrome profile", { exact: true }),
+  ).toHaveValue("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+  expect(actions).toEqual(["create_profile", "select_profile"]);
+  // A named profile shows on the pill.
+  await expect(dialog.locator(".browser-status")).toContainText("Work");
+});
+
+test("profile sign-in explicitly reopens Chrome and returns the same profile", async ({
+  page,
+  session,
+}) => {
+  const status = await browserStatus(page, {
+    mode: "human",
+    running: true,
+    controller: true,
+    leased: true,
+    profile_setup: false,
+  });
+  const actions = [];
+  await page.route("**/api/command", (route) => {
+    const { action } = route.request().postDataJSON();
+    actions.push(action);
+    status.profile_setup = action === "setup_profile";
+    if (action === "done")
+      Object.assign(status, { mode: "idle", controller: false, leased: false });
+    return route.fulfill({
+      json: { accepted: true, pending: false, result: status },
+    });
+  });
+  const dialog = await openBrowser(page, session);
+  await dialog
+    .getByRole("button", { name: /Browser status and profiles/ })
+    .click();
+  await dialog
+    .getByRole("button", { name: "Sign in to profile", exact: true })
+    .click();
+  await expect(dialog.getByText(/Done reopens this profile/)).toBeVisible();
+  await page.keyboard.press("Escape");
+  await dialog.getByRole("button", { name: "Done", exact: true }).click();
+  await expect(
+    dialog.getByRole("button", { name: "Take over", exact: true }),
+  ).toBeVisible();
+  expect(status.profile_id).toBe("default");
+  expect(actions).toEqual(["setup_profile", "done"]);
+});
+
 test("desktop Copy and Paste carry text between Chrome and the device", async ({
   page,
   context,
@@ -540,14 +408,18 @@ test("desktop Copy and Paste carry text between Chrome and the device", async ({
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   const { serveFramebuffer } = await import("./rfb-fixture.js");
   const remote = await serveFramebuffer(page);
-  await controlledBrowser(page);
+  await browserStatus(page, {
+    mode: "human",
+    running: true,
+    controller: true,
+    leased: true,
+  });
   await page.goto(`/#session=${session.id}`);
   await remote.prepare();
   await page.getByRole("button", { name: "Open browser" }).click();
   const dialog = page.getByRole("dialog", { name: "Browser", exact: true });
-  await expect(dialog.getByText("Connected", { exact: true })).toBeVisible();
-  await expect(dialog.getByLabel("Browser trackpad")).toHaveCount(0);
   await expect(dialog.getByRole("button", { name: "Keyboard" })).toHaveCount(0);
+  await expect(dialog.getByRole("button", { name: "Paste" })).toBeEnabled();
 
   await page.evaluate(() => navigator.clipboard.writeText("from device"));
   await dialog.getByRole("button", { name: "Paste" }).click();
@@ -558,7 +430,7 @@ test("desktop Copy and Paste carry text between Chrome and the device", async ({
 
   remote.clipboard.server = "from chrome";
   await dialog.getByRole("button", { name: "Copy" }).click();
-  await expect(dialog.getByText("Copied to this device.")).toBeVisible();
+  await expect(dialog.getByText("Copied")).toBeVisible();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
     "from chrome",
   );

@@ -20,7 +20,9 @@ this file. Do not load every reference; pick the one the question needs.
 | What is in the system prompt? | `references/system-prompt.md` |
 | Which prompt is this session actually running? | `uagent` action `inspect`, topic `prompt` (base digest, active sections, overlay) |
 | Which built-in tools and arguments exist? | `uagent` action `inspect`, topic `tools`, or `references/tools.md` |
+| Which model routes are configured, and is a credential set? | `uagent` action `inspect`, topic `routes` |
 | How is µAgent built, and why? | `references/architecture.md` when installed, else `docs/ARCHITECTURE.md` in a source checkout |
+| Limits, recovery or failure triage | `docs/OPERATIONS.md` in a source checkout |
 | Change a setting persistently | `references/self-configuration.md` |
 
 `uagent` reports the installed binary, so it beats both these references

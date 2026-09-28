@@ -65,16 +65,22 @@ constexpr SlashCommandSpec kSlashCommands[] = {
     {SlashCommandId::kCompact, "/compact", "",
      "summarize conversation to prevent hitting the context limit", false},
     {SlashCommandId::kContext, "/context", "", "show current model request"},
-    {SlashCommandId::kConfig, "/config", "[user|project KEY=VALUE|unset KEY]",
-     "inspect or change configuration"},
+    {SlashCommandId::kConfig, "/config",
+     "[user|project KEY=VALUE|unset KEY|reset]",
+     "show changed settings, change one, or reset a scope"},
     {SlashCommandId::kFork, "/fork", "[TITLE] [@TURN]",
      "branch this conversation, optionally at user turn N", false, true},
     {SlashCommandId::kRewind, "/rewind", "[@TURN]",
      "rewind this conversation to user turn N", false, true},
     {SlashCommandId::kShare, "/share", "", "export transcript as markdown",
      false, true},
-    {SlashCommandId::kPermissions, "/permissions", "[default|ask|auto|yolo]",
-     "show or change permission mode", false},
+    {SlashCommandId::kPermissions, "/permissions",
+     "[default|ask|auto|yolo|rules|forget N|forget all]",
+     "show or change permission mode, or this repository's remembered "
+     "actions",
+     false},
+    {SlashCommandId::kRename, "/rename", "TITLE", "rename this conversation",
+     false},
     {SlashCommandId::kPrompt, "/prompt",
      "[show|edit|set|reset] [--scope global|project|conversation] [--mode "
      "overlay|replace] [--file PATH]",
@@ -123,6 +129,11 @@ constexpr SlashCommandSpec kSlashCommands[] = {
     {SlashCommandId::kTell, "/tell", "ID TEXT", "message a linked session"},
     {SlashCommandId::kTools, "/tools", "[on|off NAME|profile NAME|reset]",
      "inspect or choose tools for this conversation"},
+    {SlashCommandId::kMcp, "/mcp", "[retry|on|off NAME]",
+     "show MCP servers; retry one or switch it on or off"},
+    {SlashCommandId::kRestart, "/restart", "",
+     "restart this conversation to apply settings that need it", false, true,
+     true},
     {SlashCommandId::kVariant, "/variant", "MODE",
      "set OpenRouter provider routing", false},
     {SlashCommandId::kBtw, "/btw", "QUESTION",
@@ -192,24 +203,6 @@ ForkArgument ParseForkArgument(const std::string& argument) {
     fork = {"", std::stoll(rest)};
   }
   return fork;
-}
-
-void PrintCommandHelp() {
-  size_t width = 0;
-  for (const SlashCommandSpec& command : kSlashCommands) {
-    if (!*command.description) continue;
-    width = std::max(
-        width, strlen(command.name) +
-                   (*command.argument ? strlen(command.argument) + 1 : 0));
-  }
-  printf("%scommands%s\n", BOLD(), RST());
-  for (const SlashCommandSpec& command : kSlashCommands) {
-    if (!*command.description) continue;
-    std::string usage = command.name;
-    if (*command.argument) usage += " " + std::string(command.argument);
-    printf("  %s%-*s%s  %s%s%s\n", BOLD(), static_cast<int>(width),
-           usage.c_str(), RST(), DIM(), command.description, RST());
-  }
 }
 
 void SetInteractiveReadHandler(InteractiveReadHandler handler) {

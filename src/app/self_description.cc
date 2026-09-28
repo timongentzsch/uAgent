@@ -74,6 +74,7 @@ json DescriptorJson(const ConfigDescriptor& descriptor) {
                 {"description", descriptor.description}};
   if (!descriptor.field.empty()) entry["field"] = descriptor.field;
   if (!descriptor.choices.empty()) entry["choices"] = descriptor.choices;
+  if (!descriptor.fallback.empty()) entry["fallback"] = descriptor.fallback;
   if (descriptor.type == ConfigType::kInt) {
     if (descriptor.minimum != kConfigAnyMin) {
       entry["minimum"] = descriptor.minimum;

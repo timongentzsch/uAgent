@@ -14,6 +14,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -130,6 +131,9 @@ class Agent {
     custom_title_ = true;
     ++revision_;
   }
+  // Name new sessions with UAGENT_TITLE_MODEL in the background. Only
+  // persistent interactive hosts enable it; one-shot runs keep the first line.
+  void GenerateTitles(bool enabled) { generate_titles_ = enabled; }
 
   json ModelRequest();
 
@@ -178,6 +182,9 @@ class Agent {
   // kAttachment kind for the request pipeline and carry an origin fact
   // so the view attributes them to the agent instead.
   bool DrainUserAttachments(std::vector<Attachment>& attachments);
+  // Starts the side call that names this session; DrainBackground applies
+  // its answer unless the user renamed the session meanwhile.
+  void StartTitle(const std::string& user_input);
 
   // one user turn: stream, run tools, repeat until prose; prints as it goes
   void Turn(const std::string& user_input, json user_content = nullptr,
@@ -266,6 +273,9 @@ class Agent {
 
   ChatResult Chat(const char* purpose, int64_t step, const json& schemas,
                   const json* request_messages = nullptr);
+  // Leaves projected null when the source already needs no preparation.
+  std::string PrepareRequestMessages(const json& source, json& projected,
+                                     bool analyze, json* deliveries = nullptr);
   json CompactionMessages() const;
   // Retained recent user instructions for the post-compaction context.
   // Optionally fills retained_ids with the source display id per message
@@ -402,15 +412,18 @@ class Agent {
   // What a side question needs, captured on the turn thread so the side
   // thread never reads the live route or conversation.
   struct SideContext {
-    json messages, tools;
-    RuntimeConfig config;
-    std::string base_url, api_key, model, reasoning_effort, session_id;
-    std::vector<std::string> supported_reasoning_efforts;
-    int64_t ctx_window = 0;
-    ProviderCapabilities capabilities;
+    std::shared_ptr<const json> messages, tools;
+    ApiSettings api;
+    std::string session_id;
   };
   mutable std::mutex side_mutex_;
   std::shared_ptr<const SideContext> side_context_;
+  bool generate_titles_ = false;
+  std::mutex title_mutex_;
+  std::string generated_title_;
+  // Last member: destroying or replacing it stops and joins the call before
+  // the fields it writes go away.
+  std::jthread title_thread_;
 };
 
 }  // namespace uagent

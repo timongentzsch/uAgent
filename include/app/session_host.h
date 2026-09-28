@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "include/agent/session_store.h"
+#include "include/agent/session_view.h"
 #include "include/app/asset_store.h"
 #include "include/app/options.h"
 #include "include/app/outcome_store.h"
@@ -54,6 +55,8 @@ struct HostSession {
   std::vector<std::string> awaiting;
   std::atomic<bool> exited{false};
   bool connecting = false, closing = false;
+  // Settings that need a restart changed: recycle this runtime once idle.
+  bool restart = false;
 
   ~HostSession();
   bool Send(json frame);
@@ -72,7 +75,7 @@ struct ScheduleTick {
 struct SnapshotQuery {
   bool has_before = false, has_detail = false, raw = false, artifact = false,
        has_http = false;
-  std::string before, detail, http, part, offset;
+  std::string before{}, detail{}, http{}, part{}, offset{};
 };
 
 struct SnapshotResult {
@@ -108,6 +111,9 @@ class SessionHost {
   void LoadDrafts();
   bool RefreshCatalogue(bool force = false);
   void RefreshPresence();
+  // Marks running runtimes (all, or those in `cwd`) for a fresh start that
+  // keeps their history: idle ones now, busy ones when their turn ends.
+  json RestartRunning(const std::string& cwd);
   json CommandOutcome(const std::string& worker_request,
                       const std::string& client_request) const {
     return outcomes_.CommandOutcome(worker_request, client_request);
@@ -138,7 +144,19 @@ class SessionHost {
   std::atomic<bool> stopping_{false};
   std::map<std::string, std::shared_ptr<HostSession>> sessions_;
   std::mutex scan_mutex_;
+  SessionCatalogue catalogue_;
   std::mutex history_mutex_;
+  struct SavedHistory {
+    std::string path;
+    FileStamp stamp;
+    SessionLoadResult loaded;
+    Conversation conversation;
+    TranscriptView view{conversation};
+  };
+  // One immutable saved transcript; readers can finish after it is replaced.
+  // Loading and rendering never hold the cache or host mutex.
+  std::shared_ptr<const SavedHistory> history_;
+  std::shared_ptr<const SavedHistory> ReadHistory(const std::string& path);
   std::chrono::steady_clock::time_point scanned_{};
   OutcomeStore outcomes_;
   FileStamp library_stamp_, schedule_stamp_;
@@ -150,7 +168,6 @@ class SessionHost {
   };
   std::vector<RunUpdate> run_updates_;
   void RecordRun(const RunUpdate& update);
-  std::vector<SessionInfo> DiscoverSessions() const;
   bool PublishMetadata(const std::string& id, HostSession& session);
   std::shared_ptr<HostSession> CreateSession(const std::string& cwd,
                                              const std::string& path,

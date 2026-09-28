@@ -1,6 +1,6 @@
 import { useState } from "preact/hooks";
 import { api } from "../../state/api.ts";
-import { Mark, Input } from "../../shared/ui.tsx";
+import { Button, Mark, Input } from "../../shared/ui.tsx";
 export default function Pairing({
   paired,
   report,
@@ -49,9 +49,13 @@ export default function Pairing({
             required
           />
         </label>
-        <button class="primary" disabled={busy || !navigator.onLine}>
+        <Button
+          type="submit"
+          variant="primary"
+          disabled={busy || !navigator.onLine}
+        >
           {busy ? "Connecting…" : "Connect device"}
-        </button>
+        </Button>
       </form>
       <p class="muted">
         The host must remain awake and reachable. An installed app may need its

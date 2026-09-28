@@ -1,5 +1,6 @@
 .message {
   --control: 2rem;
+  --row-height: calc(24rem / 14);
   width: 100%;
   min-width: 0;
   container-type: inline-size;
@@ -7,7 +8,7 @@
   /* break-word (not anywhere): long tokens still wrap, but flex and table
      children keep a sane intrinsic width instead of collapsing to a glyph. */
   overflow-wrap: break-word;
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-1) var(--space-4);
   /* No vertical margins anywhere in here: the transcript column owns all
      inter-message rhythm with one flex gap, so spacing cannot collapse or
      double up between header variants. */
@@ -37,17 +38,61 @@
 .message.turn-start {
   /* Additive over the column gap (never collapsing), so turn boundaries
      read wider by exactly this much. */
-  margin-top: var(--space-2);
+  margin-top: var(--space-6);
 }
 .message > header {
   display: flex;
   align-items: center;
   gap: var(--gap);
   min-height: var(--control);
-  margin-bottom: var(--space-2);
   font-size: 0.75rem;
 }
-.message > header > span:first-child {
+/* One line: the prompt, then status, time and menu. Inheritance still
+   flows through the display: contents header. */
+.message.user {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: var(--gap);
+}
+.message.user > header {
+  display: contents;
+}
+.message.user > header > * {
+  order: 1;
+}
+.message.user > header + * {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.message.user > header + * ~ * {
+  order: 2;
+  flex-basis: 100%;
+}
+/* A reply's time and menu float right of its first line, which wraps
+   around them. Row-height controls for a mouse; touch keeps the larger
+   coarse target. */
+@media (pointer: fine) {
+  .transcript-content > .message:not(.user) {
+    --control: var(--row-height);
+  }
+}
+.message.response {
+  display: flow-root;
+}
+.message.response > header {
+  float: right;
+  min-height: var(--row-height);
+  margin-left: var(--space-2);
+}
+@media (hover: hover) and (pointer: fine) {
+  .message.response:not(:hover, :focus-within)
+    > header
+    > :is(time, .action-menu) {
+    opacity: 0;
+  }
+}
+.message > header > .actor {
   font-weight: 600;
 }
 .message time {
@@ -63,14 +108,14 @@
   color: var(--muted);
 }
 .message details {
-  margin: var(--space-3) 0;
+  margin: 0;
 }
 .message summary,
 .disclosure-row > summary {
   cursor: pointer;
   color: var(--muted);
-  min-height: 2rem;
-  padding: calc(3rem / 14) 0;
+  min-height: var(--row-height);
+  padding: var(--space-1) 0;
 }
 .disclosure-row > summary {
   display: grid;
@@ -86,7 +131,7 @@
 .disclosure-chevron {
   width: calc(16rem / 14);
   height: calc(16rem / 14);
-  transition: transform 100ms ease;
+  transition: transform var(--motion-fast) var(--ease-standard);
 }
 .disclosure-row[open] > summary .disclosure-chevron {
   transform: rotate(90deg);
@@ -118,8 +163,19 @@
 .tool-row-head > .tool-disclosure {
   min-width: 0;
 }
-/* Status only when it matters: a running headline shimmers softly and a
-   failed one reads in the error colour; a finished one needs no mark. */
+/* One column under the tool's name, past the chevron: the expanded body
+   and the collapsed output share it, and the body runs under the menu so
+   both boxes end at the same edge. */
+.message.tool {
+  --tool-indent: calc(16rem / 14 + var(--space-2));
+}
+.tool-row-head > .tool-disclosure > .disclosure-body {
+  border-left: 0;
+  margin: 0 calc(-1 * (var(--control) + var(--space-2))) 0 var(--tool-indent);
+  padding-left: 0;
+}
+/* Status only when it matters: a running headline shimmers softly, a failed
+   line reads in the error colour, and a finished one needs no mark. */
 .tool-disclosure.running > summary .disclosure-label {
   background: linear-gradient(
       90deg,
@@ -138,14 +194,9 @@
     background-position: -150% 0;
   }
 }
-.tool-disclosure.failed > summary .disclosure-label,
-.tool-failed {
+.tool-disclosure.failed > summary,
+.tool-disclosure.failed > summary small {
   color: var(--removed);
-}
-.tool-failed {
-  width: 0.9em;
-  height: 0.9em;
-  flex: none;
 }
 .tool-disclosure > summary small {
   min-width: 0;
@@ -265,8 +316,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 0 0.3em;
-  margin-inline: calc(-8rem / 14);
-  padding: var(--space-3) var(--space-4) var(--space-6);
+  padding: var(--space-2) var(--space-4) 0;
   color: var(--muted);
   font-size: 0.75rem;
   text-align: left;
@@ -299,7 +349,7 @@
   display: grid;
   justify-items: start;
   gap: var(--space-2);
-  margin: var(--space-1) 0 var(--space-2) var(--space-6);
+  margin: var(--space-1) 0 var(--space-2) var(--tool-indent);
   min-width: 0;
 }
 .tool-inline > .diff,
@@ -308,6 +358,7 @@
   justify-self: stretch;
   margin: 0;
 }
+.tool-facts > .tool-link,
 .tool-inline > .tool-link {
   min-height: 0;
   padding: 0;

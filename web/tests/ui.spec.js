@@ -101,11 +101,17 @@ test("mobile chrome keeps an opaque safe area and applies appearance before app 
       insetRight: box.right - close.right - gutter,
     };
   });
-  expect(geometry.top).toBeGreaterThanOrEqual(47 + 8);
-  expect(geometry.bottom).toBeLessThanOrEqual(844 - 34 - 8);
+  // A full-screen sheet on a phone: from the safe top to the bottom edge
+  // (its own surface runs under the home indicator).
+  expect(Math.abs(geometry.top - 47)).toBeLessThanOrEqual(1);
+  expect(Math.abs(geometry.bottom - 844)).toBeLessThanOrEqual(1);
   expect(Math.abs(geometry.insetTop - geometry.insetRight)).toBeLessThanOrEqual(
     1,
   );
+  await settings
+    .locator(".settings-nav")
+    .getByRole("button", { name: "General", exact: true })
+    .click();
   await settings.getByLabel("Appearance", { exact: true }).selectOption("dark");
   await expect(page.locator("#app")).toHaveCSS(
     "background-color",
@@ -125,11 +131,12 @@ test("mobile chrome keeps an opaque safe area and applies appearance before app 
     style.setProperty("--safe-right", "47px");
   });
   await expect(page.locator("html")).toHaveCSS("--viewport-height", "390px");
+  // A sheet fills the safe area: clear of the notch and home indicator.
   const landscape = await settings.boundingBox();
-  expect(landscape.y).toBeGreaterThanOrEqual(8);
-  expect(landscape.y + landscape.height).toBeLessThanOrEqual(390 - 21 - 8);
-  expect(landscape.x).toBeGreaterThanOrEqual(47 + 8);
-  expect(landscape.x + landscape.width).toBeLessThanOrEqual(844 - 47 - 8);
+  expect(landscape.y).toBeGreaterThanOrEqual(0);
+  expect(landscape.y + landscape.height).toBeLessThanOrEqual(390 - 21 + 1);
+  expect(landscape.x).toBeGreaterThanOrEqual(47 - 1);
+  expect(landscape.x + landscape.width).toBeLessThanOrEqual(844 - 47 + 1);
 });
 
 test("fresh conversation reload keeps one stable loading state", async ({
@@ -138,10 +145,8 @@ test("fresh conversation reload keeps one stable loading state", async ({
 }) => {
   let releaseCatalogue;
   let releaseSnapshot;
-  let releaseChat;
   const catalogueGate = new Promise((resolve) => (releaseCatalogue = resolve));
   const snapshotGate = new Promise((resolve) => (releaseSnapshot = resolve));
-  const chatGate = new Promise((resolve) => (releaseChat = resolve));
   let catalogueRequested;
   let snapshotRequested;
   const sawCatalogue = new Promise((resolve) => (catalogueRequested = resolve));
@@ -159,39 +164,35 @@ test("fresh conversation reload keeps one stable loading state", async ({
     await snapshotGate;
     await route.fulfill({ response });
   });
-  await page.route("**/assets/chat-*.js", async (route) => {
-    await chatGate;
-    await route.continue();
-  });
-
   try {
     await page.goto(`/#session=${session.id}`);
     await sawCatalogue;
-    const loader = page.locator(".conversation .loading-indicator");
-    await expect(loader).toHaveText("Loading conversation…");
-    await expect(page.locator(".conversation .skeleton")).toHaveCount(0);
+    // One transcript placeholder, in one place, through the catalogue and
+    // the snapshot: loading never restarts or moves.
+    const loader = page.locator(".conversation .placeholder .message").first();
+    const status = page.locator(".conversation [role=status]", {
+      hasText: "Loading conversation…",
+    });
+    await expect(loader).toHaveCount(1);
+    await expect(status).toHaveCount(1);
     const first = await loader.boundingBox();
 
     releaseCatalogue();
     await sawSnapshot;
-    await expect(loader).toHaveText("Loading conversation…");
-    await expect(page.locator(".conversation .skeleton")).toHaveCount(0);
-
-    releaseSnapshot();
-    await expect(loader).toHaveText("Loading conversation…");
+    await expect(loader).toHaveCount(1);
+    await expect(status).toHaveCount(1);
     const second = await loader.boundingBox();
     expect(Math.abs(first.x - second.x)).toBeLessThan(1);
     expect(Math.abs(first.y - second.y)).toBeLessThan(1);
-    await expect(page.locator(".conversation .skeleton")).toHaveCount(0);
+    expect(Math.abs(first.width - second.width)).toBeLessThan(1);
 
-    releaseChat();
+    releaseSnapshot();
     await expect(
       page.getByRole("heading", { name: "What are we working on?" }),
     ).toBeVisible();
   } finally {
     releaseCatalogue();
     releaseSnapshot();
-    releaseChat();
   }
 });
 
@@ -559,7 +560,7 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   const settingsLoadingBox = await settings.boundingBox();
   releaseSettings();
   await expect(settings.getByLabel("Appearance")).toBeVisible();
-  await expect(settings.getByLabel("Default permissions")).toBeVisible();
+  await expect(settings.getByLabel("Timestamps")).toBeVisible();
   // The loaded form fills in over staged renders (chunk, then config
   // data), so pin parity once the settled height matches instead of
   // sampling a mid-render frame. The invariant is unchanged.
@@ -623,6 +624,10 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   expect(mobilePanel.x + mobilePanel.width).toBeLessThanOrEqual(390);
   await page.keyboard.press("Escape");
   await settingsButton.click();
+  await settings
+    .locator(".settings-nav")
+    .getByRole("button", { name: "General", exact: true })
+    .click();
   await settings.getByLabel("Zoom", { exact: true }).fill("200");
   await expect
     .poll(() =>
@@ -636,18 +641,14 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
     const app = document.getElementById("app");
     const appBounds = app.getBoundingClientRect();
     const appStyle = getComputedStyle(app);
-    const inset =
-      (parseFloat(getComputedStyle(document.documentElement).fontSize) * 8) /
-      14;
     return {
       left: bounds.left - appBounds.left - parseFloat(appStyle.paddingLeft),
       right: appBounds.right - parseFloat(appStyle.paddingRight) - bounds.right,
-      inset,
     };
   });
-  expect(dialogGutter.left).toBeGreaterThanOrEqual(dialogGutter.inset - 1);
-  expect(dialogGutter.right).toBeGreaterThanOrEqual(dialogGutter.inset - 1);
-  expect(Math.abs(dialogGutter.left - dialogGutter.right)).toBeLessThan(1);
+  // Edge to edge on a phone, at any zoom: a sheet, not an inset card.
+  expect(Math.abs(dialogGutter.left)).toBeLessThan(1);
+  expect(Math.abs(dialogGutter.right)).toBeLessThan(1);
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,
@@ -670,7 +671,11 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   ).toBe(true);
   await settingsButton.click();
   await settings
-    .getByRole("button", { name: "Reset zoom", exact: true })
+    .locator(".settings-nav")
+    .getByRole("button", { name: "General", exact: true })
+    .click();
+  await settings
+    .getByRole("button", { name: "Reset Zoom", exact: true })
     .click();
   await settings.getByRole("button", { name: "Close settings" }).click();
   await page.setViewportSize({ width: 844, height: 390 });
@@ -942,6 +947,10 @@ test("touch controls remain reachable at phone width", async ({
     expect(box.x + box.width).toBeLessThanOrEqual(390);
     await picker.getByRole("button", { name: "Cancel", exact: true }).tap();
     await page.getByRole("button", { name: "Settings", exact: true }).tap();
+    await page
+      .locator(".settings-nav")
+      .getByRole("button", { name: "General", exact: true })
+      .tap();
     await page.getByLabel("Appearance").selectOption("dark");
     await page
       .getByRole("button", { name: "Close settings", exact: true })
@@ -1128,7 +1137,9 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
   await expect(tool.locator(".tool-command")).toHaveText(
     `psql -c "SELECT 'x'"`,
   );
-  await expect(tool.locator(".tool-fields dd")).toHaveText("a test query");
+  // Short arguments read as facts in the info line, not as field rows.
+  await expect(tool.locator(".tool-facts")).toContainText("a test query");
+  await expect(tool.locator(".tool-fields")).toHaveCount(0);
   await expect(tool.locator(".thinking .markdown")).toHaveCount(0);
   await expect(tool.locator(".katex")).toHaveCount(0);
   await toggle.click();
@@ -1155,13 +1166,10 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
       document.documentElement.dataset.theme = value;
     }, theme);
     await page.setViewportSize({ width: 390, height: 600 });
-    const bars = picker.locator(".skeleton > div");
-    expect(
-      await bars
-        .first()
-        .evaluate((element) => getComputedStyle(element).animationName),
-    ).toBe("none");
-    await expect(picker).toContainText("loading…");
+    await expect(picker.getByRole("status")).toHaveAccessibleName(
+      "Loading models…",
+    );
+    await expect(picker.locator(".placeholder select")).toHaveCount(3);
   }
   await page.evaluate(() => {
     document.documentElement.dataset.theme = "light";
@@ -1419,11 +1427,12 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
   };
   try {
     await page.goto(`${fixture.origin}/#session=${session.id}`);
-    // The page stays pinch-zoomable; only the browser viewer locks it.
-    await expect(page.locator('meta[name="viewport"]')).not.toHaveAttribute(
+    // An app, not a page: the interface never pinch- or double-tap-zooms.
+    await expect(page.locator('meta[name="viewport"]')).toHaveAttribute(
       "content",
-      /user-scalable=no/,
+      /maximum-scale=1, user-scalable=no/,
     );
+    await expect(page.locator("html")).toHaveCSS("touch-action", "pan-x pan-y");
     const prompt = page.getByLabel("Message or guidance");
     await expect(prompt).toBeVisible();
     await page
@@ -1432,8 +1441,9 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
         element.style.setProperty("--safe-bottom-resting", "34px"),
       );
     await expect(page.locator("#app")).toHaveCSS("padding-bottom", "34px");
+    // Status line above and totals below the input: two slim rows.
     expect((await page.locator(".composer").boundingBox()).height).toBeLessThan(
-      150,
+      180,
     );
     const draft = "Keep my draft and focus as the keyboard moves";
     await input(prompt, draft, 16);
@@ -1496,15 +1506,25 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
       name: "Settings",
       exact: true,
     });
-    await settings.getByLabel("Zoom", { exact: true }).fill("50");
     await settings
-      .getByRole("button", { name: "Advanced configuration", exact: true })
+      .locator(".settings-nav")
+      .getByRole("button", { name: "General", exact: true })
+      .tap();
+    await settings.getByLabel("Zoom", { exact: true }).fill("50");
+    await settings.getByRole("button", { name: "Back", exact: true }).tap();
+    await settings
+      .locator(".settings-nav")
+      .getByRole("button", { name: "Advanced", exact: true })
       .tap();
     await input(settings.getByLabel("Find a setting"), "web", 16);
     await contained(settings, 390, 70);
     await settings.getByRole("button", { name: "Back", exact: true }).tap();
     await settings
-      .getByRole("button", { name: "Reset zoom", exact: true })
+      .locator(".settings-nav")
+      .getByRole("button", { name: "General", exact: true })
+      .tap();
+    await settings
+      .getByRole("button", { name: "Reset Zoom", exact: true })
       .tap();
     await settings
       .getByRole("button", { name: "Close settings", exact: true })
@@ -1610,13 +1630,18 @@ test.describe("mobile navigation and commands", () => {
     const prompt = page.getByLabel("Message or guidance");
     await expect(prompt).toBeVisible();
     await expect(page.locator(".composer .status-led.active")).toBeVisible();
+    // On a soft keyboard return writes a new line; Send sends.
+    const send = page.getByRole("button", { name: "Send", exact: true });
     await prompt.fill("/model mock/model-b");
     await prompt.press("Enter");
+    await expect(prompt).toHaveValue("/model mock/model-b\n");
+    await prompt.fill("/model mock/model-b");
+    await send.tap();
     await expect(
       page.getByRole("button", { name: "Model and effort", exact: true }),
     ).toContainText("model-b");
     await prompt.fill("Navigation message");
-    await prompt.press("Enter");
+    await send.tap();
     await expect(
       page.getByRole("heading", { name: "Verified response" }),
     ).toBeVisible();
@@ -1699,9 +1724,6 @@ test.describe("mobile navigation and commands", () => {
     await prompt.fill("/mo");
     await prompt.press("Tab");
     await expect(prompt).toHaveValue("/model");
-    await prompt.fill("/hel");
-    await prompt.press("Tab");
-    await expect(prompt).toHaveValue("/help");
     await expect(page.locator(".message.user")).toHaveCount(1);
     await prompt.fill("/");
     await prompt.press("ArrowDown");
@@ -1712,25 +1734,25 @@ test.describe("mobile navigation and commands", () => {
     await page.getByRole("option", { name: /\/status/ }).tap();
     await expect(prompt).toHaveValue("/status");
     await expect(prompt).toBeFocused();
-    await prompt.press("Enter");
+    await send.tap();
     await expect(
       page.getByRole("dialog", { name: "Full content" }),
     ).toContainText('"topic": "status"');
     await page.keyboard.press("Escape");
     await prompt.fill("/ctx");
-    await prompt.press("Enter");
+    await send.tap();
     await expect(
       page.getByRole("dialog", { name: "Raw context", exact: true }),
     ).toBeVisible();
     await page.keyboard.press("Escape");
     await prompt.fill("/commands");
-    await prompt.press("Enter");
+    await send.tap();
     await expect(
       page.getByRole("dialog", { name: "Full content" }),
     ).toContainText("/permissions");
     await page.keyboard.press("Escape");
     await prompt.fill("/http 1 response");
-    await prompt.press("Enter");
+    await send.tap();
     await expect(
       page
         .getByRole("dialog")
@@ -1740,16 +1762,16 @@ test.describe("mobile navigation and commands", () => {
     await page.keyboard.press("Escape");
     const chooser = page.waitForEvent("filechooser");
     await prompt.fill("/attach");
-    await prompt.press("Enter");
+    await send.tap();
     await (await chooser).setFiles([]);
     await prompt.fill("/fork Slash fork");
-    await prompt.press("Enter");
+    await send.tap();
     await expect(page.locator(".conversation-head h1")).toHaveText(
       "Slash fork",
     );
     await expect(page.locator(".composer .status-led.active")).toBeVisible();
     await prompt.fill("/sessions");
-    await prompt.press("Enter");
+    await send.tap();
     await expect(page.getByLabel("Find a session")).toBeVisible();
     await page
       .getByRole("button", { name: "Close sessions", exact: true })
@@ -1764,8 +1786,16 @@ test.describe("mobile navigation and commands", () => {
       .click();
     await expect(page.locator(".composer .status-led.active")).toBeVisible();
     await expect(page.locator(".message.user")).toHaveCount(0);
+    // An unsent draft survives a reload (an evicted installed app).
+    await prompt.fill("Survives reload");
+    // Saved after the next paint; reload once it is stored.
+    await expect
+      .poll(() => page.evaluate(() => localStorage.getItem("uagent-drafts")))
+      .toContain("Survives reload");
+    await page.reload();
+    await expect(prompt).toHaveValue("Survives reload");
     await prompt.fill("/q");
-    await prompt.press("Enter");
+    await send.tap();
     await expect(
       page.getByRole("button", { name: "Resume in this host directory" }),
     ).toBeVisible();
@@ -1837,6 +1867,21 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
       .locator(".tool-disclosure")
       .filter({ hasText: "Saved memory project/browser-proof" }),
   ).toBeVisible();
+  // Its detail reads top-down: key, one caption, then the memory itself
+  // directly below (not floated to the middle of the sheet).
+  await page.getByRole("button", { name: "Open memory" }).first().click();
+  const memory = page.getByRole("dialog", { name: "Memory" });
+  await expect(memory).toBeVisible();
+  const section = memory.getByRole("region", { name: "Memory" });
+  await expect(section.locator(".detail-label")).toHaveText(
+    "project/browser-proof",
+  );
+  await expect(memory.getByText(/Current memory/)).toHaveCount(0);
+  const caption = await section.locator(".detail-meta").boundingBox();
+  const body = await section.locator(".markdown").boundingBox();
+  expect(body.y - (caption.y + caption.height)).toBeLessThan(24);
+  await page.keyboard.press("Escape");
+  await expect(memory).toHaveCount(0);
   await expect(page.locator(".composer .status-led.active")).toBeVisible();
   await page.locator(".transcript").evaluate((element) => {
     element.scrollTop = 0;
@@ -2355,8 +2400,8 @@ test("a long agent state truncates instead of wrapping the phone status line", a
   const line = page.locator(".composer .status-line");
   await expect(line).toBeVisible();
   const single = (await line.boundingBox()).height;
-  // One line, and the state ends before the metrics begin: idle (plain text)
-  // and while work runs (the state becomes the popover's button).
+  // One line with the state truncated, idle and while work runs; the work
+  // button and totals sit under the input.
   const fits = async () => {
     await page
       .locator(".composer .activity-caption")
@@ -2366,11 +2411,6 @@ test("a long agent state truncates instead of wrapping the phone status line", a
             "Running · Run · cd /home/dev/Software/project && rg -l --no-messages"),
       );
     expect((await line.boundingBox()).height).toBe(single);
-    const state = await page
-      .locator(".composer .activity-toggle")
-      .boundingBox();
-    const metrics = await page.locator(".composer .metrics").boundingBox();
-    expect(state.x + state.width).toBeLessThanOrEqual(metrics.x + 1);
     expect(
       await page
         .locator(".composer .activity-caption")

@@ -46,6 +46,9 @@ enum class SlashCommandId {
   kStatus,
   kTell,
   kTools,
+  kMcp,
+  kRename,
+  kRestart,
   kDebugConfig,
   kVariant,
   kVerbose,
@@ -80,7 +83,6 @@ struct ForkArgument {
 ForkArgument ParseForkArgument(const std::string& argument);
 // The turn a prompt command stands for; empty for a local action.
 std::string SlashCommandPrompt(const ParsedSlashCommand& command);
-void PrintCommandHelp();
 // The same rows the parser and help output use; an alias carries an empty
 // description and is hidden from listings.
 std::span<const SlashCommandSpec> SlashCommandRegistry();

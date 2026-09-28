@@ -244,7 +244,7 @@ const char* ApprovalModeName(ApprovalMode mode) {
 }
 
 bool ParseApprovalMode(std::string_view value, ApprovalMode& mode) {
-  if (value.empty() || value == "prompt" || value == "ask") {
+  if (value.empty() || value == "ask") {
     mode = ApprovalMode::kAsk;
     return true;
   }
@@ -333,6 +333,7 @@ constexpr FieldBinding<std::string> kStringOptions[] = {
     {&Cfg("UAGENT_WEB_SEARCH_CONTEXT_SIZE"),
      &RuntimeConfig::web_search_context_size},
     {&Cfg("UAGENT_IMAGE_MODEL"), &RuntimeConfig::image_model},
+    {&Cfg("UAGENT_TITLE_MODEL"), &RuntimeConfig::title_model},
     {&Cfg("UAGENT_PDF_ENGINE"), &RuntimeConfig::pdf_engine},
     {&Cfg("UAGENT_MCP_ROOTS"), &RuntimeConfig::mcp_roots},
 };

@@ -3,15 +3,46 @@ import type {
   Exchange,
   Report,
   Session,
+  SessionRef,
   Snapshot,
 } from "../../shared/types.ts";
 import type { RefObject } from "preact";
 import { useCallback, useEffect, useState } from "preact/hooks";
-import { LoadError, Mark, Spinner } from "../../shared/ui.tsx";
+import { LoadError, Mark, Placeholder } from "../../shared/ui.tsx";
 import HistoryStart from "./history-start.tsx";
 import { MessageRows, prepareHistoryBlocks } from "./message.tsx";
 
 export { prepareHistoryBlocks } from "./message.tsx";
+
+// A request and its reply, the shape a conversation opens with.
+const SAMPLE: Block[] = [
+  {
+    id: "placeholder-request",
+    kind: "user",
+    text: "A request about this long, asking for one change.",
+  },
+  {
+    id: "placeholder-reply",
+    kind: "assistant",
+    text:
+      "A reply opens with what it found and what it changed, in a sentence or two of this length.\n\n" +
+      "A second paragraph explains the change and what to check next.",
+  },
+];
+
+// The transcript before its snapshot: its own rows, drawn from sample text.
+export function TranscriptPlaceholder({ session }: { session: SessionRef }) {
+  return (
+    <Placeholder label="Loading conversation…">
+      <MessageRows
+        blocks={SAMPLE}
+        online={false}
+        session={session}
+        report={() => {}}
+      />
+    </Placeholder>
+  );
+}
 
 export default function Chat({
   scroller,
@@ -123,12 +154,10 @@ export default function Chat({
           (loadError ? (
             <LoadError error={loadError} retry={retry} />
           ) : (
-            <Spinner label="Loading conversation…" surface />
+            <TranscriptPlaceholder session={session} />
           ))}
         {snapshot && loadError && <LoadError error={loadError} retry={retry} />}
-        {snapshot && !prepared && (
-          <Spinner label="Loading conversation…" surface />
-        )}
+        {snapshot && !prepared && <TranscriptPlaceholder session={session} />}
         {snapshot && prepared && blocks.length === 0 && (
           <div class="empty">
             <Mark className="cursor-mark" />

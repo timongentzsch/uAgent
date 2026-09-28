@@ -87,7 +87,12 @@ constexpr auto kAuthenticationWindow = std::chrono::minutes(1);
 constexpr auto kDeviceLifetime = std::chrono::hours(24 * 30);
 constexpr auto kReplayWait = std::chrono::seconds(15);
 constexpr auto kStartupRetry = std::chrono::milliseconds(100);
-volatile sig_atomic_t shutdown_fd = -1;
+constexpr auto kRestartReply = std::chrono::milliseconds(300);
+// Read by the signal handler and by the delayed restart thread, written by
+// Run(): a lock-free atomic is safe in both, where sig_atomic_t is not
+// across threads.
+std::atomic<int> shutdown_fd{-1};
+static_assert(std::atomic<int>::is_always_lock_free);
 void StopSignal(int) { WakeDescriptor(shutdown_fd); }
 
 void Reply(Response& response, const json& value, int status = 200) {
@@ -424,7 +429,11 @@ class Master {
         std::vector<std::string> paths = host_.PresencePaths();
         auto result = WaitForAnyFileChange(
             paths, Clock::now() + std::chrono::hours(24), stop.read.Get());
-        if (result == FileWaitResult::kInterrupted) break;
+        if (result == FileWaitResult::kInterrupted) {
+          // A restart was requested over HTTP: its reply is still leaving.
+          if (reexec_) std::this_thread::sleep_for(kRestartReply);
+          break;
+        }
         bool observed;
         {
           std::lock_guard lock(mutex_);
@@ -845,13 +854,10 @@ void Master::Command(const Request& request, Response& response) {
         host_.RestartRunning(JsonValue(command, "cwd", std::string()));
     lock.lock();
   } else if (kind == "restart_host") {
-    // Reply first; the stop lands once this response is on its way.
+    // The stop loop lets this reply go out before it stops the server.
     reexec_ = true;
     outcome["result"] = {{"restarting", true}};
-    std::thread([] {
-      std::this_thread::sleep_for(std::chrono::milliseconds(300));
-      WakeDescriptor(shutdown_fd);
-    }).detach();
+    WakeDescriptor(shutdown_fd);
   } else if (kind == "config" && JsonValue(command, "session_id", "").empty()) {
     lock.unlock();
     auto manager = ConfigManager::Capture(false, {});

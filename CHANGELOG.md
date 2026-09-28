@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.1.1 - 2026-09-28
+
+### Fixed
+
+- The web host restarting itself after a settings change no longer races
+  its own stop signal: the restart wakes the stop loop directly instead of
+  from a detached timer thread, which could write to the stop pipe while it
+  was closing. v1.1.0 was tagged but not published because of this.
+
 ## v1.1.0 - 2026-09-27
 
 ### Upgrade notes

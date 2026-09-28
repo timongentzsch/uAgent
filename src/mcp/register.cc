@@ -219,8 +219,7 @@ void Restart(std::vector<Tool>& tools, McpRuntime& runtime,
   fresh->name = old.name;
   fresh->response_cap = old.response_cap;
   fresh->config = old.config;
-  McpServer& server = *fresh;
-  runtime.Replace(old, std::move(fresh));
+  McpServer& server = runtime.Replace(old, std::move(fresh));
   if (JsonValue(server.config, "disabled", false)) return;
   // The same checks as at startup: a config that failed them still does.
   std::string invalid;

@@ -304,8 +304,9 @@ void HandleConfig(AppSession& session, const std::string& argument,
                           .c_str(),
                 source.c_str(), RST());
   }
-  if (!changed)
+  if (!changed) {
     reply.Print("%s· every setting is at its default%s\n", DIM(), RST());
+  }
   reply.Print(
       "%s· /config user|project KEY=VALUE, unset KEY, or reset "
       "(keeps secrets)%s\n",

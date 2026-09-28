@@ -115,8 +115,9 @@ bool FrameBuffer::Feed(std::string_view bytes,
         pending_.begin() + static_cast<std::ptrdiff_t>(begin),
         pending_.begin() + static_cast<std::ptrdiff_t>(end), nullptr, false);
     if (!frame.is_object() || JsonValue(frame, "v", 0) != kProtocol ||
-        !receive(std::move(frame)))
+        !receive(std::move(frame))) {
       return false;
+    }
     begin = end + 1;
   }
   pending_.erase(0, begin);
@@ -142,15 +143,17 @@ void ReadFrames(int fd, int stop_fd, size_t limit,
     int ready = poll(waits, 2, timeout);
     if (ready < 0 && errno == EINTR) continue;
     if (ready < 0 || waits[1].revents ||
-        (waits[0].revents & (POLLERR | POLLNVAL)))
+        (waits[0].revents & (POLLERR | POLLNVAL))) {
       return;
+    }
     if (!(waits[0].revents & (POLLIN | POLLHUP))) continue;
     ssize_t count = read(fd, buffer, sizeof buffer);
     if (count < 0 && (errno == EINTR || errno == EAGAIN)) continue;
     if (count <= 0 ||
         !pending.Feed(std::string_view(buffer, static_cast<size_t>(count)),
-                      receive))
+                      receive)) {
       return;
+    }
   }
 }
 }  // namespace uagent::session

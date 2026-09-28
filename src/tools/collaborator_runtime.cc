@@ -53,7 +53,7 @@ json Command(const std::string& path, const std::string& generation,
   bool completed = false;
   session::ReadFrames(
       connection.socket.Get(), -1, session::kFrameBytes,
-      [&](json frame) {
+      [&](const json& frame) {
         const std::string frame_kind = JsonValue(frame, "kind", "");
         if (frame_kind == "outcome" &&
             JsonValue(frame, "request_id", "") == request) {

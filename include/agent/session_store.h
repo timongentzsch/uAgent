@@ -81,9 +81,9 @@ struct SessionMetadata {
   int64_t turns = 0;
   std::string title;
   bool custom_title = false;
-  std::string parent_session_id;
+  std::string parent_session_id{};
   int64_t forked_at_turn = 0;
-  std::string forked_at_time;
+  std::string forked_at_time{};
 };
 
 struct SessionState {

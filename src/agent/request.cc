@@ -36,8 +36,9 @@ std::string Agent::PrepareRequestMessages(const json& source, json& projected,
                                           bool analyze, json* deliveries) {
   if (std::none_of(source.begin(), source.end(), [](const json& message) {
         return JsonArray(message, "content") != nullptr;
-      }))
+      })) {
     return {};
+  }
   projected = source;
   std::string error;
   const bool fallback =
@@ -45,8 +46,9 @@ std::string Agent::PrepareRequestMessages(const json& source, json& projected,
   PrepareAttachments(projected, api_.capabilities,
                      !EffectiveImageModel().empty(), ActiveRoute(), error,
                      deliveries);
-  if (fallback)
+  if (fallback) {
     error += ApplyImageAnalysisFallback(projected, analyze, deliveries);
+  }
   return error;
 }
 

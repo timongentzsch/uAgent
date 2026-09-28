@@ -123,7 +123,7 @@ void TestSandboxRendering() {
 
   // The browser profile is hidden after every allow, so a writable root that
   // contains it cannot grant it back, and its sockets refuse a connect.
-  policy.writable_roots.push_back("/h/.local/share");
+  policy.writable_roots.emplace_back("/h/.local/share");
   policy.hidden = {"/h/.local/share/browser"};
   profile = SeatbeltProfile(policy);
   size_t hidden = profile.find(

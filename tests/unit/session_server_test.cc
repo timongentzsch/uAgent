@@ -59,14 +59,14 @@ void TestSessionFramePartitions() {
   for (const std::string& invalid : std::vector<std::string>{
            "[]\n", "{bad}\n", "{\"v\":1}\n", "\n", std::string(65, 'x')}) {
     session::FrameBuffer buffer(64);
-    CHECK(!buffer.Feed(invalid, [](json) {
+    CHECK(!buffer.Feed(invalid, [](const json&) {
       CHECK(false);
       return true;
     }));
   }
   session::FrameBuffer buffer;
   int calls = 0;
-  CHECK(!buffer.Feed(wire, [&](json) {
+  CHECK(!buffer.Feed(wire, [&](const json&) {
     ++calls;
     return false;
   }));
@@ -80,21 +80,22 @@ void TestSessionFramePartitions() {
   CHECK(session::WriteFrame(stream.write.Get(), first));
   calls = 0;
   session::ReadFrames(stream.read.Get(), stop.read.Get(), 1024,
-                      [&](json value) {
+                      [&](const json& value) {
                         CHECK(value == first);
                         ++calls;
                         return false;
                       });
   CHECK(calls == 1);
   stop.Wake();
-  session::ReadFrames(stream.read.Get(), stop.read.Get(), 1024, [](json) {
-    CHECK(false);
-    return true;
-  });
+  session::ReadFrames(stream.read.Get(), stop.read.Get(), 1024,
+                      [](const json&) {
+                        CHECK(false);
+                        return true;
+                      });
   stop.Drain();
   session::ReadFrames(
       stream.read.Get(), -1, 1024,
-      [](json) {
+      [](const json&) {
         CHECK(false);
         return true;
       },

@@ -99,11 +99,17 @@ class McpRuntime {
     return servers_;
   }
 
-  // Swaps in a fresh server; the old one shuts down as it is destroyed.
-  void Replace(const McpServer& old, std::unique_ptr<McpServer> fresh) {
+  // Swaps in a fresh server and returns it, now owned here; the old one shuts
+  // down as it is destroyed. An unknown `old` leaves the fresh one appended.
+  McpServer& Replace(const McpServer& old, std::unique_ptr<McpServer> fresh) {
     for (auto& server : servers_) {
-      if (server.get() == &old) server = std::move(fresh);
+      if (server.get() == &old) {
+        server = std::move(fresh);
+        return *server;
+      }
     }
+    servers_.push_back(std::move(fresh));
+    return *servers_.back();
   }
 
   void ShutdownAll();

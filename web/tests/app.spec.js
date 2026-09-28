@@ -8,9 +8,7 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
   context,
   host: fixture,
 }) => {
-  const errors = [];
   const external = [];
-  page.on("pageerror", (error) => errors.push(error.message));
   page.on("request", (request) => {
     if (!request.url().startsWith(fixture.origin)) external.push(request.url());
   });
@@ -366,6 +364,5 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
   );
   expect(cached.length).toBeGreaterThan(4);
   expect(cached.some((url) => url.includes("/api/"))).toBe(false);
-  expect(errors).toEqual([]);
   expect(external).toEqual([]);
 });

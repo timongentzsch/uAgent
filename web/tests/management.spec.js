@@ -1,4 +1,4 @@
-import { test, expect } from "./fixtures.js";
+import { test, expect, withoutServiceWorker } from "./fixtures.js";
 import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 
@@ -83,11 +83,7 @@ test("library drafts, shared controls and scheduled results", async ({
   page,
   host: fixture,
 }) => {
-  const errors = [];
-  page.on("pageerror", (error) => errors.push(error.message));
-  await page.route("**/sw.js", (route) =>
-    route.fulfill({ contentType: "text/javascript", body: "" }),
-  );
+  await withoutServiceWorker(page);
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/");
   await expect(page.getByText("Connected", { exact: true })).toBeVisible();
@@ -328,5 +324,4 @@ test("library drafts, shared controls and scheduled results", async ({
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
-  expect(errors).toEqual([]);
 });

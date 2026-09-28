@@ -19,8 +19,6 @@ for (const labels of [false, true])
         }
       };
     });
-    const errors = [];
-    page.on("pageerror", (error) => errors.push(error.message));
     const started = performance.now();
     await page.goto(`/#session=${session.id}`);
     await expect(page.getByLabel("Message or guidance")).toBeEnabled();
@@ -184,5 +182,4 @@ for (const labels of [false, true])
         `${process.env.UAGENT_PROFILE_OUTPUT}.${labels ? "captions" : "baseline"}.json`,
         JSON.stringify(result, null, 2),
       );
-    expect(errors).toEqual([]);
   });

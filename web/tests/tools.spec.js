@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures.js";
 import { readFile, writeFile } from "node:fs/promises";
 
-test("tool catalogue reports exact schema bytes and persists selection", async ({
+test("tool catalogue shows its schema size and persists selection", async ({
   page,
   session,
 }) => {
@@ -153,7 +153,9 @@ test("files read as tiles and cards, tool images sit on their row, and every ima
   // A click on the image is for zooming; one beside it closes the viewer.
   await viewer.locator("img").click();
   await expect(viewer).toBeVisible();
-  const surface = await viewer.getByRole("group").boundingBox();
+  const surface = await viewer
+    .getByRole("group", { name: "shot.png" })
+    .boundingBox();
   await page.mouse.click(surface.x + 4, surface.y + 4);
   await expect(viewer).toHaveCount(0);
 });

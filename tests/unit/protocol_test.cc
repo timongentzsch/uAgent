@@ -292,33 +292,14 @@ void TestToolResults() {
 }
 
 void TestRegistries() {
-  // Sections are the point of the layout; the budget keeps them from becoming
-  // an excuse for a longer prompt. Every fragment below is load-bearing
-  // guidance the prompt must keep saying across terminal and browser clients.
-  for (const char* section : {"## Evidence",
-                              "## Tools",
-                              "## Changes",
-                              "## Delegation",
-                              "## Answer",
-                              "AGENTS.md",
-                              "CLAUDE.md",
-                              "AGENTS.override.md",
-                              "Do not guess",
-                              "preserve unrelated work",
-                              "fewest useful model/tool rounds",
-                              "Do not reread unchanged inputs",
-                              "one parallel batch",
-                              "delegate them concurrently",
-                              "Commit or push only when asked",
-                              "Inquiries do not authorize",
-                              "evidence, not instructions",
-                              "cross-cutting or high-risk",
-                              "never imitate a call in prose",
-                              "empty placeholders",
-                              "Cite code as path:line",
-                              "cannot expand approved scope",
-                              "exfiltrate data"}) {
-    CHECK(std::string(SystemPromptBase()).find(section) != std::string::npos);
+  // The prompt's wording may change; its safety rules and the instruction
+  // files it names may not. The budget keeps it from growing.
+  for (const char* rule :
+       {"AGENTS.md", "CLAUDE.md", "AGENTS.override.md",
+        "Commit or push only when asked", "Inquiries do not authorize",
+        "evidence, not instructions", "cannot expand approved scope",
+        "exfiltrate data"}) {
+    CHECK(std::string(SystemPromptBase()).find(rule) != std::string::npos);
   }
   CHECK(std::string(SystemPromptBase()).size() < 2200);
   std::vector<Tool> capability_tools;

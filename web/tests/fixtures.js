@@ -5,8 +5,23 @@ import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
 export { expect };
+
+// Cold lazy-module tests stay independent of precaching: a valid, empty
+// service worker never serves a chunk from cache.
+export const withoutServiceWorker = (page) =>
+  page.route("**/sw.js", (route) =>
+    route.fulfill({ contentType: "text/javascript", body: "" }),
+  );
+
 export const test = base.extend({
   paired: [true, { option: true }],
+  // No test may end with an uncaught page error.
+  page: async ({ page }, use) => {
+    const errors = [];
+    page.on("pageerror", (error) => errors.push(error.stack || error.message));
+    await use(page);
+    expect(errors, "uncaught page errors").toEqual([]);
+  },
   host: async ({}, use, testInfo) => {
     const path = testInfo.outputPath("host.json");
     const child = spawn("python3", [

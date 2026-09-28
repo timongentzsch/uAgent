@@ -1,4 +1,4 @@
-import { test, expect } from "./fixtures.js";
+import { test, expect, withoutServiceWorker } from "./fixtures.js";
 import { readFile, writeFile } from "node:fs/promises";
 
 test("mobile chrome keeps an opaque safe area and applies appearance before app startup", async ({
@@ -374,12 +374,7 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   page,
   host: fixture,
 }, testInfo) => {
-  const errors = [];
-  page.on("pageerror", (error) => errors.push(error.message));
-  // A valid empty worker keeps cold lazy-module tests independent of precaching.
-  await page.route("**/sw.js", (route) =>
-    route.fulfill({ contentType: "text/javascript", body: "" }),
-  );
+  await withoutServiceWorker(page);
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/");
   await expect(page.getByText("Connected", { exact: true })).toBeVisible();
@@ -734,7 +729,6 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
     testInfo.outputPath(`layout.json`),
     JSON.stringify(metrics, null, 2),
   );
-  expect(errors).toEqual([]);
 });
 
 test("code blocks, thinking and HTTP dialogs preserve content and loading geometry", async ({
@@ -742,17 +736,13 @@ test("code blocks, thinking and HTTP dialogs preserve content and loading geomet
   session,
   command,
 }) => {
-  const errors = [];
-  page.on("pageerror", (error) => errors.push(error.message));
   await command("model", {
     session_id: session.id,
     generation: session.generation,
     operation: "select",
     model: "mock/model-b",
   });
-  await page.route("**/sw.js", (route) =>
-    route.fulfill({ contentType: "text/javascript", body: "" }),
-  );
+  await withoutServiceWorker(page);
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto(`/#session=${session.id}`);
   const prompt = page.getByLabel("Message or guidance");
@@ -904,8 +894,6 @@ test("code blocks, thinking and HTTP dialogs preserve content and loading geomet
   await raw
     .getByRole("button", { name: "Close http request/response", exact: true })
     .click();
-
-  expect(errors).toEqual([]);
 });
 
 test("touch controls remain reachable at phone width", async ({
@@ -967,9 +955,7 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
   session,
   host: fixture,
 }) => {
-  await page.route("**/sw.js", (route) =>
-    route.fulfill({ contentType: "text/javascript", body: "" }),
-  );
+  await withoutServiceWorker(page);
   const snapshot = await (
     await context.request.get(`/api/sessions/${session.id}`)
   ).json();
@@ -1232,9 +1218,7 @@ test("late snapshots and retired streams cannot replace current session state", 
       close() {}
     };
   });
-  await page.route("**/sw.js", (route) =>
-    route.fulfill({ contentType: "text/javascript", body: "" }),
-  );
+  await withoutServiceWorker(page);
   let release;
   const held = new Promise((resolve) => (release = resolve));
   let requested;
@@ -1372,12 +1356,11 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
     isMobile: true,
     storageState,
   });
+  // Its own phone context, so it collects its own page errors.
   const page = await context.newPage(),
     errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  await page.route("**/sw.js", (route) =>
-    route.fulfill({ contentType: "text/javascript", body: "" }),
-  );
+  await withoutServiceWorker(page);
   // Desktop engines cannot open a phone keyboard. Model an independently
   // resized/panned visual viewport; a window resize alone misses this bug.
   const viewport = async (height, top = 0) => {

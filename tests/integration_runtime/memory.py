@@ -8,7 +8,6 @@ from integration_support import (
     Server,
     assert_true,
     base_env,
-    budget,
     event,
     function_names,
     run,
@@ -408,13 +407,11 @@ def test_memory_background_extractor_releases_failed_claims(root, _home, *, bina
             # claim *says*. `processing` is reclaimable; `done` is not, and a
             # killed extractor claiming completion would skip that session for
             # good.
-            released = False
-            deadline = time.monotonic() + budget(30)
-            while time.monotonic() < deadline:
-                if not markers(case_home):
-                    released = True
-                    break
-                time.sleep(0.02)
+            try:
+                wait_until(lambda: not markers(case_home), "claim released")
+                released = True
+            except AssertionError:
+                released = False
             for marker in markers(case_home):
                 state = marker.read_text(encoding="utf-8").strip()
                 assert_true(state == "processing", f"killed extractor claimed {state!r}")

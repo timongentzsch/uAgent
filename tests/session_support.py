@@ -7,14 +7,11 @@ import time
 import uuid
 from pathlib import Path
 
-from integration_support import budget
+from integration_support import budget, fnv1a64
 
 
 def runtime_directory(home):
-    value = 1469598103934665603
-    for byte in str(home / ".uagent").encode():
-        value = ((value ^ byte) * 1099511628211) & ((1 << 64) - 1)
-    return Path(f"/tmp/uagent-{os.getuid()}-{value:016x}")
+    return Path(f"/tmp/uagent-{os.getuid()}-{fnv1a64(str(home / '.uagent'))}")
 
 
 class SessionClient:

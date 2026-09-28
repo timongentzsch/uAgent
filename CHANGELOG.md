@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- The image viewer zooms like a document viewer: − / + / Fit controls,
+  ⌘/Ctrl+wheel and ⌘/Ctrl with −, + and 0, with the level against the image's
+  real size. Annotation zooms the same way; two fingers pinch the image.
+- Slash commands with a screen (`/config`, `/permissions`, `/mcp`, `/tools`,
+  `/rename`, `/memory`, `/skills`, `/schedule`) open it in the web UI when
+  typed without an argument.
+
+### Fixed
+
+- Tall images fit whole in the viewer instead of overflowing it.
+- `/sessions` in a wide browser window focuses the conversation search.
+- The UI showcase no longer throws on load.
+
 ## v1.1.1 - 2026-09-28
 
 ### Fixed

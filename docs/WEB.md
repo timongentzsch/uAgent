@@ -306,10 +306,21 @@ inspection. Uploads are claimed before the prompt is accepted, so cleanup
 cannot remove a referenced file. See [Tools](TOOLS.md) for `read_path` media
 input and [Operations](OPERATIONS.md) for extraction and fallback limits.
 
+The image viewer fits the whole image and zooms like a document viewer: the
+**− / + / Fit** controls, ⌘/Ctrl+wheel or a trackpad pinch, ⌘/Ctrl with −, +
+and 0, a touch pinch or a double-tap; the level reads against the image's real
+size.
+
 **Annotate** in the image viewer marks up an image to steer the agent: pen
 strokes and numbered pins with a note each, drawn with mouse, trackpad, finger
-or pencil. **Attach** bakes the marks into a copy that joins the draft (as PNG,
-or JPEG past the upload limit) and replaces the draft image it was drawn on.
+or pencil, zoomed the same way (two fingers pinch; one draws). **Attach** bakes
+the marks into a copy that joins the draft (as PNG, or JPEG past the upload
+limit) and replaces the draft image it was drawn on.
+
+A slash command with its own screen opens it when typed without an argument:
+`/config`, `/permissions`, `/mcp`, `/tools`, `/rename`, `/memory`, `/skills`,
+`/schedule`, `/context` and `/sessions`. With an argument it runs on the host,
+as in the terminal.
 
 ## Offline behavior
 

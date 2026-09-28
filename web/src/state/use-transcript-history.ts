@@ -19,9 +19,12 @@ type Anchor = {
 const BOOKMARKS_KEY = "uagent-transcript-bookmarks";
 const BOTTOM_BAND = 2;
 const MOVE = 1;
-// A wheel event's own scroll lands shortly after it; WebKit cancels that
-// scroll when scrollTop is written in between, so compensation waits.
-const WHEEL_SETTLE_MS = 120;
+// A wheel event's scroll lands after it, over one scroll event or an animated
+// run of them (Linux WebKit). WebKit cancels that scroll when scrollTop is
+// written meanwhile, so compensation waits for the wheel's first scroll and
+// then for the scrolling to go quiet.
+const WHEEL_SETTLE_MS = 250;
+const WHEEL_QUIET_MS = 80;
 const bookmarks = new Map<string, Bookmark>();
 try {
   for (const [key, value] of Object.entries(
@@ -250,8 +253,8 @@ export function useTranscriptHistory(
     capture();
   }, [capture, pin, selectAnchor, writeTop]);
 
-  // Applies a waiting compensation now that the wheel's scroll has landed
-  // (its scroll event) or could not (the timer).
+  // Applies a waiting compensation once the wheel's scroll has gone quiet,
+  // or never started.
   const settleWheel = () => {
     if (deferred.current === null) return;
     clearTimeout(deferred.current);
@@ -384,9 +387,14 @@ export function useTranscriptHistory(
       if (["ArrowUp", "PageUp", "Home"].includes(event.key)) stopFollowing();
     };
     const scroll = () => {
-      // The wheel's scroll has landed: compensate against the old anchor
-      // before re-anchoring to what is now on screen.
-      settleWheel();
+      // The wheel's scroll is still landing: wait until it goes quiet, and
+      // keep the anchor the layout change moved so its shift is compensated.
+      if (deferred.current !== null) {
+        clearTimeout(deferred.current);
+        deferred.current = setTimeout(settleWheel, WHEEL_QUIET_MS);
+        lastTop.current = box.scrollTop;
+        return;
+      }
       const top = box.scrollTop;
       const maximum = Math.max(0, box.scrollHeight - box.clientHeight);
       if (following.current) {

@@ -41,8 +41,9 @@
 - Files the agent attached mid-turn no longer count as your messages, so
   message numbers, `/fork N`, `/rewind N` and `/share` line up with what
   you wrote.
-- Scrolling with a mouse wheel in Safari is no longer swallowed when
-  content above the paragraph you are reading changes size at that moment.
+- Scrolling with a mouse wheel in WebKit browsers (Safari, and Linux WebKit's
+  animated scrolling) is no longer swallowed when content above the paragraph
+  you are reading changes size at that moment.
 - Reloading the web page while an answer streams no longer freezes it at the
   reloaded text, and a tool that is still running keeps its row. The host
   sends browsers the rows of its own view of the conversation (whole rows and

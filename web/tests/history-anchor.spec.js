@@ -95,6 +95,32 @@ test("reading a paragraph survives offsetting changes inside one message", async
   // A real wheel event may coincide with a layout change. The reader's
   // movement must survive the anchor compensation in both modes, including
   // on WebKit, which cancels a wheel scroll when scrollTop is written early.
+  // Engines scroll different distances per notch, so a plain wheel first
+  // measures this one's; the coinciding wheel must move most of that.
+  const bounds = await box.boundingBox();
+  await page.mouse.move(
+    bounds.x + bounds.width / 2,
+    bounds.y + bounds.height / 2,
+  );
+  const settled = async () => {
+    let last = (await marker.boundingBox()).y;
+    await expect
+      .poll(async () => {
+        const next = (await marker.boundingBox()).y;
+        const still = Math.abs(next - last) < 0.5;
+        last = next;
+        return still;
+      })
+      .toBe(true);
+    return last;
+  };
+  const beforePlain = await settled();
+  await page.mouse.wheel(0, -120);
+  // Animated engines start moving after the event; wait for it, then rest.
+  await expect
+    .poll(async () => (await marker.boundingBox()).y - beforePlain)
+    .toBeGreaterThan(5);
+  const notch = (await settled()) - beforePlain;
   const beforeWheel = await marker.boundingBox();
   await box.evaluate((element) => {
     element.addEventListener(
@@ -109,15 +135,10 @@ test("reading a paragraph survives offsetting changes inside one message", async
       { capture: true, once: true },
     );
   });
-  const bounds = await box.boundingBox();
-  await page.mouse.move(
-    bounds.x + bounds.width / 2,
-    bounds.y + bounds.height / 2,
-  );
   await page.mouse.wheel(0, -120);
   await expect
     .poll(async () => (await marker.boundingBox()).y - beforeWheel.y)
-    .toBeGreaterThan(40);
+    .toBeGreaterThan(notch * 0.75);
   await expect(
     page.getByRole("button", { name: "Jump to latest" }),
   ).toBeVisible();

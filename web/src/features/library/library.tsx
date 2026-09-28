@@ -53,11 +53,13 @@ export default function Library({
   cwd: initial,
   online,
   version,
+  initialKind = "memory",
 }: {
   projects: string[];
   cwd: string;
   online: boolean;
   version: number;
+  initialKind?: "memory" | "skills";
 }) {
   const [cwd, setCwd] = useState(initial || projects[0] || "");
   const [visited, setVisited] = useState([initial]);
@@ -69,7 +71,7 @@ export default function Library({
     setExpanded(true);
     if (scope.startsWith("project:")) setScope(`project:${path}`);
   }
-  const [kind, setKind] = useState<"memory" | "skills">("memory");
+  const [kind, setKind] = useState(initialKind);
   const [scope, setScope] = useState("all");
   const projectFilter = scope.startsWith("project:") ? scope.slice(8) : "";
   const [query, setQuery] = useState("");

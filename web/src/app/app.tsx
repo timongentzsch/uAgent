@@ -123,6 +123,8 @@ function MenuPlaceholder() {
 
 function App() {
   const [page, setPage] = useState<"chat" | "library" | "scheduled">("chat");
+  // Which Library tab /memory or /skills asked for.
+  const [libraryKind, setLibraryKind] = useState<"memory" | "skills">("memory");
   // Library and Scheduled sit above the conversation: back returns to it.
   useDismiss(page !== "chat", () => setPage("chat"));
   const [drawer, setDrawer] = useState(false);
@@ -368,10 +370,31 @@ function App() {
     await command("activate", created.session);
     await load(created.session.id);
   }
+  // A command with a screen opens it when typed bare; with an argument it
+  // runs on the host, as in the terminal.
+  const screens: Record<string, () => void> = {
+    "/context": showContext,
+    "/config": () => open({ type: "settings" }),
+    "/permissions": () => open({ type: "settings", section: "permissions" }),
+    "/mcp": () => open({ type: "settings", section: "mcp" }),
+    "/tools": () => setModal({ type: "tools", session_id: selected }),
+    "/rename": () => session && setModal({ type: "rename", session }),
+    "/memory": () => showLibrary("memory"),
+    "/skills": () => showLibrary("skills"),
+    "/schedule": () => setPage("scheduled"),
+    // The list is always beside a wide conversation: find in it instead.
+    "/sessions": () =>
+      compact
+        ? setDrawer(true)
+        : document.getElementById("session-search")?.focus(),
+  };
+  function showLibrary(kind: "memory" | "skills") {
+    setLibraryKind(kind);
+    setPage("library");
+  }
   async function localCommand(text: string) {
     const { name, argument } = parseSlash(catalogue.commands || [], text);
-    if (name === "/context") showContext();
-    else if (name === "/sessions") setDrawer(true);
+    if (!argument && screens[name]) screens[name]();
     else if (name === "/reset") await startConversation(session!.cwd!);
     else if (name === "/quit") {
       await act("close");
@@ -992,8 +1015,9 @@ function App() {
               </header>
               {page !== "chat" ? (
                 <Deferred
-                  key={page}
+                  key={page === "library" ? `library:${libraryKind}` : page}
                   load={page === "library" ? libraryModule : scheduledModule}
+                  initialKind={libraryKind}
                   projects={projects}
                   cwd={session?.cwd || projects[0] || ""}
                   online={online}
@@ -1260,6 +1284,7 @@ function App() {
               load={settingsDialog}
               ownsDialog
               fallback={<SettingsLoading />}
+              initialSection={modal.section}
               theme={theme}
               setTheme={setTheme}
               timePrefs={timePrefs}

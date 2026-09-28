@@ -293,6 +293,7 @@ export default function Sidebar({
       <label class="search">
         <span class="sr-only">Find a session</span>
         <Input
+          id="session-search"
           type="search"
           value={search}
           onInput={(event) => setSearch(event.currentTarget.value)}

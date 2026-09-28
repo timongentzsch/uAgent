@@ -718,7 +718,9 @@ export type AppModal =
   | { type: "prompt"; scope?: string; edit?: boolean }
   | StatisticsModal
   | ({ type: "raw" } & RawOptions)
-  | { type: "new" | "settings" }
+  | { type: "new" }
+  // section: a settings section to open on, e.g. from /permissions.
+  | { type: "settings"; section?: string }
   | { type: "tools"; session_id: string };
 
 export interface PromptDocument {

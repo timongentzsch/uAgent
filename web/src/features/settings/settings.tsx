@@ -77,6 +77,7 @@ export default function Settings({
   session,
   logout,
   prompt,
+  initialSection,
 }: {
   theme: string;
   setTheme: Dispatch<StateUpdater<string>>;
@@ -102,10 +103,13 @@ export default function Settings({
   session?: Session;
   logout: () => Promise<void>;
   prompt: () => void;
+  initialSection?: string;
 }) {
   // Null until a section is picked: a phone shows the section list first,
   // and a picked section is a layer the back gesture returns from.
-  const [section, setSection] = useState<Section | null>(null);
+  const [section, setSection] = useState<Section | null>(
+    () => SECTIONS.find(([id]) => id === initialSection)?.[0] ?? null,
+  );
   const phone = useMedia("(max-width: 600px)");
   useDismiss(phone && section !== null, () => setSection(null));
   const [error, setError] = useState<unknown>(null);

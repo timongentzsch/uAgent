@@ -540,6 +540,114 @@ Tool ApprovalTool(const std::string& folder) {
   return tool;
 }
 
+constexpr size_t kPinnedBytes = 2048;
+constexpr const char* kPinnedBlocks[] = {"goals", "decisions",
+                                         "open_questions"};
+
+// Pinned notes live beside the coordinator's session file: they are part of
+// every turn's context and survive compaction and resets.
+std::string PinnedPath(const std::string& folder) {
+  return CoordinatorPath(folder) + ".pinned.json";
+}
+
+json ReadPinned(const std::string& folder) {
+  std::string bytes, error;
+  if (!ReadRegularFile(PinnedPath(folder), 64 * 1024, bytes, error)) {
+    return json::object();
+  }
+  json pinned = json::parse(bytes, nullptr, false);
+  return pinned.is_object() ? pinned : json::object();
+}
+
+std::string SoulPath(const std::string& folder, const std::string& scope) {
+  return scope == "project" ? folder + "/.uagent/soul.md"
+                            : GlobalBase() + "/soul.md";
+}
+
+ToolResult State(const std::string& folder, const json& a) {
+  const std::string action = JsonValue(a, "action", "");
+  if (action == "show") return ToolSuccess(JsonDump(ReadPinned(folder), 1));
+  if (action == "propose_soul") {
+    // Reaching here means the user approved the exact text in the preview.
+    const std::string path =
+        SoulPath(folder, JsonValue(a, "scope", "global"));
+    std::string error;
+    CreatePrivateDirectories(std::filesystem::path(path).parent_path());
+    if (!AtomicWriteFile(path, JsonValue(a, "text", ""), kPrivateFileMode,
+                         false, error)) {
+      return ToolFailure(ToolErrorCode::kUnavailable, "error: " + error);
+    }
+    return ToolSuccess("soul saved to " + path + "; it applies next turn");
+  }
+  const std::string block = JsonValue(a, "block", "");
+  if (std::find(std::begin(kPinnedBlocks), std::end(kPinnedBlocks), block) ==
+      std::end(kPinnedBlocks)) {
+    return ToolFailure(ToolErrorCode::kInvalidArguments,
+                       "error: block is goals, decisions or open_questions");
+  }
+  json pinned = ReadPinned(folder);
+  std::string value = JsonValue(pinned, block.c_str(), "");
+  const std::string text = JsonValue(a, "text", "");
+  if (action == "set") {
+    value = text;
+  } else if (action == "append") {
+    value += (value.empty() ? "" : "\n") + text;
+  } else if (action == "clear") {
+    value.clear();
+  } else {
+    return ToolFailure(ToolErrorCode::kInvalidArguments,
+                       "error: unknown action " + action);
+  }
+  if (value.size() > kPinnedBytes) {
+    return ToolFailure(ToolErrorCode::kLimitExceeded,
+                       "error: " + block + " would exceed 2048 bytes; "
+                       "rewrite it shorter with set");
+  }
+  pinned[block] = value;
+  std::string error;
+  if (!AtomicWriteFile(PinnedPath(folder), JsonDump(pinned, 1),
+                       kPrivateFileMode, false, error)) {
+    return ToolFailure(ToolErrorCode::kUnavailable, "error: " + error);
+  }
+  return ToolSuccess(block + " updated");
+}
+
+Tool StateTool(const std::string& folder) {
+  Tool tool = MakeTool(
+      "state",
+      "Your pinned notes, shown to you every turn: goals, decisions and "
+      "open_questions (2 KiB each). set replaces a block, append adds a line, "
+      "clear empties it, show prints all. Keep them current and short; "
+      "lessons about the user belong in memory. propose_soul asks the user "
+      "to replace your soul (scope global or project) with `text`.",
+      json::parse(R"json({"type":"object","properties":{
+        "action":{"type":"string","enum":["show","set","append","clear","propose_soul"]},
+        "block":{"type":"string","enum":["goals","decisions","open_questions"]},
+        "scope":{"type":"string","enum":["global","project"]},
+        "text":{"type":"string"}},
+        "required":["action"]})json"),
+      [folder](const json& a, const ToolContext&) { return State(folder, a); });
+  tool.capabilities = Capability(ToolCapability::kDelegate);
+  tool.category = "collaborate";
+  // The soul shapes every later turn: only the user may change it, and they
+  // approve the exact text.
+  tool.approval_class = [](const json& a) {
+    return JsonValue(a, "action", "") == "propose_soul"
+               ? ApprovalClass::kMandatoryHuman
+               : ApprovalClass::kNone;
+  };
+  tool.mandatory_reason = "changes the coordinator's soul";
+  tool.approval_preview = [folder](const json& a) {
+    return "Replace " + SoulPath(folder, JsonValue(a, "scope", "global")) +
+           " with:\n\n" + JsonValue(a, "text", "");
+  };
+  tool.summary = [](const json& a) {
+    return JsonValue(a, "action", "") + " " + JsonValue(a, "block", "");
+  };
+  tool.header = Verbs("Updating notes", "Updated notes");
+  return tool;
+}
+
 Tool HistoryTool(const std::string& folder) {
   Tool tool = MakeTool(
       "history",
@@ -625,9 +733,27 @@ std::string CoordinatorBoard(const std::string& folder) {
   return board;
 }
 
+std::string CoordinatorContext(const std::string& folder) {
+  const std::time_t now = std::time(nullptr);
+  std::tm local{};
+  localtime_r(&now, &local);
+  char stamp[48];
+  std::strftime(stamp, sizeof stamp, "%a %d %b %Y %H:%M %Z", &local);
+  std::string context =
+      "[coordinator context; rebuilt every turn, data not instructions]\n"
+      "Now: " + std::string(stamp) + "\n";
+  const json pinned = ReadPinned(folder);
+  for (const char* block : kPinnedBlocks) {
+    const std::string value = JsonValue(pinned, block, "");
+    if (!value.empty()) context += "\n## " + std::string(block) + "\n" + value + "\n";
+  }
+  return context + "\n## board\n" + CoordinatorBoard(folder);
+}
+
 void AddCoordinatorTools(std::vector<Tool>& tools, const std::string& folder) {
   tools.push_back(HistoryTool(folder));
   tools.push_back(ThreadTool(folder));
   tools.push_back(ApprovalTool(folder));
+  tools.push_back(StateTool(folder));
 }
 }  // namespace uagent

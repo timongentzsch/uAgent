@@ -24,6 +24,9 @@ namespace uagent {
 const char* SystemPromptBase();
 // The base of a folder coordinator's prompt, in place of SystemPromptBase.
 const char* CoordinatorPromptBase();
+// "\n\n## Soul\n…" from ~/.uagent/soul.md then the project's .uagent/soul.md
+// (each at most 16 KiB), or empty. Only a coordinator loads it.
+std::string CoordinatorSoul();
 
 // The base sections an overlay may replace, in prompt order.
 std::vector<std::string_view> PromptSections();

@@ -443,6 +443,13 @@ void TestFileTools() {
           ApprovalClass::kNone);
     CHECK(PathApprovalClass(TrustStorePath(), PathAccess::kWrite) ==
           ApprovalClass::kMandatoryHuman);
+    // The coordinator's soul: readable, but only a person may rewrite it.
+    for (const std::string& soul :
+         {GlobalBase() + "/soul.md", CanonicalCwd() + "/.uagent/soul.md"}) {
+      CHECK(PathApprovalClass(soul, PathAccess::kRead) == ApprovalClass::kNone);
+      CHECK(PathApprovalClass(soul, PathAccess::kWrite) ==
+            ApprovalClass::kMandatoryHuman);
+    }
     // Remembered "always allow" rules authorize future calls, so writing them
     // is never something an automatic reviewer may approve.
     const std::string rules =

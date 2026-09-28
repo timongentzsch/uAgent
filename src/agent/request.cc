@@ -609,7 +609,8 @@ std::string Agent::PromptBase() const {
   const bool coordinator =
       JsonValue(session_role_, "kind", "") == kSessionKindCoordinator;
   return ApplyPromptOverlay(
-             coordinator ? CoordinatorPromptBase() : SystemPromptBase(),
+             coordinator ? CoordinatorPromptBase() + CoordinatorSoul()
+                         : std::string(SystemPromptBase()),
              PromptOverlay(nullptr), nullptr) +
          CapabilityPrompt(tools_, &tool_selection_);
 }
@@ -707,6 +708,7 @@ std::string Agent::RuntimeContextText() const {
   if (HasMemoryContent(project_instructions_)) {
     content += "\n\n" + MemoryText();
   }
+  if (runtime_context_) content += "\n\n" + runtime_context_();
   return content;
 }
 

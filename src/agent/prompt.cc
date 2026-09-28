@@ -9,6 +9,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/core/config.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
@@ -88,6 +89,23 @@ constexpr std::string_view kSections[] = {
 
 const char* SystemPromptBase() { return kBase; }
 const char* CoordinatorPromptBase() { return kCoordinatorBase; }
+
+std::string CoordinatorSoul() {
+  constexpr size_t kSoulBytes = size_t{16} * 1024;
+  std::string soul;
+  // A project soul is configuration: a cloned repository cannot plant one
+  // until the user trusts its project config.
+  std::vector<std::string> paths{GlobalBase() + "/soul.md"};
+  if (ProjectConfigTrusted()) paths.push_back(CanonicalCwd() + "/.uagent/soul.md");
+  for (const std::string& path : paths) {
+    std::ifstream input(path, std::ios::binary);
+    std::string body;
+    if (input) ReadBounded(input, kSoulBytes, body);
+    body = Trim(body);
+    if (!body.empty()) soul += (soul.empty() ? "" : "\n\n") + body;
+  }
+  return soul.empty() ? soul : "\n\n## Soul\n" + soul;
+}
 
 std::vector<std::string_view> PromptSections() {
   return {std::begin(kSections), std::end(kSections)};

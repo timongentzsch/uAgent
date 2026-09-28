@@ -34,8 +34,11 @@ inline bool SelfConfigurationPath(const std::string& path) {
   auto matches = [&](const std::string& target) {
     return !target.empty() && CanonicalAccessPath(target) == candidate;
   };
-  if ((candidate.filename() == "system-prompt.json" &&
+  // The coordinator's soul (global and project): its standing character.
+  if (((candidate.filename() == "system-prompt.json" ||
+        candidate.filename() == "soul.md") &&
        candidate.parent_path().filename() == ".uagent") ||
+      matches((std::filesystem::path(GlobalBase()) / "soul.md").string()) ||
       matches((std::filesystem::path(GlobalBase()) / "system-prompt.json")
                   .string())) {
     return true;
@@ -93,7 +96,8 @@ inline ApprovalClass PathApprovalClass(const std::string& path,
   if (!SelfConfigurationPath(path)) return ApprovalClass::kNone;
   if (access == PathAccess::kRead &&
       (CanonicalAccessPath(path) == CanonicalAccessPath(TrustStorePath()) ||
-       CanonicalAccessPath(path).filename() == "system-prompt.json")) {
+       CanonicalAccessPath(path).filename() == "system-prompt.json" ||
+       CanonicalAccessPath(path).filename() == "soul.md")) {
     return ApprovalClass::kNone;
   }
   return ApprovalClass::kMandatoryHuman;

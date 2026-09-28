@@ -20,6 +20,10 @@ std::vector<SessionInfo> FolderSessions(const std::string& folder);
 // fresh on each request; never stored.
 std::string CoordinatorBoard(const std::string& folder);
 
+// What a coordinator sees fresh every turn: the time, its pinned notes and
+// the board. Outside the transcript, so compaction never loses it.
+std::string CoordinatorContext(const std::string& folder);
+
 // The tools only a folder's coordinator gets.
 void AddCoordinatorTools(std::vector<Tool>& tools, const std::string& folder);
 }  // namespace uagent

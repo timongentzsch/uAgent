@@ -2,6 +2,7 @@
 
 #include <fcntl.h>
 #include <poll.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -89,7 +90,13 @@ class WorkerChannel final : public ApplicationChannel {
         title_(std::move(title)),
         browser_session_(browser_session),
         coordinator_(coordinator),
-        thread_(std::move(thread)) {}
+        thread_(std::move(thread)) {
+    // A restarted coordinator measures silence from its last saved turn.
+    struct stat saved{};
+    if (coordinator_ && stat(path_.c_str(), &saved) == 0) {
+      last_message_ = std::chrono::system_clock::from_time_t(saved.st_mtime);
+    }
+  }
   ~WorkerChannel() override { Close(); }
 
   bool Start() {
@@ -198,17 +205,37 @@ class WorkerChannel final : public ApplicationChannel {
           return result;
         }
       }
+      {
+        std::lock_guard lock(mutex_);
+        if (!events_.empty() &&
+            std::chrono::steady_clock::now() >= events_due_) {
+          ClearAbort();
+          busy_ = turn_active_ = true;
+          BeginTurn();
+          SendState();
+          return ApplicationInput{.text = TakeEvents()};
+        }
+      }
       pollfd waits[] = {{wake_.read.Get(), POLLIN, 0},
                         {AbortWakeFd(), POLLIN, 0}};
-      const int ready = poll(
-          waits, 2,
-          coordinator_ ? static_cast<int>(kIdlePoll.count()) : -1);
+      int timeout = coordinator_ ? static_cast<int>(kIdlePoll.count()) : -1;
+      {
+        std::lock_guard lock(mutex_);
+        if (!events_.empty()) {
+          timeout = std::min(timeout, PollTimeoutMs(events_due_));
+        }
+      }
+      const int ready = poll(waits, 2, timeout);
       if (ready < 0 && errno != EINTR) {
         return std::nullopt;
       }
       if (ready == 0) {
         const auto now = std::chrono::steady_clock::now();
         if (server_.Clients() > 0) idle_since = now;
+        {
+          std::lock_guard lock(mutex_);
+          if (!events_.empty()) continue;
+        }
         if (now - idle_since >= kCoordinatorIdle) {
           std::lock_guard lock(mutex_);
           closed_ = true;
@@ -346,6 +373,36 @@ class WorkerChannel final : public ApplicationChannel {
     // application's control does.
     StopSideQuestion();
     activity_control_ = control;
+  }
+
+  // Every message a coordinator reads carries the local time it arrived,
+  // fixed once written so cached context never changes; a long silence is
+  // marked, since it usually means a new topic.
+  std::string Stamp(const std::string& text) {
+    const auto now = std::chrono::system_clock::now();
+    const auto silence =
+        std::chrono::duration_cast<std::chrono::hours>(now - last_message_);
+    last_message_ = now;
+    const std::time_t seconds = std::chrono::system_clock::to_time_t(now);
+    std::tm local{};
+    localtime_r(&seconds, &local);
+    char stamp[32];
+    std::strftime(stamp, sizeof stamp, "[%a %d %b %H:%M] ", &local);
+    std::string gap;
+    if (silence.count() >= 1) {
+      gap = "— " + std::to_string(silence.count()) +
+            " h since the last message —\n";
+    }
+    return gap + stamp + text;
+  }
+
+  std::string TakeEvents() {
+    std::string joined;
+    for (const std::string& event : events_) {
+      joined += (joined.empty() ? "" : "\n") + event;
+    }
+    events_.clear();
+    return joined;
   }
 
   // The routed decision becomes the user's: shown as theirs, and announced so
@@ -641,6 +698,27 @@ class WorkerChannel final : public ApplicationChannel {
       kind = SessionCommandKind::kSubmit;
     }
     if (closed_) return false;
+    if (coordinator_ && (kind == SessionCommandKind::kSubmit ||
+                         kind == SessionCommandKind::kSteer) &&
+        !parsed.text.empty() && !parsed.text.starts_with("/")) {
+      // Thread events arriving while the coordinator is idle wait for their
+      // siblings (up to kEventBatch) and wake it once; approvals never wait.
+      if (kind == SessionCommandKind::kSubmit && !input_ &&
+          parsed.text.starts_with("[thread event")) {
+        if (events_.empty()) {
+          events_due_ = std::chrono::steady_clock::now() + kEventBatch;
+        }
+        events_.push_back(Stamp(parsed.text));
+        wake_.Wake();
+        Send({{"kind", "outcome"}, {"request_id", request}, {"accepted", true}});
+        return true;
+      }
+      parsed.text = Stamp(parsed.text);
+      // Queued events ride along with the user's next message.
+      if (kind == SessionCommandKind::kSubmit && !events_.empty()) {
+        parsed.text = TakeEvents() + "\n\n" + parsed.text;
+      }
+    }
     switch (kind) {
       case SessionCommandKind::kClose: {
         lock.unlock();
@@ -848,6 +926,11 @@ class WorkerChannel final : public ApplicationChannel {
   std::mutex mutex_, control_mutex_;
   static constexpr auto kIdlePoll = std::chrono::milliseconds(30000);
   static constexpr auto kCoordinatorDecision = std::chrono::minutes(5);
+  static constexpr auto kEventBatch = std::chrono::seconds(20);
+  std::vector<std::string> events_;
+  std::chrono::steady_clock::time_point events_due_{};
+  std::chrono::system_clock::time_point last_message_ =
+      std::chrono::system_clock::now();
   static constexpr int kNotifyAttempts = 20;
   static constexpr auto kNotifyRetry = std::chrono::milliseconds(250);
   bool closed_ = false, busy_ = true;

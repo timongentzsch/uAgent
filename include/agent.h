@@ -114,6 +114,11 @@ class Agent {
   void KeepToolFiles(KeepFile keep) { keep_tool_file_ = std::move(keep); }
   // Coordinator/thread role ({kind, thread}), saved in the session header.
   void SetSessionRole(json role) { session_role_ = std::move(role); }
+  // Extra per-turn runtime context (a coordinator's board and pinned notes):
+  // rebuilt each turn, outside the transcript and the cached system prompt.
+  void SetRuntimeContext(std::function<std::string()> extra) {
+    runtime_context_ = std::move(extra);
+  }
   void RetainExchanges(bool enabled) {
     retain_exchanges_ = enabled;
     api_.capture_http = enabled;
@@ -393,6 +398,7 @@ class Agent {
   int64_t forked_at_turn_ = 0;
   std::string forked_at_time_;
   json session_role_ = json::object();
+  std::function<std::string()> runtime_context_;
   int64_t total_user_turns_ = 0;
   size_t logged_msgs_ = 0;      // messages already written to the debug trace
   std::string logged_schemas_;  // last exact per-request schema snapshot

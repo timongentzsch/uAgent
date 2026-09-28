@@ -63,6 +63,8 @@ BROWSER_FRAMES = frozenset(
 DOCUMENTED_INTERNAL = frozenset(
     {
         "close",
+        # A coordinator yields a thread's routed decision to the user.
+        "escalate",
         "fork",
         "hello",
         "interrupt",

@@ -39,6 +39,31 @@ constexpr size_t kReportBytes = 8 * 1024;
 constexpr size_t kMessageBytes = 8 * 1024;
 constexpr size_t kDiffBytes = 16 * 1024;
 
+// "saved" without a runtime; else what its runtime's snapshot says: waiting
+// on a person, working a turn, or idle. A decision still with the coordinator
+// counts as working.
+std::string LiveStatus(const SessionInfo& info) {
+  if (!PathExists(session::SocketPath(info.path))) return "saved";
+  session::Connection connection = session::Connect(info.path);
+  if (!connection.socket) return "saved";
+  session::Pipe never;
+  if (!never.Open()) return "saved";
+  std::string status = "idle";
+  session::ReadFrames(
+      connection.socket.Get(), never.read.Get(), session::kFrameBytes,
+      [&](const json& frame) {
+        if (JsonValue(frame, "kind", "") != "state") return true;
+        const json* pending = JsonObject(frame, "pending");
+        status = pending && JsonValue(*pending, "route", "") != "coordinator"
+                     ? "needs you"
+                 : JsonValue(frame, "busy", false) ? "working"
+                                                   : "idle";
+        return false;
+      },
+      DeadlineAfter(2));
+  return status;
+}
+
 std::string Age(std::filesystem::file_time_type mtime) {
   const auto minutes = std::chrono::duration_cast<std::chrono::minutes>(
                            std::filesystem::file_time_type::clock::now() -
@@ -213,21 +238,8 @@ bool OwnThread(const SessionInfo& info, const std::string& coordinator) {
 
 // A thread counts against the cap while its runtime is working a turn.
 bool Working(const SessionInfo& info) {
-  if (!PathExists(session::SocketPath(info.path))) return false;
-  session::Connection connection = session::Connect(info.path);
-  if (!connection.socket) return false;
-  session::Pipe never;
-  if (!never.Open()) return false;
-  bool busy = false;
-  session::ReadFrames(
-      connection.socket.Get(), never.read.Get(), session::kFrameBytes,
-      [&](const json& frame) {
-        if (JsonValue(frame, "kind", "") != "state") return true;
-        busy = JsonValue(frame, "busy", false);
-        return false;
-      },
-      DeadlineAfter(2));
-  return busy;
+  const std::string status = LiveStatus(info);
+  return status == "working" || status == "needs you";
 }
 
 // Reported cost of the threads this coordinator started today.
@@ -457,6 +469,77 @@ Tool ThreadTool(const std::string& folder) {
   return tool;
 }
 
+// Answers a thread's routed decision in its runtime. A denial carries the
+// reason back as guidance, so the thread learns why and can adjust.
+ToolResult Decide(const SessionInfo& info, const json& a) {
+  const std::string action = JsonValue(a, "decision", "");
+  const std::string interaction = JsonValue(a, "interaction_id", "");
+  const std::string reason = Utf8Prefix(JsonValue(a, "reason", ""), 1024);
+  json command;
+  if (action == "yield") {
+    command = {{"kind", "escalate"},
+               {"text", reason.empty() ? "The coordinator asks you." : reason}};
+  } else if (action == "allow_once" || action == "allow_thread" ||
+             action == "deny") {
+    command = {{"kind", "reply"},
+               {"origin", "coordinator"},
+               {"reason", reason},
+               {"text", action == "allow_once"     ? "y"
+                        : action == "allow_thread" ? "s"
+                        : reason.empty()
+                            ? "n"
+                            : "The coordinator denied this: " + reason}};
+  } else {
+    return ToolFailure(ToolErrorCode::kInvalidArguments,
+                       "error: decision is allow_once, allow_thread, deny or "
+                       "yield");
+  }
+  command["interaction_id"] = interaction;
+  session::Connection connection = session::Connect(info.path);
+  if (!connection.socket) {
+    return ToolFailure(ToolErrorCode::kUnavailable,
+                       "error: that thread is not running");
+  }
+  const std::string error =
+      SendWhenReady(connection, info.path, std::move(command), false);
+  return error.empty() ? ToolSuccess("sent " + action)
+                       : ToolFailure(ToolErrorCode::kUnavailable,
+                                     "error: " + error);
+}
+
+Tool ApprovalTool(const std::string& folder) {
+  Tool tool = MakeTool(
+      "approval",
+      "Decide an approval request a thread sent you: allow_once, "
+      "allow_thread (this and identical calls for the rest of the thread), "
+      "deny (the reason goes back to the thread), or yield to hand it to "
+      "the user. Judge the action against the brief you gave, not the "
+      "thread's own justification. Yield when it leaves the brief, touches "
+      "shared or remote state, or you are unsure.",
+      json::parse(R"json({"type":"object","properties":{
+        "session_id":{"type":"string"},
+        "interaction_id":{"type":"string"},
+        "decision":{"type":"string","enum":["allow_once","allow_thread","deny","yield"]},
+        "reason":{"type":"string"}},
+        "required":["session_id","interaction_id","decision","reason"]})json"),
+      [folder](const json& a, const ToolContext&) {
+        const std::string id = JsonValue(a, "session_id", "");
+        auto info = FindSession(folder, id);
+        if (!info || info->kind != kSessionKindThread) {
+          return ToolFailure(ToolErrorCode::kNotFound,
+                             "error: no thread " + id + " in this folder");
+        }
+        return Decide(*info, a);
+      });
+  tool.capabilities = Capability(ToolCapability::kDelegate);
+  tool.category = "collaborate";
+  tool.summary = [](const json& a) {
+    return JsonValue(a, "decision", "") + " " + JsonValue(a, "session_id", "");
+  };
+  tool.header = Verbs("Deciding", "Decided");
+  return tool;
+}
+
 Tool HistoryTool(const std::string& folder) {
   Tool tool = MakeTool(
       "history",
@@ -526,8 +609,7 @@ std::string CoordinatorBoard(const std::string& folder) {
   std::string board;
   size_t shown = 0;
   for (const SessionInfo& info : sessions) {
-    const bool open = PathExists(session::SocketPath(info.path));
-    std::string line = HashHex(info.path) + (open ? " open  " : " saved ") +
+    std::string line = HashHex(info.path) + " " + LiveStatus(info) + " · " +
                        (info.kind == kSessionKindThread ? "↳ " : "") +
                        Utf8Prefix(info.title, 80) + " · " +
                        std::to_string(info.turns) + " turns · " +
@@ -546,5 +628,6 @@ std::string CoordinatorBoard(const std::string& folder) {
 void AddCoordinatorTools(std::vector<Tool>& tools, const std::string& folder) {
   tools.push_back(HistoryTool(folder));
   tools.push_back(ThreadTool(folder));
+  tools.push_back(ApprovalTool(folder));
 }
 }  // namespace uagent

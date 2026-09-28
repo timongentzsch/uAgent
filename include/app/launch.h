@@ -23,7 +23,8 @@ LaunchPaths PlanLaunch(const std::string& project, bool worktree,
 std::string CreateWorktree(const std::string& project, const std::string& cwd);
 
 // Sends one command to the runtime of `path` once it has published its state
-// (and, with `idle`, once no turn is running). Returns the error, or empty.
+// (and, with `idle`, once no turn is running), and waits for its outcome.
+// Returns the runtime's refusal or a transport error, or empty.
 std::string SendWhenReady(const session::Connection& connection,
                           const std::string& path, json command, bool idle);
 }  // namespace uagent

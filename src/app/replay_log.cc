@@ -23,8 +23,14 @@ HostReplay ReplayLog::Publish(const std::string& epoch,
   const std::string kind = JsonValue(value, "kind", "");
   HostNotice notice;
   notice.session = session;
-  if (type == "turn.completed" || type == "approval.requested" ||
-      type == "error" || kind == "error") {
+  // A decision routed to a thread's coordinator reaches a person only once
+  // the coordinator yields it (approval.escalated).
+  const bool routed =
+      JsonValue(JsonValue(value, "data", json::object()), "route", "") ==
+      "coordinator";
+  if (type == "turn.completed" ||
+      (type == "approval.requested" && !routed) ||
+      type == "approval.escalated" || type == "error" || kind == "error") {
     notice.attention_id = epoch + ":" + std::to_string(sequence_ + 1);
     value["attention_id"] = notice.attention_id;
   }

@@ -173,7 +173,9 @@ export function isIncoming(event: HostEvent) {
 export function isAttention(event: HostEvent) {
   return (
     event.type === "turn.completed" ||
-    event.type === "approval.requested" ||
+    (event.type === "approval.requested" &&
+      event.data?.route !== "coordinator") ||
+    event.type === "approval.escalated" ||
     event.type === "error"
   );
 }

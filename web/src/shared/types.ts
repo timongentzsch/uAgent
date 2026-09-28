@@ -277,6 +277,9 @@ export interface Pending {
     mandatory_reason?: string;
     preview?: string;
   };
+  // A thread's decision goes to its coordinator first; "human" once yielded.
+  route?: "coordinator" | "human";
+  note?: string;
 }
 export interface Permissions {
   mode: string;
@@ -426,6 +429,8 @@ export interface Outcome {
 }
 export interface EventData extends Omit<Partial<Exchange>, "status"> {
   request_id?: string;
+  // approval.requested: "coordinator" while a thread's coordinator decides.
+  route?: string;
   inspect?: boolean;
   context_tokens?: number;
   output?: string;

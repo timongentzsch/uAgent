@@ -59,7 +59,15 @@ export default function Decision({
   );
   return (
     <section class="decision" aria-label="Pending decision">
-      <h2>Needs your decision</h2>
+      <h2>
+        {pending.route === "coordinator"
+          ? "The coordinator is deciding"
+          : "Needs your decision"}
+      </h2>
+      {pending.route === "coordinator" && (
+        <p class="decision-note">You can still answer first.</p>
+      )}
+      {pending.note && <p class="decision-note">{cleanText(pending.note)}</p>}
       <div class="decision-preview">
         {approval && (
           <>

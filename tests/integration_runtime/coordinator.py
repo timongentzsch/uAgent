@@ -16,6 +16,7 @@ from integration_support import (
     tool_call,
     tool_calls,
     tool_results,
+    wait_until,
     write_session,
 )
 
@@ -134,7 +135,13 @@ def test_coordinator_delegates_a_thread_and_hears_back(root, home, *, binary):
         result = run(root, env, "coord", "-p", "delegate a count", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "spawned-ok", result.stdout)
-        spawned = json.loads(tool_results(server.requests[1][1]["messages"])[0])
+        spawned = json.loads(
+            next(
+                tool_results(body["messages"])[0]
+                for _, body in server.requests
+                if "delegate a count" in json.dumps(body) and tool_results(body["messages"])
+            )
+        )
         assert_true(len(spawned["session_id"]) == 16, spawned)
         assert_true(heard.wait(budget(20)), [json.dumps(b)[-300:] for _, b in server.requests])
         threads = [
@@ -224,7 +231,11 @@ def test_coordinator_caps_working_threads_in_worktrees(root, home, *, binary):
         finally:
             release.set()
         assert_true(result.returncode == 0, result.stderr)
-        first, second = tool_results(server.requests[1][1]["messages"])
+        first, second = next(
+            tool_results(body["messages"])
+            for _, body in server.requests
+            if len(tool_results(body["messages"])) == 2
+        )
         spawned = json.loads(first)
         worktree = pathlib.Path(spawned["cwd"])
         assert_true(spawned["environment"] == "worktree", spawned)
@@ -249,3 +260,137 @@ def test_coordinator_deletes_only_with_the_user(root, home, *, binary):
         assert_true(result.returncode == 0, result.stderr)
         assert_true("declined" in result.stderr, result.stderr)
         assert_true(victim.exists(), "deleted without the user")
+
+
+def _thread_session(home):
+    threads = [path for path in session_files(home) if path.name.startswith("thread-")]
+    assert_true(len(threads) == 1, threads)
+    return threads[0]
+
+
+def _spawn_then(decide):
+    """A router: the coordinator spawns one local thread that writes a file,
+    and answers the routed approval with `decide(thread_id, interaction_id)`."""
+    import re
+
+    state = {"asked": threading.Event(), "done": threading.Event()}
+
+    def route(_, body):
+        text = json.dumps(body["messages"])
+        results = tool_results(body["messages"])
+        if "Objective: write out.txt" in text:
+            if not results:
+                return tool_call("write_file", {"path": "out.txt", "content": "x"})
+            state["done"].set()
+            return event({"content": "thread-done"})
+        if "[approval request" in text and "sent " not in json.dumps(results):
+            match = re.search(r"Thread ([0-9a-f]{16}) .*?interaction ([^)]+)\)", text)
+            state["asked"].set()
+            return tool_call("approval", decide(match.group(1), match.group(2)))
+        if "[approval request" in text or "[thread event" in text:
+            return event({"content": "coordinator-ack"})
+        if not results:
+            return tool_call(
+                "thread",
+                {
+                    "action": "spawn",
+                    "title": "Write",
+                    "objective": "write out.txt",
+                    "environment": "local",
+                },
+            )
+        return event({"content": "spawned-ok"})
+
+    return route, state
+
+
+def test_coordinator_approves_what_auto_could_not(root, home, *, binary):
+    route, state = _spawn_then(
+        lambda thread, interaction: {
+            "session_id": thread,
+            "interaction_id": interaction,
+            "decision": "allow_once",
+            "reason": "inside the brief",
+        }
+    )
+    with Server([route]) as server:
+        env = base_env(home, server.url)
+        result = run(root, env, "coord", "-p", "delegate", binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(state["asked"].wait(budget(20)), "approval never reached the coordinator")
+        assert_true(state["done"].wait(budget(20)), "thread never continued")
+        assert_true((root / "out.txt").read_text() == "x", "write was not allowed")
+        journal = pathlib.Path(str(_thread_session(home)) + ".events.jsonl")
+        wait_until(
+            lambda: "coordinator decided y: inside the brief" in journal.read_text(),
+            "the decision is missing from the thread's log",
+        )
+
+
+def test_yielded_and_mandatory_decisions_reach_the_user(root, home, *, binary):
+    from session_support import SessionClient, runtime_directory
+
+    route, state = _spawn_then(
+        lambda thread, interaction: {
+            "session_id": thread,
+            "interaction_id": interaction,
+            "decision": "yield",
+            "reason": "writes outside the brief",
+        }
+    )
+    with Server([route]) as server:
+        env = base_env(home, server.url)
+        result = run(root, env, "coord", "-p", "delegate", binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(state["asked"].wait(budget(20)), "approval never reached the coordinator")
+        thread = _thread_session(home)
+        socket = runtime_directory(home) / f"{__import__('integration_support').fnv1a64(str(thread))}.sock"
+        client = SessionClient(socket)
+        try:
+            yielded = client.until(
+                lambda frame: frame.get("kind") == "state"
+                and (frame.get("pending") or {}).get("route") == "human"
+            )
+            assert_true(yielded["pending"]["note"] == "writes outside the brief", yielded)
+            # The user answers the yielded decision as any other.
+            client.send("reply", interaction_id=yielded["pending"]["id"], text="y")
+            assert_true(state["done"].wait(budget(20)), "thread never continued")
+        finally:
+            client.close()
+        assert_true((root / "out.txt").read_text() == "x", "write was not allowed")
+
+
+def test_mandatory_decisions_skip_the_coordinator(root, home, *, binary):
+    from session_support import SessionClient, runtime_directory
+
+    def route(_, body):
+        text = json.dumps(body["messages"])
+        assert "[approval request" not in text, "a mandatory decision reached the coordinator"
+        if "Objective: run it" in text:
+            return tool_call("run", {"command": "true", "sandbox": False})
+        if "[thread event" in text:
+            return event({"content": "ack"})
+        if not tool_results(body["messages"]):
+            return tool_call(
+                "thread",
+                {"action": "spawn", "title": "Run", "objective": "run it", "environment": "local"},
+            )
+        return event({"content": "spawned-ok"})
+
+    with Server([route]) as server:
+        env = base_env(home, server.url)
+        result = run(root, env, "coord", "-p", "delegate", binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        thread = _thread_session(home)
+        fnv = __import__("integration_support").fnv1a64
+        client = SessionClient(runtime_directory(home) / f"{fnv(str(thread))}.sock")
+        try:
+            waiting = client.until(
+                lambda frame: frame.get("kind") == "state" and frame.get("pending")
+            )
+            pending = waiting["pending"]
+            assert_true(pending["approval"]["mandatory_human"], pending)
+            assert_true("route" not in pending, pending)
+            client.send("reply", interaction_id=pending["id"], text="n")
+        finally:
+            client.close()

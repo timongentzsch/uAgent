@@ -41,6 +41,8 @@ enum class SessionCommandKind {
   kSide,
   kPrompt,
   kSubmit,
+  // A coordinator hands a thread's routed decision to the user.
+  kEscalate,
   kCreate,
   kDelete,
   kActivate,

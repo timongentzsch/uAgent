@@ -1219,6 +1219,10 @@ pre code {
 .decision h2 {
   flex-shrink: 0;
 }
+.decision-note {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
 
 /* Native top-layer popovers share placement and keyboard handling. */
 .popover-control {

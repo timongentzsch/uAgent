@@ -714,8 +714,8 @@ int CoordinatorPromptMain(const Options& options) {
     return WriteFrame(connection.socket.Get(), command);
   };
   const std::string request = RandomToken(16);
-  bool submitted = false, rejected = false;
-  json stop = nullptr;
+  bool submitted = false, rejected = false, completed = false;
+  json stop = json::object();
   Pipe never;
   if (!never.Open()) return 1;
   ReadFrames(connection.socket.Get(), never.read.Get(), kFrameBytes,
@@ -745,12 +745,15 @@ int CoordinatorPromptMain(const Options& options) {
                }
                if (JsonValue(frame, "checkpoint", false) &&
                    JsonValue(frame, "completed_request_id", "") == request) {
-                 stop = JsonValue(frame["state"], "stop", json(nullptr));
+                 // A queued thread event may already have started the next
+                 // turn, which clears the stop record.
+                 stop = JsonValue(frame["state"], "stop", json::object());
+                 completed = true;
                  return false;
                }
                return true;
              });
-  if (rejected || stop.is_null()) {
+  if (rejected || !completed) {
     fprintf(stderr, "%s\n",
             error.empty() ? "coordinator runtime closed" : error.c_str());
     return 1;
@@ -770,7 +773,8 @@ int CoordinatorPromptMain(const Options& options) {
   } else {
     printf("%s\n", answer.c_str());
   }
-  return JsonValue(stop, "reason", "") == "completed" ? 0 : 1;
+  const std::string reason = JsonValue(stop, "reason", "completed");
+  return reason == "completed" ? 0 : 1;
 }
 
 int TerminalMain(Options options) {

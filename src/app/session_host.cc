@@ -263,7 +263,10 @@ json SessionHost::Metadata(const HostSession& session) const {
           {"phase", JsonValue(session.state, "phase", "idle")},
           {"activities", JsonValue(session.state, "activities", json::array())},
           {"error", session.error},
-          {"pending", !session.pending.is_null()},
+          // Waiting on a person: a coordinator's routed decision is not.
+          {"pending", !session.pending.is_null() &&
+                          JsonValue(session.pending, "route", "") !=
+                              "coordinator"},
           {"updated", session.updated}};
 }
 

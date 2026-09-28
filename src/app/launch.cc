@@ -31,22 +31,35 @@ std::string SendWhenReady(const session::Connection& connection,
   constexpr int64_t kReadySeconds = 30;
   session::Pipe never;
   if (!never.Open()) return "cannot wait for the session runtime";
+  const std::string request = session::RandomToken(16);
   bool sent = false;
+  std::string error = "the session runtime did not become ready";
   session::ReadFrames(
       connection.socket.Get(), never.read.Get(), session::kFrameBytes,
       [&](const json& frame) {
-        if (JsonValue(frame, "kind", "") != "state" ||
-            (idle && JsonValue(frame, "busy", true))) {
+        const std::string kind = JsonValue(frame, "kind", "");
+        if (sent) {
+          // The runtime's verdict on this command: accepted, or why not.
+          if (kind != "outcome" ||
+              JsonValue(frame, "request_id", "") != request) {
+            return true;
+          }
+          error = JsonValue(frame, "accepted", false)
+                      ? ""
+                      : JsonValue(frame, "error", "command refused");
+          return false;
+        }
+        if (kind != "state" || (idle && JsonValue(frame, "busy", true))) {
           return true;
         }
         command["v"] = session::kProtocol;
         command["session_id"] = HashHex(path);
         command["generation"] = connection.generation;
-        command["request_id"] = session::RandomToken(16);
+        command["request_id"] = request;
         sent = session::WriteFrame(connection.socket.Get(), command);
-        return false;
+        return sent;
       },
       DeadlineAfter(kReadySeconds));
-  return sent ? "" : "the session runtime did not become ready";
+  return error;
 }
 }  // namespace uagent

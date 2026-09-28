@@ -387,6 +387,7 @@ export default function Composer({
                 >
                   {asset.image && !asset.pending ? (
                     <ImageTile
+                      draftId={asset.id}
                       name={asset.name}
                       src={`/api/sessions/${session.id}/assets/${asset.id}`}
                     />

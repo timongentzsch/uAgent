@@ -601,15 +601,16 @@ function App() {
       });
     }
   }, []);
+  // Resolves true once every file is attached to the draft.
   async function upload(files: File[]) {
-    if (!session || !online || uploading || !files.length) return;
+    if (!session || !online || uploading || !files.length) return false;
     const id = selected;
     if (
       files.length + draft.files.length > 8 ||
       files.some((file) => file.size > 8 * 1024 * 1024)
     ) {
       report(new Error("Attach up to 8 files, at most 8 MiB each."));
-      return;
+      return false;
     }
     // Display names dedupe against the live draft, so two pastes never
     // share a label. The deduped name is the upload name: server record,
@@ -658,8 +659,10 @@ function App() {
           },
         }));
       }
+      return true;
     } catch (failure) {
       report(failure);
+      return false;
     } finally {
       const pendingIds = new Set(pendingFiles.map((item) => item.id));
       setDrafts((current) => ({
@@ -1284,7 +1287,30 @@ function App() {
           </Modal>
         )}
         {viewed && (
-          <ImageViewerDialog image={viewed} close={() => setViewed(null)} />
+          <ImageViewerDialog
+            image={viewed}
+            close={() => setViewed(null)}
+            annotate={
+              session && online
+                ? async (file, draftId) => {
+                    const id = selected;
+                    if (!(await upload([file]))) return false;
+                    // The marked-up copy replaces the draft file it came from.
+                    if (draftId)
+                      setDrafts((current) => ({
+                        ...current,
+                        [id]: {
+                          ...(current[id] || emptyDraft()),
+                          files: (current[id]?.files || []).filter(
+                            (item) => item.id !== draftId,
+                          ),
+                        },
+                      }));
+                    return true;
+                  }
+                : undefined
+            }
+          />
         )}
       </ImageViewer.Provider>
     </TimePrefsContext.Provider>

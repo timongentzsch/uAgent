@@ -126,7 +126,12 @@ test.describe("touch", () => {
     await touch("touchEnd", []);
     await expect(undo).toBeEnabled();
 
-    await viewer.getByRole("button", { name: "Pin" }).tap();
+    // The toolbar is not what this test covers; right after a synthetic
+    // multi-finger sequence, CI's emulated gesture detector can swallow a
+    // button tap. The canvas itself is still driven by touch.
+    const pin = viewer.getByRole("button", { name: "Pin" });
+    await pin.click();
+    await expect(pin).toHaveAttribute("aria-pressed", "true");
     await canvas.tap({ position: { x: box.width * 0.8, y: box.height * 0.2 } });
     const note = viewer.getByLabel("Note for pin 1");
     await note.fill("remove this");

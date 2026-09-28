@@ -554,6 +554,8 @@ export interface ConfigSetting {
   minimum?: number;
   maximum?: number;
   choices?: string[];
+  // What an empty value falls back to: another setting's name or a phrase.
+  fallback?: string;
   // What each config file sets; a secret reports only `true`.
   user?: JSONValue;
   project?: JSONValue;

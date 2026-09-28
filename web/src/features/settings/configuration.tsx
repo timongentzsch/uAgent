@@ -39,6 +39,38 @@ const normalize = (setting: ConfigSetting, value?: JSONValue) =>
       ? "1"
       : "0"
     : stringify(value);
+// A value set in the environment or on the command line wins over files.
+const lockedBy = (setting: ConfigSetting) =>
+  setting.source === "environment"
+    ? "Set by the environment; change it there."
+    : setting.source === "cli"
+      ? "Set on the command line; change it there."
+      : undefined;
+// What applies in a scope: a lock's value, the scope's own, else what it
+// inherits (a project from User defaults, User defaults from the default).
+const applied = (setting: ConfigSetting, scope: "user" | "project") =>
+  normalize(
+    setting,
+    lockedBy(setting)
+      ? setting.value
+      : (setting[scope] ??
+          (scope === "project" ? setting.user : undefined) ??
+          setting.default),
+  );
+// What an empty value falls back to: another setting, followed to the value
+// that applies, or the phrase the registry gives.
+function fallbackLabel(
+  setting: ConfigSetting,
+  scope: "user" | "project",
+  find: (name: string) => ConfigSetting | undefined,
+  depth = 0,
+): string {
+  const other = setting.fallback ? find(setting.fallback) : undefined;
+  if (!other || depth > 3) return setting.fallback || "";
+  const value =
+    applied(other, scope) || fallbackLabel(other, scope, find, depth + 1);
+  return value ? `${value} (${other.name})` : `Same as ${other.name}`;
+}
 // Settings of the web host itself apply when the host restarts, not a
 // conversation.
 const hostSetting = (setting?: ConfigSetting) => setting?.category === "web";
@@ -51,11 +83,13 @@ function Setting({
   scope,
   save,
   busy,
+  find,
 }: {
   setting: ConfigSetting;
   scope: "user" | "project";
   save: (change: ConfigChange) => Promise<boolean>;
   busy: boolean;
+  find: (name: string) => ConfigSetting | undefined;
 }) {
   const secret = setting.sensitivity !== "public";
   const own = setting[scope];
@@ -63,11 +97,14 @@ function Setting({
     setting,
     scope === "project" ? (setting.user ?? setting.default) : setting.default,
   );
+  const locked = lockedBy(setting);
   const configured = secret
     ? ""
-    : own === undefined
-      ? inherited
+    : locked || own === undefined
+      ? applied(setting, scope)
       : normalize(setting, own);
+  // An empty value still says what applies instead of looking unset.
+  const fallback = secret ? "" : fallbackLabel(setting, scope, find);
   // An edit in progress; otherwise the row shows the configured value, so a
   // save or a change elsewhere never overwrites what is being typed.
   const [draft, setDraft] = useState<string | null>(null);
@@ -78,12 +115,6 @@ function Setting({
     const timer = setTimeout(() => setSaved(false), SAVED_MS);
     return () => clearTimeout(timer);
   }, [saved]);
-  const locked =
-    setting.source === "environment"
-      ? "Set by the environment; change it there."
-      : setting.source === "cli"
-        ? "Set on the command line; change it there."
-        : undefined;
   const disabled = busy || !!locked || !setting.scopes.includes(scope);
   const id = setting.name;
   // One save at a time per row: disabling a focused field blurs it, and
@@ -140,7 +171,9 @@ function Setting({
           }}
         >
           {!setting.choices.includes(inherited) && (
-            <option value={inherited}>Default</option>
+            <option value={inherited}>
+              {fallback ? `Default · ${fallback}` : "Default"}
+            </option>
           )}
           {setting.choices.map((choice) => (
             <option key={choice} value={choice}>
@@ -168,7 +201,13 @@ function Setting({
           }
           value={value}
           placeholder={
-            secret ? (own ? "Configured · enter replacement" : "Not set") : ""
+            secret
+              ? locked
+                ? "Configured"
+                : own
+                  ? "Configured · enter replacement"
+                  : "Not set"
+              : fallback || "Not set"
           }
           disabled={disabled}
           onInput={(event) => setDraft(event.currentTarget.value)}
@@ -427,6 +466,7 @@ export default function Configuration({
               scope={scope}
               busy={busy || !online || projectLocked}
               save={save}
+              find={(name) => byName.get(name)}
             />
           ))}
         </Group>

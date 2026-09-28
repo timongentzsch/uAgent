@@ -68,6 +68,9 @@ struct ConfigDescriptor {
   // Accepted spellings of a fixed-choice string; empty means free text. An
   // empty value always means the default.
   std::span<const std::string_view> choices = {};
+  // What applies while the value is empty, when the default cannot say it:
+  // another setting's name, or a short phrase.
+  std::string_view fallback = {};
 
   bool Accepts(std::string_view value) const {
     if (choices.empty() || value.empty()) return true;
@@ -165,6 +168,13 @@ consteval ConfigDescriptor Choice(ConfigDescriptor descriptor,
   return descriptor;
 }
 
+// An empty value follows another setting or a runtime choice.
+consteval ConfigDescriptor Fallback(ConfigDescriptor descriptor,
+                                    std::string_view fallback) {
+  descriptor.fallback = fallback;
+  return descriptor;
+}
+
 // A default computed from another setting rather than a constant.
 consteval ConfigDescriptor Derived(std::string_view env, int64_t minimum,
                                    int64_t maximum, std::string_view category,
@@ -216,21 +226,28 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                   "native Web Push",
                   kScopeUser),
     // Route selection and credentials.
-    registry::Str("UAGENT_BASE_URL", {}, "", ReloadPolicy::kRestartRequired,
-                  Sensitivity::kPublic, "route", "active API base URL"),
+    registry::Fallback(
+        registry::Str("UAGENT_BASE_URL", {}, "", ReloadPolicy::kRestartRequired,
+                      Sensitivity::kPublic, "route", "active API base URL"),
+        "OpenRouter when OPENROUTER_API_KEY is set"),
     registry::Str("UAGENT_API_KEY", {}, kPlaceholderApiKey,
                   ReloadPolicy::kRestartRequired, Sensitivity::kSecret, "route",
                   "credential for the active route"),
     registry::Str("OPENROUTER_API_KEY", {}, "", ReloadPolicy::kRestartRequired,
                   Sensitivity::kSecret, "route",
                   "OpenRouter credential used when no base URL is set"),
-    registry::Str(
-        "UAGENT_MODEL", {}, "", ReloadPolicy::kRestartRequired,
-        Sensitivity::kPublic, "route",
-        "model or named route as [provider/]model[:variant][:effort]"),
-    registry::Str("UAGENT_REASONING_EFFORT", {}, "",
-                  ReloadPolicy::kRestartRequired, Sensitivity::kPublic, "route",
-                  "none, minimal, low, medium, high, xhigh, or max"),
+    registry::Fallback(
+        registry::Str(
+            "UAGENT_MODEL", {}, "", ReloadPolicy::kRestartRequired,
+            Sensitivity::kPublic, "route",
+            "model or named route as [provider/]model[:variant][:effort]"),
+        "last /model choice, else the provider default"),
+    registry::Fallback(
+        registry::Str("UAGENT_REASONING_EFFORT", {}, "",
+                      ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
+                      "route",
+                      "none, minimal, low, medium, high, xhigh, or max"),
+        "provider default"),
     registry::Str("UAGENT_PROVIDERS", {}, "", ReloadPolicy::kRestartRequired,
                   Sensitivity::kCompositeSecret, "route",
                   "JSON object of named endpoints, transports, and aliases"),
@@ -351,8 +368,10 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                   "directory entries scanned before giving up"),
     registry::Int("UAGENT_GREP_RESULTS", {}, 200, 1, kConfigMaxMinusOne,
                   ReloadPolicy::kRestartRequired, "tools", "grep matches kept"),
-    registry::Derived("UAGENT_GREP_BYTES", 1024, kConfigAnyMax, "tools",
-                      "grep result bytes; defaults to the tool-result cap"),
+    registry::Fallback(
+        registry::Derived("UAGENT_GREP_BYTES", 1024, kConfigAnyMax, "tools",
+                          "grep result bytes; defaults to the tool-result cap"),
+        "UAGENT_TOOL_RESULT_CHARS"),
     registry::Int("UAGENT_BASH_LOG_BYTES", {}, 64 * registry::kMb, 1024,
                   kConfigAnyMax, ReloadPolicy::kRestartRequired, "tools",
                   "bounded rotating process log"),
@@ -362,8 +381,11 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
     registry::Int("UAGENT_MAX_BACKGROUND_JOBS", {}, 8, 1, kBgMax,
                   ReloadPolicy::kRestartRequired, "tools",
                   "concurrent detached activities"),
-    registry::Derived("UAGENT_WEB_FETCH_BYTES", 1024, kConfigAnyMax, "tools",
-                      "web_fetch download cap; defaults to the attachment cap"),
+    registry::Fallback(
+        registry::Derived(
+            "UAGENT_WEB_FETCH_BYTES", 1024, kConfigAnyMax, "tools",
+            "web_fetch download cap; defaults to the attachment cap"),
+        "attachment cap (UAGENT_ATTACHMENT_MB)"),
 
     // OS sandbox for agent-run commands. Restart-required because the policy is
     // built once and every spawn is wrapped with it; a mid-session change would
@@ -402,9 +424,12 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
     registry::Str("UAGENT_TEAM", {}, "", ReloadPolicy::kRestartRequired,
                   Sensitivity::kPublic, "delegation",
                   "team id shared by peer collaborators"),
-    registry::Str("UAGENT_SUBAGENT_MODEL", {}, "",
-                  ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
-                  "delegation", "default model route for delegated children"),
+    registry::Fallback(
+        registry::Str("UAGENT_SUBAGENT_MODEL", {}, "",
+                      ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
+                      "delegation",
+                      "default model route for delegated children"),
+        "UAGENT_MODEL"),
     registry::Str("UAGENT_TOOLSET", {}, "", ReloadPolicy::kRestartRequired,
                   Sensitivity::kPublic, "delegation",
                   "lean withholds implementation tools from this process"),
@@ -415,12 +440,16 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                       ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
                       "search", "auto, openrouter, or off"),
         kWebSearchBackends),
-    registry::Str("UAGENT_WEB_SEARCH_MODEL", "web_search_model", "",
-                  ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
-                  "search", "model route used for search"),
-    registry::Str("UAGENT_WEB_SEARCH_EFFORT", "web_search_effort", "",
-                  ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
-                  "search", "reasoning effort for the search route"),
+    registry::Fallback(
+        registry::Str("UAGENT_WEB_SEARCH_MODEL", "web_search_model", "",
+                      ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
+                      "search", "model route used for search"),
+        "conversation model on OpenRouter, else the default route"),
+    registry::Fallback(
+        registry::Str("UAGENT_WEB_SEARCH_EFFORT", "web_search_effort", "",
+                      ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
+                      "search", "reasoning effort for the search route"),
+        "provider default"),
     registry::Choice(
         registry::Str("UAGENT_WEB_SEARCH_ENGINE", "web_search_engine", "auto",
                       ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
@@ -471,9 +500,11 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
     registry::Int("UAGENT_MEMORY_EXTRACT_BYTES", {}, int64_t{32} * 1024, 4096,
                   int64_t{256} * 1024, ReloadPolicy::kRestartRequired, "memory",
                   "transcript bytes handed to the extractor"),
-    registry::Str("UAGENT_MEMORY_MODEL", {}, "", ReloadPolicy::kRestartRequired,
-                  Sensitivity::kPublic, "memory",
-                  "model route for background memory extraction"),
+    registry::Fallback(
+        registry::Str("UAGENT_MEMORY_MODEL", {}, "",
+                      ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
+                      "memory", "model route for background memory extraction"),
+        "UAGENT_MODEL"),
 
     // Skills.
     registry::Int("UAGENT_SKILL_BYTES", {}, int64_t{512} * 1024, 1024,
@@ -530,14 +561,19 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                   "roots advertised to MCP servers"),
 
     // Attachments and terminal media.
-    registry::Str("UAGENT_IMAGE_MODEL", "image_model", "",
-                  ReloadPolicy::kNextUserTurn, Sensitivity::kPublic, "media",
-                  "model route that reads attached images; empty uses the "
-                  "main route when it reads images, else the shared "
-                  "default route"),
-    registry::Str("UAGENT_IMAGE_DETAIL", {}, "", ReloadPolicy::kRestartRequired,
-                  Sensitivity::kPublic, "media",
-                  "low, high, or original image detail"),
+    registry::Fallback(
+        registry::Str("UAGENT_IMAGE_MODEL", "image_model", "",
+                      ReloadPolicy::kNextUserTurn, Sensitivity::kPublic,
+                      "media",
+                      "model route that reads attached images; empty uses the "
+                      "main route when it reads images, else the shared "
+                      "default route"),
+        "main route if it reads images, else the default route"),
+    registry::Fallback(
+        registry::Str("UAGENT_IMAGE_DETAIL", {}, "",
+                      ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
+                      "media", "low, high, or original image detail"),
+        "provider default"),
     registry::Str("UAGENT_PDF_ENGINE", "pdf_engine", "cloudflare-ai",
                   ReloadPolicy::kRestartRequired, Sensitivity::kPublic, "media",
                   "OpenRouter file-parser engine for documents"),

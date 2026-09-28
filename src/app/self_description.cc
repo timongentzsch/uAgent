@@ -363,8 +363,8 @@ json ToolSurfaceJson() {
       "delegation depth");
   conditional.emplace_back(SessionTool(), "always");
   conditional.emplace_back(ArtifactTool(""), "a session with a client");
-#ifdef UAGENT_WEB
-  conditional.emplace_back(BrowserTool(""),
+#ifdef UAGENT_BROWSER
+  conditional.emplace_back(BrowserTool("", nullptr),
                            "browser appliance, top-level web session");
 #endif
   conditional.emplace_back(SkillTool({}, {}), "skills installed");

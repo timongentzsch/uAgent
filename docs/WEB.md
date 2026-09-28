@@ -350,8 +350,9 @@ or a revoked device clears local UI state.
 
 ## Development
 
-Native builds embed the checked-in `web/dist`; users need no Node runtime. The
-frontend uses strict TypeScript and Preact.
+Native builds embed the built `web/dist` (not committed; CI builds it once for
+every native job, and releases ship it). The frontend uses strict TypeScript
+and Preact.
 
 ```sh
 npm ci --prefix web
@@ -393,9 +394,12 @@ primitives draw their data text as bars and the subtree is inert, so a screen
 and its loading state cannot drift apart. Text of unknown length uses
 `Skeleton`, and unknown content (a document, a live screen) uses one spinner.
 The shell, sidebar, transcript and composer ship in the entry bundle and render
-from the first frame; dialog and page chunks are warmed shortly after boot. `/ui.html` renders the real shared components,
-including the browser viewer controls, without a host connection for visual
-review.
+from the first frame; dialog and page chunks are warmed shortly after boot.
+
+The UI showcase renders the real shared components, including the browser
+viewer controls, without a host connection for visual review. It is a
+development page, not part of the product: `npx vite` in `web/` serves it at
+`/ui.html`, and the Playwright configuration starts that server for its tests.
 
 `web/tests/performance.spec.js` streams 5,000 mock tokens through the real
 EventSource handlers, checks lossless final text and samples frame gaps and

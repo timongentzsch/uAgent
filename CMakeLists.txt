@@ -164,8 +164,6 @@ target_link_libraries(uagent_agent PUBLIC uagent_toolcore)
 
 add_library(
   uagent_tools
-  src/browser/browser.cc
-  src/browser/runtime.cc
   src/mcp/discover.cc
   src/mcp/invoke.cc
   src/mcp/register.cc
@@ -173,7 +171,6 @@ add_library(
   src/mcp/rpc.cc
   src/mcp/server.cc
   src/tools/adapt_system.cc
-  src/tools/browser.cc
   src/tools/collaborator_runtime.cc
   src/tools/files.cc
   src/tools/image_result.cc
@@ -244,17 +241,42 @@ add_library(uagent_core INTERFACE)
 target_link_libraries(uagent_core INTERFACE uagent_app)
 
 add_executable(uagent src/main.cc)
+# The web UI is built, not checked in (`npm ci && npm run build` in web/, or
+# CI's web-dist artifact). A first configure without it builds CLI-only rather
+# than failing; -DUAGENT_WEB=ON insists on it.
+if(NOT DEFINED UAGENT_WEB AND NOT EXISTS
+                             "${CMAKE_CURRENT_SOURCE_DIR}/web/dist/.assets")
+  message(WARNING "web/dist is not built, so this build has no web UI. Run "
+                  "`npm ci && npm run build` in web/, then configure again "
+                  "with -DUAGENT_WEB=ON.")
+  set(UAGENT_WEB OFF CACHE BOOL "Embed the native web master and PWA")
+endif()
 option(UAGENT_WEB "Embed the native web master and PWA" ON)
 option(UAGENT_WEB_PUSH "Build the optional OpenSSL Web Push sender" OFF)
+# The browser appliance (Chrome shown over noVNC) runs only under the web
+# host; without it, src/web/no_browser.cc reports no browser.
+include(CMakeDependentOption)
+cmake_dependent_option(UAGENT_BROWSER "Build the browser appliance" ON
+                       "UAGENT_WEB" OFF)
 if(UAGENT_WEB)
   include(cmake/embed_web.cmake)
-  add_library(uagent_web src/web/master.cc src/web/browser_viewer.cc
-                         src/web/rfb_filter.cc src/web/push.cc
+  add_library(uagent_web src/web/master.cc src/web/push.cc
                          "${_web_generated}")
   target_link_libraries(uagent_web PUBLIC uagent_core)
   target_include_directories(uagent_web SYSTEM PRIVATE third_party/cpp-httplib)
   # The browser appliance only runs under the web host, so builds without it
   # leave the browser unreferenced and the linker drops it.
+  if(UAGENT_BROWSER)
+    target_sources(uagent_tools PRIVATE src/browser/browser.cc
+                                        src/browser/runtime.cc src/tools/browser.cc)
+    target_sources(uagent_web PRIVATE src/web/browser_viewer.cc
+                                      src/web/rfb_filter.cc)
+    foreach(_uagent_target uagent uagent_app uagent_web)
+      target_compile_definitions(${_uagent_target} PRIVATE UAGENT_BROWSER)
+    endforeach()
+  else()
+    target_sources(uagent_web PRIVATE src/web/no_browser.cc)
+  endif()
   target_compile_definitions(uagent PRIVATE UAGENT_WEB)
   target_compile_definitions(uagent_app PRIVATE UAGENT_WEB)
   target_link_libraries(uagent PRIVATE uagent_web)
@@ -310,8 +332,6 @@ include(CTest)
 if(BUILD_TESTING)
   add_executable(
     uagent_tests
-    tests/unit/browser_test.cc
-    src/web/rfb_filter.cc
     tests/unit/activity_sessions_test.cc
     tests/unit/attachment_encoding_test.cc
     tests/unit/config_proposal_test.cc
@@ -341,6 +361,11 @@ if(BUILD_TESTING)
     tests/unit/tool_execution_policy_test.cc
     tests/unit/wire_test.cc)
   target_link_libraries(uagent_tests PRIVATE uagent_core)
+  if(UAGENT_BROWSER)
+    target_sources(uagent_tests PRIVATE tests/unit/browser_test.cc
+                                        src/web/rfb_filter.cc)
+    target_compile_definitions(uagent_tests PRIVATE UAGENT_BROWSER)
+  endif()
   # Its own PCH rather than REUSE_FROM: the test binary carries an extra -D,
   # and a reused header has to have been built with the same command line.
   target_precompile_headers(uagent_tests PRIVATE ${UAGENT_PCH})

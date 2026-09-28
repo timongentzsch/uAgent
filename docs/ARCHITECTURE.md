@@ -50,9 +50,9 @@ fuzzers and `uagent_web` link it. Public headers live under `include/`
 (top-level facades plus `include/<module>/`); only module-private shared
 declarations stay in `src/<module>/*_internal.h`. `tests/boundary_test.py`
 rejects any new include that points up this order; its `KNOWN` set lists the
-remaining exceptions. The web bundle embeds
-`web/dist` or fails with instructions (`npm run build` in `web/`, or
-`-DUAGENT_WEB=OFF`).
+remaining exceptions. The web host embeds the
+built `web/dist` (`npm run build` in `web/`, or CI's web-dist artifact); a
+first configure without it builds CLI-only and says how to add the UI.
 
 ## Session runtime and clients
 

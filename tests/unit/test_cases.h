@@ -2,14 +2,21 @@
 #ifndef UAGENT_TESTS_UNIT_TEST_CASES_H_
 #define UAGENT_TESTS_UNIT_TEST_CASES_H_
 namespace uagent {
+// The browser appliance's tests exist only when it is built.
+#ifdef UAGENT_BROWSER
+#define UAGENT_BROWSER_TESTS(X)  \
+  X(TestBrowserInputFilter)      \
+  X(TestBrowserHandoverRecovery) \
+  X(TestBrowserProfiles)         \
+  X(TestBrowserProfileSignIn)    \
+  X(TestBrowserHandBackOnClose)  \
+  X(TestBrowserSecretMaskAndBack)
+#else
+#define UAGENT_BROWSER_TESTS(X)
+#endif
 // The suite in run order: declarations and dispatch expand from this list.
 #define UAGENT_TESTS(X)                          \
-  X(TestBrowserInputFilter)                      \
-  X(TestBrowserHandoverRecovery)                 \
-  X(TestBrowserProfiles)                         \
-  X(TestBrowserProfileSignIn)                    \
-  X(TestBrowserHandBackOnClose)                  \
-  X(TestBrowserSecretMaskAndBack)                \
+  UAGENT_BROWSER_TESTS(X)                        \
   X(TestForeignToolMarkup)                       \
   X(TestToolResults)                             \
   X(TestToolViews)                               \

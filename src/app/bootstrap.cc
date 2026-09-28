@@ -242,11 +242,16 @@ std::vector<Tool> BuildTools(AppContext& context,
       AgentDepth() == 0) {
     tools.push_back(ArtifactTool(context.channel->SessionPath()));
   }
-#ifdef UAGENT_WEB  // the web host starts the browser and serves its viewer
+#ifdef UAGENT_BROWSER  // the web host starts the browser and serves its viewer
   if (!browser::DataDirectory().empty() && context.options.browser_session &&
       context.channel && !context.channel->SessionPath().empty() &&
       AgentDepth() == 0) {
-    tools.push_back(BrowserTool(HashHex(context.channel->SessionPath())));
+    tools.push_back(BrowserTool(
+        HashHex(context.channel->SessionPath()),
+        [](const std::string& id, const std::string& prompt, bool* eof) {
+          return ReadInteraction(
+              {.id = id, .kind = "browser", .prompt = prompt}, eof);
+        }));
   }
 #endif
   // The default lean child is an isolation and context-efficiency boundary:

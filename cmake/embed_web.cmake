@@ -1,4 +1,4 @@
-# Embed the checked-in public bundle. The frontend promotes a complete bundle
+# Embed the built public bundle. The frontend promotes a complete bundle
 # atomically and writes its file list last, so CMake never glob-reads a Vite
 # directory while it is being emptied and rebuilt.
 set(_web_root "${CMAKE_CURRENT_SOURCE_DIR}/web/dist")

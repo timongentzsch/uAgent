@@ -26,7 +26,6 @@ KNOWN = {
     "src/agent/child_agent.cc -> include/tools/session.h",
     "src/agent/request.cc -> include/app/prompt_control.h",
     "src/core/events.cc -> include/ui/presentation.h",
-    "src/tools/browser.cc -> include/cli.h",
     "src/tools/collaborator_runtime.cc -> include/app/session.h",
 }
 

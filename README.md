@@ -17,8 +17,12 @@ interface and machine-readable output from one conversation runtime.
   OpenSSL 3 libcrypto to build Web Push from source (`-DUAGENT_WEB_PUSH=ON`;
   release archives and the Docker image include it)
 
-The default build embeds the prebuilt browser interface from `web/dist`, so it
-needs no Node.js. `-DUAGENT_WEB=OFF` builds a CLI-only binary.
+The browser interface is built from `web/` and embedded in the binary.
+`./install.sh` builds it when Node.js is present; without Node.js the build is
+CLI-only, and each release also ships the built interface
+(`uagent-web-dist-<version>.tar.gz`, unpacked into `web/dist`).
+`-DUAGENT_WEB=OFF` asks for a CLI-only binary, and `-DUAGENT_BROWSER=OFF`
+leaves out the browser appliance.
 
 ## Install
 

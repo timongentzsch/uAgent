@@ -306,6 +306,11 @@ inspection. Uploads are claimed before the prompt is accepted, so cleanup
 cannot remove a referenced file. See [Tools](TOOLS.md) for `read_path` media
 input and [Operations](OPERATIONS.md) for extraction and fallback limits.
 
+**Annotate** in the image viewer marks up an image to steer the agent: pen
+strokes and numbered pins with a note each, drawn with mouse, trackpad, finger
+or pencil. **Attach** bakes the marks into a copy that joins the draft (as PNG,
+or JPEG past the upload limit) and replaces the draft image it was drawn on.
+
 ## Offline behavior
 
 There is no offline conversation storage. Transcripts and history need a live

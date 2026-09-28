@@ -9,9 +9,9 @@ import {
   pinchView,
   type Point,
   type ZoomView,
+  TAP_SLOP_PX,
 } from "./zoom.ts";
 
-const SLOP_PX = 8;
 const DOUBLE_TAP_MS = 300;
 const DOUBLE_TAP_ZOOM = 2.5;
 
@@ -148,7 +148,7 @@ export function ZoomSurface({
         if (
           start.current &&
           Math.hypot(point.x - start.current.x, point.y - start.current.y) >
-            SLOP_PX
+            TAP_SLOP_PX
         )
           moved.current = true;
         if (moved.current && view.current.scale > 1)
@@ -177,7 +177,7 @@ export function ZoomSurface({
         if (
           tap &&
           event.timeStamp - tap.time < DOUBLE_TAP_MS &&
-          Math.hypot(at.x - tap.at.x, at.y - tap.at.y) < 4 * SLOP_PX
+          Math.hypot(at.x - tap.at.x, at.y - tap.at.y) < 4 * TAP_SLOP_PX
         ) {
           lastTap.current = null;
           toggle(at);

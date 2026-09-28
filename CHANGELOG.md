@@ -21,6 +21,8 @@
 
 ### Added
 
+- Annotate images in the web viewer: pen strokes and numbered pins with
+  notes, attached as a marked-up copy that replaces the draft image.
 - Every setting behaves the same: its value shows as text, default
   included, with **Reset** while it is changed; values set by the
   environment are locked. **Reset all to defaults** resets a scope (and this

@@ -13,6 +13,8 @@ export interface Point {
 }
 
 export const MAXIMUM_ZOOM = 5;
+// Past this a press is a drag rather than a tap.
+export const TAP_SLOP_PX = 8;
 
 export const distance = (points: Point[]) =>
   Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y);

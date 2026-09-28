@@ -80,6 +80,7 @@ import type { InspectorTarget } from "../features/chat/inspector.tsx";
 import { LiveActivities } from "../state/live-activities.ts";
 import { useTranscriptHistory } from "../state/use-transcript-history.ts";
 import { prependHistoryPage } from "../state/history-page.ts";
+import { maxDraftFiles, maxUploadBytes } from "../shared/limits.ts";
 import "../shared/style.css";
 import {
   browserDialog,
@@ -601,15 +602,37 @@ function App() {
       });
     }
   }, []);
+  // An annotated copy joins the draft and replaces the draft file it was
+  // drawn on; a copy of a sent image is simply attached.
+  async function attachAnnotated(file: File, replaces?: string) {
+    const id = selected;
+    if (!(await upload([file]))) return false;
+    if (replaces)
+      setDrafts((current) => {
+        const draft = current[id] || emptyDraft();
+        return {
+          ...current,
+          [id]: {
+            ...draft,
+            files: draft.files.filter((item) => item.id !== replaces),
+          },
+        };
+      });
+    return true;
+  }
   // Resolves true once every file is attached to the draft.
   async function upload(files: File[]) {
     if (!session || !online || uploading || !files.length) return false;
     const id = selected;
     if (
-      files.length + draft.files.length > 8 ||
-      files.some((file) => file.size > 8 * 1024 * 1024)
+      files.length + draft.files.length > maxDraftFiles ||
+      files.some((file) => file.size > maxUploadBytes)
     ) {
-      report(new Error("Attach up to 8 files, at most 8 MiB each."));
+      report(
+        new Error(
+          `Attach up to ${maxDraftFiles} files, at most ${maxUploadBytes / 1024 / 1024} MiB each.`,
+        ),
+      );
       return false;
     }
     // Display names dedupe against the live draft, so two pastes never
@@ -1290,26 +1313,7 @@ function App() {
           <ImageViewerDialog
             image={viewed}
             close={() => setViewed(null)}
-            annotate={
-              session && online
-                ? async (file, draftId) => {
-                    const id = selected;
-                    if (!(await upload([file]))) return false;
-                    // The marked-up copy replaces the draft file it came from.
-                    if (draftId)
-                      setDrafts((current) => ({
-                        ...current,
-                        [id]: {
-                          ...(current[id] || emptyDraft()),
-                          files: (current[id]?.files || []).filter(
-                            (item) => item.id !== draftId,
-                          ),
-                        },
-                      }));
-                    return true;
-                  }
-                : undefined
-            }
+            annotate={session && online ? attachAnnotated : undefined}
           />
         )}
       </ImageViewer.Provider>

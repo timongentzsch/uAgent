@@ -19,6 +19,7 @@
   --removed-bg: rgba(248, 81, 73, 0.12);
   /* Image markup: one colour that reads on any screenshot, in any theme. */
   --mark: #ff3b30;
+  --on-mark: #fff;
   --on-accent: #000;
   --viewport-height: 100dvh;
   --viewport-width: 100%;

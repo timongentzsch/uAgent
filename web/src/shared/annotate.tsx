@@ -6,15 +6,14 @@ import { getStroke } from "perfect-freehand";
 import { MapPin, PenLine, Undo2 } from "lucide-preact";
 import { Button, DialogHeader, IconButton, LoadError, Spinner } from "./ui.tsx";
 import { Input } from "./form-controls.tsx";
+import { capturePointer, TAP_SLOP_PX } from "./zoom.ts";
+import { maxUploadBytes } from "./limits.ts";
+import "./annotate.css";
 
 type Point = [x: number, y: number, pressure: number];
 type Stroke = { kind: "stroke"; points: Point[]; pen: boolean };
 type Pin = { kind: "pin"; x: number; y: number; note: string };
 type Item = Stroke | Pin;
-
-// Past this a press is a drag, as in the viewer's zoom surface.
-const SLOP_PX = 8;
-const MAX_BYTES = 8 * 1024 * 1024;
 
 // Mark sizes follow the image, so they read the same at any resolution.
 function metrics(width: number, height: number) {
@@ -43,6 +42,19 @@ function outline(stroke: Stroke, size: number, last: boolean) {
   return new Path2D(`${d.join(" ")} Z`);
 }
 
+// A pin's number: its place among the pins, strokes not counted.
+const pinNumber = (items: Item[], index: number) =>
+  items.slice(0, index + 1).filter((item) => item.kind === "pin").length;
+
+// The mark colour and the colour of text on it, from the theme tokens.
+function colors() {
+  const style = getComputedStyle(document.documentElement);
+  return {
+    mark: style.getPropertyValue("--mark"),
+    onMark: style.getPropertyValue("--on-mark"),
+  };
+}
+
 // Wrapped lines of `text` no wider than `width`.
 function wrap(ctx: CanvasRenderingContext2D, text: string, width: number) {
   const lines: string[] = [];
@@ -67,33 +79,31 @@ function paint(
   items: Item[],
   live: Stroke | null,
   skip: number | null,
-  color: string,
+  { mark, onMark }: ReturnType<typeof colors>,
 ) {
   const { width, height } = image;
   const size = metrics(width, height);
   ctx.drawImage(image, 0, 0);
-  ctx.fillStyle = color;
+  ctx.fillStyle = mark;
   for (const item of items)
     if (item.kind === "stroke") ctx.fill(outline(item, size.stroke, true));
   if (live) ctx.fill(outline(live, size.stroke, false));
   ctx.font = `600 ${size.font}px ${getComputedStyle(document.body).fontFamily}`;
   ctx.textBaseline = "middle";
-  let number = 0;
   items.forEach((item, index) => {
     if (item.kind !== "pin") return;
-    number++;
     const { x, y } = item;
     const r = size.radius;
-    ctx.fillStyle = color;
+    ctx.fillStyle = mark;
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
     ctx.fill();
     ctx.lineWidth = r / 6;
-    ctx.strokeStyle = "#fff";
+    ctx.strokeStyle = onMark;
     ctx.stroke();
-    ctx.fillStyle = "#fff";
+    ctx.fillStyle = onMark;
     ctx.textAlign = "center";
-    ctx.fillText(String(number), x, y);
+    ctx.fillText(String(pinNumber(items, index)), x, y);
     if (index === skip || !item.note.trim()) return;
     // The note sits beside its pin, flipped and clamped to stay inside.
     ctx.textAlign = "left";
@@ -107,11 +117,11 @@ function paint(
     if (left + boxW > width) left = x - r * 1.4 - boxW;
     left = Math.max(0, Math.min(left, width - boxW));
     const top = Math.max(0, Math.min(y - boxH / 2, height - boxH));
-    ctx.fillStyle = color;
+    ctx.fillStyle = mark;
     ctx.beginPath();
     ctx.roundRect(left, top, boxW, boxH, pad);
     ctx.fill();
-    ctx.fillStyle = "#fff";
+    ctx.fillStyle = onMark;
     lines.forEach((line, row) =>
       ctx.fillText(line, left + pad, top + pad / 2 + lineHeight * (row + 0.5)),
     );
@@ -139,23 +149,31 @@ export default function Annotator({
   const [editing, setEditing] = useState<number | null>(null);
   const [scale, setScale] = useState(0);
   const [busy, setBusy] = useState(false);
+  // A failed export keeps the markup on screen, unlike a failed load.
+  const [saveError, setSaveError] = useState<unknown>(null);
   const live = useRef<Stroke | null>(null);
   const press = useRef<{ id: number; x: number; y: number } | null>(null);
-  const color = () =>
-    getComputedStyle(document.documentElement).getPropertyValue("--mark");
 
   useEffect(() => {
     let active = true;
+    let loaded: ImageBitmap | undefined;
+    setError(null);
     fetch(src)
       .then((response) => {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         return response.blob();
       })
       .then(createImageBitmap)
-      .then((bitmap) => active && setImage(bitmap))
+      .then((bitmap) => {
+        loaded = bitmap;
+        if (active) setImage(bitmap);
+        else bitmap.close();
+      })
       .catch((failure) => active && setError(failure));
     return () => {
       active = false;
+      // The decoded image holds its full-size pixels until closed.
+      loaded?.close();
     };
   }, [src, attempt]);
 
@@ -184,7 +202,7 @@ export default function Annotator({
     if (element.height !== height) element.height = height;
     const ctx = element.getContext("2d")!;
     ctx.setTransform(scale * ratio, 0, 0, scale * ratio, 0, 0);
-    paint(ctx, image, items, live.current, editing, color());
+    paint(ctx, image, items, live.current, editing, colors());
   };
   useLayoutEffect(draw, [image, items, editing, scale]);
 
@@ -202,7 +220,7 @@ export default function Annotator({
     };
     addEventListener("keydown", onKey);
     return () => removeEventListener("keydown", onKey);
-  });
+  }, [items, editing]);
 
   const at = (event: PointerEvent): Point => {
     const rect = canvas.current!.getBoundingClientRect();
@@ -222,7 +240,7 @@ export default function Annotator({
       return;
     }
     if (event.pointerType === "mouse" && event.button !== 0) return;
-    canvas.current!.setPointerCapture(event.pointerId);
+    capturePointer(canvas.current!, event.pointerId);
     press.current = { id: event.pointerId, x: event.clientX, y: event.clientY };
     if (tool === "pen")
       live.current = {
@@ -247,7 +265,9 @@ export default function Annotator({
       setItems([...items, stroke]);
       return;
     }
-    if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > SLOP_PX)
+    if (
+      Math.hypot(event.clientX - start.x, event.clientY - start.y) > TAP_SLOP_PX
+    )
       return;
     const [x, y] = at(event);
     // A finger-sized target even where the badge is drawn small.
@@ -281,18 +301,19 @@ export default function Annotator({
   async function done() {
     if (!image) return;
     setBusy(true);
+    setSaveError(null);
     try {
       const output = document.createElement("canvas");
       output.width = image.width;
       output.height = image.height;
-      paint(output.getContext("2d")!, image, items, null, null, color());
+      paint(output.getContext("2d")!, image, items, null, null, colors());
       const encode = (type: string) =>
         new Promise<Blob | null>((resolve) =>
           output.toBlob(resolve, type, 0.9),
         );
       let blob = await encode("image/png");
       let extension = "png";
-      if (!blob || blob.size > MAX_BYTES) {
+      if (!blob || blob.size > maxUploadBytes) {
         blob = await encode("image/jpeg");
         extension = "jpg";
       }
@@ -302,7 +323,7 @@ export default function Annotator({
         new File([blob], `${base}-annotated.${extension}`, { type: blob.type }),
       );
     } catch (failure) {
-      setError(failure);
+      setSaveError(failure);
     } finally {
       setBusy(false);
     }
@@ -364,7 +385,7 @@ export default function Annotator({
                   }}
                 >
                   <Input
-                    aria-label={`Note for pin ${items.slice(0, editing! + 1).filter((item) => item.kind === "pin").length}`}
+                    aria-label={`Note for pin ${pinNumber(items, editing!)}`}
                     placeholder="What should change here?"
                     value={pin.note}
                     autoFocus
@@ -383,6 +404,7 @@ export default function Annotator({
                 </div>
               )}
             </div>
+            {saveError && <LoadError error={saveError} />}
             <div class="annotator-tools">
               <div class="segmented" aria-label="Annotation tool">
                 <Button

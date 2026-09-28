@@ -84,19 +84,6 @@ export interface ToolReplay {
   multiline?: boolean;
   detail?: string;
 }
-export interface ToolCall {
-  activity?: ToolActivity;
-  replay?: ToolReplay;
-  id?: string;
-  response_id?: string;
-  occurrence_id?: string;
-  call_id?: string;
-  detail_id?: string;
-  name: string;
-  arguments?: JSONValue;
-  view?: ToolView;
-  status?: string;
-}
 // How a call reads, built natively by each tool (see ToolView in tool.h).
 export type ToolPart =
   | { kind: "command"; text: string }
@@ -183,7 +170,6 @@ export interface Block {
   // Tool calls whose results added these files to context.
   source_call_ids?: string[];
   unavailable_images?: number;
-  tools?: ToolCall[];
   call_id?: string;
   name?: string;
   arguments?: JSONValue;
@@ -404,7 +390,6 @@ export interface Snapshot {
   metadata: Session;
   state?: State;
   pending?: Pending | null;
-  streamed?: Block[];
   live_truncated?: boolean;
 }
 export interface SlashCommand {
@@ -477,6 +462,15 @@ export interface EventData extends Omit<Partial<Exchange>, "status"> {
   activities?: Activity[];
   permissions?: Permissions;
 }
+// A change to one row of the host's view: the whole row, or fields to set
+// and streamed text to append on a row the client already holds.
+export interface BlockPatch {
+  kind: "block";
+  block?: Block;
+  id?: string;
+  set?: Partial<Block>;
+  append?: { text?: string; reasoning?: string };
+}
 // Host envelopes and native EventEmitter payloads share the same SSE channel.
 interface HostEnvelope extends Partial<Omit<Outcome, "pending">> {
   activity_detail?: ActivityStatusDetail | null;
@@ -502,6 +496,7 @@ export type HostEvent = HostEnvelope &
   (
     | ({ kind: "outcome" } & Outcome)
     | { kind: "state"; pending?: Pending | null }
+    | BlockPatch
     | {
         kind:
           | "event"

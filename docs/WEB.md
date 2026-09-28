@@ -228,6 +228,10 @@ Commands carry stable request IDs and a runtime generation. Repeated delivery
 returns the original receipt; conflicting reuse is rejected; a changed
 generation requires a fresh snapshot. A bounded event suffix lets clients join
 during a turn, and the saved conversation remains the durable replay authority.
+The host folds the runtime's events into its view of the conversation and sends
+browsers what changed as `block` frames: a whole row, fields to set, or text to
+append to a streaming row. A browser applies them to the snapshot it loaded, so
+a reload mid-stream resumes the same rows instead of re-deriving them.
 Browser mutations stay disabled until the server's `ready` watermark and the
 selected snapshot are applied.
 

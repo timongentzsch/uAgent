@@ -125,7 +125,11 @@ That identity reaches the saved assistant display record, while provider tool
 call IDs remain raw provider facts. Tool occurrences are scoped to the response
 and have a separate retained-detail identity. Content revision and completeness
 are independent: a bounded checkpoint preview at the same revision cannot
-replace a fuller body already held by a client. The runtime also publishes its
+replace a fuller body already held by a client. One reducer
+(`ApplySessionEvent`) folds events into a view of rows: one per message and
+one per tool call, keyed so a live call, its result and the saved message land
+on the same row. The worker, the host and an attached terminal each fold with
+it; browsers receive the host's result as `block` patches. The runtime also publishes its
 canonical execution phase and pending decision; transport connection health
 remains client-owned.
 

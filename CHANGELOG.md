@@ -43,6 +43,11 @@
   you wrote.
 - Scrolling with a mouse wheel in Safari is no longer swallowed when
   content above the paragraph you are reading changes size at that moment.
+- Reloading the web page while an answer streams no longer freezes it at the
+  reloaded text, and a tool that is still running keeps its row. The host
+  sends browsers the rows of its own view of the conversation (whole rows and
+  streamed appends), so a browser never re-derives them from raw events. A
+  tool call and its result are one row everywhere, including history.
 - Tall images fit whole in the viewer instead of overflowing it.
 - `/sessions` in a wide browser window focuses the conversation search.
 - The UI showcase no longer throws on load.

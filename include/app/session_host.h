@@ -175,7 +175,8 @@ class SessionHost {
                                              std::string& error);
   Connection OpenRuntime(const HostSession& session, bool create,
                          std::string& error) const;
-  void ApplyRuntimeFrame(HostSession& session, json& frame);
+  // False when the frame changed nothing a browser shows.
+  bool ApplyRuntimeFrame(HostSession& session, json& frame);
   // Outcome labels shared by live frames and the schedule supervisor.
   static std::string RunResultFor(const std::string& outcome);
   std::chrono::steady_clock::time_point NextScheduleDeadline() const;

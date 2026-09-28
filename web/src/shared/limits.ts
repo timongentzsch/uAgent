@@ -8,7 +8,6 @@ export const reconnectMaxDelayMs = 30_000;
 // A reconnect shorter than this (a resumed app) shows no status change.
 export const reconnectGraceMs = 1_000;
 export const maxTranscriptBookmarks = 20;
-export const maxLivePreviewChars = 64 * 1024;
 export const maxDiagramSourceChars = 20_000;
 export const maxDiagramEdges = 300;
 export const maxDiagramSvgChars = 512_000;

@@ -15,6 +15,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/tool_presentation.h"
 #include "include/api/citations.h"
 #include "include/core/debug.h"
 #include "include/core/strings.h"
@@ -361,31 +362,12 @@ void TerminalPresenter::Block(const json& block) {
         AttachmentDeliveryRows(JsonValue(block, "deliveries", json::array())));
   } else if (kind == "assistant") {
     // Mirror the stored-transcript printer and the live presenter: the mark
-    // only prints with text (tool-only turns show rows, never a bare mark),
-    // the answer is line-terminated, and tool rows replay the exact live
-    // record from facts instead of being dropped.
+    // only prints with text (tool-only turns show rows, never a bare mark)
+    // and the answer is line-terminated. Tool rows are blocks of their own.
     if (!JsonValue(block, "text", "").empty()) {
       PrintMessageHeader();
       MdPrint(text);
       WriteTerminalRecord("\n");
-    }
-    if (const json* tools = JsonArray(block, "tools")) {
-      for (const json& tool : *tools) {
-        const json* replay = JsonObject(tool, "replay");
-        if (!replay) continue;
-        PresentationRecord record;
-        record.kind = PresentationKind::kToolCall;
-        record.id = JsonValue(tool, "call_id", "");
-        record.activity = JsonValue(tool, "activity", json::object());
-        record.title = JsonValue(*replay, "title", "");
-        record.summary = JsonValue(*replay, "summary", "");
-        record.detail = JsonValue(*replay, "detail", "");
-        record.multiline = JsonValue(*replay, "multiline", false);
-        record.skill = JsonValue(tool, "name", "") == "skill";
-        record.poll = JsonValue(*replay, "poll", false);
-        record.view = JsonValue(tool, "view", json(nullptr));
-        PrintPresentation(record, detailed_);
-      }
     }
   } else if (kind == "turn_summary") {
     WriteTerminalRecord(
@@ -398,33 +380,52 @@ void TerminalPresenter::Block(const json& block) {
       WriteTerminalRecord("· " + text + "\n");
     }
   } else if (kind == "tool_result") {
-    if (const json* replay = JsonObject(block, "replay")) {
-      // Same row the live printer drew: recorded title/summary plus the
-      // block's activity (groups), change (diffs) and final status.
+    // One row per call: the recorded call line, then its result.
+    if (const json* replay = JsonObject(block, "call_replay")) {
       PresentationRecord record;
-      record.kind = PresentationKind::kToolResult;
+      record.kind = PresentationKind::kToolCall;
       record.id = JsonValue(block, "call_id", "");
       record.activity = JsonValue(block, "activity", json::object());
+      record.title = JsonValue(*replay, "title", "");
+      record.summary = JsonValue(*replay, "summary", "");
+      record.detail = JsonValue(*replay, "detail", "");
+      record.multiline = JsonValue(*replay, "multiline", false);
+      record.skill = JsonValue(block, "name", "") == "skill";
+      record.poll = JsonValue(*replay, "poll", false);
+      record.view = JsonValue(block, "view", json(nullptr));
+      PrintPresentation(record, detailed_);
+      // A call that never finished has no result line.
+      if (JsonValue(block, "status", "running") == "running") return;
+    }
+    // Same row the live printer drew: recorded title/summary plus the
+    // block's activity (groups), change (diffs) and final status. A row saved
+    // before replay facts is synthesized from its name and output.
+    const std::string status = JsonValue(block, "status", "");
+    const PresentationStatus final =
+        status == "success"     ? PresentationStatus::kSucceeded
+        : status == "cancelled" ? PresentationStatus::kCancelled
+        : status == "failed" || status == "timed_out"
+            ? PresentationStatus::kFailed
+            : PresentationStatus::kNeutral;
+    const json* replay = JsonObject(block, "replay");
+    PresentationRecord record =
+        replay ? PresentationRecord{}
+               : StoredToolResultPresentation(
+                     JsonValue(block, "name", ""), JsonValue(block, "text", ""),
+                     JsonValue(block, "change", ""), final);
+    if (replay) {
+      record.kind = PresentationKind::kToolResult;
       record.title =
           JsonValue(*replay, "title", JsonValue(block, "name", "tool"));
       record.summary = JsonValue(*replay, "summary", "");
       record.output = JsonValue(block, "text", "");
       record.change = JsonValue(block, "change", "");
       record.view = {{"parts", JsonValue(block, "parts", json::array())}};
-      const std::string status = JsonValue(block, "status", "");
-      record.status = status == "success"     ? PresentationStatus::kSucceeded
-                      : status == "cancelled" ? PresentationStatus::kCancelled
-                      : status == "failed" || status == "timed_out"
-                          ? PresentationStatus::kFailed
-                          : PresentationStatus::kNeutral;
-      PrintPresentation(record, detailed_);
-      return;
+      record.status = final;
     }
-    json activity = JsonValue(block, "activity", json::object());
-    WriteTerminalRecord(
-        TerminalSafe(JsonValue(activity, "label",
-                               JsonValue(block, "name", "Activity"))) +
-        " · " + JsonValue(block, "status", "") + "\n");
+    record.id = JsonValue(block, "call_id", "");
+    record.activity = JsonValue(block, "activity", json::object());
+    PrintPresentation(record, detailed_);
   }
 }
 

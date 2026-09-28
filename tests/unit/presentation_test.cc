@@ -280,39 +280,33 @@ void TestReplayBlocksMirrorLiveRows() {
   TerminalPresenter presenter;
   const json call_replay = {
       {"title", "[1] read_path"}, {"summary", "a.txt"}, {"poll", false}};
-  const json tools =
-      json::array({{{"call_id", "call-0"},
-                    {"name", "read_path"},
-                    {"activity", json::object({{"category", "explore"}})},
-                    {"replay", call_replay}}});
+  // A call row: its recorded call line, and nothing more until it has a
+  // result. The assistant's text is a block of its own.
+  const json call = {{"kind", "tool_result"},
+                     {"call_id", "call-0"},
+                     {"name", "read_path"},
+                     {"activity", json::object({{"category", "explore"}})},
+                     {"call_replay", call_replay}};
   std::string drawn = CaptureStdout([&] {
-    presenter.Block(
-        {{"kind", "assistant"}, {"text", "all three read"}, {"tools", tools}});
+    presenter.Block({{"kind", "assistant"}, {"text", "all three read"}});
+    presenter.Block(call);
   });
   CHECK(drawn.find("all three read\n") != std::string::npos);
   CHECK(drawn.find("[1] read_path(a.txt)") != std::string::npos);
+  CHECK(drawn.find(" \u00b7 ") == std::string::npos);
   // A view names the call the way the web row does: verb and target.
-  json with_view = tools;
-  with_view[0]["view"] = {{"verb", {"Reading", "Read"}}, {"target", "a.txt"}};
-  drawn = CaptureStdout([&] {
-    presenter.Block(
-        {{"kind", "assistant"}, {"text", ""}, {"tools", with_view}});
-  });
+  json with_view = call;
+  with_view["view"] = {{"verb", {"Reading", "Read"}}, {"target", "a.txt"}};
+  drawn = CaptureStdout([&] { presenter.Block(with_view); });
   CHECK(drawn.find("Reading a.txt") != std::string::npos);
-  // Tool-only assistant blocks print rows with no bare mark line, like live.
-  drawn = CaptureStdout([&] {
-    presenter.Block({{"kind", "assistant"}, {"text", ""}, {"tools", tools}});
-  });
-  CHECK(drawn.find("[1] read_path(a.txt)") != std::string::npos);
+  // Tool-only assistant blocks print no bare mark line, like live.
+  drawn = CaptureStdout(
+      [&] { presenter.Block({{"kind", "assistant"}, {"text", ""}}); });
+  CHECK(drawn.empty());
   // Poll rows the live turn suppressed stay suppressed in replay.
-  json polled = call_replay;
-  polled["poll"] = true;
-  json polled_tools = tools;
-  polled_tools[0]["replay"] = polled;
-  drawn = CaptureStdout([&] {
-    presenter.Block(
-        {{"kind", "assistant"}, {"text", ""}, {"tools", polled_tools}});
-  });
+  json polled = call;
+  polled["call_replay"]["poll"] = true;
+  drawn = CaptureStdout([&] { presenter.Block(polled); });
   CHECK(drawn.find("read_path") == std::string::npos);
 
   const json result_replay = {{"title", "[1] read_path"},
@@ -342,13 +336,14 @@ void TestReplayBlocksMirrorLiveRows() {
          {"replay", result_replay}});
   });
   CHECK(drawn.find("Explored") != std::string::npos);
-  // Legacy blocks without replay facts keep the old synthesis.
+  // Rows saved before replay facts are synthesized from name and output,
+  // as the stored-transcript printer always drew them.
   drawn = CaptureStdout([&] {
     presenter.Block({{"kind", "tool_result"},
                      {"name", "read_path"},
                      {"status", "success"}});
   });
-  CHECK(drawn.find("read_path \u00b7 success") != std::string::npos);
+  CHECK(drawn.find("read_path: (empty)") != std::string::npos);
 }
 
 // Every client renders one vocabulary; the shapes below are that contract.

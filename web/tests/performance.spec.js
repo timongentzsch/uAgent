@@ -46,13 +46,15 @@ for (const labels of [false, true])
                 session_id: session.id,
                 generation: session.generation,
                 kind,
-                ...(kind === "activity" ? data : {}),
+                ...(kind === "activity" || kind === "block" ? data : {}),
                 type,
                 data,
               }),
             }),
           );
         };
+        // Rows arrive the way the host sends them: whole rows and appends.
+        const patch = (value) => send("", value, "block");
         const gaps = [];
         let previous = performance.now(),
           frame;
@@ -62,7 +64,16 @@ for (const labels of [false, true])
           frame = requestAnimationFrame(tick);
         };
         frame = requestAnimationFrame(tick);
-        send("response.started", { response_id: response });
+        patch({
+          block: {
+            id: response,
+            response_id: response,
+            kind: "assistant",
+            text: "",
+            reasoning: "",
+            streaming: true,
+          },
+        });
         const start = performance.now();
         let text = "",
           sent = 0,
@@ -75,15 +86,11 @@ for (const labels of [false, true])
             const chunk = "word ".repeat(due - sent);
             if (chunk) {
               text += chunk;
-              send("response.answer.delta", {
-                response_id: response,
-                text: chunk,
+              patch({
+                id: response,
+                append: { text: chunk, reasoning: chunk },
               });
             }
-            send("response.reasoning.delta", {
-              response_id: response,
-              text: chunk,
-            });
             const nextAction = Math.floor(due / 1000);
             if (nextAction !== action) {
               action = nextAction;
@@ -97,13 +104,18 @@ for (const labels of [false, true])
                   progress: `Thinking · Reviewing module ${action}`,
                 })),
               });
-              for (const id of ["a", "b"])
-                send("tool.call", {
+              const row = (id, status, text) => ({
+                block: {
+                  id: `t-${action}-${id}`,
+                  kind: "tool_result",
                   response_id: response,
-                  occurrence_id: `${action}-${id}`,
                   name: "read_path",
-                  args: { path: `module-${action}.ts` },
-                });
+                  arguments: JSON.stringify({ path: `module-${action}.ts` }),
+                  status,
+                  text,
+                },
+              });
+              for (const id of ["a", "b"]) patch(row(id, "running", ""));
               if (labels)
                 send(
                   "",
@@ -115,12 +127,7 @@ for (const labels of [false, true])
                   "activity",
                 );
               for (const id of ["a", "b"])
-                send("tool.result", {
-                  response_id: response,
-                  occurrence_id: `${action}-${id}`,
-                  name: "read_path",
-                  content: "inspected",
-                });
+                patch(row(id, "success", "inspected"));
             }
             sent = due;
             if (sent === 5000) {
@@ -129,7 +136,7 @@ for (const labels of [false, true])
             }
           }, 20);
         });
-        send("response.finished", { response_id: response });
+        patch({ id: response, set: { streaming: false } });
         cancelAnimationFrame(frame);
         gaps.sort((a, b) => a - b);
         return {
@@ -174,6 +181,10 @@ for (const labels of [false, true])
       inputRoundTripMs: performance.now() - inputStart,
       ...metrics,
     };
+    // Streaming 5,000 tokens with tool rows keeps painting every frame and
+    // answering input; the bounds leave room for slow CI machines.
+    expect(result.frameGapP95Ms).toBeLessThan(50);
+    expect(result.inputDuringStreamMs).toBeLessThan(1000);
     await testInfo.attach("web-performance.json", {
       body: JSON.stringify(result, null, 2),
       contentType: "application/json",

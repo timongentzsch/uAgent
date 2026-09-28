@@ -11,6 +11,8 @@
 #include <iterator>
 #include <map>
 #include <string>
+#include <string_view>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -151,77 +153,124 @@ std::string DisplayText(const json& message) {
 }
 }  // namespace
 
-void MergeDisplayBlock(json& view, const json& block) {
+const json* MergeDisplayBlock(json& view, const json& block) {
   json& blocks = view["blocks"];
   if (!blocks.is_array()) blocks = json::array();
-  const std::string response_id = JsonValue(block, "response_id", "");
-  const std::string occurrence_id = JsonValue(block, "occurrence_id", "");
-  const std::string kind = JsonValue(block, "kind", "");
-  auto found =
-      std::find_if(blocks.begin(), blocks.end(), [&](const json& item) {
-        if (JsonValue(item, "id", "") == JsonValue(block, "id", "")) {
-          return true;
-        }
-        if (!occurrence_id.empty() &&
-            JsonValue(item, "occurrence_id", "") == occurrence_id) {
-          return true;
-        }
-        return kind == "assistant" &&
-               JsonValue(item, "kind", "") == "assistant" &&
-               !response_id.empty() &&
-               JsonValue(item, "response_id", "") == response_id;
-      });
+  const std::string id = JsonValue(block, "id", "");
+  auto found = std::find_if(
+      blocks.begin(), blocks.end(),
+      [&](const json& item) { return JsonValue(item, "id", "") == id; });
   if (found == blocks.end()) {
     // Retained rows carry their sequence: insert in position so a late
     // arrival (replay, pre-facts emit) can never strand older content
     // after newer rows. Sequence-less rows keep their relative order.
-    auto at = blocks.end();
+    found = blocks.end();
     if (block.contains("sequence") && block["sequence"].is_number()) {
       const auto sequence = block["sequence"].get<uint64_t>();
-      at = std::find_if(blocks.begin(), blocks.end(), [&](const json& item) {
+      found = std::find_if(blocks.begin(), blocks.end(), [&](const json& item) {
         return item.contains("sequence") && item["sequence"].is_number() &&
                item["sequence"].get<uint64_t>() > sequence;
       });
     }
-    blocks.insert(at, block);
+    found = blocks.insert(found, block);
   } else {
-    json merged = block;
-    const uint64_t old_revision =
-        JsonValue(*found, "content_revision", uint64_t{0});
-    const uint64_t new_revision =
-        JsonValue(block, "content_revision", uint64_t{0});
-    if (old_revision == new_revision &&
-        JsonValue(*found, "text_bytes", size_t{0}) >
-            JsonValue(block, "text_bytes", size_t{0})) {
-      merged["text"] = JsonValue(*found, "text", "");
-      merged["text_bytes"] = (*found)["text_bytes"];
-      merged["truncated"] = JsonValue(*found, "truncated", false);
-      merged["content_complete"] = JsonValue(*found, "content_complete", false);
-    }
-    if (JsonValue(*found, "reasoning_revision", uint64_t{0}) ==
-            JsonValue(block, "reasoning_revision", uint64_t{0}) &&
-        JsonValue(*found, "reasoning_bytes", size_t{0}) >
-            JsonValue(block, "reasoning_bytes", size_t{0})) {
-      merged["reasoning"] = JsonValue(*found, "reasoning", "");
-      merged["reasoning_bytes"] = (*found)["reasoning_bytes"];
-      merged["reasoning_complete"] =
-          JsonValue(*found, "reasoning_complete", false);
+    // One row per id, whichever side of it arrives: a tool call's fields and
+    // its result's fill one row. A retained row has finished streaming, and
+    // a shorter preview of the same revision never replaces streamed text.
+    json merged = *found;
+    merged.update(block);
+    if (block.contains("sequence")) merged.erase("streaming");
+    for (const auto& [field, bytes, revision, complete] :
+         {std::tuple{"text", "text_bytes", "content_revision",
+                     "content_complete"},
+          std::tuple{"reasoning", "reasoning_bytes", "reasoning_revision",
+                     "reasoning_complete"}}) {
+      if (JsonValue(*found, revision, uint64_t{0}) ==
+              JsonValue(block, revision, uint64_t{0}) &&
+          JsonValue(*found, bytes, size_t{0}) >
+              JsonValue(block, bytes, size_t{0})) {
+        merged[field] = (*found)[field];
+        merged[bytes] = (*found)[bytes];
+        merged[complete] = JsonValue(*found, complete, false);
+        if (std::string_view(field) == "text") {
+          merged["truncated"] = JsonValue(*found, "truncated", false);
+        }
+      }
     }
     *found = std::move(merged);
   }
+  const size_t kept = static_cast<size_t>(found - blocks.begin());
   size_t bytes = JsonEstimatedBytes(blocks);
-  while (!blocks.empty() &&
-         (blocks.size() > kViewBlocks || bytes > kViewBytes)) {
-    bytes -= std::min(bytes, JsonEstimatedBytes(blocks.front()));
-    blocks.erase(blocks.begin());
+  size_t dropped = 0;
+  while (dropped < blocks.size() &&
+         (blocks.size() - dropped > kViewBlocks || bytes > kViewBytes)) {
+    bytes -= std::min(bytes, JsonEstimatedBytes(blocks[dropped]));
+    ++dropped;
+  }
+  if (dropped) {
+    blocks.erase(blocks.begin(),
+                 blocks.begin() + static_cast<std::ptrdiff_t>(dropped));
     view["more"] = true;
   }
   if (!blocks.empty()) {
     view["before"] = JsonValue(blocks.front(), "sequence", uint64_t{0});
   }
+  return kept >= dropped ? &blocks[kept - dropped] : nullptr;
 }
 
-bool ApplySessionEvent(json& state, const std::string& type, const json& data) {
+namespace {
+json* FindBlock(json& state, const std::string& id) {
+  json& blocks = state["view"]["blocks"];
+  if (id.empty() || !blocks.is_array()) return nullptr;
+  auto found = std::find_if(blocks.begin(), blocks.end(), [&](json& block) {
+    return JsonValue(block, "id", "") == id;
+  });
+  return found == blocks.end() ? nullptr : &*found;
+}
+
+// A live tool row, keyed like the retained one DisplayBlock builds for the
+// same call, so the result, the saved message and a reload all land on it.
+json LiveToolRow(const json& data) {
+  const json arguments = JsonValue(data, "arguments", json(""));
+  return {{"id", JsonValue(data, "detail_id", "")},
+          {"kind", "tool_result"},
+          {"call_id", JsonValue(data, "call_id", "")},
+          {"response_id", JsonValue(data, "response_id", "")},
+          {"occurrence_id", JsonValue(data, "occurrence_id", "")},
+          {"detail_id", JsonValue(data, "detail_id", "")},
+          {"name", JsonValue(data, "name", "")},
+          {"arguments",
+           Utf8Trunc(arguments.is_string() ? arguments.get<std::string>()
+                                           : JsonDump(arguments),
+                     1024)},
+          {"activity", JsonValue(data, "activity", json::object())},
+          {"view", JsonValue(data, "view", json(nullptr))},
+          {"status", "running"},
+          {"text", ""}};
+}
+
+json LiveToolResult(const json& data) {
+  const std::string text = JsonValue(data, "text", "");
+  json row = {{"id", JsonValue(data, "detail_id", "")},
+              {"kind", "tool_result"},
+              {"activity", JsonValue(data, "activity", json::object())},
+              {"status", JsonValue(data, "completion_status",
+                                   JsonValue(data, "status", "complete"))},
+              {"duration_ms", JsonValue(data, "duration_ms", 0.0)},
+              {"text", Utf8Trunc(text, kPreviewChars - 3)},
+              {"truncated", text.size() > kPreviewChars}};
+  if (data.contains("parts")) row["parts"] = data["parts"];
+  return row;
+}
+}  // namespace
+
+bool ApplySessionEvent(json& state, const std::string& type, const json& data,
+                       json* patch) {
+  // A patch is what a client holding the same view must apply to match it:
+  // the whole changed block, or an append to one of its streamed fields.
+  const auto changed = [&](const json* block) {
+    if (patch && block) *patch = {{"kind", "block"}, {"block", *block}};
+  };
   if (type == "usage.updated") {
     state["usage"] = data["usage"];
     if (data.contains("context_tokens")) {
@@ -231,70 +280,81 @@ bool ApplySessionEvent(json& state, const std::string& type, const json& data) {
   } else if (type == "response.started") {
     const std::string response_id = JsonValue(data, "response_id", "");
     if (!response_id.empty()) {
-      MergeDisplayBlock(state["view"],
-                        {{"id", response_id},
-                         {"row_id", response_id},
-                         {"response_id", response_id},
-                         {"kind", "assistant"},
-                         {"turn", JsonValue(data, "turn", int64_t{0})},
-                         {"request", JsonValue(data, "request", int64_t{0})},
-                         {"attempt", JsonValue(data, "attempt", int64_t{0})},
-                         {"text", ""},
-                         {"text_bytes", 0},
-                         {"content_revision", 1},
-                         {"content_complete", false},
-                         {"reasoning", ""},
-                         {"reasoning_bytes", 0},
-                         {"reasoning_revision", 1},
-                         {"reasoning_complete", false}});
+      changed(
+          MergeDisplayBlock(state["view"], {{"id", response_id},
+                                            {"row_id", response_id},
+                                            {"response_id", response_id},
+                                            {"kind", "assistant"},
+                                            {"streaming", true},
+                                            {"text", ""},
+                                            {"text_bytes", 0},
+                                            {"content_revision", 1},
+                                            {"content_complete", false},
+                                            {"reasoning", ""},
+                                            {"reasoning_bytes", 0},
+                                            {"reasoning_revision", 1},
+                                            {"reasoning_complete", false}}));
     }
   } else if (type == "response.answer.delta" ||
              type == "response.reasoning.delta") {
-    const std::string response_id = JsonValue(data, "response_id", "");
     // Deltas without a response id have no started block to extend (the
-    // started branch above requires one). Matching them against any block
-    // whose id is also absent would append one turn's streamed text onto an
-    // earlier turn's completed block. The full block still arrives via
+    // started branch above requires one). The full block still arrives via
     // message.changed, so skipping here loses nothing.
-    if (response_id.empty()) return true;
-    json& blocks = state["view"]["blocks"];
-    if (blocks.is_array()) {
-      auto found = std::find_if(blocks.begin(), blocks.end(), [&](json& block) {
-        return JsonValue(block, "response_id", "") == response_id;
-      });
-      if (found != blocks.end()) {
-        const bool answer = type == "response.answer.delta";
-        if (JsonValue(*found,
-                      answer ? "content_complete" : "reasoning_complete",
-                      false)) {
-          return true;
-        }
-        const char* field = answer ? "text" : "reasoning";
-        const char* bytes = answer ? "text_bytes" : "reasoning_bytes";
-        const std::string current = JsonValue(*found, field, "");
-        const std::string delta = JsonValue(data, "text", "");
-        if (!answer && JsonValue(data, "reset", false)) {
-          (*found)[field] = delta;
-        } else if (data.contains("offset")) {
-          const size_t offset = JsonValue(data, "offset", size_t{0});
-          // A checkpoint may already contain this delta. Only append the
-          // still-missing suffix when its overlapping bytes agree; a gap or
-          // conflicting revision waits for the next complete block.
-          if (offset > current.size()) return true;
-          const size_t overlap =
-              std::min(delta.size(), current.size() - offset);
-          if (current.compare(offset, overlap, delta, 0, overlap) != 0) {
-            return true;
-          }
-          (*found)[field] = current + delta.substr(current.size() - offset);
-        } else {
-          (*found)[field] = current + delta;
-        }
-        (*found)[bytes] = JsonValue(*found, field, "").size();
+    const std::string response_id = JsonValue(data, "response_id", "");
+    json* found = FindBlock(state, response_id);
+    const bool answer = type == "response.answer.delta";
+    if (!found ||
+        JsonValue(*found, answer ? "content_complete" : "reasoning_complete",
+                  false)) {
+      return true;
+    }
+    const char* field = answer ? "text" : "reasoning";
+    const char* bytes = answer ? "text_bytes" : "reasoning_bytes";
+    const std::string current = JsonValue(*found, field, "");
+    const std::string delta = JsonValue(data, "text", "");
+    std::string added = delta;
+    if (!answer && JsonValue(data, "reset", false)) {
+      (*found)[field] = delta;
+      (*found)[bytes] = delta.size();
+      changed(found);
+      return true;
+    }
+    if (data.contains("offset")) {
+      const size_t offset = JsonValue(data, "offset", size_t{0});
+      // A checkpoint may already contain this delta. Only append the
+      // still-missing suffix when its overlapping bytes agree; a gap or
+      // conflicting revision waits for the next complete block.
+      if (offset > current.size()) return true;
+      const size_t overlap = std::min(delta.size(), current.size() - offset);
+      if (current.compare(offset, overlap, delta, 0, overlap) != 0) {
+        return true;
+      }
+      added = delta.substr(overlap);
+    }
+    if (added.empty()) return true;
+    (*found)[field] = current + added;
+    (*found)[bytes] = current.size() + added.size();
+    if (patch) {
+      *patch = {{"kind", "block"},
+                {"id", response_id},
+                {"append", {{field, std::move(added)}}}};
+    }
+  } else if (type == "response.finished") {
+    if (json* found = FindBlock(state, JsonValue(data, "response_id", ""))) {
+      (*found)["streaming"] = false;
+      if (patch) {
+        *patch = {{"kind", "block"},
+                  {"id", (*found)["id"]},
+                  {"set", {{"streaming", false}}}};
       }
     }
+  } else if (type == "tool.call" || type == "tool.result") {
+    if (JsonValue(data, "detail_id", "").empty()) return true;
+    changed(MergeDisplayBlock(state["view"], type == "tool.call"
+                                                 ? LiveToolRow(data)
+                                                 : LiveToolResult(data)));
   } else if (type == "message.changed") {
-    MergeDisplayBlock(state["view"], data["block"]);
+    changed(MergeDisplayBlock(state["view"], data["block"]));
   } else if (type == "activities.changed") {
     state["activities"] = data["activities"];
   } else if (type == "http.exchange") {
@@ -331,8 +391,11 @@ const json* FindToolFacts(const json& facts, const std::string& detail_id,
   return nullptr;
 }
 
-json DisplayBlock(const Conversation& conversation, uint64_t sequence,
-                  const Entry& entry) {
+// One message's rows: the message itself, and for an assistant message one
+// row per tool call, keyed by the call's detail id like its result row, so
+// the two join into one wherever they meet.
+void DisplayBlocks(const Conversation& conversation, uint64_t sequence,
+                   const Entry& entry, std::vector<json>& out) {
   const json& facts = conversation.DisplayFacts();
   std::string id = "m-" + std::to_string(sequence);
   const json& message = *entry.message;
@@ -385,9 +448,15 @@ json DisplayBlock(const Conversation& conversation, uint64_t sequence,
   block["retained_text_bytes"] = text.size();
   block["text_bytes"] = JsonValue(block, "text", "").size();
   block["content_complete"] = !JsonValue(block, "truncated", false);
+  std::vector<json> rows;
   if (entry.kind == "assistant") {
     const std::string response_id = JsonValue(metadata, "response_id", "");
-    if (!response_id.empty()) block["row_id"] = response_id;
+    // The live row streamed under the response id; the retained one is the
+    // same row.
+    if (!response_id.empty()) {
+      block["id"] = response_id;
+      block["row_id"] = response_id;
+    }
     if (!block.contains("content_revision")) block["content_revision"] = 1;
     if (!block.contains("content_complete")) {
       block["content_complete"] = text.size() <= 4096;
@@ -405,38 +474,38 @@ json DisplayBlock(const Conversation& conversation, uint64_t sequence,
     block["reasoning_bytes"] = JsonValue(block, "reasoning", "").size();
     block["reasoning_complete"] = reasoning.size() <= kPreviewChars;
     if (const json* calls = JsonArray(message, "tool_calls")) {
-      block["tools"] = json::array();
       for (const json& call : *calls) {
+        if (rows.size() >= kMaxToolsPerMessage) break;
         std::string call_id = JsonValue(call, "id", "");
-        std::string occurrence_id = OccurrenceId(response_id, call_id);
         std::string detail_id = DetailId(response_id, call_id);
         const json* found =
             FindToolFacts(facts, detail_id, call_id, &detail_id);
         const json detail = found ? *found : json::object();
         json function = JsonValue(call, "function", json::object());
-        json tool = {{"call_id", call_id},
-                     {"response_id", response_id},
-                     {"occurrence_id", occurrence_id},
-                     {"detail_id", detail_id},
-                     {"name", Utf8Trunc(JsonValue(function, "name", ""), 128)},
-                     {"arguments",
-                      Utf8Trunc(JsonValue(function, "arguments", ""), 1024)},
-                     {"status", JsonValue(detail, "status", "running")}};
-        tool["activity"] = JsonValue(detail, "activity", json::object());
+        json row = {{"id", detail_id},
+                    {"sequence", sequence},
+                    {"kind", "tool_result"},
+                    {"call_id", call_id},
+                    {"response_id", response_id},
+                    {"occurrence_id", OccurrenceId(response_id, call_id)},
+                    {"detail_id", detail_id},
+                    {"name", Utf8Trunc(JsonValue(function, "name", ""), 128)},
+                    {"arguments",
+                     Utf8Trunc(JsonValue(function, "arguments", ""), 1024)},
+                    {"status", JsonValue(detail, "status", "running")},
+                    {"activity", JsonValue(detail, "activity", json::object())},
+                    {"text", ""}};
         // Kept receipts replay the exact live row and its view.
         if (detail.contains("call_replay")) {
-          tool["replay"] = detail["call_replay"];
+          row["call_replay"] = detail["call_replay"];
           if (const json* view = JsonObject(detail["call_replay"], "view")) {
-            tool["view"] = *view;
+            row["view"] = *view;
           }
         }
         if (detail.contains("exchange_path")) {
-          tool["exchange_path"] = detail["exchange_path"];
+          row["exchange_path"] = detail["exchange_path"];
         }
-        block["tools"].push_back(std::move(tool));
-        if (block["tools"].size() >= kMaxToolsPerMessage) {
-          break;
-        }
+        rows.push_back(std::move(row));
       }
     }
   }
@@ -449,6 +518,7 @@ json DisplayBlock(const Conversation& conversation, uint64_t sequence,
     // history, never live activity (live rows stream separately). Say so
     // explicitly instead of counterfeiting a "running" state.
     const bool receipt_missing = found == nullptr;
+    block["id"] = detail_id;
     block["call_id"] = call_id;
     block["activity"] = JsonValue(detail, "activity", json::object());
     block["name"] = JsonValue(detail, "name", "tool");
@@ -485,7 +555,8 @@ json DisplayBlock(const Conversation& conversation, uint64_t sequence,
           return JsonValue(part, "type", "") == "image_url";
         });
   }
-  return block;
+  out.push_back(std::move(block));
+  for (json& row : rows) out.push_back(std::move(row));
 }
 }  // namespace
 
@@ -494,9 +565,11 @@ json LastMessageView(const Conversation& conversation) {
   const size_t last = conversation.Size() - 1;
   Entry entry{&conversation.At(last),
               MessageKindName(conversation.KindAt(last))};
-  return Visible(entry) ? DisplayBlock(conversation,
-                                       conversation.DisplayIds()[last], entry)
-                        : json(nullptr);
+  if (!Visible(entry)) return nullptr;
+  // The message itself; its tool rows arrive live as their calls run.
+  std::vector<json> blocks;
+  DisplayBlocks(conversation, conversation.DisplayIds()[last], entry, blocks);
+  return std::move(blocks.front());
 }
 
 TranscriptView::TranscriptView(const Conversation& conversation)
@@ -515,19 +588,34 @@ json TranscriptView::Page(uint64_t before) const {
   bool more = false;
   const auto& entries = Index();
   auto end = before ? entries.lower_bound(before) : entries.end();
-  for (auto it = std::make_reverse_iterator(end); it != entries.rend(); ++it) {
+  // Newest first, so the byte budget keeps the latest rows. A tool result
+  // is met before its call and keeps its row; the call fills in its fields.
+  std::map<std::string, size_t> rows;
+  std::vector<json> message;
+  for (auto it = std::make_reverse_iterator(end); it != entries.rend() && !more;
+       ++it) {
     const Entry& entry = it->second;
-    if (!Visible(entry)) {
-      continue;
+    if (!Visible(entry)) continue;
+    message.clear();
+    DisplayBlocks(conversation, it->first, entry, message);
+    for (auto block = message.rbegin(); block != message.rend(); ++block) {
+      const std::string id = JsonValue(*block, "id", "");
+      if (auto row = rows.find(id); row != rows.end()) {
+        json& into = blocks[row->second];
+        for (auto field = block->begin(); field != block->end(); ++field) {
+          if (!into.contains(field.key())) into[field.key()] = field.value();
+        }
+        continue;
+      }
+      bytes += JsonDump(*block).size();
+      if (bytes > kViewBytes || blocks.size() >= kViewBlocks) {
+        more = true;
+        break;
+      }
+      first = it->first;
+      rows.emplace(id, blocks.size());
+      blocks.push_back(std::move(*block));
     }
-    json block = DisplayBlock(conversation, it->first, entry);
-    bytes += JsonDump(block).size();
-    if (bytes > kViewBytes || blocks.size() >= kViewBlocks) {
-      more = true;
-      break;
-    }
-    first = it->first;
-    blocks.push_back(std::move(block));
   }
   std::reverse(blocks.begin(), blocks.end());
   return {
@@ -569,6 +657,16 @@ json TranscriptView::Detail(const std::string& id, size_t offset) const {
       auto entry = entries.find(sequence);
       if (entry != entries.end() && Visible(entry->second)) {
         text = DisplayText(*entry->second.message);
+      }
+    }
+  } else {
+    // An assistant row is addressed by its response id.
+    for (const auto& [sequence, entry] : Index()) {
+      const std::string key = "m-" + std::to_string(sequence);
+      if (entry.kind == "assistant" &&
+          JsonValue(JsonValue(facts, key.c_str(), json::object()),
+                    "response_id", "") == id) {
+        text = DisplayText(*entry.message);
       }
     }
   }

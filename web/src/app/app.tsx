@@ -105,7 +105,6 @@ import {
 if (typeof history !== "undefined") history.scrollRestoration = "manual";
 
 const emptyDraft = (): Draft => ({ text: "", files: [] });
-const noBlocks: Block[] = [];
 // One empty list, so an idle context value never changes identity.
 const NO_ACTIVITIES: Activity[] = [];
 
@@ -240,9 +239,8 @@ function App() {
     [selected],
   );
   const view = snapshot?.state?.view;
-  const streamed = snapshot?.streamed || noBlocks;
   // The browser icon shows when this conversation's agent is using it.
-  const browsing = streamed.some(
+  const browsing = !!view?.blocks.some(
     (block) => block.name === "browser" && block.status === "running",
   );
   const blocks = useMemo(
@@ -253,9 +251,8 @@ function App() {
           item.session_id === selected &&
           !view?.blocks?.some((block) => block.request_id === item.request_id),
       ),
-      ...streamed,
     ],
-    [view?.blocks, streamed, outgoing, selected],
+    [view?.blocks, outgoing, selected],
   );
   // Session-scoped surfaces: switching conversations resumes the saved
   // scroll position (or pins a fresh one); the hook owns this, so there

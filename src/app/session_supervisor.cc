@@ -142,7 +142,7 @@ void SessionHost::Received(HostSession* session, json frame) {
       return;
     }
   } else {
-    ApplyRuntimeFrame(*session, frame);
+    if (!ApplyRuntimeFrame(*session, frame)) return;
     // Clients adopt the host's lifecycle status rather than re-deriving it.
     if (kind == "state" || kind == "activity") {
       frame["metadata"] = Metadata(*session);
@@ -289,7 +289,7 @@ bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
   }  // for (attempt): single pass unless a stale worker recycled above
 }
 
-void SessionHost::ApplyRuntimeFrame(HostSession& session, json& frame) {
+bool SessionHost::ApplyRuntimeFrame(HostSession& session, json& frame) {
   const std::string kind = JsonValue(frame, "kind", "");
   if (kind == "state") {
     json next = JsonValue(frame, "state", json::object());
@@ -307,6 +307,8 @@ void SessionHost::ApplyRuntimeFrame(HostSession& session, json& frame) {
     if (!view.contains("blocks")) view["blocks"] = json::array();
     next["view"] = std::move(view);
     session.state = std::move(next);
+    // Browsers hold the host's view, never the worker's partial one.
+    frame["state"] = session.state;
     session.pending = JsonValue(frame, "pending", json(nullptr));
     session.turn_active = JsonValue(frame, "busy", false);
     session.command_busy = JsonValue(frame, "command_busy", false);
@@ -331,7 +333,7 @@ void SessionHost::ApplyRuntimeFrame(HostSession& session, json& frame) {
       if (!title.empty()) session.title = title;
     }
     frame["updated"] = session.updated;
-    return;
+    return true;
   }
   if (kind == "activity") {
     session.state["activity"] = JsonValue(frame, "activity", "Ready");
@@ -340,18 +342,18 @@ void SessionHost::ApplyRuntimeFrame(HostSession& session, json& frame) {
         JsonValue(frame, "activity_detail", json(nullptr));
     session.turn_active = JsonValue(frame, "busy", false);
     session.status = LiveStatus(session);
-    return;
+    return true;
   }
   if (kind == "gap") {
     session.live_truncated = true;
-    return;
+    return true;
   }
   if (kind == "error") {
     session.error = JsonValue(frame, "error", "worker failed");
     session.status = "failed";
-    return;
+    return true;
   }
-  if (kind != "event") return;
+  if (kind != "event") return true;
   const std::string type = JsonValue(frame, "type", "");
   if (!session.run_id.empty()) {
     if (type == "turn.completed") {
@@ -366,7 +368,8 @@ void SessionHost::ApplyRuntimeFrame(HostSession& session, json& frame) {
       session.error = JsonValue(frame["data"], "error", "scheduled run failed");
     }
   }
-  ApplySessionEvent(session.state, type, frame["data"]);
+  json patch;
+  ApplySessionEvent(session.state, type, frame["data"], &patch);
   if (type == "tool.result") {
     const json data = JsonValue(frame, "data", json::object());
     const std::string detail = JsonValue(data, "detail_id", "");
@@ -387,6 +390,17 @@ void SessionHost::ApplyRuntimeFrame(HostSession& session, json& frame) {
     session.incoming =
         std::max(session.incoming, JsonValue(block, "incoming", uint64_t{0}));
   }
+  // Browsers receive what changed in the host's view instead of the events
+  // that changed it, so they apply rows and never re-derive them.
+  if (type == "response.started" || type == "response.answer.delta" ||
+      type == "response.reasoning.delta" || type == "response.finished" ||
+      type == "tool.call" || type == "tool.result" ||
+      type == "message.changed") {
+    if (patch.is_null()) return false;
+    patch["time"] = frame["time"];
+    frame = std::move(patch);
+  }
+  return true;
 }
 
 }  // namespace uagent::session

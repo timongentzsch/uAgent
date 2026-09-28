@@ -15,7 +15,7 @@ import {
   retainedViews,
   applySessionEvent,
   isIncoming,
-  mergeCached,
+  keepOlderPages,
   readStored,
   writeStored,
 } from "./store.ts";
@@ -378,8 +378,8 @@ export function useHost(
           event.kind !== "deleted"
         )
           return;
-        if (event.type === "message.changed" && data.block) {
-          const block = data.block;
+        if (event.kind === "block" && event.block) {
+          const block = event.block;
           setOutgoing((items) =>
             items.filter((item) => item.request_id !== block.request_id),
           );
@@ -435,11 +435,8 @@ export function useHost(
             metadata,
             state: { ...event.state, phase },
             pending: pendingDecision,
-            streamed: event.checkpoint ? [] : current?.streamed,
           };
-          live.current[id] = current
-            ? mergeCached(current, projected)
-            : projected;
+          live.current[id] = keepOlderPages(current, projected);
           // Decisions and canonical phase changes flush without text batching.
           if (id === selection.current)
             setSnapshots((prior) => ({ ...prior, [id]: live.current[id] }));
@@ -466,6 +463,8 @@ export function useHost(
                 : event.metadata || { ...item, activities: data.activities },
             ),
           }));
+        } else if (event.kind === "block" && current) {
+          live.current[id] = applySessionEvent(current, event);
         } else if (event.kind === "event" && current) {
           if (
             id === selection.current &&

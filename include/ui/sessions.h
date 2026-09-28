@@ -119,7 +119,7 @@ inline bool ResumeInto(Agent& agent, const std::string& path,
   if (render) {
     printf("%s· resumed — %zu messages%s\n", DIM(), agent.MessageCount() - 1,
            RST());
-    PrintConversationHistory(agent.History(), agent.Tools());
+    PrintConversationHistory(agent.History());
     printf("%s· end of history, continuing%s\n", DIM(), RST());
   }
   return true;

@@ -557,17 +557,25 @@ void TestCompactionKeepsDisplayIdentity() {
   CHECK(view["more"] == true);
   CHECK(view["blocks"].back()["id"] == "large-63");
 
-  // Live deltas and the saved preview are one response projection. A bounded
-  // checkpoint may enrich metadata, but it cannot shorten a body this client
-  // already received at the same content revision.
+  // Live deltas and the saved preview are one row, keyed by the response id.
+  // A bounded checkpoint may enrich metadata, but it cannot shorten a body
+  // this client already received at the same content revision.
   json state = {{"view", {{"blocks", json::array()}}}};
   const json response = {
       {"response_id", "r-7-3-1"}, {"turn", 7}, {"request", 3}, {"attempt", 1}};
-  CHECK(ApplySessionEvent(state, "response.started", response));
+  json patch;
+  CHECK(ApplySessionEvent(state, "response.started", response, &patch));
+  CHECK(patch["block"]["streaming"] == true);
   CHECK(ApplySessionEvent(
       state, "response.answer.delta",
-      {{"response_id", "r-7-3-1"}, {"text", "complete streamed body"}}));
-  MergeDisplayBlock(state["view"], {{"id", "m-99"},
+      {{"response_id", "r-7-3-1"}, {"text", "complete streamed body"}},
+      &patch));
+  // A client holding the same view appends, never re-reads the body.
+  CHECK((patch == json{{"kind", "block"},
+                       {"id", "r-7-3-1"},
+                       {"append", {{"text", "complete streamed body"}}}}));
+  MergeDisplayBlock(state["view"], {{"id", "r-7-3-1"},
+                                    {"sequence", 99},
                                     {"row_id", "r-7-3-1"},
                                     {"response_id", "r-7-3-1"},
                                     {"kind", "assistant"},
@@ -579,43 +587,34 @@ void TestCompactionKeepsDisplayIdentity() {
                                     {"status", "complete"}});
   REQUIRE(state["view"]["blocks"].size() == 1);
   const json& reconciled = state["view"]["blocks"][0];
-  CHECK(reconciled["id"] == "m-99");
-  CHECK(reconciled["row_id"] == "r-7-3-1");
   CHECK(reconciled["text"] == "complete streamed body");
   CHECK(reconciled["text_bytes"] == 22);
-  CHECK(reconciled["content_revision"] == 1);
   CHECK(reconciled["status"] == "complete");
+  // A saved row has finished streaming.
+  CHECK(!reconciled.contains("streaming"));
 
-  // A response and its tool results share response_id, but each occurrence is
-  // a distinct transcript row. Checkpoint enrichment must preserve the live
-  // assistant body and reasoning while adding every saved result exactly once.
-  CHECK(ApplySessionEvent(
-      state, "response.reasoning.delta",
-      {{"response_id", "r-7-3-1"}, {"text", "visible thinking"}}));
-  MergeDisplayBlock(state["view"], {{"id", "m-100"},
-                                    {"response_id", "r-7-3-1"},
-                                    {"occurrence_id", "r-7-3-1:call-a"},
-                                    {"kind", "tool_result"},
-                                    {"text", "first result"}});
-  MergeDisplayBlock(state["view"], {{"id", "m-101"},
-                                    {"response_id", "r-7-3-1"},
-                                    {"occurrence_id", "r-7-3-1:call-b"},
-                                    {"kind", "tool_result"},
-                                    {"text", "second result"}});
-  REQUIRE(state["view"]["blocks"].size() == 3);
-  CHECK(state["view"]["blocks"][0]["kind"] == "assistant");
-  CHECK(state["view"]["blocks"][0]["reasoning"] == "visible thinking");
-  CHECK(state["view"]["blocks"][1]["text"] == "first result");
-  CHECK(state["view"]["blocks"][2]["text"] == "second result");
-  MergeDisplayBlock(state["view"], {{"id", "m-100"},
-                                    {"response_id", "r-7-3-1"},
-                                    {"occurrence_id", "r-7-3-1:call-a"},
+  // Each call is its own row. A live call and its saved result join on the
+  // detail id, whichever arrives first; the call's fields survive the result.
+  for (const char* id : {"t-a", "t-b"}) {
+    CHECK(ApplySessionEvent(state, "tool.call",
+                            {{"detail_id", id},
+                             {"call_id", std::string("call-") + id},
+                             {"response_id", "r-7-3-1"},
+                             {"name", "read_path"},
+                             {"arguments", {{"path", "a.txt"}}}},
+                            &patch));
+    CHECK(patch["block"]["status"] == "running");
+  }
+  MergeDisplayBlock(state["view"], {{"id", "t-a"},
+                                    {"sequence", 100},
                                     {"kind", "tool_result"},
                                     {"text", "first result"},
-                                    {"status", "completed"}});
+                                    {"status", "success"}});
   REQUIRE(state["view"]["blocks"].size() == 3);
-  CHECK(state["view"]["blocks"][1]["status"] == "completed");
-  CHECK(state["view"]["blocks"][0]["reasoning"] == "visible thinking");
+  CHECK(state["view"]["blocks"][1]["text"] == "first result");
+  CHECK(state["view"]["blocks"][1]["name"] == "read_path");
+  CHECK(state["view"]["blocks"][1]["arguments"] == "{\"path\":\"a.txt\"}");
+  CHECK(state["view"]["blocks"][2]["status"] == "running");
 
   Conversation long_answer;
   long_answer.Reset(json::array({{{"role", "system"}, {"content", "sys"}}}),
@@ -683,7 +682,7 @@ void TestCompactionKeepsDisplayIdentity() {
       replayed, "response.answer.delta",
       {{"response_id", "r-replayed"}, {"offset", 2}, {"text", "ha"}}));
   CHECK(replayed["view"]["blocks"][0]["text"] == "haha");
-  MergeDisplayBlock(replayed["view"], {{"id", "m-replayed"},
+  MergeDisplayBlock(replayed["view"], {{"id", "r-replayed"},
                                        {"response_id", "r-replayed"},
                                        {"kind", "assistant"},
                                        {"text", "haha"},
@@ -746,9 +745,8 @@ void TestHistoryReplaySkipsBareHeader() {
       MessageKind::kAssistant);
   bool prior_unicode = g_unicode;
   g_unicode = true;
-  const std::vector<Tool> no_tools;
   const std::string drawn =
-      CaptureStdout([&] { PrintConversationHistory(replay, no_tools); });
+      CaptureStdout([&] { PrintConversationHistory(replay); });
   g_unicode = prior_unicode;
   CHECK(drawn.find("hi") != std::string::npos);
   CHECK(drawn.find("µ") == std::string::npos);
@@ -761,7 +759,7 @@ void TestHistoryReplaySkipsBareHeader() {
               MessageKind::kAssistant);
   g_unicode = true;
   const std::string voiced =
-      CaptureStdout([&] { PrintConversationHistory(spoken, no_tools); });
+      CaptureStdout([&] { PrintConversationHistory(spoken); });
   g_unicode = prior_unicode;
   CHECK(voiced.find("uagent") != std::string::npos);
   CHECK(voiced.find("µ") == std::string::npos);
@@ -804,8 +802,10 @@ void TestToolResultHealsMissingMetadata() {
   CHECK(result["duration_ms"] == 12.5);
   CHECK(result["detail_id"] == "t-hash1");
   CHECK(!result.contains("receipt_missing"));
-  const json& call = view["blocks"][view["blocks"].size() - 2];
-  CHECK(call["tools"][0]["status"] == "success");
+  // The call and its result are one row: the result keeps its place and
+  // takes the call's arguments.
+  CHECK(view["blocks"].size() == 2);
+  CHECK(result["arguments"] == "{\"command\":\"ls\"}");
   // A message with neither metadata nor facts reads complete, never a
   // forever-"running" ghost.
   conversation.Push(
@@ -962,11 +962,10 @@ void TestAttachmentHistoryRendering() {
                                     {"name", "image.png"},
                                     {"delivery", "Image"},
                                     {"path", path}}})}});
-  const std::vector<Tool> no_tools;
   bool prior_unicode = g_unicode;
   g_unicode = true;
   const std::string drawn =
-      CaptureStdout([&] { PrintConversationHistory(conversation, no_tools); });
+      CaptureStdout([&] { PrintConversationHistory(conversation); });
   g_unicode = prior_unicode;
   CHECK(drawn.find(prompt) != std::string::npos);
   CHECK(drawn.find(path) == std::string::npos);
@@ -985,7 +984,7 @@ void TestAttachmentHistoryRendering() {
                                    quote + "/tmp/x.png" + quote}}})}},
       MessageKind::kUser);
   const std::string kept =
-      CaptureStdout([&] { PrintConversationHistory(literal, no_tools); });
+      CaptureStdout([&] { PrintConversationHistory(literal); });
   CHECK(kept.find("note") != std::string::npos);
   CHECK(kept.find("/tmp/x.png") != std::string::npos);
   CHECK(drawn.find("image.png \u00b7 Image") != std::string::npos);

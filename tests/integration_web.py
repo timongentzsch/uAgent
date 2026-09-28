@@ -425,11 +425,8 @@ def test_worker_batches_fast_deltas_without_delaying_a_quiet_tail(root, home, *,
                         started = True
                     if frame.get("kind") == "event" and frame.get("type") == "turn.started":
                         started = True
-                    if (
-                        frame.get("kind") == "event"
-                        and frame.get("type") == "response.answer.delta"
-                    ):
-                        deltas.append(frame.get("data", {}).get("text", ""))
+                    if frame.get("kind") == "block" and frame.get("append", {}).get("text"):
+                        deltas.append(frame["append"]["text"])
                         if "".join(deltas).startswith("AB"):
                             observed_tail.set()
                     if started and frame.get("kind") == "state" and not frame.get("busy"):

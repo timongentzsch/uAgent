@@ -205,9 +205,8 @@ ToolResult ReadMemoryFile(const MemoryEntry& memory) {
   if (!input) {
     return ToolFailure(ToolErrorCode::kNotFound, "error: no such memory");
   }
-  size_t max_bytes = static_cast<size_t>(MemoryBytes());
   std::string body;
-  bool truncated = ReadBounded(input, max_bytes, body);
+  bool truncated = ReadBounded(input, kMemoryBytes, body);
   if (truncated && writable) {
     return ToolFailure(ToolErrorCode::kLimitExceeded,
                        "error: saved memory exceeds configured limit");
@@ -226,11 +225,10 @@ ToolResult AccessMemory(const std::string& name, const std::string& scope,
     return ToolFailure(ToolErrorCode::kInvalidArguments,
                        "error: memory name must not be empty");
   }
-  int64_t max_bytes = MemoryBytes();
-  if (content && static_cast<int64_t>(content->size()) > max_bytes) {
+  if (content && content->size() > kMemoryBytes) {
     return ToolFailure(ToolErrorCode::kLimitExceeded,
                        "error: a memory is limited to " +
-                           std::to_string(max_bytes) +
+                           std::to_string(kMemoryBytes) +
                            " bytes; keep it to the durable lesson");
   }
 
@@ -243,8 +241,7 @@ ToolResult AccessMemory(const std::string& name, const std::string& scope,
   }
   if (forget) {
     std::string previous, error;
-    if (!ReadRegularFile(path.string(), static_cast<size_t>(max_bytes),
-                         previous, error)) {
+    if (!ReadRegularFile(path.string(), kMemoryBytes, previous, error)) {
       return ToolFailure(ToolErrorCode::kNotFound, "error: " + error);
     }
     std::error_code code;
@@ -279,14 +276,14 @@ ToolResult AccessMemory(const std::string& name, const std::string& scope,
   }
   bool existed = fs::exists(path);
   if (!existed) {
-    int64_t count = 0;
+    size_t count = 0;
     for (const MemoryEntry& memory : ListMemories(cwd)) {
       count += memory.key.starts_with(scope + "/");
     }
-    if (count >= MaxMemories()) {
+    if (count >= kMaxMemories) {
       return ToolFailure(ToolErrorCode::kLimitExceeded,
                          "error: " + scope + " memory is full (" +
-                             std::to_string(MaxMemories()) +
+                             std::to_string(kMaxMemories) +
                              "); delete or consolidate one before adding "
                              "another");
     }
@@ -300,8 +297,8 @@ ToolResult AccessMemory(const std::string& name, const std::string& scope,
     MakePrivateDir(projects, project.c_str());
   }
   std::string previous, read_error;
-  if (existed && !ReadRegularFile(path.string(), static_cast<size_t>(max_bytes),
-                                  previous, read_error)) {
+  if (existed &&
+      !ReadRegularFile(path.string(), kMemoryBytes, previous, read_error)) {
     return ToolFailure(ToolErrorCode::kInternal, "error: " + read_error);
   }
   std::string action = !existed               ? "created"
@@ -469,7 +466,7 @@ json MemoryControl(const json& request, const std::filesystem::path& cwd) {
     for (const auto& entry : entries) items.push_back(describe(entry, false));
     return {{"items", items},
             {"enabled", RuntimeConfig::FromEnvironment().memory_enabled},
-            {"limit", MemoryBytes()},
+            {"limit", kMemoryBytes},
             {"applies", "new_sessions"}};
   }
   auto found =
@@ -564,7 +561,7 @@ std::vector<MemoryEntry> ListMemories() {
 
 std::vector<MemoryEntry> ListMemories(const std::filesystem::path& cwd,
                                       size_t limit) {
-  if (limit == 0) limit = static_cast<size_t>(MaxMemories());
+  if (limit == 0) limit = kMaxMemories;
   namespace fs = std::filesystem;
   std::vector<MemoryEntry> entries;
   RepositoryPaths repo = Repository(cwd);
@@ -635,7 +632,7 @@ MemoryIndex LoadMemoryIndex(const std::filesystem::path& cwd,
 }
 
 // Behavioral "always-on" slice: global memories are injected whole into the
-// startup context alongside the index, capped by UAGENT_MEMORY_ALWAYS_BYTES.
+// startup context alongside the index, capped by kMemoryAlwaysBytes.
 // Global scope is the applies-everywhere bucket, so these are exactly the
 // standing preferences the agent should not have to go look up.
 //
@@ -667,12 +664,11 @@ MemoryIndex LoadAlwaysOnMemory(const std::filesystem::path& cwd,
 
   MemoryIndex index;
   size_t used = 0;
-  size_t body_cap = static_cast<size_t>(MemoryBytes());
   for (const auto& [bytes, memory] : globals) {
     std::ifstream input(memory.path, std::ios::binary);
     if (!input) continue;
     std::string body;
-    if (ReadBounded(input, body_cap, body)) {
+    if (ReadBounded(input, kMemoryBytes, body)) {
       // Larger than a single memory is allowed to be: it belongs in the index
       // for an explicit get, not in every request.
       index.truncated = true;

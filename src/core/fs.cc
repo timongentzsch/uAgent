@@ -378,17 +378,17 @@ void PruneSessionJournalOrphans(const std::string& dir) {
 
 void MaintainArtifacts() {
   std::string history = UagentDir(kHistoryDir);
-  PruneArtifactTree(history, HistoryDays(), HistoryFiles());
+  PruneArtifactTree(history, HistoryDays(), kHistoryFiles);
   PruneSessionJournalOrphans(history);
   PruneArtifactTree(GlobalBase() + "/" + kMemoryDir + "/.processed",
-                    HistoryDays(), HistoryFiles());
-  PruneArtifactTree(UagentDir(kSessionsDir), DebugDays(), DebugFiles());
-  PruneArtifactTree(UagentDir(kSessionsDir) + "/inbox", DebugDays(),
-                    DebugFiles());
-  PruneArtifactTree(UagentDir(kBgDir), BgDays(), BgFiles());
-  PruneArtifactTree(UagentDir(kArtifactsDir), BgDays(), BgFiles());
-  PruneCollaboratorTree(UagentDir("collaborators"), DebugDays(), DebugFiles());
-  PruneArtifactTree(UagentDir(kMcpDir), McpLogDays(), McpLogFiles());
+                    HistoryDays(), kHistoryFiles);
+  PruneArtifactTree(UagentDir(kSessionsDir), kDebugDays, kDebugFiles);
+  PruneArtifactTree(UagentDir(kSessionsDir) + "/inbox", kDebugDays,
+                    kDebugFiles);
+  PruneArtifactTree(UagentDir(kBgDir), kBgDays, kBgFiles);
+  PruneArtifactTree(UagentDir(kArtifactsDir), kBgDays, kBgFiles);
+  PruneCollaboratorTree(UagentDir("collaborators"), kDebugDays, kDebugFiles);
+  PruneArtifactTree(UagentDir(kMcpDir), kMcpLogDays, kMcpLogFiles);
 }
 
 std::string MakeSessionId() {

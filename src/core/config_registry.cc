@@ -21,12 +21,8 @@ const ConfigDescriptor* FindConfigDescriptor(std::string_view environment) {
 
 int64_t LongSetting(const ConfigDescriptor& descriptor) {
   const int64_t* value = std::get_if<int64_t>(&descriptor.default_value);
-  return LongSetting(descriptor, value ? *value : 0);
-}
-
-int64_t LongSetting(const ConfigDescriptor& descriptor, int64_t fallback) {
-  return std::clamp(EnvLong(descriptor.EnvName(), fallback), descriptor.minimum,
-                    descriptor.maximum);
+  return std::clamp(EnvLong(descriptor.EnvName(), value ? *value : 0),
+                    descriptor.minimum, descriptor.maximum);
 }
 
 bool BoolSetting(const ConfigDescriptor& descriptor) {

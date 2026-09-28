@@ -26,6 +26,7 @@
 #include "include/core/debug.h"
 #include "include/core/events.h"
 #include "include/core/fs.h"
+#include "include/core/limits.h"
 #include "include/core/output_buffer.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
@@ -1135,7 +1136,7 @@ bool Agent::DrainUserAttachments(std::vector<Attachment>& attachments) {
 
 void Agent::ArchiveAll(const char* reason) {
   conversation_.ArchiveAll(reason, BaselineSize(), turn_id_,
-                           api_.config.session_archive_bytes);
+                           kSessionArchiveBytes);
 }
 
 void Agent::RebuildToolSchemas() {

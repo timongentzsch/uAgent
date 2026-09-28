@@ -289,7 +289,7 @@ ShellCommandResult StartDetachedShell(ProcessSupervisor& supervisor,
   fchmod(pending.Get(), kPrivateFileMode);
   std::string bounded_cmd =
       "set -o pipefail; (" + cmd + ") 2>&1 | " + ShellQuote(ExecutablePath()) +
-      " --log-pump " + ShellQuote(log) + " " + std::to_string(BashLogBytes());
+      " --log-pump " + ShellQuote(log) + " " + std::to_string(kBashLogBytes);
   pid_t pid = -1;
   ChildEnvironment child_environment(spec.environment, spec.environment_policy);
   int spawn_error =
@@ -375,7 +375,6 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
                         "error: cannot create log file " + log)};
   }
   fchmod(pending.Get(), kPrivateFileMode);
-  int64_t log_bytes = BashLogBytes();
   int64_t interaction_cap = ActivityOutputCap(spec.max_output_chars);
   std::string bounded_cmd = cmd;
   pid_t pid = -1;
@@ -446,7 +445,8 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   }
   int64_t activity_id = *registered;
   int output_fd = tty ? master.Release() : pipe_read.Release();
-  supervisor.RegisterIo(session, output_fd, input.Release(), log_fd, log_bytes);
+  supervisor.RegisterIo(session, output_fd, input.Release(), log_fd,
+                        kBashLogBytes);
 
   // Registered for the signal handler's kill sweep from spawn onward, so a
   // Ctrl-C at any point, including the handover below, reaches the child.
@@ -775,9 +775,8 @@ ToolResult ToolGrep(ProcessSupervisor& supervisor, const std::string& pattern,
         ToolErrorCode::kNotFound,
         "error: search path is not a readable file or directory: " + target);
   }
-  int64_t max_results = GrepResults();
-  int64_t bytes = GrepBytes();
-  if (ToolResultCap() > 0) bytes = std::min(bytes, ToolResultCap());
+  int64_t max_results = kGrepResults;
+  int64_t bytes = ToolResultCap() > 0 ? ToolResultCap() : 1024;
   bool ripgrep = ExecutableOnPath("rg");
   // Ripgrep searches files in parallel and reports them in completion order, so
   // two identical searches can disagree. That is not cosmetic here: results are

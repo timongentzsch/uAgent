@@ -6,6 +6,7 @@
 #include <memory>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "include/agent.h"
@@ -48,20 +49,8 @@ constexpr TopicName kTopics[] = {
 };
 
 json DefaultJson(const ConfigDescriptor& descriptor) {
-  if (const int64_t* value = std::get_if<int64_t>(&descriptor.default_value)) {
-    return *value;
-  }
-  if (const double* value = std::get_if<double>(&descriptor.default_value)) {
-    return *value;
-  }
-  if (const bool* value = std::get_if<bool>(&descriptor.default_value)) {
-    return *value;
-  }
-  if (const std::string_view* value =
-          std::get_if<std::string_view>(&descriptor.default_value)) {
-    return *value;
-  }
-  return nullptr;  // derived from another setting at read time
+  return std::visit([](auto value) { return json(value); },
+                    descriptor.default_value);
 }
 
 json DescriptorJson(const ConfigDescriptor& descriptor) {

@@ -126,7 +126,7 @@ std::string McpStderrHint(const std::string& name) {
 }
 
 bool McpBufferOk(McpServer& s) {
-  if (s.response_cap == 0 || s.rbuf.size() <= s.response_cap) return true;
+  if (s.rbuf.size() <= kMcpResponseBytes) return true;
   s.Shutdown();
   return false;
 }
@@ -157,7 +157,7 @@ bool McpTakeLine(McpServer& s, std::string& line) {
 bool McpSpawn(McpServer& s, const std::string& cmd,
               const std::vector<std::string>& args,
               const std::vector<std::pair<std::string, std::string>>& env,
-              const std::string& cwd, size_t log_bytes) {
+              const std::string& cwd) {
   int inp[2], outp[2];  // inp: us -> server stdin, outp: server stdout -> us
   if (pipe(inp) != 0) return false;
   Fd in_read(inp[0]), in_write(inp[1]);
@@ -182,7 +182,7 @@ bool McpSpawn(McpServer& s, const std::string& cmd,
     fcntl(err_read.Get(), F_SETFD, FD_CLOEXEC);
     fcntl(err_write.Get(), F_SETFD, FD_CLOEXEC);
     const std::string log_path = McpLogPath(s.name);
-    const std::string bytes = std::to_string(log_bytes);
+    const std::string bytes = std::to_string(kMcpLogBytes);
     const std::string& self = ExecutablePath();
     char* pump_argv[] = {const_cast<char*>(self.c_str()),
                          const_cast<char*>("--log-pump"),

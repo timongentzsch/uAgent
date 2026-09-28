@@ -201,12 +201,10 @@ ToolResult ToolReadFile(const std::string& path, int64_t offset, int64_t limit,
     return Attachments().Add(path, call_id);
   }
   if (limit == 0) limit = ReadFileLines();  // 0 = unset
-  int64_t max_lines = ReadFileMaxLines();
   // A negative limit is the internal "as much as allowed" idiom; only a
   // positive request that the cap reduces is worth reporting back.
   int64_t requested_lines = limit;
-  if (limit <= 0 || limit > max_lines) limit = max_lines;
-  int64_t max_bytes = ReadFileBytes();
+  if (limit <= 0 || limit > kReadFileMaxLines) limit = kReadFileMaxLines;
   if (offset < 1) offset = 1;
   errno = 0;
   std::ifstream f(path);
@@ -215,16 +213,14 @@ ToolResult ToolReadFile(const std::string& path, int64_t offset, int64_t limit,
   int64_t total = 0, shown = 0, first = 0, last = 0;
   bool output_limited = false, line_truncated = false;
   FileLines lines(f);
-  while (shown < limit &&
-         lines.Next(line, static_cast<size_t>(max_bytes) - out.size(),
-                    total + 1 < offset, output_limited)) {
+  while (shown < limit && lines.Next(line, kReadFileBytes - out.size(),
+                                     total + 1 < offset, output_limited)) {
     if (AbortRequested()) return ToolCancelled("error: read cancelled");
     ++total;
     if (total >= offset) {
-      if (output_limited ||
-          line.size() >= static_cast<size_t>(max_bytes) - out.size()) {
+      if (output_limited || line.size() >= kReadFileBytes - out.size()) {
         if (out.empty()) {
-          out = Utf8Prefix(std::move(line), static_cast<size_t>(max_bytes));
+          out = Utf8Prefix(std::move(line), kReadFileBytes);
           first = last = total;
           shown = 1;
           line_truncated = true;
@@ -262,8 +258,8 @@ ToolResult ToolReadFile(const std::string& path, int64_t offset, int64_t limit,
   } else {
     header += " of " + std::to_string(total);
   }
-  if (requested_lines > max_lines) {
-    header += "; limit " + std::to_string(max_lines) + " of " +
+  if (requested_lines > kReadFileMaxLines) {
+    header += "; limit " + std::to_string(kReadFileMaxLines) + " of " +
               std::to_string(requested_lines) + " requested";
   }
   ToolResult result = ToolSuccess(header + "]\n" + out);
@@ -395,7 +391,7 @@ std::string EditRecoveryHint(const std::string& data,
 }
 
 bool EditedSize(size_t current, size_t old_size, size_t new_size, int64_t count,
-                int64_t max_bytes, size_t& next) {
+                size_t& next) {
   if (new_size >= old_size) {
     size_t growth = new_size - old_size;
     if (growth && static_cast<uint64_t>(count) >
@@ -406,7 +402,7 @@ bool EditedSize(size_t current, size_t old_size, size_t new_size, int64_t count,
   } else {
     next = current - (old_size - new_size) * static_cast<size_t>(count);
   }
-  return max_bytes <= 0 || next <= static_cast<size_t>(max_bytes);
+  return next <= kEditFileBytes;
 }
 
 void ReplaceAllOccurrences(std::string& data, const std::string& old_s,
@@ -467,7 +463,7 @@ struct EditRun {
 // human approves is what gets written.
 std::optional<ToolResult> ApplyEdits(std::string& data, const std::string& path,
                                      const std::vector<FileEdit>& edits,
-                                     int64_t max_bytes, EditRun& run) {
+                                     EditRun& run) {
   if (edits.empty()) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
                        "error: at least one edit is required");
@@ -517,7 +513,7 @@ std::optional<ToolResult> ApplyEdits(std::string& data, const std::string& path,
     int64_t applied = edit.replace_all ? count : 1;
     size_t next_size = 0;
     if (!EditedSize(data.size(), old_eff.size(), new_eff.size(), applied,
-                    max_bytes, next_size)) {
+                    next_size)) {
       return ToolFailure(ToolErrorCode::kLimitExceeded,
                          "error: edit " + std::to_string(i + 1) +
                              " would exceed the edit byte limit");
@@ -545,17 +541,16 @@ ToolResult ToolEditFile(const std::string& path,
   if (!f) return FileOpenFailure(path);
   std::error_code size_ec;
   auto bytes = std::filesystem::file_size(path, size_ec);
-  int64_t max_bytes = EditFileBytes();
-  if (!size_ec && max_bytes > 0 && bytes > static_cast<uintmax_t>(max_bytes)) {
+  if (!size_ec && bytes > kEditFileBytes) {
     return ToolFailure(ToolErrorCode::kLimitExceeded,
                        "error: " + path + " is too large to edit atomically (" +
                            std::to_string(bytes) + " bytes; limit " +
-                           std::to_string(max_bytes) + ")");
+                           std::to_string(kEditFileBytes) + ")");
   }
   std::string data((std::istreambuf_iterator<char>(f)),
                    std::istreambuf_iterator<char>());
   f.close();
-  if (max_bytes > 0 && data.size() > static_cast<size_t>(max_bytes)) {
+  if (data.size() > kEditFileBytes) {
     return ToolFailure(
         ToolErrorCode::kLimitExceeded,
         "error: " + path + " grew beyond the edit limit while reading");
@@ -563,7 +558,7 @@ ToolResult ToolEditFile(const std::string& path,
 
   const size_t original_size = data.size();
   EditRun run;
-  if (auto refusal = ApplyEdits(data, path, edits, max_bytes, run)) {
+  if (auto refusal = ApplyEdits(data, path, edits, run)) {
     return std::move(*refusal);
   }
   if (run.replacements == 0) {
@@ -594,7 +589,7 @@ std::optional<ToolResult> ApplyFileEdits(std::string& data,
                                          const std::string& path,
                                          const std::vector<FileEdit>& edits) {
   EditRun run;
-  return ApplyEdits(data, path, edits, EditFileBytes(), run);
+  return ApplyEdits(data, path, edits, run);
 }
 
 ToolResult ToolEditFile(const std::string& path, const std::string& old_s,
@@ -637,7 +632,6 @@ std::optional<std::string> SmallDirectoryPreview(
     const std::string& listing) {
   namespace fs = std::filesystem;
   uintmax_t total_bytes = 0;
-  uintmax_t max_bytes = static_cast<uintmax_t>(ReadFileBytes());
   for (const std::string& entry : entries) {
     fs::path entry_path = fs::path(dir) / entry;
     std::error_code type_error;
@@ -647,7 +641,7 @@ std::optional<std::string> SmallDirectoryPreview(
     }
     std::error_code size_error;
     uintmax_t bytes = fs::file_size(entry_path, size_error);
-    if (size_error || bytes > max_bytes - total_bytes) return std::nullopt;
+    if (size_error || bytes > kReadFileBytes - total_bytes) return std::nullopt;
     total_bytes += bytes;
     if (!LikelyTextFile(entry_path)) return std::nullopt;
   }
@@ -658,7 +652,7 @@ std::optional<std::string> SmallDirectoryPreview(
     if (!read.Ok()) return std::nullopt;
     preview += "\n";
     preview += read.output;
-    if (static_cast<int64_t>(preview.size()) > ReadFileResultChars()) {
+    if (static_cast<int64_t>(preview.size()) > kReadFileResultChars) {
       return std::nullopt;
     }
   }
@@ -672,8 +666,7 @@ std::optional<std::string> SmallDirectoryPreview(
 std::optional<std::string> DiffableContents(const std::string& path) {
   std::error_code ec;
   auto bytes = std::filesystem::file_size(path, ec);
-  int64_t max_bytes = EditFileBytes();
-  if (ec || (max_bytes > 0 && bytes > static_cast<uintmax_t>(max_bytes))) {
+  if (ec || bytes > kEditFileBytes) {
     return std::nullopt;
   }
   if (!LikelyTextFile(path)) return std::nullopt;
@@ -772,17 +765,16 @@ ToolResult ToolListDir(const std::string& path, int64_t offset, int64_t limit,
     return std::move(*invalid);
   }
   if (offset < 1) offset = 1;
-  if (limit <= 0) limit = ListDirEntries();
-  int64_t scan_cap = ListDirScanEntries();
+  if (limit <= 0) limit = kListDirEntries;
   std::error_code ec;
   std::vector<std::string> entries;
   std::filesystem::directory_iterator iterator(p, ec), iterator_end;
   for (; !ec && iterator != iterator_end; iterator.increment(ec)) {
     const auto& e = *iterator;
-    if (static_cast<int64_t>(entries.size()) >= scan_cap) {
+    if (static_cast<int64_t>(entries.size()) >= kListDirScanEntries) {
       return ToolFailure(ToolErrorCode::kLimitExceeded,
                          "error: directory exceeds scan limit (" +
-                             std::to_string(scan_cap) + " entries)");
+                             std::to_string(kListDirScanEntries) + " entries)");
     }
     std::error_code type_error;
     bool directory = e.is_directory(type_error);
@@ -819,7 +811,7 @@ ToolResult ToolListDir(const std::string& path, int64_t offset, int64_t limit,
   }
   if (std::optional<std::string> preview =
           SmallDirectoryPreview(p, entries, out)) {
-    return ToolSuccess(std::move(*preview), ReadFileResultChars());
+    return ToolSuccess(std::move(*preview), kReadFileResultChars);
   }
   return ToolSuccess(std::move(out));
 }

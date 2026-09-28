@@ -19,9 +19,10 @@ namespace uagent {
 void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
                        const std::filesystem::path& workspace) {
   auto schema = [](const char* s) { return json::parse(s); };
-  // The schema below is a raw JSON literal, so its "maximum" cannot be spelled
-  // as kMaxYieldMs directly; this assert fails the build if the constant moves.
-  static_assert(kMaxYieldMs == 30000, "update \"maximum\" in the run schema");
+  // The schema below is a raw JSON literal, so its yield bounds cannot be
+  // spelled as constants; this assert fails the build if one moves.
+  static_assert(kMaxYieldMs == 30000 && kDefaultYieldMs == 10000,
+                "update yield_ms in the run schema");
   Tool& run = AddTool(
       tools,
       MakeTool("run",
@@ -33,7 +34,7 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
                     "shell":{"type":"string","description":"default bash"},
                     "tty":{"type":"boolean","description":"retain an interactive PTY"},
                     "yield_ms":{"type":"integer","minimum":0,"maximum":30000,
-                      "description":"initial wait; 0 blocks to deadline; omitted uses UAGENT_RUN_YIELD_MS"},
+                      "description":"initial wait; 0 blocks to deadline; omitted waits 10000"},
                     "max_output_chars":{"type":"integer","minimum":256,"maximum":65536,
                       "description":"lower per-call returned-output cap"},
                     "detach":{"type":"boolean",
@@ -44,7 +45,7 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
                      supervisor, JsonValue(a, "command", ""), context,
                      JsonValue(a, "detach", false),
                      JsonValue(a, "shell", "bash"), JsonValue(a, "tty", false),
-                     JsonValue(a, "yield_ms", RunDefaultYieldMs()),
+                     JsonValue(a, "yield_ms", kDefaultYieldMs),
                      JsonValue(a, "max_output_chars", int64_t{0}),
                      JsonValue(a, "sandbox", true));
                }));

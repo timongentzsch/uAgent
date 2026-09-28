@@ -614,12 +614,11 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
               {"directive", JsonValue(arguments, "directive", "")},
               {"persistent", JsonValue(arguments, "persistent", false)}};
           persistent = JsonValue(collaborator, "persistent", false);
-          if (persistent && runtime &&
-              runtime->Count() >= static_cast<size_t>(PersistentMax())) {
+          if (persistent && runtime && runtime->Count() >= kPersistentMax) {
             return ToolFailure(
                 ToolErrorCode::kLimitExceeded,
                 "error: persistent limit reached (" +
-                    std::to_string(PersistentMax()) +
+                    std::to_string(kPersistentMax) +
                     "); stop a retained collaborator to free its runtime");
           }
         } else {
@@ -802,11 +801,7 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
              {"UAGENT_INTERNAL_PARENT_TURN", std::to_string(context.turn_id)},
              {"UAGENT_MEMORY", child_memory ? "1" : "0"},
              {"UAGENT_INTERNAL_SESSION_FILE",
-              JsonValue(collaborator, "session_file", "")},
-             // The parent brief is standalone. Re-inlining every always-on
-             // memory in each child only duplicates context and emits a
-             // misleading truncation warning when that optional cache is full.
-             {"UAGENT_MEMORY_ALWAYS_BYTES", "0"}});
+              JsonValue(collaborator, "session_file", "")}});
         // Only a background child is polled while it runs. A foreground child
         // is read once, where progress lines would only pad the answer the
         // parent quotes.
@@ -1008,7 +1003,7 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
   // Concurrency is enforced by the spawn path (RunShellCommand reserves an
   // activity slot bounded by MaxBackgroundJobs); this is only a runaway
   // ceiling.
-  tool.max_calls_per_turn = SubagentCallsPerTurn();
+  tool.max_calls_per_turn = kSubagentCallsPerTurn;
   auto describe = [&api, &routes, &providers](const json& arguments) {
     std::string operation = JsonValue(arguments, "operation", "spawn");
     if (operation == "list") return std::string("list collaborators");

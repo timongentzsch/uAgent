@@ -1745,7 +1745,7 @@ def test_web_control_queues_behind_inflight_catalog(root, home, *, binary):
 def test_web_background_inspection_and_full_exchange(root, home, *, binary):
     project = root / "background-inspection"
     project.mkdir()
-    content = "α🙂" * 9000 + "FULL_BODY_END"
+    content = "α🙂" * 5000 + "FULL_BODY_END"
     (project / "large.txt").write_text(content)
 
     def answer(_, body):
@@ -1761,9 +1761,7 @@ def test_web_background_inspection_and_full_exchange(root, home, *, binary):
         return event({"content": "Foreground done"})
 
     with Server([answer]) as provider:
-        with web_host(
-            binary, root, home, provider.url, extra_env={"UAGENT_READ_FILE_BYTES": "100000"}
-        ) as (client, code, _, _):
+        with web_host(binary, root, home, provider.url) as (client, code, _, _):
             client.pair(code)
             session = client.create(project)
             client.command("submit", session, text="/yolo")

@@ -26,7 +26,7 @@
 #include <vector>
 
 #include "include/browser/runtime.h"
-#include "include/core/env.h"
+#include "include/core/limits.h"
 #include "include/core/platform.h"
 
 namespace uagent::browser {
@@ -148,8 +148,8 @@ json Request(const json& command, int timeout_ms) {
   return answer;
 }
 
-bool StartService(const std::string& executable, int64_t idle_minutes,
-                  ServiceProcess& process, std::string& error) {
+bool StartService(const std::string& executable, ServiceProcess& process,
+                  std::string& error) {
   if (DataDirectory().empty()) return true;
   if (!EnsureDataDirectory(DataDirectory()) ||
       SocketPath().size() >= sizeof(sockaddr_un::sun_path)) {
@@ -180,11 +180,8 @@ bool StartService(const std::string& executable, int64_t idle_minutes,
                   const_cast<char*>("--browser-service"), nullptr};
   std::vector<std::string> environment = {
       "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-      "HOME=" + DataDirectory(),
-      "UAGENT_BROWSER_DATA=" + DataDirectory(),
-      "UAGENT_BROWSER_IDLE_MINUTES=" + std::to_string(idle_minutes),
-      "LANG=C.UTF-8",
-      "TMPDIR=/tmp"};
+      "HOME=" + DataDirectory(), "UAGENT_BROWSER_DATA=" + DataDirectory(),
+      "LANG=C.UTF-8", "TMPDIR=/tmp"};
   std::vector<char*> envp;
   envp.reserve(environment.size() + 1);
   for (auto& setting : environment) envp.push_back(setting.data());
@@ -230,20 +227,19 @@ int ServiceMain(int owner_fd) {
   auto runtime = std::make_shared<Runtime>();
   auto mutex = std::make_shared<std::mutex>();
   auto active = std::make_shared<std::atomic<int>>(0);
-  // An idle Chrome is checked once a minute; 0 keeps it running.
-  const std::chrono::minutes idle(EnvLong("UAGENT_BROWSER_IDLE_MINUTES", 0));
+  // An idle Chrome is checked once a minute.
   for (;;) {
     pollfd wait[] = {{owner_fd, POLLIN | POLLHUP, 0},
                      {listener.Get(), POLLIN, 0}};
-    int ready = poll(wait, 2, idle.count() > 0 ? 60000 : -1);
+    int ready = poll(wait, 2, 60000);
     if (ready < 0) {
       if (errno == EINTR) continue;
       break;
     }
     if (wait[0].revents) break;
     // A request in progress is work; skip the check rather than wait on it.
-    if (idle.count() > 0 && mutex->try_lock()) {
-      runtime->StopIfIdle(idle);
+    if (mutex->try_lock()) {
+      runtime->StopIfIdle(std::chrono::minutes(kBrowserIdleMinutes));
       mutex->unlock();
     }
     if (!(wait[1].revents & POLLIN)) continue;

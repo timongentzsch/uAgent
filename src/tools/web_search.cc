@@ -2,9 +2,7 @@
 
 #include "include/tools/web_search.h"
 
-#include <algorithm>
 #include <chrono>
-#include <limits>
 #include <optional>
 #include <string>
 #include <utility>
@@ -14,6 +12,7 @@
 #include "include/api/retry.h"
 #include "include/core/debug.h"
 #include "include/core/env.h"
+#include "include/core/limits.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
 #include "include/providers.h"
@@ -110,19 +109,19 @@ json WebSearchRequest(const WebSearchRoute& route, const RuntimeConfig& config,
   // UAGENT_WEB_SEARCH_EFFORT default.
   const std::string& effort =
       route.effort.empty() ? config.web_search_effort : route.effort;
-  json parameters = {{"engine", config.web_search_engine},
-                     {"max_results", config.web_search_max_results},
-                     {"max_total_results", config.web_search_max_results *
-                                               config.web_search_max_uses},
-                     {"max_uses", config.web_search_max_uses}};
+  json parameters = {
+      {"engine", config.web_search_engine},
+      {"max_results", kWebSearchMaxResults},
+      {"max_total_results", kWebSearchMaxResults * kWebSearchMaxUses},
+      {"max_uses", kWebSearchMaxUses}};
   if (!config.web_search_context_size.empty()) {
     parameters["search_context_size"] = config.web_search_context_size;
   }
   json body = {
       {"model", route.model},
       {"stream", false},
-      {"max_tokens", config.web_search_max_tokens},
-      {"max_tool_calls", config.web_search_max_uses},
+      {"max_tokens", kWebSearchMaxTokens},
+      {"max_tool_calls", kWebSearchMaxUses},
       {"usage", {{"include", true}}},
       {"tools", json::array({{{"type", "openrouter:web_search"},
                               {"parameters", std::move(parameters)}}})},
@@ -159,9 +158,7 @@ Tool WebSearchTool(Api& api, UsageAccumulator& usage,
           }
           queries.push_back(std::move(query));
         }
-        size_t max_queries = static_cast<size_t>(
-            std::min<int64_t>(4, api.config.web_search_max_uses));
-        if (queries.size() > max_queries) {
+        if (queries.size() > static_cast<size_t>(kWebSearchMaxUses)) {
           return ToolFailure(ToolErrorCode::kLimitExceeded,
                              "error: too many queries for the configured "
                              "web search use limit");
@@ -178,8 +175,7 @@ Tool WebSearchTool(Api& api, UsageAccumulator& usage,
                              "model scope and omit unasked pricing:\n" +
                              numbered;
         json body = WebSearchRequest(active, api.config, prompt);
-        int64_t timeout =
-            context.RemainingSeconds(api.config.web_search_timeout_s);
+        int64_t timeout = context.RemainingSeconds(kWebSearchTimeoutSeconds);
         auto started = std::chrono::steady_clock::now();
         DebugLog("side_request", {{"kind", "web_search"},
                                   {"path", "/chat/completions"},
@@ -209,10 +205,10 @@ Tool WebSearchTool(Api& api, UsageAccumulator& usage,
           normalized.web_searches = result.searches;
         }
         result.searches = normalized.web_searches;
-        if (normalized.web_searches > api.config.web_search_max_uses) {
+        if (normalized.web_searches > kWebSearchMaxUses) {
           DebugLog("side_limit_exceeded",
                    {{"kind", "web_search"},
-                    {"requested", api.config.web_search_max_uses},
+                    {"requested", kWebSearchMaxUses},
                     {"reported", normalized.web_searches}});
         }
         if (response.body.is_object()) {
@@ -234,7 +230,7 @@ Tool WebSearchTool(Api& api, UsageAccumulator& usage,
               result.text;
           if (!evidence.empty()) output += "\n\nSource evidence:\n" + evidence;
           if (result.truncated) {
-            output += "\n[truncated; raise UAGENT_WEB_SEARCH_MAX_TOKENS]";
+            output += "\n[truncated; narrow the query]";
           }
           return ToolSuccess(std::move(output));
         }
@@ -266,15 +262,11 @@ Tool WebSearchTool(Api& api, UsageAccumulator& usage,
   t.parallel_safe = true;
   t.header = Verbs("Searching the web for", "Searched the web for");
   t.intent = "research";
-  t.parameters["properties"]["queries"]["maxItems"] =
-      std::min<int64_t>(4, api.config.web_search_max_uses);
-  // The configured budget is per attempt (see Api::Post); the tool deadline
-  // has to cover the retries or it would cancel the call mid-recovery.
-  int64_t budget = api.config.web_search_timeout_s;
-  t.timeout_s = budget > std::numeric_limits<int64_t>::max() / kSideAttempts
-                    ? std::numeric_limits<int64_t>::max()
-                    : budget * kSideAttempts;
-  t.max_calls_per_turn = api.config.web_search_calls;
+  t.parameters["properties"]["queries"]["maxItems"] = kWebSearchMaxUses;
+  // The request budget is per attempt (see Api::Post); the tool deadline has
+  // to cover the retries or it would cancel the call mid-recovery.
+  t.timeout_s = kWebSearchTimeoutSeconds * kSideAttempts;
+  t.max_calls_per_turn = kWebSearchCalls;
   return t;
 }
 

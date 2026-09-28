@@ -211,7 +211,7 @@ namespace {
 
 std::filesystem::file_time_type DetachedRecordCutoff() {
   return std::filesystem::file_time_type::clock::now() -
-         std::chrono::hours(24 * TerminalRecordDays());
+         std::chrono::hours(24 * kTerminalDays);
 }
 
 // Reads one terminal record, annotating liveness. A PID is not an identity:

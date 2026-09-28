@@ -21,6 +21,7 @@
 #include "include/core/checked.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
+#include "include/core/limits.h"
 #include "include/core/strings.h"
 
 namespace uagent {
@@ -881,10 +882,10 @@ ToolResult AttachmentQueue::Add(const std::string& path,
   std::lock_guard<std::mutex> lock(mutex_);
   // MCP servers queue images without a model call to budget against, so the
   // ceiling lives here rather than only on read_path.
-  if (static_cast<int64_t>(pending_.size()) >= MaxPendingAttachments()) {
+  if (pending_.size() >= kMaxPendingAttachments) {
     return ToolFailure(ToolErrorCode::kLimitExceeded,
                        "error: too many attachments pending for one step (" +
-                           std::to_string(MaxPendingAttachments()) + ")");
+                           std::to_string(kMaxPendingAttachments) + ")");
   }
   attachment.source_call_id = std::move(source_call_id);
   pending_.push_back(std::move(attachment));

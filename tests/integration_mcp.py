@@ -363,15 +363,15 @@ def test_mcp_log_bound_does_not_limit_server_files(root, home, *, binary):
     )
     with Server([event({"content": "done"})]) as server:
         env = base_env(home, server.url)
-        env["UAGENT_MCP_LOG_BYTES"] = "4096"
         result = run(workspace, env, "--trust-project-config", "-p", "probe", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
-    # The server's own files are unbounded; only its stderr log is capped.
+    # The server's own files are unbounded; only its stderr goes through the
+    # bounded log pump (test_log_pump_rotates_within_its_bound).
     assert_true(artifact.stat().st_size == 65536, artifact.stat().st_size)
     logs = list((home / ".uagent" / "mcp").glob("probe-*.log*"))
     assert_true(logs, "no MCP stderr log")
     log_bytes = sum(path.stat().st_size for path in logs)
-    assert_true(0 < log_bytes <= 4096, log_bytes)
+    assert_true(log_bytes >= len("noise ") * 20000, log_bytes)
 
 
 def test_optional_mcp_servers_share_startup_grace(root, home, *, binary):

@@ -115,7 +115,7 @@ Connection Open(const std::string& executable, const std::string& cwd,
   }
   const std::string launch = folder.string() + "/" + RandomToken(16) + ".json";
   Pipe owner;
-  const bool delegated = options.overrides.contains("UAGENT_DEPTH");
+  const bool delegated = options.overrides.contains("UAGENT_INTERNAL_DEPTH");
   if (delegated && !owner.Open()) {
     error = "cannot create collaborator lifetime pipe";
     return {};

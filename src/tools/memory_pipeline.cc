@@ -152,7 +152,7 @@ std::string FilteredTranscript(const SessionRecord& session) {
                                       {"content", std::move(content)}})));
   }
 
-  size_t limit = static_cast<size_t>(MemoryExtractBytes());
+  size_t limit = kMemoryExtractBytes;
   std::vector<std::string> kept;
   size_t used = 0;
   for (auto row = rows.rbegin(); row != rows.rend(); ++row) {

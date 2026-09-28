@@ -18,9 +18,7 @@ namespace uagent {
 
 // Derived keys DiagnosticJson adds on top of the option tables.
 bool IsDerivedDiagnosticKey(const std::string& key) {
-  return key == "auto_compact_pct" || key == "auto_compact_tokens" ||
-         key == "tool_trace_protect_chars" ||
-         key == "tool_trace_prune_min_chars";
+  return key == "auto_compact_pct" || key == "auto_compact_tokens";
 }
 
 void TestRuntimeConfigCoherence() {

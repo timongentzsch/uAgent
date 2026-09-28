@@ -19,15 +19,14 @@ namespace uagent {
 
 struct RuntimeConfig;
 
-bool McpToolPageAllowed(const std::string& name, int64_t max_pages,
-                        int64_t& pages, std::set<std::string>& cursors,
+bool McpToolPageAllowed(const std::string& name, int64_t& pages,
+                        std::set<std::string>& cursors,
                         const std::string& cursor);
 
-bool McpConsumeToolPage(McpServer& server, const RuntimeConfig& config,
-                        const json& response, json& listed,
+bool McpConsumeToolPage(McpServer& server, const json& response, json& listed,
                         std::string& cursor);
 
-bool McpFetchToolDefinitions(McpServer& s, const RuntimeConfig& config,
+bool McpFetchToolDefinitions(McpServer& s,
                              std::chrono::steady_clock::time_point deadline,
                              json& listed);
 
@@ -40,7 +39,7 @@ bool McpLoadServerTools(std::vector<Tool>& tools, McpServer& server,
                         const RuntimeConfig& config,
                         std::chrono::steady_clock::time_point deadline);
 
-bool McpSendStartupToolPage(McpServer& server, const RuntimeConfig& config);
+bool McpSendStartupToolPage(McpServer& server);
 
 // Keep one tools/list request outstanding across short startup windows. A
 // healthy slow optional server neither blocks startup nor loses its eventual

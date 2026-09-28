@@ -214,28 +214,28 @@
     "superseded_reads/control": {
       "score": 5,
       "checks_total": 5,
-      "model_requests": 5,
-      "tool_calls": 4,
+      "model_requests": 9,
+      "tool_calls": 8,
       "max_batch": 1,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_context_bytes": 25603,
-      "cumulative_estimated_context_bytes": 104935,
-      "tool_result_chars": 9949,
-      "initial_schema_bytes": 11364
+      "max_estimated_context_bytes": 115140,
+      "cumulative_estimated_context_bytes": 632482,
+      "tool_result_chars": 98019,
+      "initial_schema_bytes": 11430
     },
     "superseded_reads/pruned": {
       "score": 5,
       "checks_total": 5,
-      "model_requests": 5,
-      "tool_calls": 4,
+      "model_requests": 9,
+      "tool_calls": 8,
       "max_batch": 1,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_context_bytes": 20752,
-      "cumulative_estimated_context_bytes": 95233,
-      "tool_result_chars": 9949,
-      "initial_schema_bytes": 11364
+      "max_estimated_context_bytes": 90034,
+      "cumulative_estimated_context_bytes": 534966,
+      "tool_result_chars": 98019,
+      "initial_schema_bytes": 11430
     }
   }
 }

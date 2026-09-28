@@ -30,7 +30,6 @@ struct WebOptions {
   std::string bind = "127.0.0.1";
   // Resolved from config like the rest, so a restart applies saved values.
   std::string browser_data;
-  int64_t browser_idle_minutes = 15;
 };
 // argv is the host's own command line: a restart from the settings re-execs
 // it after a clean shutdown.

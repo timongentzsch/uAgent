@@ -120,10 +120,9 @@ MFA, a captcha or bot check, a payment confirmation), the conversation shows
 its reason and **Open browser**, which opens the browser already in your
 control; **Done** returns you to the chat. Only the paired device that took
 control can finish it. Closing the viewer or losing its connection keeps the
-agent paused. Chrome stops by itself after `UAGENT_BROWSER_IDLE_MINUTES`
-(default 15; 0 keeps it running) without browser work, unless you control it
-or the agent is waiting for you, and starts again on the next action. **Stop
-browser** in the status menu releases it at once.
+agent paused. Chrome stops by itself after 15 minutes without browser work,
+unless you control it or the agent is waiting for you, and starts again on the
+next action. **Stop browser** in the status menu releases it at once.
 
 **Chrome profile** selects which login the agent and viewer share; **New
 profile** creates another persistent login. Switching requires control and

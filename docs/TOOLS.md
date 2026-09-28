@@ -88,12 +88,11 @@ environment described in [SECURITY.md](../SECURITY.md).
 
 ## Activities
 
-`run` waits `UAGENT_RUN_YIELD_MS` (10 s) and then returns a still-running
-command as an activity. `yield_ms` of 250–30,000 overrides the wait and `0`
-waits until the command exits. Set `tty=true` only when the process needs
-interactive input; a PTY keeps merged output, writable input, interruption and
-resize. `detach=true` keeps the command running after the session ends, with a
-rotating log.
+`run` waits 10 s and then returns a still-running command as an activity.
+`yield_ms` of 250–30,000 overrides the wait and `0` waits until the command
+exits. Set `tty=true` only when the process needs interactive input; a PTY
+keeps merged output, writable input, interruption and resize. `detach=true`
+keeps the command running after the session ends, with a rotating log.
 
 Every `activity` call names one `operation`:
 
@@ -130,8 +129,9 @@ durable collaborator ID.
 
 `web_fetch` needs no hosted-search route. It decodes HTML, JSON, XML and plain
 text and refuses other content types; download PDFs and images with `run` and
-open them with `read_path`. Bodies over `UAGENT_WEB_FETCH_BYTES` are truncated
-and marked partial. Pages behind a login or built by scripts need the browser.
+open them with `read_path`. Bodies over the attachment cap
+(`UAGENT_ATTACHMENT_MB`) are truncated and marked partial. Pages behind a login
+or built by scripts need the browser.
 
 Only public Internet addresses are accepted. Every resolved IPv4 and IPv6
 address of the initial request and of each redirect is checked; loopback,

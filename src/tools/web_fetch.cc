@@ -11,6 +11,7 @@
 #include <utility>
 
 #include "include/core/env.h"
+#include "include/core/limits.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
 
@@ -250,9 +251,13 @@ Tool WebFetchTool(Api& api) {
                              "error: web_fetch needs an absolute http(s) URL");
         }
         Api side(api.config);
+        // Capped like an attachment: a document worth fetching is usually
+        // one worth handing to the model, and a 2 MiB cap truncated an
+        // ordinary arXiv paper. Longer pages are read up to it and marked
+        // partial.
         WebResponse page = side.GetUrl(
             url, context.RemainingSeconds(api.config.tool_timeout_s),
-            static_cast<size_t>(WebFetchBytes()));
+            static_cast<size_t>(AttachmentLimitMb()) * kMiB);
         if (AbortRequested()) {
           return ToolCancelled("error: fetch cancelled by user");
         }

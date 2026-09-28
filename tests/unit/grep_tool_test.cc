@@ -11,6 +11,7 @@
 #include "include/agent/jobs.h"
 #include "include/agent/process.h"
 #include "include/core/fs.h"
+#include "include/core/limits.h"
 #include "include/tools/files.h"
 #include "include/tools/registry.h"
 #include "include/tools/shell.h"
@@ -41,12 +42,21 @@ void TestGrepTool() {
   CHECK(ToolWriteFile(ignored.string(), "needle ignored\n")
             .output.starts_with("wrote "));
   ProcessSupervisor supervisor;
-  setenv("UAGENT_GREP_RESULTS", "2", 1);
   ToolResult result = ToolGrep(supervisor, "needle", root.string(), "*.cpp");
-  unsetenv("UAGENT_GREP_RESULTS");
   CHECK(result.output.find("one.cpp") != std::string::npos);
   CHECK(result.output.find("two.txt") == std::string::npos);
-  CHECK(result.output.find("more available") != std::string::npos);
+  CHECK(result.output.find("more available") == std::string::npos);
+  {
+    // One match past the cap is reported as cut, not dropped silently.
+    ScopedEnv roomy("UAGENT_TOOL_RESULT_CHARS", "1000000");
+    std::string many;
+    for (int64_t i = 0; i <= kGrepResults; ++i) many += "needle row\n";
+    fs::path crowded = root / "crowded.txt";
+    CHECK(ToolWriteFile(crowded.string(), many).output.starts_with("wrote "));
+    CHECK(ToolGrep(supervisor, "needle", crowded.string(), "")
+              .output.find("more available") != std::string::npos);
+    fs::remove(crowded);
+  }
   ToolResult filenames =
       ToolGrep(supervisor, "one\\.cpp$", root.string(), "", 0, {}, true);
   CHECK(filenames.Ok());

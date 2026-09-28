@@ -98,17 +98,17 @@ retry.
 
 Pruning runs at startup:
 
-| Tree | Settings (days / files) |
+| Tree | Days / files kept |
 | --- | --- |
-| `history/`, `memory/.processed/` | `UAGENT_HISTORY_DAYS` 30 / `UAGENT_HISTORY_FILES` 200 |
-| `sessions/`, `collaborators/` | `UAGENT_DEBUG_DAYS` 14 / `UAGENT_DEBUG_FILES` 50 |
-| `bg/`, `artifacts/` | `UAGENT_BG_DAYS` 7 / `UAGENT_BG_FILES` 200 |
-| `mcp/` | `UAGENT_MCP_LOG_DAYS` 7 / `UAGENT_MCP_LOG_FILES` 100 |
-| exited detached terminals | `UAGENT_TERMINAL_DAYS` 7, removed with their logs |
+| `history/`, `memory/.processed/` | `UAGENT_HISTORY_DAYS` 30 / 200 |
+| `sessions/`, `collaborators/` | 14 / 50 |
+| `bg/`, `artifacts/` | 7 / 200 |
+| `mcp/` | 7 / 100 |
+| exited detached terminals | 7, removed with their logs |
 
 Collaborator metadata and sessions are pruned together. Journals whose session
-is gone are removed. Each log is also bounded in size by `UAGENT_BASH_LOG_BYTES`
-or `UAGENT_MCP_LOG_BYTES`.
+is gone are removed. Each process log is also bounded in size: 64 MiB for
+commands, 16 MiB for an MCP server.
 
 ## Removal
 

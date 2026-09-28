@@ -163,8 +163,7 @@ class Master {
       }
     }
     authority_ = origin_.substr(origin_.find("://") + 3);
-    if (!browser::StartService(executable_, options_.browser_idle_minutes,
-                               browser_process_, error)) {
+    if (!browser::StartService(executable_, browser_process_, error)) {
       return false;
     }
     LoadDevices();

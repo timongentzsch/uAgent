@@ -2,10 +2,9 @@
 
 #ifndef UAGENT_INCLUDE_CORE_LIMITS_H_
 #define UAGENT_INCLUDE_CORE_LIMITS_H_
-// Compile-time policy constants that several modules must agree on. Nothing
-// here is tunable: runtime-adjustable values belong in the EnvBounded/EnvStr
-// table in src/core/env.cc and in RuntimeConfig. Keep this header dependency
-// free -- it is included widely.
+// Compile-time policy constants. Nothing here is tunable: user-facing settings
+// belong in include/core/config_registry.h. Keep this header dependency free
+// -- it is included widely.
 
 #include <cstddef>
 #include <cstdint>
@@ -142,10 +141,11 @@ inline constexpr int kSharedFileMode = 0644;
 
 // Bounds for the `run` tool's initial yield. The lower bound keeps a yield from
 // degenerating into a busy poll; the upper bound keeps one call from consuming
-// the turn. The tool schema, the argument validator, the clamp in the shell
-// runner and the UAGENT_RUN_YIELD_MS env bound must agree.
+// the turn. The tool schema, the argument validator and the clamp in the shell
+// runner must agree.
 inline constexpr int64_t kMinYieldMs = 250;
 inline constexpr int64_t kMaxYieldMs = 30000;
+inline constexpr int64_t kDefaultYieldMs = 10000;
 
 // Settle time for an activity write or resize that named no wait_ms: long
 // enough for the child to echo, short enough not to feel like a wait.
@@ -158,6 +158,62 @@ inline constexpr int64_t kActivityInputSettleMs = 250;
 // work it needs in order to check what those children produced. The guarantee
 // only bites once the pool exceeds this headroom.
 inline constexpr int64_t kDelegatedJobHeadroom = 2;
+
+// Resource ceilings. They bound runaway input and disk use; none is a
+// preference a user should have to tune.
+// Model requests and the tool trace.
+inline constexpr size_t kRequestBytes = MiB(64);
+inline constexpr size_t kResponseBytes = MiB(32);
+inline constexpr size_t kToolTraceProtectChars = KiB(64);
+inline constexpr size_t kToolTracePruneMinChars = KiB(32);
+inline constexpr int64_t kSessionArchiveBytes = MiB(16);
+// Built-in tools. read_path's result allowance covers its header lines.
+inline constexpr int64_t kReadFileMaxLines = 10000;
+inline constexpr size_t kReadFileBytes = KiB(32);
+inline constexpr int64_t kReadFileResultChars = kReadFileBytes + 2048;
+inline constexpr size_t kEditFileBytes = MiB(10);
+inline constexpr int64_t kListDirEntries = 1000;
+inline constexpr int64_t kListDirScanEntries = 100000;
+inline constexpr int64_t kGrepResults = 200;
+inline constexpr int64_t kBashLogBytes = MiB(64);
+// Delegation and hosted search.
+inline constexpr int64_t kSubagentCallsPerTurn = 32;
+inline constexpr size_t kPersistentMax = 3;
+inline constexpr int64_t kWebSearchTimeoutSeconds = 60;
+inline constexpr int64_t kWebSearchMaxTokens = 5000;
+inline constexpr int64_t kWebSearchCalls = 4;
+inline constexpr int64_t kWebSearchMaxResults = 5;
+inline constexpr int64_t kWebSearchMaxUses = 3;
+// Memory, skills, project instructions and attachments.
+inline constexpr size_t kMemoryAlwaysBytes = 2048;
+inline constexpr size_t kMemoryBytes = 2048;
+inline constexpr size_t kMaxMemories = 32;
+inline constexpr size_t kMemoryExtractBytes = KiB(32);
+inline constexpr size_t kSkillBodyBytes = KiB(512);
+inline constexpr size_t kSkillDescriptionBytes = 1024;
+inline constexpr size_t kMaxSkills = 64;
+inline constexpr size_t kProjectDocBytes = KiB(32);
+inline constexpr size_t kMaxPendingAttachments = 8;
+// MCP servers are untrusted; these bound what one may make the agent hold.
+inline constexpr int64_t kMaxMcpServers = 32;
+inline constexpr int64_t kMcpPages = 100;
+inline constexpr size_t kMaxMcpTools = 256;
+inline constexpr size_t kMcpConfigBytes = MiB(1);
+inline constexpr size_t kMcpResponseBytes = MiB(16);
+inline constexpr size_t kMcpSchemaBytes = KiB(256);
+inline constexpr size_t kMcpLogBytes = MiB(16);
+inline constexpr size_t kMcpDescriptionChars = 400;
+// Retention of pruned artifact trees: days kept, then newest-N kept.
+inline constexpr int64_t kHistoryFiles = 200;
+inline constexpr int64_t kDebugDays = 14;
+inline constexpr int64_t kDebugFiles = 50;
+inline constexpr int64_t kBgDays = 7;
+inline constexpr int64_t kBgFiles = 200;
+inline constexpr int64_t kMcpLogDays = 7;
+inline constexpr int64_t kMcpLogFiles = 100;
+inline constexpr int64_t kTerminalDays = 7;
+// Idle minutes before Chrome stops; the next browser action restarts it.
+inline constexpr int64_t kBrowserIdleMinutes = 15;
 
 }  // namespace uagent
 

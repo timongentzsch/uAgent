@@ -39,7 +39,6 @@ std::string Escape(const std::string& text) {
 
 std::string DefaultCell(const json& setting) {
   const json& value = setting["default"];
-  if (value.is_null()) return "derived";
   if (value.is_string()) {
     std::string text = value.get<std::string>();
     return text.empty() ? "empty" : "`" + Escape(text) + "`";

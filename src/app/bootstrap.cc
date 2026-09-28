@@ -31,6 +31,7 @@
 #include "include/core/fd.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
+#include "include/core/limits.h"
 #include "include/core/project.h"
 #include "include/core/sandbox.h"
 #include "include/core/signals.h"
@@ -154,25 +155,25 @@ bool ResolveProjectTrust(const Options& options, bool& trusted,
 // instructions do not spend is what the memory index may.
 ProjectInstructions LoadInstructions(const std::filesystem::path& workspace,
                                      const RuntimeConfig& config,
-                                     bool memory_child, size_t project_limit) {
+                                     bool memory_child) {
   ProjectInstructions instructions;
   if (!memory_child) {
-    instructions = LoadProjectInstructions(workspace, project_limit);
+    instructions = LoadProjectInstructions(workspace, kProjectDocBytes);
   }
   if (config.memory_enabled) {
-    size_t remaining = instructions.text.size() >= project_limit
+    size_t remaining = instructions.text.size() >= kProjectDocBytes
                            ? 0
-                           : project_limit - instructions.text.size();
+                           : kProjectDocBytes - instructions.text.size();
     MemoryIndex memories = LoadMemoryIndex(workspace, remaining);
     instructions.memory_index = std::move(memories.text);
     instructions.memory_sources = std::move(memories.sources);
     instructions.memory_truncated |= memories.truncated;
     instructions.memory_limit = remaining;
 
-    size_t always_bytes =
-        static_cast<size_t>(std::max(int64_t{0}, config.memory_always_bytes));
-    if (always_bytes > 0) {
-      MemoryIndex always = LoadAlwaysOnMemory(workspace, always_bytes);
+    // A delegated child's brief is standalone: re-inlining every always-on
+    // memory there only duplicates the parent's context.
+    if (AgentDepth() == 0) {
+      MemoryIndex always = LoadAlwaysOnMemory(workspace, kMemoryAlwaysBytes);
       instructions.memory_always = std::move(always.text);
       for (const std::string& source : always.sources) {
         if (std::find(instructions.memory_sources.begin(),
@@ -183,7 +184,7 @@ ProjectInstructions LoadInstructions(const std::filesystem::path& workspace,
       }
       if (always.truncated) {
         instructions.memory_truncated = true;
-        instructions.memory_limit = always_bytes;
+        instructions.memory_limit = kMemoryAlwaysBytes;
       }
     }
   }
@@ -661,13 +662,11 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   }
 
   Api& api = context->runtime.api;
-  size_t project_limit =
-      static_cast<size_t>(context->runtime.config.project_doc_bytes);
-  ProjectInstructions instructions = LoadInstructions(
-      workspace, context->runtime.config, memory_child, project_limit);
+  ProjectInstructions instructions =
+      LoadInstructions(workspace, context->runtime.config, memory_child);
   if (instructions.truncated) {
     PrintWarning("project instructions truncated at " +
-                 std::to_string(project_limit) + " bytes");
+                 std::to_string(kProjectDocBytes) + " bytes");
   }
   if (instructions.memory_truncated) {
     PrintWarning("memory context truncated at " +

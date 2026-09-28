@@ -11,6 +11,7 @@
 #include "include/core/config.h"
 #include "include/core/fs.h"
 #include "include/core/lease.h"
+#include "include/core/limits.h"
 #include "include/core/signals.h"
 #include "include/core/term.h"
 #include "include/tools/files.h"
@@ -99,7 +100,7 @@ void TestFileTools() {
   ToolResult preview = ToolListDir(small_directory.string(), 1, 0, true);
   CHECK(preview.output.find("ONE_BODY") != std::string::npos);
   CHECK(preview.output.find("TWO_BODY") != std::string::npos);
-  CHECK(preview.result_chars == ReadFileResultChars());
+  CHECK(preview.result_chars == kReadFileResultChars);
   fs::create_directories(small_directory / "nested");
   CHECK(ToolListDir(small_directory.string(), 1, 0, true)
             .output.find("ONE_BODY") == std::string::npos);
@@ -285,7 +286,7 @@ void TestFileTools() {
   std::vector<Tool> tools = BuiltinTools(supervisor, root);
   const Tool* read_tool = FindTool(tools, "read_path");
   CHECK(read_tool != nullptr);
-  CHECK(read_tool && read_tool->result_chars == ReadFileResultChars());
+  CHECK(read_tool && read_tool->result_chars == kReadFileResultChars);
   CHECK(read_tool &&
         read_tool->parameters["properties"]["limit"]["description"] ==
             "lines or entries (default 1000)");
@@ -380,9 +381,7 @@ void TestFileTools() {
     approves_what_it_does(
         "one\ntwo\n",
         json::array(
-            {{{"old", "one"},
-              {"new",
-               std::string(static_cast<size_t>(EditFileBytes()) + 1, 'x')}}}));
+            {{{"old", "one"}, {"new", std::string(kEditFileBytes + 1, 'x')}}}));
   }
 
   fs::path private_file = root / "private";

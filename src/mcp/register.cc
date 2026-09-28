@@ -62,7 +62,7 @@ bool McpStartConfigured(McpServer& server, const RuntimeConfig& config,
     }
   }
   if (!McpSpawn(server, conf["command"].get<std::string>(), args, env,
-                cwd.string(), static_cast<size_t>(config.mcp_log_bytes))) {
+                cwd.string())) {
     error = "failed to start";
     return false;
   }
@@ -78,8 +78,7 @@ bool McpStartConfigured(McpServer& server, const RuntimeConfig& config,
 std::string McpRegister(std::vector<Tool>& tools, McpRuntime& runtime,
                         const RuntimeConfig& config,
                         const json& trusted_project) {
-  json cfg = McpLoadConfig(trusted_project,
-                           static_cast<size_t>(config.mcp_config_bytes));
+  json cfg = McpLoadConfig(trusted_project);
   if (cfg.empty()) return {};
   int64_t timeout = config.mcp_timeout_s;
 
@@ -90,12 +89,10 @@ std::string McpRegister(std::vector<Tool>& tools, McpRuntime& runtime,
   std::vector<Boot> boots;
   // config and server replies are untrusted JSON: a wrong type anywhere
   // must skip that server, never take the agent down
-  int64_t max_servers = config.mcp_servers;
   int64_t spawned = 0;
   for (auto& [name, conf] : cfg.items()) {
     auto srv = std::make_unique<McpServer>();
     srv->name = name;
-    srv->response_cap = static_cast<size_t>(config.mcp_response_bytes);
     srv->config = conf.is_object() ? conf : json::object();
     // Every configured server is recorded, running or not, so the settings
     // overview can say why one is missing.
@@ -103,7 +100,7 @@ std::string McpRegister(std::vector<Tool>& tools, McpRuntime& runtime,
       srv->error = std::move(why);
       runtime.Add(std::move(srv));
     };
-    if (spawned >= max_servers) {
+    if (spawned >= kMaxMcpServers) {
       McpNote(name, "skipped (server limit reached)");
       skip("skipped: server limit reached");
       continue;
@@ -217,7 +214,6 @@ void Restart(std::vector<Tool>& tools, McpRuntime& runtime,
   }
   auto fresh = std::make_unique<McpServer>();
   fresh->name = old.name;
-  fresh->response_cap = old.response_cap;
   fresh->config = old.config;
   McpServer& server = runtime.Replace(old, std::move(fresh));
   if (JsonValue(server.config, "disabled", false)) return;
@@ -267,8 +263,7 @@ bool WriteDisabled(const McpServer& server, bool disabled, std::string& error) {
     file = trust["mcp"];
   } else {
     std::string bytes;
-    if (!ReadRegularFile(path, static_cast<size_t>(McpConfigBytes()), bytes,
-                         error)) {
+    if (!ReadRegularFile(path, kMcpConfigBytes, bytes, error)) {
       return false;
     }
     file = json::parse(bytes, nullptr, false);

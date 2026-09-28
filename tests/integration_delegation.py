@@ -180,7 +180,7 @@ def test_lean_subagent_does_not_clone_parent_mcp_fleet(root, home, *, binary):
         extra_imports=("os", "pathlib"),
         setup=f"marker = pathlib.Path({str(marker)!r})\n"
         "with marker.open('a', encoding='utf-8') as output:\n"
-        "    output.write(os.environ.get('UAGENT_DEPTH', '0') + '\\n')\n",
+        "    output.write(os.environ.get('UAGENT_INTERNAL_DEPTH', '0') + '\\n')\n",
     )
     (home / ".mcp.json").write_text(
         json.dumps(
@@ -297,6 +297,8 @@ def test_persistent_subagent_reuses_runtime_and_owned_processes(root, home, *, b
             str(message.get("content", "")) for message in messages if message.get("role") == "user"
         ]
         results = tool_results(messages)
+        if any(user.endswith("hold a slot") for user in users):
+            return event({"content": "slot-held"})
         if any("resume after loss" in user for user in users):
             return event({"content": "resumed-fresh"})
         if any("crash retained runtime" in user for user in users):
@@ -379,10 +381,11 @@ def test_persistent_subagent_reuses_runtime_and_owned_processes(root, home, *, b
         if "retained-one" in combined:
             match = re.search(r"\[collaborator (agent-[^;\]]+)", combined)
             assert_true(match is not None, combined)
+            # Hold slots until the persistent limit refuses one.
             if "persistent limit reached" not in combined:
                 return tool_call(
                     "subagent",
-                    {"prompt": "must not run", "persistent": True, "mode": "full"},
+                    {"prompt": "hold a slot", "persistent": True, "mode": "full"},
                 )
             if "queued message for collaborator" not in combined:
                 return tool_call(
@@ -413,11 +416,9 @@ def test_persistent_subagent_reuses_runtime_and_owned_processes(root, home, *, b
         )
 
     with Server([route]) as server:
-        env = base_env(home, server.url)
-        env["UAGENT_PERSISTENT_MAX"] = "1"
         result = run(
             root,
-            env,
+            base_env(home, server.url),
             "--yolo",
             "--json",
             "-p",
@@ -434,6 +435,7 @@ def test_persistent_subagent_reuses_runtime_and_owned_processes(root, home, *, b
         path
         for path in saved_json_files(home / ".uagent" / "collaborators", "agent-*.json")
         if not path.name.endswith(".session.json")
+        and json.loads(path.read_text(encoding="utf-8"))["task"] != "hold a slot"
     ]
     assert_true(len(records) == 1, records)
     state = json.loads(records[0].read_text(encoding="utf-8"))
@@ -986,7 +988,7 @@ def test_subagent_recursion_is_depth_bounded(root, home, *, binary):
     ):
         with Server([lambda _, body: event({"content": str(has_task(body))})]) as server:
             env = base_env(home, server.url)
-            env["UAGENT_DEPTH"] = depth
+            env["UAGENT_INTERNAL_DEPTH"] = depth
             env["UAGENT_SUBAGENT_DEPTH"] = cap
             result = run(root, env, "-p", "probe", binary=binary)
             assert_true(result.returncode == 0, result.stderr)
@@ -997,7 +999,7 @@ def test_subagent_recursion_is_depth_bounded(root, home, *, binary):
 
     with Server([lambda _, body: event({"content": str(has_task(body))})]) as server:
         env = base_env(home, server.url)
-        env["UAGENT_DEPTH"] = "1"
+        env["UAGENT_INTERNAL_DEPTH"] = "1"
         env["UAGENT_SUBAGENT_DEPTH"] = "2"
         env["UAGENT_TOOLSET"] = "lean"
         result = run(root, env, "-p", "probe", binary=binary)

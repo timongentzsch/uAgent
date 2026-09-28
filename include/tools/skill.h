@@ -14,6 +14,7 @@
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
+#include "include/core/limits.h"
 #include "include/core/skills.h"
 #include "include/core/strings.h"
 #include "include/tools/tool.h"
@@ -92,11 +93,10 @@ inline std::string SkillToolDescription(const std::vector<Skill>& skills) {
   std::string out(kIntro);
   size_t fixed = out.size();
   for (const Skill& skill : skills) fixed += 5 + skill.name.size();
-  size_t description_bytes =
-      fixed < kMaxChars && !skills.empty()
-          ? std::min(static_cast<size_t>(SkillDescriptionBytes()),
-                     (kMaxChars - fixed) / skills.size())
-          : 0;
+  size_t description_bytes = fixed < kMaxChars && !skills.empty()
+                                 ? std::min(kSkillDescriptionBytes,
+                                            (kMaxChars - fixed) / skills.size())
+                                 : 0;
   for (size_t index = 0; index < skills.size(); ++index) {
     const Skill& skill = skills[index];
     std::string line = "- " + skill.name;
@@ -206,7 +206,7 @@ inline Tool SkillTool(std::vector<Skill> skills,
   t.parallel_safe = true;
   t.capabilities = Capability(ToolCapability::kInspect);
   t.retain_output = true;
-  t.result_chars = SkillBodyBytes() + 1024;
+  t.result_chars = static_cast<int64_t>(kSkillBodyBytes) + 1024;
   t.summary = [](const json& a) {
     std::string name = JsonValue(a, "name", "");
     return name.empty() ? JsonValue(a, "query", "list") : name;

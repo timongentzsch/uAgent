@@ -39,14 +39,6 @@ int64_t ToolBatchResultCap() {
   return per_result > kMax / 2 ? kMax : per_result * 2;
 }
 
-int64_t ToolTraceProtectChars() {
-  return LongSetting(Cfg("UAGENT_TOOL_TRACE_PROTECT_CHARS"));
-}
-
-int64_t ToolTracePruneMinChars() {
-  return LongSetting(Cfg("UAGENT_TOOL_TRACE_PRUNE_MIN_CHARS"));
-}
-
 int64_t AutoCompactPct() { return LongSetting(Cfg("UAGENT_AUTO_COMPACT_PCT")); }
 
 int64_t AutoCompactTokens() {
@@ -57,7 +49,7 @@ int64_t ToolConcurrency() {
   return LongSetting(Cfg("UAGENT_TOOL_CONCURRENCY"));
 }
 
-int64_t AgentDepth() { return LongSetting(Cfg("UAGENT_DEPTH")); }
+int64_t AgentDepth() { return EnvLong("UAGENT_INTERNAL_DEPTH", 0); }
 
 bool CanDelegate() {
   return AgentDepth() < LongSetting(Cfg("UAGENT_SUBAGENT_DEPTH"));
@@ -85,12 +77,6 @@ std::string SubagentModel() {
 int64_t SubagentTimeoutSeconds() {
   return LongSetting(Cfg("UAGENT_SUBAGENT_TIMEOUT"));
 }
-
-int64_t SubagentCallsPerTurn() {
-  return LongSetting(Cfg("UAGENT_SUBAGENT_CALLS_PER_TURN"));
-}
-
-int64_t PersistentMax() { return LongSetting(Cfg("UAGENT_PERSISTENT_MAX")); }
 
 // -1 omits the cap so the provider applies its own maximum; a fixed cap would
 // also clamp any thinking budget derived from it.
@@ -124,78 +110,12 @@ std::string PromptOverlayPath() {
 
 int64_t ReadFileLines() { return LongSetting(Cfg("UAGENT_READ_FILE_LINES")); }
 
-int64_t ReadFileMaxLines() {
-  return LongSetting(Cfg("UAGENT_READ_FILE_MAX_LINES"));
-}
-
-int64_t ReadFileBytes() { return LongSetting(Cfg("UAGENT_READ_FILE_BYTES")); }
-
-int64_t ReadFileResultChars() {
-  constexpr int64_t kHeaderAllowance = 2048;
-  int64_t bytes = ReadFileBytes();
-  constexpr int64_t kMax = std::numeric_limits<int64_t>::max();
-  return bytes > kMax - kHeaderAllowance ? kMax : bytes + kHeaderAllowance;
-}
-
-int64_t EditFileBytes() { return LongSetting(Cfg("UAGENT_EDIT_FILE_BYTES")); }
-
-int64_t ListDirEntries() { return LongSetting(Cfg("UAGENT_LIST_DIR_ENTRIES")); }
-
-int64_t ListDirScanEntries() {
-  return LongSetting(Cfg("UAGENT_LIST_DIR_SCAN_ENTRIES"));
-}
-
-int64_t MemoryBytes() { return LongSetting(Cfg("UAGENT_MEMORY_BYTES")); }
-
-int64_t MaxMemories() { return LongSetting(Cfg("UAGENT_MEMORY_FILES")); }
-
 int64_t MemoryIdleSeconds() {
   return LongSetting(Cfg("UAGENT_MEMORY_IDLE_SECONDS"));
 }
 
-int64_t MemoryExtractBytes() {
-  return LongSetting(Cfg("UAGENT_MEMORY_EXTRACT_BYTES"));
-}
-
-int64_t SkillBodyBytes() { return LongSetting(Cfg("UAGENT_SKILL_BYTES")); }
-
-int64_t SkillDescriptionBytes() {
-  return LongSetting(Cfg("UAGENT_SKILL_DESC_BYTES"));
-}
-
-int64_t MaxSkills() { return LongSetting(Cfg("UAGENT_SKILLS")); }
-
-// Defaults to the attachment budget: a document worth fetching is usually one
-// worth handing to the model, and a smaller cap here would refuse pages this
-// process is already willing to carry. A 2 MiB cap truncated an ordinary
-// arXiv paper.
-int64_t WebFetchBytes() {
-  return LongSetting(Cfg("UAGENT_WEB_FETCH_BYTES"),
-                     AttachmentLimitMb() * 1024 * 1024);
-}
-
-int64_t GrepResults() { return LongSetting(Cfg("UAGENT_GREP_RESULTS")); }
-
-int64_t GrepBytes() {
-  return LongSetting(Cfg("UAGENT_GREP_BYTES"), ToolResultCap());
-}
-
-int64_t BashLogBytes() { return LongSetting(Cfg("UAGENT_BASH_LOG_BYTES")); }
-
-int64_t RunDefaultYieldMs() { return LongSetting(Cfg("UAGENT_RUN_YIELD_MS")); }
-
 int64_t MaxBackgroundJobs() {
   return LongSetting(Cfg("UAGENT_MAX_BACKGROUND_JOBS"));
-}
-
-int64_t McpConfigBytes() { return LongSetting(Cfg("UAGENT_MCP_CONFIG_BYTES")); }
-
-int64_t McpDescriptionChars() {
-  return LongSetting(Cfg("UAGENT_MCP_DESC_CHARS"));
-}
-
-int64_t MaxPendingAttachments() {
-  return LongSetting(Cfg("UAGENT_PENDING_ATTACHMENTS"));
 }
 
 int64_t AttachmentLimitMb() { return LongSetting(Cfg("UAGENT_ATTACHMENT_MB")); }
@@ -203,24 +123,6 @@ int64_t AttachmentLimitMb() { return LongSetting(Cfg("UAGENT_ATTACHMENT_MB")); }
 int64_t ContextWindow() { return LongSetting(Cfg("UAGENT_CONTEXT")); }
 
 int64_t HistoryDays() { return LongSetting(Cfg("UAGENT_HISTORY_DAYS")); }
-
-int64_t HistoryFiles() { return LongSetting(Cfg("UAGENT_HISTORY_FILES")); }
-
-int64_t DebugDays() { return LongSetting(Cfg("UAGENT_DEBUG_DAYS")); }
-
-int64_t DebugFiles() { return LongSetting(Cfg("UAGENT_DEBUG_FILES")); }
-
-int64_t BgDays() { return LongSetting(Cfg("UAGENT_BG_DAYS")); }
-
-int64_t BgFiles() { return LongSetting(Cfg("UAGENT_BG_FILES")); }
-
-int64_t McpLogDays() { return LongSetting(Cfg("UAGENT_MCP_LOG_DAYS")); }
-
-int64_t McpLogFiles() { return LongSetting(Cfg("UAGENT_MCP_LOG_FILES")); }
-
-int64_t TerminalRecordDays() {
-  return LongSetting(Cfg("UAGENT_TERMINAL_DAYS"));
-}
 
 std::string ShellEnvironmentAllowlist() {
   return StringSetting(Cfg("UAGENT_SHELL_ENV_ALLOW"));
@@ -287,34 +189,14 @@ constexpr FieldBinding<int64_t> kLongOptions[] = {
     {&Cfg("UAGENT_FIRST_EVENT_TIMEOUT"), &RuntimeConfig::first_event_timeout_s},
     {&Cfg("UAGENT_STREAM_IDLE_TIMEOUT"), &RuntimeConfig::stream_idle_timeout_s},
     {&Cfg("UAGENT_REQUEST_TIMEOUT"), &RuntimeConfig::request_timeout_s},
-    {&Cfg("UAGENT_REQUEST_BYTES"), &RuntimeConfig::request_bytes},
-    {&Cfg("UAGENT_RESPONSE_BYTES"), &RuntimeConfig::response_bytes},
     {&Cfg("UAGENT_MAX_STEPS"), &RuntimeConfig::max_steps},
     {&Cfg("UAGENT_MAX_TOOL_CALLS"), &RuntimeConfig::max_tool_calls},
     {&Cfg("UAGENT_MAX_TURN_SECONDS"), &RuntimeConfig::max_turn_seconds},
     {&Cfg("UAGENT_MAX_TURN_TOKENS"), &RuntimeConfig::max_turn_tokens},
     {&Cfg("UAGENT_SESSION_TOKEN_BUDGET"), &RuntimeConfig::session_token_budget},
     {&Cfg("UAGENT_TOOL_TIMEOUT"), &RuntimeConfig::tool_timeout_s},
-    {&Cfg("UAGENT_WEB_SEARCH_TIMEOUT"), &RuntimeConfig::web_search_timeout_s},
-    {&Cfg("UAGENT_WEB_SEARCH_MAX_TOKENS"),
-     &RuntimeConfig::web_search_max_tokens},
-    {&Cfg("UAGENT_WEB_SEARCH_CALLS"), &RuntimeConfig::web_search_calls},
-    {&Cfg("UAGENT_WEB_SEARCH_MAX_RESULTS"),
-     &RuntimeConfig::web_search_max_results},
-    {&Cfg("UAGENT_WEB_SEARCH_MAX_USES"), &RuntimeConfig::web_search_max_uses},
     {&Cfg("UAGENT_MCP_TIMEOUT"), &RuntimeConfig::mcp_timeout_s},
     {&Cfg("UAGENT_MCP_STARTUP_GRACE"), &RuntimeConfig::mcp_startup_grace_s},
-    {&Cfg("UAGENT_MCP_SERVERS"), &RuntimeConfig::mcp_servers},
-    {&Cfg("UAGENT_MCP_PAGES"), &RuntimeConfig::mcp_pages},
-    {&Cfg("UAGENT_MCP_TOOLS"), &RuntimeConfig::mcp_tools},
-    {&Cfg("UAGENT_MCP_CONFIG_BYTES"), &RuntimeConfig::mcp_config_bytes},
-    {&Cfg("UAGENT_MCP_RESPONSE_BYTES"), &RuntimeConfig::mcp_response_bytes},
-    {&Cfg("UAGENT_MCP_SCHEMA_BYTES"), &RuntimeConfig::mcp_schema_bytes},
-    {&Cfg("UAGENT_MCP_LOG_BYTES"), &RuntimeConfig::mcp_log_bytes},
-    {&Cfg("UAGENT_MEMORY_ALWAYS_BYTES"), &RuntimeConfig::memory_always_bytes},
-    {&Cfg("UAGENT_PROJECT_DOC_BYTES"), &RuntimeConfig::project_doc_bytes},
-    {&Cfg("UAGENT_SESSION_ARCHIVE_BYTES"),
-     &RuntimeConfig::session_archive_bytes},
 };
 constexpr FieldBinding<double> kDoubleOptions[] = {
     {&Cfg("UAGENT_MAX_TURN_COST"), &RuntimeConfig::max_turn_cost},
@@ -460,8 +342,6 @@ json RuntimeConfig::DiagnosticJson() const {
   out.update({
       {"auto_compact_pct", AutoCompactPct()},
       {"auto_compact_tokens", AutoCompactTokens()},
-      {"tool_trace_protect_chars", ToolTraceProtectChars()},
-      {"tool_trace_prune_min_chars", ToolTracePruneMinChars()},
   });
   return out;
 }

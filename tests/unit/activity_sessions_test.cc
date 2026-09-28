@@ -24,6 +24,7 @@
 #include "include/core/config.h"
 #include "include/core/file_watch.h"
 #include "include/core/fs.h"
+#include "include/core/limits.h"
 #include "include/core/output_buffer.h"
 #include "include/core/platform.h"
 #include "include/core/signals.h"
@@ -428,19 +429,18 @@ void TestActivitySessions() {
   ToolContext context{std::chrono::steady_clock::now() +
                       std::chrono::seconds(10)};
   ProcessSupervisor automatic_yield;
-  setenv("UAGENT_RUN_YIELD_MS", "250", 1);
   std::vector<Tool> yield_tools = BuiltinTools(automatic_yield);
   const Tool* public_run = FindTool(yield_tools, "run");
   CHECK(public_run != nullptr);
   if (public_run) {
-    ToolResult yielded = public_run->run({{"command", "sleep 5"}}, context);
+    ToolResult yielded = public_run->run(
+        {{"command", "sleep 5"}, {"yield_ms", kMinYieldMs}}, context);
     CHECK(yielded.Ok());
     CHECK(yielded.output.find("[running] activity") != std::string::npos);
     for (const BgJob& job : automatic_yield.Snapshot()) {
       CHECK(ToolActivityStop(automatic_yield, ActivityId(job)).Ok());
     }
   }
-  unsetenv("UAGENT_RUN_YIELD_MS");
 
   ProcessSupervisor pty_processes;
   ShellCommandResult started = RunShellCommand(
@@ -1162,10 +1162,10 @@ void TestCollaboratorMail() {
 
   // Mail prunes with the record it belongs to, and while it is unread it is
   // what keeps that record from looking stale.
-  ScopedEnv days("UAGENT_DEBUG_DAYS", "1");
   const fs::path record = dir / "agent-dddd4444.json";
   std::ofstream(record) << "{}\n";
-  const auto stale = fs::file_time_type::clock::now() - std::chrono::hours(72);
+  const auto stale = fs::file_time_type::clock::now() -
+                     std::chrono::hours(24 * (kDebugDays + 1));
   fs::last_write_time(record, stale);
   const fs::path forgotten = dir / "agent-eeee5555.json";
   std::ofstream(forgotten) << "{}\n";

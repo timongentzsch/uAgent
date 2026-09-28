@@ -19,6 +19,14 @@
   the same by number, and a bare `/rewind` lists the numbers. The original
   conversation stays as it was; files on disk are not changed. The in-place
   truncation and the `rewind` command kind are gone.
+- 48 internal limits are fixed in the binary instead of being settings: sizes
+  and counts for tool output, requests and responses, delegation, hosted
+  search, memory, skills, MCP, attachments, project instructions and the trace
+  archive, artifact retention except `UAGENT_HISTORY_DAYS`, and Chrome's
+  15-minute idle stop. Their defaults are unchanged; the old names are no
+  longer read. `web_fetch` follows `UAGENT_ATTACHMENT_MB`, and delegated
+  children never inline always-on memory.
+- The delegation depth handed to child processes is `UAGENT_INTERNAL_DEPTH`.
 
 ### Fixed
 

@@ -11,7 +11,7 @@
 | `/context` | show current model request |
 | `/config [user|project KEY=VALUE|unset KEY|reset]` | show changed settings, change one, or reset a scope |
 | `/fork [TITLE] [@TURN]` | branch this conversation, optionally at user turn N |
-| `/rewind [@TURN]` | rewind this conversation to user turn N |
+| `/rewind [N]` | fork before your message N to edit it; bare, list the numbers |
 | `/share` | export transcript as markdown |
 | `/permissions [default|ask|auto|yolo|rules|forget N|forget all]` | show or change permission mode, or this repository's remembered actions |
 | `/rename TITLE` | rename this conversation |

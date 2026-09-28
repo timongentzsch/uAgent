@@ -129,8 +129,7 @@ inline bool ProjectAgentConfigPresent() {
 inline bool ProjectMcpSnapshot(json& snapshot, std::string& error) {
   std::error_code ec;
   uintmax_t bytes = std::filesystem::file_size(".mcp.json", ec);
-  int64_t max_bytes = McpConfigBytes();
-  if (ec || bytes > static_cast<uintmax_t>(max_bytes)) {
+  if (ec || bytes > kMcpConfigBytes) {
     error = ec ? ec.message() : "configuration exceeds byte limit";
     return false;
   }

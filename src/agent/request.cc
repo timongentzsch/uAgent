@@ -471,11 +471,9 @@ int64_t Agent::ContextPressurePct(size_t pending_bytes, size_t schema_bytes,
   }
   if (projected_tokens) *projected_tokens = used + pending;
   bytes = SaturatingAdd(bytes, pending_bytes);
-  if (api_.config.request_bytes <= 0) return 0;
-  size_t limit = static_cast<size_t>(api_.config.request_bytes);
-  if (bytes >= limit) return 100;
+  if (bytes >= kRequestBytes) return 100;
   return static_cast<int64_t>(100.0 * static_cast<double>(bytes) /
-                              static_cast<double>(limit));
+                              static_cast<double>(kRequestBytes));
 }
 
 bool Agent::ContextNeedsCompaction(size_t pending_bytes, size_t schema_bytes,
@@ -528,8 +526,7 @@ void Agent::ArchiveTurnTrace(size_t turn_start) {
     }
   }
   if (!has_tools && turn_search_trace_.Empty()) return;
-  conversation_.ArchiveTurn(turn_start, turn_id_,
-                            api_.config.session_archive_bytes,
+  conversation_.ArchiveTurn(turn_start, turn_id_, kSessionArchiveBytes,
                             turn_search_trace_.ArchiveMetadata());
   DebugLog("trace_archived",
            {{"turn", turn_id_}, {"messages", conversation_.Size()}});
@@ -541,9 +538,8 @@ void Agent::PruneOldToolResults(ToolPruneMode mode) {
     if (tool.retain_output) retained_tools.push_back(tool.name);
   }
   ToolTracePruneResult result = conversation_.PruneOldToolResults(
-      static_cast<size_t>(ToolTraceProtectChars()),
-      static_cast<size_t>(ToolTracePruneMinChars()), retained_tools, mode,
-      api_.config.session_archive_bytes);
+      kToolTraceProtectChars, kToolTracePruneMinChars, retained_tools, mode,
+      kSessionArchiveBytes);
   if (result.results == 0) return;
   logged_msgs_ = 0;
   ++revision_;

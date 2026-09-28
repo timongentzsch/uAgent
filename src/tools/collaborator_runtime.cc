@@ -21,6 +21,7 @@
 #include "include/app/session.h"
 #include "include/core/env.h"
 #include "include/core/events.h"
+#include "include/core/limits.h"
 #include "include/core/platform.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
@@ -215,12 +216,10 @@ ToolResult CollaboratorRuntime::Handoff(CollaboratorLaunch launch,
                          "error: collaborator " + launch.id +
                              " already has an active handoff");
     }
-    if (existing == state.slots.end() &&
-        state.slots.size() >= static_cast<size_t>(PersistentMax())) {
+    if (existing == state.slots.end() && state.slots.size() >= kPersistentMax) {
       return ToolFailure(
           ToolErrorCode::kLimitExceeded,
-          "error: persistent limit reached (" +
-              std::to_string(PersistentMax()) +
+          "error: persistent limit reached (" + std::to_string(kPersistentMax) +
               "); stop a retained collaborator to free its runtime");
     }
     connection = session::Connect(launch.path);

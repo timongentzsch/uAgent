@@ -19,7 +19,7 @@ void SetDataDirectory(std::string) {
 
 ServiceProcess::~ServiceProcess() = default;
 
-bool StartService(const std::string&, int64_t, ServiceProcess&, std::string&) {
+bool StartService(const std::string&, ServiceProcess&, std::string&) {
   return true;
 }
 

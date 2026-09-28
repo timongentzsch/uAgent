@@ -16,6 +16,7 @@
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
+#include "include/core/limits.h"
 #include "include/core/strings.h"
 #include "include/mcp/server.h"
 #include "include/media/attachments.h"
@@ -92,8 +93,7 @@ inline ToolResult McpResultText(const McpServer& s, const json& resp,
 
 // cap without splitting a UTF-8 codepoint
 inline std::string McpCapDesc(std::string d) {
-  int64_t cap = McpDescriptionChars();
-  return cap > 0 ? Utf8Trunc(std::move(d), static_cast<size_t>(cap)) : d;
+  return Utf8Trunc(std::move(d), kMcpDescriptionChars);
 }
 
 // <server>_<tool>, restricted to the [A-Za-z0-9_-]{1,64} function-name charset

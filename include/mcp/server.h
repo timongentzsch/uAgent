@@ -45,7 +45,6 @@ struct McpServer {
   // no legacy initialize lifecycle or downgrade state.
   std::string rbuf;  // partial line from the server
   int64_t next_id = 1;
-  size_t response_cap = size_t{16} * 1024 * 1024;
   json config;
   json roots = json::array();
   bool tools_changed = false;
@@ -145,7 +144,7 @@ bool McpTakeLine(McpServer& s, std::string& line);
 bool McpSpawn(McpServer& s, const std::string& cmd,
               const std::vector<std::string>& args,
               const std::vector<std::pair<std::string, std::string>>& env,
-              const std::string& cwd, size_t log_bytes);
+              const std::string& cwd);
 
 }  // namespace uagent
 

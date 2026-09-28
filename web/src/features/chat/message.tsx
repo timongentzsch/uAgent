@@ -90,6 +90,7 @@ function MessageView({
   statistics,
   activity,
   recall,
+  branch,
   http,
   read,
 }: {
@@ -106,6 +107,7 @@ function MessageView({
   statistics?: (block: Block) => void;
   activity?: (block: Block) => void;
   recall?: (block: PresentedBlock) => void;
+  branch?: (block: PresentedBlock, edit: boolean) => void;
   http?: (exchanges: Exchange[]) => void;
 }) {
   const [full, setFull] = useState<string | null>(null);
@@ -229,6 +231,7 @@ function MessageView({
             block={block}
             statistics={statistics}
             http={http}
+            branch={userOwned ? branch : undefined}
           />
         </header>
       )}
@@ -395,6 +398,7 @@ function messagePropsEqual(before: MessageProps, after: MessageProps): boolean {
     before.statistics === after.statistics &&
     before.activity === after.activity &&
     before.recall === after.recall &&
+    before.branch === after.branch &&
     before.http === after.http &&
     blockEqual(before.block, after.block)
   );

@@ -136,8 +136,12 @@ class SessionStore {
   static SessionLoadResult Load(const std::string& path,
                                 const std::string& expected_cwd);
   static SessionLoadResult Inspect(const std::string& path);
+  // Copies the session, whole or before a user message: the Nth
+  // (`fork_turn`) or the one shown as `message_id` ("m-<id>"). A cut fork
+  // returns that message's text as "prompt", so it can be edited and sent.
   static json Fork(const std::string& path, const std::string& title = "",
-                   bool source_owned = false, int64_t fork_turn = 0);
+                   bool source_owned = false, int64_t fork_turn = 0,
+                   const std::string& message_id = "");
   // Renders the saved session as markdown for /share. Pure transcript view:
   // user and assistant text plus truncated tool results; system, internal
   // and runtime-context messages never leave the session file.

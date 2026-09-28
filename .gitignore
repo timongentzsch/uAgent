@@ -32,3 +32,4 @@ web/test-results/
 web/playwright-report/
 test-results/
 web/dist/
+.claude/worktrees/

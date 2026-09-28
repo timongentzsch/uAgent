@@ -33,6 +33,10 @@ struct ToolTracePruneResult {
 
 enum class ToolPruneMode { kOldResults, kSupersededReads };
 
+// A message the person wrote (a prompt or guidance, with or without files),
+// not files attached on request mid-turn, which share its role and kind.
+bool IsUserMessage(const json& message, MessageKind kind);
+
 class Conversation {
  public:
   const json& Messages() const { return messages_; }
@@ -86,11 +90,15 @@ class Conversation {
   void UpsertTail(json message, MessageKind kind);
   void Set(size_t index, json message, MessageKind kind);
   void Erase(size_t begin, size_t end);
-  // Drops the Nth user turn and everything after it (message-exclusive, so
-  // the dropped turn can be retried fresh). Attachment messages read as
-  // user turns, matching NormalizeRole. False when out of range, leaving
+  // Drops the Nth user message and everything after it (message-exclusive,
+  // so it can be edited and sent again). False when out of range, leaving
   // the conversation untouched.
   bool TruncateBeforeUserTurn(int64_t turn);
+  // The 1-based number of the user message shown as `m-<display id>`, 0 when
+  // it is not a user message or no longer live (compacted away).
+  int64_t UserMessageNumber(uint64_t display_id) const;
+  // The text of the Nth user message, as it was sent.
+  std::string UserMessageText(int64_t turn) const;
 
   std::string LastAssistantText() const;
   std::string LastText(MessageKind kind) const;

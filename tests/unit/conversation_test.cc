@@ -19,6 +19,7 @@
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/usage.h"
+#include "include/media/attachments.h"
 #include "include/providers.h"
 #include "include/ui/sessions.h"
 #include "tests/unit/terminal_test_support.h"
@@ -1060,11 +1061,12 @@ void TestForkAtTurnAndLineage() {
   CHECK(!relived.record->metadata.forked_at_time.empty());
 }
 
-// P2: in-place rewind keeps identity and title while stamping a
-// reset-boundary fact; /share renders user/assistant text plus truncated
-// tool results and never leaks system or internal messages.
-void TestRewindAndShare() {
-  TestWorkspace workspace("rewind-share");
+// P2: files attached on request mid-turn share the user role and kind but
+// are not user messages: numbering, /share and forking before a message all
+// count only what the person wrote. /share never leaks system or internal
+// messages.
+void TestForkAtMessageAndShare() {
+  TestWorkspace workspace("fork-share");
   SessionRecord record;
   record.metadata.cwd = CanonicalCwd();
   record.metadata.model = "test";
@@ -1077,58 +1079,66 @@ void TestRewindAndShare() {
       {{"role", "assistant"}, {"content", "uno"}},
       {{"role", "user"},
        {"content",
-        json::array({{{"type", "text"}, {"text", "see this"}},
-                     {{"type", "attachment"}, {"path", "/tmp/a.png"}}})}},
+        json::array(
+            {{{"type", "text"}, {"text", "see this\n\nAttached:\n- path a"}},
+             {{"type", "attachment"}, {"path", "/tmp/a.png"}}})}},
       {{"role", "assistant"}, {"content", "looks good"}},
       {{"role", "tool"}, {"content", "file bytes"}, {"name", "read_path"}},
+      {{"role", "user"},
+       {"content", json::array({{{"type", "text"},
+                                 {"text", std::string(kAttachedOnRequest) +
+                                              "\n\nAttached:\n- path b"}}})}},
       {{"role", "user"}, {"content", "three"}},
       {{"role", "assistant"}, {"content", "tres"}},
       {{"role", "user"}, {"content", "[note]"}},
   });
   record.state.message_kinds = {
-      MessageKind::kSystem,    MessageKind::kUser,
-      MessageKind::kAssistant, MessageKind::kAttachment,
-      MessageKind::kAssistant, MessageKind::kToolResult,
-      MessageKind::kUser,      MessageKind::kAssistant,
-      MessageKind::kInternal};
-  // The share view numbers the three user turns, keeps tool output under a
-  // named fence, and drops the internal note and the system prompt.
+      MessageKind::kSystem,     MessageKind::kUser,
+      MessageKind::kAssistant,  MessageKind::kAttachment,
+      MessageKind::kAssistant,  MessageKind::kToolResult,
+      MessageKind::kAttachment, MessageKind::kUser,
+      MessageKind::kAssistant,  MessageKind::kInternal};
   const std::string markdown = SessionStore::ShareMarkdown(record);
   CHECK(markdown.find("# live title") != std::string::npos);
-  CHECK(markdown.find("## User 1") != std::string::npos);
-  CHECK(markdown.find("one") != std::string::npos);
   CHECK(markdown.find("## User 2") != std::string::npos);
   CHECK(markdown.find("[file: /tmp/a.png]") != std::string::npos);
-  CHECK(markdown.find("## User 3") != std::string::npos);
-  CHECK(markdown.find("three") != std::string::npos);
-  CHECK(markdown.find("## Assistant") != std::string::npos);
-  CHECK(markdown.find("tres") != std::string::npos);
+  CHECK(markdown.find("## Attached") != std::string::npos);
+  CHECK(markdown.find("## User 3\n\nthree") != std::string::npos);
+  CHECK(markdown.find("## User 4") == std::string::npos);
   CHECK(markdown.find("### tool `read_path`") != std::string::npos);
-  CHECK(markdown.find("file bytes") != std::string::npos);
   CHECK(markdown.find("[note]") == std::string::npos);
   CHECK(markdown.find("sys") == std::string::npos);
   const std::string source = (workspace.workspace / "live.json").string();
   CHECK(SessionStore::Save(source, record).Ok());
-  // Rewinding truncates before a user turn; the live /rewind path shares it.
-  auto restore = [&](Conversation& conversation) {
-    return conversation.Restore(
-        record.state.messages, record.state.message_kinds, record.state.archive,
-        record.state.archive_dropped_segments, record.state.tool_displays,
-        record.state.display);
-  };
-  Conversation rewound;
-  CHECK(restore(rewound));
-  CHECK(rewound.TruncateBeforeUserTurn(3));
-  CHECK(rewound.Size() == 6);
-  // Attachments count as user turns: rewinding to 2 keeps the prefix
-  // before it, including turn 1's assistant reply.
-  CHECK(rewound.TruncateBeforeUserTurn(2));
-  CHECK(rewound.Size() == 3);
-  // Out of range and non-positive turns stay errors, never truncations.
-  for (int64_t turn : {int64_t{9}, int64_t{0}, int64_t{-1}}) {
-    CHECK(!rewound.TruncateBeforeUserTurn(turn));
+
+  Conversation conversation;
+  CHECK(conversation.Restore(record.state.messages, record.state.message_kinds,
+                             record.state.archive,
+                             record.state.archive_dropped_segments,
+                             record.state.tool_displays, record.state.display));
+  CHECK(conversation.UserTurns() == 3);
+  CHECK(conversation.UserMessageText(2) == "see this");
+  const uint64_t three = conversation.DisplayIds()[7];
+  CHECK(conversation.UserMessageNumber(three) == 3);
+  CHECK(conversation.UserMessageNumber(conversation.DisplayIds()[6]) == 0);
+
+  // Forking before a message keeps everything before it, including the
+  // files attached on request, and hands its text back to edit.
+  const json forked =
+      SessionStore::Fork(source, "", false, 0, "m-" + std::to_string(three));
+  CHECK(forked.value("prompt", "") == "three");
+  auto fork = SessionStore::Inspect(forked.value("path", ""));
+  REQUIRE(fork.record.has_value());
+  CHECK(fork.record->state.messages.size() == 7);
+  CHECK(fork.record->metadata.parent_session_id == "live-1");
+  CHECK(SessionStore::Inspect(source).record->state.messages.size() == 10);
+  for (const std::string& id : {std::string("m-999"), std::string("x-1")}) {
+    CHECK(SessionStore::Fork(source, "", false, 0, id).contains("error"));
   }
-  CHECK(rewound.Size() == 3);
+  for (int64_t turn : {int64_t{9}, int64_t{-1}}) {
+    CHECK(SessionStore::Fork(source, "", false, turn).contains("error"));
+  }
+
   // The file export lands next to the session and renders its title.
   json shared = SessionStore::Share(source);
   CHECK(!shared.contains("error"));

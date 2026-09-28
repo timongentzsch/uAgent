@@ -633,7 +633,6 @@ class WorkerChannel final : public ApplicationChannel {
       case SessionCommandKind::kConfig:
       case SessionCommandKind::kContext:
       case SessionCommandKind::kFork:
-      case SessionCommandKind::kRewind:
       case SessionCommandKind::kShare:
       case SessionCommandKind::kPrompt: {
         if (QueueIdleControl(request, parsed.raw, error)) return true;

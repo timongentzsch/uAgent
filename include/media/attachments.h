@@ -71,6 +71,12 @@ std::string Base64File(const Attachment& attachment, uintmax_t max_bytes,
 bool Base64Decode(std::string_view input, std::string& output,
                   size_t max_bytes);
 
+// Leads files attached during a turn (by a tool, or queued with /attach): they
+// share the user role and kind with the person's own messages.
+inline constexpr char kAttachedOnRequest[] = "[attached on request]";
+// Separates a message's own words from the list of files it names.
+inline constexpr char kAttachedList[] = "\n\nAttached:";
+
 // The text part always names every path, so a route that cannot take a kind
 // of attachment still learns where it is and can reach it with other tools.
 json AttachmentContent(const std::string& prompt,

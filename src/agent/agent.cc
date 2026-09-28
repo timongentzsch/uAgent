@@ -440,36 +440,6 @@ bool Agent::Load(const std::string& path, const std::string& expected_cwd,
   return true;
 }
 
-bool Agent::RewindToTurn(int64_t turn, std::string& error) {
-  if (turn <= 0) {
-    error = "rewind turn must be positive";
-    return false;
-  }
-  int64_t live = 0;
-  for (MessageKind kind : conversation_.Kinds()) {
-    if (kind == MessageKind::kUser || kind == MessageKind::kAttachment) ++live;
-  }
-  if (turn > live) {
-    error = "session holds fewer than " + std::to_string(turn) +
-            " user turns (older turns may be compacted)";
-    return false;
-  }
-  if (!conversation_.TruncateBeforeUserTurn(turn)) {
-    error = "session holds fewer than " + std::to_string(turn) + " user turns";
-    return false;
-  }
-  // Numbering restarts at the cut like a fork at the same turn, so the
-  // retried turn reuses its number instead of colliding with dropped ids.
-  total_user_turns_ = turn - 1;
-  turn_id_ = turn - 1;
-  logged_msgs_ = std::min(logged_msgs_, conversation_.Size());
-  PublishSideContext();
-  conversation_.RecordDisplay(
-      "reset-boundary", {{"turn", turn}, {"time", UtcStamp("%Y%m%dT%H%M%SZ")}});
-  ++revision_;
-  return true;
-}
-
 size_t Agent::RequestContextBytes(size_t schema_bytes,
                                   const json* messages) const {
   size_t bytes =
@@ -1116,7 +1086,7 @@ bool Agent::DrainAttachments() {
     // re-kinding would feed base64 to the summarizer. Only the attribution
     // differs, carried as a display fact the view projects as agent-side.
     std::string error;
-    json content = AttachmentContent("[attached on request]", sourced, error);
+    json content = AttachmentContent(kAttachedOnRequest, sourced, error);
     if (error.empty()) {
       conversation_.Push({{"role", "user"}, {"content", std::move(content)}},
                          MessageKind::kAttachment);
@@ -1152,7 +1122,7 @@ bool Agent::DrainAttachments() {
 
 bool Agent::DrainUserAttachments(std::vector<Attachment>& attachments) {
   std::string error;
-  json content = AttachmentContent("[attached on request]", attachments, error);
+  json content = AttachmentContent(kAttachedOnRequest, attachments, error);
   if (error.empty()) {
     conversation_.Push({{"role", "user"}, {"content", std::move(content)}},
                        MessageKind::kAttachment);

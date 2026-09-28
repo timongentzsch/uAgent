@@ -196,7 +196,7 @@ void TestHostCommandKinds() {
             ? 1
             : 0;
   }
-  CHECK(forwarded == 18);
+  CHECK(forwarded == 17);
   for (auto local : {session::SessionCommandKind::kClose,
                      session::SessionCommandKind::kGuide,
                      session::SessionCommandKind::kCreate,
@@ -390,17 +390,20 @@ void TestSessionPersistence() {
   auto resumed = SessionStore::Inspect(channel.path);
   REQUIRE(resumed.record.has_value());
   resumed.record->state.messages.push_back(
-      {{"role", "user"}, {"content", "rewind"}});
+      {{"role", "user"}, {"content", "edit me"}});
   resumed.record->state.message_kinds.push_back(MessageKind::kUser);
   resumed.record->state.display = json::object();
   REQUIRE(SessionStore::Save(channel.path, *resumed.record).Ok());
   std::string error;
   REQUIRE(context.agent->Load(channel.path, CanonicalCwd(), error));
-  CHECK(SessionControl(session, {{"kind", "rewind"}, {"turn", 1}})["rewound"] ==
-        true);
-  const auto rewound = SessionStore::Inspect(channel.path);
+  // Rewinding forks before the message and hands it back; the original
+  // conversation keeps it.
+  const json forked = SessionControl(session, {{"kind", "fork"}, {"turn", 1}});
+  CHECK(forked.value("prompt", "") == "edit me");
+  const auto rewound = SessionStore::Inspect(forked.value("path", ""));
   REQUIRE(rewound.record.has_value());
   CHECK(rewound.record->state.messages.size() == 1);
+  CHECK(SessionStore::Inspect(channel.path).record->state.messages.size() == 2);
   const FileStamp checkpoint = SnapshotFile(channel.path);
   CHECK(session.Save(error));
   CHECK(SnapshotFile(channel.path) == checkpoint);

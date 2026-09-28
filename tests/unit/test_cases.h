@@ -117,7 +117,7 @@ namespace uagent {
   X(TestMcpContractHelpers)                      \
   X(TestConversation)                            \
   X(TestForkAtTurnAndLineage)                    \
-  X(TestRewindAndShare)                          \
+  X(TestForkAtMessageAndShare)                   \
   X(TestSessionPrefixMatch)                      \
   X(TestAttachmentDeliveryAnnouncements)         \
   X(TestDisplayFactEvictionKeepsSmallReceipts)   \

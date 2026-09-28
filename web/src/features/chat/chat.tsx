@@ -59,6 +59,7 @@ export default function Chat({
   older,
   report,
   recall,
+  branch,
   inspect,
   http,
   activity,
@@ -80,6 +81,7 @@ export default function Chat({
   preserveWhile: (load: () => Promise<void>) => Promise<void>;
   report: Report;
   recall: (block: Block) => void;
+  branch: (block: Block, edit: boolean) => void;
   inspect: (id: string) => void;
   http: (exchanges: Exchange[]) => void;
   activity: (block: Block) => void;
@@ -174,6 +176,7 @@ export default function Chat({
             session={session}
             report={report}
             recall={recall}
+            branch={branch}
             inspect={inspect}
             http={http}
             activity={activity}

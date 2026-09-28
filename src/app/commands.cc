@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cinttypes>
 #include <cstdarg>
 #include <cstdio>
 #include <sstream>
@@ -108,18 +109,22 @@ CommandReply RunSlashCommand(AppSession& session,
       reply.Print("\033[H\033[2J");
       return reply;
     case SlashCommandId::kRewind: {
-      std::string arg = Trim(command.argument);
-      if (arg.starts_with("@")) arg = Trim(arg.substr(1));
-      int64_t turn = 0;
-      if (!arg.empty() && arg.size() <= 9 &&
-          std::all_of(arg.begin(), arg.end(), ::isdigit)) {
-        turn = std::stoll(arg);
-      }
-      if (turn <= 0) {
-        result = {{"error", "usage: /rewind [@]TURN"}};
+      // The clients fork before message N; bare, this lists the numbers.
+      if (!Trim(command.argument).empty()) {
+        result = {{"error", "this command belongs to the client"}};
         return reply;
       }
-      result = SessionControl(session, {{"kind", "rewind"}, {"turn", turn}});
+      const Conversation& history = session.ActiveAgent().History();
+      const int64_t count = history.UserTurns();
+      for (int64_t turn = 1; turn <= count; ++turn) {
+        reply.Print(
+            "%s%3" PRId64 "%s  %s\n", DIM(), turn, RST(),
+            TerminalSafe(FirstLine(history.UserMessageText(turn))).c_str());
+      }
+      reply.Print(
+          "%s· /rewind N forks before message N and opens it with "
+          "that message to edit; the original stays as it is%s\n",
+          DIM(), RST());
       return reply;
     }
     case SlashCommandId::kShare: {

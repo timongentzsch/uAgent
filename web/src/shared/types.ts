@@ -619,8 +619,8 @@ export interface CommandResults {
   tool_categories: ToolCategories;
   activity: ActivityDetail;
   context: { exchanges: Exchange[] };
-  fork: { id: string };
-  rewind: { turns: number };
+  // A fork cut before a message returns that message, to edit (prompt).
+  fork: { id: string; prompt?: string };
   share: { path: string };
   side: { answer: string };
   create: never;
@@ -643,6 +643,8 @@ export type CommandKind = keyof CommandResults;
 export interface CommandFields {
   // Raw text after a slash command, parsed by the native host.
   argument?: string;
+  // The message a fork is cut before ("m-<id>").
+  message_id?: string;
   detail?: string;
   raw?: boolean;
   offset?: number;

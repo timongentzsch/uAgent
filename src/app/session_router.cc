@@ -60,17 +60,13 @@ SessionCommandResult SessionHost::ExecuteCommand(
     result.error = "conversation update in progress";
     return result;
   }
-  if ((kind == SessionCommandKind::kFork ||
-       kind == SessionCommandKind::kRewind) &&
-      command.contains("argument")) {
+  if (kind == SessionCommandKind::kFork && command.contains("argument")) {
     // Browser clients send the typed argument; the grammar lives natively.
-    // Rewind shares /fork's [@]TURN and takes no title.
     const ForkArgument parsed =
         ParseForkArgument(JsonValue(command, "argument", ""));
     command.erase("argument");
-    const bool fork = kind == SessionCommandKind::kFork;
-    if (fork) command["title"] = parsed.title;
-    command["turn"] = fork || parsed.title.empty() ? parsed.turn : 0;
+    command["title"] = parsed.title;
+    command["turn"] = parsed.turn;
   }
   if (kind == SessionCommandKind::kFork && session->pid <= 0) {
     if (JsonValue(command, "generation", "") != session->generation) {
@@ -81,7 +77,8 @@ SessionCommandResult SessionHost::ExecuteCommand(
       lock.unlock();
       json fork =
           SessionStore::Fork(session->path, JsonValue(command, "title", ""),
-                             false, JsonValue(command, "turn", int64_t{0}));
+                             false, JsonValue(command, "turn", int64_t{0}),
+                             JsonValue(command, "message_id", ""));
       if (RefreshCatalogue(true)) changed_.notify_all();
       lock.lock();
       result.outcome["result"] = fork;

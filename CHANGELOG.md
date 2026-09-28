@@ -11,8 +11,20 @@
   `/rename`, `/memory`, `/skills`, `/schedule`) open it in the web UI when
   typed without an argument.
 
+### Changed
+
+- Rewind never loses work. Your messages' menu offers **Edit from here**
+  (continue in a fork cut before the message, with it back in the composer)
+  and **Fork from here** (keep the message and its reply). `/rewind N` does
+  the same by number, and a bare `/rewind` lists the numbers. The original
+  conversation stays as it was; files on disk are not changed. The in-place
+  truncation and the `rewind` command kind are gone.
+
 ### Fixed
 
+- Files the agent attached mid-turn no longer count as your messages, so
+  message numbers, `/fork N`, `/rewind N` and `/share` line up with what
+  you wrote.
 - Tall images fit whole in the viewer instead of overflowing it.
 - `/sessions` in a wide browser window focuses the conversation search.
 - The UI showcase no longer throws on load.

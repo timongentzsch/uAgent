@@ -391,6 +391,20 @@ function App() {
     setLibraryKind(kind);
     setPage("library");
   }
+  // A fork opens as its own conversation; the original stays as it was.
+  // Editing (a rewind) also puts the message it forked before back into
+  // the composer.
+  async function forkAndOpen(fields: CommandFields, edit = false) {
+    const result = await command("fork", session, fields);
+    if (result.pending) return;
+    const { id, prompt } = result.result;
+    await refresh();
+    await choose(id);
+    await command("activate", { id, generation: "" });
+    await load(id);
+    if (edit && prompt) setDraft({ text: prompt, files: [] }, id);
+    if (edit) setNotice("Continuing in a fork. Files on disk are unchanged.");
+  }
   async function localCommand(text: string) {
     const { name, argument } = parseSlash(catalogue.commands || [], text);
     if (!argument && screens[name]) screens[name]();
@@ -399,13 +413,10 @@ function App() {
       await act("close");
       await load(selected);
     } else if (name === "/fork") {
-      const result = await command("fork", session, { argument });
-      if (!result.pending) {
-        await refresh();
-        await choose(result.result.id);
-        await command("activate", { id: result.result.id, generation: "" });
-        await load(result.result.id);
-      }
+      await forkAndOpen({ argument });
+    } else if (name === "/rewind" && argument) {
+      // Bare /rewind runs on the host and lists the message numbers.
+      await forkAndOpen({ argument }, true);
     } else if (name === "/btw") {
       if (!argument) throw new Error("Use /btw QUESTION");
       // The card shows the question; the composer is free again at once.
@@ -424,9 +435,6 @@ function App() {
           report(failure);
         },
       );
-    } else if (name === "/rewind") {
-      const result = await act("rewind", { argument });
-      if (!result.pending) await load(selected);
     } else if (name === "/share") {
       const result = await act("share");
       if (!result.pending)
@@ -591,8 +599,21 @@ function App() {
   // then the only correct move.
   // Rows skip re-rendering on equal props, so the callbacks they get must
   // stay the same function; they read the latest state through a ref.
-  const latest = useRef({ online, selected, act, report });
-  latest.current = { online, selected, act, report };
+  const latest = useRef({ online, selected, act, report, forkAndOpen, blocks });
+  latest.current = { online, selected, act, report, forkAndOpen, blocks };
+  // From a message's menu: edit it in a fork (fork before it), or keep it
+  // and its reply (fork before the next message of yours).
+  const branchFrom = useCallback((block: Block, edit: boolean) => {
+    const { forkAndOpen, blocks, report } = latest.current;
+    const after = blocks.slice(
+      blocks.findIndex((item) => item.id === block.id) + 1,
+    );
+    const next = after.find((item) => item.kind === "user");
+    forkAndOpen(
+      edit ? { message_id: block.id } : next ? { message_id: next.id } : {},
+      edit,
+    ).catch(report);
+  }, []);
   const openActivity = useCallback(
     (block: Block) => setInspector({ block }),
     [],
@@ -1064,6 +1085,7 @@ function App() {
                       older={older}
                       report={report}
                       recall={recallGuidance}
+                      branch={branchFrom}
                       inspect={inspect}
                       http={showMessageHttp}
                       activity={openActivity}

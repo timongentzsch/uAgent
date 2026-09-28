@@ -74,11 +74,7 @@ json SessionControl(AppSession& session, const json& request) {
     }
     return result;
   }
-  if (kind == "fork" || kind == "rewind" || kind == "share") {
-    const int64_t turn = JsonValue(request, "turn", int64_t{0});
-    if (kind == "rewind" && turn <= 0) {
-      return {{"error", "usage: /rewind [@]TURN"}};
-    }
+  if (kind == "fork" || kind == "share") {
     if (session.session_file.empty()) {
       if (kind != "fork") return {{"error", "session has no file yet"}};
       session.session_file = UagentDir(kHistoryDir) + "/" +
@@ -86,15 +82,12 @@ json SessionControl(AppSession& session, const json& request) {
                              MakeSessionId() + ".json";
     }
     std::string error;
-    if ((kind == "rewind" &&
-         !session.ActiveAgent().RewindToTurn(turn, error)) ||
-        !session.Save(error)) {
-      return {{"error", error}};
-    }
-    if (kind == "rewind") return {{"rewound", true}, {"turns", turn - 1}};
+    if (!session.Save(error)) return {{"error", error}};
     if (kind == "share") return SessionStore::Share(session.session_file);
     return SessionStore::Fork(session.session_file,
-                              JsonValue(request, "title", ""), true, turn);
+                              JsonValue(request, "title", ""), true,
+                              JsonValue(request, "turn", int64_t{0}),
+                              JsonValue(request, "message_id", ""));
   }
   if (kind == "config") {
     return ConfigurationControl(

@@ -19,6 +19,7 @@
 #include "include/core/limits.h"
 #include "include/core/strings.h"
 #include "include/core/usage.h"
+#include "include/media/attachments.h"
 
 namespace uagent {
 
@@ -471,20 +472,51 @@ void Conversation::Erase(size_t begin, size_t end) {
                      display_ids_.begin() + static_cast<std::ptrdiff_t>(end));
 }
 
+bool IsUserMessage(const json& message, MessageKind kind) {
+  if (kind == MessageKind::kUser) return true;
+  if (kind != MessageKind::kAttachment) return false;
+  const json* parts = JsonArray(message, "content");
+  return !parts || parts->empty() ||
+         !JsonValue((*parts)[0], "text", "").starts_with(kAttachedOnRequest);
+}
+
 bool Conversation::TruncateBeforeUserTurn(int64_t turn) {
   if (turn <= 0) return false;
   int64_t seen = 0;
   for (size_t index = 0; index < kinds_.size(); ++index) {
-    if (kinds_[index] != MessageKind::kUser &&
-        kinds_[index] != MessageKind::kAttachment) {
-      continue;
-    }
-    if (++seen == turn) {
+    if (IsUserMessage(messages_[index], kinds_[index]) && ++seen == turn) {
       Erase(index, kinds_.size());
       return true;
     }
   }
   return false;
+}
+
+int64_t Conversation::UserMessageNumber(uint64_t display_id) const {
+  int64_t seen = 0;
+  for (size_t index = 0; index < kinds_.size(); ++index) {
+    if (!IsUserMessage(messages_[index], kinds_[index])) continue;
+    ++seen;
+    if (display_ids_[index] == display_id) return seen;
+  }
+  return 0;
+}
+
+std::string Conversation::UserMessageText(int64_t turn) const {
+  int64_t seen = 0;
+  for (size_t index = 0; index < kinds_.size(); ++index) {
+    if (!IsUserMessage(messages_[index], kinds_[index]) || ++seen != turn) {
+      continue;
+    }
+    const json& content = messages_[index]["content"];
+    if (content.is_string()) return content.get<std::string>();
+    // A message with files: its own words lead the first text part.
+    const json* parts = JsonArray(messages_[index], "content");
+    const std::string text =
+        parts && !parts->empty() ? JsonValue((*parts)[0], "text", "") : "";
+    return text.substr(0, text.find(kAttachedList));
+  }
+  return "";
 }
 
 bool Conversation::HasKind(MessageKind kind) const {
@@ -537,8 +569,11 @@ std::string Conversation::FirstUserText() const {
 }
 
 int64_t Conversation::UserTurns() const {
-  return static_cast<int64_t>(
-      std::count(kinds_.begin(), kinds_.end(), MessageKind::kUser));
+  int64_t turns = 0;
+  for (size_t index = 0; index < kinds_.size(); ++index) {
+    turns += IsUserMessage(messages_[index], kinds_[index]);
+  }
+  return turns;
 }
 
 size_t Conversation::UserVisibleCount() const { return kinds_.size(); }

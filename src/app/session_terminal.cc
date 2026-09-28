@@ -82,9 +82,11 @@ std::string StatusRow(const json& state,
 
 class Terminal {
  public:
-  Terminal(Connection connection, std::string path)
+  // `draft` starts the composer, e.g. the message a rewind forked before.
+  Terminal(Connection connection, std::string path, std::string draft = "")
       : connection_(std::move(connection)),
         path_(std::move(path)),
+        draft_(std::move(draft)),
         composer_(output_) {}
   int Run(const std::vector<std::string>& attachments) {
     if (!stop_.Open() || !wake_.Open()) return 1;
@@ -109,7 +111,7 @@ class Terminal {
     });
     if (raw_) {
       output_.Write("Connecting\n");
-      composer_.Mount(InputPrompt());
+      composer_.Mount(InputPrompt(), draft_);
     }
     std::vector<std::string> files = attachments;
     std::string cooked;
@@ -346,12 +348,16 @@ class Terminal {
       } else if (text == "/fork" || text.starts_with("/fork ")) {
         const ForkArgument fork = ParseForkArgument(text.substr(5));
         Send({{"kind", "fork"}, {"title", fork.title}, {"turn", fork.turn}});
-      } else if (text == "/rewind" || text.starts_with("/rewind ")) {
-        // Same [@]N grammar as /fork's turn suffix, title aside: rewind
-        // truncates this session in place instead of branching it.
+      } else if (text.starts_with("/rewind ")) {
+        // Forks before message N and opens the fork with that message to
+        // edit; the original stays. Bare /rewind lists the numbers (host).
         const ForkArgument parsed = ParseForkArgument(text.substr(7));
-        Send({{"kind", "rewind"},
-              {"turn", parsed.title.empty() ? parsed.turn : 0}});
+        if (parsed.turn <= 0 || !parsed.title.empty()) {
+          WriteTerminalRecord("· usage: /rewind N (bare /rewind lists them)\n");
+          continue;
+        }
+        rewinding_ = true;
+        Send({{"kind", "fork"}, {"turn", parsed.turn}});
       } else if (text.starts_with("/btw ")) {
         Send({{"kind", "side"}, {"text", Trim(text.substr(5))}});
         continue;
@@ -413,6 +419,8 @@ class Terminal {
     return exit_code ? exit_code : failed_ ? 1 : 0;
   }
   const std::string& Next() const { return next_; }
+  // What the next session's composer starts with.
+  const std::string& Carry() const { return carry_; }
 
  private:
   void Send(json command) {
@@ -428,7 +436,6 @@ class Terminal {
       own_requests_.insert(command["request_id"]);
       if (JsonValue(command, "kind", "") == "submit" ||
           JsonValue(command, "kind", "") == "fork" ||
-          JsonValue(command, "kind", "") == "rewind" ||
           JsonValue(command, "kind", "") == "share") {
         if (raw_ && JsonValue(command, "kind", "") == "submit" &&
             !JsonValue(command, "text", "").starts_with('/')) {
@@ -541,13 +548,11 @@ class Terminal {
       if (JsonValue(result, "forked", false)) {
         std::lock_guard lock(mutex_);
         next_ = JsonValue(result, "path", "");
+        if (rewinding_) carry_ = JsonValue(result, "prompt", "");
         navigate_ = true;
         wake_.Wake();
       }
-      if (JsonValue(result, "rewound", false)) {
-        // Same worker, truncated transcript: resync the view in place.
-        Send({{"kind", "refresh"}});
-      }
+      rewinding_ = false;
     } else if (kind == "error") {
       failed_ = true;
       WriteTerminalRecord(TerminalSafe(JsonValue(frame, "error", "")) + "\n");
@@ -632,6 +637,8 @@ class Terminal {
   std::atomic<bool> disconnected_{false}, detaching_{false}, ended_{false},
       failed_{false};
   std::atomic<bool> navigate_{false};
+  std::atomic<bool> rewinding_{false};
+  std::string carry_;
   std::atomic<bool> input_blocked_{true}, interaction_{false};
   std::set<std::string> shown_;
   std::set<std::string> own_requests_, echoed_;
@@ -645,6 +652,7 @@ int TerminalMain(Options options) {
     auto sessions = ListSessions();
     if (!sessions.empty()) path = sessions.front().path;
   }
+  std::string draft;
   for (;;) {
     std::string cwd = CanonicalCwd();
     if (!path.empty()) {
@@ -665,8 +673,9 @@ int TerminalMain(Options options) {
       fprintf(stderr, "%s\n", error.c_str());
       return 1;
     }
-    Terminal terminal(std::move(connection), path);
+    Terminal terminal(std::move(connection), path, draft);
     int result = terminal.Run(options.attach_paths);
+    draft = terminal.Carry();
     options.attach_paths.clear();
     if (result || terminal.Next().empty()) return result;
     if (terminal.Next() == "/restart") {

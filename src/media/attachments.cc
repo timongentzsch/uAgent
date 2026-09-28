@@ -472,7 +472,7 @@ json AttachmentContent(const std::string& prompt,
     return nullptr;
   }
 
-  std::string text = prompt + "\n\nAttached:";
+  std::string text = prompt + kAttachedList;
   for (const Attachment& attachment : attachments) {
     text += "\n- path " + JsonDump(attachment.path);
     if (!attachment.source_call_id.empty()) {

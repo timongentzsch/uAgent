@@ -3,6 +3,7 @@
 #include "include/agent/session_store.h"
 
 #include <algorithm>
+#include <charconv>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -373,7 +374,8 @@ bool ValidSessionTitle(const std::string& title) {
 }
 
 json SessionStore::Fork(const std::string& source, const std::string& title,
-                        bool source_owned, int64_t fork_turn) {
+                        bool source_owned, int64_t fork_turn,
+                        const std::string& message_id) {
   FileLease writer;
   std::string error;
   if (!source_owned &&
@@ -399,9 +401,22 @@ json SessionStore::Fork(const std::string& source, const std::string& title,
                             record.state.tool_displays, record.state.display)) {
     return {{"error", "session conversation state is invalid"}};
   }
-  // Fork-at-turn keeps the prefix before the Nth user turn (exclusive, so
-  // the dropped turn can be retried fresh); 0 forks the whole session.
-  // Message-exclusive like OpenCode's slice(0, target).
+  if (!message_id.empty()) {
+    uint64_t id = 0;
+    const auto [end, parsed] = std::from_chars(
+        message_id.data() + std::min<size_t>(2, message_id.size()),
+        message_id.data() + message_id.size(), id);
+    fork_turn = message_id.starts_with("m-") && parsed == std::errc() &&
+                        end == message_id.data() + message_id.size()
+                    ? conversation.UserMessageNumber(id)
+                    : 0;
+    if (fork_turn == 0) {
+      return {{"error", "that message is no longer in the live conversation"}};
+    }
+  }
+  // Keeps the prefix before the Nth user message (exclusive, so it can be
+  // edited and sent again); 0 forks the whole session.
+  const std::string prompt = conversation.UserMessageText(fork_turn);
   if (fork_turn > 0) {
     if (!conversation.TruncateBeforeUserTurn(fork_turn)) {
       return {{"error", "session has fewer than " + std::to_string(fork_turn) +
@@ -546,11 +561,13 @@ json SessionStore::Fork(const std::string& source, const std::string& title,
     }
     return {{"error", result.message}};
   }
-  return {{"forked", true},
-          {"id", HashHex(path)},
-          {"path", path},
-          {"cwd", record.metadata.cwd},
-          {"title", record.metadata.title}};
+  json forked = {{"forked", true},
+                 {"id", HashHex(path)},
+                 {"path", path},
+                 {"cwd", record.metadata.cwd},
+                 {"title", record.metadata.title}};
+  if (fork_turn > 0) forked["prompt"] = prompt;
+  return forked;
 }
 
 namespace {
@@ -601,9 +618,11 @@ std::string SessionStore::ShareMarkdown(const SessionRecord& record) {
        ++index) {
     const MessageKind kind = record.state.message_kinds[index];
     const json& message = record.state.messages[index];
-    if (kind == MessageKind::kUser || kind == MessageKind::kAttachment) {
+    if (IsUserMessage(message, kind)) {
       out += "\n## User " + std::to_string(++user_n) + "\n\n" +
              ShareText(message) + "\n";
+    } else if (kind == MessageKind::kAttachment) {
+      out += "\n## Attached\n\n" + ShareText(message) + "\n";
     } else if (kind == MessageKind::kAssistant) {
       const std::string text = ShareText(message);
       if (text.empty()) continue;  // Tool-call-only message.

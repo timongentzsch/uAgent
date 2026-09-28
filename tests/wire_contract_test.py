@@ -65,7 +65,6 @@ DOCUMENTED_INTERNAL = frozenset(
         "interrupt",
         "refresh",
         "reply",
-        "rewind",
         "share",
         "side",
         "submit",

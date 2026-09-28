@@ -112,6 +112,8 @@ class Agent {
   using KeepFile =
       std::function<json(const std::string& path, const std::string& name)>;
   void KeepToolFiles(KeepFile keep) { keep_tool_file_ = std::move(keep); }
+  // Coordinator/thread role ({kind, thread}), saved in the session header.
+  void SetSessionRole(json role) { session_role_ = std::move(role); }
   void RetainExchanges(bool enabled) {
     retain_exchanges_ = enabled;
     api_.capture_http = enabled;
@@ -390,6 +392,7 @@ class Agent {
   std::string parent_session_id_;
   int64_t forked_at_turn_ = 0;
   std::string forked_at_time_;
+  json session_role_ = json::object();
   int64_t total_user_turns_ = 0;
   size_t logged_msgs_ = 0;      // messages already written to the debug trace
   std::string logged_schemas_;  // last exact per-request schema snapshot

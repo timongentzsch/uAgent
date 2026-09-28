@@ -74,6 +74,10 @@ std::string SubagentModel() {
   return StringSetting(Cfg("UAGENT_SUBAGENT_MODEL"));
 }
 
+std::string CoordinatorModel() {
+  return StringSetting(Cfg("UAGENT_COORDINATOR_MODEL"));
+}
+
 int64_t SubagentTimeoutSeconds() {
   return LongSetting(Cfg("UAGENT_SUBAGENT_TIMEOUT"));
 }

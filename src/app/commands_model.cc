@@ -6,6 +6,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/session_store.h"
 #include "include/core/debug.h"
 #include "include/core/events.h"
 #include "include/core/signals.h"
@@ -31,8 +32,13 @@ std::string SaveSelectedModel(AppSession& session,
           .has_value();
   ActivateCurrentRoute(session);
   std::string error;
-  bool saved = SaveModelPreference(
-      {selected, session.ApiClient().base_url, named_route}, error);
+  // A coordinator's model is its folder's, kept in its session settings; it
+  // must not become the default of every other session.
+  bool saved = JsonValue(session.context.options.session, "kind", "") ==
+                   kSessionKindCoordinator ||
+               SaveModelPreference(
+                   {selected, session.ApiClient().base_url, named_route},
+                   error);
   DebugLog("route_changed", {{"route", selected},
                              {"model", session.ApiClient().model},
                              {"base_url", session.ApiClient().base_url},

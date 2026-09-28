@@ -29,6 +29,7 @@ class Server {
   bool Start(const std::string& path, const std::string& generation,
              std::function<bool(const json&)> command);
   void Publish(json frame);
+  size_t Clients() const;
 
  private:
   struct State;

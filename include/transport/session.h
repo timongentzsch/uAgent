@@ -32,6 +32,9 @@ inline constexpr int kSocketBacklog = 16;
 inline constexpr auto kConnectTimeout = std::chrono::seconds(2);
 inline constexpr auto kConnectPollInterval = std::chrono::milliseconds(100);
 inline constexpr auto kWorkerShutdownTimeout = std::chrono::seconds(5);
+// A coordinator with no client and nothing to do exits after this long; the
+// next message or thread event starts it again.
+inline constexpr auto kCoordinatorIdle = std::chrono::minutes(10);
 inline constexpr auto kStreamBatchInterval =
     std::chrono::milliseconds(kStreamBatchIntervalMs);
 inline constexpr auto kUsagePublishInterval =

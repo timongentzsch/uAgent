@@ -35,6 +35,9 @@ struct Options {
   std::string prompt;
   std::string control;
   std::vector<std::string> attach_paths;
+  // Session role from the runtime launch: {kind, thread} for a folder's
+  // coordinator or a thread it launched, empty for an ordinary session.
+  uagent::json session = uagent::json::object();
   // UAGENT_* values named on the command line; they outrank the environment
   // and both config files. --budget and --no-memory land here too.
   RuntimeConfig::Values overrides;

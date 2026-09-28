@@ -645,8 +645,12 @@ class Terminal {
 };
 }  // namespace
 int TerminalMain(Options options) {
+  const bool coordinator =
+      JsonValue(options.session, "kind", "") == kSessionKindCoordinator;
   std::string path;
-  if (options.resume_pick) {
+  if (coordinator) {
+    path = CoordinatorPath(CanonicalCwd());
+  } else if (options.resume_pick) {
     path = PickSession();
   } else if (options.resume_latest) {
     auto sessions = ListSessions();
@@ -687,7 +691,8 @@ int TerminalMain(Options options) {
       }
       printf("· restarted\n");
     } else if (terminal.Next() == "/reset") {
-      path.clear();
+      // The folder has one coordinator; its reset keeps the same file.
+      if (!coordinator) path.clear();
     } else {
       path = terminal.Next();
     }

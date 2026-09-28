@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "include/agent/prompt.h"
+#include "include/agent/session_store.h"
 #include "include/api.h"
 #include "include/app/artifact.h"
 #include "include/app/asset_store.h"
@@ -608,6 +609,13 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   ConfigManager config_manager =
       ConfigManager::Capture(trusted, options.overrides);
   RuntimeConfig config = config_manager.Initialize();
+  // Route resolution reads UAGENT_MODEL; a coordinator starts on its own
+  // model. A /model saved in its session still wins on resume.
+  if (JsonValue(options.session, "kind", "") == kSessionKindCoordinator &&
+      !options.overrides.contains("UAGENT_MODEL")) {
+    const std::string model = CoordinatorModel();
+    if (!model.empty()) setenv("UAGENT_MODEL", model.c_str(), 1);
+  }
   if (memory_child && !BuildMemoryExtractionPrompt(memory_source, workspace,
                                                    options.prompt, error)) {
     return Failure(std::move(error), 2);
@@ -691,6 +699,9 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   }
   ActivateRoute(api);
   context->tool_policy = ToolPolicyFromEnvironment();
+  context->tool_policy.coordinator =
+      JsonValue(context->options.session, "kind", "") ==
+      kSessionKindCoordinator;
   PrintWarning(context->tool_policy.error);
   std::string tool_error;
   context->tools =
@@ -713,6 +724,7 @@ BootstrapResult Bootstrap(Options options, const char* executable,
       context->runtime.side_usage, MakeApprover(app), MakeToolRefresher(app),
       std::move(instructions), std::move(skills),
       &context->runtime.adaptive_system);
+  context->agent->SetSessionRole(context->options.session);
   if (context->channel && !context->channel->SessionPath().empty()) {
     context->agent->KeepToolFiles([session_path =
                                        context->channel->SessionPath()](

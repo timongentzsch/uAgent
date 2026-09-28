@@ -1144,6 +1144,10 @@ void TestChildSessionsStayOutOfTheCatalogue() {
   write("ordinary", json::object());
   write("agent-aaaa1111",
         {{kSessionHeaderDelegation, {{"parent", "p"}, {"name", "reviewer"}}}});
+  // The folder's coordinator is reached by its path, never listed.
+  write("coordinator", {{kSessionHeaderKind, kSessionKindCoordinator}});
+  CHECK(CoordinatorPath(CanonicalCwd()) ==
+        (dir / "coordinator.json").string());
   auto ids = [](SessionScope scope) {
     std::vector<std::string> out;
     for (const SessionInfo& info : ListSessions(scope)) {

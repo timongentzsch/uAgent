@@ -13,6 +13,7 @@
 #include <thread>
 
 #include "include/app/control.h"
+#include "include/app/launch.h"
 #include "include/core/fs.h"
 #include "include/core/lease.h"
 #include "include/core/limits.h"
@@ -87,11 +88,9 @@ json Mutate(const std::function<json(json&)>& change) {
 json Run(const json& task, int64_t at, const std::string& status) {
   auto id = HashHex(MakeSessionId());
   const auto project = JsonValue(task, "cwd", "");
-  const auto cwd = JsonValue(task, "environment", "local") == "worktree"
-                       ? UagentDir("worktrees") + "/" + id
-                       : project;
-  const auto folder = UagentDir(kHistoryDir) + "/" + WorkspaceId(cwd);
-  const auto path = folder + "/scheduled-" + id + ".json";
+  const auto [cwd, path] = PlanLaunch(
+      project, JsonValue(task, "environment", "local") == "worktree",
+      "scheduled-", id);
   return {{"id", id},
           {"task_id", task["id"]},
           {"task_revision", task["revision"]},

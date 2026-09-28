@@ -1010,8 +1010,15 @@ void TestForkAtTurnAndLineage() {
   record.state.message_kinds = {MessageKind::kSystem, MessageKind::kUser,
                                 MessageKind::kAssistant, MessageKind::kUser,
                                 MessageKind::kAssistant};
+  record.metadata.kind = kSessionKindThread;
+  record.metadata.thread = {{"coordinator_id", "c-1"}};
   const std::string source = (workspace.workspace / "source.json").string();
   CHECK(SessionStore::Save(source, record).Ok());
+  // The thread link round-trips; a fork is an ordinary session.
+  auto linked = SessionStore::Inspect(source);
+  CHECK(linked.record->metadata.kind == kSessionKindThread);
+  CHECK(JsonValue(linked.record->metadata.thread, "coordinator_id", "") ==
+        "c-1");
 
   // Turn 2 keeps the prefix before the second user message: 3 messages.
   json forked = SessionStore::Fork(source, "", true, 2);
@@ -1025,6 +1032,8 @@ void TestForkAtTurnAndLineage() {
   CHECK(reloaded.record->metadata.turns == 1);
   CHECK(reloaded.record->metadata.title == "Fork of parent title @ turn 2");
   CHECK(reloaded.record->metadata.parent_session_id == "parent-1");
+  CHECK(reloaded.record->metadata.kind.empty());
+  CHECK(reloaded.record->metadata.thread.empty());
   CHECK(reloaded.record->metadata.forked_at_turn == 2);
   CHECK(!reloaded.record->metadata.forked_at_time.empty());
   // The source still has everything.

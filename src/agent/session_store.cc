@@ -110,6 +110,8 @@ json HeaderJson(const SessionMetadata& metadata) {
   if (!metadata.delegation.empty()) {
     header[kSessionHeaderDelegation] = metadata.delegation;
   }
+  if (!metadata.kind.empty()) header[kSessionHeaderKind] = metadata.kind;
+  if (!metadata.thread.empty()) header[kSessionHeaderThread] = metadata.thread;
   return header;
 }
 
@@ -257,6 +259,9 @@ SessionLoadResult SessionStore::Inspect(const std::string& path) {
       JsonValue(header, kSessionHeaderForkTime, "");
   record.metadata.delegation =
       JsonValue(header, kSessionHeaderDelegation, json::object());
+  record.metadata.kind = JsonValue(header, kSessionHeaderKind, "");
+  record.metadata.thread =
+      JsonValue(header, kSessionHeaderThread, json::object());
   record.state.messages = std::move(state["messages"]);
   record.state.message_kinds = std::move(message_kinds);
   record.state.archive = std::move(state["archive"]);
@@ -300,6 +305,12 @@ json SessionHeader(const std::string& path) {
   return ValidHeader(header) ? header : json::object();
 }
 
+std::string CoordinatorPath(const std::string& cwd) {
+  return (std::filesystem::path(GlobalBase()) / kHistoryDir / WorkspaceId(cwd) /
+          "coordinator.json")
+      .string();
+}
+
 std::vector<SessionInfo> ListSessions(SessionScope scope) {
   return SessionCatalogue{}.List(scope);
 }
@@ -323,6 +334,7 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
   }
   const auto listed = [&](const SessionInfo& info) {
     return (scope == SessionScope::kAll || info.cwd == current) &&
+           info.kind != kSessionKindCoordinator &&
            info.delegation.empty() != (scope == SessionScope::kChildren);
   };
   std::vector<SessionInfo> out;
@@ -361,6 +373,8 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
         item.incoming = JsonValue(header, "incoming", uint64_t{0});
         item.delegation =
             JsonValue(header, kSessionHeaderDelegation, json::object());
+        item.kind = JsonValue(header, kSessionHeaderKind, "");
+        item.thread = JsonValue(header, kSessionHeaderThread, json::object());
         if (JsonValue(header, "format", int64_t{0}) != kSessionFormat) {
           item.error = "unsupported session format";
         }
@@ -554,6 +568,10 @@ json SessionStore::Fork(const std::string& source, const std::string& title,
   record.state.display["statistics"] = {{"incoming", 0}, {"complete", true}};
   record.metadata.session_id = identity;
   record.metadata.parent_session_id = parent_session_id;
+  // A fork is the user's own conversation: never a second coordinator, and
+  // no longer a thread its coordinator steers.
+  record.metadata.kind.clear();
+  record.metadata.thread = json::object();
   record.metadata.forked_at_turn = fork_turn > 0 ? fork_turn : parent_turns;
   record.metadata.forked_at_time = UtcStamp("%Y%m%dT%H%M%SZ");
   if (!title.empty()) {

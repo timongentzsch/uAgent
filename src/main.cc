@@ -21,6 +21,7 @@ extern char** environ;
 #include <vector>
 
 #include "include/agent/jobs.h"
+#include "include/agent/session_store.h"
 #include "include/app/bootstrap.h"
 #include "include/app/control.h"
 #include "include/app/options.h"
@@ -137,7 +138,10 @@ int Main(int argc, char** argv) {
 #endif
   Observability observability;
   SetObservability(&observability);
-  ParsedOptions parsed = ParseOptions(argc, argv);
+  // `uagent coord` opens the folder's coordinator; the rest are its options.
+  const bool coordinator = argc > 1 && std::string_view(argv[1]) == "coord";
+  ParsedOptions parsed = coordinator ? ParseOptions(argc - 1, argv + 1)
+                                     : ParseOptions(argc, argv);
   if (!parsed.Ok()) {
     if (parsed.options.json_stream) observability.StartJsonStream();
     return Fail(parsed.options.json_stream, parsed.options.json, parsed.error,
@@ -191,6 +195,16 @@ int Main(int argc, char** argv) {
     return result.contains("error") ? 1 : 0;
   }
   const bool json_stream = parsed.options.json_stream;
+  if (coordinator) {
+    if (parsed.options.web || !parsed.options.prompt.empty() ||
+        parsed.options.json || json_stream || parsed.options.resume_latest ||
+        parsed.options.resume_pick) {
+      fprintf(stderr, "uagent coord takes session options only\n");
+      return 2;
+    }
+    parsed.options.session = {{"kind", kSessionKindCoordinator}};
+    return session::TerminalMain(std::move(parsed.options));
+  }
   if (parsed.options.web) {
 #ifdef UAGENT_WEB
     if (!parsed.options.prompt.empty() || parsed.options.json || json_stream ||

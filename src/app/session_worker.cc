@@ -78,12 +78,13 @@ json AttachmentsToJson(const std::vector<Attachment>& attachments) {
 class WorkerChannel final : public ApplicationChannel {
  public:
   WorkerChannel(std::string path, std::string id, std::string generation,
-                std::string title, bool browser_session)
+                std::string title, bool browser_session, bool coordinator)
       : path_(std::move(path)),
         id_(std::move(id)),
         generation_(std::move(generation)),
         title_(std::move(title)),
-        browser_session_(browser_session) {}
+        browser_session_(browser_session),
+        coordinator_(coordinator) {}
   ~WorkerChannel() override { Close(); }
 
   bool Start() {
@@ -170,6 +171,9 @@ class WorkerChannel final : public ApplicationChannel {
   }
 
   std::optional<ApplicationInput> NextInput() override {
+    // Only an idle coordinator times out: its runtime costs nothing between
+    // uses, and any client or thread event starts it again.
+    auto idle_since = std::chrono::steady_clock::now();
     for (;;) {
       {
         std::lock_guard lock(mutex_);
@@ -185,8 +189,21 @@ class WorkerChannel final : public ApplicationChannel {
       }
       pollfd waits[] = {{wake_.read.Get(), POLLIN, 0},
                         {AbortWakeFd(), POLLIN, 0}};
-      if (poll(waits, 2, -1) < 0 && errno != EINTR) {
+      const int ready = poll(
+          waits, 2,
+          coordinator_ ? static_cast<int>(kIdlePoll.count()) : -1);
+      if (ready < 0 && errno != EINTR) {
         return std::nullopt;
+      }
+      if (ready == 0) {
+        const auto now = std::chrono::steady_clock::now();
+        if (server_.Clients() > 0) idle_since = now;
+        if (now - idle_since >= kCoordinatorIdle) {
+          std::lock_guard lock(mutex_);
+          closed_ = true;
+          return std::nullopt;
+        }
+        continue;
       }
       wake_.Drain();
       {
@@ -695,9 +712,11 @@ class WorkerChannel final : public ApplicationChannel {
   // Socket callbacks can run while bootstrap initializes the environment.
   Pipe wake_;
   std::mutex mutex_, control_mutex_;
+  static constexpr auto kIdlePoll = std::chrono::milliseconds(30000);
   bool closed_ = false, busy_ = true;
   bool turn_active_ = false;
   [[maybe_unused]] bool browser_session_ = false;  // web builds only
+  const bool coordinator_ = false;
   bool reply_cancelled_ = false;
   bool ready_ = false;
   json notices_ = json::array();
@@ -734,8 +753,22 @@ int WorkerMain(int argc, char** argv) {
       }
     }
   }
-  WorkerChannel channel(argv[3], argv[4], RandomToken(16), argv[5],
-                        options.browser_session);
+  // The coordinator is known by its path; a thread's link is fixed at launch
+  // and afterwards read back from its own header.
+  if (argv[3] == CoordinatorPath(argv[2])) {
+    options.session = {{"kind", kSessionKindCoordinator}};
+  } else if (const json* role = JsonObject(launch, "session");
+             role && JsonValue(*role, "kind", "") == kSessionKindThread) {
+    options.session = *role;
+  } else if (const json header = SessionHeader(argv[3]);
+             JsonValue(header, kSessionHeaderKind, "") == kSessionKindThread) {
+    options.session = {{"kind", kSessionKindThread},
+                       {"thread", JsonValue(header, kSessionHeaderThread,
+                                            json::object())}};
+  }
+  WorkerChannel channel(
+      argv[3], argv[4], RandomToken(16), argv[5], options.browser_session,
+      JsonValue(options.session, "kind", "") == kSessionKindCoordinator);
   if (!channel.Start()) return 2;
   if (chdir(argv[2]) != 0) {
     channel.Send({{"kind", "error"}, {"error", "workspace is unavailable"}});

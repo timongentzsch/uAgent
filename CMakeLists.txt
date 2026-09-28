@@ -209,6 +209,7 @@ add_library(
   src/app/tool_categories.cc
   src/app/control.cc
   src/app/schedule.cc
+  src/app/launch.cc
   src/cli/options.cc
   src/cli/reference.cc
   src/app/runtime.cc

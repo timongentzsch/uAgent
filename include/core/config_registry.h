@@ -350,6 +350,15 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                   Sensitivity::kPublic, "delegation",
                   "lean withholds implementation tools from this process"),
 
+    // Coordination.
+    registry::Fallback(
+        registry::Str("UAGENT_COORDINATOR_MODEL", {}, "",
+                      ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
+                      "coordination",
+                      "model route of each folder's coordinator; /model "
+                      "inside it overrides this for that folder"),
+        "UAGENT_MODEL"),
+
     // Web search.
     registry::Choice(
         registry::Str("UAGENT_WEB_SEARCH_BACKEND", "web_search_backend", "auto",

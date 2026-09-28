@@ -266,6 +266,23 @@ void TestToolExecutionPolicy() {
   CHECK(allowed_run &&
         allowed_run->validate({{"command", "python3 other.py"}}));
 
+  // A coordinator keeps only its named tools, even when every capability
+  // is allowed and an exact run is authorized.
+  Tool read_tool = inspect;
+  read_tool.name = "read_path";
+  Tool memory_tool = mutate;
+  memory_tool.name = "memory";
+  Tool config_tool = inspect;
+  config_tool.name = "uagent";
+  config_tool.capabilities = 0;
+  std::vector<Tool> pinned{read_tool, memory_tool, config_tool, mutate,
+                           exact_run};
+  ApplyToolPolicy(pinned, {.run_allowlist = {"python3 slow_analysis.py"},
+                           .coordinator = true});
+  CHECK(pinned.size() == 2);
+  CHECK(FindTool(pinned, "read_path") != nullptr);
+  CHECK(FindTool(pinned, "memory") != nullptr);
+
   Tool terminal_only = unbounded;
   terminal_only.name = "terminal_only";
   terminal_only.visibility = Tool::Visibility::kDetachedTerminal;

@@ -359,7 +359,10 @@ bool Agent::Save(const std::string& path, std::string& error) const {
                      .parent_session_id = parent_session_id_,
                      .forked_at_turn = forked_at_turn_,
                      .forked_at_time = forked_at_time_,
-                     .delegation = OwnDelegation()};
+                     .delegation = OwnDelegation(),
+                     .kind = JsonValue(session_role_, "kind", ""),
+                     .thread = JsonValue(session_role_, "thread",
+                                         json::object())};
   record.state = {
       .context_tokens = ContextUsed(),
       .context_window = api_.ctx_window,

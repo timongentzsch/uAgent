@@ -119,7 +119,8 @@ Connection Open(const std::string& executable, const std::string& cwd,
                  {"yolo", options.yolo},
                  {"debug", options.debug},
                  {"debug_path", options.debug_path},
-                 {"trust_project", options.trust_project}};
+                 {"trust_project", options.trust_project},
+                 {"session", options.session}};
   if (!AtomicWriteFile(launch, JsonDump(config), 0600, false, error)) return {};
   std::vector<std::string> args{
       executable, "--session-worker", cwd, path, HashHex(path), title, launch};
@@ -192,6 +193,7 @@ struct Server::State {
   bool replay_gap = false;
   uint64_t sequence = 0;
   std::vector<Client> clients;
+  std::atomic<size_t> client_count{0};
 
   void Run() {
     auto drain_deadline = std::chrono::steady_clock::time_point::max();
@@ -319,6 +321,7 @@ struct Server::State {
           clients.push_back(std::move(client));
         }
       }
+      client_count = clients.size();
     }
   }
 };
@@ -346,6 +349,7 @@ bool Server::Start(const std::string& path, const std::string& generation,
   state.thread = std::thread([&state] { state.Run(); });
   return true;
 }
+size_t Server::Clients() const { return state_->client_count; }
 void Server::Publish(json frame) {
   std::lock_guard lock(state_->mutex);
   size_t bytes = JsonEstimatedBytes(frame);

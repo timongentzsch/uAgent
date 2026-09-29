@@ -9,6 +9,7 @@
 #include <functional>
 #include <iterator>
 #include <map>
+#include <mutex>
 #include <span>
 #include <string>
 #include <system_error>
@@ -161,6 +162,9 @@ SessionStoreStatus SessionStore::Save(const std::string& path,
   header["incoming"] =
       JsonValue(JsonValue(record.state.display, "statistics", json::object()),
                 "incoming", uint64_t{0});
+  // Spend is read across many sessions (a coordinator's daily limit), so it
+  // rides in the header instead of needing the whole state parsed.
+  header["cost"] = record.state.usage.cost;
   // The header is built from a typed struct; only the state can be incomplete.
   if (!ValidState(record.state, conversation)) {
     return Error(SessionStoreError::kInvalid,
@@ -312,7 +316,12 @@ std::string CoordinatorPath(const std::string& cwd) {
 }
 
 std::vector<SessionInfo> ListSessions(SessionScope scope) {
-  return SessionCatalogue{}.List(scope);
+  // One cache per process: a repeated listing (a coordinator's board every
+  // step) re-reads only the headers that changed.
+  static std::mutex mutex;
+  static SessionCatalogue catalogue;
+  std::lock_guard lock(mutex);
+  return catalogue.List(scope);
 }
 
 std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
@@ -372,6 +381,7 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
         item.title = JsonValue(header, kSessionHeaderTitle, "(untitled)");
         item.turns = JsonValue(header, kSessionHeaderTurns, int64_t{0});
         item.incoming = JsonValue(header, "incoming", uint64_t{0});
+        item.cost = JsonValue(header, "cost", 0.0);
         item.delegation =
             JsonValue(header, kSessionHeaderDelegation, json::object());
         item.kind = JsonValue(header, kSessionHeaderKind, "");

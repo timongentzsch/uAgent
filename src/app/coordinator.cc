@@ -297,8 +297,7 @@ double SpentToday(const std::string& folder,
   double spent = CoordinatorCostToday(folder);
   for (const SessionInfo& info : threads) {
     if (JsonValue(info.thread, "day", "") != today) continue;
-    SessionLoadResult loaded = SessionStore::Inspect(info.path);
-    const double cost = loaded.record ? loaded.record->state.usage.cost : 0;
+    const double cost = info.cost;
     spent += reserve && Working(info)
                  ? std::max(cost, ThreadBudget(info.thread))
                  : cost;

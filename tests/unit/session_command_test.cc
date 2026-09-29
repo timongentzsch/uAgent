@@ -430,8 +430,11 @@ void TestSessionCatalogueCache() {
   record.state.messages =
       json::array({{{"role", "system"}, {"content", "sys"}}});
   record.state.message_kinds = {MessageKind::kSystem};
+  record.state.usage.cost = 0.25;
   REQUIRE(SessionStore::Save(path, record).Ok());
   SessionCatalogue catalogue;
+  // Spend reads from the header, without parsing the state.
+  CHECK(catalogue.List(SessionScope::kAll).at(0).cost == 0.25);
   auto scan = [&](SessionScope scope = SessionScope::kAll) {
     const auto rows = catalogue.List(scope);
     const auto fresh = ListSessions(scope);
@@ -442,6 +445,7 @@ void TestSessionCatalogueCache() {
       CHECK(rows[i].cwd == fresh[i].cwd);
       CHECK(rows[i].turns == fresh[i].turns);
       CHECK(rows[i].incoming == fresh[i].incoming);
+      CHECK(rows[i].cost == fresh[i].cost);
       CHECK(rows[i].bytes == fresh[i].bytes);
       CHECK(rows[i].mtime == fresh[i].mtime);
       CHECK(rows[i].error == fresh[i].error);

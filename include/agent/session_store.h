@@ -63,6 +63,7 @@ struct SessionInfo {
   std::string path, cwd, title;
   int64_t turns = 0;
   uint64_t incoming = 0;
+  double cost = 0;  // reported spend, as of the last save
   int64_t bytes = 0;
   std::filesystem::file_time_type mtime;
   std::string error;

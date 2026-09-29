@@ -229,7 +229,17 @@ struct Server::State {
       for (auto& frame : frames) {
         frame["sequence"] = ++sequence;
         std::string line = JsonDump(frame) + '\n';
-        if (JsonValue(frame, "kind", "") == "state" &&
+        const bool state = JsonValue(frame, "kind", "") == "state";
+        if (state && !snapshot.is_null() &&
+            !JsonValue(frame, "checkpoint", false)) {
+          // A client that joins now reads its status from the snapshot, so
+          // it follows every state frame, not only checkpoints.
+          for (const char* field :
+               {"busy", "command_busy", "pending", "phase", "guidance"}) {
+            if (frame.contains(field)) snapshot[field] = frame[field];
+          }
+        }
+        if (state &&
             (snapshot.is_null() || JsonValue(frame, "checkpoint", false))) {
           snapshot = frame;
           replay_gap = false;

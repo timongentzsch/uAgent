@@ -592,6 +592,7 @@ def write_session(
         "session_id": name,
         "turns": len(messages),
         "title": name,
+        "cost": (usage or {}).get("cost", 0),
     }
     fields.update(header)
     payload = {

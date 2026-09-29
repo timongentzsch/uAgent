@@ -10,7 +10,7 @@
 #include <string>
 #include <utility>
 
-#include "include/agent/tool_protocol.h"
+#include "include/api/tool_protocol.h"
 #include "include/api/types.h"
 #include "include/core/env.h"
 #include "include/core/json.h"

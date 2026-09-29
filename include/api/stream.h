@@ -15,7 +15,7 @@
 #include <utility>
 #include <vector>
 
-#include "include/agent/tool_protocol.h"
+#include "include/api/tool_protocol.h"
 #include "include/api/types.h"
 #include "include/api/wire.h"
 #include "include/core/checked.h"

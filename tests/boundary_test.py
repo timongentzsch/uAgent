@@ -16,9 +16,6 @@ ORDER = ["core", "api", "toolcore", "agent", "tools", "app", "web"]
 INCLUDE = re.compile(r'#include\s+"(include/[^"]+)"')
 
 KNOWN = {
-    "include/api/stream.h -> include/agent/tool_protocol.h",
-    "include/media/attachments.h -> include/api/capabilities.h",
-    "include/media/attachments.h -> include/tools/tool.h",
     "include/tools/configure.h -> include/app/config_proposal.h",
     "include/tools/configure.h -> include/app/self_description.h",
     "src/agent/child_agent.cc -> include/tools/session.h",
@@ -27,13 +24,15 @@ KNOWN = {
 
 
 def layer(path):
-    if path.startswith(("src/core/", "src/transport/", "src/media/")):
+    if path.startswith(("src/core/", "src/transport/")):
         return "core"
-    if path.startswith(("include/core/", "include/transport/", "include/media/")):
+    if path.startswith(("include/core/", "include/transport/")):
         return "core"
     if path.startswith(("src/api/", "include/api/")) or path == "include/api.h":
         return "api"
     if path in ("src/tools/tool.cc", "include/tools/tool.h", "include/providers.h"):
+        return "toolcore"
+    if path.startswith(("src/media/", "include/media/")):
         return "toolcore"
     if path.startswith("src/providers/"):
         return "toolcore"

@@ -1,7 +1,7 @@
 // Copyright 2026 Timon Gentzsch
 
-#ifndef UAGENT_INCLUDE_AGENT_TOOL_PROTOCOL_H_
-#define UAGENT_INCLUDE_AGENT_TOOL_PROTOCOL_H_
+#ifndef UAGENT_INCLUDE_API_TOOL_PROTOCOL_H_
+#define UAGENT_INCLUDE_API_TOOL_PROTOCOL_H_
 // Recognizing tool-call markup this harness does not execute. µAgent runs
 // structured provider tool calls only; a model that emits some other
 // provider's call syntax as content is producing a malformed response, and
@@ -141,4 +141,4 @@ inline bool ContainsForeignToolCallMarkup(const std::string& content) {
 
 }  // namespace uagent
 
-#endif  // UAGENT_INCLUDE_AGENT_TOOL_PROTOCOL_H_
+#endif  // UAGENT_INCLUDE_API_TOOL_PROTOCOL_H_

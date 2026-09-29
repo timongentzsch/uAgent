@@ -83,8 +83,9 @@ if(UAGENT_BUILD_FUZZERS)
 endif()
 
 # Layered static libs mirror the event-spine dependency DAG:
-#   core_base (leaf: core/transport/media) <- api <- toolcore (tool
-#   vocabulary + provider catalog: no agent, tool, or app dependency)
+#   core_base (leaf: core/transport) <- api <- toolcore (tool
+#   vocabulary, attachments + provider catalog: no agent, tool, or app
+#   dependency)
 #   <- agent (turn loop, session persistence, supervision services:
 #   process/jobs/child_agent, file writes, memory store, observation
 #   records) <- tools (tool surface + mcp adapters, consuming agent
@@ -116,8 +117,7 @@ add_library(
   src/core/strings.cc
   src/core/term.cc
   src/transport/session.cc
-  src/transport/sse.cc
-  src/media/attachments.cc)
+  src/transport/sse.cc)
 target_link_libraries(uagent_core_base PUBLIC uagent_options)
 
 add_library(
@@ -131,6 +131,7 @@ target_link_libraries(uagent_api PUBLIC uagent_core_base)
 
 add_library(
   uagent_toolcore
+  src/media/attachments.cc
   src/tools/tool.cc
   src/providers/selection.cc
   src/providers/catalog.cc

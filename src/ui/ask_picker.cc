@@ -55,8 +55,7 @@ class Block {
     rows_ = DisplayRows(text, TerminalWidth());
   }
   void Erase() {
-    if (rows_ > 1) write_("\033[" + std::to_string(rows_ - 1) + "A");
-    if (rows_ > 0) write_("\r\033[J");
+    if (rows_ > 0) write_(CursorUp(rows_ - 1) + "\r" + EraseBelow());
     rows_ = 0;
   }
 

@@ -350,9 +350,8 @@ class Terminal {
       }
       if (input.kind != InteractiveInputKind::kLine) continue;
       if (raw_) {
-        output_.Write("\r\033[" +
-                      std::to_string(composer_.LastSubmittedRows() + 1) +
-                      "A\033[J");
+        output_.Write("\r" + CursorUp(composer_.LastSubmittedRows() + 1) +
+                      EraseBelow());
         if (decision.empty() && !Trim(input.text).empty()) {
           output_.Write(UserEchoRow(InputPrompt(), TerminalSafe(input.text)) +
                         "\n");
@@ -370,9 +369,9 @@ class Terminal {
       if (text == "/clear" || text.starts_with("/clear ")) {
         // Screen only: the session keeps running underneath.
         if (raw_) {
-          output_.Write("\033[H\033[2J");
+          output_.Write(ClearScreen());
         } else {
-          printf("\033[H\033[2J");
+          fputs(ClearScreen(), stdout);
           fflush(stdout);
         }
         continue;
@@ -747,10 +746,10 @@ class Terminal {
   size_t Unmount(std::string& frame) {
     if (!composer_.Drawn()) return 0;
     const size_t width = TerminalWidth();
-    frame += "\r\033[" +
-             std::to_string(composer_.CaretRow() + 1 + (tail_.empty() ? 0 : 1) +
-                            StatusOverflowRows(status_columns_, width)) +
-             "A\033[J";
+    frame += "\r" +
+             CursorUp(composer_.CaretRow() + 1 + (tail_.empty() ? 0 : 1) +
+                      StatusOverflowRows(status_columns_, width)) +
+             EraseBelow();
     composer_.Detach();
     return LastRowStart(tail_, width);
   }
@@ -783,9 +782,8 @@ class Terminal {
       if (status == last_status_) return;
       const size_t rows = composer_.CaretRow() + 1;
       output_.Write(
-          "\r\033[" + std::to_string(rows) + "A" +
-          StatusBarLine(status, &status_columns_) + "\033[" +
-          std::to_string(rows) + "B\r" +
+          "\r" + CursorUp(rows) + StatusBarLine(status, &status_columns_) +
+          "\033[" + std::to_string(rows) + "B\r" +
           (composer_.CaretColumn()
                ? "\033[" + std::to_string(composer_.CaretColumn()) + "C"
                : ""));

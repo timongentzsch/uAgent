@@ -102,8 +102,7 @@ std::string DisplayText(std::string_view text, size_t offset = 0,
 // Cursor movement and erasure append into one buffer so a redraw reaches the
 // terminal as a single write instead of a partially applied frame.
 void AppendMoveToTop(std::string& out, size_t caret_row) {
-  out += "\r";
-  if (caret_row > 0) out += "\033[" + std::to_string(caret_row) + "A";
+  out += "\r" + CursorUp(caret_row);
 }
 
 void AppendEraseRows(std::string& out, size_t rows) {
@@ -111,7 +110,7 @@ void AppendEraseRows(std::string& out, size_t rows) {
     out += "\r\033[2K";
     if (row + 1 < rows) out += "\033[1B";
   }
-  if (rows > 1) out += "\033[" + std::to_string(rows - 1) + "A";
+  if (rows > 1) out += CursorUp(rows - 1);
   out += "\r";
 }
 
@@ -695,7 +694,7 @@ void RawComposer::RenderFromTop(std::string& out) {
   // are handled explicitly rather than inferred from the old cursor column.
   out += "\r";
   size_t rows_up = count - 1 - layout.caret_row;
-  if (rows_up > 0) out += "\033[" + std::to_string(rows_up) + "A";
+  out += CursorUp(rows_up);
   size_t caret_column = layout.caret_col;
   if (layout.caret_row == 0) caret_column += DisplayWidth(prompt_);
   if (caret_column > 0) out += "\033[" + std::to_string(caret_column) + "C";

@@ -112,7 +112,7 @@ CommandReply RunSlashCommand(AppSession& session,
       result = {{"error", "this command belongs to the client"}};
       return reply;
     case SlashCommandId::kClear:
-      reply.Print("\033[H\033[2J");
+      reply.Print("%s", ClearScreen());
       return reply;
     case SlashCommandId::kRewind: {
       // The clients fork before message N; bare, this lists the numbers.

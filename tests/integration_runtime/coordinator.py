@@ -583,3 +583,32 @@ def test_coordinator_context_carries_instructions_notes_board_and_time(root, hom
         root, env, [(b"/instructions\n", b"Prefer small threads."), b"/q\n"], binary=binary
     )
     assert_true(code == 0, output)
+
+
+def test_only_checkpoints_carry_the_view(root, home, *, binary):
+    from integration_support import fnv1a64
+    from session_support import SessionClient, runtime_directory, stop_sessions
+
+    path = home / ".uagent" / "history" / fnv1a64(str(root.resolve())) / "coordinator.json"
+    with Server([event({"content": "first"}), event({"content": "second"})]) as server:
+        result = run(root, base_env(home, server.url), "coord", "-p", "hi", binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        client = SessionClient(runtime_directory(home) / f"{fnv1a64(str(path))}.sock")
+        try:
+            sent = client.send("submit", text="again")
+            client.until(
+                lambda frame: frame.get("kind") == "state"
+                and frame.get("completed_request_id") == sent["request_id"]
+            )
+            # After the catch-up snapshot sent on connect.
+            states = [frame for frame in client.frames if frame.get("kind") == "state"][1:]
+            light = [frame for frame in states if not frame.get("checkpoint")]
+            assert_true(light, states)
+            for frame in light:
+                # Clients keep the last checkpoint's view and apply block events.
+                for field in ("view", "http", "system_prompt"):
+                    assert_true(field not in frame["state"], (field, list(frame["state"])))
+            assert_true("view" in states[-1]["state"], list(states[-1]["state"]))
+        finally:
+            client.close()
+            stop_sessions(home)

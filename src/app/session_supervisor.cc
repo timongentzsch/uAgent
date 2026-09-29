@@ -315,15 +315,24 @@ bool SessionHost::ApplyRuntimeFrame(HostSession& session, json& frame) {
     }
     if (!view.contains("blocks")) view["blocks"] = json::array();
     next["view"] = std::move(view);
+    // Between checkpoints the worker sends only light state: keep the rest.
+    for (const char* field : session::kCheckpointFields) {
+      if (!next.contains(field) && session.state.contains(field)) {
+        next[field] = std::move(session.state[field]);
+      }
+    }
     session.state = std::move(next);
-    // Browsers hold the host's view, never the worker's partial one.
-    frame["state"] = session.state;
+    // Browsers hold the host's view, never the worker's partial one, and
+    // apply block patches to it between checkpoints.
+    const bool checkpoint = JsonValue(frame, "checkpoint", false);
+    frame["state"] =
+        checkpoint ? session.state : session::LightState(session.state);
     session.pending = JsonValue(frame, "pending", json(nullptr));
     session.turn_active = JsonValue(frame, "busy", false);
     session.command_busy = JsonValue(frame, "command_busy", false);
     session.guidance = JsonValue(frame, "guidance", uint64_t{0});
     session.status = LiveStatus(session);
-    if (JsonValue(frame, "checkpoint", false)) {
+    if (checkpoint) {
       if (!session.run_id.empty() && !session.turn_active) {
         if (const auto* blocks = JsonArray(session.state["view"], "blocks")) {
           for (auto it = blocks->rbegin(); it != blocks->rend(); ++it) {
@@ -364,6 +373,9 @@ bool SessionHost::ApplyRuntimeFrame(HostSession& session, json& frame) {
   }
   if (kind != "event") return true;
   const std::string type = JsonValue(frame, "type", "");
+  // Terminal renderings of what the transcript rows already show; terminals
+  // read them from the worker, browsers never do.
+  if (type == "ui.presentation") return false;
   if (!session.run_id.empty()) {
     if (type == "turn.completed") {
       const std::string outcome = JsonValue(frame["data"], "outcome", "error");

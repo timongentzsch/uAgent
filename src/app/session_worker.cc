@@ -679,7 +679,7 @@ class WorkerChannel final : public ApplicationChannel {
   }
   void SendState(bool checkpoint = false) {
     Send({{"kind", "state"},
-          {"state", state_},
+          {"state", checkpoint ? state_ : LightState(state_)},
           {"busy", turn_active_},
           {"command_busy", busy_},
           {"pending", decision_},

@@ -88,9 +88,14 @@ int Application::RunChannel() {
   return FinishInteractive(0);
 }
 
-json Application::BuildChannelState() const {
+json Application::BuildChannelState(bool checkpoint) const {
   json state = InterfaceState();
-  state["view"] = agent_.DisplaySnapshot();
+  // Clients keep these from the last checkpoint (session::kCheckpointFields).
+  if (checkpoint) {
+    state["view"] = agent_.DisplaySnapshot();
+    state["system_prompt"] = agent_.LastSentPrompt();
+    state["http"] = agent_.HttpExchanges();
+  }
   state["view_epoch"] = agent_.ViewEpoch();
   // The agent's own self-directive, which the Instructions screen can clear.
   if (!runtime_.adaptive_system.instructions.empty()) {
@@ -101,9 +106,7 @@ json Application::BuildChannelState() const {
   }
   state["usage"] = UsageJson(agent_.SessionUsage());
   state["route_usage"] = agent_.RouteUsageJson();
-  state["system_prompt"] = agent_.LastSentPrompt();
   state["statistics"] = agent_.Statistics();
-  state["http"] = agent_.HttpExchanges();
   state["permissions"] = PermissionControl(context_, json::object());
   state["mcp"] = McpStatus(runtime_.mcp, context_.tools);
   state["efforts"] = json::array({"default"});
@@ -130,7 +133,7 @@ json Application::BuildChannelState() const {
 }
 
 void Application::PublishChannelState(bool checkpoint) {
-  json state = BuildChannelState();
+  json state = BuildChannelState(checkpoint);
   if (channel_) channel_->PublishState(state, checkpoint);
 }
 

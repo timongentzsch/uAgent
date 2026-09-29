@@ -1,6 +1,7 @@
 // Copyright 2026 Timon Gentzsch
 #ifndef UAGENT_INCLUDE_APP_SESSION_H_
 #define UAGENT_INCLUDE_APP_SESSION_H_
+#include <algorithm>
 #include <chrono>
 #include <functional>
 #include <memory>
@@ -9,6 +10,24 @@
 #include "include/app/options.h"
 #include "include/transport/session.h"
 namespace uagent::session {
+// State only checkpoints carry. Between them clients keep the last
+// checkpoint's and apply block events to its view, so these large fields
+// never cross the wire on every phase or usage change.
+inline constexpr const char* kCheckpointFields[] = {"view", "http",
+                                                    "system_prompt"};
+
+// `state` without its checkpoint-only fields.
+inline json LightState(const json& state) {
+  json light = json::object();
+  for (auto it = state.begin(); it != state.end(); ++it) {
+    if (std::ranges::find(kCheckpointFields, it.key()) ==
+        std::end(kCheckpointFields)) {
+      light[it.key()] = it.value();
+    }
+  }
+  return light;
+}
+
 std::string SocketPath(const std::string& path);
 struct Connection {
   Fd socket;

@@ -250,7 +250,8 @@ json LiveToolRow(const json& data) {
 }
 
 json LiveToolResult(const json& data) {
-  const std::string text = JsonValue(data, "text", "");
+  // The row shows the output as a person reads it, without model hints.
+  const std::string text = StripModelHints(JsonValue(data, "result", ""));
   json row = {{"id", JsonValue(data, "detail_id", "")},
               {"kind", "tool_result"},
               {"activity", JsonValue(data, "activity", json::object())},

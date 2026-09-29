@@ -210,6 +210,7 @@ add_library(
   src/app/control.cc
   src/app/schedule.cc
   src/app/launch.cc
+  src/app/thread_link.cc
   src/app/coordinator.cc
   src/cli/options.cc
   src/cli/reference.cc

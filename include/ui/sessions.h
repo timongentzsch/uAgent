@@ -77,10 +77,12 @@ inline std::string PickSession(bool render = true) {
     std::string safe_cwd = TerminalSafe(Tilde(s.cwd));
     std::string safe_title = TerminalSafe(FirstLine(s.title));
     if (render) {
-      printf("%s[%zu]%s %s · %s · %s turn%s · %s%s · \"%s\"%s\n", BOLD(), i + 1,
-             RST(), FmtAgo(secs).c_str(), FmtBytes(s.bytes).c_str(),
-             FmtCount(s.turns).c_str(), s.turns == 1 ? "" : "s", DIM(),
-             safe_cwd.c_str(), safe_title.c_str(), RST());
+      const std::string dot = AsciiGlyphs(" · ");
+      printf("%s[%zu]%s %s%s%s%s%s turn%s%s%s%s%s\"%s\"%s\n", BOLD(), i + 1,
+             RST(), FmtAgo(secs).c_str(), dot.c_str(),
+             FmtBytes(s.bytes).c_str(), dot.c_str(), FmtCount(s.turns).c_str(),
+             s.turns == 1 ? "" : "s", dot.c_str(), DIM(), safe_cwd.c_str(),
+             dot.c_str(), safe_title.c_str(), RST());
     }
     options.push_back({{"value", std::to_string(i + 1)},
                        {"title", s.title},

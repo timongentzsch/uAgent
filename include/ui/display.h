@@ -143,14 +143,10 @@ inline std::string ActivityBar(const ActivityView& view) {
       FmtDuration(std::chrono::duration<double>(view.elapsed).count());
   std::string activity = CurrentTerminalActivity();
   static constexpr auto kSpinnerInterval = std::chrono::milliseconds(100);
-  static constexpr const char* kFrames[] = {"⠋", "⠙", "⠹", "⠸", "⠼",
-                                            "⠴", "⠦", "⠧", "⠇", "⠏"};
   auto ticks =
       std::chrono::duration_cast<std::chrono::milliseconds>(view.elapsed) /
       kSpinnerInterval;
-  std::string prefix =
-      g_unicode ? kFrames[static_cast<size_t>(ticks) % 10]
-                : std::string(1, "|/-\\"[static_cast<size_t>(ticks) % 4]);
+  std::string prefix = SpinnerFrame(static_cast<size_t>(ticks));
   prefix += " ";
   // What the turn is doing, in descending order of how directly the human
   // asked for it. A model round is the one label that names no work, so a

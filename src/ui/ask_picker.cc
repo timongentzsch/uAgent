@@ -104,19 +104,19 @@ std::string Render(const json& question, const Answer& answer, size_t cursor,
   const size_t width = TerminalWidth();
   std::string out = std::string(BOLD()) +
                     TerminalSafe(JsonValue(question, "header", "")) + RST() +
-                    " · " +
+                    AsciiGlyphs(" · ") +
                     TerminalSafe(JsonValue(question, "question", "")) + "\n";
   for (size_t index = 0; index <= options.size(); ++index) {
     const bool other = index == options.size();
-    std::string row = (index == cursor ? "❯ " : "  ");
+    std::string row = AsciiGlyphs(index == cursor ? "❯ " : "  ");
     if (multi) row += (other ? !answer.other.empty() : answer.chosen[index])
                           ? "[x] "
                           : "[ ] ";
     row += std::to_string(index + 1) + ". ";
     std::string description;
     if (other) {
-      row += TerminalSafe(answer.other.empty() ? "Other…"
-                                               : "Other: " + answer.other);
+      row += answer.other.empty() ? AsciiGlyphs("Other…")
+                                  : "Other: " + TerminalSafe(answer.other);
     } else {
       row += TerminalSafe(JsonValue(options[index], "label", ""));
       description = TerminalSafe(JsonValue(options[index], "description", ""));
@@ -124,8 +124,9 @@ std::string Render(const json& question, const Answer& answer, size_t cursor,
     // Safe and cut as plain text, then styled: an escape is not width, and
     // TerminalSafe would spell out the dim instead of letting it apply.
     const std::string lead = row + " ";
-    row = DisplayTrunc(description.empty() ? row : lead + "— " + description,
-                       width);
+    row = DisplayTrunc(
+        description.empty() ? row : lead + AsciiGlyphs("— ") + description,
+        width);
     if (!description.empty() && row.starts_with(lead)) {
       row = lead + DIM() + row.substr(lead.size()) + RST();
     }
@@ -135,10 +136,10 @@ std::string Render(const json& question, const Answer& answer, size_t cursor,
     out += "  image: " + TerminalSafe(answer.image) + "\n";
   }
   out += std::string(DIM()) +
-         (note.empty() ? std::string("↑↓ move · ") +
-                             (multi ? "space toggle · enter done"
-                                    : "enter choose") +
-                             " · i image · esc cancel"
+         (note.empty() ? AsciiGlyphs(std::string("↑↓ move · ") +
+                                     (multi ? "space toggle · enter done"
+                                            : "enter choose") +
+                                     " · i image · esc cancel")
                        : TerminalSafe(note)) +
          RST();
   return out;

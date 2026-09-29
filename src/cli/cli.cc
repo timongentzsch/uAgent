@@ -256,7 +256,7 @@ std::string DecisionPrompt(const std::string& prompt, const json& options) {
       return prompt;
     }
   }
-  if (guidance) hints += " \u2014 or type what to do instead";
+  if (guidance) hints += AsciiGlyphs(" \u2014 or type what to do instead");
   return prompt + hints;
 }
 

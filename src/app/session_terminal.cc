@@ -685,7 +685,10 @@ class Terminal {
             !data["result"].empty()) {
           output = JsonDump(data["result"], 2);
         }
-        if (!output.empty()) WriteTerminalRecord(TerminalSafe(output) + "\n");
+        // Command replies are this program's own rows, joins and all.
+        if (!output.empty()) {
+          WriteTerminalRecord(AsciiGlyphs(TerminalSafe(output)) + "\n");
+        }
       } else {
         presenter_.Consume(
             AppEvent{0, JsonValue(frame, "time", ""), type, data, false});
@@ -705,7 +708,8 @@ class Terminal {
       }
       const json result = JsonValue(frame, "result", json::object());
       if (result.contains("answer")) {
-        WriteTerminalRecord(StyledBlock("side · not in history", DIM()) +
+        WriteTerminalRecord(StyledBlock(AsciiGlyphs("side · not in history"),
+                                        DIM()) +
                             TerminalSafe(JsonValue(result, "answer", "")) +
                             "\n");
       } else if (!result.empty()) {

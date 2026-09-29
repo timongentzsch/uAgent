@@ -37,11 +37,10 @@ std::string ToolResultSummary(const ToolResult& result,
   // The first line is shown, so the count reports what is elided: a header
   // line and a total would otherwise print two numbers for one result.
   if (lines > 1) {
-    summary += AsciiGlyphs(" … · +") + std::to_string(lines - 1) +
-               AsciiGlyphs(" lines · ") +
+    summary += " … · +" + std::to_string(lines - 1) + " lines · " +
                FmtCount(static_cast<int64_t>(output.size())) + " chars";
   }
-  if (truncated) summary += AsciiGlyphs(" · truncated");
+  if (truncated) summary += " · truncated";
   if (!result.Ok()) {
     summary = std::string(CompletionStatusName(result.status)) + ": " + summary;
   }

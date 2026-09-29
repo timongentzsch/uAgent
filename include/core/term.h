@@ -104,6 +104,15 @@ class TerminalActivityLabel {
 // One spelling, because that decision is a comparison against this string.
 inline constexpr const char* kWaitingActivity = "Working";
 
+// The spinner the working row and a blocking call both animate: braille, or
+// |/-\\ where the locale cannot show it.
+inline const char* SpinnerFrame(size_t tick) {
+  static constexpr const char* kFrames[] = {"⠋", "⠙", "⠹", "⠸", "⠼",
+                                            "⠴", "⠦", "⠧", "⠇", "⠏"};
+  static constexpr const char* kAscii[] = {"|", "/", "-", "\\"};
+  return g_unicode ? kFrames[tick % 10] : kAscii[tick % 4];
+}
+
 // Animates while a call blocks with nothing to print. stop() is idempotent and
 // wakes the thread immediately — it runs on the first-streamed-byte path.
 class TerminalSpinner {
@@ -132,12 +141,12 @@ class TerminalSpinner {
                              std::chrono::steady_clock::now() - started_)
                              .count();
         const std::string row =
-            DisplayTrunc(std::string(1, "|/-\\"[frame_]) + " " + label_ +
-                             " · " + FmtDuration(elapsed),
+            DisplayTrunc(AsciiGlyphs(std::string(SpinnerFrame(frame_)) + " " +
+                                     label_ + " · " + FmtDuration(elapsed)),
                          TerminalWidth(1));
         printf("\r%s%s%s%s", DIM(), row.c_str(), EraseToEol(), RST());
         fflush(stdout);
-        frame_ = (frame_ + 1) & 3;
+        ++frame_;
         wake_.wait_for(lock, std::chrono::milliseconds(100),
                        [this] { return done_; });
       }
@@ -178,7 +187,7 @@ class TerminalSpinner {
   std::condition_variable wake_;
   bool done_ = false;
   bool active_ = false;
-  int frame_ = 0;
+  size_t frame_ = 0;
   uint64_t activity_id_ = 0;
   std::chrono::steady_clock::time_point started_;
   std::string label_;

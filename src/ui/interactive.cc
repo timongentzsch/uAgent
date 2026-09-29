@@ -87,8 +87,8 @@ std::string DisplayText(std::string_view text, size_t offset = 0,
                         size_t* mapped_offset = nullptr) {
   auto map = [](std::string_view part) {
     std::string mapped(part);
-    ReplaceAll(mapped, "\n", "↵");
-    ReplaceAll(mapped, "\t", "⇥");
+    ReplaceAll(mapped, "\n", AsciiGlyphs("↵"));
+    ReplaceAll(mapped, "\t", AsciiGlyphs("⇥"));
     return TerminalSafe(mapped);
   };
   if (mapped_offset == nullptr) return map(text);

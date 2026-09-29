@@ -37,16 +37,20 @@ bool PrintSearchReceipt(int64_t searches, const json& annotations, bool details,
                       : std::to_string(sources.size()) + " source" +
                             (sources.size() == 1 ? "" : "s");
   if (searches > 0) {
-    printf("%s  ← web_search ×%s · %s%s\n", DIM(),
-           std::to_string(searches).c_str(), source_summary.c_str(), RST());
+    printf("%s%s%s\n", DIM(),
+           AsciiGlyphs("  ← web_search ×" + std::to_string(searches) + " · " +
+                       source_summary)
+               .c_str(),
+           RST());
   } else {
-    printf("%s  ← %s%s\n", DIM(), source_summary.c_str(), RST());
+    printf("%s%s%s%s\n", DIM(), AsciiGlyphs("  ← ").c_str(),
+           source_summary.c_str(), RST());
   }
   if (!details) return true;
   for (const CitationEntry& source : sources) {
     const std::string& label = source.title.empty() ? source.url : source.title;
-    printf("%s    %s · %s%s\n", DIM(), TerminalSafe(label).c_str(),
-           TerminalSafe(source.url).c_str(), RST());
+    printf("%s    %s%s%s%s\n", DIM(), TerminalSafe(label).c_str(),
+           AsciiGlyphs(" · ").c_str(), TerminalSafe(source.url).c_str(), RST());
     if (!source.content.empty()) {
       printf("%s      %s%s\n", DIM(), TerminalSafe(source.content).c_str(),
              RST());
@@ -193,7 +197,7 @@ struct TerminalPresenter::State {
       if (content_started && line_open) markdown.FeedPlain("\n");
       markdown.Control(RST());
       markdown.Control(DIM());
-      markdown.FeedPlain("· Thinking\n");
+      markdown.FeedPlain(AsciiGlyphs("· Thinking\n"));
       line_open = false;
       in_reasoning = true;
     }
@@ -520,8 +524,8 @@ std::string ResultExtras(const PresentationRecord& record, bool detailed) {
                                   : "memory " + id;
       }
       if (!line.empty()) {
-        text += std::string(DIM()) + AsciiGlyphs("    ↳ ") +
-                TerminalSafe(line) + RST() + "\n";
+        text += std::string(DIM()) +
+                AsciiGlyphs("    ↳ " + TerminalSafe(line)) + RST() + "\n";
       }
     }
   }
@@ -585,8 +589,9 @@ void PrintPresentation(const PresentationRecord& record,
 
   if (record.poll) {
     const char* style = ResultStyle(record.status);
-    WriteTerminalRecord(std::string(style) + AsciiGlyphs("• ") +
-                        OutputText(record.summary) + RST() + "\n");
+    WriteTerminalRecord(std::string(style) +
+                        AsciiGlyphs("• " + OutputText(record.summary)) + RST() +
+                        "\n");
     return;
   }
 
@@ -623,7 +628,7 @@ void PrintPresentation(const PresentationRecord& record,
     return;
   }
   WriteTerminalRecord(std::string(style) + prefix + ": " +
-                      OutputText(record.summary) + RST() + "\n" +
+                      AsciiGlyphs(OutputText(record.summary)) + RST() + "\n" +
                       ResultExtras(record, detailed));
 }
 

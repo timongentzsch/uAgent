@@ -525,7 +525,7 @@ void MdStream::Classify(char c) {
   // m is '-' or '*' (held marker): bullet if a space follows the single char
   if (mk.size() == 1 && c == ' ') {
     Pv(pre.substr(0, pre.size() - 1));
-    Pv("• ");
+    Pv(AsciiGlyphs("• "));
     pre.clear();
     linestart = false;
     return;

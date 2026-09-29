@@ -178,6 +178,34 @@ def test_no_color_keeps_bold_italic_and_dim(root, home, *, binary):
     assert_true(re.search(rb"\x1b\[(3[0-8]|9[0-7]|4[0-8])m", output) is None, output[-2000:])
 
 
+def test_non_utf8_locale_draws_only_ascii(root, home, *, binary):
+    # Every glyph this program draws has an ASCII fallback: spinner, notices,
+    # bullets, tool rows and command replies. The model's text here is ASCII.
+    replies = [
+        tool_call("run", {"command": "printf 'a\\nb\\nc\\n'"}),
+        event({"content": "- item one\n- item two\n\nascii-ok"}),
+    ]
+    with Server(replies) as server:
+        env = base_env(home, server.url)
+        env["LC_ALL"] = "C"
+        code, output = run_pty(
+            root,
+            env,
+            [
+                (b"/verbose\n", b"verbose on"),
+                (b"/verbose\n", b"verbose off"),
+                (b"go\n", b"ascii-ok", b"Ready", None),
+                (b"/cost\n", b"total"),
+                b"/q\n",
+            ],
+            args=("--yolo",),
+            binary=binary,
+        )
+    assert_true(code == 0, output[-2000:])
+    assert_true(b"* item one" in output, output[-2000:])
+    assert_true(re.search(rb"[\x80-\xff]", output) is None, output[-2000:])
+
+
 def test_multiline_bracketed_paste(root, home, *, binary):
     def verify(_, body):
         pasted = body["messages"][-1].get("content")

@@ -855,6 +855,12 @@ pre code {
   margin-right: var(--space-3);
 }
 .conversation {
+  /* The reading column's side inset: the transcript, the composer and
+     anything between them line up on it. */
+  --column-inset: max(
+    var(--pad),
+    calc((100% - var(--conversation-measure)) / 2)
+  );
   min-width: 0;
   min-height: 0;
   display: flex;
@@ -888,8 +894,7 @@ pre code {
   min-height: 0;
   overflow: auto;
   scrollbar-gutter: stable;
-  padding: var(--gap)
-    max(var(--pad), calc((100% - var(--conversation-measure)) / 2));
+  padding: var(--gap) var(--column-inset);
   overscroll-behavior: contain;
 }
 /* Single spacing mechanism for the whole column: uniform gap, zero
@@ -947,7 +952,7 @@ pre code {
   position: relative;
   flex-shrink: 0;
   min-width: 0;
-  margin: 0 max(var(--pad), calc((100% - var(--conversation-measure)) / 2));
+  margin: 0 var(--column-inset);
   padding: var(--space-2) 0;
   background: var(--bg);
   max-height: calc(var(--viewport-height) - calc(100rem / 14));
@@ -1267,6 +1272,27 @@ details[open]:not(.disclosure-row) > summary::before {
 }
 .decision h2 {
   flex-shrink: 0;
+}
+/* A coordinator's threads waiting on the user, above its composer; the
+   transcript keeps at least half the column. */
+.escalations {
+  flex-shrink: 0;
+  margin: 0 var(--column-inset);
+  max-height: 50%;
+  overflow: auto;
+  display: grid;
+  gap: var(--gap);
+  padding-bottom: var(--gap);
+}
+.escalation {
+  display: grid;
+  gap: var(--space-2);
+}
+.escalation-thread {
+  justify-self: start;
+  max-width: 100%;
+  font-size: 0.8rem;
+  color: var(--muted);
 }
 .decision-note {
   color: var(--muted);

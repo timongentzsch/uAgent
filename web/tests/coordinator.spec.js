@@ -10,9 +10,10 @@ const VIEWPORTS = [
 
 async function openCoordinator(page, session) {
   await page.goto(`/#session=${session.id}`);
-  await expect(page.getByLabel("Message or guidance")).toBeVisible();
   // Narrow layouts keep the sessions in a drawer.
   const drawer = page.getByLabel("Open sessions");
+  const button = page.getByLabel("Open this folder's coordinator").first();
+  await expect(drawer.or(button)).toBeVisible();
   if (await drawer.isVisible()) await drawer.click();
   await page.getByLabel("Open this folder's coordinator").first().click();
   await expect(
@@ -111,6 +112,42 @@ for (const [name, viewport] of VIEWPORTS) {
     // At the bottom, there is nothing to jump to.
     await expect(page.locator(".jump")).toHaveCount(0);
     await shot(page, `turns-${browserName}-${name}`);
+  });
+}
+
+for (const [name, viewport] of VIEWPORTS) {
+  test(`decisions waiting on you show above the composer (${name})`, async ({
+    page,
+    session,
+    command,
+    browserName,
+  }) => {
+    await page.setViewportSize(viewport);
+    // A conversation in the folder asks to save a memory, in Ask mode.
+    await command("model", {
+      session_id: session.id,
+      generation: session.generation,
+      operation: "select",
+      model: "mock/model-b",
+    });
+    await command("submit", {
+      session_id: session.id,
+      generation: session.generation,
+      text: "Memory receipt probe: please save this test memory",
+    });
+    await openCoordinator(page, session);
+    const waiting = page.getByRole("region", {
+      name: "Decisions waiting on you",
+    });
+    await expect(waiting.getByText("Needs your decision")).toBeVisible();
+    await expect(waiting.getByText("Allow memory?")).toBeVisible();
+    // The transcript keeps at least half the column.
+    const box = await waiting.boundingBox();
+    const column = await page.locator(".coordinator-chat").boundingBox();
+    expect(box.height).toBeLessThanOrEqual(column.height / 2 + 1);
+    await shot(page, `escalation-${browserName}-${name}`);
+    await waiting.getByRole("button", { name: "Allow once" }).click();
+    await expect(waiting).toHaveCount(0);
   });
 }
 

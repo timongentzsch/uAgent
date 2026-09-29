@@ -59,6 +59,7 @@ import Board, {
   CoordinatorLayout,
 } from "../features/coordinator/board.tsx";
 import { folderName } from "../features/sidebar/folder-label.tsx";
+import Escalations from "../features/coordinator/escalations.tsx";
 import Chat, {
   TranscriptPlaceholder,
   prepareHistoryBlocks,
@@ -371,10 +372,11 @@ function App() {
         ...prior.sessions.filter((entry) => entry.id !== created.session.id),
       ],
     }));
-    await choose(created.session.id);
+    // Live before it is shown, so opening never flashes the saved state.
     if (created.session.presence !== "active") {
       await command("activate", created.session);
     }
+    await choose(created.session.id);
     await load(created.session.id);
   }
   // A command with a screen opens it when typed bare; with an argument it
@@ -1135,6 +1137,15 @@ function App() {
                       question={side.question}
                       answer={side.answer}
                       close={() => setSide(null)}
+                    />
+                  )}
+                  {session.kind === "coordinator" && (
+                    <Escalations
+                      sessions={catalogue.sessions}
+                      folder={session.cwd || ""}
+                      online={online}
+                      choose={choose}
+                      report={report}
                     />
                   )}
                   {composerFor(session)}

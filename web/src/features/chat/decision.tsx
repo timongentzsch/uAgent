@@ -129,7 +129,7 @@ export default function Decision({
         >
           {pending.kind === "editor" ? (
             <label>
-              System prompt
+              Your text
               <Textarea
                 rows={12}
                 value={reply}

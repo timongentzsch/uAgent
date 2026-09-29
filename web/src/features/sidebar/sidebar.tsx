@@ -152,17 +152,20 @@ function CoordinatorButton({
       : "ready";
   return (
     <IconButton
-      label={
-        waiting
-          ? `Coordinator: ${waiting} waiting on you`
-          : "Open this folder's coordinator"
-      }
+      label="Open this folder's coordinator"
       class={`coordinator-button ${state}`}
       onClick={open}
       disabled={!online}
     >
       <MessagesSquare aria-hidden="true" />
-      {waiting > 0 && <span class="coordinator-badge">{waiting}</span>}
+      {waiting > 0 && (
+        <span
+          class="coordinator-badge"
+          aria-label={`${waiting} waiting on you`}
+        >
+          {waiting}
+        </span>
+      )}
     </IconButton>
   );
 }

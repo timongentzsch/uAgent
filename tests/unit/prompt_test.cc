@@ -132,6 +132,11 @@ void TestInstructionFiles() {
   CHECK(shown["files"][2]["text"] == "Keep threads small.");
   CHECK(WriteInstructionFile(false, false, cwd,
                              std::string(kProjectDocBytes + 1, 'x')) != "");
+  // Two editors from the same text: the second save is refused, not lost.
+  CHECK(WriteInstructionFile(false, true, cwd, "Mine.", "Run ctest.").empty());
+  CHECK(WriteInstructionFile(false, true, cwd, "Theirs.", "Run ctest.")
+            .find("changed since") != std::string::npos);
+  CHECK(ReadInstructionFile(InstructionPath(false, true, cwd)) == "Mine.");
   // The editor edits the file the loader reads at that level, and never
   // writes through a link.
   { std::ofstream(cwd / "CLAUDE.md") << "Legacy."; }

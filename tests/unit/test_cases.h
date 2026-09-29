@@ -52,6 +52,7 @@ namespace uagent {
   X(TestConfigRegistryContract)                  \
   X(TestRuntimeConfigCoherence)                  \
   X(TestSavedHistoryInvalidation)                \
+  X(TestArrivalsSurviveFactEviction)             \
   X(TestSavedTranscriptIndex)                    \
   X(TestSessionPersistence)                      \
   X(TestSessionCatalogueCache)                   \

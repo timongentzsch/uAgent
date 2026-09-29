@@ -695,6 +695,8 @@ export interface CommandFields {
   cwd?: string;
   coordinator?: boolean;
   audience?: string;
+  // Instructions: the text an edit started from; a changed file refuses.
+  base?: string;
   title?: string;
   device_id?: string;
   text?: string;

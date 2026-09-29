@@ -57,6 +57,10 @@ class Conversation {
   // eviction and session restore, and only the request path writes it.
   json AnnouncedDeliveries(const std::string& id) const;
   void RecordAnnouncedDeliveries(std::string id, json values);
+  // When a user message arrived (UTC), by display id; empty when unknown.
+  // Kept apart from the evictable display facts: a coordinator's model reads
+  // these stamps, so losing one would change its cached prefix.
+  std::string Arrival(uint64_t id) const;
   json RecordEntry(json facts);
   std::string LastDisplayId() const;
 
@@ -145,6 +149,9 @@ class Conversation {
   // Last announced attachment deliveries per display id. Tiny (a few rows
   // of name/delivery/path), bounded below, never evicted for space.
   json announced_deliveries_ = json::object();
+  // User message arrivals (display id -> UTC time), the newest kArrivals.
+  static constexpr size_t kArrivals = 4096;
+  std::map<uint64_t, std::string> arrivals_;
   json statistics_ = {{"complete", true}};
   uint64_t next_display_id_ = 1;
   size_t display_bytes_ = 0;

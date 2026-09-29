@@ -46,8 +46,12 @@ json ManagementControl(const json& request) {
         return {{"error", "audience is sessions or coordinator, scope user "
                           "or project"}};
       }
+      std::optional<std::string> base;
+      if (request.contains("base") && request["base"].is_string()) {
+        base = request["base"].get<std::string>();
+      }
       const std::string error = WriteInstructionFile(
-          coordinator, project, cwd, JsonValue(request, "text", ""));
+          coordinator, project, cwd, JsonValue(request, "text", ""), base);
       if (!error.empty()) return {{"error", error}};
     }
     json shown = InstructionFiles(cwd);

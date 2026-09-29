@@ -224,18 +224,17 @@ void HandleInstructions(AppSession& session, const std::string& argument,
       return;
     }
     const auto path = InstructionPath(coordinator, project, cwd);
+    const std::string base = ReadInstructionFile(path);
     bool cancelled = false;
     const std::string text = ReadInteraction(
-        {.kind = "editor",
-         .prompt = path.string(),
-         .initial = ReadInstructionFile(path)},
+        {.kind = "editor", .prompt = path.string(), .initial = base},
         &cancelled);
     if (cancelled) {
       reply.Print("%s", "· instructions unchanged\n");
       return;
     }
     const std::string error =
-        WriteInstructionFile(coordinator, project, cwd, text);
+        WriteInstructionFile(coordinator, project, cwd, text, base);
     reply.Print("· %s\n", error.empty()
                               ? "saved; new and restarted sessions read it"
                               : error.c_str());

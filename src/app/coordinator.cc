@@ -422,7 +422,9 @@ ToolResult Message(const SessionInfo& info, const std::string& folder,
   }
   error = SendWhenReady(
       connection, info.path,
-      {{"kind", "steer"}, {"text", "[from the folder's coordinator] " + text}},
+      {{"kind", "steer"},
+       {"origin", kRouteCoordinator},
+       {"text", "[from the folder's coordinator] " + text}},
       false);
   return error.empty() ? ToolSuccess("sent")
                        : Unavailable(error);
@@ -473,9 +475,11 @@ Tool ThreadTool(const std::string& folder) {
       "Delegate work to threads: ordinary sessions that edit and run code "
       "for you. spawn starts one on a brief (title, objective, output, "
       "done_when, boundaries; environment worktree or local). message "
-      "guides any session in this folder (session_id, text); stop "
-      "interrupts it; diff shows what it changed; delete removes a stopped "
-      "session after the user confirms. One thread per independent part; "
+      "guides a running session in this folder, or restarts your own "
+      "thread (session_id, text; three in a row at most, then ask the "
+      "user); stop interrupts it; diff shows what it changed; delete "
+      "removes a stopped session, and its worktree if nothing would be "
+      "lost, after the user confirms. One thread per independent part; "
       "keep dependent steps in one thread.",
       json::parse(R"json({"type":"object","properties":{
         "action":{"type":"string","enum":["spawn","message","stop","diff","delete"]},

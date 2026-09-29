@@ -198,15 +198,20 @@ inline json InstructionFiles(const std::filesystem::path& cwd) {
   return {{"files", std::move(files)}, {"also_loaded", std::move(also)}};
 }
 
-// Replaces one instruction file; returns the error, or empty.
-inline std::string WriteInstructionFile(bool coordinator, bool project,
-                                        const std::filesystem::path& cwd,
-                                        const std::string& text) {
+// Replaces one instruction file; returns the error, or empty. With `base`,
+// the text the editor started from, a file changed since then is kept: two
+// editors never silently overwrite each other.
+inline std::string WriteInstructionFile(
+    bool coordinator, bool project, const std::filesystem::path& cwd,
+    const std::string& text, const std::optional<std::string>& base = {}) {
   if (text.size() > kProjectDocBytes) {
     return "instructions are at most " +
            std::to_string(kProjectDocBytes / 1024) + " KiB";
   }
   const std::filesystem::path path = InstructionPath(coordinator, project, cwd);
+  if (base && ReadInstructionFile(path) != *base) {
+    return path.string() + " changed since it was opened; reload it first";
+  }
   // Written in place, never through a link a repository could plant.
   std::error_code ec;
   if (std::filesystem::is_symlink(path, ec)) {

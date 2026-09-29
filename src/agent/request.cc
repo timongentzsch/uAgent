@@ -813,16 +813,13 @@ void Prefix(json& message, const std::string& text) {
 json Agent::CoordinatorRequest(json messages) const {
   const auto& ids = conversation_.DisplayIds();
   const auto& kinds = conversation_.Kinds();
-  const json& facts = conversation_.DisplayFacts();
   if (messages.size() == ids.size()) {
     std::time_t previous = 0;
     for (size_t index = 0; index < messages.size(); ++index) {
       if (kinds[index] != MessageKind::kUser) continue;
-      const std::string id = "m-" + std::to_string(ids[index]);
       std::time_t seconds = 0;
-      std::string stamp = ArrivalStamp(
-          JsonValue(JsonValue(facts, id.c_str(), json::object()), "time", ""),
-          seconds);
+      std::string stamp =
+          ArrivalStamp(conversation_.Arrival(ids[index]), seconds);
       if (stamp.empty()) continue;
       if (previous && seconds - previous >= 3600) {
         stamp = "\u2014 " + std::to_string((seconds - previous) / 3600) +

@@ -697,6 +697,24 @@ class WorkerChannel final : public ApplicationChannel {
       kind = SessionCommandKind::kSubmit;
     }
     if (closed_) return false;
+    // A coordinator answering each of a thread's reports with another
+    // message would never stop: past kCoordinatorStreak messages in a row,
+    // with nobody else speaking here, the next one needs a person.
+    if (!thread_.empty() && !parsed.text.empty() &&
+        (kind == SessionCommandKind::kSubmit ||
+         kind == SessionCommandKind::kSteer)) {
+      if (JsonValue(parsed.raw, "origin", "") != kRouteCoordinator) {
+        coordinator_streak_ = 0;
+      } else if (++coordinator_streak_ > kCoordinatorStreak) {
+        Send({{"kind", "outcome"},
+              {"request_id", request},
+              {"accepted", false},
+              {"error", "the coordinator has messaged this thread " +
+                            std::to_string(kCoordinatorStreak) +
+                            " times in a row; ask the user first"}});
+        return true;
+      }
+    }
     if (coordinator_ && (kind == SessionCommandKind::kSubmit ||
                          kind == SessionCommandKind::kSteer) &&
         !parsed.text.empty() && !parsed.text.starts_with("/")) {
@@ -929,6 +947,8 @@ class WorkerChannel final : public ApplicationChannel {
   std::vector<std::string> events_;
   std::chrono::steady_clock::time_point events_due_{};
   static constexpr auto kSpendRecheck = std::chrono::minutes(1);
+  static constexpr int kCoordinatorStreak = 3;
+  int coordinator_streak_ = 0;  // coordinator messages since anyone else
   static constexpr int kNotifyAttempts = 20;
   static constexpr auto kNotifyRetry = std::chrono::milliseconds(250);
   bool closed_ = false, busy_ = true;

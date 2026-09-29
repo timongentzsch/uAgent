@@ -3,6 +3,7 @@
 #include "include/tools/configure.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -17,6 +18,9 @@ namespace uagent {
 Tool UagentTool(SelfDescriptionProvider describe,
                 const ConfigProposalFactory& prepare,
                 const std::shared_ptr<ConfigApprovals>& store) {
+  // The file text an instructions diff was shown against, so the write can
+  // refuse when the file changed while the user read the diff.
+  auto shown = std::make_shared<std::pair<json, std::string>>();
   Tool tool = MakeTool(
       "uagent",
       "Inspect this running build: status, cli, commands, config, tools, "
@@ -69,7 +73,7 @@ Tool UagentTool(SelfDescriptionProvider describe,
                  {"description", "required for set; omitted for unset"}}}}},
              {"required", json::array({"key", "operation"})}}}}}}},
        {"required", json::array({"action"})}},
-      [describe = std::move(describe), store](
+      [describe = std::move(describe), store, shown](
           const json& arguments, const ToolContext&) -> ToolResult {
         const std::string action = JsonValue(arguments, "action", "");
         if (action == "inspect" &&
@@ -82,9 +86,11 @@ Tool UagentTool(SelfDescriptionProvider describe,
           ParseInstructionTarget(JsonValue(arguments, "audience", ""),
                                  JsonValue(arguments, "scope", ""),
                                  coordinator, project);
+          std::optional<std::string> base;
+          if (shown->first == arguments) base = shown->second;
           const std::string error =
               WriteInstructionFile(coordinator, project, CanonicalCwd(),
-                                   JsonValue(arguments, "text", ""));
+                                   JsonValue(arguments, "text", ""), base);
           return error.empty()
                      ? ToolSuccess("saved; new and restarted sessions read it")
                      : ToolFailure(ToolErrorCode::kProcessFailed,
@@ -223,15 +229,15 @@ Tool UagentTool(SelfDescriptionProvider describe,
   };
   // Built only when a person is about to be asked. Preparing here also records
   // the proposal, so the bytes shown are exactly the bytes that can commit.
-  tool.approval_preview = [prepare, store](const json& arguments) {
+  tool.approval_preview = [prepare, store, shown](const json& arguments) {
     if (JsonValue(arguments, "action", "") == "set_instructions") {
       bool coordinator = false, project = false;
       ParseInstructionTarget(JsonValue(arguments, "audience", ""),
                              JsonValue(arguments, "scope", ""), coordinator,
                              project);
       const auto path = InstructionPath(coordinator, project, CanonicalCwd());
-      return ConfigUnifiedDiff(ReadInstructionFile(path),
-                               JsonValue(arguments, "text", ""),
+      *shown = {arguments, ReadInstructionFile(path)};
+      return ConfigUnifiedDiff(shown->second, JsonValue(arguments, "text", ""),
                                path.string()) +
              "\nNew and restarted sessions read it.";
     }

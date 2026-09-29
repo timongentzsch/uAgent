@@ -182,12 +182,16 @@ function InstructionCard({
   saved: (stack: InstructionStack) => void;
 }) {
   // Null until edited: the field shows the file as it is, including a newer
-  // version loaded meanwhile, and an edit in progress is never replaced.
-  const [draft, setDraft] = useState<string | null>(null);
+  // version loaded meanwhile, and an edit in progress is never replaced. An
+  // edit remembers the text it started from, so saving over a file changed
+  // meanwhile (another tab, the agent) is refused rather than lost.
+  const [draft, setDraft] = useState<{ text: string; base: string } | null>(
+    null,
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const field = useRef<HTMLTextAreaElement>(null);
-  const text = draft ?? file.text;
+  const text = draft?.text ?? file.text;
   const changed = text !== file.text;
   async function save() {
     setBusy(true);
@@ -199,6 +203,7 @@ function InstructionCard({
         audience: file.audience,
         scope: file.scope,
         text,
+        base: draft?.base ?? file.text,
       });
       if (!value.pending) {
         saved(value.result);
@@ -230,7 +235,12 @@ function InstructionCard({
         placeholder="Nothing yet."
         readOnly={busy}
         disabled={!online}
-        onInput={(event) => setDraft(event.currentTarget.value)}
+        onInput={(event) =>
+          setDraft({
+            text: event.currentTarget.value,
+            base: draft?.base ?? file.text,
+          })
+        }
       />
       {changed && (
         <Actions>

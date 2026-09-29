@@ -259,6 +259,31 @@ def test_restarted_threads_keep_their_ceiling_and_user_sessions_stay_asleep(root
         assert_true(len(server.requests) == 3, [json.dumps(b)[-200:] for _, b in server.requests])
 
 
+def test_coordinator_messages_a_thread_at_most_three_times_in_a_row(root, home, *, binary):
+    from integration_support import fnv1a64
+
+    coordinator = fnv1a64(str(home / ".uagent" / "history" / fnv1a64(str(root.resolve())) / "coordinator.json"))
+    thread = write_session(
+        home,
+        "thread-busy",
+        [{"role": "system", "content": "sys"}, {"role": "user", "content": "go"}],
+        cwd=root,
+        usage={"cost": 5, "cost_reported": True},
+        kind="thread",
+        thread={"coordinator_id": coordinator, "folder": str(root.resolve()), "ceiling": {"budget_usd": 1}},
+    )
+    message = {"action": "message", "session_id": fnv1a64(str(thread)), "text": "again"}
+    with Server(
+        [tool_call("thread", message, call_id=f"call-{index}") for index in range(4)]
+        + [event({"content": "done-ok"})]
+    ) as server:
+        result = run(root, base_env(home, server.url), "coord", "-p", "nudge", binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        results = tool_results(server.requests[-1][1]["messages"])
+        assert_true(results[:3] == ["sent"] * 3, results)
+        assert_true("3 times in a row" in results[3], results)
+
+
 def test_coordinator_holds_thread_events_at_the_spend_limit(root, home, *, binary):
     from integration_support import fnv1a64
     from session_support import SessionClient, runtime_directory, stop_sessions

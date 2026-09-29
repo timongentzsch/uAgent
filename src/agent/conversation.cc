@@ -159,6 +159,7 @@ void Conversation::Reset(json baseline, std::vector<MessageKind> kinds) {
   display_facts_ = json::object();
   fact_bytes_.clear();
   announced_deliveries_ = json::object();
+  arrivals_.clear();
   statistics_ = {{"complete", true}};
   display_bytes_ = 0;
   ResetHistory(std::move(baseline), std::move(kinds));
@@ -239,6 +240,16 @@ bool Conversation::Restore(json messages, std::vector<MessageKind> kinds,
       JsonEstimatedBytes(announced) <= size_t{64} * 1024) {
     announced_deliveries_ = announced;
   }
+  arrivals_.clear();
+  if (const json* arrivals = JsonObject(display, "arrivals")) {
+    for (const auto& [key, time] : arrivals->items()) {
+      int64_t id = 0;
+      if (ParseInt64(key.c_str(), id) && id > 0 && time.is_string() &&
+          time.size() <= 32 && arrivals_.size() < kArrivals) {
+        arrivals_[static_cast<uint64_t>(id)] = time.get<std::string>();
+      }
+    }
+  }
   next_display_id_ = next_id;
   statistics_ = std::move(statistics);
   return true;
@@ -291,9 +302,12 @@ const std::string* Conversation::ToolDisplay(const std::string& call_id) const {
 }
 
 json Conversation::DisplayMetadata() const {
+  json arrivals = json::object();
+  for (const auto& [id, time] : arrivals_) arrivals[std::to_string(id)] = time;
   return {{"ids", display_ids_},
           {"facts", display_facts_},
           {"announced", announced_deliveries_},
+          {"arrivals", std::move(arrivals)},
           {"statistics", statistics_},
           {"next", next_display_id_}};
 }
@@ -386,6 +400,11 @@ void Conversation::RecordDisplay(const std::string& key, json facts) {
   }
 }
 
+std::string Conversation::Arrival(uint64_t id) const {
+  const auto found = arrivals_.find(id);
+  return found == arrivals_.end() ? "" : found->second;
+}
+
 json Conversation::AnnouncedDeliveries(const std::string& id) const {
   if (announced_deliveries_.is_object()) {
     const auto found = announced_deliveries_.find(id);
@@ -428,7 +447,12 @@ void Conversation::PushWithDisplayId(json message, MessageKind kind,
   if (id >= next_display_id_) next_display_id_ = id + 1;
   if (kind == MessageKind::kUser || kind == MessageKind::kAssistant ||
       kind == MessageKind::kToolResult || kind == MessageKind::kAttachment) {
-    RecordDisplay(LastDisplayId(), {{"time", UtcStamp()}});
+    const std::string now = UtcStamp();
+    RecordDisplay(LastDisplayId(), {{"time", now}});
+    if (kind == MessageKind::kUser) {
+      arrivals_[id] = now;
+      while (arrivals_.size() > kArrivals) arrivals_.erase(arrivals_.begin());
+    }
   }
 }
 

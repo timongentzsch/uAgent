@@ -1,5 +1,25 @@
-import { isFailedStatus, isRunningStatus } from "../../shared/display.ts";
-import type { Block, PresentedBlock } from "../../shared/types.ts";
+import { isFailedStatus, isRunningStatus } from "./display.ts";
+import type { Block, PresentedBlock } from "./types.ts";
+
+// A block the host did not change keeps its row object, so a streamed
+// frame presents only the rows it touched and the rest compare by identity.
+const presented = new WeakMap<Block, PresentedBlock>();
+
+function present(block: Block, source?: Block): PresentedBlock {
+  const prior = presented.get(block);
+  if (prior && prior.source === source) return prior;
+  const row: PresentedBlock =
+    block.kind === "tool_result"
+      ? {
+          ...block,
+          key: block.id,
+          source,
+          result_loaded: !isRunningStatus(block.status),
+        }
+      : { ...block, key: block.id };
+  presented.set(block, row);
+  return row;
+}
 
 // Flat, stable, uniform rows: the host's view already holds one block per
 // message and one per tool call, so a block is a row. Empty assistant
@@ -25,16 +45,12 @@ export function presentMessages(blocks: Block[]): PresentedBlock[] {
     // Routine memory outcomes are for the terminal's /verbose view only.
     if (block.memory?.minor) continue;
     rows.push(
-      block.kind === "tool_result"
-        ? {
-            ...block,
-            key: block.id,
-            source: block.response_id
-              ? responses.get(block.response_id)
-              : undefined,
-            result_loaded: !isRunningStatus(block.status),
-          }
-        : { ...block, key: block.id },
+      present(
+        block,
+        block.kind === "tool_result" && block.response_id
+          ? responses.get(block.response_id)
+          : undefined,
+      ),
     );
   }
   return foldGroups(attachToolFiles(rows));

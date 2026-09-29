@@ -1,7 +1,7 @@
 import type { ComponentChildren } from "preact";
 import { Folder } from "lucide-preact";
-import { DataText } from "../../shared/placeholder.tsx";
-import type { Session } from "../../shared/types.ts";
+import { DataText } from "./placeholder.tsx";
+import type { Session } from "./types.ts";
 
 export const folderName = (path = "") =>
   path.split("/").filter(Boolean).slice(-2).join("/") ||

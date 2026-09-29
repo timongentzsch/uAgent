@@ -26,7 +26,7 @@ import {
   dateTime,
 } from "../settings/management.tsx";
 import Markdown from "../../shared/markdown-view.tsx";
-import FolderLabel, { folderName } from "../sidebar/folder-label.tsx";
+import FolderLabel, { folderName } from "../../shared/folder-label.tsx";
 import "../chat/message.css";
 
 type Draft = {

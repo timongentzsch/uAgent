@@ -2,8 +2,8 @@ import { useEffect, useState } from "preact/hooks";
 import type { Act, Pending, Report, Session } from "../../shared/types.ts";
 import { api, command } from "../../state/api.ts";
 import { Button, Deferred, LoadError, Spinner } from "../../shared/ui.tsx";
-import { folderOf } from "../sidebar/folder-label.tsx";
-import SessionName from "../sidebar/session-name.tsx";
+import { folderOf } from "../../shared/folder-label.tsx";
+import SessionName from "../../shared/session-name.tsx";
 
 const decisionPanel = () => import("../chat/decision.tsx");
 

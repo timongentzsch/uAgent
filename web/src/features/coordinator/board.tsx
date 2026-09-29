@@ -3,8 +3,8 @@ import { CircleHelp } from "lucide-preact";
 import { Popover } from "../../shared/popover.tsx";
 import type { Session } from "../../shared/types.ts";
 import { Actions, Button, Time } from "../../shared/ui.tsx";
-import { folderOf } from "../sidebar/folder-label.tsx";
-import SessionName from "../sidebar/session-name.tsx";
+import { folderOf } from "../../shared/folder-label.tsx";
+import SessionName from "../../shared/session-name.tsx";
 
 const DONE_SHOWN = 8;
 

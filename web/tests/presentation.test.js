@@ -14,7 +14,7 @@ import { count, bytes } from "../src/shared/quantities.ts";
 import {
   presentMessages,
   splitMentionTokens,
-} from "../src/features/chat/message-view.ts";
+} from "../src/shared/message-view.ts";
 import { dedupeName } from "../src/features/composer/mention.ts";
 import {
   encodeMention,

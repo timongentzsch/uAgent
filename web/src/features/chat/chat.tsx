@@ -1,6 +1,5 @@
 import type {
   Block,
-  Exchange,
   Report,
   Session,
   SessionRef,
@@ -34,12 +33,7 @@ const SAMPLE: Block[] = [
 export function TranscriptPlaceholder({ session }: { session: SessionRef }) {
   return (
     <Placeholder label="Loading conversation…">
-      <MessageRows
-        blocks={SAMPLE}
-        online={false}
-        session={session}
-        report={() => {}}
-      />
+      <MessageRows blocks={SAMPLE} online={false} session={session} />
     </Placeholder>
   );
 }
@@ -58,12 +52,6 @@ export default function Chat({
   loadSnapshot,
   older,
   report,
-  recall,
-  branch,
-  inspect,
-  http,
-  activity,
-  statistics,
   preserveWhile,
 }: {
   scroller: RefObject<HTMLDivElement>;
@@ -80,12 +68,6 @@ export default function Chat({
   older: () => Promise<void>;
   preserveWhile: (load: () => Promise<void>) => Promise<void>;
   report: Report;
-  recall: (block: Block) => void;
-  branch: (block: Block, edit: boolean) => void;
-  inspect: (id: string) => void;
-  http: (exchanges: Exchange[]) => void;
-  activity: (block: Block) => void;
-  statistics: (block: Block) => void;
 }) {
   // Keep the hook's mirrors current and rebind its node-keyed effects
   // on every remount; both callbacks are stable, so no ref churn.
@@ -170,18 +152,7 @@ export default function Chat({
           </div>
         )}
         {snapshot && prepared && (
-          <MessageRows
-            blocks={blocks}
-            online={online}
-            session={session}
-            report={report}
-            recall={recall}
-            branch={branch}
-            inspect={inspect}
-            http={http}
-            activity={activity}
-            statistics={statistics}
-          />
+          <MessageRows blocks={blocks} online={online} session={session} />
         )}
         {session.error && <p class="failure">{session.error}</p>}
         {snapshot?.state?.error && (

@@ -51,7 +51,7 @@ export function Time({ value }: { value?: string | number }) {
     </time>
   );
 }
-export async function copyText(text: string) {
+async function copyText(text: string) {
   if (navigator.clipboard) return navigator.clipboard.writeText(text);
   // Clipboard API requires HTTPS; tailnet HTTP still supports user-initiated copy.
   const field = document.createElement("textarea");

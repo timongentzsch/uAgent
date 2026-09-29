@@ -249,7 +249,6 @@ export interface ActivityDetail extends Activity {
   phase?: ExecutionPhase;
   context_tokens?: number;
   context_window?: number;
-  statistics_live?: boolean;
   route?: string;
   olderWindow?: boolean;
   body?: BodyPage;

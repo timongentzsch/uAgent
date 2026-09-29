@@ -1,3 +1,72 @@
+.management-toolbar {
+  display: flex;
+  align-items: end;
+  gap: var(--gap);
+  padding: var(--pad);
+  border-bottom: 1px solid var(--line);
+}
+.management-toolbar > .field {
+  flex: 1;
+  max-width: 34rem;
+}
+.management-toolbar > p {
+  flex: 1;
+  margin: 0;
+}
+.management-body {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+}
+.management-list {
+  flex: 0 0 15rem;
+  padding: var(--gap);
+  overflow: auto;
+  border-right: 1px solid var(--line);
+}
+.management-list > .text-control {
+  margin-bottom: var(--gap);
+  width: 100%;
+}
+.library-row {
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+  width: 100%;
+  gap: var(--space-1);
+  border: 0;
+  background: none;
+  padding: var(--space-3) var(--gap);
+  overflow-wrap: anywhere;
+}
+.management-editor {
+  margin: 0;
+  border: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  padding: var(--pad);
+  min-height: 0;
+  scroll-padding-block: var(--pad);
+  min-width: 0;
+  overflow: auto;
+  flex: 1;
+}
+.editor-head {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+}
+.editor-head > button {
+  display: none;
+}
+.run-history {
+  border-top: 1px solid var(--line);
+  padding-top: var(--pad);
+}
+.run-history h2 {
+  font-size: 1em;
+}
 .library-row small,
 .run-row small {
   color: var(--muted);
@@ -100,5 +169,51 @@
 @media (max-width: 900px) {
   .editor-actions > small {
     flex-basis: 100%;
+  }
+}
+@media (max-width: 900px) {
+  .management-toolbar {
+    flex-wrap: wrap;
+  }
+  .management-toolbar .field {
+    order: 3;
+    min-width: 100%;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+  }
+  .management-toolbar > button {
+    margin-left: auto;
+  }
+  .management-list {
+    flex: 1;
+    border-right: 0;
+  }
+  .management-editor {
+    display: none;
+  }
+  .editor-head > button {
+    display: flex;
+  }
+  .management:has(.has-selection) .management-toolbar > :not(.field),
+  .management:has(.has-selection .schedule-editor) .management-toolbar {
+    display: none;
+  }
+  .management-body.has-selection .management-list {
+    display: none;
+  }
+  .management-body.has-selection .management-editor {
+    display: flex;
+  }
+  .management-body:not(.has-selection) .schedule-editor {
+    display: flex;
+    overflow: visible;
+    flex: none;
+  }
+  .management-body:not(.has-selection):has(.schedule-editor) {
+    flex-direction: column;
+    overflow: auto;
+  }
+  .management-body:not(.has-selection):has(.schedule-editor) .management-list {
+    flex: none;
   }
 }

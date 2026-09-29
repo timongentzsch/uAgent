@@ -3,18 +3,20 @@ import { TurnFooter } from "./turn-footer.tsx";
 import Markdown, { prepareMarkdown } from "../../shared/markdown-view.tsx";
 import "./message.css";
 import { count } from "../../shared/quantities.ts";
-import { Component, type ComponentProps } from "preact";
-import { presentMessages, splitMentionTokens } from "./message-view.ts";
+import { Component } from "preact";
+import {
+  presentMessages,
+  splitMentionTokens,
+} from "../../shared/message-view.ts";
 import type {
   PresentedBlock,
   Block,
   Asset,
   SessionRef,
-  Exchange,
   LinkPart,
-  Report,
 } from "../../shared/types.ts";
-import { useEffect, useMemo, useState } from "preact/hooks";
+import { useContext, useEffect, useMemo, useState } from "preact/hooks";
+import { MessageActions } from "./message-actions.ts";
 import { Minimize2, X } from "lucide-preact";
 import {
   Button,
@@ -81,35 +83,15 @@ function MentionFile({
 // the file itself (a reference, a vision-model description).
 const AS_SENT = new Set(["Image", "Document", "Text", "Audio", "Video"]);
 
-function MessageView({
-  block,
-  online,
-  session,
-  inspect,
-  report,
-  statistics,
-  activity,
-  recall,
-  branch,
-  http,
-  read,
-}: {
+type MessageProps = {
   block: PresentedBlock;
   online: boolean;
   session: SessionRef;
-  read?: (
-    id: string,
-    raw: boolean,
-    signal?: AbortSignal,
-  ) => Promise<{ text: string }>;
-  inspect?: (id: string) => void;
-  report: Report;
-  statistics?: (block: Block) => void;
-  activity?: (block: Block) => void;
-  recall?: (block: PresentedBlock) => void;
-  branch?: (block: PresentedBlock, edit: boolean) => void;
-  http?: (exchanges: Exchange[]) => void;
-}) {
+};
+
+function MessageView({ block, online, session }: MessageProps) {
+  const { read, inspect, report, statistics, activity, recall, branch, http } =
+    useContext(MessageActions);
   const [full, setFull] = useState<string | null>(null);
   const [expanding, setExpanding] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -364,15 +346,29 @@ function MessageView({
   );
 }
 
-type MessageProps = ComponentProps<typeof MessageView>;
+// A tool row shows its model message's time, HTTP log and ids, never its
+// text, so the reply streaming beside it does not re-render it.
+function sourceEqual(a?: Block, b?: Block) {
+  return (
+    a?.id === b?.id &&
+    a?.occurrence_id === b?.occurrence_id &&
+    a?.time === b?.time &&
+    (a?.http?.length || 0) === (b?.http?.length || 0)
+  );
+}
 
 // Every block field counts, so a new field can never be silently ignored.
 // Only arrays the projection rebuilds on each pass compare by content.
 function blockEqual(x: PresentedBlock, y: PresentedBlock): boolean {
+  if (x === y) return true;
   const a = x as unknown as Record<string, unknown>;
   const b = y as unknown as Record<string, unknown>;
   for (const key of new Set([...Object.keys(a), ...Object.keys(b)])) {
     if (a[key] === b[key]) continue;
+    if (key === "source") {
+      if (!sourceEqual(x.source, y.source)) return false;
+      continue;
+    }
     const before = (a[key] || []) as PresentedBlock[];
     const after = (b[key] || []) as PresentedBlock[];
     if (key === "children") {
@@ -392,14 +388,6 @@ function messagePropsEqual(before: MessageProps, after: MessageProps): boolean {
     before.online === after.online &&
     before.session.id === after.session.id &&
     (before.session.generation || "") === (after.session.generation || "") &&
-    before.read === after.read &&
-    before.inspect === after.inspect &&
-    before.report === after.report &&
-    before.statistics === after.statistics &&
-    before.activity === after.activity &&
-    before.recall === after.recall &&
-    before.branch === after.branch &&
-    before.http === after.http &&
     blockEqual(before.block, after.block)
   );
 }
@@ -407,7 +395,7 @@ function messagePropsEqual(before: MessageProps, after: MessageProps): boolean {
 // Outer class skips re-render when fields are equal, so a streaming delta
 // updates 1-2 rows instead of reconciling all 256. Inner view keeps hooks
 // (expanded/full) and disclosure state.
-export class Message extends Component<MessageProps> {
+class Message extends Component<MessageProps> {
   shouldComponentUpdate(next: MessageProps) {
     return !messagePropsEqual(this.props, next);
   }
@@ -501,7 +489,7 @@ function GroupRow(props: MessageProps) {
   );
 }
 
-export type MessageRowsProps = Omit<ComponentProps<typeof Message>, "block"> & {
+export type MessageRowsProps = Omit<MessageProps, "block"> & {
   blocks: Block[];
 };
 

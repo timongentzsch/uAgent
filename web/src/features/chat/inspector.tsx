@@ -44,6 +44,7 @@ import {
 import { active, ActivityStatus, withAgents } from "./activity-status.tsx";
 import Markdown from "../../shared/markdown-view.tsx";
 import { MessageRows, prepareHistoryBlocks } from "./message.tsx";
+import { MessageActions } from "./message-actions.ts";
 
 // What the inspector is opened on: a transcript row, a live activity, or a
 // tool's retained input/output.
@@ -378,7 +379,9 @@ export default function Inspector({
           ) : (
             detail && (
               <>
-                {active(current || detail) && !detail.statistics_live && (
+                {/* A subagent's totals come from its saved session, so
+                    running work is not in them yet. */}
+                {active(current || detail) && (
                   <p class="muted">
                     Totals reflect the latest saved checkpoint. Current work may
                     not yet be included.
@@ -576,6 +579,16 @@ function DetailBody({
     },
     [detail, loadDetail, navigate, report],
   );
+  const threadActions = useMemo(
+    () => ({
+      report,
+      read: readDetail,
+      inspect: openRaw,
+      activity: openNested,
+      statistics: showTurnStats,
+    }),
+    [report, readDetail, openRaw, openNested, showTurnStats],
+  );
   const meta = [
     current.status,
     detail.route || detail.model,
@@ -662,16 +675,13 @@ function DetailBody({
                 }
               />
               {detail.conversation ? (
-                <MessageRows
-                  blocks={detail.conversation.blocks}
-                  read={readDetail}
-                  online={online}
-                  session={childSession}
-                  report={report}
-                  inspect={openRaw}
-                  activity={openNested}
-                  statistics={showTurnStats}
-                />
+                <MessageActions.Provider value={threadActions}>
+                  <MessageRows
+                    blocks={detail.conversation.blocks}
+                    online={online}
+                    session={childSession}
+                  />
+                </MessageActions.Provider>
               ) : loading ? (
                 <Skeleton label="Loading the thread…" />
               ) : (

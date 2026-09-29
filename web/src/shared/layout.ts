@@ -117,7 +117,7 @@ export function observeViewport(update: () => void) {
 // stick owns it) and never the document (which must stay at scroll 0).
 // Runs on focus and on every viewport change: real keyboards arrive
 // after focus, and mocked viewports (tests) after the fill.
-export function revealFocusedField() {
+function revealFocusedField() {
   const active = document.activeElement;
   if (!(active instanceof HTMLElement) || active === document.body) return;
   if (active.closest(".transcript, .composer")) return;

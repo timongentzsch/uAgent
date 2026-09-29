@@ -51,7 +51,7 @@ export function withAgents(items: Activity[], agents: Agent[]): Activity[] {
   ];
 }
 
-export function activityLabel(items: Activity[] = []) {
+function activityLabel(items: Activity[] = []) {
   const running = items.filter(active);
   const agents = running.filter((item) => item.kind === "agent").length;
   const commands = running.length - agents;

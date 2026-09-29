@@ -22,7 +22,7 @@ import {
   ValueSelect,
 } from "../../shared/ui.tsx";
 import { useEffect, useRef, useState } from "preact/hooks";
-import { SettingRowsLoading } from "../../shared/loading.tsx";
+import { SettingRowsLoading } from "./loading.tsx";
 const configuration = () => import("./configuration.tsx");
 import { api, command } from "../../state/api.ts";
 import { ChevronLeft } from "lucide-preact";

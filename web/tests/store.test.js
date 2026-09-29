@@ -4,6 +4,7 @@ import {
   applySessionEvent,
   keepOlderPages,
   readStored,
+  stateFrame,
 } from "../src/state/store.ts";
 import { api, command, receiveOutcome } from "../src/state/api.ts";
 import { maxHttpExchanges } from "../src/shared/limits.ts";
@@ -267,4 +268,27 @@ test("activity status retains its provenance", () => {
   );
   assert.equal(next.state.phase, "tool");
   assert.deepEqual(next.state.activity_detail, detail);
+});
+
+test("a state frame without the view keeps the last view, HTTP log and prompt", () => {
+  const view = { blocks: [{ id: "a", kind: "user", text: "hi" }] };
+  const http = [{ id: "h", state: "done" }];
+  const prior = { phase: "idle", view, http, system_prompt: "SYS", turns: 1 };
+  assert.deepEqual(stateFrame(prior, { turns: 2 }, "model"), {
+    view,
+    http,
+    system_prompt: "SYS",
+    turns: 2,
+    phase: "model",
+  });
+  // A checkpoint frame still replaces all three.
+  const next = { blocks: [] };
+  const checkpoint = stateFrame(
+    prior,
+    { view: next, http: [], system_prompt: "NEW" },
+    "idle",
+  );
+  assert.equal(checkpoint.view, next);
+  assert.deepEqual(checkpoint.http, []);
+  assert.equal(checkpoint.system_prompt, "NEW");
 });

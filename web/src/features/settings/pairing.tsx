@@ -1,6 +1,7 @@
 import { useState } from "preact/hooks";
 import { api } from "../../state/api.ts";
 import { Button, Mark, Input } from "../../shared/ui.tsx";
+import "./pairing.css";
 export default function Pairing({
   paired,
   report,

@@ -2,7 +2,7 @@ import {
   ConnectionStatus,
   type ConnectionPhase,
 } from "../../shared/connection-status.tsx";
-import type { ComponentChildren } from "preact";
+import { Component, type ComponentChildren } from "preact";
 import type {
   Session,
   Report,
@@ -27,8 +27,11 @@ import {
   IconButton,
   Placeholder,
 } from "../../shared/ui.tsx";
-import FolderLabel, { folderName, folderOf } from "./folder-label.tsx";
-import SessionName from "./session-name.tsx";
+import FolderLabel, {
+  folderName,
+  folderOf,
+} from "../../shared/folder-label.tsx";
+import SessionName from "../../shared/session-name.tsx";
 import { Menu, MenuItem } from "../../shared/popover.tsx";
 import { ActivityStatus, active } from "../chat/activity-status.tsx";
 export function ConversationMenu({
@@ -228,23 +231,7 @@ function SessionRow({
   );
 }
 
-export default function Sidebar({
-  loading,
-  sessions,
-  selected,
-  unread,
-  online,
-  connection,
-  choose,
-  menu,
-  refresh,
-  settings,
-  create,
-  coordinate,
-  page,
-  navigate,
-  scheduledUnread,
-}: {
+type SidebarProps = {
   loading: boolean;
   page: string;
   navigate: (page: "chat" | "library" | "scheduled") => void;
@@ -260,7 +247,25 @@ export default function Sidebar({
   settings: () => void;
   create: () => void;
   coordinate: (cwd: string) => void;
-}) {
+};
+
+function SidebarView({
+  loading,
+  sessions,
+  selected,
+  unread,
+  online,
+  connection,
+  choose,
+  menu,
+  refresh,
+  settings,
+  create,
+  coordinate,
+  page,
+  navigate,
+  scheduledUnread,
+}: SidebarProps) {
   const [search, setSearch] = useState("");
   // Until the list arrives, it draws sample rows in its own layout.
   const drawing = loading && !sessions.length;
@@ -388,4 +393,16 @@ export default function Sidebar({
       </footer>
     </>
   );
+}
+
+// The shell re-renders with every streamed frame; the list only when one of
+// its props changes, which the shell keeps stable.
+export default class Sidebar extends Component<SidebarProps> {
+  shouldComponentUpdate(next: SidebarProps) {
+    const prior = this.props as Record<string, unknown>;
+    return Object.entries(next).some(([key, value]) => prior[key] !== value);
+  }
+  render(props: SidebarProps) {
+    return <SidebarView {...props} />;
+  }
 }

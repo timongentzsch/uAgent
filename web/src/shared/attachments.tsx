@@ -112,7 +112,7 @@ export function ImageViewerDialog({
 }
 
 // "PDF · 1.2 MB": the extension names the type well enough to recognise.
-export function fileType(name: string, size?: number) {
+function fileType(name: string, size?: number) {
   const dot = name.lastIndexOf(".");
   const kind = dot > 0 ? name.slice(dot + 1).toUpperCase() : "File";
   return size == null ? kind : `${kind} · ${bytes(size)}`;
@@ -140,7 +140,7 @@ export function ImageTile({ src, name, draftId }: ViewedImage) {
   );
 }
 
-export function FileCard({
+function FileCard({
   name,
   size,
   href,

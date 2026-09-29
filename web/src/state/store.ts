@@ -1,8 +1,10 @@
 import type {
   Block,
   BlockPatch,
+  ExecutionPhase,
   HostEvent,
   Snapshot,
+  State,
   View,
 } from "../shared/types.ts";
 import { retainedBackgroundViews, maxHttpExchanges } from "../shared/limits.ts";
@@ -37,10 +39,11 @@ export function writeStored(
 // The host's view is the one source of rows; the browser applies its patches
 // in order. A new row lands in sequence position, so a late retained row
 // never strands older content after newer rows.
-export function applyBlock(view: View | undefined, patch: BlockPatch): View {
+function applyBlock(view: View | undefined, patch: BlockPatch): View {
   const blocks = [...(view?.blocks || [])];
   const id = patch.block?.id ?? patch.id;
-  const at = blocks.findIndex((block) => block.id === id);
+  // Streaming patches the newest rows: search from the end.
+  const at = blocks.findLastIndex((block) => block.id === id);
   if (patch.block) {
     if (at >= 0) blocks[at] = patch.block;
     else {
@@ -62,6 +65,22 @@ export function applyBlock(view: View | undefined, patch: BlockPatch): View {
     blocks[at] = next;
   }
   return { ...view, blocks } as View;
+}
+
+// A state frame replaces the session's state. Only checkpoint frames carry
+// the view, HTTP log and prompt; the others keep the last ones.
+export function stateFrame(
+  prior: State | undefined,
+  frame: State | undefined,
+  phase: ExecutionPhase,
+): State {
+  return {
+    view: prior?.view,
+    http: prior?.http,
+    system_prompt: prior?.system_prompt,
+    ...frame,
+    phase,
+  };
 }
 
 // A checkpoint replaces the view; pages of older history the reader already

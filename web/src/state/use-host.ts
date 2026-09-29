@@ -15,10 +15,12 @@ import {
   applySessionEvent,
   isIncoming,
   keepOlderPages,
+  stateFrame,
   readStored,
   writeStored,
 } from "./store.ts";
 import { api, protocol, receiveOutcome } from "./api.ts";
+import { snapshotStore } from "./snapshot-store.ts";
 import { selectedFromURL, writeSelection } from "../shared/navigation.ts";
 import {
   maxLocalRequests,
@@ -58,7 +60,7 @@ export function useHost(
     );
     return { sessions, capabilities: {}, devices: [] };
   });
-  const [snapshots, setSnapshots] = useState<Record<string, Snapshot>>({});
+  const [snapshots] = useState(snapshotStore);
   const [selected, setSelected] = useState(selectedFromURL);
   // Unsent drafts survive an evicted or reloaded app; logout clears them.
   const [drafts, setDrafts] = useState(() =>
@@ -104,7 +106,6 @@ export function useHost(
       setOnline(false);
     else setError(issue.message);
   }, []);
-  const snapshot = snapshots[selected];
   const load = useCallback((id: string) => {
     if (loads.current.has(id)) return loads.current.get(id)!;
     setLoadErrors((prior) => ({ ...prior, [id]: null }));
@@ -135,7 +136,7 @@ export function useHost(
           },
           selection.current,
         );
-        setSnapshots({ ...live.current });
+        snapshots.set({ ...live.current });
         return value;
       })
       .catch(async (error) => {
@@ -165,7 +166,7 @@ export function useHost(
       delete next[id];
       return next;
     });
-    setSnapshots({ ...live.current });
+    snapshots.set({ ...live.current });
     setDrafts((prior) => {
       const next = { ...prior };
       delete next[id];
@@ -379,24 +380,28 @@ export function useHost(
           return;
         if (event.kind === "block" && event.block) {
           const block = event.block;
+          // Unchanged state keeps its identity, so the shell skips the frame.
           setOutgoing((items) =>
-            items.filter((item) => item.request_id !== block.request_id),
+            items.some((item) => item.request_id === block.request_id)
+              ? items.filter((item) => item.request_id !== block.request_id)
+              : items,
           );
           if (block.incoming)
-            setCatalogue((prior) => ({
-              ...prior,
-              sessions: prior.sessions.map((item) =>
-                item.id === id
-                  ? {
-                      ...item,
-                      incoming: Math.max(
-                        item.incoming || 0,
-                        block.incoming || 0,
-                      ),
-                    }
-                  : item,
-              ),
-            }));
+            setCatalogue((prior) =>
+              prior.sessions.some(
+                (item) =>
+                  item.id === id && (item.incoming || 0) < block.incoming!,
+              )
+                ? {
+                    ...prior,
+                    sessions: prior.sessions.map((item) =>
+                      item.id === id
+                        ? { ...item, incoming: block.incoming }
+                        : item,
+                    ),
+                  }
+                : prior,
+            );
         }
         if (
           ["activated", "deactivated", "metadata"].includes(event.kind) &&
@@ -432,13 +437,13 @@ export function useHost(
             epoch: event.epoch,
             cursor: event.sequence,
             metadata,
-            state: { ...event.state, phase },
+            state: stateFrame(current?.state, event.state, phase),
             pending: pendingDecision,
           };
           live.current[id] = keepOlderPages(current, projected);
           // Decisions and canonical phase changes flush without text batching.
           if (id === selection.current)
-            setSnapshots((prior) => ({ ...prior, [id]: live.current[id] }));
+            snapshots.set((prior) => ({ ...prior, [id]: live.current[id] }));
           setCatalogue((prior) => ({
             ...prior,
             sessions: prior.sessions.map((item) =>
@@ -529,7 +534,7 @@ export function useHost(
         setDrafts({});
         setAuthenticated(false);
         live.current = {};
-        setSnapshots({});
+        snapshots.set({});
       } else {
         report(error);
         if (!catalogueRef.current) setAuthenticated((prior) => prior ?? false);
@@ -597,7 +602,7 @@ export function useHost(
       frame = requestAnimationFrame(() => {
         frame = 0;
         live.current = retainedViews(live.current, selection.current);
-        setSnapshots({ ...live.current });
+        snapshots.set({ ...live.current });
       });
     };
     return () => {
@@ -647,34 +652,53 @@ export function useHost(
       ),
     );
   }, [drafts]);
+  // Reading the conversation marks each of its snapshots read.
   useEffect(() => {
-    if (
-      !readingConversation ||
-      !following ||
-      document.visibilityState !== "visible" ||
-      !snapshot
-    )
-      return;
-    const incoming = snapshot.metadata?.incoming || 0;
-    if ((readCounts.current[selected] || 0) < incoming) {
-      readCounts.current[selected] = incoming;
-      writeStored(storage, "uagent-read", readCounts.current);
-    }
-    setUnread((prior) => {
-      if (!prior.has(selected)) return prior;
-      const next = new Set(prior);
-      next.delete(selected);
-      return next;
-    });
-  }, [selected, following, snapshot, readingConversation]);
+    if (!readingConversation || !following) return;
+    const read = () => {
+      const snapshot = snapshots.get()[selected];
+      if (document.visibilityState !== "visible" || !snapshot) return;
+      const incoming = snapshot.metadata?.incoming || 0;
+      if ((readCounts.current[selected] || 0) < incoming) {
+        readCounts.current[selected] = incoming;
+        writeStored(storage, "uagent-read", readCounts.current);
+      }
+      setUnread((prior) => {
+        if (!prior.has(selected)) return prior;
+        const next = new Set(prior);
+        next.delete(selected);
+        return next;
+      });
+    };
+    read();
+    return snapshots.subscribe(read);
+  }, [selected, following, readingConversation, snapshots]);
   const updateView = useCallback(
     (id: string, update: (snapshot: Snapshot) => Snapshot) => {
       if (!live.current[id]) return;
       live.current[id] = update(live.current[id]);
-      setSnapshots({ ...live.current });
+      snapshots.set({ ...live.current });
     },
     [],
   );
+  const select = useCallback((id: string) => {
+    selection.current = id;
+    writeSelection(id);
+    // Following is owned solely by the transcript history controller:
+    // a switch resumes the saved position
+    // (or pins a fresh surface), which notifies through onFollow.
+    // Clearing it here diverged React state (false) from the stick
+    // ref (still true), so the pin became a no-op notification
+    // and following stayed false forever: the Jump button lingered,
+    // unread badges never cleared, and read marking stopped.
+    if (live.current[id])
+      snapshots.set((prior) =>
+        prior[id] === live.current[id]
+          ? prior
+          : { ...prior, [id]: live.current[id] },
+      );
+    setSelected(id);
+  }, []);
   const correlate = useCallback((requestId: string) => {
     localRequests.current.add(requestId);
     if (localRequests.current.size > maxLocalRequests)
@@ -689,7 +713,7 @@ export function useHost(
     setLoadErrors({});
     stream.current?.close();
     live.current = {};
-    setSnapshots({});
+    snapshots.set({});
     setDrafts({});
     setOutgoing([]);
     revoked.current = true;
@@ -727,24 +751,7 @@ export function useHost(
     setCatalogue,
     snapshots,
     selected,
-    setSelected: (id: string) => {
-      selection.current = id;
-      writeSelection(id);
-      // Following is owned solely by the transcript history controller:
-      // a switch resumes the saved position
-      // (or pins a fresh surface), which notifies through onFollow.
-      // Clearing it here diverged React state (false) from the stick
-      // ref (still true), so the pin became a no-op notification
-      // and following stayed false forever: the Jump button lingered,
-      // unread badges never cleared, and read marking stopped.
-      if (live.current[id])
-        setSnapshots((prior) =>
-          prior[id] === live.current[id]
-            ? prior
-            : { ...prior, [id]: live.current[id] },
-        );
-      setSelected(id);
-    },
+    setSelected: select,
     drafts,
     setDrafts,
     error,

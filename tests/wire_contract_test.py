@@ -36,6 +36,11 @@ WEB_STATE = ("web/src/state", "web/src/app")
 # operations (act/command) that share some spellings on another plane.
 WEB_HANDLERS = ("web/src/state",)
 
+# Web-side types that never cross the wire, and field prefixes the host
+# builds at runtime (PrefixNumericStatistics).
+WEB_ONLY_TYPES = {"PresentedBlock", "RawOptions"}
+BUILT_PREFIXES = ("side_",)
+
 # Frames the browser consumes: every member needs a native producer in the
 # session units and a handler literal under WEB_STATE.
 BROWSER_FRAMES = frozenset(
@@ -107,6 +112,31 @@ def web_handled_kind(kind):
 
 
 class WireContractTest(unittest.TestCase):
+    def test_web_types_name_fields_the_host_sends(self):
+        # A field the web declares for host data but no native source spells
+        # is dead or drifted (a rename on one side only).
+        types = (ROOT / "web/src/shared/types.ts").read_text(encoding="utf-8")
+        native = "".join(
+            path.read_text(encoding="utf-8")
+            for folder in ("src", "include")
+            for path in (ROOT / folder).rglob("*.[ch]*")
+        )
+        missing = []
+        for match in re.finditer(
+            r"export interface (\w+)(?: extends [^{]+)? \{(.*?)\n\}", types, re.S
+        ):
+            name, body = match.groups()
+            if name in WEB_ONLY_TYPES:
+                continue
+            for field in re.findall(r"^\s{2}([a-z_][a-z0-9_]*)\??:", body, re.M):
+                spelled = f'"{field}"' in native or any(
+                    field.startswith(prefix) and f'"{prefix}"' in native
+                    for prefix in BUILT_PREFIXES
+                )
+                if not spelled:
+                    missing.append(f"{name}.{field}")
+        self.assertEqual(missing, [])
+
     def test_browser_frames_have_native_producers(self):
         produced = produced_kinds()
         missing = sorted(k for k in BROWSER_FRAMES if k not in produced)

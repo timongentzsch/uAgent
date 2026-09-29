@@ -262,7 +262,6 @@ export interface ActivityDetail extends Activity {
   statistics?: Statistics;
   usage?: Usage;
   turns?: number;
-  receipt?: string;
 }
 export interface Pending {
   id: string;

@@ -827,7 +827,7 @@ class WorkerChannel final : public ApplicationChannel {
       case SessionCommandKind::kContext:
       case SessionCommandKind::kFork:
       case SessionCommandKind::kShare:
-      case SessionCommandKind::kPrompt: {
+      case SessionCommandKind::kSelfDirective: {
         if (QueueIdleControl(request, parsed.raw, error)) return true;
         break;
       }
@@ -964,7 +964,7 @@ int WorkerMain(int argc, char** argv) {
   }
   WorkerChannel channel(
       argv[3], argv[4], RandomToken(16), argv[5], options.browser_session,
-      JsonValue(options.session, "kind", "") == kSessionKindCoordinator,
+      options.Coordinator(),
       JsonValue(options.session, "thread", json::object()));
   if (!channel.Start()) return 2;
   if (chdir(argv[2]) != 0) {

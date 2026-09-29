@@ -407,18 +407,23 @@ def test_mandatory_decisions_skip_the_coordinator(root, home, *, binary):
             client.close()
 
 
-def test_coordinator_context_carries_soul_notes_board_and_time(root, home, *, binary):
+def test_coordinator_context_carries_instructions_notes_board_and_time(root, home, *, binary):
     import re
 
-    soul = home / ".uagent" / "soul.md"
-    soul.parent.mkdir(parents=True, exist_ok=True)
-    soul.write_text("Prefer small threads.")
+    instructions = home / ".uagent" / "COORDINATOR.md"
+    instructions.parent.mkdir(parents=True, exist_ok=True)
+    instructions.write_text("Prefer small threads.")
     with Server(
         [
             tool_call("state", {"action": "set", "block": "goals", "text": "ship v1"}),
             tool_call(
                 "uagent",
-                {"action": "set_soul", "scope": "user", "text": "Be reckless."},
+                {
+                    "action": "set_instructions",
+                    "audience": "coordinator",
+                    "scope": "user",
+                    "text": "Be reckless.",
+                },
                 call_id="call-2",
             ),
             event({"content": "noted"}),
@@ -429,12 +434,15 @@ def test_coordinator_context_carries_soul_notes_board_and_time(root, home, *, bi
         first = run(root, env, "coord", "-p", "remember the goal", binary=binary)
         assert_true(first.returncode == 0, first.stderr)
         assert_true("declined" in first.stderr, first.stderr)
-        assert_true(soul.read_text() == "Prefer small threads.", "soul changed without the user")
+        assert_true(
+            instructions.read_text() == "Prefer small threads.",
+            "instructions changed without the user",
+        )
         second = run(root, env, "coord", "-p", "what now?", binary=binary)
         assert_true(second.returncode == 0, second.stderr)
         messages = server.requests[-1][1]["messages"]
         system = messages[0]["content"]
-        assert_true("## Soul\nPrefer small threads." in system, system[-300:])
+        assert_true("Prefer small threads." in system, system[-300:])
         context = json.dumps(messages)
         assert_true("## goals\\nship v1" in context and "## board" in context, context[-800:])
         # Rebuilt per request, never stored: rewriting stored history would
@@ -452,6 +460,8 @@ def test_coordinator_context_carries_soul_notes_board_and_time(root, home, *, bi
             any(re.match(r"\[\w{3} \d\d \w{3} \d\d:\d\d \S+\] what now\?", u) for u in users),
             users,
         )
-    # The user sees the soul from any terminal session.
-    code, output = run_pty(root, env, [(b"/soul\n", b"Prefer small threads."), b"/q\n"], binary=binary)
+    # The user sees the instructions from any terminal session.
+    code, output = run_pty(
+        root, env, [(b"/instructions\n", b"Prefer small threads."), b"/q\n"], binary=binary
+    )
     assert_true(code == 0, output)

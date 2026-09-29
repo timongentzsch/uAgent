@@ -392,7 +392,8 @@ void TestRegistries() {
   CHECK(CapabilityPrompt({}).empty());
 
   AdaptiveSystemState adaptive_state;
-  Tool adaptive = AdaptSystemTool(adaptive_state);
+  Tool adaptive = AdaptSystemTool(adaptive_state,
+                                  [](const json&) { return json::object(); });
   CHECK(adaptive.parameters["required"] == json::array({"action"}));
 
   Api delegation_api(RuntimeConfig{});

@@ -89,8 +89,8 @@ test.describe("back closes what is open", () => {
       .locator(".settings-nav")
       .getByRole("button", { name: "Agent", exact: true })
       .tap();
-    await settings.getByRole("button", { name: /System prompt/ }).tap();
-    const prompt = page.getByRole("dialog", { name: "System prompt" });
+    await settings.getByRole("button", { name: /Instructions/ }).tap();
+    const prompt = page.getByRole("dialog", { name: "Instructions" });
     await expect(prompt).toBeVisible();
     // One back closes the swapped-in dialog and reaches the conversation.
     await page.goBack();

@@ -63,8 +63,8 @@ follow the permission mode (`/permissions`, `UAGENT_APPROVAL`):
   command sandbox off.
 
 Some actions always need a person: reading or writing µAgent's config files,
-`.mcp.json` or `permissions.json`, writing the project trust store or a
-`system-prompt.json`, changing settings through `uagent`, and
+`.mcp.json` or `permissions.json`, writing the project trust store, your
+`AGENTS.md` or any `COORDINATOR.md`, changing settings through `uagent`, and
 `run(sandbox=false)`. Remembered rules and automatic modes do not apply, and a
 session with nobody to ask denies. Child processes get the sanitized
 environment described in [SECURITY.md](../SECURITY.md).

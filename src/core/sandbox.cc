@@ -102,7 +102,7 @@ SandboxPolicyResult BuildSandboxPolicy(const SandboxInputs& inputs) {
   if (!inputs.workspace.empty()) {
     result.policy.denied_writes = {
         inputs.workspace + "/.uagent/.config",
-        inputs.workspace + "/.uagent/system-prompt.json",
+        inputs.workspace + "/.uagent/COORDINATOR.md",
         inputs.workspace + "/.mcp.json"};
   }
   return result;

@@ -76,7 +76,7 @@ export default function Settings({
   selected,
   session,
   logout,
-  prompt,
+  instructions,
   initialSection,
 }: {
   theme: string;
@@ -102,7 +102,7 @@ export default function Settings({
   selected: string;
   session?: Session;
   logout: () => Promise<void>;
-  prompt: () => void;
+  instructions: () => void;
   initialSection?: string;
 }) {
   // Null until a section is picked: a phone shows the section list first,
@@ -330,9 +330,9 @@ export default function Settings({
     agent: (
       <Group>
         <Row
-          label="System prompt"
-          detail="The instructions every conversation starts from, and each folder coordinator's soul."
-          onClick={prompt}
+          label="Instructions"
+          detail="What every session and each folder's coordinator read at start."
+          onClick={instructions}
         />
       </Group>
     ),

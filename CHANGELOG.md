@@ -4,6 +4,14 @@
 
 ### Added
 
+- A coordinator per folder (`uagent coord`, `uagent coord -p`, the icon on each
+  folder in the web): it reads the folder's sessions, delegates work to
+  threads (ordinary sessions, sandboxed, in a worktree by default) within a
+  thread cap and a daily spend limit, and decides the approvals their Auto mode
+  cannot settle, yielding to you when unsure. Decisions waiting on you show
+  above its composer; `/coord`, `/board` and `/open` reach it from any
+  terminal session. It idles out when unused.
+
 - The image viewer zooms like a document viewer: − / + / Fit controls,
   ⌘/Ctrl+wheel and ⌘/Ctrl with −, + and 0, with the level against the image's
   real size. Annotation zooms the same way; two fingers pinch the image.
@@ -12,6 +20,15 @@
   typed without an argument.
 
 ### Changed
+
+- Instructions replace system-prompt documents. Sessions read `AGENTS.md`
+  (yours in `~/.uagent/`, then the project's), coordinators also
+  `COORDINATOR.md`; they only add to the built-in base, are read when a
+  session starts, and are edited on one **Instructions** screen, with
+  `/instructions`, or by an agent through `uagent set_instructions` with your
+  approval. `system-prompt.json`, its scopes and modes, `/prompt` and the
+  `prompt` control kind are gone; `adapt_system` keeps only the conversation's
+  self-directive.
 
 - Rewind never loses work. Your messages' menu offers **Edit from here**
   (continue in a fork cut before the message, with it back in the composer)

@@ -52,7 +52,7 @@ void TestSandboxPolicy() {
   // The project's own config sits inside the writable workspace, so it is
   // carved back out by path rather than by leaving the workspace ungranted.
   const std::vector<std::string> project_authority = {
-      "/home/u/work/.uagent/.config", "/home/u/work/.uagent/system-prompt.json",
+      "/home/u/work/.uagent/.config", "/home/u/work/.uagent/COORDINATOR.md",
       "/home/u/work/.mcp.json"};
   CHECK(base.policy.denied_writes == project_authority);
   CHECK(base.rejected.empty());

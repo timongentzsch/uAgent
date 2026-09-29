@@ -838,9 +838,7 @@ void Master::Command(const Request& request, Response& response) {
     }
   } else if (kind == "memory" || kind == "skills" || kind == "schedule" ||
              kind == "models" || kind == "permission_rules" ||
-             kind == "tool_categories" || kind == "soul" ||
-             (kind == "prompt" &&
-              JsonValue(command, "session_id", "").empty())) {
+             kind == "tool_categories" || kind == "instructions") {
     lock.unlock();
     auto result = ControlProcess(command);
     lock.lock();
@@ -848,7 +846,7 @@ void Master::Command(const Request& request, Response& response) {
     error = JsonValue(result, "error", "");
     auto action = JsonValue(command, "action", "list");
     if (error.empty() && action != "list" && action != "get" &&
-        action != "preview") {
+        action != "show" && action != "preview") {
       Publish("", "", {{"kind", "management.changed"}});
     }
   } else if (kind == "restart_conversations") {

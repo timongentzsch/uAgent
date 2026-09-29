@@ -49,7 +49,7 @@ for (const [name, viewport] of VIEWPORTS) {
     const help = page.locator(".coordinator-help");
     await expect(help.getByText("How it differs")).toBeVisible();
     // The help sizes to its text: no stretched rows or button.
-    const button = help.getByRole("button", { name: "Edit soul" });
+    const button = help.getByRole("button", { name: "Edit instructions" });
     expect((await button.boundingBox()).height).toBeLessThan(60);
     const panel = await help.boundingBox();
     const body = await help.locator(".coordinator-help-body").boundingBox();
@@ -151,23 +151,31 @@ for (const [name, viewport] of VIEWPORTS) {
   });
 }
 
-test("the soul is edited in the system prompt editor", async ({
+test("the coordinator's help opens its instructions", async ({
   page,
   session,
 }) => {
   await openCoordinator(page, session);
   await page.getByLabel("What is the coordinator?").click();
-  await page.getByRole("button", { name: "Edit soul" }).click();
-  await expect(page.getByLabel("Prompt scope")).toHaveValue("soul-user");
-  const text = page.getByLabel("Soul text");
-  await expect(text).toBeEnabled();
-  await text.fill("Prefer small threads.");
-  await page.getByRole("button", { name: "Save" }).click();
-  await expect(page.getByRole("button", { name: "Save" })).toBeDisabled();
-  await page.getByLabel("Prompt scope").selectOption("global");
-  await page.getByLabel("Prompt scope").selectOption("soul-user");
-  await expect(page.getByLabel("Soul text")).toHaveValue(
-    "Prefer small threads.",
-  );
-  await shot(page, "soul-in-prompt-editor");
+  await page.getByRole("button", { name: "Edit instructions" }).click();
+  const dialog = page.getByRole("dialog", { name: "Instructions" });
+  const coordinator = dialog.getByLabel("Yours · coordinator");
+  await expect(coordinator).toBeEnabled();
+  await coordinator.fill("Prefer small threads.");
+  await dialog.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(dialog.getByRole("button", { name: "Save" })).toHaveCount(0);
+  await shot(page, "instructions");
+});
+
+test("instructions read well on a phone", async ({ page, session }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openCoordinator(page, session);
+  await page.getByLabel("What is the coordinator?").click();
+  await page.getByRole("button", { name: "Edit instructions" }).click();
+  const dialog = page.getByRole("dialog", { name: "Instructions" });
+  await expect(dialog.getByLabel("Yours · coordinator")).toBeEnabled();
+  expect(
+    await dialog.evaluate((node) => node.scrollWidth <= node.clientWidth + 1),
+  ).toBe(true);
+  await shot(page, "instructions-phone");
 });

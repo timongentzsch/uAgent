@@ -3,14 +3,12 @@
 #include "include/agent/prompt.h"
 
 #include <cstddef>
-#include <filesystem>
 #include <fstream>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
 
-#include "include/core/config.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
@@ -90,54 +88,6 @@ constexpr std::string_view kSections[] = {
 
 const char* SystemPromptBase() { return kBase; }
 const char* CoordinatorPromptBase() { return kCoordinatorBase; }
-
-constexpr size_t kSoulBytes = size_t{16} * 1024;
-
-std::string SoulPath(const std::string& scope, const std::string& folder) {
-  return scope == "project" ? folder + "/.uagent/soul.md"
-                            : GlobalBase() + "/soul.md";
-}
-
-namespace {
-std::string ReadSoul(const std::string& path) {
-  std::ifstream input(path, std::ios::binary);
-  std::string body;
-  if (input) ReadBounded(input, kSoulBytes, body);
-  return Trim(body);
-}
-}  // namespace
-
-json SoulDocuments(const std::string& folder) {
-  const std::string user = SoulPath("user", folder);
-  const std::string project = SoulPath("project", folder);
-  return {{"user", {{"path", user}, {"text", ReadSoul(user)}}},
-          {"project",
-           {{"path", project},
-            {"text", ReadSoul(project)},
-            // A project soul is configuration: a cloned repository cannot
-            // plant one until the user trusts its project config.
-            {"loaded", ProjectConfigTrusted()}}}};
-}
-
-std::string WriteSoul(const std::string& scope, const std::string& folder,
-                      const std::string& text) {
-  if (text.size() > kSoulBytes) return "a soul is at most 16 KiB";
-  const std::string path = SoulPath(scope, folder);
-  std::string error;
-  CreatePrivateDirectories(std::filesystem::path(path).parent_path());
-  AtomicWriteFile(path, text, kPrivateFileMode, false, error);
-  return error;
-}
-
-std::string CoordinatorSoul() {
-  const json souls = SoulDocuments(CanonicalCwd());
-  std::string soul = souls["user"]["text"];
-  const std::string project = souls["project"]["text"];
-  if (JsonValue(souls["project"], "loaded", false) && !project.empty()) {
-    soul += (soul.empty() ? "" : "\n\n") + project;
-  }
-  return soul.empty() ? soul : "\n\n## Soul\n" + soul;
-}
 
 std::vector<std::string_view> PromptSections() {
   return {std::begin(kSections), std::end(kSections)};

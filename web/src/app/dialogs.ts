@@ -14,6 +14,7 @@ export const conversationActions = () =>
   import("../features/chat/conversation-actions.tsx");
 export const statisticsDialog = () =>
   import("../features/settings/statistics.tsx");
-export const promptDialog = () => import("../features/settings/prompt.tsx");
+export const instructionsDialog = () =>
+  import("../features/settings/instructions.tsx");
 export const settingsDialog = () => import("../features/settings/settings.tsx");
 export const toolsDialog = () => import("../features/settings/tools.tsx");

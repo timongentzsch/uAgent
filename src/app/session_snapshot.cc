@@ -16,6 +16,7 @@
 #include "include/app/session_host.h"
 #include "include/core/capture.h"
 #include "include/core/fs.h"
+#include "include/core/project.h"
 #include "include/core/strings.h"
 #include "include/core/time.h"
 #include "include/core/usage.h"
@@ -34,11 +35,16 @@ size_t ClampedOffset(const std::string& text) {
 
 // Attachment display names travel in frames and land on disk-adjacent
 // records: no path separators, no control bytes, bounded length.
+// The instruction files a person edits, whose changes the web shows live.
 std::vector<std::string> PromptPaths(const std::vector<std::string>& projects) {
-  std::vector<std::string> paths{
-      (std::filesystem::path(GlobalBase()) / "system-prompt.json").string()};
+  std::vector<std::string> paths;
   for (const std::string& project : projects) {
-    paths.push_back((ProjectBase(project) / "system-prompt.json").string());
+    for (bool coordinator : {false, true}) {
+      for (bool in_project : {false, true}) {
+        paths.push_back(
+            InstructionPath(coordinator, in_project, project).string());
+      }
+    }
   }
   return paths;
 }

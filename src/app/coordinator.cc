@@ -601,8 +601,9 @@ Tool StateTool(const std::string& folder) {
       "Your pinned notes, shown to you every turn: goals, decisions and "
       "open_questions (2 KiB each). set replaces a block, append adds a line, "
       "clear empties it, show prints all. Keep them current and short; "
-      "lessons about the user belong in memory, and your soul is changed "
-      "through uagent set_soul.",
+      "lessons about the user belong in memory, and your standing "
+      "instructions are COORDINATOR.md, changed through uagent "
+      "set_instructions.",
       json::parse(R"json({"type":"object","properties":{
         "action":{"type":"string","enum":["show","set","append","clear"]},
         "block":{"type":"string","enum":["goals","decisions","open_questions"]},

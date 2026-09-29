@@ -24,48 +24,30 @@ def test_plain_turn(root, home, *, binary):
         assert_true(result.stdout.strip() == "ok", result.stdout)
 
 
-def test_prompt_documents_refresh_and_standalone_inspection(root, home, *, binary):
-    global_path = home / ".uagent" / "system-prompt.json"
-    project_path = root / ".uagent" / "system-prompt.json"
-    project_path.parent.mkdir(parents=True, exist_ok=True)
-    global_path.parent.mkdir(parents=True, exist_ok=True)
-    global_path.write_text(json.dumps({"mode": "overlay", "text": "global-old"}))
-    project_path.write_text(json.dumps({"mode": "replace", "text": "project replacement"}))
+def test_instructions_follow_the_base_for_their_audience(root, home, *, binary):
+    (home / ".uagent").mkdir(parents=True, exist_ok=True)
+    (home / ".uagent" / "AGENTS.md").write_text("user-rule")
+    (root / "AGENTS.md").write_text("project-rule")
+    (home / ".uagent" / "COORDINATOR.md").write_text("coordinator-rule")
     with Server([event({"content": "unexpected model call"})]) as server:
         env = base_env(home, server.url)
         result = run(root, env, "--show-system-prompt", "--json", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
-        described = json.loads(result.stdout)
-        assert_true(described["effective"].startswith("project replacement\n\n"), described)
-        assert_true("global-old" not in described["effective"], described)
+        effective = json.loads(result.stdout)["effective"]
+        assert_true(effective.find("Gather only") < effective.find("user-rule"), effective)
+        assert_true(effective.find("user-rule") < effective.find("project-rule"), effective)
+        assert_true("coordinator-rule" not in effective, effective)
         assert_true(server.requests == [], server.requests)
-    project_path.unlink()
 
-    def initial(_, body):
-        assert_true("global-old" in body["messages"][0]["content"], body)
-        global_path.write_text(json.dumps({"mode": "overlay", "text": "global-new"}))
-        return tool_call(
-            "uagent", {"action": "inspect", "topic": "prompt"}, call_id="inspect-prompt"
-        )
-
-    def refreshed(_, body):
+    def coordinator(_, body):
         prompt = body["messages"][0]["content"]
-        assert_true("global-new" in prompt and "global-old" not in prompt, prompt)
-        described = json.loads(tool_results(body["messages"])[-1])
-        assert_true(described["effective"] == prompt, described)
-        return event({"content": "prompt-refreshed"})
+        assert_true(prompt.find("project-rule") < prompt.find("coordinator-rule"), prompt)
+        return event({"content": "coordinator-ok"})
 
-    with Server([initial, refreshed]) as server:
-        result = run(root, base_env(home, server.url), "-p", "inspect", binary=binary)
+    with Server([coordinator]) as server:
+        result = run(root, base_env(home, server.url), "coord", "-p", "hi", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
-        assert_true(result.stdout.strip() == "prompt-refreshed", result.stdout)
-    global_path.write_text("invalid json")
-    with Server([event({"content": "unexpected model call"})]) as server:
-        result = run(root, base_env(home, server.url), "-p", "inspect", binary=binary)
-        assert_true(result.returncode != 0, result.stdout)
-        assert_true("Invalid system prompt" in result.stderr, result.stderr)
-        assert_true(server.requests == [], server.requests)
-        assert_true(global_path.read_text() == "invalid json", "invalid file was changed")
+        assert_true(result.stdout.strip() == "coordinator-ok", result.stdout)
 
 
 def test_adaptive_system_revises_replaces_and_clears(root, home, *, binary):

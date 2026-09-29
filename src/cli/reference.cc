@@ -70,8 +70,8 @@ std::string CliMarkdown() {
       "one turn and prints the answer; `--json` adds the stop reason. Inside "
       "any session, `/coord` opens it, `/board` lists the folder's sessions "
       "and `/open ID` switches to one. Settings are the `UAGENT_COORDINATOR_*` "
-      "rows of the configuration reference; its soul is `~/.uagent/soul.md` "
-      "and a trusted project's `.uagent/soul.md`.\n";
+      "rows of the configuration reference; it reads `COORDINATOR.md` "
+      "(`~/.uagent/` and the folder's `.uagent/`) after `AGENTS.md`.\n";
   return out;
 }
 

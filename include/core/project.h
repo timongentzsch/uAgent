@@ -15,6 +15,8 @@
 
 #include "include/core/checked.h"
 #include "include/core/fs.h"
+#include "include/core/json.h"
+#include "include/core/limits.h"
 #include "include/core/strings.h"
 
 namespace uagent {
@@ -41,11 +43,24 @@ inline std::filesystem::path ProjectRoot(const std::filesystem::path& cwd) {
   return cwd;
 }
 
+// The instruction files a person writes: for every session or for a folder's
+// coordinator, yours (every folder) or the project's. Always additive, read
+// once when a session starts. Loading, showing, editing and protecting them
+// all name them here.
+inline std::filesystem::path InstructionPath(bool coordinator, bool project,
+                                             const std::filesystem::path& cwd) {
+  const char* name = coordinator ? "COORDINATOR.md" : "AGENTS.md";
+  if (!project) return std::filesystem::path(GlobalBase()) / name;
+  return coordinator ? cwd / ".uagent" / name : ProjectRoot(cwd) / name;
+}
+
 // Codex-style startup discovery: one instruction file per directory, ordered
 // from repository root to cwd. CLAUDE.md is the fallback when no AGENTS file
-// exists at that level.
+// exists at that level. A coordinator then reads COORDINATOR.md: yours, then
+// the folder's.
 inline ProjectInstructions LoadProjectInstructions(
-    const std::filesystem::path& cwd, size_t max_bytes) {
+    const std::filesystem::path& cwd, size_t max_bytes,
+    bool coordinator = false) {
   namespace fs = std::filesystem;
   ProjectInstructions loaded;
   if (max_bytes == 0) return loaded;
@@ -103,7 +118,61 @@ inline ProjectInstructions LoadProjectInstructions(
   for (const fs::path& dir : dirs) {
     if (dir != global) append_dir(dir);
   }
+  if (coordinator) {
+    for (bool project : {false, true}) {
+      const fs::path path = InstructionPath(true, project, cwd);
+      if (fs::is_regular_file(path, ec) &&
+          append(path, loaded.text, "For the folder's coordinator:\n")) {
+        loaded.sources.push_back(path.string());
+      }
+    }
+  }
   return loaded;
+}
+
+// What instructions mean for `cwd`, in the order a session reads them: the
+// four files a person edits (whether or not they exist yet), and every other
+// file the loader picks up there (nested AGENTS.md, CLAUDE.md fallbacks).
+inline json InstructionFiles(const std::filesystem::path& cwd) {
+  json files = json::array();
+  for (bool coordinator : {false, true}) {
+    for (bool project : {false, true}) {
+      const std::filesystem::path path =
+          InstructionPath(coordinator, project, cwd);
+      std::ifstream input(path, std::ios::binary);
+      std::string text;
+      if (input) ReadBounded(input, kProjectDocBytes, text);
+      files.push_back({{"audience", coordinator ? "coordinator" : "sessions"},
+                       {"scope", project ? "project" : "user"},
+                       {"path", path.string()},
+                       {"text", text}});
+    }
+  }
+  json also = json::array();
+  for (const std::string& source :
+       LoadProjectInstructions(cwd, kProjectDocBytes).sources) {
+    if (source != InstructionPath(false, false, cwd).string() &&
+        source != InstructionPath(false, true, cwd).string()) {
+      also.push_back(source);
+    }
+  }
+  return {{"files", std::move(files)}, {"also_loaded", std::move(also)}};
+}
+
+// Replaces one instruction file; returns the error, or empty.
+inline std::string WriteInstructionFile(bool coordinator, bool project,
+                                        const std::filesystem::path& cwd,
+                                        const std::string& text) {
+  if (text.size() > kProjectDocBytes) return "instructions are at most 32 KiB";
+  const std::filesystem::path path = InstructionPath(coordinator, project, cwd);
+  // A project's AGENTS.md is a repository file others read; the rest live
+  // in private .uagent directories.
+  const bool shared = project && !coordinator;
+  std::string error;
+  if (!shared) CreatePrivateDirectories(path.parent_path());
+  AtomicWriteFile(path.string(), text, shared ? 0644 : kPrivateFileMode, true,
+                  error);
+  return error;
 }
 
 }  // namespace uagent

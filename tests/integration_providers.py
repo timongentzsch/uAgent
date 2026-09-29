@@ -1037,7 +1037,8 @@ def test_uagent_tool_reports_live_configuration(root, home, *, binary):
         sources = {source["scope"]: source for source in described["sources"]}
         assert_true(sources["built-in"]["active"], sources)
         assert_true(sources["runtime"]["active"], sources)
-        assert_true(sources["project"]["mode"] == "inherit", sources)
+        # Instructions ride in the repository context; no prompt documents.
+        assert_true(set(sources) <= {"built-in", "runtime", "repository"}, sources)
         serialized = json.dumps(body["messages"])
         assert_true("canary-api-key" not in serialized, "secret leaked into transcript")
         return event({"content": "self-info-ok"})

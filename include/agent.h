@@ -54,7 +54,11 @@ class Agent {
         AdaptiveSystemState* adaptive_system = nullptr);
 
   void Reset();
-  json PromptConfiguration(const json& request);
+  // What the model reads now, with its sources.
+  json PromptPreview() const;
+  // The conversation's self-directive (adapt_system): show, preview, set,
+  // edit (one exact replacement) or reset, guarded by its revision.
+  json SelfDirective(const json& request);
   const std::string& LastSentPrompt() const { return last_sent_prompt_; }
 
   const Usage& SessionUsage() const { return session_usage_; }

@@ -13,6 +13,7 @@
 
 #include "include/agent/jobs.h"
 #include "include/core/tool_activity.h"
+#include "include/agent.h"
 #include "include/tools/adapt_system.h"
 #include "include/tools/registry.h"
 #include "include/tools/shell.h"
@@ -54,7 +55,17 @@ void TestToolExecutionPolicy() {
   }
 
   AdaptiveSystemState adaptive;
-  Tool adapt = AdaptSystemTool(adaptive);
+  Api adapt_api{RuntimeConfig{}};
+  std::vector<Tool> adapt_tools;
+  ProcessSupervisor adapt_processes;
+  UsageAccumulator adapt_usage;
+  Agent adapt_agent(
+      adapt_api, adapt_tools, adapt_processes, adapt_usage,
+      [](const Tool&, const json&, int64_t) { return false; }, {}, {}, {},
+      &adaptive);
+  Tool adapt = AdaptSystemTool(adaptive, [&adapt_agent](const json& request) {
+    return adapt_agent.SelfDirective(request);
+  });
   CHECK(adapt.capabilities == Capability(ToolCapability::kMutate));
   CHECK(adapt.description.find("exception, not a planning ritual") !=
         std::string::npos);
@@ -279,7 +290,7 @@ void TestToolExecutionPolicy() {
                            exact_run};
   ApplyToolPolicy(pinned, {.run_allowlist = {"python3 slow_analysis.py"},
                            .coordinator = true});
-  // uagent stays: its writes (settings, soul) always need the user.
+  // uagent stays: its writes (settings, instructions) always need the user.
   CHECK(pinned.size() == 3);
   CHECK(FindTool(pinned, "read_path") != nullptr);
   CHECK(FindTool(pinned, "memory") != nullptr);

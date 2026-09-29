@@ -28,7 +28,7 @@ Paths under `~/.uagent` unless shown otherwise.
 | web host discovery, devices and push keys | `web/*` |
 | project trust, model preference, permission rules, tool categories | `config/trusted-projects.json`, `config/model-preference.json`, `config/permissions.json`, `config/tool-categories.json` |
 | configuration | `.config`, and `<workspace>/.uagent/.config` |
-| system prompt overrides | `system-prompt.json`, and `<workspace>/.uagent/system-prompt.json` |
+| instructions | `AGENTS.md`, `COORDINATOR.md`, and `<folder>/.uagent/COORDINATOR.md` |
 | scratch scripts | `<workspace>/.uagent/scratch/*.py`, `*.sh` |
 | Playwright snapshots and logs | `<workspace>/.playwright-cli/*` |
 

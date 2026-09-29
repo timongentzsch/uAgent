@@ -23,7 +23,7 @@ enum class SlashCommandId {
   kRewind,
   kShare,
   kPermissions,
-  kPrompt,
+  kInstructions,
   kHttp,
   kDiff,
   kEffort,
@@ -57,7 +57,6 @@ enum class SlashCommandId {
   kCoord,
   kBoard,
   kOpen,
-  kSoul,
 };
 
 struct SlashCommandSpec {

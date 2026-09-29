@@ -11,6 +11,7 @@ from integration_support import (
     base_env,
     event,
     run_dialog,
+    run,
     run_pty,
     session_files,
     tool_call,
@@ -954,32 +955,33 @@ def test_cli_fork_does_not_inherit_remembered_approvals(root, home, *, binary):
         )
 
 
-def test_system_prompt_editor_updates_next_request(root, home, *, binary):
-    editor = root / "prompt-editor.sh"
+def test_instructions_editor_reaches_new_sessions(root, home, *, binary):
+    editor = root / "instructions-editor.sh"
     editor.write_text('#!/bin/sh\nprintf "Only editor behavior.\\nPreserve newlines.\\n" > "$1"\n')
     editor.chmod(0o755)
+    env = base_env(home, "http://127.0.0.1:9/v1")
+    env["VISUAL"] = str(editor)
+    code, output = run_pty(
+        root,
+        env,
+        [(b"/instructions edit sessions user\n", b"restarted sessions read it"), b"/q\n"],
+        binary=binary,
+    )
+    assert_true(code == 0, output)
+    saved = (home / ".uagent" / "AGENTS.md").read_text()
+    assert_true(saved == "Only editor behavior.\nPreserve newlines.\n", saved)
 
     def answer(_, body):
         prompt = body["messages"][0]["content"]
-        assert_true(prompt.startswith("Only editor behavior.\nPreserve newlines.\n"), prompt)
-        assert_true("Gather only" not in prompt, prompt)
-        return event({"content": "prompt-editor-ok"})
+        # Additive: the base stays, the instructions follow it.
+        assert_true("Gather only" in prompt, prompt)
+        assert_true("Only editor behavior.\nPreserve newlines." in prompt, prompt)
+        return event({"content": "instructions-ok"})
 
     with Server([answer]) as server:
-        env = base_env(home, server.url)
-        env["VISUAL"] = str(editor)
-        code, output = run_pty(
-            root,
-            env,
-            [
-                (b"/prompt edit\n", b"Only editor behavior."),
-                (b"reply\n", b"prompt-editor-ok"),
-                b"/q\n",
-            ],
-            binary=binary,
-        )
-        assert_true(code == 0, output)
-        assert_true(len(server.requests) == 1, server.requests)
+        result = run(root, base_env(home, server.url), "-p", "reply", binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "instructions-ok", result.stdout)
 
 
 def test_cli_mcp_config_and_restart(root, home, *, binary):

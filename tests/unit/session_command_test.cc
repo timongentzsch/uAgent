@@ -52,7 +52,7 @@ void TestSessionCommandKinds() {
       {"config", session::SessionCommandKind::kConfig},
       {"context", session::SessionCommandKind::kContext},
       {"fork", session::SessionCommandKind::kFork},
-      {"prompt", session::SessionCommandKind::kPrompt},
+      {"self_directive", session::SessionCommandKind::kSelfDirective},
       {"submit", session::SessionCommandKind::kSubmit},
   };
   for (const auto& [kind, want] : cases) {

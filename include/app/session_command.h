@@ -39,7 +39,7 @@ enum class SessionCommandKind {
   kFork,
   kShare,
   kSide,
-  kPrompt,
+  kSelfDirective,
   kSubmit,
   // A coordinator hands a thread's routed decision to the user.
   kEscalate,

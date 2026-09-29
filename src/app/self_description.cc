@@ -24,6 +24,7 @@
 #include "include/core/strings.h"
 #include "include/providers.h"
 #include "include/tools/browser.h"
+#include "include/tools/adapt_system.h"
 #include "include/tools/configure.h"
 #include "include/tools/registry.h"
 #include "include/tools/session.h"
@@ -257,14 +258,12 @@ json DescribeSelf(SelfTopic topic, const std::string& name,
       break;
     }
     case SelfTopic::kPrompt: {
-      if (inputs.agent) {
-        return inputs.agent->PromptConfiguration({{"action", "show"}});
-      }
+      if (inputs.agent) return inputs.agent->PromptPreview();
       out.update(ResolvePrompt(
           ApplyPromptOverlay(SystemPromptBase(), PromptOverlay(nullptr),
                              nullptr) +
               CapabilityPrompt(inputs.tools),
-          PromptDocuments(nullptr),
+          nullptr,
           {{{"scope", "runtime"},
             {"text", Trim(HostCapabilityPrompt(inputs.tools))}}}));
       out["preview_kind"] =
@@ -335,9 +334,12 @@ json ToolSurfaceJson() {
   Api api;
   UsageAccumulator usage;
   const std::string workspace = CanonicalAccessPath(".");
-  std::vector<Tool> tools =
-      BuiltinTools(supervisor, workspace, &adaptive_system);
+  std::vector<Tool> tools = BuiltinTools(supervisor, workspace);
   std::vector<std::pair<Tool, const char*>> conditional;
+  conditional.emplace_back(
+      AdaptSystemTool(adaptive_system,
+                      [](const json&) { return json::object(); }),
+      "UAGENT_ADAPT_SYSTEM");
   conditional.emplace_back(
       UagentTool([](SelfTopic, const std::string&) { return json::object(); },
                  [](ConfigProposalScope, const std::vector<ConfigChange>&) {

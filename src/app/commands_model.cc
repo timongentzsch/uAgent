@@ -34,8 +34,7 @@ std::string SaveSelectedModel(AppSession& session,
   std::string error;
   // A coordinator's model is its folder's, kept in its session settings; it
   // must not become the default of every other session.
-  bool saved = JsonValue(session.context.options.session, "kind", "") ==
-                   kSessionKindCoordinator ||
+  bool saved = session.context.options.Coordinator() ||
                SaveModelPreference(
                    {selected, session.ApiClient().base_url, named_route},
                    error);

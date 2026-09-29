@@ -15,7 +15,7 @@
 | `/share` | export transcript as markdown |
 | `/permissions [default|ask|auto|yolo|rules|forget N|forget all]` | show or change permission mode, or this repository's remembered actions |
 | `/rename TITLE` | rename this conversation |
-| `/prompt [show|edit|set|reset] [--scope global|project|conversation] [--mode overlay|replace] [--file PATH]` | inspect or edit the system prompt |
+| `/instructions [edit sessions|coordinator user|project | clear]` | show or edit instructions; clear this conversation's self-directive |
 | `/http [INDEX [request|response]]` | inspect captured HTTP attempts (latest by default) |
 | `/diff` | show git diff (including untracked files) |
 | `/cost` | show tokens and spend by route |
@@ -49,4 +49,3 @@
 | `/coord` | open this folder's coordinator |
 | `/board` | list this folder's sessions and threads |
 | `/open ID` | switch to a session from /board |
-| `/soul [edit [user|project]]` | show or edit the coordinator's soul |

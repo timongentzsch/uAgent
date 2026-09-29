@@ -94,7 +94,11 @@ export function CoordinatorLayout({
 
 // What a coordinator is, next to its title: a tap opens it, so it works
 // without hover on a phone.
-export function CoordinatorHelp({ editSoul }: { editSoul: () => void }) {
+export function CoordinatorHelp({
+  editInstructions,
+}: {
+  editInstructions: () => void;
+}) {
   return (
     <Popover
       label="What is the coordinator?"
@@ -119,20 +123,20 @@ export function CoordinatorHelp({ editSoul }: { editSoul: () => void }) {
             cannot settle, asking you when it is unsure. Its notes and goals
             carry over between days. You can open and steer any thread directly.
           </p>
-          <h2>Its soul</h2>
+          <h2>Its instructions</h2>
           <p>
-            Standing guidance it reads every turn, yours and a trusted
-            project's. It is edited with the system prompt.
+            It reads every session's AGENTS.md, then its own COORDINATOR.md:
+            yours, and the folder's.
           </p>
           <Actions>
             <Button
               variant="secondary"
               onClick={() => {
                 close();
-                editSoul();
+                editInstructions();
               }}
             >
-              Edit soul
+              Edit instructions
             </Button>
           </Actions>
         </div>

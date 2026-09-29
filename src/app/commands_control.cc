@@ -51,8 +51,8 @@ json PermissionControl(AppContext& context, const json& request) {
 
 json SessionControl(AppSession& session, const json& request) {
   std::string kind = JsonValue(request, "kind", "");
-  if (kind == "prompt") {
-    return session.ActiveAgent().PromptConfiguration(request);
+  if (kind == "self_directive") {
+    return session.ActiveAgent().SelfDirective(request);
   }
   if (kind == "permissions") return PermissionControl(session.context, request);
   if (kind == "tools" &&
@@ -85,8 +85,7 @@ json SessionControl(AppSession& session, const json& request) {
     // A folder has one coordinator, so "edit from here" rewinds it in place
     // rather than starting an ordinary conversation beside it.
     if (kind == "fork" &&
-        JsonValue(session.context.options.session, "kind", "") ==
-            kSessionKindCoordinator &&
+        session.context.options.Coordinator() &&
         (JsonValue(request, "turn", int64_t{0}) > 0 ||
          !JsonValue(request, "message_id", "").empty())) {
       json rewound = session.ActiveAgent().RewindBefore(

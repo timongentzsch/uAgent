@@ -14,8 +14,8 @@
 #include "include/agent/session_store.h"
 #include "include/agent/protocol.h"
 #include "include/api/retry.h"
-#include "include/app/prompt_control.h"
 #include "include/core/checked.h"
+#include "include/core/config_document.h"
 #include "include/core/debug.h"
 #include "include/core/env.h"
 #include "include/core/events.h"
@@ -622,8 +622,7 @@ std::string Agent::PromptBase() const {
   const bool coordinator =
       JsonValue(session_role_, "kind", "") == kSessionKindCoordinator;
   return ApplyPromptOverlay(
-             coordinator ? CoordinatorPromptBase() + CoordinatorSoul()
-                         : std::string(SystemPromptBase()),
+             coordinator ? CoordinatorPromptBase() : SystemPromptBase(),
              PromptOverlay(nullptr), nullptr) +
          CapabilityPrompt(tools_, &tool_selection_);
 }
@@ -640,7 +639,7 @@ json Agent::PromptContext() const {
 }
 
 std::string Agent::SystemPrompt() const {
-  auto resolved = ResolvePrompt(PromptBase(), PromptDocuments(adaptive_system_),
+  auto resolved = ResolvePrompt(PromptBase(), adaptive_system_,
                                 PromptContext());
   prompt_error_ = JsonValue(resolved, "error", "");
   if (!prompt_error_.empty()) {
@@ -651,14 +650,76 @@ std::string Agent::SystemPrompt() const {
   return resolved["effective"];
 }
 
-json Agent::PromptConfiguration(const json& request) {
-  auto result =
-      PromptControl(request, adaptive_system_, PromptBase(), PromptContext());
-  if (!result.contains("error")) {
-    const auto action = JsonValue(request, "action", "show");
-    if (action == "set" || action == "edit" || action == "reset") ++revision_;
-    if (!last_sent_prompt_.empty()) result["last_sent"] = last_sent_prompt_;
+json Agent::PromptPreview() const {
+  json result = ResolvePrompt(PromptBase(), adaptive_system_, PromptContext());
+  if (!last_sent_prompt_.empty()) result["last_sent"] = last_sent_prompt_;
+  return result;
+}
+
+json Agent::SelfDirective(const json& request) {
+  if (!adaptive_system_) return {{"error", "No self-directive here."}};
+  AdaptiveSystemState& self = *adaptive_system_;
+  const std::string action = JsonValue(request, "action", "show");
+  auto item = [](const AdaptiveSystemState& state) {
+    return json{{"mode", state.mode},
+                {"text", state.instructions},
+                {"revision", std::to_string(state.revision)}};
+  };
+  if (action == "show") {
+    json shown = PromptPreview();
+    shown["item"] = item(self);
+    return shown;
   }
+  if (action != "preview" && action != "set" && action != "edit" &&
+      action != "reset") {
+    return {{"error", "Action must be show, preview, set, edit or reset."}};
+  }
+  if (JsonValue(request, "revision", "") != std::to_string(self.revision)) {
+    return {{"error", "The self-directive changed. Show it again first."},
+            {"conflict", true}};
+  }
+  AdaptiveSystemState next = self;
+  const std::string operation = JsonValue(request, "operation", action);
+  if (operation == "reset") {
+    next.Reset();
+  } else if (operation == "edit") {
+    // One exact, unique replacement in the current text.
+    const std::string old = JsonValue(request, "old", "");
+    const size_t at = old.empty() ? std::string::npos
+                                  : next.instructions.find(old);
+    if (at == std::string::npos ||
+        next.instructions.find(old, at + 1) != std::string::npos) {
+      return {{"error", "edit needs text that appears exactly once."}};
+    }
+    next.instructions.replace(at, old.size(), JsonValue(request, "new", ""));
+  } else {
+    next.instructions = JsonValue(request, "text", "");
+    next.mode = JsonValue(request, "mode", self.mode);
+  }
+  if ((next.mode != "overlay" && next.mode != "replace") ||
+      next.instructions.size() > kAdaptiveSystemBytes) {
+    return {{"error", "Mode is overlay or replace, text at most 64 KiB."}};
+  }
+  if (next.instructions.empty()) next.mode = "overlay";
+  json result = ResolvePrompt(PromptBase(), &next, PromptContext());
+  if (result.contains("error")) return result;
+  result["diff"] = ConfigUnifiedDiff(self.mode + "\n" + self.instructions,
+                                     next.mode + "\n" + next.instructions,
+                                     "self-directive");
+  result["applies"] =
+      "Next model request; requests already in flight are unchanged.";
+  result["item"] = item(next);
+  if (action == "preview" ||
+      (next.mode == self.mode && next.instructions == self.instructions)) {
+    return result;
+  }
+  next.revision = self.revision + 1;
+  self = std::move(next);
+  ++revision_;
+  Emit(Event{EventId::kPromptChanged,
+             {{"scope", "conversation"},
+              {"revision", std::to_string(self.revision)}}});
+  result["item"] = item(self);
   return result;
 }
 

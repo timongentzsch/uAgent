@@ -1,136 +1,152 @@
 // Copyright 2026 Timon Gentzsch
 #include "include/agent/prompt.h"
 
+#include <sys/stat.h>
+
 #include <string>
 #include <vector>
 
 #include "include/agent.h"
-#include "include/app/prompt_control.h"
+#include "include/core/project.h"
 #include "include/tools/adapt_system.h"
-#include "include/tools/files.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {
-void TestPromptScopes() {
-  TestWorkspace workspace("prompt-scopes");
+namespace {
+struct Harness {
   AdaptiveSystemState state;
+  Api api{RuntimeConfig{}};
+  std::vector<Tool> tools;
+  ProcessSupervisor processes;
+  UsageAccumulator usage;
+  Agent agent{api,   tools, processes, usage,
+              [](const Tool&, const json&, int64_t) { return false; },
+              {},    {},    {},        &state};
+  json Set(const std::string& mode, const std::string& text) {
+    return agent.SelfDirective({{"action", "set"},
+                                {"mode", mode},
+                                {"text", text},
+                                {"revision", Revision()}});
+  }
+  std::string Revision() {
+    return agent.SelfDirective({})["item"]["revision"];
+  }
+};
+}  // namespace
+
+// The self-directive overlays or replaces the base for one conversation;
+// context layers (host facts, instructions) always follow it.
+void TestSelfDirective() {
+  TestWorkspace workspace("self-directive");
   const json context = {{{"scope", "runtime"}, {"text", "host facts"}}};
-  auto control = [&](const json& request) {
-    return PromptControl(request, &state, "built-in", context);
-  };
-  auto change = [&](const std::string& scope, const std::string& mode,
-                    const std::string& text) {
-    const auto current = control({{"scope", scope}});
-    return control({{"action", "set"},
-                    {"scope", scope},
-                    {"mode", mode},
-                    {"text", text},
-                    {"revision", current["item"]["revision"]}});
-  };
-  CHECK(control({})["effective"] == "built-in\n\nhost facts");
-  CHECK(change("global", "overlay", "global")["effective"] ==
-        "built-in\n\nglobal\n\nhost facts");
-  CHECK(change("project", "replace", "project")["effective"] ==
-        "project\n\nhost facts");
-  CHECK(change("conversation", "overlay", "conversation")["effective"] ==
-        "project\n\nconversation\n\nhost facts");
-  auto current = control({});
-  CHECK(current["sources"][0]["active"] == false);
-  CHECK(current["sources"][1]["active"] == false);
-  CHECK(control({})["digest"] == current["digest"]);
-  auto reset =
-      control({{"action", "reset"}, {"revision", current["item"]["revision"]}});
-  CHECK(reset["effective"] == "project\n\nhost facts");
-  CHECK(control({{"action", "set"},
-                 {"mode", "replace"},
-                 {"text", "stale"},
-                 {"revision", current["item"]["revision"]}})["conflict"] ==
-        true);
-  auto preview = control({{"action", "preview"},
-                          {"mode", "replace"},
-                          {"text", "新\n\ntext"},
-                          {"revision", reset["item"]["revision"]}});
-  CHECK(control({})["effective"] == reset["effective"]);
-  CHECK(change("conversation", "replace", "新\n\ntext")["effective"] ==
-        preview["effective"]);
-  CHECK(change("conversation", "replace", "")["effective"] == "host facts");
-  CHECK(change("conversation", "overlay",
-               std::string(kAdaptiveSystemBytes + 1, 'x'))
-            .contains("error"));
-  change("conversation", "replace", "unique value");
-  auto revision = control({})["item"]["revision"];
-  auto edited = control({{"action", "edit"},
+  AdaptiveSystemState self{.instructions = "focus", .mode = "overlay"};
+  CHECK(ResolvePrompt("base", &self, context)["effective"] ==
+        "base\n\nfocus\n\nhost facts");
+  self.mode = "replace";
+  CHECK(ResolvePrompt("base", &self, context)["effective"] ==
+        "focus\n\nhost facts");
+  CHECK(ResolvePrompt("base", nullptr, context)["effective"] ==
+        "base\n\nhost facts");
+
+  Harness h;
+  const std::string base = h.agent.PromptPreview()["effective"];
+  CHECK(h.Set("overlay", "unique value")["effective"].get<std::string>().find(
+            "unique value") != std::string::npos);
+  h.agent.SelfDirective({{"action", "edit"},
                          {"old", "unique"},
                          {"new", "edited"},
-                         {"revision", revision}});
-  CHECK(edited["effective"] == "edited value\n\nhost facts");
-  CHECK(control({{"action", "edit"},
-                 {"old", "missing"},
-                 {"new", "x"},
-                 {"revision", edited["item"]["revision"]}})
+                         {"revision", h.Revision()}});
+  CHECK(h.state.instructions == "edited value");
+  CHECK(h.agent.SelfDirective({{"action", "edit"},
+                               {"old", "missing"},
+                               {"new", "x"},
+                               {"revision", h.Revision()}})
             .contains("error"));
-  auto tool = AdaptSystemTool(state, control);
-  auto global = control({{"scope", "global"}});
+  // A stale revision is a conflict, never a silent overwrite.
+  CHECK(h.agent.SelfDirective({{"action", "set"},
+                               {"text", "stale"},
+                               {"revision", "0"}})["conflict"] == true);
+  CHECK(h.Set("overlay", std::string(kAdaptiveSystemBytes + 1, 'x'))
+            .contains("error"));
+  h.agent.SelfDirective({{"action", "preview"},
+                         {"mode", "replace"},
+                         {"text", "only this"},
+                         {"revision", h.Revision()}});
+  CHECK(h.state.instructions == "edited value");  // preview commits nothing
+  CHECK(h.agent.SelfDirective({{"action", "reset"},
+                               {"revision", h.Revision()}})
+            .contains("effective"));
+  CHECK(h.agent.PromptPreview()["effective"] == base);
+
+  // Replacing the base needs the user, once, for exactly what they saw.
+  auto tool = AdaptSystemTool(h.state, [&h](const json& request) {
+    return h.agent.SelfDirective(request);
+  });
   json args = {{"action", "set"},
-               {"scope", "global"},
                {"mode", "replace"},
                {"text", "approved"},
-               {"revision", global["item"]["revision"]},
+               {"revision", h.Revision()},
                {"reason", "explicit user request"}};
   CHECK(RequiredApproval(tool, args) == ApprovalClass::kMandatoryHuman);
   CHECK(!tool.run(args, {}).Ok());
   CHECK(tool.approval_preview(args).find("approved") != std::string::npos);
   CHECK(tool.run(args, {}).Ok());
+  CHECK(h.state.mode == "replace" && h.state.instructions == "approved");
   CHECK(!tool.run(args, {}).Ok());  // single-use approval
-  args["revision"] = control({{"scope", "global"}})["item"]["revision"];
+  args["revision"] = h.Revision();
+  args["text"] = "second";
   tool.approval_preview(args);
-  change("project", "replace", "changed during approval");
+  h.Set("replace", "changed during approval");
   CHECK(!tool.run(args, {}).Ok());
-  // A malformed external edit is reported, preserved and explicitly repairable.
-  CHECK(ToolWritePrivateFile(PromptDocumentPath("project"), "not json").Ok());
-  auto invalid = control({{"scope", "project"}});
-  CHECK(invalid.contains("error"));
-  CHECK(PromptCommand("edit --scope project", control).contains("error"));
-  CHECK(control({{"scope", "project"},
-                 {"action", "reset"},
-                 {"revision", invalid["item"]["revision"]}})
-            .contains("effective"));
+}
+
+// Four files a person edits; a coordinator reads its own after AGENTS.md.
+void TestInstructionFiles() {
+  TestWorkspace workspace("instruction-files");
+  const auto cwd = workspace.workspace;
+  CHECK(InstructionPath(false, false, cwd).filename() == "AGENTS.md");
+  CHECK(InstructionPath(true, true, cwd) ==
+        cwd / ".uagent" / "COORDINATOR.md");
+  CHECK(WriteInstructionFile(false, true, cwd, "Run ctest.").empty());
+  CHECK(WriteInstructionFile(true, false, cwd, "Keep threads small.").empty());
+  struct stat info{};
+  CHECK(stat(InstructionPath(false, true, cwd).c_str(), &info) == 0 &&
+        (info.st_mode & 0777) == 0644);
+  CHECK(stat(InstructionPath(true, false, cwd).c_str(), &info) == 0 &&
+        (info.st_mode & 0777) == 0600);
+  const auto session = LoadProjectInstructions(cwd, kProjectDocBytes);
+  CHECK(session.text.find("Run ctest.") != std::string::npos);
+  CHECK(session.text.find("Keep threads small.") == std::string::npos);
+  const auto coordinator = LoadProjectInstructions(cwd, kProjectDocBytes, true);
+  CHECK(coordinator.text.find("Run ctest.") <
+        coordinator.text.find("Keep threads small."));
+  const json shown = InstructionFiles(cwd);
+  CHECK(shown["files"].size() == 4);
+  CHECK(shown["files"][1]["text"] == "Run ctest.");
+  CHECK(shown["files"][2]["text"] == "Keep threads small.");
+  CHECK(WriteInstructionFile(false, false, cwd,
+                             std::string(kProjectDocBytes + 1, 'x')) != "");
 }
 
 void TestPromptRequestParity() {
   TestWorkspace workspace("prompt-request");
-  AdaptiveSystemState state;
-  Api api(RuntimeConfig{});
-  std::vector<Tool> tools;
-  ProcessSupervisor processes;
-  UsageAccumulator usage;
-  Agent agent(
-      api, tools, processes, usage,
-      [](const Tool&, const json&, int64_t) { return false; }, {}, {}, {},
-      &state);
-  auto initial = agent.PromptConfiguration({});
-  auto proposed = agent.PromptConfiguration(
-      {{"action", "set"},
-       {"mode", "replace"},
-       {"text", "Only this behavior.\nPreserve whitespace."},
-       {"revision", initial["item"]["revision"]}});
+  Harness h;
+  auto proposed = h.Set("replace", "Only this behavior.\nPreserve whitespace.");
   CHECK(proposed["effective"].get<std::string>().find("Gather only") ==
         std::string::npos);
-  agent.PreviewContext();
-  CHECK(agent.ModelRequest()["messages"][0]["content"] ==
+  h.agent.PreviewContext();
+  CHECK(h.agent.ModelRequest()["messages"][0]["content"] ==
         proposed["effective"]);
-  const auto stable = agent.ModelRequest();
-  agent.PreviewContext();
-  CHECK(agent.ModelRequest() == stable);
+  const auto stable = h.agent.ModelRequest();
+  h.agent.PreviewContext();
+  CHECK(h.agent.ModelRequest() == stable);
   const auto path = (workspace.workspace / "session.json").string();
   std::string error;
-  CHECK(agent.Save(path, error));
-  state.mode = "overlay";
-  state.instructions.clear();
-  CHECK(agent.Load(path, workspace.workspace.string(), error));
-  CHECK(state.mode == "replace");
-  CHECK(agent.PromptConfiguration({})["effective"] == proposed["effective"]);
-  CHECK(ToolWritePrivateFile(PromptDocumentPath("project"), "invalid").Ok());
-  CHECK(agent.PreviewContext().contains("error"));
+  CHECK(h.agent.Save(path, error));
+  h.state.mode = "overlay";
+  h.state.instructions.clear();
+  CHECK(h.agent.Load(path, workspace.workspace.string(), error));
+  CHECK(h.state.mode == "replace");
+  CHECK(h.agent.PromptPreview()["effective"] == proposed["effective"]);
 }
 }  // namespace uagent

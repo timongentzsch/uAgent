@@ -34,12 +34,12 @@ inline bool SelfConfigurationPath(const std::string& path) {
   auto matches = [&](const std::string& target) {
     return !target.empty() && CanonicalAccessPath(target) == candidate;
   };
-  // The coordinator's soul (global and project): its standing character.
-  if (((candidate.filename() == "system-prompt.json" ||
-        candidate.filename() == "soul.md") &&
+  // Instructions outside the repository steer every session (yours) or a
+  // coordinator; a project's AGENTS.md is an ordinary repository file.
+  if ((candidate.filename() == "COORDINATOR.md" &&
        candidate.parent_path().filename() == ".uagent") ||
-      matches((std::filesystem::path(GlobalBase()) / "soul.md").string()) ||
-      matches((std::filesystem::path(GlobalBase()) / "system-prompt.json")
+      matches((std::filesystem::path(GlobalBase()) / "AGENTS.md").string()) ||
+      matches((std::filesystem::path(GlobalBase()) / "COORDINATOR.md")
                   .string())) {
     return true;
   }
@@ -88,16 +88,16 @@ enum class PathAccess { kRead, kWrite };
 
 // Reads escalate as well as writes: the user and project config files and a
 // workspace .mcp.json carry provider keys and server credentials, so pulling
-// one into context is itself the harm. The trust store is the exception --
-// it holds path hashes and no secret, so only writing it changes what the
-// agent may do next launch.
+// one into context is itself the harm. The trust store and instruction files
+// are the exceptions -- they hold no secret, so only writing them changes
+// what the agent may do next launch.
 inline ApprovalClass PathApprovalClass(const std::string& path,
                                        PathAccess access) {
   if (!SelfConfigurationPath(path)) return ApprovalClass::kNone;
   if (access == PathAccess::kRead &&
       (CanonicalAccessPath(path) == CanonicalAccessPath(TrustStorePath()) ||
-       CanonicalAccessPath(path).filename() == "system-prompt.json" ||
-       CanonicalAccessPath(path).filename() == "soul.md")) {
+       CanonicalAccessPath(path).filename() == "AGENTS.md" ||
+       CanonicalAccessPath(path).filename() == "COORDINATOR.md")) {
     return ApprovalClass::kNone;
   }
   return ApprovalClass::kMandatoryHuman;

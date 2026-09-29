@@ -24,18 +24,6 @@ namespace uagent {
 const char* SystemPromptBase();
 // The base of a folder coordinator's prompt, in place of SystemPromptBase.
 const char* CoordinatorPromptBase();
-// "\n\n## Soul\n…" from ~/.uagent/soul.md then the project's .uagent/soul.md
-// (each at most 16 KiB), or empty. Only a coordinator loads it.
-std::string CoordinatorSoul();
-// The soul file of `scope` ("user" = ~/.uagent/soul.md, "project" =
-// <folder>/.uagent/soul.md).
-std::string SoulPath(const std::string& scope, const std::string& folder);
-// {user:{path,text}, project:{path,text,loaded}}; a project soul is loaded
-// only once the project's config is trusted.
-json SoulDocuments(const std::string& folder);
-// Replaces one soul; returns the error, or empty.
-std::string WriteSoul(const std::string& scope, const std::string& folder,
-                      const std::string& text);
 
 // The base sections an overlay may replace, in prompt order.
 std::vector<std::string_view> PromptSections();
@@ -63,14 +51,12 @@ std::string CapabilityPrompt(const std::vector<Tool>& tools,
 std::string HostCapabilityPrompt(const std::vector<Tool>& tools,
                                  const ToolSelection* selection = nullptr);
 
-// Scope documents are bounded and revisioned. Resolution retains source text
-// even when shadowed, so inspection and replacement previews tell the truth.
-json ReadPromptDocument(const std::string& scope,
-                        const AdaptiveSystemState* state);
-json ResolvePrompt(const std::string& base, const json& documents,
+// What the model reads as its system message: the base, the conversation's
+// self-directive when it has one, then the context layers (host facts and
+// instructions), with each source kept for inspection. {effective, sources,
+// digest, bytes}, or {error} past 64 KiB.
+json ResolvePrompt(const std::string& base, const AdaptiveSystemState* self,
                    const json& context = json::array());
-json PromptDocuments(const AdaptiveSystemState* state);
-std::string PromptDocumentPath(const std::string& scope);
 
 std::string EnvironmentContext(const std::string& date, const std::string& cwd,
                                int64_t terminal_columns = 0);

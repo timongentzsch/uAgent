@@ -443,13 +443,18 @@ void TestFileTools() {
           ApprovalClass::kNone);
     CHECK(PathApprovalClass(TrustStorePath(), PathAccess::kWrite) ==
           ApprovalClass::kMandatoryHuman);
-    // The coordinator's soul: readable, but only a person may rewrite it.
-    for (const std::string& soul :
-         {GlobalBase() + "/soul.md", CanonicalCwd() + "/.uagent/soul.md"}) {
-      CHECK(PathApprovalClass(soul, PathAccess::kRead) == ApprovalClass::kNone);
-      CHECK(PathApprovalClass(soul, PathAccess::kWrite) ==
+    // Instructions outside the repository: readable, but only a person may
+    // rewrite them. A project's AGENTS.md is an ordinary repository file.
+    for (const std::string& instructions :
+         {GlobalBase() + "/AGENTS.md", GlobalBase() + "/COORDINATOR.md",
+          CanonicalCwd() + "/.uagent/COORDINATOR.md"}) {
+      CHECK(PathApprovalClass(instructions, PathAccess::kRead) ==
+            ApprovalClass::kNone);
+      CHECK(PathApprovalClass(instructions, PathAccess::kWrite) ==
             ApprovalClass::kMandatoryHuman);
     }
+    CHECK(PathApprovalClass(CanonicalCwd() + "/AGENTS.md",
+                            PathAccess::kWrite) == ApprovalClass::kNone);
     // Remembered "always allow" rules authorize future calls, so writing them
     // is never something an automatic reviewer may approve.
     const std::string rules =

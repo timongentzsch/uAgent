@@ -1,0 +1,48 @@
+.instructions {
+  display: grid;
+  align-content: start;
+  gap: var(--gap);
+}
+.instructions h3 {
+  margin-top: var(--space-4);
+}
+.instructions pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+  font-size: 0.85rem;
+  margin: 0;
+  max-height: 40vh;
+  overflow: auto;
+}
+.instruction-card {
+  display: grid;
+  gap: var(--space-2);
+}
+.instruction-card > header {
+  display: flex;
+  align-items: baseline;
+  gap: var(--gap);
+  min-width: 0;
+}
+.instruction-card > header strong {
+  flex-shrink: 0;
+}
+/* One line, ending visible: the file name matters most. */
+.instruction-card > header small {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  direction: rtl;
+  text-align: left;
+  font-size: 0.75rem;
+}
+.instructions-also {
+  overflow-wrap: anywhere;
+  font-size: 0.75rem;
+}
+/* An empty file is one line; it grows with what is typed. */
+.instruction-card .text-control:has(> textarea) {
+  --input-min-height: calc(40rem / 14);
+}

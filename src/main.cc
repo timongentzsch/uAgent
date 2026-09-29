@@ -182,7 +182,7 @@ int Main(int argc, char** argv) {
     auto boot = Bootstrap(std::move(parsed.options), argv[0], observability);
     json result =
         boot.Ok()
-            ? boot.context->agent->PromptConfiguration({{"action", "show"}})
+            ? boot.context->agent->PromptPreview()
             : json{{"error", boot.error}};
     boot.context.reset();
     silence.Restore();

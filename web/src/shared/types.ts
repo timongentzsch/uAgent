@@ -356,6 +356,8 @@ export interface State {
   usage?: Usage;
   route_usage?: Record<string, Usage>;
   system_prompt?: string;
+  // The agent's own conversation-scoped addition (adapt_system).
+  self_directive?: SelfDirective;
   statistics?: Statistics;
   activity?: string;
   activities?: Activity[];
@@ -598,9 +600,23 @@ export interface ToolCategories {
   categories: ToolCategory[];
   assignments: Record<string, string>;
 }
-export interface SoulDocuments {
-  user: { path: string; text: string };
-  project: { path: string; text: string; loaded: boolean };
+// One instruction file a person edits: for every session or a folder's
+// coordinator, yours or the project's.
+export interface InstructionFile {
+  audience: "sessions" | "coordinator";
+  scope: "user" | "project";
+  path: string;
+  text: string;
+}
+export interface InstructionStack {
+  files: InstructionFile[];
+  also_loaded: string[];
+  base: { sessions: string; coordinator: string };
+}
+export interface SelfDirective {
+  mode: "overlay" | "replace";
+  text: string;
+  revision: string;
 }
 export interface CommandResults {
   browser: {
@@ -608,7 +624,8 @@ export interface CommandResults {
     mode?: string;
     created_profile_id?: string;
   };
-  prompt: PromptResult;
+  instructions: InstructionStack;
+  self_directive: { item: SelfDirective };
   memory: LibraryResult;
   skills: LibraryResult;
   schedule: ScheduleResult;
@@ -619,7 +636,6 @@ export interface CommandResults {
   restart_host: { restarting: boolean };
   tools: ToolCatalogue;
   tool_categories: ToolCategories;
-  soul: SoulDocuments;
   activity: ActivityDetail;
   context: { exchanges: Exchange[] };
   // A fork cut before a message returns that message, to edit (prompt).
@@ -676,6 +692,7 @@ export interface CommandFields {
   value?: string;
   cwd?: string;
   coordinator?: boolean;
+  audience?: string;
   title?: string;
   device_id?: string;
   text?: string;
@@ -722,34 +739,13 @@ export interface RawOptions {
 export type AppModal =
   // handoff: opened for the agent's request (take control, close on Done).
   | { type: "browser"; handoff?: boolean }
-  | { type: "prompt"; scope?: string; edit?: boolean }
+  | { type: "instructions" }
   | StatisticsModal
   | ({ type: "raw" } & RawOptions)
   | { type: "new" }
   // section: a settings section to open on, e.g. from /permissions.
   | { type: "settings"; section?: string }
   | { type: "tools"; session_id: string };
-
-export interface PromptDocument {
-  scope: string;
-  mode: "inherit" | "overlay" | "replace";
-  text: string;
-  revision: string;
-  path?: string;
-  active?: boolean;
-}
-export interface PromptResult {
-  item: PromptDocument;
-  effective: string;
-  last_sent?: string;
-  inherited: Record<string, string>;
-  sources: PromptDocument[];
-  bytes: number;
-  digest: string;
-  diff?: string;
-  applies?: string;
-  preview_kind?: string;
-}
 
 export interface LibraryItem {
   provenance?: {

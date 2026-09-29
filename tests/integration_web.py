@@ -1719,7 +1719,7 @@ def test_web_control_queues_behind_inflight_catalog(root, home, *, binary):
             reader.start()
             try:
                 assert catalog_started.wait(timeout=budget(5)), "catalog did not start"
-                queued = client.command("prompt", session, action="show", scope="conversation")
+                queued = client.command("self_directive", session, action="show")
                 request_id = f"{client.sequence:032x}"
                 assert_true(queued.get("pending"), "control ran before catalog finished")
             finally:

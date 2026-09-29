@@ -92,7 +92,7 @@ import {
   conversationActions,
   libraryModule,
   pairing,
-  promptDialog,
+  instructionsDialog,
   rawDialog,
   inspectorDialog,
   sideAnswer,
@@ -304,7 +304,7 @@ function App() {
           scheduledModule,
           statisticsDialog,
           toolsDialog,
-          promptDialog,
+          instructionsDialog,
         ].forEach((load) => preloadDeferred<never>(load).catch(() => {})),
       2000,
     );
@@ -456,18 +456,8 @@ function App() {
       const result = await act("share");
       if (!result.pending)
         setNotice(`Transcript saved to ${result.result.path}`);
-    } else if (
-      name === "/prompt" &&
-      (!argument ||
-        /^(show|edit)(?: --scope (global|project|conversation))?$/.test(
-          argument,
-        ))
-    ) {
-      setModal({
-        type: "prompt",
-        scope: argument.match(/--scope (\w+)/)?.[1],
-        edit: argument.startsWith("edit"),
-      });
+    } else if (name === "/instructions" && !argument) {
+      setModal({ type: "instructions" });
     } else if (name === "/http") {
       const exchanges = snapshot?.state?.http || [];
       const [number, part = "request"] = argument.split(/\s+/);
@@ -1024,9 +1014,7 @@ function App() {
                   </h1>
                   {page === "chat" && session?.kind === "coordinator" && (
                     <CoordinatorHelp
-                      editSoul={() =>
-                        open({ type: "prompt", scope: "soul-user", edit: true })
-                      }
+                      editInstructions={() => open({ type: "instructions" })}
                     />
                   )}
                 </div>
@@ -1302,7 +1290,7 @@ function App() {
           >
             <Deferred
               load={rawDialog}
-              prompt={() => setModal({ type: "prompt" })}
+              instructions={() => setModal({ type: "instructions" })}
               fallback={<Spinner label="Loading full body…" surface />}
               id={modal.id}
               session={modal.session}
@@ -1319,24 +1307,23 @@ function App() {
             />
           </Modal>
         )}
-        {modal?.type === "prompt" && (
+        {modal?.type === "instructions" && (
           <Modal
-            title="System prompt"
-            className="prompt-view"
+            title="Instructions"
+            className="instructions-view"
             size="wide"
             layout="panel"
             close={() => setModal(null)}
           >
             <Deferred
-              load={promptDialog}
-              fallback={<Spinner label="Loading system prompt…" surface />}
+              load={instructionsDialog}
+              fallback={<Spinner label="Loading instructions…" surface />}
               session={session}
+              state={snapshot?.state}
               projects={projects}
               online={online}
               version={managementVersion}
-              scope={modal.scope}
-              edit={modal.edit}
-              lastSent={snapshot?.state?.system_prompt}
+              showRequest={session?.generation ? showContext : undefined}
             />
           </Modal>
         )}
@@ -1376,7 +1363,7 @@ function App() {
               selected={selected}
               session={session}
               logout={logout}
-              prompt={() => setModal({ type: "prompt" })}
+              instructions={() => setModal({ type: "instructions" })}
             />
           </Modal>
         )}

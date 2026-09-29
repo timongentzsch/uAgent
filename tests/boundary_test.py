@@ -19,11 +19,9 @@ KNOWN = {
     "include/api/stream.h -> include/agent/tool_protocol.h",
     "include/media/attachments.h -> include/api/capabilities.h",
     "include/media/attachments.h -> include/tools/tool.h",
-    "include/tools/adapt_system.h -> include/app/prompt_control.h",
     "include/tools/configure.h -> include/app/config_proposal.h",
     "include/tools/configure.h -> include/app/self_description.h",
     "src/agent/child_agent.cc -> include/tools/session.h",
-    "src/agent/request.cc -> include/app/prompt_control.h",
     "src/core/events.cc -> include/ui/presentation.h",
 }
 

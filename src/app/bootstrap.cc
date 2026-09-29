@@ -157,10 +157,11 @@ bool ResolveProjectTrust(const Options& options, bool& trusted,
 // instructions do not spend is what the memory index may.
 ProjectInstructions LoadInstructions(const std::filesystem::path& workspace,
                                      const RuntimeConfig& config,
-                                     bool memory_child) {
+                                     bool memory_child, bool coordinator) {
   ProjectInstructions instructions;
   if (!memory_child) {
-    instructions = LoadProjectInstructions(workspace, kProjectDocBytes);
+    instructions =
+        LoadProjectInstructions(workspace, kProjectDocBytes, coordinator);
   }
   if (config.memory_enabled) {
     size_t remaining = instructions.text.size() >= kProjectDocBytes
@@ -202,9 +203,14 @@ std::vector<Tool> BuildTools(AppContext& context,
   // One read of the toolset selector: the three shapes it can take are one
   // decision, not three unrelated conditions.
   const std::string toolset = EnvStr("UAGENT_TOOLSET");
-  std::vector<Tool> tools = BuiltinTools(
-      runtime.processes, workspace,
-      AdaptiveSystemEnabled() ? &runtime.adaptive_system : nullptr);
+  std::vector<Tool> tools = BuiltinTools(runtime.processes, workspace);
+  if (AdaptiveSystemEnabled()) {
+    // The agent exists by the time a tool runs.
+    tools.push_back(AdaptSystemTool(
+        runtime.adaptive_system, [app = &context](const json& request) {
+          return app->agent->SelfDirective(request);
+        }));
+  }
   if (!runtime.config.memory_enabled) {
     std::erase_if(tools, [](const Tool& tool) { return tool.memory_store; });
   }
@@ -615,7 +621,7 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   RuntimeConfig config = config_manager.Initialize();
   // Route resolution reads UAGENT_MODEL; a coordinator starts on its own
   // model. A /model saved in its session still wins on resume.
-  if (JsonValue(options.session, "kind", "") == kSessionKindCoordinator &&
+  if (options.Coordinator() &&
       !options.overrides.contains("UAGENT_MODEL")) {
     const std::string model = CoordinatorModel();
     if (!model.empty()) setenv("UAGENT_MODEL", model.c_str(), 1);
@@ -674,7 +680,8 @@ BootstrapResult Bootstrap(Options options, const char* executable,
 
   Api& api = context->runtime.api;
   ProjectInstructions instructions =
-      LoadInstructions(workspace, context->runtime.config, memory_child);
+      LoadInstructions(workspace, context->runtime.config, memory_child,
+                       context->options.Coordinator());
   if (instructions.truncated) {
     PrintWarning("project instructions truncated at " +
                  std::to_string(kProjectDocBytes) + " bytes");
@@ -703,22 +710,12 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   }
   ActivateRoute(api);
   context->tool_policy = ToolPolicyFromEnvironment();
-  context->tool_policy.coordinator =
-      JsonValue(context->options.session, "kind", "") ==
-      kSessionKindCoordinator;
+  context->tool_policy.coordinator = context->options.Coordinator();
   PrintWarning(context->tool_policy.error);
   std::string tool_error;
   context->tools =
       BuildTools(*context, workspace, trusted_snapshot, skills, tool_error);
   if (!tool_error.empty()) return Failure(tool_error);
-  for (auto& tool : context->tools) {
-    if (tool.name == "adapt_system") {
-      tool = AdaptSystemTool(context->runtime.adaptive_system,
-                             [app = context.get()](const json& request) {
-                               return app->agent->PromptConfiguration(request);
-                             });
-    }
-  }
   context->permission_override.store(context->options.yolo
                                          ? PermissionOverride::kYolo
                                          : PermissionOverride::kDefault);

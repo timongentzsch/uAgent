@@ -2,13 +2,14 @@
 
 #include <chrono>
 #include <cinttypes>
+#include <fstream>
 #include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "include/agent/child_agent.h"
-#include "include/agent/prompt.h"
+#include "include/core/project.h"
 #include "include/cli.h"
 #include "include/app/commands.h"
 #include "include/app/permissions.h"
@@ -198,51 +199,79 @@ void HandleStatus(const AppSession& session, CommandReply& reply) {
   }
 }
 
-// The person edits the soul directly here, so no approval stands between
-// them and the file; the agent goes through uagent set_soul instead.
-void HandleSoul(const std::string& argument, CommandReply& reply) {
+// The person edits instruction files directly here, so no approval stands
+// between them and the file; an agent asks through uagent set_instructions.
+void HandleInstructions(AppSession& session, const std::string& argument,
+                        CommandReply& reply) {
   std::istringstream words(argument);
-  std::string action, scope;
-  words >> action >> scope;
-  if (scope.empty()) scope = "user";
-  const json souls = SoulDocuments(CanonicalCwd());
+  std::string action, audience, scope;
+  words >> action >> audience >> scope;
+  const std::string cwd = CanonicalCwd();
+  if (action == "clear") {
+    Agent& agent = session.ActiveAgent();
+    json shown = agent.SelfDirective({{"action", "show"}});
+    json cleared = agent.SelfDirective(
+        {{"action", "reset"}, {"revision", shown["item"]["revision"]}});
+    reply.Print("· %s\n", cleared.contains("error")
+                              ? JsonValue(cleared, "error", "").c_str()
+                              : "self-directive cleared");
+    return;
+  }
   if (action == "edit") {
-    if (scope != "user" && scope != "project") {
-      reply.Print("%s", "usage: /soul edit [user|project]\n");
+    if ((audience != "sessions" && audience != "coordinator") ||
+        (scope != "user" && scope != "project")) {
+      reply.Print("%s", "usage: /instructions edit sessions|coordinator "
+                        "user|project\n");
       return;
     }
+    const bool coordinator = audience == "coordinator";
+    const bool project = scope == "project";
+    std::string text;
+    std::ifstream input(InstructionPath(coordinator, project, cwd),
+                        std::ios::binary);
+    if (input) ReadBounded(input, kProjectDocBytes, text);
     bool cancelled = false;
-    const std::string text = ReadInteraction(
+    text = ReadInteraction(
         {.kind = "editor",
-         .prompt = "Edit the coordinator's " + scope + " soul",
-         .initial = JsonValue(souls[scope], "text", "")},
+         .prompt = InstructionPath(coordinator, project, cwd).string(),
+         .initial = text},
         &cancelled);
     if (cancelled) {
-      reply.Print("%s", "· soul unchanged\n");
+      reply.Print("%s", "· instructions unchanged\n");
       return;
     }
-    const std::string error = WriteSoul(scope, CanonicalCwd(), text);
-    const std::string said =
-        error.empty() ? scope + " soul saved; the coordinator reads it from "
-                                "its next turn"
-                      : error;
-    reply.Print("· %s\n", said.c_str());
+    const std::string error =
+        WriteInstructionFile(coordinator, project, cwd, text);
+    reply.Print("· %s\n", error.empty()
+                              ? "saved; new and restarted sessions read it"
+                              : error.c_str());
     return;
   }
   if (!action.empty()) {
-    reply.Print("%s", "usage: /soul [edit [user|project]]\n");
+    reply.Print("%s", "usage: /instructions [edit sessions|coordinator "
+                      "user|project | clear]\n");
     return;
   }
-  for (const char* part : {"user", "project"}) {
-    const json& soul = souls[part];
-    std::string text = JsonValue(soul, "text", "");
-    std::string note = std::string(part) == "project" &&
-                               !JsonValue(soul, "loaded", false)
-                           ? " (not loaded: project config is not trusted)"
-                           : "";
-    reply.Print("%s%s soul%s%s · %s\n%s\n\n", BOLD(), part, RST(),
-                note.c_str(), JsonValue(soul, "path", "").c_str(),
+  // The stack in the order a session reads it, after the built-in base.
+  const json stack = InstructionFiles(cwd);
+  for (const json& file : stack["files"]) {
+    const std::string text = JsonValue(file, "text", "");
+    reply.Print("%s%s · %s%s  %s\n%s\n\n", BOLD(),
+                JsonValue(file, "scope", "") == "user" ? "yours" : "project",
+                JsonValue(file, "audience", "") == "coordinator"
+                    ? "coordinator"
+                    : "every session",
+                RST(), JsonValue(file, "path", "").c_str(),
                 text.empty() ? "(empty)" : text.c_str());
+  }
+  for (const json& also : stack["also_loaded"]) {
+    reply.Print("also read: %s\n", also.get<std::string>().c_str());
+  }
+  const json self = session.ActiveAgent().SelfDirective({{"action", "show"}});
+  if (!JsonValue(self["item"], "text", "").empty()) {
+    reply.Print("%sself-directive%s (this conversation, %s)\n%s\n", BOLD(),
+                RST(), JsonValue(self["item"], "mode", "").c_str(),
+                JsonValue(self["item"], "text", "").c_str());
   }
 }
 

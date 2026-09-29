@@ -172,7 +172,7 @@ void TestSignalAndFileWatch() {
   int catalogue_wake[2] = {-1, -1};
   REQUIRE(pipe(catalogue_wake) == 0);
   const std::string prompt =
-      std::string(project_root) + "/.uagent/system-prompt.json";
+      std::string(project_root) + "/.uagent/COORDINATOR.md";
   FileWaitResult catalogue_changed = FileWaitResult::kTimedOut;
   std::thread catalogue_watcher([&] {
     catalogue_changed = WaitForAnyFileChange(

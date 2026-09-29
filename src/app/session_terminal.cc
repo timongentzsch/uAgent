@@ -782,7 +782,7 @@ int CoordinatorPromptMain(const Options& options) {
 
 int TerminalMain(Options options) {
   std::string path;
-  if (JsonValue(options.session, "kind", "") == kSessionKindCoordinator) {
+  if (options.Coordinator()) {
     path = CoordinatorPath(CanonicalCwd());
   } else if (options.resume_pick) {
     path = PickSession();

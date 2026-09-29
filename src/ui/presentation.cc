@@ -576,7 +576,8 @@ void PrintPresentation(const PresentationRecord& record,
   if (const auto group = record.activity.find("group");
       !detailed && group != record.activity.end()) {
     if (JsonValue(*group, "id", "") == record.id) {
-      WriteTerminalRecord(StyledBlock(JsonValue(*group, "label", ""), DIM()));
+      WriteTerminalRecord(
+          StyledBlock(TerminalSafe(JsonValue(*group, "label", "")), DIM()));
     }
     return;
   }

@@ -870,7 +870,8 @@ int CoordinatorPromptMain(const Options& options) {
                // Nobody is here to approve: a question is declined.
                if (const json* pending = JsonObject(frame, "pending")) {
                  fprintf(stderr, "· declined: %s\n",
-                         JsonValue(*pending, "prompt", "approval").c_str());
+                         TerminalSafe(JsonValue(*pending, "prompt", "approval"))
+                             .c_str());
                  send({{"kind", "reply"},
                        {"interaction_id", JsonValue(*pending, "id", "")},
                        {"text", ""}});

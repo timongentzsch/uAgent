@@ -138,7 +138,7 @@ std::string Render(const json& question, const Answer& answer, size_t cursor,
                              (multi ? "space toggle · enter done"
                                     : "enter choose") +
                              " · i image · esc cancel"
-                       : note) +
+                       : TerminalSafe(note)) +
          RST();
   return out;
 }

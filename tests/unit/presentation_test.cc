@@ -332,10 +332,12 @@ void TestReplayBlocksMirrorLiveRows() {
           json::object(
               {{"group",
                 json::object({{"id", "call-0"},
-                              {"label", "Explored \u00b7 3 calls"}})}})},
+                              {"label", "Explored \u00b7 3 calls\x1b[2J"}})}})},
          {"replay", result_replay}});
   });
   CHECK(drawn.find("Explored") != std::string::npos);
+  // A label is stored text: shown, never obeyed.
+  CHECK(drawn.find("calls\\x1b[2J") != std::string::npos);
   // Rows saved before replay facts are synthesized from name and output,
   // as the stored-transcript printer always drew them.
   drawn = CaptureStdout([&] {

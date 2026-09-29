@@ -281,7 +281,8 @@ std::string ReadInteraction(InteractionRequest request, bool* eof) {
     *eof = !EditExternalText(answer, STDIN_FILENO, kAdaptiveSystemBytes);
   } else {
     ScopedCookedInput cooked_input;
-    fputs((DecisionPrompt(request.prompt, request.options) + " ").c_str(),
+    fputs((TerminalSafe(DecisionPrompt(request.prompt, request.options)) + " ")
+              .c_str(),
           stdout);
     fputs(request.initial.c_str(), stdout);
     fflush(stdout);

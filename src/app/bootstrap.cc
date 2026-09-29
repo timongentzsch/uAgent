@@ -383,7 +383,8 @@ Agent::Approver MakeApprover(AppContext* app) {
                                                 "no", "guidance"})}}});
       if (!app->channel) {
         if (mandatory) {
-          fprintf(stdout, "%s%s%s\n", YEL(), reason.c_str(), RST());
+          fprintf(stdout, "%s%s%s\n", YEL(), TerminalSafe(reason).c_str(),
+                  RST());
         }
         fprintf(stdout, "%s\n", ColorizeDiffLines(payload).c_str());
       }

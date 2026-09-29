@@ -649,7 +649,7 @@ RawComposer::Layout RawComposer::ComputeLayout() const {
     const Suggestion& match = found.matches[index];
     std::string suggestion = "  " + match.name;
     if (!match.description.empty()) suggestion += "  " + match.description;
-    rows.push_back(DisplayTrunc(suggestion, AvailableColumns()));
+    rows.push_back(DisplayTrunc(TerminalSafe(suggestion), AvailableColumns()));
   }
   if (!note_.empty()) {
     rows.push_back(DisplayTrunc("  " + note_, AvailableColumns()));

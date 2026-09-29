@@ -41,6 +41,10 @@ inline constexpr size_t kDetailIndent = 4;
 std::string KeyValueRow(std::string_view label, std::string_view value,
                         size_t indent = kRowIndent);
 
+// The mark before a server or a tool: ● green when ready, yellow while
+// starting, red when failed, ○ dim when disabled.
+std::string StatusMark(std::string_view status);
+
 enum class Tone { kNeutral, kWarn, kError };
 
 // A notice row: "· text", dim, yellow or red, ending in a newline. The text is

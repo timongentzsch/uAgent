@@ -443,17 +443,13 @@ void HandleMcp(AppSession& session, const std::string& argument,
   }
   for (const json& server : servers) {
     const std::string state = JsonValue(server, "state", "");
-    const char* color = state == "ready"      ? GREEN()
-                        : state == "failed"   ? RED()
-                        : state == "starting" ? YEL()
-                                              : DIM();
     std::string detail =
         state == "ready"
             ? std::to_string(JsonValue(server, "tools", int64_t{0})) + " tools"
         : state == "failed" ? JsonValue(server, "error", "")
                             : state;
     if (JsonValue(server, "overrides", false)) detail += " · overrides global";
-    reply.Print("%s●%s %s %s· %s · %s%s\n", color, RST(),
+    reply.Print("%s %s %s· %s · %s%s\n", StatusMark(state).c_str(),
                 TerminalSafe(JsonValue(server, "name", "")).c_str(), DIM(),
                 JsonValue(server, "scope", "").c_str(),
                 TerminalSafe(detail).c_str(), RST());
@@ -500,8 +496,11 @@ void HandleTools(AppSession& session, const std::string& argument,
           " serialized schema bytes");
   if (const json* tools = JsonArray(result, "tools")) {
     for (const json& tool : *tools) {
-      reply.Print("%s%s %-14s %s · %s%s\n", DIM(),
-                  JsonValue(tool, "active", false) ? "●" : "○",
+      reply.Print("%s %s%-14s %s · %s%s\n",
+                  StatusMark(JsonValue(tool, "active", false) ? "ready"
+                                                              : "disabled")
+                      .c_str(),
+                  DIM(),
                   TerminalSafe(JsonValue(tool, "name", "")).c_str(),
                   TerminalSafe(JsonValue(tool, "category", "")).c_str(),
                   TerminalSafe(JsonValue(tool, "description", "")).c_str(),

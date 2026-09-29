@@ -35,6 +35,14 @@ std::string KeyValueRow(std::string_view label, std::string_view value,
   return row + '\n';
 }
 
+std::string StatusMark(std::string_view status) {
+  const char* color = status == "ready"      ? GREEN()
+                      : status == "failed"   ? RED()
+                      : status == "starting" ? YEL()
+                                             : DIM();
+  return color + AsciiGlyphs(status == "disabled" ? "○" : "●") + RST();
+}
+
 std::string Note(Tone tone, std::string_view text) {
   const char* style = tone == Tone::kError  ? RED()
                       : tone == Tone::kWarn ? YEL()

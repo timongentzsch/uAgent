@@ -226,7 +226,7 @@ std::string CollectSessionOutput(const ProcessSupervisor& supervisor,
       return finish({});
     }
     if (AbortRequested()) {
-      return finish("[wait interrupted; process still running]",
+      return finish("[wait cancelled; process still running]",
                     /*keep=*/false);
     }
     if (SteeringYieldRequested()) {

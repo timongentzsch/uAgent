@@ -412,7 +412,8 @@ void TerminalPresenter::Block(const json& block) {
     WriteTerminalRecord(
         TurnStatsLine(JsonValue(block, "summary", json::object())) + "\n");
   } else if (kind == "compaction") {
-    WriteTerminalRecord("Context compacted\n");
+    // The row the live "compacted" notice drew.
+    WriteTerminalRecord(Note(Tone::kNeutral, "compacted"));
   } else if (kind == "activity") {
     const json memory = JsonValue(block, "memory", json::object());
     if (detailed_ || !JsonValue(memory, "minor", false)) {

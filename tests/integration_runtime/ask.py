@@ -73,7 +73,7 @@ def test_ask_is_answered_in_the_terminal(root, home, *, binary):
         row = re.search(rb"2\. Postgres[^\r\n]*", output).group().decode()
         plain = re.sub(r"\x1b\[[\d;]*m", "", row)
         width = sum(2 if unicodedata.east_asian_width(c) in "WF" else 1 for c in plain)
-        assert_true(plain.endswith("…") and width <= 80 - len("❯ "), (width, plain))
+        assert_true(plain.endswith("…") and width <= 80 - len("> "), (width, plain))
         result = tool_results(server.requests[-1][1]["messages"])[0]
         assert_true("Which database?\n→ SQLite" in result, result)
         assert_true("Which extras?\n→ Tracing, Backups" in result, result)

@@ -243,7 +243,7 @@ ToolResult ToolActivityWait(ProcessSupervisor& supervisor,
       return ToolSuccess(LimitOutput(std::move(result), cap));
     }
     if (AbortRequested()) {
-      return ToolCancelled("wait interrupted; " + ActivityCount(running) +
+      return ToolCancelled("wait cancelled; " + ActivityCount(running) +
                            " still running");
     }
     if (SteeringYieldRequested()) {

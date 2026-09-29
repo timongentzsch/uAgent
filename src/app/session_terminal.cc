@@ -300,7 +300,8 @@ class Terminal {
           if (!decision.empty()) {
             draft_ = composer_.Buffer();
             output_.Write(prompt + "\n");
-            composer_.Mount("> ", JsonValue(pending, "initial", ""), false);
+            composer_.Mount(InputPrompt(), JsonValue(pending, "initial", ""),
+                            false);
           } else {
             composer_.Mount(InputPrompt(), draft_);
           }
@@ -675,7 +676,7 @@ class Terminal {
           echoed = echoed_.erase(JsonValue(block, "request_id", "")) > 0;
         }
         if (shown_.insert(JsonValue(block, "id", "")).second && !echoed &&
-            (block_kind == "user" || block_kind == "compaction")) {
+            block_kind == "user") {
           presenter_.Block(block);
         }
       } else if (type == "command.completed" && data.contains("output")) {

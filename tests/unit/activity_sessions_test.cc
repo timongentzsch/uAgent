@@ -710,7 +710,7 @@ void TestActivityWaitAndDelivery() {
     auto wait_time = std::chrono::steady_clock::now() - started_wait;
     interrupt.join();
     CHECK(!interrupted.Ok());
-    CHECK(interrupted.output.find("wait interrupted") != std::string::npos);
+    CHECK(interrupted.output.find("wait cancelled") != std::string::npos);
     CHECK(wait_time < std::chrono::milliseconds(500));
     CHECK(SteeringState().Take());
     CHECK(ToolActivityStop(steering_wait, ActivityId(steering_jobs[0])).Ok());

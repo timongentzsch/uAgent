@@ -107,7 +107,8 @@ std::string Render(const json& question, const Answer& answer, size_t cursor,
                     TerminalSafe(JsonValue(question, "question", "")) + "\n";
   for (size_t index = 0; index <= options.size(); ++index) {
     const bool other = index == options.size();
-    std::string row = AsciiGlyphs(index == cursor ? "❯ " : "  ");
+    // The composer's prompt glyph marks the row a key acts on.
+    std::string row = index == cursor ? "> " : "  ";
     if (multi) row += (other ? !answer.other.empty() : answer.chosen[index])
                           ? "[x] "
                           : "[ ] ";
@@ -136,9 +137,9 @@ std::string Render(const json& question, const Answer& answer, size_t cursor,
   }
   out += std::string(DIM()) +
          (note.empty() ? AsciiGlyphs(std::string("↑↓ move · ") +
-                                     (multi ? "space toggle · enter done"
-                                            : "enter choose") +
-                                     " · i image · esc cancel")
+                                     (multi ? "Space toggle · Enter done"
+                                            : "Enter choose") +
+                                     " · i image · Esc cancel")
                        : TerminalSafe(note)) +
          RST();
   return out;

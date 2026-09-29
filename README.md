@@ -95,7 +95,7 @@ passwords.google.com. The agent can use saved logins but never read them.
 | Up, Down, Ctrl+P, Ctrl+N | Previous and next draft from history |
 | Ctrl+A, Ctrl+E, Ctrl+F | Move to the start, to the end, one character right |
 | Ctrl+W, Ctrl+K, Ctrl+U | Delete the word before the cursor, to the end, to the start |
-| Escape | Clear the draft and interrupt the running turn |
+| Esc | Clear the draft and interrupt the running turn |
 | Ctrl+B | Move the foreground command to background supervision |
 | Ctrl+C | Interrupt while working; press twice while idle to detach |
 | Ctrl+D on an empty draft | Detach |

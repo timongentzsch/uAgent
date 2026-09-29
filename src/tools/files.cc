@@ -215,7 +215,7 @@ ToolResult ToolReadFile(const std::string& path, int64_t offset, int64_t limit,
   FileLines lines(f);
   while (shown < limit && lines.Next(line, kReadFileBytes - out.size(),
                                      total + 1 < offset, output_limited)) {
-    if (AbortRequested()) return ToolCancelled("error: read cancelled");
+    if (AbortRequested()) return ToolCancelled("error: read cancelled by user");
     ++total;
     if (total >= offset) {
       if (output_limited || line.size() >= kReadFileBytes - out.size()) {
@@ -235,7 +235,7 @@ ToolResult ToolReadFile(const std::string& path, int64_t offset, int64_t limit,
       ++shown;
     }
   }
-  if (AbortRequested()) return ToolCancelled("error: read cancelled");
+  if (AbortRequested()) return ToolCancelled("error: read cancelled by user");
   if (f.bad()) {
     return ToolFailure(ToolErrorCode::kInternal, "read failed");
   }

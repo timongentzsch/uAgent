@@ -338,11 +338,6 @@ def run_case(
         workspace.mkdir()
         home.mkdir()
         materialize(workspace, scenario.get("files", {}))
-        # Saved conversations the folder already has, for a coordinator to read.
-        for saved in scenario.get("sessions", []):
-            write_session(
-                home, saved["name"], saved["messages"], cwd=workspace, title=saved["title"]
-            )
         before = snapshot(workspace)
         trace_path = root / "trace.jsonl"
 
@@ -353,6 +348,11 @@ def run_case(
             mock = Server([script])
         else:
             copy_user_config(home)
+        # Saved conversations the folder already has, for a coordinator to read.
+        for saved in scenario.get("sessions", []):
+            write_session(
+                home, saved["name"], saved["messages"], cwd=workspace, title=saved["title"]
+            )
         try:
             env = case_environment(scenario, variant, arguments, mock)
             env["HOME"] = str(home)

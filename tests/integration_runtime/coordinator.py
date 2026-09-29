@@ -103,7 +103,10 @@ def test_coordinator_answers_headless_and_lists_the_board(root, home, *, binary)
         [{"role": "system", "content": "sys"}, {"role": "user", "content": "fix it"}],
         cwd=root,
     )
-    with Server([event({"content": "plain-ok"}), event({"content": "json-ok"})]) as server:
+    usage = {"prompt_tokens": 100, "completion_tokens": 7, "cost": 0.002}
+    with Server(
+        [event({"content": "plain-ok"}, usage=usage), event({"content": "json-ok"}, usage=usage)]
+    ) as server:
         env = base_env(home, server.url)
         plain = run(root, env, "coord", "-p", "status?", binary=binary)
         assert_true(plain.returncode == 0, plain.stderr)
@@ -113,6 +116,10 @@ def test_coordinator_answers_headless_and_lists_the_board(root, home, *, binary)
         envelope = json.loads(structured.stdout)
         assert_true(envelope["answer"] == "json-ok", envelope)
         assert_true(envelope["stop"]["reason"] == "completed", envelope)
+        # Only this request's usage, not the long-lived session's total.
+        assert_true(envelope["usage"]["output"] == 7, envelope)
+        assert_true(abs(envelope["usage"]["cost"] - 0.002) < 1e-9, envelope)
+        assert_true(envelope["usage"]["cost_reported"], envelope)
         # The same runtime and conversation served both calls.
         assert_true(len(server.requests[-1][1]["messages"]) >= 4, server.requests[-1])
     code, output = run_pty(root, env, [(b"/board\n", b"fix-lexer"), b"/q\n"], binary=binary)

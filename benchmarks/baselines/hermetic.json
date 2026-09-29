@@ -1,6 +1,6 @@
 {
   "schema": "uagent.eval.baseline.v2",
-  "generated_at": "2026-09-29T11:33:16Z",
+  "generated_at": "2026-09-29T12:04:59Z",
   "note": "Regenerate with `python3 benchmarks/eval.py BINARY --update` and review the diff.",
   "scenarios": {
     "active_schema_recovery/control": {
@@ -24,9 +24,9 @@
       "max_batch": 1,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_context_bytes": 16729,
-      "cumulative_estimated_context_bytes": 47197,
-      "tool_result_chars": 384,
+      "max_estimated_context_bytes": 16723,
+      "cumulative_estimated_context_bytes": 47188,
+      "tool_result_chars": 379,
       "initial_schema_bytes": 11086
     },
     "browser_outcome_rounds/control": {
@@ -82,8 +82,8 @@
       "initial_schema_bytes": 8347
     },
     "coordinator_status/control": {
-      "score": 6,
-      "checks_total": 6,
+      "score": 5,
+      "checks_total": 5,
       "model_requests": 2,
       "tool_calls": 1,
       "max_batch": 1,

@@ -4,7 +4,7 @@
   "tier": "regression",
   "variants": ["control"],
   "coordinator": true,
-  "env": {"UAGENT_COORDINATOR_ENVIRONMENT": "local", "UAGENT_COORDINATOR_DAILY_SPEND_USD": "0.05"},
+  "env": {"UAGENT_COORDINATOR_ENVIRONMENT": "local", "UAGENT_COORDINATOR_DAILY_SPEND_USD": "1"},
   "prompt": "Two independent jobs: add an 'Install' section to README.md, and add a 0.2.0 entry to CHANGELOG.md. Delegate them so they run in parallel, then tell me what you started.",
   "files": {
     "README.md": "# demo\n\nA small demo project.\n",
@@ -32,6 +32,6 @@
     "min_batch": 2,
     "answer_contains": ["README", "CHANGELOG"],
     "result_contains": ["session_id"],
-    "max_requests": 3
+    "max_requests": 6
   }
 }

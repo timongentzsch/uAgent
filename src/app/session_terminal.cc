@@ -779,6 +779,8 @@ int CoordinatorPromptMain(const Options& options) {
   const std::string request = RandomToken(16);
   bool submitted = false, rejected = false, completed = false;
   json stop = json::object();
+  // The coordinator's session runs on; this request is its growth.
+  Usage before, after;
   Pipe never;
   if (!never.Open()) return 1;
   ReadFrames(connection.socket.Get(), never.read.Get(), kFrameBytes,
@@ -793,6 +795,8 @@ int CoordinatorPromptMain(const Options& options) {
                }
                if (kind != "state") return true;
                if (!submitted && !JsonValue(frame, "busy", true)) {
+                 before = UsageFromJson(
+                     JsonValue(frame["state"], "usage", json::object()));
                  submitted = send({{"kind", "submit"},
                                    {"request_id", request},
                                    {"text", options.prompt}});
@@ -811,6 +815,8 @@ int CoordinatorPromptMain(const Options& options) {
                  // A queued thread event may already have started the next
                  // turn, which clears the stop record.
                  stop = JsonValue(frame["state"], "stop", json::object());
+                 after = UsageFromJson(
+                     JsonValue(frame["state"], "usage", json::object()));
                  completed = true;
                  return false;
                }
@@ -831,6 +837,7 @@ int CoordinatorPromptMain(const Options& options) {
   if (options.json) {
     printf("%s\n", JsonDump({{"answer", answer},
                              {"session_id", HashHex(path)},
+                             {"usage", UsageJson(after.Since(before))},
                              {"stop", stop}})
                        .c_str());
   } else {

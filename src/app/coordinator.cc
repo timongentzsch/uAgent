@@ -299,8 +299,9 @@ double SpentToday(const std::string& folder,
     if (JsonValue(info.thread, "day", "") != today) continue;
     SessionLoadResult loaded = SessionStore::Inspect(info.path);
     const double cost = loaded.record ? loaded.record->state.usage.cost : 0;
-    spent += reserve && Working(info) ? std::max(cost, ThreadBudget(info.thread))
-                                      : cost;
+    spent += reserve && Working(info)
+                 ? std::max(cost, ThreadBudget(info.thread))
+                 : cost;
   }
   return spent;
 }
@@ -346,14 +347,17 @@ ToolResult Spawn(const std::string& folder, const json& a) {
   }
   const double limit = DoubleSetting(Cfg("UAGENT_COORDINATOR_DAILY_SPEND_USD"));
   // Each thread gets an equal share of what is left for the free slots.
-  const double budget =
-      limit > 0 ? (limit - SpentToday(folder, threads, true)) /
-                      double(cap - working)
-                : 0;
+  const double left = limit > 0 ? limit - SpentToday(folder, threads, true) : 0;
+  const double budget = left / double(cap - working);
   if (limit > 0 && budget < 0.01) {
-    return ToolFailure(ToolErrorCode::kLimitExceeded,
-                       "error: today's thread spend limit of " +
-                           FmtCost(limit) + " is reached");
+    return ToolFailure(
+        ToolErrorCode::kLimitExceeded,
+        "error: " + FmtCost(std::max(left, 0.0)) + " of today's " +
+            FmtCost(limit) +
+            " spend limit is left, too little to share among " +
+            std::to_string(cap - working) +
+            " more threads; ask the user to raise "
+            "UAGENT_COORDINATOR_DAILY_SPEND_USD or wait for tomorrow");
   }
   const std::string environment = JsonValue(
       a, "environment", StringSetting(Cfg("UAGENT_COORDINATOR_ENVIRONMENT")));

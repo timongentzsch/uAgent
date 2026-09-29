@@ -55,6 +55,19 @@ struct Usage {
     MergeCost(other.cost, other.cost_reported);
   }
 
+  // What a running total gained since `before`, an earlier reading of it.
+  Usage Since(const Usage& before) const {
+    Usage gained = *this;
+    gained.input = Nonnegative(input - before.input);
+    gained.output = Nonnegative(output - before.output);
+    gained.cache_read = Nonnegative(cache_read - before.cache_read);
+    gained.cache_write = Nonnegative(cache_write - before.cache_write);
+    gained.reasoning = Nonnegative(reasoning - before.reasoning);
+    gained.web_searches = Nonnegative(web_searches - before.web_searches);
+    gained.cost = std::max(0.0, cost - before.cost);
+    return gained;
+  }
+
   // OpenAI convention: input excludes cached tokens, output excludes reasoning.
   void Add(const json& value) {
     if (!value.is_object()) return;

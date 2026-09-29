@@ -51,7 +51,7 @@
 .activity-text small,
 .activity-row time {
   color: var(--muted);
-  font-size: 0.75rem;
+  font-size: var(--font-micro);
 }
 
 /* Inspector: one column, zero child margins, sections carry the labels. */
@@ -117,7 +117,7 @@
 .activity-info > summary {
   cursor: pointer;
   color: var(--muted);
-  font-size: 0.8rem;
+  font-size: var(--font-small);
 }
 
 .activity-info > section {
@@ -146,7 +146,7 @@
 
 .detail-meta {
   color: var(--muted);
-  font-size: 0.8rem;
+  font-size: var(--font-small);
 }
 
 .detail-label {
@@ -197,7 +197,7 @@
 
 .thread-progress {
   color: var(--muted);
-  font-size: 0.8rem;
+  font-size: var(--font-small);
   padding: var(--gap) 0;
 }
 

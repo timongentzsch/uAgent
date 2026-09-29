@@ -40,7 +40,7 @@
   padding: 0 var(--space-3);
   background: var(--raised);
   color: var(--muted);
-  font-size: 0.75rem;
+  font-size: var(--font-micro);
   font-weight: 400;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -88,7 +88,7 @@
 }
 .ask-option small {
   color: var(--muted);
-  font-size: 0.8rem;
+  font-size: var(--font-small);
 }
 .ask-question > .file-button,
 .ask-question > .file-chip {

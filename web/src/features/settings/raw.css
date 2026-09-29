@@ -12,7 +12,7 @@
 .raw-body details {
   padding: var(--gap) var(--pad);
   border-bottom: 1px solid var(--line);
-  font-size: 0.8rem;
+  font-size: var(--font-small);
 }
 .raw-body summary {
   cursor: pointer;

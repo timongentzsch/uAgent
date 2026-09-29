@@ -79,7 +79,7 @@
 }
 .library-group h2 {
   margin: 0;
-  font-size: 0.75rem;
+  font-size: var(--font-micro);
   font-weight: 400;
   color: var(--muted);
 }

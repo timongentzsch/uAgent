@@ -10,7 +10,7 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   font: inherit;
-  font-size: 0.85rem;
+  font-size: var(--font-small);
   margin: 0;
   max-height: 40vh;
   overflow: auto;
@@ -36,11 +36,11 @@
   text-overflow: ellipsis;
   direction: rtl;
   text-align: left;
-  font-size: 0.75rem;
+  font-size: var(--font-micro);
 }
 .instructions-also {
   overflow-wrap: anywhere;
-  font-size: 0.75rem;
+  font-size: var(--font-micro);
 }
 /* An empty file is one line; it grows with what is typed. */
 .instruction-card .text-control:has(> textarea) {

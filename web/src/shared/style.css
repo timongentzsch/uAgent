@@ -2,25 +2,9 @@
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  color-scheme: dark;
-  --bg: #000;
-  --surface: #0a0a0a;
-  --raised: #171717;
-  --hover: #232323;
-  --placeholder: #414141;
-  --text: #f5f5f5;
-  --muted: #a3a3a3;
-  --line: #404040;
-  --accent: #fff;
-  --live: #22a35a;
-  --added: #3fb950;
-  --added-bg: rgba(63, 185, 80, 0.12);
-  --removed: #f85149;
-  --removed-bg: rgba(248, 81, 73, 0.12);
   /* Image markup: one colour that reads on any screenshot, in any theme. */
   --mark: #ff3b30;
   --on-mark: #fff;
-  --on-accent: #000;
   --viewport-height: 100dvh;
   --viewport-width: 100%;
   --viewport-top: 0px;
@@ -48,13 +32,22 @@
   /* Controls and spacing use rem throughout so zoom also changes density.
      Fixed pixel floors made the 50–75% range mostly cosmetic. */
   --control: 2.2rem;
+  /* The type ramp below body text: secondary lines, then badges and
+     timestamps. Nothing smaller, so no text drops under 10px. */
   --font-small: 0.85rem;
+  --font-micro: 0.75rem;
   --popover-gap: var(--space-4);
   /* Motion: the only durations and easings in the app. Reduced motion
      zeroes the durations below, which turns every transition off. */
   --motion-fast: 120ms;
   --motion-base: 200ms;
   --motion-slow: 280ms;
+  /* Theme-independent: what dims the page behind a dialog, and a knob's
+     lift off its track. */
+  --scrim: rgb(0 0 0 / 0.6);
+  --shadow-knob: 0 1px 2px rgb(0 0 0 / 0.25);
+  /* Loops that say something is alive: status lights, skeletons. */
+  --motion-pulse: 1.6s;
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
   --ease-in: cubic-bezier(0.4, 0, 1, 1);
   --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
@@ -72,7 +65,36 @@
 :root[data-keyboard] {
   --safe-bottom: 0px;
 }
-:root[data-theme="light"] {
+/* The two palettes. A user message draws in the other one, and a menu it
+   opens returns to the page's, so every surface gets a complete set. */
+:root,
+[data-theme="light"] .message.user,
+[data-theme="dark"] .message.user .popover-panel {
+  color-scheme: dark;
+  --bg: #000;
+  --surface: #0a0a0a;
+  --raised: #171717;
+  --hover: #232323;
+  --placeholder: #414141;
+  --text: #f5f5f5;
+  --muted: #a3a3a3;
+  --line: #404040;
+  --accent: #fff;
+  --live: #22a35a;
+  --added: #3fb950;
+  --added-bg: rgba(63, 185, 80, 0.12);
+  --removed: #f85149;
+  --removed-bg: rgba(248, 81, 73, 0.12);
+  --accent-hover: #e2e2e2;
+  --accent-active: #ccc;
+  --on-accent: #000;
+  --knob: #a3a3a3;
+  /* Anything floating over the page: menus, popovers, banners. */
+  --shadow-float: 0 var(--space-2) var(--space-12) rgb(0 0 0 / 0.7);
+}
+:root[data-theme="light"],
+[data-theme="dark"] .message.user,
+[data-theme="light"] .message.user .popover-panel {
   color-scheme: light;
   --bg: #fff;
   --surface: #fafafa;
@@ -83,11 +105,16 @@
   --muted: #666;
   --line: #ccc;
   --accent: #000;
+  --accent-hover: #262626;
+  --accent-active: #404040;
+  --live: #1a7f37;
   --added: #1a7f37;
   --added-bg: rgba(26, 127, 55, 0.1);
   --removed: #d1242f;
   --removed-bg: rgba(209, 36, 47, 0.1);
   --on-accent: #fff;
+  --knob: #fff;
+  --shadow-float: 0 var(--space-2) var(--space-6) rgb(0 0 0 / 0.18);
 }
 * {
   box-sizing: border-box;
@@ -194,8 +221,8 @@ input[type="radio"] {
   width: calc(20rem / 14);
   height: calc(20rem / 14);
   border-radius: 50%;
-  background: var(--bg);
-  box-shadow: 0 1px 2px rgb(0 0 0 / 0.25);
+  background: var(--knob);
+  box-shadow: var(--shadow-knob);
   transition: translate var(--motion-fast) var(--ease-standard);
 }
 .switch input[role="switch"]:checked {
@@ -204,6 +231,7 @@ input[type="radio"] {
 }
 .switch input[role="switch"]:checked::before {
   translate: calc(16rem / 14) 0;
+  background: var(--on-accent);
 }
 button,
 .file-button,
@@ -241,8 +269,7 @@ select:disabled {
     background: var(--hover);
   }
   .primary:enabled:hover {
-    background: var(--accent);
-    filter: brightness(0.92);
+    background: var(--accent-hover);
   }
   .quiet:enabled:hover {
     background: var(--raised);
@@ -260,8 +287,7 @@ button:enabled:active,
   background: var(--hover);
 }
 .primary:enabled:active {
-  background: var(--accent);
-  filter: brightness(0.85);
+  background: var(--accent-active);
 }
 .destructive {
   color: var(--removed);
@@ -317,6 +343,10 @@ select:focus-visible,
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
 /* Headings and panels focused by the app, not by the reader, stay unringed. */
 [tabindex="-1"]:focus {
   outline: none;
@@ -341,12 +371,10 @@ input[type="range"] {
   accent-color: var(--accent);
 }
 .select {
+  --input-padding-end: calc(34rem / 14);
   position: relative;
   display: block;
   min-width: 0;
-}
-.select {
-  --input-padding-end: calc(34rem / 14);
 }
 .select select {
   appearance: none;
@@ -463,7 +491,7 @@ pre code {
   color: var(--muted);
 }
 .small {
-  font-size: 0.8rem;
+  font-size: var(--font-small);
 }
 .plain {
   white-space: pre-wrap;
@@ -502,16 +530,13 @@ pre code {
   padding: var(--space-3) var(--space-6);
   border: 1px solid var(--line);
   background: var(--raised);
-  box-shadow: 0 var(--space-2) var(--space-6) rgb(0 0 0 / 0.18);
+  box-shadow: var(--shadow-float);
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--pad);
-  font-size: 0.85rem;
+  font-size: var(--font-small);
   pointer-events: auto;
-}
-.error-banner,
-.update-banner {
   transition:
     opacity var(--motion-base) var(--ease-out),
     translate var(--motion-slow) var(--ease-out);
@@ -544,7 +569,7 @@ pre code {
   gap: var(--space-3);
   color: var(--muted);
   min-height: var(--control);
-  font-size: 0.8rem;
+  font-size: var(--font-small);
 }
 .loading-surface {
   flex: 1;
@@ -605,11 +630,11 @@ pre code {
   min-height: calc(40rem / 14);
 }
 .sidebar-head button {
-  font-size: 0.8rem;
+  font-size: var(--font-small);
   padding-inline: var(--space-3);
 }
 .search .text-control {
-  font-size: 0.8rem;
+  font-size: var(--font-small);
 }
 .sidebar nav {
   overflow: auto;
@@ -620,7 +645,7 @@ pre code {
   margin-top: var(--space-4);
 }
 .sidebar h2 {
-  font-size: 0.75rem;
+  font-size: var(--font-micro);
   font-weight: 400;
   color: var(--muted);
   padding: var(--space-4);
@@ -655,7 +680,7 @@ pre code {
 }
 .coordinator-button.working svg {
   color: var(--accent);
-  animation: led-breathe 1.6s var(--ease-standard) infinite;
+  animation: led-breathe var(--motion-pulse) var(--ease-standard) infinite;
 }
 .coordinator-badge {
   position: absolute;
@@ -667,7 +692,7 @@ pre code {
   border-radius: 0.7em;
   background: var(--accent);
   color: var(--on-accent);
-  font-size: 0.65rem;
+  font-size: var(--font-micro);
   line-height: 1.35em;
   text-align: center;
 }
@@ -698,7 +723,7 @@ pre code {
   margin-top: var(--space-4);
 }
 .board h2 {
-  font-size: 0.75rem;
+  font-size: var(--font-micro);
   font-weight: 400;
   color: var(--muted);
   padding: var(--space-2) var(--space-3);
@@ -713,7 +738,7 @@ pre code {
    placement never stretches the rows apart. */
 .coordinator-help {
   width: min(calc(340rem / 14), calc(100vw - 2 * var(--pad)));
-  font-size: 0.85rem;
+  font-size: var(--font-small);
 }
 .coordinator-help-body {
   display: grid;
@@ -721,7 +746,7 @@ pre code {
   gap: var(--space-3);
 }
 .coordinator-help h2 {
-  font-size: 0.85rem;
+  font-size: var(--font-small);
   font-weight: 600;
 }
 .coordinator-help p {
@@ -729,7 +754,7 @@ pre code {
 }
 .board-note {
   color: var(--muted);
-  font-size: 0.8rem;
+  font-size: var(--font-small);
   padding: var(--space-2) var(--space-3);
 }
 .board-count {
@@ -798,11 +823,11 @@ pre code {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-size: 0.85rem;
+  font-size: var(--font-small);
 }
 .session small {
   display: block;
-  font-size: 0.7rem;
+  font-size: var(--font-micro);
   color: var(--muted);
   margin-top: var(--space-1);
   /* Single line, always: activity labels stream in while a turn runs
@@ -830,7 +855,7 @@ pre code {
   border-color: var(--live);
 }
 .status-led.running {
-  animation: led-breathe 1.6s ease-in-out infinite;
+  animation: led-breathe var(--motion-pulse) var(--ease-standard) infinite;
 }
 .status-led.failed {
   background: var(--removed);
@@ -862,7 +887,7 @@ pre code {
 .connection {
   flex: 1;
   color: var(--muted);
-  font-size: 0.7rem;
+  font-size: var(--font-micro);
 }
 .connection .status-led {
   margin-right: var(--space-3);
@@ -923,10 +948,11 @@ pre code {
   margin-block: 0;
 }
 .retention {
-  font-size: 0.8rem;
+  font-size: var(--font-small);
   color: var(--muted);
   border: 1px dashed var(--line);
   padding: var(--space-4);
+  overflow-anchor: none;
 }
 .empty {
   margin: auto;
@@ -954,9 +980,6 @@ pre code {
   /* Stable height across the Loading swap so the anchor math below it
      never shifts by the label change. Never a scroll anchor itself. */
   min-height: var(--control);
-  overflow-anchor: none;
-}
-.retention {
   overflow-anchor: none;
 }
 
@@ -1039,7 +1062,7 @@ pre code {
   width: 100%;
   text-align: left;
   justify-content: flex-start;
-  font-size: 0.8rem;
+  font-size: var(--font-small);
   padding-inline: var(--space-3);
 }
 .model-selector > span {
@@ -1054,7 +1077,7 @@ pre code {
   flex-shrink: 0;
 }
 .permission-control > button {
-  font-size: 0.8rem;
+  font-size: var(--font-small);
   padding-inline: var(--space-3);
 }
 .file-button {
@@ -1079,9 +1102,7 @@ pre code {
   bottom: calc(100% + var(--space-2));
   right: 0;
   background: var(--raised);
-  font-size: 0.75rem;
-}
-.jump {
+  font-size: var(--font-micro);
   transition:
     opacity var(--motion-base) var(--ease-out),
     translate var(--motion-base) var(--ease-out);
@@ -1134,7 +1155,7 @@ pre code {
   min-width: 0;
   min-height: calc(24rem / 14);
   padding: 0 var(--space-1);
-  font-size: 0.75rem;
+  font-size: var(--font-micro);
 }
 .activity-status {
   display: inline-flex;
@@ -1173,7 +1194,7 @@ pre code {
   min-width: 0;
   min-height: calc(24rem / 14);
   padding: 0 var(--space-3);
-  font-size: 0.7rem;
+  font-size: var(--font-micro);
 }
 .activity-button > span {
   min-width: 0;
@@ -1205,7 +1226,7 @@ pre code {
   align-items: center;
   flex: 0 1 auto;
   min-width: 0;
-  font-size: 0.7rem;
+  font-size: var(--font-micro);
 }
 .metrics > button {
   font-size: inherit;
@@ -1264,7 +1285,7 @@ details[open]:not(.disclosure-row) > summary::before {
 .decision-preview {
   min-height: 0;
   overflow: auto;
-  font-size: 0.85rem;
+  font-size: var(--font-small);
 }
 .decision-preview pre {
   margin-top: var(--space-3);
@@ -1281,7 +1302,7 @@ details[open]:not(.disclosure-row) > summary::before {
 .decision form > label {
   flex: 1;
   min-width: calc(100rem / 14);
-  font-size: 0.85rem;
+  font-size: var(--font-small);
 }
 .decision h2 {
   flex-shrink: 0;
@@ -1306,17 +1327,17 @@ details[open]:not(.disclosure-row) > summary::before {
   padding: var(--space-3) var(--space-4);
   border-left: 3px solid var(--mark);
   background: var(--raised);
-  font-size: 0.85rem;
+  font-size: var(--font-small);
 }
 .escalation-thread {
   justify-self: start;
   max-width: 100%;
-  font-size: 0.8rem;
+  font-size: var(--font-small);
   color: var(--muted);
 }
 .decision-note {
   color: var(--muted);
-  font-size: 0.8rem;
+  font-size: var(--font-small);
 }
 
 /* Native top-layer popovers share placement and keyboard handling. */
@@ -1332,6 +1353,7 @@ details[open]:not(.disclosure-row) > summary::before {
   border: 1px solid var(--line);
   background: var(--surface);
   color: var(--text);
+  box-shadow: var(--shadow-float);
   overflow: auto;
 }
 /* Panels fade in from their anchor and out again. allow-discrete keeps a
@@ -1363,7 +1385,7 @@ details[open]:not(.disclosure-row) > summary::before {
   width: 100%;
   border: 0;
   text-align: left;
-  font-size: 0.85rem;
+  font-size: var(--font-small);
 }
 .model-panel {
   width: calc(420rem / 14);
@@ -1471,7 +1493,7 @@ dialog[data-layout="sheet"] {
   }
 }
 dialog::backdrop {
-  background: rgb(0 0 0 / 0.6);
+  background: var(--scrim);
   border-top: var(--safe-top) solid var(--bg);
 }
 dialog > header {
@@ -1521,7 +1543,7 @@ dialog section {
   gap: var(--pad);
   padding: var(--space-3) 0;
   border-bottom: 1px solid var(--line);
-  font-size: 0.85rem;
+  font-size: var(--font-small);
 }
 .stats dt {
   color: var(--muted);
@@ -1577,7 +1599,8 @@ dialog section {
 .skeleton > div {
   display: grid;
   gap: var(--gap);
-  animation: skeleton-pulse 1.6s ease-in-out infinite alternate;
+  animation: skeleton-pulse var(--motion-pulse) var(--ease-standard) infinite
+    alternate;
 }
 @keyframes skeleton-pulse {
   to {
@@ -1601,7 +1624,8 @@ dialog section {
 .text-skeleton {
   color: transparent;
   background: var(--placeholder);
-  animation: skeleton-pulse 1.6s ease-in-out infinite alternate;
+  animation: skeleton-pulse var(--motion-pulse) var(--ease-standard) infinite
+    alternate;
   user-select: none;
 }
 /* A view drawn from sample data (shared/placeholder.tsx): it lays out like
@@ -1611,9 +1635,6 @@ dialog section {
 }
 .placeholder :is(input, textarea, select) {
   color: transparent;
-}
-.placeholder ::placeholder {
-  color: var(--muted);
 }
 
 @media (pointer: coarse) {
@@ -1697,7 +1718,7 @@ dialog section {
     padding-inline: var(--space-2);
   }
   .model-selector {
-    font-size: 0.72rem;
+    font-size: var(--font-micro);
     gap: var(--space-2);
     padding-inline: var(--space-1);
   }
@@ -1707,11 +1728,11 @@ dialog section {
   .permission-control > button {
     min-width: var(--control);
     padding-inline: var(--space-2);
-    font-size: 0.75rem;
+    font-size: var(--font-micro);
     gap: var(--space-2);
   }
   .metrics {
-    font-size: 0.65rem;
+    font-size: var(--font-micro);
     margin-left: auto;
   }
   .raw-view {
@@ -1810,6 +1831,10 @@ dialog.sidebar.drawer[open][data-leaving] {
     animation: none !important;
     transition: none !important;
   }
+  /* The one motion that carries meaning: work is still under way. */
+  .spinner {
+    animation: spin 2.4s linear infinite !important;
+  }
 }
 
 .sidebar-sections {
@@ -1886,7 +1911,7 @@ dialog > header .icon-button {
 .zoom-controls output {
   min-width: 5ch;
   text-align: center;
-  font-size: 0.8rem;
+  font-size: var(--font-small);
   font-variant-numeric: tabular-nums;
 }
 .zoom-content > img {
@@ -1902,7 +1927,7 @@ dialog > header .icon-button {
   margin: 0 0 var(--space-3);
   padding-inline: var(--space-6);
   color: var(--muted);
-  font-size: 0.75rem;
+  font-size: var(--font-micro);
   font-weight: 400;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -2015,14 +2040,12 @@ dialog > header .icon-button {
   margin-inline-start: var(--space-3);
   vertical-align: -0.125em;
   color: var(--live);
+  transition: opacity var(--motion-fast) var(--ease-out);
 }
 @starting-style {
   .setting-saved {
     opacity: 0;
   }
-}
-.setting-saved {
-  transition: opacity var(--motion-fast) var(--ease-out);
 }
 .setting-value > .text-control:not(.value-select) {
   width: calc(160rem / 14);

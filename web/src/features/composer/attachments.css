@@ -27,7 +27,7 @@
   max-width: 100%;
   min-width: 0;
   text-decoration: none;
-  font-size: 0.8rem;
+  font-size: var(--font-small);
 }
 .file-chip > span {
   min-width: 0;
@@ -38,7 +38,7 @@
 .file-chip small {
   display: block;
   color: var(--muted);
-  font-size: 0.7rem;
+  font-size: var(--font-micro);
 }
 .file-chip .attachment-tile {
   width: calc(36rem / 14);
@@ -99,7 +99,7 @@
   background: var(--raised);
   color: inherit;
   text-decoration: none;
-  font-size: 0.8rem;
+  font-size: var(--font-small);
 }
 .attachment-card > svg {
   flex: none;

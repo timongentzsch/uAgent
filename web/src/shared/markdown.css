@@ -131,7 +131,7 @@
 }
 .diagram summary {
   color: var(--muted);
-  font-size: 0.75rem;
+  font-size: var(--font-micro);
 }
 .diagram-expanded {
   width: min(

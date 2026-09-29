@@ -14,26 +14,10 @@
      double up between header variants. */
   margin: 0;
 }
+/* Drawn in the other palette (see style.css). */
 .message.user {
-  --text: #111;
-  --muted: #555;
-  --accent: #000;
-  --on-accent: #fff;
-  --surface: #eee;
-  --raised: #ddd;
-  --line: #aaa;
-  background: #fff;
+  background: var(--bg);
   color: var(--text);
-}
-:root[data-theme="light"] .message.user {
-  --text: #f5f5f5;
-  --muted: #aaa;
-  --accent: #fff;
-  --on-accent: #000;
-  --surface: #111;
-  --raised: #222;
-  --line: #555;
-  background: #000;
 }
 .message.turn-start {
   /* Additive over the column gap (never collapsing), so turn boundaries
@@ -45,7 +29,7 @@
   align-items: center;
   gap: var(--gap);
   min-height: var(--control);
-  font-size: 0.75rem;
+  font-size: var(--font-micro);
 }
 /* One line: the prompt, then status, time and menu. Inheritance still
    flows through the display: contents header. */
@@ -100,7 +84,7 @@
   margin-left: auto;
   flex: none;
   white-space: nowrap;
-  font-size: 0.7rem;
+  font-size: var(--font-micro);
 }
 .thinking {
   --text: var(--muted);
@@ -198,6 +182,13 @@
 .tool-disclosure.failed > summary small {
   color: var(--removed);
 }
+/* A session or turn error under the transcript, in the tool-failure red. */
+.failure {
+  margin: 0;
+  padding: var(--space-1) var(--space-4);
+  color: var(--removed);
+  overflow-wrap: anywhere;
+}
 .tool-disclosure > summary small {
   min-width: 0;
   max-width: 32ch;
@@ -220,7 +211,7 @@
   margin: var(--space-2) 0;
 }
 .tool-code figcaption {
-  font-size: 0.85rem;
+  font-size: var(--font-small);
   color: var(--muted);
 }
 .tool-fields {
@@ -228,7 +219,7 @@
   grid-template-columns: max-content minmax(0, 1fr);
   gap: var(--space-1) var(--space-4);
   margin: var(--space-2) 0;
-  font-size: 0.85rem;
+  font-size: var(--font-small);
 }
 .tool-fields dt {
   color: var(--muted);
@@ -263,7 +254,7 @@
   }
   .tool-disclosure > summary small {
     grid-column: 3;
-    font-size: 0.7rem;
+    font-size: var(--font-micro);
   }
 }
 
@@ -271,7 +262,7 @@
   /* Direct transcript child: the column gap owns spacing. */
   margin: 0;
   color: var(--muted);
-  font-size: 0.85rem;
+  font-size: var(--font-small);
 }
 .event-row > summary {
   align-items: center;
@@ -318,7 +309,7 @@
   gap: 0 0.3em;
   padding: var(--space-2) var(--space-4) 0;
   color: var(--muted);
-  font-size: 0.75rem;
+  font-size: var(--font-micro);
   text-align: left;
 }
 @media (max-width: 600px) {

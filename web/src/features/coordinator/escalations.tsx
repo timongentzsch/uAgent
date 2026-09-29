@@ -98,6 +98,7 @@ function Escalation({
           load={decisionPanel}
           key={pending.id}
           pending={pending}
+          session={item.id}
           act={act}
           online={online}
           report={report}

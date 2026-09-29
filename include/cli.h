@@ -104,6 +104,7 @@ struct InteractionRequest {
   bool keep_history = false;
   std::string initial = "";
   json options = json::array();
+  json questions = nullptr;  // kind "ask": what the ask tool puts to them
 };
 
 using InteractiveReadHandler =

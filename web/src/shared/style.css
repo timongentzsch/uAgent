@@ -152,7 +152,8 @@ textarea {
   border: 1px solid transparent;
   background: var(--raised);
 }
-input[type="checkbox"] {
+input[type="checkbox"],
+input[type="radio"] {
   width: calc(18rem / 14);
   height: calc(18rem / 14);
   min-width: calc(18rem / 14);
@@ -1265,7 +1266,7 @@ details[open]:not(.disclosure-row) > summary::before {
   flex-shrink: 0;
   background: none;
 }
-.decision label {
+.decision form > label {
   flex: 1;
   min-width: calc(100rem / 14);
   font-size: 0.85rem;

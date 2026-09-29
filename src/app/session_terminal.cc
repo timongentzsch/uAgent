@@ -25,6 +25,7 @@
 #include "include/core/style.h"
 #include "include/core/term.h"
 #include "include/md.h"
+#include "include/ui/ask_picker.h"
 #include "include/ui/display.h"
 #include "include/ui/editor.h"
 #include "include/ui/interactive.h"
@@ -172,6 +173,37 @@ class Terminal {
       std::string decision = JsonValue(pending, "id", "");
       if (decision != decision_) {
         decision_ = decision;
+        if (!decision.empty() && JsonValue(pending, "kind", "") == "ask" &&
+            raw_) {
+          Unmount();
+          const json answered = PickAskAnswers(
+              JsonValue(pending, "questions", json::array()),
+              [this](const std::string& text) { output_.Write(text); },
+              [this, decision] {
+                std::lock_guard lock(mutex_);
+                return JsonValue(pending_, "id", "") == decision;
+              });
+          // Answered elsewhere meanwhile: nothing left to send.
+          bool live = false;
+          {
+            std::lock_guard lock(mutex_);
+            live = JsonValue(pending_, "id", "") == decision;
+          }
+          if (live) {
+            Send(answered.is_null()
+                     ? json{{"kind", "reply"},
+                            {"interaction_id", decision},
+                            {"text", ""},
+                            {"cancelled", true}}
+                     : json{{"kind", "reply"},
+                            {"interaction_id", decision},
+                            {"text", answered["text"]},
+                            {"attachments", answered["attachments"]}});
+          }
+          output_.Write("\n");
+          composer_.Remount();
+          continue;
+        }
         if (!decision.empty() && JsonValue(pending, "kind", "") == "editor") {
           std::string text = JsonValue(pending, "initial", "");
           if (raw_) Unmount();
@@ -190,6 +222,19 @@ class Terminal {
           if (const json* approval = JsonObject(pending, "approval")) {
             description = JsonValue(*approval, "mandatory_reason", "") + "\n" +
                           JsonValue(*approval, "preview", "") + "\n";
+          }
+          if (const json* questions = JsonArray(pending, "questions")) {
+            for (const json& question : *questions) {
+              description += JsonValue(question, "question", "") + "\n";
+              size_t number = 0;
+              for (const json& option : question["options"]) {
+                description += "  " + std::to_string(++number) + ". " +
+                               JsonValue(option, "label", "") + "\n";
+              }
+            }
+            description +=
+                "Answer with option numbers or your own words; separate "
+                "questions with ;\n";
           }
           if (raw_) {
             Unmount();
@@ -361,6 +406,11 @@ class Terminal {
         break;
       }
       if (!decision.empty()) {
+        // Without raw input an ask is answered on one line.
+        if (JsonValue(pending, "kind", "") == "ask") {
+          text = AskAnswersFromLine(
+              JsonValue(pending, "questions", json::array()), text);
+        }
         Send({{"kind", "reply"}, {"interaction_id", decision}, {"text", text}});
       } else if (text.starts_with("/attach ")) {
         // Terminals quote dropped paths containing spaces; strip one

@@ -171,6 +171,7 @@ add_library(
   src/mcp/rpc.cc
   src/mcp/server.cc
   src/tools/adapt_system.cc
+  src/tools/ask.cc
   src/tools/files.cc
   src/tools/image_result.cc
   src/tools/memory.cc
@@ -229,6 +230,7 @@ add_library(
   src/app/session_terminal.cc
   src/ui/conversation.cc
   src/ui/input_decoder.cc
+  src/ui/ask_picker.cc
   src/ui/interactive.cc
   src/ui/editor.cc
   src/ui/markdown.cc

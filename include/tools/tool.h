@@ -244,8 +244,8 @@ struct ToolPolicy {
 };
 
 inline constexpr std::string_view kCoordinatorTools[] = {
-    "read_path", "grep",   "memory",   "skill", "uagent",
-    "history",   "thread", "approval", "state"};
+    "read_path", "grep",   "memory", "skill", "uagent",
+    "history",   "thread", "decide", "state", "ask"};
 
 ToolPolicy ToolPolicyFromEnvironment();
 void ApplyToolPolicy(std::vector<Tool>& tools, const ToolPolicy& policy);

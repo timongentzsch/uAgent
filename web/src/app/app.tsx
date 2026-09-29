@@ -7,7 +7,6 @@ import type {
   Block,
   Session,
   Snapshot,
-  Asset,
   Act,
   CommandKind,
   CommandFields,
@@ -24,7 +23,7 @@ import {
   useState,
 } from "preact/hooks";
 import { readStored, writeStored } from "../state/store.ts";
-import { api, command, requestId } from "../state/api.ts";
+import { api, command, requestId, uploadAttachment } from "../state/api.ts";
 import {
   Mark,
   Modal,
@@ -720,16 +719,10 @@ function App() {
     }));
     try {
       for (const [index, file] of files.entries()) {
-        const asset = await api<Asset>(
-          `/api/sessions/${id}/attachments?name=${encodeURIComponent(pendingFiles[index].name)}`,
-          undefined,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": file.type || "application/octet-stream",
-            },
-            body: file,
-          },
+        const asset = await uploadAttachment(
+          id,
+          file,
+          pendingFiles[index].name,
         );
         setDrafts((current) => ({
           ...current,

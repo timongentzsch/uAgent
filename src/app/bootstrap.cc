@@ -46,6 +46,7 @@
 #include "include/media/attachments.h"
 #include "include/providers.h"
 #include "include/tools/adapt_system.h"
+#include "include/tools/ask.h"
 #include "include/tools/browser.h"
 #include "include/tools/configure.h"
 #include "include/tools/memory.h"
@@ -250,6 +251,17 @@ std::vector<Tool> BuildTools(AppContext& context,
   if (context.channel && !context.channel->SessionPath().empty() &&
       AgentDepth() == 0) {
     tools.push_back(ArtifactTool(context.channel->SessionPath()));
+  }
+  // Only a session someone can answer gets ask: never headless runs or
+  // delegated children, which could only ever time out.
+  if (context.channel && InteractiveApprovalAvailable()) {
+    tools.push_back(AskTool([](const json& questions, bool* eof) {
+      return ReadInteraction(
+          {.kind = "ask",
+           .prompt = JsonValue(questions[0], "question", ""),
+           .questions = questions},
+          eof);
+    }));
   }
 #ifdef UAGENT_BROWSER  // the web host starts the browser and serves its viewer
   if (!browser::DataDirectory().empty() && context.options.browser_session &&

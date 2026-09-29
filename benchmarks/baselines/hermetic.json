@@ -1,6 +1,6 @@
 {
   "schema": "uagent.eval.baseline.v2",
-  "generated_at": "2026-09-29T10:46:09Z",
+  "generated_at": "2026-09-29T11:33:16Z",
   "note": "Regenerate with `python3 benchmarks/eval.py BINARY --update` and review the diff.",
   "scenarios": {
     "active_schema_recovery/control": {
@@ -24,8 +24,8 @@
       "max_batch": 1,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_context_bytes": 16234,
-      "cumulative_estimated_context_bytes": 45677,
+      "max_estimated_context_bytes": 16729,
+      "cumulative_estimated_context_bytes": 47197,
       "tool_result_chars": 384,
       "initial_schema_bytes": 11086
     },
@@ -76,10 +76,10 @@
       "max_batch": 2,
       "no_action_rounds": 1,
       "compactions": 0,
-      "max_estimated_context_bytes": 10668,
-      "cumulative_estimated_context_bytes": 29936,
+      "max_estimated_context_bytes": 12155,
+      "cumulative_estimated_context_bytes": 34397,
       "tool_result_chars": 361,
-      "initial_schema_bytes": 6860
+      "initial_schema_bytes": 8347
     },
     "coordinator_status/control": {
       "score": 6,
@@ -89,10 +89,10 @@
       "max_batch": 1,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_context_bytes": 9597,
-      "cumulative_estimated_context_bytes": 18649,
+      "max_estimated_context_bytes": 11084,
+      "cumulative_estimated_context_bytes": 21623,
       "tool_result_chars": 264,
-      "initial_schema_bytes": 6860
+      "initial_schema_bytes": 8347
     },
     "cumulative_context/control": {
       "score": 8,

@@ -8,14 +8,17 @@ import {
   Input,
   Textarea,
 } from "../../shared/ui.tsx";
+import Ask from "./ask.tsx";
 
 export default function Decision({
   pending,
+  session,
   act,
   online,
   report,
 }: {
   pending: Pending;
+  session: string;
   act: Act;
   online: boolean;
   report: Report;
@@ -38,15 +41,22 @@ export default function Decision({
   const [guidance, setGuidance] = useState("");
   const [sending, setSending] = useState(false);
   const approval = pending.approval;
-  const send = async (text: string) => {
+  const asking = pending.kind === "ask";
+  const send = async (text: string, attachment_ids?: string[]) => {
     setSending(true);
     try {
-      await act("reply", { interaction_id: pending.id, text });
+      await act("reply", { interaction_id: pending.id, text, attachment_ids });
     } catch (failure) {
       report(failure);
       setSending(false);
     }
   };
+  const cancel = () =>
+    act("reply", {
+      interaction_id: pending.id,
+      text: "",
+      cancelled: true,
+    }).catch(report);
   const guidanceInput = (
     <label>
       Guidance
@@ -62,27 +72,42 @@ export default function Decision({
       <h2>
         {pending.route === "coordinator"
           ? "The coordinator is deciding"
-          : "Needs your decision"}
+          : asking
+            ? "Needs your answer"
+            : "Needs your decision"}
       </h2>
       {pending.route === "coordinator" && (
         <p class="decision-note">You can still answer first.</p>
       )}
       {pending.note && <p class="decision-note">{cleanText(pending.note)}</p>}
-      <div class="decision-preview">
-        {approval && (
-          <>
-            <strong>
-              {approval.tool}
-              {approval.mandatory_human
-                ? ` · ${approval.mandatory_reason || "explicit approval required"}`
-                : ""}
-            </strong>
-            <pre>{cleanText(approval.preview)}</pre>
-          </>
-        )}
-        <p>{cleanText(pending.prompt)}</p>
-      </div>
-      {keyed ? (
+      {!asking && (
+        <div class="decision-preview">
+          {approval && (
+            <>
+              <strong>
+                {approval.tool}
+                {approval.mandatory_human
+                  ? ` · ${approval.mandatory_reason || "explicit approval required"}`
+                  : ""}
+              </strong>
+              <pre>{cleanText(approval.preview)}</pre>
+            </>
+          )}
+          <p>{cleanText(pending.prompt)}</p>
+        </div>
+      )}
+      {asking ? (
+        <Ask
+          id={pending.id}
+          session={session}
+          questions={pending.questions ?? []}
+          online={online}
+          sending={sending}
+          send={(text, ids) => void send(text, ids)}
+          cancel={cancel}
+          report={report}
+        />
+      ) : keyed ? (
         <form
           onSubmit={(event) => {
             event.preventDefault();
@@ -166,16 +191,7 @@ export default function Decision({
             </label>
           )}
           <Actions>
-            <Button
-              onClick={() =>
-                act("reply", {
-                  interaction_id: pending.id,
-                  text: "",
-                  cancelled: true,
-                }).catch(report)
-              }
-              disabled={!online}
-            >
+            <Button onClick={cancel} disabled={!online}>
               Cancel
             </Button>
             <Button

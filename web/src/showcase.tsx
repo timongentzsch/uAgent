@@ -35,6 +35,8 @@ import { readStored, writeStored } from "./state/store.ts";
 import BrowserTouch from "./features/browser/touch.tsx";
 import { BrowserFrame, BrowserTools } from "./features/browser/frame.tsx";
 import { ImageViewerDialog } from "./shared/attachments.tsx";
+import Decision from "./features/chat/decision.tsx";
+import type { Act, Pending } from "./shared/types.ts";
 import "./features/composer/attachments.css";
 import "./features/chat/message.css";
 import "./showcase.css";
@@ -45,6 +47,42 @@ const SAMPLE_IMAGE = `data:image/svg+xml,${encodeURIComponent(
     '<rect width="400" height="300" fill="#3b82f6"/>' +
     '<circle cx="200" cy="150" r="80" fill="#fff"/></svg>',
 )}`;
+
+const SAMPLE_ASK: Pending = {
+  id: "showcase-ask",
+  kind: "ask",
+  route: "coordinator",
+  prompt: "Which storage should the cache use?",
+  questions: [
+    {
+      header: "Storage",
+      question: "Which storage should the cache use?",
+      options: [
+        { label: "Memory", description: "Fastest; lost on restart." },
+        { label: "Disk", description: "Survives restarts; slower reads." },
+      ],
+    },
+    {
+      header: "Platforms",
+      question: "Which platforms must it support?",
+      multi_select: true,
+      options: [
+        { label: "macOS", description: "Apple silicon and Intel." },
+        { label: "Linux", description: "glibc distributions." },
+        { label: "Windows", description: "Windows 11 and later." },
+      ],
+    },
+  ],
+};
+
+// No host here: record the commands a host would receive.
+const recordCommand = (async (kind, fields) => {
+  ((globalThis as { commands?: unknown[] }).commands ??= []).push({
+    kind,
+    ...fields,
+  });
+  return { request_id: "showcase", accepted: true, pending: true };
+}) as Act;
 
 function BrowserInputSample() {
   const screen = useRef<HTMLDivElement>(null);
@@ -410,6 +448,22 @@ function Showcase() {
             </EventRow>
           </div>
         </div>
+      </section>
+
+      <section class="showcase-section">
+        <div class="showcase-section-head">
+          <div>
+            <h2>Questions</h2>
+            <p>The model asks; options, Other and an image per question.</p>
+          </div>
+        </div>
+        <Decision
+          pending={SAMPLE_ASK}
+          session="showcase"
+          act={recordCommand}
+          online
+          report={(error) => console.error(error)}
+        />
       </section>
 
       <section class="showcase-section">

@@ -282,6 +282,7 @@ export default function Composer({
           load={decisionPanel}
           key={pending.id}
           pending={pending}
+          session={session.id}
           act={act}
           online={online}
           report={report}

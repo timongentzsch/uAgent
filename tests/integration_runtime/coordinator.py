@@ -28,7 +28,8 @@ COORDINATOR_TOOLS = {
     "uagent",
     "history",
     "thread",
-    "approval",
+    "decide",
+    "ask",
     "state",
 }
 
@@ -407,7 +408,7 @@ def _spawn_then(decide):
         if "[approval request" in text and "sent " not in json.dumps(results):
             match = re.search(r"Thread ([0-9a-f]{16}) .*?interaction ([^)]+)\)", text)
             state["asked"].set()
-            return tool_call("approval", decide(match.group(1), match.group(2)))
+            return tool_call("decide", decide(match.group(1), match.group(2)))
         if "[approval request" in text or "[thread event" in text:
             return event({"content": "coordinator-ack"})
         if not results:

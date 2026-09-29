@@ -172,16 +172,6 @@ export function isIncoming(event: HostEvent) {
   );
 }
 
-export function isAttention(event: HostEvent) {
-  return (
-    event.type === "turn.completed" ||
-    (event.type === "approval.requested" &&
-      event.data?.route !== "coordinator") ||
-    event.type === "approval.escalated" ||
-    event.type === "error"
-  );
-}
-
 // Keep the selected history and at most four active worker views. Browsing saved
 // sessions must not accumulate full transcripts in the browser indefinitely.
 export function retainedViews(

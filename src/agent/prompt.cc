@@ -65,7 +65,7 @@ constexpr const char kBase[] =
 
 // A folder's coordinator manages sessions rather than code: no Changes
 // section, because it has no tool that changes the workspace. How to judge an
-// approval lives with the approval tool, where it is read when it applies.
+// approval lives with the decide tool, where it is read when it applies.
 constexpr const char kCoordinatorBase[] =
     "You are the coordinator of this folder: you manage its coding sessions "
     "for the user. You read and delegate; threads edit files and run "

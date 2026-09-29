@@ -11,7 +11,6 @@ import type {
 import { failure } from "../shared/types.ts";
 import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import {
-  isAttention,
   retainedViews,
   applySessionEvent,
   isIncoming,
@@ -505,7 +504,8 @@ export function useHost(
         flush.current(id);
         if (isIncoming(event) && (id !== selection.current || !reading.current))
           setUnread((prior) => new Set([...prior, id]));
-        if (isAttention(event)) {
+        // The host decides what needs a person; its id dedupes with push.
+        if (event.attention_id) {
           if (
             notifications.current &&
             !subscribed.current &&
@@ -513,7 +513,7 @@ export function useHost(
           )
             navigator.serviceWorker?.controller?.postMessage({
               type: "ATTENTION",
-              id: `${event.epoch}:${event.sequence}`,
+              id: event.attention_id,
               session_id: id,
             });
         }

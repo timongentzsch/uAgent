@@ -11,6 +11,10 @@
   cannot settle, yielding to you when unsure. Decisions waiting on you show
   above its composer; `/coord`, `/board` and `/open` reach it from any
   terminal session. It idles out when unused.
+- An `ask` tool: the agent puts 1 to 4 questions with options to you and
+  waits. Answer by choosing, in your own words, or with an image, in the web
+  or with an arrow-key picker in the terminal. A thread's questions go to its
+  coordinator first, which answers or hands them to you.
 
 - The image viewer zooms like a document viewer: − / + / Fit controls,
   ⌘/Ctrl+wheel and ⌘/Ctrl with −, + and 0, with the level against the image's

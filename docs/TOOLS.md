@@ -29,6 +29,7 @@ per-conversation choices made with `/tools`.
 | `artifact` | hand the user a file to open or download (HTML runs sandboxed, PDFs and images open inline); snapshot into the session's assets | a session with a client |
 | `web_search` | cited web search through OpenRouter's hosted search | an OpenRouter-protocol route or search endpoint |
 | `session` | list linked sessions and message them | always |
+| `ask` | put 1 to 4 multiple-choice questions to the user and wait; they may answer in their own words or with an image | a session someone can answer (never headless runs or children); a thread's questions go to its coordinator first |
 | `subagent` | delegate a subtask to a durable child session | delegation depth below `UAGENT_SUBAGENT_DEPTH` |
 | `skill` | load an installed skill | a usable skill is installed |
 | `adapt_system` | add to or replace the base prompt for this conversation | `UAGENT_ADAPT_SYSTEM=1`; see [SYSTEM_PROMPTS.md](SYSTEM_PROMPTS.md) |

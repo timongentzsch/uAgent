@@ -539,6 +539,17 @@ ToolResult Decide(const SessionInfo& info, const json& a) {
   if (action == "yield") {
     command = {{"kind", "escalate"},
                {"text", reason.empty() ? "The coordinator asks you." : reason}};
+  } else if (action == "answer") {
+    // The thread's question, answered in its ask tool's reply shape.
+    const json* answers = JsonArray(a, "answers");
+    if (!answers) {
+      return ToolFailure(ToolErrorCode::kInvalidArguments,
+                         "error: answer needs answers, one per question");
+    }
+    command = {{"kind", "reply"},
+               {"origin", kRouteCoordinator},
+               {"reason", reason},
+               {"text", JsonDump(*answers)}};
   } else if (action == "allow_once" || action == "allow_thread" ||
              action == "deny") {
     command = {{"kind", "reply"},
@@ -551,8 +562,8 @@ ToolResult Decide(const SessionInfo& info, const json& a) {
                             : "The coordinator denied this: " + reason}};
   } else {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "error: decision is allow_once, allow_thread, deny or "
-                       "yield");
+                       "error: decision is allow_once, allow_thread, deny, "
+                       "answer or yield");
   }
   command["interaction_id"] = interaction;
   session::Connection connection = session::Connect(info.path);
@@ -565,19 +576,23 @@ ToolResult Decide(const SessionInfo& info, const json& a) {
                        : Unavailable(error);
 }
 
-Tool ApprovalTool(const std::string& folder) {
+Tool DecideTool(const std::string& folder) {
   Tool tool = MakeTool(
-      "approval",
-      "Decide an approval request a thread sent you: allow_once, "
-      "allow_thread (this and identical calls for the rest of the thread), "
-      "deny (the reason goes back to the thread), or yield to hand it to "
-      "the user. Judge the action against the brief you gave, not the "
+      "decide",
+      "Decide what a thread sent you. An approval request: allow_once, "
+      "allow_thread (this and identical calls for the rest of the thread) "
+      "or deny (the reason goes back to the thread). A question: answer, "
+      "with answers holding one {choices, other} per question. Or yield to "
+      "hand either to the user. Judge against the brief you gave, not the "
       "thread's own justification. Yield when it leaves the brief, touches "
-      "shared or remote state, or you are unsure.",
+      "shared or remote state, is the user's preference, or you are unsure.",
       json::parse(R"json({"type":"object","properties":{
         "session_id":{"type":"string"},
         "interaction_id":{"type":"string"},
-        "decision":{"type":"string","enum":["allow_once","allow_thread","deny","yield"]},
+        "decision":{"type":"string","enum":["allow_once","allow_thread","deny","answer","yield"]},
+        "answers":{"type":"array","items":{"type":"object","properties":{
+          "choices":{"type":"array","items":{"type":"string"}},
+          "other":{"type":"string"}}}},
         "reason":{"type":"string"}},
         "required":["session_id","interaction_id","decision","reason"]})json"),
       [folder](const json& a, const ToolContext&) {
@@ -788,7 +803,7 @@ std::string CoordinatorPause(const std::string& folder) {
 void AddCoordinatorTools(std::vector<Tool>& tools, const std::string& folder) {
   tools.push_back(HistoryTool(folder));
   tools.push_back(ThreadTool(folder));
-  tools.push_back(ApprovalTool(folder));
+  tools.push_back(DecideTool(folder));
   tools.push_back(StateTool(folder));
   // The coordinator keeps what it learns about you without being asked and
   // says so in its answer; forgetting still waits for you.

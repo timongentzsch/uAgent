@@ -277,9 +277,26 @@ export interface Pending {
     mandatory_reason?: string;
     preview?: string;
   };
+  // kind "ask": the model's questions; `prompt` repeats the first.
+  questions?: AskQuestion[];
   // A thread's decision goes to its coordinator first; "human" once yielded.
   route?: "coordinator" | "human";
   note?: string;
+}
+// Each question also takes a free-text "Other" answer.
+export interface AskQuestion {
+  question: string;
+  // A short chip label.
+  header: string;
+  options: { label: string; description: string }[];
+  multi_select?: boolean;
+}
+// An ask's reply text is the JSON array of these, one per question in order.
+// An attachment_id is also listed in the reply's attachment_ids.
+export interface AskAnswer {
+  choices: string[];
+  other: string;
+  attachment_id?: string;
 }
 export interface Permissions {
   mode: string;
@@ -496,6 +513,8 @@ interface HostEnvelope extends Partial<Omit<Outcome, "pending">> {
   generation?: string;
   time?: string;
   type?: string;
+  // Set by the host on events a person should be told about (push).
+  attention_id?: string;
   data?: EventData;
   metadata?: Session;
   state?: State;

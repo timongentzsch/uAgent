@@ -134,7 +134,9 @@ std::string RenderCell(const std::string& text, size_t& visible_columns) {
     char value = text[index];
     if (value == '`') {
       code = !code;
-      output += code ? CODE() : FgDfl();
+      if (code) output += CODE();
+      output += value;
+      if (!code) output += FgDfl();
       continue;
     }
     size_t math_end = code || (value != '$' && value != '\\')
@@ -678,9 +680,11 @@ void MdStream::InlineChar(char c) {
     star = 1;
     return;
   }
-  if (c == '`') {
+  if (c == '`') {  // kept: in the default foreground it marks the span
     code = !code;
-    Put(code ? CODE() : FgDfl());
+    if (code) Put(CODE());
+    Pc(c);
+    if (!code) Put(FgDfl());
     return;
   }
   if (c == '\n') {

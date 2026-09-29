@@ -162,6 +162,22 @@ def test_reasoning_modes_render_consistently(root, home, *, binary):
         assert_true(b"\xc2\xb7 Thinking" not in compact, compact)
 
 
+def test_no_color_keeps_bold_italic_and_dim(root, home, *, binary):
+    # NO_COLOR removes colour, and only colour: bold, italic and dim are
+    # attributes, and inline code keeps the backticks that mark it.
+    with Server([event({"content": "use `make` and **strong** *slant*"})]) as server:
+        env = base_env(home, server.url)
+        env["NO_COLOR"] = "1"
+        code, output = run_pty(
+            root, env, [(b"go\n", b"slant"), b"/q\n"], startup_marker=b"Ready", binary=binary
+        )
+    assert_true(code == 0, output[-2000:])
+    assert_true(b"`make`" in output, output[-2000:])
+    assert_true(b"\x1b[1mstrong" in output and b"\x1b[3mslant" in output, output[-2000:])
+    assert_true(b"\x1b[2mReady" in output, output[-2000:])
+    assert_true(re.search(rb"\x1b\[(3[0-8]|9[0-7]|4[0-8])m", output) is None, output[-2000:])
+
+
 def test_multiline_bracketed_paste(root, home, *, binary):
     def verify(_, body):
         pasted = body["messages"][-1].get("content")

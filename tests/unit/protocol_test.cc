@@ -743,7 +743,12 @@ void TestMarkdownBlankLines() {
   CHECK(std::count(fenced.begin(), fenced.end(), '\n') == 6);
 }
 
-void TestMarkdownFences() {
+void TestMarkdownCode() {
+  // Inline code keeps its backticks: in the default foreground they are all
+  // that sets it apart, in tables too.
+  CHECK(RenderMarkdown("run `make` now\n").find("`make`") != std::string::npos);
+  CHECK(RenderMarkdown("| a | b |\n|---|---|\n| `x` | y |\n").find("`x`") !=
+        std::string::npos);
   // Only a run at least as long as the opening one closes a fence, so a
   // longer fence can show a shorter one; text after the close is markdown.
   std::string nested = RenderMarkdown(

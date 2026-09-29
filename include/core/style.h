@@ -17,7 +17,7 @@ namespace uagent {
 // carries its own style. A terminal keeps SGR across a soft wrap, but a copied
 // transcript, and any consumer that splits on newlines, does not.
 inline std::string StyledBlock(std::string_view text, const char* open) {
-  if (!g_color || !open || !*open) return std::string(text) + "\n";
+  if (!open || !*open) return std::string(text) + "\n";
   std::string body(text);
   size_t pos = 0;
   while ((pos = body.find('\n', pos)) != std::string::npos) {

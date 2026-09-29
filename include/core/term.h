@@ -25,11 +25,15 @@ namespace uagent {
 // asks for colour down a pipe.
 extern bool g_tty;
 extern bool g_color;
+// Bold, dim and italic are not colour, so NO_COLOR keeps them on a terminal
+// that can show them. Colour, where it is on, brings them along.
+extern bool g_attributes;
 // A terminal whose locale cannot decode UTF-8 renders the row scaffolding as
 // mojibake, so the glyphs fall back to ASCII at the point they are written.
 extern bool g_unicode;
 extern volatile sig_atomic_t g_signal_tty;
 bool ResolveColorEnabled(bool tty);
+bool ResolveAttributesEnabled(bool tty);
 bool ResolveUnicodeEnabled();
 // Conversation text is always UTF-8, so width measurement needs a multibyte
 // LC_CTYPE even when the environment names none. False when none exists.
@@ -43,23 +47,26 @@ inline constexpr char kTerminalRestore[] = "\033[0m\033[39m\033[49m";
 // Separate from TERMINAL_RESTORE, which RST() emits mid-stream as a pure SGR
 // reset.
 inline constexpr char kTerminalModeReset[] = "\033[?2004l";
-// One rule for every SGR accessor below.
+// Two rules for every SGR accessor below: one for colour, one for attributes.
 inline const char* Sgr(const char* sequence) { return g_color ? sequence : ""; }
-inline const char* DIM() { return Sgr("\033[2m"); }
-inline const char* RST() { return Sgr(kTerminalRestore); }
+inline const char* Attribute(const char* sequence) {
+  return g_color || g_attributes ? sequence : "";
+}
+inline const char* DIM() { return Attribute("\033[2m"); }
+inline const char* RST() { return Attribute(kTerminalRestore); }
 inline const char* MUTED() { return Sgr("\033[90m"); }
 inline const char* YEL() { return Sgr("\033[33m"); }
 inline const char* RED() { return Sgr("\033[31m"); }
 inline const char* GREEN() { return Sgr("\033[32m"); }
-inline const char* BOLD() { return Sgr("\033[1m"); }
+inline const char* BOLD() { return Attribute("\033[1m"); }
 // The band behind an echoed user turn, so a prompt is findable in scrollback.
 inline const char* InputBg() { return Sgr("\033[7m"); }
 // Cursor control, not colour, so it follows g_tty. With background-colour-erase
 // it extends the current background to the right edge, which bands the echo.
 inline const char* EraseToEol() { return g_tty ? "\033[K" : ""; }
-inline const char* BoldOff() { return Sgr("\033[22m"); }
-inline const char* ITAL() { return Sgr("\033[3m"); }
-inline const char* ItalOff() { return Sgr("\033[23m"); }
+inline const char* BoldOff() { return Attribute("\033[22m"); }
+inline const char* ITAL() { return Attribute("\033[3m"); }
+inline const char* ItalOff() { return Attribute("\033[23m"); }
 inline const char* FgDfl() { return Sgr("\033[39m"); }  // default foreground
 inline void TerminalRestore() {
   if (!g_tty) return;

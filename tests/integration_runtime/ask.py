@@ -1,6 +1,7 @@
 import base64
 import json
 import re
+import unicodedata
 
 from integration_support import (
     Server,
@@ -21,7 +22,8 @@ QUESTIONS = [
         "header": "Database",
         "options": [
             {"label": "SQLite", "description": "one file"},
-            {"label": "Postgres", "description": "a server"},
+            # Wide enough to need cutting, in glyphs two columns wide.
+            {"label": "Postgres", "description": "a server " + "数据库" * 30},
         ],
     },
     {
@@ -64,6 +66,14 @@ def test_ask_is_answered_in_the_terminal(root, home, *, binary):
             timeout=20,
         )
         assert_true(code == 0, output[-2000:])
+        # A description is styled after it is made safe, so its dim shows as
+        # dim rather than as the escape spelled out.
+        assert_true(b"SQLite \x1b[2m\xe2\x80\x94 one file\x1b[0m" in output, output[-2000:])
+        assert_true(b"\\x1b" not in output, output[-2000:])
+        row = re.search(rb"2\. Postgres[^\r\n]*", output).group().decode()
+        plain = re.sub(r"\x1b\[[\d;]*m", "", row)
+        width = sum(2 if unicodedata.east_asian_width(c) in "WF" else 1 for c in plain)
+        assert_true(plain.endswith("…") and width <= 80 - len("❯ "), (width, plain))
         result = tool_results(server.requests[-1][1]["messages"])[0]
         assert_true("Which database?\n→ SQLite" in result, result)
         assert_true("Which extras?\n→ Tracing, Backups" in result, result)

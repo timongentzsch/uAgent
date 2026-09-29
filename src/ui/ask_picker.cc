@@ -112,17 +112,23 @@ std::string Render(const json& question, const Answer& answer, size_t cursor,
                           ? "[x] "
                           : "[ ] ";
     row += std::to_string(index + 1) + ". ";
+    std::string description;
     if (other) {
-      row += answer.other.empty() ? "Other…" : "Other: " + answer.other;
+      row += TerminalSafe(answer.other.empty() ? "Other…"
+                                               : "Other: " + answer.other);
     } else {
-      row += JsonValue(options[index], "label", "");
-      const std::string description =
-          JsonValue(options[index], "description", "");
-      if (!description.empty()) {
-        row += std::string(" ") + DIM() + "— " + description + RST();
-      }
+      row += TerminalSafe(JsonValue(options[index], "label", ""));
+      description = TerminalSafe(JsonValue(options[index], "description", ""));
     }
-    out += Utf8Trunc(TerminalSafe(row), width * 2) + "\n";
+    // Safe and cut as plain text, then styled: an escape is not width, and
+    // TerminalSafe would spell out the dim instead of letting it apply.
+    const std::string lead = row + " ";
+    row = DisplayTrunc(description.empty() ? row : lead + "— " + description,
+                       width);
+    if (!description.empty() && row.starts_with(lead)) {
+      row = lead + DIM() + row.substr(lead.size()) + RST();
+    }
+    out += row + "\n";
   }
   if (!answer.image.empty()) {
     out += "  image: " + TerminalSafe(answer.image) + "\n";

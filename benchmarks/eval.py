@@ -51,7 +51,8 @@ CHEAP_AUTHORITY_SELF_TEST_PATH = ROOT / "tests" / "fixtures" / "eval" / "cheap_a
 sys.path.insert(0, str(ROOT / "tests"))
 
 # isort: off
-from integration_support import Server, event  # noqa: E402
+from integration_support import Server, event, write_session  # noqa: E402
+from session_support import stop_sessions  # noqa: E402
 from run_trace import (  # noqa: E402
     measured_command,
     peak_rss,
@@ -337,6 +338,11 @@ def run_case(
         workspace.mkdir()
         home.mkdir()
         materialize(workspace, scenario.get("files", {}))
+        # Saved conversations the folder already has, for a coordinator to read.
+        for saved in scenario.get("sessions", []):
+            write_session(
+                home, saved["name"], saved["messages"], cwd=workspace, title=saved["title"]
+            )
         before = snapshot(workspace)
         trace_path = root / "trace.jsonl"
 
@@ -363,6 +369,8 @@ def run_case(
             prompt = prompt.replace("${workspace}", str(workspace))
             prompt = prompt.replace("${workspace_uri}", workspace.as_uri())
             cli = [
+                # A coordinator scenario talks to the folder's coordinator.
+                *(["coord"] if scenario.get("coordinator") else []),
                 "--json",
                 "--no-memory",
                 f"--debug={trace_path}",
@@ -398,6 +406,9 @@ def run_case(
                 )
             elapsed = time.monotonic() - started
         finally:
+            # Threads a coordinator started outlive its answer; none may
+            # outlive the case.
+            stop_sessions(home)
             if mock is not None:
                 mock.close()
 

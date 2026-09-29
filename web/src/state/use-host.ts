@@ -200,6 +200,28 @@ export function useHost(
       setSelected("");
     }
   }, []);
+  // A command's outcome, from its receipt or the stream, settles the
+  // outgoing row that sent it.
+  const settleOutgoing = (outcome: Outcome) => {
+    receiveOutcome(outcome);
+    setOutgoing((items) =>
+      items.map((item) =>
+        item.request_id !== outcome.request_id
+          ? item
+          : {
+              ...item,
+              status: outcome.unknown
+                ? "Not confirmed"
+                : outcome.pending
+                  ? "Awaiting confirmation"
+                  : outcome.accepted
+                    ? "Sent"
+                    : "Not sent",
+              error: outcome.error,
+            },
+      ),
+    );
+  };
   // Jittered exponential backoff; a successful catalogue read resets it.
   const retryLater = () => {
     const delay = Math.min(
@@ -257,24 +279,7 @@ export function useHost(
             undefined,
             { signal },
           );
-          receiveOutcome(receipt);
-          setOutgoing((items) =>
-            items.map((current) =>
-              current.request_id !== item.request_id
-                ? current
-                : {
-                    ...current,
-                    status: receipt.unknown
-                      ? "Not confirmed"
-                      : receipt.pending
-                        ? "Awaiting confirmation"
-                        : receipt.accepted
-                          ? "Sent"
-                          : "Not sent",
-                    error: receipt.error,
-                  },
-            ),
-          );
+          settleOutgoing({ ...receipt, request_id: item.request_id });
         }),
       );
       // Catalogue access establishes authentication. Conversation data can
@@ -368,22 +373,7 @@ export function useHost(
         }
         const data = event.data || {};
         if (event.kind === "outcome") {
-          receiveOutcome(event);
-          setOutgoing((items) =>
-            items.map((item) =>
-              item.request_id === event.request_id
-                ? {
-                    ...item,
-                    status: event.pending
-                      ? "Awaiting confirmation"
-                      : event.accepted
-                        ? "Sent"
-                        : "Not sent",
-                    error: event.error,
-                  }
-                : item,
-            ),
-          );
+          settleOutgoing(event);
         }
         if (event.kind === "gap") {
           refresh();

@@ -387,16 +387,19 @@ export function useTranscriptHistory(
     let frame = 0;
     const wheel = (event: WheelEvent) => {
       wheelAt.current = performance.now();
-      if (event.deltaY < 0 && scrollsUp(event.target, box)) stopFollowing();
-      else if (event.deltaY > 0) resumeAtEnd();
+      // The ancestor walk reads layout; skip it once already unfollowed.
+      if (event.deltaY < 0) {
+        if (following.current && scrollsUp(event.target, box)) stopFollowing();
+      } else if (event.deltaY > 0) resumeAtEnd();
     };
     const touchStart = (event: TouchEvent) => {
       touchY = event.touches[0]?.clientY || 0;
     };
     const touchMove = (event: TouchEvent) => {
       const next = event.touches[0]?.clientY || touchY;
-      if (next > touchY + MOVE && scrollsUp(event.target, box)) stopFollowing();
-      else if (next < touchY - MOVE) resumeAtEnd();
+      if (next > touchY + MOVE) {
+        if (following.current && scrollsUp(event.target, box)) stopFollowing();
+      } else if (next < touchY - MOVE) resumeAtEnd();
       touchY = next;
     };
     const keyDown = (event: KeyboardEvent) => {
@@ -432,6 +435,9 @@ export function useTranscriptHistory(
       } else {
         frame ||= requestAnimationFrame(() => {
           frame = 0;
+          // Following again, or a session switch awaiting its restore, since
+          // the scroll: this pick would describe a state that is gone.
+          if (following.current || pending.current) return;
           selectAnchor();
           observe();
         });

@@ -7,7 +7,8 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 const EXEMPT = new Set(["features/browser/browser.css"]);
-const COLOUR = /#[0-9a-f]{3,8}\b|rgba?\(/i;
+const COLOUR =
+  /#[0-9a-f]{3,8}\b|\b(?:rgba?|hsla?|oklch|color-mix)\(|:\s*(?:white|black)\b/i;
 
 function* sheets(dir, base = "") {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -26,7 +27,8 @@ test("colour literals stay in the palettes", () => {
       .split("\n")
       .entries()) {
       if (/^\S.*[{,]$/.test(line)) selector += line;
-      const tokens = selector.includes(":root");
+      // Only a palette's custom properties may name a colour.
+      const tokens = selector.includes(":root") && /^\s*--/.test(line);
       if (!tokens && COLOUR.test(line.replace(/\/\*.*?\*\//g, "")))
         stray.push(`${path}:${index + 1}: ${line.trim()}`);
       if (line.startsWith("}")) selector = "";

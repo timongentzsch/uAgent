@@ -54,11 +54,7 @@ export function ImageViewerDialog({
       actions={
         <>
           {annotate && (
-            <Button
-              variant="quiet"
-
-              onClick={() => setEditing(true)}
-            >
+            <Button variant="quiet" onClick={() => setEditing(true)}>
               <Pencil />
               Annotate
             </Button>

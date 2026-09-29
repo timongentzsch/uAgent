@@ -430,7 +430,6 @@ export default function Annotator({
               <div class="segmented" aria-label="Annotation tool">
                 <Button
                   size="compact"
-
                   aria-pressed={tool === "pen"}
                   onClick={() => setTool("pen")}
                 >
@@ -439,7 +438,6 @@ export default function Annotator({
                 </Button>
                 <Button
                   size="compact"
-
                   aria-pressed={tool === "pin"}
                   onClick={() => setTool("pin")}
                 >

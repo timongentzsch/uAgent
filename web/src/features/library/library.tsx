@@ -278,7 +278,6 @@ export default function Library({
         <ProjectField value={cwd} projects={folders} change={chooseProject} />
         <Button
           variant="primary"
-
           disabled={!online || !cwd || busy}
           onClick={() => create()}
         >
@@ -378,11 +377,7 @@ export default function Library({
             ) : item ? (
               <>
                 <div class="editor-head">
-                  <Button
-                    variant="quiet"
-
-                    onClick={() => setItem(null)}
-                  >
+                  <Button variant="quiet" onClick={() => setItem(null)}>
                     <ChevronLeft />
                     Back
                   </Button>

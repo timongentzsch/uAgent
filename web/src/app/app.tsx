@@ -263,8 +263,8 @@ function App() {
   // Files dropped anywhere attach to the open conversation; unhandled, the
   // browser would open the file in place of the app. File inputs and
   // dialogs keep their own drops.
-  const dropRef = useRef(upload);
-  dropRef.current = upload;
+  const drops = useRef({ upload, page });
+  drops.current = { upload, page };
   useEffect(() => {
     const files = (event: DragEvent) =>
       event.dataTransfer?.types.includes("Files") &&
@@ -275,8 +275,11 @@ function App() {
     const drop = (event: DragEvent) => {
       if (!files(event)) return;
       event.preventDefault();
-      if (!(event.target as Element).closest?.("dialog"))
-        void dropRef.current([...(event.dataTransfer?.files || [])]);
+      if (
+        drops.current.page === "chat" &&
+        !(event.target as Element).closest?.("dialog")
+      )
+        void drops.current.upload([...(event.dataTransfer?.files || [])]);
     };
     addEventListener("dragover", over);
     addEventListener("drop", drop);

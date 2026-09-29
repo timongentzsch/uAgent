@@ -44,8 +44,9 @@ export function streamingHead(source: string): string {
   }
   // A code block open for longer than the scan window: split right above
   // its fence, so only the block being written re-renders each frame.
+  if (balancedFences(source)) return "";
   const open = [...source.matchAll(/^[ \t]*(```+|~~~+).*$/gm)].at(-1);
-  if (open?.index && !balancedFences(source)) {
+  if (open?.index) {
     const head = source.slice(0, open.index - 1);
     if (head.trim() && balancedFences(head)) return head;
   }

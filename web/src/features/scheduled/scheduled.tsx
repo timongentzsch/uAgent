@@ -179,7 +179,6 @@ export default function Scheduled({
         </p>
         <Button
           variant="primary"
-
           disabled={!online || busy}
           onClick={() => {
             chooseTask(blank(cwd || projects[0] || ""));
@@ -233,11 +232,7 @@ export default function Scheduled({
             {task && (
               <>
                 <div class="editor-head">
-                  <Button
-                    variant="quiet"
-
-                    onClick={() => setTask(null)}
-                  >
+                  <Button variant="quiet" onClick={() => setTask(null)}>
                     <ChevronLeft />
                     All runs
                   </Button>

@@ -127,7 +127,7 @@ test("steer carries files when idle converts to a turn", async ({
   expect(await transcript.textContent()).not.toContain('path "');
 });
 
-test("pasting text with a rendered image keeps the text, no attachment", async ({
+test("pasting text with a rendered image leaves it to the browser, no attachment", async ({
   page,
   session,
   command,
@@ -164,23 +164,27 @@ test("a file dropped on the transcript attaches instead of navigating", async ({
   command,
 }) => {
   await ready(page, session, command);
-  await page.locator(".transcript").evaluate(
+  // A dragover left uncancelled is what lets the browser open the file.
+  const allowed = await page.locator(".transcript").evaluate(
     (element, bytes) => {
       const data = new DataTransfer();
       data.items.add(
         new File([new Uint8Array(bytes)], "dropped.png", { type: "image/png" }),
       );
-      for (const type of ["dragover", "drop"])
+      const [over] = ["dragover", "drop"].map((type) =>
         element.dispatchEvent(
           new DragEvent(type, {
             dataTransfer: data,
             bubbles: true,
             cancelable: true,
           }),
-        );
+        ),
+      );
+      return over;
     },
     [...pixel],
   );
+  expect(allowed).toBe(false);
   await expect(
     page.locator(".composer .file-chip", { hasText: "dropped.png" }),
   ).toBeVisible();

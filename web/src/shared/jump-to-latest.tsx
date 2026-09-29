@@ -12,8 +12,7 @@ export function JumpToLatest({
 }) {
   return (
     <Button variant="quiet" class="jump" onClick={onClick}>
-      Jump to latest
-      {unseen > 0 && <span>({unseen} new)</span>}
+      Jump to latest{unseen > 0 && <span> ({unseen} new)</span>}
       <ArrowDown />
     </Button>
   );

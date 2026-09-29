@@ -332,12 +332,7 @@ function SidebarView({
         >
           <Mark />
         </a>
-        <Button
-          variant="quiet"
-
-          onClick={create}
-          disabled={!online}
-        >
+        <Button variant="quiet" onClick={create} disabled={!online}>
           <Plus />
           New conversation
         </Button>
@@ -345,7 +340,6 @@ function SidebarView({
       <div class="sidebar-sections">
         <Button
           variant="quiet"
-
           aria-current={page === "library" ? "page" : undefined}
           onClick={() => navigate("library")}
         >
@@ -354,7 +348,6 @@ function SidebarView({
         </Button>
         <Button
           variant="quiet"
-
           aria-current={page === "scheduled" ? "page" : undefined}
           onClick={() => navigate("scheduled")}
         >

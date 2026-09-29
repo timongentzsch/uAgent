@@ -274,9 +274,14 @@ test("a wheel up inside nested output leaves following alone", async ({
       inner.scrollTop = inner.scrollHeight;
     });
   await expect.poll(() => gap(page)).toBeLessThan(2);
-  await page.locator(".nested-probe").hover();
+  const inner = page.locator(".nested-probe");
+  const before = await inner.evaluate((element) => element.scrollTop);
+  await inner.hover();
   await page.mouse.wheel(0, -40);
-  await page.waitForTimeout(300);
+  // The wheel reached the nested scroller, so its handler has run.
+  await expect
+    .poll(() => inner.evaluate((element) => element.scrollTop))
+    .toBeLessThan(before);
   await expect(
     page.getByRole("button", { name: "Jump to latest" }),
   ).toHaveCount(0);

@@ -1,7 +1,6 @@
 // Copyright 2026 Timon Gentzsch
 
 #include <chrono>
-#include <cinttypes>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -18,6 +17,7 @@
 #include "include/core/sandbox.h"
 #include "include/core/steering.h"
 #include "include/core/strings.h"
+#include "include/core/style.h"
 #include "include/core/term.h"
 #include "include/mcp/register.h"
 #include "include/providers.h"
@@ -55,31 +55,30 @@ void HandleAttach(AppSession& session, const std::string& argument,
                   CommandReply& reply) {
   if (argument.empty()) {
     if (session.attachments.empty()) {
-      reply.Print("%s· no pending attachments%s\n", DIM(), RST());
+      reply.Note(Tone::kNeutral, "no pending attachments");
     } else {
       for (const Attachment& attachment : session.attachments) {
-        reply.Print("%s· %s (%s)%s\n", DIM(),
-                    TerminalSafe(attachment.path).c_str(),
-                    attachment.mime.c_str(), RST());
+        reply.Note(Tone::kNeutral, TerminalSafe(attachment.path) + " (" +
+                                       attachment.mime + ")");
       }
     }
     return;
   }
   if (argument == "clear") {
     session.attachments.clear();
-    reply.Print("%s· attachments cleared%s\n", DIM(), RST());
+    reply.Note(Tone::kNeutral, "attachments cleared");
     return;
   }
   Attachment attachment;
   std::string error;
   // Dropped or pasted paths often arrive quoted; accept one pair.
   if (!InspectAttachment(Unquote(argument), attachment, error)) {
-    reply.Print("%s%s%s\n", RED(), error.c_str(), RST());
+    reply.Note(Tone::kError, TerminalSafe(error));
     return;
   }
   session.attachments.push_back(std::move(attachment));
-  reply.Print("%s· attached %s for the next message%s\n", DIM(),
-              session.attachments.back().name.c_str(), RST());
+  reply.Note(Tone::kNeutral, "attached " + session.attachments.back().name +
+                                 " for the next message");
 }
 
 void HandleCost(const AppSession& session, CommandReply& reply) {
@@ -89,7 +88,7 @@ void HandleCost(const AppSession& session, CommandReply& reply) {
       {"session_budget", session.ApiClient().config.session_budget}};
   const json& routes = reply.result["routes"];
   if (routes.empty()) {
-    reply.Print("%s· no session spend yet%s\n", DIM(), RST());
+    reply.Note(Tone::kNeutral, "no session spend yet");
     return;
   }
   for (const auto& [route, usage] : routes.items()) {
@@ -105,21 +104,20 @@ void HandleCost(const AppSession& session, CommandReply& reply) {
     std::string tokens = TokenSummary(spent);
     std::string cache = CacheSummary(spent);
     if (!cache.empty()) tokens += " · " + cache;
-    reply.Print("%s· %s · %s · %s%s\n", DIM(), TerminalSafe(route).c_str(),
-                tokens.c_str(), cost.c_str(), RST());
+    reply.Note(Tone::kNeutral,
+               TerminalSafe(route) + " · " + tokens + " · " + cost);
   }
   const Usage& spent = session.ActiveAgent().SessionUsage();
   std::string totals = TokenSummary(spent);
   std::string session_cache = CacheSummary(spent);
   if (!session_cache.empty()) totals += " · " + session_cache;
-  reply.Print(
-      "%s· total · %s · %s", DIM(), totals.c_str(),
-      spent.cost_reported ? FmtCost(spent.cost).c_str() : "cost unavailable");
+  std::string total = "total · " + totals + " · " +
+                      (spent.cost_reported ? FmtCost(spent.cost)
+                                           : std::string("cost unavailable"));
   if (session.ApiClient().config.session_budget > 0) {
-    reply.Print(" / %s",
-                FmtCost(session.ApiClient().config.session_budget).c_str());
+    total += " / " + FmtCost(session.ApiClient().config.session_budget);
   }
-  reply.Print("%s\n", RST());
+  reply.Note(Tone::kNeutral, total);
 }
 
 // What the session actually resolved to: the effective configuration with the
@@ -211,9 +209,10 @@ void HandleInstructions(AppSession& session, const std::string& argument,
     json shown = agent.SelfDirective({{"action", "show"}});
     json cleared = agent.SelfDirective(
         {{"action", "reset"}, {"revision", shown["item"]["revision"]}});
-    reply.Print("· %s\n", cleared.contains("error")
-                              ? JsonValue(cleared, "error", "").c_str()
-                              : "self-directive cleared");
+    reply.Note(Tone::kNeutral,
+               cleared.contains("error")
+                   ? TerminalSafe(JsonValue(cleared, "error", ""))
+                   : "self-directive cleared");
     return;
   }
   if (action == "edit") {
@@ -230,14 +229,14 @@ void HandleInstructions(AppSession& session, const std::string& argument,
         {.kind = "editor", .prompt = path.string(), .initial = base},
         &cancelled);
     if (cancelled) {
-      reply.Print("%s", "· instructions unchanged\n");
+      reply.Note(Tone::kNeutral, "instructions unchanged");
       return;
     }
     const std::string error =
         WriteInstructionFile(coordinator, project, cwd, text, base);
-    reply.Print("· %s\n", error.empty()
-                              ? "saved; new and restarted sessions read it"
-                              : error.c_str());
+    reply.Note(Tone::kNeutral,
+               error.empty() ? "saved; new and restarted sessions read it"
+                             : TerminalSafe(error));
     return;
   }
   if (!action.empty()) {
@@ -276,8 +275,7 @@ void HandleDebugConfig(const AppSession& session, const std::string& argument,
   const json& described = reply.result;
   const json& settings = described["settings"];
   if (settings.empty()) {
-    reply.Print("%s\u00b7 no setting named %s%s\n", RED(),
-                TerminalSafe(argument).c_str(), RST());
+    reply.Note(Tone::kError, "no setting named " + TerminalSafe(argument));
     return;
   }
   // Only settings the user actually influenced, unless one was named: the full
@@ -303,13 +301,14 @@ void HandleDebugConfig(const AppSession& session, const std::string& argument,
   }
   const json& restart = described["restart_required"];
   if (restart.is_array() && !restart.empty()) {
-    reply.Print("%s\u00b7 restart required for %zu changed setting%s%s\n",
-                YEL(), restart.size(), restart.size() == 1 ? "" : "s", RST());
+    reply.Note(Tone::kWarn, "restart required for " +
+                                std::to_string(restart.size()) +
+                                " changed setting" +
+                                (restart.size() == 1 ? "" : "s"));
   }
-  reply.Print(
-      "%s\u00b7 precedence: command line, process environment, trusted "
-      "project config, user config, built-in default%s\n",
-      DIM(), RST());
+  reply.Note(Tone::kNeutral,
+             "precedence: command line, process environment, trusted "
+             "project config, user config, built-in default");
 }
 
 // The settings a layer changes, as text: what differs from its default and
@@ -343,23 +342,20 @@ void HandleConfig(AppSession& session, const std::string& argument,
   reply.result = SessionControl(session, request);
   const json& result = reply.result;
   if (result.contains("error")) {
-    reply.Print("%serror: %s%s\n", RED(),
-                TerminalSafe(JsonValue(result, "error", "")).c_str(), RST());
+    reply.Note(Tone::kError,
+               "error: " + TerminalSafe(JsonValue(result, "error", "")));
     return;
   }
   bool restart = false;
   for (const json& effect : JsonValue(result, "effects", json::array())) {
     const std::string how = JsonValue(effect, "effect", "");
     restart |= how == "needs a restart";
-    reply.Print("%s· %s: %s%s\n", DIM(),
-                TerminalSafe(JsonValue(effect, "key", "")).c_str(), how.c_str(),
-                RST());
+    reply.Note(Tone::kNeutral,
+               TerminalSafe(JsonValue(effect, "key", "")) + ": " + how);
   }
   if (restart) {
-    reply.Print(
-        "%s· /restart applies it here; new conversations have it "
-        "already%s\n",
-        YEL(), RST());
+    reply.Note(Tone::kWarn,
+               "/restart applies it here; new conversations have it already");
   }
   if (!argument.empty()) return;
   size_t changed = 0;
@@ -378,12 +374,11 @@ void HandleConfig(AppSession& session, const std::string& argument,
                 source.c_str(), RST());
   }
   if (!changed) {
-    reply.Print("%s· every setting is at its default%s\n", DIM(), RST());
+    reply.Note(Tone::kNeutral, "every setting is at its default");
   }
-  reply.Print(
-      "%s· /config user|project KEY=VALUE, unset KEY, or reset "
-      "(keeps secrets)%s\n",
-      DIM(), RST());
+  reply.Note(Tone::kNeutral,
+             "/config user|project KEY=VALUE, unset KEY, or reset "
+             "(keeps secrets)");
 }
 
 // This repository's remembered actions, numbered so one can be forgotten,
@@ -408,14 +403,13 @@ void HandlePermissionRules(const std::string& argument, CommandReply& reply) {
   }
   reply.result = listed;
   if (listed.contains("error")) {
-    reply.Print("%serror: %s%s\n", RED(),
-                TerminalSafe(JsonValue(listed, "error", "")).c_str(), RST());
+    reply.Note(Tone::kError,
+               "error: " + TerminalSafe(JsonValue(listed, "error", "")));
     return;
   }
   const json& rules = listed["rules"];
   if (rules.empty()) {
-    reply.Print("%s· no remembered actions for this repository%s\n", DIM(),
-                RST());
+    reply.Note(Tone::kNeutral, "no remembered actions for this repository");
   }
   for (size_t i = 0; i < rules.size(); ++i) {
     reply.Print("%zu. %s %s· %s%s\n", i + 1,
@@ -436,7 +430,7 @@ void HandleMcp(AppSession& session, const std::string& argument,
     input >> operation >> name >> extra;
     if ((operation != "retry" && operation != "on" && operation != "off") ||
         name.empty() || !extra.empty()) {
-      reply.Print("%serror: usage: /mcp [retry|on|off NAME]%s\n", RED(), RST());
+      reply.Note(Tone::kError, "error: usage: /mcp [retry|on|off NAME]");
       return;
     }
     json done = SessionControl(
@@ -446,16 +440,15 @@ void HandleMcp(AppSession& session, const std::string& argument,
          {"name", name},
          {"enabled", operation == "on"}});
     if (done.contains("error")) {
-      reply.Print("%serror: %s%s\n", RED(),
-                  TerminalSafe(JsonValue(done, "error", "")).c_str(), RST());
+      reply.Note(Tone::kError,
+                 "error: " + TerminalSafe(JsonValue(done, "error", "")));
       return;
     }
   }
   const json servers = McpStatus(app.runtime.mcp, app.tools);
   reply.result = {{"mcp", servers}};
   if (servers.empty()) {
-    reply.Print("%s· no MCP servers (~/.mcp.json, ./.mcp.json)%s\n", DIM(),
-                RST());
+    reply.Note(Tone::kNeutral, "no MCP servers (~/.mcp.json, ./.mcp.json)");
   }
   for (const json& server : servers) {
     const std::string state = JsonValue(server, "state", "");
@@ -487,8 +480,8 @@ void HandleTools(AppSession& session, const std::string& argument,
         (operation != "reset" && operation != "profile" && operation != "on" &&
          operation != "off") ||
         ((operation == "reset") != value.empty())) {
-      reply.Print("%serror: usage: /tools [on|off NAME|profile NAME|reset]%s\n",
-                  RED(), RST());
+      reply.Note(Tone::kError,
+                 "error: usage: /tools [on|off NAME|profile NAME|reset]");
       return;
     }
     request["operation"] =
@@ -502,16 +495,18 @@ void HandleTools(AppSession& session, const std::string& argument,
   reply.result = SessionControl(session, request);
   const json& result = reply.result;
   if (result.contains("error")) {
-    reply.Print("%serror: %s%s\n", RED(),
-                TerminalSafe(JsonValue(result, "error", "")).c_str(), RST());
+    reply.Note(Tone::kError,
+               "error: " + TerminalSafe(JsonValue(result, "error", "")));
     return;
   }
-  reply.Print("%s· %" PRId64 "/%" PRId64 " tools · %s · %" PRId64
-              " serialized schema bytes%s\n",
-              DIM(), JsonValue(result, "active", int64_t{0}),
-              JsonValue(result, "available", int64_t{0}),
-              TerminalSafe(JsonValue(result, "profile", "default")).c_str(),
-              JsonValue(result, "schema_bytes", int64_t{0}), RST());
+  reply.Note(
+      Tone::kNeutral,
+      std::to_string(JsonValue(result, "active", int64_t{0})) + "/" +
+          std::to_string(JsonValue(result, "available", int64_t{0})) +
+          " tools · " +
+          TerminalSafe(JsonValue(result, "profile", "default")) + " · " +
+          std::to_string(JsonValue(result, "schema_bytes", int64_t{0})) +
+          " serialized schema bytes");
   if (const json* tools = JsonArray(result, "tools")) {
     for (const json& tool : *tools) {
       reply.Print("%s%s %-14s %s · %s%s\n", DIM(),

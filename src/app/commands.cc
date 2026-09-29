@@ -21,6 +21,7 @@
 #include "include/core/limits.h"
 #include "include/core/steering.h"
 #include "include/core/strings.h"
+#include "include/core/style.h"
 #include "include/core/term.h"
 #include "include/providers.h"
 #include "include/tools/session.h"
@@ -48,6 +49,10 @@ void CommandReply::Print(const char* format, ...) {
   va_end(args);
 }
 
+void CommandReply::Note(Tone tone, std::string_view text) {
+  Print("%s", uagent::Note(tone, text).c_str());
+}
+
 void LoadSessionJournal(AppSession& session, const std::string& previous_path) {
   const json settings = session.ActiveAgent().SessionSettings();
   const std::string route = JsonValue(settings, "route", "");
@@ -57,7 +62,7 @@ void LoadSessionJournal(AppSession& session, const std::string& previous_path) {
                     session.context.provider.providers, route)
             .empty()) {
       Emit(NoticeEvent(PresentationStatus::kFailed,
-                       "Saved model is unavailable: " + route));
+                       "saved model is unavailable: " + route));
     } else {
       ActivateRoute(session.ApiClient());
       session.ActiveAgent().RouteChanged();
@@ -122,10 +127,9 @@ CommandReply RunSlashCommand(AppSession& session,
             "%s%3" PRId64 "%s  %s\n", DIM(), turn, RST(),
             TerminalSafe(FirstLine(history.UserMessageText(turn))).c_str());
       }
-      reply.Print(
-          "%s· /rewind N forks before message N and opens it with "
-          "that message to edit; the original stays as it is%s\n",
-          DIM(), RST());
+      reply.Note(Tone::kNeutral,
+                 "/rewind N forks before message N and opens it with "
+                 "that message to edit; the original stays as it is");
       return reply;
     }
     case SlashCommandId::kShare: {
@@ -220,10 +224,9 @@ CommandReply RunSlashCommand(AppSession& session,
     case SlashCommandId::kYolo:
       result = PermissionControl(session.context,
                                  {{"mode", ApprovalIsYolo() ? "ask" : "yolo"}});
-        reply.Print(
-          "%s· yolo %s%s\n", DIM(),
-          ApprovalIsYolo() ? "ON — automatic ordinary approvals" : "off",
-          RST());
+      reply.Note(Tone::kNeutral,
+                 ApprovalIsYolo() ? "yolo on — automatic ordinary approvals"
+                                  : "yolo off");
       break;
     case SlashCommandId::kCompact:
       session.ActiveAgent().Compact();

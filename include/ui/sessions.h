@@ -25,6 +25,7 @@
 #include "include/core/json.h"
 #include "include/core/limits.h"
 #include "include/core/strings.h"
+#include "include/core/style.h"
 #include "include/core/term.h"
 #include "include/ui/conversation.h"
 #include "include/ui/display.h"
@@ -61,7 +62,9 @@ inline std::string MatchSessionPrefix(const std::string& prefix) {
 inline std::string PickSession(bool render = true) {
   std::vector<SessionInfo> sessions = ListSessions();
   if (sessions.empty()) {
-    if (render) printf("%s· no saved sessions%s\n", DIM(), RST());
+    if (render) {
+      fputs(Note(Tone::kNeutral, "no saved sessions").c_str(), stdout);
+    }
     return "";
   }
   auto now = std::filesystem::file_time_type::clock::now();
@@ -98,7 +101,9 @@ inline std::string PickSession(bool render = true) {
       n <= static_cast<int64_t>(shown)) {
     return sessions[static_cast<size_t>(n - 1)].path;
   }
-  if (render) printf("%s· not a listed number%s\n", DIM(), RST());
+  if (render) {
+    fputs(Note(Tone::kNeutral, "not a listed number").c_str(), stdout);
+  }
   return "";
 }
 
@@ -111,18 +116,23 @@ inline bool ResumeInto(Agent& agent, const std::string& path,
     std::string safe_path = TerminalSafe(path);
     std::string safe_error = TerminalSafe(error);
     if (render) {
-      printf("%s· could not resume %s: %s%s\n", RED(), safe_path.c_str(),
-             safe_error.c_str(), RST());
+      fputs(Note(Tone::kError,
+                 "could not resume " + safe_path + ": " + safe_error)
+                .c_str(),
+            stdout);
     }
     Emit(Event{EventId::kError, {{"error", "cannot resume: " + error}}});
     return false;
   }
   session_file = path;
   if (render) {
-    printf("%s· resumed — %zu messages%s\n", DIM(), agent.MessageCount() - 1,
-           RST());
+    fputs(Note(Tone::kNeutral, "resumed — " +
+                                   std::to_string(agent.MessageCount() - 1) +
+                                   " messages")
+              .c_str(),
+          stdout);
     PrintConversationHistory(agent.History());
-    printf("%s· end of history, continuing%s\n", DIM(), RST());
+    fputs(Note(Tone::kNeutral, "end of history, continuing").c_str(), stdout);
   }
   return true;
 }

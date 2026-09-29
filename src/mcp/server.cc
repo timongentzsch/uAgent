@@ -108,8 +108,7 @@ void McpRuntime::ShutdownAll() {
 void McpShutdown(McpServer& server) { McpShutdownGroup({&server}); }
 
 void McpNote(const std::string& name, const std::string& msg) {
-  Emit(NoticeEvent(PresentationStatus::kNeutral,
-                   "· mcp: " + name + " — " + msg));
+  Emit(NoticeEvent(PresentationStatus::kNeutral, "mcp: " + name + " — " + msg));
 }
 
 void McpError(const std::string& name, const std::string& msg) {

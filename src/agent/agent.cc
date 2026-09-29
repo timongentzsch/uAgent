@@ -434,7 +434,7 @@ bool Agent::Load(const std::string& path, const std::string& expected_cwd,
     if (!adaptive_system_->instructions.empty()) {
       Emit(NoticeEvent(
           PresentationStatus::kNeutral,
-          "· self-directive revision " +
+          "self-directive revision " +
               std::to_string(adaptive_system_->revision) +
               " restored — /status to review, adapt_system to clear"));
     }
@@ -623,15 +623,14 @@ json Agent::CompactionUserMessages(std::vector<uint64_t>* retained_ids) const {
 bool Agent::Compact(bool automatic, Usage* turn_usage) {
   if (MessageCount() < 2) {
     DebugLog("compact_skip", {{"reason", "empty"}, {"automatic", automatic}});
-    Emit(NoticeEvent(PresentationStatus::kNeutral, "· nothing to compact"));
+    Emit(NoticeEvent(PresentationStatus::kNeutral, "nothing to compact"));
     return false;
   }
   DebugLog("compact_start", {{"automatic", automatic},
                              {"messages", conversation_.Size()},
                              {"context_tokens", ContextUsed()}});
-  Emit(NoticeEvent(
-      PresentationStatus::kNeutral,
-      std::string("· ") + (automatic ? "auto-" : "") + "compacting…"));
+  Emit(NoticeEvent(PresentationStatus::kNeutral,
+                   std::string(automatic ? "auto-" : "") + "compacting…"));
   size_t source_bytes = JsonEstimatedBytes(conversation_.Messages());
   size_t messages_before = conversation_.Size();
   const auto compact_started = std::chrono::steady_clock::now();
@@ -671,7 +670,7 @@ bool Agent::Compact(bool automatic, Usage* turn_usage) {
       Emit(NoticeEvent(PresentationStatus::kFailed, r.error));
     } else {
       Emit(NoticeEvent(PresentationStatus::kNeutral,
-                       "· compaction rejected; context unchanged"));
+                       "compaction rejected; context unchanged"));
     }
     return false;
   }
@@ -711,7 +710,7 @@ bool Agent::Compact(bool automatic, Usage* turn_usage) {
                            {"retained_user_messages", retained_users.size()},
                            {"summary_chars", r.content.size()}});
   printf("\n");
-  Emit(NoticeEvent(PresentationStatus::kNeutral, "· compacted"));
+  Emit(NoticeEvent(PresentationStatus::kNeutral, "compacted"));
   return true;
 }
 
@@ -942,13 +941,11 @@ void Agent::ReportMemoryCompletion(BackgroundCompletion& completion) {
          {"status", warning ? "failed" : "completed"},
          {"turn_root", turn_root_}});
     Emit(Event{EventId::kMessageChanged, {{"block", block}}});
+    // The preview continues the notice, indented under its dot.
+    if (!event.preview.empty()) line += "\n  " + event.preview;
     Emit(NoticeEvent(
         warning ? PresentationStatus::kFailed : PresentationStatus::kNeutral,
         std::move(line), minor));
-    if (!event.preview.empty()) {
-      Emit(NoticeEvent(PresentationStatus::kNeutral, "  " + event.preview,
-                       minor));
-    }
   }
   DebugLog("memory_extract_finished", {{"activity_id", completion.activity_id},
                                        {"action", event.action},

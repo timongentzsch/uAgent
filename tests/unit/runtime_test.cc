@@ -49,7 +49,7 @@ void TestEarlyTurnInterruption() {
         SteeringState().Request();
       }
       if (event.type == "notice" &&
-          JsonValue(event.data, "text", "") == "· interrupted") {
+          JsonValue(event.data, "text", "") == "interrupted") {
         ++notices;
       }
       if (event.type == "response.started") ++responses;

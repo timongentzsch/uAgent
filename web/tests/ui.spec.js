@@ -2232,7 +2232,7 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
   await expect(
     thread.getByRole("heading", { name: "Verified response", exact: true }),
   ).toHaveCount(2);
-  await expect(detail).not.toContainText("Saved model is unavailable");
+  await expect(detail).not.toContainText("saved model is unavailable");
   await expect(detail.locator(".model-selector")).toContainText("mock/main");
   await detail
     .getByRole("button", { name: "Show full message", exact: true })

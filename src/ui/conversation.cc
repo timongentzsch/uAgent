@@ -1,5 +1,6 @@
 // Copyright 2026 Timon Gentzsch
 
+#include "include/core/style.h"
 #include "include/ui/conversation.h"
 
 #include <cstdio>
@@ -35,7 +36,8 @@ void PrintConversationHistory(const Conversation& conversation) {
   // The same rows an attached terminal and the browser show.
   const json view = ConversationView(conversation);
   if (JsonValue(view, "more", false)) {
-    printf("%s· earlier messages are not shown%s\n", DIM(), RST());
+    fputs(Note(Tone::kNeutral, "earlier messages are not shown").c_str(),
+          stdout);
   }
   TerminalPresenter presenter;
   for (const json& block : view["blocks"]) presenter.Block(block);

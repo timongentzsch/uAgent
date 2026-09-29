@@ -117,6 +117,7 @@ add_library(
   src/core/skills.cc
   src/core/steering.cc
   src/core/strings.cc
+  src/core/style.cc
   src/core/term.cc
   src/core/usage.cc
   src/transport/session.cc

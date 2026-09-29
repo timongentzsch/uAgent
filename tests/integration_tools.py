@@ -299,7 +299,7 @@ def test_skill_tool_offers_and_opens(root, home, *, binary):
             base_env(home, server.url),
             # Verbose output shows the opened skill body in the tool result.
             [
-                (b"/verbose\n", b"verbose ON"),
+                (b"/verbose\n", b"verbose on"),
                 (b"reply\n", b"skill-ok", b"Ready", None),
                 b"\x04",
             ],

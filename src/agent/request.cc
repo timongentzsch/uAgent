@@ -593,8 +593,8 @@ bool Agent::DegradeAndRetry(const ChatResult& result) {
     EnsureRuntimeContext();
     changed(rejected);
     Emit(NoticeEvent(PresentationStatus::kWarned,
-                     "Model rejected attachment input; retrying with the "
-                     "available delivery mode. Originals retained."));
+                     "model rejected attachment input; retrying with the "
+                     "available delivery mode, originals retained"));
     return true;
   }
   if (rejected == RejectedCapability::kParallelTools) {

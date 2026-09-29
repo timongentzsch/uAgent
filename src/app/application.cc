@@ -19,6 +19,7 @@
 #include "include/core/json.h"
 #include "include/core/steering.h"
 #include "include/core/strings.h"
+#include "include/core/style.h"
 #include "include/core/term.h"
 #include "include/media/attachments.h"
 #include "include/providers.h"
@@ -93,7 +94,7 @@ void Application::ReloadConfigAtTurnBoundary() {
               {"source", "config_file"}}});
   if (context_.options.prompt.empty() &&
       (!reload->applied.empty() || !reload->deferred.empty())) {
-    std::string notice = "· configuration reloaded for the next turn";
+    std::string notice = "configuration reloaded for the next turn";
     if (!reload->deferred.empty()) {
       if (reload->deferred.size() == 1) {
         notice += " · 1 setting requires restart";
@@ -166,7 +167,7 @@ bool Application::ResumeAtStartup() {
   } else if (context_.options.resume_latest) {
     std::vector<SessionInfo> sessions = ListSessions();
     if (sessions.empty()) {
-      printf("%s· no saved sessions%s\n", DIM(), RST());
+      fputs(Note(Tone::kNeutral, "no saved sessions").c_str(), stdout);
       fflush(stdout);
     } else {
       if (!ResumeInto(agent_, sessions.front().path, session_file_)) {
@@ -210,7 +211,7 @@ void Application::ReportReplacedExecutable() {
   if (!ExecutableReplaced()) return;
   context_.observability.Emit(NoticeEvent(
       PresentationStatus::kNeutral,
-      "· uagent was replaced on disk; restart to run the new build"));
+      "uagent was replaced on disk; restart to run the new build"));
 }
 
 void Application::RunPrompt(const std::string& input) {
@@ -279,7 +280,7 @@ void Application::ProcessInput(std::string input) {
   }
   if (input[0] == '/') {
     Emit(NoticeEvent(PresentationStatus::kFailed,
-                     "· unknown command " + input + "; use /help"));
+                     "unknown command " + input + "; use /help"));
     return;
   }
   RunPrompt(input);

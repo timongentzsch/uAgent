@@ -138,13 +138,13 @@ void TestObservabilityEvents() {
   CHECK(std::string(PolicyFor(EventId::kNotice).journal_type) == "notice");
   CHECK(std::string(PolicyFor(EventId::kNotice).public_type) == "notice");
   CHECK(PolicyFor(EventId::kNotice).Durable());
-  Event notice = NoticeEvent(PresentationStatus::kWarned, "· interrupted");
+  Event notice = NoticeEvent(PresentationStatus::kWarned, "interrupted");
   CHECK(notice.id == EventId::kNotice);
   CHECK(notice.render);
   REQUIRE(notice.presentation.has_value());
   CHECK(notice.presentation->kind == PresentationKind::kNotice);
   CHECK(notice.presentation->status == PresentationStatus::kWarned);
-  CHECK(notice.data["text"] == "· interrupted");
+  CHECK(notice.data["text"] == "interrupted");
   SessionJournal notices;
   notices.Append(notice, PolicyFor(notice.id));
   CHECK(notices.Size() == 1);

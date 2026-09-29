@@ -40,6 +40,7 @@
 #include "include/core/skills.h"
 #include "include/core/steering.h"
 #include "include/core/strings.h"
+#include "include/core/style.h"
 #include "include/core/term.h"
 #include "include/mcp/discover.h"
 #include "include/mcp/register.h"
@@ -389,10 +390,11 @@ Agent::Approver MakeApprover(AppContext* app) {
         fprintf(stdout, "%s\n", ColorizeDiffLines(payload).c_str());
       }
       if (mandatory && !InteractiveApprovalAvailable()) {
-        fprintf(stdout,
-                "%s\u00b7 denied: this change needs a person, and no "
-                "interactive terminal is attached%s\n",
-                RED(), RST());
+        fputs(Note(Tone::kError,
+                   "denied: this change needs a person, and no interactive "
+                   "terminal is attached")
+                  .c_str(),
+              stdout);
         granted = false;
       } else if (mandatory) {
         granted = Confirm(
@@ -430,7 +432,7 @@ Agent::Approver MakeApprover(AppContext* app) {
                                             error)) {
             Emit(NoticeEvent(
                 PresentationStatus::kWarned,
-                "· allowed once; could not save permission rule: " + error));
+                "allowed once; could not save permission rule: " + error));
           }
         }
         if (!granted && !cancelled && !eof && !answer.empty() &&
@@ -486,7 +488,7 @@ void ReportSandbox() {
                 {"reason", status.reason}}});
     Emit(NoticeEvent(
         PresentationStatus::kWarned,
-        "\u00b7 sandbox: " + status.reason + "; commands run unconfined"));
+        "sandbox: " + status.reason + "; commands run unconfined"));
   }
   if (status.rejected.empty()) return;
   std::string dropped;
@@ -494,7 +496,7 @@ void ReportSandbox() {
     dropped += (dropped.empty() ? "" : ", ") + root;
   }
   Emit(NoticeEvent(PresentationStatus::kWarned,
-                   "\u00b7 sandbox: not granted as writable: " + dropped));
+                   "sandbox: not granted as writable: " + dropped));
 }
 
 void LogReady(const AppContext& context) {
@@ -679,8 +681,8 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   if (Debug().Enabled()) {
     FILE* notice =
         context->options.prompt.empty() && !channel ? stdout : stderr;
-    fprintf(notice, "%s· debug trace: %s%s\n", DIM(), Debug().Path().c_str(),
-            RST());
+    fputs(Note(Tone::kNeutral, "debug trace: " + Debug().Path()).c_str(),
+          notice);
     Debug().Write("process_start",
                   {{"pid", getpid()},
                    {"cwd", std::filesystem::current_path().string()},

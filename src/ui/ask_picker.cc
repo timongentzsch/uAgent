@@ -1,5 +1,6 @@
 // Copyright 2026 Timon Gentzsch
 
+#include "include/core/style.h"
 #include "include/ui/ask_picker.h"
 
 #include <poll.h>
@@ -255,8 +256,9 @@ json PickAskAnswers(const json& questions, const Write& write,
       attachments.push_back({{"path", answer.image}, {"id", id}});
     }
     answers.push_back(std::move(entry));
-    block.Draw("· " + TerminalSafe(JsonValue(question, "question", "")) +
-               " → " + TerminalSafe(shown) + "\n");
+    block.Draw(Note(Tone::kNeutral,
+                    TerminalSafe(JsonValue(question, "question", "")) + " → " +
+                        TerminalSafe(shown)));
   }
   return {{"text", JsonDump(answers)}, {"attachments", attachments}};
 }

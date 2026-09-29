@@ -545,7 +545,7 @@ JsonResponse Api::Post(const std::string& path, const json& body,
     std::string seconds =
         FmtDuration(static_cast<double>(delay.count()) / 1000.0);
     Emit(NoticeEvent(PresentationStatus::kWarned,
-                     "· " + TerminalSafe(response.error) + " — retry " +
+                     TerminalSafe(response.error) + " — retry " +
                          std::to_string(attempt) + "/" +
                          std::to_string(attempts - 1) + " in " + seconds));
     if (!WaitForRetry(delay)) return response;

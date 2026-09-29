@@ -400,7 +400,7 @@ void TerminalPresenter::Block(const json& block) {
   } else if (kind == "activity") {
     const json memory = JsonValue(block, "memory", json::object());
     if (detailed_ || !JsonValue(memory, "minor", false)) {
-      WriteTerminalRecord("· " + text + "\n");
+      WriteTerminalRecord(Note(Tone::kNeutral, text));
     }
   } else if (kind == "tool_result") {
     // One row per call: the recorded call line, then its result.
@@ -533,10 +533,11 @@ void PrintPresentation(const PresentationRecord& record,
                        bool detailed) noexcept {
   if (record.kind == PresentationKind::kNotice) {
     if (record.minor && !detailed) return;
-    const char* color = record.status == PresentationStatus::kFailed   ? RED()
-                        : record.status == PresentationStatus::kWarned ? YEL()
-                                                                       : DIM();
-    WriteTerminalRecord(StyledBlock(TerminalSafe(record.title), color));
+    WriteTerminalRecord(
+        Note(record.status == PresentationStatus::kFailed   ? Tone::kError
+             : record.status == PresentationStatus::kWarned ? Tone::kWarn
+                                                            : Tone::kNeutral,
+             TerminalSafe(record.title)));
     return;
   }
   if (record.kind == PresentationKind::kToolCall) {

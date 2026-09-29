@@ -6,12 +6,14 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "include/agent.h"
 #include "include/api.h"
 #include "include/app/bootstrap.h"
 #include "include/cli.h"
+#include "include/core/style.h"
 #include "include/media/attachments.h"
 
 namespace uagent {
@@ -39,6 +41,7 @@ struct CommandReply {
   json result;
   std::string output;
   void Print(const char* format, ...) __attribute__((format(printf, 2, 3)));
+  void Note(Tone tone, std::string_view text);
 };
 CommandReply RunSlashCommand(AppSession& session,
                              const ParsedSlashCommand& command);

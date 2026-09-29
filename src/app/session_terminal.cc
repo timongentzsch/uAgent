@@ -389,14 +389,16 @@ class Terminal {
           target = CoordinatorPath(next_folder_);
         } else if (target = MatchFolderSession(slash.argument);
                    target.empty()) {
-          WriteTerminalRecord("· no unique session in /board matches \"" +
-                              TerminalSafe(slash.argument) + "\"\n");
+          WriteTerminalRecord(
+              Note(Tone::kNeutral, "no unique session in /board matches \"" +
+                                       TerminalSafe(slash.argument) + "\""));
           continue;
         }
         std::lock_guard lock(mutex_);
         if (!waiting_.empty() || running_) {
           WriteTerminalRecord(
-              "· turn active; interrupt it before switching sessions\n");
+              Note(Tone::kNeutral,
+                   "turn active; interrupt it before switching sessions"));
           continue;
         }
         next_ = target;
@@ -408,8 +410,8 @@ class Terminal {
         {
           std::lock_guard lock(mutex_);
           if (!waiting_.empty() || running_) {
-            WriteTerminalRecord(
-                "· turn active; interrupt it before restarting\n");
+            WriteTerminalRecord(Note(
+                Tone::kNeutral, "turn active; interrupt it before restarting"));
             continue;
           }
           next_ = "/restart";
@@ -425,7 +427,8 @@ class Terminal {
           std::lock_guard lock(mutex_);
           if (!waiting_.empty() || running_) {
             WriteTerminalRecord(
-                "· turn active; interrupt it before switching sessions\n");
+                Note(Tone::kNeutral,
+                     "turn active; interrupt it before switching sessions"));
             continue;
           }
         }
@@ -439,8 +442,9 @@ class Terminal {
           }
           std::string matched = arg.empty() ? "" : MatchSessionPrefix(arg);
           if (!arg.empty() && matched.empty()) {
-            WriteTerminalRecord("· no unique session matches \"" +
-                                TerminalSafe(arg) + "\"\n");
+            WriteTerminalRecord(Note(Tone::kNeutral,
+                                     "no unique session matches \"" +
+                                         TerminalSafe(arg) + "\""));
             continue;
           }
           if (matched.empty()) {
@@ -477,7 +481,8 @@ class Terminal {
         // edit; the original stays. Bare /rewind lists the numbers (host).
         const ForkArgument parsed = ParseForkArgument(text.substr(7));
         if (parsed.turn <= 0 || !parsed.title.empty()) {
-          WriteTerminalRecord("· usage: /rewind N (bare /rewind lists them)\n");
+          WriteTerminalRecord(Note(
+              Tone::kNeutral, "usage: /rewind N (bare /rewind lists them)"));
           continue;
         }
         rewinding_ = true;
@@ -487,16 +492,17 @@ class Terminal {
         continue;
       } else if (text == "/verbose") {
         presenter_.SetDetailed(!presenter_.Detailed());
-        WriteTerminalRecord(
+        WriteTerminalRecord(Note(
+            Tone::kNeutral,
             presenter_.Detailed()
-                ? "· verbose ON — full reasoning and tool output\n"
-                : "· verbose off — compact reasoning and tool output\n");
+                ? "verbose on — full reasoning and tool output"
+                : "verbose off — compact reasoning and tool output"));
         wake_.Wake();
         continue;
       } else if (text == "/share") {
         Send({{"kind", "share"}});
       } else if (text.starts_with("/share ")) {
-        WriteTerminalRecord("· usage: /share\n");
+        WriteTerminalRecord(Note(Tone::kNeutral, "usage: /share"));
         continue;
       } else if (!text.empty() || !files.empty()) {
         json command = {{"kind", "submit"}, {"text", text}};
@@ -509,14 +515,15 @@ class Terminal {
     if (!files.empty()) {
       // Staged via /attach but never submitted (EOF/quit/compose-cancel):
       // say so instead of dropping them silently.
-      std::string dropped = "· " + std::to_string(files.size()) +
-                            " staged attachment" +
-                            (files.size() == 1 ? "" : "s") +
-                            " discarded: nothing was submitted\n";
+      const std::string dropped =
+          Note(Tone::kNeutral, std::to_string(files.size()) +
+                                   " staged attachment" +
+                                   (files.size() == 1 ? "" : "s") +
+                                   " discarded: nothing was submitted");
       if (raw_) {
-        output_.Write("\r" + TerminalSafe(dropped));
+        output_.Write("\r" + dropped);
       } else {
-        fputs(TerminalSafe(dropped).c_str(), stdout);
+        fputs(dropped.c_str(), stdout);
       }
     }
     stop_.Wake();
@@ -953,7 +960,7 @@ int TerminalMain(Options options) {
            ++attempt) {
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
       }
-      printf("· restarted\n");
+      fputs(Note(Tone::kNeutral, "restarted").c_str(), stdout);
     } else if (terminal.Next() == "/reset") {
       // The folder has one coordinator; its reset keeps the same file.
       if (!coordinator) path.clear();

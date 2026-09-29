@@ -725,8 +725,8 @@ class WorkerChannel final : public ApplicationChannel {
           // The decision log: who decided a routed decision, and why.
           const std::string reason = JsonValue(parsed.raw, "reason", "");
           if (JsonValue(parsed.raw, "origin", "") == kRouteCoordinator) {
-            decided_ = (ask ? "· coordinator answered"
-                            : "· coordinator decided " + parsed.text) +
+            decided_ = (ask ? "coordinator answered"
+                            : "coordinator decided " + parsed.text) +
                        (reason.empty() ? "" : ": " + reason);
           }
           wake_.Wake();

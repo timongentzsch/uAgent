@@ -128,7 +128,7 @@ def test_reasoning_modes_render_consistently(root, home, *, binary):
             root,
             env,
             [
-                (b"/verbose\n", b"verbose ON"),
+                (b"/verbose\n", b"verbose on"),
                 # Quit once the turn has settled, however slow the build.
                 (b"go\n", b"Final answer", b"Ready", None),
                 b"/q\n",
@@ -473,7 +473,7 @@ def test_tool_output_drops_its_own_colours(root, home, *, binary):
             code, output = run_pty(
                 root,
                 base_env(home, server.url),
-                [(b"/verbose\n", b"verbose ON")] * verbose
+                [(b"/verbose\n", b"verbose on")] * verbose
                 + [(b"go\n", b"colour-ok", b"Ready", None), b"/q\n"],
                 args=("--yolo",),
                 binary=binary,

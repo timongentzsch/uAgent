@@ -3,7 +3,7 @@
 #ifndef UAGENT_INCLUDE_CORE_STYLE_H_
 #define UAGENT_INCLUDE_CORE_STYLE_H_
 // Presentation helpers shared by the terminal renderers: styling that survives
-// a line break.
+// a line break, and the one shape of a notice row.
 
 #include <string>
 #include <string_view>
@@ -28,6 +28,12 @@ inline std::string StyledBlock(std::string_view text, const char* open) {
 }
 
 // Three or more backticks, or tildes, and nothing else.
+enum class Tone { kNeutral, kWarn, kError };
+
+// A notice row: "· text", dim, yellow or red, ending in a newline. The text is
+// a lowercase fragment with no trailing period; glyphs fall back to ASCII.
+std::string Note(Tone tone, std::string_view text);
+
 inline bool IsMarkdownFence(std::string_view marker) {
   return marker.size() >= 3 && (marker[0] == '`' || marker[0] == '~') &&
          marker.find_first_not_of(marker[0]) == std::string_view::npos;

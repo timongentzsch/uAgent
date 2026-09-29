@@ -1,13 +1,13 @@
 // Copyright 2026 Timon Gentzsch
 
 #include <cstdint>
-#include <fstream>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "include/core/env.h"
+#include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/limits.h"
 #include "include/core/strings.h"
@@ -18,7 +18,6 @@ namespace uagent {
 
 void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
                        const std::filesystem::path& workspace) {
-  auto schema = [](const char* s) { return json::parse(s); };
   // The schema below is a raw JSON literal, so its yield bounds cannot be
   // spelled as constants; this assert fails the build if one moves.
   static_assert(kMaxYieldMs == 30000 && kDefaultYieldMs == 10000,
@@ -29,7 +28,7 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
                "Execute a command in cwd; omit cd. Use the project's Python "
                "runner (uv run/pytest). tty=true enables interactive stdin; "
                "detach persists a terminal beyond this session.",
-               schema(R"json({"type":"object","properties":{
+               json::parse(R"json({"type":"object","properties":{
                     "command":{"type":"string"},
                     "shell":{"type":"string","description":"default bash"},
                     "tty":{"type":"boolean","description":"retain an interactive PTY"},
@@ -130,7 +129,7 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
             "under isolated uv, a .sh under sh. Write and fix it with the file "
             "tools, then rerun it with new args instead of resending a long "
             "pipeline through run.",
-            schema(
+            json::parse(
                 R"json({"type":"object","additionalProperties":false,"properties":{
                     "path":{"type":"string","minLength":1,
                       "description":"the script's path relative to .uagent/scratch"},
@@ -166,10 +165,8 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
       const auto script =
           ScratchScriptPath(workspace, JsonValue(a, "path", ""), error);
       if (!script) return error;
-      std::ifstream input(*script);
-      std::string source((std::istreambuf_iterator<char>(input)),
-                         std::istreambuf_iterator<char>());
-      return Utf8Trunc(source, kPreviewChars);
+      return Utf8Trunc(ReadFile(*script, kPreviewChars + 1).value_or(""),
+                       kPreviewChars);
     };
     python.stable_argument = "path";
     python.timeout_s = 0;  // bounded by the turn; no model-driven polling

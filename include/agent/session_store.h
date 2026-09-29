@@ -80,6 +80,9 @@ std::string CoordinatorPath(const std::string& cwd);
 json SessionHeader(const std::string& path);
 
 // A read-only catalogue: bounded headers, one known directory level, no links.
+// The writer lease file that guards a session file.
+std::string SessionLockPath(const std::string& path);
+
 std::vector<SessionInfo> ListSessions(
     SessionScope scope = SessionScope::kWorkspace);
 

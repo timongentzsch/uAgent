@@ -90,10 +90,7 @@ inline bool ParseInstructionTarget(const std::string& audience,
 // An instruction file's text, bounded like the loader reads it; empty when
 // it does not exist.
 inline std::string ReadInstructionFile(const std::filesystem::path& path) {
-  std::ifstream input(path, std::ios::binary);
-  std::string text;
-  if (input) ReadBounded(input, kProjectDocBytes, text);
-  return text;
+  return ReadFile(path.string(), kProjectDocBytes).value_or("");
 }
 
 // Codex-style startup discovery: one instruction file per directory, ordered

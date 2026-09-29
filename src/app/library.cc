@@ -207,11 +207,9 @@ json SkillControl(const json& request, const std::filesystem::path& cwd) {
 }
 json LibraryControl(const json& request,
                     const std::filesystem::path& workspace) {
-  std::error_code ec;
-  const auto cwd = std::filesystem::canonical(workspace, ec);
-  if (ec || !std::filesystem::is_directory(cwd, ec)) {
-    return {{"error", "choose an accessible project directory"}};
-  }
+  const auto resolved = CanonicalDirectory(workspace);
+  if (!resolved) return {{"error", "choose an accessible project directory"}};
+  const std::filesystem::path& cwd = *resolved;
   if (JsonValue(request, "kind", "") == "memory") {
     return MemoryControl(request, cwd);
   }

@@ -22,32 +22,16 @@
 
 #include "include/app/session.h"
 #include "include/core/child_env.h"
+#include "include/core/fd.h"
 #include "include/core/fs.h"
 #include "include/core/lease.h"
 #include "include/core/platform.h"
 
 namespace uagent::session {
 namespace {
+// The caller holds the runtime lease for a listening path.
 Fd Socket(const std::string& path, bool listen) {
-  Fd socket;
-  if (!listen) {
-    socket = ConnectUnix(path);
-  } else {
-    sockaddr_un address{};
-    address.sun_family = AF_UNIX;
-    if (path.size() >= sizeof(address.sun_path)) return {};
-    std::copy(path.begin(), path.end(), address.sun_path);
-    socket.Reset(::socket(AF_UNIX, SOCK_STREAM, 0));
-    if (!socket) return {};
-    fcntl(socket.Get(), F_SETFD, FD_CLOEXEC);
-    unlink(path.c_str());  // caller holds the runtime lease
-    if (bind(socket.Get(), reinterpret_cast<sockaddr*>(&address),
-             sizeof(address)) ||
-        chmod(path.c_str(), kPrivateFileMode) ||
-        ::listen(socket.Get(), kSocketBacklog)) {
-      return {};
-    }
-  }
+  Fd socket = listen ? ListenUnix(path, kSocketBacklog) : ConnectUnix(path);
   if (socket) fcntl(socket.Get(), F_SETFL, O_NONBLOCK);
   return socket;
 }

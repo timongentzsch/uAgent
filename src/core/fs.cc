@@ -136,12 +136,34 @@ int ScopedTempFile::ReleaseFd() {
 // longer source is detectable - cut back to a UTF-8 boundary. Returns
 // whether the source had more to give.
 bool ReadBounded(std::istream& input, size_t cap, std::string& out) {
-  out.assign(cap + 1, '\0');
-  input.read(out.data(), static_cast<std::streamsize>(out.size()));
-  size_t read = static_cast<size_t>(input.gcount());
-  out.resize(std::min(read, cap));
+  // Grows with what is actually there, not with the cap.
+  out.clear();
+  char chunk[64 * 1024];
+  while (out.size() <= cap && input.read(chunk, sizeof chunk).gcount() > 0) {
+    out.append(chunk, std::min(static_cast<size_t>(input.gcount()),
+                               cap + 1 - out.size()));
+  }
+  const bool more = out.size() > cap;
   out = Utf8Prefix(std::move(out), cap);
-  return read > cap;
+  return more;
+}
+
+std::optional<std::filesystem::path> CanonicalDirectory(
+    const std::filesystem::path& path) {
+  std::error_code ec;
+  auto resolved = std::filesystem::canonical(path, ec);
+  if (ec || !std::filesystem::is_directory(resolved, ec) || ec) {
+    return std::nullopt;
+  }
+  return resolved;
+}
+
+std::optional<std::string> ReadFile(const std::string& path, size_t cap) {
+  std::ifstream input(path, std::ios::binary);
+  if (!input) return std::nullopt;
+  std::string out;
+  ReadBounded(input, cap, out);
+  return out;
 }
 
 bool ReadRegularFile(const std::string& path, size_t cap, std::string& out,

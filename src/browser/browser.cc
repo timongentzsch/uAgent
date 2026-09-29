@@ -26,17 +26,13 @@
 #include <vector>
 
 #include "include/browser/runtime.h"
+#include "include/core/fd.h"
 #include "include/core/limits.h"
 #include "include/core/platform.h"
 
 namespace uagent::browser {
 namespace {
 constexpr size_t kMaxPacket = size_t{12} * 1024 * 1024;
-
-bool CloseOnExec(int fd) {
-  int flags = fcntl(fd, F_GETFD);
-  return flags >= 0 && fcntl(fd, F_SETFD, flags | FD_CLOEXEC) == 0;
-}
 
 bool Transfer(int fd, char* bytes, size_t count, bool write, int timeout_ms) {
   while (count) {
@@ -212,18 +208,8 @@ int ServiceMain(int owner_fd) {
       !EnsureDataDirectory(DataDirectory()) || !CloseOnExec(owner_fd)) {
     return 2;
   }
-  Fd listener(socket(AF_UNIX, SOCK_STREAM, 0));
-  if (!listener || !CloseOnExec(listener.Get())) return 2;
-  unlink(path.c_str());
-  sockaddr_un address{};
-  address.sun_family = AF_UNIX;
-  memcpy(address.sun_path, path.c_str(), path.size() + 1);
-  mode_t old = umask(0077);
-  int bound = bind(listener.Get(), reinterpret_cast<sockaddr*>(&address),
-                   sizeof(address));
-  umask(old);
-  if (bound != 0 || listen(listener.Get(), 16) != 0) return 2;
-  chmod(path.c_str(), 0600);
+  Fd listener = ListenUnix(path, 16);
+  if (!listener) return 2;
   auto runtime = std::make_shared<Runtime>();
   auto mutex = std::make_shared<std::mutex>();
   auto active = std::make_shared<std::atomic<int>>(0);

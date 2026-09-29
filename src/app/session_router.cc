@@ -34,12 +34,12 @@ SessionCommandResult SessionHost::ExecuteCommand(
   const SessionCommandKind kind =
       ParseSessionCommandKind(JsonValue(command, "kind", ""));
   if (kind == SessionCommandKind::kCreate) {
-    std::error_code ec;
-    auto cwd = std::filesystem::canonical(JsonValue(command, "cwd", ""), ec);
-    if (ec || !std::filesystem::is_directory(cwd, ec)) {
+    const auto resolved = CanonicalDirectory(JsonValue(command, "cwd", ""));
+    if (!resolved) {
       result.error = "choose an accessible directory on the host";
       return result;
     }
+    const std::filesystem::path& cwd = *resolved;
     // A folder has one coordinator: asking for it again returns it.
     const bool coordinator = JsonValue(command, "coordinator", false);
     auto path = coordinator ? CoordinatorPath(cwd.string())

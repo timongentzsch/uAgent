@@ -151,7 +151,7 @@ std::vector<Skill> DiscoverSkills(const std::filesystem::path& cwd) {
       // collide with another skill or carry a path separator.
       std::string name = SafeFileComponent(dir.filename().string());
       description = Utf8Trunc(std::move(description), kSkillDescriptionBytes);
-      argument_hint = Utf8Trunc(OneLine(argument_hint), 128);
+      argument_hint = OneLine(argument_hint, 128);
       Skill skill{name,
                   description,
                   dir.string(),

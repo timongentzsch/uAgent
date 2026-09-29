@@ -14,8 +14,7 @@
 namespace uagent {
 
 void RegisterMemoryTool(std::vector<Tool>& tools) {
-  auto schema = [](const char* s) { return json::parse(s); };
-  json memory_schema = schema(R"json({"type":"object","properties":{
+  json memory_schema = json::parse(R"json({"type":"object","properties":{
                     "action":{"type":"string","enum":["get","set","forget","list","search"]},
                     "key":{"type":"string",
                       "description":"exact project/<name> or global/<name> key; codex/<name> and claude/<name> are read-only; search text for search; omit for list"},

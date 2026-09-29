@@ -6,7 +6,6 @@
 #include <charconv>
 #include <filesystem>
 #include <fstream>
-#include <functional>
 #include <iterator>
 #include <map>
 #include <mutex>
@@ -28,6 +27,29 @@
 
 namespace uagent {
 namespace {
+// A retained HTTP body in the private artifacts directory, as display facts
+// name it; anything else a fact holds is left alone.
+bool ArtifactPath(const std::string& text,
+                  const std::filesystem::path& artifacts) {
+  if (text.size() >= kRetainedArtifactPathChars || !text.starts_with("/")) {
+    return false;
+  }
+  const std::filesystem::path file(text);
+  const std::string name = file.filename().string();
+  return (name.starts_with("http-") || name.starts_with("exchange-")) &&
+         CanonicalAccessPath(file.parent_path()) == artifacts;
+}
+
+// Visits every string leaf of a JSON value, depth first.
+template <typename Json, typename Visit>
+void ForEachString(Json& value, const Visit& visit) {
+  if (value.is_object() || value.is_array()) {
+    for (auto& child : value) ForEachString(child, visit);
+  } else if (value.is_string()) {
+    visit(value);
+  }
+}
+
 
 SessionStoreStatus Error(SessionStoreError code, std::string message) {
   return {code, std::move(message)};
@@ -315,6 +337,10 @@ std::string CoordinatorPath(const std::string& cwd) {
       .string();
 }
 
+std::string SessionLockPath(const std::string& path) {
+  return CanonicalAccessPath(path).string() + ".lock";
+}
+
 std::vector<SessionInfo> ListSessions(SessionScope scope) {
   // One cache per process: a repeated listing (a coordinator's board every
   // step) re-reads only the headers that changed.
@@ -419,7 +445,7 @@ json SessionStore::Fork(const std::string& source, const std::string& title,
   FileLease writer;
   std::string error;
   if (!source_owned &&
-      !writer.Acquire(CanonicalAccessPath(source).string() + ".lock", error)) {
+      !writer.Acquire(SessionLockPath(source), error)) {
     return {{"error", error}};
   }
   auto loaded = Inspect(source);
@@ -500,74 +526,66 @@ json SessionStore::Fork(const std::string& source, const std::string& title,
     }
   }
   auto artifacts = CanonicalAccessPath(UagentDir(kArtifactsDir));
-  std::function<void(json&)> rewrite = [&](json& value) {
+  const auto rewrite = [&](json& value) {
     if (ec) return;
-    if (value.is_object() || value.is_array()) {
-      for (json& child : value) rewrite(child);
-    } else if (value.is_string()) {
-      std::string text = value.get<std::string>();
-      const auto file = text.size() < 4096 && text.starts_with("/")
-                            ? std::filesystem::path(text)
-                            : std::filesystem::path();
-      if ((file.filename().string().starts_with("http-") ||
-           file.filename().string().starts_with("exchange-")) &&
-          CanonicalAccessPath(file.parent_path()) == artifacts) {
-        auto [it, added] = copies.try_emplace(text);
-        if (added) {
-          ScopedTempFile copy(
-              (artifacts / (file.filename().string().starts_with("http-")
-                                ? "http-XXXXXX"
-                                : "exchange-XXXXXX"))
-                  .string());
-          if (!copy) {
-            ec = std::make_error_code(std::errc::io_error);
-            return;
-          }
-          Fd input(open(text.c_str(),
-                        O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK));
-          struct stat info{};
-          if (!input || fstat(input.Get(), &info) != 0 ||
-              !S_ISREG(info.st_mode) || info.st_uid != getuid() ||
-              info.st_size < 0 ||
-              static_cast<uint64_t>(info.st_size) > kSessionReadBytes) {
-            it->second.clear();
-          } else {
-            char buffer[16384];
-            size_t copied = 0;
-            for (;;) {
-              ssize_t count = read(input.Get(), buffer, sizeof(buffer));
-              if (count < 0 && errno == EINTR) continue;
-              if (count == 0) break;
-              if (count < 0 ||
-                  static_cast<size_t>(count) > kSessionReadBytes - copied ||
-                  !WriteFully(
-                      copy.Get(),
-                      std::string_view(buffer, static_cast<size_t>(count)))) {
-                ec = std::make_error_code(std::errc::io_error);
-                break;
-              }
-              copied += static_cast<size_t>(count);
+    std::string text = value.get<std::string>();
+    const std::filesystem::path file(text);
+    if (ArtifactPath(text, artifacts)) {
+      auto [it, added] = copies.try_emplace(text);
+      if (added) {
+        ScopedTempFile copy(
+            (artifacts / (file.filename().string().starts_with("http-")
+                              ? "http-XXXXXX"
+                              : "exchange-XXXXXX"))
+                .string());
+        if (!copy) {
+          ec = std::make_error_code(std::errc::io_error);
+          return;
+        }
+        Fd input(open(text.c_str(),
+                      O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK));
+        struct stat info{};
+        if (!input || fstat(input.Get(), &info) != 0 ||
+            !S_ISREG(info.st_mode) || info.st_uid != getuid() ||
+            info.st_size < 0 ||
+            static_cast<uint64_t>(info.st_size) > kSessionReadBytes) {
+          it->second.clear();
+        } else {
+          char buffer[16384];
+          size_t copied = 0;
+          for (;;) {
+            ssize_t count = read(input.Get(), buffer, sizeof(buffer));
+            if (count < 0 && errno == EINTR) continue;
+            if (count == 0) break;
+            if (count < 0 ||
+                static_cast<size_t>(count) > kSessionReadBytes - copied ||
+                !WriteFully(
+                    copy.Get(),
+                    std::string_view(buffer, static_cast<size_t>(count)))) {
+              ec = std::make_error_code(std::errc::io_error);
+              break;
             }
-            // Kept even when partial: the previous hand-rolled cleanup
-            // removed only rejected inputs, not short copies.
-            it->second = copy.Release();
+            copied += static_cast<size_t>(count);
           }
+          // Kept even when partial: the previous hand-rolled cleanup
+          // removed only rejected inputs, not short copies.
+          it->second = copy.Release();
         }
-        value = it->second;
-      } else {
-        const std::string from = source + ".assets/", to = path + ".assets/";
-        size_t pos = 0;
-        while ((pos = text.find(from, pos)) != std::string::npos) {
-          text.replace(pos, from.size(), to);
-          pos += to.size();
-        }
-        value = std::move(text);
       }
+      value = it->second;
+    } else {
+      const std::string from = source + ".assets/", to = path + ".assets/";
+      size_t pos = 0;
+      while ((pos = text.find(from, pos)) != std::string::npos) {
+        text.replace(pos, from.size(), to);
+        pos += to.size();
+      }
+      value = std::move(text);
     }
   };
-  rewrite(record.state.messages);
-  rewrite(record.state.archive);
-  rewrite(record.state.display);
+  ForEachString(record.state.messages, rewrite);
+  ForEachString(record.state.archive, rewrite);
+  ForEachString(record.state.display, rewrite);
   record.state.display["facts"]["fork-origin"] = {
       {"source", HashHex(source)},
       {"title", record.metadata.title},
@@ -675,7 +693,7 @@ std::string SessionStore::ShareMarkdown(const SessionRecord& record) {
       std::string text = ShareText(message);
       if (text.empty()) continue;
       if (text.size() > kSharedToolResultChars) {
-        text = text.substr(0, kSharedToolResultChars) + "\n...[truncated]";
+        text = Utf8Prefix(text, kSharedToolResultChars) + "\n...[truncated]";
       }
       const std::string name = JsonValue(message, "name", "");
       out += "\n### tool" + (name.empty() ? "" : " `" + name + "`") +
@@ -708,7 +726,7 @@ SessionStoreStatus SessionStore::Rename(const std::string& path,
   }
   FileLease writer;
   std::string error;
-  if (!writer.Acquire(CanonicalAccessPath(path).string() + ".lock", error)) {
+  if (!writer.Acquire(SessionLockPath(path), error)) {
     return Error(SessionStoreError::kIo, std::move(error));
   }
   auto loaded = Inspect(path);
@@ -722,7 +740,7 @@ SessionStoreStatus SessionStore::Remove(const std::string& path,
                                         const std::string& draft_path) {
   FileLease writer;
   std::string error;
-  if (!writer.Acquire(CanonicalAccessPath(path).string() + ".lock", error)) {
+  if (!writer.Acquire(SessionLockPath(path), error)) {
     return Error(SessionStoreError::kIo, std::move(error));
   }
   auto loaded = Inspect(path);
@@ -738,25 +756,14 @@ SessionStoreStatus SessionStore::Remove(const std::string& path,
     const json facts =
         JsonValue(loaded.record->state.display, "facts", json::object());
     const auto artifacts = CanonicalAccessPath(UagentDir(kArtifactsDir));
-    std::function<void(const json&)> remove_artifacts = [&](const json& value) {
-      if (value.is_object() || value.is_array()) {
-        for (const json& child : value) remove_artifacts(child);
-      } else if (value.is_string()) {
-        const auto& text = value.get_ref<const std::string&>();
-        if (text.size() >= kRetainedArtifactPathChars ||
-            !text.starts_with("/")) {
-          return;
-        }
-        const std::filesystem::path body(text);
-        if ((body.filename().string().starts_with("exchange-") ||
-             body.filename().string().starts_with("http-")) &&
-            CanonicalAccessPath(body.parent_path()) == artifacts) {
-          std::error_code ignored;
-          std::filesystem::remove(artifacts / body.filename(), ignored);
-        }
+    ForEachString(facts, [&](const json& value) {
+      const auto& text = value.get_ref<const std::string&>();
+      if (ArtifactPath(text, artifacts)) {
+        std::error_code ignored;
+        std::filesystem::remove(
+            artifacts / std::filesystem::path(text).filename(), ignored);
       }
-    };
-    remove_artifacts(facts);
+    });
   }
   return ec ? Error(SessionStoreError::kIo, ec.message())
             : SessionStoreStatus{};

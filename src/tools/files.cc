@@ -547,10 +547,10 @@ ToolResult ToolEditFile(const std::string& path,
                            std::to_string(bytes) + " bytes; limit " +
                            std::to_string(kEditFileBytes) + ")");
   }
-  std::string data((std::istreambuf_iterator<char>(f)),
-                   std::istreambuf_iterator<char>());
+  std::string data;
+  const bool grew = ReadBounded(f, kEditFileBytes, data);
   f.close();
-  if (data.size() > kEditFileBytes) {
+  if (grew) {
     return ToolFailure(
         ToolErrorCode::kLimitExceeded,
         "error: " + path + " grew beyond the edit limit while reading");
@@ -670,10 +670,7 @@ std::optional<std::string> DiffableContents(const std::string& path) {
     return std::nullopt;
   }
   if (!LikelyTextFile(path)) return std::nullopt;
-  std::ifstream input(path, std::ios::binary);
-  if (!input) return std::nullopt;
-  return std::string(std::istreambuf_iterator<char>(input),
-                     std::istreambuf_iterator<char>());
+  return ReadFile(path, kEditFileBytes);
 }
 
 ToolResult ToolDeleteFileWithDisplay(const std::string& path) {

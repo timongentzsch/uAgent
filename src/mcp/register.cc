@@ -7,8 +7,6 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
-#include <fstream>
-#include <iterator>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -294,10 +292,7 @@ bool WriteDisabled(const McpServer& server, bool disabled, std::string& error) {
 
 // The end of the server's own stderr usually says why it stopped.
 std::string LogTail(const std::string& name) {
-  std::ifstream file(McpLogPath(name), std::ios::binary | std::ios::ate);
-  if (!file) return {};
-  file.seekg(std::max<std::streamoff>(0, file.tellg() - std::streamoff{1000}));
-  return {std::istreambuf_iterator<char>(file), {}};
+  return ReadFileTail(McpLogPath(name), 1000);
 }
 
 }  // namespace

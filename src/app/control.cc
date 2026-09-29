@@ -83,15 +83,11 @@ int ControlMain(const std::string& argument) {
   } else if (JsonValue(request, "kind", "") == "calendar") {
     result = ScheduleCalendar(request);
   } else {
+    const auto cwd =
+        CanonicalDirectory(JsonValue(request, "cwd", CanonicalCwd()));
     std::error_code error;
-    auto cwd = std::filesystem::canonical(
-        JsonValue(request, "cwd", CanonicalCwd()), error);
-    if (!error && std::filesystem::is_directory(cwd, error)) {
-      std::filesystem::current_path(cwd, error);
-    } else if (!error) {
-      error = std::make_error_code(std::errc::not_a_directory);
-    }
-    if (error) {
+    if (cwd) std::filesystem::current_path(*cwd, error);
+    if (!cwd || error) {
       result = {{"error", "project directory is unavailable"}};
     } else {
       auto manager = ConfigManager::Capture(ProjectConfigTrusted(), {});

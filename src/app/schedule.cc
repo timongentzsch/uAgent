@@ -320,11 +320,8 @@ json ScheduleControl(const json& request) {
                  "provide a name, instructions, execution environment and "
                  "permissions"}};
       }
-      std::error_code ec;
-      auto cwd = std::filesystem::canonical(JsonValue(task, "cwd", ""), ec);
-      if (ec || !std::filesystem::is_directory(cwd, ec)) {
-        return {{"error", "project is unavailable"}};
-      }
+      const auto cwd = CanonicalDirectory(JsonValue(task, "cwd", ""));
+      if (!cwd) return {{"error", "project is unavailable"}};
       if (found == store["tasks"].end() &&
           (!id.empty() || store["tasks"].size() >= kTasks)) {
         return {{"error", "task not found or task limit reached"}};
@@ -351,7 +348,7 @@ json ScheduleControl(const json& request) {
                     {"revision", HashHex(MakeSessionId())},
                     {"name", name},
                     {"prompt", prompt},
-                    {"cwd", cwd.string()},
+                    {"cwd", cwd->string()},
                     {"environment", environment},
                     {"permissions", permissions},
                     {"model", JsonValue(task, "model", "")},

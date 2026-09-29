@@ -17,8 +17,6 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
-#include <fstream>
-#include <iterator>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -726,9 +724,7 @@ ToolResult ToolRunScratch(ProcessSupervisor& supervisor,
   if (shell_script) {
     command = "sh " + ShellQuote(script->string()) + argv;
   } else {
-    std::ifstream input(*script);
-    const std::string source((std::istreambuf_iterator<char>(input)),
-                             std::istreambuf_iterator<char>());
+    const std::string source = ReadFile(*script, kEditFileBytes).value_or("");
     const bool uv = ExecutableOnPath("uv");
     if (!uv && PythonScriptHasDependencies(source)) {
       return ToolFailure(

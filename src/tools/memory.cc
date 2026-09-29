@@ -140,7 +140,7 @@ std::optional<std::filesystem::path> CurrentWorkspace(std::string& error) {
 }
 
 std::string MemoryPreview(const std::string& content) {
-  return Utf8Trunc(OneLine(RedactMemorySecrets(content)), 160);
+  return OneLine(RedactMemorySecrets(content), 160);
 }
 
 ToolResult ListMemoryKeys(const std::filesystem::path& cwd) {
@@ -181,7 +181,7 @@ ToolResult SearchMemoryText(const std::string& query,
         continue;
       }
       output += "- " + memory.key + ": " +
-                Utf8Trunc(OneLine(RedactMemorySecrets(line)), kMaxLineBytes) +
+                OneLine(RedactMemorySecrets(line), kMaxLineBytes) +
                 "\n";
       emitted = true;
       if (capped()) return ToolSuccess(std::move(output));

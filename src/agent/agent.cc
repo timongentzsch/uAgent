@@ -361,7 +361,7 @@ json Agent::PreviewContext() {
 
 bool Agent::Save(const std::string& path, std::string& error) const {
   CreatePrivateDirectories(std::filesystem::path(path).parent_path());
-  if (!writer_.Acquire(CanonicalAccessPath(path).string() + ".lock", error,
+  if (!writer_.Acquire(SessionLockPath(path), error,
                        true)) {
     return false;
   }
@@ -404,7 +404,7 @@ bool Agent::Save(const std::string& path, std::string& error) const {
 
 bool Agent::Load(const std::string& path, const std::string& expected_cwd,
                  std::string& error) {
-  const auto lock_path = CanonicalAccessPath(path).string() + ".lock";
+  const auto lock_path = SessionLockPath(path);
   FileLease next;
   // Claim before reading; keep the current conversation owned on failure.
   if (!writer_.Owns(lock_path) && !next.Acquire(lock_path, error, true)) {

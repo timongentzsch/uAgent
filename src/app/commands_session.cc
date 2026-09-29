@@ -1,8 +1,10 @@
 // Copyright 2026 Timon Gentzsch
 
+#include <algorithm>
 #include <chrono>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -26,6 +28,33 @@
 #include "src/app/commands_internal.h"
 
 namespace uagent {
+namespace {
+
+// A dim label and its value, the value in one column for every such row.
+std::string KeyValueRow(std::string_view label, std::string_view value,
+                        size_t indent = kRowIndent) {
+  constexpr size_t kLabelColumns = 16;
+  std::string row(indent, ' ');
+  row += DIM();
+  row += label;
+  row.append(kLabelColumns - std::min(label.size(), kLabelColumns), ' ');
+  row += RST();
+  row += ' ';
+  row += value;
+  return row + '\n';
+}
+
+// The mark before a server or a tool: ● green when ready, yellow while
+// starting, red when failed, ○ dim when disabled.
+std::string StatusMark(std::string_view status) {
+  const char* color = status == "ready"      ? GREEN()
+                      : status == "failed"   ? RED()
+                      : status == "starting" ? YEL()
+                                             : DIM();
+  return color + AsciiGlyphs(status == "disabled" ? "○" : "●") + RST();
+}
+
+}  // namespace
 
 void SaveSessionSettings(AppSession& session) {
   session.ActiveAgent().SessionSettings(

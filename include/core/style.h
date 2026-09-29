@@ -36,14 +36,6 @@ std::string JoinDot(std::initializer_list<std::string_view> parts);
 inline constexpr size_t kRowIndent = 2;
 inline constexpr size_t kDetailIndent = 4;
 
-// A dim label and its value, the value in one column for every such row.
-std::string KeyValueRow(std::string_view label, std::string_view value,
-                        size_t indent = kRowIndent);
-
-// The mark before a server or a tool: ● green when ready, yellow while
-// starting, red when failed, ○ dim when disabled.
-std::string StatusMark(std::string_view status);
-
 enum class Tone { kNeutral, kWarn, kError };
 
 // A notice row: "· text", dim, yellow or red, ending in a newline. The text is

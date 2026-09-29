@@ -105,7 +105,7 @@ Every setting below is read from the running binary's registry. `takes effect` i
 | --- | --- | --- | --- | --- |
 | `UAGENT_COORDINATOR_MODEL` | string | empty | restart-required | model route of each folder's coordinator; /model inside it overrides this for that folder |
 | `UAGENT_COORDINATOR_MAX_THREADS` | integer | `5` | restart-required | threads one coordinator may run at once |
-| `UAGENT_COORDINATOR_DAILY_SPEND_USD` | number | `20.0` | restart-required | reported cost a coordinator's threads may spend per day; 0 disables it |
+| `UAGENT_COORDINATOR_DAILY_SPEND_USD` | number | `20.0` | restart-required | reported cost a coordinator and its threads may spend per day; at it, thread events wait. 0 disables it |
 | `UAGENT_COORDINATOR_ENVIRONMENT` | string | `worktree` | restart-required | where threads run: a fresh git worktree, or the folder itself |
 
 ## search

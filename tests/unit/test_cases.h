@@ -88,6 +88,8 @@ namespace uagent {
   X(TestActivitySessions)                        \
   X(TestActivityDescriptorAndInputPolicy)        \
   X(TestActivityWaitAndDelivery)                 \
+  X(TestThreadWorktreesGoOnlyWhenNothingIsLost)  \
+  X(TestCoordinatorCountsItsOwnSpend)            \
   X(TestChildSessionsStayOutOfTheCatalogue)      \
   X(TestSessionMail)                             \
   X(TestSessionLinks)                            \

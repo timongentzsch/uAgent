@@ -365,8 +365,8 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                   "threads one coordinator may run at once"),
     registry::Dbl("UAGENT_COORDINATOR_DAILY_SPEND_USD", {}, 20.0,
                   ReloadPolicy::kRestartRequired, "coordination",
-                  "reported cost a coordinator's threads may spend per day; "
-                  "0 disables it"),
+                  "reported cost a coordinator and its threads may spend per "
+                  "day; at it, thread events wait. 0 disables it"),
     registry::Choice(
         registry::Str("UAGENT_COORDINATOR_ENVIRONMENT", {}, "worktree",
                       ReloadPolicy::kRestartRequired, Sensitivity::kPublic,

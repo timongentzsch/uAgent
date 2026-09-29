@@ -358,6 +358,8 @@ export interface State {
   system_prompt?: string;
   // The agent's own conversation-scoped addition (adapt_system).
   self_directive?: SelfDirective;
+  // Why a coordinator holds its threads' events (today's spend limit).
+  paused?: string;
   statistics?: Statistics;
   activity?: string;
   activities?: Activity[];

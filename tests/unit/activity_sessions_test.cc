@@ -20,7 +20,10 @@
 
 #include "include/agent/child_agent.h"
 #include "include/agent/jobs.h"
+#include "include/app/coordinator.h"
+#include "include/app/launch.h"
 #include "include/app/session_host.h"
+#include "include/core/capture.h"
 #include "include/core/config.h"
 #include "include/core/file_watch.h"
 #include "include/core/fs.h"
@@ -1125,6 +1128,44 @@ void TestDetachedActivityOwnership() {
 
 // A delegated child is an ordinary session file whose header names its role.
 // It must never surface as a session of its own, and its parent must find it.
+void TestThreadWorktreesGoOnlyWhenNothingIsLost() {
+  TestWorkspace workspace("thread-worktree");
+  const std::string project = CanonicalCwd();
+  auto git = [](const std::string& dir, std::vector<std::string> args) {
+    args.insert(args.begin(), {"git", "-C", dir, "-c", "user.email=t@t", "-c",
+                               "user.name=t"});
+    return CaptureProcess(args, 30).Ok();
+  };
+  REQUIRE(git(project, {"init", "-q"}));
+  REQUIRE(git(project, {"commit", "-q", "--allow-empty", "-m", "base"}));
+  const std::string tree = PlanLaunch(project, true, "thread-", "t1").cwd;
+  CHECK(LaunchWorktree(tree) && !LaunchWorktree(project));
+  REQUIRE(CreateWorktree(project, tree).empty());
+  { std::ofstream(tree + "/work.txt") << "x"; }
+  CHECK(RemoveWorktree(project, tree).find("uncommitted") !=
+        std::string::npos);
+  REQUIRE(git(tree, {"add", "work.txt"}));
+  REQUIRE(git(tree, {"commit", "-q", "-m", "work"}));
+  CHECK(RemoveWorktree(project, tree).find("no branch") != std::string::npos);
+  REQUIRE(git(tree, {"branch", "keep"}));
+  CHECK(RemoveWorktree(project, tree).empty());
+  CHECK(!std::filesystem::exists(tree));
+}
+
+void TestCoordinatorCountsItsOwnSpend() {
+  TestWorkspace workspace("coordinator-spend");
+  ScopedEnv limit("UAGENT_COORDINATOR_DAILY_SPEND_USD", "1");
+  const std::string folder = CanonicalCwd();
+  // The day's first request sets the baseline: yesterday's spend is not
+  // today's.
+  RecordCoordinatorCost(folder, 5.0);
+  CHECK(CoordinatorPause(folder).empty());
+  RecordCoordinatorCost(folder, 5.5);
+  CHECK(CoordinatorPause(folder).empty());
+  RecordCoordinatorCost(folder, 6.0);
+  CHECK(CoordinatorPause(folder).find("spend limit") != std::string::npos);
+}
+
 void TestChildSessionsStayOutOfTheCatalogue() {
   namespace fs = std::filesystem;
   TestWorkspace workspace("child-sessions");

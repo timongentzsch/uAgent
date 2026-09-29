@@ -35,8 +35,9 @@ class SessionClient:
         self.socket.sendall((json.dumps(command) + "\n").encode())
         return command
 
-    def until(self, predicate):
-        deadline = time.monotonic() + budget(15)
+    def until(self, predicate, seconds=15):
+        self.socket.settimeout(budget(seconds))
+        deadline = time.monotonic() + budget(seconds)
         while time.monotonic() < deadline:
             line = self.stream.readline()
             assert line, self.frames[-5:]

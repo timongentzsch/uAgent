@@ -33,6 +33,32 @@ std::string CreateWorktree(const std::string& project, const std::string& cwd) {
          Utf8Prefix(created.output + created.error, 1024);
 }
 
+bool LaunchWorktree(const std::string& cwd) {
+  return cwd.starts_with(UagentDir("worktrees") + "/");
+}
+
+std::string RemoveWorktree(const std::string& project, const std::string& cwd) {
+  if (!PathExists(cwd)) return "";
+  auto changes = HostGit(cwd, {"status", "--porcelain"});
+  auto loose =
+      HostGit(cwd, {"rev-list", "HEAD", "--not", "--branches", "--tags"});
+  if (!changes.Ok() || !loose.Ok()) {
+    return "cannot inspect " + cwd + ": " +
+           Utf8Prefix(changes.error + loose.error, 512);
+  }
+  if (!Trim(changes.output).empty()) {
+    return "uncommitted changes in " + cwd + "; merge or discard them first";
+  }
+  if (!Trim(loose.output).empty()) {
+    return "commits in " + cwd + " are on no branch; merge or branch them "
+           "first";
+  }
+  auto removed = HostGit(project, {"worktree", "remove", cwd});
+  return removed.Ok() ? ""
+                      : "Cannot remove worktree: " +
+                            Utf8Prefix(removed.output + removed.error, 512);
+}
+
 std::string SendWhenReady(const session::Connection& connection,
                           const std::string& path, json command, bool idle) {
   constexpr int64_t kReadySeconds = 30;

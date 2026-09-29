@@ -24,6 +24,14 @@ std::string CoordinatorBoard(const std::string& folder);
 // the board. Outside the transcript, so compaction never loses it.
 std::string CoordinatorContext(const std::string& folder);
 
+// Records the coordinator's session cost before each of its requests; the
+// day's first sets the baseline its own daily spend is measured from.
+void RecordCoordinatorCost(const std::string& folder, double cost);
+
+// Why the coordinator holds thread events, or empty: today's spend, its own
+// turns and its threads', has reached the daily limit.
+std::string CoordinatorPause(const std::string& folder);
+
 // The tools only a folder's coordinator gets.
 void AddCoordinatorTools(std::vector<Tool>& tools, const std::string& folder);
 }  // namespace uagent

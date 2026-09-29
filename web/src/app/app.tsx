@@ -1142,6 +1142,7 @@ function App() {
                     <Escalations
                       sessions={catalogue.sessions}
                       folder={session.cwd || ""}
+                      paused={snapshot?.state?.paused}
                       online={online}
                       choose={choose}
                       report={report}

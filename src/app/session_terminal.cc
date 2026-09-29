@@ -538,6 +538,15 @@ class Terminal {
           history_ = true;
         }
       }
+      // A coordinator holding thread events says why, once per change.
+      if (std::string paused = JsonValue(state, "paused", "");
+          paused != paused_) {
+        paused_ = std::move(paused);
+        if (!paused_.empty()) {
+          presenter_.Consume(
+              NoticeEvent(PresentationStatus::kWarned, paused_, false));
+        }
+      }
       wake_.Wake();
     } else if (kind == "activity") {
       presenter_.Consume(AppEvent{0, "", "activity.status", frame, false});
@@ -678,6 +687,7 @@ class Terminal {
   Connection connection_;
   std::string path_, decision_, draft_, tail_, waiting_, next_, last_status_;
   std::string next_folder_;
+  std::string paused_;
   InteractiveOutput output_;
   RawComposer composer_;
   TerminalPresenter presenter_;

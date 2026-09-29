@@ -728,7 +728,10 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   context->agent->SetSessionRole(context->options.session);
   if (context->tool_policy.coordinator) {
     context->agent->SetRuntimeContext(
-        [folder = CanonicalCwd()] { return CoordinatorContext(folder); });
+        [folder = CanonicalCwd(), agent = context->agent.get()] {
+          RecordCoordinatorCost(folder, agent->SessionUsage().cost);
+          return CoordinatorContext(folder);
+        });
   }
   if (context->channel && !context->channel->SessionPath().empty()) {
     context->agent->KeepToolFiles([session_path =

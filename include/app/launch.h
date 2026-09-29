@@ -29,6 +29,14 @@ CapturedProcess HostGit(const std::string& dir, std::vector<std::string> args);
 // error, or empty on success.
 std::string CreateWorktree(const std::string& project, const std::string& cwd);
 
+// Whether `cwd` is a worktree PlanLaunch made.
+bool LaunchWorktree(const std::string& cwd);
+
+// Removes the launch worktree `cwd` of `project` if nothing in it would be
+// lost: no uncommitted changes and no commits outside a branch or tag.
+// Returns why not, or empty once it is gone.
+std::string RemoveWorktree(const std::string& project, const std::string& cwd);
+
 // Sends one command to the runtime of `path` once it has published its state
 // (and, with `idle`, once no turn is running), and waits for its outcome.
 // Returns the runtime's refusal or a transport error, or empty.

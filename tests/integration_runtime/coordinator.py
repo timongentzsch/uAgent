@@ -259,6 +259,40 @@ def test_restarted_threads_keep_their_ceiling_and_user_sessions_stay_asleep(root
         assert_true(len(server.requests) == 3, [json.dumps(b)[-200:] for _, b in server.requests])
 
 
+def test_coordinator_holds_thread_events_at_the_spend_limit(root, home, *, binary):
+    from integration_support import fnv1a64
+    from session_support import SessionClient, runtime_directory, stop_sessions
+
+    path = home / ".uagent" / "history" / fnv1a64(str(root.resolve())) / "coordinator.json"
+    write_session(
+        home,
+        "thread-spent",
+        [{"role": "system", "content": "sys"}],
+        cwd=root,
+        usage={"cost": 1.5, "cost_reported": True},
+        kind="thread",
+        thread={"coordinator_id": fnv1a64(str(path)), "folder": str(root.resolve()), "day": time.strftime("%Y-%m-%d")},
+    )
+    with Server([event({"content": "asked-ok"}), event({"content": "event-ran"})]) as server:
+        env = base_env(home, server.url)
+        env["UAGENT_COORDINATOR_DAILY_SPEND_USD"] = "1"
+        # Your own messages still run at the limit.
+        result = run(root, env, "coord", "-p", "status?", binary=binary)
+        assert_true(result.stdout.strip() == "asked-ok", result.stdout + result.stderr)
+        client = SessionClient(runtime_directory(home) / f"{fnv1a64(str(path))}.sock")
+        try:
+            client.send("steer", text="[thread event, not a user message] Thread x finished.")
+            # Events batch for up to 20 seconds before the limit is checked.
+            paused = client.until(
+                lambda frame: frame.get("kind") == "state" and frame["state"].get("paused"), seconds=40
+            )
+            assert_true("spend limit" in paused["state"]["paused"], paused)
+            assert_true(len(server.requests) == 1, "a held event started a turn")
+        finally:
+            client.close()
+            stop_sessions(home)
+
+
 def test_coordinator_caps_working_threads_in_worktrees(root, home, *, binary):
     import subprocess
 

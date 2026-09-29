@@ -252,18 +252,66 @@ bool Working(const SessionInfo& info) {
   return status == "working" || status == "needs you";
 }
 
-// Today's thread spend: what finished threads cost, and the whole budget of
-// each working one, so threads running at once can never overshoot the limit.
-double SpentToday(const std::vector<SessionInfo>& threads) {
+constexpr size_t kPinnedBytes = 2048;
+constexpr const char* kPinnedBlocks[] = {"goals", "decisions",
+                                         "open_questions"};
+
+// Pinned notes and the day's spend live beside the coordinator's session
+// file: part of every turn's context, they survive compaction and resets.
+// Not named *.json, so the session catalogue never mistakes them for one.
+std::string PinnedPath(const std::string& folder) {
+  return CoordinatorPath(folder) + ".pinned";
+}
+
+json ReadPinned(const std::string& folder) {
+  std::string bytes, error;
+  if (!ReadRegularFile(PinnedPath(folder), 64 * 1024, bytes, error)) {
+    return json::object();
+  }
+  json pinned = json::parse(bytes, nullptr, false);
+  return pinned.is_object() ? pinned : json::object();
+}
+
+std::string WritePinned(const std::string& folder, const json& pinned) {
+  std::string error;
+  AtomicWriteFile(PinnedPath(folder), JsonDump(pinned, 1), kPrivateFileMode,
+                  false, error);
+  return error;
+}
+
+// What the coordinator's own turns cost today: its session total at the last
+// request against the total when the day's first request began.
+double CoordinatorCostToday(const std::string& folder) {
+  const json spend = JsonValue(ReadPinned(folder), "spend", json::object());
+  return JsonValue(spend, "day", "") == Today()
+             ? JsonValue(spend, "cost", 0.0) - JsonValue(spend, "baseline", 0.0)
+             : 0.0;
+}
+
+// Today's spend against the daily limit: the coordinator's own turns and its
+// threads'. With `reserve`, a working thread counts its whole budget, so
+// threads running at once can never overshoot the limit.
+double SpentToday(const std::string& folder,
+                  const std::vector<SessionInfo>& threads, bool reserve) {
   const std::string today = Today();
-  double spent = 0;
+  double spent = CoordinatorCostToday(folder);
   for (const SessionInfo& info : threads) {
     if (JsonValue(info.thread, "day", "") != today) continue;
     SessionLoadResult loaded = SessionStore::Inspect(info.path);
     const double cost = loaded.record ? loaded.record->state.usage.cost : 0;
-    spent += Working(info) ? std::max(cost, ThreadBudget(info.thread)) : cost;
+    spent += reserve && Working(info) ? std::max(cost, ThreadBudget(info.thread))
+                                      : cost;
   }
   return spent;
+}
+
+std::vector<SessionInfo> OwnThreads(const std::string& folder) {
+  const std::string coordinator = CoordinatorId(folder);
+  std::vector<SessionInfo> threads;
+  for (SessionInfo& info : FolderSessions(folder)) {
+    if (OwnThread(info, coordinator)) threads.push_back(std::move(info));
+  }
+  return threads;
 }
 
 std::string Brief(const json& brief) {
@@ -288,10 +336,7 @@ ToolResult Spawn(const std::string& folder, const json& a) {
   }
   const std::string coordinator = CoordinatorId(folder);
   const int64_t cap = LongSetting(Cfg("UAGENT_COORDINATOR_MAX_THREADS"));
-  std::vector<SessionInfo> threads;
-  for (SessionInfo& info : FolderSessions(folder)) {
-    if (OwnThread(info, coordinator)) threads.push_back(std::move(info));
-  }
+  const std::vector<SessionInfo> threads = OwnThreads(folder);
   const int64_t working = std::ranges::count_if(threads, Working);
   if (working >= cap) {
     return ToolFailure(ToolErrorCode::kLimitExceeded,
@@ -302,7 +347,9 @@ ToolResult Spawn(const std::string& folder, const json& a) {
   const double limit = DoubleSetting(Cfg("UAGENT_COORDINATOR_DAILY_SPEND_USD"));
   // Each thread gets an equal share of what is left for the free slots.
   const double budget =
-      limit > 0 ? (limit - SpentToday(threads)) / double(cap - working) : 0;
+      limit > 0 ? (limit - SpentToday(folder, threads, true)) /
+                      double(cap - working)
+                : 0;
   if (limit > 0 && budget < 0.01) {
     return ToolFailure(ToolErrorCode::kLimitExceeded,
                        "error: today's thread spend limit of " +
@@ -390,10 +437,18 @@ ToolResult Stop(const SessionInfo& info) {
                        : Unavailable(error);
 }
 
-ToolResult Delete(const SessionInfo& info) {
+// A thread's worktree goes with it, but only when nothing in it is lost.
+ToolResult Delete(const SessionInfo& info, const std::string& folder) {
   if (PathExists(session::SocketPath(info.path))) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
                        "error: stop and close the session before deleting it");
+  }
+  if (LaunchWorktree(info.cwd)) {
+    const std::string kept = RemoveWorktree(
+        JsonValue(info.thread, "folder", folder), info.cwd);
+    if (!kept.empty()) {
+      return ToolFailure(ToolErrorCode::kInvalidArguments, "error: " + kept);
+    }
   }
   SessionStoreStatus removed = SessionStore::Remove(info.path);
   return removed.Ok() ? ToolSuccess("deleted") : Unavailable(removed.message);
@@ -448,7 +503,7 @@ Tool ThreadTool(const std::string& folder) {
         }
         if (action == "stop") return Stop(*info);
         if (action == "diff") return Diff(*info);
-        if (action == "delete") return Delete(*info);
+        if (action == "delete") return Delete(*info, folder);
         return ToolFailure(ToolErrorCode::kInvalidArguments,
                            "error: unknown action " + action);
       });
@@ -539,28 +594,14 @@ Tool ApprovalTool(const std::string& folder) {
   return tool;
 }
 
-constexpr size_t kPinnedBytes = 2048;
-constexpr const char* kPinnedBlocks[] = {"goals", "decisions",
-                                         "open_questions"};
-
-// Pinned notes live beside the coordinator's session file: they are part of
-// every turn's context and survive compaction and resets.
-std::string PinnedPath(const std::string& folder) {
-  return CoordinatorPath(folder) + ".pinned.json";
-}
-
-json ReadPinned(const std::string& folder) {
-  std::string bytes, error;
-  if (!ReadRegularFile(PinnedPath(folder), 64 * 1024, bytes, error)) {
-    return json::object();
-  }
-  json pinned = json::parse(bytes, nullptr, false);
-  return pinned.is_object() ? pinned : json::object();
-}
 
 ToolResult State(const std::string& folder, const json& a) {
   const std::string action = JsonValue(a, "action", "");
-  if (action == "show") return ToolSuccess(JsonDump(ReadPinned(folder), 1));
+  if (action == "show") {
+    json pinned = ReadPinned(folder);
+    pinned.erase("spend");
+    return ToolSuccess(JsonDump(pinned, 1));
+  }
   const std::string block = JsonValue(a, "block", "");
   if (std::find(std::begin(kPinnedBlocks), std::end(kPinnedBlocks), block) ==
       std::end(kPinnedBlocks)) {
@@ -586,9 +627,7 @@ ToolResult State(const std::string& folder, const json& a) {
                        "rewrite it shorter with set");
   }
   pinned[block] = value;
-  std::string error;
-  if (!AtomicWriteFile(PinnedPath(folder), JsonDump(pinned, 1),
-                       kPrivateFileMode, false, error)) {
+  if (std::string error = WritePinned(folder, pinned); !error.empty()) {
     return Unavailable(error);
   }
   return ToolSuccess(block + " updated");
@@ -691,7 +730,9 @@ std::string CoordinatorBoard(const std::string& folder) {
                        (info.kind == kSessionKindThread ? "↳ " : "") +
                        OneLine(info.title) + " · " +
                        std::to_string(info.turns) + " turns · " +
-                       Age(info.mtime) + "\n";
+                       Age(info.mtime) +
+                       (LaunchWorktree(info.cwd) ? " · " + info.cwd : "") +
+                       "\n";
     if (board.size() + line.size() > kBoardBytes - 64) break;
     board += line;
     ++shown;
@@ -715,6 +756,29 @@ std::string CoordinatorContext(const std::string& folder) {
     }
   }
   return context + "\n## board\n" + CoordinatorBoard(folder);
+}
+
+void RecordCoordinatorCost(const std::string& folder, double cost) {
+  json pinned = ReadPinned(folder);
+  json spend = JsonValue(pinned, "spend", json::object());
+  if (JsonValue(spend, "day", "") != Today()) {
+    spend = {{"day", Today()}, {"baseline", cost}};
+  } else if (JsonValue(spend, "cost", -1.0) == cost) {
+    return;
+  }
+  spend["cost"] = cost;
+  pinned["spend"] = std::move(spend);
+  WritePinned(folder, pinned);
+}
+
+std::string CoordinatorPause(const std::string& folder) {
+  const double limit = DoubleSetting(Cfg("UAGENT_COORDINATOR_DAILY_SPEND_USD"));
+  if (limit <= 0 || SpentToday(folder, OwnThreads(folder), false) < limit) {
+    return "";
+  }
+  return "Paused: today's spend limit of " + FmtCost(limit) +
+         " is reached. Thread events wait until tomorrow or a higher "
+         "UAGENT_COORDINATOR_DAILY_SPEND_USD; your own messages still run.";
 }
 
 void AddCoordinatorTools(std::vector<Tool>& tools, const std::string& folder) {

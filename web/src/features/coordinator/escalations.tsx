@@ -10,16 +10,19 @@ const decisionPanel = () => import("../chat/decision.tsx");
 // Decisions the folder's threads are waiting on, above the coordinator's
 // composer: the one thing a user of the coordinator must never miss. Each is
 // the thread's own pending decision, answered in the thread, so answering
-// here or in the thread is the same act and the first answer wins.
+// here or in the thread is the same act and the first answer wins. A pause
+// at the spend limit shows here too, for the same reason.
 export default function Escalations({
   sessions,
   folder,
+  paused,
   online,
   choose,
   report,
 }: {
   sessions: Session[];
   folder: string;
+  paused?: string;
   online: boolean;
   choose: (id: string) => void;
   report: Report;
@@ -28,9 +31,14 @@ export default function Escalations({
     (item) =>
       item.pending && item.kind !== "coordinator" && folderOf(item) === folder,
   );
-  if (!waiting.length) return null;
+  if (!waiting.length && !paused) return null;
   return (
     <section class="escalations" aria-label="Decisions waiting on you">
+      {paused && (
+        <p role="status" class="escalation-paused">
+          {paused}
+        </p>
+      )}
       {waiting.map((item) => (
         <Escalation
           key={item.id}

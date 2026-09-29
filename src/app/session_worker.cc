@@ -21,6 +21,7 @@
 #include "include/agent/session_store.h"
 #include "include/agent/session_view.h"
 #include "include/app/bootstrap.h"
+#include "include/app/coordinator.h"
 #include "include/app/launch.h"
 #include "include/app/session.h"
 #include "include/app/session_command.h"
@@ -199,10 +200,9 @@ class WorkerChannel final : public ApplicationChannel {
           return result;
         }
       }
-      {
+      if (EventsDue() && !HeldBySpend()) {
         std::lock_guard lock(mutex_);
-        if (!events_.empty() &&
-            std::chrono::steady_clock::now() >= events_due_) {
+        if (!events_.empty() && !input_) {
           ClearAbort();
           busy_ = turn_active_ = true;
           BeginTurn();
@@ -313,6 +313,7 @@ class WorkerChannel final : public ApplicationChannel {
     state_["activity"] = activity;
     state_["phase"] = phase;
     state_["activity_detail"] = std::move(detail);
+    if (!paused_.empty()) state_["paused"] = paused_;
     if (!checkpoint) {
       // Live accounting only: the turn keeps running, so its phase, busy
       // state and queued guidance stay untouched.
@@ -370,6 +371,34 @@ class WorkerChannel final : public ApplicationChannel {
     // application's control does.
     StopSideQuestion();
     activity_control_ = control;
+  }
+
+  bool EventsDue() {
+    std::lock_guard lock(mutex_);
+    return !events_.empty() &&
+           std::chrono::steady_clock::now() >= events_due_;
+  }
+
+  // At today's spend limit a coordinator keeps thread events queued, says
+  // so in its state, and looks again a minute later. Checked outside the
+  // lock: it reads the threads' files.
+  bool HeldBySpend() {
+    const std::string pause =
+        coordinator_ ? CoordinatorPause(CanonicalCwd()) : "";
+    std::lock_guard lock(mutex_);
+    if (pause != paused_) {
+      paused_ = pause;
+      if (pause.empty()) {
+        state_.erase("paused");
+      } else {
+        state_["paused"] = pause;
+      }
+      SendState();
+    }
+    if (!pause.empty()) {
+      events_due_ = std::chrono::steady_clock::now() + kSpendRecheck;
+    }
+    return !pause.empty();
   }
 
   std::string TakeEvents() {
@@ -899,6 +928,7 @@ class WorkerChannel final : public ApplicationChannel {
   static constexpr auto kEventBatch = std::chrono::seconds(20);
   std::vector<std::string> events_;
   std::chrono::steady_clock::time_point events_due_{};
+  static constexpr auto kSpendRecheck = std::chrono::minutes(1);
   static constexpr int kNotifyAttempts = 20;
   static constexpr auto kNotifyRetry = std::chrono::milliseconds(250);
   bool closed_ = false, busy_ = true;
@@ -909,6 +939,7 @@ class WorkerChannel final : public ApplicationChannel {
   bool reply_cancelled_ = false;
   bool ready_ = false;
   json notices_ = json::array();
+  std::string paused_;  // why a coordinator holds thread events, if it does
   std::function<json(const json&)> activity_control_;
   std::optional<ApplicationInput> input_;
   std::optional<std::string> reply_;

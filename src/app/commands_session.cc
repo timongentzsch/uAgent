@@ -163,8 +163,7 @@ void HandleStatus(const AppSession& session, CommandReply& reply) {
       DescribeSelf(SelfTopic::kStatus, "", DescriptionInputs(session));
   const json& status = reply.result;
   auto row = [&reply](const char* label, const std::string& value) {
-    reply.Print("  %s%-16s%s %s\n", DIM(), label, RST(),
-                TerminalSafe(value).c_str());
+    reply.Print("%s", KeyValueRow(label, TerminalSafe(value)).c_str());
   };
   reply.Print("%s\u00b5Agent %s%s\n", BOLD(), kVersion, RST());
   row("route", JsonValue(status, "route", std::string()));
@@ -282,17 +281,14 @@ void HandleDebugConfig(const AppSession& session, const std::string& argument,
     if (!named && source == "default") continue;
     std::string name = JsonValue(setting, "name", std::string());
     reply.Print("  %s%s%s\n", BOLD(), TerminalSafe(name).c_str(), RST());
-    reply.Print("    %ssource%s      %s\n", DIM(), RST(),
-                TerminalSafe(source).c_str());
-    if (setting.contains("active")) {
-      reply.Print("    %sactive%s      %s\n", DIM(), RST(),
-                  TerminalSafe(JsonDump(setting["active"])).c_str());
-    }
-    reply.Print("    %sdefault%s     %s\n", DIM(), RST(),
-                TerminalSafe(JsonDump(setting["default"])).c_str());
-    reply.Print("    %stakes effect%s %s\n", DIM(), RST(),
-                TerminalSafe(JsonValue(setting, "takes_effect", std::string()))
-                    .c_str());
+    auto row = [&reply](const char* label, const std::string& value) {
+      reply.Print(
+          "%s", KeyValueRow(label, TerminalSafe(value), kDetailIndent).c_str());
+    };
+    row("source", source);
+    if (setting.contains("active")) row("active", JsonDump(setting["active"]));
+    row("default", JsonDump(setting["default"]));
+    row("takes effect", JsonValue(setting, "takes_effect", std::string()));
   }
   const json& restart = described["restart_required"];
   if (restart.is_array() && !restart.empty()) {

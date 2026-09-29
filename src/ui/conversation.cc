@@ -1,6 +1,5 @@
 // Copyright 2026 Timon Gentzsch
 
-#include "include/core/style.h"
 #include "include/ui/conversation.h"
 
 #include <cstdio>
@@ -9,6 +8,7 @@
 #include "include/agent/session_view.h"
 #include "include/core/json.h"
 #include "include/core/strings.h"
+#include "include/core/style.h"
 #include "include/core/term.h"
 #include "include/ui/presentation.h"
 

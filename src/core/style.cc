@@ -2,6 +2,7 @@
 
 #include "include/core/style.h"
 
+#include <algorithm>
 #include <initializer_list>
 #include <string>
 #include <string_view>
@@ -19,6 +20,19 @@ std::string JoinDot(std::initializer_list<std::string_view> parts) {
     joined += part;
   }
   return joined;
+}
+
+std::string KeyValueRow(std::string_view label, std::string_view value,
+                        size_t indent) {
+  constexpr size_t kLabelColumns = 16;
+  std::string row(indent, ' ');
+  row += DIM();
+  row += label;
+  row.append(kLabelColumns - std::min(label.size(), kLabelColumns), ' ');
+  row += RST();
+  row += ' ';
+  row += value;
+  return row + '\n';
 }
 
 std::string Note(Tone tone, std::string_view text) {

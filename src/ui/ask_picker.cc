@@ -1,6 +1,5 @@
 // Copyright 2026 Timon Gentzsch
 
-#include "include/core/style.h"
 #include "include/ui/ask_picker.h"
 
 #include <poll.h>
@@ -14,6 +13,7 @@
 #include <vector>
 
 #include "include/core/strings.h"
+#include "include/core/style.h"
 #include "include/core/term.h"
 #include "include/ui/input_decoder.h"
 

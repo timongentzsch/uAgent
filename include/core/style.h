@@ -33,6 +33,14 @@ inline std::string StyledBlock(std::string_view text, const char* open) {
 // skipped, so an optional one needs no condition of its own.
 std::string JoinDot(std::initializer_list<std::string_view> parts);
 
+// Where a row sits under its heading, and where its details sit under it.
+inline constexpr size_t kRowIndent = 2;
+inline constexpr size_t kDetailIndent = 4;
+
+// A dim label and its value, the value in one column for every such row.
+std::string KeyValueRow(std::string_view label, std::string_view value,
+                        size_t indent = kRowIndent);
+
 enum class Tone { kNeutral, kWarn, kError };
 
 // A notice row: "· text", dim, yellow or red, ending in a newline. The text is

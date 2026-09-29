@@ -118,6 +118,24 @@ def test_coordinator_answers_headless_and_lists_the_board(root, home, *, binary)
     assert_true(code == 0, output)
 
 
+def test_coordinator_saves_memory_unasked_but_forgets_only_with_the_user(root, home, *, binary):
+    with Server(
+        [
+            tool_call("memory", {"action": "set", "key": "project/style", "content": "Terse status."}),
+            tool_call("memory", {"action": "forget", "key": "project/style"}, call_id="call-2"),
+            event({"content": "noted-ok"}),
+        ]
+    ) as server:
+        result = run(root, base_env(home, server.url), "coord", "-p", "be terse", binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        saved, forgot = tool_results(server.requests[-1][1]["messages"])
+        assert_true("approval" not in saved.lower() and "error" not in saved.lower(), saved)
+        # Headless has no one to ask, so the forget is refused.
+        assert_true("approval" in forgot.lower() or "denied" in forgot.lower(), forgot)
+        system = server.requests[0][1]["messages"][0]["content"]
+        assert_true("Noted:" in system, system)
+
+
 def test_coordinator_delegates_a_thread_and_hears_back(root, home, *, binary):
     heard = threading.Event()
 

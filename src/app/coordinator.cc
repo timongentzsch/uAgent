@@ -726,5 +726,19 @@ void AddCoordinatorTools(std::vector<Tool>& tools, const std::string& folder) {
   tools.push_back(ThreadTool(folder));
   tools.push_back(ApprovalTool(folder));
   tools.push_back(StateTool(folder));
+  // The coordinator keeps what it learns about you without being asked and
+  // says so in its answer; forgetting still waits for you.
+  for (Tool& tool : tools) {
+    if (tool.name != "memory") continue;
+    tool.description =
+        "List or search memory when the startup index is insufficient; get a "
+        "body only when relevant. Save a durable preference, convention or "
+        "decision the user states without being asked; forget only when they "
+        "ask. Never save task progress, guesses, secrets, commands or "
+        "permissions. Codex and Claude memories are read-only.";
+    tool.mutates = [](const json& a) {
+      return JsonValue(a, "action", "") == "forget";
+    };
+  }
 }
 }  // namespace uagent

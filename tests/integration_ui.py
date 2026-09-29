@@ -974,7 +974,7 @@ def test_instructions_editor_reaches_new_sessions(root, home, *, binary):
     def answer(_, body):
         prompt = body["messages"][0]["content"]
         # Additive: the base stays, the instructions follow it.
-        assert_true("Gather only" in prompt, prompt)
+        assert_true("Read only what the task needs" in prompt, prompt)
         assert_true("Only editor behavior.\nPreserve newlines." in prompt, prompt)
         return event({"content": "instructions-ok"})
 

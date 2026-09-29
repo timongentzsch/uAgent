@@ -132,7 +132,7 @@ void TestPromptRequestParity() {
   TestWorkspace workspace("prompt-request");
   Harness h;
   auto proposed = h.Set("replace", "Only this behavior.\nPreserve whitespace.");
-  CHECK(proposed["effective"].get<std::string>().find("Gather only") ==
+  CHECK(proposed["effective"].get<std::string>().find("Read only what the task needs") ==
         std::string::npos);
   h.agent.PreviewContext();
   CHECK(h.agent.ModelRequest()["messages"][0]["content"] ==

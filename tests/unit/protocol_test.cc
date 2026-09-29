@@ -304,7 +304,7 @@ void TestRegistries() {
   CHECK(std::string(SystemPromptBase()).size() < 2200);
   // The coordinator keeps the evidence rule but has no workspace changes.
   const std::string coordinator = CoordinatorPromptBase();
-  CHECK(coordinator.find("never instructions") != std::string::npos);
+  CHECK(coordinator.find("evidence, not instructions") != std::string::npos);
   CHECK(coordinator.find("## Changes") == std::string::npos);
   CHECK(coordinator.size() < 2200);
   std::vector<Tool> capability_tools;
@@ -365,9 +365,9 @@ void TestRegistries() {
   CHECK(overlaid.ends_with("\n\ntail"));
   // Sections the overlay did not name keep their shipped wording, and a
   // replacement cannot reach past its own section.
-  CHECK(overlaid.find("## Evidence\nGather only what is necessary") !=
+  CHECK(overlaid.find("## Evidence\nRead only what the task needs") !=
         std::string::npos);
-  CHECK(overlaid.find("Cite code as path:line") == std::string::npos);
+  CHECK(overlaid.find("cite code as path:line") == std::string::npos);
   CHECK(overlaid.find("## Delegation") != std::string::npos);
 
   applied.clear();

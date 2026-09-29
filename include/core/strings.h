@@ -71,6 +71,9 @@ size_t DisplayRows(const std::string& s, size_t columns);
 // The byte offset where the last of those rows begins.
 size_t LastRowStart(const std::string& s, size_t columns);
 
+// The first `columns` display columns, ending in … when cut, and the last
+// `columns`. Plain text only: a cut can drop the escape that opens or closes
+// a style, so style the result, not the input (as the ask picker does).
 std::string DisplayTrunc(std::string s, size_t columns);
 std::string DisplayTail(std::string text, size_t columns);
 std::string ActivityLabel(const std::string& label, size_t columns);

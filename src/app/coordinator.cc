@@ -60,7 +60,9 @@ std::string LiveStatus(const SessionInfo& info) {
                                                    : "idle";
         return false;
       },
-      DeadlineAfter(2));
+      // A live runtime answers at once; the board is rebuilt every step, so
+      // a stuck one must not hold it up.
+      std::chrono::steady_clock::now() + std::chrono::milliseconds(500));
   return status;
 }
 

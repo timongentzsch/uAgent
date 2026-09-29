@@ -352,6 +352,8 @@ export interface State {
   variant?: string;
   variants?: string[];
   view?: View;
+  // Bumped by an in-place rewind, which replaces the view.
+  view_epoch?: number;
   turns?: number;
   usage?: Usage;
   route_usage?: Record<string, Usage>;

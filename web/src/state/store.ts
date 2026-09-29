@@ -76,6 +76,8 @@ export function keepOlderPages(
     !a ||
     !b ||
     previous?.epoch !== latest.epoch ||
+    // An in-place rewind starts a new view: older pages are gone with it.
+    previous?.state?.view_epoch !== latest.state?.view_epoch ||
     a.dropped_segments !== b.dropped_segments
   )
     return latest;

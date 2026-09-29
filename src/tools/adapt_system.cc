@@ -77,18 +77,16 @@ Tool AdaptSystemTool(const AdaptiveSystemState& state,
                            : ApprovalClass::kNone;
   };
   tool.approval_preview = [control, proposals](const json& args) {
-    json request = args;
-    request["action"] = JsonValue(args, "action", "set");
-    json preview = request;
-    preview["operation"] = request["action"];
-    preview["action"] = "preview";
+    json preview = args;
+    preview["action"] = JsonValue(args, "action", "set");
+    preview["dry_run"] = true;
     const json result = control(preview);
     if (result.contains("error")) return JsonValue(result, "error", "");
-    json approved = request;
+    // Approved is exactly what was shown: the edit or reset, resolved.
+    json approved = args;
     approved["action"] = "set";
     approved["mode"] = result["item"]["mode"];
     approved["text"] = result["item"]["text"];
-    approved.erase("operation");
     proposals->Put(args, std::move(approved),
                    std::chrono::steady_clock::now() + std::chrono::minutes(5));
     return "self-directive · next model request\n" +

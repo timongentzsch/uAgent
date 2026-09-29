@@ -200,31 +200,10 @@ class WorkerChannel final : public ApplicationChannel {
           return result;
         }
       }
-      if (EventsDue() && !HeldBySpend()) {
-        std::lock_guard lock(mutex_);
-        if (!events_.empty() && !input_) {
-          ClearAbort();
-          busy_ = turn_active_ = true;
-          BeginTurn();
-          SendState();
-          return ApplicationInput{.text = TakeEvents()};
-        }
-      }
+      if (auto events = TakeDueEvents()) return events;
       pollfd waits[] = {{wake_.read.Get(), POLLIN, 0},
                         {AbortWakeFd(), POLLIN, 0}};
-      int timeout = -1;
-      if (coordinator_) {
-        timeout = static_cast<int>(std::min<int64_t>(
-            kIdlePoll.count(),
-            std::chrono::milliseconds(CoordinatorIdle()).count() / 4));
-      }
-      {
-        std::lock_guard lock(mutex_);
-        if (!events_.empty()) {
-          timeout = std::min(timeout, PollTimeoutMs(events_due_));
-        }
-      }
-      const int ready = poll(waits, 2, timeout);
+      const int ready = poll(waits, 2, PollTimeout());
       if (ready < 0 && errno != EINTR) {
         return std::nullopt;
       }
@@ -373,10 +352,37 @@ class WorkerChannel final : public ApplicationChannel {
     activity_control_ = control;
   }
 
-  bool EventsDue() {
+  // Thread events whose batch is due, as one coordinator turn; none while
+  // the spend limit holds them.
+  std::optional<ApplicationInput> TakeDueEvents() {
+    {
+      std::lock_guard lock(mutex_);
+      if (events_.empty() || std::chrono::steady_clock::now() < events_due_) {
+        return std::nullopt;
+      }
+    }
+    if (HeldBySpend()) return std::nullopt;
     std::lock_guard lock(mutex_);
-    return !events_.empty() &&
-           std::chrono::steady_clock::now() >= events_due_;
+    if (events_.empty() || input_) return std::nullopt;
+    ClearAbort();
+    busy_ = turn_active_ = true;
+    BeginTurn();
+    SendState();
+    return ApplicationInput{.text = TakeEvents()};
+  }
+
+  // A session waits for input indefinitely; a coordinator also wakes to
+  // notice it is idle and when its queued events come due.
+  int PollTimeout() {
+    if (!coordinator_) return -1;
+    int timeout = static_cast<int>(std::min<int64_t>(
+        kIdlePoll.count(),
+        std::chrono::milliseconds(CoordinatorIdle()).count() / 4));
+    std::lock_guard lock(mutex_);
+    if (!events_.empty()) {
+      timeout = std::min(timeout, PollTimeoutMs(events_due_));
+    }
+    return timeout;
   }
 
   // At today's spend limit a coordinator keeps thread events queued, says

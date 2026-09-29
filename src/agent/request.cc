@@ -670,19 +670,17 @@ json Agent::SelfDirective(const json& request) {
     shown["item"] = item(self);
     return shown;
   }
-  if (action != "preview" && action != "set" && action != "edit" &&
-      action != "reset") {
-    return {{"error", "Action must be show, preview, set, edit or reset."}};
+  if (action != "set" && action != "edit" && action != "reset") {
+    return {{"error", "Action must be show, set, edit or reset."}};
   }
   if (JsonValue(request, "revision", "") != std::to_string(self.revision)) {
     return {{"error", "The self-directive changed. Show it again first."},
             {"conflict", true}};
   }
   AdaptiveSystemState next = self;
-  const std::string operation = JsonValue(request, "operation", action);
-  if (operation == "reset") {
+  if (action == "reset") {
     next.Reset();
-  } else if (operation == "edit") {
+  } else if (action == "edit") {
     // One exact, unique replacement in the current text.
     const std::string old = JsonValue(request, "old", "");
     const size_t at = old.empty() ? std::string::npos
@@ -709,7 +707,8 @@ json Agent::SelfDirective(const json& request) {
   result["applies"] =
       "Next model request; requests already in flight are unchanged.";
   result["item"] = item(next);
-  if (action == "preview" ||
+  // A dry run shows what would change and commits nothing.
+  if (JsonValue(request, "dry_run", false) ||
       (next.mode == self.mode && next.instructions == self.instructions)) {
     return result;
   }

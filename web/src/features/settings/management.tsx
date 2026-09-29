@@ -1,5 +1,5 @@
 import type { CommandResults } from "../../shared/types.ts";
-import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import { manage } from "../../state/api.ts";
 import { Field, Select, Input } from "../../shared/ui.tsx";
 import "./management.css";
@@ -57,16 +57,19 @@ export function ProjectField({
   projects: string[];
   change: (value: string) => void;
 }) {
-  const [draft, setDraft] = useState(value);
-  useLayoutEffect(() => setDraft(value), [value]);
+  // Null while not typing: the field then shows the chosen project.
+  const [draft, setDraft] = useState<string | null>(null);
   return (
     <Field label="Project">
       <Input
         list="management-projects"
-        value={draft}
+        value={draft ?? value}
         onInput={(event) => setDraft(event.currentTarget.value)}
         placeholder="Absolute directory on the host"
-        onChange={(event) => change(event.currentTarget.value)}
+        onChange={(event) => {
+          change(event.currentTarget.value);
+          setDraft(null);
+        }}
       />
       <datalist id="management-projects">
         {projects.map((path) => (

@@ -71,11 +71,12 @@ void TestSelfDirective() {
                                {"revision", "0"}})["conflict"] == true);
   CHECK(h.Set("overlay", std::string(kAdaptiveSystemBytes + 1, 'x'))
             .contains("error"));
-  h.agent.SelfDirective({{"action", "preview"},
+  h.agent.SelfDirective({{"action", "set"},
+                         {"dry_run", true},
                          {"mode", "replace"},
                          {"text", "only this"},
                          {"revision", h.Revision()}});
-  CHECK(h.state.instructions == "edited value");  // preview commits nothing
+  CHECK(h.state.instructions == "edited value");  // a dry run commits nothing
   CHECK(h.agent.SelfDirective({{"action", "reset"},
                                {"revision", h.Revision()}})
             .contains("effective"));

@@ -182,6 +182,18 @@ test("a retained arrival preserves older pages explicitly loaded by the user", (
   });
   assert.equal(checkpoint.state.view.blocks.length, 401);
   assert.equal(checkpoint.state.view.blocks.at(-1).text, "x");
+  // An in-place rewind starts a new view epoch: older pages go with it.
+  const rewound = keepOlderPages(next, {
+    ...next,
+    state: {
+      view_epoch: 1,
+      view: {
+        blocks: [{ id: "m-2", sequence: 2, kind: "user", text: "again" }],
+        before: 2,
+      },
+    },
+  });
+  assert.equal(rewound.state.view.blocks.length, 1);
 });
 
 // The browser applies the host's rows and never re-derives them: a whole row,

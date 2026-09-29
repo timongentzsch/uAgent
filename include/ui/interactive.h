@@ -109,7 +109,6 @@ class RawComposer {
   size_t CaretRow() const { return caret_row_; }
   size_t CaretColumn() const { return caret_column_; }
   size_t LastSubmittedRows() const { return last_submitted_rows_; }
-  const std::string& Prompt() const { return prompt_; }
   const std::string& Buffer() const { return buffer_; }
   bool HasPending() const { return decoder_.HasReady(); }
   std::optional<std::chrono::steady_clock::time_point> WakeDeadline() const {

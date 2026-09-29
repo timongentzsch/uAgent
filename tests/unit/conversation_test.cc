@@ -84,7 +84,7 @@ void TestConversation() {
   CHECK(!ParseMessageKind("environment", environment_kind));
 
   conversation.ArchiveRange("test", 1, conversation.Size(), 1, 4096);
-  CHECK(conversation.ArchivedSegments() == 1);
+  CHECK(conversation.Archive().size() == 1);
   CHECK(conversation.Archive()[0]["message_kinds"].size() == 4);
   CHECK(conversation.Archive()[0]["message_kinds"][0] == "user");
 
@@ -94,10 +94,10 @@ void TestConversation() {
   bounded.Push({{"role", "user"}, {"content", std::string(80, 'a')}},
                MessageKind::kUser);
   bounded.ArchiveRange("first", 1, bounded.Size(), 1, 4096);
-  CHECK(bounded.ArchivedSegments() == 1);
+  CHECK(bounded.Archive().size() == 1);
   int64_t one_segment_bytes = bounded.ArchivedBytes();
   bounded.ArchiveRange("next", 1, bounded.Size(), 2, one_segment_bytes);
-  CHECK(bounded.ArchivedSegments() == 1);
+  CHECK(bounded.Archive().size() == 1);
   CHECK(bounded.Archive()[0]["turn"] == 2);
   CHECK(bounded.ArchivedBytes() <= one_segment_bytes);
   CHECK(bounded.DroppedSegments() == 1);
@@ -111,7 +111,7 @@ void TestConversation() {
         static_cast<int64_t>(JsonDump(restored.Archive()).size()) - 2);
   CHECK(
       restored.ArchiveRange("next", 1, restored.Size(), 7, one_segment_bytes));
-  CHECK(restored.ArchivedSegments() == 1);
+  CHECK(restored.Archive().size() == 1);
   CHECK(restored.Archive()[0]["turn"] == 7);
   CHECK(restored.DroppedSegments() == 6);
   CHECK(restored.ArchivedBytes() ==
@@ -123,7 +123,7 @@ void TestConversation() {
   rejected.Push({{"role", "user"}, {"content", "payload"}}, MessageKind::kUser);
   rejected.ArchiveRange("disabled", 1, rejected.Size(), 1, 0);
   rejected.ArchiveRange("oversized", 1, rejected.Size(), 2, 1);
-  CHECK(rejected.ArchivedSegments() == 0);
+  CHECK(rejected.Archive().size() == 0);
   CHECK(rejected.ArchivedBytes() == 0);
   CHECK(rejected.DroppedSegments() == 2);
 

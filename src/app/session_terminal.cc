@@ -837,7 +837,7 @@ int CoordinatorPromptMain(const Options& options) {
   if (options.json) {
     printf("%s\n", JsonDump({{"answer", answer},
                              {"session_id", HashHex(path)},
-                             {"usage", UsageJson(after.Since(before))},
+                             {"usage", UsageJson(UsageDifference(after, before))},
                              {"stop", stop}})
                        .c_str());
   } else {

@@ -101,7 +101,6 @@ class Agent {
   // Data views for consumer interfaces (terminal, web, headless). Rendering
   // lives in ui/; the agent only supplies facts.
   const Conversation& History() const { return conversation_; }
-  const std::vector<Tool>& Tools() const { return tools_; }
   json DisplaySnapshot() const;
   // Rewinds this conversation in place to just before a user message (by
   // `turn`, or by its "m-<id>"), returning {prompt} with that message's text,

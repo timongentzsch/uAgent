@@ -222,7 +222,6 @@ class ToolSelection {
   json Save() const;
   json Catalogue(const std::vector<Tool>& tools) const;
 
-  const std::string& Profile() const { return profile_; }
 
  private:
   std::string profile_ = "default";

@@ -40,6 +40,7 @@ bool IsUserMessage(const json& message, MessageKind kind);
 class Conversation {
  public:
   const json& Messages() const { return messages_; }
+  int64_t ArchivedBytes() const { return archive_bytes_; }
   const json& Archive() const { return archive_; }
   const std::vector<MessageKind>& Kinds() const { return kinds_; }
   // Rendered tool receipts, keyed by call id. The model never sees these; they
@@ -70,8 +71,6 @@ class Conversation {
   MessageKind KindAt(size_t index) const { return kinds_[index]; }
   bool HasKind(MessageKind kind) const;
 
-  size_t ArchivedSegments() const { return archive_.size(); }
-  int64_t ArchivedBytes() const { return archive_bytes_; }
   int64_t DroppedSegments() const { return dropped_segments_; }
 
   void Reset(json baseline, std::vector<MessageKind> kinds);

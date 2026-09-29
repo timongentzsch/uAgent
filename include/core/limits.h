@@ -19,9 +19,9 @@ inline constexpr size_t kMiB = size_t{1024} * 1024;
 inline constexpr size_t KiB(size_t n) { return n * kKiB; }
 inline constexpr size_t MiB(size_t n) { return n * kMiB; }
 
-// Distinct preview/trace budgets that previously shared bare 4096/512.
 // A trace preview, a catalogue header read and a retained-fact cap are
-// different policies: growing one must not silently grow the others.
+// different policies with their own budgets: growing one must not silently
+// grow the others.
 inline constexpr size_t kPreviewChars = 4096;
 inline constexpr size_t kCatalogueHeaderBytes = 4096;
 inline constexpr size_t kTraceSummaryChars = 512;

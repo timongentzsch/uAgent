@@ -128,7 +128,7 @@ A session can run unconfined in two ways, both reported:
   headless or delegated runs answer no, so a delegated child cannot unconfine
   itself.
 - On a Linux kernel without Landlock, the sandbox degrades: a startup warning,
-  a `capability_changed` event, `sandbox.mode=degraded`, and commands run
+  a `capability.changed` event, `sandbox.mode=degraded`, and commands run
   unconfined. A session that requested the sandbox explicitly, in the
   environment or a config file, refuses to run commands instead.
 

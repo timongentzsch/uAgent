@@ -55,19 +55,6 @@ struct Usage {
     MergeCost(other.cost, other.cost_reported);
   }
 
-  // What a running total gained since `before`, an earlier reading of it.
-  Usage Since(const Usage& before) const {
-    Usage gained = *this;
-    gained.input = Nonnegative(input - before.input);
-    gained.output = Nonnegative(output - before.output);
-    gained.cache_read = Nonnegative(cache_read - before.cache_read);
-    gained.cache_write = Nonnegative(cache_write - before.cache_write);
-    gained.reasoning = Nonnegative(reasoning - before.reasoning);
-    gained.web_searches = Nonnegative(web_searches - before.web_searches);
-    gained.cost = std::max(0.0, cost - before.cost);
-    return gained;
-  }
-
   // OpenAI convention: input excludes cached tokens, output excludes reasoning.
   void Add(const json& value) {
     if (!value.is_object()) return;
@@ -277,6 +264,7 @@ inline json FlattenNumericStatistics(const json& statistics,
   return result;
 }
 
+// What a running total gained since `prior`, an earlier reading of it.
 inline Usage UsageDifference(const Usage& current, const Usage& prior) {
   const auto difference = [](int64_t now, int64_t before) {
     now = Nonnegative(now);
@@ -296,27 +284,6 @@ inline Usage UsageDifference(const Usage& current, const Usage& prior) {
       std::isfinite(prior.cost) && prior.cost > 0 ? prior.cost : 0.0;
   result.cost = now > before ? now - before : 0.0;
   result.cost_reported = current.cost_reported;
-  return result;
-}
-
-inline json NumericStatisticsDifference(const json& current,
-                                        const json& prior) {
-  json result = json::object();
-  if (!current.is_object()) return result;
-  for (const auto& [key, value] : current.items()) {
-    if (key == "complete" || !value.is_number() ||
-        !std::isfinite(value.get<double>()) || value.get<double>() < 0) {
-      continue;
-    }
-    if (value.is_number_integer() || value.is_number_unsigned()) {
-      const int64_t now = NonnegativeJsonInteger(value);
-      const int64_t before = NumericStatistic(prior, key);
-      result[key] = now > before ? now - before : int64_t{0};
-    } else {
-      result[key] = std::max(
-          0.0, value.get<double>() - JsonValue(prior, key.c_str(), 0.0));
-    }
-  }
   return result;
 }
 

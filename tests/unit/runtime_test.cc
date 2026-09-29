@@ -560,13 +560,6 @@ void TestAttributedUsageAccumulator() {
   CHECK(usage_delta.cost == 0.25);
   CHECK(usage_delta.cost_reported);
 
-  json statistics_delta = NumericStatisticsDifference(
-      {{"model_calls", 8}, {"duration_ms", 7.0}, {"complete", true}},
-      {{"model_calls", 3}, {"duration_ms", 8.0}});
-  CHECK(statistics_delta["model_calls"] == 5);
-  CHECK(statistics_delta["duration_ms"] == 0.0);
-  CHECK(!statistics_delta.contains("complete"));
-
   Usage extreme_current;
   extreme_current.input = std::numeric_limits<int64_t>::max();
   Usage extreme_prior;
@@ -578,9 +571,6 @@ void TestAttributedUsageAccumulator() {
   MergeNumericStatistics(extreme_statistics,
                          {{"calls", std::numeric_limits<uint64_t>::max()}});
   CHECK(extreme_statistics["calls"] == std::numeric_limits<int64_t>::max());
-  statistics_delta = NumericStatisticsDifference(
-      {{"calls", std::numeric_limits<uint64_t>::max()}}, {{"calls", 1}});
-  CHECK(statistics_delta["calls"] == std::numeric_limits<int64_t>::max() - 1);
 }
 
 // Empty UAGENT_IMAGE_MODEL no longer disables vision: an explicit model

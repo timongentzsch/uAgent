@@ -29,7 +29,6 @@ inline constexpr size_t kHelloBytes = KiB(1);
 inline constexpr size_t kOutputCompactBytes = KiB(64);
 inline constexpr size_t kBufferedNotices = 16;
 inline constexpr size_t kIoBufferBytes = KiB(8);
-inline constexpr size_t kWorkerIdentityBytes = 256;
 inline constexpr int kSocketBacklog = 16;
 inline constexpr auto kConnectTimeout = std::chrono::seconds(2);
 inline constexpr auto kConnectPollInterval = std::chrono::milliseconds(100);

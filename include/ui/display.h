@@ -201,8 +201,6 @@ inline std::string ActivityBar(const ActivityView& view) {
   return prefix + ActivityLabel(state, activity_width) + suffix;
 }
 
-// The pinned status row: dim, clipped to the terminal, and cleared to the
-// right so a shorter line never leaves stale text behind.
 // Continuation rows a status row of `columns` display columns has been
 // rewrapped into by a terminal now `width` columns wide. Zero unless the
 // terminal has narrowed since the row was written.
@@ -210,8 +208,10 @@ inline size_t StatusOverflowRows(size_t columns, size_t width) {
   return columns > 0 && width > 0 ? (columns - 1) / width : 0;
 }
 
-// `columns` reports the width the row actually occupies, which the caller
-// needs to erase it again after a terminal that rewraps has resized.
+// The pinned status row: dim, clipped to the terminal, and cleared to the
+// right so a shorter line never leaves stale text behind. `columns` reports
+// the width the row actually occupies, which the caller needs to erase it
+// again after a terminal that rewraps has resized.
 inline std::string StatusBarLine(const std::string& status,
                                  size_t* columns = nullptr) {
   std::string text =

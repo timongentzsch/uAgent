@@ -178,7 +178,8 @@ class TerminalSpinner {
   std::thread thread_;
 };
 
-// code colors (256-color, readable on dark and light themes; glamour-inspired)
+// Code and math in the default foreground: colour was dropped on purpose, and
+// these mark where it would apply.
 inline const char* CODE() { return Sgr("\033[39m"); }     // inline `code`
 inline const char* CodeBlk() { return Sgr("\033[39m"); }  // fenced block body
 inline const char* MATH() { return Sgr("\033[39m"); }     // LaTeX

@@ -291,12 +291,12 @@ void MdStream::Pc(char c) {
   Put(c);
 }
 
-// Emission is collected here and handed to stdio once per chunk instead of
-// once per character, which is where a third of the render cost sat: stdio
+// Emission is collected here and written as one tail frame per chunk instead
+// of once per character, which is where a third of the render cost sat: stdio
 // takes its lock — needed, because TerminalSpinner writes stdout from its own
-// thread (core/term.h) — on every single putchar. Every public entry point
-// drains the buffer before returning, so nothing an outside writer can
-// observe has moved.
+// thread when no composer is mounted (core/term.h) — on every call. Every
+// public entry point drains the buffer before returning, so nothing an
+// outside writer can observe has moved.
 void MdStream::Put(char value) {
   outbuf += value;
   TrackRendered(value);

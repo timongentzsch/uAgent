@@ -3,8 +3,6 @@
 #include "include/ui/interactive.h"
 
 #include <fcntl.h>
-#include <spawn.h>
-#include <sys/wait.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -13,8 +11,6 @@
 #include <cerrno>
 #include <cstdio>
 #include <filesystem>
-#include <fstream>
-#include <iterator>
 #include <limits>
 #include <string>
 #include <string_view>
@@ -22,7 +18,6 @@
 #include <vector>
 
 #include "include/cli.h"
-#include "include/core/fs.h"
 #include "include/core/limits.h"
 #include "include/core/platform.h"
 #include "include/core/signals.h"

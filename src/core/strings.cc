@@ -294,8 +294,8 @@ std::string OneLine(const std::string& s, size_t cap) {
   return Utf8Trunc(FirstLine(s), cap);
 }
 
-// The chrome the agent draws itself: row scaffolding, separators and the
-// spinner. Model and tool text keeps whatever Unicode it carries -- only what
+// The chrome the agent draws itself: row scaffolding and separators; the
+// spinner picks its own ASCII frames (SpinnerFrame). Model and tool text keeps whatever Unicode it carries -- only what
 // this program chose to print is downgraded, and only when the locale says the
 // terminal cannot decode it.
 std::string AsciiGlyphs(std::string_view s) {
@@ -304,9 +304,7 @@ std::string AsciiGlyphs(std::string_view s) {
       {"·", "-"},   {"—", "--"}, {"…", "..."}, {"→", "->"}, {"←", "<-"},
       {"≤", "<="},  {"≥", ">="}, {"≠", "!="},  {"×", "x"},  {"µ", "u"},
       {"◆", "*"},   {"◇", "o"},  {"•", "*"},   {"│", "|"},  {"↵", "\\n"},
-      {"⇥", "\\t"}, {"⠋", "|"},  {"⠙", "/"},   {"⠹", "-"},  {"⠸", "\\"},
-      {"⠼", "|"},   {"⠴", "/"},  {"⠦", "-"},   {"⠧", "\\"}, {"⠇", "|"},
-      {"⠏", "/"},   {"●", "*"},  {"○", "o"},   {"↑", "^"},  {"↓", "v"},
+      {"⇥", "\\t"}, {"●", "*"},  {"○", "o"},   {"↑", "^"},  {"↓", "v"},
   };
   std::string out;
   out.reserve(s.size());

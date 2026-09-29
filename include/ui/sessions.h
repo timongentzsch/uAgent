@@ -7,7 +7,6 @@
 // header, read here for the listing, and the full payload.
 
 #include <algorithm>
-#include <cinttypes>
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>

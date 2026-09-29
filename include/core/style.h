@@ -28,7 +28,6 @@ inline std::string StyledBlock(std::string_view text, const char* open) {
   return std::string(open) + body + RST() + "\n";
 }
 
-// Three or more backticks, or tildes, and nothing else.
 // Parts joined by " · ", the separator every row uses. Empty parts are
 // skipped, so an optional one needs no condition of its own.
 std::string JoinDot(std::initializer_list<std::string_view> parts);
@@ -51,6 +50,7 @@ enum class Tone { kNeutral, kWarn, kError };
 // a lowercase fragment with no trailing period; glyphs fall back to ASCII.
 std::string Note(Tone tone, std::string_view text);
 
+// Three or more backticks, or tildes, and nothing else.
 inline bool IsMarkdownFence(std::string_view marker) {
   return marker.size() >= 3 && (marker[0] == '`' || marker[0] == '~') &&
          marker.find_first_not_of(marker[0]) == std::string_view::npos;

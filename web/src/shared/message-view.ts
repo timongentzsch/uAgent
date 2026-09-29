@@ -21,14 +21,14 @@ function present(block: Block, source?: Block): PresentedBlock {
   return row;
 }
 
-// Flat, stable, uniform rows: the host's view already holds one block per
-// message and one per tool call, so a block is a row. Empty assistant
-// placeholders (a response before its first delta) are dropped: the status
-// line covers the live state. A tool row keeps the model call that made it.
 // A message of yours the host refused, or never confirmed receiving.
 export const unsent = (block: Pick<Block, "status">) =>
   block.status === "Not sent" || block.status === "Not confirmed";
 
+// Flat, stable, uniform rows: the host's view already holds one block per
+// message and one per tool call, so a block is a row. Empty assistant
+// placeholders (a response before its first delta) are dropped: the status
+// line covers the live state. A tool row keeps the model call that made it.
 export function presentMessages(blocks: Block[]): PresentedBlock[] {
   const rows: PresentedBlock[] = [];
   const responses = new Map<string, Block>();

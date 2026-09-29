@@ -363,7 +363,7 @@ function sourceEqual(a?: Block, b?: Block) {
 }
 
 // Every block field counts, so a new field can never be silently ignored.
-// Only arrays the projection rebuilds on each pass compare by content.
+// Only arrays the projection rebuilds on each pass compare by their entries.
 function blockEqual(x: PresentedBlock, y: PresentedBlock): boolean {
   if (x === y) return true;
   const a = x as unknown as Record<string, unknown>;
@@ -383,7 +383,12 @@ function blockEqual(x: PresentedBlock, y: PresentedBlock): boolean {
       )
         return false;
     } else if (key !== "files" && key !== "http") return false;
-    else if (before.length !== after.length) return false;
+    // Rebuilt arrays of the same entries: a changed entry still counts.
+    else if (
+      before.length !== after.length ||
+      before.some((item, index) => item !== after[index])
+    )
+      return false;
   }
   return true;
 }

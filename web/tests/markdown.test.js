@@ -101,3 +101,13 @@ test("offset parts keep the keys of the whole document", async () => {
   const tail = markdownBlocks("\n\nThree.", 2);
   assert.equal(tail[0].key, whole[2].key);
 });
+
+test("a long open code block splits above its fence", async () => {
+  const { streamingHead } = await import("../src/shared/markdown-split.ts");
+  const intro = "Intro paragraph.\n\nSecond paragraph.";
+  const fence = "```python\n" + "print('line')\n\n".repeat(60);
+  // Blank lines inside the fence never end the head: its fences would not
+  // balance. Only the fence's own start does.
+  assert.equal(streamingHead(`${intro}\n${fence}`), intro);
+  assert.equal(streamingHead("```\nonly code\n\nmore"), "");
+});

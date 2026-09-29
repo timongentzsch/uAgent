@@ -690,6 +690,25 @@ pre code {
   color: var(--muted);
   padding: var(--space-2) var(--space-3);
 }
+/* The title keeps the row; the help button sits right after it. */
+.conversation-head > div:first-of-type:has(.coordinator-help-anchor) {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.coordinator-help {
+  width: min(calc(340rem / 14), calc(100vw - 2 * var(--pad)));
+  display: grid;
+  gap: var(--space-3);
+  font-size: 0.85rem;
+}
+.coordinator-help h2 {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.coordinator-help p {
+  color: var(--muted);
+}
 .board-empty {
   color: var(--muted);
   font-size: 0.8rem;

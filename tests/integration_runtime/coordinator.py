@@ -20,7 +20,17 @@ from integration_support import (
     write_session,
 )
 
-COORDINATOR_TOOLS = {"read_path", "grep", "memory", "skill", "history", "thread", "approval", "state"}
+COORDINATOR_TOOLS = {
+    "read_path",
+    "grep",
+    "memory",
+    "skill",
+    "uagent",
+    "history",
+    "thread",
+    "approval",
+    "state",
+}
 
 
 def test_coordinator_is_one_read_only_session_per_folder(root, home, *, binary):
@@ -407,8 +417,8 @@ def test_coordinator_context_carries_soul_notes_board_and_time(root, home, *, bi
         [
             tool_call("state", {"action": "set", "block": "goals", "text": "ship v1"}),
             tool_call(
-                "state",
-                {"action": "propose_soul", "scope": "global", "text": "Be reckless."},
+                "uagent",
+                {"action": "set_soul", "scope": "user", "text": "Be reckless."},
                 call_id="call-2",
             ),
             event({"content": "noted"}),
@@ -427,5 +437,16 @@ def test_coordinator_context_carries_soul_notes_board_and_time(root, home, *, bi
         assert_true("## Soul\nPrefer small threads." in system, system[-300:])
         context = json.dumps(messages)
         assert_true("## goals\\nship v1" in context and "## board" in context, context[-800:])
+        # Rebuilt per request, never stored: rewriting stored history would
+        # move display rows and spoil the provider's cached prefix.
+        stored = next(p for p in session_files(home) if p.name == "coordinator.json")
+        assert_true("## board" not in stored.read_text(), "coordinator context was stored")
+        assert_true(messages[-1]["role"] == "user" and "## board" in messages[-1]["content"], messages[-1])
         users = [m["content"] for m in messages if m["role"] == "user"]
-        assert_true(any(re.match(r"\[\w{3} \d\d \w{3} \d\d:\d\d\] what now\?", u) for u in users), users)
+        assert_true(
+            any(re.match(r"\[\w{3} \d\d \w{3} \d\d:\d\d \S+\] what now\?", u) for u in users),
+            users,
+        )
+    # The user sees the soul from any terminal session.
+    code, output = run_pty(root, env, [(b"/soul\n", b"Prefer small threads."), b"/q\n"], binary=binary)
+    assert_true(code == 0, output)

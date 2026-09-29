@@ -927,6 +927,11 @@ void TestDisplayFactEvictionKeepsSmallReceipts() {
 // verbatim.
 void TestAttachmentHistoryRendering() {
   CHECK(StripAttachedTrailer("plain prompt") == "plain prompt");
+  // A coordinator's arrival stamp and silence line are for its model only.
+  CHECK(StripArrivalStamp("[Tue 29 Sep 06:54 UTC] yes") == "yes");
+  CHECK(StripArrivalStamp("\u2014 5 h since the last message \u2014\n"
+                          "[Tue 29 Sep 06:54 CEST] new topic") == "new topic");
+  CHECK(StripArrivalStamp("[see below] yes") == "[see below] yes");
   CHECK(StripAttachedTrailer("look\n\nAttached:\n- path \"/tmp/a.png\"") ==
         "look");
   CHECK(StripAttachedTrailer("look\n\nAttached:\n- path \"/tmp/a.png\"\n") ==

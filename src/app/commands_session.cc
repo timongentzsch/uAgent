@@ -8,6 +8,8 @@
 #include <vector>
 
 #include "include/agent/child_agent.h"
+#include "include/agent/prompt.h"
+#include "include/cli.h"
 #include "include/app/commands.h"
 #include "include/app/permissions.h"
 #include "include/app/self_description.h"
@@ -193,6 +195,54 @@ void HandleStatus(const AppSession& session, CommandReply& reply) {
       names += (names.empty() ? "" : ", ") + key.get<std::string>();
     }
     row("restart needed", names);
+  }
+}
+
+// The person edits the soul directly here, so no approval stands between
+// them and the file; the agent goes through uagent set_soul instead.
+void HandleSoul(const std::string& argument, CommandReply& reply) {
+  std::istringstream words(argument);
+  std::string action, scope;
+  words >> action >> scope;
+  if (scope.empty()) scope = "user";
+  const json souls = SoulDocuments(CanonicalCwd());
+  if (action == "edit") {
+    if (scope != "user" && scope != "project") {
+      reply.Print("%s", "usage: /soul edit [user|project]\n");
+      return;
+    }
+    bool cancelled = false;
+    const std::string text = ReadInteraction(
+        {.kind = "editor",
+         .prompt = "Edit the coordinator's " + scope + " soul",
+         .initial = JsonValue(souls[scope], "text", "")},
+        &cancelled);
+    if (cancelled) {
+      reply.Print("%s", "· soul unchanged\n");
+      return;
+    }
+    const std::string error = WriteSoul(scope, CanonicalCwd(), text);
+    const std::string said =
+        error.empty() ? scope + " soul saved; the coordinator reads it from "
+                                "its next turn"
+                      : error;
+    reply.Print("· %s\n", said.c_str());
+    return;
+  }
+  if (!action.empty()) {
+    reply.Print("%s", "usage: /soul [edit [user|project]]\n");
+    return;
+  }
+  for (const char* part : {"user", "project"}) {
+    const json& soul = souls[part];
+    std::string text = JsonValue(soul, "text", "");
+    std::string note = std::string(part) == "project" &&
+                               !JsonValue(soul, "loaded", false)
+                           ? " (not loaded: project config is not trusted)"
+                           : "";
+    reply.Print("%s%s soul%s%s · %s\n%s\n\n", BOLD(), part, RST(),
+                note.c_str(), JsonValue(soul, "path", "").c_str(),
+                text.empty() ? "(empty)" : text.c_str());
   }
 }
 

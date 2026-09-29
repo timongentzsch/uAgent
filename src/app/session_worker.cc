@@ -218,7 +218,12 @@ class WorkerChannel final : public ApplicationChannel {
       }
       pollfd waits[] = {{wake_.read.Get(), POLLIN, 0},
                         {AbortWakeFd(), POLLIN, 0}};
-      int timeout = coordinator_ ? static_cast<int>(kIdlePoll.count()) : -1;
+      int timeout = -1;
+      if (coordinator_) {
+        timeout = static_cast<int>(std::min<int64_t>(
+            kIdlePoll.count(),
+            std::chrono::milliseconds(CoordinatorIdle()).count() / 4));
+      }
       {
         std::lock_guard lock(mutex_);
         if (!events_.empty()) {
@@ -230,13 +235,14 @@ class WorkerChannel final : public ApplicationChannel {
         return std::nullopt;
       }
       if (ready == 0) {
+        // Idle is measured from the last input or wake; any client still
+        // attached (a terminal, or a host that has not let go) keeps it.
         const auto now = std::chrono::steady_clock::now();
-        if (server_.Clients() > 0) idle_since = now;
         {
           std::lock_guard lock(mutex_);
           if (!events_.empty()) continue;
         }
-        if (now - idle_since >= kCoordinatorIdle) {
+        if (server_.Clients() == 0 && now - idle_since >= CoordinatorIdle()) {
           std::lock_guard lock(mutex_);
           closed_ = true;
           return std::nullopt;
@@ -386,8 +392,8 @@ class WorkerChannel final : public ApplicationChannel {
     const std::time_t seconds = std::chrono::system_clock::to_time_t(now);
     std::tm local{};
     localtime_r(&seconds, &local);
-    char stamp[32];
-    std::strftime(stamp, sizeof stamp, "[%a %d %b %H:%M] ", &local);
+    char stamp[48];
+    std::strftime(stamp, sizeof stamp, "[%a %d %b %H:%M %Z] ", &local);
     std::string gap;
     if (silence.count() >= 1) {
       gap = "— " + std::to_string(silence.count()) +

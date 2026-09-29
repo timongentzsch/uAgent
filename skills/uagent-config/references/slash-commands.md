@@ -46,3 +46,7 @@
 | `/btw QUESTION` | ask a side question without adding it to the conversation |
 | `/verbose` | toggle full reasoning and expanded tool output |
 | `/yolo` | toggle automatic approval |
+| `/coord` | open this folder's coordinator |
+| `/board` | list this folder's sessions and threads |
+| `/open ID` | switch to a session from /board |
+| `/soul [edit [user|project]]` | show or edit the coordinator's soul |

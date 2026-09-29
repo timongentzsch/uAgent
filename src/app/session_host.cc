@@ -202,8 +202,30 @@ void SessionHost::RefreshPresence() {
   }
   for (const auto& session : candidates) {
     if (!PathExists(SocketPath(session->path))) continue;
+    if (session->parked && session->parked == session->updated) continue;
     std::string error;
     ActivateLocked(session, error, lock, false);
+  }
+}
+
+void SessionHost::ParkIdleCoordinators() {
+  std::lock_guard lock(mutex_);
+  const int64_t now = NowMillis();
+  const int64_t idle =
+      std::chrono::duration_cast<std::chrono::milliseconds>(CoordinatorIdle())
+          .count();
+  for (const auto& [id, session] : sessions_) {
+    if (session->kind != kSessionKindCoordinator || session->pid <= 0 ||
+        session->exited || session->closing || session->connecting ||
+        session->turn_active || !session->pending.is_null() ||
+        now - std::max(session->updated, session->activated) < idle) {
+      continue;
+    }
+    // Closing (not closed): the reader stops and the session reads as
+    // saved, while the runtime decides for itself when to exit.
+    session->parked = session->updated;
+    session->closing = true;
+    session->stop.Wake();
   }
 }
 

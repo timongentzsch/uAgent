@@ -82,6 +82,24 @@ json SessionControl(AppSession& session, const json& request) {
                              MakeSessionId() + ".json";
     }
     std::string error;
+    // A folder has one coordinator, so "edit from here" rewinds it in place
+    // rather than starting an ordinary conversation beside it.
+    if (kind == "fork" &&
+        JsonValue(session.context.options.session, "kind", "") ==
+            kSessionKindCoordinator &&
+        (JsonValue(request, "turn", int64_t{0}) > 0 ||
+         !JsonValue(request, "message_id", "").empty())) {
+      json rewound = session.ActiveAgent().RewindBefore(
+          JsonValue(request, "turn", int64_t{0}),
+          JsonValue(request, "message_id", ""));
+      if (rewound.contains("error")) return rewound;
+      if (!session.Save(error)) return {{"error", error}};
+      rewound["rewound"] = true;
+      rewound["id"] = HashHex(session.session_file);
+      rewound["path"] = session.session_file;
+      rewound["cwd"] = CanonicalCwd();
+      return rewound;
+    }
     if (!session.Save(error)) return {{"error", error}};
     if (kind == "share") return SessionStore::Share(session.session_file);
     return SessionStore::Fork(session.session_file,

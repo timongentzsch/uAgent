@@ -57,6 +57,7 @@ enum class SlashCommandId {
   kCoord,
   kBoard,
   kOpen,
+  kSoul,
 };
 
 struct SlashCommandSpec {

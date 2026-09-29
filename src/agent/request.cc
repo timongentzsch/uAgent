@@ -56,6 +56,10 @@ std::string Agent::PrepareRequestMessages(const json& source, json& projected,
 json Agent::ModelRequest() {
   json projected;
   PrepareRequestMessages(conversation_.Messages(), projected, false);
+  if (runtime_context_) {
+    if (projected.is_null()) projected = conversation_.Messages();
+    projected.push_back(CoordinatorContextMessage());
+  }
   json selected = json::array();
   for (size_t i = 0; i < tools_.size() && i < schemas_.size(); ++i) {
     if (tool_selection_.Enabled(tools_[i])) selected.push_back(schemas_[i]);
@@ -129,7 +133,17 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
       Emit(NoticeEvent(PresentationStatus::kWarned, preparation_error));
     }
   }
-  const json& messages = projected.is_null() ? source : projected;
+  const json* chosen = projected.is_null() ? &source : &projected;
+  // A coordinator's board and clock change every request, so they ride on
+  // the request's tail and never enter the stored conversation: rewriting
+  // history there would move display rows and spoil the cached prefix.
+  json tailed;
+  if (runtime_context_) {
+    tailed = *chosen;
+    tailed.push_back(CoordinatorContextMessage());
+    chosen = &tailed;
+  }
+  const json& messages = *chosen;
   PublishSideContext(&schemas);
   if (!messages.empty()) {
     last_sent_prompt_ = JsonValue(messages[0], "content", "");
@@ -708,8 +722,15 @@ std::string Agent::RuntimeContextText() const {
   if (HasMemoryContent(project_instructions_)) {
     content += "\n\n" + MemoryText();
   }
-  if (runtime_context_) content += "\n\n" + runtime_context_();
   return content;
+}
+
+// Harness context in the user role, like the stored runtime context: strict
+// chat templates accept a single system message, at index zero.
+json Agent::CoordinatorContextMessage() const {
+  json message = HarnessMessage(runtime_context_());
+  message["role"] = "user";
+  return message;
 }
 
 void Agent::EnsureRuntimeContext() {

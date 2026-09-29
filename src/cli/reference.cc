@@ -62,7 +62,16 @@ std::string CliMarkdown() {
   out +=
       "\nPrecedence: these flags override process `UAGENT_*` variables, which "
       "override a trusted `./.uagent/.config`, which overrides "
-      "`~/.uagent/.config`.\n";
+      "`~/.uagent/.config`.\n"
+      "\n## Coordinator\n\n"
+      "`uagent coord [options]` opens this folder's coordinator: one per "
+      "folder, it reads the folder's sessions, delegates threads and decides "
+      "approvals their Auto mode cannot settle. `uagent coord -p PROMPT` runs "
+      "one turn and prints the answer; `--json` adds the stop reason. Inside "
+      "any session, `/coord` opens it, `/board` lists the folder's sessions "
+      "and `/open ID` switches to one. Settings are the `UAGENT_COORDINATOR_*` "
+      "rows of the configuration reference; its soul is `~/.uagent/soul.md` "
+      "and a trusted project's `.uagent/soul.md`.\n";
   return out;
 }
 

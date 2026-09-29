@@ -99,6 +99,7 @@ void SessionHost::DeactivateLocked(HostSession& session) {
   {
     std::lock_guard send_lock(session.send_mutex);
     session.generation.clear();
+    session.socket.Reset();
   }
   session.status = "saved";
   session.error.clear();
@@ -201,6 +202,7 @@ bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
     return false;
   }
   bool create_now = create;
+  session->parked = 0;
   for (int attempt = 0;; ++attempt) {
     if (session->pid > 0 && !session->exited) {
       if (!RecycleStaleWorkerLocked(session, lock)) return true;
@@ -282,6 +284,7 @@ bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
       create_now = true;
       continue;
     }
+    session->activated = NowMillis();
     replay_.Publish(epoch_, session->id, session->generation,
                     {{"kind", "activated"}, {"metadata", Metadata(*session)}},
                     !session->run_id.empty());
@@ -293,7 +296,13 @@ bool SessionHost::ApplyRuntimeFrame(HostSession& session, json& frame) {
   const std::string kind = JsonValue(frame, "kind", "");
   if (kind == "state") {
     json next = JsonValue(frame, "state", json::object());
-    json view = JsonValue(session.state, "view", json::object());
+    // A rewound conversation starts a new view epoch: its old blocks are
+    // gone, so the checkpoint replaces the view instead of merging into it.
+    json view =
+        JsonValue(next, "view_epoch", uint64_t{0}) ==
+                JsonValue(session.state, "view_epoch", uint64_t{0})
+            ? JsonValue(session.state, "view", json::object())
+            : json::object();
     const json checkpoint_view = JsonValue(next, "view", json::object());
     if (checkpoint_view.is_object()) {
       for (auto it = checkpoint_view.begin(); it != checkpoint_view.end();

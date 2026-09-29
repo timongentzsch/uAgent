@@ -1,4 +1,6 @@
 import type { ComponentChildren } from "preact";
+import { CircleHelp } from "lucide-preact";
+import { Popover } from "../../shared/popover.tsx";
 import type { Session } from "../../shared/types.ts";
 import { Button, DataText, Time } from "../../shared/ui.tsx";
 
@@ -87,5 +89,53 @@ export function CoordinatorLayout({
       <div class="coordinator-chat">{children}</div>
       {board}
     </div>
+  );
+}
+
+// What a coordinator is, next to its title: a tap opens it, so it works
+// without hover on a phone.
+export function CoordinatorHelp({ editSoul }: { editSoul: () => void }) {
+  return (
+    <Popover
+      label="What is the coordinator?"
+      trigger={<CircleHelp aria-hidden="true" />}
+      className="coordinator-help-anchor"
+      panelClass="coordinator-help"
+      align="start"
+    >
+      {(close) => (
+        <>
+          <h2>The folder's coordinator</h2>
+          <p>
+            One per folder. It keeps track of every conversation here, answers
+            questions about them, and hands work to threads. It reads files but
+            never edits them or runs commands itself.
+          </p>
+          <h2>How it differs from a conversation</h2>
+          <p>
+            A conversation does the work you ask for in it. The coordinator
+            manages conversations: it starts threads (ordinary conversations,
+            marked ↳), steers them, and decides the approvals their Auto mode
+            cannot settle, asking you when it is unsure. Its notes and goals
+            carry over between days.
+          </p>
+          <p>You can open and steer any thread directly.</p>
+          <h2>Its soul</h2>
+          <p>
+            Standing guidance it reads every turn: yours in ~/.uagent/soul.md,
+            and a trusted project's in .uagent/soul.md. /soul shows both.
+          </p>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              close();
+              editSoul();
+            }}
+          >
+            Edit my soul
+          </Button>
+        </>
+      )}
+    </Popover>
   );
 }

@@ -559,26 +559,9 @@ json ReadPinned(const std::string& folder) {
   return pinned.is_object() ? pinned : json::object();
 }
 
-std::string SoulPath(const std::string& folder, const std::string& scope) {
-  return scope == "project" ? folder + "/.uagent/soul.md"
-                            : GlobalBase() + "/soul.md";
-}
-
 ToolResult State(const std::string& folder, const json& a) {
   const std::string action = JsonValue(a, "action", "");
   if (action == "show") return ToolSuccess(JsonDump(ReadPinned(folder), 1));
-  if (action == "propose_soul") {
-    // Reaching here means the user approved the exact text in the preview.
-    const std::string path =
-        SoulPath(folder, JsonValue(a, "scope", "global"));
-    std::string error;
-    CreatePrivateDirectories(std::filesystem::path(path).parent_path());
-    if (!AtomicWriteFile(path, JsonValue(a, "text", ""), kPrivateFileMode,
-                         false, error)) {
-      return ToolFailure(ToolErrorCode::kUnavailable, "error: " + error);
-    }
-    return ToolSuccess("soul saved to " + path + "; it applies next turn");
-  }
   const std::string block = JsonValue(a, "block", "");
   if (std::find(std::begin(kPinnedBlocks), std::end(kPinnedBlocks), block) ==
       std::end(kPinnedBlocks)) {
@@ -618,29 +601,16 @@ Tool StateTool(const std::string& folder) {
       "Your pinned notes, shown to you every turn: goals, decisions and "
       "open_questions (2 KiB each). set replaces a block, append adds a line, "
       "clear empties it, show prints all. Keep them current and short; "
-      "lessons about the user belong in memory. propose_soul asks the user "
-      "to replace your soul (scope global or project) with `text`.",
+      "lessons about the user belong in memory, and your soul is changed "
+      "through uagent set_soul.",
       json::parse(R"json({"type":"object","properties":{
-        "action":{"type":"string","enum":["show","set","append","clear","propose_soul"]},
+        "action":{"type":"string","enum":["show","set","append","clear"]},
         "block":{"type":"string","enum":["goals","decisions","open_questions"]},
-        "scope":{"type":"string","enum":["global","project"]},
         "text":{"type":"string"}},
         "required":["action"]})json"),
       [folder](const json& a, const ToolContext&) { return State(folder, a); });
   tool.capabilities = Capability(ToolCapability::kDelegate);
   tool.category = "collaborate";
-  // The soul shapes every later turn: only the user may change it, and they
-  // approve the exact text.
-  tool.approval_class = [](const json& a) {
-    return JsonValue(a, "action", "") == "propose_soul"
-               ? ApprovalClass::kMandatoryHuman
-               : ApprovalClass::kNone;
-  };
-  tool.mandatory_reason = "changes the coordinator's soul";
-  tool.approval_preview = [folder](const json& a) {
-    return "Replace " + SoulPath(folder, JsonValue(a, "scope", "global")) +
-           " with:\n\n" + JsonValue(a, "text", "");
-  };
   tool.summary = [](const json& a) {
     return JsonValue(a, "action", "") + " " + JsonValue(a, "block", "");
   };

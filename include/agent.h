@@ -100,6 +100,11 @@ class Agent {
   const Conversation& History() const { return conversation_; }
   const std::vector<Tool>& Tools() const { return tools_; }
   json DisplaySnapshot() const;
+  // Rewinds this conversation in place to just before a user message (by
+  // `turn`, or by its "m-<id>"), returning {prompt} with that message's text,
+  // or {error}. Bumps ViewEpoch: holders of the old view must replace it.
+  json RewindBefore(int64_t turn, const std::string& message_id);
+  uint64_t ViewEpoch() const { return view_epoch_; }
   // /btw: one tool-less model call over the conversation as of the last
   // request or turn end, never recorded. Safe beside a running turn.
   json SideQuestion(const std::string& question) const;
@@ -114,8 +119,8 @@ class Agent {
   void KeepToolFiles(KeepFile keep) { keep_tool_file_ = std::move(keep); }
   // Coordinator/thread role ({kind, thread}), saved in the session header.
   void SetSessionRole(json role) { session_role_ = std::move(role); }
-  // Extra per-turn runtime context (a coordinator's board and pinned notes):
-  // rebuilt each turn, outside the transcript and the cached system prompt.
+  // Extra context rebuilt for every model request (a coordinator's clock,
+  // pinned notes and board): appended to the request, never stored.
   void SetRuntimeContext(std::function<std::string()> extra) {
     runtime_context_ = std::move(extra);
   }
@@ -330,6 +335,7 @@ class Agent {
   // rather than restored, so it tracks the current tools/protocol (see load()).
   json SysMsg() const;
   void EnsureRuntimeContext();
+  json CoordinatorContextMessage() const;
 
   // Append environment state only when it changes. This preserves every prior
   // request byte for provider caching without repeating cwd metadata each turn.
@@ -398,6 +404,7 @@ class Agent {
   int64_t forked_at_turn_ = 0;
   std::string forked_at_time_;
   json session_role_ = json::object();
+  uint64_t view_epoch_ = 0;
   std::function<std::string()> runtime_context_;
   int64_t total_user_turns_ = 0;
   size_t logged_msgs_ = 0;      // messages already written to the debug trace

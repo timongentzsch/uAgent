@@ -23,6 +23,9 @@ for (const [name, viewport] of [
       () => document.documentElement.scrollWidth - window.innerWidth,
     );
     expect(overflow).toBeLessThanOrEqual(0);
+    // The help explains what the coordinator is, by tap as well as click.
+    await page.getByLabel("What is the coordinator?").click();
+    await expect(page.getByText("How it differs from a conversation")).toBeVisible();
     if (process.env.UAGENT_SCREENSHOTS) {
       await page.screenshot({
         path: `${process.env.UAGENT_SCREENSHOTS}/coordinator-${name}.png`,

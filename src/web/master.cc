@@ -426,13 +426,19 @@ class Master {
     std::thread stopping([&] {
       for (;;) {
         std::vector<std::string> paths = host_.PresencePaths();
+        // Wakes at least twice per coordinator idle period to let go of
+        // idle coordinators, whether or not a browser is watching.
         auto result = WaitForAnyFileChange(
-            paths, Clock::now() + std::chrono::hours(24), stop.read.Get());
+            paths,
+            Clock::now() + std::min<Clock::duration>(std::chrono::hours(24),
+                                                     session::CoordinatorIdle() / 2),
+            stop.read.Get());
         if (result == FileWaitResult::kInterrupted) {
           // A restart was requested over HTTP: its reply is still leaving.
           if (reexec_) std::this_thread::sleep_for(kRestartReply);
           break;
         }
+        host_.ParkIdleCoordinators();
         bool observed;
         {
           std::lock_guard lock(mutex_);

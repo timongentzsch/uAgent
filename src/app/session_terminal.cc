@@ -597,7 +597,10 @@ class Terminal {
       } else if (!result.empty()) {
         WriteTerminalRecord(TerminalSafe(JsonDump(result, 2)) + "\n");
       }
-      if (JsonValue(result, "forked", false)) {
+      // A coordinator rewinds in place: reopening its path shows the
+      // shortened conversation, with the message back in the composer.
+      if (JsonValue(result, "forked", false) ||
+          JsonValue(result, "rewound", false)) {
         std::lock_guard lock(mutex_);
         next_ = JsonValue(result, "path", "");
         if (rewinding_) carry_ = JsonValue(result, "prompt", "");

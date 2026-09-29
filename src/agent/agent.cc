@@ -5,6 +5,7 @@
 #include <sys/wait.h>
 
 #include <algorithm>
+#include <charconv>
 #include <cstdio>
 #include <filesystem>
 #include <memory>
@@ -72,6 +73,25 @@ Agent::Agent(Api& api, std::vector<Tool>& tools, ProcessSupervisor& processes,
 }
 
 json Agent::DisplaySnapshot() const { return ConversationView(conversation_); }
+
+json Agent::RewindBefore(int64_t turn, const std::string& message_id) {
+  if (!message_id.empty()) {
+    uint64_t display_id = 0;
+    if (message_id.starts_with("m-")) {
+      std::from_chars(message_id.data() + 2,
+                      message_id.data() + message_id.size(), display_id);
+    }
+    turn = display_id ? conversation_.UserMessageNumber(display_id) : 0;
+  }
+  const std::string prompt =
+      StripArrivalStamp(conversation_.UserMessageText(turn));
+  if (!conversation_.TruncateBeforeUserTurn(turn)) {
+    return {{"error", "that message is no longer in the live conversation"}};
+  }
+  ++revision_;
+  ++view_epoch_;
+  return {{"prompt", prompt}};
+}
 
 void Agent::PublishSideContext(const json* tools) {
   std::shared_ptr<const SideContext> prior;

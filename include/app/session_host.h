@@ -42,6 +42,10 @@ struct HostSession {
                                                              error, binary;
   // "coordinator", "thread" or empty; a thread names its project `folder`.
   std::string kind, folder;
+  // The `updated` stamp at which the host let go of an idle coordinator;
+  // presence refresh leaves it alone until the file changes. 0 = held.
+  int64_t parked = 0;
+  int64_t activated = 0;  // wall-clock ms of the last successful activation
   json state = json::object(), pending = nullptr;
   std::map<std::string, json> active_exchanges;
   int64_t updated = 0;
@@ -113,6 +117,9 @@ class SessionHost {
   void LoadDrafts();
   bool RefreshCatalogue(bool force = false);
   void RefreshPresence();
+  // Lets go of coordinators idle for CoordinatorIdle() so their runtimes can
+  // exit; one is adopted again once it saves or is activated.
+  void ParkIdleCoordinators();
   // Marks running runtimes (all, or those in `cwd`) for a fresh start that
   // keeps their history: idle ones now, busy ones when their turn ends.
   json RestartRunning(const std::string& cwd);

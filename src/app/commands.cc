@@ -259,6 +259,9 @@ CommandReply RunSlashCommand(AppSession& session,
     case SlashCommandId::kStatus:
       HandleStatus(session, reply);
       break;
+    case SlashCommandId::kSoul:
+      HandleSoul(command.argument, reply);
+      break;
     case SlashCommandId::kDebugConfig:
       HandleDebugConfig(session, command.argument, reply);
       break;

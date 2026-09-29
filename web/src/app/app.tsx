@@ -54,7 +54,10 @@ import { useDismiss } from "../shared/dismiss.ts";
 import { SettingsLoading } from "../shared/loading.tsx";
 import Sidebar, { ConversationMenu } from "../features/sidebar/sidebar.tsx";
 import Composer from "../features/composer/composer.tsx";
-import Board, { CoordinatorLayout } from "../features/coordinator/board.tsx";
+import Board, {
+  CoordinatorHelp,
+  CoordinatorLayout,
+} from "../features/coordinator/board.tsx";
 import { folderName } from "../features/sidebar/folder-label.tsx";
 import Chat, {
   TranscriptPlaceholder,
@@ -402,13 +405,20 @@ function App() {
   async function forkAndOpen(fields: CommandFields, edit = false) {
     const result = await command("fork", session, fields);
     if (result.pending) return;
-    const { id, prompt } = result.result;
-    await refresh();
-    await choose(id);
-    await command("activate", { id, generation: "" });
+    const { id, prompt, rewound } = result.result;
+    if (!rewound) {
+      await refresh();
+      await choose(id);
+      await command("activate", { id, generation: "" });
+    }
     await load(id);
     if (edit && prompt) setDraft({ text: prompt, files: [] }, id);
-    if (edit) setNotice("Continuing in a fork. Files on disk are unchanged.");
+    if (edit)
+      setNotice(
+        rewound
+          ? "The coordinator rewound to this message; edit and send."
+          : "Continuing in a fork. Files on disk are unchanged.",
+      );
   }
   async function localCommand(text: string) {
     const { name, argument } = parseSlash(catalogue.commands || [], text);
@@ -1010,6 +1020,15 @@ function App() {
                       "Your workspace"
                     )}
                   </h1>
+                  {page === "chat" && session?.kind === "coordinator" && (
+                    <CoordinatorHelp
+                      editSoul={() =>
+                        command("submit", session, {
+                          text: "/soul edit user",
+                        }).catch(report)
+                      }
+                    />
+                  )}
                 </div>
                 {browserAvailable && (
                   <IconButton

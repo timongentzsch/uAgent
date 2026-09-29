@@ -7,6 +7,8 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/prompt.h"
+#include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/strings.h"
 
@@ -17,18 +19,24 @@ Tool UagentTool(SelfDescriptionProvider describe,
   Tool tool = MakeTool(
       "uagent",
       "Inspect this running build: status, cli, commands, config, tools, "
-      "prompt or routes. Configure registered UAGENT_* settings with an exact "
-      "human-approved diff; YOLO cannot approve configuration changes. "
-      "Inspect config first. Secrets are never returned or accepted literally.",
+      "prompt, routes, or soul (the folder coordinator's standing character: "
+      "user and project). Configure registered UAGENT_* settings with an "
+      "exact human-approved diff; YOLO cannot approve configuration changes. "
+      "Inspect config first. set_soul replaces one soul (scope, text) once "
+      "the user approves the exact text. Secrets are never returned or "
+      "accepted literally.",
       {{"type", "object"},
        {"properties",
         {{"action",
           {{"type", "string"},
-           {"enum", json::array({"inspect", "configure"})}}},
+           {"enum", json::array({"inspect", "configure", "set_soul"})}}},
          {"topic",
           {{"type", "string"},
            {"enum", json::array({"status", "cli", "commands", "config", "tools",
-                                 "prompt", "routes"})}}},
+                                 "prompt", "routes", "soul"})}}},
+         {"text",
+          {{"type", "string"},
+           {"description", "set_soul: the whole new soul, Markdown"}}},
          {"name",
           {{"type", "string"}, {"description", "exact setting or tool name"}}},
          {"scope",
@@ -54,7 +62,22 @@ Tool UagentTool(SelfDescriptionProvider describe,
        {"required", json::array({"action"})}},
       [describe = std::move(describe), store](
           const json& arguments, const ToolContext&) -> ToolResult {
-        if (JsonValue(arguments, "action", "") == "inspect") {
+        const std::string action = JsonValue(arguments, "action", "");
+        if (action == "inspect" && JsonValue(arguments, "topic", "") == "soul") {
+          return ToolSuccess(JsonDump(SoulDocuments(CanonicalCwd()), 2));
+        }
+        if (action == "set_soul") {
+          // Reaching here means the user approved this exact text.
+          const std::string error =
+              WriteSoul(JsonValue(arguments, "scope", "user"), CanonicalCwd(),
+                        JsonValue(arguments, "text", ""));
+          return error.empty()
+                     ? ToolSuccess("soul saved; the coordinator reads it from "
+                                   "its next turn")
+                     : ToolFailure(ToolErrorCode::kProcessFailed,
+                                   "error: " + error);
+        }
+        if (action == "inspect") {
           SelfTopic topic = SelfTopic::kStatus;
           if (!ParseSelfTopic(JsonValue(arguments, "topic", "status"), topic)) {
             return ToolFailure(ToolErrorCode::kInvalidArguments,
@@ -98,18 +121,19 @@ Tool UagentTool(SelfDescriptionProvider describe,
         return ToolSuccess(report);
       });
   tool.mutates = [](const json& arguments) {
-    return JsonValue(arguments, "action", "") == "configure";
+    return JsonValue(arguments, "action", "") != "inspect";
   };
   tool.redact_invalid_arguments = true;
   tool.approval_class = [](const json& arguments) {
-    return JsonValue(arguments, "action", "") == "configure"
+    return JsonValue(arguments, "action", "") != "inspect"
                ? ApprovalClass::kMandatoryHuman
                : ApprovalClass::kNone;
   };
   tool.validate =
       [prepare](const json& arguments) -> std::optional<ToolArgumentIssue> {
     if (JsonValue(arguments, "action", "") == "inspect") {
-      if (arguments.contains("scope") || arguments.contains("changes")) {
+      if (arguments.contains("scope") || arguments.contains("changes") ||
+          arguments.contains("text")) {
         return ArgumentIssue("config.inspect",
                              "inspect does not accept scope or changes");
       }
@@ -118,6 +142,18 @@ Tool UagentTool(SelfDescriptionProvider describe,
     if (!prepare) {
       return ArgumentIssue("config.unavailable",
                            "configuration requires an interactive human");
+    }
+    if (JsonValue(arguments, "action", "") == "set_soul") {
+      const std::string scope = JsonValue(arguments, "scope", "user");
+      if (scope != "user" && scope != "project") {
+        return ArgumentIssue("soul.scope", "scope must be user or project",
+                             "scope");
+      }
+      if (!arguments.contains("text")) {
+        return ArgumentIssue("soul.text", "set_soul needs the whole text",
+                             "text");
+      }
+      return std::nullopt;
     }
     if (arguments.contains("topic") || arguments.contains("name")) {
       return ArgumentIssue("config.configure",
@@ -142,6 +178,9 @@ Tool UagentTool(SelfDescriptionProvider describe,
   // A genuine one-liner: this is the call label, and it also reaches the debug
   // trace and compaction evidence, so the diff must not be built here.
   tool.summary = [](const json& arguments) {
+    if (JsonValue(arguments, "action", "") == "set_soul") {
+      return "soul · " + JsonValue(arguments, "scope", "user");
+    }
     if (JsonValue(arguments, "action", "") == "inspect") {
       return JsonValue(arguments, "topic", "status") + " " +
              JsonValue(arguments, "name", "");
@@ -163,6 +202,13 @@ Tool UagentTool(SelfDescriptionProvider describe,
   // Built only when a person is about to be asked. Preparing here also records
   // the proposal, so the bytes shown are exactly the bytes that can commit.
   tool.approval_preview = [prepare, store](const json& arguments) {
+    if (JsonValue(arguments, "action", "") == "set_soul") {
+      const std::string scope = JsonValue(arguments, "scope", "user");
+      const json current = SoulDocuments(CanonicalCwd())[scope];
+      return "Replace " + JsonValue(current, "path", "") + "\n\nNow:\n" +
+             JsonValue(current, "text", "(empty)") + "\n\nProposed:\n" +
+             JsonValue(arguments, "text", "");
+    }
     ConfigProposalScope scope = ConfigProposalScope::kUser;
     std::vector<ConfigChange> changes;
     std::string error;
@@ -184,6 +230,7 @@ Tool UagentTool(SelfDescriptionProvider describe,
     tool.parameters["properties"]["action"]["enum"] = json::array({"inspect"});
     tool.parameters["properties"].erase("scope");
     tool.parameters["properties"].erase("changes");
+    tool.parameters["properties"].erase("text");
   }
   tool.available_in_lean = false;
   tool.intent = "setup";

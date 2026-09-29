@@ -2406,3 +2406,54 @@ def test_folder_coordinator_is_one_session_with_its_own_tools(root, home, *, bin
             listed = catalogue["sessions"]
             kinds = [item.get("kind") for item in listed if item["cwd"] == str(project.resolve())]
             assert_true(kinds == ["coordinator"], listed)
+
+
+def test_idle_coordinator_is_let_go_and_exits(root, home, *, binary):
+    from session_support import runtime_directory
+
+    project = root / "idle"
+    project.mkdir()
+    with Server([event({"content": "ok"})]) as provider:
+        with web_host(
+            binary, root, home, provider.url, extra_env={"UAGENT_INTERNAL_COORDINATOR_IDLE_S": "2"}
+        ) as (web, code, _, _env):
+            web.pair(code)
+            session = web.command("create", cwd=str(project), coordinator=True)["session"]
+            web.command("activate", session)
+            sockets = lambda: list(runtime_directory(home).glob("*.sock"))
+            wait_until(sockets, "coordinator runtime never started", timeout=10)
+            # The host lets go after the idle period; the runtime then exits.
+            wait_until(lambda: not sockets(), "idle coordinator kept running", timeout=30)
+            again = web.command("create", cwd=str(project), coordinator=True)["session"]
+            assert_true(again["id"] == session["id"], again)
+            web.command("activate", again)
+            wait_until(sockets, "coordinator did not start again", timeout=10)
+
+
+def test_coordinator_edit_from_here_rewinds_in_place(root, home, *, binary):
+    project = root / "rewind"
+    project.mkdir()
+    with Server([event({"content": "one-ok"}), event({"content": "two-ok"})]) as provider:
+        with web_host(binary, root, home, provider.url) as (web, code, _, _env):
+            web.pair(code)
+            session = web.command("create", cwd=str(project), coordinator=True)["session"]
+            session = web.command("activate", session)["session"]
+            web.until(session, lambda value: value["metadata"]["status"] == "idle")
+            for text, answer in (("first", "one-ok"), ("second", "two-ok")):
+                web.command("submit", session, text=text)
+                web.until(
+                    session,
+                    lambda value, answer=answer: value["metadata"]["status"] == "idle"
+                    and any(block.get("text") == answer for block in value["state"]["view"]["blocks"]),
+                )
+            rewound = web.command("fork", session, turn=2)["result"]
+            assert_true(rewound.get("rewound") and rewound["id"] == session["id"], rewound)
+            assert_true(rewound["prompt"] == "second", rewound)
+            view = web.until(
+                session,
+                lambda value: not any(
+                    block.get("text") in ("second", "two-ok") for block in value["state"]["view"]["blocks"]
+                ),
+            )
+            users = [b["text"] for b in view["state"]["view"]["blocks"] if b["kind"] == "user"]
+            assert_true(users == ["first"], users)

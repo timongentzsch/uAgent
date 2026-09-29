@@ -27,6 +27,15 @@ const char* CoordinatorPromptBase();
 // "\n\n## Soul\n…" from ~/.uagent/soul.md then the project's .uagent/soul.md
 // (each at most 16 KiB), or empty. Only a coordinator loads it.
 std::string CoordinatorSoul();
+// The soul file of `scope` ("user" = ~/.uagent/soul.md, "project" =
+// <folder>/.uagent/soul.md).
+std::string SoulPath(const std::string& scope, const std::string& folder);
+// {user:{path,text}, project:{path,text,loaded}}; a project soul is loaded
+// only once the project's config is trusted.
+json SoulDocuments(const std::string& folder);
+// Replaces one soul; returns the error, or empty.
+std::string WriteSoul(const std::string& scope, const std::string& folder,
+                      const std::string& text);
 
 // The base sections an overlay may replace, in prompt order.
 std::vector<std::string_view> PromptSections();

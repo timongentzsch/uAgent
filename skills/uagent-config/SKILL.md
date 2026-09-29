@@ -24,6 +24,9 @@ this file. Do not load every reference; pick the one the question needs.
 | How is µAgent built, and why? | `references/architecture.md` when installed, else `docs/ARCHITECTURE.md` in a source checkout |
 | Limits, recovery or failure triage | `docs/OPERATIONS.md` in a source checkout |
 | Change a setting persistently | `references/self-configuration.md` |
+| What is a folder's coordinator, and how is it opened or limited? | `references/cli.md` (Coordinator), the `UAGENT_COORDINATOR_*` rows of `references/configuration.md` |
+| What does the coordinator's soul say? | `uagent` action `inspect`, topic `soul` |
+| Change the coordinator's soul | `uagent` action `set_soul` with `scope` and the whole `text`; the user approves the exact text. The user can also run `/soul edit` |
 
 `uagent` reports the installed binary, so it beats both these references
 and any recollection when the two disagree. The references are generated from

@@ -91,6 +91,7 @@ int Application::RunChannel() {
 json Application::BuildChannelState() const {
   json state = InterfaceState();
   state["view"] = agent_.DisplaySnapshot();
+  state["view_epoch"] = agent_.ViewEpoch();
   state["usage"] = UsageJson(agent_.SessionUsage());
   state["route_usage"] = agent_.RouteUsageJson();
   state["system_prompt"] = agent_.LastSentPrompt();

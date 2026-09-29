@@ -279,9 +279,11 @@ void TestToolExecutionPolicy() {
                            exact_run};
   ApplyToolPolicy(pinned, {.run_allowlist = {"python3 slow_analysis.py"},
                            .coordinator = true});
-  CHECK(pinned.size() == 2);
+  // uagent stays: its writes (settings, soul) always need the user.
+  CHECK(pinned.size() == 3);
   CHECK(FindTool(pinned, "read_path") != nullptr);
   CHECK(FindTool(pinned, "memory") != nullptr);
+  CHECK(FindTool(pinned, "uagent") != nullptr);
 
   Tool terminal_only = unbounded;
   terminal_only.name = "terminal_only";

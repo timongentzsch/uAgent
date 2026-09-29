@@ -147,6 +147,8 @@ constexpr SlashCommandSpec kSlashCommands[] = {
      "list this folder's sessions and threads", false, true, true},
     {SlashCommandId::kOpen, "/open", "ID", "switch to a session from /board",
      false, true, true},
+    {SlashCommandId::kSoul, "/soul", "[edit [user|project]]",
+     "show or edit the coordinator's soul", false},
     {SlashCommandId::kHelp, "/commands", "", ""},
     {SlashCommandId::kQuit, "/exit", "", "", false, true},
     {SlashCommandId::kQuit, "/q", "", "", false, true},

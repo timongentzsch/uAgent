@@ -137,7 +137,9 @@ class RawComposer {
   void PreviousWord();
   void NextWord();
   void DeletePreviousWord();
-  void ApplySequence(const std::string& sequence);
+  void Complete();
+  // False when no binding names `sequence`.
+  bool ApplySequence(const std::string& sequence);
   void History(int direction);
   // Hand the draft to $VISUAL/$EDITOR and take back what it saved. False when
   // no editor is configured or the round trip failed, leaving the draft as it

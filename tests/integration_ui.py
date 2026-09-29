@@ -381,6 +381,29 @@ def test_input_redraw_history_restores_current_draft(root, home, *, binary):
         assert_true(len(server.requests) == 2, server.requests)
 
 
+def test_input_readline_control_keys(root, home, *, binary):
+    """Ctrl+W deletes a word, Ctrl+P/Ctrl+N walk history, Ctrl+F moves right."""
+
+    def echo(_, body):
+        return event({"content": "got<" + body["messages"][-1].get("content") + ">"})
+
+    with Server([echo]) as server:
+        code, output = run_pty(
+            root,
+            base_env(home, server.url),
+            [
+                (b"alpha beta\x17gamma\n", b"got<", b"Ready", None),
+                (b"\x10\x01\x06X\n", b"got<aX", b"Ready", None),
+                (b"draft\x10\x0e!\n", b"got<draft!>", b"Ready", None),
+                b"\x04",
+            ],
+            binary=binary,
+        )
+        assert_true(code == 0, output[-2000:])
+        sent = [body["messages"][-1].get("content") for _, body in server.requests]
+        assert_true(sent == ["alpha gamma", "aXlpha gamma", "draft!"], sent)
+
+
 def test_input_redraw_approval_does_not_pollute_history(root, home, *, binary):
     def verify_recalled(_, body):
         user = body["messages"][-1].get("content")

@@ -122,11 +122,15 @@ enum class SequenceAction {
   kRight,
   kHome,
   kEnd,
+  kBackspace,
   kDeleteForward,
+  kKillToEnd,
+  kKillToStart,
   kPreviousWord,
   kNextWord,
   kDeletePreviousWord,
   kInsertNewline,
+  kComplete,
 };
 
 struct SequenceBinding {
@@ -134,7 +138,21 @@ struct SequenceBinding {
   SequenceAction action;
 };
 
+// Readline's control keys first, then what terminals send for the named keys.
+// Ctrl+B, Ctrl+D on an empty draft and Ctrl+X are events, handled in Read.
 constexpr SequenceBinding kSequenceBindings[] = {
+    {"\x01", SequenceAction::kHome},
+    {"\x04", SequenceAction::kDeleteForward},
+    {"\x05", SequenceAction::kEnd},
+    {"\x06", SequenceAction::kRight},
+    {"\x08", SequenceAction::kBackspace},
+    {"\x7f", SequenceAction::kBackspace},
+    {"\t", SequenceAction::kComplete},
+    {"\x0b", SequenceAction::kKillToEnd},
+    {"\x0e", SequenceAction::kHistoryNext},
+    {"\x10", SequenceAction::kHistoryPrevious},
+    {"\x15", SequenceAction::kKillToStart},
+    {"\x17", SequenceAction::kDeletePreviousWord},
     {"\x1b[A", SequenceAction::kHistoryPrevious},
     {"\x1bOA", SequenceAction::kHistoryPrevious},
     {"\x1b[B", SequenceAction::kHistoryNext},
@@ -580,12 +598,7 @@ InteractiveInputEvent RawComposer::Read() {
     if (ch == 0x02) {
       return {InteractiveInputKind::kBackground, buffer_};
     }
-    if (ch == 0x04) {
-      if (buffer_.empty()) return {InteractiveInputKind::kEof, {}};
-      size_t next = NextUtf8(buffer_, cursor_);
-      buffer_.erase(cursor_, next - cursor_);
-      continue;
-    }
+    if (ch == 0x04 && buffer_.empty()) return {InteractiveInputKind::kEof, {}};
     if (editor_prefix_) {
       editor_prefix_ = false;
       if (ch == 0x05) {  // Ctrl+X Ctrl+E, readline's spelling
@@ -597,44 +610,11 @@ InteractiveInputEvent RawComposer::Read() {
       editor_prefix_ = true;
       continue;
     }
-    if (ch == 0x7f || ch == 0x08) {
-      Backspace();
-    } else if (ch == 0x01) {
-      cursor_ = 0;
-    } else if (ch == 0x05) {
-      cursor_ = buffer_.size();
-    } else if (ch == 0x0b) {
-      buffer_.erase(cursor_);
-    } else if (ch == 0x15) {
-      buffer_.erase(0, cursor_);
-      cursor_ = 0;
-    } else if (ch == '\t') {  // completes a command or a path, else a plain tab
-      Suggestions found = CompletionMatches(buffer_, cursor_);
-      if (found.matches.empty()) {
-        Insert("\t");
-      } else {
-        // The longest prefix every candidate agrees on: one Tab commits what
-        // is certain, and the rows below the draft show what is still open.
-        std::string name = found.matches.front().name;
-        for (const Suggestion& match : found.matches) {
-          name.resize(static_cast<size_t>(
-              std::mismatch(name.begin(), name.end(), match.name.begin(),
-                            match.name.end())
-                  .first -
-              name.begin()));
-        }
-        if (found.matches.size() == 1 && found.matches.front().wants_argument) {
-          name += " ";
-        }
-        buffer_.replace(found.begin, found.end - found.begin, name);
-        cursor_ = found.begin + name.size();
-      }
-    } else if (ch >= 0x20) {
-      if (!Insert(std::string(1, static_cast<char>(ch))) &&
-          !input_limit_bell_) {
-        output_.Write("\a");
-        input_limit_bell_ = true;
-      }
+    if (ApplySequence(token->text)) continue;
+    if (ch >= 0x20 &&
+        !Insert(std::string(1, static_cast<char>(ch))) && !input_limit_bell_) {
+      output_.Write("\a");
+      input_limit_bell_ = true;
     }
   }
   Render();
@@ -774,7 +754,31 @@ void RawComposer::DeletePreviousWord() {
   input_limit_bell_ = false;
 }
 
-void RawComposer::ApplySequence(const std::string& sequence) {
+// Completes a command or a path, else inserts a plain tab.
+void RawComposer::Complete() {
+  Suggestions found = CompletionMatches(buffer_, cursor_);
+  if (found.matches.empty()) {
+    Insert("\t");
+    return;
+  }
+  // The longest prefix every candidate agrees on: one Tab commits what is
+  // certain, and the rows below the draft show what is still open.
+  std::string name = found.matches.front().name;
+  for (const Suggestion& match : found.matches) {
+    name.resize(static_cast<size_t>(
+        std::mismatch(name.begin(), name.end(), match.name.begin(),
+                      match.name.end())
+            .first -
+        name.begin()));
+  }
+  if (found.matches.size() == 1 && found.matches.front().wants_argument) {
+    name += " ";
+  }
+  buffer_.replace(found.begin, found.end - found.begin, name);
+  cursor_ = found.begin + name.size();
+}
+
+bool RawComposer::ApplySequence(const std::string& sequence) {
   for (const SequenceBinding& binding : kSequenceBindings) {
     if (binding.sequence != sequence) continue;
     switch (binding.action) {
@@ -796,6 +800,19 @@ void RawComposer::ApplySequence(const std::string& sequence) {
       case SequenceAction::kEnd:
         cursor_ = buffer_.size();
         break;
+      case SequenceAction::kBackspace:
+        Backspace();
+        break;
+      case SequenceAction::kKillToEnd:
+        buffer_.erase(cursor_);
+        break;
+      case SequenceAction::kKillToStart:
+        buffer_.erase(0, cursor_);
+        cursor_ = 0;
+        break;
+      case SequenceAction::kComplete:
+        Complete();
+        break;
       case SequenceAction::kDeleteForward:
         if (cursor_ < buffer_.size()) {
           buffer_.erase(cursor_, NextUtf8(buffer_, cursor_) - cursor_);
@@ -814,8 +831,9 @@ void RawComposer::ApplySequence(const std::string& sequence) {
         DeletePreviousWord();
         break;
     }
-    return;
+    return true;
   }
+  return false;
 }
 
 void RawComposer::History(int direction) {

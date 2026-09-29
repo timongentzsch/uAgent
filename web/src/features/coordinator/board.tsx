@@ -2,7 +2,11 @@ import type { ComponentChildren } from "preact";
 import { CircleHelp } from "lucide-preact";
 import { Popover } from "../../shared/popover.tsx";
 import type { Session } from "../../shared/types.ts";
-import { Actions, Button, DataText, Time } from "../../shared/ui.tsx";
+import { Actions, Button, Time } from "../../shared/ui.tsx";
+import { folderOf } from "../sidebar/folder-label.tsx";
+import SessionName from "../sidebar/session-name.tsx";
+
+const DONE_SHOWN = 8;
 
 // The folder at a glance, beside its coordinator: what waits on you, what is
 // working, and what is done. Drawn from live session metadata, never stored.
@@ -18,33 +22,35 @@ export default function Board({
   choose: (id: string) => void;
 }) {
   const managed = sessions
-    .filter(
-      (item) =>
-        item.kind !== "coordinator" && (item.folder || item.cwd) === folder,
-    )
+    .filter((item) => item.kind !== "coordinator" && folderOf(item) === folder)
     .sort((a, b) => (b.updated || 0) - (a.updated || 0));
-  const groups: [string, Session[]][] = [
-    ["Needs you", managed.filter((item) => item.pending)],
+  const working = (item: Session) => online && item.turn_active;
+  // Each group with how many rows it lists: what is done shows the latest
+  // few, and the rest stay in the sidebar.
+  const groups: [string, Session[], number][] = [
+    ["Needs you", managed.filter((item) => item.pending), Infinity],
     [
       "Working",
-      managed.filter((item) => !item.pending && online && item.turn_active),
+      managed.filter((item) => !item.pending && working(item)),
+      Infinity,
     ],
     [
       "Done",
-      managed.filter((item) => !item.pending && !(online && item.turn_active)),
+      managed.filter((item) => !item.pending && !working(item)),
+      DONE_SHOWN,
     ],
   ];
   // Only groups with something in them; an empty folder says so once.
   const shown = groups.filter(([, items]) => items.length);
   return (
     <aside class="board" aria-label="Board">
-      {!shown.length && <p class="board-empty">No sessions in this folder</p>}
-      {shown.map(([label, items]) => (
+      {!shown.length && <p class="board-note">No sessions in this folder</p>}
+      {shown.map(([label, items, limit]) => (
         <section key={label}>
           <h2>
             {label} <span class="board-count">{items.length}</span>
           </h2>
-          {items.map((item) => (
+          {items.slice(0, limit).map((item) => (
             <Button
               key={item.id}
               variant="quiet"
@@ -52,22 +58,20 @@ export default function Board({
               onClick={() => choose(item.id)}
             >
               <span>
-                {item.kind === "thread" && (
-                  <span class="thread-mark" aria-label="Thread">
-                    ↳
-                  </span>
-                )}
-                <DataText>{item.title || "Untitled conversation"}</DataText>
+                <SessionName item={item} />
               </span>
               <small>
                 {item.pending
                   ? "Waiting for your decision"
-                  : online && item.turn_active
+                  : working(item)
                     ? item.activity || "Working"
                     : item.updated && <Time value={item.updated} />}
               </small>
             </Button>
           ))}
+          {items.length > limit && (
+            <p class="board-note">{items.length - limit} earlier</p>
+          )}
         </section>
       ))}
     </aside>

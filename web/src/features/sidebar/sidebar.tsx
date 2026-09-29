@@ -25,10 +25,10 @@ import {
   Time,
   Button,
   IconButton,
-  DataText,
   Placeholder,
 } from "../../shared/ui.tsx";
-import FolderLabel from "./folder-label.tsx";
+import FolderLabel, { folderName, folderOf } from "./folder-label.tsx";
+import SessionName from "./session-name.tsx";
 import { Menu, MenuItem } from "../../shared/popover.tsx";
 import { ActivityStatus, active } from "../chat/activity-status.tsx";
 export function ConversationMenu({
@@ -135,11 +135,13 @@ const SAMPLE: Session[] = [
 // A folder's coordinator: faint until used, pulsing while it works, badged
 // with the decisions waiting on you, which a thread cannot proceed without.
 function CoordinatorButton({
+  folder,
   coordinator,
   waiting,
   online,
   open,
 }: {
+  folder: string;
   coordinator?: Session;
   waiting: number;
   online: boolean;
@@ -150,19 +152,24 @@ function CoordinatorButton({
     : online && coordinator.turn_active
       ? "working"
       : "ready";
+  // One name carries the folder, the state and the badge's count.
+  const label = [
+    `Coordinator for ${folderName(folder)}`,
+    state === "working" && "working",
+    waiting > 0 && `${waiting} waiting on you`,
+  ]
+    .filter(Boolean)
+    .join(", ");
   return (
     <IconButton
-      label="Open this folder's coordinator"
+      label={label}
       class={`coordinator-button ${state}`}
       onClick={open}
       disabled={!online}
     >
       <MessagesSquare aria-hidden="true" />
       {waiting > 0 && (
-        <span
-          class="coordinator-badge"
-          aria-label={`${waiting} waiting on you`}
-        >
+        <span class="coordinator-badge" aria-hidden="true">
           {waiting}
         </span>
       )}
@@ -194,12 +201,7 @@ function SessionRow({
         aria-current={selected ? "page" : undefined}
       >
         <span>
-          {item.kind === "thread" && (
-            <span class="thread-mark" aria-label="Thread">
-              ↳
-            </span>
-          )}
-          <DataText>{item.title || "Untitled conversation"}</DataText>
+          <SessionName item={item} />
           {unread && <span class="unread-dot" aria-label="Unread messages" />}
         </span>
         <small>
@@ -262,21 +264,26 @@ export default function Sidebar({
   const [search, setSearch] = useState("");
   // Until the list arrives, it draws sample rows in its own layout.
   const drawing = loading && !sessions.length;
-  const groups = new Map<string, Session[]>();
-  // Each folder's coordinator is its header icon, not a row.
+  const all = drawing ? SAMPLE : sessions;
+  // Each folder's coordinator is its header icon, not a row. It and its
+  // badge count every session in the folder, whatever the search shows.
   const coordinators = new Map<string, Session>();
-  for (const item of [...(drawing ? SAMPLE : sessions)]
+  const waiting = new Map<string, number>();
+  for (const item of all) {
+    const folder = folderOf(item);
+    if (item.kind === "coordinator") coordinators.set(folder, item);
+    if (item.pending) waiting.set(folder, (waiting.get(folder) || 0) + 1);
+  }
+  const groups = new Map<string, Session[]>();
+  for (const item of [...all]
     .sort((a, b) => (b.updated || 0) - (a.updated || 0))
     .filter((item) =>
       `${item.title} ${item.cwd}`.toLowerCase().includes(search.toLowerCase()),
     )) {
-    const folder = item.folder || item.cwd || "";
-    if (item.kind === "coordinator") {
-      coordinators.set(folder, item);
-      continue;
-    }
+    const folder = folderOf(item);
+    // A folder with only its coordinator still has a header to open it.
     if (!groups.has(folder)) groups.set(folder, []);
-    groups.get(folder)!.push(item);
+    if (item.kind !== "coordinator") groups.get(folder)!.push(item);
   }
   const list = [...groups].map(([cwd, items]) => (
     <section key={cwd}>
@@ -284,11 +291,9 @@ export default function Sidebar({
         <FolderLabel path={cwd} />
         {!drawing && (
           <CoordinatorButton
+            folder={cwd}
             coordinator={coordinators.get(cwd)}
-            waiting={
-              items.filter((item) => item.pending).length +
-              (coordinators.get(cwd)?.pending ? 1 : 0)
-            }
+            waiting={waiting.get(cwd) || 0}
             online={online}
             open={() => coordinate(cwd)}
           />

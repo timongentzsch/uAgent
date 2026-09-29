@@ -362,22 +362,33 @@ function App() {
     }
   }
   // The host returns a folder's existing coordinator rather than a second.
+  // One start at a time: a double click must not race two activations.
+  const starting = useRef(false);
   async function startConversation(cwd: string, coordinator = false) {
-    const created = await command("create", null, { cwd, coordinator });
-    if (created.pending) return;
-    setCatalogue((prior) => ({
-      ...prior,
-      sessions: [
-        created.session,
-        ...prior.sessions.filter((entry) => entry.id !== created.session.id),
-      ],
-    }));
-    // Live before it is shown, so opening never flashes the saved state.
-    if (created.session.presence !== "active") {
-      await command("activate", created.session);
+    if (starting.current) return;
+    starting.current = true;
+    try {
+      const created = await command("create", null, { cwd, coordinator });
+      if (created.pending) return;
+      setCatalogue((prior) => ({
+        ...prior,
+        sessions: [
+          created.session,
+          ...prior.sessions.filter((entry) => entry.id !== created.session.id),
+        ],
+      }));
+      // Live before it is shown, so opening never flashes the saved state;
+      // shown even if activating fails, with the failure reported.
+      try {
+        if (created.session.presence !== "active")
+          await command("activate", created.session);
+      } finally {
+        await choose(created.session.id);
+      }
+      await load(created.session.id);
+    } finally {
+      starting.current = false;
     }
-    await choose(created.session.id);
-    await load(created.session.id);
   }
   // A command with a screen opens it when typed bare; with an argument it
   // runs on the host, as in the terminal.

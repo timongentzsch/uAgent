@@ -714,7 +714,7 @@ pre code {
 .coordinator-help p {
   color: var(--muted);
 }
-.board-empty {
+.board-note {
   color: var(--muted);
   font-size: 0.8rem;
   padding: var(--space-2) var(--space-3);

@@ -1,7 +1,9 @@
 import { useEffect, useState } from "preact/hooks";
 import type { Act, Pending, Report, Session } from "../../shared/types.ts";
 import { api, command } from "../../state/api.ts";
-import { Button, DataText, Deferred, Spinner } from "../../shared/ui.tsx";
+import { Button, Deferred, LoadError, Spinner } from "../../shared/ui.tsx";
+import { folderOf } from "../sidebar/folder-label.tsx";
+import SessionName from "../sidebar/session-name.tsx";
 
 const decisionPanel = () => import("../chat/decision.tsx");
 
@@ -24,9 +26,7 @@ export default function Escalations({
 }) {
   const waiting = sessions.filter(
     (item) =>
-      item.pending &&
-      item.kind !== "coordinator" &&
-      (item.folder || item.cwd) === folder,
+      item.pending && item.kind !== "coordinator" && folderOf(item) === folder,
   );
   if (!waiting.length) return null;
   return (
@@ -55,17 +55,25 @@ function Escalation({
   choose: (id: string) => void;
   report: Report;
 }) {
-  const [pending, setPending] = useState<Pending | null>(null);
+  // Undefined while it loads; null once the thread no longer waits.
+  const [pending, setPending] = useState<Pending | null>();
+  const [error, setError] = useState<unknown>(null);
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let active = true;
+    // Never show, or answer, a decision the thread has moved past.
+    setPending(undefined);
+    setError(null);
     api<{ pending?: Pending | null }>(`/api/sessions/${item.id}`)
       .then((snapshot) => active && setPending(snapshot.pending || null))
-      .catch(report);
+      .catch((failure) => active && setError(failure));
     return () => {
       active = false;
     };
-  }, [item.id, item.generation, item.pending, item.updated]);
+  }, [item.id, item.generation, item.updated, attempt]);
+  if (pending === null) return null;
   const act: Act = (kind, fields) => command(kind, item, fields);
+  const loading = <Spinner label="Loading decision…" surface />;
   return (
     <div class="escalation">
       <Button
@@ -73,10 +81,11 @@ function Escalation({
         class="escalation-thread"
         onClick={() => choose(item.id)}
       >
-        {item.kind === "thread" && <span aria-hidden="true">↳ </span>}
-        <DataText>{item.title || "Untitled conversation"}</DataText>
+        <SessionName item={item} />
       </Button>
-      {pending ? (
+      {error ? (
+        <LoadError error={error} retry={() => setAttempt(attempt + 1)} />
+      ) : pending ? (
         <Deferred
           load={decisionPanel}
           key={pending.id}
@@ -84,10 +93,10 @@ function Escalation({
           act={act}
           online={online}
           report={report}
-          fallback={<Spinner label="Loading decision…" surface />}
+          fallback={loading}
         />
       ) : (
-        <Spinner label="Loading decision…" surface />
+        loading
       )}
     </div>
   );

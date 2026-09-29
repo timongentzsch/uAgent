@@ -1,7 +1,8 @@
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import type {
   InstructionFile,
   InstructionStack,
+  SelfDirective,
   Session,
   State,
 } from "../../shared/types.ts";
@@ -42,17 +43,29 @@ export default function Instructions({
   showRequest?: () => void;
 }) {
   const [cwd, setCwd] = useState(session?.cwd || projects[0] || "");
-  const [stack, setStack] = useState<InstructionStack>();
+  // Tagged with its project, so another project's files never show, or get
+  // saved, under this one.
+  const [loaded, setLoaded] = useState<{
+    cwd: string;
+    stack: InstructionStack;
+  }>();
+  const stack = loaded?.cwd === cwd ? loaded.stack : undefined;
   const [error, setError] = useState<unknown>(null);
-  const load = () =>
-    command("instructions", null, { action: "show", cwd }).then((value) => {
-      if (value.pending) throw new Error("Reload to see the instructions.");
-      setStack(value.result);
-    });
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
+    let active = true;
     setError(null);
-    if (online) load().catch(setError);
-  }, [cwd, online, version]);
+    if (online)
+      command("instructions", null, { action: "show", cwd })
+        .then((value) => {
+          if (value.pending) throw new Error("Reload to see the instructions.");
+          if (active) setLoaded({ cwd, stack: value.result });
+        })
+        .catch((failure) => active && setError(failure));
+    return () => {
+      active = false;
+    };
+  }, [cwd, online, version, attempt]);
   const self = state?.self_directive;
   const card = (file: InstructionFile) => (
     <InstructionCard
@@ -60,7 +73,11 @@ export default function Instructions({
       file={file}
       cwd={cwd}
       online={online}
-      saved={setStack}
+      saved={(next) =>
+        setLoaded((prior) =>
+          prior?.cwd === cwd ? { cwd, stack: next } : prior,
+        )
+      }
     />
   );
   const files = stack?.files || [];
@@ -72,7 +89,7 @@ export default function Instructions({
         Changes reach new and restarted sessions.
       </p>
       {error ? (
-        <LoadError error={error} retry={() => load().catch(setError)} />
+        <LoadError error={error} retry={() => setAttempt(attempt + 1)} />
       ) : (
         <Placeholder label="Loading instructions…" when={!stack}>
           <>
@@ -93,26 +110,7 @@ export default function Instructions({
         </Placeholder>
       )}
       {self && session && (
-        <section class="instruction-card">
-          <header>
-            <strong>Self-directive · this conversation</strong>
-            <small class="muted">{self.mode}, written by the agent</small>
-          </header>
-          <pre>{self.text}</pre>
-          <Actions>
-            <Button
-              disabled={!online}
-              onClick={() =>
-                command("self_directive", session, {
-                  action: "reset",
-                  revision: self.revision,
-                }).catch(setError)
-              }
-            >
-              Clear
-            </Button>
-          </Actions>
-        </section>
+        <SelfDirectiveCard self={self} session={session} online={online} />
       )}
       {showRequest && (
         <Actions>
@@ -134,6 +132,44 @@ function Base({ text, label }: { text?: string; label: string }) {
   );
 }
 
+// The agent's own directive for this conversation; only clearing it is
+// yours.
+function SelfDirectiveCard({
+  self,
+  session,
+  online,
+}: {
+  self: SelfDirective;
+  session: Session;
+  online: boolean;
+}) {
+  const [error, setError] = useState<unknown>(null);
+  return (
+    <section class="instruction-card">
+      <header>
+        <strong>Self-directive · this conversation</strong>
+        <small class="muted">{self.mode}, written by the agent</small>
+      </header>
+      {error && <LoadError error={error} />}
+      <pre>{self.text}</pre>
+      <Actions>
+        <Button
+          disabled={!online}
+          onClick={() => {
+            setError(null);
+            command("self_directive", session, {
+              action: "reset",
+              revision: self.revision,
+            }).catch(setError);
+          }}
+        >
+          Clear
+        </Button>
+      </Actions>
+    </section>
+  );
+}
+
 function InstructionCard({
   file,
   cwd,
@@ -145,11 +181,14 @@ function InstructionCard({
   online: boolean;
   saved: (stack: InstructionStack) => void;
 }) {
-  const [draft, setDraft] = useState(file.text);
+  // Null until edited: the field shows the file as it is, including a newer
+  // version loaded meanwhile, and an edit in progress is never replaced.
+  const [draft, setDraft] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
-  useEffect(() => setDraft(file.text), [file.text]);
-  const changed = draft !== file.text;
+  const field = useRef<HTMLTextAreaElement>(null);
+  const text = draft ?? file.text;
+  const changed = text !== file.text;
   async function save() {
     setBusy(true);
     setError(null);
@@ -159,13 +198,18 @@ function InstructionCard({
         cwd,
         audience: file.audience,
         scope: file.scope,
-        text: draft,
+        text,
       });
-      if (!value.pending) saved(value.result);
+      if (!value.pending) {
+        saved(value.result);
+        setDraft(null);
+      }
     } catch (failure) {
       setError(failure);
     } finally {
       setBusy(false);
+      // Save leaves with the edit; focus stays in the field, not the page.
+      field.current?.focus();
     }
   }
   const title = TITLES[`${file.audience}/${file.scope}`];
@@ -180,15 +224,23 @@ function InstructionCard({
       {error && <LoadError error={error} />}
       <Textarea
         aria-label={title}
+        inputRef={field}
         grow
-        value={draft}
+        value={text}
         placeholder="Nothing yet."
-        disabled={busy || !online}
+        readOnly={busy}
+        disabled={!online}
         onInput={(event) => setDraft(event.currentTarget.value)}
       />
       {changed && (
         <Actions>
-          <Button disabled={busy} onClick={() => setDraft(file.text)}>
+          <Button
+            disabled={busy}
+            onClick={() => {
+              setDraft(null);
+              field.current?.focus();
+            }}
+          >
             Discard
           </Button>
           <Button variant="primary" disabled={busy || !online} onClick={save}>

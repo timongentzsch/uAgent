@@ -12,10 +12,13 @@ async function openCoordinator(page, session) {
   await page.goto(`/#session=${session.id}`);
   // Narrow layouts keep the sessions in a drawer.
   const drawer = page.getByLabel("Open sessions");
-  const button = page.getByLabel("Open this folder's coordinator").first();
+  const button = page.getByLabel(/^Coordinator for /).first();
   await expect(drawer.or(button)).toBeVisible();
   if (await drawer.isVisible()) await drawer.click();
-  await page.getByLabel("Open this folder's coordinator").first().click();
+  await page
+    .getByLabel(/^Coordinator for /)
+    .first()
+    .click();
   await expect(
     page.getByRole("complementary", { name: "Board" }),
   ).toBeVisible();
@@ -136,6 +139,11 @@ for (const [name, viewport] of VIEWPORTS) {
       text: "Memory receipt probe: please save this test memory",
     });
     await openCoordinator(page, session);
+    // The folder's coordinator button names what waits on you.
+    if (name === "desktop")
+      await expect(
+        page.getByLabel(/^Coordinator for .+, 1 waiting on you$/),
+      ).toBeVisible();
     const waiting = page.getByRole("region", {
       name: "Decisions waiting on you",
     });
@@ -164,6 +172,8 @@ test("the coordinator's help opens its instructions", async ({
   await coordinator.fill("Prefer small threads.");
   await dialog.getByRole("button", { name: "Save", exact: true }).click();
   await expect(dialog.getByRole("button", { name: "Save" })).toHaveCount(0);
+  // Saving keeps focus in the field, not on the page behind the dialog.
+  await expect(coordinator).toBeFocused();
   await shot(page, "instructions");
 });
 

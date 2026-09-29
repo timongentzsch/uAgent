@@ -6,23 +6,13 @@
 // ./.uagent/.config, which beats ~/.uagent/.config; project .env files are
 // application data and are never imported.
 
-#include <algorithm>
-#include <cstdlib>
-#include <filesystem>
-#include <fstream>
+#include <istream>
 #include <map>
 #include <set>
-#include <sstream>
 #include <string>
-#include <utility>
 
-#include "include/core/config_document.h"
-#include "include/core/env.h"
-#include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/limits.h"
-#include "include/core/private_store.h"
-#include "include/core/strings.h"
 
 namespace uagent {
 
@@ -31,225 +21,63 @@ using EnvValues = std::map<std::string, std::string>;
 // Parse without mutating the process. Only agent-owned keys are exported later;
 // other entries remain available as interpolation sources without leaking every
 // config value into child processes.
-inline EnvValues ParseEnvValues(std::istream& input) {
-  EnvValues values;
-  std::string line;
-  while (std::getline(input, line)) {
-    ConfigAssignment assignment;
-    if (!ParseConfigAssignment(line, assignment)) continue;
-    values[assignment.key] = Unquote(assignment.value);
-  }
-  return values;
-}
+EnvValues ParseEnvValues(std::istream& input);
 
-inline EnvValues ParseEnvValues(const std::string& text) {
-  std::istringstream input(text);
-  return ParseEnvValues(input);
-}
+EnvValues ParseEnvValues(const std::string& text);
 
-inline EnvValues ReadEnvValues(const std::string& path) {
-  std::ifstream f(path);
-  if (!f) return {};
-  return ParseEnvValues(f);
-}
+EnvValues ReadEnvValues(const std::string& path);
 
-inline std::string ResolveEnvValue(const std::string& key,
-                                   const EnvValues& values,
-                                   std::set<std::string>& resolving,
-                                   bool process_fallback = true) {
-  if (process_fallback) {
-    const char* inherited = getenv(key.c_str());
-    if (inherited) return inherited;
-  }
-  auto found = values.find(key);
-  if (found == values.end() || !resolving.insert(key).second) return "";
-  const std::string& value = found->second;
-  std::string out;
-  for (size_t i = 0; i < value.size();) {
-    if (value[i] != '$') {
-      out += value[i++];
-      continue;
-    }
-    if (i + 1 < value.size() && value[i + 1] == '$') {
-      out += '$';
-      i += 2;
-      continue;
-    }
-    size_t begin = i + 1, end = begin;
-    bool braced = begin < value.size() && value[begin] == '{';
-    if (braced) {
-      begin++;
-      end = value.find('}', begin);
-      if (end == std::string::npos) {
-        out += value[i++];
-        continue;
-      }
-    } else {
-      while (end < value.size() &&
-             (isalnum(static_cast<unsigned char>(value[end])) ||
-              value[end] == '_')) {
-        ++end;
-      }
-      if (end == begin) {
-        out += value[i++];
-        continue;
-      }
-    }
-    std::string ref = value.substr(begin, end - begin);
-    out += ResolveEnvValue(ref, values, resolving, process_fallback);
-    i = braced ? end + 1 : end;
-  }
-  resolving.erase(key);
-  return out;
-}
+std::string ResolveEnvValue(const std::string& key,
+                            const EnvValues& values,
+                            std::set<std::string>& resolving,
+                            bool process_fallback = true);
 
-inline std::string ExpandProcessEnv(const std::string& value) {
-  EnvValues none;
-  none["__uagent_value"] = value;
-  std::set<std::string> resolving;
-  return ResolveEnvValue("__uagent_value", none, resolving);
-}
+std::string ExpandProcessEnv(const std::string& value);
 
-inline bool AgentConfigKey(const std::string& key) {
-  return key.starts_with("UAGENT_") || key == "OPENROUTER_API_KEY" ||
-         key == "OPENROUTER_MODEL" || key == "OPENROUTER_EFFORT";
-}
+bool AgentConfigKey(const std::string& key);
 
-inline bool ProjectMcpPresent() {
-  std::error_code ec;
-  return std::filesystem::is_regular_file(".mcp.json", ec);
-}
+bool ProjectMcpPresent();
 
-inline bool ProjectAgentConfigPresent() {
-  std::string path = ProjectConfigFilePath();
-  std::error_code ec;
-  return !path.empty() && std::filesystem::is_regular_file(path, ec);
-}
+bool ProjectAgentConfigPresent();
 
-inline bool ProjectMcpSnapshot(json& snapshot, std::string& error) {
-  std::error_code ec;
-  uintmax_t bytes = std::filesystem::file_size(".mcp.json", ec);
-  if (ec || bytes > kMcpConfigBytes) {
-    error = ec ? ec.message() : "configuration exceeds byte limit";
-    return false;
-  }
-  std::ifstream file(".mcp.json");
-  snapshot = json::parse(file, nullptr, false);
-  if (!snapshot.is_object()) {
-    error = "project .mcp.json is not a valid JSON object";
-    return false;
-  }
-  return true;
-}
+bool ProjectMcpSnapshot(json& snapshot, std::string& error);
 
 // Trust covers exactly what the workspace can change: the servers .mcp.json
 // spawns and the settings ./.uagent/.config exports. Both are stored parsed, so
 // a reformat keeps trust while any value change revokes it. ReadEnvValues
 // returns an ordered map, so the recorded object is stable.
-inline bool ProjectTrustSnapshot(json& snapshot, std::string& error) {
-  json mcp = nullptr;
-  if (ProjectMcpPresent() && !ProjectMcpSnapshot(mcp, error)) return false;
-  json config = nullptr;
-  if (ProjectAgentConfigPresent()) {
-    config = json::object();
-    for (const auto& [key, value] : ReadEnvValues(ProjectConfigFilePath())) {
-      config[key] = value;
-    }
-  }
-  snapshot = {{"mcp", std::move(mcp)}, {"config", std::move(config)}};
-  return true;
-}
+bool ProjectTrustSnapshot(json& snapshot, std::string& error);
 
 inline constexpr char kTrustStoreFile[] = "trusted-projects.json";
 inline constexpr size_t kTrustStoreBytes = size_t{16} * 1024 * 1024;
 
-inline std::string TrustStorePath() {
-  return UagentDir(kConfigDir) + "/" + kTrustStoreFile;
-}
+std::string TrustStorePath();
 
 // Records one workspace under the store's cross-process lock, so trusting two
 // workspaces at once cannot drop either record.
-inline bool WriteTrustRecord(const std::string& root, json record,
-                             std::string& error) {
-  PrivateJsonStore store(kTrustStoreFile, json::object(), kTrustStoreBytes,
-                         error);
-  if (!store.Ready()) return false;
-  if (!store.Data().is_object()) store.Data() = json::object();
-  store.Data()[root] = std::move(record);
-  return store.Save(error);
-}
+bool WriteTrustRecord(const std::string& root, json record,
+                      std::string& error);
 
-inline json ReadTrustStore() {
-  std::ifstream file(TrustStorePath());
-  if (!file) return json::object();
-  json value = json::parse(file, nullptr, false);
-  return value.is_object() ? value : json::object();
-}
+json ReadTrustStore();
 
 // Records written before both surfaces were covered carry an older format and
 // simply stop matching, so those workspaces are asked once more.
-inline bool TrustRecordMatches(const json& record, const json& snapshot) {
-  return record.is_object() && JsonValue(record, "format", 0) == 3 &&
-         record.contains("mcp") && record["mcp"] == snapshot["mcp"] &&
-         record.contains("config") && record["config"] == snapshot["config"];
-}
+bool TrustRecordMatches(const json& record, const json& snapshot);
 
 // The out-parameter carries the approved .mcp.json alone: MCP registration
 // consumes it directly, so a file swap after approval cannot change which
 // commands are spawned.
-inline bool ProjectConfigTrusted(json* trusted_mcp = nullptr) {
-  json store = ReadTrustStore();
-  std::string root = CanonicalCwd();
-  json snapshot;
-  std::string error;
-  if (!ProjectTrustSnapshot(snapshot, error) || !store.contains(root) ||
-      !TrustRecordMatches(store[root], snapshot)) {
-    return false;
-  }
-  if (trusted_mcp) *trusted_mcp = std::move(snapshot["mcp"]);
-  return true;
-}
+bool ProjectConfigTrusted(json* trusted_mcp = nullptr);
 
 // Re-record trust after a person approved an exact change to
 // ./.uagent/.config. The .mcp.json half is carried over from the existing
 // record and re-checked against disk first, so this can never extend trust to
 // servers nobody approved. Failing leaves the workspace to be confirmed again,
 // which is the safe direction.
-inline bool RestampProjectConfigTrust(std::string& error) {
-  json store = ReadTrustStore();
-  std::string root = CanonicalCwd();
-  if (!store.contains(root)) {
-    error = "this workspace has no trust record to update";
-    return false;
-  }
-  json record = store[root];
-  json snapshot;
-  if (!ProjectTrustSnapshot(snapshot, error)) return false;
-  if (JsonValue(record, "format", 0) != 3 || !record.contains("mcp") ||
-      record["mcp"] != snapshot["mcp"]) {
-    error = "project .mcp.json changed, so trust must be granted again";
-    return false;
-  }
-  return WriteTrustRecord(
-      root,
-      {{"format", 3}, {"mcp", record["mcp"]}, {"config", snapshot["config"]}},
-      error);
-}
+bool RestampProjectConfigTrust(std::string& error);
 
-inline bool TrustProjectConfig(std::string& error,
-                               json* trusted_mcp = nullptr) {
-  json snapshot;
-  if (!ProjectTrustSnapshot(snapshot, error)) return false;
-  if (!WriteTrustRecord(CanonicalCwd(),
-                        {{"format", 3},
-                         {"mcp", snapshot["mcp"]},
-                         {"config", snapshot["config"]}},
-                        error)) {
-    return false;
-  }
-  if (trusted_mcp) *trusted_mcp = std::move(snapshot["mcp"]);
-  return true;
-}
+bool TrustProjectConfig(std::string& error,
+                        json* trusted_mcp = nullptr);
 
 }  // namespace uagent
 

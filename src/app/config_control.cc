@@ -9,6 +9,7 @@
 #include "include/core/config_registry.h"
 #include "include/core/effective_config.h"
 #include "include/core/env.h"
+#include "include/core/fs.h"
 #include "include/core/limits.h"
 
 namespace uagent {

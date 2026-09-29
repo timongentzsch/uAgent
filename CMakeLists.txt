@@ -97,6 +97,7 @@ add_library(
   src/core/activity.cc
   src/core/capture.cc
   src/core/child_env.cc
+  src/core/config.cc
   src/core/config_document.cc
   src/core/config_registry.cc
   src/core/debug.cc
@@ -109,6 +110,7 @@ add_library(
   src/core/library.cc
   src/core/platform_posix.cc
   src/core/private_store.cc
+  src/core/project.cc
   src/core/sandbox.cc
   src/core/sandbox_posix.cc
   src/core/signals.cc
@@ -116,6 +118,7 @@ add_library(
   src/core/steering.cc
   src/core/strings.cc
   src/core/term.cc
+  src/core/usage.cc
   src/transport/session.cc
   src/transport/sse.cc)
 target_link_libraries(uagent_core_base PUBLIC uagent_options)

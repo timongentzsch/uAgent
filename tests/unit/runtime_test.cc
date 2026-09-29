@@ -23,6 +23,7 @@
 #include "include/core/config.h"
 #include "include/core/effective_config.h"
 #include "include/core/events.h"
+#include "include/core/fs.h"
 #include "include/core/signals.h"
 #include "include/core/steering.h"
 #include "include/providers.h"

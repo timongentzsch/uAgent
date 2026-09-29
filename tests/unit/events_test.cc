@@ -20,6 +20,7 @@
 #include "include/cli.h"
 #include "include/core/activity.h"
 #include "include/core/config.h"
+#include "include/core/fs.h"
 #include "include/core/limits.h"
 #include "tests/unit/test_support.h"
 

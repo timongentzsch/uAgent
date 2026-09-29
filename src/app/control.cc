@@ -39,16 +39,15 @@ json ManagementControl(const json& request) {
     // A person edits these directly; an agent asks through uagent.
     const std::string cwd = CanonicalCwd();
     if (JsonValue(request, "action", "show") == "set") {
-      const std::string audience = JsonValue(request, "audience", "");
-      const std::string scope = JsonValue(request, "scope", "");
-      if ((audience != "sessions" && audience != "coordinator") ||
-          (scope != "user" && scope != "project")) {
+      bool coordinator = false, project = false;
+      if (!ParseInstructionTarget(JsonValue(request, "audience", ""),
+                                  JsonValue(request, "scope", ""), coordinator,
+                                  project)) {
         return {{"error", "audience is sessions or coordinator, scope user "
                           "or project"}};
       }
-      const std::string error =
-          WriteInstructionFile(audience == "coordinator", scope == "project",
-                               cwd, JsonValue(request, "text", ""));
+      const std::string error = WriteInstructionFile(
+          coordinator, project, cwd, JsonValue(request, "text", ""));
       if (!error.empty()) return {{"error", error}};
     }
     json shown = InstructionFiles(cwd);

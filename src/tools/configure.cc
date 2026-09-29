@@ -2,7 +2,6 @@
 
 #include "include/tools/configure.h"
 
-#include <fstream>
 #include <memory>
 #include <string>
 #include <utility>
@@ -79,10 +78,13 @@ Tool UagentTool(SelfDescriptionProvider describe,
         }
         if (action == "set_instructions") {
           // Reaching here means the user approved this exact text.
-          const std::string error = WriteInstructionFile(
-              JsonValue(arguments, "audience", "") == "coordinator",
-              JsonValue(arguments, "scope", "user") == "project",
-              CanonicalCwd(), JsonValue(arguments, "text", ""));
+          bool coordinator = false, project = false;
+          ParseInstructionTarget(JsonValue(arguments, "audience", ""),
+                                 JsonValue(arguments, "scope", ""),
+                                 coordinator, project);
+          const std::string error =
+              WriteInstructionFile(coordinator, project, CanonicalCwd(),
+                                   JsonValue(arguments, "text", ""));
           return error.empty()
                      ? ToolSuccess("saved; new and restarted sessions read it")
                      : ToolFailure(ToolErrorCode::kProcessFailed,
@@ -131,14 +133,15 @@ Tool UagentTool(SelfDescriptionProvider describe,
         if (!notice.empty()) report += "\nnote: " + notice;
         return ToolSuccess(report);
       });
-  tool.mutates = [](const json& arguments) {
-    return JsonValue(arguments, "action", "") != "inspect";
+  const auto writes = [](const json& arguments) {
+    const std::string action = JsonValue(arguments, "action", "");
+    return action == "configure" || action == "set_instructions";
   };
+  tool.mutates = writes;
   tool.redact_invalid_arguments = true;
-  tool.approval_class = [](const json& arguments) {
-    return JsonValue(arguments, "action", "") != "inspect"
-               ? ApprovalClass::kMandatoryHuman
-               : ApprovalClass::kNone;
+  tool.approval_class = [writes](const json& arguments) {
+    return writes(arguments) ? ApprovalClass::kMandatoryHuman
+                             : ApprovalClass::kNone;
   };
   tool.validate =
       [prepare](const json& arguments) -> std::optional<ToolArgumentIssue> {
@@ -155,20 +158,21 @@ Tool UagentTool(SelfDescriptionProvider describe,
                            "configuration requires an interactive human");
     }
     if (JsonValue(arguments, "action", "") == "set_instructions") {
-      const std::string audience = JsonValue(arguments, "audience", "");
-      const std::string scope = JsonValue(arguments, "scope", "");
-      if (audience != "sessions" && audience != "coordinator") {
-        return ArgumentIssue("instructions.audience",
-                             "audience must be sessions or coordinator",
-                             "audience");
+      bool coordinator = false, project = false;
+      if (!ParseInstructionTarget(JsonValue(arguments, "audience", ""),
+                                  JsonValue(arguments, "scope", ""),
+                                  coordinator, project)) {
+        return ArgumentIssue("instructions.target",
+                             "audience must be sessions or coordinator, and "
+                             "scope user or project");
       }
-      if (scope != "user" && scope != "project") {
-        return ArgumentIssue("instructions.scope",
-                             "scope must be user or project", "scope");
-      }
-      if (!arguments.contains("text")) {
+      if (!arguments.contains("text") ||
+          JsonValue(arguments, "text", "").size() > kProjectDocBytes) {
         return ArgumentIssue("instructions.text",
-                             "set_instructions needs the whole text", "text");
+                             "set_instructions needs the whole text, at most " +
+                                 std::to_string(kProjectDocBytes / 1024) +
+                                 " KiB",
+                             "text");
       }
       return std::nullopt;
     }
@@ -221,13 +225,13 @@ Tool UagentTool(SelfDescriptionProvider describe,
   // the proposal, so the bytes shown are exactly the bytes that can commit.
   tool.approval_preview = [prepare, store](const json& arguments) {
     if (JsonValue(arguments, "action", "") == "set_instructions") {
-      const auto path = InstructionPath(
-          JsonValue(arguments, "audience", "") == "coordinator",
-          JsonValue(arguments, "scope", "") == "project", CanonicalCwd());
-      std::string current;
-      std::ifstream input(path, std::ios::binary);
-      if (input) ReadBounded(input, kProjectDocBytes, current);
-      return ConfigUnifiedDiff(current, JsonValue(arguments, "text", ""),
+      bool coordinator = false, project = false;
+      ParseInstructionTarget(JsonValue(arguments, "audience", ""),
+                             JsonValue(arguments, "scope", ""), coordinator,
+                             project);
+      const auto path = InstructionPath(coordinator, project, CanonicalCwd());
+      return ConfigUnifiedDiff(ReadInstructionFile(path),
+                               JsonValue(arguments, "text", ""),
                                path.string()) +
              "\nNew and restarted sessions read it.";
     }

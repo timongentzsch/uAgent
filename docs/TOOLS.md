@@ -31,7 +31,7 @@ per-conversation choices made with `/tools`.
 | `session` | list linked sessions and message them | always |
 | `subagent` | delegate a subtask to a durable child session | delegation depth below `UAGENT_SUBAGENT_DEPTH` |
 | `skill` | load an installed skill | a usable skill is installed |
-| `adapt_system` | read and revise the system prompt | `UAGENT_ADAPT_SYSTEM=1`; see [SYSTEM_PROMPTS.md](SYSTEM_PROMPTS.md) |
+| `adapt_system` | add to or replace the base prompt for this conversation | `UAGENT_ADAPT_SYSTEM=1`; see [SYSTEM_PROMPTS.md](SYSTEM_PROMPTS.md) |
 | `browser` | drive the shared Chrome of the browser appliance | top-level web sessions with `UAGENT_BROWSER_DATA`; see [WEB.md](WEB.md) |
 | `<server>_<tool>` | tools discovered from MCP servers; see [OPERATIONS.md](OPERATIONS.md#mcp) | configured servers; not in lean children |
 

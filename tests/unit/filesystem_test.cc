@@ -446,15 +446,18 @@ void TestFileTools() {
     // Instructions outside the repository: readable, but only a person may
     // rewrite them. A project's AGENTS.md is an ordinary repository file.
     for (const std::string& instructions :
-         {GlobalBase() + "/AGENTS.md", GlobalBase() + "/COORDINATOR.md",
+         {GlobalBase() + "/AGENTS.md", GlobalBase() + "/AGENTS.override.md",
+          GlobalBase() + "/CLAUDE.md", GlobalBase() + "/COORDINATOR.md",
           CanonicalCwd() + "/.uagent/COORDINATOR.md"}) {
       CHECK(PathApprovalClass(instructions, PathAccess::kRead) ==
             ApprovalClass::kNone);
       CHECK(PathApprovalClass(instructions, PathAccess::kWrite) ==
             ApprovalClass::kMandatoryHuman);
     }
-    CHECK(PathApprovalClass(CanonicalCwd() + "/AGENTS.md",
-                            PathAccess::kWrite) == ApprovalClass::kNone);
+    for (const char* name : {"/AGENTS.md", "/AGENTS.override.md"}) {
+      CHECK(PathApprovalClass(CanonicalCwd() + name, PathAccess::kWrite) ==
+            ApprovalClass::kNone);
+    }
     // Remembered "always allow" rules authorize future calls, so writing them
     // is never something an automatic reviewer may approve.
     const std::string rules =

@@ -332,9 +332,10 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
       }
     }
   }
+  // Every scope but kAll, the host's whole view, leaves coordinators out.
   const auto listed = [&](const SessionInfo& info) {
-    return (scope == SessionScope::kAll || info.cwd == current) &&
-           info.kind != kSessionKindCoordinator &&
+    return (scope == SessionScope::kAll ||
+            (info.cwd == current && info.kind != kSessionKindCoordinator)) &&
            info.delegation.empty() != (scope == SessionScope::kChildren);
   };
   std::vector<SessionInfo> out;

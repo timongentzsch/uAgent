@@ -1144,7 +1144,7 @@ void TestChildSessionsStayOutOfTheCatalogue() {
   write("ordinary", json::object());
   write("agent-aaaa1111",
         {{kSessionHeaderDelegation, {{"parent", "p"}, {"name", "reviewer"}}}});
-  // The folder's coordinator is reached by its path, never listed.
+  // A folder lists its coordinator only in the host's whole view.
   write("coordinator", {{kSessionHeaderKind, kSessionKindCoordinator}});
   CHECK(CoordinatorPath(CanonicalCwd()) ==
         (dir / "coordinator.json").string());
@@ -1156,7 +1156,9 @@ void TestChildSessionsStayOutOfTheCatalogue() {
     return out;
   };
   CHECK(ids(SessionScope::kWorkspace) == std::vector<std::string>{"ordinary"});
-  CHECK(ids(SessionScope::kAll) == std::vector<std::string>{"ordinary"});
+  auto all = ids(SessionScope::kAll);
+  std::ranges::sort(all);
+  CHECK(all == (std::vector<std::string>{"coordinator", "ordinary"}));
   const std::vector<SessionInfo> children =
       ListSessions(SessionScope::kChildren);
   CHECK(children.size() == 1);

@@ -690,7 +690,7 @@ void Master::Command(const Request& request, Response& response) {
   json command = json::parse(request.body, nullptr, false);
   const auto category = JsonValue(command, "kind", "");
   if (request.body.size() > kRegularCommandBytes && category != "memory" &&
-      category != "skills" && category != "prompt") {
+      category != "skills" && category != "instructions") {
     Error(response, "command exceeds limit", 413);
     return;
   }

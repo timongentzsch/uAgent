@@ -111,7 +111,7 @@ Common slash commands:
 | `/status`, `/context`, `/cost`, `/http` | Inspect configuration, the model request, spend and captured traffic |
 | `/ps`, `/agents`, `/tools`, `/mcp`, `/permissions`, `/yolo` | Manage background work, delegated agents, tools, MCP servers and approval mode |
 | `/sessions`, `/new`, `/rename`, `/fork`, `/rewind`, `/compact`, `/share` | Manage sessions and context |
-| `/memory`, `/skills`, `/schedule`, `/prompt`, `/config`, `/restart` | Manage memory, skills, scheduled tasks, system prompt and settings; restart to apply one |
+| `/memory`, `/skills`, `/schedule`, `/instructions`, `/config`, `/restart` | Manage memory, skills, scheduled tasks, instructions and settings; restart to apply one |
 | `/btw QUESTION` | Ask a side question about the conversation; the answer is not added to it |
 | `/verbose`, `/clear`, `/help`, `/quit` | Toggle full output, clear the screen, list all commands, detach |
 

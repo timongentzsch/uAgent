@@ -2,7 +2,6 @@
 
 #include <chrono>
 #include <cinttypes>
-#include <fstream>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -218,23 +217,18 @@ void HandleInstructions(AppSession& session, const std::string& argument,
     return;
   }
   if (action == "edit") {
-    if ((audience != "sessions" && audience != "coordinator") ||
-        (scope != "user" && scope != "project")) {
+    bool coordinator = false, project = false;
+    if (!ParseInstructionTarget(audience, scope, coordinator, project)) {
       reply.Print("%s", "usage: /instructions edit sessions|coordinator "
                         "user|project\n");
       return;
     }
-    const bool coordinator = audience == "coordinator";
-    const bool project = scope == "project";
-    std::string text;
-    std::ifstream input(InstructionPath(coordinator, project, cwd),
-                        std::ios::binary);
-    if (input) ReadBounded(input, kProjectDocBytes, text);
+    const auto path = InstructionPath(coordinator, project, cwd);
     bool cancelled = false;
-    text = ReadInteraction(
+    const std::string text = ReadInteraction(
         {.kind = "editor",
-         .prompt = InstructionPath(coordinator, project, cwd).string(),
-         .initial = text},
+         .prompt = path.string(),
+         .initial = ReadInstructionFile(path)},
         &cancelled);
     if (cancelled) {
       reply.Print("%s", "· instructions unchanged\n");
@@ -261,17 +255,18 @@ void HandleInstructions(AppSession& session, const std::string& argument,
                 JsonValue(file, "audience", "") == "coordinator"
                     ? "coordinator"
                     : "every session",
-                RST(), JsonValue(file, "path", "").c_str(),
-                text.empty() ? "(empty)" : text.c_str());
+                RST(), TerminalSafe(JsonValue(file, "path", "")).c_str(),
+                text.empty() ? "(empty)" : TerminalSafe(text).c_str());
   }
   for (const json& also : stack["also_loaded"]) {
-    reply.Print("also read: %s\n", also.get<std::string>().c_str());
+    reply.Print("also read: %s\n",
+                TerminalSafe(also.get<std::string>()).c_str());
   }
   const json self = session.ActiveAgent().SelfDirective({{"action", "show"}});
   if (!JsonValue(self["item"], "text", "").empty()) {
     reply.Print("%sself-directive%s (this conversation, %s)\n%s\n", BOLD(),
                 RST(), JsonValue(self["item"], "mode", "").c_str(),
-                JsonValue(self["item"], "text", "").c_str());
+                TerminalSafe(JsonValue(self["item"], "text", "")).c_str());
   }
 }
 

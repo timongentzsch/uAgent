@@ -43,6 +43,7 @@ inline std::string MatchSessionPrefix(const std::string& prefix) {
   }
   std::string match;
   for (const SessionInfo& session : sessions) {
+    if (session.kind == kSessionKindCoordinator) continue;  // `uagent coord`
     const std::string name =
         std::filesystem::path(session.path).filename().string();
     if (AsciiLower(name).find(arg) == std::string::npos &&

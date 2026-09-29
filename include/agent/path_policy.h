@@ -3,6 +3,7 @@
 #ifndef UAGENT_INCLUDE_AGENT_PATH_POLICY_H_
 #define UAGENT_INCLUDE_AGENT_PATH_POLICY_H_
 
+#include <algorithm>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -12,6 +13,7 @@
 #include "include/core/config.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
+#include "include/core/project.h"
 #include "include/core/sandbox.h"
 #include "include/tools/tool.h"
 
@@ -23,6 +25,14 @@ enum class PathTarget {
   kDeletableFile,
   kDirectory,
 };
+
+// Any name an instruction file can have, AGENTS.md's fallbacks included.
+inline bool InstructionFileName(const std::filesystem::path& path) {
+  const std::string name = path.filename().string();
+  return name == "COORDINATOR.md" ||
+         std::ranges::find(kInstructionNames, name) !=
+             std::end(kInstructionNames);
+}
 
 // µAgent's own configuration and trust state. Editing these changes what the
 // agent is allowed to do next launch, so they are never auto-approved. This
@@ -36,11 +46,10 @@ inline bool SelfConfigurationPath(const std::string& path) {
   };
   // Instructions outside the repository steer every session (yours) or a
   // coordinator; a project's AGENTS.md is an ordinary repository file.
-  if ((candidate.filename() == "COORDINATOR.md" &&
-       candidate.parent_path().filename() == ".uagent") ||
-      matches((std::filesystem::path(GlobalBase()) / "AGENTS.md").string()) ||
-      matches((std::filesystem::path(GlobalBase()) / "COORDINATOR.md")
-                  .string())) {
+  if (InstructionFileName(candidate) &&
+      (candidate.filename() == "COORDINATOR.md"
+           ? candidate.parent_path().filename() == ".uagent"
+           : candidate.parent_path() == CanonicalAccessPath(GlobalBase()))) {
     return true;
   }
   if (matches(UagentConfigPath()) || matches(ProjectConfigFilePath()) ||
@@ -96,8 +105,7 @@ inline ApprovalClass PathApprovalClass(const std::string& path,
   if (!SelfConfigurationPath(path)) return ApprovalClass::kNone;
   if (access == PathAccess::kRead &&
       (CanonicalAccessPath(path) == CanonicalAccessPath(TrustStorePath()) ||
-       CanonicalAccessPath(path).filename() == "AGENTS.md" ||
-       CanonicalAccessPath(path).filename() == "COORDINATOR.md")) {
+       InstructionFileName(CanonicalAccessPath(path)))) {
     return ApprovalClass::kNone;
   }
   return ApprovalClass::kMandatoryHuman;

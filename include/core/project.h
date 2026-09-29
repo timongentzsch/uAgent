@@ -2,8 +2,9 @@
 
 #ifndef UAGENT_INCLUDE_CORE_PROJECT_H_
 #define UAGENT_INCLUDE_CORE_PROJECT_H_
-// Startup instruction discovery: one AGENTS/CLAUDE file per directory from
-// the repository root down. Memory discovery lives with memory storage.
+// Instruction files: which ones a session reads at startup (one per
+// directory from yours down to the working directory), and reading and
+// writing the ones a person edits. Memory discovery lives with memory storage.
 
 #include <algorithm>
 #include <filesystem>
@@ -43,15 +44,56 @@ inline std::filesystem::path ProjectRoot(const std::filesystem::path& cwd) {
   return cwd;
 }
 
+// A directory contributes one file, as in Codex: AGENTS.override.md, else
+// AGENTS.md, else CLAUDE.md as a compatibility fallback. Where none exists,
+// AGENTS.md is the one to create.
+inline constexpr const char* kInstructionNames[] = {
+    "AGENTS.override.md", "AGENTS.md", "CLAUDE.md"};
+
+inline std::filesystem::path InstructionFileIn(
+    const std::filesystem::path& dir) {
+  for (const char* name : kInstructionNames) {
+    std::error_code ec;
+    if (std::filesystem::is_regular_file(dir / name, ec)) return dir / name;
+  }
+  return dir / "AGENTS.md";
+}
+
 // The instruction files a person writes: for every session or for a folder's
 // coordinator, yours (every folder) or the project's. Always additive, read
 // once when a session starts. Loading, showing, editing and protecting them
 // all name them here.
 inline std::filesystem::path InstructionPath(bool coordinator, bool project,
                                              const std::filesystem::path& cwd) {
-  const char* name = coordinator ? "COORDINATOR.md" : "AGENTS.md";
-  if (!project) return std::filesystem::path(GlobalBase()) / name;
-  return coordinator ? cwd / ".uagent" / name : ProjectRoot(cwd) / name;
+  if (!coordinator) {
+    return InstructionFileIn(project ? ProjectRoot(cwd)
+                                     : std::filesystem::path(GlobalBase()));
+  }
+  return project ? cwd / ".uagent" / "COORDINATOR.md"
+                 : std::filesystem::path(GlobalBase()) / "COORDINATOR.md";
+}
+
+// One of the four files, in the editors' words: audience "sessions" or
+// "coordinator", scope "user" or "project". False for anything else.
+inline bool ParseInstructionTarget(const std::string& audience,
+                                   const std::string& scope, bool& coordinator,
+                                   bool& project) {
+  if ((audience != "sessions" && audience != "coordinator") ||
+      (scope != "user" && scope != "project")) {
+    return false;
+  }
+  coordinator = audience == "coordinator";
+  project = scope == "project";
+  return true;
+}
+
+// An instruction file's text, bounded like the loader reads it; empty when
+// it does not exist.
+inline std::string ReadInstructionFile(const std::filesystem::path& path) {
+  std::ifstream input(path, std::ios::binary);
+  std::string text;
+  if (input) ReadBounded(input, kProjectDocBytes, text);
+  return text;
 }
 
 // Codex-style startup discovery: one instruction file per directory, ordered
@@ -96,18 +138,11 @@ inline ProjectInstructions LoadProjectInstructions(
     destination += header + content;
     return true;
   };
-  // One file per directory, as Codex does. CLAUDE.md is a compatibility
-  // fallback, not a second surface loaded alongside AGENTS.md.
   auto append_dir = [&](const fs::path& dir) {
-    for (const char* name : {"AGENTS.override.md", "AGENTS.md", "CLAUDE.md"}) {
-      std::error_code ec;
-      fs::path candidate = dir / name;
-      if (fs::is_regular_file(candidate, ec)) {
-        if (append(candidate, loaded.text)) {
-          loaded.sources.push_back(candidate.string());
-        }
-        break;
-      }
+    const fs::path file = InstructionFileIn(dir);
+    std::error_code ec;
+    if (fs::is_regular_file(file, ec) && append(file, loaded.text)) {
+      loaded.sources.push_back(file.string());
     }
   };
 
@@ -139,20 +174,24 @@ inline json InstructionFiles(const std::filesystem::path& cwd) {
     for (bool project : {false, true}) {
       const std::filesystem::path path =
           InstructionPath(coordinator, project, cwd);
-      std::ifstream input(path, std::ios::binary);
-      std::string text;
-      if (input) ReadBounded(input, kProjectDocBytes, text);
       files.push_back({{"audience", coordinator ? "coordinator" : "sessions"},
                        {"scope", project ? "project" : "user"},
                        {"path", path.string()},
-                       {"text", text}});
+                       {"text", ReadInstructionFile(path)}});
     }
   }
+  // The loader names paths canonically; compare them the same way.
+  const auto same = [](const std::filesystem::path& a,
+                       const std::filesystem::path& b) {
+    std::error_code ec;
+    return std::filesystem::weakly_canonical(a, ec) ==
+           std::filesystem::weakly_canonical(b, ec);
+  };
   json also = json::array();
   for (const std::string& source :
        LoadProjectInstructions(cwd, kProjectDocBytes).sources) {
-    if (source != InstructionPath(false, false, cwd).string() &&
-        source != InstructionPath(false, true, cwd).string()) {
+    if (!same(source, InstructionPath(false, false, cwd)) &&
+        !same(source, InstructionPath(false, true, cwd))) {
       also.push_back(source);
     }
   }
@@ -163,8 +202,16 @@ inline json InstructionFiles(const std::filesystem::path& cwd) {
 inline std::string WriteInstructionFile(bool coordinator, bool project,
                                         const std::filesystem::path& cwd,
                                         const std::string& text) {
-  if (text.size() > kProjectDocBytes) return "instructions are at most 32 KiB";
+  if (text.size() > kProjectDocBytes) {
+    return "instructions are at most " +
+           std::to_string(kProjectDocBytes / 1024) + " KiB";
+  }
   const std::filesystem::path path = InstructionPath(coordinator, project, cwd);
+  // Written in place, never through a link a repository could plant.
+  std::error_code ec;
+  if (std::filesystem::is_symlink(path, ec)) {
+    return path.string() + " is a symbolic link; edit its target instead";
+  }
   // A project's AGENTS.md is a repository file others read; the rest live
   // in private .uagent directories.
   const bool shared = project && !coordinator;

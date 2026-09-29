@@ -183,7 +183,7 @@ def test_coordinator_delegates_a_thread_and_hears_back(root, home, *, binary):
         assert_true(header["kind"] == "thread", header)
         link = header["thread"]
         assert_true(link["folder"] == str(root.resolve()), link)
-        assert_true(link["ceiling"]["approval"] == "auto", link)
+        assert_true("budget_usd" in link["ceiling"], link)
         # The thread's own requests carried only its brief, never the coordinator's.
         thread_requests = [
             body for _, body in server.requests if "Objective: count the files" in json.dumps(body)
@@ -224,6 +224,39 @@ def test_coordinator_refuses_spawns_past_its_spend_limit(root, home, *, binary):
         assert_true(result.returncode == 0, result.stderr)
         refusal = tool_results(server.requests[-1][1]["messages"])[0]
         assert_true("spend limit" in refusal, refusal)
+
+
+def test_restarted_threads_keep_their_ceiling_and_user_sessions_stay_asleep(root, home, *, binary):
+    from integration_support import fnv1a64
+
+    coordinator = fnv1a64(str(home / ".uagent" / "history" / fnv1a64(str(root.resolve())) / "coordinator.json"))
+    conversation = [{"role": "system", "content": "sys"}, {"role": "user", "content": "go"}]
+    write_session(
+        home,
+        "thread-over",
+        conversation,
+        cwd=root,
+        usage={"cost": 5, "cost_reported": True},
+        kind="thread",
+        thread={"coordinator_id": coordinator, "folder": str(root.resolve()), "ceiling": {"budget_usd": 1}},
+    )
+    write_session(home, "mine", conversation, cwd=root)
+    ids = {path.stem: fnv1a64(str(path)) for path in session_files(home)}
+    with Server(
+        [
+            tool_call("thread", {"action": "message", "session_id": ids["thread-over"], "text": "more"}),
+            tool_call("thread", {"action": "message", "session_id": ids["mine"], "text": "more"}, call_id="call-2"),
+            event({"content": "done-ok"}),
+        ]
+    ) as server:
+        result = run(root, base_env(home, server.url), "coord", "-p", "nudge", binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        sent, refused = tool_results(server.requests[-1][1]["messages"])
+        assert_true(sent == "sent", sent)
+        assert_true("not running" in refused, refused)
+        time.sleep(budget(1))
+        # The restarted thread stopped at its budget before asking the model.
+        assert_true(len(server.requests) == 3, [json.dumps(b)[-200:] for _, b in server.requests])
 
 
 def test_coordinator_caps_working_threads_in_worktrees(root, home, *, binary):

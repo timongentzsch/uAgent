@@ -18,9 +18,16 @@ LaunchPaths PlanLaunch(const std::string& project, bool worktree,
                    id + ".json"};
 }
 
+CapturedProcess HostGit(const std::string& dir, std::vector<std::string> args) {
+  std::vector<std::string> argv = {
+      "git", "-C", dir, "-c", "core.hooksPath=/dev/null", "-c",
+      "core.fsmonitor=false"};
+  argv.insert(argv.end(), args.begin(), args.end());
+  return CaptureProcess(argv, 30);
+}
+
 std::string CreateWorktree(const std::string& project, const std::string& cwd) {
-  auto created = CaptureProcess(
-      {"git", "-C", project, "worktree", "add", "--detach", cwd, "HEAD"}, 30);
+  auto created = HostGit(project, {"worktree", "add", "--detach", cwd, "HEAD"});
   if (created.Ok()) return "";
   return "Cannot create worktree: " +
          Utf8Prefix(created.output + created.error, 1024);

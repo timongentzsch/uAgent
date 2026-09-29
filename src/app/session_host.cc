@@ -7,7 +7,6 @@
 #include <filesystem>
 #include <map>
 #include <memory>
-#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -145,20 +144,6 @@ bool SessionHost::RefreshCatalogue(bool force) {
   }
   scanned_ = std::chrono::steady_clock::now();
   auto list = catalogue_.List(SessionScope::kAll);
-  // The catalogue never lists coordinators; each listed folder's one is
-  // found by its path once it has been used.
-  std::set<std::string> folders;
-  for (const SessionInfo& item : list) folders.insert(item.cwd);
-  for (const std::string& folder : folders) {
-    SessionInfo coordinator;
-    coordinator.path = CoordinatorPath(folder);
-    coordinator.cwd = folder;
-    const json header = SessionHeader(coordinator.path);
-    if (header.empty()) continue;
-    coordinator.title = JsonValue(header, kSessionHeaderTitle, "");
-    coordinator.kind = kSessionKindCoordinator;
-    list.push_back(std::move(coordinator));
-  }
   std::lock_guard lock(mutex_);
   bool changed = false;
   for (const SessionInfo& item : list) {

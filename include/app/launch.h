@@ -2,8 +2,10 @@
 #ifndef UAGENT_INCLUDE_APP_LAUNCH_H_
 #define UAGENT_INCLUDE_APP_LAUNCH_H_
 #include <string>
+#include <vector>
 
 #include "include/app/session.h"
+#include "include/core/capture.h"
 #include "include/core/json.h"
 
 namespace uagent {
@@ -17,6 +19,11 @@ struct LaunchPaths {
 // otherwise in `project` itself. The file is history/<workspace>/<prefix><id>.
 LaunchPaths PlanLaunch(const std::string& project, bool worktree,
                        const std::string& prefix, const std::string& id);
+
+// Runs git in `dir` for the host. The directory may be one a sandboxed
+// session could write, so repository config never makes git run a command:
+// no hooks, fsmonitor, external diff or textconv.
+CapturedProcess HostGit(const std::string& dir, std::vector<std::string> args);
 
 // Creates the detached worktree `cwd` at the project's HEAD. Returns the
 // error, or empty on success.

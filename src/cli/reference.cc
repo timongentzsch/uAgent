@@ -139,15 +139,13 @@ std::string PromptMarkdown() {
   std::string out = "# System prompt\n\n";
   out += kGenerated;
   out +=
-      "This is the built-in behavioral prompt. Global, project and "
-      "conversation "
-      "documents can overlay it or replace it completely. Runtime facts and "
-      "repository instructions remain separate context sources; memory stays "
-      "outside the system message. Use `/prompt` or `--show-system-prompt "
-      "--json` "
-      "to inspect effective text and sources. `UAGENT_PROMPT_OVERLAY` retains "
-      "its section-editing behavior for experiments before scope "
-      "resolution.\n\n";
+      "This is the built-in behavioral prompt. Instruction files (AGENTS.md, "
+      "and COORDINATOR.md for a coordinator) only add to it; the agent's "
+      "opt-in self-directive can change it for one conversation. Memory stays "
+      "outside the system message. Use `/instructions` or "
+      "`--show-system-prompt --json` to inspect the effective text and its "
+      "sources. `UAGENT_PROMPT_OVERLAY` edits named sections for "
+      "experiments.\n\n";
   out += "## Base (" +
          std::to_string(JsonValue(surface, "base_chars", int64_t{0})) +
          " chars)\n\n```text\n" + JsonValue(surface, "base", std::string()) +

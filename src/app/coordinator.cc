@@ -236,23 +236,27 @@ bool OwnThread(const SessionInfo& info, const std::string& coordinator) {
          JsonValue(info.thread, "coordinator_id", "") == coordinator;
 }
 
+double ThreadBudget(const json& thread) {
+  return JsonValue(JsonValue(thread, "ceiling", json::object()), "budget_usd",
+                   0.0);
+}
+
 // A thread counts against the cap while its runtime is working a turn.
 bool Working(const SessionInfo& info) {
   const std::string status = LiveStatus(info);
   return status == "working" || status == "needs you";
 }
 
-// Reported cost of the threads this coordinator started today.
-double SpentToday(const std::string& folder) {
-  const std::string coordinator = CoordinatorId(folder), today = Today();
+// Today's thread spend: what finished threads cost, and the whole budget of
+// each working one, so threads running at once can never overshoot the limit.
+double SpentToday(const std::vector<SessionInfo>& threads) {
+  const std::string today = Today();
   double spent = 0;
-  for (const SessionInfo& info : FolderSessions(folder)) {
-    if (!OwnThread(info, coordinator) ||
-        JsonValue(info.thread, "day", "") != today) {
-      continue;
-    }
+  for (const SessionInfo& info : threads) {
+    if (JsonValue(info.thread, "day", "") != today) continue;
     SessionLoadResult loaded = SessionStore::Inspect(info.path);
-    if (loaded.record) spent += loaded.record->state.usage.cost;
+    const double cost = loaded.record ? loaded.record->state.usage.cost : 0;
+    spent += Working(info) ? std::max(cost, ThreadBudget(info.thread)) : cost;
   }
   return spent;
 }
@@ -279,10 +283,11 @@ ToolResult Spawn(const std::string& folder, const json& a) {
   }
   const std::string coordinator = CoordinatorId(folder);
   const int64_t cap = LongSetting(Cfg("UAGENT_COORDINATOR_MAX_THREADS"));
-  int64_t working = 0;
-  for (const SessionInfo& info : FolderSessions(folder)) {
-    if (OwnThread(info, coordinator) && Working(info)) ++working;
+  std::vector<SessionInfo> threads;
+  for (SessionInfo& info : FolderSessions(folder)) {
+    if (OwnThread(info, coordinator)) threads.push_back(std::move(info));
   }
+  const int64_t working = std::ranges::count_if(threads, Working);
   if (working >= cap) {
     return ToolFailure(ToolErrorCode::kLimitExceeded,
                        "error: " + std::to_string(cap) +
@@ -290,8 +295,10 @@ ToolResult Spawn(const std::string& folder, const json& a) {
                            "finish or stop one");
   }
   const double limit = DoubleSetting(Cfg("UAGENT_COORDINATOR_DAILY_SPEND_USD"));
-  const double spent = limit > 0 ? SpentToday(folder) : 0;
-  if (limit > 0 && spent >= limit) {
+  // Each thread gets an equal share of what is left for the free slots.
+  const double budget =
+      limit > 0 ? (limit - SpentToday(threads)) / double(cap - working) : 0;
+  if (limit > 0 && budget < 0.01) {
     return ToolFailure(ToolErrorCode::kLimitExceeded,
                        "error: today's thread spend limit of " +
                            FmtCost(limit) + " is reached");
@@ -314,13 +321,6 @@ ToolResult Spawn(const std::string& folder, const json& a) {
                       {"done_when", JsonValue(a, "done_when", "")},
                       {"boundaries", JsonValue(a, "boundaries", "")}};
   Options options;
-  // Threads decide routine calls in Auto mode, sandboxed, within what is
-  // left of today's budget. Nothing a coordinator passes can widen this.
-  options.overrides["UAGENT_APPROVAL"] = "auto";
-  options.overrides["UAGENT_SANDBOX"] = "true";
-  if (limit > 0) {
-    options.overrides["UAGENT_SESSION_BUDGET"] = std::to_string(limit - spent);
-  }
   std::string model = JsonValue(a, "model", SubagentModel());
   if (!model.empty()) options.overrides["UAGENT_MODEL"] = model;
   options.session = {
@@ -330,10 +330,7 @@ ToolResult Spawn(const std::string& folder, const json& a) {
         {"folder", folder},
         {"day", Today()},
         {"brief", brief},
-        {"ceiling",
-         {{"approval", "auto"},
-          {"sandbox", true},
-          {"budget_usd", limit > 0 ? limit - spent : 0.0}}}}}};
+        {"ceiling", {{"budget_usd", budget}}}}}};
   std::string error;
   session::Connection connection = session::Open(
       ExecutablePath(), launch.cwd, launch.path, title, options, error);
@@ -351,16 +348,23 @@ ToolResult Spawn(const std::string& folder, const json& a) {
                                {"environment", environment}}));
 }
 
-// Guidance into any session of the folder: a running turn takes it as
-// steering, an idle one as its next message. Either way it is labelled.
-ToolResult Message(const SessionInfo& info, const std::string& text) {
+// Guidance into a session of the folder: a running turn takes it as
+// steering, an idle one as its next message. Either way it is labelled. Only
+// the coordinator's own threads are started again for it; they always run
+// within their ceiling, where the user's own sessions would not.
+ToolResult Message(const SessionInfo& info, const std::string& folder,
+                   const std::string& text) {
   if (text.empty() || text.size() > kMessageBytes) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
                        "error: a message needs 1 to 8192 bytes of text");
   }
-  std::string error;
-  session::Connection connection = session::Open(
-      ExecutablePath(), info.cwd, info.path, "", Options{}, error);
+  std::string error = "the session is not running; only this coordinator's "
+                      "threads can be started again";
+  session::Connection connection =
+      OwnThread(info, CoordinatorId(folder))
+          ? session::Open(ExecutablePath(), info.cwd, info.path, "",
+                          Options{}, error)
+          : session::Connect(info.path);
   if (!connection.socket) {
     return ToolFailure(ToolErrorCode::kUnavailable, "error: " + error);
   }
@@ -396,14 +400,13 @@ ToolResult Delete(const SessionInfo& info) {
 
 // What a thread changed, from the host's git, never a model-run shell.
 ToolResult Diff(const SessionInfo& info) {
-  auto stat = CaptureProcess({"git", "-C", info.cwd, "diff", "--stat", "HEAD"},
-                             30);
-  auto patch = CaptureProcess({"git", "-C", info.cwd, "diff", "HEAD"}, 30);
-  if (!stat.Ok() || !patch.Ok()) {
+  auto diff = HostGit(info.cwd, {"diff", "--no-ext-diff", "--no-textconv",
+                                  "--stat", "--patch", "HEAD"});
+  if (!diff.Ok()) {
     return ToolFailure(ToolErrorCode::kProcessFailed,
-                       "error: " + Utf8Prefix(stat.error + patch.error, 1024));
+                       "error: " + Utf8Prefix(diff.error, 1024));
   }
-  std::string text = stat.output + "\n" + patch.output;
+  std::string text = diff.output;
   if (text.size() > kDiffBytes) {
     text = Utf8Prefix(text, kDiffBytes) + "\n[truncated]";
   }
@@ -444,7 +447,7 @@ Tool ThreadTool(const std::string& folder) {
           return ToolFailure(ToolErrorCode::kNotFound,
                              "error: no session " + id + " in this folder");
         }
-        if (action == "message") return Message(*info, JsonValue(a, "text", ""));
+        if (action == "message") return Message(*info, folder, JsonValue(a, "text", ""));
         if (action == "stop") return Stop(*info);
         if (action == "diff") return Diff(*info);
         if (action == "delete") return Delete(*info);
@@ -675,7 +678,7 @@ std::vector<SessionInfo> FolderSessions(const std::string& folder) {
   const std::string coordinator = CoordinatorId(folder);
   std::vector<SessionInfo> sessions = ListSessions(SessionScope::kAll);
   std::erase_if(sessions, [&](const SessionInfo& info) {
-    return !info.error.empty() ||
+    return !info.error.empty() || info.kind == kSessionKindCoordinator ||
            (info.cwd != folder &&
             JsonValue(info.thread, "coordinator_id", "") != coordinator);
   });
@@ -690,7 +693,7 @@ std::string CoordinatorBoard(const std::string& folder) {
   for (const SessionInfo& info : sessions) {
     std::string line = HashHex(info.path) + " " + LiveStatus(info) + " · " +
                        (info.kind == kSessionKindThread ? "↳ " : "") +
-                       Utf8Prefix(info.title, 80) + " · " +
+                       OneLine(info.title) + " · " +
                        std::to_string(info.turns) + " turns · " +
                        Age(info.mtime) + "\n";
     if (board.size() + line.size() > kBoardBytes - 64) break;

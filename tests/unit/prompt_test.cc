@@ -3,6 +3,8 @@
 
 #include <sys/stat.h>
 
+#include <filesystem>
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -13,6 +15,7 @@
 
 namespace uagent {
 namespace {
+namespace fs = std::filesystem;
 struct Harness {
   AdaptiveSystemState state;
   Api api{RuntimeConfig{}};
@@ -126,6 +129,17 @@ void TestInstructionFiles() {
   CHECK(shown["files"][2]["text"] == "Keep threads small.");
   CHECK(WriteInstructionFile(false, false, cwd,
                              std::string(kProjectDocBytes + 1, 'x')) != "");
+  // The editor edits the file the loader reads at that level, and never
+  // writes through a link.
+  { std::ofstream(cwd / "CLAUDE.md") << "Legacy."; }
+  fs::remove(cwd / "AGENTS.md");
+  CHECK(InstructionPath(false, true, cwd).filename() == "CLAUDE.md");
+  CHECK(InstructionFiles(cwd)["files"][1]["text"] == "Legacy.");
+  fs::remove(cwd / "CLAUDE.md");
+  fs::create_symlink(cwd / "elsewhere", cwd / "AGENTS.md");
+  CHECK(WriteInstructionFile(false, true, cwd, "x").find("symbolic link") !=
+        std::string::npos);
+  CHECK(!fs::exists(cwd / "elsewhere"));
 }
 
 void TestPromptRequestParity() {

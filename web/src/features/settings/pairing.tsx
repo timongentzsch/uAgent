@@ -53,9 +53,10 @@ export default function Pairing({
         <Button
           type="submit"
           variant="primary"
-          disabled={busy || !navigator.onLine}
+          busy={busy}
+          disabled={!navigator.onLine}
         >
-          {busy ? "Connecting…" : "Connect device"}
+          Connect device
         </Button>
       </form>
       <p class="muted">

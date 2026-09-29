@@ -213,6 +213,12 @@ button,
   cursor: pointer;
   line-height: 1.3;
 }
+/* A secondary action inside a row or toolbar: shorter and quieter. */
+.compact-button {
+  min-height: calc(24rem / 14);
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--font-small);
+}
 button:disabled,
 select:disabled {
   opacity: 0.45;
@@ -293,7 +299,9 @@ button[aria-pressed="true"] {
   vertical-align: -3px;
   stroke-width: 1.75;
 }
-.with-icon {
+/* A control that shows an icon beside its label lays them out as one row. */
+/* Zero specificity: a component's own layout (rows, menus) still wins. */
+:where(button, .button-link, .file-button):where(:has(> .lucide)) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -308,6 +316,10 @@ select:focus-visible,
 [tabindex]:not([tabindex="-1"]):focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+/* Headings and panels focused by the app, not by the reader, stay unringed. */
+[tabindex="-1"]:focus {
+  outline: none;
 }
 a {
   color: var(--accent);
@@ -767,10 +779,10 @@ pre code {
   border-left: 2px solid transparent;
 }
 .session-row:focus-within,
-.session-row:has(.selected) {
+.session-row:has([aria-current]) {
   background: var(--raised);
 }
-.session-row:has(.selected) {
+.session-row:has([aria-current]) {
   border-left-color: var(--accent);
 }
 .session {
@@ -1380,10 +1392,9 @@ details[open]:not(.disclosure-row) > summary::before {
   gap: var(--gap);
   flex-wrap: wrap;
 }
-.segmented button[aria-pressed="true"],
-.raw-tabs [aria-selected="true"],
-.raw-tabs [aria-pressed="true"],
-.weekdays button[aria-pressed="true"] {
+/* Pressed buttons are drawn by button[aria-pressed]; a tab list's
+   selected tab matches them. */
+.raw-tabs [aria-selected="true"] {
   background: var(--accent);
   color: var(--on-accent);
 }

@@ -126,3 +126,86 @@ test("steer carries files when idle converts to a turn", async ({
   ).toBeVisible({ timeout: 60000 });
   expect(await transcript.textContent()).not.toContain('path "');
 });
+
+test("pasting text with a rendered image keeps the text, no attachment", async ({
+  page,
+  session,
+  command,
+}) => {
+  await ready(page, session, command);
+  const prompt = page.getByLabel("Message or guidance");
+  await prompt.focus();
+  // What a spreadsheet puts on the clipboard: the cells as text beside a
+  // picture of them. The browser inserts the text itself.
+  const kept = await prompt.evaluate(
+    (element, bytes) => {
+      const data = new DataTransfer();
+      data.setData("text/plain", "a\tb");
+      data.items.add(
+        new File([new Uint8Array(bytes)], "cells.png", { type: "image/png" }),
+      );
+      return element.dispatchEvent(
+        new ClipboardEvent("paste", {
+          clipboardData: data,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    },
+    [...pixel],
+  );
+  expect(kept).toBe(true);
+  await expect(page.locator(".composer .file-chip")).toHaveCount(0);
+});
+
+test("a file dropped on the transcript attaches instead of navigating", async ({
+  page,
+  session,
+  command,
+}) => {
+  await ready(page, session, command);
+  await page.locator(".transcript").evaluate(
+    (element, bytes) => {
+      const data = new DataTransfer();
+      data.items.add(
+        new File([new Uint8Array(bytes)], "dropped.png", { type: "image/png" }),
+      );
+      for (const type of ["dragover", "drop"])
+        element.dispatchEvent(
+          new DragEvent(type, {
+            dataTransfer: data,
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+    },
+    [...pixel],
+  );
+  await expect(
+    page.locator(".composer .file-chip", { hasText: "dropped.png" }),
+  ).toBeVisible();
+});
+
+test("an upload cut off by a reload leaves no stuck chip", async ({
+  page,
+  session,
+  command,
+}) => {
+  await ready(page, session, command);
+  await page.evaluate((id) => {
+    localStorage.setItem(
+      "uagent-drafts",
+      JSON.stringify({
+        [id]: {
+          text: "kept",
+          files: [
+            { id: "upload-lost", name: "lost.png", bytes: 1, pending: true },
+          ],
+        },
+      }),
+    );
+  }, session.id);
+  await page.reload();
+  await expect(page.getByLabel("Message or guidance")).toHaveValue("kept");
+  await expect(page.locator(".composer .file-chip")).toHaveCount(0);
+});

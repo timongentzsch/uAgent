@@ -63,8 +63,17 @@ export function useHost(
   const [snapshots] = useState(snapshotStore);
   const [selected, setSelected] = useState(selectedFromURL);
   // Unsent drafts survive an evicted or reloaded app; logout clears them.
+  // An upload still in flight when the page went away never finishes; its
+  // chip would have no id the host knows.
   const [drafts, setDrafts] = useState(() =>
-    readStored<Record<string, Draft>>(storage, "uagent-drafts", {}),
+    Object.fromEntries(
+      Object.entries(
+        readStored<Record<string, Draft>>(storage, "uagent-drafts", {}),
+      ).map(([id, draft]) => [
+        id,
+        { ...draft, files: draft.files.filter((file) => !file.pending) },
+      ]),
+    ),
   );
   const [error, setError] = useState("");
   const [unread, setUnread] = useState(
@@ -191,6 +200,17 @@ export function useHost(
       setSelected("");
     }
   }, []);
+  // Jittered exponential backoff; a successful catalogue read resets it.
+  const retryLater = () => {
+    const delay = Math.min(
+      reconnectMaxDelayMs,
+      1000 * 2 ** retry.current.attempt++,
+    );
+    retry.current.timer = setTimeout(
+      () => refresh(),
+      delay * (0.5 + Math.random() / 2),
+    );
+  };
   const refresh = useCallback(async () => {
     clearTimeout(retry.current.timer);
     setManagementVersion((value) => value + 1);
@@ -279,6 +299,9 @@ export function useHost(
         if (stream.current !== events || signal.aborted) return;
         setOnline(false);
         setConnecting(events.readyState === EventSource.CONNECTING);
+        // A non-200 answer (a proxy's 502 mid-restart) closes the stream
+        // for good; only a fresh refresh reconnects.
+        if (events.readyState === EventSource.CLOSED) retryLater();
       };
       events.addEventListener("ready", (message) => {
         if (stream.current !== events || signal.aborted) return;
@@ -508,7 +531,9 @@ export function useHost(
         }
         flush.current(id);
         if (isIncoming(event) && (id !== selection.current || !reading.current))
-          setUnread((prior) => new Set([...prior, id]));
+          setUnread((prior) =>
+            prior.has(id) ? prior : new Set([...prior, id]),
+          );
         // The host decides what needs a person; its id dedupes with push.
         if (event.attention_id) {
           if (
@@ -538,14 +563,7 @@ export function useHost(
       } else {
         report(error);
         if (!catalogueRef.current) setAuthenticated((prior) => prior ?? false);
-        const delay = Math.min(
-          reconnectMaxDelayMs,
-          1000 * 2 ** retry.current.attempt++,
-        );
-        retry.current.timer = setTimeout(
-          () => refresh(),
-          delay * (0.5 + Math.random() / 2),
-        );
+        retryLater();
       }
     } finally {
       reconnecting.current = false;

@@ -430,20 +430,20 @@ export default function Annotator({
               <div class="segmented" aria-label="Annotation tool">
                 <Button
                   size="compact"
-                  class="with-icon"
+
                   aria-pressed={tool === "pen"}
                   onClick={() => setTool("pen")}
                 >
-                  <PenLine aria-hidden="true" />
+                  <PenLine />
                   Pen
                 </Button>
                 <Button
                   size="compact"
-                  class="with-icon"
+
                   aria-pressed={tool === "pin"}
                   onClick={() => setTool("pin")}
                 >
-                  <MapPin aria-hidden="true" />
+                  <MapPin />
                   Pin
                 </Button>
               </div>

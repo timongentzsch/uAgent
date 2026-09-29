@@ -7,6 +7,7 @@ import { Component } from "preact";
 import {
   presentMessages,
   splitMentionTokens,
+  unsent,
 } from "../../shared/message-view.ts";
 import type {
   PresentedBlock,
@@ -197,15 +198,19 @@ function MessageView({ block, online, session }: MessageProps) {
           )}
           <Time value={block.time} />
           {recall &&
-            online &&
-            block.status === "Guidance queued" &&
-            block.request_id && (
+            block.request_id &&
+            ((online && block.status === "Guidance queued") ||
+              unsent(block)) && (
               <IconButton
-                label="Recall guidance to composer"
-                title="Recall to composer"
+                label={
+                  unsent(block)
+                    ? "Return message to composer"
+                    : "Recall guidance to composer"
+                }
+                title="Return to composer"
                 onClick={() => recall(block)}
               >
-                <X aria-hidden="true" />
+                <X />
               </IconButton>
             )}
           <MessageMenu

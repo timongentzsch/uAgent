@@ -156,7 +156,7 @@ export function ActivityButton({ open, ...props }: ActivityProps) {
       panelClass="activity-popover"
       trigger={
         <>
-          <Layers aria-hidden="true" />
+          <Layers />
           {counts ? (
             <span>
               <DataText>{counts}</DataText>
@@ -171,7 +171,7 @@ export function ActivityButton({ open, ...props }: ActivityProps) {
               </span>
             </span>
           )}
-          <ChevronUp aria-hidden="true" />
+          <ChevronUp />
         </>
       }
     >

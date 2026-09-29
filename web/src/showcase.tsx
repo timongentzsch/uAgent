@@ -120,7 +120,7 @@ function BrowserInputSample() {
       bar={
         <>
           <div class="popover-control browser-status-menu">
-            <Button variant="quiet" class="with-icon browser-status">
+            <Button variant="quiet" class="browser-status">
               <span>Driving</span>
             </Button>
           </div>
@@ -275,17 +275,14 @@ function Showcase() {
             <h3>Sizes and icons</h3>
             <div class="showcase-row">
               <Button size="compact">Compact action</Button>
-              <Button class="with-icon">
-                <Plus aria-hidden="true" />
+              <Button>
+                <Plus />
                 With icon
               </Button>
               <IconButton label="Copy example">
-                <Copy aria-hidden="true" />
+                <Copy />
               </IconButton>
-              <Popover
-                label="Example popover"
-                trigger={<Wrench aria-hidden="true" />}
-              >
+              <Popover label="Example popover" trigger={<Wrench />}>
                 <p>Anchored panel content.</p>
               </Popover>
               <Menu label="Example menu">
@@ -300,8 +297,8 @@ function Showcase() {
             <div class="showcase-row">
               <Button disabled>Disabled</Button>
               <Button busy>Working</Button>
-              <Button aria-pressed="true" class="with-icon">
-                <Check aria-hidden="true" />
+              <Button aria-pressed="true">
+                <Check />
                 Selected state
               </Button>
             </div>
@@ -443,7 +440,7 @@ function Showcase() {
             <DisclosureRow label="Disclosure row" status="done">
               <p>Detail revealed in place.</p>
             </DisclosureRow>
-            <EventRow title="Event row" icon={<Check aria-hidden="true" />}>
+            <EventRow title="Event row" icon={<Check />}>
               <p>What happened, in detail.</p>
             </EventRow>
           </div>

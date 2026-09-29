@@ -71,7 +71,7 @@
 .run-row small {
   color: var(--muted);
 }
-.library-row.selected {
+.library-row[aria-current] {
   background: var(--raised);
 }
 .library-group + .library-group {

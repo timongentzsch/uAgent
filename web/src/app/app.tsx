@@ -39,6 +39,7 @@ import { ImageViewer, type ViewedImage } from "../shared/attachments.tsx";
 // the initial bundle and break the CSS size budget.
 const markdownView = () => import("../shared/markdown-view.tsx");
 import { useDismiss } from "../shared/dismiss.ts";
+import { unsent } from "../shared/message-view.ts";
 import Sidebar, { ConversationMenu } from "../features/sidebar/sidebar.tsx";
 import { CoordinatorHelp } from "../features/coordinator/board.tsx";
 import { folderName } from "../shared/folder-label.tsx";
@@ -90,7 +91,7 @@ const BROWSER_KEY = "uagent-browser";
 function MenuPlaceholder() {
   return (
     <IconButton label="Conversation menu" disabled>
-      <Ellipsis aria-hidden="true" />
+      <Ellipsis />
     </IconButton>
   );
 }
@@ -173,7 +174,6 @@ function App() {
   }, [authenticated, online]);
   const [folder, setFolder] = useState("");
   const [busy, setBusy] = useState(false);
-  const [uploading, setUploading] = useState(false);
   const [zoom, setZoom] = useState(() =>
     normalizeZoom(readStored<number>(storage, "uagent-zoom", 100)),
   );
@@ -196,6 +196,9 @@ function App() {
   const booting = authenticated === null;
   const opening = booting && !!selected;
   const draft = drafts[selected] || emptyDraft();
+  // Uploads belong to their conversation: one in flight elsewhere never
+  // holds this composer.
+  const uploading = draft.files.some((file) => file.pending);
   const running = online && !!session?.turn_active;
   const showMessageHttp = useCallback(
     (exchanges: NonNullable<Block["http"]>) =>
@@ -257,6 +260,31 @@ function App() {
     return trackViewport();
   }, []);
   useEffect(() => applyTheme(theme), [theme]);
+  // Files dropped anywhere attach to the open conversation; unhandled, the
+  // browser would open the file in place of the app. File inputs and
+  // dialogs keep their own drops.
+  const dropRef = useRef(upload);
+  dropRef.current = upload;
+  useEffect(() => {
+    const files = (event: DragEvent) =>
+      event.dataTransfer?.types.includes("Files") &&
+      !(
+        event.target instanceof HTMLInputElement && event.target.type === "file"
+      );
+    const over = (event: DragEvent) => files(event) && event.preventDefault();
+    const drop = (event: DragEvent) => {
+      if (!files(event)) return;
+      event.preventDefault();
+      if (!(event.target as Element).closest?.("dialog"))
+        void dropRef.current([...(event.dataTransfer?.files || [])]);
+    };
+    addEventListener("dragover", over);
+    addEventListener("drop", drop);
+    return () => {
+      removeEventListener("dragover", over);
+      removeEventListener("drop", drop);
+    };
+  }, []);
   useEffect(() => {
     let stop: (() => void) | undefined;
     import("../shared/pwa.ts").then(
@@ -566,7 +594,8 @@ function App() {
   }
   // Recall returns queued guidance to the composer while it is still
   // queued. Delivered guidance belongs to the turn; dropping the row is
-  // then the only correct move.
+  // then the only correct move. A send that failed returns the same way,
+  // with nothing to withdraw from the host.
   // Every row reads these through one context value, so they must stay the
   // same function; they read the latest state through a ref.
   const latest = useRef({
@@ -603,16 +632,19 @@ function App() {
   const recallGuidance = useCallback(async (block: Block) => {
     const { online, selected, act, report } = latest.current;
     const target = block.request_id;
-    if (!target || block.status !== "Guidance queued" || !online) return;
+    const queued = block.status === "Guidance queued";
+    if (!target || !(queued || unsent(block)) || (queued && !online)) return;
     const text = block.text || "";
     const id = selected;
-    try {
-      await act("recall", { target_id: target });
-    } catch (error) {
-      const issue = failure(error);
-      if (!/already delivered/i.test(issue.message)) {
-        report(error);
-        return;
+    if (queued) {
+      try {
+        await act("recall", { target_id: target });
+      } catch (error) {
+        const issue = failure(error);
+        if (!/already delivered/i.test(issue.message)) {
+          report(error);
+          return;
+        }
       }
     }
     setOutgoing((items) => items.filter((item) => item.request_id !== target));
@@ -674,7 +706,6 @@ function App() {
         pending: true,
       };
     });
-    setUploading(true);
     setDrafts((current) => ({
       ...current,
       [id]: {
@@ -716,7 +747,6 @@ function App() {
           ),
         },
       }));
-      setUploading(false);
     }
   }
   const inspect = useCallback(
@@ -869,11 +899,9 @@ function App() {
                   (item) => item.text || item.files.length,
                 )
                   ? "Send or copy unsent drafts first."
-                  : uploading
-                    ? "Wait for uploads to finish."
-                    : waiting
-                      ? "Wait for the running turn to finish."
-                      : "";
+                  : waiting
+                    ? "Wait for the running turn to finish."
+                    : "";
                 return (
                   <Button
                     variant="primary"
@@ -925,7 +953,7 @@ function App() {
                     label="Open sessions"
                     onClick={() => setDrawer(true)}
                   >
-                    <Menu aria-hidden="true" />
+                    <Menu />
                   </IconButton>
                 )}
                 <div>
@@ -961,7 +989,7 @@ function App() {
                     disabled={booting}
                     onClick={() => setModal({ type: "browser" })}
                   >
-                    <Globe2 aria-hidden="true" />
+                    <Globe2 />
                     {browsing && <StatusLed state="running" />}
                   </IconButton>
                 )}
@@ -971,7 +999,7 @@ function App() {
                       label="Settings"
                       onClick={() => open({ type: "settings" })}
                     >
-                      <Settings aria-hidden="true" />
+                      <Settings />
                     </IconButton>
                   </div>
                 )}

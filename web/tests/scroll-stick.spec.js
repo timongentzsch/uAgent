@@ -238,9 +238,12 @@ test("a wheel at the end with no room below follows again", async ({
   await page.mouse.wheel(0, -300);
   await expect(jump).toBeVisible();
   // Content below the reader shrinks away; the browser clamps the range.
-  await page.locator(".message").last().evaluate((message) => {
-    message.style.display = "none";
-  });
+  await page
+    .locator(".message")
+    .last()
+    .evaluate((message) => {
+      message.style.display = "none";
+    });
   await expect.poll(() => gap(page)).toBeLessThan(2);
   await expect(jump).toBeVisible();
   await page.mouse.wheel(0, 100);

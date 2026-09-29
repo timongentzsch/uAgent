@@ -487,10 +487,10 @@ export default function Settings({
           drilled && (
             <Button
               variant="quiet"
-              class="with-icon settings-back"
+              class="settings-back"
               onClick={() => setSection(null)}
             >
-              <ChevronLeft aria-hidden="true" />
+              <ChevronLeft />
               Back
             </Button>
           )

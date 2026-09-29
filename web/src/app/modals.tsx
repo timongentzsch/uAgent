@@ -134,7 +134,7 @@ export default function Modals({
             modal.type === "rename"
               ? "Rename conversation"
               : modal.type === "delete"
-                ? "Delete conversation"
+                ? "Delete conversation?"
                 : "unit" in modal && modal.unit
                   ? `${modal.unit} statistics`
                   : "Conversation statistics"

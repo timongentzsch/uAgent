@@ -219,7 +219,7 @@ export default function Raw({
         </div>
         <Button
           type="button"
-          class="with-icon"
+
           disabled={body === undefined}
           onClick={() => {
             const url = URL.createObjectURL(

@@ -3,6 +3,13 @@
 // can load this module directly.
 import { duration } from "./duration.ts";
 
+// One name per approval mode, wherever a mode is shown or chosen.
+export const permissionLabels = {
+  ask: "Ask",
+  auto: "Auto review",
+  yolo: "YOLO",
+} as const;
+
 export const cleanText = (text = "") =>
   text.replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "");
 

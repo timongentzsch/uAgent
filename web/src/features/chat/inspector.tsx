@@ -24,7 +24,8 @@ import {
   useRef,
   useState,
 } from "preact/hooks";
-import { ArrowDown, ArrowDownToLine, ArrowLeft, Square } from "lucide-preact";
+import { ArrowDownToLine, Square, ChevronLeft } from "lucide-preact";
+import { JumpToLatest } from "../../shared/jump-to-latest.tsx";
 import { command, readPages, manage } from "../../state/api.ts";
 import { useTranscriptHistory } from "../../state/use-transcript-history.ts";
 import { prependHistoryPage } from "../../state/history-page.ts";
@@ -365,10 +366,10 @@ export default function Inspector({
           {detail && (
             <Button
               variant="quiet"
-              class="with-icon activity-back"
+              class="activity-back"
               onClick={() => setPage(null)}
             >
-              <ArrowLeft aria-hidden="true" />
+              <ChevronLeft />
               Back
             </Button>
           )}
@@ -606,7 +607,7 @@ function DetailBody({
       {ancestors.length > 0 && (
         <Button
           variant="quiet"
-          class="with-icon activity-back"
+          class="activity-back"
           onClick={() => {
             const parent = ancestors.at(-1);
             if (!parent) return;
@@ -614,7 +615,7 @@ function DetailBody({
             navigate(parent);
           }}
         >
-          <ArrowLeft aria-hidden="true" />
+          <ChevronLeft />
           Back to {ancestors.at(-1)?.name || "parent agent"}
         </Button>
       )}
@@ -706,20 +707,13 @@ function DetailBody({
             </div>
           </div>
           {!following && (
-            <Button
-              variant="quiet"
-              class="jump with-icon"
+            <JumpToLatest
+              unseen={thread.unseen}
               onClick={() => {
                 thread.jumpToLatest();
                 inspect(detail).catch(report);
               }}
-            >
-              Jump to latest{" "}
-              {thread.unseen > 0 && (
-                <span aria-hidden="true">({thread.unseen} new)</span>
-              )}
-              <ArrowDown aria-hidden="true" />
-            </Button>
+            />
           )}
         </section>
       )}

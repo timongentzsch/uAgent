@@ -56,10 +56,10 @@ export function ImageViewerDialog({
           {annotate && (
             <Button
               variant="quiet"
-              class="with-icon"
+
               onClick={() => setEditing(true)}
             >
-              <Pencil aria-hidden="true" />
+              <Pencil />
               Annotate
             </Button>
           )}
@@ -153,7 +153,7 @@ function FileCard({
 }) {
   const body = (
     <>
-      <FileText aria-hidden="true" />
+      <FileText />
       <span>
         <strong>{cleanText(name)}</strong>
         <small>{children ?? fileType(name, size)}</small>

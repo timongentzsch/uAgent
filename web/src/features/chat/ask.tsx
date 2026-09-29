@@ -197,10 +197,10 @@ export default function Ask({
                 </div>
               ) : (
                 <label
-                  class="file-button with-icon quiet"
+                  class="file-button quiet"
                   aria-busy={answer.uploading || undefined}
                 >
-                  <ImagePlus aria-hidden="true" />
+                  <ImagePlus />
                   {answer.uploading ? "Uploading…" : "Attach image"}
                   <Input
                     type="file"
@@ -219,7 +219,7 @@ export default function Ask({
         })}
       </div>
       <Actions>
-        <Button onClick={cancel} disabled={!online}>
+        <Button onClick={cancel} disabled={!online || sending}>
           Cancel
         </Button>
         <Button

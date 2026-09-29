@@ -26,6 +26,7 @@ import {
   Button,
   IconButton,
   Placeholder,
+  EmptyState,
 } from "../../shared/ui.tsx";
 import FolderLabel, {
   folderName,
@@ -34,6 +35,7 @@ import FolderLabel, {
 import SessionName from "../../shared/session-name.tsx";
 import { Menu, MenuItem } from "../../shared/popover.tsx";
 import { ActivityStatus, active } from "../chat/activity-status.tsx";
+import { ListRow } from "../../shared/list-row.tsx";
 export function ConversationMenu({
   item,
   online,
@@ -170,7 +172,7 @@ function CoordinatorButton({
       onClick={open}
       disabled={!online}
     >
-      <MessagesSquare aria-hidden="true" />
+      <MessagesSquare />
       {waiting > 0 && (
         <span class="coordinator-badge" aria-hidden="true">
           {waiting}
@@ -198,34 +200,33 @@ function SessionRow({
 }) {
   return (
     <div class="session-row">
-      <Button
-        class={`session ${selected ? "selected" : ""}`}
+      <ListRow
+        class="session"
         onClick={() => choose(item.id)}
         aria-current={selected ? "page" : undefined}
-      >
-        <span>
-          <SessionName item={item} />
-          {unread && <span class="unread-dot" aria-label="Unread messages" />}
-        </span>
-        <small>
-          <ActivityStatus
-            phase={
-              online &&
-              (item.pending ||
-                item.turn_active ||
-                item.activities?.some(active))
-                ? item.activity || item.status
-                : ""
-            }
-            running={online && item.turn_active}
-            present={online && !!item.presence}
-            items={online ? item.activities || [] : []}
-            pending={online && item.pending}
-          />
-          {item.updated ? <Time value={item.updated} /> : "New conversation"}
-          {item.error && <span title={item.error}> · Needs attention</span>}
-        </small>
-      </Button>
+        title={<SessionName item={item} />}
+        unread={unread && "Unread messages"}
+        meta={
+          <>
+            <ActivityStatus
+              phase={
+                online &&
+                (item.pending ||
+                  item.turn_active ||
+                  item.activities?.some(active))
+                  ? item.activity || item.status
+                  : ""
+              }
+              running={online && item.turn_active}
+              present={online && !!item.presence}
+              items={online ? item.activities || [] : []}
+              pending={online && item.pending}
+            />
+            {item.updated ? <Time value={item.updated} /> : "New conversation"}
+            {item.error && <span title={item.error}> · Needs attention</span>}
+          </>
+        }
+      />
       {menu(item)}
     </div>
   );
@@ -333,7 +334,7 @@ function SidebarView({
         </a>
         <Button
           variant="quiet"
-          class="with-icon"
+
           onClick={create}
           disabled={!online}
         >
@@ -344,7 +345,7 @@ function SidebarView({
       <div class="sidebar-sections">
         <Button
           variant="quiet"
-          class="with-icon"
+
           aria-current={page === "library" ? "page" : undefined}
           onClick={() => navigate("library")}
         >
@@ -353,7 +354,7 @@ function SidebarView({
         </Button>
         <Button
           variant="quiet"
-          class="with-icon"
+
           aria-current={page === "scheduled" ? "page" : undefined}
           onClick={() => navigate("scheduled")}
         >
@@ -365,7 +366,7 @@ function SidebarView({
         </Button>
       </div>
       <label class="search">
-        <span class="sr-only">Find a session</span>
+        <span class="sr-only">Find a conversation</span>
         <Input
           id="session-search"
           type="search"
@@ -376,7 +377,11 @@ function SidebarView({
       </label>
       <nav>
         <Placeholder label="Loading conversations…" when={drawing}>
-          {list}
+          {search && !list.length ? (
+            <EmptyState>No conversation matches.</EmptyState>
+          ) : (
+            list
+          )}
         </Placeholder>
       </nav>
       <footer>

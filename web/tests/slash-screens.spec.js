@@ -41,5 +41,5 @@ test("bare slash commands open their screens", async ({ page, session }) => {
 
   // On a wide screen the list is already beside the conversation.
   await run("/sessions");
-  await expect(page.getByLabel("Find a session")).toBeFocused();
+  await expect(page.getByLabel("Find a conversation")).toBeFocused();
 });

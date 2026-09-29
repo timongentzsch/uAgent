@@ -1,5 +1,10 @@
-import type { Pending, Act, Report } from "../../shared/types.ts";
-import { useState } from "preact/hooks";
+import type {
+  Pending,
+  Act,
+  CommandFields,
+  Report,
+} from "../../shared/types.ts";
+import { useEffect, useRef, useState } from "preact/hooks";
 import {
   Actions,
   Button,
@@ -42,21 +47,20 @@ export default function Decision({
   const [sending, setSending] = useState(false);
   const approval = pending.approval;
   const asking = pending.kind === "ask";
-  const send = async (text: string, attachment_ids?: string[]) => {
+  // One reply in flight at a time: answer and cancel share the guard.
+  const answer = async (fields: CommandFields) => {
     setSending(true);
     try {
-      await act("reply", { interaction_id: pending.id, text, attachment_ids });
+      await act("reply", { interaction_id: pending.id, ...fields });
     } catch (failure) {
       report(failure);
+    } finally {
       setSending(false);
     }
   };
-  const cancel = () =>
-    act("reply", {
-      interaction_id: pending.id,
-      text: "",
-      cancelled: true,
-    }).catch(report);
+  const send = (text: string, attachment_ids?: string[]) =>
+    answer({ text, attachment_ids });
+  const cancel = () => answer({ text: "", cancelled: true });
   const guidanceInput = (
     <label>
       Guidance
@@ -67,9 +71,15 @@ export default function Decision({
       />
     </label>
   );
+  // The panel replaces the composer: whoever was typing there lands here.
+  const heading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    if (document.activeElement === document.body)
+      heading.current?.focus({ preventScroll: true });
+  }, []);
   return (
     <section class="decision" aria-label="Pending decision">
-      <h2>
+      <h2 ref={heading} tabIndex={-1}>
         {pending.route === "coordinator"
           ? "The coordinator is deciding"
           : asking
@@ -191,7 +201,7 @@ export default function Decision({
             </label>
           )}
           <Actions>
-            <Button onClick={cancel} disabled={!online}>
+            <Button onClick={cancel} disabled={!online || sending}>
               Cancel
             </Button>
             <Button

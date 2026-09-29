@@ -20,7 +20,7 @@ export default function FolderLabel({
 }) {
   return (
     <span class="folder-label" title={path}>
-      <Folder aria-hidden="true" />
+      <Folder />
       <span>
         <DataText>{children || folderName(path)}</DataText>
       </span>

@@ -5,6 +5,7 @@ import type { Session } from "../../shared/types.ts";
 import { Actions, Button, Time } from "../../shared/ui.tsx";
 import { folderOf } from "../../shared/folder-label.tsx";
 import SessionName from "../../shared/session-name.tsx";
+import { ListRow } from "../../shared/list-row.tsx";
 
 const DONE_SHOWN = 8;
 
@@ -51,23 +52,20 @@ export default function Board({
             {label} <span class="board-count">{items.length}</span>
           </h2>
           {items.slice(0, limit).map((item) => (
-            <Button
+            <ListRow
               key={item.id}
               variant="quiet"
               class="board-row"
               onClick={() => choose(item.id)}
-            >
-              <span>
-                <SessionName item={item} />
-              </span>
-              <small>
-                {item.pending
-                  ? "Waiting for your decision"
+              title={<SessionName item={item} />}
+              meta={
+                item.pending
+                  ? "Needs your input"
                   : working(item)
                     ? item.activity || "Working"
-                    : item.updated && <Time value={item.updated} />}
-              </small>
-            </Button>
+                    : item.updated && <Time value={item.updated} />
+              }
+            />
           ))}
           {items.length > limit && (
             <p class="board-note">{items.length - limit} earlier</p>
@@ -106,7 +104,7 @@ export function CoordinatorHelp({
   return (
     <Popover
       label="What is the coordinator?"
-      trigger={<CircleHelp aria-hidden="true" />}
+      trigger={<CircleHelp />}
       className="coordinator-help-anchor"
       panelClass="coordinator-help"
       align="start"

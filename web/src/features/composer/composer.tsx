@@ -24,16 +24,10 @@ import type {
   SessionStatus,
 } from "../../shared/types.ts";
 import type { JSX } from "preact";
-import { useRef, useState } from "preact/hooks";
-import {
-  ArrowDown,
-  ArrowUp,
-  Paperclip,
-  Shield,
-  Square,
-  X,
-} from "lucide-preact";
+import { useEffect, useRef, useState } from "preact/hooks";
+import { ArrowUp, Paperclip, Shield, Square, X } from "lucide-preact";
 import { command } from "../../state/api.ts";
+import { JumpToLatest } from "../../shared/jump-to-latest.tsx";
 import { dedupeName, encodeMention, matchMention } from "./mention.ts";
 import { Popover } from "../../shared/popover.tsx";
 import Activities, { ActivityButton } from "../chat/activity-status.tsx";
@@ -43,6 +37,7 @@ import ModelControl from "./model-control.tsx";
 import { ContextSummary, SessionSummary } from "../chat/session-summary.tsx";
 const decisionPanel = () => import("../chat/decision.tsx");
 import { maxRecalledPromptSessions } from "../../shared/limits.ts";
+import { permissionLabels } from "../../shared/display.ts";
 // Prompts sent from this page per session, oldest first: Up and Down recall
 // them the way the terminal composer does.
 const sentPrompts = new Map<string, string[]>();
@@ -231,6 +226,13 @@ export default function Composer({
   // Reconnecting keeps the last known request and activities on screen,
   // inert (their controls follow `online`), so resuming never reflows.
   const pending = snapshot?.pending;
+  // Focus left with the decision panel returns to the composer it replaced.
+  const decided = useRef(!!pending);
+  useEffect(() => {
+    if (!pending && decided.current && document.activeElement === document.body)
+      document.getElementById("prompt")?.focus({ preventScroll: true });
+    decided.current = !!pending;
+  }, [pending]);
   const running = online && !!session.turn_active;
   const state = snapshot?.state;
   // A session without a live worker names its lifecycle state here instead
@@ -245,22 +247,13 @@ export default function Composer({
   const effective =
     permission?.mode === "default" ? permission.default : permission?.mode;
   const permissionLabel =
-    effective === "yolo" ? "YOLO" : effective === "auto" ? "Auto" : "Ask";
+    permissionLabels[
+      effective === "yolo" || effective === "auto" ? effective : "ask"
+    ];
   return (
-    <section
-      class="composer"
-      onDragOver={(event) => event.preventDefault()}
-      onDrop={(event) => {
-        event.preventDefault();
-        upload([...(event.dataTransfer?.files || [])]);
-      }}
-    >
+    <section class="composer">
       {!following && !pending && (
-        <Button variant="quiet" class="jump with-icon" onClick={jump}>
-          Jump to latest{" "}
-          {unseen > 0 && <span aria-hidden="true">({unseen} new)</span>}
-          <ArrowDown />
-        </Button>
+        <JumpToLatest unseen={unseen} onClick={jump} />
       )}
       <Activities
         present={online && !!session?.presence}
@@ -305,6 +298,7 @@ export default function Composer({
           {suggestions.list}
           {mentionOpen && (
             <div
+              id="mention-suggestions"
               class="command-suggestions"
               role="listbox"
               aria-label="Attached files"
@@ -312,6 +306,7 @@ export default function Composer({
               {mentionCandidates.map((item, position) => (
                 <Button
                   key={item.id}
+                  id={`mention-${position}`}
                   role="option"
                   aria-selected={position === mentionIndex}
                   tabIndex={-1}
@@ -331,6 +326,11 @@ export default function Composer({
             submit={send}
             resizeKey={zoom}
             {...suggestions.attributes}
+            {...(mentionOpen && {
+              "aria-controls": "mention-suggestions",
+              "aria-activedescendant":
+                mentionIndex >= 0 ? `mention-${mentionIndex}` : undefined,
+            })}
             id="prompt"
             inputRef={input}
             rows={1}
@@ -350,7 +350,9 @@ export default function Composer({
             }
             onPaste={(event) => {
               const files = [...(event.clipboardData?.files || [])];
-              if (files.length) {
+              // Spreadsheets and web pages put a rendered image beside the
+              // text; the text is what was copied.
+              if (files.length && !event.clipboardData?.getData("text/plain")) {
                 event.preventDefault();
                 upload(files);
               }
@@ -476,7 +478,7 @@ export default function Composer({
               className="permission-control"
               panelClass="permission-panel"
               side="top"
-              buttonClass="quiet with-icon"
+              buttonClass="quiet"
               disabled={!online}
               trigger={
                 <>
@@ -502,15 +504,18 @@ export default function Composer({
                   >
                     <option value="default">
                       Default ·{" "}
-                      {permission?.default === "yolo"
-                        ? "YOLO"
-                        : permission?.default === "auto"
-                          ? "Auto"
-                          : "Ask"}
+                      {
+                        permissionLabels[
+                          permission?.default === "yolo" ||
+                          permission?.default === "auto"
+                            ? permission.default
+                            : "ask"
+                        ]
+                      }
                     </option>
-                    <option value="ask">Ask</option>
-                    <option value="auto">Auto review</option>
-                    <option value="yolo">YOLO</option>
+                    {Object.entries(permissionLabels).map(([value, label]) => (
+                      <option value={value}>{label}</option>
+                    ))}
                   </Select>
                 </Field>
               )}

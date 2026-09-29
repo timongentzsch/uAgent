@@ -296,7 +296,7 @@ test("library drafts, shared controls and scheduled results", async ({
   ).toBeEnabled();
   await page.getByRole("button", { name: "Run now", exact: true }).click();
   const run = page.locator(".run-row").first();
-  await expect(run).toContainText("completed", { timeout: 20000 });
+  await expect(run).toContainText("Completed", { timeout: 20000 });
   await expect(nav.getByLabel("Unread scheduled results")).toBeVisible();
   await run.getByRole("button").first().click();
   await expect(

@@ -67,10 +67,12 @@ function Escalation({
   const [pending, setPending] = useState<Pending | null>();
   const [error, setError] = useState<unknown>(null);
   const [attempt, setAttempt] = useState(0);
+  // A new thread or worker never shows the last one's decision. A mere
+  // update refetches in place, so an answer being typed survives it; the
+  // host refuses a reply to an interaction the thread has moved past.
+  useEffect(() => setPending(undefined), [item.id, item.generation]);
   useEffect(() => {
     let active = true;
-    // Never show, or answer, a decision the thread has moved past.
-    setPending(undefined);
     setError(null);
     api<{ pending?: Pending | null }>(`/api/sessions/${item.id}`)
       .then((snapshot) => active && setPending(snapshot.pending || null))

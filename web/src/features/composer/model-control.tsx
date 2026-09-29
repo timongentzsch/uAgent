@@ -17,7 +17,7 @@ export default function ModelControl(
       side="top"
       align="start"
       className="model-control"
-      buttonClass="quiet model-selector with-icon"
+      buttonClass="quiet model-selector"
       disabled={!props.online || props.running}
       trigger={
         <>

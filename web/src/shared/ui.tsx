@@ -93,11 +93,7 @@ export function CodeCopy({ text }: { text: string }) {
           }
         }}
       >
-        {status === "Copied!" ? (
-          <Check aria-hidden="true" />
-        ) : (
-          <Copy aria-hidden="true" />
-        )}
+        {status === "Copied!" ? <Check /> : <Copy />}
       </IconButton>
       <span class="sr-only" role="status">
         {status}
@@ -242,7 +238,7 @@ export function Row({
       {children && <span class="row-value">{children}</span>}
     </>
   );
-  const chevron = <ChevronRight aria-hidden="true" class="row-chevron" />;
+  const chevron = <ChevronRight class="row-chevron" />;
   return href ? (
     <a class="row button-link" href={href} target="_blank" rel="noreferrer">
       {body}

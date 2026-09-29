@@ -1035,7 +1035,7 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
   expect(requests).toBe(0);
   const row = page
     .locator(".session-row")
-    .filter({ has: page.locator(".session.selected") });
+    .filter({ has: page.locator(".session[aria-current]") });
   await expect(row.locator("time")).toBeVisible();
   await expect(row.locator(".status-led.active")).toBeVisible();
   const menu = row.getByRole("button", {
@@ -1695,7 +1695,7 @@ test.describe("mobile navigation and commands", () => {
     await expect(page.locator(".composer .status-led.active")).toBeVisible();
     await prompt.fill("/sessions");
     await send.tap();
-    await expect(page.getByLabel("Find a session")).toBeVisible();
+    await expect(page.getByLabel("Find a conversation")).toBeVisible();
     await page
       .getByRole("button", { name: "Close sessions", exact: true })
       .tap();

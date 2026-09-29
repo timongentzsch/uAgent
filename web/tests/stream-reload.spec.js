@@ -51,3 +51,19 @@ test("reload mid-stream resumes the answer without freezing", async ({
   const worst = Math.max(...(await gaps));
   expect(worst).toBeLessThan(1000);
 });
+
+test("an event stream refused mid-restart reconnects on its own", async ({
+  page,
+  session,
+}) => {
+  // A proxy's 502 closes an EventSource for good; the app must retry.
+  let refused = 0;
+  await page.route("**/api/events*", (route) =>
+    refused++ < 2 ? route.fulfill({ status: 502, body: "" }) : route.continue(),
+  );
+  await page.goto(`/#session=${session.id}`);
+  await expect(page.getByText("Connected", { exact: true })).toBeVisible({
+    timeout: 15000,
+  });
+  expect(refused).toBeGreaterThan(2);
+});

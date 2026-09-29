@@ -525,7 +525,7 @@ export default function BrowserPanel({
     <Popover
       label={`${detail}. Browser status and profiles`}
       className="browser-status-menu"
-      buttonClass="quiet with-icon browser-status"
+      buttonClass="quiet browser-status"
       panelClass="browser-profile-panel"
       side="top"
       align="start"
@@ -545,7 +545,7 @@ export default function BrowserPanel({
             {state}
             {profileName !== "Default" && ` · ${profileName}`}
           </span>
-          <ChevronDown aria-hidden="true" />
+          <ChevronDown />
         </>
       }
     >
@@ -771,7 +771,7 @@ export default function BrowserPanel({
               onPointerDown={keepFocus}
               onClick={() => keyboard.current?.blur()}
             >
-              <Keyboard aria-hidden="true" />
+              <Keyboard />
             </IconButton>
           </>
         ) : (

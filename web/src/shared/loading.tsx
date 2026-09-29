@@ -1,4 +1,4 @@
-import { Field, Placeholder, Select } from "./ui.tsx";
+import { Button, Field, Placeholder, Select } from "./ui.tsx";
 
 // Loading states that must exist before their feature's code: each draws the
 // feature's own primitives from sample data (see <Placeholder>).
@@ -38,17 +38,15 @@ export function ModelActions({
 }) {
   return (
     <div class="dialog-actions">
-      <button type="button" onClick={close}>
-        Cancel
-      </button>
-      <button
-        type="button"
-        class="primary"
-        disabled={!apply || disabled || busy}
+      <Button onClick={close}>Cancel</Button>
+      <Button
+        variant="primary"
+        busy={busy}
+        disabled={!apply || disabled}
         onClick={apply}
       >
-        {busy ? "Applying…" : "Apply"}
-      </button>
+        Apply
+      </Button>
     </div>
   );
 }

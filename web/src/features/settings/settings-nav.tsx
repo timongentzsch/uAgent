@@ -49,7 +49,7 @@ export function SettingsNav({
                 key={id}
                 label={
                   <span class="settings-nav-label">
-                    <Icon aria-hidden="true" />
+                    <Icon />
                     {label}
                   </span>
                 }

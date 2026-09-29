@@ -220,15 +220,12 @@ std::string ActivityText(const json& result) {
         } else {
           text += id_text;
         }
-        text += "  " + JsonValue(row, "status", "") + " · " +
-                JsonValue(row, "mode", JsonValue(row, "label", ""));
-        for (const char* field : {"model", "progress"}) {
-          const std::string value = JsonValue(row, field, "");
-          if (!value.empty()) {
-            text += " · " + value;
-          }
-        }
-        text += "\n";
+        text += "  " +
+                JoinDot({JsonValue(row, "status", ""),
+                         JsonValue(row, "mode", JsonValue(row, "label", "")),
+                         JsonValue(row, "model", ""),
+                         JsonValue(row, "progress", "")}) +
+                "\n";
         if (agents) {
           const std::string about =
               Utf8Trunc(JsonValue(row, "description", ""), 120);

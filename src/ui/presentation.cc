@@ -237,22 +237,22 @@ std::string TurnStatsLine(const json& summary) {
   }
   line += " · " + FmtCount(n("output")) + " out";
   if (n("reasoning")) line += " (+" + FmtCount(n("reasoning")) + " reasoning)";
-  if (!JsonValue(summary, "usage_reported", true)) line = "usage not reported";
-  if (n("web_searches")) {
-    line += " · " + FmtCount(n("web_searches")) + " searches";
-  }
-  if (JsonValue(usage, "cost_reported", false)) {
-    line += " · " + FmtCost(JsonValue(usage, "cost", 0.0));
-  }
-  int64_t tools = JsonValue(summary, "tool_calls", int64_t{0});
-  if (tools) line += " · " + FmtCount(tools) + " tools";
-  double rate = JsonValue(summary, "tokens_per_second", 0.0);
-  if (rate > 0) line += " · " + FmtCount(static_cast<int64_t>(rate)) + " tok/s";
-  double first = JsonValue(summary, "ttt_ms", -1.0);
-  if (first >= 0) line += " · first " + FmtDuration(first / 1000);
-  return AsciiGlyphs(
-      line + " · " +
-      FmtDuration(JsonValue(summary, "duration_ms", 0.0) / 1000));
+  const double rate = JsonValue(summary, "tokens_per_second", 0.0);
+  const double first = JsonValue(summary, "ttt_ms", -1.0);
+  auto counted = [](int64_t count, const char* unit) {
+    return count ? FmtCount(count) + unit : "";
+  };
+  return AsciiGlyphs(JoinDot(
+      {JsonValue(summary, "usage_reported", true) ? line
+                                                  : "usage not reported",
+       counted(n("web_searches"), " searches"),
+       JsonValue(usage, "cost_reported", false)
+           ? FmtCost(JsonValue(usage, "cost", 0.0))
+           : "",
+       counted(JsonValue(summary, "tool_calls", int64_t{0}), " tools"),
+       rate > 0 ? FmtCount(static_cast<int64_t>(rate)) + " tok/s" : "",
+       first >= 0 ? "first " + FmtDuration(first / 1000) : "",
+       FmtDuration(JsonValue(summary, "duration_ms", 0.0) / 1000)}));
 }
 
 void TerminalPresenter::Consume(const Event& event) noexcept {

@@ -5,6 +5,7 @@
 // Presentation helpers shared by the terminal renderers: styling that survives
 // a line break, and the one shape of a notice row.
 
+#include <initializer_list>
 #include <string>
 #include <string_view>
 
@@ -28,6 +29,10 @@ inline std::string StyledBlock(std::string_view text, const char* open) {
 }
 
 // Three or more backticks, or tildes, and nothing else.
+// Parts joined by " · ", the separator every row uses. Empty parts are
+// skipped, so an optional one needs no condition of its own.
+std::string JoinDot(std::initializer_list<std::string_view> parts);
+
 enum class Tone { kNeutral, kWarn, kError };
 
 // A notice row: "· text", dim, yellow or red, ending in a newline. The text is

@@ -14,6 +14,7 @@
 
 #include "include/core/env.h"
 #include "include/core/strings.h"
+#include "include/core/style.h"
 #include "include/core/term.h"
 #include "include/core/usage.h"
 
@@ -164,27 +165,23 @@ inline std::string ActivityBar(const ActivityView& view) {
     // duplicating that would leave two places to keep honest instead of one.
     state = view.subagent;
   }
-  std::string route = view.model.empty() ? std::string() : " · " + view.model;
-  std::string suffix = " · " + seconds;
-  suffix += " · " + ContextSummary(view.context_used, view.context_window);
-  if (view.subagents > 0) {
-    suffix += " · agents:" + FmtCount(static_cast<int64_t>(view.subagents));
-  }
-  if (view.background > 0) {
-    suffix += " · bg:" + FmtCount(static_cast<int64_t>(view.background));
-  }
-  if (view.foreground > 0) {
-    suffix += " · Ctrl+B background";
-    if (view.foreground > 1) {
-      suffix +=
-          " " + FmtCount(static_cast<int64_t>(view.foreground)) + " commands";
-    }
-  }
-  if (view.queued > 0) {
-    suffix += " · steer:" + FmtCount(static_cast<int64_t>(view.queued));
-  }
+  auto counted = [](const char* label, size_t count) {
+    return count ? label + FmtCount(static_cast<int64_t>(count)) : "";
+  };
+  std::string suffix =
+      " · " +
+      JoinDot({view.model, seconds,
+               ContextSummary(view.context_used, view.context_window),
+               counted("agents:", view.subagents),
+               counted("bg:", view.background),
+               view.foreground == 0 ? ""
+               : view.foreground == 1
+                   ? "Ctrl+B background"
+                   : "Ctrl+B background " +
+                         FmtCount(static_cast<int64_t>(view.foreground)) +
+                         " commands",
+               counted("steer:", view.queued)});
   size_t width = TerminalWidth(1);
-  suffix = route + suffix;
   if (SteeringEnabled()) {
     std::string hint = " · Esc to interrupt";
     size_t desired = std::min<size_t>(DisplayWidth(state), 64);

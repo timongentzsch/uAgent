@@ -101,23 +101,18 @@ void HandleCost(const AppSession& session, CommandReply& reply) {
     spent.input = JsonValue(usage, "input", int64_t{0});
     spent.output = JsonValue(usage, "output", int64_t{0});
     spent.cache_read = JsonValue(usage, "cache_read", int64_t{0});
-    std::string tokens = TokenSummary(spent);
-    std::string cache = CacheSummary(spent);
-    if (!cache.empty()) tokens += " · " + cache;
     reply.Note(Tone::kNeutral,
-               TerminalSafe(route) + " · " + tokens + " · " + cost);
+               JoinDot({TerminalSafe(route), TokenSummary(spent),
+                        CacheSummary(spent), cost}));
   }
   const Usage& spent = session.ActiveAgent().SessionUsage();
-  std::string totals = TokenSummary(spent);
-  std::string session_cache = CacheSummary(spent);
-  if (!session_cache.empty()) totals += " · " + session_cache;
-  std::string total = "total · " + totals + " · " +
-                      (spent.cost_reported ? FmtCost(spent.cost)
-                                           : std::string("cost unavailable"));
+  std::string cost =
+      spent.cost_reported ? FmtCost(spent.cost) : "cost unavailable";
   if (session.ApiClient().config.session_budget > 0) {
-    total += " / " + FmtCost(session.ApiClient().config.session_budget);
+    cost += " / " + FmtCost(session.ApiClient().config.session_budget);
   }
-  reply.Note(Tone::kNeutral, total);
+  reply.Note(Tone::kNeutral, JoinDot({"total", TokenSummary(spent),
+                                      CacheSummary(spent), cost}));
 }
 
 // What the session actually resolved to: the effective configuration with the

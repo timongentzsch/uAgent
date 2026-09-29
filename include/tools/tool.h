@@ -354,6 +354,10 @@ class ToolSchemaCache {
 
  private:
   bool valid_ = false;
+  // Once a detached terminal has existed, its tools stay listed: the tool
+  // array is part of the cached prompt, and dropping them when the last
+  // process ends would miss the cache once more.
+  bool detached_seen_ = false;
   size_t bytes_ = 0;
   std::vector<size_t> selected_;
   json available_ = json::array();

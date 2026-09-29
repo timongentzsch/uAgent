@@ -308,6 +308,10 @@ void TestToolExecutionPolicy() {
       schema_cache.Get(policies, schemas, {}, {.detached_terminal = true});
   CHECK(available.size() == 2);
   CHECK(available[1]["function"]["name"] == "terminal_only");
+  // Once listed it stays, even after the last process ends: the tool array
+  // is part of the cached prompt.
+  available = schema_cache.Get(policies, schemas, {});
+  CHECK(available.size() == 2);
 
   namespace fs = std::filesystem;
   fs::path log_root = fs::temp_directory_path() /

@@ -240,6 +240,7 @@ add_library(
   src/ui/ask_picker.cc
   src/ui/interactive.cc
   src/ui/frame.cc
+  src/ui/completion.cc
   src/ui/editor.cc
   src/ui/markdown.cc
   src/ui/presentation.cc)

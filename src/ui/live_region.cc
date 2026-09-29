@@ -6,8 +6,6 @@
 #include <unistd.h>
 
 #include <algorithm>
-#include <charconv>
-#include <map>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -21,49 +19,19 @@
 namespace uagent {
 namespace {
 
-// The SGR that restores what `text` leaves set, so a row drawn on its own
-// keeps the bold or colour an earlier row opened. Each attribute keeps only
-// its latest setting, so the sequence stays short however many spans the
-// paragraph toggled.
+// Every SGR `text` wrote, in order: replayed after a reset they restore the
+// styling it left set, so a row drawn on its own keeps the bold or colour an
+// earlier row opened, whatever the codes (38;5;n included).
 std::string ActiveSgr(std::string_view text) {
-  std::map<int, std::string_view> active;  // attribute -> the code that set it
+  std::string replay;
   for (size_t at = text.find("\033["); at != std::string_view::npos;
        at = text.find("\033[", at + 1)) {
-    const size_t end = text.find_first_not_of("0123456789;", at + 2);
-    if (end == std::string_view::npos || text[end] != 'm') continue;
-    const std::string_view codes = text.substr(at + 2, end - at - 2);
-    for (size_t from = 0; from <= codes.size();) {
-      const std::string_view spelled =
-          codes.substr(from, codes.find(';', from) - from);
-      from += spelled.size() + 1;
-      int code = 0;  // an empty parameter is a reset
-      std::from_chars(spelled.data(), spelled.data() + spelled.size(), code);
-      if (code == 0) {
-        active.clear();
-      } else if (code == 22) {
-        active.erase(1);
-        active.erase(2);
-      } else if (code >= 23 && code <= 29) {
-        active.erase(code - 20);
-      } else if (code <= 9) {
-        active[code] = spelled;
-      } else if (code == 39 || code == 49) {
-        active.erase(code);
-      } else if ((code >= 30 && code <= 37) || (code >= 90 && code <= 97)) {
-        active[39] = spelled;
-      } else if ((code >= 40 && code <= 47) || (code >= 100 && code <= 107)) {
-        active[49] = spelled;
-      } else {
-        break;  // e.g. 38;5;n: what follows are its arguments, not codes
-      }
+    const size_t end = text.find_first_not_of("0123456789;:", at + 2);
+    if (end != std::string_view::npos && text[end] == 'm') {
+      replay += text.substr(at, end + 1 - at);
     }
   }
-  std::string sequence;
-  for (const auto& [attribute, spelled] : active) {
-    if (!sequence.empty()) sequence += ';';
-    sequence += spelled;
-  }
-  return sequence.empty() ? sequence : "\033[" + sequence + "m";
+  return replay;
 }
 
 std::string Up(size_t rows) {

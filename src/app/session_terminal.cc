@@ -462,16 +462,18 @@ class Terminal {
     }
     if (deciding) return Command::kPass;
     switch (slash.spec->id) {
-      case SlashCommandId::kAttach:
+      case SlashCommandId::kAttach: {
         // Bare /attach lists them (host). Terminals quote dropped paths
         // containing spaces; strip one surrounding pair so a drop Just Works.
         if (argument.empty()) return Command::kPass;
-        if (Unquote(argument) == "clear") {
+        const std::string file = Unquote(argument);
+        if (file == "clear") {
           files.clear();
         } else {
-          files.push_back(CanonicalAccessPath(Unquote(argument)).string());
+          files.push_back(CanonicalAccessPath(file).string());
         }
         return Command::kDone;
+      }
       case SlashCommandId::kFork: {
         const ForkArgument fork = ParseForkArgument(argument);
         Send({{"kind", "fork"}, {"title", fork.title}, {"turn", fork.turn}});

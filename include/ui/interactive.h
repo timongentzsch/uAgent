@@ -22,11 +22,12 @@
 
 namespace uagent {
 
+class LiveRegion;
+
 struct InteractiveOutputUpdate {
   std::string committed;
   std::string tail;
   bool changed = false;
-  size_t adopted_prefix_bytes = 0;  // committed prefix already shown as tail
 };
 
 // Decodes immutable records and append-only stream fragments from the stdout
@@ -75,43 +76,35 @@ class InteractiveOutput {
   InteractiveTranscript transcript_;
 };
 
+// Edits the draft; the LiveRegion draws it, from View.
 class RawComposer {
  public:
-  explicit RawComposer(const InteractiveOutput& output);
+  RawComposer(const InteractiveOutput& output, LiveRegion& region);
   ~RawComposer();
 
   bool Start();
   void Stop();
 
-  // The application calls Mount only after leaving the cursor at the cleared
-  // composer block top, directly below its status row.
   void Mount(std::string prompt, std::string initial = {},
              bool keep_history = true);
 
-  // Repaint the current buffer after the application cleared and rebuilt the
-  // status row, again leaving the cursor at the composer block top.
-  void Remount();
-  // The same repaint appended to `frame`, for a caller that sends its whole
-  // repaint in one write, so the terminal never shows an erase without it.
-  void Remount(std::string& frame);
-
-  // Forget the old footprint after the application erased the whole mounted
-  // status/composer region.
-  void Detach();
-
-  // Clear the current input line and repaint an empty prompt.
+  // Clear the current input line.
   void Clear();
 
   InteractiveInputEvent Read();
 
+  // Hands the terminal to $VISUAL/$EDITOR, the live region erased first.
   bool EditTextExternally(std::string& text);
 
-  // These describe the block actually on screen, not a newly computed layout.
-  // That distinction matters after a resize and while an edit changes wrapping.
-  bool Drawn() const { return drawn_rows_ > 0; }
-  size_t CaretRow() const { return caret_row_; }
-  size_t CaretColumn() const { return caret_column_; }
-  size_t LastSubmittedRows() const { return last_submitted_rows_; }
+  // The prompt and the wrapped draft, completions below, and where the caret
+  // sits among those rows.
+  struct Layout {
+    std::vector<std::string> rows;
+    size_t caret_row = 0;
+    size_t caret_col = 0;
+  };
+  Layout View() const;
+
   const std::string& Buffer() const { return buffer_; }
   bool HasPending() const { return decoder_.HasReady(); }
   std::optional<std::chrono::steady_clock::time_point> WakeDeadline() const {
@@ -119,19 +112,7 @@ class RawComposer {
   }
 
  private:
-  struct Layout {
-    std::vector<std::string> rows;
-    size_t caret_row = 0;
-    size_t caret_col = 0;
-  };
-
   size_t AvailableColumns() const;
-  Layout ComputeLayout() const;
-  void MoveToTop();
-  void EraseDrawnRows();
-  void Render();
-  // Appends the redraw to `out`; the caller writes it in one piece.
-  void RenderFromTop(std::string& out);
   bool Insert(const std::string& text);
   void Backspace();
   void PreviousWord();
@@ -147,12 +128,9 @@ class RawComposer {
   bool EditExternally();
 
   const InteractiveOutput& output_;
+  LiveRegion& region_;
   termios saved_{};
   bool active_ = false;
-  size_t drawn_rows_ = 0;
-  size_t caret_row_ = 0;
-  size_t caret_column_ = 0;
-  size_t last_submitted_rows_ = 1;
   std::string prompt_;
   std::string buffer_;
   size_t cursor_ = 0;

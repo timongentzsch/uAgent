@@ -18,6 +18,7 @@
 #include "include/core/strings.h"
 #include "include/core/term.h"
 #include "include/ui/editor.h"
+#include "include/ui/live_region.h"
 #include "src/ui/completion.h"
 
 namespace uagent {
@@ -42,21 +43,6 @@ std::string DisplayText(std::string_view text, size_t offset = 0,
   *mapped_offset = safe.size();
   safe += map(text.substr(split));
   return safe;
-}
-
-// Cursor movement and erasure append into one buffer so a redraw reaches the
-// terminal as a single write instead of a partially applied frame.
-void AppendMoveToTop(std::string& out, size_t caret_row) {
-  out += "\r" + CursorUp(caret_row);
-}
-
-void AppendEraseRows(std::string& out, size_t rows) {
-  for (size_t row = 0; row < rows; ++row) {
-    out += "\r\033[2K";
-    if (row + 1 < rows) out += "\033[1B";
-  }
-  if (rows > 1) out += CursorUp(rows - 1);
-  out += "\r";
 }
 
 enum class SequenceAction {
@@ -139,8 +125,8 @@ bool WordSpace(unsigned char ch) { return std::isspace(ch) != 0; }
 
 }  // namespace
 
-RawComposer::RawComposer(const InteractiveOutput& output)
-    : output_(output), prompt_(InputPrompt()) {}
+RawComposer::RawComposer(const InteractiveOutput& output, LiveRegion& region)
+    : output_(output), region_(region), prompt_(InputPrompt()) {}
 
 RawComposer::~RawComposer() { Stop(); }
 
@@ -177,18 +163,6 @@ void RawComposer::Mount(std::string prompt, std::string initial,
   history_index_ = history_.size();
   history_draft_.clear();
   input_limit_bell_ = false;
-  Remount();
-}
-
-void RawComposer::Remount() {
-  std::string frame;
-  Remount(frame);
-  output_.Write(frame);
-}
-
-void RawComposer::Remount(std::string& frame) {
-  Detach();
-  RenderFromTop(frame);
 }
 
 // Readline's spelling, so the gesture is already in the fingers of anyone who
@@ -196,11 +170,11 @@ void RawComposer::Remount(std::string& frame) {
 // renders newlines as a glyph, which is writable but not somewhere to compose
 // a long prompt.
 bool RawComposer::EditTextExternally(std::string& text) {
+  region_.Clear();
   Stop();
   const bool edited =
       EditExternalText(text, output_.TerminalFd(), kAdaptiveSystemBytes);
   Start();
-  Detach();
   return edited;
 }
 
@@ -214,14 +188,7 @@ bool RawComposer::EditExternally() {
     buffer_ = Utf8Prefix(std::move(text), kInputBufferBytes);
     cursor_ = buffer_.size();
   }
-  Remount();
   return edited;
-}
-
-void RawComposer::Detach() {
-  drawn_rows_ = 0;
-  caret_row_ = 0;
-  caret_column_ = 0;
 }
 
 void RawComposer::Clear() {
@@ -230,7 +197,6 @@ void RawComposer::Clear() {
   history_index_ = history_.size();
   history_draft_.clear();
   input_limit_bell_ = false;
-  Render();
 }
 
 InteractiveInputEvent RawComposer::Read() {
@@ -282,14 +248,6 @@ InteractiveInputEvent RawComposer::Read() {
       history_index_ = history_.size();
       history_draft_.clear();
       input_limit_bell_ = false;
-      last_submitted_rows_ = drawn_rows_;
-      MoveToTop();
-      EraseDrawnRows();
-      // Echo exactly what was drawn: DisplayText maps newlines to ↵, so a
-      // pasted multi-line prompt occupies the rows the caller will move back
-      // over. Echoing the raw text would print real newlines and desync it.
-      output_.Write(UserEchoRow(prompt_, DisplayText(line)) + "\n");
-      Detach();
       return {InteractiveInputKind::kLine, std::move(line)};
     }
     if (ch == 0x02) {
@@ -314,7 +272,6 @@ InteractiveInputEvent RawComposer::Read() {
       input_limit_bell_ = true;
     }
   }
-  Render();
   return {};
 }
 
@@ -322,7 +279,7 @@ size_t RawComposer::AvailableColumns() const {
   return TerminalWidth(static_cast<int64_t>(DisplayWidth(prompt_)) + 1);
 }
 
-RawComposer::Layout RawComposer::ComputeLayout() const {
+RawComposer::Layout RawComposer::View() const {
   size_t mapped_cursor = 0;
   std::string safe = DisplayText(buffer_, cursor_, &mapped_cursor);
   std::vector<std::string> rows = WrapLines(safe, AvailableColumns());
@@ -337,6 +294,8 @@ RawComposer::Layout RawComposer::ComputeLayout() const {
     ++row;
   }
   size_t caret_col = std::min(before_width, DisplayWidth(rows[row]));
+  if (row == 0) caret_col += DisplayWidth(prompt_);
+  rows[0] = prompt_ + rows[0];
   // Below the draft, inside the erased block. Plain text: these rows are
   // measured, and an SGR escape is not width.
   Suggestions found = CompletionMatches(buffer_, cursor_);
@@ -352,54 +311,6 @@ RawComposer::Layout RawComposer::ComputeLayout() const {
     rows.push_back(DisplayTrunc("  " + note_, AvailableColumns()));
   }
   return {std::move(rows), row, caret_col};
-}
-
-void RawComposer::MoveToTop() {
-  std::string out;
-  AppendMoveToTop(out, caret_row_);
-  output_.Write(out);
-}
-
-void RawComposer::EraseDrawnRows() {
-  std::string out;
-  AppendEraseRows(out, drawn_rows_);
-  output_.Write(out);
-}
-
-void RawComposer::Render() {
-  std::string out;
-  AppendMoveToTop(out, caret_row_);
-  RenderFromTop(out);
-  output_.Write(out);
-}
-
-void RawComposer::RenderFromTop(std::string& out) {
-  Layout layout = ComputeLayout();
-  size_t count = layout.rows.size();
-  size_t previous_rows = drawn_rows_;
-  AppendEraseRows(out, drawn_rows_);
-
-  // Draw the new block top-to-bottom. Growing taller emits real newlines so
-  // extra rows are created rather than overwriting the status line above.
-  for (size_t i = 0; i < count; ++i) {
-    if (i > 0) out += i >= previous_rows ? "\n\r" : "\033[1B\r";
-    out += "\033[2K";
-    if (i == 0) out += prompt_;
-    out += layout.rows[i];
-  }
-
-  // Place the caret from column zero so prompt width and continuation rows
-  // are handled explicitly rather than inferred from the old cursor column.
-  out += "\r";
-  size_t rows_up = count - 1 - layout.caret_row;
-  out += CursorUp(rows_up);
-  size_t caret_column = layout.caret_col;
-  if (layout.caret_row == 0) caret_column += DisplayWidth(prompt_);
-  if (caret_column > 0) out += "\033[" + std::to_string(caret_column) + "C";
-
-  drawn_rows_ = count;
-  caret_row_ = layout.caret_row;
-  caret_column_ = caret_column;
 }
 
 bool RawComposer::Insert(const std::string& text) {

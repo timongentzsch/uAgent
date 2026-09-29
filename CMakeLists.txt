@@ -242,6 +242,7 @@ add_library(
   src/ui/frame.cc
   src/ui/completion.cc
   src/ui/composer.cc
+  src/ui/live_region.cc
   src/ui/editor.cc
   src/ui/markdown.cc
   src/ui/presentation.cc)

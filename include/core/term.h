@@ -68,12 +68,7 @@ inline const char* BoldOff() { return Attribute("\033[22m"); }
 inline const char* ITAL() { return Attribute("\033[3m"); }
 inline const char* ItalOff() { return Attribute("\033[23m"); }
 inline const char* FgDfl() { return Sgr("\033[39m"); }  // default foreground
-// The cursor control the repaints share. Not colour, so no gate: only a
-// terminal's own paths write them.
-inline std::string CursorUp(size_t rows) {
-  return rows ? "\033[" + std::to_string(rows) + "A" : std::string();
-}
-inline const char* EraseBelow() { return "\033[J"; }
+// Cursor control, not colour, so no gate: only a terminal's own paths write it.
 inline const char* ClearScreen() { return "\033[H\033[2J"; }
 inline void TerminalRestore() {
   if (!g_tty) return;

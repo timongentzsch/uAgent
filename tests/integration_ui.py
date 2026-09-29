@@ -657,14 +657,14 @@ class Screen:
         )
 
 
-def test_streaming_paragraph_repaints_only_its_last_row(root, home, *, binary):
+def test_streaming_paragraph_taller_than_the_screen(root, home, *, binary):
     """A paragraph taller than the screen streams without duplicating itself.
 
     Each repaint used to erase and rewrite the whole unfinished paragraph:
     bytes per token grew with its length, and once it outgrew the screen the
-    erase could not reach its top, so scrollback filled with copies. Only the
-    last row is repaintable now, written as soft-wrapped text so the terminal
-    can still reflow it, with the bold a previous row opened carried over.
+    erase could not reach its top, so scrollback filled with copies. Rows the
+    live region cannot hold go to scrollback once; bold a row opened carries
+    over to the next.
     """
     words = [f"w{index:03d}abc" + ("界" if index % 7 == 3 else "") for index in range(250)]
     bold = range(100, 130)
@@ -694,7 +694,7 @@ def test_streaming_paragraph_repaints_only_its_last_row(root, home, *, binary):
     assert_true(code == 0, output[-2000:])
     screen = Screen(80)
     screen.feed(output)
-    shown = screen.text()
+    shown = screen.text().replace("\n", "")  # rows break mid-word
     for word in words:
         assert_true(len(re.findall(word + r"(?!\d)", shown)) == 1, (word, shown))
     for line in screen.lines:
@@ -706,6 +706,83 @@ def test_streaming_paragraph_repaints_only_its_last_row(root, home, *, binary):
     per_token = streamed_bytes / len(tokens)
     print(f"  {per_token:.0f} bytes per token", flush=True)
     assert_true(per_token < 400, per_token)
+
+
+def test_live_region_repaints_in_one_synchronized_write(root, home, *, binary):
+    # Every walk back up the live region, and every erase, is inside one
+    # synchronized update: a terminal never shows an erase without its redraw.
+    def streamed(handler, _):
+        write_sse_sequence(
+            handler,
+            [event({"content": f"part{index} "}, finish=None) for index in range(40)]
+            + [event({"content": "\n\nsync-ok"})],
+            delay=0.01,
+        )
+
+    with Server([streamed]) as server:
+        code, output = run_pty(
+            root,
+            base_env(home, server.url),
+            [(b"go\n", b"sync-ok", b"Ready", None), (b"", b"", 50), b"/q\n"],
+            binary=binary,
+        )
+    assert_true(code == 0, output[-2000:])
+    frames = re.findall(rb"\x1b\[\?2026h(.*?)\x1b\[\?2026l", output, re.S)
+    assert_true(len(frames) > 10, len(frames))
+    outside = re.sub(rb"\x1b\[\?2026h.*?\x1b\[\?2026l", b"", output, flags=re.S)
+    assert_true(re.search(rb"\x1b\[\d*A|\x1b\[J", outside) is None, outside[-2000:])
+
+
+def test_row_exactly_as_wide_as_the_terminal(root, home, *, binary):
+    # A row that fills the last column leaves the cursor waiting to wrap; the
+    # rows after it must still land on their own rows.
+    row = "x" * 79 + "|"
+    with Server([event({"content": row + " next-row-ok"})]) as server:
+        code, output = run_pty(
+            root,
+            base_env(home, server.url),
+            [(b"go\n", b"next-row-ok", b"Ready", None), b"/q\n"],
+            binary=binary,
+        )
+    assert_true(code == 0, output[-2000:])
+    screen = Screen(80)
+    screen.feed(output)
+    lines = ["".join(char for char, _ in line).rstrip() for line in screen.lines]
+    at = lines.index(row)
+    assert_true(lines[at + 1].strip().startswith("next-row-ok"), lines[at - 2 : at + 4])
+
+
+def test_resize_while_the_ask_picker_is_open(root, home, *, binary):
+    question = {
+        "question": "Which database?",
+        "header": "Database",
+        "options": [{"label": "SQLite"}, {"label": "Postgres"}],
+    }
+
+    def route(_, body):
+        if not any(message.get("role") == "tool" for message in body["messages"]):
+            return tool_call("ask", {"questions": [question]})
+        return event({"content": "picked-ok"})
+
+    with Server([route]) as server:
+        code, output = run_pty(
+            root,
+            base_env(home, server.url),
+            [
+                (b"pick\n", b"Esc cancel"),
+                # The picker is drawn again at the new width, not appended.
+                (b"", b"Which database?", 40),
+                (b"\r", b"picked-ok"),
+                b"/q\n",
+            ],
+            binary=binary,
+            timeout=20,
+        )
+    assert_true(code == 0, output[-2000:])
+    screen = Screen(40)
+    screen.feed(output[output.rfind(b"picked-ok") - 4000 :])
+    shown = screen.text()
+    assert_true(shown.count("Which database? → SQLite") == 1, shown)
 
 
 def test_input_redraw_status_animation_does_not_repaint_draft(root, home, *, binary):
@@ -995,7 +1072,8 @@ def test_input_slash_suggestions_and_tab_completion(root, home, *, binary):
             base_env(home, server.url),
             [
                 (b"/mod", b"/models"),
-                (b"\t", b"/model "),
+                # Unchanged rows are not redrawn: wait for the draft's own.
+                (b"\t", b"\x1b[49m/model"),
                 b"\x15/q\n",
             ],
             binary=binary,

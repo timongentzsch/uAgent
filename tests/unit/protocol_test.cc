@@ -124,13 +124,13 @@ void TestInteractiveTranscriptFraming() {
   InteractiveOutputUpdate final = legacy.Feed({}, true);
   CHECK(final.committed == "live\n");
   CHECK(final.tail.empty());
-  CHECK(final.adopted_prefix_bytes == std::string("live\n").size());
 
+  // Committed text starts with the tail it finishes, which is how the live
+  // region knows what of it is already on screen.
   InteractiveTranscript promoted;
   CHECK(promoted.Feed("visible").tail == "visible");
   InteractiveOutputUpdate with_footer = promoted.Feed("\nfooter\n");
   CHECK(with_footer.committed == "visible\nfooter\n");
-  CHECK(with_footer.adopted_prefix_bytes == std::string("visible\n").size());
 
   InteractiveTranscript steered;
   CHECK(steered.Feed("before").tail == "before");
@@ -494,12 +494,6 @@ void TestCommandAndDisplayRegistries() {
   CHECK(DisplayRows("1234567890X", 10) == 2);
   CHECK(DisplayRows("\033[36ma\tXYZ", 10) == 2);
   CHECK(DisplayRows("", 10) == 0);
-  // A full row keeps its deferred wrap; the next glyph, not an SGR, opens a
-  // row, and a wide glyph that no longer fits moves to it whole.
-  CHECK(LastRowStart("1234567890", 10) == 0);
-  CHECK(LastRowStart("1234567890\033[1mX", 10) == 14);
-  CHECK(LastRowStart("123456789界", 10) == 9);
-  CHECK(LastRowStart("ab\ncd", 10) == 3);
   CHECK(FmtCount(0) == "0");
   CHECK(FmtCount(999) == "999");
   CHECK(FmtCount(1500) == "1.5k");
@@ -878,16 +872,6 @@ void TestCapsAndEscaping() {
 
   // The echoed user turn is one row banded to the right edge: no newline of
   // its own, and nothing but the text when stdout is not a terminal.
-  // A status row rewraps only when the terminal has narrowed below the width
-  // it was written at, and then by one row per width it overruns.
-  CHECK(StatusOverflowRows(79, 80) == 0);
-  CHECK(StatusOverflowRows(80, 80) == 0);
-  CHECK(StatusOverflowRows(81, 80) == 1);
-  CHECK(StatusOverflowRows(119, 60) == 1);
-  CHECK(StatusOverflowRows(119, 40) == 2);
-  CHECK(StatusOverflowRows(0, 80) == 0);
-  CHECK(StatusOverflowRows(80, 0) == 0);
-
   bool prior_tty = g_tty;
   bool prior_color = g_color;
   g_tty = true;

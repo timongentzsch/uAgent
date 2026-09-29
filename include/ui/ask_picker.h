@@ -7,14 +7,16 @@
 #include "include/core/json.h"
 
 namespace uagent {
+class LiveRegion;
+
 // Answers an ask tool's questions in a raw-mode terminal, one at a time:
 // up and down move, space toggles an option of a multi-select question,
 // enter chooses (on Other it asks for their own words), i attaches an image
 // by path, escape cancels. Returns the reply fields {text, attachments}, or
 // null when cancelled or when `live` says the decision was answered
-// elsewhere. `write` draws; input is read from stdin.
-json PickAskAnswers(const json& questions,
-                    const std::function<void(const std::string&)>& write,
+// elsewhere. It draws in `region`, in the composer's place; input is read
+// from stdin.
+json PickAskAnswers(const json& questions, LiveRegion& region,
                     const std::function<bool()>& live);
 
 // The same answers from one typed line, for a terminal without raw input:

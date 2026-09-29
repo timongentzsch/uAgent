@@ -4,16 +4,13 @@
 
 #include <algorithm>
 #include <atomic>
-#include <charconv>
 #include <chrono>
 #include <cstdio>
 #include <filesystem>
-#include <map>
 #include <mutex>
 #include <optional>
 #include <set>
 #include <string>
-#include <string_view>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -32,6 +29,7 @@
 #include "include/ui/display.h"
 #include "include/ui/editor.h"
 #include "include/ui/interactive.h"
+#include "include/ui/live_region.h"
 #include "include/ui/presentation.h"
 #include "include/ui/sessions.h"
 
@@ -85,51 +83,6 @@ std::string StatusRow(const json& state,
                     .background = background + subagents});
 }
 
-// The SGR that restores what `text` leaves set: a row repainted after the
-// status row's reset keeps the bold or colour an earlier row opened. Each
-// attribute keeps only its latest setting, so the sequence stays short however
-// many spans the paragraph toggled.
-std::string ActiveSgr(std::string_view text) {
-  std::map<int, std::string_view> active;  // attribute -> the code that set it
-  for (size_t at = text.find("\033["); at != std::string_view::npos;
-       at = text.find("\033[", at + 1)) {
-    const size_t end = text.find_first_not_of("0123456789;", at + 2);
-    if (end == std::string_view::npos || text[end] != 'm') continue;
-    const std::string_view codes = text.substr(at + 2, end - at - 2);
-    for (size_t from = 0; from <= codes.size();) {
-      const std::string_view spelled =
-          codes.substr(from, codes.find(';', from) - from);
-      from += spelled.size() + 1;
-      int code = 0;  // an empty parameter is a reset
-      std::from_chars(spelled.data(), spelled.data() + spelled.size(), code);
-      if (code == 0) {
-        active.clear();
-      } else if (code == 22) {
-        active.erase(1);
-        active.erase(2);
-      } else if (code >= 23 && code <= 29) {
-        active.erase(code - 20);
-      } else if (code <= 9) {
-        active[code] = spelled;
-      } else if (code == 39 || code == 49) {
-        active.erase(code);
-      } else if ((code >= 30 && code <= 37) || (code >= 90 && code <= 97)) {
-        active[39] = spelled;
-      } else if ((code >= 40 && code <= 47) || (code >= 100 && code <= 107)) {
-        active[49] = spelled;
-      } else {
-        break;  // e.g. 38;5;n: what follows are its arguments, not codes
-      }
-    }
-  }
-  std::string sequence;
-  for (const auto& [attribute, spelled] : active) {
-    if (!sequence.empty()) sequence += ';';
-    sequence += spelled;
-  }
-  return sequence.empty() ? sequence : "\033[" + sequence + "m";
-}
-
 class Terminal {
  public:
   // `draft` starts the composer, e.g. the message a rewind forked before.
@@ -137,7 +90,8 @@ class Terminal {
       : connection_(std::move(connection)),
         path_(std::move(path)),
         draft_(std::move(draft)),
-        composer_(output_) {}
+        region_(output_),
+        composer_(output_, region_) {}
   int Run(const std::vector<std::string>& attachments) {
     if (!stop_.Open() || !wake_.Open()) return 1;
     raw_ = isatty(STDIN_FILENO) && output_.Start() && composer_.Start();
@@ -160,7 +114,7 @@ class Terminal {
       wake_.Wake();
     });
     if (raw_) {
-      output_.Write("Connecting\n");
+      region_.Commit("Connecting\n");
       composer_.Mount(InputPrompt(), draft_);
     }
     std::vector<std::string> files = attachments;
@@ -168,6 +122,7 @@ class Terminal {
     bool quit = false;
     int exit_code = 0;
     while (!quit && !disconnected_ && !navigate_) {
+      if (raw_) Paint();  // the last input's draft
       bool running;
       {
         std::lock_guard lock(mutex_);
@@ -196,13 +151,10 @@ class Terminal {
         }
         quit_hint_ = true;
         if (raw_) {
-          Unmount();
           composer_.Clear();
-        }
-        output_.Write("Press Ctrl+C again to detach.\n");
-        if (raw_) {
-          output_.Write(StatusBarLine(last_status_, &status_columns_) + "\n");
-          composer_.Remount();
+          region_.Commit("Press Ctrl+C again to detach.\n");
+        } else {
+          output_.Write("Press Ctrl+C again to detach.\n");
         }
       }
       if (AbortRequested()) {
@@ -223,10 +175,8 @@ class Terminal {
         decision_ = decision;
         if (!decision.empty() && JsonValue(pending, "kind", "") == "ask" &&
             raw_) {
-          Unmount();
           const json answered = PickAskAnswers(
-              JsonValue(pending, "questions", json::array()),
-              [this](const std::string& text) { output_.Write(text); },
+              JsonValue(pending, "questions", json::array()), region_,
               [this, decision] {
                 std::lock_guard lock(mutex_);
                 return JsonValue(pending_, "id", "") == decision;
@@ -248,13 +198,10 @@ class Terminal {
                             {"text", answered["text"]},
                             {"attachments", answered["attachments"]}});
           }
-          output_.Write("\n");
-          composer_.Remount();
           continue;
         }
         if (!decision.empty() && JsonValue(pending, "kind", "") == "editor") {
           std::string text = JsonValue(pending, "initial", "");
-          if (raw_) Unmount();
           bool edited =
               raw_ ? composer_.EditTextExternally(text)
                    : EditExternalText(text, STDIN_FILENO, kAdaptiveSystemBytes);
@@ -262,7 +209,6 @@ class Terminal {
                 {"interaction_id", decision},
                 {"text", text},
                 {"cancelled", !edited}});
-          if (raw_) composer_.Remount();
           continue;
         }
         if (!decision.empty()) {
@@ -285,9 +231,7 @@ class Terminal {
                 "questions with ;\n";
           }
           if (raw_) {
-            Unmount();
-            output_.Write(ColorizeDiffLines(TerminalSafe(description)));
-            composer_.Remount();
+            region_.Commit(ColorizeDiffLines(TerminalSafe(description)));
           } else {
             fputs(TerminalSafe(description).c_str(), stdout);
           }
@@ -296,10 +240,9 @@ class Terminal {
             DecisionPrompt(JsonValue(pending, "prompt", ""),
                            JsonValue(pending, "options", json::array())));
         if (raw_) {
-          Unmount();
           if (!decision.empty()) {
             draft_ = composer_.Buffer();
-            output_.Write(prompt + "\n");
+            region_.Commit(prompt);
             composer_.Mount(InputPrompt(), JsonValue(pending, "initial", ""),
                             false);
           } else {
@@ -351,17 +294,16 @@ class Terminal {
       }
       if (input.kind != InteractiveInputKind::kLine) continue;
       if (raw_) {
-        output_.Write("\r" + CursorUp(composer_.LastSubmittedRows() + 1) +
-                      EraseBelow());
         if (decision.empty() && !Trim(input.text).empty()) {
-          output_.Write(UserEchoRow(InputPrompt(), TerminalSafe(input.text)) +
-                        "\n");
+          // A streaming tail is finished where it stands, above the echo.
+          region_.Commit((tail_.empty() ? "" : tail_ + "\n") +
+                         UserEchoRow(InputPrompt(), TerminalSafe(input.text)));
           if (!tail_.empty()) {
             output_.AdoptTail();
             tail_.clear();
+            region_.SetTail("");
           }
         }
-        output_.Write(StatusBarLine(last_status_, &status_columns_) + "\n");
         composer_.Mount(InputPrompt());
       }
       std::string text = Trim(input.text);
@@ -393,7 +335,7 @@ class Terminal {
                                    (files.size() == 1 ? "" : "s") +
                                    " discarded: nothing was submitted");
       if (raw_) {
-        output_.Write("\r" + dropped);
+        region_.Commit(dropped);
       } else {
         fputs(dropped.c_str(), stdout);
       }
@@ -411,7 +353,7 @@ class Terminal {
     }
     if (raw_) {
       Paint();
-      Unmount();
+      region_.Clear();
       composer_.Stop();
       output_.Stop();
     }
@@ -468,6 +410,7 @@ class Terminal {
       case SlashCommandId::kClear:
         // Screen only: the session keeps running underneath.
         if (raw_) {
+          region_.Clear();
           output_.Write(ClearScreen());
         } else {
           fputs(ClearScreen(), stdout);
@@ -738,32 +681,10 @@ class Terminal {
     fflush(stdout);
     wake_.Wake();
   }
-  void Unmount() {
-    std::string frame;
-    Unmount(frame);
-    output_.Write(frame);
-  }
-  // Erases the composer, the status row and the tail's last row, the one row
-  // of it still growing. The rows above are complete, so they stay: past the
-  // top of the screen no erase could reach them anyway. Returns how many
-  // bytes of the tail are still on screen.
-  size_t Unmount(std::string& frame) {
-    if (!composer_.Drawn()) return 0;
-    const size_t width = TerminalWidth();
-    frame += "\r" +
-             CursorUp(composer_.CaretRow() + 1 + (tail_.empty() ? 0 : 1) +
-                      StatusOverflowRows(status_columns_, width)) +
-             EraseBelow();
-    composer_.Detach();
-    return LastRowStart(tail_, width);
-  }
+  // Brings the live region up to date: new output, the status row and the
+  // draft, repainted only where they changed.
   void Paint() {
     auto update = output_.Read();
-    if (update.adopted_prefix_bytes) {
-      tail_.clear();
-      update.committed.erase(0, update.adopted_prefix_bytes);
-      update.changed = !update.committed.empty() || !update.tail.empty();
-    }
     json state;
     {
       std::lock_guard lock(mutex_);
@@ -775,48 +696,27 @@ class Terminal {
     } else if (!turn_started_) {
       turn_started_ = std::chrono::steady_clock::now();
     }
-    std::string status = StatusRow(
+    if (update.changed) {
+      region_.Commit(std::move(update.committed));
+      tail_ = std::move(update.tail);
+      region_.SetTail(tail_);
+    }
+    region_.SetStatus(StatusBarLine(StatusRow(
         state,
         turn_started_ ? std::chrono::steady_clock::now() - *turn_started_
                       : std::chrono::steady_clock::duration{},
-        interrupting_, presenter_.Detailed());
-    const bool resized = g_terminal_resized != 0;
-    g_terminal_resized = 0;
-    if (!update.changed && !resized && composer_.Drawn()) {
-      if (status == last_status_) return;
-      const size_t rows = composer_.CaretRow() + 1;
-      output_.Write(
-          "\r" + CursorUp(rows) + StatusBarLine(status, &status_columns_) +
-          "\033[" + std::to_string(rows) + "B\r" +
-          (composer_.CaretColumn()
-               ? "\033[" + std::to_string(composer_.CaretColumn()) + "C"
-               : ""));
-    } else {
-      // One write, so the terminal never shows the erase without its redraw.
-      std::string frame;
-      const size_t kept = Unmount(frame);
-      // What follows the tail continues it: committed text starts with the
-      // tail it finished, and a longer tail with the shorter one.
-      std::string text = tail_;
-      if (update.changed) {
-        text = update.committed + update.tail;
-        tail_ = std::move(update.tail);
-      }
-      frame += ActiveSgr(std::string_view(text).substr(0, kept)) +
-               text.substr(kept);
-      if (!tail_.empty()) frame += "\n";
-      frame += StatusBarLine(status, &status_columns_) + "\n";
-      composer_.Remount(frame);
-      output_.Write(frame);
-    }
-    last_status_ = std::move(status);
+        interrupting_, presenter_.Detailed())));
+    const RawComposer::Layout draft = composer_.View();
+    region_.SetComposer(draft.rows, draft.caret_row, draft.caret_col);
+    region_.Flush();
   }
 
   Connection connection_;
-  std::string path_, decision_, draft_, tail_, waiting_, next_, last_status_;
+  std::string path_, decision_, draft_, tail_, waiting_, next_;
   std::string next_folder_;
   std::string paused_;
   InteractiveOutput output_;
+  LiveRegion region_;
   RawComposer composer_;
   TerminalPresenter presenter_;
   Pipe stop_, wake_;
@@ -825,7 +725,6 @@ class Terminal {
   json state_ = json::object(), pending_;
   bool running_ = false, history_ = false, raw_ = false;
   bool quit_hint_ = false;
-  size_t status_columns_ = 0;
   std::optional<std::chrono::steady_clock::time_point> turn_started_;
   std::atomic<bool> interrupting_{false};
   std::atomic<bool> disconnected_{false}, detaching_{false}, ended_{false},

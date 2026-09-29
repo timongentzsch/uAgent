@@ -16,10 +16,10 @@
 #include "include/core/style.h"
 #include "include/core/term.h"
 #include "include/ui/input_decoder.h"
+#include "include/ui/live_region.h"
 
 namespace uagent {
 namespace {
-using Write = std::function<void(const std::string&)>;
 using Live = std::function<bool()>;
 
 // Decoded keys from stdin. Empty once stdin closes or the decision is gone.
@@ -45,24 +45,11 @@ class Keys {
   TerminalInputDecoder decoder_;
 };
 
-// Redraws one block in place: the cursor stays on its last row.
-class Block {
- public:
-  explicit Block(const Write& write) : write_(write) {}
-  void Draw(const std::string& text) {
-    Erase();
-    write_(text);
-    rows_ = DisplayRows(text, TerminalWidth());
-  }
-  void Erase() {
-    if (rows_ > 0) write_(CursorUp(rows_ - 1) + "\r" + EraseBelow());
-    rows_ = 0;
-  }
-
- private:
-  const Write& write_;
-  size_t rows_ = 0;
-};
+// The picker stands in for the composer while it asks.
+void Draw(LiveRegion& region, std::string text) {
+  region.SetOverlay(std::move(text));
+  region.Flush();
+}
 
 bool Enter(const TerminalInputToken& token) {
   return token.kind == TerminalInputTokenKind::kText &&
@@ -70,11 +57,11 @@ bool Enter(const TerminalInputToken& token) {
 }
 
 // One line of the person's own words under `lead`; empty when escaped.
-std::optional<std::string> ReadLine(Keys& keys, Block& block,
+std::optional<std::string> ReadLine(Keys& keys, LiveRegion& region,
                                     const std::string& lead, const Live& live) {
   std::string line;
   for (;;) {
-    block.Draw(lead + TerminalSafe(line));
+    Draw(region, lead + TerminalSafe(line));
     auto token = keys.Next(live);
     if (!token || token->kind == TerminalInputTokenKind::kEscape) {
       return std::nullopt;
@@ -183,9 +170,14 @@ std::string AskAnswersFromLine(const json& questions,
   return JsonDump(answers);
 }
 
-json PickAskAnswers(const json& questions, const Write& write,
+json PickAskAnswers(const json& questions, LiveRegion& region,
                     const Live& live) {
   Keys keys;
+  // Each poll redraws what a resize reflowed.
+  const Live awake = [&] {
+    region.Flush();
+    return live();
+  };
   json answers = json::array(), attachments = json::array();
   for (size_t number = 0; number < questions.size(); ++number) {
     const json& question = questions[number];
@@ -194,14 +186,13 @@ json PickAskAnswers(const json& questions, const Write& write,
     Answer answer{std::vector<bool>(options.size(), false), "", ""};
     size_t cursor = 0;
     std::string note;
-    Block block(write);
     bool done = false;
     while (!done) {
-      block.Draw(Render(question, answer, cursor, note));
+      Draw(region, Render(question, answer, cursor, note));
       note.clear();
-      auto token = keys.Next(live);
+      auto token = keys.Next(awake);
       if (!token || token->kind == TerminalInputTokenKind::kEscape) {
-        block.Erase();
+        region.SetOverlay("");
         return nullptr;
       }
       const std::string key = token->text;
@@ -214,7 +205,7 @@ json PickAskAnswers(const json& questions, const Write& write,
                  static_cast<size_t>(key[0] - '1') <= options.size()) {
         cursor = static_cast<size_t>(key[0] - '1');
       } else if (key == "i") {
-        auto path = ReadLine(keys, block, "Image path: ", live);
+        auto path = ReadLine(keys, region, "Image path: ", awake);
         std::error_code ec;
         const std::string file = path ? Unquote(*path) : "";
         if (!file.empty() && std::filesystem::is_regular_file(file, ec)) {
@@ -224,7 +215,7 @@ json PickAskAnswers(const json& questions, const Write& write,
         }
       } else if ((key == " " && multi) || (Enter(*token) && on_other)) {
         if (on_other) {
-          auto words = ReadLine(keys, block, "In your words: ", live);
+          auto words = ReadLine(keys, region, "In your words: ", awake);
           if (words) answer.other = *words;
           if (!multi && !answer.other.empty()) done = true;
         } else {
@@ -257,9 +248,10 @@ json PickAskAnswers(const json& questions, const Write& write,
       attachments.push_back({{"path", answer.image}, {"id", id}});
     }
     answers.push_back(std::move(entry));
-    block.Draw(Note(Tone::kNeutral,
-                    TerminalSafe(JsonValue(question, "question", "")) + " → " +
-                        TerminalSafe(shown)));
+    region.SetOverlay("");
+    region.Commit(Note(Tone::kNeutral,
+                       TerminalSafe(JsonValue(question, "question", "")) +
+                           " → " + TerminalSafe(shown)));
   }
   return {{"text", JsonDump(answers)}, {"attachments", attachments}};
 }

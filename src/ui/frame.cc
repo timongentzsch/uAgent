@@ -113,7 +113,6 @@ void InteractiveTranscript::ApplyFrame(uint8_t kind, std::string_view payload,
 
 InteractiveOutputUpdate InteractiveTranscript::Feed(std::string_view bytes,
                                                     bool finish) {
-  size_t visible_tail_bytes = tail_.size();
   wire_.append(bytes);
   InteractiveOutputUpdate update;
   size_t offset = 0;
@@ -169,10 +168,6 @@ InteractiveOutputUpdate InteractiveTranscript::Feed(std::string_view bytes,
   }
   if (finish) CommitTail(update);
   update.tail = tail_;
-  if (visible_tail_bytes > 0 && update.committed.size() > visible_tail_bytes &&
-      update.committed[visible_tail_bytes] == '\n') {
-    update.adopted_prefix_bytes = visible_tail_bytes + 1;
-  }
   return update;
 }
 

@@ -68,9 +68,6 @@ size_t DisplayWidth(const std::string& s);
 // zero-width and horizontal tabs follow the terminal's eight-column stops.
 size_t DisplayRows(const std::string& s, size_t columns);
 
-// The byte offset where the last of those rows begins.
-size_t LastRowStart(const std::string& s, size_t columns);
-
 // The first `columns` display columns, ending in … when cut, and the last
 // `columns`. Plain text only: a cut can drop the escape that opens or closes
 // a style, so style the result, not the input (as the ask picker does).
@@ -78,9 +75,10 @@ std::string DisplayTrunc(std::string s, size_t columns);
 std::string DisplayTail(std::string text, size_t columns);
 std::string ActivityLabel(const std::string& label, size_t columns);
 
-// Wrap ANSI-free display text into rows each bounded by `columns` display
-// columns, never splitting a UTF-8 codepoint. Used for line-wrapping terminal
-// input/output where DisplayTrunc (ellipsis truncation) is not wanted.
+// Wrap display text into rows each bounded by `columns` display columns,
+// never splitting a UTF-8 codepoint; escape sequences take no columns. Used for
+// line-wrapping terminal input/output where DisplayTrunc (ellipsis truncation)
+// is not wanted.
 std::vector<std::string> WrapLines(const std::string& s, size_t columns);
 
 // Pre-request context estimate. Tokenizers vary by model; this converts an

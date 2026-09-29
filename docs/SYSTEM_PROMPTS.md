@@ -20,9 +20,10 @@ files, yours first. Together they are bounded to 32 KiB and read once when a
 session starts, so they stay in the cached prefix: an edit reaches new and
 restarted sessions.
 
-A project's `AGENTS.md` is an ordinary repository file. Writing yours (any of
-the three names in `~/.uagent`), or any `COORDINATOR.md`, always needs a
-person, including under YOLO; reading them does not. Editors never write
+A project's `AGENTS.md` and `.uagent/COORDINATOR.md` are ordinary repository
+files. Writing yours (`COORDINATOR.md` or any of the three names in
+`~/.uagent`) always needs a person, including under YOLO; reading them does
+not. Editors never write
 through a symbolic link.
 
 ## Editing

@@ -443,18 +443,18 @@ void TestFileTools() {
           ApprovalClass::kNone);
     CHECK(PathApprovalClass(TrustStorePath(), PathAccess::kWrite) ==
           ApprovalClass::kMandatoryHuman);
-    // Instructions outside the repository: readable, but only a person may
-    // rewrite them. A project's AGENTS.md is an ordinary repository file.
+    // Your instructions: readable, but only a person may rewrite them. A
+    // project's are ordinary repository files.
     for (const std::string& instructions :
          {GlobalBase() + "/AGENTS.md", GlobalBase() + "/AGENTS.override.md",
-          GlobalBase() + "/CLAUDE.md", GlobalBase() + "/COORDINATOR.md",
-          CanonicalCwd() + "/.uagent/COORDINATOR.md"}) {
+          GlobalBase() + "/CLAUDE.md", GlobalBase() + "/COORDINATOR.md"}) {
       CHECK(PathApprovalClass(instructions, PathAccess::kRead) ==
             ApprovalClass::kNone);
       CHECK(PathApprovalClass(instructions, PathAccess::kWrite) ==
             ApprovalClass::kMandatoryHuman);
     }
-    for (const char* name : {"/AGENTS.md", "/AGENTS.override.md"}) {
+    for (const char* name :
+         {"/AGENTS.md", "/AGENTS.override.md", "/.uagent/COORDINATOR.md"}) {
       CHECK(PathApprovalClass(CanonicalCwd() + name, PathAccess::kWrite) ==
             ApprovalClass::kNone);
     }

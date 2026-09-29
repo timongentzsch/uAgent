@@ -52,9 +52,17 @@ void TestSandboxPolicy() {
   // The project's own config sits inside the writable workspace, so it is
   // carved back out by path rather than by leaving the workspace ungranted.
   const std::vector<std::string> project_authority = {
-      "/home/u/work/.uagent/.config", "/home/u/work/.uagent/COORDINATOR.md",
-      "/home/u/work/.mcp.json"};
+      "/home/u/work/.uagent/.config", "/home/u/work/.mcp.json"};
   CHECK(base.policy.denied_writes == project_authority);
+  // In a repository, its config and hooks are carved out too; before
+  // `git init` they are not, so init still works.
+  SandboxInputs repository = BaseInputs();
+  repository.git_repository = true;
+  CHECK(BuildSandboxPolicy(repository).policy.denied_writes ==
+        (std::vector<std::string>{"/home/u/work/.uagent/.config",
+                                  "/home/u/work/.mcp.json",
+                                  "/home/u/work/.git/config",
+                                  "/home/u/work/.git/hooks"}));
   CHECK(base.rejected.empty());
   CHECK(base.policy.allow_network);
 

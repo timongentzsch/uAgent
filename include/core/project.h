@@ -212,12 +212,11 @@ inline std::string WriteInstructionFile(bool coordinator, bool project,
   if (std::filesystem::is_symlink(path, ec)) {
     return path.string() + " is a symbolic link; edit its target instead";
   }
-  // A project's AGENTS.md is a repository file others read; the rest live
-  // in private .uagent directories.
-  const bool shared = project && !coordinator;
+  // A project's files belong to its repository and others read them; yours
+  // live in your private ~/.uagent. A project's .uagent stays private too.
   std::string error;
-  if (!shared) CreatePrivateDirectories(path.parent_path());
-  AtomicWriteFile(path.string(), text, shared ? 0644 : kPrivateFileMode, true,
+  if (!project || coordinator) CreatePrivateDirectories(path.parent_path());
+  AtomicWriteFile(path.string(), text, project ? 0644 : kPrivateFileMode, true,
                   error);
   return error;
 }

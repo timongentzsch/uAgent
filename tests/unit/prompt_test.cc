@@ -117,6 +117,9 @@ void TestInstructionFiles() {
         (info.st_mode & 0777) == 0644);
   CHECK(stat(InstructionPath(true, false, cwd).c_str(), &info) == 0 &&
         (info.st_mode & 0777) == 0600);
+  CHECK(WriteInstructionFile(true, true, cwd, "Folder rule.").empty());
+  CHECK(stat(InstructionPath(true, true, cwd).c_str(), &info) == 0 &&
+        (info.st_mode & 0777) == 0644);
   const auto session = LoadProjectInstructions(cwd, kProjectDocBytes);
   CHECK(session.text.find("Run ctest.") != std::string::npos);
   CHECK(session.text.find("Keep threads small.") == std::string::npos);

@@ -44,12 +44,10 @@ inline bool SelfConfigurationPath(const std::string& path) {
   auto matches = [&](const std::string& target) {
     return !target.empty() && CanonicalAccessPath(target) == candidate;
   };
-  // Instructions outside the repository steer every session (yours) or a
-  // coordinator; a project's AGENTS.md is an ordinary repository file.
+  // Your instructions steer every session or coordinator; a project's are
+  // ordinary repository files, like the rest of its code.
   if (InstructionFileName(candidate) &&
-      (candidate.filename() == "COORDINATOR.md"
-           ? candidate.parent_path().filename() == ".uagent"
-           : candidate.parent_path() == CanonicalAccessPath(GlobalBase()))) {
+      candidate.parent_path() == CanonicalAccessPath(GlobalBase())) {
     return true;
   }
   if (matches(UagentConfigPath()) || matches(ProjectConfigFilePath()) ||

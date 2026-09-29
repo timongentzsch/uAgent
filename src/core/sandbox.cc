@@ -94,7 +94,8 @@ SandboxPolicyResult BuildSandboxPolicy(const SandboxInputs& inputs) {
   FoldNested(&accepted);
   result.policy.writable_roots = std::move(accepted);
   // A trusted workspace's .uagent/.config and .mcp.json carry authority over
-  // the session running in it, and both sit inside the workspace, which is
+  // the session running in it, and a repository's config and hooks run
+  // commands in your own git later; all sit inside the workspace, which is
   // writable by design. Carving them back out is the workspace-scoped twin of
   // the ancestor screen above -- with the same aim and, on Linux, no way to
   // say it: Landlock has no deny form, so expressing this there would mean not
@@ -102,8 +103,11 @@ SandboxPolicyResult BuildSandboxPolicy(const SandboxInputs& inputs) {
   if (!inputs.workspace.empty()) {
     result.policy.denied_writes = {
         inputs.workspace + "/.uagent/.config",
-        inputs.workspace + "/.uagent/COORDINATOR.md",
         inputs.workspace + "/.mcp.json"};
+    if (inputs.git_repository) {
+      result.policy.denied_writes.push_back(inputs.workspace + "/.git/config");
+      result.policy.denied_writes.push_back(inputs.workspace + "/.git/hooks");
+    }
   }
   return result;
 }

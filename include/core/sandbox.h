@@ -57,6 +57,10 @@ struct SandboxInputs {
   std::string terminal_logs;
   std::string extra_roots;  // raw UAGENT_SANDBOX_WRITE, colon-separated
   bool allow_network = true;
+  // The workspace already is a repository (its .git is a directory), so its
+  // config and hooks exist and must not be rewritten; before `git init` they
+  // cannot be denied without denying the init itself.
+  bool git_repository = false;
 };
 
 struct SandboxPolicyResult {

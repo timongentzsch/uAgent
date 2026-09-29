@@ -101,6 +101,18 @@ std::string OutputText(std::string_view text) {
   return TerminalSafe(plain);
 }
 
+// Every line of `text` moved `indent` columns right, as details sit under
+// their row.
+std::string Indented(std::string_view text, size_t indent) {
+  const std::string pad(indent, ' ');
+  std::string out = pad;
+  for (size_t at = 0; at < text.size(); ++at) {
+    out += text[at];
+    if (text[at] == '\n' && at + 1 < text.size()) out += pad;
+  }
+  return out;
+}
+
 }  // namespace
 
 const char* DiffLineStyle(std::string_view line) {
@@ -502,8 +514,8 @@ std::string ResultExtras(const PresentationRecord& record, bool detailed) {
     constexpr size_t kTailLines = 3;
     for (size_t i = lines.size() > kTailLines ? lines.size() - kTailLines : 0;
          i < lines.size(); ++i) {
-      text +=
-          std::string(DIM()) + "    " + OutputText(lines[i]) + RST() + "\n";
+      text += std::string(DIM()) +
+              Indented(OutputText(lines[i]), kDetailIndent) + RST() + "\n";
     }
   }
   if (const json* parts = JsonArray(record.view, "parts")) {
@@ -525,7 +537,9 @@ std::string ResultExtras(const PresentationRecord& record, bool detailed) {
       }
       if (!line.empty()) {
         text += std::string(DIM()) +
-                AsciiGlyphs("    ↳ " + TerminalSafe(line)) + RST() + "\n";
+                Indented(AsciiGlyphs("↳ " + TerminalSafe(line)),
+                         kDetailIndent) +
+                RST() + "\n";
       }
     }
   }
@@ -571,7 +585,8 @@ void PrintPresentation(const PresentationRecord& record,
     if (detailed) {
       const std::string input = InputPartsText(record.view);
       if (!input.empty()) {
-        WriteTerminalRecord(StyledBlock(TerminalSafe(input), DIM()));
+        WriteTerminalRecord(
+            StyledBlock(Indented(TerminalSafe(input), kDetailIndent), DIM()));
       }
     }
     return;
@@ -581,8 +596,9 @@ void PrintPresentation(const PresentationRecord& record,
   if (const auto group = record.activity.find("group");
       !detailed && group != record.activity.end()) {
     if (JsonValue(*group, "id", "") == record.id) {
-      WriteTerminalRecord(
-          StyledBlock(TerminalSafe(JsonValue(*group, "label", "")), DIM()));
+      WriteTerminalRecord(StyledBlock(
+          Indented(TerminalSafe(JsonValue(*group, "label", "")), kRowIndent),
+          DIM()));
     }
     return;
   }
@@ -606,7 +622,8 @@ void PrintPresentation(const PresentationRecord& record,
         if (!*style) style = DIM();
         if (!line.empty() && line[0] == '@') line = "@@ " + line.substr(1);
         output +=
-            std::string(style) + "    " + TerminalSafe(line) + RST() + "\n";
+            std::string(style) + Indented(TerminalSafe(line), kDetailIndent) +
+            RST() + "\n";
       }
       WriteTerminalRecord(output);
     }
@@ -614,10 +631,12 @@ void PrintPresentation(const PresentationRecord& record,
   }
 
   const char* style = ResultStyle(record.status);
-  std::string prefix = AsciiGlyphs("  ← ") + TerminalSafe(record.title);
+  std::string prefix =
+      Indented(AsciiGlyphs("← ") + TerminalSafe(record.title), kRowIndent);
   if (detailed && record.output.find('\n') != std::string::npos) {
     WriteTerminalRecord(std::string(style) + prefix + RST() + "\n" +
-                        OutputText(record.output) + "\n" +
+                        Indented(OutputText(record.output), kDetailIndent) +
+                        "\n" +
                         ResultExtras(record, detailed));
     return;
   }

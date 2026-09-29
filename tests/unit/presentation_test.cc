@@ -215,8 +215,9 @@ void TestPollCollapse() {
   CHECK(compact.summary.find("+30 lines") != std::string::npos);
   // The whole output travels with the row; /verbose prints it.
   CHECK(compact.output.find("\n30") != std::string::npos);
-  CHECK(CaptureStdout([&] { PrintPresentation(compact, true); }).find("\n30") !=
-        std::string::npos);
+  // Indented under its row.
+  CHECK(CaptureStdout([&] { PrintPresentation(compact, true); })
+            .find("\n    30") != std::string::npos);
   std::string drawn = CaptureStdout([&] { PrintPresentation(compact); });
   CHECK(drawn.find("← [2] activity") != std::string::npos);
   CHECK(drawn.find("[script:") != std::string::npos);
@@ -247,7 +248,7 @@ void TestPollCollapse() {
   compact.output = "model text: µ · ← …\nsecond";
   CHECK(CaptureStdout([&] {
           PrintPresentation(compact, true);
-        }).find(compact.output) != std::string::npos);
+        }).find("    model text: µ · ← …\n    second") != std::string::npos);
   CHECK(StatusBarLine("thinking · 2s").find("thinking - 2s") !=
         std::string::npos);
   g_unicode = prior_unicode;

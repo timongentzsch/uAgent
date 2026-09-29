@@ -229,6 +229,25 @@ def test_enter_arriving_with_paste_does_not_submit(root, home, *, binary):
         assert_true(len(server.requests) == 1, server.requests)
 
 
+def test_oversized_paste_says_why_it_was_not_inserted(root, home, *, binary):
+    with Server([event({"content": "after-paste-ok"})]) as server:
+        code, output = run_pty(
+            root,
+            base_env(home, server.url),
+            [
+                (b"\x1b[200~" + b"x" * (70 * 1024) + b"\x1b[201~", b"paste not inserted"),
+                # The next key clears the note; the draft stayed usable.
+                (b"hi\n", b"after-paste-ok"),
+                b"\x04",
+            ],
+            startup_marker=b"Ready",
+            binary=binary,
+        )
+        assert_true(code == 0, output[-2000:])
+        assert_true(b"\a" in output, output[-2000:])
+        assert_true(b"xxxx" not in output, output[-2000:])
+
+
 def test_resume_picker_accepts_enter_when_icrnl_was_disabled(root, home, *, binary):
     write_session(
         home,

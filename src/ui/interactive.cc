@@ -482,9 +482,9 @@ void RawComposer::Remount(std::string& frame) {
 }
 
 // Readline's spelling, so the gesture is already in the fingers of anyone who
-// edits a long shell command the same way. The composer holds 16KB and renders
-// newlines as a glyph, which is writable but not somewhere to compose a long
-// prompt.
+// edits a long shell command the same way. The composer holds 64 KiB and
+// renders newlines as a glyph, which is writable but not somewhere to compose
+// a long prompt.
 bool RawComposer::EditTextExternally(std::string& text) {
   Stop();
   const bool edited =
@@ -536,6 +536,7 @@ InteractiveInputEvent RawComposer::Read() {
   }
   bool pasted_in_batch = false;
   while (std::optional<TerminalInputToken> token = decoder_.Next()) {
+    note_.clear();
     if (token->kind == TerminalInputTokenKind::kEscape) {
       return {InteractiveInputKind::kEscape, buffer_};
     }
@@ -547,6 +548,8 @@ InteractiveInputEvent RawComposer::Read() {
       pasted_in_batch = true;
       if (token->overflow || !Insert(token->text)) {
         output_.Write("\a");
+        note_ = "paste not inserted: the draft holds " +
+                std::to_string(kInputBufferBytes / 1024) + " KiB";
       }
       continue;
     }
@@ -672,6 +675,9 @@ RawComposer::Layout RawComposer::ComputeLayout() const {
     std::string suggestion = "  " + match.name;
     if (!match.description.empty()) suggestion += "  " + match.description;
     rows.push_back(DisplayTrunc(suggestion, AvailableColumns()));
+  }
+  if (!note_.empty()) {
+    rows.push_back(DisplayTrunc("  " + note_, AvailableColumns()));
   }
   return {std::move(rows), row, caret_col};
 }

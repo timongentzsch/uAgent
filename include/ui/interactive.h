@@ -160,6 +160,8 @@ class RawComposer {
   std::string history_draft_;
   bool keep_history_ = true;
   bool input_limit_bell_ = false;
+  // Why the last key did nothing, shown under the draft until the next one.
+  std::string note_;
   // Ctrl+X seen, waiting to learn whether it opens the editor.
   bool editor_prefix_ = false;
 };

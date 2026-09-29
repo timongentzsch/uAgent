@@ -743,6 +743,23 @@ void TestMarkdownBlankLines() {
   CHECK(std::count(fenced.begin(), fenced.end(), '\n') == 6);
 }
 
+void TestMarkdownFences() {
+  // Only a run at least as long as the opening one closes a fence, so a
+  // longer fence can show a shorter one; text after the close is markdown.
+  std::string nested = RenderMarkdown(
+      "````md\n```\n**kept**\n```\n````\nafter **bold**\n");
+  CHECK(nested.find("**kept**") != std::string::npos);
+  CHECK(nested.find("````md") != std::string::npos);
+  CHECK(nested.find(std::string(BOLD()) + "bold") != std::string::npos);
+  // Tildes fence too, and a backtick run does not close them.
+  std::string tilde =
+      RenderMarkdown("~~~\n**kept**\n```\n~~~~\nafter **bold**\n");
+  CHECK(tilde.find("**kept**") != std::string::npos);
+  CHECK(tilde.find(std::string(BOLD()) + "bold") != std::string::npos);
+  // A tilde that fences nothing is text.
+  CHECK(RenderMarkdown("~/src and ~~x\n") == "~/src and ~~x\n");
+}
+
 void TestMarkdownMath() {
   std::string inline_math = RenderMarkdown(
       "inline $x^2$ and \\(y + 1\\)\n"

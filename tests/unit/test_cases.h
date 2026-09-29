@@ -27,6 +27,7 @@ namespace uagent {
   X(TestModelQueryMatching)                      \
   X(TestOptions)                                 \
   X(TestMarkdownBlankLines)                      \
+  X(TestMarkdownFences)                          \
   X(TestTableRetroErasesRenderedRows)            \
   X(TestInteractiveTranscriptFraming)            \
   X(TestMarkdownMath)                            \

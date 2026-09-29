@@ -27,8 +27,10 @@ inline std::string StyledBlock(std::string_view text, const char* open) {
   return std::string(open) + body + RST() + "\n";
 }
 
+// Three or more backticks, or tildes, and nothing else.
 inline bool IsMarkdownFence(std::string_view marker) {
-  return marker.size() >= 3 && marker.substr(0, 3) == "```";
+  return marker.size() >= 3 && (marker[0] == '`' || marker[0] == '~') &&
+         marker.find_first_not_of(marker[0]) == std::string_view::npos;
 }
 
 }  // namespace uagent

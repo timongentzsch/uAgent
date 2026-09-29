@@ -15,6 +15,7 @@ from integration_support import (
     run,
     run_pty,
     session_files,
+    timeout_setting,
     tool_call,
     wait_for_echo,
     wait_until_stopped,
@@ -684,9 +685,12 @@ def test_streaming_paragraph_taller_than_the_screen(root, home, *, binary):
         )
 
     with Server([streamed]) as server:
+        env = base_env(home, server.url)
+        # One request streams for about four seconds, near the usual budget.
+        env["UAGENT_REQUEST_TIMEOUT"] = timeout_setting(60)
         code, output = run_pty(
             root,
-            base_env(home, server.url),
+            env,
             [(b"go\n", b"w249", b"Ready", None), b"/q\n"],
             timeout=20,
             binary=binary,

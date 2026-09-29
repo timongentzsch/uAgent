@@ -758,7 +758,7 @@ void Agent::RefreshSystemMessage(bool force) {
 
 std::string Agent::RuntimeContextText() const {
   std::string content =
-      EnvironmentContext(LocalDay(), CanonicalCwd(), TerminalColumns()) +
+      EnvironmentContext(LocalDay(), CanonicalCwd()) +
       ModelImageInputInstruction(api_.capabilities.image_input,
                                  !EffectiveImageModel().empty()) +
       ModelAudioInputInstruction(api_.capabilities.audio_input) +
@@ -836,11 +836,14 @@ json Agent::CoordinatorRequest(json messages) const {
   return messages;
 }
 
+// A changed context (a new day, a memory write) is appended as a new note;
+// the old one stays where it is, so the history before it keeps its bytes
+// and the provider's prompt cache still covers it.
 void Agent::EnsureRuntimeContext() {
   std::string content = RuntimeContextText();
   if (conversation_.LastText(MessageKind::kRuntimeContext) == content) return;
-  conversation_.UpsertTail(HarnessMessage(std::move(content)),
-                           MessageKind::kRuntimeContext);
+  conversation_.Push(HarnessMessage(std::move(content)),
+                     MessageKind::kRuntimeContext);
 }
 
 std::string Agent::ProjectInstructionText() const {

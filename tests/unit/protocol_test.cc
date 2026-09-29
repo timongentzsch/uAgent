@@ -530,9 +530,6 @@ void TestCommandAndDisplayRegistries() {
   ScopedEnv scoped_path("PATH", "/uagent-no-executables");
   CHECK(EnvironmentContext("2026-07-29 UTC", "/workspace") ==
         "[environment: date 2026-07-29 UTC; cwd /workspace; shell bash]");
-  CHECK(EnvironmentContext("today", "/workspace", 72) ==
-        "[environment: date today; cwd /workspace; shell bash; "
-        "terminal_columns=72]");
   namespace fs = std::filesystem;
   fs::path bin =
       fs::temp_directory_path() /

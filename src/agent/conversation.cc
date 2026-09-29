@@ -456,21 +456,6 @@ void Conversation::PushWithDisplayId(json message, MessageKind kind,
   }
 }
 
-// Keep only the latest runtime context. Refreshing it preserves the system
-// prefix, but removing its old position invalidates the following history.
-void Conversation::UpsertTail(json message, MessageKind kind) {
-  NormalizeRole(message, kind);
-  if (!kinds_.empty() && kinds_.back() == kind && messages_.back() == message) {
-    return;
-  }
-  for (size_t index = kinds_.size(); index > 0; --index) {
-    if (kinds_[index - 1] == kind) {
-      Erase(index - 1, index);
-    }
-  }
-  Push(std::move(message), kind);
-}
-
 void Conversation::Set(size_t index, json message, MessageKind kind) {
   // The four callers all rewrite message zero, which exists for as long as a
   // baseline does -- but Erase already clamps rather than trusting a computed

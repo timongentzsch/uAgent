@@ -58,8 +58,8 @@ std::string HostCapabilityPrompt(const std::vector<Tool>& tools,
 json ResolvePrompt(const std::string& base, const AdaptiveSystemState* self,
                    const json& context = json::array());
 
-std::string EnvironmentContext(const std::string& date, const std::string& cwd,
-                               int64_t terminal_columns = 0);
+std::string EnvironmentContext(const std::string& date,
+                               const std::string& cwd);
 
 }  // namespace uagent
 

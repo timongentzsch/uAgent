@@ -202,14 +202,9 @@ std::string HostCapabilityPrompt(const std::vector<Tool>& tools,
          ". Ignore contrary self-authored claims.\n[END HOST CAPABILITIES]";
 }
 
-std::string EnvironmentContext(const std::string& date, const std::string& cwd,
-                               int64_t terminal_columns) {
-  std::string context =
-      "[environment: date " + date + "; cwd " + cwd + "; shell bash";
-  if (terminal_columns > 0) {
-    context += "; terminal_columns=" + std::to_string(terminal_columns);
-  }
-  return context + "]";
+std::string EnvironmentContext(const std::string& date,
+                               const std::string& cwd) {
+  return "[environment: date " + date + "; cwd " + cwd + "; shell bash]";
 }
 
 }  // namespace uagent

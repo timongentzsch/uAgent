@@ -142,6 +142,11 @@ std::string FailureSummary(ChildAgentFailureStage stage,
 std::string ChildAgentFailureReport(std::string_view route,
                                     ChildAgentFailureStage stage,
                                     std::string_view diagnostics) {
+  // Diagnostics often arrive as a failed result's output; its marker is the
+  // carrier's, not part of what the child printed.
+  if (diagnostics.starts_with(kToolErrorPrefix)) {
+    diagnostics.remove_prefix(kToolErrorPrefix.size());
+  }
   // A child that ran and stopped on a limit reports which one, before the
   // diagnostics are squeezed: that line is what tells the caller whether
   // raising a ceiling would change anything.
@@ -355,7 +360,7 @@ ToolResult WriteSessionMail(const std::string& id, const std::string& text,
                             const std::string& from, int hops) {
   if (id.empty() || SafeFileComponent(id) != id) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "error: unknown recipient " + id);
+                       "unknown recipient " + id);
   }
   if (text.empty()) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
@@ -456,17 +461,17 @@ std::optional<ToolResult> ChildAgentBudgetBlock(
           : 0;
   if (api.config.session_budget > 0 && remaining_cost <= 0) {
     return ToolFailure(ToolErrorCode::kLimitExceeded,
-                       "error: session cost limit reached");
+                       "session cost limit reached");
   }
   if (api.config.session_token_budget > 0 && remaining_tokens <= 0) {
     return ToolFailure(ToolErrorCode::kLimitExceeded,
-                       "error: session generated-token limit reached");
+                       "session generated-token limit reached");
   }
   if ((api.config.session_budget > 0 || api.config.session_token_budget > 0) &&
       processes.JoinableCount() > 0) {
     return ToolFailure(
         ToolErrorCode::kLimitExceeded,
-        "error: budgeted child already running; wait for its result");
+        "budgeted child already running; wait for its result");
   }
   return std::nullopt;
 }

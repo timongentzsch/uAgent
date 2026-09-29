@@ -28,14 +28,14 @@ Tool ArtifactTool(const std::string& session_path) {
         std::string bytes, error;
         if (!ReadRegularFile(path, session::kUploadBytes, bytes, error)) {
           return ToolFailure(ToolErrorCode::kInvalidArguments,
-                             "error: " + error);
+                             error);
         }
         session::AssetStoreResult stored = session::SessionAssets().Store(
             session_path, bytes, std::filesystem::path(path).filename(),
             /*committed=*/true);
         if (!stored.error.empty()) {
           return ToolFailure(ToolErrorCode::kInternal,
-                             "error: " + stored.error);
+                             stored.error);
         }
         ToolResult result =
             ToolSuccess("shared " + JsonValue(stored.value, "name", "") + " (" +

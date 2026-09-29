@@ -19,7 +19,7 @@ ToolResult McpInvokeRemote(McpServer& server, const std::string& remote_name,
                            const ToolContext& context) {
   if (!server.alive) {
     return ToolFailure(ToolErrorCode::kUnavailable,
-                       "error: mcp server " + server.name + " has exited" +
+                       "mcp server " + server.name + " has exited" +
                            McpStderrHint(server.name));
   }
   json response;

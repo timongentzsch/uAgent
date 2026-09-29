@@ -146,7 +146,7 @@ Tool WebSearchTool(Api& api, UsageAccumulator& usage,
         WebSearchRoute active = SelectWebSearchRoute(api, providers);
         if (!active.Valid()) {
           return ToolFailure(ToolErrorCode::kUnavailable,
-                             "error: web_search is not configured");
+                             "web_search is not configured");
         }
         std::vector<std::string> queries;
         queries.reserve(a["queries"].size());
@@ -154,13 +154,13 @@ Tool WebSearchTool(Api& api, UsageAccumulator& usage,
           std::string query = Trim(value.get<std::string>());
           if (query.empty()) {
             return ToolFailure(ToolErrorCode::kInvalidArguments,
-                               "error: queries must not be blank");
+                               "queries must not be blank");
           }
           queries.push_back(std::move(query));
         }
         if (queries.size() > static_cast<size_t>(kWebSearchMaxUses)) {
           return ToolFailure(ToolErrorCode::kLimitExceeded,
-                             "error: too many queries for the configured "
+                             "too many queries for the configured "
                              "web search use limit");
         }
         std::string numbered;

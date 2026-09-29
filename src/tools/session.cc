@@ -73,7 +73,7 @@ json ReadLink(const std::string& name) {
 ToolResult WriteLink(const std::string& name, const json& members) {
   if (!ValidLinkName(name)) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "error: bad link name");
+                       "bad link name");
   }
   json link = {{"format", kSessionLinkFormat},
                {"members", PruneMembers(members)}};
@@ -149,7 +149,7 @@ ToolResult EnsureSessionAutoLink() {
   if (HasMember(members, id)) return ToolSuccess({});
   if (members.size() >= kSessionLinkMembers) {
     return ToolFailure(ToolErrorCode::kLimitExceeded,
-                       "error: auto-link is full (32 sessions)");
+                       "auto-link is full (32 sessions)");
   }
   members.push_back(std::move(me));
   ToolResult saved = WriteLink(name, members);
@@ -160,13 +160,13 @@ ToolResult CreateSessionLink(std::string& token) {
   json me = OwnMember();
   if (!me.is_object()) {
     return ToolFailure(ToolErrorCode::kUnavailable,
-                       "error: no saved session file yet; say something first "
+                       "no saved session file yet; say something first "
                        "so the session persists, then link");
   }
   token = session::RandomToken(9);
   if (token.empty() || SafeFileComponent(token) != token) {
     return ToolFailure(ToolErrorCode::kUnavailable,
-                       "error: cannot mint a link token right now");
+                       "cannot mint a link token right now");
   }
   json members = json::array();
   members.push_back(std::move(me));
@@ -178,16 +178,16 @@ ToolResult CreateSessionLink(std::string& token) {
 ToolResult JoinSessionLink(const std::string& token) {
   if (!ValidLinkName(token)) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "error: bad link token");
+                       "bad link token");
   }
   json link = ReadLink(token);
   if (!link.is_object()) {
-    return ToolFailure(ToolErrorCode::kNotFound, "error: unknown link token");
+    return ToolFailure(ToolErrorCode::kNotFound, "unknown link token");
   }
   json me = OwnMember();
   if (!me.is_object()) {
     return ToolFailure(ToolErrorCode::kUnavailable,
-                       "error: no saved session file yet; say something first "
+                       "no saved session file yet; say something first "
                        "so the session persists, then link");
   }
   json members = JsonValue(link, "members", json::array());
@@ -195,7 +195,7 @@ ToolResult JoinSessionLink(const std::string& token) {
   if (!HasMember(members, id)) {
     if (members.size() >= kSessionLinkMembers) {
       return ToolFailure(ToolErrorCode::kLimitExceeded,
-                         "error: link is full (32 sessions)");
+                         "link is full (32 sessions)");
     }
     members.push_back(std::move(me));
     ToolResult saved = WriteLink(token, members);
@@ -261,17 +261,17 @@ ToolResult MessageSession(const std::string& id, const std::string& text,
   const std::string me = OwnSessionId();
   if (me.empty()) {
     return ToolFailure(ToolErrorCode::kUnavailable,
-                       "error: no saved session file yet; say something first "
+                       "no saved session file yet; say something first "
                        "so the session persists, then message");
   }
   if (id.empty() || SafeFileComponent(id) != id) {
     return ToolFailure(ToolErrorCode::kNotFound,
-                       "error: unknown session " + id);
+                       "unknown session " + id);
   }
   if (!SharesLink(me, id)) {
     return ToolFailure(
         ToolErrorCode::kPermissionDenied,
-        "error: session " + id + " is not linked; join its link first (/link)");
+        "session " + id + " is not linked; join its link first (/link)");
   }
   if (text.empty()) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
@@ -327,7 +327,7 @@ Tool SessionTool() {
         }
         if (operation != "message") {
           return ToolFailure(ToolErrorCode::kInvalidArguments,
-                             "error: unknown operation " + operation);
+                             "unknown operation " + operation);
         }
         std::string prompt = JsonValue(arguments, "prompt", "");
         std::vector<std::string> targets;
@@ -349,7 +349,7 @@ Tool SessionTool() {
         }
         if (targets.empty()) {
           return ToolFailure(ToolErrorCode::kInvalidArguments,
-                             "error: message requires session_id or broadcast");
+                             "message requires session_id or broadcast");
         }
         const std::string me = OwnSessionId();
         const int hops =

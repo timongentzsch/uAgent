@@ -827,7 +827,7 @@ void TestCapsAndEscaping() {
   // for it to imitate, and a structured provider call is the only thing that
   // can reach dispatch.
   ToolResult passthrough = ToolFailure(ToolErrorCode::kNotFound, "a <b> c");
-  CHECK(ModelResultText(passthrough, 1000) == "a <b> c");
+  CHECK(ModelResultText(passthrough, 1000) == "error: a <b> c");
   setenv("UAGENT_TOOL_RESULT_CHARS", "8", 1);
   std::string capped = CapResult("éééééé");
   CHECK(capped.size() <= 8);
@@ -881,13 +881,14 @@ void TestCapsAndEscaping() {
   tasks[0].result = ToolFailure(ToolErrorCode::kRemoteError, "short");
   tasks[1].result = ToolSuccess(std::string(100, 'a'));
   tasks[2].result = ToolSuccess(std::string(100, 'b'));
-  std::vector<std::string> model_results = ModelFacingToolResults(tasks, 25);
-  CHECK(model_results[0] == "short");
-  CHECK(model_results[1].size() == 10);
-  CHECK(model_results[2].size() == 10);
+  // A failure always carries its "error: " marker.
+  std::vector<std::string> model_results = ModelFacingToolResults(tasks, 36);
+  CHECK(model_results[0] == "error: short");
+  CHECK(model_results[1].size() == 12);
+  CHECK(model_results[2].size() == 12);
   CHECK(model_results[0].size() + model_results[1].size() +
             model_results[2].size() <=
-        25);
+        36);
   CHECK(tasks[1].result.output.size() == 100);
   CHECK(ModelFacingToolResults(tasks, 0)[1].size() == 100);
   std::vector<CallTask> small(2);

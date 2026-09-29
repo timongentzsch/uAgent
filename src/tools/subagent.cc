@@ -153,7 +153,7 @@ ToolResult MessageAgent(const ProcessSupervisor& processes,
   json role;
   std::string error;
   if (!LoadRole(processes, id, role, error)) {
-    return ToolFailure(ToolErrorCode::kNotFound, "error: " + error);
+    return ToolFailure(ToolErrorCode::kNotFound, error);
   }
   ToolResult sent = WriteSessionMail(id, text, std::string(kParentSender));
   return sent.Ok() ? ToolSuccess("queued message for agent " + id) : sent;
@@ -373,7 +373,7 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
         if (operation == "message") {
           if (arguments.contains("directive")) {
             return ToolFailure(ToolErrorCode::kInvalidArguments,
-                               "error: message cannot change directive; use "
+                               "message cannot change directive; use "
                                "followup");
           }
           return MessageAgent(processes, id,
@@ -381,7 +381,7 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
         }
         if (operation != "spawn" && operation != "followup") {
           return ToolFailure(ToolErrorCode::kInvalidArguments,
-                             "error: operation must be spawn, followup, "
+                             "operation must be spawn, followup, "
                              "message, or list");
         }
         // The child's role, written into its session header by the child.
@@ -389,17 +389,17 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
         if (operation == "spawn") {
           if (!id.empty()) {
             return ToolFailure(ToolErrorCode::kInvalidArguments,
-                               "error: agent_id is assigned by spawn");
+                               "agent_id is assigned by spawn");
           }
           id = NewAgentId();
         } else {
           std::string error;
           if (!LoadRole(processes, id, role, error)) {
-            return ToolFailure(ToolErrorCode::kNotFound, "error: " + error);
+            return ToolFailure(ToolErrorCode::kNotFound, error);
           }
           if (std::optional<int64_t> active = RunningAgent(processes, id)) {
             return ToolFailure(ToolErrorCode::kInvalidArguments,
-                               "error: agent " + id +
+                               "agent " + id +
                                    " is already running as activity " +
                                    std::to_string(*active));
           }
@@ -412,21 +412,21 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
         const std::string name = JsonValue(role, "name", "");
         if (!name.empty() && !ValidAgentName(name)) {
           return ToolFailure(ToolErrorCode::kInvalidArguments,
-                             "error: name must match [a-z0-9-]{1,32}, no "
+                             "name must match [a-z0-9-]{1,32}, no "
                              "leading/trailing '-'");
         }
         role["description"] =
             Utf8Trunc(JsonValue(role, "description", ""), kAgentDescriptionMax);
         if (JsonValue(role, "directive", "").size() > kAgentDirectiveMax) {
           return ToolFailure(ToolErrorCode::kInvalidArguments,
-                             "error: directive is limited to " +
+                             "directive is limited to " +
                                  std::to_string(kAgentDirectiveMax) + " bytes");
         }
 
         std::string prompt = JsonValue(arguments, "prompt", "");
         if (prompt.empty()) {
           return ToolFailure(ToolErrorCode::kInvalidArguments,
-                             "error: spawn or followup requires prompt");
+                             "spawn or followup requires prompt");
         }
         const std::string directive = JsonValue(role, "directive", "");
         if (!directive.empty()) {
@@ -436,7 +436,7 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
             JsonValue(arguments, "mode", JsonValue(role, "mode", "lean"));
         if (mode != "lean" && mode != "full") {
           return ToolFailure(ToolErrorCode::kInvalidArguments,
-                             "error: mode must be lean or full");
+                             "mode must be lean or full");
         }
         const std::string requested = NormalizeModelId(
             JsonValue(arguments, "model", JsonValue(role, "model", "")));

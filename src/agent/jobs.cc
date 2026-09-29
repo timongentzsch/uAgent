@@ -427,7 +427,7 @@ ToolResult ToolActivityInput(const ProcessSupervisor& supervisor, int64_t id,
   const bool resize = rows > 0 || cols > 0;
   if (resize && (rows <= 0 || cols <= 0 || rows > 1000 || cols > 1000)) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "error: PTY resize requires rows and cols in 1..1000");
+                       "PTY resize requires rows and cols in 1..1000");
   }
 
   const bool needs_input =
@@ -436,7 +436,7 @@ ToolResult ToolActivityInput(const ProcessSupervisor& supervisor, int64_t id,
     std::string action =
         resize ? "has no PTY to resize" : "does not accept input";
     return ToolFailure(ToolErrorCode::kUnavailable,
-                       "error: activity " + std::to_string(id) + " " + action +
+                       "activity " + std::to_string(id) + " " + action +
                            "; start it with tty=true");
   }
 
@@ -458,13 +458,13 @@ ToolResult ToolActivityInput(const ProcessSupervisor& supervisor, int64_t id,
   }
   if (needs_input && !input_open) {
     return ToolFailure(ToolErrorCode::kUnavailable,
-                       "error: activity " + std::to_string(id) +
+                       "activity " + std::to_string(id) +
                            " input is closed; inspect its output or start a "
                            "new tty=true activity");
   }
   if (needs_input && !input) {
     return ToolFailure(ToolErrorCode::kInternal,
-                       "error: could not access activity " +
+                       "could not access activity " +
                            std::to_string(id) +
                            " input: " + std::strerror(duplicate_error));
   }
@@ -476,7 +476,7 @@ ToolResult ToolActivityInput(const ProcessSupervisor& supervisor, int64_t id,
     if (ioctl(input.Get(), TIOCSWINSZ, &size) != 0) {
       int resize_error = errno;
       return ToolFailure(ToolErrorCode::kProcessFailed,
-                         "error: could not resize activity " +
+                         "could not resize activity " +
                              std::to_string(id) +
                              " PTY: " + std::strerror(resize_error));
     }
@@ -487,7 +487,7 @@ ToolResult ToolActivityInput(const ProcessSupervisor& supervisor, int64_t id,
       if (kill(-job->pid, SIGINT) != 0 && errno != ESRCH) {
         int interrupt_error = errno;
         return ToolFailure(ToolErrorCode::kProcessFailed,
-                           "error: could not interrupt activity " +
+                           "could not interrupt activity " +
                                std::to_string(id) + ": " +
                                std::strerror(interrupt_error));
       }
@@ -500,7 +500,7 @@ ToolResult ToolActivityInput(const ProcessSupervisor& supervisor, int64_t id,
         if (count <= 0) {
           int write_error = errno;
           return ToolFailure(ToolErrorCode::kProcessFailed,
-                             "error: could not write activity " +
+                             "could not write activity " +
                                  std::to_string(id) +
                                  " stdin: " + std::strerror(write_error));
         }
@@ -518,7 +518,7 @@ ToolResult ToolActivityInput(const ProcessSupervisor& supervisor, int64_t id,
 ToolResult ToolActivityStop(ProcessSupervisor& supervisor, int64_t requested) {
   if (requested <= 0) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "error: id must identify a supervised uagent activity");
+                       "id must identify a supervised uagent activity");
   }
   std::optional<BgJob> supervised = supervisor.Find(requested);
   if (!supervised && requested > std::numeric_limits<pid_t>::max()) {
@@ -563,7 +563,7 @@ ToolResult ToolActivityStop(ProcessSupervisor& supervisor, int64_t requested) {
                         reap_leader)) {
       return ToolFailure(
           ToolErrorCode::kProcessFailed,
-          "error: could not stop process group " + std::to_string(pid));
+          "could not stop process group " + std::to_string(pid));
     }
   } else if (detached) {
     ReapLeader(pid);

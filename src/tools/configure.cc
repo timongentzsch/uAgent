@@ -90,7 +90,7 @@ Tool UagentTool(SelfDescriptionProvider describe,
           return error.empty()
                      ? ToolSuccess("saved; new and restarted sessions read it")
                      : ToolFailure(ToolErrorCode::kProcessFailed,
-                                   "error: " + error);
+                                   error);
         }
         if (action == "inspect") {
           SelfTopic topic = SelfTopic::kStatus;
@@ -114,19 +114,19 @@ Tool UagentTool(SelfDescriptionProvider describe,
         // saw.
         if (!store) {
           return ToolFailure(ToolErrorCode::kPermissionDenied,
-                             "error: configuration unavailable");
+                             "configuration unavailable");
         }
         std::optional<ConfigProposal> taken = store->Take(arguments);
         if (!taken || !taken->ok) {
           return ToolFailure(
               ToolErrorCode::kPermissionDenied,
-              "error: no approved configuration change for this request");
+              "no approved configuration change for this request");
         }
         const ConfigProposal& approved = *taken;
         std::string error;
         std::string notice;
         if (!CommitConfigProposal(approved, error, &notice)) {
-          return ToolFailure(ToolErrorCode::kProcessFailed, "error: " + error);
+          return ToolFailure(ToolErrorCode::kProcessFailed, error);
         }
         std::string report = "wrote " + approved.target;
         for (const ConfigChangeEffect& effect : approved.effects) {

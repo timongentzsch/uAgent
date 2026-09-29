@@ -107,7 +107,7 @@ std::optional<SessionInfo> FindSession(const std::string& folder,
 }
 
 ToolResult Unavailable(const std::string& error) {
-  return ToolFailure(ToolErrorCode::kUnavailable, "error: " + error);
+  return ToolFailure(ToolErrorCode::kUnavailable, error);
 }
 
 // Up to `cap` bytes of a session's text, labelled as its data.
@@ -151,7 +151,7 @@ std::string Snippet(const std::string& text, size_t at) {
 ToolResult Search(const std::string& folder, const std::string& query) {
   if (query.empty()) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "error: search needs a query");
+                       "search needs a query");
   }
   const std::string needle = AsciiLower(query);
   json hits = json::array();
@@ -332,7 +332,7 @@ ToolResult Spawn(const std::string& folder, const json& a) {
   const std::string objective = JsonValue(a, "objective", "");
   if (title.empty() || objective.empty()) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "error: spawn needs a title and an objective");
+                       "spawn needs a title and an objective");
   }
   const std::string coordinator = CoordinatorId(folder);
   const int64_t cap = LongSetting(Cfg("UAGENT_COORDINATOR_MAX_THREADS"));
@@ -340,7 +340,7 @@ ToolResult Spawn(const std::string& folder, const json& a) {
   const int64_t working = std::ranges::count_if(threads, Working);
   if (working >= cap) {
     return ToolFailure(ToolErrorCode::kLimitExceeded,
-                       "error: " + std::to_string(cap) +
+                       std::to_string(cap) +
                            " threads are already working; wait for one to "
                            "finish or stop one");
   }
@@ -351,7 +351,7 @@ ToolResult Spawn(const std::string& folder, const json& a) {
   if (limit > 0 && budget < 0.01) {
     return ToolFailure(
         ToolErrorCode::kLimitExceeded,
-        "error: " + FmtCost(std::max(left, 0.0)) + " of today's " +
+        FmtCost(std::max(left, 0.0)) + " of today's " +
             FmtCost(limit) +
             " spend limit is left, too little to share among " +
             std::to_string(cap - working) +
@@ -366,7 +366,7 @@ ToolResult Spawn(const std::string& folder, const json& a) {
     if (std::string failed = CreateWorktree(folder, launch.cwd);
         !failed.empty()) {
       return ToolFailure(ToolErrorCode::kProcessFailed,
-                         "error: " + failed +
+                         failed +
                              "; spawn with environment=local to run in the "
                              "folder itself");
     }
@@ -411,7 +411,7 @@ ToolResult Message(const SessionInfo& info, const std::string& folder,
                    const std::string& text) {
   if (text.empty() || text.size() > kMessageBytes) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "error: a message needs 1 to 8192 bytes of text");
+                       "a message needs 1 to 8192 bytes of text");
   }
   std::string error = "the session is not running; only this coordinator's "
                       "threads can be started again";
@@ -446,13 +446,13 @@ ToolResult Stop(const SessionInfo& info) {
 ToolResult Delete(const SessionInfo& info, const std::string& folder) {
   if (PathExists(session::SocketPath(info.path))) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "error: stop and close the session before deleting it");
+                       "stop and close the session before deleting it");
   }
   if (LaunchWorktree(info.cwd)) {
     const std::string kept = RemoveWorktree(
         JsonValue(info.thread, "folder", folder), info.cwd);
     if (!kept.empty()) {
-      return ToolFailure(ToolErrorCode::kInvalidArguments, "error: " + kept);
+      return ToolFailure(ToolErrorCode::kInvalidArguments, kept);
     }
   }
   SessionStoreStatus removed = SessionStore::Remove(info.path);
@@ -465,7 +465,7 @@ ToolResult Diff(const SessionInfo& info) {
                                   "--stat", "--patch", "HEAD"});
   if (!diff.Ok()) {
     return ToolFailure(ToolErrorCode::kProcessFailed,
-                       "error: " + Utf8Prefix(diff.error, 1024));
+                       Utf8Prefix(diff.error, 1024));
   }
   return SessionData(info,
                      Trim(diff.output).empty() ? "(no changes)" : diff.output,
@@ -503,7 +503,7 @@ Tool ThreadTool(const std::string& folder) {
         auto info = FindSession(folder, id);
         if (!info) {
           return ToolFailure(ToolErrorCode::kNotFound,
-                             "error: no session " + id + " in this folder");
+                             "no session " + id + " in this folder");
         }
         if (action == "message") {
           return Message(*info, folder, JsonValue(a, "text", ""));
@@ -512,7 +512,7 @@ Tool ThreadTool(const std::string& folder) {
         if (action == "diff") return Diff(*info);
         if (action == "delete") return Delete(*info, folder);
         return ToolFailure(ToolErrorCode::kInvalidArguments,
-                           "error: unknown action " + action);
+                           "unknown action " + action);
       });
   tool.capabilities = Capability(ToolCapability::kDelegate);
   tool.category = "collaborate";
@@ -547,7 +547,7 @@ ToolResult Decide(const SessionInfo& info, const json& a) {
     const json* answers = JsonArray(a, "answers");
     if (!answers) {
       return ToolFailure(ToolErrorCode::kInvalidArguments,
-                         "error: answer needs answers, one per question");
+                         "answer needs answers, one per question");
     }
     command = {{"kind", "reply"},
                {"origin", kRouteCoordinator},
@@ -565,7 +565,7 @@ ToolResult Decide(const SessionInfo& info, const json& a) {
                             : "The coordinator denied this: " + reason}};
   } else {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "error: decision is allow_once, allow_thread, deny, "
+                       "decision is allow_once, allow_thread, deny, "
                        "answer or yield");
   }
   command["interaction_id"] = interaction;
@@ -603,7 +603,7 @@ Tool DecideTool(const std::string& folder) {
         auto info = FindSession(folder, id);
         if (!info || info->kind != kSessionKindThread) {
           return ToolFailure(ToolErrorCode::kNotFound,
-                             "error: no thread " + id + " in this folder");
+                             "no thread " + id + " in this folder");
         }
         return Decide(*info, a);
       });
@@ -628,7 +628,7 @@ ToolResult State(const std::string& folder, const json& a) {
   if (std::find(std::begin(kPinnedBlocks), std::end(kPinnedBlocks), block) ==
       std::end(kPinnedBlocks)) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "error: block is goals, decisions or open_questions");
+                       "block is goals, decisions or open_questions");
   }
   json pinned = ReadPinned(folder);
   std::string value = JsonValue(pinned, block.c_str(), "");
@@ -641,11 +641,11 @@ ToolResult State(const std::string& folder, const json& a) {
     value.clear();
   } else {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "error: unknown action " + action);
+                       "unknown action " + action);
   }
   if (value.size() > kPinnedBytes) {
     return ToolFailure(ToolErrorCode::kLimitExceeded,
-                       "error: " + block + " would exceed 2048 bytes; "
+                       block + " would exceed 2048 bytes; "
                        "rewrite it shorter with set");
   }
   pinned[block] = value;
@@ -705,7 +705,7 @@ Tool HistoryTool(const std::string& folder) {
         auto info = FindSession(folder, id);
         if (!info) {
           return ToolFailure(ToolErrorCode::kNotFound,
-                             "error: no session " + id + " in this folder");
+                             "no session " + id + " in this folder");
         }
         if (action == "read") {
           return Read(*info, JsonValue(a, "before", uint64_t{0}));
@@ -713,7 +713,7 @@ Tool HistoryTool(const std::string& folder) {
         if (action == "detail") return Detail(*info, JsonValue(a, "id", ""));
         if (action == "report") return Report(*info);
         return ToolFailure(ToolErrorCode::kInvalidArguments,
-                           "error: unknown action " + action);
+                           "unknown action " + action);
       });
   tool.capabilities = Capability(ToolCapability::kInspect);
   tool.parallel_safe = true;

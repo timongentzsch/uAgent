@@ -76,7 +76,7 @@ void RegisterActivityTool(std::vector<Tool>& tools,
             }
             if (operation == "stop") return ToolActivityStop(supervisor, id);
             return ToolFailure(ToolErrorCode::kInvalidArguments,
-                               "error: unknown activity operation");
+                               "unknown activity operation");
           }));
   activity.canonicalize = [](json& a) {
     std::string operation = JsonValue(a, "operation", "");

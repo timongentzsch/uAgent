@@ -29,7 +29,7 @@ ToolResult Handover(const std::string& session_id, const std::string& reason,
                                    {"session_id", session_id},
                                    {"interaction_id", interaction}});
   if (auto error = JsonValue(outcome, "error", ""); !error.empty()) {
-    return ToolFailure(ToolErrorCode::kRemoteError, "error: " + error);
+    return ToolFailure(ToolErrorCode::kRemoteError, error);
   }
   bool eof = false;
   std::string answer = ask(interaction, reason, &eof);
@@ -46,7 +46,7 @@ ToolResult Handover(const std::string& session_id, const std::string& reason,
                       {"interaction_id", interaction}});
     return ToolFailure(
         ToolErrorCode::kRemoteError,
-        "error: browser handover remains paused or was cancelled");
+        "browser handover remains paused or was cancelled");
   }
   return ToolSuccess(
       "The user finished in the browser and handed it back. Observe the page "
@@ -77,7 +77,7 @@ ToolResult Observation(const std::string& session_id, const std::string& lead,
   }
   if (!failed.empty()) {
     if (lead.empty()) {
-      return ToolFailure(ToolErrorCode::kRemoteError, "error: " + failed);
+      return ToolFailure(ToolErrorCode::kRemoteError, failed);
     }
     return ToolSuccess(done + "The page could not be observed (" + failed +
                        "). Do not repeat the action; call observe.");
@@ -245,7 +245,7 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask) {
     command["session_id"] = session_id;
     json outcome = browser::Request(command, 30000);
     if (auto error = JsonValue(outcome, "error", ""); !error.empty()) {
-      return ToolFailure(ToolErrorCode::kRemoteError, "error: " + error);
+      return ToolFailure(ToolErrorCode::kRemoteError, error);
     }
     if (action == "status" || action == "tabs" || action == "release") {
       return ToolSuccess(JsonDump(outcome));

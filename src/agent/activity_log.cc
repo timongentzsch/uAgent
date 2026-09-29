@@ -294,7 +294,7 @@ std::optional<json> FindDetachedRecord(int64_t pid) {
 
 ToolResult ActivityNotFound(int64_t pid) {
   return ToolFailure(ToolErrorCode::kNotFound,
-                     "error: activity " + std::to_string(pid) +
+                     "activity " + std::to_string(pid) +
                          " is not supervised by uagent");
 }
 
@@ -305,7 +305,7 @@ ToolResult SaveDetachedRecord(pid_t pid, const std::string& log,
   std::string identity = ProcessIdentity(pid);
   if (identity.empty()) {
     return ToolFailure(ToolErrorCode::kProcessFailed,
-                       "error: cannot establish detached process identity");
+                       "cannot establish detached process identity");
   }
   json record = {{"pid", pid},           {"process_identity", identity},
                  {"log", log},           {"command", cmd},

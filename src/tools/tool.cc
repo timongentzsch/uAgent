@@ -62,6 +62,10 @@ ToolResult ToolSuccess(std::string output, int64_t result_chars) {
 }
 
 ToolResult ToolFailure(ToolErrorCode error, std::string output) {
+  // Every failure the model reads starts with the same marker.
+  if (!output.starts_with(kToolErrorPrefix)) {
+    output.insert(0, kToolErrorPrefix);
+  }
   ToolResult result;
   result.status = CompletionStatus::kFailed;
   result.output = std::move(output);

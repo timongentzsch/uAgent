@@ -247,7 +247,7 @@ Tool WebFetchTool(Api& api) {
         std::string scheme = AsciiLower(url.substr(0, url.find(':') + 1));
         if (scheme != "http:" && scheme != "https:") {
           return ToolFailure(ToolErrorCode::kInvalidArguments,
-                             "error: web_fetch needs an absolute http(s) URL");
+                             "web_fetch needs an absolute http(s) URL");
         }
         Api side(api.config);
         // Capped like an attachment: a document worth fetching is usually
@@ -262,7 +262,7 @@ Tool WebFetchTool(Api& api) {
         }
         if (!page.error.empty()) {
           return ToolFailure(ToolErrorCode::kRemoteError,
-                             "error: web_fetch " + page.error);
+                             "web_fetch " + page.error);
         }
         bool html = page.content_type.find("html") != std::string::npos;
         if (!html && !Textual(page.content_type)) {
@@ -272,7 +272,7 @@ Tool WebFetchTool(Api& api) {
           // capability that may not be there.
           return ToolFailure(
               ToolErrorCode::kUnavailable,
-              "error: web_fetch cannot read " +
+              "web_fetch cannot read " +
                   (page.content_type.empty() ? "this content type"
                                              : page.content_type) +
                   "; download it and extract its text locally with run or "
@@ -284,7 +284,7 @@ Tool WebFetchTool(Api& api) {
         if (Trim(text).empty()) {
           return ToolFailure(
               ToolErrorCode::kUnavailable,
-              "error: web_fetch found no text at " + TerminalSafe(url));
+              "web_fetch found no text at " + TerminalSafe(url));
         }
         std::string head = "[" + TerminalSafe(url);
         if (page.truncated) head += "; truncated at the byte cap";

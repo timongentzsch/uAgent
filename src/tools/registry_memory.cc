@@ -37,13 +37,13 @@ void RegisterMemoryTool(std::vector<Tool>& tools) {
             std::string action = JsonValue(a, "action", "");
             if (automatic_extraction && action == "forget") {
               return ToolFailure(ToolErrorCode::kPermissionDenied,
-                                 "error: background extraction cannot forget "
+                                 "background extraction cannot forget "
                                  "memory");
             }
             if (automatic_extraction && automatic_write && action == "set") {
               return ToolFailure(
                   ToolErrorCode::kLimitExceeded,
-                  "error: background extraction already wrote one memory");
+                  "background extraction already wrote one memory");
             }
             std::optional<std::string> content;
             if (a.contains("content") && a["content"].is_string()) {

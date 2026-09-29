@@ -875,7 +875,7 @@ ToolResult AttachmentQueue::Add(const std::string& path,
   Attachment attachment;
   std::string error;
   if (!InspectAttachment(path, attachment, error)) {
-    return ToolFailure(ToolErrorCode::kInvalidArguments, "error: " + error);
+    return ToolFailure(ToolErrorCode::kInvalidArguments, error);
   }
   std::string result =
       "attached " + attachment.name + "; queued for the next request";
@@ -884,7 +884,7 @@ ToolResult AttachmentQueue::Add(const std::string& path,
   // ceiling lives here rather than only on read_path.
   if (pending_.size() >= kMaxPendingAttachments) {
     return ToolFailure(ToolErrorCode::kLimitExceeded,
-                       "error: too many attachments pending for one step (" +
+                       "too many attachments pending for one step (" +
                            std::to_string(kMaxPendingAttachments) + ")");
   }
   attachment.source_call_id = std::move(source_call_id);

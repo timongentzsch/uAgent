@@ -196,7 +196,7 @@ ToolResult ToolReadFile(const std::string& path, int64_t offset, int64_t limit,
   if (!LikelyTextFile(path)) {
     if (offset != 1 || limit != 0) {
       return ToolFailure(ToolErrorCode::kInvalidArguments,
-                         "error: omit offset and limit for images/documents");
+                         "omit offset and limit for images/documents");
     }
     return Attachments().Add(path, call_id);
   }
@@ -237,13 +237,13 @@ ToolResult ToolReadFile(const std::string& path, int64_t offset, int64_t limit,
   }
   if (AbortRequested()) return ToolCancelled("error: read cancelled");
   if (f.bad()) {
-    return ToolFailure(ToolErrorCode::kInternal, "error: read failed");
+    return ToolFailure(ToolErrorCode::kInternal, "read failed");
   }
   bool more = output_limited || (shown >= limit && lines.More());
   if (total == 0) return ToolSuccess("(empty file)");
   if (offset > total && !more) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "error: offset " + std::to_string(offset) +
+                       "offset " + std::to_string(offset) +
                            " is beyond EOF (" + std::to_string(total) +
                            " lines)");
   }
@@ -466,14 +466,14 @@ std::optional<ToolResult> ApplyEdits(std::string& data, const std::string& path,
                                      EditRun& run) {
   if (edits.empty()) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "error: at least one edit is required");
+                       "at least one edit is required");
   }
   for (size_t i = 0; i < edits.size(); ++i) {
     const FileEdit& edit = edits[i];
     if (edit.old_text.empty()) {
       return ToolFailure(
           ToolErrorCode::kInvalidArguments,
-          "error: edit " + std::to_string(i + 1) + " has an empty `old` value");
+          "edit " + std::to_string(i + 1) + " has an empty `old` value");
     }
     const bool file_crlf = MostlyCrLf(data);
     ResolvedEdit resolved = ResolveEditText(data, edit, file_crlf);
@@ -489,13 +489,13 @@ std::optional<ToolResult> ApplyEdits(std::string& data, const std::string& path,
         continue;
       }
       return ToolFailure(ToolErrorCode::kNotFound,
-                         "error: edit " + std::to_string(i + 1) +
+                         "edit " + std::to_string(i + 1) +
                              " `old` not found in " + path +
                              EditRecoveryHint(data, old_eff));
     }
     if (!edit.replace_all && count > 1) {
       return ToolFailure(ToolErrorCode::kInvalidArguments,
-                         "error: edit " + std::to_string(i + 1) +
+                         "edit " + std::to_string(i + 1) +
                              " `old` matches " + std::to_string(count) +
                              " times in " + path +
                              "; add surrounding context or set `replace_all`");
@@ -515,7 +515,7 @@ std::optional<ToolResult> ApplyEdits(std::string& data, const std::string& path,
     if (!EditedSize(data.size(), old_eff.size(), new_eff.size(), applied,
                     next_size)) {
       return ToolFailure(ToolErrorCode::kLimitExceeded,
-                         "error: edit " + std::to_string(i + 1) +
+                         "edit " + std::to_string(i + 1) +
                              " would exceed the edit byte limit");
     }
     AppendEditDisplay(run.display, data, match, old_eff, new_eff, applied);
@@ -543,7 +543,7 @@ ToolResult ToolEditFile(const std::string& path,
   auto bytes = std::filesystem::file_size(path, size_ec);
   if (!size_ec && bytes > kEditFileBytes) {
     return ToolFailure(ToolErrorCode::kLimitExceeded,
-                       "error: " + path + " is too large to edit atomically (" +
+                       path + " is too large to edit atomically (" +
                            std::to_string(bytes) + " bytes; limit " +
                            std::to_string(kEditFileBytes) + ")");
   }
@@ -553,7 +553,7 @@ ToolResult ToolEditFile(const std::string& path,
   if (grew) {
     return ToolFailure(
         ToolErrorCode::kLimitExceeded,
-        "error: " + path + " grew beyond the edit limit while reading");
+        path + " grew beyond the edit limit while reading");
   }
 
   const size_t original_size = data.size();
@@ -690,7 +690,7 @@ ToolResult ToolDeleteFileWithDisplay(const std::string& path) {
       return ToolFailure(FileToolError(ec), "error: cannot delete " + path);
     }
     return ToolFailure(ToolErrorCode::kNotFound,
-                       "error: path does not exist: " + path);
+                       "path does not exist: " + path);
   }
   ToolResult result = ToolSuccess("deleted " + path);
   if (previous->empty()) {
@@ -770,7 +770,7 @@ ToolResult ToolListDir(const std::string& path, int64_t offset, int64_t limit,
     const auto& e = *iterator;
     if (static_cast<int64_t>(entries.size()) >= kListDirScanEntries) {
       return ToolFailure(ToolErrorCode::kLimitExceeded,
-                         "error: directory exceeds scan limit (" +
+                         "directory exceeds scan limit (" +
                              std::to_string(kListDirScanEntries) + " entries)");
     }
     std::error_code type_error;
@@ -784,7 +784,7 @@ ToolResult ToolListDir(const std::string& path, int64_t offset, int64_t limit,
   if (entries.empty()) return ToolSuccess("(empty directory)");
   if (offset > static_cast<int64_t>(entries.size())) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "error: offset is beyond directory entries (" +
+                       "offset is beyond directory entries (" +
                            std::to_string(entries.size()) + ")");
   }
   size_t begin = static_cast<size_t>(offset - 1);

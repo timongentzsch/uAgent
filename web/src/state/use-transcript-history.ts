@@ -25,6 +25,7 @@ const MOVE = 1;
 // then for the scrolling to go quiet.
 const WHEEL_SETTLE_MS = 250;
 const WHEEL_QUIET_MS = 80;
+const SAVE_MS = 500;
 const bookmarks = new Map<string, Bookmark>();
 try {
   for (const [key, value] of Object.entries(
@@ -37,11 +38,12 @@ try {
   // Private browsing can deny session storage. In-memory bookmarks still work.
 }
 
-function storeBookmark(key: string, value: Bookmark) {
-  bookmarks.delete(key);
-  bookmarks.set(key, value);
-  while (bookmarks.size > maxTranscriptBookmarks)
-    bookmarks.delete(bookmarks.keys().next().value!);
+// Bookmarks change on every scroll frame; storage only needs the last one
+// before the page goes away, so writes trail by SAVE_MS and flush on hide.
+let saving: ReturnType<typeof setTimeout> | undefined;
+function saveBookmarks() {
+  clearTimeout(saving);
+  saving = undefined;
   try {
     sessionStorage.setItem(
       BOOKMARKS_KEY,
@@ -50,6 +52,15 @@ function storeBookmark(key: string, value: Bookmark) {
   } catch {
     // In-memory restoration still works when storage is unavailable.
   }
+}
+addEventListener("pagehide", () => saving && saveBookmarks());
+
+function storeBookmark(key: string, value: Bookmark) {
+  bookmarks.delete(key);
+  bookmarks.set(key, value);
+  while (bookmarks.size > maxTranscriptBookmarks)
+    bookmarks.delete(bookmarks.keys().next().value!);
+  saving ??= setTimeout(saveBookmarks, SAVE_MS);
 }
 
 function contentY(node: HTMLElement, box: HTMLElement) {
@@ -63,6 +74,24 @@ function contentY(node: HTMLElement, box: HTMLElement) {
 
 function offset(node: HTMLElement, box: HTMLElement) {
   return contentY(node, box) - box.scrollTop;
+}
+
+function atEnd(box: HTMLElement) {
+  return box.scrollHeight - box.clientHeight - box.scrollTop <= BOTTOM_BAND;
+}
+
+// Whether an upward gesture from target reaches the transcript itself: a
+// nested scroller (tool output) takes it first while it can still move up.
+function scrollsUp(target: EventTarget | null, box: HTMLElement) {
+  for (
+    let node = target instanceof Element ? target : null;
+    node && node !== box;
+    node = node.parentElement
+  ) {
+    if (node.scrollTop > 0 && node.scrollHeight > node.clientHeight)
+      return false;
+  }
+  return box.scrollTop > 0;
 }
 
 function rowFor(node: HTMLElement): HTMLElement | null {
@@ -123,7 +152,7 @@ function findAnchor(
 export function useTranscriptHistory(
   onFollow: (following: boolean) => void,
   sessionKey: string,
-  arrivals: number,
+  blocks: readonly { id: string }[],
 ) {
   const scroller = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
@@ -134,11 +163,16 @@ export function useTranscriptHistory(
   const key = useRef(sessionKey);
   const pending = useRef<string | null>(sessionKey);
   const lastTop = useRef(0);
-  const lastArrivals = useRef(arrivals);
+  // The newest block seen: unseen counts only blocks appended after it, so
+  // an older history page prepended above never reads as new.
+  const lastBlock = useRef(blocks.at(-1)?.id);
   const [unseen, setUnseen] = useState(0);
   const onFollowRef = useRef(onFollow);
   onFollowRef.current = onFollow;
   const observer = useRef<ResizeObserver | null>(null);
+  // What the observer watches, so a refresh observes only new nodes: each
+  // observe() makes the observer report that node once more.
+  const watched = useRef(new Set<Element>());
   const wheelAt = useRef(-Infinity);
   // A compensation waiting for the wheel's scroll to land.
   const deferred = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -209,6 +243,22 @@ export function useTranscriptHistory(
     if (element) writeTop(element.scrollHeight - element.clientHeight);
   }, [writeTop]);
 
+  // A reader who moves down into the end follows again: by scrolling there,
+  // or by a wheel, swipe or key that finds no more room below. Only the
+  // reader's own downward intent counts, so a shrink that clamps the range
+  // (see reconcile) never re-follows on its own.
+  const resumeAtEnd = useCallback(() => {
+    const element = scroller.current;
+    if (following.current || !element || !atEnd(element)) return false;
+    if (deferred.current !== null) {
+      clearTimeout(deferred.current);
+      deferred.current = null;
+    }
+    setFollow(true);
+    pin();
+    return true;
+  }, [pin, setFollow]);
+
   const reconcile = useCallback(() => {
     const element = scroller.current;
     if (!element) return;
@@ -270,17 +320,17 @@ export function useTranscriptHistory(
     const element = scroller.current;
     const children = content.current;
     if (!watch || !element || !children) return;
-    watch.disconnect();
-    watch.observe(element);
-    watch.observe(children);
-    for (const child of children.children) {
-      if (child instanceof HTMLElement) watch.observe(child);
-    }
+    const next = new Set<Element>([element, children, ...children.children]);
     const row = anchor.current && rowFor(anchor.current.node);
     if (row) {
-      for (const inner of row.querySelectorAll<HTMLElement>("[data-anchor-id]"))
-        watch.observe(inner);
+      for (const inner of row.querySelectorAll("[data-anchor-id]"))
+        next.add(inner);
     }
+    for (const node of watched.current)
+      if (!next.has(node)) watch.unobserve(node);
+    for (const node of next)
+      if (!watched.current.has(node)) watch.observe(node);
+    watched.current = next;
   }, []);
 
   const restore = useCallback(() => {
@@ -328,7 +378,7 @@ export function useTranscriptHistory(
     key.current = sessionKey;
     pending.current = sessionKey;
     anchor.current = null;
-    lastArrivals.current = arrivals;
+    lastBlock.current = blocks.at(-1)?.id;
     setUnseen(0);
   }, [sessionKey]);
 
@@ -336,9 +386,16 @@ export function useTranscriptHistory(
   useLayoutEffect(() => {
     if (!box?.isConnected || box !== scroller.current || !column) return;
     if (!restore()) reconcile();
-    if (arrivals > lastArrivals.current && !following.current)
-      setUnseen((value) => value + arrivals - lastArrivals.current);
-    lastArrivals.current = arrivals;
+    const last = blocks.at(-1)?.id;
+    if (last !== lastBlock.current) {
+      if (!following.current) {
+        const seen = blocks.findLastIndex(
+          (block) => block.id === lastBlock.current,
+        );
+        if (seen >= 0) setUnseen((value) => value + blocks.length - 1 - seen);
+      }
+      lastBlock.current = last;
+    }
   });
 
   useLayoutEffect(() => {
@@ -347,12 +404,13 @@ export function useTranscriptHistory(
       if (!restore()) reconcile();
     };
     const watch = new ResizeObserver(settle);
-    const mutations = new MutationObserver(() => {
+    const mutations = new MutationObserver((records) => {
       settle();
-      observe();
+      if (records.some((record) => record.type === "childList")) observe();
     });
     const readiness = new MutationObserver(settle);
     observer.current = watch;
+    watched.current = new Set();
     observe();
     mutations.observe(column, {
       subtree: true,
@@ -366,16 +424,20 @@ export function useTranscriptHistory(
       attributeFilter: ["aria-busy"],
     });
     let touchY = 0;
+    // One anchor pick per painted frame, however many scroll events land.
+    let frame = 0;
     const wheel = (event: WheelEvent) => {
       wheelAt.current = performance.now();
-      if (event.deltaY < 0) stopFollowing();
+      if (event.deltaY < 0 && scrollsUp(event.target, box)) stopFollowing();
+      else if (event.deltaY > 0) resumeAtEnd();
     };
     const touchStart = (event: TouchEvent) => {
       touchY = event.touches[0]?.clientY || 0;
     };
     const touchMove = (event: TouchEvent) => {
       const next = event.touches[0]?.clientY || touchY;
-      if (next > touchY + MOVE) stopFollowing();
+      if (next > touchY + MOVE && scrollsUp(event.target, box)) stopFollowing();
+      else if (next < touchY - MOVE) resumeAtEnd();
       touchY = next;
     };
     const keyDown = (event: KeyboardEvent) => {
@@ -385,8 +447,16 @@ export function useTranscriptHistory(
       )
         return;
       if (["ArrowUp", "PageUp", "Home"].includes(event.key)) stopFollowing();
+      else if (["ArrowDown", "PageDown", "End", " "].includes(event.key))
+        resumeAtEnd();
     };
     const scroll = () => {
+      // Checked before any waiting compensation: the reader's downward
+      // scroll into the end must win even while a wheel is still landing.
+      if (box.scrollTop > lastTop.current + MOVE && resumeAtEnd()) {
+        lastTop.current = box.scrollTop;
+        return;
+      }
       // The wheel's scroll is still landing: wait until it goes quiet, and
       // keep the anchor the layout change moved so its shift is compensated.
       if (deferred.current !== null) {
@@ -401,13 +471,11 @@ export function useTranscriptHistory(
         if (maximum - top > BOTTOM_BAND && top < lastTop.current - MOVE)
           stopFollowing();
       } else {
-        if (top > lastTop.current + MOVE && maximum - top <= BOTTOM_BAND) {
-          setFollow(true);
-          pin();
-        } else {
+        frame ||= requestAnimationFrame(() => {
+          frame = 0;
           selectAnchor();
           observe();
-        }
+        });
       }
       lastTop.current = box.scrollTop;
     };
@@ -419,6 +487,7 @@ export function useTranscriptHistory(
     box.addEventListener("keydown", keyDown);
     box.addEventListener("scroll", scroll, { passive: true });
     return () => {
+      cancelAnimationFrame(frame);
       watch.disconnect();
       mutations.disconnect();
       readiness.disconnect();
@@ -437,6 +506,7 @@ export function useTranscriptHistory(
     pin,
     reconcile,
     restore,
+    resumeAtEnd,
     selectAnchor,
     setFollow,
     stopFollowing,

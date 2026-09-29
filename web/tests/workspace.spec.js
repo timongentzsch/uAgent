@@ -422,6 +422,8 @@ test("retained history stays bounded and merges overlapping pages once", async (
     );
   }
   expect(await page.locator(".message").count()).toBeLessThanOrEqual(256);
+  // Older pages are history, not arrivals: nothing reads as new.
+  await expect(page.locator(".jump")).not.toContainText("new");
   await page
     .getByRole("button", { name: "Jump to latest", exact: true })
     .click();

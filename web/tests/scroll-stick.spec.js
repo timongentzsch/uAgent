@@ -182,3 +182,99 @@ test("background completion badges while unfollowed, cleared on jump", async ({
   await jump.click();
   await expect(jump).toBeHidden();
 });
+
+test("wheeling back down to the end follows again mid-stream", async ({
+  page,
+  session,
+  command,
+}) => {
+  test.setTimeout(120000);
+  await startLongProbe(page, session, command);
+  const transcript = page.locator(".transcript");
+  await expect
+    .poll(
+      () =>
+        transcript.evaluate(
+          (element) => element.scrollHeight - element.clientHeight,
+        ),
+      { timeout: 30000 },
+    )
+    .toBeGreaterThan(400);
+  const jump = page.getByRole("button", { name: "Jump to latest" });
+  await transcript.hover();
+  for (let index = 0; index < 30 && !(await jump.isVisible()); ++index) {
+    await page.mouse.wheel(0, -200);
+    await page.waitForTimeout(50);
+  }
+  await expect(jump).toBeVisible();
+  // Real wheel steps, while content keeps growing and compensation runs:
+  // reaching the end must clear the button without a click.
+  for (let index = 0; index < 60 && (await jump.isVisible()); ++index) {
+    await page.mouse.wheel(0, 400);
+    await page.waitForTimeout(60);
+  }
+  await expect(jump).toBeHidden();
+  await expect.poll(() => gap(page)).toBeLessThan(100);
+  await expect(page.locator(".composer .status-led.running")).toBeHidden({
+    timeout: 60000,
+  });
+});
+
+test("a wheel at the end with no room below follows again", async ({
+  page,
+  session,
+  command,
+}) => {
+  test.setTimeout(120000);
+  await startLongProbe(page, session, command);
+  await expect(page.locator(".composer .status-led.running")).toBeHidden({
+    timeout: 60000,
+  });
+  const transcript = page.locator(".transcript");
+  const jump = page.getByRole("button", { name: "Jump to latest" });
+  // Unfollowed while sitting at the end: the state a shrink that clamps the
+  // range leaves behind. No scroll event can follow from here.
+  await transcript.hover();
+  await page.mouse.wheel(0, -300);
+  await expect(jump).toBeVisible();
+  // Content below the reader shrinks away; the browser clamps the range.
+  await page.locator(".message").last().evaluate((message) => {
+    message.style.display = "none";
+  });
+  await expect.poll(() => gap(page)).toBeLessThan(2);
+  await expect(jump).toBeVisible();
+  await page.mouse.wheel(0, 100);
+  await expect(jump).toBeHidden();
+});
+
+test("a wheel up inside nested output leaves following alone", async ({
+  page,
+  session,
+  command,
+}) => {
+  test.setTimeout(120000);
+  await startLongProbe(page, session, command);
+  await expect(page.locator(".composer .status-led.running")).toBeHidden({
+    timeout: 60000,
+  });
+  await expect.poll(() => gap(page)).toBeLessThan(2);
+  // A tool-output-like scroller scrolled down inside the last message.
+  await page
+    .locator(".message")
+    .last()
+    .evaluate((message) => {
+      const inner = document.createElement("pre");
+      inner.className = "nested-probe";
+      inner.style.cssText = "height: 60px; overflow: auto; margin: 0";
+      inner.textContent = "line\n".repeat(50);
+      message.append(inner);
+      inner.scrollTop = inner.scrollHeight;
+    });
+  await expect.poll(() => gap(page)).toBeLessThan(2);
+  await page.locator(".nested-probe").hover();
+  await page.mouse.wheel(0, -40);
+  await page.waitForTimeout(300);
+  await expect(
+    page.getByRole("button", { name: "Jump to latest" }),
+  ).toHaveCount(0);
+});

@@ -64,6 +64,8 @@ const statisticsDialog = () =>
     default: module.StatisticsContent,
   }));
 const rawDialog = () => import("../settings/raw.tsx");
+// A stable empty list: the history hook compares the newest block each render.
+const noBlocks: readonly { id: string }[] = [];
 
 const childStateOf = (detail: ActivityDetail): State => ({
   view: detail.conversation,
@@ -476,7 +478,7 @@ function DetailBody({
   const thread = useTranscriptHistory(
     setFollowing,
     historyKey,
-    detail.conversation?.blocks.length || 0,
+    detail.conversation?.blocks || noBlocks,
   );
   // Guidance submit lives here (not the panel) so every nesting level
   // sends with its own text and receipt.

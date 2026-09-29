@@ -142,7 +142,7 @@ export default function ChatPage({
     jumpToLatest,
     preserveWhile,
     unseen,
-  } = useTranscriptHistory(setFollowing, historyKey, blocks.length);
+  } = useTranscriptHistory(setFollowing, historyKey, blocks);
   // The shared transcript controller retains the visible block through
   // this bounded page update; this loader only owns data and cursors.
   async function older() {

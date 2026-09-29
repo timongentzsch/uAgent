@@ -179,7 +179,6 @@ add_library(
   src/tools/memory.cc
   src/tools/memory_pipeline.cc
   src/tools/policy.cc
-  src/tools/configure.cc
   src/tools/registry.cc
   src/tools/registry_activity.cc
   src/tools/registry_exec.cc
@@ -213,6 +212,7 @@ add_library(
   src/app/schedule.cc
   src/app/launch.cc
   src/app/thread_link.cc
+  src/app/uagent_tool.cc
   src/app/coordinator.cc
   src/cli/options.cc
   src/cli/reference.cc

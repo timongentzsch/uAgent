@@ -16,8 +16,6 @@ ORDER = ["core", "api", "toolcore", "agent", "tools", "app", "web"]
 INCLUDE = re.compile(r'#include\s+"(include/[^"]+)"')
 
 KNOWN = {
-    "include/tools/configure.h -> include/app/config_proposal.h",
-    "include/tools/configure.h -> include/app/self_description.h",
     "src/core/events.cc -> include/ui/presentation.h",
 }
 

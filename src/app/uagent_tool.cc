@@ -1,6 +1,6 @@
 // Copyright 2026 Timon Gentzsch
 
-#include "include/tools/configure.h"
+#include "include/app/uagent_tool.h"
 
 #include <memory>
 #include <optional>

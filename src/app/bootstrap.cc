@@ -48,7 +48,7 @@
 #include "include/tools/adapt_system.h"
 #include "include/tools/ask.h"
 #include "include/tools/browser.h"
-#include "include/tools/configure.h"
+#include "include/app/uagent_tool.h"
 #include "include/tools/memory.h"
 #include "include/tools/registry.h"
 #include "include/tools/session.h"

@@ -1,7 +1,7 @@
 // Copyright 2026 Timon Gentzsch
 
-#ifndef UAGENT_INCLUDE_TOOLS_CONFIGURE_H_
-#define UAGENT_INCLUDE_TOOLS_CONFIGURE_H_
+#ifndef UAGENT_INCLUDE_APP_UAGENT_TOOL_H_
+#define UAGENT_INCLUDE_APP_UAGENT_TOOL_H_
 
 #include <functional>
 #include <memory>
@@ -32,4 +32,4 @@ Tool UagentTool(SelfDescriptionProvider describe,
 
 }  // namespace uagent
 
-#endif  // UAGENT_INCLUDE_TOOLS_CONFIGURE_H_
+#endif  // UAGENT_INCLUDE_APP_UAGENT_TOOL_H_

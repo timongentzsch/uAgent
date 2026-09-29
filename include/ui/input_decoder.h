@@ -55,7 +55,12 @@ class TerminalInputDecoder {
   void AppendPasteByte(unsigned char byte);
   void FeedPaste(const unsigned char*& data, size_t& size);
   TerminalInputToken TakePaste();
-  size_t CompleteCsiBytes() const;
+  // Bytes of the CSI starting `at`, once its final byte has arrived.
+  size_t CompleteCsiBytes(size_t at = 0) const;
+  // ESC before a key that is itself several bytes: Meta with a UTF-8
+  // character, or Option+arrow in Terminal.app (ESC ESC [ A). One key, taken
+  // whole. 0 while it is still arriving, npos when the input is neither.
+  size_t MetaKeyBytes() const;
   // ESC ] / P / X / ^ / _ ... BEL or ST. Terminal replies, never user input:
   // their payload must not reach the buffer as typed text.
   bool StartsStringSequence() const;

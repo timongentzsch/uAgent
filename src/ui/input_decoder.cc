@@ -135,18 +135,34 @@ bool TerminalInputDecoder::IsPrefixOf(std::string_view sequence) const {
          MatchesFirst(sequence, pending_.size());
 }
 
-size_t TerminalInputDecoder::CompleteCsiBytes() const {
-  if (pending_.size() < 3 || pending_[0] != 0x1b || pending_[1] != '[') {
+size_t TerminalInputDecoder::CompleteCsiBytes(size_t at) const {
+  if (pending_.size() < at + 3 || pending_[at] != 0x1b ||
+      pending_[at + 1] != '[') {
     return 0;
   }
   // Look for the final byte only within the sequence bound: an over-long
   // CSI is cut at the bound however the bytes arrive, so a final byte past
   // it must not complete the sequence when everything came in one read.
-  const size_t end = std::min(pending_.size(), kInputSequenceBytes);
-  for (size_t index = 2; index < end; ++index) {
+  const size_t end = std::min(pending_.size(), at + kInputSequenceBytes);
+  for (size_t index = at + 2; index < end; ++index) {
     if (pending_[index] >= 0x40 && pending_[index] <= 0x7e) return index + 1;
   }
   return 0;
+}
+
+size_t TerminalInputDecoder::MetaKeyBytes() const {
+  if (pending_.size() < 2 || pending_[0] != 0x1b) return std::string::npos;
+  const unsigned char key = pending_[1];
+  if (key >= 0xc0) {  // a UTF-8 lead byte
+    const size_t bytes = key >= 0xf0 ? 5 : key >= 0xe0 ? 4 : 3;
+    return pending_.size() >= bytes ? bytes : 0;
+  }
+  if (key != 0x1b || pending_.size() < 3) return std::string::npos;
+  if (pending_[2] == 'O') return pending_.size() >= 4 ? 4 : 0;
+  if (pending_[2] != '[') return std::string::npos;
+  const size_t bytes = CompleteCsiBytes(1);
+  if (bytes > 0) return bytes;
+  return pending_.size() > kInputSequenceBytes ? kInputSequenceBytes + 1 : 0;
 }
 
 bool TerminalInputDecoder::StartsStringSequence() const {
@@ -194,6 +210,9 @@ bool TerminalInputDecoder::HasReady() const {
            pending_.size() >= kInputStringSequenceBytes;
   }
   if (StartsX10Mouse()) return pending_.size() >= 6;
+  if (const size_t meta = MetaKeyBytes(); meta != std::string::npos) {
+    return meta > 0;
+  }
   if (pending_[1] == '[') {
     return CompleteCsiBytes() > 0 || pending_.size() >= kInputSequenceBytes;
   }
@@ -264,10 +283,21 @@ std::optional<TerminalInputToken> TerminalInputDecoder::Next(
     // must not decay into a bare Escape plus its payload as typed text.
     const bool sequence_introducer =
         pending_[1] == '[' || pending_[1] == 'O' || StartsStringSequence();
-    if (pending_[1] == 0x1b ||
-        (escape_was_pending && !sequence_introducer &&
-         std::chrono::steady_clock::now() - escape_started_ >=
-             kInputEscapeDelay)) {
+    const bool late = escape_was_pending && !sequence_introducer &&
+                      std::chrono::steady_clock::now() - escape_started_ >=
+                          kInputEscapeDelay;
+    if (const size_t meta = MetaKeyBytes();
+        !late && meta != std::string::npos) {
+      if (meta == 0) return std::nullopt;
+      std::string sequence(
+          pending_.begin(),
+          pending_.begin() + static_cast<std::ptrdiff_t>(meta));
+      Consume(meta);
+      ResetEscape();
+      return TerminalInputToken{TerminalInputTokenKind::kSequence,
+                                std::move(sequence)};
+    }
+    if (pending_[1] == 0x1b || late) {
       pending_.pop_front();
       ResetEscape();
       return TerminalInputToken{TerminalInputTokenKind::kEscape, "", false};

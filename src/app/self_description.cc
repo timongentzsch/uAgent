@@ -263,9 +263,7 @@ json DescribeSelf(SelfTopic topic, const std::string& name,
           ApplyPromptOverlay(SystemPromptBase(), PromptOverlay(nullptr),
                              nullptr) +
               CapabilityPrompt(inputs.tools),
-          nullptr,
-          {{{"scope", "runtime"},
-            {"text", Trim(HostCapabilityPrompt(inputs.tools))}}}));
+          nullptr, json::array()));
       out["preview_kind"] =
           "Base prompt without active conversation or repository context.";
       break;

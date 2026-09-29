@@ -69,7 +69,6 @@ void LoadSessionJournal(AppSession& session, const std::string& previous_path) {
     if (!mode.empty()) ParsePermissionOverride(mode, saved);
     session.context.permission_override.store(saved);
     PermissionControl(session.context, json::object());
-    session.ActiveAgent().ApprovalChanged();
   }
   const json saved_tools = JsonValue(settings, "tools", json::object());
   if (!saved_tools.empty()) {
@@ -171,8 +170,7 @@ CommandReply RunSlashCommand(AppSession& session,
         return reply;
       }
       result = PermissionControl(session.context, {{"mode", command.argument}});
-      session.ActiveAgent().ApprovalChanged();
-      return reply;
+        return reply;
     case SlashCommandId::kRename:
       if (Trim(command.argument).empty()) {
         result = {{"error", "usage: /rename TITLE"}};
@@ -222,8 +220,7 @@ CommandReply RunSlashCommand(AppSession& session,
     case SlashCommandId::kYolo:
       result = PermissionControl(session.context,
                                  {{"mode", ApprovalIsYolo() ? "ask" : "yolo"}});
-      session.ActiveAgent().ApprovalChanged();
-      reply.Print(
+        reply.Print(
           "%s· yolo %s%s\n", DIM(),
           ApprovalIsYolo() ? "ON — automatic ordinary approvals" : "off",
           RST());

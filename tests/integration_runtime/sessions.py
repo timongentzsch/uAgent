@@ -88,9 +88,7 @@ def test_prompt_overlay_reaches_the_live_prompt(root, home, *, binary):
 
     def verify(_, body):
         prompt = body["messages"][0].get("content", "")
-        valid = "OVERLAY-ANSWER-RULE" in prompt and prompt.index("OVERLAY-TAIL") < prompt.index(
-            "[HOST CAPABILITIES]"
-        )
+        valid = "OVERLAY-ANSWER-RULE" in prompt and "OVERLAY-TAIL" in prompt
         return event({"content": "overlay-ok" if valid else f"overlay-bad: {prompt[:400]}"})
 
     with Server([verify]) as server:

@@ -84,7 +84,6 @@ class Agent {
 
   // Approval mode is host-owned but can change between interactive turns.
   // Rebuild message zero after the host updates its canonical environment.
-  void ApprovalChanged();
 
   std::string ActiveRoute() const;
 

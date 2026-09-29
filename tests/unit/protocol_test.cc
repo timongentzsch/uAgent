@@ -442,14 +442,6 @@ void TestRegistries() {
   const json list_call{{"operation", "list"}};
   CHECK(subagent.approval_preview(list_call) == subagent.summary(list_call));
 
-  std::string host_prompt = HostCapabilityPrompt(capability_tools);
-  CHECK(host_prompt.find("web_search=available") != std::string::npos);
-  CHECK(host_prompt.find("web_fetch=available") != std::string::npos);
-  CHECK(host_prompt.find("subagent=available") != std::string::npos);
-  CHECK(host_prompt.find("approval=") != std::string::npos);
-  CHECK(host_prompt.find("registry is authoritative") != std::string::npos);
-  CHECK(HostCapabilityPrompt({}).find("web_search=unavailable") !=
-        std::string::npos);
 }
 
 void TestCommandAndDisplayRegistries() {
@@ -528,8 +520,9 @@ void TestCommandAndDisplayRegistries() {
   CHECK(FmtBytes(2411724) == "2.4 MB");
   CHECK(FmtBytes(5LL * 1024 * 1024 * 1024) == "5.4 GB");
   ScopedEnv scoped_path("PATH", "/uagent-no-executables");
-  CHECK(EnvironmentContext("2026-07-29 UTC", "/workspace") ==
-        "[environment: date 2026-07-29 UTC; cwd /workspace; shell bash]");
+  CHECK(EnvironmentContext("2026-07-29 UTC", "/workspace", "ask") ==
+        "[environment: date 2026-07-29 UTC; cwd /workspace; shell bash; "
+        "approval ask]");
   namespace fs = std::filesystem;
   fs::path bin =
       fs::temp_directory_path() /
@@ -539,13 +532,13 @@ void TestCommandAndDisplayRegistries() {
   CHECK(ToolWriteFile(python3.string(), "#!/bin/sh\nexit 0\n").Ok());
   CHECK(chmod(python3.c_str(), 0700) == 0);
   setenv("PATH", bin.c_str(), 1);
-  CHECK(EnvironmentContext("today", "/workspace") ==
-        "[environment: date today; cwd /workspace; shell bash]");
+  CHECK(EnvironmentContext("today", "/workspace", "ask") ==
+        "[environment: date today; cwd /workspace; shell bash; approval ask]");
   fs::path python = bin / "python";
   CHECK(ToolWriteFile(python.string(), "#!/bin/sh\nexit 0\n").Ok());
   CHECK(chmod(python.c_str(), 0700) == 0);
-  CHECK(EnvironmentContext("today", "/workspace") ==
-        "[environment: date today; cwd /workspace; shell bash]");
+  CHECK(EnvironmentContext("today", "/workspace", "ask") ==
+        "[environment: date today; cwd /workspace; shell bash; approval ask]");
   std::error_code cleanup_error;
   fs::remove_all(bin, cleanup_error);
 }

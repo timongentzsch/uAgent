@@ -628,9 +628,7 @@ std::string Agent::PromptBase() const {
 }
 
 json Agent::PromptContext() const {
-  json context = json::array(
-      {{{"scope", "runtime"},
-        {"text", Trim(HostCapabilityPrompt(tools_, &tool_selection_))}}});
+  json context = json::array();
   if (!project_instructions_.text.empty()) {
     context.push_back(
         {{"scope", "repository"}, {"text", ProjectInstructionText()}});
@@ -743,7 +741,6 @@ json Agent::SysMsg() const {
   return {{"role", "system"}, {"content", SystemPrompt()}};
 }
 
-void Agent::ApprovalChanged() { RefreshSystemMessage(true); }
 
 void Agent::RefreshSystemMessage(bool force) {
   if (conversation_.Empty()) return;
@@ -758,7 +755,8 @@ void Agent::RefreshSystemMessage(bool force) {
 
 std::string Agent::RuntimeContextText() const {
   std::string content =
-      EnvironmentContext(LocalDay(), CanonicalCwd()) +
+      EnvironmentContext(LocalDay(), CanonicalCwd(),
+                         ApprovalModeName(CurrentApprovalMode())) +
       ModelImageInputInstruction(api_.capabilities.image_input,
                                  !EffectiveImageModel().empty()) +
       ModelAudioInputInstruction(api_.capabilities.audio_input) +

@@ -1,9 +1,10 @@
 # Instructions and the system prompt
 
 A session's system message is the built-in base followed by the instructions
-people write, then host facts. Instructions only ever add; nothing a person or
-an agent writes replaces the base, except the agent's own opt-in
-self-directive below.
+people write. Host facts (date, working directory, approval mode) ride in a
+runtime note after it, which is appended anew when one changes, so the cached
+prefix holds. Instructions only ever add; nothing a person or an agent writes
+replaces the base, except the agent's own opt-in self-directive below.
 
 ## Instruction files
 

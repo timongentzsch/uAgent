@@ -69,10 +69,6 @@ def test_adaptive_system_revises_replaces_and_clears(root, home, *, binary):
         system = body["messages"][0]["content"]
         assert_true("MUTABLE SELF-DIRECTIVE" not in system, system)
         assert_true("Inspect broadly and challenge" in system, system)
-        assert_true(
-            system.rfind("[HOST CAPABILITIES]") > system.rfind("Inspect broadly and challenge"),
-            system,
-        )
         return tool_call(
             "adapt_system",
             {

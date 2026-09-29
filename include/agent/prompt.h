@@ -46,11 +46,6 @@ json PromptOverlay(std::string* digest);
 std::string CapabilityPrompt(const std::vector<Tool>& tools,
                              const ToolSelection* selection = nullptr);
 
-// Host facts the model may not infer from its own claims: which capabilities
-// the registry actually offers, and whether mutations need consent.
-std::string HostCapabilityPrompt(const std::vector<Tool>& tools,
-                                 const ToolSelection* selection = nullptr);
-
 // What the model reads as its system message: the base, the conversation's
 // self-directive when it has one, then the context layers (host facts and
 // instructions), with each source kept for inspection. {effective, sources,
@@ -58,8 +53,8 @@ std::string HostCapabilityPrompt(const std::vector<Tool>& tools,
 json ResolvePrompt(const std::string& base, const AdaptiveSystemState* self,
                    const json& context = json::array());
 
-std::string EnvironmentContext(const std::string& date,
-                               const std::string& cwd);
+std::string EnvironmentContext(const std::string& date, const std::string& cwd,
+                               const std::string& approval);
 
 }  // namespace uagent
 

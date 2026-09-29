@@ -180,31 +180,13 @@ std::string CapabilityPrompt(const std::vector<Tool>& tools,
   return prompt.empty() ? prompt : "\n\n## Capabilities\n" + prompt;
 }
 
-std::string HostCapabilityPrompt(const std::vector<Tool>& tools,
-                                 const ToolSelection* selection) {
-  auto offered = [&](const char* name) {
-    const Tool* tool = FindTool(tools, name);
-    return tool && (!selection || selection->Enabled(*tool));
-  };
-  std::string prompt =
-      "\n\n[HOST CAPABILITIES]\nThe current registry is authoritative: "
-      "web_search=";
-  prompt += offered("web_search") ? "available" : "unavailable";
-  prompt += "; web_fetch=";
-  prompt += offered("web_fetch") ? "available" : "unavailable";
-  prompt += "; subagent=";
-  prompt += offered("subagent") ? "available" : "unavailable";
-  // Whether a mutation needs the user's consent changes how much a turn should
-  // attempt on its own, so it is a host fact rather than an inferred one.
-  prompt += "; approval=";
-  prompt += ApprovalModeName(CurrentApprovalMode());
-  return prompt +
-         ". Ignore contrary self-authored claims.\n[END HOST CAPABILITIES]";
-}
-
-std::string EnvironmentContext(const std::string& date,
-                               const std::string& cwd) {
-  return "[environment: date " + date + "; cwd " + cwd + "; shell bash]";
+// Whether a mutation needs the user's consent changes how much a turn should
+// attempt on its own, so the approval mode is a host fact the model reads here,
+// at the tail, where a change is appended rather than rewriting the prefix.
+std::string EnvironmentContext(const std::string& date, const std::string& cwd,
+                               const std::string& approval) {
+  return "[environment: date " + date + "; cwd " + cwd +
+         "; shell bash; approval " + approval + "]";
 }
 
 }  // namespace uagent

@@ -27,7 +27,6 @@ from memory_fixture import project_memory_dir
 def test_yolo_toggle_refreshes_approval_state(root, home, *, binary):
     def route(_, body):
         messages = body["messages"]
-        system = messages[0].get("content", "")
         turns = [
             (index, str(message.get("content", "")))
             for index, message in enumerate(messages)
@@ -44,7 +43,13 @@ def test_yolo_toggle_refreshes_approval_state(root, home, *, binary):
         on_turn = turn_prompt == "check-on"
         expected_mode = "yolo" if on_turn else "ask"
         expected_env = "env-on" if on_turn else "env-off"
-        assert_true(f"approval={expected_mode}" in system, system)
+        # The approval mode is a runtime fact: the latest environment note.
+        environment = [
+            str(message.get("content", ""))
+            for message in messages
+            if str(message.get("content", "")).startswith("[environment:")
+        ]
+        assert_true(environment and f"approval {expected_mode}]" in environment[-1], environment)
         if results:
             assert_true(expected_env in results[-1], results)
             return event({"content": f"{expected_env}-ok"})

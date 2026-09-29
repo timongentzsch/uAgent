@@ -110,9 +110,7 @@ void Application::RunTurns(const std::string& input, json content,
                            json images) {
   EnsureSessionPath();
   ReloadConfigAtTurnBoundary();
-  ApprovalMode previous_mode = CurrentApprovalMode();
   PermissionControl(context_, json::object());
-  if (previous_mode != CurrentApprovalMode()) agent_.ApprovalChanged();
   struct TurnGuard {
     bool& flag_;
     explicit TurnGuard(bool& flag) : flag_(flag) { flag_ = true; }

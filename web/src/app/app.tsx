@@ -1023,9 +1023,7 @@ function App() {
                   {page === "chat" && session?.kind === "coordinator" && (
                     <CoordinatorHelp
                       editSoul={() =>
-                        command("submit", session, {
-                          text: "/soul edit user",
-                        }).catch(report)
+                        open({ type: "prompt", scope: "soul-user", edit: true })
                       }
                     />
                   )}

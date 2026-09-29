@@ -598,6 +598,10 @@ export interface ToolCategories {
   categories: ToolCategory[];
   assignments: Record<string, string>;
 }
+export interface SoulDocuments {
+  user: { path: string; text: string };
+  project: { path: string; text: string; loaded: boolean };
+}
 export interface CommandResults {
   browser: {
     running?: boolean;
@@ -615,6 +619,7 @@ export interface CommandResults {
   restart_host: { restarting: boolean };
   tools: ToolCatalogue;
   tool_categories: ToolCategories;
+  soul: SoulDocuments;
   activity: ActivityDetail;
   context: { exchanges: Exchange[] };
   // A fork cut before a message returns that message, to edit (prompt).

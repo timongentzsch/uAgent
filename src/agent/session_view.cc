@@ -142,9 +142,6 @@ std::string DisplayText(const json& message) {
   if (JsonValue(message, "role", "") == "tool") {
     return StripModelHints(std::move(text));
   }
-  if (JsonValue(message, "role", "") == "user") {
-    text = StripArrivalStamp(std::move(text));
-  }
   const json* content = JsonArray(message, "content");
   if (!content) return text;
   for (const json& part : *content) {
@@ -778,26 +775,6 @@ std::string StripModelHints(std::string text) {
   if (line != std::string::npos && text.back() == ']' &&
       text.find('\n', line + 1) == std::string::npos) {
     text.resize(line);
-  }
-  return text;
-}
-
-std::string StripArrivalStamp(std::string text) {
-  // "— 5 h since the last message —" on a line of its own.
-  if (text.starts_with("\u2014 ")) {
-    const size_t end = text.find('\n');
-    if (end != std::string::npos &&
-        text.substr(0, end).find(" since the last message \u2014") !=
-            std::string::npos) {
-      text.erase(0, end + 1);
-    }
-  }
-  // "[Tue 29 Sep 06:54 UTC] ": weekday, day, month, time, zone.
-  const size_t close = text.find("] ");
-  if (text.starts_with('[') && close != std::string::npos && close >= 17 &&
-      close <= 40 && text[4] == ' ' && text[7] == ' ' && text[11] == ' ' &&
-      text[14] == ':') {
-    text.erase(0, close + 2);
   }
   return text;
 }

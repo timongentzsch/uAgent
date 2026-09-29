@@ -45,6 +45,20 @@ json ManagementControl(const json& request) {
   if (JsonValue(request, "kind", "") == "tool_categories") {
     return ToolCategoriesControl(request);
   }
+  if (JsonValue(request, "kind", "") == "soul") {
+    // The person edits here directly; the agent asks through uagent set_soul.
+    const std::string cwd = CanonicalCwd();
+    if (JsonValue(request, "action", "show") == "set") {
+      const std::string scope = JsonValue(request, "scope", "user");
+      if (scope != "user" && scope != "project") {
+        return {{"error", "scope must be user or project"}};
+      }
+      const std::string error =
+          WriteSoul(scope, cwd, JsonValue(request, "text", ""));
+      if (!error.empty()) return {{"error", error}};
+    }
+    return SoulDocuments(cwd);
+  }
   return LibraryControl(request, JsonValue(request, "cwd", CanonicalCwd()));
 }
 json ControlProcess(const json& request) {

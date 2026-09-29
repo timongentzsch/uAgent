@@ -838,7 +838,7 @@ void Master::Command(const Request& request, Response& response) {
     }
   } else if (kind == "memory" || kind == "skills" || kind == "schedule" ||
              kind == "models" || kind == "permission_rules" ||
-             kind == "tool_categories" ||
+             kind == "tool_categories" || kind == "soul" ||
              (kind == "prompt" &&
               JsonValue(command, "session_id", "").empty())) {
     lock.unlock();

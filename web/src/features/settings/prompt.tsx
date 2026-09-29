@@ -19,6 +19,7 @@ import {
   Placeholder,
 } from "../../shared/ui.tsx";
 import { ProjectField } from "./management.tsx";
+import SoulEditor from "./soul.tsx";
 import DiffView from "../chat/diff-view.tsx";
 import "./prompt.css";
 
@@ -72,6 +73,13 @@ export default function PromptEditor({
   const target =
     active?.cwd === cwd && !active?.turn_active ? active : undefined;
   const inFlight = scope === "conversation" && !!active?.turn_active;
+  // The coordinator's soul is edited here too, as plain text without modes.
+  const soul =
+    scope === "soul-user"
+      ? "user"
+      : scope === "soul-project"
+        ? "project"
+        : undefined;
   const key = `uagent-prompt-${scope}-${scope === "global" ? "" : scope === "conversation" ? active?.id : cwd}`;
   const data = loaded?.key === key ? loaded.value : undefined;
   const storage = sessionStorage;
@@ -94,7 +102,7 @@ export default function PromptEditor({
   useEffect(() => {
     const current = ++sequence.current;
     setError(null);
-    if (inFlight) return;
+    if (inFlight || soul) return;
     if (online)
       request({ action: "show" })
         .then((value) => {
@@ -167,13 +175,17 @@ export default function PromptEditor({
             <option value="global">Global</option>
             <option value="project">Project</option>
             {active && <option value="conversation">This conversation</option>}
+            <option value="soul-user">Coordinator soul · yours</option>
+            <option value="soul-project">Coordinator soul · project</option>
           </Select>
         </Field>
-        {scope === "project" && (
+        {(scope === "project" || scope === "soul-project") && (
           <ProjectField value={cwd} projects={projects} change={setCwd} />
         )}
       </div>
-      {inFlight ? (
+      {soul ? (
+        <SoulEditor scope={soul} cwd={cwd} online={online} />
+      ) : inFlight ? (
         <section class="prompt-current">
           <p class="muted">
             Current request · changes apply after it finishes.

@@ -2,7 +2,7 @@ import type { ComponentChildren } from "preact";
 import { CircleHelp } from "lucide-preact";
 import { Popover } from "../../shared/popover.tsx";
 import type { Session } from "../../shared/types.ts";
-import { Button, DataText, Time } from "../../shared/ui.tsx";
+import { Actions, Button, DataText, Time } from "../../shared/ui.tsx";
 
 // The folder at a glance, beside its coordinator: what waits on you, what is
 // working, and what is done. Drawn from live session metadata, never stored.
@@ -104,7 +104,7 @@ export function CoordinatorHelp({ editSoul }: { editSoul: () => void }) {
       align="start"
     >
       {(close) => (
-        <>
+        <div class="coordinator-help-body">
           <h2>The folder's coordinator</h2>
           <p>
             One per folder. It keeps track of every conversation here, answers
@@ -117,24 +117,25 @@ export function CoordinatorHelp({ editSoul }: { editSoul: () => void }) {
             manages conversations: it starts threads (ordinary conversations,
             marked ↳), steers them, and decides the approvals their Auto mode
             cannot settle, asking you when it is unsure. Its notes and goals
-            carry over between days.
+            carry over between days. You can open and steer any thread directly.
           </p>
-          <p>You can open and steer any thread directly.</p>
           <h2>Its soul</h2>
           <p>
-            Standing guidance it reads every turn: yours in ~/.uagent/soul.md,
-            and a trusted project's in .uagent/soul.md. /soul shows both.
+            Standing guidance it reads every turn, yours and a trusted
+            project's. It is edited with the system prompt.
           </p>
-          <Button
-            variant="secondary"
-            onClick={() => {
-              close();
-              editSoul();
-            }}
-          >
-            Edit my soul
-          </Button>
-        </>
+          <Actions>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                close();
+                editSoul();
+              }}
+            >
+              Edit soul
+            </Button>
+          </Actions>
+        </div>
       )}
     </Popover>
   );

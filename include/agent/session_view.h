@@ -35,9 +35,6 @@ class TranscriptView {
 // base64 images, or arbitrary-path links. Full retained details are paged.
 json ConversationView(const Conversation& conversation, uint64_t before = 0);
 json LastMessageView(const Conversation& conversation);
-// A coordinator's user message without the arrival stamp (and silence line)
-// written for its model.
-std::string StripArrivalStamp(std::string text);
 // A user message's text without the "Attached:" path trailer the model sees.
 std::string StripAttachedTrailer(const std::string& text);
 // A tool result without the hints written for the model only: a leading

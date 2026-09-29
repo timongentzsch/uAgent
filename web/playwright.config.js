@@ -33,7 +33,7 @@ export default defineConfig({
     {
       name: "webkit",
       testMatch:
-        "**/{ui,ui-quality,browser,showcase,dismiss,history-anchor,scroll-restore,scroll-stick}.spec.js",
+        "**/{ui,ui-quality,browser,showcase,dismiss,history-anchor,scroll-restore,scroll-stick,coordinator}.spec.js",
       use: { ...devices["Desktop Safari"] },
     },
   ],

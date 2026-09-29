@@ -335,7 +335,7 @@ class Agent {
   // rather than restored, so it tracks the current tools/protocol (see load()).
   json SysMsg() const;
   void EnsureRuntimeContext();
-  json CoordinatorContextMessage() const;
+  json CoordinatorRequest(json messages) const;
 
   // Append environment state only when it changes. This preserves every prior
   // request byte for provider caching without repeating cwd metadata each turn.

@@ -57,8 +57,8 @@ json Agent::ModelRequest() {
   json projected;
   PrepareRequestMessages(conversation_.Messages(), projected, false);
   if (runtime_context_) {
-    if (projected.is_null()) projected = conversation_.Messages();
-    projected.push_back(CoordinatorContextMessage());
+    projected = CoordinatorRequest(projected.is_null() ? conversation_.Messages()
+                                                      : projected);
   }
   json selected = json::array();
   for (size_t i = 0; i < tools_.size() && i < schemas_.size(); ++i) {
@@ -138,9 +138,8 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
   // the request's tail and never enter the stored conversation: rewriting
   // history there would move display rows and spoil the cached prefix.
   json tailed;
-  if (runtime_context_) {
-    tailed = *chosen;
-    tailed.push_back(CoordinatorContextMessage());
+  if (runtime_context_ && !request_messages) {
+    tailed = CoordinatorRequest(*chosen);
     chosen = &tailed;
   }
   const json& messages = *chosen;
@@ -725,12 +724,63 @@ std::string Agent::RuntimeContextText() const {
   return content;
 }
 
-// Harness context in the user role, like the stored runtime context: strict
-// chat templates accept a single system message, at index zero.
-json Agent::CoordinatorContextMessage() const {
-  json message = HarnessMessage(runtime_context_());
-  message["role"] = "user";
-  return message;
+namespace {
+// "[Tue 29 Sep 08:54 CEST] " for a recorded UTC time, in the host's zone.
+std::string ArrivalStamp(const std::string& utc, std::time_t& seconds) {
+  std::tm parsed{};
+  if (!strptime(utc.c_str(), "%Y-%m-%dT%H:%M:%SZ", &parsed)) return "";
+  seconds = timegm(&parsed);
+  std::tm local{};
+  localtime_r(&seconds, &local);
+  char stamp[48];
+  std::strftime(stamp, sizeof stamp, "[%a %d %b %H:%M %Z] ", &local);
+  return stamp;
+}
+
+void Prefix(json& message, const std::string& text) {
+  json& content = message["content"];
+  if (content.is_string()) {
+    content = text + content.get<std::string>();
+  } else if (content.is_array()) {
+    content.insert(content.begin(), {{"type", "text"}, {"text", text}});
+  }
+}
+}  // namespace
+
+// What a coordinator's model reads beyond the stored conversation: each user
+// message's recorded arrival time (and a line after an hour of silence, which
+// usually means a new topic), then the context rebuilt for this request.
+// Everything is derived from stored facts, so earlier messages read the same
+// on every request and the cached prefix holds; the text people typed is
+// never rewritten.
+json Agent::CoordinatorRequest(json messages) const {
+  const auto& ids = conversation_.DisplayIds();
+  const auto& kinds = conversation_.Kinds();
+  const json& facts = conversation_.DisplayFacts();
+  if (messages.size() == ids.size()) {
+    std::time_t previous = 0;
+    for (size_t index = 0; index < messages.size(); ++index) {
+      if (kinds[index] != MessageKind::kUser) continue;
+      const std::string id = "m-" + std::to_string(ids[index]);
+      std::time_t seconds = 0;
+      std::string stamp = ArrivalStamp(
+          JsonValue(JsonValue(facts, id.c_str(), json::object()), "time", ""),
+          seconds);
+      if (stamp.empty()) continue;
+      if (previous && seconds - previous >= 3600) {
+        stamp = "\u2014 " + std::to_string((seconds - previous) / 3600) +
+                " h since the last message \u2014\n" + stamp;
+      }
+      previous = seconds;
+      Prefix(messages[index], stamp);
+    }
+  }
+  // Harness context in the user role: strict chat templates accept a single
+  // system message, at index zero.
+  json context = HarnessMessage(runtime_context_());
+  context["role"] = "user";
+  messages.push_back(std::move(context));
+  return messages;
 }
 
 void Agent::EnsureRuntimeContext() {

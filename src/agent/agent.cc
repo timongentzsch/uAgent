@@ -83,8 +83,7 @@ json Agent::RewindBefore(int64_t turn, const std::string& message_id) {
     }
     turn = display_id ? conversation_.UserMessageNumber(display_id) : 0;
   }
-  const std::string prompt =
-      StripArrivalStamp(conversation_.UserMessageText(turn));
+  const std::string prompt = conversation_.UserMessageText(turn);
   if (!conversation_.TruncateBeforeUserTurn(turn)) {
     return {{"error", "that message is no longer in the live conversation"}};
   }

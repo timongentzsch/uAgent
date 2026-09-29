@@ -331,7 +331,7 @@ export default function Settings({
       <Group>
         <Row
           label="System prompt"
-          detail="The instructions every conversation starts from."
+          detail="The instructions every conversation starts from, and each folder coordinator's soul."
           onClick={prompt}
         />
       </Group>

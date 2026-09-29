@@ -441,6 +441,11 @@ def test_coordinator_context_carries_soul_notes_board_and_time(root, home, *, bi
         # move display rows and spoil the provider's cached prefix.
         stored = next(p for p in session_files(home) if p.name == "coordinator.json")
         assert_true("## board" not in stored.read_text(), "coordinator context was stored")
+        # The typed text is stored as typed; only the request carries stamps.
+        stored_messages = json.loads(stored.read_text().split("\n", 1)[1])["messages"]
+        assert_true(
+            any(m.get("content") == "what now?" for m in stored_messages), stored_messages
+        )
         assert_true(messages[-1]["role"] == "user" and "## board" in messages[-1]["content"], messages[-1])
         users = [m["content"] for m in messages if m["role"] == "user"]
         assert_true(

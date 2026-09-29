@@ -2,7 +2,6 @@
 
 #include <fcntl.h>
 #include <poll.h>
-#include <sys/stat.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -90,13 +89,7 @@ class WorkerChannel final : public ApplicationChannel {
         title_(std::move(title)),
         browser_session_(browser_session),
         coordinator_(coordinator),
-        thread_(std::move(thread)) {
-    // A restarted coordinator measures silence from its last saved turn.
-    struct stat saved{};
-    if (coordinator_ && stat(path_.c_str(), &saved) == 0) {
-      last_message_ = std::chrono::system_clock::from_time_t(saved.st_mtime);
-    }
-  }
+        thread_(std::move(thread)) {}
   ~WorkerChannel() override { Close(); }
 
   bool Start() {
@@ -379,27 +372,6 @@ class WorkerChannel final : public ApplicationChannel {
     // application's control does.
     StopSideQuestion();
     activity_control_ = control;
-  }
-
-  // Every message a coordinator reads carries the local time it arrived,
-  // fixed once written so cached context never changes; a long silence is
-  // marked, since it usually means a new topic.
-  std::string Stamp(const std::string& text) {
-    const auto now = std::chrono::system_clock::now();
-    const auto silence =
-        std::chrono::duration_cast<std::chrono::hours>(now - last_message_);
-    last_message_ = now;
-    const std::time_t seconds = std::chrono::system_clock::to_time_t(now);
-    std::tm local{};
-    localtime_r(&seconds, &local);
-    char stamp[48];
-    std::strftime(stamp, sizeof stamp, "[%a %d %b %H:%M %Z] ", &local);
-    std::string gap;
-    if (silence.count() >= 1) {
-      gap = "— " + std::to_string(silence.count()) +
-            " h since the last message —\n";
-    }
-    return gap + stamp + text;
   }
 
   std::string TakeEvents() {
@@ -714,12 +686,11 @@ class WorkerChannel final : public ApplicationChannel {
         if (events_.empty()) {
           events_due_ = std::chrono::steady_clock::now() + kEventBatch;
         }
-        events_.push_back(Stamp(parsed.text));
+        events_.push_back(parsed.text);
         wake_.Wake();
         Send({{"kind", "outcome"}, {"request_id", request}, {"accepted", true}});
         return true;
       }
-      parsed.text = Stamp(parsed.text);
       // Queued events ride along with the user's next message.
       if (kind == SessionCommandKind::kSubmit && !events_.empty()) {
         parsed.text = TakeEvents() + "\n\n" + parsed.text;
@@ -935,8 +906,6 @@ class WorkerChannel final : public ApplicationChannel {
   static constexpr auto kEventBatch = std::chrono::seconds(20);
   std::vector<std::string> events_;
   std::chrono::steady_clock::time_point events_due_{};
-  std::chrono::system_clock::time_point last_message_ =
-      std::chrono::system_clock::now();
   static constexpr int kNotifyAttempts = 20;
   static constexpr auto kNotifyRetry = std::chrono::milliseconds(250);
   bool closed_ = false, busy_ = true;

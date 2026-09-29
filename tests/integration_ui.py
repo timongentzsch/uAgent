@@ -405,6 +405,26 @@ def test_multiline_run_keeps_action_color(root, home, *, binary):
             assert_true(marker in output, (index, output))
 
 
+def test_tool_output_drops_its_own_colours(root, home, *, binary):
+    # A command's colouring is dropped, not spelled out as \x1b[31m text.
+    command = "printf '\\033[31mred-first\\033[0m\\nplain\\n\\033[1;32mgreen-last\\033[m\\n'"
+    with Server(
+        [tool_call("run", {"command": command}), event({"content": "colour-ok"})] * 2
+    ) as server:
+        for verbose in (False, True):
+            code, output = run_pty(
+                root,
+                base_env(home, server.url),
+                [(b"/verbose\n", b"verbose ON")] * verbose
+                + [(b"go\n", b"colour-ok", b"Ready", None), b"/q\n"],
+                args=("--yolo",),
+                binary=binary,
+            )
+            assert_true(code == 0, output[-2000:])
+            assert_true(b"red-first" in output and b"green-last" in output, output[-2000:])
+            assert_true(b"\\x1b" not in output, output[-2000:])
+
+
 def test_multiline_rejected_call_shows_arguments(root, home, *, binary):
     bad = {
         "path": "visible-target",

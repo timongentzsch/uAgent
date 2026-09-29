@@ -74,6 +74,29 @@ const char* ResultStyle(PresentationStatus status) {
   return DIM();
 }
 
+// A command's output as this row shows it: its own colouring (ls --color, a
+// test runner) is dropped, since TerminalSafe would spell each escape out.
+std::string OutputText(std::string_view text) {
+  std::string plain;
+  plain.reserve(text.size());
+  for (size_t at = 0; at < text.size();) {
+    if (text.substr(at, 2) == "\033[") {
+      size_t end = at + 2;
+      while (end < text.size() && Byte(text[end]) >= 0x20 &&
+             Byte(text[end]) <= 0x3f) {
+        ++end;
+      }
+      if (end < text.size() && Byte(text[end]) >= 0x40 &&
+          Byte(text[end]) <= 0x7e) {
+        at = end + 1;
+        continue;
+      }
+    }
+    plain += text[at++];
+  }
+  return TerminalSafe(plain);
+}
+
 }  // namespace
 
 const char* DiffLineStyle(std::string_view line) {
@@ -476,7 +499,7 @@ std::string ResultExtras(const PresentationRecord& record, bool detailed) {
     for (size_t i = lines.size() > kTailLines ? lines.size() - kTailLines : 0;
          i < lines.size(); ++i) {
       text +=
-          std::string(DIM()) + "    " + TerminalSafe(lines[i]) + RST() + "\n";
+          std::string(DIM()) + "    " + OutputText(lines[i]) + RST() + "\n";
     }
   }
   if (const json* parts = JsonArray(record.view, "parts")) {
@@ -561,7 +584,7 @@ void PrintPresentation(const PresentationRecord& record,
   if (record.poll) {
     const char* style = ResultStyle(record.status);
     WriteTerminalRecord(std::string(style) + AsciiGlyphs("• ") +
-                        TerminalSafe(record.summary) + RST() + "\n");
+                        OutputText(record.summary) + RST() + "\n");
     return;
   }
 
@@ -587,18 +610,18 @@ void PrintPresentation(const PresentationRecord& record,
   std::string prefix = AsciiGlyphs("  ← ") + TerminalSafe(record.title);
   if (detailed && record.output.find('\n') != std::string::npos) {
     WriteTerminalRecord(std::string(style) + prefix + RST() + "\n" +
-                        TerminalSafe(record.output) + "\n" +
+                        OutputText(record.output) + "\n" +
                         ResultExtras(record, detailed));
     return;
   }
   if (detailed && !record.output.empty()) {
     WriteTerminalRecord(std::string(style) + prefix + ": " +
-                        TerminalSafe(record.output) + RST() + "\n" +
+                        OutputText(record.output) + RST() + "\n" +
                         ResultExtras(record, detailed));
     return;
   }
   WriteTerminalRecord(std::string(style) + prefix + ": " +
-                      TerminalSafe(record.summary) + RST() + "\n" +
+                      OutputText(record.summary) + RST() + "\n" +
                       ResultExtras(record, detailed));
 }
 

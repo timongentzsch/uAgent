@@ -243,7 +243,7 @@ class WorkerChannel final : public ApplicationChannel {
         // attached (a terminal, or a host that has not let go) keeps it.
         const auto now = std::chrono::steady_clock::now();
         std::lock_guard lock(mutex_);
-        if (events_.empty() && !input_ && server_.Clients() == 0 &&
+        if (events_.Empty() && !input_ && server_.Clients() == 0 &&
             now - idle_since >= CoordinatorIdle()) {
           closed_ = true;
           return std::nullopt;
@@ -405,18 +405,16 @@ class WorkerChannel final : public ApplicationChannel {
   std::optional<ApplicationInput> TakeDueEvents() {
     {
       std::lock_guard lock(mutex_);
-      if (events_.empty() || std::chrono::steady_clock::now() < events_due_) {
-        return std::nullopt;
-      }
+      if (!events_.Due()) return std::nullopt;
     }
     if (HeldBySpend()) return std::nullopt;
     std::lock_guard lock(mutex_);
-    if (events_.empty() || input_) return std::nullopt;
+    if (events_.Empty() || input_) return std::nullopt;
     ClearAbort();
     busy_ = turn_active_ = true;
     BeginTurn();
     SendState();
-    return ApplicationInput{.text = TakeEvents()};
+    return ApplicationInput{.text = events_.Take()};
   }
 
   // A session waits for input indefinitely; a coordinator also wakes to
@@ -427,10 +425,7 @@ class WorkerChannel final : public ApplicationChannel {
         kIdlePoll.count(),
         std::chrono::milliseconds(CoordinatorIdle()).count() / 4));
     std::lock_guard lock(mutex_);
-    if (!events_.empty()) {
-      timeout = std::min(timeout, PollTimeoutMs(events_due_));
-    }
-    return timeout;
+    return events_.WaitMs(timeout);
   }
 
   // At today's spend limit a coordinator keeps thread events queued, says
@@ -449,19 +444,8 @@ class WorkerChannel final : public ApplicationChannel {
       }
       SendState();
     }
-    if (!pause.empty()) {
-      events_due_ = std::chrono::steady_clock::now() + kSpendRecheck;
-    }
+    if (!pause.empty()) events_.Hold();
     return !pause.empty();
-  }
-
-  std::string TakeEvents() {
-    std::string joined;
-    for (const std::string& event : events_) {
-      joined += (joined.empty() ? "" : "\n") + event;
-    }
-    events_.clear();
-    return joined;
   }
 
   // The routed decision becomes the user's: shown as theirs, and announced so
@@ -700,14 +684,11 @@ class WorkerChannel final : public ApplicationChannel {
     if (coordinator_ && (kind == SessionCommandKind::kSubmit ||
                          kind == SessionCommandKind::kSteer) &&
         !parsed.text.empty() && !parsed.text.starts_with("/")) {
-      // Thread events arriving while the coordinator is idle wait for their
-      // siblings (up to kEventBatch) and wake it once; approvals never wait.
+      // Thread events arriving while the coordinator is idle are batched;
+      // approvals never wait.
       if (kind == SessionCommandKind::kSubmit && !input_ &&
           parsed.text.starts_with("[thread event")) {
-        if (events_.empty()) {
-          events_due_ = std::chrono::steady_clock::now() + kEventBatch;
-        }
-        events_.push_back(parsed.text);
+        events_.Push(parsed.text);
         wake_.Wake();
         Send({{"kind", "outcome"}, {"request_id", request}, {"accepted", true}});
         return true;
@@ -892,9 +873,9 @@ class WorkerChannel final : public ApplicationChannel {
           }
           if (error.empty()) {
             // Queued events ride along with the user's next message.
-            if (!events_.empty() && !input.text.empty() &&
+            if (!events_.Empty() && !input.text.empty() &&
                 !input.text.starts_with("/")) {
-              input.text = TakeEvents() + "\n\n" + input.text;
+              input.text = events_.Take() + "\n\n" + input.text;
             }
             ClearAbort();
             busy_ = true;
@@ -930,10 +911,7 @@ class WorkerChannel final : public ApplicationChannel {
   std::mutex mutex_, control_mutex_;
   static constexpr auto kIdlePoll = std::chrono::milliseconds(30000);
   static constexpr auto kCoordinatorDecision = std::chrono::minutes(5);
-  static constexpr auto kEventBatch = std::chrono::seconds(20);
-  std::vector<std::string> events_;
-  std::chrono::steady_clock::time_point events_due_{};
-  static constexpr auto kSpendRecheck = std::chrono::minutes(1);
+  CoordinatorEvents events_;  // a coordinator's batched thread events
   bool closed_ = false, busy_ = true;
   bool turn_active_ = false;
   [[maybe_unused]] bool browser_session_ = false;  // web builds only

@@ -781,6 +781,33 @@ std::string CoordinatorContext(const std::string& folder) {
   return context + "\n## board\n" + CoordinatorBoard(folder);
 }
 
+void CoordinatorEvents::Push(std::string event) {
+  if (events_.empty()) due_ = std::chrono::steady_clock::now() + kBatch;
+  events_.push_back(std::move(event));
+}
+
+bool CoordinatorEvents::Due() const {
+  return !events_.empty() && std::chrono::steady_clock::now() >= due_;
+}
+
+void CoordinatorEvents::Hold() {
+  due_ = std::chrono::steady_clock::now() + kHold;
+}
+
+int CoordinatorEvents::WaitMs(int limit_ms) const {
+  return events_.empty() ? limit_ms
+                         : std::min(limit_ms, PollTimeoutMs(due_));
+}
+
+std::string CoordinatorEvents::Take() {
+  std::string joined;
+  for (const std::string& event : events_) {
+    joined += (joined.empty() ? "" : "\n") + event;
+  }
+  events_.clear();
+  return joined;
+}
+
 void RecordCoordinatorCost(const std::string& folder, double cost) {
   json pinned = ReadPinned(folder);
   json spend = JsonValue(pinned, "spend", json::object());

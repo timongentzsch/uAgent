@@ -1,6 +1,7 @@
 // Copyright 2026 Timon Gentzsch
 #ifndef UAGENT_INCLUDE_APP_COORDINATOR_H_
 #define UAGENT_INCLUDE_APP_COORDINATOR_H_
+#include <chrono>
 #include <string>
 #include <vector>
 
@@ -37,6 +38,27 @@ std::string CoordinatorPause(const std::string& folder);
 inline constexpr const char* kCoordinatorTools[] = {
     "read_path", "grep",   "memory", "skill", "uagent",
     "history",   "thread", "decide", "state", "ask"};
+
+// Thread events a coordinator batches into one turn: a batch is due kBatch
+// after its first event, so siblings finishing together wake it once, and a
+// minute later each time the spend limit holds it. The caller locks.
+class CoordinatorEvents {
+ public:
+  void Push(std::string event);
+  bool Empty() const { return events_.empty(); }
+  bool Due() const;
+  void Hold();
+  // How long to wait for the batch, at most `limit_ms`.
+  int WaitMs(int limit_ms) const;
+  // The batch as one message, leaving the queue empty.
+  std::string Take();
+
+ private:
+  static constexpr auto kBatch = std::chrono::seconds(20);
+  static constexpr auto kHold = std::chrono::minutes(1);
+  std::vector<std::string> events_;
+  std::chrono::steady_clock::time_point due_{};
+};
 
 // The tools only a folder's coordinator gets.
 void AddCoordinatorTools(std::vector<Tool>& tools, const std::string& folder);

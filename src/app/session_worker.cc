@@ -141,7 +141,7 @@ class WorkerChannel final : public ApplicationChannel {
       // A thread's approval that Auto could not settle goes to its
       // coordinator first; one reserved for a person never does.
       if (!thread_.empty() && !JsonValue(data, "mandatory_human", false)) {
-        data["route"] = "coordinator";
+        data["route"] = kRouteCoordinator;
         AskCoordinator(data);
       }
       std::lock_guard lock(mutex_);
@@ -272,7 +272,7 @@ class WorkerChannel final : public ApplicationChannel {
     const auto routed_until =
         std::chrono::steady_clock::now() + kCoordinatorDecision;
     while (!closed_ && !reply_ && !AbortRequested()) {
-      const bool routed = JsonValue(decision_, "route", "") == "coordinator";
+      const bool routed = JsonValue(decision_, "route", "") == kRouteCoordinator;
       lock.unlock();
       pollfd waits[] = {{wake_.read.Get(), POLLIN, 0},
                         {AbortWakeFd(), POLLIN, 0}};
@@ -702,7 +702,7 @@ class WorkerChannel final : public ApplicationChannel {
         if (pending_.empty() || parsed.interaction_id != pending_ || reply_) {
           error = "decision is stale or already answered";
         } else if (JsonValue(parsed.raw, "origin", "") == "coordinator" &&
-                   JsonValue(decision_, "route", "") != "coordinator") {
+                   JsonValue(decision_, "route", "") != kRouteCoordinator) {
           // Only a decision routed to the coordinator is its to answer.
           error = "this decision belongs to the user";
         } else {
@@ -720,7 +720,7 @@ class WorkerChannel final : public ApplicationChannel {
       }
       case SessionCommandKind::kEscalate: {
         if (pending_.empty() || parsed.interaction_id != pending_ || reply_ ||
-            JsonValue(decision_, "route", "") != "coordinator") {
+            JsonValue(decision_, "route", "") != kRouteCoordinator) {
           error = "decision is stale or not with the coordinator";
         } else {
           EscalateLocked(parsed.text);

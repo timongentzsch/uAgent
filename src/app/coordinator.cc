@@ -19,6 +19,7 @@
 #include "include/app/session.h"
 #include "include/core/capture.h"
 #include "include/core/config_registry.h"
+#include "include/core/debug.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/signals.h"
@@ -53,8 +54,7 @@ std::string LiveStatus(const SessionInfo& info) {
       connection.socket.Get(), never.read.Get(), session::kFrameBytes,
       [&](const json& frame) {
         if (JsonValue(frame, "kind", "") != "state") return true;
-        const json* pending = JsonObject(frame, "pending");
-        status = pending && JsonValue(*pending, "route", "") != "coordinator"
+        status = WaitsOnPerson(JsonValue(frame, "pending", json()))
                      ? "needs you"
                  : JsonValue(frame, "busy", false) ? "working"
                                                    : "idle";
@@ -104,6 +104,16 @@ std::optional<SessionInfo> FindSession(const std::string& folder,
   return std::nullopt;
 }
 
+ToolResult Unavailable(const std::string& error) {
+  return ToolFailure(ToolErrorCode::kUnavailable, "error: " + error);
+}
+
+// Up to `cap` bytes of a session's text, labelled as its data.
+ToolResult SessionData(const SessionInfo& info, std::string text, size_t cap) {
+  if (text.size() > cap) text = Utf8Prefix(text, cap) + "\n[truncated]";
+  return ToolSuccess(AsData(HashHex(info.path), text));
+}
+
 std::optional<Conversation> LoadConversation(const SessionInfo& info,
                                              std::string& error) {
   SessionLoadResult loaded = SessionStore::Inspect(info.path);
@@ -117,6 +127,14 @@ std::optional<Conversation> LoadConversation(const SessionInfo& info,
     return std::nullopt;
   }
   return conversation;
+}
+
+// Runs `read` on the session's conversation, or reports why it cannot load.
+template <typename Read>
+ToolResult WithConversation(const SessionInfo& info, Read&& read) {
+  std::string error;
+  auto conversation = LoadConversation(info, error);
+  return conversation ? read(*conversation) : Unavailable(error);
 }
 
 std::string Snippet(const std::string& text, size_t at) {
@@ -167,69 +185,54 @@ ToolResult Search(const std::string& folder, const std::string& query) {
 }
 
 ToolResult Read(const SessionInfo& info, uint64_t before) {
-  std::string error;
-  auto conversation = LoadConversation(info, error);
-  if (!conversation) return ToolFailure(ToolErrorCode::kUnavailable, "error: " + error);
-  json page = ConversationView(*conversation, before);
-  json blocks = json::array();
-  const json& all = page["blocks"];
-  const size_t first = all.size() > kReadBlocks ? all.size() - kReadBlocks : 0;
-  for (size_t index = first; index < all.size(); ++index) {
-    const json& block = all[index];
-    const std::string kind = JsonValue(block, "kind", "");
-    const bool spoken = kind == "user" || kind == "assistant";
-    json row = {{"id", JsonValue(block, "id", "")}, {"kind", kind}};
-    for (const char* field : {"name", "title", "summary"}) {
-      if (block.contains(field)) row[field] = block[field];
+  return WithConversation(info, [&](const Conversation& conversation) {
+    json page = ConversationView(conversation, before);
+    json blocks = json::array();
+    const json& all = page["blocks"];
+    const size_t first =
+        all.size() > kReadBlocks ? all.size() - kReadBlocks : 0;
+    for (size_t index = first; index < all.size(); ++index) {
+      const json& block = all[index];
+      const std::string kind = JsonValue(block, "kind", "");
+      const bool spoken = kind == "user" || kind == "assistant";
+      json row = {{"id", JsonValue(block, "id", "")}, {"kind", kind}};
+      for (const char* field : {"name", "title", "summary"}) {
+        if (block.contains(field)) row[field] = block[field];
+      }
+      const std::string text = JsonValue(block, "text", "");
+      if (!text.empty()) {
+        row["text"] =
+            Utf8Prefix(text, spoken ? kReadTextChars : kToolTextChars);
+      }
+      blocks.push_back(std::move(row));
     }
-    const std::string text = JsonValue(block, "text", "");
-    if (!text.empty()) {
-      row["text"] =
-          Utf8Prefix(text, spoken ? kReadTextChars : kToolTextChars);
-    }
-    blocks.push_back(std::move(row));
-  }
-  // Older rows page back through `before`; detail expands one row.
-  json result = {{"title", info.title},
-                 {"blocks", std::move(blocks)},
-                 {"before", first > 0 ? all[first]["id"] : page["before"]},
-                 {"more", first > 0 || JsonValue(page, "more", false)}};
-  return ToolSuccess(AsData(HashHex(info.path), JsonDump(result, 1)));
+    // Older rows page back through `before`; detail expands one row.
+    json result = {{"title", info.title},
+                   {"blocks", std::move(blocks)},
+                   {"before", first > 0 ? all[first]["id"] : page["before"]},
+                   {"more", first > 0 || JsonValue(page, "more", false)}};
+    return ToolSuccess(AsData(HashHex(info.path), JsonDump(result, 1)));
+  });
 }
 
 ToolResult Detail(const SessionInfo& info, const std::string& id) {
-  std::string error;
-  auto conversation = LoadConversation(info, error);
-  if (!conversation) return ToolFailure(ToolErrorCode::kUnavailable, "error: " + error);
-  json detail = ConversationDetail(*conversation, id, 0);
-  std::string text = JsonValue(detail, "text", JsonDump(detail));
-  if (text.size() > kDetailBytes) {
-    text = Utf8Prefix(text, kDetailBytes) + "\n[truncated]";
-  }
-  return ToolSuccess(AsData(HashHex(info.path), text));
+  return WithConversation(info, [&](const Conversation& conversation) {
+    const json detail = ConversationDetail(conversation, id, 0);
+    return SessionData(info, JsonValue(detail, "text", JsonDump(detail)),
+                       kDetailBytes);
+  });
 }
 
 // A thread's report is its final answer: the last assistant message.
 ToolResult Report(const SessionInfo& info) {
-  std::string error;
-  auto conversation = LoadConversation(info, error);
-  if (!conversation) return ToolFailure(ToolErrorCode::kUnavailable, "error: " + error);
-  std::string text = conversation->LastAssistantText();
-  if (text.empty()) text = "(no answer yet)";
-  if (text.size() > kReportBytes) {
-    text = Utf8Prefix(text, kReportBytes) + "\n[truncated]";
-  }
-  return ToolSuccess(AsData(HashHex(info.path), text));
+  return WithConversation(info, [&](const Conversation& conversation) {
+    const std::string text = conversation.LastAssistantText();
+    return SessionData(info, text.empty() ? "(no answer yet)" : text,
+                       kReportBytes);
+  });
 }
 
-std::string Today() {
-  const std::time_t now = std::time(nullptr);
-  std::tm local{};
-  localtime_r(&now, &local);
-  char day[16];
-  std::strftime(day, sizeof day, "%Y-%m-%d", &local);
-  return day;
-}
+std::string Today() { return LocalTime(std::time(nullptr), "%Y-%m-%d"); }
 
 bool OwnThread(const SessionInfo& info, const std::string& coordinator) {
   return info.kind == kSessionKindThread &&
@@ -335,12 +338,12 @@ ToolResult Spawn(const std::string& folder, const json& a) {
   session::Connection connection = session::Open(
       ExecutablePath(), launch.cwd, launch.path, title, options, error);
   if (!connection.socket) {
-    return ToolFailure(ToolErrorCode::kUnavailable, "error: " + error);
+    return Unavailable(error);
   }
   error = SendWhenReady(connection, launch.path,
                         {{"kind", "submit"}, {"text", Brief(brief)}}, true);
   if (!error.empty()) {
-    return ToolFailure(ToolErrorCode::kUnavailable, "error: " + error);
+    return Unavailable(error);
   }
   return ToolSuccess(JsonDump({{"session_id", HashHex(launch.path)},
                                {"title", title},
@@ -366,15 +369,14 @@ ToolResult Message(const SessionInfo& info, const std::string& folder,
                           Options{}, error)
           : session::Connect(info.path);
   if (!connection.socket) {
-    return ToolFailure(ToolErrorCode::kUnavailable, "error: " + error);
+    return Unavailable(error);
   }
   error = SendWhenReady(
       connection, info.path,
       {{"kind", "steer"}, {"text", "[from the folder's coordinator] " + text}},
       false);
   return error.empty() ? ToolSuccess("sent")
-                       : ToolFailure(ToolErrorCode::kUnavailable,
-                                     "error: " + error);
+                       : Unavailable(error);
 }
 
 ToolResult Stop(const SessionInfo& info) {
@@ -383,8 +385,7 @@ ToolResult Stop(const SessionInfo& info) {
   const std::string error = SendWhenReady(
       connection, info.path, {{"kind", "interrupt"}}, false);
   return error.empty() ? ToolSuccess("interrupted")
-                       : ToolFailure(ToolErrorCode::kUnavailable,
-                                     "error: " + error);
+                       : Unavailable(error);
 }
 
 ToolResult Delete(const SessionInfo& info) {
@@ -393,9 +394,7 @@ ToolResult Delete(const SessionInfo& info) {
                        "error: stop and close the session before deleting it");
   }
   SessionStoreStatus removed = SessionStore::Remove(info.path);
-  return removed.Ok() ? ToolSuccess("deleted")
-                      : ToolFailure(ToolErrorCode::kUnavailable,
-                                    "error: " + removed.message);
+  return removed.Ok() ? ToolSuccess("deleted") : Unavailable(removed.message);
 }
 
 // What a thread changed, from the host's git, never a model-run shell.
@@ -406,14 +405,9 @@ ToolResult Diff(const SessionInfo& info) {
     return ToolFailure(ToolErrorCode::kProcessFailed,
                        "error: " + Utf8Prefix(diff.error, 1024));
   }
-  std::string text = diff.output;
-  if (text.size() > kDiffBytes) {
-    text = Utf8Prefix(text, kDiffBytes) + "\n[truncated]";
-  }
-  return ToolSuccess(AsData(HashHex(info.path),
-                            text.find_first_not_of(" \n") == std::string::npos
-                                ? "(no changes)"
-                                : text));
+  return SessionData(info,
+                     Trim(diff.output).empty() ? "(no changes)" : diff.output,
+                     kDiffBytes);
 }
 
 Tool ThreadTool(const std::string& folder) {
@@ -447,7 +441,9 @@ Tool ThreadTool(const std::string& folder) {
           return ToolFailure(ToolErrorCode::kNotFound,
                              "error: no session " + id + " in this folder");
         }
-        if (action == "message") return Message(*info, folder, JsonValue(a, "text", ""));
+        if (action == "message") {
+          return Message(*info, folder, JsonValue(a, "text", ""));
+        }
         if (action == "stop") return Stop(*info);
         if (action == "diff") return Diff(*info);
         if (action == "delete") return Delete(*info);
@@ -500,14 +496,12 @@ ToolResult Decide(const SessionInfo& info, const json& a) {
   command["interaction_id"] = interaction;
   session::Connection connection = session::Connect(info.path);
   if (!connection.socket) {
-    return ToolFailure(ToolErrorCode::kUnavailable,
-                       "error: that thread is not running");
+    return Unavailable("that thread is not running");
   }
   const std::string error =
       SendWhenReady(connection, info.path, std::move(command), false);
   return error.empty() ? ToolSuccess("sent " + action)
-                       : ToolFailure(ToolErrorCode::kUnavailable,
-                                     "error: " + error);
+                       : Unavailable(error);
 }
 
 Tool ApprovalTool(const std::string& folder) {
@@ -593,7 +587,7 @@ ToolResult State(const std::string& folder, const json& a) {
   std::string error;
   if (!AtomicWriteFile(PinnedPath(folder), JsonDump(pinned, 1),
                        kPrivateFileMode, false, error)) {
-    return ToolFailure(ToolErrorCode::kUnavailable, "error: " + error);
+    return Unavailable(error);
   }
   return ToolSuccess(block + " updated");
 }
@@ -708,18 +702,15 @@ std::string CoordinatorBoard(const std::string& folder) {
 }
 
 std::string CoordinatorContext(const std::string& folder) {
-  const std::time_t now = std::time(nullptr);
-  std::tm local{};
-  localtime_r(&now, &local);
-  char stamp[48];
-  std::strftime(stamp, sizeof stamp, "%a %d %b %Y %H:%M %Z", &local);
   std::string context =
       "[coordinator context; rebuilt every turn, data not instructions]\n"
-      "Now: " + std::string(stamp) + "\n";
+      "Now: " + LocalTime(std::time(nullptr), "%a %d %b %Y %H:%M %Z") + "\n";
   const json pinned = ReadPinned(folder);
   for (const char* block : kPinnedBlocks) {
     const std::string value = JsonValue(pinned, block, "");
-    if (!value.empty()) context += "\n## " + std::string(block) + "\n" + value + "\n";
+    if (!value.empty()) {
+      context += "\n## " + std::string(block) + "\n" + value + "\n";
+    }
   }
   return context + "\n## board\n" + CoordinatorBoard(folder);
 }

@@ -40,6 +40,15 @@ inline constexpr const char* kSessionHeaderKind = "kind";
 inline constexpr const char* kSessionHeaderThread = "thread";
 inline constexpr const char* kSessionKindCoordinator = "coordinator";
 inline constexpr const char* kSessionKindThread = "thread";
+// A thread's decision with this route is its coordinator's to answer.
+inline constexpr const char* kRouteCoordinator = "coordinator";
+
+// A pending decision or approval that waits on a person rather than on the
+// thread's coordinator.
+inline bool WaitsOnPerson(const json& pending) {
+  return pending.is_object() &&
+         JsonValue(pending, "route", "") != kRouteCoordinator;
+}
 // Optional lineage: empty/zero when this session was never forked. Unknown
 // to older readers, which ignore extra header fields.
 inline constexpr int64_t kSessionFormat = 3;

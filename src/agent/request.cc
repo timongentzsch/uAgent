@@ -791,11 +791,7 @@ std::string ArrivalStamp(const std::string& utc, std::time_t& seconds) {
   std::tm parsed{};
   if (!strptime(utc.c_str(), "%Y-%m-%dT%H:%M:%SZ", &parsed)) return "";
   seconds = timegm(&parsed);
-  std::tm local{};
-  localtime_r(&seconds, &local);
-  char stamp[48];
-  std::strftime(stamp, sizeof stamp, "[%a %d %b %H:%M %Z] ", &local);
-  return stamp;
+  return LocalTime(seconds, "[%a %d %b %H:%M %Z] ");
 }
 
 void Prefix(json& message, const std::string& text) {

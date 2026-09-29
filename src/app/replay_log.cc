@@ -7,6 +7,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/session_store.h"
 #include "include/app/session.h"
 #include "include/core/json.h"
 
@@ -27,7 +28,7 @@ HostReplay ReplayLog::Publish(const std::string& epoch,
   // the coordinator yields it (approval.escalated).
   const bool routed =
       JsonValue(JsonValue(value, "data", json::object()), "route", "") ==
-      "coordinator";
+      kRouteCoordinator;
   if (type == "turn.completed" ||
       (type == "approval.requested" && !routed) ||
       type == "approval.escalated" || type == "error" || kind == "error") {

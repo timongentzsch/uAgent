@@ -162,12 +162,14 @@ std::string StateText(const SessionState& state,
        {std::pair{"display", &state.display},
         {"messages",
          conversation ? &conversation->Messages() : &state.messages},
-        {"archive", conversation ? &conversation->Archive() : &state.archive},
         {"tool_displays", conversation ? &conversation->ToolDisplays()
                                        : &state.tool_displays}}) {
     text += "," + JsonDump(name) + ":" + JsonDump(*field);
   }
-  return text + "}";
+  // The live archive keeps its segments serialized since archiving.
+  return text + ",\"archive\":" +
+         (conversation ? conversation->ArchiveText() : JsonDump(state.archive)) +
+         "}";
 }
 
 }  // namespace

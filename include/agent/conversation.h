@@ -42,6 +42,9 @@ class Conversation {
   const json& Messages() const { return messages_; }
   int64_t ArchivedBytes() const { return archive_bytes_; }
   const json& Archive() const { return archive_; }
+  // The archive as JSON text, joined from each segment's serialization kept
+  // since it was archived: a save never re-dumps the archive.
+  std::string ArchiveText() const;
   const std::vector<MessageKind>& Kinds() const { return kinds_; }
   // Rendered tool receipts, keyed by call id. The model never sees these; they
   // exist so a resumed transcript can redraw a diff instead of a grey line.
@@ -154,7 +157,7 @@ class Conversation {
   uint64_t next_display_id_ = 1;
   size_t display_bytes_ = 0;
   json archive_ = json::array();
-  std::vector<int64_t> archive_sizes_;
+  std::vector<std::string> archive_texts_;  // archive_, one text per segment
   int64_t archive_bytes_ = 0;
   int64_t dropped_segments_ = 0;
 };

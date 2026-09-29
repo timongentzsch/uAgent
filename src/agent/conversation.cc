@@ -164,7 +164,7 @@ void Conversation::Reset(json baseline, std::vector<MessageKind> kinds) {
   display_bytes_ = 0;
   ResetHistory(std::move(baseline), std::move(kinds));
   archive_ = json::array();
-  archive_sizes_.clear();
+  archive_texts_.clear();
   archive_bytes_ = 0;
   dropped_segments_ = 0;
 }
@@ -215,12 +215,12 @@ bool Conversation::Restore(json messages, std::vector<MessageKind> kinds,
   messages_ = std::move(messages);
   kinds_ = std::move(kinds);
   archive_ = std::move(archive);
-  archive_sizes_.clear();
+  archive_texts_.clear();
   archive_bytes_ = 0;
   for (const json& segment : archive_) {
-    archive_sizes_.push_back(static_cast<int64_t>(JsonDump(segment).size()));
-    archive_bytes_ +=
-        archive_sizes_.back() + (archive_sizes_.size() > 1 ? 1 : 0);
+    archive_texts_.push_back(JsonDump(segment));
+    archive_bytes_ += static_cast<int64_t>(archive_texts_.back().size()) +
+                      (archive_texts_.size() > 1 ? 1 : 0);
   }
   dropped_segments_ = std::max(int64_t{0}, dropped_segments);
   display_ids_ = std::move(restored_ids);
@@ -774,31 +774,42 @@ void Conversation::ArchiveAll(const char* reason, size_t baseline_size,
 }
 
 bool Conversation::AddArchiveSegment(json segment, int64_t archive_cap) {
-  int64_t segment_bytes = static_cast<int64_t>(JsonDump(segment).size());
+  std::string text = JsonDump(segment);
+  const auto segment_bytes = static_cast<int64_t>(text.size());
   if (archive_cap <= 0 || segment_bytes > archive_cap) {
     ++dropped_segments_;
     return false;
   }
   int64_t bytes = segment_bytes + (archive_.empty() ? 0 : 1);
   size_t expired = 0;
-  while (expired < archive_sizes_.size() &&
+  while (expired < archive_texts_.size() &&
          archive_bytes_ + bytes > archive_cap) {
-    archive_bytes_ -=
-        archive_sizes_[expired] + (archive_sizes_.size() - expired > 1 ? 1 : 0);
+    archive_bytes_ -= static_cast<int64_t>(archive_texts_[expired].size()) +
+                      (archive_texts_.size() - expired > 1 ? 1 : 0);
     ++expired;
     ++dropped_segments_;
-    bytes = segment_bytes + (expired < archive_sizes_.size() ? 1 : 0);
+    bytes = segment_bytes + (expired < archive_texts_.size() ? 1 : 0);
   }
   archive_.erase(
       archive_.begin(),
       archive_.begin() + static_cast<json::difference_type>(expired));
-  archive_sizes_.erase(
-      archive_sizes_.begin(),
-      archive_sizes_.begin() + static_cast<std::ptrdiff_t>(expired));
+  archive_texts_.erase(
+      archive_texts_.begin(),
+      archive_texts_.begin() + static_cast<std::ptrdiff_t>(expired));
   archive_.push_back(std::move(segment));
-  archive_sizes_.push_back(segment_bytes);
+  archive_texts_.push_back(std::move(text));
   archive_bytes_ += bytes;
   return true;
+}
+
+std::string Conversation::ArchiveText() const {
+  std::string text = "[";
+  text.reserve(static_cast<size_t>(archive_bytes_) + 2);
+  for (const std::string& segment : archive_texts_) {
+    if (text.size() > 1) text += ',';
+    text += segment;
+  }
+  return text + "]";
 }
 
 json MessageKindsJson(const std::vector<MessageKind>& kinds) {

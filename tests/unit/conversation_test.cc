@@ -116,6 +116,10 @@ void TestConversation() {
   CHECK(restored.DroppedSegments() == 6);
   CHECK(restored.ArchivedBytes() ==
         static_cast<int64_t>(JsonDump(restored.Archive()).size()) - 2);
+  // A save writes the kept segment texts, byte for byte the archive's dump.
+  CHECK(restored.ArchiveText() == JsonDump(restored.Archive()));
+  CHECK(bounded.ArchiveText() == JsonDump(bounded.Archive()));
+  CHECK(Conversation{}.ArchiveText() == "[]");
 
   Conversation rejected;
   rejected.Reset(json::array({{{"role", "system"}, {"content", "sys"}}}),

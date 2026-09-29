@@ -789,6 +789,59 @@ def test_resize_while_the_ask_picker_is_open(root, home, *, binary):
     assert_true(shown.count("Which database? → SQLite") == 1, shown)
 
 
+def test_rows_written_over_the_composer_survive_the_next_repaint(root, home, *, binary):
+    """A picker's answer and a decision's prompt stay in scrollback.
+
+    Both replace the composer's rows for a while; once the composer is back,
+    no repaint may treat their rows as its own.
+    """
+    question = {
+        "question": "Which database?",
+        "header": "Database",
+        "options": [{"label": "SQLite"}, {"label": "Postgres"}],
+    }
+
+    def asked(handler, _):
+        write_sse_sequence(
+            handler,
+            [
+                event({"content": "asking-now"}, finish=None),
+                tool_call("ask", {"questions": [question]}),
+            ],
+        )
+
+    def streamed(handler, _):
+        write_sse_sequence(
+            handler,
+            [event({"content": f"more{index} "}, finish=None) for index in range(5)]
+            + [event({"content": "after-ok"})],
+            delay=0.05,
+        )
+
+    with Server(
+        [asked, streamed, tool_call("run", {"command": "printf ran"}), event({"content": "ran-ok"})]
+    ) as server:
+        code, output = run_pty(
+            root,
+            base_env(home, server.url),
+            [
+                (b"pick\n", b"Esc cancel"),
+                (b"\r", b"after-ok", b"Ready", None),
+                (b"run\n", b"Allow run?"),
+                (b"y\n", b"ran-ok", b"Ready", None),
+                b"/q\n",
+            ],
+            binary=binary,
+            timeout=20,
+        )
+    assert_true(code == 0, output[-2000:])
+    screen = Screen(80)
+    screen.feed(output)
+    shown = screen.text()
+    assert_true(shown.count("Which database? → SQLite") == 1, shown)
+    assert_true(shown.count("Allow run?") == 1, shown)
+
+
 def test_input_redraw_status_animation_does_not_repaint_draft(root, home, *, binary):
     def delayed(_, __):
         time.sleep(0.7)

@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "include/agent/file_services.h"
+#include "include/agent/session_links.h"
 #include "include/core/debug.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
@@ -28,7 +29,6 @@
 #include "include/core/steering.h"
 #include "include/core/strings.h"
 #include "include/core/time.h"
-#include "include/tools/session.h"
 
 namespace uagent {
 namespace {

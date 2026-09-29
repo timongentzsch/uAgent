@@ -153,6 +153,7 @@ add_library(
   src/agent/process_io.cc
   src/agent/prompt_profile.cc
   src/agent/request.cc
+  src/agent/session_links.cc
   src/agent/session_store.cc
   src/agent/session_view.cc
   src/agent/tool_loop.cc

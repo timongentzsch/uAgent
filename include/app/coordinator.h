@@ -32,6 +32,12 @@ void RecordCoordinatorCost(const std::string& folder, double cost);
 // turns and its threads', has reached the daily limit.
 std::string CoordinatorPause(const std::string& folder);
 
+// Everything a coordinator may use: it reads and delegates, never writes or
+// runs, whatever the capability setting allows.
+inline constexpr const char* kCoordinatorTools[] = {
+    "read_path", "grep",   "memory", "skill", "uagent",
+    "history",   "thread", "decide", "state", "ask"};
+
 // The tools only a folder's coordinator gets.
 void AddCoordinatorTools(std::vector<Tool>& tools, const std::string& folder);
 }  // namespace uagent

@@ -365,11 +365,6 @@ void ApplyToolPolicy(std::vector<Tool>& tools, const ToolPolicy& policy) {
     return;
   }
   std::erase_if(tools, [&](Tool& tool) {
-    if (policy.coordinator &&
-        std::find(std::begin(kCoordinatorTools), std::end(kCoordinatorTools),
-                  tool.name) == std::end(kCoordinatorTools)) {
-      return true;
-    }
     if (!policy.tool_allowlist.empty() &&
         std::find(policy.tool_allowlist.begin(), policy.tool_allowlist.end(),
                   tool.name) == policy.tool_allowlist.end()) {

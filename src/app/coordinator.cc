@@ -14,6 +14,7 @@
 #include <ctime>
 
 #include "include/agent/conversation.h"
+#include "include/agent/session_role.h"
 #include "include/agent/session_view.h"
 #include "include/app/launch.h"
 #include "include/app/session.h"

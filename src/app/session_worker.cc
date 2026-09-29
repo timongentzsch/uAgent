@@ -18,6 +18,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/session_role.h"
 #include "include/agent/session_store.h"
 #include "include/agent/session_view.h"
 #include "include/app/bootstrap.h"

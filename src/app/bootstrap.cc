@@ -290,7 +290,7 @@ std::vector<Tool> BuildTools(AppContext& context,
   // Peer sessions are text-only and isolation-gated by links, so the session
   // tool is safe in every toolset, lean included.
   tools.push_back(SessionTool());
-  if (context.tool_policy.coordinator) {
+  if (context.options.Coordinator()) {
     AddCoordinatorTools(tools, CanonicalCwd());
   }
   if (toolset == "lean") {
@@ -722,7 +722,10 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   }
   ActivateRoute(api);
   context->tool_policy = ToolPolicyFromEnvironment();
-  context->tool_policy.coordinator = context->options.Coordinator();
+  if (context->options.Coordinator()) {
+    context->tool_policy.tool_allowlist.assign(std::begin(kCoordinatorTools),
+                                               std::end(kCoordinatorTools));
+  }
   PrintWarning(context->tool_policy.error);
   std::string tool_error;
   context->tools =
@@ -738,7 +741,7 @@ BootstrapResult Bootstrap(Options options, const char* executable,
       std::move(instructions), std::move(skills),
       &context->runtime.adaptive_system);
   context->agent->SetSessionRole(context->options.session);
-  if (context->tool_policy.coordinator) {
+  if (context->options.Coordinator()) {
     context->agent->SetRuntimeContext(
         [folder = CanonicalCwd(), agent = context->agent.get()] {
           RecordCoordinatorCost(folder, agent->SessionUsage().cost);

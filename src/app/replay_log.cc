@@ -7,6 +7,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/session_role.h"
 #include "include/agent/session_store.h"
 #include "include/app/session.h"
 #include "include/core/json.h"

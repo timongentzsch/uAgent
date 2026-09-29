@@ -11,6 +11,7 @@
 #include "include/agent.h"
 #include "include/agent/child_agent.h"
 #include "include/agent/prompt.h"
+#include "include/agent/session_role.h"
 #include "include/agent/session_store.h"
 #include "include/agent/protocol.h"
 #include "include/api/retry.h"

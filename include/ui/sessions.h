@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "include/agent.h"
+#include "include/agent/session_role.h"
 #include "include/agent/session_store.h"
 #include "include/cli.h"
 #include "include/core/events.h"

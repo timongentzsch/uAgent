@@ -17,6 +17,7 @@
 
 #include "include/agent/conversation.h"
 #include "include/agent/file_services.h"
+#include "include/agent/session_role.h"
 #include "include/core/debug.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"

@@ -234,17 +234,12 @@ struct ToolAvailability {
 
 struct ToolPolicy {
   uint32_t allowed = kAllToolCapabilities;
+  // When set, only these tools, whatever the capabilities allow: a
+  // delegated child's toolset, or a folder coordinator's.
   std::vector<std::string> tool_allowlist;
   std::vector<std::string> run_allowlist;
-  // A folder coordinator reads and delegates, never writes or runs: it keeps
-  // only kCoordinatorTools, whatever the capability setting allows.
-  bool coordinator = false;
   std::string error;
 };
-
-inline constexpr std::string_view kCoordinatorTools[] = {
-    "read_path", "grep",   "memory", "skill", "uagent",
-    "history",   "thread", "decide", "state", "ask"};
 
 ToolPolicy ToolPolicyFromEnvironment();
 void ApplyToolPolicy(std::vector<Tool>& tools, const ToolPolicy& policy);

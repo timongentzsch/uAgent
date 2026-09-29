@@ -8,6 +8,7 @@
 #include <string_view>
 #include <vector>
 
+#include "include/agent/session_role.h"
 #include "include/agent/session_store.h"
 #include "include/core/env.h"
 

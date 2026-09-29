@@ -239,6 +239,7 @@ add_library(
   src/ui/input_decoder.cc
   src/ui/ask_picker.cc
   src/ui/interactive.cc
+  src/ui/frame.cc
   src/ui/editor.cc
   src/ui/markdown.cc
   src/ui/presentation.cc)

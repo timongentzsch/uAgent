@@ -150,7 +150,9 @@ bool SessionHost::RefreshCatalogue(bool force) {
   std::set<std::string> folders;
   for (const SessionInfo& item : list) folders.insert(item.cwd);
   for (const std::string& folder : folders) {
-    SessionInfo coordinator{.path = CoordinatorPath(folder), .cwd = folder};
+    SessionInfo coordinator;
+    coordinator.path = CoordinatorPath(folder);
+    coordinator.cwd = folder;
     const json header = SessionHeader(coordinator.path);
     if (header.empty()) continue;
     coordinator.title = JsonValue(header, kSessionHeaderTitle, "");

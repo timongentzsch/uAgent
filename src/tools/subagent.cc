@@ -241,8 +241,7 @@ std::string ModelPropertyDescription(
   // matters: a child sent to an unreachable alias fails outright rather than
   // falling back, so the default must read as the safe choice.
   std::string description =
-      "Child model route. Omit to inherit the delegated default in runtime "
-      "context; name one only to override it for this subtask.";
+      "child route; omit to inherit the delegated default";
   std::string configured = JoinSelections(std::move(aliases));
   if (!configured.empty()) {
     description += " Overrides: " + configured + ".";
@@ -299,9 +298,7 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
        {{"type", "string"},
         {"enum", json::array({"spawn", "followup", "message", "list"})},
         {"description",
-         "spawn default; followup resumes a child's conversation; message "
-         "delivers guidance to a running child between its steps and "
-         "otherwise holds it for the next followup; list shows children"}}},
+         "spawn by default; followup, message or list children"}}},
       {"agent_id",
        {{"type", "string"},
         {"description", "child id for followup or message"}}},
@@ -309,8 +306,7 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
        {{"type", "string"},
         {"maxLength", 32},
         {"description",
-         "spawn/followup: reusable role like api-reviewer, lowercase "
-         "letters/digits/hyphens; identify expertise for reuse"}}},
+         "reusable role, e.g. api-reviewer"}}},
       {"description",
        {{"type", "string"},
         {"maxLength", 280},
@@ -353,19 +349,16 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
           {"cost", {{"type", "number"}, {"minimum", 0}}},
           {"memory", {{"type", "boolean"}}}}},
         {"description",
-         "optional per-child ceilings; an omitted field inherits the "
-         "configured default, memory=false denies the child memory, and a "
-         "value above the host ceiling is clamped and reported"}}}};
+         "optional ceilings; omitted fields inherit the defaults, larger "
+         "values are clamped, memory=false denies memory"}}}};
   Tool tool = MakeTool(
       "subagent",
-      "Delegate an isolated subtask whose compact result avoids multiple "
-      "parent rounds; for a broad request with orthogonal parts, issue one "
-      "task per part in a single batch. Spawn creates a child whose "
-      "conversation can be resumed with operation=followup; message queues "
-      "guidance a child reads at its next step, while activity handles "
-      "waiting, output and stopping. Always set name+description at spawn: "
-      "name the reusable role, describe expertise and reuse. Keep "
-      "background=true when useful parent work can continue.",
+      "Delegate an isolated subtask whose compact result saves parent "
+      "rounds; for orthogonal parts, one task per part in one batch. spawn "
+      "starts a child, followup resumes it, message queues guidance for its "
+      "next step, and activity waits on, reads or stops it. Name the "
+      "reusable role and describe it at spawn. Keep background=true while "
+      "you have other work.",
       {{"type", "object"}, {"properties", std::move(properties)}},
       [&api, &routes, &providers, debug, &processes](
           const json& arguments, const ToolContext& context) {

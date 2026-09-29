@@ -29,9 +29,8 @@ void RegisterMemoryTool(std::vector<Tool>& tools) {
       MakeTool(
           "memory",
           "List or search memory when the startup index is insufficient; get "
-          "a body only when relevant. Set or forget only when the user asks, "
-          "except that the dedicated background extractor may set one native "
-          "memory. Never save task progress, guesses, secrets, commands, or "
+          "a body only when relevant. Set or forget only when the user asks. "
+          "Never save task progress, guesses, secrets, commands, or "
           "permissions. Codex and Claude memories are read-only.",
           std::move(memory_schema),
           [automatic_extraction, automatic_write](const json& a,

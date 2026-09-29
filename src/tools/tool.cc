@@ -386,9 +386,6 @@ void KeepLeanTools(std::vector<Tool>& tools) {
 
 std::string ToolDescription(const Tool& tool) {
   std::string s = tool.description;
-  // Mark tools that actually overlap, so the base prompt's batching rule is
-  // actionable.
-  if (tool.parallel_safe) s += " Batchable with independent calls.";
   if (tool.max_calls_per_turn >= 0) {
     s += " Limit: " + std::to_string(tool.max_calls_per_turn) + "/turn.";
   }

@@ -25,12 +25,8 @@ Tool UagentTool(SelfDescriptionProvider describe,
       "uagent",
       "Inspect this running build: status, cli, commands, config, tools, "
       "prompt, routes, or instructions (the AGENTS.md and COORDINATOR.md "
-      "files, yours and the project's, that sessions and coordinators read "
-      "at start). Configure registered UAGENT_* settings with an exact "
-      "human-approved diff; YOLO cannot approve configuration changes. "
-      "Inspect config first. set_instructions replaces one file (audience, "
-      "scope, whole text) once the user approves the exact text. Secrets "
-      "are never returned or accepted literally.",
+      "files sessions and coordinators read at start). Secrets are never "
+      "returned or accepted literally.",
       {{"type", "object"},
        {"properties",
         {{"action",
@@ -257,7 +253,13 @@ Tool UagentTool(SelfDescriptionProvider describe,
   };
   // Inspection survives restricted policies; configure still requires a human.
   tool.capabilities = 0;
-  if (!prepare) {
+  if (prepare) {
+    tool.description +=
+        " configure changes registered UAGENT_* settings by an exact diff "
+        "the user approves (YOLO cannot); inspect config first. "
+        "set_instructions replaces one file (audience, scope, whole text) "
+        "once the user approves the exact text.";
+  } else {
     tool.parallel_safe = true;
     tool.parameters["properties"]["action"]["enum"] = json::array({"inspect"});
     tool.parameters["properties"].erase("scope");

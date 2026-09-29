@@ -99,14 +99,12 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
       {"type", "string"},
       {"enum", CommandIntents()},
       {"description",
-       "What the command is for: explore (read/list/search), research, edit, "
-       "verify (test/lint/build), run, setup (install/configure). Display "
-       "and grouping only; never changes permissions."}};
+       "what it is for; display grouping only"}};
   run.parameters["properties"]["intent"] = intent_schema;
   const json description_schema = {
       {"type", json::array({"string", "null"})},
       {"description",
-       "Optional short action label, e.g. Running tests. Display only."}};
+       "optional display label, e.g. Running tests"}};
   run.present = [](const json& a) {
     json parts = json::array({CommandPart(JsonValue(a, "command", ""))});
     for (json& part : GenericInputParts(a, {"command"})) {
@@ -127,13 +125,11 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
         tools,
         MakeTool(
             "scratch",
-            "Run a one-off script, never requested project code. Write it "
-            "under .uagent/scratch with write_file (a .py declares its "
-            "dependencies in a PEP 723 `# /// script` header and runs under "
-            "isolated uv; a .sh runs under sh), fix it with edit_file, and "
-            "rerun it here with different `args` instead of rewriting it. "
-            "Prefer this over resending a long pipeline or heredoc through "
-            "run.",
+            "Run a one-off script under .uagent/scratch, never requested "
+            "project code: a .py with a PEP 723 `# /// script` header runs "
+            "under isolated uv, a .sh under sh. Write and fix it with the file "
+            "tools, then rerun it with new args instead of resending a long "
+            "pipeline through run.",
             schema(
                 R"json({"type":"object","additionalProperties":false,"properties":{
                     "path":{"type":"string","minLength":1,

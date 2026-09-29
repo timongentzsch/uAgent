@@ -236,10 +236,9 @@ std::string HtmlToText(const std::string& html) {
 Tool WebFetchTool(Api& api) {
   Tool t = MakeTool(
       "web_fetch",
-      "Read one http(s) URL as text. Use it when a specific page is the "
-      "answer — a search result worth verifying, a doc page, a changelog — "
-      "not to crawl. Pages needing a login or scripting need the browser "
-      "skill instead.",
+      "Read one http(s) URL as text when a specific page is the answer; "
+      "do not crawl. Pages needing a login or scripts need the browser "
+      "skill.",
       json::parse(R"json({"type":"object","properties":{
           "url":{"type":"string","description":"absolute http or https URL"}},
           "required":["url"]})json"),

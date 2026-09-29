@@ -312,13 +312,11 @@ Tool SessionTool() {
       {"required", json::array({"prompt"})}};
   Tool tool = MakeTool(
       "session",
-      "Message another live uagent session (terminal or browser) that shares "
-      "a link with this one. Sessions started under yolo auto-link per "
-      "workspace; otherwise join with /link TOKEN. list shows linked peers "
-      "first, then linkable workspace sessions. message queues text the peer "
-      "reads at its next step; broadcast fans out to every linked session. "
-      "Delivery is at-least-once and ordered oldest-first; unlinked sessions "
-      "reject with a permission error.",
+      "Message another live uagent session linked with this one (yolo "
+      "sessions auto-link per workspace; otherwise /link TOKEN). list shows "
+      "linked, then linkable sessions; message queues text the peer reads "
+      "at its next step; broadcast reaches every linked session. Unlinked "
+      "sessions are refused.",
       parameters, [](const json& arguments, const ToolContext&) {
         (void)EnsureSessionAutoLink();
         std::string operation = JsonValue(arguments, "operation", "list");

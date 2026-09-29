@@ -365,98 +365,10 @@ class Terminal {
         composer_.Mount(InputPrompt());
       }
       std::string text = Trim(input.text);
-      const ParsedSlashCommand slash = ParseSlashCommand(text);
-      if (slash.spec && slash.spec->id == SlashCommandId::kQuit) break;
-      if (text == "/clear" || text.starts_with("/clear ")) {
-        // Screen only: the session keeps running underneath.
-        if (raw_) {
-          output_.Write(ClearScreen());
-        } else {
-          fputs(ClearScreen(), stdout);
-          fflush(stdout);
-        }
-        continue;
-      }
-      if (slash.spec && slash.spec->id == SlashCommandId::kBoard) {
-        WriteTerminalRecord(TerminalSafe(CoordinatorBoard(Folder())));
-        continue;
-      }
-      if (slash.spec && (slash.spec->id == SlashCommandId::kCoord ||
-                         slash.spec->id == SlashCommandId::kOpen)) {
-        std::string target;
-        if (slash.spec->id == SlashCommandId::kCoord) {
-          next_folder_ = Folder();
-          target = CoordinatorPath(next_folder_);
-        } else if (target = MatchFolderSession(slash.argument);
-                   target.empty()) {
-          WriteTerminalRecord(
-              Note(Tone::kNeutral, "no unique session in /board matches \"" +
-                                       TerminalSafe(slash.argument) + "\""));
-          continue;
-        }
-        std::lock_guard lock(mutex_);
-        if (!waiting_.empty() || running_) {
-          WriteTerminalRecord(
-              Note(Tone::kNeutral,
-                   "turn active; interrupt it before switching sessions"));
-          continue;
-        }
-        next_ = target;
-        break;
-      }
-      if (text == "/restart") {
-        // A fresh runtime for this conversation, e.g. after a setting that
-        // needs a restart; its history is kept.
-        {
-          std::lock_guard lock(mutex_);
-          if (!waiting_.empty() || running_) {
-            WriteTerminalRecord(Note(
-                Tone::kNeutral, "turn active; interrupt it before restarting"));
-            continue;
-          }
-          next_ = "/restart";
-        }
-        Send({{"kind", "close"}});
-        break;
-      }
-      if (text == "/reset" || text == "/new" || text == "/sessions" ||
-          text.starts_with("/sessions ") || text == "/resume" ||
-          text.starts_with("/resume ")) {
-        // Guarded switch: never abandon a running turn by accident.
-        {
-          std::lock_guard lock(mutex_);
-          if (!waiting_.empty() || running_) {
-            WriteTerminalRecord(
-                Note(Tone::kNeutral,
-                     "turn active; interrupt it before switching sessions"));
-            continue;
-          }
-        }
-        std::string target = "/reset";
-        if (text != "/reset" && text != "/new") {
-          std::string arg;
-          if (text.starts_with("/sessions ")) {
-            arg = Trim(text.substr(10));
-          } else if (text.starts_with("/resume ")) {
-            arg = Trim(text.substr(8));
-          }
-          std::string matched = arg.empty() ? "" : MatchSessionPrefix(arg);
-          if (!arg.empty() && matched.empty()) {
-            WriteTerminalRecord(Note(Tone::kNeutral,
-                                     "no unique session matches \"" +
-                                         TerminalSafe(arg) + "\""));
-            continue;
-          }
-          if (matched.empty()) {
-            matched = PickSession();
-            if (matched.empty()) continue;
-          }
-          target = matched;
-        }
-        std::lock_guard lock(mutex_);
-        next_ = target;
-        break;
-      }
+      const Command handled =
+          HandleCommand(ParseSlashCommand(text), !decision.empty(), files);
+      if (handled == Command::kLeave) break;
+      if (handled == Command::kDone) continue;
       if (!decision.empty()) {
         // Without raw input an ask is answered on one line.
         if (JsonValue(pending, "kind", "") == "ask") {
@@ -464,46 +376,6 @@ class Terminal {
               JsonValue(pending, "questions", json::array()), text);
         }
         Send({{"kind", "reply"}, {"interaction_id", decision}, {"text", text}});
-      } else if (text.starts_with("/attach ")) {
-        // Terminals quote dropped paths containing spaces; strip one
-        // surrounding pair so a drop Just Works.
-        std::string file = Unquote(Trim(text.substr(8)));
-        if (file == "clear") {
-          files.clear();
-        } else {
-          files.push_back(CanonicalAccessPath(file).string());
-        }
-      } else if (text == "/fork" || text.starts_with("/fork ")) {
-        const ForkArgument fork = ParseForkArgument(text.substr(5));
-        Send({{"kind", "fork"}, {"title", fork.title}, {"turn", fork.turn}});
-      } else if (text.starts_with("/rewind ")) {
-        // Forks before message N and opens the fork with that message to
-        // edit; the original stays. Bare /rewind lists the numbers (host).
-        const ForkArgument parsed = ParseForkArgument(text.substr(7));
-        if (parsed.turn <= 0 || !parsed.title.empty()) {
-          WriteTerminalRecord(Note(
-              Tone::kNeutral, "usage: /rewind N (bare /rewind lists them)"));
-          continue;
-        }
-        rewinding_ = true;
-        Send({{"kind", "fork"}, {"turn", parsed.turn}});
-      } else if (text.starts_with("/btw ")) {
-        Send({{"kind", "side"}, {"text", Trim(text.substr(5))}});
-        continue;
-      } else if (text == "/verbose") {
-        presenter_.SetDetailed(!presenter_.Detailed());
-        WriteTerminalRecord(Note(
-            Tone::kNeutral,
-            presenter_.Detailed()
-                ? "verbose on — full reasoning and tool output"
-                : "verbose off — compact reasoning and tool output"));
-        wake_.Wake();
-        continue;
-      } else if (text == "/share") {
-        Send({{"kind", "share"}});
-      } else if (text.starts_with("/share ")) {
-        WriteTerminalRecord(Note(Tone::kNeutral, "usage: /share"));
-        continue;
       } else if (!text.empty() || !files.empty()) {
         json command = {{"kind", "submit"}, {"text", text}};
         if (!files.empty()) command["attachments"] = files;
@@ -580,6 +452,137 @@ class Terminal {
   const std::string& Carry() const { return carry_; }
 
  private:
+  // What a line did: nothing here (it goes on as the reply or to the
+  // runtime), all of it, or ended this session's input loop.
+  enum class Command { kPass, kDone, kLeave };
+
+  // The slash commands this client performs itself. Leaving the session
+  // works while a decision is pending; the rest is then the reply's text.
+  Command HandleCommand(const ParsedSlashCommand& slash, bool deciding,
+                        std::vector<std::string>& files) {
+    if (!slash.spec) return Command::kPass;
+    const std::string& argument = slash.argument;
+    switch (slash.spec->id) {
+      case SlashCommandId::kQuit:
+        return Command::kLeave;
+      case SlashCommandId::kClear:
+        // Screen only: the session keeps running underneath.
+        if (raw_) {
+          output_.Write(ClearScreen());
+        } else {
+          fputs(ClearScreen(), stdout);
+          fflush(stdout);
+        }
+        return Command::kDone;
+      case SlashCommandId::kBoard:
+        WriteTerminalRecord(TerminalSafe(CoordinatorBoard(Folder())));
+        return Command::kDone;
+      case SlashCommandId::kCoord:
+      case SlashCommandId::kOpen: {
+        std::string target;
+        if (slash.spec->id == SlashCommandId::kCoord) {
+          next_folder_ = Folder();
+          target = CoordinatorPath(next_folder_);
+        } else if (target = MatchFolderSession(argument); target.empty()) {
+          WriteTerminalRecord(
+              Note(Tone::kNeutral, "no unique session in /board matches \"" +
+                                       TerminalSafe(argument) + "\""));
+          return Command::kDone;
+        }
+        return Leave(target, "switching sessions");
+      }
+      case SlashCommandId::kRestart:
+        // A fresh runtime for this conversation, e.g. after a setting that
+        // needs a restart; its history is kept.
+        if (Leave("/restart", "restarting") == Command::kDone) {
+          return Command::kDone;
+        }
+        Send({{"kind", "close"}});
+        return Command::kLeave;
+      case SlashCommandId::kReset:
+        return Leave("/reset", "switching sessions");
+      case SlashCommandId::kSessions: {
+        // Guarded before the picker: never abandon a running turn.
+        if (TurnActive("switching sessions")) return Command::kDone;
+        std::string target = argument.empty() ? PickSession()
+                                              : MatchSessionPrefix(argument);
+        if (!argument.empty() && target.empty()) {
+          WriteTerminalRecord(Note(Tone::kNeutral,
+                                   "no unique session matches \"" +
+                                       TerminalSafe(argument) + "\""));
+        }
+        if (target.empty()) return Command::kDone;
+        return Leave(target, "switching sessions");
+      }
+      default:
+        break;
+    }
+    if (deciding) return Command::kPass;
+    switch (slash.spec->id) {
+      case SlashCommandId::kAttach:
+        // Bare /attach lists them (host). Terminals quote dropped paths
+        // containing spaces; strip one surrounding pair so a drop Just Works.
+        if (argument.empty()) return Command::kPass;
+        if (Unquote(argument) == "clear") {
+          files.clear();
+        } else {
+          files.push_back(CanonicalAccessPath(Unquote(argument)).string());
+        }
+        return Command::kDone;
+      case SlashCommandId::kFork: {
+        const ForkArgument fork = ParseForkArgument(argument);
+        Send({{"kind", "fork"}, {"title", fork.title}, {"turn", fork.turn}});
+        return Command::kDone;
+      }
+      case SlashCommandId::kRewind: {
+        // Forks before message N and opens the fork with that message to
+        // edit; the original stays. Bare /rewind lists the numbers (host).
+        if (argument.empty()) return Command::kPass;
+        const ForkArgument parsed = ParseForkArgument(argument);
+        if (parsed.turn <= 0 || !parsed.title.empty()) {
+          WriteTerminalRecord(Note(
+              Tone::kNeutral, "usage: /rewind N (bare /rewind lists them)"));
+          return Command::kDone;
+        }
+        rewinding_ = true;
+        Send({{"kind", "fork"}, {"turn", parsed.turn}});
+        return Command::kDone;
+      }
+      case SlashCommandId::kBtw:
+        if (argument.empty()) return Command::kPass;
+        Send({{"kind", "side"}, {"text", argument}});
+        return Command::kDone;
+      case SlashCommandId::kVerbose:
+        presenter_.SetDetailed(!presenter_.Detailed());
+        WriteTerminalRecord(Note(
+            Tone::kNeutral,
+            presenter_.Detailed()
+                ? "verbose on — full reasoning and tool output"
+                : "verbose off — compact reasoning and tool output"));
+        wake_.Wake();
+        return Command::kDone;
+      case SlashCommandId::kShare:
+        Send({{"kind", "share"}});
+        return Command::kDone;
+      default:
+        return Command::kPass;
+    }
+  }
+  // Says so when a turn is running, which switching would abandon.
+  bool TurnActive(const std::string& before) {
+    std::lock_guard lock(mutex_);
+    if (waiting_.empty() && !running_) return false;
+    WriteTerminalRecord(
+        Note(Tone::kNeutral, "turn active; interrupt it before " + before));
+    return true;
+  }
+  // Ends the input loop to open `target` next, unless a turn is running.
+  Command Leave(const std::string& target, const std::string& before) {
+    if (TurnActive(before)) return Command::kDone;
+    std::lock_guard lock(mutex_);
+    next_ = target;
+    return Command::kLeave;
+  }
   void Send(json command) {
     std::lock_guard lock(send_mutex_);
     if (JsonValue(command, "kind", "") == "reply") interaction_ = false;

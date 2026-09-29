@@ -91,6 +91,9 @@ class RawComposer {
   // Repaint the current buffer after the application cleared and rebuilt the
   // status row, again leaving the cursor at the composer block top.
   void Remount();
+  // The same repaint appended to `frame`, for a caller that sends its whole
+  // repaint in one write, so the terminal never shows an erase without it.
+  void Remount(std::string& frame);
 
   // Forget the old footprint after the application erased the whole mounted
   // status/composer region.
@@ -127,7 +130,8 @@ class RawComposer {
   void MoveToTop();
   void EraseDrawnRows();
   void Render();
-  void RenderFromTop();
+  // Appends the redraw to `out`; the caller writes it in one piece.
+  void RenderFromTop(std::string& out);
   bool Insert(const std::string& text);
   void Backspace();
   void PreviousWord();

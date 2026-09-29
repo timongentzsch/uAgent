@@ -467,13 +467,18 @@ void RawComposer::Mount(std::string prompt, std::string initial,
   history_index_ = history_.size();
   history_draft_.clear();
   input_limit_bell_ = false;
-  Detach();
-  RenderFromTop();
+  Remount();
 }
 
 void RawComposer::Remount() {
+  std::string frame;
+  Remount(frame);
+  output_.Write(frame);
+}
+
+void RawComposer::Remount(std::string& frame) {
   Detach();
-  RenderFromTop();
+  RenderFromTop(frame);
 }
 
 // Readline's spelling, so the gesture is already in the fingers of anyone who
@@ -499,7 +504,7 @@ bool RawComposer::EditExternally() {
     buffer_ = Utf8Prefix(std::move(text), kInputBufferBytes);
     cursor_ = buffer_.size();
   }
-  RenderFromTop();
+  Remount();
   return edited;
 }
 
@@ -684,15 +689,16 @@ void RawComposer::EraseDrawnRows() {
 }
 
 void RawComposer::Render() {
-  MoveToTop();
-  RenderFromTop();
+  std::string out;
+  AppendMoveToTop(out, caret_row_);
+  RenderFromTop(out);
+  output_.Write(out);
 }
 
-void RawComposer::RenderFromTop() {
+void RawComposer::RenderFromTop(std::string& out) {
   Layout layout = ComputeLayout();
   size_t count = layout.rows.size();
   size_t previous_rows = drawn_rows_;
-  std::string out;
   AppendEraseRows(out, drawn_rows_);
 
   // Draw the new block top-to-bottom. Growing taller emits real newlines so
@@ -712,9 +718,6 @@ void RawComposer::RenderFromTop() {
   size_t caret_column = layout.caret_col;
   if (layout.caret_row == 0) caret_column += DisplayWidth(prompt_);
   if (caret_column > 0) out += "\033[" + std::to_string(caret_column) + "C";
-
-  // One write per redraw: the terminal never observes a half-erased frame.
-  output_.Write(out);
 
   drawn_rows_ = count;
   caret_row_ = layout.caret_row;

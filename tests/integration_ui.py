@@ -4,6 +4,7 @@ import signal
 import sys
 import termios
 import time
+import unicodedata
 
 from integration_support import (
     Server,
@@ -470,6 +471,135 @@ def test_input_redraw_streaming_tail_survives_resize(root, home, *, binary):
         assert_true(b"TAIL-BEGIN-TAIL-END" in output, output)
         assert_true(b"\x1eUAGENT\x1f" not in output, output)
         assert_true(re.search(rb"\x1b\[\d+A\x1b\[J", output) is not None, output)
+
+
+class Screen:
+    """Just enough VT100 to replay the client: autowrap with the deferred wrap
+    at the last column, wide glyphs, cursor motion, erase, bold, scrollback."""
+
+    def __init__(self, columns, rows=24):
+        self.columns, self.rows = columns, rows
+        self.lines = [[] for _ in range(rows)]  # scrollback, then the screen
+        self.wrapped = set()  # rows that continue on the next one
+        self.y = self.x = 0  # x == columns is the deferred wrap
+        self.bold = False
+
+    def feed(self, data):
+        text = data.decode(errors="replace")
+        at = 0
+        while at < len(text):
+            char = text[at]
+            at += 1
+            if char == "\x1b":
+                match = re.compile(r"\[([?\d;]*)([@-~])|[^\[]").match(text, at)
+                at = match.end() if match else at
+                if match and match.group(2):
+                    self.control(match.group(1), match.group(2))
+            elif char == "\r":
+                self.x = 0
+            elif char == "\n":
+                self.linefeed()
+            elif char >= " ":
+                self.put(char, 2 if unicodedata.east_asian_width(char) in "WF" else 1)
+
+    def linefeed(self):
+        self.y += 1
+        if self.y == len(self.lines):
+            self.lines.append([])
+
+    def put(self, char, width):
+        if self.x + width > self.columns:
+            self.wrapped.add(self.y)
+            self.x = 0
+            self.linefeed()
+        line = self.lines[self.y]
+        line.extend([(" ", False)] * (self.x + width - len(line)))
+        line[self.x : self.x + width] = [(char, self.bold)] + [("", self.bold)] * (width - 1)
+        self.x += width
+
+    def control(self, params, final):
+        count = int(params) if params.isdigit() else 1
+        top = len(self.lines) - self.rows
+        if final == "A":
+            self.y = max(top, self.y - count)
+        elif final == "B":
+            self.y = min(len(self.lines) - 1, self.y + count)
+        elif final == "C":
+            self.x = self.x + count
+        elif final == "H":
+            self.y, self.x = top, 0
+        elif final in "JK" and params in ("", "0", "2"):
+            if params == "2":
+                self.lines[self.y] = []
+            del self.lines[self.y][self.x :]
+            last = len(self.lines) if final == "J" else self.y + 1
+            first = top if final == "J" and params == "2" else self.y
+            for row in range(first, last):
+                self.wrapped.discard(row)
+                if row != self.y:
+                    self.lines[row] = []
+        elif final == "m":
+            for code in (params or "0").split(";"):
+                if code in ("1", "22", "0"):
+                    self.bold = code == "1"
+        self.x = min(self.x, self.columns - 1) if final in "ABC" else self.x
+
+    def text(self):
+        return "".join(
+            "".join(char for char, _ in line) + ("" if row in self.wrapped else "\n")
+            for row, line in enumerate(self.lines)
+        )
+
+
+def test_streaming_paragraph_repaints_only_its_last_row(root, home, *, binary):
+    """A paragraph taller than the screen streams without duplicating itself.
+
+    Each repaint used to erase and rewrite the whole unfinished paragraph:
+    bytes per token grew with its length, and once it outgrew the screen the
+    erase could not reach its top, so scrollback filled with copies. Only the
+    last row is repaintable now, written as soft-wrapped text so the terminal
+    can still reflow it, with the bold a previous row opened carried over.
+    """
+    words = [f"w{index:03d}abc" + ("界" if index % 7 == 3 else "") for index in range(250)]
+    bold = range(100, 130)
+    tokens = [
+        ("**" if index == bold.start else "")
+        + word
+        + ("**" if index == bold.stop - 1 else "")
+        + " "
+        for index, word in enumerate(words)
+    ]
+
+    def streamed(handler, _):
+        write_sse_sequence(
+            handler,
+            [event({"content": token}, finish=None) for token in tokens] + [event({})],
+            delay=0.015,
+        )
+
+    with Server([streamed]) as server:
+        code, output = run_pty(
+            root,
+            base_env(home, server.url),
+            [(b"go\n", b"w249", b"Ready", None), b"/q\n"],
+            timeout=20,
+            binary=binary,
+        )
+    assert_true(code == 0, output[-2000:])
+    screen = Screen(80)
+    screen.feed(output)
+    shown = screen.text()
+    for word in words:
+        assert_true(len(re.findall(word + r"(?!\d)", shown)) == 1, (word, shown))
+    for line in screen.lines:
+        row = "".join(char for char, _ in line)
+        for match in re.finditer(r"w(\d{3})", row):
+            number = int(match.group(1))
+            assert_true(line[match.start()][1] == (number in bold), (number, row))
+    streamed_bytes = output.rfind(b"w249") - output.find(b"w000")
+    per_token = streamed_bytes / len(tokens)
+    print(f"  {per_token:.0f} bytes per token", flush=True)
+    assert_true(per_token < 400, per_token)
 
 
 def test_input_redraw_status_animation_does_not_repaint_draft(root, home, *, binary):

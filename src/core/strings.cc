@@ -194,16 +194,26 @@ size_t DisplayWidth(const std::string& s) {
   return width;
 }
 
-size_t DisplayRows(const std::string& s, size_t columns) {
-  if (s.empty()) return 0;
+namespace {
+
+struct RowLayout {
+  size_t rows = 0;
+  size_t last_row_start = 0;
+};
+
+// Where a terminal breaks `s` into rows: a glyph that no longer fits starts
+// the next row, which is also how the deferred wrap at the last column works.
+RowLayout LayOutRows(const std::string& s, size_t columns) {
+  if (s.empty()) return {};
   columns = std::max(size_t{1}, columns);
   std::mbstate_t state{};
-  size_t rows = 1;
+  RowLayout layout{1, 0};
   size_t column = 0;
   for (size_t offset = 0; offset < s.size();) {
     char value = s[offset];
     if (value == '\n') {
-      ++rows;
+      ++layout.rows;
+      layout.last_row_start = offset + 1;
       column = 0;
       ++offset;
       continue;
@@ -222,14 +232,25 @@ size_t DisplayRows(const std::string& s, size_t columns) {
     Glyph glyph = NextGlyph(s, offset, state, /*skip_ansi=*/true);
     if (glyph.width > 0) {
       if (column >= columns || glyph.width > columns - column) {
-        ++rows;
+        ++layout.rows;
+        layout.last_row_start = offset;
         column = 0;
       }
       column += glyph.width;
     }
     offset += glyph.bytes;
   }
-  return rows;
+  return layout;
+}
+
+}  // namespace
+
+size_t DisplayRows(const std::string& s, size_t columns) {
+  return LayOutRows(s, columns).rows;
+}
+
+size_t LastRowStart(const std::string& s, size_t columns) {
+  return LayOutRows(s, columns).last_row_start;
 }
 
 std::string DisplayTrunc(std::string s, size_t columns) {

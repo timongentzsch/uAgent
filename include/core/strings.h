@@ -68,6 +68,9 @@ size_t DisplayWidth(const std::string& s);
 // zero-width and horizontal tabs follow the terminal's eight-column stops.
 size_t DisplayRows(const std::string& s, size_t columns);
 
+// The byte offset where the last of those rows begins.
+size_t LastRowStart(const std::string& s, size_t columns);
+
 std::string DisplayTrunc(std::string s, size_t columns);
 std::string DisplayTail(std::string text, size_t columns);
 std::string ActivityLabel(const std::string& label, size_t columns);

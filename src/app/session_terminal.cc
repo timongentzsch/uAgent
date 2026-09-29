@@ -4,13 +4,16 @@
 
 #include <algorithm>
 #include <atomic>
+#include <charconv>
 #include <chrono>
 #include <cstdio>
 #include <filesystem>
+#include <map>
 #include <mutex>
 #include <optional>
 #include <set>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -80,6 +83,51 @@ std::string StatusRow(const json& state,
                     .approval = JsonValue(permissions, "effective", "ask"),
                     .verbose = verbose,
                     .background = background + subagents});
+}
+
+// The SGR that restores what `text` leaves set: a row repainted after the
+// status row's reset keeps the bold or colour an earlier row opened. Each
+// attribute keeps only its latest setting, so the sequence stays short however
+// many spans the paragraph toggled.
+std::string ActiveSgr(std::string_view text) {
+  std::map<int, std::string_view> active;  // attribute -> the code that set it
+  for (size_t at = text.find("\033["); at != std::string_view::npos;
+       at = text.find("\033[", at + 1)) {
+    const size_t end = text.find_first_not_of("0123456789;", at + 2);
+    if (end == std::string_view::npos || text[end] != 'm') continue;
+    const std::string_view codes = text.substr(at + 2, end - at - 2);
+    for (size_t from = 0; from <= codes.size();) {
+      const std::string_view spelled =
+          codes.substr(from, codes.find(';', from) - from);
+      from += spelled.size() + 1;
+      int code = 0;  // an empty parameter is a reset
+      std::from_chars(spelled.data(), spelled.data() + spelled.size(), code);
+      if (code == 0) {
+        active.clear();
+      } else if (code == 22) {
+        active.erase(1);
+        active.erase(2);
+      } else if (code >= 23 && code <= 29) {
+        active.erase(code - 20);
+      } else if (code <= 9) {
+        active[code] = spelled;
+      } else if (code == 39 || code == 49) {
+        active.erase(code);
+      } else if ((code >= 30 && code <= 37) || (code >= 90 && code <= 97)) {
+        active[39] = spelled;
+      } else if ((code >= 40 && code <= 47) || (code >= 100 && code <= 107)) {
+        active[49] = spelled;
+      } else {
+        break;  // e.g. 38;5;n: what follows are its arguments, not codes
+      }
+    }
+  }
+  std::string sequence;
+  for (const auto& [attribute, spelled] : active) {
+    if (!sequence.empty()) sequence += ';';
+    sequence += spelled;
+  }
+  return sequence.empty() ? sequence : "\033[" + sequence + "m";
 }
 
 class Terminal {
@@ -677,14 +725,23 @@ class Terminal {
     wake_.Wake();
   }
   void Unmount() {
-    if (!composer_.Drawn()) return;
-    output_.Write(
-        "\r\033[" +
-        std::to_string(composer_.CaretRow() + 1 +
-                       DisplayRows(tail_, TerminalWidth()) +
-                       StatusOverflowRows(status_columns_, TerminalWidth())) +
-        "A\033[J");
+    std::string frame;
+    Unmount(frame);
+    output_.Write(frame);
+  }
+  // Erases the composer, the status row and the tail's last row, the one row
+  // of it still growing. The rows above are complete, so they stay: past the
+  // top of the screen no erase could reach them anyway. Returns how many
+  // bytes of the tail are still on screen.
+  size_t Unmount(std::string& frame) {
+    if (!composer_.Drawn()) return 0;
+    const size_t width = TerminalWidth();
+    frame += "\r\033[" +
+             std::to_string(composer_.CaretRow() + 1 + (tail_.empty() ? 0 : 1) +
+                            StatusOverflowRows(status_columns_, width)) +
+             "A\033[J";
     composer_.Detach();
+    return LastRowStart(tail_, width);
   }
   void Paint() {
     auto update = output_.Read();
@@ -722,14 +779,22 @@ class Terminal {
                ? "\033[" + std::to_string(composer_.CaretColumn()) + "C"
                : ""));
     } else {
-      Unmount();
+      // One write, so the terminal never shows the erase without its redraw.
+      std::string frame;
+      const size_t kept = Unmount(frame);
+      // What follows the tail continues it: committed text starts with the
+      // tail it finished, and a longer tail with the shorter one.
+      std::string text = tail_;
       if (update.changed) {
-        output_.Write(update.committed);
+        text = update.committed + update.tail;
         tail_ = std::move(update.tail);
       }
-      if (!tail_.empty()) output_.Write(tail_ + "\n");
-      output_.Write(StatusBarLine(status, &status_columns_) + "\n");
-      composer_.Remount();
+      frame += ActiveSgr(std::string_view(text).substr(0, kept)) +
+               text.substr(kept);
+      if (!tail_.empty()) frame += "\n";
+      frame += StatusBarLine(status, &status_columns_) + "\n";
+      composer_.Remount(frame);
+      output_.Write(frame);
     }
     last_status_ = std::move(status);
   }

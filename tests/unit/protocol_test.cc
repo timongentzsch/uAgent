@@ -494,6 +494,12 @@ void TestCommandAndDisplayRegistries() {
   CHECK(DisplayRows("1234567890X", 10) == 2);
   CHECK(DisplayRows("\033[36ma\tXYZ", 10) == 2);
   CHECK(DisplayRows("", 10) == 0);
+  // A full row keeps its deferred wrap; the next glyph, not an SGR, opens a
+  // row, and a wide glyph that no longer fits moves to it whole.
+  CHECK(LastRowStart("1234567890", 10) == 0);
+  CHECK(LastRowStart("1234567890\033[1mX", 10) == 14);
+  CHECK(LastRowStart("123456789界", 10) == 9);
+  CHECK(LastRowStart("ab\ncd", 10) == 3);
   CHECK(FmtCount(0) == "0");
   CHECK(FmtCount(999) == "999");
   CHECK(FmtCount(1500) == "1.5k");

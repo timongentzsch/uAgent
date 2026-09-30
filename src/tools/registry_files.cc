@@ -123,14 +123,8 @@ void RegisterFileTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
                JsonValue(a, "content", std::string()).size()));
   };
   write.approval_preview = [](const json& a) {
-    std::string path = JsonValue(a, "path", "");
-    std::string content = JsonValue(a, "content", "");
-    std::error_code ec;
-    bool existed = std::filesystem::is_regular_file(path, ec);
-    std::optional<std::string> prev = DiffableContents(path);
-    if (!prev) prev.emplace();
-    std::string diff = WholeFileDiffDisplay(path, *prev, content, existed);
-    return diff.empty() ? "no changes" : diff;
+    return WriteDiffPreview(JsonValue(a, "path", ""),
+                            JsonValue(a, "content", ""));
   };
 
   Tool& edit = path_tool(MakeTool(

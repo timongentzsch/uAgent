@@ -71,6 +71,17 @@ void AppendDisplayLine(EditDisplay& display, char marker,
   ++display.lines;
 }
 
+// "<Verb> <path> (+added -removed)" over the diff lines. A diff cut at the
+// line cap says so, rather than ending mid-file as if that were the change.
+std::string DiffReceipt(const char* verb, const std::string& path,
+                        const EditDisplay& display) {
+  std::string out = std::string(verb) + " " + DisplayPath(path) + " (+" +
+                    std::to_string(display.added) + " -" +
+                    std::to_string(display.removed) + ")\n" + display.body;
+  if (display.truncated) out += " … diff truncated\n";
+  return out;
+}
+
 using LineDiff = CommonLineSpan;
 
 void AppendLineDiff(EditDisplay& display,
@@ -574,11 +585,7 @@ ToolResult ToolEditFile(const std::string& path,
                   (edits.size() == 1 ? " edit; " : " edits; ") +
                   std::to_string(original_size) + " -> " +
                   std::to_string(data.size()) + " bytes)");
-  result.display = "Edited " + DisplayPath(path) + " (+" +
-                   std::to_string(run.display.added) + " -" +
-                   std::to_string(run.display.removed) + ")\n" +
-                   run.display.body;
-  if (run.display.truncated) result.display += " … diff truncated\n";
+  result.display = DiffReceipt("Edited", path, run.display);
   return result;
 }
 
@@ -728,15 +735,19 @@ std::string WholeFileDiffDisplay(const std::string& path,
   if (diff.old_end == diff.prefix && diff.new_end == diff.prefix) return "";
 
   EditDisplay display;
+  display.added = static_cast<int64_t>(diff.new_end - diff.prefix);
+  display.removed = static_cast<int64_t>(diff.old_end - diff.prefix);
   AppendLineDiff(display, old_lines, new_lines, diff);
-  std::string out = (existed ? "Replaced " : "Created ") + DisplayPath(path) +
-                    " (+" + std::to_string(diff.new_end - diff.prefix) + " -" +
-                    std::to_string(diff.old_end - diff.prefix) + ")\n" +
-                    display.body;
-  // Symmetric with the delete receipt: a diff cut at the line cap says so,
-  // rather than ending mid-file as if that were the whole change.
-  if (display.truncated) out += " … diff truncated\n";
-  return out;
+  return DiffReceipt(existed ? "Replaced" : "Created", path, display);
+}
+
+std::string WriteDiffPreview(const std::string& path,
+                             const std::string& content) {
+  std::error_code ec;
+  const bool existed = std::filesystem::is_regular_file(path, ec);
+  const std::string diff = WholeFileDiffDisplay(
+      path, DiffableContents(path).value_or(""), content, existed);
+  return diff.empty() ? "no changes" : diff;
 }
 
 std::string DeletedFileDiffDisplay(const std::string& path,
@@ -745,11 +756,9 @@ std::string DeletedFileDiffDisplay(const std::string& path,
   std::vector<std::string_view> new_lines;
   LineDiff diff{0, old_lines.size(), 0};
   EditDisplay display;
+  display.removed = static_cast<int64_t>(old_lines.size());
   AppendLineDiff(display, old_lines, new_lines, diff);
-  std::string out = "Deleted " + DisplayPath(path) + " (+0 -" +
-                    std::to_string(old_lines.size()) + ")\n" + display.body;
-  if (display.truncated) out += " … diff truncated\n";
-  return out;
+  return DiffReceipt("Deleted", path, display);
 }
 
 ToolResult ToolListDir(const std::string& path, int64_t offset, int64_t limit,

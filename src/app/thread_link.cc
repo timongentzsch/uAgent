@@ -67,14 +67,9 @@ void ThreadLink::Ask(const std::string& interaction, const std::string& kind,
       "\nDecide with the decide tool; yield when the user should.";
   Notify(JsonValue(thread_, "folder", ""), path_, kMailAsk, interaction, text,
          [thread = path_, interaction] {
-           Connection self = Connect(thread);
-           if (self.socket) {
-             SendWhenReady(self, thread,
-                           {{"kind", "escalate"},
-                            {"interaction_id", interaction},
-                            {"text", "The coordinator is unavailable."}},
-                           false);
-           }
+           SendToRunning(thread, {{"kind", "escalate"},
+                                  {"interaction_id", interaction},
+                                  {"text", "The coordinator is unavailable."}});
          });
 }
 

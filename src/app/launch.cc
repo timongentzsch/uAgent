@@ -2,7 +2,9 @@
 
 #include "include/app/launch.h"
 
+#include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "include/core/capture.h"
@@ -11,12 +13,15 @@
 #include "include/core/time.h"
 
 namespace uagent {
+std::string HistoryPath(const std::string& cwd, const std::string& name) {
+  return UagentDir(kHistoryDir) + "/" + WorkspaceId(cwd) + "/" + name + ".json";
+}
+
 LaunchPaths PlanLaunch(const std::string& project, bool worktree,
                        const std::string& prefix, const std::string& id) {
   const std::string cwd =
       worktree ? UagentDir("worktrees") + "/" + id : project;
-  return {cwd, UagentDir(kHistoryDir) + "/" + WorkspaceId(cwd) + "/" + prefix +
-                   id + ".json"};
+  return {cwd, HistoryPath(cwd, prefix + id)};
 }
 
 CapturedProcess HostGit(const std::string& dir, std::vector<std::string> args) {
@@ -68,13 +73,11 @@ std::string RemoveWorktree(const std::string& project, const std::string& cwd) {
 std::string SendWhenReady(const session::Connection& connection,
                           const std::string& path, json command, bool idle) {
   constexpr int64_t kReadySeconds = 30;
-  session::Pipe never;
-  if (!never.Open()) return "cannot wait for the session runtime";
   const std::string request = session::RandomToken(16);
   bool sent = false;
   std::string error = "the session runtime did not become ready";
   session::ReadFrames(
-      connection.socket.Get(), never.read.Get(), session::kFrameBytes,
+      connection.socket.Get(), -1, session::kFrameBytes,
       [&](const json& frame) {
         const std::string kind = JsonValue(frame, "kind", "");
         if (sent) {
@@ -91,14 +94,19 @@ std::string SendWhenReady(const session::Connection& connection,
         if (kind != "state" || (idle && JsonValue(frame, "busy", true))) {
           return true;
         }
-        command["v"] = session::kProtocol;
-        command["session_id"] = HashHex(path);
-        command["generation"] = connection.generation;
+        session::StampFrame(command, HashHex(path), connection.generation);
         command["request_id"] = request;
         sent = session::WriteFrame(connection.socket.Get(), command);
         return sent;
       },
       DeadlineAfter(kReadySeconds));
   return error;
+}
+
+std::optional<std::string> SendToRunning(const std::string& path,
+                                         json command) {
+  const session::Connection connection = session::Connect(path);
+  if (!connection.socket) return std::nullopt;
+  return SendWhenReady(connection, path, std::move(command), false);
 }
 }  // namespace uagent

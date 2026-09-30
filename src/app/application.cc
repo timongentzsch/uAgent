@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "include/agent/child_agent.h"
+#include "include/app/launch.h"
 #include "include/cli.h"
 #include "include/core/checked.h"
 #include "include/core/debug.h"
@@ -189,9 +190,8 @@ void Application::SaveSession(bool force) {
 
 void Application::EnsureSessionPath() {
   if (persist_ && session_file_.empty()) {
-    session_file_ = UagentDir(kHistoryDir) + "/" + WorkspaceId(CanonicalCwd()) +
-                    "/" + UtcStamp("%Y%m%dT%H%M%SZ") + "-" + MakeSessionId() +
-                    ".json";
+    session_file_ = HistoryPath(
+        CanonicalCwd(), UtcStamp("%Y%m%dT%H%M%SZ") + "-" + MakeSessionId());
   }
   // Peer sessions address this process by its session file; exporting it
   // here covers the constructor path, resume, and first save alike.

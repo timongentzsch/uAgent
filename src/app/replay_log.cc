@@ -41,9 +41,7 @@ HostReplay ReplayLog::Publish(const std::string& epoch,
   if (kind == "deleted") notices_.erase(session);
   value["epoch"] = epoch;
   value["sequence"] = ++sequence_;
-  value["session_id"] = session;
-  value["generation"] = generation;
-  value["v"] = kProtocol;
+  StampFrame(value, session, generation);
   HostReplay published{sequence_, JsonDump(value)};
   replay_bytes_ += published.frame.size();
   replay_.push_back(published);

@@ -11,6 +11,7 @@
 
 #include "include/agent/session_role.h"
 #include "include/agent/session_view.h"
+#include "include/app/launch.h"
 #include "include/app/library.h"
 #include "include/app/schedule.h"
 #include "include/app/session.h"
@@ -45,8 +46,7 @@ SessionCommandResult SessionHost::ExecuteCommand(
     const bool coordinator = JsonValue(command, "coordinator", false);
     auto path = coordinator
                     ? CoordinatorPath(cwd.string())
-                    : UagentDir(kHistoryDir) + "/" + WorkspaceId(cwd.string()) +
-                          "/web-" + RandomToken(16) + ".json";
+                    : HistoryPath(cwd.string(), "web-" + RandomToken(16));
     if (auto known = sessions_.find(HashHex(path)); known != sessions_.end()) {
       result.outcome["session"] = Metadata(*known->second);
       return result;
@@ -121,14 +121,9 @@ SessionCommandResult SessionHost::ExecuteCommand(
     } else if (PathExists(session->path)) {
       stored = SessionStore::Rename(session->path, title);
     } else {
-      const int64_t updated = NowMillis();
-      auto written =
-          ToolWritePrivateFile(draft_path, JsonDump({{"id", session->id},
-                                                     {"path", session->path},
-                                                     {"cwd", session->cwd},
-                                                     {"title", title},
-                                                     {"updated", updated}}));
-      if (!written.Ok()) result.error = "cannot save conversation title";
+      if (!WriteDraft(*session, title, NowMillis())) {
+        result.error = "cannot save conversation title";
+      }
     }
     if (!stored.Ok()) result.error = stored.message;
     asset_lock.unlock();
@@ -144,10 +139,7 @@ SessionCommandResult SessionHost::ExecuteCommand(
     } else if (result.error.empty()) {
       session->title = title;
       session->draft_title = title;
-      session->updated =
-          std::chrono::duration_cast<std::chrono::milliseconds>(
-              std::chrono::system_clock::now().time_since_epoch())
-              .count();
+      session->updated = NowMillis();
       replay_.Publish(epoch_, session->id, "",
                       {{"kind", "metadata"}, {"metadata", Metadata(*session)}},
                       !session->run_id.empty());
@@ -198,8 +190,7 @@ SessionCommandResult SessionHost::ExecuteCommand(
           session->path, *ids, command,
           [&] {
             std::lock_guard guard(mutex_);
-            if (!sessions_.contains(session->id) ||
-                sessions_.at(session->id) != session || session->exited ||
+            if (!IsCurrentLocked(session.get()) || session->exited ||
                 session->status == "deleting") {
               return std::string(
                   "session changed while claiming attachments; refresh");

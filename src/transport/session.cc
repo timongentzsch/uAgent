@@ -65,6 +65,13 @@ bool Pipe::Open() {
 void Pipe::Wake() const { WakeDescriptor(write.Get()); }
 void Pipe::Drain() const { DrainDescriptor(read.Get()); }
 
+void StampFrame(json& frame, const std::string& id,
+                const std::string& generation) {
+  frame["v"] = kProtocol;
+  frame["session_id"] = id;
+  frame["generation"] = generation;
+}
+
 bool WriteFrame(int fd, const json& frame) {
   return WriteFrame(fd, JsonDump(frame));
 }

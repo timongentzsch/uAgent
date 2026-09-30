@@ -217,6 +217,15 @@ class SessionHost {
                                 std::unique_lock<std::mutex>& lock);
   void Received(HostSession* session, json frame);
   void DeactivateLocked(HostSession& session);
+  // Whether `session` is still the catalogue's entry for its id. Callers
+  // hold mutex_.
+  bool IsCurrentLocked(const HostSession* session) const;
+  // Publishes a lifecycle frame ({"kind", ...}) with the session's metadata.
+  void PublishLifecycle(const HostSession& session, json frame);
+  // Persists a draft's identity, so it outlives the host until its first
+  // save. False when it cannot be written.
+  bool WriteDraft(const HostSession& session, const std::string& title,
+                  int64_t updated) const;
 };
 
 }  // namespace uagent::session

@@ -1,6 +1,7 @@
 // Copyright 2026 Timon Gentzsch
 #ifndef UAGENT_INCLUDE_APP_LAUNCH_H_
 #define UAGENT_INCLUDE_APP_LAUNCH_H_
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -14,6 +15,9 @@ namespace uagent {
 struct LaunchPaths {
   std::string cwd, path;
 };
+
+// The session file `name`.json in the history of workspace `cwd`.
+std::string HistoryPath(const std::string& cwd, const std::string& name);
 
 // `worktree` runs in a fresh detached worktree under ~/.uagent/worktrees/<id>,
 // otherwise in `project` itself. The file is history/<workspace>/<prefix><id>.
@@ -42,5 +46,7 @@ std::string RemoveWorktree(const std::string& project, const std::string& cwd);
 // Returns the runtime's refusal or a transport error, or empty.
 std::string SendWhenReady(const session::Connection& connection,
                           const std::string& path, json command, bool idle);
+// SendWhenReady to the runtime of `path`, busy or not; nullopt when none runs.
+std::optional<std::string> SendToRunning(const std::string& path, json command);
 }  // namespace uagent
 #endif

@@ -47,11 +47,9 @@ constexpr auto kCloseTimeout = std::chrono::seconds(5);
 std::string LiveStatus(const SessionInfo& info) {
   session::Connection connection = session::Connect(info.path);
   if (!connection.socket) return "saved";
-  session::Pipe never;
-  if (!never.Open()) return "saved";
   std::string status = "idle";
   session::ReadFrames(
-      connection.socket.Get(), never.read.Get(), session::kFrameBytes,
+      connection.socket.Get(), -1, session::kFrameBytes,
       [&](const json& frame) {
         if (JsonValue(frame, "kind", "") != "state") return true;
         status = WaitsOnPerson(JsonValue(frame, "pending", json()))
@@ -106,6 +104,21 @@ std::optional<SessionInfo> FindSession(const std::string& folder,
     if (HashHex(info.path) == id) return std::move(info);
   }
   return std::nullopt;
+}
+
+// Runs `fn` on the session of the folder that `a` names; with `thread`, only
+// on one of its threads.
+template <typename Fn>
+ToolResult WithSession(const std::string& folder, const json& a, Fn fn,
+                       bool thread = false) {
+  const std::string id = JsonValue(a, "session_id", "");
+  auto info = FindSession(folder, id);
+  if (!info || (thread && info->kind != kSessionKindThread)) {
+    return ToolFailure(
+        ToolErrorCode::kNotFound,
+        (thread ? "no thread " : "no session ") + id + " in this folder");
+  }
+  return fn(*info);
 }
 
 ToolResult Unavailable(const std::string& error) {
@@ -241,11 +254,6 @@ std::string Today() { return LocalTime(std::time(nullptr), "%Y-%m-%d"); }
 bool OwnThread(const SessionInfo& info, const std::string& coordinator) {
   return info.kind == kSessionKindThread &&
          JsonValue(info.thread, "coordinator_id", "") == coordinator;
-}
-
-double ThreadBudget(const json& thread) {
-  return JsonValue(JsonValue(thread, "ceiling", json::object()), "budget_usd",
-                   0.0);
 }
 
 // A thread counts against the cap while its runtime is working a turn.
@@ -433,11 +441,9 @@ ToolResult Message(const SessionInfo& info, const std::string& folder,
 }
 
 ToolResult Stop(const SessionInfo& info) {
-  session::Connection connection = session::Connect(info.path);
-  if (!connection.socket) return ToolSuccess("not running");
-  const std::string error =
-      SendWhenReady(connection, info.path, {{"kind", "interrupt"}}, false);
-  return error.empty() ? ToolSuccess("interrupted") : Unavailable(error);
+  const auto error = SendToRunning(info.path, {{"kind", "interrupt"}});
+  if (!error) return ToolSuccess("not running");
+  return error->empty() ? ToolSuccess("interrupted") : Unavailable(*error);
 }
 
 // Ends a session's runtime: it acknowledges the close, then exits, which
@@ -449,10 +455,8 @@ std::string CloseRuntime(const SessionInfo& info) {
   std::string error =
       SendWhenReady(connection, info.path, {{"kind", "close"}}, false);
   if (!error.empty()) return error;
-  session::Pipe never;
-  if (!never.Open()) return "cannot wait for the session runtime";
   session::ReadFrames(
-      connection.socket.Get(), never.read.Get(), session::kFrameBytes,
+      connection.socket.Get(), -1, session::kFrameBytes,
       [](const json&) { return true; },
       std::chrono::steady_clock::now() + kCloseTimeout);
   return session::Connect(info.path).socket ? "the session did not exit in time"
@@ -522,21 +526,17 @@ Tool ThreadTool(const std::string& folder) {
       [folder](const json& a, const ToolContext&) {
         const std::string action = JsonValue(a, "action", "");
         if (action == "spawn") return Spawn(folder, a);
-        const std::string id = JsonValue(a, "session_id", "");
-        auto info = FindSession(folder, id);
-        if (!info) {
-          return ToolFailure(ToolErrorCode::kNotFound,
-                             "no session " + id + " in this folder");
-        }
-        if (action == "message") {
-          return Message(*info, folder, JsonValue(a, "text", ""));
-        }
-        if (action == "stop") return Stop(*info);
-        if (action == "close") return Close(*info);
-        if (action == "diff") return Diff(*info);
-        if (action == "delete") return Delete(*info, folder);
-        return ToolFailure(ToolErrorCode::kInvalidArguments,
-                           "unknown action " + action);
+        return WithSession(folder, a, [&](const SessionInfo& info) {
+          if (action == "message") {
+            return Message(info, folder, JsonValue(a, "text", ""));
+          }
+          if (action == "stop") return Stop(info);
+          if (action == "close") return Close(info);
+          if (action == "diff") return Diff(info);
+          if (action == "delete") return Delete(info, folder);
+          return ToolFailure(ToolErrorCode::kInvalidArguments,
+                             "unknown action " + action);
+        });
       });
   tool.capabilities = Capability(ToolCapability::kDelegate);
   tool.category = "collaborate";
@@ -573,16 +573,11 @@ ToolResult Decide(const SessionInfo& info, const json& a) {
       return ToolFailure(ToolErrorCode::kInvalidArguments,
                          "answer needs answers, one per question");
     }
-    command = {{"kind", "reply"},
-               {"origin", kRouteCoordinator},
-               {"reason", reason},
-               {"text", JsonDump(*answers)}};
+    command = {{"kind", "reply"}, {"text", JsonDump(*answers)}};
   } else if (action == "allow_once" || action == "allow_thread" ||
              action == "deny") {
     command = {
         {"kind", "reply"},
-        {"origin", "coordinator"},
-        {"reason", reason},
         {"text", action == "allow_once"     ? "y"
                  : action == "allow_thread" ? "s"
                  : reason.empty() ? "n"
@@ -592,14 +587,14 @@ ToolResult Decide(const SessionInfo& info, const json& a) {
                        "decision is allow_once, allow_thread, deny, "
                        "answer or yield");
   }
-  command["interaction_id"] = interaction;
-  session::Connection connection = session::Connect(info.path);
-  if (!connection.socket) {
-    return Unavailable("that thread is not running");
+  if (action != "yield") {
+    command["origin"] = kRouteCoordinator;
+    command["reason"] = reason;
   }
-  const std::string error =
-      SendWhenReady(connection, info.path, std::move(command), false);
-  return error.empty() ? ToolSuccess("sent " + action) : Unavailable(error);
+  command["interaction_id"] = interaction;
+  const auto error = SendToRunning(info.path, std::move(command));
+  if (!error) return Unavailable("that thread is not running");
+  return error->empty() ? ToolSuccess("sent " + action) : Unavailable(*error);
 }
 
 Tool DecideTool(const std::string& folder) {
@@ -622,13 +617,9 @@ Tool DecideTool(const std::string& folder) {
         "reason":{"type":"string"}},
         "required":["session_id","interaction_id","decision","reason"]})json"),
       [folder](const json& a, const ToolContext&) {
-        const std::string id = JsonValue(a, "session_id", "");
-        auto info = FindSession(folder, id);
-        if (!info || info->kind != kSessionKindThread) {
-          return ToolFailure(ToolErrorCode::kNotFound,
-                             "no thread " + id + " in this folder");
-        }
-        return Decide(*info, a);
+        return WithSession(
+            folder, a, [&](const SessionInfo& info) { return Decide(info, a); },
+            /*thread=*/true);
       });
   tool.capabilities = Capability(ToolCapability::kDelegate);
   tool.category = "collaborate";
@@ -724,19 +715,15 @@ Tool HistoryTool(const std::string& folder) {
         if (action == "search") {
           return Search(folder, JsonValue(a, "query", ""));
         }
-        const std::string id = JsonValue(a, "session_id", "");
-        auto info = FindSession(folder, id);
-        if (!info) {
-          return ToolFailure(ToolErrorCode::kNotFound,
-                             "no session " + id + " in this folder");
-        }
-        if (action == "read") {
-          return Read(*info, JsonValue(a, "before", uint64_t{0}));
-        }
-        if (action == "detail") return Detail(*info, JsonValue(a, "id", ""));
-        if (action == "report") return Report(*info);
-        return ToolFailure(ToolErrorCode::kInvalidArguments,
-                           "unknown action " + action);
+        return WithSession(folder, a, [&](const SessionInfo& info) {
+          if (action == "read") {
+            return Read(info, JsonValue(a, "before", uint64_t{0}));
+          }
+          if (action == "detail") return Detail(info, JsonValue(a, "id", ""));
+          if (action == "report") return Report(info);
+          return ToolFailure(ToolErrorCode::kInvalidArguments,
+                             "unknown action " + action);
+        });
       });
   tool.capabilities = Capability(ToolCapability::kInspect);
   tool.parallel_safe = true;
@@ -752,6 +739,11 @@ Tool HistoryTool(const std::string& folder) {
 
 std::string CoordinatorId(const std::string& folder) {
   return HashHex(CoordinatorPath(folder));
+}
+
+double ThreadBudget(const json& thread) {
+  return JsonValue(JsonValue(thread, "ceiling", json::object()), "budget_usd",
+                   0.0);
 }
 
 std::vector<SessionInfo> FolderSessions(const std::string& folder) {

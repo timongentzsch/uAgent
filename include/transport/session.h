@@ -48,6 +48,9 @@ inline constexpr auto kUsagePublishInterval =
 // OS randomness for credentials and opaque identities. Empty on failure.
 std::string RandomToken(size_t bytes = 24);
 bool OpaqueId(std::string_view value);
+// Addresses `frame` to session `id` at `generation` in this protocol.
+void StampFrame(json& frame, const std::string& id,
+                const std::string& generation);
 bool WriteFrame(int fd, const json& frame);
 bool WriteFrame(int fd, std::string line);
 // The same incremental, bounded decoder serves worker commands and client
@@ -61,6 +64,8 @@ class FrameBuffer {
   size_t limit_;
   std::string pending_;
 };
+// Reads until `receive` declines, the peer closes, `stop_fd` turns readable
+// or the deadline passes. A `stop_fd` of -1 never stops the read.
 void ReadFrames(int fd, int stop_fd, size_t limit,
                 const std::function<bool(json)>& receive,
                 std::chrono::steady_clock::time_point deadline =

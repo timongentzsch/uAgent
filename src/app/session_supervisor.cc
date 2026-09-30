@@ -62,19 +62,34 @@ std::shared_ptr<HostSession> SessionHost::CreateSession(
   session->draft_title = title;
   session->status = "draft";
   session->updated = NowMillis();
-  auto written =
-      ToolWritePrivateFile(directory_ + "/drafts/" + session->id + ".json",
-                           JsonDump({{"cwd", cwd},
-                                     {"path", path},
-                                     {"id", session->id},
-                                     {"title", title},
-                                     {"updated", session->updated}}));
-  if (!written.Ok()) {
+  if (!WriteDraft(*session, title, session->updated)) {
     error = "cannot persist draft identity";
     return {};
   }
   sessions_[session->id] = session;
   return session;
+}
+
+bool SessionHost::WriteDraft(const HostSession& session,
+                             const std::string& title, int64_t updated) const {
+  return ToolWritePrivateFile(directory_ + "/drafts/" + session.id + ".json",
+                              JsonDump({{"cwd", session.cwd},
+                                        {"path", session.path},
+                                        {"id", session.id},
+                                        {"title", title},
+                                        {"updated", updated}}))
+      .Ok();
+}
+
+bool SessionHost::IsCurrentLocked(const HostSession* session) const {
+  auto owner = sessions_.find(session->id);
+  return owner != sessions_.end() && owner->second.get() == session;
+}
+
+void SessionHost::PublishLifecycle(const HostSession& session, json frame) {
+  frame["metadata"] = Metadata(session);
+  replay_.Publish(epoch_, session.id, session.generation, std::move(frame),
+                  !session.run_id.empty());
 }
 
 Connection SessionHost::OpenRuntime(const HostSession& session, bool create,
@@ -104,15 +119,12 @@ void SessionHost::DeactivateLocked(HostSession& session) {
   session.status = "saved";
   session.error.clear();
   session.state["activity"] = "Ready";
-  replay_.Publish(epoch_, session.id, "",
-                  {{"kind", "deactivated"}, {"metadata", Metadata(session)}},
-                  !session.run_id.empty());
+  PublishLifecycle(session, {{"kind", "deactivated"}});
 }
 
 void SessionHost::Received(HostSession* session, json frame) {
   std::unique_lock lock(mutex_);
-  auto owner = sessions_.find(session->id);
-  if (owner == sessions_.end() || owner->second.get() != session ||
+  if (!IsCurrentLocked(session) ||
       JsonValue(frame, "session_id", "") != session->id ||
       JsonValue(frame, "generation", "") != session->generation) {
     return;
@@ -224,8 +236,7 @@ bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
       lock.unlock();
       session->reader.join();
       lock.lock();
-      auto owner = sessions_.find(session->id);
-      if (stopping_ || owner == sessions_.end() || owner->second != session) {
+      if (stopping_ || !IsCurrentLocked(session.get())) {
         session->connecting = false;
         error = "session was closed while joining its prior runtime";
         return false;
@@ -235,8 +246,7 @@ bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
     auto connected = OpenRuntime(*session, create_now, error);
     lock.lock();
     session->connecting = false;
-    auto owner = sessions_.find(session->id);
-    if (stopping_ || owner == sessions_.end() || owner->second != session) {
+    if (stopping_ || !IsCurrentLocked(session.get())) {
       error = "session was closed while connecting";
       return false;
     }
@@ -261,8 +271,7 @@ bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
                    return !stopping_;
                  });
       std::lock_guard state_lock(mutex_);
-      auto current = sessions_.find(session->id);
-      if (current != sessions_.end() && current->second.get() == session) {
+      if (IsCurrentLocked(session)) {
         outcomes_.FailPending(*session);
         session->turn_active = false;
         session->pending = nullptr;
@@ -271,10 +280,7 @@ bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
         } else {
           session->status = "interrupted";
           session->state["activity"] = "Interrupted";
-          replay_.Publish(
-              epoch_, session->id, session->generation,
-              {{"kind", "closed"}, {"metadata", Metadata(*session)}},
-              !session->run_id.empty());
+          PublishLifecycle(*session, {{"kind", "closed"}});
         }
       }
       session->exited = true;
@@ -292,9 +298,7 @@ bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
       continue;
     }
     session->activated = NowMillis();
-    replay_.Publish(epoch_, session->id, session->generation,
-                    {{"kind", "activated"}, {"metadata", Metadata(*session)}},
-                    !session->run_id.empty());
+    PublishLifecycle(*session, {{"kind", "activated"}});
     return true;
   }  // for (attempt): single pass unless a stale worker recycled above
 }

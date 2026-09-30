@@ -34,9 +34,7 @@ HostSession::~HostSession() {
 
 bool HostSession::Send(json frame) {
   std::lock_guard lock(send_mutex);
-  frame["v"] = kProtocol;
-  frame["session_id"] = id;
-  frame["generation"] = generation;
+  StampFrame(frame, id, generation);
   return socket && WriteFrame(socket.Get(), frame);
 }
 

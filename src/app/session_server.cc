@@ -84,6 +84,23 @@ Connection Connect(const std::string& path) {
   result.socket.Reset();
   return result;
 }
+Options OptionsFromLaunch(const json& launch) {
+  Options options;
+  options.browser_session = JsonValue(launch, "browser_session", false);
+  options.yolo = JsonValue(launch, "yolo", false);
+  options.debug = JsonValue(launch, "debug", false);
+  options.debug_path = JsonValue(launch, "debug_path", "");
+  options.trust_project = JsonValue(launch, "trust_project", false);
+  if (const json* overrides = JsonObject(launch, "overrides")) {
+    for (auto it = overrides->begin(); it != overrides->end(); ++it) {
+      if (it.value().is_string()) {
+        options.overrides[it.key()] = it.value().get<std::string>();
+      }
+    }
+  }
+  return options;
+}
+
 Connection Open(const std::string& executable, const std::string& cwd,
                 const std::string& path, const std::string& title,
                 const Options& options, std::string& error) {

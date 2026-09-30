@@ -207,6 +207,30 @@ def test_non_utf8_locale_draws_only_ascii(root, home, *, binary):
     assert_true(re.search(rb"[\x80-\xff]", output) is None, output[-2000:])
 
 
+def test_plain_mode_writes_labelled_lines_without_cursor_control(root, home, *, binary):
+    # --plain is for screen readers: every row opens with a spoken label and
+    # nothing moves the cursor, erases, animates or leaves ASCII.
+    replies = [
+        tool_call("run", {"command": "printf plain-ran"}),
+        event({"content": "plain-ok"}),
+    ]
+    with Server(replies) as server:
+        code, output = run_pty(
+            root,
+            base_env(home, server.url),
+            [(b"go\n", b"approval needed:"), (b"y\n", b"plain-ok"), (b"/q\n", None)],
+            args=("--plain",),
+            startup_marker=b"",
+            binary=binary,
+        )
+    assert_true(code == 0, output[-2000:])
+    text = re.sub(rb"\x1b\[[0-9;]*m", b"", output)
+    for label in (b"you: go", b"tool: Running", b"result: run", b"uagent:\r\nplain-ok"):
+        assert_true(label in text, (label, output[-2000:]))
+    assert_true(re.search(rb"\x1b(\[[0-9;?]*[A-Za-ln-z]|\])", output) is None, output[-2000:])
+    assert_true(re.search(rb"[\x80-\xff]", output) is None, output[-2000:])
+
+
 def test_multiline_bracketed_paste(root, home, *, binary):
     def verify(_, body):
         pasted = body["messages"][-1].get("content")

@@ -127,6 +127,7 @@ Common slash commands:
 - [Tools](docs/TOOLS.md)
 - [Persistence](docs/PERSISTENCE.md)
 - [Web interface](docs/WEB.md)
+- [Accessibility](docs/ACCESSIBILITY.md)
 - [Memory, skills and scheduled tasks](docs/MANAGEMENT.md)
 - [System prompts](docs/SYSTEM_PROMPTS.md)
 - [Prompt caching](docs/CACHING.md)

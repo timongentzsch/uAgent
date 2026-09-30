@@ -42,6 +42,21 @@ enum class Tone { kNeutral, kWarn, kError };
 // a lowercase fragment with no trailing period; glyphs fall back to ASCII.
 std::string Note(Tone tone, std::string_view text);
 
+// What opens a transcript row: its glyph, or in plain mode the word a screen
+// reader speaks in its place ("tool: ", "error: ").
+enum class Mark {
+  kCall,
+  kResult,
+  kFailed,
+  kStatus,
+  kChange,
+  kSkill,
+  kNote,
+  kWarn,
+  kError
+};
+std::string RowMark(Mark mark);
+
 // Three or more backticks, or tildes, and nothing else.
 inline bool IsMarkdownFence(std::string_view marker) {
   return marker.size() >= 3 && (marker[0] == '`' || marker[0] == '~') &&

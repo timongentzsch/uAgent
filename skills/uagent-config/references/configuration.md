@@ -175,5 +175,7 @@ Every setting below is read from the running binary's registry. `takes effect` i
 | `UAGENT_DEBUG_LOG` | string | empty | restart-required | write a sensitive reconstructable JSONL trace |
 | `UAGENT_USAGE_FILE` | string | empty | restart-required | append per-turn usage records to this path |
 | `UAGENT_MARKDOWN` | boolean | `1` | restart-required | render Markdown on a TTY |
+| `UAGENT_PLAIN` | boolean | `0` | restart-required | screen-reader terminal: labelled lines, no animation or cursor control |
+| `UAGENT_REDUCED_MOTION` | boolean | `0` | restart-required | show a still status instead of the terminal spinner |
 | `UAGENT_HEADLESS_PROGRESS` | boolean | `0` | restart-required | echo progress lines in headless mode |
 | `UAGENT_MEMORY_REDACT_KEYWORDS` | string | empty | restart-required | extra keywords redacted from stored memories |

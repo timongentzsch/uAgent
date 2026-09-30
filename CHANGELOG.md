@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `uagent --plain` (or `UAGENT_PLAIN=1`) for screen readers: append-only
+  lines that open with a spoken label (`you:`, `tool:`, `result:`,
+  `approval needed:`), with no cursor movement, animation or non-ASCII glyphs.
+  `UAGENT_REDUCED_MOTION=1` holds the spinner still. See
+  [docs/ACCESSIBILITY.md](docs/ACCESSIBILITY.md).
+
 ## v1.2.0 - 2026-09-30
 
 ### Upgrade notes

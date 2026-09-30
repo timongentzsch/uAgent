@@ -14,6 +14,7 @@
 #include "include/agent/tool_presentation.h"
 #include "include/app/options.h"
 #include "include/core/activity.h"
+#include "include/core/style.h"
 #include "include/core/term.h"
 #include "include/tools/registry.h"
 #include "include/ui/display.h"
@@ -252,6 +253,15 @@ void TestPollCollapse() {
         }).find("    model text: µ · ← …\n    second") != std::string::npos);
   CHECK(StatusBarLine("thinking · 2s").find("thinking - 2s") !=
         std::string::npos);
+
+  // Plain mode speaks each row's kind instead of drawing its glyph.
+  g_plain = true;
+  compact.status = PresentationStatus::kFailed;
+  CHECK(CaptureStdout([&] { PrintPresentation(compact); }).find("failed: ") !=
+        std::string::npos);
+  CHECK(Note(Tone::kError, "gone") == "error: gone\n");
+  CHECK(Note(Tone::kNeutral, "compacted") == "compacted\n");
+  g_plain = false;
   g_unicode = prior_unicode;
 
   // Only an explicitly non-UTF-8 locale downgrades; an unset one is no

@@ -216,7 +216,10 @@ void SetInteractiveReadHandler(InteractiveReadHandler handler) {
 
 bool InteractiveReadAvailable() { return static_cast<bool>(ReadHandler()); }
 
-std::string InputPrompt() { return std::string(BOLD()) + "> " + RST(); }
+// Plain mode names the speaker, as it names every other row.
+std::string InputPrompt() {
+  return std::string(BOLD()) + (g_plain ? "you: " : "> ") + RST();
+}
 
 std::string UserEchoRow(const std::string& prompt, const std::string& text) {
   // InputPrompt ends in RST(), which clears the background, so the band is

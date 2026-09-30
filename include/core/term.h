@@ -31,10 +31,17 @@ extern bool g_attributes;
 // A terminal whose locale cannot decode UTF-8 renders the row scaffolding as
 // mojibake, so the glyphs fall back to ASCII at the point they are written.
 extern bool g_unicode;
+// The plain profile, for screen readers and transcripts: append-only rows that
+// open with a spoken label, ASCII glyphs, no cursor control and no animation.
+extern bool g_plain;
+// Off for plain and for reduced motion: the spinner holds a still label.
+extern bool g_motion;
 extern volatile sig_atomic_t g_signal_tty;
 bool ResolveColorEnabled(bool tty);
 bool ResolveAttributesEnabled(bool tty);
 bool ResolveUnicodeEnabled();
+// Narrows what InitializeProcess resolved, once the configuration is known.
+void ApplyTerminalProfile(bool plain, bool reduced_motion);
 // Conversation text is always UTF-8, so width measurement needs a multibyte
 // LC_CTYPE even when the environment names none. False when none exists.
 bool EnsureUtf8Ctype();
@@ -133,15 +140,21 @@ class TerminalSpinner {
         double elapsed = std::chrono::duration<double>(
                              std::chrono::steady_clock::now() - started_)
                              .count();
-        const std::string row =
-            DisplayTrunc(AsciiGlyphs(std::string(SpinnerFrame(frame_)) + " " +
-                                     label_ + " · " + FmtDuration(elapsed)),
-                         TerminalWidth(1));
+        const std::string row = DisplayTrunc(
+            AsciiGlyphs(g_motion ? std::string(SpinnerFrame(frame_)) + " " +
+                                       label_ + " · " + FmtDuration(elapsed)
+                                 : label_ + "…"),
+            TerminalWidth(1));
         printf("\r%s%s%s%s", DIM(), row.c_str(), EraseToEol(), RST());
         fflush(stdout);
         ++frame_;
-        wake_.wait_for(lock, std::chrono::milliseconds(100),
-                       [this] { return done_; });
+        // Without motion only a new label or the stop redraws.
+        if (g_motion) {
+          wake_.wait_for(lock, std::chrono::milliseconds(100),
+                         [this] { return done_; });
+        } else {
+          wake_.wait(lock);
+        }
       }
     });
   }

@@ -31,6 +31,8 @@ bool g_tty = false;
 bool g_color = false;
 bool g_attributes = false;
 bool g_unicode = true;
+bool g_plain = false;
+bool g_motion = true;
 volatile sig_atomic_t g_signal_tty = 0;
 
 namespace {

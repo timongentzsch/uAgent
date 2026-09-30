@@ -30,10 +30,12 @@ extern char** environ;
 #include "include/app/session.h"
 #include "include/browser/browser.h"
 #include "include/cli.h"
+#include "include/core/effective_config.h"
 #include "include/core/events.h"
 #include "include/core/json.h"
 #include "include/core/sandbox.h"
 #include "include/core/signals.h"
+#include "include/core/strings.h"
 #include "include/core/term.h"
 #include "include/core/usage.h"
 #ifdef UAGENT_WEB
@@ -95,6 +97,20 @@ void InitializeProcess() {
   InstallSigchldHandler();
   InstallSigwinchHandler();
   InstallSuspendHandlers();
+}
+
+// The terminal profile the user configured, or asked for with --plain.
+void ResolveTerminalProfile(const Options& options) {
+  const auto values =
+      ConfigManager::Capture(false, options.overrides).Read().values;
+  auto on = [&](const char* key) {
+    bool value = false;
+    if (auto found = values.find(key); found != values.end()) {
+      ParseBool(found->second, value);
+    }
+    return value;
+  };
+  ApplyTerminalProfile(on("UAGENT_PLAIN"), on("UAGENT_REDUCED_MOTION"));
 }
 
 // Report a startup failure in whichever shape the caller asked for. Emit is a
@@ -206,6 +222,7 @@ int Main(int argc, char** argv) {
     if (!parsed.options.prompt.empty()) {
       return session::CoordinatorPromptMain(parsed.options);
     }
+    ResolveTerminalProfile(parsed.options);
     return session::TerminalMain(std::move(parsed.options));
   }
   if (parsed.options.web) {
@@ -256,6 +273,7 @@ int Main(int argc, char** argv) {
 #endif
   }
   if (parsed.options.prompt.empty() && !parsed.options.json && !json_stream) {
+    ResolveTerminalProfile(parsed.options);
     return session::TerminalMain(std::move(parsed.options));
   }
   const bool json_envelope = parsed.options.json;

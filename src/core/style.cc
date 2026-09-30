@@ -5,6 +5,7 @@
 #include <initializer_list>
 #include <string>
 #include <string_view>
+#include <utility>
 
 #include "include/core/strings.h"
 #include "include/core/term.h"
@@ -25,7 +26,20 @@ std::string Note(Tone tone, std::string_view text) {
   const char* style = tone == Tone::kError  ? RED()
                       : tone == Tone::kWarn ? YEL()
                                             : DIM();
-  return StyledBlock(AsciiGlyphs("· " + std::string(text)), style);
+  const Mark mark = tone == Tone::kError  ? Mark::kError
+                    : tone == Tone::kWarn ? Mark::kWarn
+                                          : Mark::kNote;
+  return StyledBlock(RowMark(mark) + AsciiGlyphs(text), style);
+}
+
+std::string RowMark(Mark mark) {
+  static constexpr std::pair<std::string_view, std::string_view> kMarks[] = {
+      {"→ ", "tool: "},   {"← ", "result: "},  {"← ", "failed: "},
+      {"• ", "status: "}, {"• ", "changed: "}, {"◆ skill ", "skill: "},
+      {"· ", ""},         {"· ", "warning: "}, {"· ", "error: "},
+  };
+  const auto& [glyph, label] = kMarks[static_cast<size_t>(mark)];
+  return std::string(g_plain ? label : AsciiGlyphs(glyph));
 }
 
 }  // namespace uagent

@@ -513,6 +513,13 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                   "append per-turn usage records to this path"),
     registry::Bul("UAGENT_MARKDOWN", {}, true, ReloadPolicy::kRestartRequired,
                   "behaviour", "render Markdown on a TTY"),
+    registry::Bul("UAGENT_PLAIN", {}, false, ReloadPolicy::kRestartRequired,
+                  "behaviour",
+                  "screen-reader terminal: labelled lines, no animation or "
+                  "cursor control"),
+    registry::Bul("UAGENT_REDUCED_MOTION", {}, false,
+                  ReloadPolicy::kRestartRequired, "behaviour",
+                  "show a still status instead of the terminal spinner"),
     registry::Bul("UAGENT_HEADLESS_PROGRESS", {}, false,
                   ReloadPolicy::kRestartRequired, "behaviour",
                   "echo progress lines in headless mode"),

@@ -172,14 +172,20 @@ class Terminal {
         composer_.Mount(InputPrompt(), draft_);
       }
     } else if (!decision.empty()) {
-      printf("%s\n", prompt.c_str());
+      const char* label = !g_plain ? ""
+                          : JsonValue(pending, "kind", "") == "ask"
+                              ? "question: "
+                              : "approval needed: ";
+      printf("%s%s\n", label, prompt.c_str());
     }
     return false;
   }
 
   int Run(const std::vector<std::string>& attachments) {
     if (!stop_.Open() || !wake_.Open()) return 1;
-    raw_ = isatty(STDIN_FILENO) && output_.Start() && composer_.Start();
+    // Plain mode reads cooked lines: the composer repaints in place.
+    raw_ = !g_plain && isatty(STDIN_FILENO) && output_.Start() &&
+           composer_.Start();
     if (!raw_) output_.Stop();
     SetPersistentComposer(raw_);
     SetTerminalWakeFd(wake_.write.Get());

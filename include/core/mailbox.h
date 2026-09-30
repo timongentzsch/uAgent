@@ -86,6 +86,9 @@ class MailboxWatch {
 
  private:
   Fd fd_;
+  // The watched directory on kqueue, which watches descriptors: it must stay
+  // open as long as the watch does, and close with it.
+  Fd directory_;
 };
 
 }  // namespace uagent

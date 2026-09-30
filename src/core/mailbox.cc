@@ -268,21 +268,16 @@ MailboxWatch::MailboxWatch(const std::string& id) {
     fd_ = std::move(watcher);
   }
 #elif defined(__APPLE__)
-  // The directory's descriptor must outlive the watch; kqueue keeps it.
   Fd queue(kqueue());
-  int folder = open(pending.c_str(), O_EVTONLY | O_CLOEXEC);
-  if (!queue || folder < 0) {
-    if (folder >= 0) close(folder);
-    return;
-  }
+  Fd folder(open(pending.c_str(), O_EVTONLY | O_CLOEXEC));
+  if (!queue || !folder) return;
   fcntl(queue.Get(), F_SETFD, FD_CLOEXEC);
   struct kevent change;
-  EV_SET(&change, folder, EVFILT_VNODE, EV_ADD | EV_CLEAR, NOTE_WRITE, 0,
+  EV_SET(&change, folder.Get(), EVFILT_VNODE, EV_ADD | EV_CLEAR, NOTE_WRITE, 0,
          nullptr);
   if (kevent(queue.Get(), &change, 1, nullptr, 0, nullptr) == 0) {
     fd_ = std::move(queue);
-  } else {
-    close(folder);
+    directory_ = std::move(folder);
   }
 #endif
 }

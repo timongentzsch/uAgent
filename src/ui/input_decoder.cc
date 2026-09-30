@@ -157,7 +157,10 @@ size_t TerminalInputDecoder::MetaKeyBytes() const {
     const size_t bytes = key >= 0xf0 ? 5 : key >= 0xe0 ? 4 : 3;
     return pending_.size() >= bytes ? bytes : 0;
   }
-  if (key != 0x1b || pending_.size() < 3) return std::string::npos;
+  if (key != 0x1b) return std::string::npos;
+  // Escape twice may still become Meta with a CSI or SS3 key: wait for the
+  // byte that decides, however the reads split it.
+  if (pending_.size() < 3) return 0;
   if (pending_[2] == 'O') return pending_.size() >= 4 ? 4 : 0;
   if (pending_[2] != '[') return std::string::npos;
   const size_t bytes = CompleteCsiBytes(1);
@@ -211,7 +214,11 @@ bool TerminalInputDecoder::HasReady() const {
   }
   if (StartsX10Mouse()) return pending_.size() >= 6;
   if (const size_t meta = MetaKeyBytes(); meta != std::string::npos) {
-    return meta > 0;
+    // Escape twice resolves like a lone Escape once its window passes.
+    return meta > 0 || (pending_.size() == 2 && pending_[1] == 0x1b &&
+                        (!escape_pending_ ||
+                         std::chrono::steady_clock::now() - escape_started_ >=
+                             kInputEscapeDelay));
   }
   if (pending_[1] == '[') {
     return CompleteCsiBytes() > 0 || pending_.size() >= kInputSequenceBytes;
@@ -283,12 +290,19 @@ std::optional<TerminalInputToken> TerminalInputDecoder::Next(
     // must not decay into a bare Escape plus its payload as typed text.
     const bool sequence_introducer =
         pending_[1] == '[' || pending_[1] == 'O' || StartsStringSequence();
-    const bool late = escape_was_pending && !sequence_introducer &&
-                      std::chrono::steady_clock::now() - escape_started_ >=
-                          kInputEscapeDelay;
-    if (const size_t meta = MetaKeyBytes();
-        !late && meta != std::string::npos) {
-      if (meta == 0) return std::nullopt;
+    const bool late =
+        escape_was_pending && !sequence_introducer &&
+        std::chrono::steady_clock::now() - escape_started_ >= kInputEscapeDelay;
+    const size_t meta = late ? std::string::npos : MetaKeyBytes();
+    // An incomplete Meta key waits for its bytes. Escape twice with nothing
+    // after it within the escape window is two presses of Escape, taken below.
+    if (meta == 0 &&
+        (pending_.size() != 2 || pending_[1] != 0x1b ||
+         (!expire_escape && std::chrono::steady_clock::now() - escape_started_ <
+                                kInputEscapeDelay))) {
+      return std::nullopt;
+    }
+    if (meta != std::string::npos && meta > 0) {
       std::string sequence(
           pending_.begin(),
           pending_.begin() + static_cast<std::ptrdiff_t>(meta));

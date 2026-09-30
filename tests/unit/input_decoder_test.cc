@@ -58,12 +58,6 @@ void TestTerminalInputDecoder() {
   CHECK(token && token->kind == TerminalInputTokenKind::kText);
   CHECK(token && token->text == "b");
 
-  decoder.Feed("\x1b\x1b");
-  token = decoder.Next();
-  CHECK(token && token->kind == TerminalInputTokenKind::kEscape);
-  token = decoder.Next(true);
-  CHECK(token && token->kind == TerminalInputTokenKind::kEscape);
-
   // Option+Up in Terminal.app is ESC before a whole sequence: one key, not
   // an Escape, which would interrupt the turn, followed by history.
   decoder.Feed("\x1b\x1b[1");
@@ -74,6 +68,21 @@ void TestTerminalInputDecoder() {
   CHECK(token && token->kind == TerminalInputTokenKind::kSequence);
   CHECK(token && token->text == "\x1b\x1b[1;2A");
   CHECK(!decoder.Next());
+
+  // Escape twice waits for the byte that decides whether a Meta key follows,
+  // however the reads split it; with nothing after it, it is Escape.
+  decoder.Feed("\x1b\x1b");
+  CHECK(!decoder.Next());
+  decoder.Feed("OA");
+  token = decoder.Next();
+  CHECK(token && token->kind == TerminalInputTokenKind::kSequence);
+  CHECK(token && token->text == "\x1b\x1bOA");
+  decoder.Feed("\x1b\x1b");
+  token = decoder.Next(/*expire_escape=*/true);
+  CHECK(token && token->kind == TerminalInputTokenKind::kEscape);
+  CHECK(decoder.Next(/*expire_escape=*/true)->kind ==
+        TerminalInputTokenKind::kEscape);
+  CHECK(!decoder.Next(true));
 
   // Meta with a character of several bytes takes all of them.
   decoder.Feed("\x1b\xe2\x82");

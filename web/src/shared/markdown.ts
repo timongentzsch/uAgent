@@ -18,6 +18,29 @@ markdown.renderer.rules.link_open = (
   tokens[index].attrSet("target", "_blank");
   return renderer.renderToken(tokens, index, options);
 };
+// A reply sits under the page's h1 and a section's h2: its own headings
+// start at h3 (capped at h6), and keep their size by their source level.
+const shiftHeading: (typeof markdown.renderer.rules)["heading_open"] = (
+  tokens,
+  index,
+  options,
+  _env,
+  renderer,
+) => {
+  // Tokens are cached and rendered again: shift for this render only.
+  const token = tokens[index];
+  const source = token.tag;
+  const level = Number(source.slice(1));
+  if (token.nesting === 1) token.attrSet("data-level", String(level));
+  token.tag = `h${Math.min(6, level + 2)}`;
+  try {
+    return renderer.renderToken(tokens, index, options);
+  } finally {
+    token.tag = source;
+  }
+};
+markdown.renderer.rules.heading_open = shiftHeading;
+markdown.renderer.rules.heading_close = shiftHeading;
 // Wide tables scroll in their own wrapper instead of squeezing their columns
 // to the container width (display:block on <table> would do exactly that).
 markdown.renderer.rules.table_open = () => '<div class="table-scroll"><table>';

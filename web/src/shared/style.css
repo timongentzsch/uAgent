@@ -35,7 +35,7 @@
   /* The type ramp below body text: secondary lines, then badges and
      timestamps. Nothing smaller, so no text drops under 10px. */
   --font-small: 0.85rem;
-  --font-micro: 0.75rem;
+  --font-micro: 0.8125rem;
   /* Motion: the only durations and easings in the app. Reduced motion
      zeroes the durations below, which turns every transition off. */
   --motion-fast: 120ms;
@@ -77,7 +77,14 @@
   --placeholder: #414141;
   --text: #f5f5f5;
   --muted: #a3a3a3;
+  /* Decorative dividers only; a control's edge uses --field-border. */
   --line: #404040;
+  /* A control's boundary: at least 3:1 on --raised, --surface and --bg. */
+  --field-border: #8a8a8a;
+  /* The same three under prefers-contrast: more. */
+  --muted-more: #c4c4c4;
+  --line-more: #8a8a8a;
+  --field-border-more: #bdbdbd;
   --accent: #fff;
   --live: #22a35a;
   --added: #3fb950;
@@ -101,8 +108,12 @@
   --hover: #e2e2e2;
   --placeholder: #ccc;
   --text: #111;
-  --muted: #666;
+  --muted: #555;
   --line: #ccc;
+  --field-border: #767676;
+  --muted-more: #3d3d3d;
+  --line-more: #767676;
+  --field-border-more: #3d3d3d;
   --accent: #000;
   --accent-hover: #262626;
   --accent-active: #404040;
@@ -175,6 +186,12 @@ textarea {
   border: 1px solid transparent;
   background: var(--raised);
 }
+/* A field's edge is the only thing marking it on its own surface. */
+input,
+select,
+textarea {
+  border-color: var(--field-border);
+}
 input[type="checkbox"],
 input[type="radio"] {
   width: calc(18rem / 14);
@@ -203,7 +220,7 @@ input[type="radio"] {
   height: calc(24rem / 14);
   min-height: calc(24rem / 14);
   margin: 0;
-  border: 1px solid var(--line);
+  border: 1px solid var(--field-border);
   border-radius: 999px;
   background: var(--raised);
   cursor: pointer;
@@ -501,6 +518,24 @@ pre code {
   overflow: hidden;
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
+}
+/* Hidden until a keyboard reaches it, then drawn over the top corner. */
+.skip-link:not(:focus) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+.skip-link:focus {
+  position: absolute;
+  z-index: 20;
+  top: calc(var(--safe-top) + var(--space-4));
+  left: calc(var(--safe-left) + var(--space-4));
+  padding: var(--space-2) var(--space-4);
+  background: var(--accent);
+  color: var(--on-accent);
 }
 /* Error, notice and update banners stack over the top of the app, inside
    the safe area, so showing or dismissing one never moves the layout. */
@@ -853,9 +888,11 @@ dialog.sidebar:not([open]) {
 .status-led.running {
   animation: led-breathe var(--motion-pulse) var(--ease-standard) infinite;
 }
+/* Failure is a square, not only a colour. */
 .status-led.failed {
   background: var(--removed);
   border-color: var(--removed);
+  border-radius: 0;
 }
 /* A corner dot on an icon button, e.g. the agent using the browser. */
 .browser-toggle {
@@ -930,6 +967,10 @@ dialog.sidebar:not([open]) {
   scrollbar-gutter: stable;
   padding: var(--gap) var(--column-inset);
   overscroll-behavior: contain;
+  /* The composer sits below, not over, the transcript; only its floating
+     Jump to latest overlaps the last row. A row reached by keyboard stops
+     clear of it. */
+  scroll-padding-block: var(--gap) calc(var(--control) + var(--space-6));
 }
 /* Single spacing mechanism for the whole column: uniform gap, zero
    child margins. Flex gaps never collapse, so doubles are impossible. */
@@ -992,7 +1033,7 @@ dialog.sidebar:not([open]) {
 }
 .composer > form {
   gap: 0;
-  border: 1px solid transparent;
+  border: 1px solid var(--field-border);
   background: var(--raised);
 }
 .text-control {
@@ -1300,7 +1341,7 @@ details[open]:not(.disclosure-row) > summary::before {
   min-width: calc(100rem / 14);
   font-size: var(--font-small);
 }
-.decision h2 {
+.decision > [role="alert"] {
   flex-shrink: 0;
 }
 /* A coordinator's threads waiting on the user, above its composer; the
@@ -1843,6 +1884,60 @@ dialog.sidebar.drawer[open][data-leaving] {
   /* The one motion that carries meaning: work is still under way. */
   .spinner {
     animation: spin 2.4s linear infinite !important;
+  }
+}
+/* More contrast asked for: dividers, field edges and secondary text move
+   to each palette's stronger values. The selectors mirror the palettes'
+   so the inverted user message keeps its own. */
+@media (prefers-contrast: more) {
+  :root,
+  [data-theme="light"] .message.user,
+  [data-theme="dark"] .message.user :is(dialog, .menu-panel),
+  :root[data-theme="light"],
+  [data-theme="dark"] .message.user,
+  [data-theme="light"] .message.user :is(dialog, .menu-panel) {
+    --muted: var(--muted-more);
+    --line: var(--line-more);
+    --field-border: var(--field-border-more);
+  }
+}
+/* Windows High Contrast and other forced palettes: the browser repaints
+   backgrounds, so anything that says something through a fill keeps its
+   own system colours. */
+@media (forced-colors: active) {
+  .switch input[role="switch"]::before {
+    forced-color-adjust: none;
+    background: ButtonText;
+  }
+  .switch input[role="switch"]:checked::before {
+    background: Highlight;
+  }
+  .primary,
+  button[aria-pressed="true"],
+  [aria-current]:is(button, a) {
+    forced-color-adjust: none;
+    background: Highlight;
+    color: HighlightText;
+    border-color: Highlight;
+  }
+  /* The lights differ by fill and shape, not by colour alone. */
+  .status-led {
+    forced-color-adjust: none;
+    background: transparent;
+    border-color: CanvasText;
+  }
+  .status-led.active {
+    background: CanvasText;
+    border-color: CanvasText;
+  }
+  .status-led.running {
+    background: Highlight;
+    border-color: Highlight;
+  }
+  .status-led.failed {
+    background: CanvasText;
+    border-color: CanvasText;
+    border-radius: 0;
   }
 }
 

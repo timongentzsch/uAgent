@@ -60,7 +60,7 @@
   align-items: start;
   gap: var(--space-4);
   padding: var(--space-4);
-  border: 1px solid transparent;
+  border: 1px solid var(--field-border);
   background: var(--raised);
   cursor: pointer;
   transition: border-color var(--motion-fast) var(--ease-standard);

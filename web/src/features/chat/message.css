@@ -176,9 +176,23 @@
     background-position: -150% 0;
   }
 }
+/* A forced palette cannot draw text through a gradient: plain text. */
+@media (forced-colors: active) {
+  .tool-disclosure.running > summary .disclosure-label {
+    background: none;
+    -webkit-background-clip: border-box;
+    background-clip: border-box;
+    color: CanvasText;
+    animation: none;
+  }
+}
 .tool-disclosure.failed > summary,
 .tool-disclosure.failed > summary small {
   color: var(--removed);
+}
+/* Failure is marked, not only coloured. */
+.failed-mark {
+  margin-right: var(--space-2);
 }
 /* A session or turn error under the transcript, in the tool-failure red. */
 .failure {

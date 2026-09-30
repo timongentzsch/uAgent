@@ -270,12 +270,14 @@ test("watches an active agent without taking control", async ({
   await expect(dialog.getByRole("button", { name: "Take over" })).toBeVisible();
   for (const name of ["Copy", "Paste"])
     await expect(dialog.getByRole("button", { name })).toBeDisabled();
-  // The app-wide zoom lock holds with the viewer open and after it closes.
+  // The viewer leaves the page's viewport alone, open and after it closes:
+  // the reader may still zoom the page (WCAG 1.4.4).
   const meta = page.locator('meta[name="viewport"]');
-  await expect(meta).toHaveAttribute("content", /user-scalable=no/);
+  const viewport = await meta.getAttribute("content");
+  expect(viewport).not.toMatch(/user-scalable=no|maximum-scale/);
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
-  await expect(meta).toHaveAttribute("content", /user-scalable=no/);
+  await expect(meta).toHaveAttribute("content", viewport);
 });
 
 for (const [label, status, state, primary] of [

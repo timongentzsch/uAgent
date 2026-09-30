@@ -74,36 +74,12 @@ const std::string& DelegatedSessionFile();
 // object, from UAGENT_INTERNAL_DELEGATION), or an empty object.
 const json& OwnDelegation();
 
-// The sender a parent's guidance to its child carries. The child accepts it
-// without a link; any other sender needs one.
-inline constexpr std::string_view kParentSender = "parent";
-
-// One queued message from a parent or peer. hops counts forwards for loop
-// clamping.
-struct QueuedMessage {
-  std::string text;
-  std::string from;
-  int hops = 0;
-};
-
 // Own session file: the delegated child's, else the saved session file
 // (UAGENT_INTERNAL_SESSION_PATH, exported on first save) for interactive and
 // web sessions. Empty for headless runs that never save.
 std::string OwnSessionFile();
 // Stable session id: the session file stem. Empty without a session file.
 std::string OwnSessionId();
-
-// One inbox for every session, children included: a message is a file, so a
-// running recipient reads it at its next step and an idle one at its next
-// turn.
-ToolResult WriteSessionMail(const std::string& id, const std::string& text,
-                            const std::string& from = "", int hops = 0);
-// Oldest first, consumed as they are read.
-std::vector<QueuedMessage> TakeSessionMail(const std::string& id);
-// Queue arrived mail as ordinary steering, skipping senders outside the
-// reader's links (a child's parent needs none). A no-op without a session
-// file. Unlinked mail stays on disk: linking later delivers it.
-void DrainSessionMailIntoSteering();
 
 // Under a session budget children run one at a time: two concurrent ones would
 // each be told the whole remainder and could overshoot together. Returns the

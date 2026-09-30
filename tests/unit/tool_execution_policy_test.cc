@@ -288,9 +288,9 @@ void TestToolExecutionPolicy() {
   config_tool.capabilities = 0;
   std::vector<Tool> pinned{read_tool, memory_tool, config_tool, mutate,
                            exact_run};
-  ApplyToolPolicy(pinned,
-                  {.tool_allowlist = {"read_path", "memory", "uagent"},
-                   .run_allowlist = {"python3 slow_analysis.py"}});
+  ApplyToolPolicy(pinned, {.tool_allowlist = {"read_path", "memory", "uagent"},
+                           .run_allowlist = {"python3 slow_analysis.py"},
+                           .error = ""});
   // uagent stays: its writes (settings, instructions) always need the user.
   CHECK(pinned.size() == 3);
   CHECK(FindTool(pinned, "read_path") != nullptr);

@@ -91,7 +91,8 @@ constexpr Field kStateFields[] = {
     {"adaptive_system_revision", json::value_t::number_unsigned, false},
     {"adaptive_system_mode", json::value_t::string, false},
     {"tool_displays", json::value_t::object, false},
-    {"display", json::value_t::object, false}};
+    {"display", json::value_t::object, false},
+    {"delivered_mail", json::value_t::array, false}};
 
 constexpr Field kHeaderFields[] = {
     {kSessionHeaderCwd, json::value_t::string, true},
@@ -110,7 +111,7 @@ bool ValidState(const SessionState& state,
          (conversation ? conversation->Archive() : state.archive).is_array() &&
          (conversation ? conversation->ToolDisplays() : state.tool_displays)
              .is_object() &&
-         state.display.is_object() &&
+         state.display.is_object() && state.delivered_mail.is_array() &&
          state.adaptive_system.size() <= kAdaptiveSystemBytes &&
          (state.adaptive_system_mode == "overlay" ||
           state.adaptive_system_mode == "replace");
@@ -154,7 +155,8 @@ std::string StateText(const SessionState& state,
       {"last_sent_prompt", state.last_sent_prompt},
       {"adaptive_system", state.adaptive_system},
       {"adaptive_system_mode", state.adaptive_system_mode},
-      {"adaptive_system_revision", state.adaptive_system_revision}};
+      {"adaptive_system_revision", state.adaptive_system_revision},
+      {"delivered_mail", state.delivered_mail}};
   // Serialize borrowed arrays directly: the live transcript stays in place.
   std::string text = JsonDump(value);
   text.pop_back();
@@ -315,6 +317,8 @@ SessionLoadResult SessionStore::Inspect(const std::string& path) {
   if (state.contains("display")) {
     record.state.display = std::move(state["display"]);
   }
+  record.state.delivered_mail =
+      JsonValue(state, "delivered_mail", json::array());
   if (!ValidState(record.state)) {
     return {Error(SessionStoreError::kCorrupt,
                   "session payload is invalid or incomplete"),

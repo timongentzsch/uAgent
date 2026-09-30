@@ -179,10 +179,18 @@ class Agent {
 
   // Report finished background jobs to the user and hand them to the model.
   // The drain reaps and deletes each log, so its caller owns the only copy.
-  bool DrainBackground();
+  // `children_finished` says whether a delegated child was among them.
+  bool DrainBackground(bool* children_finished = nullptr);
   void ReportMemoryCompletion(BackgroundCompletion& completion);
   void DeliverActivityCompletions(
       const std::vector<BackgroundCompletion>& completions);
+
+  // Takes this session's pending mail (core/mailbox.h) into the conversation:
+  // a wake or step message as queued guidance, which the host starts a turn
+  // with when the message wakes; a passive one as a harness note; an
+  // interrupt stops the running turn after queueing its text. With `hold`,
+  // wake messages stay pending. True when anything was taken.
+  bool DeliverMail(bool hold = false);
 
   // Files the model attached ride in on a user message. Canonical tool results
   // are text-only, so image/file parts cannot travel with them.
@@ -406,6 +414,10 @@ class Agent {
   int64_t forked_at_turn_ = 0;
   std::string forked_at_time_;
   json session_role_ = json::object();
+  // Mail taken but not yet in a saved snapshot, acknowledged by Save, and the
+  // ids of the latest delivered, so one delivered again is recognised.
+  mutable std::vector<std::string> unacked_mail_;
+  json delivered_mail_ = json::array();
   uint64_t view_epoch_ = 0;
   std::function<std::string()> runtime_context_;
   int64_t total_user_turns_ = 0;

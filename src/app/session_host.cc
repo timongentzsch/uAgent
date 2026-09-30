@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -141,14 +142,18 @@ bool SessionHost::RefreshCatalogue(bool force) {
   std::lock_guard scan(scan_mutex_);
   if (!force &&
       std::chrono::steady_clock::now() - scanned_ < std::chrono::seconds(1)) {
+    rescan_ = true;
     return false;
   }
+  rescan_ = false;
   scanned_ = std::chrono::steady_clock::now();
   auto list = catalogue_.List(SessionScope::kAll);
   std::lock_guard lock(mutex_);
   bool changed = false;
+  std::set<std::string> listed;
   for (const SessionInfo& item : list) {
     const std::string id = HashHex(item.path);
+    listed.insert(id);
     auto [it, inserted] = sessions_.try_emplace(id, nullptr);
     if (inserted) {
       it->second = std::make_shared<HostSession>();
@@ -173,7 +178,32 @@ bool SessionHost::RefreshCatalogue(bool force) {
     if (inserted) session.published = nullptr;
     changed |= PublishMetadata(session.id, session);
   }
+  // Gone from disk and not running: deleted by a coordinator or by hand.
+  // Drafts have no file yet, and a session mid-command is the router's.
+  for (auto it = sessions_.begin(); it != sessions_.end();) {
+    const HostSession& session = *it->second;
+    if (listed.contains(it->first) || session.status == "draft" ||
+        session.status == "updating" || session.status == "deleting" ||
+        session.closing || session.connecting ||
+        (session.pid > 0 && !session.exited) || PathExists(session.path)) {
+      ++it;
+      continue;
+    }
+    replay_.Publish(epoch_, it->first, "", {{"kind", "deleted"}},
+                    !session.run_id.empty());
+    it = sessions_.erase(it);
+    changed = true;
+  }
+  // Waiting event streams send what was published at once.
+  if (changed) changed_.notify_all();
   return changed;
+}
+
+std::optional<std::chrono::steady_clock::time_point> SessionHost::RescanDue()
+    const {
+  std::lock_guard scan(scan_mutex_);
+  if (!rescan_) return std::nullopt;
+  return scanned_ + std::chrono::seconds(1);
 }
 
 void SessionHost::RefreshPresence() {

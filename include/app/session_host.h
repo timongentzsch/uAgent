@@ -15,6 +15,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 #include <vector>
@@ -115,7 +116,11 @@ class SessionHost {
   std::vector<HostNotice> WaitForNotices();
   void Stop();
   void LoadDrafts();
+  // Follows the history on disk: sessions created elsewhere (a coordinator's
+  // threads) appear, and those deleted elsewhere go, each published. A scan
+  // within a second of the last is deferred to RescanDue(), never dropped.
   bool RefreshCatalogue(bool force = false);
+  std::optional<std::chrono::steady_clock::time_point> RescanDue() const;
   void RefreshPresence();
   // Lets go of coordinators idle for CoordinatorIdle() so their runtimes can
   // exit; one is adopted again once it saves or is activated.
@@ -152,7 +157,7 @@ class SessionHost {
   std::condition_variable changed_;
   std::atomic<bool> stopping_{false};
   std::map<std::string, std::shared_ptr<HostSession>> sessions_;
-  std::mutex scan_mutex_;
+  mutable std::mutex scan_mutex_;
   SessionCatalogue catalogue_;
   std::mutex history_mutex_;
   struct SavedHistory {
@@ -167,6 +172,7 @@ class SessionHost {
   std::shared_ptr<const SavedHistory> history_;
   std::shared_ptr<const SavedHistory> ReadHistory(const std::string& path);
   std::chrono::steady_clock::time_point scanned_{};
+  bool rescan_ = false;  // a scan was deferred by the one-second throttle
   OutcomeStore outcomes_;
   FileStamp library_stamp_, schedule_stamp_;
   std::map<std::string, FileStamp> prompt_stamps_;

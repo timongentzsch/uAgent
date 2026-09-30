@@ -19,10 +19,10 @@
 
 namespace uagent {
 
-// One recipient. Gate first, then mail-first delivery: the next step boundary
-// is the delivery point.
+// One linked recipient, through its mailbox (core/mailbox.h): a running
+// session reads it at its next step, an idle one starts a turn on it.
 ToolResult MessageSession(const std::string& id, const std::string& text,
-                          const std::string& from = "", int hops = 0);
+                          int hops = 0);
 
 // Text-only peer messaging for every toolset, lean included.
 Tool SessionTool();

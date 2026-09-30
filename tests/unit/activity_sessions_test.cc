@@ -28,6 +28,7 @@
 #include "include/core/file_watch.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
+#include "include/core/mailbox.h"
 #include "include/core/output_buffer.h"
 #include "include/core/platform.h"
 #include "include/core/signals.h"
@@ -1206,36 +1207,94 @@ void TestChildSessionsStayOutOfTheCatalogue() {
   CHECK(JsonValue(children[0].delegation, "name", "") == "reviewer");
 }
 
-void TestSessionMail() {
+void TestMailbox() {
   namespace fs = std::filesystem;
-  TestWorkspace workspace("session-mail");
-  auto texts = [](const std::vector<QueuedMessage>& mails) {
+  TestWorkspace workspace("mailbox");
+  auto note = [](const std::string& from, const std::string& text) {
+    Mail mail;
+    mail.from = from;
+    mail.to = "recipient";
+    mail.type = kMailNote;
+    mail.body = {{"text", text}};
+    return mail;
+  };
+  auto texts = [](const std::vector<Mail>& mails) {
     std::vector<std::string> out;
-    out.reserve(mails.size());
-    for (auto& mail : mails) out.push_back(mail.text);
+    for (const Mail& mail : mails) {
+      out.push_back(JsonValue(mail.body, "text", ""));
+    }
     return out;
   };
+  auto all = [](const Mail&) { return true; };
 
-  CHECK(WriteSessionMail("sess-aaa", "first", "sess-bbb", 0).Ok());
-  CHECK(WriteSessionMail("sess-aaa", "second", "sess-bbb", 0).Ok());
-  CHECK(WriteSessionMail("sess-ccc", "other", "sess-bbb", 0).Ok());
-  std::vector<QueuedMessage> taken = TakeSessionMail("sess-aaa");
+  // A pending message wakes a watcher, and takes come in the order sent.
+  MailboxWatch watch("recipient");
+  CHECK(watch.Get() >= 0);
+  CHECK(SendMail(note("a", "first")).empty());
+  pollfd ready{watch.Get(), POLLIN, 0};
+  CHECK(poll(&ready, 1, 1000) == 1);
+  watch.Drain();
+  CHECK(SendMail(note("a", "second")).empty());
+  CHECK(PendingMail("recipient").size() == 2);
+  std::vector<Mail> taken = TakeMail("recipient", all);
   CHECK(texts(taken) == std::vector<std::string>({"first", "second"}));
-  // Sender survives the round trip; the take consumed only the addressee's.
-  taken = TakeSessionMail("sess-aaa");
-  CHECK(taken.empty());
-  taken = TakeSessionMail("sess-ccc");
-  CHECK(taken.size() == 1 && taken[0].from == "sess-bbb");
+  CHECK(TakeMail("recipient", all).empty());
 
-  // Corrupt mail is dropped, traversal ids are silence.
-  const fs::path corrupt = fs::path(UagentDir("sessions")) / "inbox" /
-                           "sess-ddd.smail-19700101T000000Z-1-0000.json";
-  fs::create_directories(corrupt.parent_path());
+  // Taken but never acknowledged: a restarted runtime receives it again.
+  RecoverMail("recipient");
+  CHECK(texts(TakeMail("recipient", all)).size() == 2);
+  AckMail("recipient", {taken[0].id, taken[1].id});
+  RecoverMail("recipient");
+  CHECK(PendingMail("recipient").empty());
+
+  // A message the recipient does not accept yet stays pending.
+  CHECK(SendMail(note("b", "later")).empty());
+  CHECK(TakeMail("recipient", [](const Mail&) { return false; }).empty());
+  CHECK(PendingMail("recipient").size() == 1);
+  TakeMail("recipient", all);
+
+  // A waiting duplicate is dropped, and a progress report replaces the
+  // pending one for its task.
+  CHECK(SendMail(note("c", "same")).empty());
+  CHECK(SendMail(note("c", "same")).empty());
+  Mail progress = note("c", "step 1");
+  progress.type = kMailTaskProgress;
+  progress.correlation_id = "task";
+  CHECK(SendMail(progress).empty());
+  progress.body = {{"text", "step 2"}};
+  CHECK(SendMail(progress).empty());
+  CHECK(texts(TakeMail("recipient", all)) ==
+        std::vector<std::string>({"same", "step 2"}));
+
+  // Loops, floods and oversized messages are refused with a reason.
+  Mail looping = note("d", "again");
+  looping.hops = kMailMaxHops + 1;
+  CHECK(!SendMail(looping).empty());
+  for (size_t i = 0; i < kMailSenderPerMinute; ++i) {
+    CHECK(SendMail(note("e", "burst " + std::to_string(i))).empty());
+  }
+  CHECK(!SendMail(note("e", "one too many")).empty());
+  CHECK(!SendMail(note("f", std::string(kMailBytes, 'x'))).empty());
+  TakeMail("recipient", all);
+
+  // Expired and unreadable messages are never delivered.
+  Mail stale = note("g", "stale");
+  stale.expires_ms = 1;
+  CHECK(SendMail(stale).empty());
+  const fs::path corrupt =
+      fs::path(MailboxDir("recipient")) / "new" / "0000000000001-bad.json";
   std::ofstream(corrupt) << "{not json";
-  CHECK(TakeSessionMail("sess-ddd").empty());
+  CHECK(TakeMail("recipient", all).empty());
   CHECK(!fs::exists(corrupt));
-  CHECK(TakeSessionMail("../escape").empty());
-  CHECK(!WriteSessionMail("../escape", "x", "y", 0).Ok());
+  CHECK(PendingMail("recipient").empty());
+
+  CHECK(!SendMail([&] {
+           Mail escape = note("h", "x");
+           escape.to = "../escape";
+           return escape;
+         }())
+             .empty());
+  CHECK(TakeMail("../escape", all).empty());
 }
 
 void TestSessionLinks() {
@@ -1262,20 +1321,20 @@ void TestSessionLinks() {
     ScopedEnv peer("UAGENT_INTERNAL_SESSION_PATH", fb.string());
     CHECK(JoinSessionLink(token).Ok());
     CHECK(JoinSessionLink("no-such-token").error == ToolErrorCode::kNotFound);
-    // Gated delivery: linked peers pass, strangers are rejected, and the
-    // hop clamp drops instead of queueing.
-    CHECK(MessageSession("aaa", "hello a", "bbb", 0).Ok());
-    CHECK(MessageSession("zzz", "hello z", "bbb", 0).error ==
+    // Gated delivery: linked peers pass, strangers are rejected, and a
+    // message that looks like a loop is refused, not queued.
+    CHECK(MessageSession("aaa", "hello a").Ok());
+    CHECK(MessageSession("zzz", "hello z").error ==
           ToolErrorCode::kPermissionDenied);
-    CHECK(MessageSession("aaa", "loop", "bbb", 8).Ok());
+    CHECK(!MessageSession("aaa", "loop", kMailMaxHops).Ok());
   }
   CHECK(SharesLink("aaa", "bbb"));
-  std::vector<QueuedMessage> taken = TakeSessionMail("aaa");
+  std::vector<Mail> taken =
+      TakeMail(MailboxIdFor(fa.string()), [](const Mail&) { return true; });
   CHECK(taken.size() == 1);
-  CHECK(taken[0].text == "hello a");
-  CHECK(taken[0].from == "bbb");
-  // The clamped message never reached the inbox.
-  CHECK(TakeSessionMail("aaa").empty());
+  CHECK(JsonValue(taken[0].body, "text", "").ends_with("]\nhello a"));
+  CHECK(taken[0].from == MailboxIdFor(fb.string()));
+  CHECK(taken[0].sender_path == fb.string());
   // Summaries show the linked peer.
   bool saw_bbb = false;
   for (const json& row : SessionSummaries()) {

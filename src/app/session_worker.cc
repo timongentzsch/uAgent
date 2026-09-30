@@ -31,6 +31,7 @@
 #include "include/cli.h"
 #include "include/core/events.h"
 #include "include/core/fs.h"
+#include "include/core/mailbox.h"
 #include "include/core/signals.h"
 #include "include/core/steering.h"
 #include "include/core/strings.h"
@@ -117,6 +118,7 @@ class WorkerChannel final : public ApplicationChannel {
         id_(std::move(id)),
         generation_(std::move(generation)),
         title_(std::move(title)),
+        mail_(MailboxIdFor(path_)),
         browser_session_(browser_session),
         coordinator_(coordinator) {
     if (!thread.empty()) link_.emplace(std::move(thread), path_, id_);
@@ -216,7 +218,7 @@ class WorkerChannel final : public ApplicationChannel {
 
   std::optional<ApplicationInput> NextInput() override {
     // Only an idle coordinator times out: its runtime costs nothing between
-    // uses, and any client or thread event starts it again.
+    // uses, and any client or mail starts it again.
     auto idle_since = std::chrono::steady_clock::now();
     for (;;) {
       {
@@ -231,19 +233,27 @@ class WorkerChannel final : public ApplicationChannel {
           return result;
         }
       }
-      if (auto events = TakeDueEvents()) return events;
+      // Mail wakes it like a client does; the application delivers it.
       pollfd waits[] = {{wake_.read.Get(), POLLIN, 0},
-                        {AbortWakeFd(), POLLIN, 0}};
-      const int ready = poll(waits, 2, PollTimeout());
+                        {AbortWakeFd(), POLLIN, 0},
+                        {mail_.Get(), POLLIN, 0}};
+      const int ready = poll(waits, 3, PollTimeout());
+      if (ready > 0 && (waits[2].revents & POLLIN)) mail_.Drain();
       if (ready < 0 && errno != EINTR) {
         return std::nullopt;
       }
       if (ready == 0) {
+        // Mail held at the spend limit is looked at again; the application
+        // delivers it once the limit allows.
+        if (Paused() ||
+            (mail_.Get() < 0 && !PendingMail(MailboxIdFor(path_)).empty())) {
+          return ApplicationInput{.wake = true};
+        }
         // Idle is measured from the last input or wake; any client still
         // attached (a terminal, or a host that has not let go) keeps it.
         const auto now = std::chrono::steady_clock::now();
         std::lock_guard lock(mutex_);
-        if (events_.Empty() && !input_ && server_.Clients() == 0 &&
+        if (!input_ && server_.Clients() == 0 &&
             now - idle_since >= CoordinatorIdle()) {
           closed_ = true;
           return std::nullopt;
@@ -400,37 +410,27 @@ class WorkerChannel final : public ApplicationChannel {
     activity_control_ = control;
   }
 
-  // Thread events whose batch is due, as one coordinator turn; none while
-  // the spend limit holds them.
-  std::optional<ApplicationInput> TakeDueEvents() {
-    {
-      std::lock_guard lock(mutex_);
-      if (!events_.Due()) return std::nullopt;
-    }
-    if (HeldBySpend()) return std::nullopt;
-    std::lock_guard lock(mutex_);
-    if (events_.Empty() || input_) return std::nullopt;
-    ClearAbort();
-    busy_ = turn_active_ = true;
-    BeginTurn();
-    SendState();
-    return ApplicationInput{.text = events_.Take()};
-  }
-
   // A session waits for input indefinitely; a coordinator also wakes to
-  // notice it is idle and when its queued events come due.
+  // notice it is idle, and a minute later while the spend limit holds its
+  // mail. Without a mailbox watch, mail is looked for once a second.
   int PollTimeout() {
+    if (mail_.Get() < 0) return 1000;
     if (!coordinator_) return -1;
-    int timeout = static_cast<int>(std::min<int64_t>(
+    if (Paused()) return static_cast<int>(kSpendRecheck.count());
+    return static_cast<int>(std::min<int64_t>(
         kIdlePoll.count(),
         std::chrono::milliseconds(CoordinatorIdle()).count() / 4));
-    std::lock_guard lock(mutex_);
-    return events_.WaitMs(timeout);
   }
 
-  // At today's spend limit a coordinator keeps thread events queued, says
-  // so in its state, and looks again a minute later. Checked outside the
-  // lock: it reads the threads' files.
+  bool Paused() {
+    std::lock_guard lock(mutex_);
+    return !paused_.empty();
+  }
+
+  bool HoldMail() override { return HeldBySpend(); }
+
+  // At today's spend limit a coordinator keeps its mail pending and says so
+  // in its state. Checked outside the lock: it reads the threads' files.
   bool HeldBySpend() {
     const std::string pause =
         coordinator_ ? CoordinatorPause(CanonicalCwd()) : "";
@@ -444,7 +444,6 @@ class WorkerChannel final : public ApplicationChannel {
       }
       SendState();
     }
-    if (!pause.empty()) events_.Hold();
     return !pause.empty();
   }
 
@@ -681,19 +680,6 @@ class WorkerChannel final : public ApplicationChannel {
         return true;
       }
     }
-    if (coordinator_ && (kind == SessionCommandKind::kSubmit ||
-                         kind == SessionCommandKind::kSteer) &&
-        !parsed.text.empty() && !parsed.text.starts_with("/")) {
-      // Thread events arriving while the coordinator is idle are batched;
-      // approvals never wait.
-      if (kind == SessionCommandKind::kSubmit && !input_ &&
-          parsed.text.starts_with("[thread event")) {
-        events_.Push(parsed.text);
-        wake_.Wake();
-        Send({{"kind", "outcome"}, {"request_id", request}, {"accepted", true}});
-        return true;
-      }
-    }
     switch (kind) {
       case SessionCommandKind::kClose: {
         lock.unlock();
@@ -872,11 +858,6 @@ class WorkerChannel final : public ApplicationChannel {
             error = "use conversation controls to navigate, branch, or close";
           }
           if (error.empty()) {
-            // Queued events ride along with the user's next message.
-            if (!events_.Empty() && !input.text.empty() &&
-                !input.text.starts_with("/")) {
-              input.text = events_.Take() + "\n\n" + input.text;
-            }
             ClearAbort();
             busy_ = true;
             turn_active_ = !input.text.starts_with("/") ||
@@ -908,10 +889,11 @@ class WorkerChannel final : public ApplicationChannel {
   std::string path_, id_, generation_, title_;
   // Socket callbacks can run while bootstrap initializes the environment.
   Pipe wake_;
+  MailboxWatch mail_;
   std::mutex mutex_, control_mutex_;
   static constexpr auto kIdlePoll = std::chrono::milliseconds(30000);
   static constexpr auto kCoordinatorDecision = std::chrono::minutes(5);
-  CoordinatorEvents events_;  // a coordinator's batched thread events
+  static constexpr auto kSpendRecheck = std::chrono::milliseconds(60000);
   bool closed_ = false, busy_ = true;
   bool turn_active_ = false;
   [[maybe_unused]] bool browser_session_ = false;  // web builds only
@@ -920,7 +902,7 @@ class WorkerChannel final : public ApplicationChannel {
   bool reply_cancelled_ = false;
   bool ready_ = false;
   json notices_ = json::array();
-  std::string paused_;  // why a coordinator holds thread events, if it does
+  std::string paused_;  // why a coordinator holds its mail, if it does
   std::function<json(const json&)> activity_control_;
   std::optional<ApplicationInput> input_;
   std::optional<std::string> reply_;
@@ -980,10 +962,9 @@ int WorkerMain(int argc, char** argv) {
       options.overrides["UAGENT_SESSION_BUDGET"] = std::to_string(budget);
     }
   }
-  WorkerChannel channel(
-      argv[3], argv[4], RandomToken(16), argv[5], options.browser_session,
-      options.Coordinator(),
-      JsonValue(options.session, "thread", json::object()));
+  WorkerChannel channel(argv[3], argv[4], RandomToken(16), argv[5],
+                        options.browser_session, options.Coordinator(),
+                        JsonValue(options.session, "thread", json::object()));
   if (!channel.Start()) return 2;
   if (chdir(argv[2]) != 0) {
     channel.Send({{"kind", "error"}, {"error", "workspace is unavailable"}});

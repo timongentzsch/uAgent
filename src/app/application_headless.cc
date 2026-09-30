@@ -9,7 +9,9 @@
 #include "include/core/events.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
+#include "include/core/mailbox.h"
 #include "include/core/signals.h"
+#include "include/core/steering.h"
 #include "include/core/strings.h"
 #include "include/media/attachments.h"
 #include "src/app/application_internal.h"
@@ -41,6 +43,8 @@ int Application::RunHeadless() {
   // Delegated children are durable conversations even though ordinary
   // one-shot `-p` calls remain ephemeral.
   persist_ = !session_file_.empty();
+  // A followup run first receives what the previous run took but never saved.
+  RecoverMail(MailboxIdFor(session_file_));
   json content;
   if (!attachments_.empty()) {
     std::string error;
@@ -52,6 +56,21 @@ int Application::RunHeadless() {
   }
   RunTurns(context_.options.prompt, std::move(content));
   SaveSession();
+  // Mail that arrived after the last step (a parent's guidance) runs another
+  // turn instead of waiting in the mailbox after this process is gone.
+  auto answer_mail = [&] {
+    for (;;) {
+      agent_.DeliverMail();
+      auto queued = SteeringState().TakeAutoStartMessages();
+      if (queued.empty() || AbortRequested()) return;
+      for (size_t i = 1; i < queued.size(); ++i) {
+        SteeringState().Queue(std::move(queued[i].text), "", true);
+      }
+      RunTurns(queued.front().text);
+      SaveSession();
+    }
+  };
+  answer_mail();
   PublishChannelState();
   // Background work is observational and never starts a model turn. Keep the
   // process alive long enough to publish completion and drain retained state.
@@ -61,6 +80,7 @@ int Application::RunHeadless() {
       runtime_.processes.WaitForChange(generation);
     }
     agent_.AccountSideUsage();
+    answer_mail();
     SaveSession();
   }
   agent_.AccountSideUsage();

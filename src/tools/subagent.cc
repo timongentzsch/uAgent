@@ -22,6 +22,7 @@
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/limits.h"
+#include "include/core/mailbox.h"
 #include "include/core/strings.h"
 #include "include/tools/shell.h"
 
@@ -155,8 +156,21 @@ ToolResult MessageAgent(const ProcessSupervisor& processes,
   if (!LoadRole(processes, id, role, error)) {
     return ToolFailure(ToolErrorCode::kNotFound, error);
   }
-  ToolResult sent = WriteSessionMail(id, text, std::string(kParentSender));
-  return sent.Ok() ? ToolSuccess("queued message for agent " + id) : sent;
+  if (text.empty()) {
+    return ToolFailure(ToolErrorCode::kInvalidArguments,
+                       "message requires text");
+  }
+  // A parent without a session file is known to its child by its owner id.
+  const std::string own = OwnSessionFile();
+  Mail mail;
+  mail.from = own.empty() ? processes.Owner() : MailboxIdFor(own);
+  mail.sender_path = own;
+  mail.to = MailboxIdFor(AgentPath(id));
+  mail.type = kMailSteer;
+  mail.body = {{"text", "[parent guidance]\n" + text}};
+  error = SendMail(std::move(mail));
+  return error.empty() ? ToolSuccess("sent to agent " + id)
+                       : ToolFailure(ToolErrorCode::kUnavailable, error);
 }
 
 json InspectAgent(const ProcessSupervisor& processes, const std::string& id,
@@ -355,15 +369,15 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
       "subagent",
       "Delegate an isolated subtask whose compact result saves parent "
       "rounds; for orthogonal parts, one task per part in one batch. spawn "
-      "starts a child, followup resumes it, message queues guidance for its "
-      "next step, and activity waits on, reads or stops it. Name the "
+      "starts a child, followup resumes it, message guides a running child at "
+      "its next step or runs a finished one again, and activity waits on, "
+      "reads or stops it. Name the "
       "reusable role and describe it at spawn. Keep background=true while "
       "you have other work.",
       {{"type", "object"}, {"properties", std::move(properties)}},
       [&api, &routes, &providers, debug, &processes](
           const json& arguments, const ToolContext& context) {
-        const std::string operation =
-            JsonValue(arguments, "operation", "spawn");
+        std::string operation = JsonValue(arguments, "operation", "spawn");
         std::string id = JsonValue(arguments, "agent_id", "");
         if (operation == "list") {
           std::vector<json> agents = AgentSummaries(processes);
@@ -376,8 +390,13 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
                                "message cannot change directive; use "
                                "followup");
           }
-          return MessageAgent(processes, id,
-                              JsonValue(arguments, "prompt", ""));
+          // A running child reads it at its next step; a finished one
+          // runs again on it.
+          if (RunningAgent(processes, id)) {
+            return MessageAgent(processes, id,
+                                JsonValue(arguments, "prompt", ""));
+          }
+          operation = "followup";
         }
         if (operation != "spawn" && operation != "followup") {
           return ToolFailure(ToolErrorCode::kInvalidArguments,
@@ -477,6 +496,7 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
             JsonValue(limits, "memory", JsonValue(role, "memory", true));
         role.update(
             {{"parent", processes.Owner()},
+             {"parent_session", OwnSessionFile()},
              {"mode", mode},
              {"model", requested},
              {"route", route_label},

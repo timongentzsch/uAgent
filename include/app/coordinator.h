@@ -29,7 +29,7 @@ std::string CoordinatorContext(const std::string& folder);
 // day's first sets the baseline its own daily spend is measured from.
 void RecordCoordinatorCost(const std::string& folder, double cost);
 
-// Why the coordinator holds thread events, or empty: today's spend, its own
+// Why the coordinator holds its mail, or empty: today's spend, its own
 // turns and its threads', has reached the daily limit.
 std::string CoordinatorPause(const std::string& folder);
 
@@ -38,27 +38,6 @@ std::string CoordinatorPause(const std::string& folder);
 inline constexpr const char* kCoordinatorTools[] = {
     "read_path", "grep",   "memory", "skill", "uagent",
     "history",   "thread", "decide", "state", "ask"};
-
-// Thread events a coordinator batches into one turn: a batch is due kBatch
-// after its first event, so siblings finishing together wake it once, and a
-// minute later each time the spend limit holds it. The caller locks.
-class CoordinatorEvents {
- public:
-  void Push(std::string event);
-  bool Empty() const { return events_.empty(); }
-  bool Due() const;
-  void Hold();
-  // How long to wait for the batch, at most `limit_ms`.
-  int WaitMs(int limit_ms) const;
-  // The batch as one message, leaving the queue empty.
-  std::string Take();
-
- private:
-  static constexpr auto kBatch = std::chrono::seconds(20);
-  static constexpr auto kHold = std::chrono::minutes(1);
-  std::vector<std::string> events_;
-  std::chrono::steady_clock::time_point due_{};
-};
 
 // The tools only a folder's coordinator gets.
 void AddCoordinatorTools(std::vector<Tool>& tools, const std::string& folder);

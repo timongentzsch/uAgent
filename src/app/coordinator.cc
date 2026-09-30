@@ -40,12 +40,12 @@ constexpr size_t kDetailBytes = 16 * 1024;
 constexpr size_t kReportBytes = 8 * 1024;
 constexpr size_t kMessageBytes = 8 * 1024;
 constexpr size_t kDiffBytes = 16 * 1024;
+constexpr auto kCloseTimeout = std::chrono::seconds(5);
 
 // "saved" without a runtime; else what its runtime's snapshot says: waiting
 // on a person, working a turn, or idle. A decision still with the coordinator
 // counts as working.
 std::string LiveStatus(const SessionInfo& info) {
-  if (!PathExists(session::SocketPath(info.path))) return "saved";
   session::Connection connection = session::Connect(info.path);
   if (!connection.socket) return "saved";
   session::Pipe never;
@@ -443,11 +443,35 @@ ToolResult Stop(const SessionInfo& info) {
                        : Unavailable(error);
 }
 
-// A thread's worktree goes with it, but only when nothing in it is lost.
+// Ends a session's runtime: it acknowledges the close, then exits, which
+// closes the socket. Liveness is the handshake, never the socket file, which
+// a crashed runtime leaves behind. Empty when nothing runs any more.
+std::string CloseRuntime(const SessionInfo& info) {
+  session::Connection connection = session::Connect(info.path);
+  if (!connection.socket) return "";
+  std::string error =
+      SendWhenReady(connection, info.path, {{"kind", "close"}}, false);
+  if (!error.empty()) return error;
+  session::Pipe never;
+  if (!never.Open()) return "cannot wait for the session runtime";
+  session::ReadFrames(
+      connection.socket.Get(), never.read.Get(), session::kFrameBytes,
+      [](const json&) { return true; },
+      std::chrono::steady_clock::now() + kCloseTimeout);
+  return session::Connect(info.path).socket ? "the session did not exit in time"
+                                            : "";
+}
+
+ToolResult Close(const SessionInfo& info) {
+  const std::string error = CloseRuntime(info);
+  return error.empty() ? ToolSuccess("closed") : Unavailable(error);
+}
+
+// A running session is closed first. A thread's worktree goes with it, but
+// only when nothing in it is lost.
 ToolResult Delete(const SessionInfo& info, const std::string& folder) {
-  if (PathExists(session::SocketPath(info.path))) {
-    return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "stop and close the session before deleting it");
+  if (const std::string error = CloseRuntime(info); !error.empty()) {
+    return Unavailable(error);
   }
   if (LaunchWorktree(info.cwd)) {
     const std::string kept = RemoveWorktree(
@@ -481,12 +505,13 @@ Tool ThreadTool(const std::string& folder) {
       "done_when, boundaries; environment worktree or local). message "
       "guides a running session in this folder, or restarts your own "
       "thread (session_id, text; three in a row at most, then ask the "
-      "user); stop interrupts it; diff shows what it changed; delete "
-      "removes a stopped session, and its worktree if nothing would be "
-      "lost, after the user confirms. One thread per independent part; "
-      "keep dependent steps in one thread.",
+      "user); stop interrupts its turn; close ends its runtime; diff shows "
+      "what it changed; delete closes and removes a session, and its "
+      "worktree if nothing would be lost, after the user confirms. One "
+      "thread per independent part; keep dependent steps in one thread.",
       json::parse(R"json({"type":"object","properties":{
-        "action":{"type":"string","enum":["spawn","message","stop","diff","delete"]},
+        "action":{"type":"string",
+          "enum":["spawn","message","stop","close","diff","delete"]},
         "session_id":{"type":"string"},
         "title":{"type":"string"},
         "objective":{"type":"string"},
@@ -510,6 +535,7 @@ Tool ThreadTool(const std::string& folder) {
           return Message(*info, folder, JsonValue(a, "text", ""));
         }
         if (action == "stop") return Stop(*info);
+        if (action == "close") return Close(*info);
         if (action == "diff") return Diff(*info);
         if (action == "delete") return Delete(*info, folder);
         return ToolFailure(ToolErrorCode::kInvalidArguments,
@@ -779,33 +805,6 @@ std::string CoordinatorContext(const std::string& folder) {
     }
   }
   return context + "\n## board\n" + CoordinatorBoard(folder);
-}
-
-void CoordinatorEvents::Push(std::string event) {
-  if (events_.empty()) due_ = std::chrono::steady_clock::now() + kBatch;
-  events_.push_back(std::move(event));
-}
-
-bool CoordinatorEvents::Due() const {
-  return !events_.empty() && std::chrono::steady_clock::now() >= due_;
-}
-
-void CoordinatorEvents::Hold() {
-  due_ = std::chrono::steady_clock::now() + kHold;
-}
-
-int CoordinatorEvents::WaitMs(int limit_ms) const {
-  return events_.empty() ? limit_ms
-                         : std::min(limit_ms, PollTimeoutMs(due_));
-}
-
-std::string CoordinatorEvents::Take() {
-  std::string joined;
-  for (const std::string& event : events_) {
-    joined += (joined.empty() ? "" : "\n") + event;
-  }
-  events_.clear();
-  return joined;
 }
 
 void RecordCoordinatorCost(const std::string& folder, double cost) {

@@ -30,6 +30,9 @@ ToolResult CreateSessionLink(std::string& token);
 // Join a token link. Unknown tokens are NotFound, never created implicitly.
 ToolResult JoinSessionLink(const std::string& token);
 
+// The session file of a session linked with this one, or empty.
+std::string LinkedSessionPath(const std::string& id);
+
 // Linked peers plus linkable workspace sessions:
 // [{id,title,linked}]. Self excluded.
 std::vector<json> SessionSummaries();

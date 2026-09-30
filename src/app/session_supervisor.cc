@@ -126,6 +126,13 @@ void SessionHost::Received(HostSession* session, json frame) {
   }
   const std::string kind = JsonValue(frame, "kind", "");
   if (kind == "outcome") {
+    // A runtime closed by another client (a coordinator's close or delete)
+    // is about to exit: its end reads as closed, not interrupted.
+    if (JsonValue(frame, "accepted", false) &&
+        JsonValue(JsonValue(frame, "result", json::object()), "operation",
+                  "") == "close") {
+      session->closing = true;
+    }
     // A fork receipt must not become visible until its new conversation is
     // in the catalogue; clients can inspect it immediately after the receipt.
     if (JsonValue(JsonValue(frame, "result", json::object()), "forked",

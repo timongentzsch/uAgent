@@ -288,7 +288,9 @@ def test_subagent_followup_resumes_durable_conversation(root, home, *, binary):
         assert_true("[collaborator:" in text, sessions[0])
 
 
-def test_failed_followup_consumes_queued_guidance_after_launch(root, home, *, binary):
+def test_message_to_finished_child_runs_it_once(root, home, *, binary):
+    """A message to a finished child runs it again on that message, once: a
+    later followup, failed or not, never repeats it."""
     collaborator_id = {"value": ""}
 
     def route(_, body):
@@ -310,11 +312,12 @@ def test_failed_followup_consumes_queued_guidance_after_launch(root, home, *, bi
 
         if users and users[-1] == "seed child":
             return event({"content": "seeded"})
+        if users and users[-1] == "queued once":
+            return event({"content": "heard"})
         if users and "fail child" in users[-1]:
             return event({}, finish="content_filter")
         if users and users[-1] == "retry child":
-            queued = sum(prompt.count("[parent guidance]") for prompt in users)
-            valid = queued == 1 and "queued once" not in users[-1]
+            valid = users.count("queued once") == 1
             return event({"content": "mailbox-cleared" if valid else "mailbox-repeated"})
 
         if parent_prompt == "spawn coordinator":
@@ -325,8 +328,10 @@ def test_failed_followup_consumes_queued_guidance_after_launch(root, home, *, bi
                 return event({"content": "spawned"})
             return tool_call("subagent", {"prompt": "seed child", "background": False})
         if parent_prompt == "queue coordinator":
-            if results:
+            if results and "heard" in results[-1]:
                 return event({"content": "queued"})
+            if results:
+                return tool_call("activity", {"operation": "wait", "wait_ms": 30000})
             return tool_call(
                 "subagent",
                 {
@@ -377,9 +382,9 @@ def test_failed_followup_consumes_queued_guidance_after_launch(root, home, *, bi
         assert_true(
             "mailbox-ok" in result.stdout and "mailbox-bad" not in result.stdout, result.stdout
         )
-        # Guidance lives in the child's inbox until it is delivered, so a
-        # message that reached the child has to leave nothing behind.
-        left = list((home / ".uagent" / "sessions" / "inbox").glob("*.smail-*"))
+        # Guidance lives in the child's mailbox until its delivery is saved,
+        # so a message that reached the child has to leave nothing behind.
+        left = list((home / ".uagent" / "mail").glob("*/*/*.json"))
         assert_true(not left, left)
 
 
@@ -403,7 +408,7 @@ def test_message_reaches_running_child(root, home, *, binary):
         combined = "\n".join(str(message.get("content", "")) for message in messages)
         if "guidance-received" in combined:
             return event({"content": "live-message-ok"})
-        if "queued message for agent" in combined:
+        if "sent to agent" in combined:
             return tool_call("activity", {"operation": "wait", "wait_ms": 30000})
         if "[started] subagent id" in combined:
             match = re.search(r"\[collaborator (agent-[^;\]]+)", combined)
@@ -433,8 +438,8 @@ def test_message_reaches_running_child(root, home, *, binary):
         # The record is JSON, so the wrapper's newline is escaped in the file.
         transcript = sessions[0].read_text(encoding="utf-8")
         assert_true("[parent guidance]\\nsay banana" in transcript, transcript[:2000])
-        inbox = home / ".uagent" / "sessions" / "inbox"
-        assert_true(not list(inbox.glob("*.smail-*")), "delivered mail was left behind")
+        left = list((home / ".uagent" / "mail").glob("*/*/*.json"))
+        assert_true(not left, f"delivered mail was left behind: {left}")
 
 
 def test_agents_command_lists_a_running_child(root, home, *, binary):

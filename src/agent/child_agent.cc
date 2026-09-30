@@ -299,50 +299,6 @@ const json& OwnDelegation() {
   return kDelegation;
 }
 
-namespace {
-
-// One message per file in the recipient's inbox, oldest first. The name
-// carries a UTC second, the writing pid and a per-process counter, so messages
-// from one sender stay ordered and two senders in the same second interleave
-// by pid rather than by nothing. Flat files because the pruner removes files,
-// not directories. The inbox lives at sessions/inbox/ so the sessions/ debug
-// pruner never mistakes it, and delivery needs no path lookup: the filename
-// carries the recipient.
-std::string InboxDir() { return UagentDir("sessions") + "/inbox"; }
-constexpr std::string_view kMailInfix = ".smail-";
-
-std::vector<std::filesystem::path> MailFiles(const std::string& id) {
-  std::vector<std::filesystem::path> files;
-  if (id.empty() || SafeFileComponent(id) != id) return files;
-  const std::string prefix = id + std::string(kMailInfix);
-  std::error_code error;
-  for (std::filesystem::directory_iterator it(InboxDir(), error), end;
-       !error && it != end; it.increment(error)) {
-    std::string name = it->path().filename().string();
-    if (name.starts_with(prefix) && name.ends_with(".json")) {
-      files.push_back(it->path());
-    }
-  }
-  std::sort(files.begin(), files.end());
-  return files;
-}
-
-// Nothing when the file is unreadable or malformed; the caller unlinks it
-// either way, since undeliverable mail would otherwise be retried forever.
-std::optional<QueuedMessage> ReadMail(const std::filesystem::path& path) {
-  std::ifstream input(path);
-  json mail = json::parse(input, nullptr, false);
-  if (mail.is_discarded() || !mail.is_object()) return std::nullopt;
-  QueuedMessage out;
-  out.text = JsonValue(mail, "text", std::string());
-  if (out.text.empty()) return std::nullopt;
-  out.from = JsonValue(mail, "from", std::string());
-  out.hops = std::max(0, static_cast<int>(JsonValue(mail, "hops", int64_t{0})));
-  return out;
-}
-
-}  // namespace
-
 std::string OwnSessionFile() {
   const std::string& delegated = DelegatedSessionFile();
   if (!delegated.empty()) return delegated;
@@ -354,79 +310,6 @@ std::string OwnSessionId() {
   if (file.empty()) return {};
   std::filesystem::path path(file);
   return path.extension() == ".json" ? path.stem().string() : std::string();
-}
-
-ToolResult WriteSessionMail(const std::string& id, const std::string& text,
-                            const std::string& from, int hops) {
-  if (id.empty() || SafeFileComponent(id) != id) {
-    return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "unknown recipient " + id);
-  }
-  if (text.empty()) {
-    return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "message requires text");
-  }
-  static std::atomic<uint64_t> sequence{0};
-  // Zero-padded so a plain filename sort is chronological within a second.
-  std::string seq =
-      std::to_string(sequence.fetch_add(1, std::memory_order_relaxed) % 10000);
-  seq.insert(0, 4 - std::min<size_t>(4, seq.size()), '0');
-  const std::string path = InboxDir() + "/" + id + std::string(kMailInfix) +
-                           UtcStamp("%Y%m%dT%H%M%SZ") + "-" +
-                           std::to_string(getpid()) + "-" + seq + ".json";
-  json mail = {{"format", 1}, {"text", text}, {"from", from}, {"hops", hops}};
-  return ToolAtomicWrite(path, JsonDump(mail, 2) + "\n", kPrivateFileMode,
-                         /*preserve_mode=*/true);
-}
-
-std::vector<QueuedMessage> TakeSessionMail(const std::string& id) {
-  std::vector<QueuedMessage> messages;
-  for (const std::filesystem::path& path : MailFiles(id)) {
-    std::optional<QueuedMessage> message = ReadMail(path);
-    std::error_code error;
-    std::filesystem::remove(path, error);
-    if (message) messages.push_back(std::move(*message));
-  }
-  return messages;
-}
-
-void DrainSessionMailIntoSteering() {
-  const std::string id = OwnSessionId();
-  if (id.empty()) return;
-  const std::vector<std::filesystem::path> files = MailFiles(id);
-  if (files.empty()) return;
-  // Titles once per drain, not per file: the summaries scan is directory IO.
-  std::map<std::string, std::string> titles;
-  for (const json& row : SessionSummaries()) {
-    titles[JsonValue(row, "id", "")] = JsonValue(row, "title", "");
-  }
-  for (const std::filesystem::path& path : files) {
-    std::optional<QueuedMessage> mail = ReadMail(path);
-    // Gated here, not at take: a message sent before linking is delivered
-    // after linking instead of being dropped or bounced. A delegated child
-    // hears its parent without a link.
-    const bool parent =
-        mail && mail->from == kParentSender && !OwnDelegation().empty();
-    if (mail && !parent &&
-        (mail->from.empty() || !SharesLink(mail->from, id))) {
-      continue;
-    }
-    // Queued before the unlink, so a crash in between costs a repeat rather
-    // than the message. The reverse order would lose it outright.
-    if (parent) {
-      SteeringState().Queue("[parent guidance]\n" + mail->text);
-    } else if (mail) {
-      std::string from = mail->from;
-      auto titled = titles.find(from);
-      if (titled != titles.end() && !titled->second.empty() &&
-          titled->second != from) {
-        from = titled->second + " (" + from + ")";
-      }
-      SteeringState().Queue("[session " + from + "]\n" + mail->text);
-    }
-    std::error_code error;
-    std::filesystem::remove(path, error);
-  }
 }
 
 std::string ChildAgentConstraintNotes(const std::vector<std::string>& clamped) {

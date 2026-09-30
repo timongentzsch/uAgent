@@ -146,13 +146,16 @@ def test_coordinator_saves_memory_unasked_but_forgets_only_with_the_user(root, h
 
 def test_coordinator_delegates_a_thread_and_hears_back(root, home, *, binary):
     heard = threading.Event()
+    reported = {}
 
     def route(_, body):
         text = json.dumps(body["messages"])
         if "[thread event" in text:
+            reported.setdefault("heard", time.monotonic())
             heard.set()
             return event({"content": "noted-event"})
         if "Objective: count the files" in text:
+            reported.setdefault("finished", time.monotonic())
             return event({"content": "thread-report: 3 files"})
         if not tool_results(body["messages"]):
             return tool_call(
@@ -179,8 +182,11 @@ def test_coordinator_delegates_a_thread_and_hears_back(root, home, *, binary):
             )
         )
         assert_true(len(spawned["session_id"]) == 16, spawned)
-        # An idle coordinator batches thread events for up to 20 seconds.
-        assert_true(heard.wait(budget(40)), [json.dumps(b)[-300:] for _, b in server.requests])
+        # The finished thread's mail wakes the coordinator at once, starting its
+        # runtime first, since the -p run that spawned the thread has exited.
+        assert_true(heard.wait(budget(10)), [json.dumps(b)[-300:] for _, b in server.requests])
+        latency = reported["heard"] - reported["finished"]
+        assert_true(latency < budget(5), f"coordinator heard back after {latency:.1f}s")
         threads = [
             path
             for path in session_files(home)
@@ -370,6 +376,46 @@ def test_coordinator_caps_working_threads_in_worktrees(root, home, *, binary):
         assert_true(spawned["environment"] == "worktree", spawned)
         assert_true(worktree.parent.name == "worktrees" and worktree != root, spawned)
         assert_true("already working" in second, second)
+
+
+def test_coordinator_closes_an_idle_thread(root, home, *, binary):
+    """close ends an idle thread's runtime, which a stop never did, so the
+    session can then be deleted."""
+    closed = {}
+
+    def route(_, body):
+        text = json.dumps(body["messages"])
+        results = tool_results(body["messages"])
+        if "Objective: idle" in text:
+            return event({"content": "idle-done"})
+        if "[thread event" in text:
+            if results and not results[-1].startswith("{"):
+                closed["result"] = results[-1]
+                return event({"content": "closed-ack"})
+            spawned = next(
+                json.loads(result)
+                for _, request in server.requests
+                for result in tool_results(request["messages"])
+                if result.startswith("{") and "session_id" in result
+            )
+            return tool_call("thread", {"action": "close", "session_id": spawned["session_id"]})
+        if not results:
+            return tool_call(
+                "thread",
+                {"action": "spawn", "title": "Idle", "objective": "idle", "environment": "local"},
+            )
+        return event({"content": "spawned-ok"})
+
+    with Server([route]) as server:
+        env = base_env(home, server.url)
+        result = run(root, env, "coord", "-p", "spawn one", binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        wait_until(lambda: "result" in closed, "the thread was never closed", timeout=15)
+        # "closed" is only reported once the runtime no longer answers; the
+        # session itself stays.
+        assert_true(closed["result"] == "closed", closed)
+        thread = [path for path in session_files(home) if path.name.startswith("thread-")]
+        assert_true(len(thread) == 1, thread)
 
 
 def test_coordinator_deletes_only_with_the_user(root, home, *, binary):

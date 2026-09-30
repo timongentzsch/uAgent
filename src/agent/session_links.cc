@@ -225,6 +225,15 @@ std::vector<json> LinkedMembers() {
 
 }  // namespace
 
+std::string LinkedSessionPath(const std::string& id) {
+  for (const json& member : LinkedMembers()) {
+    if (JsonValue(member, "id", "") == id) {
+      return JsonValue(member, "path", "");
+    }
+  }
+  return "";
+}
+
 std::vector<json> SessionSummaries() {
   const std::string me = OwnSessionId();
   std::vector<json> rows;

@@ -29,6 +29,7 @@
 #include "include/core/events.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
+#include "include/core/mailbox.h"
 #include "include/core/output_buffer.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
@@ -393,12 +394,15 @@ bool Agent::Save(const std::string& path, std::string& error) const {
           adaptive_system_ ? adaptive_system_->mode : "overlay",
       .adaptive_system_revision =
           adaptive_system_ ? adaptive_system_->revision : 0,
-      .display = conversation_.DisplayMetadata()};
+      .display = conversation_.DisplayMetadata(),
+      .delivered_mail = delivered_mail_};
   SessionStoreStatus status = SessionStore::Save(path, record, &conversation_);
   if (!status.Ok()) {
     error = std::move(status.message);
     return false;
   }
+  // Only now is the mail part of the record a restart would load.
+  AckMail(MailboxIdFor(path), std::exchange(unacked_mail_, {}));
   return true;
 }
 
@@ -425,6 +429,7 @@ bool Agent::Load(const std::string& path, const std::string& expected_cwd,
   conversation_ = std::move(restored);
   PublishSideContext();
   last_sent_prompt_ = std::move(record.state.last_sent_prompt);
+  delivered_mail_ = std::move(record.state.delivered_mail);
   if (adaptive_system_) {
     adaptive_system_->instructions = std::move(record.state.adaptive_system);
     adaptive_system_->revision = record.state.adaptive_system_revision;
@@ -1056,7 +1061,7 @@ void Agent::DeliverActivityCompletions(
             {"reduced", reduced}});
 }
 
-bool Agent::DrainBackground() {
+bool Agent::DrainBackground(bool* children_finished) {
   bool changed = false;
   // Take one snapshot. A memory child can become drainable at any instant; two
   // separate takes let the generic pass steal a child that completed just
@@ -1075,6 +1080,12 @@ bool Agent::DrainBackground() {
   if (delivered) {
     DeliverActivityCompletions(completions);
     changed = true;
+  }
+  if (children_finished) {
+    *children_finished = std::any_of(
+        completions.begin(), completions.end(), [](const auto& completion) {
+          return completion.kind == ActivityKind::kSubagent;
+        });
   }
   if (DrainAttachments()) changed = true;
   {

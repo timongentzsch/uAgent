@@ -427,18 +427,23 @@ class Master {
       for (;;) {
         std::vector<std::string> paths = host_.PresencePaths();
         // Wakes at least twice per coordinator idle period to let go of
-        // idle coordinators, whether or not a browser is watching.
-        auto result = WaitForAnyFileChange(
-            paths,
-            Clock::now() + std::min<Clock::duration>(std::chrono::hours(24),
-                                                     session::CoordinatorIdle() / 2),
-            stop.read.Get());
+        // idle coordinators, whether or not a browser is watching, and for a
+        // catalogue scan the throttle deferred.
+        auto deadline = Clock::now() + std::min<Clock::duration>(
+                                           std::chrono::hours(24),
+                                           session::CoordinatorIdle() / 2);
+        if (auto rescan = host_.RescanDue()) {
+          deadline = std::min(deadline, *rescan);
+        }
+        auto result = WaitForAnyFileChange(paths, deadline, stop.read.Get());
         if (result == FileWaitResult::kInterrupted) {
           // A restart was requested over HTTP: its reply is still leaving.
           if (reexec_) std::this_thread::sleep_for(kRestartReply);
           break;
         }
         host_.ParkIdleCoordinators();
+        // Sessions a coordinator creates or deletes reach every client.
+        host_.RefreshCatalogue();
         bool observed;
         {
           std::lock_guard lock(mutex_);

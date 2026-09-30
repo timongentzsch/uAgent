@@ -88,7 +88,7 @@ Closing a client detaches it. Closing the runtime cancels work, saves state and
 reaps session-owned children. An internal writer lease prevents two runtimes
 from owning one file; clients do not acquire that lease. Runtime discovery uses
 private sockets, a bounded startup scan and native directory notifications, not
-live JSON sidecars, inbox files or terminal-specific mirroring. Schedule,
+live JSON sidecars or terminal-specific mirroring. Schedule,
 prompt and library invalidation uses the native multi-path watcher and wakes at
 the next actual schedule deadline. Independent conversations may share a project
 folder; edits to shared project files still require coordination.
@@ -98,8 +98,21 @@ background activity of its parent. It saves an ordinary session file in the
 workspace's history whose header carries a `delegation` object (parent, name,
 role, directive, mode, model); the catalogue hides such files, and the parent
 finds its children by that header. A follow-up starts a new bounded child
-process from the saved conversation. Parent guidance travels through the same
-session inbox as linked-peer mail and is read at the child's next step.
+process from the saved conversation, and a message to a finished child starts
+one on that message. A child's result reaches its parent through the activity
+completion; an idle parent takes it up at once as a turn.
+
+Sessions message each other through durable mailboxes
+([PERSISTENCE.md](PERSISTENCE.md#mail)): linked peers, a parent and its
+children, children of one parent, and a folder's coordinator and its threads.
+Each runtime watches its mailbox (inotify, kqueue on macOS) and delivers at
+the next model step, including after a final answer, which reopens the turn;
+an idle runtime starts a turn on mail meant to wake it, and a headless child
+answers mail that arrives after its last step before it exits. A thread's
+finished turns and questions reach its coordinator this way within
+milliseconds, starting the coordinator's runtime when none runs; at the daily
+spend limit the coordinator's mail waits. Senders are refused, visibly, past 64
+pending messages, 20 a minute or 8 forwards.
 
 Headless `-p` runs use the same application, agent and event policies in one
 process. Their bounded invocation and machine-output contract are separate from

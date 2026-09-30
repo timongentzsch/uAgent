@@ -131,6 +131,9 @@ struct SessionState {
   // redraw a diff instead of a grey summary line.
   json tool_displays = json::object();
   json display = json::object();
+  // Ids of the latest mailbox messages taken into the transcript, so one
+  // delivered again after a crash is recognised (see core/mailbox.h).
+  json delivered_mail = json::array();
 
   // Transfer the loaded transcript into its sole runtime owner.
   bool RestoreConversation(Conversation& conversation) &&;

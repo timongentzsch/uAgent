@@ -10,6 +10,7 @@
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
+#include "include/core/mailbox.h"
 #include "include/core/signals.h"
 #include "include/core/steering.h"
 #include "include/core/strings.h"
@@ -60,9 +61,22 @@ int Application::RunChannel() {
     }
     return ActivityControl(runtime_.processes, request);
   });
+  // Mail a previous runtime took but never saved is delivered again, and
+  // mail that arrived while none ran starts a turn now.
+  RecoverMail(MailboxIdFor(session_file_));
+  if (agent_.DeliverMail(channel_->HoldMail())) SaveSession(false);
   PublishChannelState();
   while (std::optional<ApplicationInput> input = channel_->NextInput()) {
-    agent_.DrainBackground();
+    // A child's result arrives on its own; an idle session also takes it up
+    // at once, as a turn, since it delegated in order to hear back.
+    bool children_finished = false;
+    agent_.DrainBackground(&children_finished);
+    if (children_finished && input->wake) {
+      SteeringState().Queue(
+          "[subagent finished, not a user message] Its result is above.", "",
+          true);
+    }
+    agent_.DeliverMail(channel_->HoldMail());
     agent_.AccountSideUsage();
     request_id_ = input->request_id;
     json result;

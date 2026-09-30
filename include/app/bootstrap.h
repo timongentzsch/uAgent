@@ -49,6 +49,9 @@ class ApplicationChannel {
   virtual std::string ReadInteraction(const InteractionRequest& request,
                                       bool* eof) = 0;
   virtual int WakeFd() const { return -1; }
+  // True while mail that would start a turn must wait (a coordinator at its
+  // spend limit).
+  virtual bool HoldMail() { return false; }
   virtual std::string SessionPath() const { return {}; }
   virtual std::string InitialTitle() const { return {}; }
   // Checkpoints run at serialized application boundaries, after saving. A

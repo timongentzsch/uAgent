@@ -108,6 +108,7 @@ add_library(
   src/core/file_watch.cc
   src/core/fs.cc
   src/core/library.cc
+  src/core/mailbox.cc
   src/core/platform_posix.cc
   src/core/private_store.cc
   src/core/project.cc
@@ -148,6 +149,7 @@ add_library(
   src/agent/activity_log.cc
   src/agent/agent.cc
   src/agent/child_agent.cc
+  src/agent/mail_delivery.cc
   src/agent/conversation.cc
   src/agent/dispatch.cc
   src/agent/file_services.cc

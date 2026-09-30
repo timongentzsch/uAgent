@@ -13,19 +13,15 @@
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/limits.h"
+#include "include/core/mailbox.h"
 #include "include/core/strings.h"
 #include "include/core/time.h"
 #include "include/transport/session.h"
 
 namespace uagent {
-namespace {
-
-constexpr int kSessionMailMaxHops = 8;
-}  // namespace
-
 
 ToolResult MessageSession(const std::string& id, const std::string& text,
-                          const std::string& from, int hops) {
+                          int hops) {
   const std::string me = OwnSessionId();
   if (me.empty()) {
     return ToolFailure(ToolErrorCode::kUnavailable,
@@ -45,11 +41,22 @@ ToolResult MessageSession(const std::string& id, const std::string& text,
     return ToolFailure(ToolErrorCode::kInvalidArguments,
                        "message requires text");
   }
-  if (hops >= kSessionMailMaxHops) {
-    return ToolSuccess("dropped message for session " + id + " [loop-clamped]");
-  }
-  ToolResult saved = WriteSessionMail(id, text, from.empty() ? me : from, hops);
-  return saved.Ok() ? ToolSuccess("queued message for session " + id) : saved;
+  const std::string own = OwnSessionFile();
+  const std::string title = JsonValue(SessionHeader(own), "title", "");
+  Mail mail;
+  mail.from = MailboxIdFor(own);
+  mail.sender_path = own;
+  mail.to = MailboxIdFor(LinkedSessionPath(id));
+  mail.type = kMailNote;
+  mail.hops = hops;
+  mail.body = {{"text", "[session " +
+                            (title.empty() || title == me
+                                 ? me
+                                 : OneLine(title) + " (" + me + ")") +
+                            "]\n" + text}};
+  const std::string error = SendMail(std::move(mail));
+  return error.empty() ? ToolSuccess("sent to session " + id)
+                       : ToolFailure(ToolErrorCode::kUnavailable, error);
 }
 
 Tool SessionTool() {
@@ -82,8 +89,9 @@ Tool SessionTool() {
       "session",
       "Message another live uagent session linked with this one (yolo "
       "sessions auto-link per workspace; otherwise /link TOKEN). list shows "
-      "linked, then linkable sessions; message queues text the peer reads "
-      "at its next step; broadcast reaches every linked session. Unlinked "
+      "linked, then linkable sessions; message reaches the peer at its next "
+      "step, or starts its turn when it is idle; broadcast reaches every "
+      "linked session. Unlinked "
       "sessions are refused.",
       parameters, [](const json& arguments, const ToolContext&) {
         (void)EnsureSessionAutoLink();
@@ -119,12 +127,11 @@ Tool SessionTool() {
           return ToolFailure(ToolErrorCode::kInvalidArguments,
                              "message requires session_id or broadcast");
         }
-        const std::string me = OwnSessionId();
         const int hops =
             static_cast<int>(JsonValue(arguments, "hops", int64_t{0}));
         std::string combined;
         for (const std::string& target : targets) {
-          ToolResult one = MessageSession(target, prompt, me, hops);
+          ToolResult one = MessageSession(target, prompt, hops);
           if (!combined.empty()) combined += "\n";
           combined +=
               one.Ok() ? one.output : ("error " + target + ": " + one.output);
@@ -172,8 +179,7 @@ json SessionSlashTell(const std::string& argument) {
   }
   std::string text = Trim(args.substr(space));
   if (text.empty()) return {{"error", "usage: /tell ID TEXT"}};
-  ToolResult sent =
-      MessageSession(args.substr(0, space), text, OwnSessionId(), 0);
+  ToolResult sent = MessageSession(args.substr(0, space), text);
   return sent.Ok() ? json{{"output", sent.output}}
                    : json{{"error", sent.output}};
 }

@@ -89,7 +89,7 @@ SessionCommandResult SessionHost::ExecuteCommand(
           SessionStore::Fork(session->path, JsonValue(command, "title", ""),
                              false, JsonValue(command, "turn", int64_t{0}),
                              JsonValue(command, "message_id", ""));
-      if (RefreshCatalogue(true)) changed_.notify_all();
+      RefreshCatalogue(true);
       lock.lock();
       result.outcome["result"] = fork;
       result.error = JsonValue(fork, "error", "");

@@ -159,7 +159,9 @@ bool SessionHost::RefreshCatalogue(bool force) {
       it->second->path = item.path;
     }
     auto& session = *it->second;
-    if (session.closing || session.status == "updating" ||
+    // A connecting session is read unlocked by its runtime's launch; the
+    // next scan brings it up to date.
+    if (session.closing || session.connecting || session.status == "updating" ||
         session.status == "deleting") {
       continue;
     }

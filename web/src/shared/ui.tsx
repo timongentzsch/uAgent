@@ -29,6 +29,7 @@ export { Input, Textarea, Select } from "./form-controls.tsx";
 import { Input, Select } from "./form-controls.tsx";
 
 import { cleanText } from "./display.ts";
+import { useResource } from "./use-resource.ts";
 export { cleanText };
 import {
   TimePrefsContext,
@@ -746,25 +747,15 @@ export function Deferred<P extends object>({
   ownsDialog?: boolean;
 }) {
   const dialog = useContext(DialogContext);
-  const [Component, setComponent] = useState<ComponentType<P> | null>(
-    () => (modules.get(load) as ComponentType<P> | undefined) || null,
+  const {
+    value: Component,
+    error,
+    retry,
+  } = useResource(
+    () => preloadDeferred(load),
+    [load],
+    () => modules.get(load) as ComponentType<P> | undefined,
   );
-  const [error, setError] = useState<unknown>(null);
-  const [attempt, setAttempt] = useState(0);
-  useEffect(() => {
-    let active = true;
-    setError(null);
-    preloadDeferred(load)
-      .then((component) => {
-        if (active) setComponent(() => component);
-      })
-      .catch((failure) => {
-        if (active) setError(failure);
-      });
-    return () => {
-      active = false;
-    };
-  }, [load, attempt]);
   return Component ? (
     <Component {...(props as P)} />
   ) : error ? (
@@ -774,11 +765,11 @@ export function Deferred<P extends object>({
       <>
         <DialogHeader title={dialog.title} />
         <div class="dialog-body">
-          <LoadError error={error} retry={() => setAttempt(attempt + 1)} />
+          <LoadError error={error} retry={retry} />
         </div>
       </>
     ) : (
-      <LoadError error={error} retry={() => setAttempt(attempt + 1)} />
+      <LoadError error={error} retry={retry} />
     )
   ) : fallback === undefined ? (
     <Spinner surface />

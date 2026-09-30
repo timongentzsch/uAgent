@@ -2,14 +2,15 @@ import { useEffect, useState, type Inputs } from "preact/hooks";
 
 // Loads a value whenever `deps` change or `retry` asks again: the error
 // clears as a load starts, and a load a newer one replaced lands nowhere.
-// The last value stays until the next arrives; `load` returns nothing to
-// skip a round (offline, say). `setValue` and `setError` let the owner
-// apply its own writes' answers.
+// The last value (first `initial()`) stays until the next arrives; `load`
+// returns nothing to skip a round (offline, say). `setValue` and
+// `setError` let the owner apply its own writes' answers.
 export function useResource<T>(
   load: () => Promise<T> | undefined,
   deps: Inputs,
+  initial?: () => T | undefined,
 ) {
-  const [value, setValue] = useState<T>();
+  const [value, setValue] = useState<T | undefined>(initial);
   const [error, setError] = useState<unknown>(null);
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {

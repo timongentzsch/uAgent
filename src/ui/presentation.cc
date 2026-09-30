@@ -153,6 +153,41 @@ std::string TurnStatsLine(const json& summary) {
        FmtDuration(JsonValue(summary, "duration_ms", 0.0) / 1000)}));
 }
 
+// The inverse of PresentationJson: a record as the event stream carries it.
+PresentationRecord PresentationFromJson(const json& value) {
+  PresentationRecord record;
+  auto kind = JsonValue(value, "kind", "");
+  record.kind = kind == "tool_call"     ? PresentationKind::kToolCall
+                : kind == "tool_result" ? PresentationKind::kToolResult
+                                        : PresentationKind::kNotice;
+  auto status = JsonValue(value, "status", "");
+  record.status = status == "succeeded"   ? PresentationStatus::kSucceeded
+                  : status == "failed"    ? PresentationStatus::kFailed
+                  : status == "cancelled" ? PresentationStatus::kCancelled
+                  : status == "warned"    ? PresentationStatus::kWarned
+                                          : PresentationStatus::kNeutral;
+  record.title = JsonValue(value, "title", "");
+  record.summary = JsonValue(value, "summary", "");
+  record.detail = JsonValue(value, "detail", "");
+  record.change = JsonValue(value, "change", "");
+  record.multiline = JsonValue(value, "multiline", false);
+  record.id = JsonValue(value, "id", "");
+  record.skill = JsonValue(value, "skill", false);
+  record.poll = JsonValue(value, "poll", false);
+  record.minor = JsonValue(value, "minor", false);
+  record.output = JsonValue(value, "output", "");
+  record.view = JsonValue(value, "view", json(nullptr));
+  record.activity = JsonValue(value, "activity", json::object());
+  if (const json* artifacts = JsonArray(value, "artifacts")) {
+    for (const auto& artifact : *artifacts) {
+      record.artifacts.push_back({JsonValue(artifact, "kind", ""),
+                                  JsonValue(artifact, "path", ""),
+                                  JsonValue(artifact, "bytes", size_t{0})});
+    }
+  }
+  return record;
+}
+
 }  // namespace
 
 std::string ColorizeDiffLines(std::string_view text) {
@@ -351,37 +386,7 @@ void TerminalPresenter::Consume(const AppEvent& received) noexcept {
     event.text = text;
     event.render = true;
     if (const json* value = JsonObject(received.data, "presentation")) {
-      PresentationRecord record;
-      auto kind = JsonValue(*value, "kind", "");
-      record.kind = kind == "tool_call"     ? PresentationKind::kToolCall
-                    : kind == "tool_result" ? PresentationKind::kToolResult
-                                            : PresentationKind::kNotice;
-      auto status = JsonValue(*value, "status", "");
-      record.status = status == "succeeded"   ? PresentationStatus::kSucceeded
-                      : status == "failed"    ? PresentationStatus::kFailed
-                      : status == "cancelled" ? PresentationStatus::kCancelled
-                      : status == "warned"    ? PresentationStatus::kWarned
-                                              : PresentationStatus::kNeutral;
-      record.title = JsonValue(*value, "title", "");
-      record.summary = JsonValue(*value, "summary", "");
-      record.detail = JsonValue(*value, "detail", "");
-      record.change = JsonValue(*value, "change", "");
-      record.multiline = JsonValue(*value, "multiline", false);
-      record.id = JsonValue(*value, "id", "");
-      record.skill = JsonValue(*value, "skill", false);
-      record.poll = JsonValue(*value, "poll", false);
-      record.minor = JsonValue(*value, "minor", false);
-      record.output = JsonValue(*value, "output", "");
-      record.view = JsonValue(*value, "view", json(nullptr));
-      record.activity = JsonValue(*value, "activity", json::object());
-      if (const json* artifacts = JsonArray(*value, "artifacts")) {
-        for (const auto& artifact : *artifacts) {
-          record.artifacts.push_back({JsonValue(artifact, "kind", ""),
-                                      JsonValue(artifact, "path", ""),
-                                      JsonValue(artifact, "bytes", size_t{0})});
-        }
-      }
-      event.presentation = std::move(record);
+      event.presentation = PresentationFromJson(*value);
     }
     Consume(event);
     break;

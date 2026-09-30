@@ -35,10 +35,10 @@ std::string SaveSelectedModel(AppSession& session,
   std::string error;
   // A coordinator's model is its folder's, kept in its session settings; it
   // must not become the default of every other session.
-  bool saved = session.context.options.Coordinator() ||
-               SaveModelPreference(
-                   {selected, session.ApiClient().base_url, named_route},
-                   error);
+  bool saved =
+      session.context.options.Coordinator() ||
+      SaveModelPreference({selected, session.ApiClient().base_url, named_route},
+                          error);
   DebugLog("route_changed", {{"route", selected},
                              {"model", session.ApiClient().model},
                              {"base_url", session.ApiClient().base_url},
@@ -211,12 +211,11 @@ void HandleModel(AppSession& session, const std::string& argument,
   }
   if (!requested.effort.empty() &&
       requested.effort != session.ApiClient().reasoning_effort) {
-    reply.Note(Tone::kWarn,
-               "effort " + requested.effort +
-                   " is not supported by this model; using " +
-                   (session.ApiClient().reasoning_effort.empty()
-                        ? "provider default"
-                        : session.ApiClient().reasoning_effort));
+    reply.Note(Tone::kWarn, "effort " + requested.effort +
+                                " is not supported by this model; using " +
+                                (session.ApiClient().reasoning_effort.empty()
+                                     ? "provider default"
+                                     : session.ApiClient().reasoning_effort));
   }
   reply.Print("%s", SaveSelectedModel(session, selected).c_str());
 }
@@ -279,9 +278,9 @@ void HandleVariant(AppSession& session, const std::string& argument,
         session.ApiClient().config.openrouter_variant.empty()
             ? "default"
             : ":" + session.ApiClient().config.openrouter_variant;
-    reply.Note(Tone::kNeutral,
-               "variant " + label + " · choose default, nitro, floor, or "
-                                    "exacto");
+    reply.Note(Tone::kNeutral, "variant " + label +
+                                   " · choose default, nitro, floor, or "
+                                   "exacto");
     return;
   }
   if (variant == "default") variant.clear();

@@ -142,8 +142,8 @@ int Main(int argc, char** argv) {
   SetObservability(&observability);
   // `uagent coord` opens the folder's coordinator; the rest are its options.
   const bool coordinator = argc > 1 && std::string_view(argv[1]) == "coord";
-  ParsedOptions parsed = coordinator ? ParseOptions(argc - 1, argv + 1)
-                                     : ParseOptions(argc, argv);
+  ParsedOptions parsed =
+      coordinator ? ParseOptions(argc - 1, argv + 1) : ParseOptions(argc, argv);
   if (!parsed.Ok()) {
     if (parsed.options.json_stream) observability.StartJsonStream();
     return Fail(parsed.options.json_stream, parsed.options.json, parsed.error,
@@ -182,10 +182,8 @@ int Main(int argc, char** argv) {
     HeadlessOutput silence;
     if (!silence.Silence()) return 1;
     auto boot = Bootstrap(std::move(parsed.options), argv[0], observability);
-    json result =
-        boot.Ok()
-            ? boot.context->agent->PromptPreview()
-            : json{{"error", boot.error}};
+    json result = boot.Ok() ? boot.context->agent->PromptPreview()
+                            : json{{"error", boot.error}};
     boot.context.reset();
     silence.Restore();
     printf("%s\n",

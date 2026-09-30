@@ -255,8 +255,7 @@ std::string TurnStatsLine(const json& summary) {
     return count ? FmtCount(count) + unit : "";
   };
   return AsciiGlyphs(JoinDot(
-      {JsonValue(summary, "usage_reported", true) ? line
-                                                  : "usage not reported",
+      {JsonValue(summary, "usage_reported", true) ? line : "usage not reported",
        counted(n("web_searches"), " searches"),
        JsonValue(usage, "cost_reported", false)
            ? FmtCost(JsonValue(usage, "cost", 0.0))
@@ -537,10 +536,10 @@ std::string ResultExtras(const PresentationRecord& record, bool detailed) {
                                   : "memory " + id;
       }
       if (!line.empty()) {
-        text += std::string(DIM()) +
-                Indented(AsciiGlyphs("↳ " + TerminalSafe(line)),
-                         kDetailIndent) +
-                RST() + "\n";
+        text +=
+            std::string(DIM()) +
+            Indented(AsciiGlyphs("↳ " + TerminalSafe(line)), kDetailIndent) +
+            RST() + "\n";
       }
     }
   }
@@ -622,9 +621,8 @@ void PrintPresentation(const PresentationRecord& record,
         const char* style = DiffLineStyle(line);
         if (!*style) style = DIM();
         if (!line.empty() && line[0] == '@') line = "@@ " + line.substr(1);
-        output +=
-            std::string(style) + Indented(TerminalSafe(line), kDetailIndent) +
-            RST() + "\n";
+        output += std::string(style) +
+                  Indented(TerminalSafe(line), kDetailIndent) + RST() + "\n";
       }
       WriteTerminalRecord(output);
     }
@@ -637,8 +635,7 @@ void PrintPresentation(const PresentationRecord& record,
   if (detailed && record.output.find('\n') != std::string::npos) {
     WriteTerminalRecord(std::string(style) + prefix + RST() + "\n" +
                         Indented(OutputText(record.output), kDetailIndent) +
-                        "\n" +
-                        ResultExtras(record, detailed));
+                        "\n" + ResultExtras(record, detailed));
     return;
   }
   if (detailed && !record.output.empty()) {

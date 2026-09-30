@@ -9,13 +9,13 @@
 #include <vector>
 
 #include "include/agent/child_agent.h"
-#include "include/core/project.h"
-#include "include/cli.h"
 #include "include/app/commands.h"
 #include "include/app/permissions.h"
 #include "include/app/self_description.h"
+#include "include/cli.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
+#include "include/core/project.h"
 #include "include/core/sandbox.h"
 #include "include/core/steering.h"
 #include "include/core/strings.h"
@@ -241,8 +241,9 @@ void HandleInstructions(AppSession& session, const std::string& argument,
   if (action == "edit") {
     bool coordinator = false, project = false;
     if (!ParseInstructionTarget(audience, scope, coordinator, project)) {
-      reply.Print("%s", "usage: /instructions edit sessions|coordinator "
-                        "user|project\n");
+      reply.Print("%s",
+                  "usage: /instructions edit sessions|coordinator "
+                  "user|project\n");
       return;
     }
     const auto path = InstructionPath(coordinator, project, cwd);
@@ -257,14 +258,15 @@ void HandleInstructions(AppSession& session, const std::string& argument,
     }
     const std::string error =
         WriteInstructionFile(coordinator, project, cwd, text, base);
-    reply.Note(Tone::kNeutral,
-               error.empty() ? "saved; new and restarted sessions read it"
-                             : TerminalSafe(error));
+    reply.Note(Tone::kNeutral, error.empty()
+                                   ? "saved; new and restarted sessions read it"
+                                   : TerminalSafe(error));
     return;
   }
   if (!action.empty()) {
-    reply.Print("%s", "usage: /instructions [edit sessions|coordinator "
-                      "user|project | clear]\n");
+    reply.Print("%s",
+                "usage: /instructions [edit sessions|coordinator "
+                "user|project | clear]\n");
     return;
   }
   // The stack in the order a session reads it, after the built-in base.
@@ -321,10 +323,9 @@ void HandleDebugConfig(const AppSession& session, const std::string& argument,
   }
   const json& restart = described["restart_required"];
   if (restart.is_array() && !restart.empty()) {
-    reply.Note(Tone::kWarn, "restart required for " +
-                                std::to_string(restart.size()) +
-                                " changed setting" +
-                                (restart.size() == 1 ? "" : "s"));
+    reply.Note(Tone::kWarn,
+               "restart required for " + std::to_string(restart.size()) +
+                   " changed setting" + (restart.size() == 1 ? "" : "s"));
   }
   reply.Note(Tone::kNeutral,
              "precedence: command line, process environment, trusted "
@@ -515,25 +516,22 @@ void HandleTools(AppSession& session, const std::string& argument,
                "error: " + TerminalSafe(JsonValue(result, "error", "")));
     return;
   }
-  reply.Note(
-      Tone::kNeutral,
-      std::to_string(JsonValue(result, "active", int64_t{0})) + "/" +
-          std::to_string(JsonValue(result, "available", int64_t{0})) +
-          " tools · " +
-          TerminalSafe(JsonValue(result, "profile", "default")) + " · " +
-          std::to_string(JsonValue(result, "schema_bytes", int64_t{0})) +
-          " serialized schema bytes");
+  reply.Note(Tone::kNeutral,
+             std::to_string(JsonValue(result, "active", int64_t{0})) + "/" +
+                 std::to_string(JsonValue(result, "available", int64_t{0})) +
+                 " tools · " +
+                 TerminalSafe(JsonValue(result, "profile", "default")) + " · " +
+                 std::to_string(JsonValue(result, "schema_bytes", int64_t{0})) +
+                 " serialized schema bytes");
   if (const json* tools = JsonArray(result, "tools")) {
     for (const json& tool : *tools) {
-      reply.Print("%s %s%-14s %s · %s%s\n",
-                  StatusMark(JsonValue(tool, "active", false) ? "ready"
-                                                              : "disabled")
-                      .c_str(),
-                  DIM(),
-                  TerminalSafe(JsonValue(tool, "name", "")).c_str(),
-                  TerminalSafe(JsonValue(tool, "category", "")).c_str(),
-                  TerminalSafe(JsonValue(tool, "description", "")).c_str(),
-                  RST());
+      reply.Print(
+          "%s %s%-14s %s · %s%s\n",
+          StatusMark(JsonValue(tool, "active", false) ? "ready" : "disabled")
+              .c_str(),
+          DIM(), TerminalSafe(JsonValue(tool, "name", "")).c_str(),
+          TerminalSafe(JsonValue(tool, "category", "")).c_str(),
+          TerminalSafe(JsonValue(tool, "description", "")).c_str(), RST());
     }
   }
 }

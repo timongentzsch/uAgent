@@ -175,12 +175,12 @@ class Terminal {
         decision_ = decision;
         if (!decision.empty() && JsonValue(pending, "kind", "") == "ask" &&
             raw_) {
-          const json answered = PickAskAnswers(
-              JsonValue(pending, "questions", json::array()), region_,
-              [this, decision] {
-                std::lock_guard lock(mutex_);
-                return JsonValue(pending_, "id", "") == decision;
-              });
+          const json answered =
+              PickAskAnswers(JsonValue(pending, "questions", json::array()),
+                             region_, [this, decision] {
+                               std::lock_guard lock(mutex_);
+                               return JsonValue(pending_, "id", "") == decision;
+                             });
           // Answered elsewhere meanwhile: nothing left to send.
           bool live = false;
           {
@@ -329,11 +329,10 @@ class Terminal {
     if (!files.empty()) {
       // Staged via /attach but never submitted (EOF/quit/compose-cancel):
       // say so instead of dropping them silently.
-      const std::string dropped =
-          Note(Tone::kNeutral, std::to_string(files.size()) +
-                                   " staged attachment" +
-                                   (files.size() == 1 ? "" : "s") +
-                                   " discarded: nothing was submitted");
+      const std::string dropped = Note(
+          Tone::kNeutral, std::to_string(files.size()) + " staged attachment" +
+                              (files.size() == 1 ? "" : "s") +
+                              " discarded: nothing was submitted");
       if (raw_) {
         region_.Commit(dropped);
       } else {
@@ -447,12 +446,12 @@ class Terminal {
       case SlashCommandId::kSessions: {
         // Guarded before the picker: never abandon a running turn.
         if (TurnActive("switching sessions")) return Command::kDone;
-        std::string target = argument.empty() ? PickSession()
-                                              : MatchSessionPrefix(argument);
+        std::string target =
+            argument.empty() ? PickSession() : MatchSessionPrefix(argument);
         if (!argument.empty() && target.empty()) {
-          WriteTerminalRecord(Note(Tone::kNeutral,
-                                   "no unique session matches \"" +
-                                       TerminalSafe(argument) + "\""));
+          WriteTerminalRecord(Note(
+              Tone::kNeutral,
+              "no unique session matches \"" + TerminalSafe(argument) + "\""));
         }
         if (target.empty()) return Command::kDone;
         return Leave(target, "switching sessions");
@@ -499,11 +498,11 @@ class Terminal {
         return Command::kDone;
       case SlashCommandId::kVerbose:
         presenter_.SetDetailed(!presenter_.Detailed());
-        WriteTerminalRecord(Note(
-            Tone::kNeutral,
-            presenter_.Detailed()
-                ? "verbose on — full reasoning and tool output"
-                : "verbose off — compact reasoning and tool output"));
+        WriteTerminalRecord(
+            Note(Tone::kNeutral,
+                 presenter_.Detailed()
+                     ? "verbose on — full reasoning and tool output"
+                     : "verbose off — compact reasoning and tool output"));
         wake_.Wake();
         return Command::kDone;
       case SlashCommandId::kShare:
@@ -656,10 +655,9 @@ class Terminal {
       }
       const json result = JsonValue(frame, "result", json::object());
       if (result.contains("answer")) {
-        WriteTerminalRecord(StyledBlock(AsciiGlyphs("side · not in history"),
-                                        DIM()) +
-                            TerminalSafe(JsonValue(result, "answer", "")) +
-                            "\n");
+        WriteTerminalRecord(
+            StyledBlock(AsciiGlyphs("side · not in history"), DIM()) +
+            TerminalSafe(JsonValue(result, "answer", "")) + "\n");
       } else if (!result.empty()) {
         WriteTerminalRecord(TerminalSafe(JsonDump(result, 2)) + "\n");
       }
@@ -762,46 +760,47 @@ int CoordinatorPromptMain(const Options& options) {
   Usage before, after;
   Pipe never;
   if (!never.Open()) return 1;
-  ReadFrames(connection.socket.Get(), never.read.Get(), kFrameBytes,
-             [&](const json& frame) {
-               const std::string kind = JsonValue(frame, "kind", "");
-               if (kind == "outcome" &&
-                   JsonValue(frame, "request_id", "") == request &&
-                   !JsonValue(frame, "accepted", false)) {
-                 error = JsonValue(frame, "error", "coordinator refused");
-                 rejected = true;
-                 return false;
-               }
-               if (kind != "state") return true;
-               if (!submitted && !JsonValue(frame, "busy", true)) {
-                 before = UsageFromJson(
-                     JsonValue(frame["state"], "usage", json::object()));
-                 submitted = send({{"kind", "submit"},
-                                   {"request_id", request},
-                                   {"text", options.prompt}});
-                 return submitted;
-               }
-               // Nobody is here to approve: a question is declined.
-               if (const json* pending = JsonObject(frame, "pending")) {
-                 fprintf(stderr, "· declined: %s\n",
-                         TerminalSafe(JsonValue(*pending, "prompt", "approval"))
-                             .c_str());
-                 send({{"kind", "reply"},
-                       {"interaction_id", JsonValue(*pending, "id", "")},
-                       {"text", ""}});
-               }
-               if (JsonValue(frame, "checkpoint", false) &&
-                   JsonValue(frame, "completed_request_id", "") == request) {
-                 // A queued thread event may already have started the next
-                 // turn, which clears the stop record.
-                 stop = JsonValue(frame["state"], "stop", json::object());
-                 after = UsageFromJson(
-                     JsonValue(frame["state"], "usage", json::object()));
-                 completed = true;
-                 return false;
-               }
-               return true;
-             });
+  ReadFrames(
+      connection.socket.Get(), never.read.Get(), kFrameBytes,
+      [&](const json& frame) {
+        const std::string kind = JsonValue(frame, "kind", "");
+        if (kind == "outcome" &&
+            JsonValue(frame, "request_id", "") == request &&
+            !JsonValue(frame, "accepted", false)) {
+          error = JsonValue(frame, "error", "coordinator refused");
+          rejected = true;
+          return false;
+        }
+        if (kind != "state") return true;
+        if (!submitted && !JsonValue(frame, "busy", true)) {
+          before =
+              UsageFromJson(JsonValue(frame["state"], "usage", json::object()));
+          submitted = send({{"kind", "submit"},
+                            {"request_id", request},
+                            {"text", options.prompt}});
+          return submitted;
+        }
+        // Nobody is here to approve: a question is declined.
+        if (const json* pending = JsonObject(frame, "pending")) {
+          fprintf(
+              stderr, "· declined: %s\n",
+              TerminalSafe(JsonValue(*pending, "prompt", "approval")).c_str());
+          send({{"kind", "reply"},
+                {"interaction_id", JsonValue(*pending, "id", "")},
+                {"text", ""}});
+        }
+        if (JsonValue(frame, "checkpoint", false) &&
+            JsonValue(frame, "completed_request_id", "") == request) {
+          // A queued thread event may already have started the next
+          // turn, which clears the stop record.
+          stop = JsonValue(frame["state"], "stop", json::object());
+          after =
+              UsageFromJson(JsonValue(frame["state"], "usage", json::object()));
+          completed = true;
+          return false;
+        }
+        return true;
+      });
   if (rejected || !completed) {
     fprintf(stderr, "%s\n",
             error.empty() ? "coordinator runtime closed" : error.c_str());
@@ -815,11 +814,12 @@ int CoordinatorPromptMain(const Options& options) {
     answer = conversation.LastAssistantText();
   }
   if (options.json) {
-    printf("%s\n", JsonDump({{"answer", answer},
-                             {"session_id", HashHex(path)},
-                             {"usage", UsageJson(UsageDifference(after, before))},
-                             {"stop", stop}})
-                       .c_str());
+    printf("%s\n",
+           JsonDump({{"answer", answer},
+                     {"session_id", HashHex(path)},
+                     {"usage", UsageJson(UsageDifference(after, before))},
+                     {"stop", stop}})
+               .c_str());
   } else {
     printf("%s\n", answer.c_str());
   }
@@ -841,8 +841,7 @@ int TerminalMain(Options options) {
   for (;;) {
     // A saved session reopens in its own folder; so does a coordinator
     // reached from a session in another directory.
-    std::string cwd =
-        JsonValue(SessionHeader(path), kSessionHeaderCwd, folder);
+    std::string cwd = JsonValue(SessionHeader(path), kSessionHeaderCwd, folder);
     if (path.empty()) {
       path = UagentDir(kHistoryDir) + "/" + WorkspaceId(cwd) + "/" +
              MakeSessionId() + ".json";

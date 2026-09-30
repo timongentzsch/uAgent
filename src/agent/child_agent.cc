@@ -352,9 +352,8 @@ std::optional<ToolResult> ChildAgentBudgetBlock(
   }
   if ((api.config.session_budget > 0 || api.config.session_token_budget > 0) &&
       processes.JoinableCount() > 0) {
-    return ToolFailure(
-        ToolErrorCode::kLimitExceeded,
-        "budgeted child already running; wait for its result");
+    return ToolFailure(ToolErrorCode::kLimitExceeded,
+                       "budgeted child already running; wait for its result");
   }
   return std::nullopt;
 }

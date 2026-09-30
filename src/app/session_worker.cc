@@ -945,9 +945,9 @@ int WorkerMain(int argc, char** argv) {
     options.session = *role;
   } else if (const json header = SessionHeader(argv[3]);
              JsonValue(header, kSessionHeaderKind, "") == kSessionKindThread) {
-    options.session = {{"kind", kSessionKindThread},
-                       {"thread", JsonValue(header, kSessionHeaderThread,
-                                            json::object())}};
+    options.session = {
+        {"kind", kSessionKindThread},
+        {"thread", JsonValue(header, kSessionHeaderThread, json::object())}};
   }
   // A thread runs in Auto mode, sandboxed and within its budget however its
   // runtime is started again, so a restart never widens it.

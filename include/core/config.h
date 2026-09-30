@@ -27,8 +27,7 @@ EnvValues ParseEnvValues(const std::string& text);
 
 EnvValues ReadEnvValues(const std::string& path);
 
-std::string ResolveEnvValue(const std::string& key,
-                            const EnvValues& values,
+std::string ResolveEnvValue(const std::string& key, const EnvValues& values,
                             std::set<std::string>& resolving,
                             bool process_fallback = true);
 
@@ -55,8 +54,7 @@ std::string TrustStorePath();
 
 // Records one workspace under the store's cross-process lock, so trusting two
 // workspaces at once cannot drop either record.
-bool WriteTrustRecord(const std::string& root, json record,
-                      std::string& error);
+bool WriteTrustRecord(const std::string& root, json record, std::string& error);
 
 json ReadTrustStore();
 
@@ -76,8 +74,7 @@ bool ProjectConfigTrusted(json* trusted_mcp = nullptr);
 // which is the safe direction.
 bool RestampProjectConfigTrust(std::string& error);
 
-bool TrustProjectConfig(std::string& error,
-                        json* trusted_mcp = nullptr);
+bool TrustProjectConfig(std::string& error, json* trusted_mcp = nullptr);
 
 }  // namespace uagent
 

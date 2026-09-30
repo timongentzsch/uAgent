@@ -293,9 +293,9 @@ std::optional<json> FindDetachedRecord(int64_t pid) {
 }
 
 ToolResult ActivityNotFound(int64_t pid) {
-  return ToolFailure(ToolErrorCode::kNotFound,
-                     "activity " + std::to_string(pid) +
-                         " is not supervised by uagent");
+  return ToolFailure(
+      ToolErrorCode::kNotFound,
+      "activity " + std::to_string(pid) + " is not supervised by uagent");
 }
 
 ToolResult SaveDetachedRecord(pid_t pid, const std::string& log,

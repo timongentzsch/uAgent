@@ -33,8 +33,8 @@ std::filesystem::path ProjectRoot(const std::filesystem::path& cwd);
 // A directory contributes one file, as in Codex: AGENTS.override.md, else
 // AGENTS.md, else CLAUDE.md as a compatibility fallback. Where none exists,
 // AGENTS.md is the one to create.
-inline constexpr const char* kInstructionNames[] = {
-    "AGENTS.override.md", "AGENTS.md", "CLAUDE.md"};
+inline constexpr const char* kInstructionNames[] = {"AGENTS.override.md",
+                                                    "AGENTS.md", "CLAUDE.md"};
 
 std::filesystem::path InstructionFileIn(const std::filesystem::path& dir);
 
@@ -71,9 +71,10 @@ json InstructionFiles(const std::filesystem::path& cwd);
 // Replaces one instruction file; returns the error, or empty. With `base`,
 // the text the editor started from, a file changed since then is kept: two
 // editors never silently overwrite each other.
-std::string WriteInstructionFile(
-    bool coordinator, bool project, const std::filesystem::path& cwd,
-    const std::string& text, const std::optional<std::string>& base = {});
+std::string WriteInstructionFile(bool coordinator, bool project,
+                                 const std::filesystem::path& cwd,
+                                 const std::string& text,
+                                 const std::optional<std::string>& base = {});
 
 }  // namespace uagent
 

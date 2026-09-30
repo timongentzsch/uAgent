@@ -216,8 +216,9 @@ void TestPollCollapse() {
   // The whole output travels with the row; /verbose prints it.
   CHECK(compact.output.find("\n30") != std::string::npos);
   // Indented under its row.
-  CHECK(CaptureStdout([&] { PrintPresentation(compact, true); })
-            .find("\n    30") != std::string::npos);
+  CHECK(CaptureStdout([&] {
+          PrintPresentation(compact, true);
+        }).find("\n    30") != std::string::npos);
   std::string drawn = CaptureStdout([&] { PrintPresentation(compact); });
   CHECK(drawn.find("← [2] activity") != std::string::npos);
   CHECK(drawn.find("[script:") != std::string::npos);

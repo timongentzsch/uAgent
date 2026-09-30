@@ -174,7 +174,7 @@ CommandReply RunSlashCommand(AppSession& session,
         return reply;
       }
       result = PermissionControl(session.context, {{"mode", command.argument}});
-        return reply;
+      return reply;
     case SlashCommandId::kRename:
       if (Trim(command.argument).empty()) {
         result = {{"error", "usage: /rename TITLE"}};
@@ -224,9 +224,9 @@ CommandReply RunSlashCommand(AppSession& session,
     case SlashCommandId::kYolo:
       result = PermissionControl(session.context,
                                  {{"mode", ApprovalIsYolo() ? "ask" : "yolo"}});
-      reply.Note(Tone::kNeutral,
-                 ApprovalIsYolo() ? "yolo on — automatic ordinary approvals"
-                                  : "yolo off");
+      reply.Note(Tone::kNeutral, ApprovalIsYolo()
+                                     ? "yolo on — automatic ordinary approvals"
+                                     : "yolo off");
       break;
     case SlashCommandId::kCompact:
       session.ActiveAgent().Compact();

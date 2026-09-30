@@ -101,9 +101,8 @@ SandboxPolicyResult BuildSandboxPolicy(const SandboxInputs& inputs) {
   // say it: Landlock has no deny form, so expressing this there would mean not
   // granting the workspace at all.
   if (!inputs.workspace.empty()) {
-    result.policy.denied_writes = {
-        inputs.workspace + "/.uagent/.config",
-        inputs.workspace + "/.mcp.json"};
+    result.policy.denied_writes = {inputs.workspace + "/.uagent/.config",
+                                   inputs.workspace + "/.mcp.json"};
     if (inputs.git_repository) {
       result.policy.denied_writes.push_back(inputs.workspace + "/.git/config");
       result.policy.denied_writes.push_back(inputs.workspace + "/.git/hooks");

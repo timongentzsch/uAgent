@@ -1,7 +1,5 @@
 // Copyright 2026 Timon Gentzsch
 
-#include "include/ui/interactive.h"
-
 #include <unistd.h>
 
 #include <algorithm>
@@ -18,6 +16,7 @@
 #include "include/core/strings.h"
 #include "include/core/term.h"
 #include "include/ui/editor.h"
+#include "include/ui/interactive.h"
 #include "include/ui/live_region.h"
 #include "src/ui/completion.h"
 
@@ -266,8 +265,8 @@ InteractiveInputEvent RawComposer::Read() {
       continue;
     }
     if (ApplySequence(token->text)) continue;
-    if (ch >= 0x20 &&
-        !Insert(std::string(1, static_cast<char>(ch))) && !input_limit_bell_) {
+    if (ch >= 0x20 && !Insert(std::string(1, static_cast<char>(ch))) &&
+        !input_limit_bell_) {
       output_.Write("\a");
       input_limit_bell_ = true;
     }
@@ -373,11 +372,11 @@ void RawComposer::Complete() {
   // certain, and the rows below the draft show what is still open.
   std::string name = found.matches.front().name;
   for (const Suggestion& match : found.matches) {
-    name.resize(static_cast<size_t>(
-        std::mismatch(name.begin(), name.end(), match.name.begin(),
-                      match.name.end())
-            .first -
-        name.begin()));
+    name.resize(
+        static_cast<size_t>(std::mismatch(name.begin(), name.end(),
+                                          match.name.begin(), match.name.end())
+                                .first -
+                            name.begin()));
   }
   if (found.matches.size() == 1 && found.matches.front().wants_argument) {
     name += " ";

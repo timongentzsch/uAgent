@@ -88,9 +88,9 @@ json Mutate(const std::function<json(json&)>& change) {
 json Run(const json& task, int64_t at, const std::string& status) {
   auto id = HashHex(MakeSessionId());
   const auto project = JsonValue(task, "cwd", "");
-  const auto [cwd, path] = PlanLaunch(
-      project, JsonValue(task, "environment", "local") == "worktree",
-      "scheduled-", id);
+  const auto [cwd, path] =
+      PlanLaunch(project, JsonValue(task, "environment", "local") == "worktree",
+                 "scheduled-", id);
   return {{"id", id},
           {"task_id", task["id"]},
           {"task_revision", task["revision"]},

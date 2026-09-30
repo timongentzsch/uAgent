@@ -362,27 +362,26 @@ json Agent::PreviewContext() {
 
 bool Agent::Save(const std::string& path, std::string& error) const {
   CreatePrivateDirectories(std::filesystem::path(path).parent_path());
-  if (!writer_.Acquire(SessionLockPath(path), error,
-                       true)) {
+  if (!writer_.Acquire(SessionLockPath(path), error, true)) {
     return false;
   }
   SessionRecord record;
   // Named, not positional: fifteen fields across the two structs, several of
   // them adjacent same-typed strings and integers, so a field inserted in the
   // header would silently reassign the rest of the save.
-  record.metadata = {.cwd = CanonicalCwd(),
-                     .model = api_.RequestModel(),
-                     .session_id = session_id_,
-                     .turns = UserTurns(),
-                     .title = Utf8Prefix(FirstUserText(), 256),
-                     .custom_title = custom_title_,
-                     .parent_session_id = parent_session_id_,
-                     .forked_at_turn = forked_at_turn_,
-                     .forked_at_time = forked_at_time_,
-                     .delegation = OwnDelegation(),
-                     .kind = JsonValue(session_role_, "kind", ""),
-                     .thread = JsonValue(session_role_, "thread",
-                                         json::object())};
+  record.metadata = {
+      .cwd = CanonicalCwd(),
+      .model = api_.RequestModel(),
+      .session_id = session_id_,
+      .turns = UserTurns(),
+      .title = Utf8Prefix(FirstUserText(), 256),
+      .custom_title = custom_title_,
+      .parent_session_id = parent_session_id_,
+      .forked_at_turn = forked_at_turn_,
+      .forked_at_time = forked_at_time_,
+      .delegation = OwnDelegation(),
+      .kind = JsonValue(session_role_, "kind", ""),
+      .thread = JsonValue(session_role_, "thread", json::object())};
   record.state = {
       .context_tokens = ContextUsed(),
       .context_window = api_.ctx_window,

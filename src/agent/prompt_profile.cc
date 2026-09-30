@@ -9,8 +9,8 @@ namespace uagent {
 json ResolvePrompt(const std::string& base, const AdaptiveSystemState* self,
                    const json& context) {
   std::string text = base;
-  json sources = json::array(
-      {{{"scope", "built-in"}, {"text", base}, {"active", true}}});
+  json sources =
+      json::array({{{"scope", "built-in"}, {"text", base}, {"active", true}}});
   // The agent's own self-directive (adapt_system) overlays the base or, with
   // approval, replaces it; it never outlives the conversation.
   if (self && !self->instructions.empty()) {

@@ -8,13 +8,13 @@
 #include <string>
 #include <vector>
 
+#include "include/app/uagent_tool.h"
 #include "include/core/config.h"
 #include "include/core/config_document.h"
 #include "include/core/effective_config.h"
 #include "include/core/env.h"
 #include "include/core/project.h"
 #include "include/providers.h"
-#include "include/app/uagent_tool.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {

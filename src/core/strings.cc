@@ -295,9 +295,9 @@ std::string OneLine(const std::string& s, size_t cap) {
 }
 
 // The chrome the agent draws itself: row scaffolding and separators; the
-// spinner picks its own ASCII frames (SpinnerFrame). Model and tool text keeps whatever Unicode it carries -- only what
-// this program chose to print is downgraded, and only when the locale says the
-// terminal cannot decode it.
+// spinner picks its own ASCII frames (SpinnerFrame). Model and tool text keeps
+// whatever Unicode it carries -- only what this program chose to print is
+// downgraded, and only when the locale says the terminal cannot decode it.
 std::string AsciiGlyphs(std::string_view s) {
   if (g_unicode) return std::string(s);
   static constexpr std::pair<std::string_view, std::string_view> kGlyphs[] = {

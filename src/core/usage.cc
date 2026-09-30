@@ -29,8 +29,7 @@ void Usage::Add(const json& value) {
     for (const Alias& alias : candidates) {
       int64_t found =
           alias.parent
-              ? (value.contains(alias.parent) &&
-                         value[alias.parent].is_object()
+              ? (value.contains(alias.parent) && value[alias.parent].is_object()
                      ? JsonValue(value[alias.parent], alias.field, int64_t{0})
                      : int64_t{0})
               : JsonValue(value, alias.field, int64_t{0});
@@ -55,8 +54,8 @@ void Usage::Add(const json& value) {
                          {"input_tokens_details", "cached_tokens"}}));
   int64_t cache = nested_cache
                       ? nested_cache
-                      : Nonnegative(JsonValue(
-                            value, "cache_read_input_tokens", int64_t{0}));
+                      : Nonnegative(JsonValue(value, "cache_read_input_tokens",
+                                              int64_t{0}));
   int64_t nested_write =
       Nonnegative(first({{"prompt_tokens_details", "cache_write_tokens"},
                          {"prompt_tokens_details", "cache_creation_tokens"},
@@ -177,8 +176,7 @@ json PrefixNumericStatistics(const json& statistics, std::string_view prefix) {
   return result;
 }
 
-json FlattenNumericStatistics(const json& statistics,
-                              std::string_view prefix) {
+json FlattenNumericStatistics(const json& statistics, std::string_view prefix) {
   json result = json::object();
   if (!statistics.is_object()) return result;
   for (const auto& [key, value] : statistics.items()) {

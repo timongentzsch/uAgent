@@ -43,8 +43,7 @@ EnvValues ReadEnvValues(const std::string& path) {
   return ParseEnvValues(f);
 }
 
-std::string ResolveEnvValue(const std::string& key,
-                            const EnvValues& values,
+std::string ResolveEnvValue(const std::string& key, const EnvValues& values,
                             std::set<std::string>& resolving,
                             bool process_fallback) {
   if (process_fallback) {
@@ -207,8 +206,7 @@ bool RestampProjectConfigTrust(std::string& error) {
       error);
 }
 
-bool TrustProjectConfig(std::string& error,
-                        json* trusted_mcp) {
+bool TrustProjectConfig(std::string& error, json* trusted_mcp) {
   json snapshot;
   if (!ProjectTrustSnapshot(snapshot, error)) return false;
   if (!WriteTrustRecord(CanonicalCwd(),

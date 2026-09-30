@@ -181,8 +181,7 @@ ToolResult SearchMemoryText(const std::string& query,
         continue;
       }
       output += "- " + memory.key + ": " +
-                OneLine(RedactMemorySecrets(line), kMaxLineBytes) +
-                "\n";
+                OneLine(RedactMemorySecrets(line), kMaxLineBytes) + "\n";
       emitted = true;
       if (capped()) return ToolSuccess(std::move(output));
       break;
@@ -192,10 +191,9 @@ ToolResult SearchMemoryText(const std::string& query,
       if (capped()) return ToolSuccess(std::move(output));
     }
   }
-  return matches
-             ? ToolSuccess(std::move(output))
-             : ToolFailure(ToolErrorCode::kNotFound,
-                           "no memory matches: " + TerminalSafe(query));
+  return matches ? ToolSuccess(std::move(output))
+                 : ToolFailure(ToolErrorCode::kNotFound,
+                               "no memory matches: " + TerminalSafe(query));
 }
 
 ToolResult ReadMemoryFile(const MemoryEntry& memory) {
@@ -236,8 +234,7 @@ ToolResult AccessMemory(const std::string& name, const std::string& scope,
   fs::path path = MemoryDirectory(scope, Repository(cwd)) / filename;
 
   if (!LibraryPath(GlobalBase(), path)) {
-    return ToolFailure(ToolErrorCode::kPermissionDenied,
-                       "unsafe memory path");
+    return ToolFailure(ToolErrorCode::kPermissionDenied, "unsafe memory path");
   }
   if (forget) {
     std::string previous, error;
@@ -246,8 +243,7 @@ ToolResult AccessMemory(const std::string& name, const std::string& scope,
     }
     std::error_code code;
     if (!fs::remove(path, code)) {
-      return ToolFailure(ToolErrorCode::kInternal,
-                         "cannot delete memory");
+      return ToolFailure(ToolErrorCode::kInternal, "cannot delete memory");
     }
     MemoryEvent event{
         "deleted",
@@ -399,10 +395,9 @@ static ToolResult MemoryAction(const std::string& action,
   if (action == "forget" && !has_content) {
     return AccessMemory(name, scope, std::nullopt, true, cwd);
   }
-  return ToolFailure(
-      ToolErrorCode::kInvalidArguments,
-      action +
-          (action == "set" ? " requires content" : " does not accept content"));
+  return ToolFailure(ToolErrorCode::kInvalidArguments,
+                     action + (action == "set" ? " requires content"
+                                               : " does not accept content"));
 }
 
 ToolResult ToolMemoryAction(const std::string& action, const std::string& key,

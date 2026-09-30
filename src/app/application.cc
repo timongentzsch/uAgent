@@ -209,9 +209,9 @@ void Application::EnsureSessionPath() {
 
 void Application::ReportReplacedExecutable() {
   if (!ExecutableReplaced()) return;
-  context_.observability.Emit(NoticeEvent(
-      PresentationStatus::kNeutral,
-      "uagent was replaced on disk; restart to run the new build"));
+  context_.observability.Emit(
+      NoticeEvent(PresentationStatus::kNeutral,
+                  "uagent was replaced on disk; restart to run the new build"));
 }
 
 void Application::RunPrompt(const std::string& input) {

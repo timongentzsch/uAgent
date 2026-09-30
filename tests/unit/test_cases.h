@@ -73,7 +73,7 @@ namespace uagent {
   X(TestSandboxProbe)                            \
   X(TestStrictBooleanSettings)                   \
   X(TestSelfDescriptionSchemas)                  \
-  X(TestSelfDirective)                          \
+  X(TestSelfDirective)                           \
   X(TestInstructionFiles)                        \
   X(TestPromptRequestParity)                     \
   X(TestSseFraming)                              \

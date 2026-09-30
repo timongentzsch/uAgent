@@ -1,7 +1,5 @@
 // Copyright 2026 Timon Gentzsch
 
-#include "include/ui/interactive.h"
-
 #include <algorithm>
 #include <array>
 #include <cstdint>
@@ -11,6 +9,7 @@
 #include <string_view>
 
 #include "include/core/term.h"
+#include "include/ui/interactive.h"
 
 namespace uagent {
 

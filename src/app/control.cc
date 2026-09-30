@@ -43,8 +43,9 @@ json ManagementControl(const json& request) {
       if (!ParseInstructionTarget(JsonValue(request, "audience", ""),
                                   JsonValue(request, "scope", ""), coordinator,
                                   project)) {
-        return {{"error", "audience is sessions or coordinator, scope user "
-                          "or project"}};
+        return {{"error",
+                 "audience is sessions or coordinator, scope user "
+                 "or project"}};
       }
       std::optional<std::string> base;
       if (request.contains("base") && request["base"].is_string()) {

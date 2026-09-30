@@ -97,13 +97,11 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
   const json intent_schema = {
       {"type", "string"},
       {"enum", CommandIntents()},
-      {"description",
-       "what it is for; display grouping only"}};
+      {"description", "what it is for; display grouping only"}};
   run.parameters["properties"]["intent"] = intent_schema;
   const json description_schema = {
       {"type", json::array({"string", "null"})},
-      {"description",
-       "optional display label, e.g. Running tests"}};
+      {"description", "optional display label, e.g. Running tests"}};
   run.present = [](const json& a) {
     json parts = json::array({CommandPart(JsonValue(a, "command", ""))});
     for (json& part : GenericInputParts(a, {"command"})) {

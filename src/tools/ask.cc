@@ -46,8 +46,7 @@ std::optional<std::string> OptionImageIssue(const std::string& path) {
 // The questions as clients see them: each option image a stored asset
 // (with its path, for a terminal), or dropped with a note when it cannot be
 // read. Previews and alt text travel as the model wrote them.
-json ShownQuestions(json questions, const AskImage& image,
-                    std::string& notes) {
+json ShownQuestions(json questions, const AskImage& image, std::string& notes) {
   for (json& question : questions) {
     for (json& option : question["options"]) {
       const std::string path = JsonValue(option, "image", "");
@@ -150,8 +149,7 @@ Tool AskTool(AskPerson ask, AskImage image) {
         std::string notes;
         bool eof = false;
         const json answers = json::parse(
-            ask(ShownQuestions(questions, image, notes), &eof), nullptr,
-            false);
+            ask(ShownQuestions(questions, image, notes), &eof), nullptr, false);
         if (eof || !answers.is_array()) {
           return ToolSuccess(
               "The user did not answer; decide yourself or ask in your "

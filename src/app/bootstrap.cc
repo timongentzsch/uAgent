@@ -21,10 +21,11 @@
 #include "include/agent/session_store.h"
 #include "include/api.h"
 #include "include/app/artifact.h"
-#include "include/app/coordinator.h"
 #include "include/app/asset_store.h"
+#include "include/app/coordinator.h"
 #include "include/app/reference.h"
 #include "include/app/session.h"
+#include "include/app/uagent_tool.h"
 #include "include/browser/browser.h"
 #include "include/cli.h"
 #include "include/core/config.h"
@@ -49,7 +50,6 @@
 #include "include/tools/adapt_system.h"
 #include "include/tools/ask.h"
 #include "include/tools/browser.h"
-#include "include/app/uagent_tool.h"
 #include "include/tools/memory.h"
 #include "include/tools/registry.h"
 #include "include/tools/session.h"
@@ -208,10 +208,10 @@ std::vector<Tool> BuildTools(AppContext& context,
   std::vector<Tool> tools = BuiltinTools(runtime.processes, workspace);
   if (AdaptiveSystemEnabled()) {
     // The agent exists by the time a tool runs.
-    tools.push_back(AdaptSystemTool(
-        runtime.adaptive_system, [app = &context](const json& request) {
-          return app->agent->SelfDirective(request);
-        }));
+    tools.push_back(AdaptSystemTool(runtime.adaptive_system,
+                                    [app = &context](const json& request) {
+                                      return app->agent->SelfDirective(request);
+                                    }));
   }
   if (!runtime.config.memory_enabled) {
     std::erase_if(tools, [](const Tool& tool) { return tool.memory_store; });
@@ -505,9 +505,9 @@ void ReportSandbox() {
                 {"from", true},
                 {"to", false},
                 {"reason", status.reason}}});
-    Emit(NoticeEvent(
-        PresentationStatus::kWarned,
-        "sandbox: " + status.reason + "; commands run unconfined"));
+    Emit(
+        NoticeEvent(PresentationStatus::kWarned,
+                    "sandbox: " + status.reason + "; commands run unconfined"));
   }
   if (status.rejected.empty()) return;
   std::string dropped;
@@ -655,8 +655,7 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   RuntimeConfig config = config_manager.Initialize();
   // Route resolution reads UAGENT_MODEL; a coordinator starts on its own
   // model. A /model saved in its session still wins on resume.
-  if (options.Coordinator() &&
-      !options.overrides.contains("UAGENT_MODEL")) {
+  if (options.Coordinator() && !options.overrides.contains("UAGENT_MODEL")) {
     const std::string model = CoordinatorModel();
     if (!model.empty()) setenv("UAGENT_MODEL", model.c_str(), 1);
   }

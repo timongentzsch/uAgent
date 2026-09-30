@@ -59,10 +59,9 @@ void TestSandboxPolicy() {
   SandboxInputs repository = BaseInputs();
   repository.git_repository = true;
   CHECK(BuildSandboxPolicy(repository).policy.denied_writes ==
-        (std::vector<std::string>{"/home/u/work/.uagent/.config",
-                                  "/home/u/work/.mcp.json",
-                                  "/home/u/work/.git/config",
-                                  "/home/u/work/.git/hooks"}));
+        (std::vector<std::string>{
+            "/home/u/work/.uagent/.config", "/home/u/work/.mcp.json",
+            "/home/u/work/.git/config", "/home/u/work/.git/hooks"}));
   CHECK(base.rejected.empty());
   CHECK(base.policy.allow_network);
 

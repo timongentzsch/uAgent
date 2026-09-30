@@ -522,7 +522,9 @@ def test_sandbox_keeps_repository_config_and_hooks(root, home, *, binary):
     )
     output = tool_output(root, sandbox_env(home, ""), command, binary=binary)
     assert_true("committed" in output, output)
-    config = subprocess.run(["git", "-C", str(ws), "config", "--get", "core.fsmonitor"], capture_output=True, text=True)
+    config = subprocess.run(
+        ["git", "-C", str(ws), "config", "--get", "core.fsmonitor"], capture_output=True, text=True
+    )
     assert_true(config.stdout.strip() == "", config.stdout)
     assert_true(not (ws / ".git" / "hooks" / "pre-commit").exists(), "a command planted a hook")
 

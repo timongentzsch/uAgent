@@ -16,6 +16,7 @@
 #include "include/app/artifact.h"
 #include "include/app/config_proposal.h"
 #include "include/app/options.h"
+#include "include/app/uagent_tool.h"
 #include "include/cli.h"
 #include "include/core/config_registry.h"
 #include "include/core/effective_config.h"
@@ -23,9 +24,8 @@
 #include "include/core/sandbox.h"
 #include "include/core/strings.h"
 #include "include/providers.h"
-#include "include/tools/browser.h"
 #include "include/tools/adapt_system.h"
-#include "include/app/uagent_tool.h"
+#include "include/tools/browser.h"
 #include "include/tools/registry.h"
 #include "include/tools/session.h"
 #include "include/tools/skill.h"
@@ -259,11 +259,11 @@ json DescribeSelf(SelfTopic topic, const std::string& name,
     }
     case SelfTopic::kPrompt: {
       if (inputs.agent) return inputs.agent->PromptPreview();
-      out.update(ResolvePrompt(
-          ApplyPromptOverlay(SystemPromptBase(), PromptOverlay(nullptr),
-                             nullptr) +
-              CapabilityPrompt(inputs.tools),
-          nullptr, json::array()));
+      out.update(
+          ResolvePrompt(ApplyPromptOverlay(SystemPromptBase(),
+                                           PromptOverlay(nullptr), nullptr) +
+                            CapabilityPrompt(inputs.tools),
+                        nullptr, json::array()));
       out["preview_kind"] =
           "Base prompt without active conversation or repository context.";
       break;

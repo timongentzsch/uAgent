@@ -243,9 +243,8 @@ ToolResult ToolReadFile(const std::string& path, int64_t offset, int64_t limit,
   if (total == 0) return ToolSuccess("(empty file)");
   if (offset > total && !more) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "offset " + std::to_string(offset) +
-                           " is beyond EOF (" + std::to_string(total) +
-                           " lines)");
+                       "offset " + std::to_string(offset) + " is beyond EOF (" +
+                           std::to_string(total) + " lines)");
   }
   std::string header = "[" + path + " lines " + std::to_string(first) + "-" +
                        std::to_string(last);
@@ -495,9 +494,8 @@ std::optional<ToolResult> ApplyEdits(std::string& data, const std::string& path,
     }
     if (!edit.replace_all && count > 1) {
       return ToolFailure(ToolErrorCode::kInvalidArguments,
-                         "edit " + std::to_string(i + 1) +
-                             " `old` matches " + std::to_string(count) +
-                             " times in " + path +
+                         "edit " + std::to_string(i + 1) + " `old` matches " +
+                             std::to_string(count) + " times in " + path +
                              "; add surrounding context or set `replace_all`");
     }
     size_t match = resolved.found.first;
@@ -551,9 +549,8 @@ ToolResult ToolEditFile(const std::string& path,
   const bool grew = ReadBounded(f, kEditFileBytes, data);
   f.close();
   if (grew) {
-    return ToolFailure(
-        ToolErrorCode::kLimitExceeded,
-        path + " grew beyond the edit limit while reading");
+    return ToolFailure(ToolErrorCode::kLimitExceeded,
+                       path + " grew beyond the edit limit while reading");
   }
 
   const size_t original_size = data.size();

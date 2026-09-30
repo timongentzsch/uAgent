@@ -51,7 +51,6 @@ void ForEachString(Json& value, const Visit& visit) {
   }
 }
 
-
 SessionStoreStatus Error(SessionStoreError code, std::string message) {
   return {code, std::move(message)};
 }
@@ -170,7 +169,8 @@ std::string StateText(const SessionState& state,
   }
   // The live archive keeps its segments serialized since archiving.
   return text + ",\"archive\":" +
-         (conversation ? conversation->ArchiveText() : JsonDump(state.archive)) +
+         (conversation ? conversation->ArchiveText()
+                       : JsonDump(state.archive)) +
          "}";
 }
 
@@ -451,8 +451,7 @@ json SessionStore::Fork(const std::string& source, const std::string& title,
                         const std::string& message_id) {
   FileLease writer;
   std::string error;
-  if (!source_owned &&
-      !writer.Acquire(SessionLockPath(source), error)) {
+  if (!source_owned && !writer.Acquire(SessionLockPath(source), error)) {
     return {{"error", error}};
   }
   auto loaded = Inspect(source);
@@ -549,8 +548,8 @@ json SessionStore::Fork(const std::string& source, const std::string& title,
           ec = std::make_error_code(std::errc::io_error);
           return;
         }
-        Fd input(open(text.c_str(),
-                      O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK));
+        Fd input(
+            open(text.c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK));
         struct stat info{};
         if (!input || fstat(input.Get(), &info) != 0 ||
             !S_ISREG(info.st_mode) || info.st_uid != getuid() ||

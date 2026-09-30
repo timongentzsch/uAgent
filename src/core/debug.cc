@@ -29,7 +29,6 @@ void WriteJsonLine(FILE* file, const json& record) {
   fflush(file);
 }
 
-
 std::string DefaultDebugPath() {
   return UagentDir(kSessionsDir) + "/" + UtcStamp("%Y%m%dT%H%M%SZ") + "-" +
          std::to_string(getpid()) + ".jsonl";

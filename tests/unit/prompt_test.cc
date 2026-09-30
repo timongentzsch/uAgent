@@ -22,18 +22,22 @@ struct Harness {
   std::vector<Tool> tools;
   ProcessSupervisor processes;
   UsageAccumulator usage;
-  Agent agent{api,   tools, processes, usage,
+  Agent agent{api,
+              tools,
+              processes,
+              usage,
               [](const Tool&, const json&, int64_t) { return false; },
-              {},    {},    {},        &state};
+              {},
+              {},
+              {},
+              &state};
   json Set(const std::string& mode, const std::string& text) {
     return agent.SelfDirective({{"action", "set"},
                                 {"mode", mode},
                                 {"text", text},
                                 {"revision", Revision()}});
   }
-  std::string Revision() {
-    return agent.SelfDirective({})["item"]["revision"];
-  }
+  std::string Revision() { return agent.SelfDirective({})["item"]["revision"]; }
 };
 }  // namespace
 
@@ -60,10 +64,11 @@ void TestSelfDirective() {
                          {"new", "edited"},
                          {"revision", h.Revision()}});
   CHECK(h.state.instructions == "edited value");
-  CHECK(h.agent.SelfDirective({{"action", "edit"},
-                               {"old", "missing"},
-                               {"new", "x"},
-                               {"revision", h.Revision()}})
+  CHECK(h.agent
+            .SelfDirective({{"action", "edit"},
+                            {"old", "missing"},
+                            {"new", "x"},
+                            {"revision", h.Revision()}})
             .contains("error"));
   // A stale revision is a conflict, never a silent overwrite.
   CHECK(h.agent.SelfDirective({{"action", "set"},
@@ -77,8 +82,7 @@ void TestSelfDirective() {
                          {"text", "only this"},
                          {"revision", h.Revision()}});
   CHECK(h.state.instructions == "edited value");  // a dry run commits nothing
-  CHECK(h.agent.SelfDirective({{"action", "reset"},
-                               {"revision", h.Revision()}})
+  CHECK(h.agent.SelfDirective({{"action", "reset"}, {"revision", h.Revision()}})
             .contains("effective"));
   CHECK(h.agent.PromptPreview()["effective"] == base);
 
@@ -109,8 +113,7 @@ void TestInstructionFiles() {
   TestWorkspace workspace("instruction-files");
   const auto cwd = workspace.workspace;
   CHECK(InstructionPath(false, false, cwd).filename() == "AGENTS.md");
-  CHECK(InstructionPath(true, true, cwd) ==
-        cwd / ".uagent" / "COORDINATOR.md");
+  CHECK(InstructionPath(true, true, cwd) == cwd / ".uagent" / "COORDINATOR.md");
   CHECK(WriteInstructionFile(false, true, cwd, "Run ctest.").empty());
   CHECK(WriteInstructionFile(true, false, cwd, "Keep threads small.").empty());
   struct stat info{};
@@ -140,7 +143,9 @@ void TestInstructionFiles() {
   CHECK(ReadInstructionFile(InstructionPath(false, true, cwd)) == "Mine.");
   // The editor edits the file the loader reads at that level, and never
   // writes through a link.
-  { std::ofstream(cwd / "CLAUDE.md") << "Legacy."; }
+  {
+    std::ofstream(cwd / "CLAUDE.md") << "Legacy.";
+  }
   fs::remove(cwd / "AGENTS.md");
   CHECK(InstructionPath(false, true, cwd).filename() == "CLAUDE.md");
   CHECK(InstructionFiles(cwd)["files"][1]["text"] == "Legacy.");
@@ -155,8 +160,8 @@ void TestPromptRequestParity() {
   TestWorkspace workspace("prompt-request");
   Harness h;
   auto proposed = h.Set("replace", "Only this behavior.\nPreserve whitespace.");
-  CHECK(proposed["effective"].get<std::string>().find("Read only what the task needs") ==
-        std::string::npos);
+  CHECK(proposed["effective"].get<std::string>().find(
+            "Read only what the task needs") == std::string::npos);
   h.agent.PreviewContext();
   CHECK(h.agent.ModelRequest()["messages"][0]["content"] ==
         proposed["effective"]);

@@ -19,9 +19,13 @@ LaunchPaths PlanLaunch(const std::string& project, bool worktree,
 }
 
 CapturedProcess HostGit(const std::string& dir, std::vector<std::string> args) {
-  std::vector<std::string> argv = {
-      "git", "-C", dir, "-c", "core.hooksPath=/dev/null", "-c",
-      "core.fsmonitor=false"};
+  std::vector<std::string> argv = {"git",
+                                   "-C",
+                                   dir,
+                                   "-c",
+                                   "core.hooksPath=/dev/null",
+                                   "-c",
+                                   "core.fsmonitor=false"};
   argv.insert(argv.end(), args.begin(), args.end());
   return CaptureProcess(argv, 30);
 }
@@ -50,7 +54,8 @@ std::string RemoveWorktree(const std::string& project, const std::string& cwd) {
     return "uncommitted changes in " + cwd + "; merge or discard them first";
   }
   if (!Trim(loose.output).empty()) {
-    return "commits in " + cwd + " are on no branch; merge or branch them "
+    return "commits in " + cwd +
+           " are on no branch; merge or branch them "
            "first";
   }
   auto removed = HostGit(project, {"worktree", "remove", cwd});

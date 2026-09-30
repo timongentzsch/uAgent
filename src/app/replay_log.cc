@@ -27,12 +27,10 @@ HostReplay ReplayLog::Publish(const std::string& epoch,
   notice.session = session;
   // A decision routed to a thread's coordinator reaches a person only once
   // the coordinator yields it (approval.escalated).
-  const bool routed =
-      JsonValue(JsonValue(value, "data", json::object()), "route", "") ==
-      kRouteCoordinator;
+  const bool routed = JsonValue(JsonValue(value, "data", json::object()),
+                                "route", "") == kRouteCoordinator;
   if (type == "turn.completed" ||
-      ((type == "approval.requested" || type == "ask.requested") &&
-       !routed) ||
+      ((type == "approval.requested" || type == "ask.requested") && !routed) ||
       type == "approval.escalated" || type == "error" || kind == "error") {
     notice.attention_id = epoch + ":" + std::to_string(sequence_ + 1);
     value["attention_id"] = notice.attention_id;

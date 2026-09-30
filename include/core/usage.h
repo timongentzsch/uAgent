@@ -104,8 +104,7 @@ void MergeNumericStatistics(json& total, const json& delta);
 
 json PrefixNumericStatistics(const json& statistics, std::string_view prefix);
 
-json FlattenNumericStatistics(const json& statistics,
-                              std::string_view prefix);
+json FlattenNumericStatistics(const json& statistics, std::string_view prefix);
 
 // What a running total gained since `prior`, an earlier reading of it.
 Usage UsageDifference(const Usage& current, const Usage& prior);

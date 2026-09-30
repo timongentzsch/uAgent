@@ -84,8 +84,7 @@ json SessionControl(AppSession& session, const json& request) {
     std::string error;
     // A folder has one coordinator, so "edit from here" rewinds it in place
     // rather than starting an ordinary conversation beside it.
-    if (kind == "fork" &&
-        session.context.options.Coordinator() &&
+    if (kind == "fork" && session.context.options.Coordinator() &&
         (JsonValue(request, "turn", int64_t{0}) > 0 ||
          !JsonValue(request, "message_id", "").empty())) {
       json rewound = session.ActiveAgent().RewindBefore(

@@ -68,8 +68,7 @@ json ReadLink(const std::string& name) {
 
 ToolResult WriteLink(const std::string& name, const json& members) {
   if (!ValidLinkName(name)) {
-    return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "bad link name");
+    return ToolFailure(ToolErrorCode::kInvalidArguments, "bad link name");
   }
   json link = {{"format", kSessionLinkFormat},
                {"members", PruneMembers(members)}};
@@ -173,8 +172,7 @@ ToolResult CreateSessionLink(std::string& token) {
 
 ToolResult JoinSessionLink(const std::string& token) {
   if (!ValidLinkName(token)) {
-    return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "bad link token");
+    return ToolFailure(ToolErrorCode::kInvalidArguments, "bad link token");
   }
   json link = ReadLink(token);
   if (!link.is_object()) {

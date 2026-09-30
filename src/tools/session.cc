@@ -29,8 +29,7 @@ ToolResult MessageSession(const std::string& id, const std::string& text,
                        "so the session persists, then message");
   }
   if (id.empty() || SafeFileComponent(id) != id) {
-    return ToolFailure(ToolErrorCode::kNotFound,
-                       "unknown session " + id);
+    return ToolFailure(ToolErrorCode::kNotFound, "unknown session " + id);
   }
   if (!SharesLink(me, id)) {
     return ToolFailure(

@@ -222,7 +222,6 @@ class ToolSelection {
   json Save() const;
   json Catalogue(const std::vector<Tool>& tools) const;
 
-
  private:
   std::string profile_ = "default";
   std::unordered_map<std::string, bool> overrides_;

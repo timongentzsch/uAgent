@@ -95,7 +95,7 @@ std::string ThreadLink::Admit(bool from_coordinator) {
     return "";
   }
   if (++streak_ <= kStreak) return "";
-  return "the coordinator has messaged this thread " +
-         std::to_string(kStreak) + " times in a row; ask the user first";
+  return "the coordinator has messaged this thread " + std::to_string(kStreak) +
+         " times in a row; ask the user first";
 }
 }  // namespace uagent::session

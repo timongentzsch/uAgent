@@ -464,8 +464,7 @@ ToolResult ToolActivityInput(const ProcessSupervisor& supervisor, int64_t id,
   }
   if (needs_input && !input) {
     return ToolFailure(ToolErrorCode::kInternal,
-                       "could not access activity " +
-                           std::to_string(id) +
+                       "could not access activity " + std::to_string(id) +
                            " input: " + std::strerror(duplicate_error));
   }
 
@@ -476,8 +475,7 @@ ToolResult ToolActivityInput(const ProcessSupervisor& supervisor, int64_t id,
     if (ioctl(input.Get(), TIOCSWINSZ, &size) != 0) {
       int resize_error = errno;
       return ToolFailure(ToolErrorCode::kProcessFailed,
-                         "could not resize activity " +
-                             std::to_string(id) +
+                         "could not resize activity " + std::to_string(id) +
                              " PTY: " + std::strerror(resize_error));
     }
     (void)kill(-job->pid, SIGWINCH);
@@ -500,8 +498,7 @@ ToolResult ToolActivityInput(const ProcessSupervisor& supervisor, int64_t id,
         if (count <= 0) {
           int write_error = errno;
           return ToolFailure(ToolErrorCode::kProcessFailed,
-                             "could not write activity " +
-                                 std::to_string(id) +
+                             "could not write activity " + std::to_string(id) +
                                  " stdin: " + std::strerror(write_error));
         }
         offset += static_cast<size_t>(count);
@@ -561,9 +558,8 @@ ToolResult ToolActivityStop(ProcessSupervisor& supervisor, int64_t requested) {
   if (was_alive) {
     if (!TerminateGroup(supervisor, pid, std::chrono::seconds(1),
                         reap_leader)) {
-      return ToolFailure(
-          ToolErrorCode::kProcessFailed,
-          "could not stop process group " + std::to_string(pid));
+      return ToolFailure(ToolErrorCode::kProcessFailed,
+                         "could not stop process group " + std::to_string(pid));
     }
   } else if (detached) {
     ReapLeader(pid);

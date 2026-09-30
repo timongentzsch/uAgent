@@ -1142,9 +1142,10 @@ void TestThreadWorktreesGoOnlyWhenNothingIsLost() {
   const std::string tree = PlanLaunch(project, true, "thread-", "t1").cwd;
   CHECK(LaunchWorktree(tree) && !LaunchWorktree(project));
   REQUIRE(CreateWorktree(project, tree).empty());
-  { std::ofstream(tree + "/work.txt") << "x"; }
-  CHECK(RemoveWorktree(project, tree).find("uncommitted") !=
-        std::string::npos);
+  {
+    std::ofstream(tree + "/work.txt") << "x";
+  }
+  CHECK(RemoveWorktree(project, tree).find("uncommitted") != std::string::npos);
   REQUIRE(git(tree, {"add", "work.txt"}));
   REQUIRE(git(tree, {"commit", "-q", "-m", "work"}));
   CHECK(RemoveWorktree(project, tree).find("no branch") != std::string::npos);
@@ -1188,8 +1189,7 @@ void TestChildSessionsStayOutOfTheCatalogue() {
         {{kSessionHeaderDelegation, {{"parent", "p"}, {"name", "reviewer"}}}});
   // A folder lists its coordinator only in the host's whole view.
   write("coordinator", {{kSessionHeaderKind, kSessionKindCoordinator}});
-  CHECK(CoordinatorPath(CanonicalCwd()) ==
-        (dir / "coordinator.json").string());
+  CHECK(CoordinatorPath(CanonicalCwd()) == (dir / "coordinator.json").string());
   auto ids = [](SessionScope scope) {
     std::vector<std::string> out;
     for (const SessionInfo& info : ListSessions(scope)) {

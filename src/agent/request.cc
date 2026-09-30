@@ -11,9 +11,9 @@
 #include "include/agent.h"
 #include "include/agent/child_agent.h"
 #include "include/agent/prompt.h"
+#include "include/agent/protocol.h"
 #include "include/agent/session_role.h"
 #include "include/agent/session_store.h"
-#include "include/agent/protocol.h"
 #include "include/api/retry.h"
 #include "include/core/checked.h"
 #include "include/core/config_document.h"
@@ -58,8 +58,8 @@ json Agent::ModelRequest() {
   json projected;
   PrepareRequestMessages(conversation_.Messages(), projected, false);
   if (runtime_context_) {
-    projected = CoordinatorRequest(projected.is_null() ? conversation_.Messages()
-                                                      : projected);
+    projected = CoordinatorRequest(
+        projected.is_null() ? conversation_.Messages() : projected);
   }
   json selected = json::array();
   for (size_t i = 0; i < tools_.size() && i < schemas_.size(); ++i) {
@@ -638,8 +638,8 @@ json Agent::PromptContext() const {
 }
 
 std::string Agent::SystemPrompt() const {
-  auto resolved = ResolvePrompt(PromptBase(), adaptive_system_,
-                                PromptContext());
+  auto resolved =
+      ResolvePrompt(PromptBase(), adaptive_system_, PromptContext());
   prompt_error_ = JsonValue(resolved, "error", "");
   if (!prompt_error_.empty()) {
     return conversation_.Empty()
@@ -682,8 +682,8 @@ json Agent::SelfDirective(const json& request) {
   } else if (action == "edit") {
     // One exact, unique replacement in the current text.
     const std::string old = JsonValue(request, "old", "");
-    const size_t at = old.empty() ? std::string::npos
-                                  : next.instructions.find(old);
+    const size_t at =
+        old.empty() ? std::string::npos : next.instructions.find(old);
     if (at == std::string::npos ||
         next.instructions.find(old, at + 1) != std::string::npos) {
       return {{"error", "edit needs text that appears exactly once."}};
@@ -700,9 +700,9 @@ json Agent::SelfDirective(const json& request) {
   if (next.instructions.empty()) next.mode = "overlay";
   json result = ResolvePrompt(PromptBase(), &next, PromptContext());
   if (result.contains("error")) return result;
-  result["diff"] = ConfigUnifiedDiff(self.mode + "\n" + self.instructions,
-                                     next.mode + "\n" + next.instructions,
-                                     "self-directive");
+  result["diff"] =
+      ConfigUnifiedDiff(self.mode + "\n" + self.instructions,
+                        next.mode + "\n" + next.instructions, "self-directive");
   result["applies"] =
       "Next model request; requests already in flight are unchanged.";
   result["item"] = item(next);
@@ -741,7 +741,6 @@ static bool HasMemoryContent(const ProjectInstructions& p) {
 json Agent::SysMsg() const {
   return {{"role", "system"}, {"content", SystemPrompt()}};
 }
-
 
 void Agent::RefreshSystemMessage(bool force) {
   if (conversation_.Empty()) return;

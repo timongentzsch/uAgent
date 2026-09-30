@@ -44,8 +44,7 @@ Tool UagentTool(SelfDescriptionProvider describe,
             "set_instructions: AGENTS.md (every session) or COORDINATOR.md"}}},
          {"text",
           {{"type", "string"},
-           {"description",
-            "set_instructions: the whole new file, Markdown"}}},
+           {"description", "set_instructions: the whole new file, Markdown"}}},
          {"name",
           {{"type", "string"}, {"description", "exact setting or tool name"}}},
          {"scope",
@@ -80,8 +79,8 @@ Tool UagentTool(SelfDescriptionProvider describe,
           // Reaching here means the user approved this exact text.
           bool coordinator = false, project = false;
           ParseInstructionTarget(JsonValue(arguments, "audience", ""),
-                                 JsonValue(arguments, "scope", ""),
-                                 coordinator, project);
+                                 JsonValue(arguments, "scope", ""), coordinator,
+                                 project);
           std::optional<std::string> base;
           if (shown->first == arguments) base = shown->second;
           const std::string error =
@@ -89,8 +88,7 @@ Tool UagentTool(SelfDescriptionProvider describe,
                                    JsonValue(arguments, "text", ""), base);
           return error.empty()
                      ? ToolSuccess("saved; new and restarted sessions read it")
-                     : ToolFailure(ToolErrorCode::kProcessFailed,
-                                   error);
+                     : ToolFailure(ToolErrorCode::kProcessFailed, error);
         }
         if (action == "inspect") {
           SelfTopic topic = SelfTopic::kStatus;

@@ -77,8 +77,8 @@ inline Fd ListenUnix(const std::string& path, int backlog) {
   Fd fd(socket(AF_UNIX, SOCK_STREAM, 0));
   if (!fd || !CloseOnExec(fd.Get())) return {};
   unlink(path.c_str());
-  if (bind(fd.Get(), reinterpret_cast<sockaddr*>(&address),
-           sizeof(address)) != 0 ||
+  if (bind(fd.Get(), reinterpret_cast<sockaddr*>(&address), sizeof(address)) !=
+          0 ||
       chmod(path.c_str(), 0600) != 0 || listen(fd.Get(), backlog) != 0) {
     return {};
   }

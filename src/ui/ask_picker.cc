@@ -96,9 +96,9 @@ std::string Render(const json& question, const Answer& answer, size_t cursor,
     const bool other = index == options.size();
     // The composer's prompt glyph marks the row a key acts on.
     std::string row = index == cursor ? "> " : "  ";
-    if (multi) row += (other ? !answer.other.empty() : answer.chosen[index])
-                          ? "[x] "
-                          : "[ ] ";
+    if (multi)
+      row += (other ? !answer.other.empty() : answer.chosen[index]) ? "[x] "
+                                                                    : "[ ] ";
     row += std::to_string(index + 1) + ". ";
     std::string description;
     if (other) {
@@ -153,13 +153,12 @@ std::string Render(const json& question, const Answer& answer, size_t cursor,
 }
 
 bool Answered(const Answer& answer) {
-  return !answer.other.empty() || std::ranges::find(answer.chosen, true) !=
-                                      answer.chosen.end();
+  return !answer.other.empty() ||
+         std::ranges::find(answer.chosen, true) != answer.chosen.end();
 }
 }  // namespace
 
-std::string AskAnswersFromLine(const json& questions,
-                               const std::string& line) {
+std::string AskAnswersFromLine(const json& questions, const std::string& line) {
   // The part up to `separator` from `at`, advancing past it.
   const auto take = [](const std::string& text, size_t& at, char separator) {
     const size_t end = std::min(text.find(separator, at), text.size());
@@ -269,9 +268,9 @@ json PickAskAnswers(const json& questions, LiveRegion& region,
     }
     answers.push_back(std::move(entry));
     region.SetOverlay("");
-    region.Commit(Note(Tone::kNeutral,
-                       TerminalSafe(JsonValue(question, "question", "")) +
-                           " → " + TerminalSafe(shown)));
+    region.Commit(
+        Note(Tone::kNeutral, TerminalSafe(JsonValue(question, "question", "")) +
+                                 " → " + TerminalSafe(shown)));
   }
   return {{"text", JsonDump(answers)}, {"attachments", attachments}};
 }

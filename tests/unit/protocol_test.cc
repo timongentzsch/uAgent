@@ -441,7 +441,6 @@ void TestRegistries() {
   // Operations that hand over no authority say no more than the summary.
   const json list_call{{"operation", "list"}};
   CHECK(subagent.approval_preview(list_call) == subagent.summary(list_call));
-
 }
 
 void TestCommandAndDisplayRegistries() {
@@ -745,8 +744,8 @@ void TestMarkdownCode() {
         std::string::npos);
   // Only a run at least as long as the opening one closes a fence, so a
   // longer fence can show a shorter one; text after the close is markdown.
-  std::string nested = RenderMarkdown(
-      "````md\n```\n**kept**\n```\n````\nafter **bold**\n");
+  std::string nested =
+      RenderMarkdown("````md\n```\n**kept**\n```\n````\nafter **bold**\n");
   CHECK(nested.find("**kept**") != std::string::npos);
   CHECK(nested.find("````md") != std::string::npos);
   CHECK(nested.find(std::string(BOLD()) + "bold") != std::string::npos);

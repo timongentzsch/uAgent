@@ -281,8 +281,8 @@ ShellCommandResult StartDetachedShell(ProcessSupervisor& supervisor,
                          std::to_string(getpid()) + "-XXXXXX");
   std::string log = pending.Path();
   if (!pending) {
-    return {ToolFailure(ToolErrorCode::kInternal,
-                        "cannot create log file " + log)};
+    return {
+        ToolFailure(ToolErrorCode::kInternal, "cannot create log file " + log)};
   }
   fchmod(pending.Get(), kPrivateFileMode);
   std::string bounded_cmd =
@@ -343,9 +343,8 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
     spec.yield_ms = std::clamp(spec.yield_ms, kMinYieldMs, kMaxYieldMs);
   }
   if (shell.empty() || shell.find('\0') != std::string::npos) {
-    return {ToolFailure(
-        ToolErrorCode::kInvalidArguments,
-        "shell must be a non-empty executable name or path")};
+    return {ToolFailure(ToolErrorCode::kInvalidArguments,
+                        "shell must be a non-empty executable name or path")};
   }
   std::vector<std::string> wrapper;
   if (std::string error = SandboxWrapperFor(spec, &wrapper); !error.empty()) {
@@ -369,8 +368,8 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
                          std::to_string(getpid()) + "-XXXXXX");
   std::string log = pending.Path();
   if (!pending) {
-    return {ToolFailure(ToolErrorCode::kInternal,
-                        "cannot create log file " + log)};
+    return {
+        ToolFailure(ToolErrorCode::kInternal, "cannot create log file " + log)};
   }
   fchmod(pending.Get(), kPrivateFileMode);
   int64_t interaction_cap = ActivityOutputCap(spec.max_output_chars);

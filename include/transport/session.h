@@ -37,8 +37,8 @@ inline constexpr auto kWorkerShutdownTimeout = std::chrono::seconds(5);
 // and exits once no client holds it; the next message or thread event starts
 // it again. Tests shorten it.
 inline std::chrono::seconds CoordinatorIdle() {
-  return std::chrono::seconds(std::max<int64_t>(
-      1, EnvLong("UAGENT_INTERNAL_COORDINATOR_IDLE_S", 600)));
+  return std::chrono::seconds(
+      std::max<int64_t>(1, EnvLong("UAGENT_INTERNAL_COORDINATOR_IDLE_S", 600)));
 }
 inline constexpr auto kStreamBatchInterval =
     std::chrono::milliseconds(kStreamBatchIntervalMs);

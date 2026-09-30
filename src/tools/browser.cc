@@ -44,9 +44,8 @@ ToolResult Handover(const std::string& session_id, const std::string& reason,
     browser::Request({{"op", "cancel_handover"},
                       {"session_id", session_id},
                       {"interaction_id", interaction}});
-    return ToolFailure(
-        ToolErrorCode::kRemoteError,
-        "browser handover remains paused or was cancelled");
+    return ToolFailure(ToolErrorCode::kRemoteError,
+                       "browser handover remains paused or was cancelled");
   }
   return ToolSuccess(
       "The user finished in the browser and handed it back. Observe the page "

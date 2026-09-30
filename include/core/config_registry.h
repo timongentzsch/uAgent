@@ -83,8 +83,7 @@ inline constexpr std::string_view kOpenRouterVariants[] = {"nitro", "floor",
 inline constexpr std::string_view kWebSearchBackends[] = {"auto", "openrouter",
                                                           "off"};
 inline constexpr std::string_view kApprovalModes[] = {"ask", "auto", "yolo"};
-inline constexpr std::string_view kThreadEnvironments[] = {"worktree",
-                                                           "local"};
+inline constexpr std::string_view kThreadEnvironments[] = {"worktree", "local"};
 inline constexpr std::string_view kWebSearchEngines[] = {
     "auto", "native", "exa", "firecrawl", "parallel", "perplexity"};
 inline constexpr std::string_view kWebSearchContextSizes[] = {"low", "medium",

@@ -156,9 +156,10 @@ json InstructionFiles(const std::filesystem::path& cwd) {
   return {{"files", std::move(files)}, {"also_loaded", std::move(also)}};
 }
 
-std::string WriteInstructionFile(
-    bool coordinator, bool project, const std::filesystem::path& cwd,
-    const std::string& text, const std::optional<std::string>& base) {
+std::string WriteInstructionFile(bool coordinator, bool project,
+                                 const std::filesystem::path& cwd,
+                                 const std::string& text,
+                                 const std::optional<std::string>& base) {
   if (text.size() > kProjectDocBytes) {
     return "instructions are at most " +
            std::to_string(kProjectDocBytes / 1024) + " KiB";

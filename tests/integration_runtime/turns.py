@@ -34,7 +34,9 @@ def test_instructions_follow_the_base_for_their_audience(root, home, *, binary):
         result = run(root, env, "--show-system-prompt", "--json", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         effective = json.loads(result.stdout)["effective"]
-        assert_true(effective.find("Read only what the task needs") < effective.find("user-rule"), effective)
+        assert_true(
+            effective.find("Read only what the task needs") < effective.find("user-rule"), effective
+        )
         assert_true(effective.find("user-rule") < effective.find("project-rule"), effective)
         assert_true("coordinator-rule" not in effective, effective)
         assert_true(server.requests == [], server.requests)

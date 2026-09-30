@@ -27,15 +27,13 @@ Tool ArtifactTool(const std::string& session_path) {
         const std::string path = JsonValue(args, "path", "");
         std::string bytes, error;
         if (!ReadRegularFile(path, session::kUploadBytes, bytes, error)) {
-          return ToolFailure(ToolErrorCode::kInvalidArguments,
-                             error);
+          return ToolFailure(ToolErrorCode::kInvalidArguments, error);
         }
         session::AssetStoreResult stored = session::SessionAssets().Store(
             session_path, bytes, std::filesystem::path(path).filename(),
             /*committed=*/true);
         if (!stored.error.empty()) {
-          return ToolFailure(ToolErrorCode::kInternal,
-                             stored.error);
+          return ToolFailure(ToolErrorCode::kInternal, stored.error);
         }
         ToolResult result =
             ToolSuccess("shared " + JsonValue(stored.value, "name", "") + " (" +

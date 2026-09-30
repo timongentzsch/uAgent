@@ -68,8 +68,8 @@ std::vector<std::string> Agent::ExplicitSkillContext(
           "skill " + skill.name + " unavailable: " + result.output));
       continue;
     }
-    Emit(NoticeEvent(PresentationStatus::kNeutral,
-                     "using skill " + skill.name));
+    Emit(
+        NoticeEvent(PresentationStatus::kNeutral, "using skill " + skill.name));
     selected.push_back(std::move(result.output));
   }
   return selected;

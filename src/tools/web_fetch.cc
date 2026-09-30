@@ -282,9 +282,8 @@ Tool WebFetchTool(Api& api) {
         // indentation that carries meaning in JSON, XML and plain text.
         std::string text = html ? HtmlToText(page.body) : page.body;
         if (Trim(text).empty()) {
-          return ToolFailure(
-              ToolErrorCode::kUnavailable,
-              "web_fetch found no text at " + TerminalSafe(url));
+          return ToolFailure(ToolErrorCode::kUnavailable,
+                             "web_fetch found no text at " + TerminalSafe(url));
         }
         std::string head = "[" + TerminalSafe(url);
         if (page.truncated) head += "; truncated at the byte cap";

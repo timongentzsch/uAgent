@@ -305,11 +305,10 @@ bool SessionHost::ApplyRuntimeFrame(HostSession& session, json& frame) {
     json next = JsonValue(frame, "state", json::object());
     // A rewound conversation starts a new view epoch: its old blocks are
     // gone, so the checkpoint replaces the view instead of merging into it.
-    json view =
-        JsonValue(next, "view_epoch", uint64_t{0}) ==
-                JsonValue(session.state, "view_epoch", uint64_t{0})
-            ? JsonValue(session.state, "view", json::object())
-            : json::object();
+    json view = JsonValue(next, "view_epoch", uint64_t{0}) ==
+                        JsonValue(session.state, "view_epoch", uint64_t{0})
+                    ? JsonValue(session.state, "view", json::object())
+                    : json::object();
     const json checkpoint_view = JsonValue(next, "view", json::object());
     if (checkpoint_view.is_object()) {
       for (auto it = checkpoint_view.begin(); it != checkpoint_view.end();

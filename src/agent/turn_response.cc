@@ -155,14 +155,12 @@ Agent::StepFlow Agent::HandleFailedResponse(ChatResult& response,
 // worth sending; a second means the model will not recover.
 Agent::StepFlow Agent::HandleUnparsedToolMarkup(TurnExecution& state,
                                                 StepState& loop) {
-  if (!loop.markup_recovered) {
-    loop.markup_recovered = true;
-    conversation_.Push(
-        HarnessMessage("[invalid model tool markup] The attempted call was "
-                       "not executed. Return prose using existing results; "
-                       "do not imitate a tool protocol."),
-        MessageKind::kInternal);
-    loop.pending_note = conversation_.Size() - 1;
+  if (!loop.recovery.markup_recovered) {
+    loop.recovery.markup_recovered = true;
+    PushStepNote(loop,
+                 "[invalid model tool markup] The attempted call was "
+                 "not executed. Return prose using existing results; "
+                 "do not imitate a tool protocol.");
     DebugLog("foreign_tool_markup_recovery",
              {{"turn", turn_id_}, {"step", loop.step}});
     return StepFlow::kNextStep;
@@ -180,29 +178,26 @@ Agent::StepFlow Agent::HandleEmptyResponse(const ChatResult& response,
                                            TurnExecution& state,
                                            StepState& loop) {
   constexpr int64_t kEmptyResponseAttempts = 3;
-  if (++loop.empty_responses >= kEmptyResponseAttempts) {
+  if (++loop.recovery.empty_responses >= kEmptyResponseAttempts) {
     FailTurn(state, "model returned an empty response");
     return StepFlow::kEndTurn;
   }
   // The first replay goes out unchanged: only a repeat is evidence that the
   // model needs steering rather than another attempt.
-  if (loop.empty_responses > 1) {
-    conversation_.Push(
-        HarnessMessage(state.metrics.tool_count > 0
+  if (loop.recovery.empty_responses > 1) {
+    PushStepNote(loop, state.metrics.tool_count > 0
                            ? "[empty model response] Return the final "
                              "answer from existing results. Do not "
                              "repeat completed work."
                            : "[empty model response] The previous reply "
                              "arrived empty. Answer the request "
-                             "directly."),
-        MessageKind::kInternal);
-    loop.pending_note = conversation_.Size() - 1;
+                             "directly.");
   }
   DebugLog("empty_response_recovery",
            {{"turn", turn_id_},
             {"step", loop.step},
-            {"attempt", loop.empty_responses},
-            {"guided", loop.empty_responses > 1},
+            {"attempt", loop.recovery.empty_responses},
+            {"guided", loop.recovery.empty_responses > 1},
             {"finish_reason", response.finish_reason}});
   Emit(NoticeEvent(PresentationStatus::kNeutral, "recovering empty response"));
   return StepFlow::kNextStep;
@@ -242,12 +237,9 @@ Agent::StepFlow Agent::HandleResponseStop(ChatResult& response,
                              cause == ResponseStopCause::kInputLimit));
   if (continuable && loop.stop_recoveries++ == 0) {
     PushAssistantMessage(response, {});
-    conversation_.Push(
-        HarnessMessage("[partial model response: " + response.finish_reason +
-                       "] Continue exactly where the response stopped. Do "
-                       "not repeat completed content or work."),
-        MessageKind::kInternal);
-    loop.pending_note = conversation_.Size() - 1;
+    PushStepNote(loop, "[partial model response: " + response.finish_reason +
+                           "] Continue exactly where the response stopped. Do "
+                           "not repeat completed content or work.");
     DebugLog("partial_response_continuation",
              {{"turn", turn_id_},
               {"step", loop.step},

@@ -205,7 +205,8 @@ class Agent {
 
   // one user turn: stream, run tools, repeat until prose; prints as it goes
   void Turn(const std::string& user_input, json user_content = nullptr,
-            json images = json::array(), const std::string& request_id = "");
+            const json& images = json::array(),
+            const std::string& request_id = "");
 
  private:
   struct TurnExecution;
@@ -252,8 +253,7 @@ class Agent {
       ChatResult& response, TurnExecution& state,
       std::unordered_map<std::string, int64_t>& tool_counts);
   bool ToolCallsWithinLimits(const std::vector<ToolCall>& calls,
-                             TurnExecution& state, int64_t max_tool_calls,
-                             std::string& last_call, int64_t& repeated_calls);
+                             TurnExecution& state, StepState& loop);
   void FinishTurn(TurnExecution& state, int64_t step);
   void ApplySideUsage(AccumulatedUsage batch, Usage* current_turn);
   void UpdateTurnSideUsage(int64_t turn, const Usage& usage,
@@ -262,6 +262,9 @@ class Agent {
   // One step of the turn, in the order the loop runs them. Each phase reports
   // what the loop should do next.
   void PushSkillContext(std::string skill);
+  void PushUserInput(json content, bool attachment, const json& images,
+                     const std::string& request_id);
+  void PushStepNote(StepState& loop, std::string note);
   StepFlow InterruptTurn(TurnExecution& state);
   bool ApplyQueuedSteering(StepState& loop);
   StepFlow PrepareStep(TurnExecution& state, StepState& loop);
@@ -370,12 +373,8 @@ class Agent {
   void PushToolResultMessage(const ToolCall& call, json message);
 
   // returns true if the user interrupted the batch
-  bool RunCalls(const std::vector<ToolCall>& calls, int64_t& tool_count,
-                std::unordered_map<std::string, int64_t>& tool_counts,
-                std::unordered_map<std::string, std::string>& stable_arguments,
-                int64_t step, std::chrono::steady_clock::time_point deadline,
-                int64_t& consecutive_failed_tools,
-                std::vector<ToolRejection>& rejections,
+  bool RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
+                StepState& loop, std::vector<ToolRejection>& rejections,
                 std::vector<ActivityPollResult>& activity_polls);
 
   void RebuildToolSchemas();

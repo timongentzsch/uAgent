@@ -82,6 +82,25 @@ void Agent::PushSkillContext(std::string skill) {
       MessageKind::kInternal);
 }
 
+// The person's message, with the files the transcript shows for it.
+void Agent::PushUserInput(json content, bool attachment, const json& images,
+                          const std::string& request_id) {
+  conversation_.Push(
+      {{"role", "user"}, {"content", std::move(content)}},
+      attachment ? MessageKind::kAttachment : MessageKind::kUser);
+  if (images.is_array() && !images.empty()) {
+    conversation_.RecordDisplay(conversation_.LastDisplayId(),
+                                {{"files", images}});
+  }
+  PublishMessage(request_id);
+}
+
+// A harness note for this step only: erased once the model has answered it.
+void Agent::PushStepNote(StepState& loop, std::string note) {
+  conversation_.Push(HarnessMessage(std::move(note)), MessageKind::kInternal);
+  loop.pending_note = conversation_.Size() - 1;
+}
+
 // Every interruption ends the turn the same way, whatever noticed it first.
 Agent::StepFlow Agent::InterruptTurn(TurnExecution& state) {
   state.stop.outcome = TurnOutcome::kInterrupted;
@@ -109,37 +128,16 @@ bool Agent::ApplyQueuedSteering(StepState& loop) {
       auto [content, attachment] =
           ComposeSteeredContent(input, message.attachments, error);
       if (error.empty()) {
-        conversation_.Push(
-            {{"role", "user"}, {"content", std::move(content)}},
-            attachment ? MessageKind::kAttachment : MessageKind::kUser);
-        if (attachment && message.images.is_array() &&
-            !message.images.empty()) {
-          conversation_.RecordDisplay(conversation_.LastDisplayId(),
-                                      {{"files", message.images}});
-        }
-        PublishMessage(message.request_id);
+        PushUserInput(std::move(content), attachment,
+                      attachment ? message.images : json(), message.request_id);
         continue;
       }
       DebugLog("steering_attachments_failed",
                {{"turn", turn_id_}, {"error", error}});
     }
-    conversation_.Push({{"role", "user"}, {"content", std::move(input)}},
-                       MessageKind::kUser);
-    PublishMessage(message.request_id);
+    PushUserInput(std::move(input), false, json(), message.request_id);
   }
-  loop.last_call.clear();
-  loop.repeated_calls = 0;
-  loop.quiet_activity_id = 0;
-  loop.quiet_activity_polls = 0;
-  loop.quiet_activity_advisory_sent = false;
-  loop.consecutive_failed_tools = 0;
-  loop.last_single_tool.clear();
-  loop.same_tool_rounds = 0;
-  loop.stable_arguments.clear();
-  loop.rejection_rounds.clear();
-  loop.failure_advisory_sent = false;
-  loop.markup_recovered = false;
-  loop.empty_responses = 0;
+  loop.recovery = {};
   DebugLog("steering_applied",
            {{"turn", turn_id_}, {"messages", queued.size()}});
   return true;
@@ -197,16 +195,16 @@ bool Agent::HandleActivityPollResults(
     const std::vector<ActivityPollResult>& polls, bool exclusive,
     TurnExecution& state, StepState& loop) {
   auto reset = [&] {
-    loop.quiet_activity_id = 0;
-    loop.quiet_activity_polls = 0;
-    loop.quiet_activity_advisory_sent = false;
+    loop.recovery.quiet_activity_id = 0;
+    loop.recovery.quiet_activity_polls = 0;
+    loop.recovery.quiet_activity_advisory_sent = false;
   };
 
   bool successful = false;
   for (const ActivityPollResult& poll : polls) successful |= poll.ok;
   if (successful) {
-    loop.last_call.clear();
-    loop.repeated_calls = 0;
+    loop.recovery.last_call.clear();
+    loop.recovery.repeated_calls = 0;
   }
   if (!exclusive || polls.size() != 1) {
     if (!polls.empty()) reset();
@@ -218,36 +216,37 @@ bool Agent::HandleActivityPollResults(
     reset();
     return false;
   }
-  if (loop.quiet_activity_id != poll.id) {
+  if (loop.recovery.quiet_activity_id != poll.id) {
     reset();
-    loop.quiet_activity_id = poll.id;
+    loop.recovery.quiet_activity_id = poll.id;
   }
-  ++loop.quiet_activity_polls;
+  ++loop.recovery.quiet_activity_polls;
 
   // A slow activity answers "(no new output)" honestly, so quiet polls steer
   // rather than end the turn that owns the work. The ceiling still bounds a
   // model that ignores every escalation: UAGENT_MAX_STEPS defaults to off.
-  if (loop.quiet_activity_polls >= kActivityPollStopAfter) {
+  if (loop.recovery.quiet_activity_polls >= kActivityPollStopAfter) {
     FailTurn(state, "activity " + std::to_string(poll.id) +
                         " is still running, "
                         "but the model polled it " +
-                        std::to_string(loop.quiet_activity_polls) +
+                        std::to_string(loop.recovery.quiet_activity_polls) +
                         " times without new output and without waiting on it");
-    DebugLog("activity_poll_loop", {{"turn", turn_id_},
-                                    {"step", loop.step},
-                                    {"activity_id", poll.id},
-                                    {"polls", loop.quiet_activity_polls}});
+    DebugLog("activity_poll_loop",
+             {{"turn", turn_id_},
+              {"step", loop.step},
+              {"activity_id", poll.id},
+              {"polls", loop.recovery.quiet_activity_polls}});
     return true;
   }
-  if (loop.quiet_activity_polls == kActivityPollAdviseAfter ||
-      loop.quiet_activity_polls == kActivityPollDirectAfter) {
+  if (loop.recovery.quiet_activity_polls == kActivityPollAdviseAfter ||
+      loop.recovery.quiet_activity_polls == kActivityPollDirectAfter) {
     const bool mandatory =
-        loop.quiet_activity_polls == kActivityPollDirectAfter;
-    std::string note = "[activity poll advisory] Activity " +
-                       std::to_string(poll.id) +
-                       " is still running and has "
-                       "returned no new output " +
-                       std::to_string(loop.quiet_activity_polls) + " times. ";
+        loop.recovery.quiet_activity_polls == kActivityPollDirectAfter;
+    std::string note =
+        "[activity poll advisory] Activity " + std::to_string(poll.id) +
+        " is still running and has "
+        "returned no new output " +
+        std::to_string(loop.recovery.quiet_activity_polls) + " times. ";
     note += mandatory ? "Stop polling it: this turn ends in an error if you "
                         "keep polling without waiting. Either issue one "
                         "activity call with operation=wait, mode=any and "
@@ -257,14 +256,14 @@ bool Agent::HandleActivityPollResults(
                         "blocks the next step, issue one bounded activity "
                         "call with operation=wait, mode=any, and wait_ms; "
                         "otherwise continue independent work.";
-    conversation_.Push(HarnessMessage(note), MessageKind::kInternal);
-    loop.pending_note = conversation_.Size() - 1;
-    loop.quiet_activity_advisory_sent = true;
-    DebugLog("activity_poll_advisory", {{"turn", turn_id_},
-                                        {"step", loop.step},
-                                        {"activity_id", poll.id},
-                                        {"polls", loop.quiet_activity_polls},
-                                        {"mandatory", mandatory}});
+    PushStepNote(loop, std::move(note));
+    loop.recovery.quiet_activity_advisory_sent = true;
+    DebugLog("activity_poll_advisory",
+             {{"turn", turn_id_},
+              {"step", loop.step},
+              {"activity_id", poll.id},
+              {"polls", loop.recovery.quiet_activity_polls},
+              {"mandatory", mandatory}});
   }
   return false;
 }
@@ -274,10 +273,7 @@ Agent::StepFlow Agent::ExecuteToolCalls(const std::vector<ToolCall>& calls,
   if (state.line_open) printf("\n");
   std::vector<ToolRejection> rejections;
   std::vector<ActivityPollResult> activity_polls;
-  bool cancelled =
-      RunCalls(calls, state.metrics.tool_count, loop.tool_counts,
-               loop.stable_arguments, loop.step, state.deadline,
-               loop.consecutive_failed_tools, rejections, activity_polls);
+  bool cancelled = RunCalls(calls, state, loop, rejections, activity_polls);
   state.line_open = false;
   bool foreground_interrupted = SteeringState().Requested() || cancelled;
   bool steering_applied = ApplyQueuedSteering(loop);
@@ -293,14 +289,15 @@ Agent::StepFlow Agent::ExecuteToolCalls(const std::vector<ToolCall>& calls,
   if (StopForRepeatedRejections(rejections, state, loop)) {
     return StepFlow::kEndTurn;
   }
-  if (rejections.empty() && loop.consecutive_failed_tools == 0 &&
-      (loop.repeated_calls == kRepeatedCallAdviseAfter ||
-       loop.repeated_calls == kRepeatedCallDirectAfter)) {
-    const bool direct = loop.repeated_calls == kRepeatedCallDirectAfter;
+  if (rejections.empty() && loop.recovery.consecutive_failed_tools == 0 &&
+      (loop.recovery.repeated_calls == kRepeatedCallAdviseAfter ||
+       loop.recovery.repeated_calls == kRepeatedCallDirectAfter)) {
+    const bool direct =
+        loop.recovery.repeated_calls == kRepeatedCallDirectAfter;
     std::string note =
         "[repeated tool advisory] The same tool and arguments have already "
         "run " +
-        std::to_string(loop.repeated_calls) + " consecutive times. ";
+        std::to_string(loop.recovery.repeated_calls) + " consecutive times. ";
     note +=
         direct ? "Do not issue that unchanged call again. Use its existing "
                  "result, change the arguments or strategy, or use a bounded "
@@ -308,29 +305,28 @@ Agent::StepFlow Agent::ExecuteToolCalls(const std::vector<ToolCall>& calls,
                : "Reassess whether another identical result can add evidence. "
                  "Use the current result, change the request, or use a bounded "
                  "wait operation when you are observing ongoing work.";
-    conversation_.Push(HarnessMessage(note), MessageKind::kInternal);
-    loop.pending_note = conversation_.Size() - 1;
-    DebugLog("repeated_tool_advisory", {{"turn", turn_id_},
-                                        {"step", loop.step},
-                                        {"repetitions", loop.repeated_calls},
-                                        {"direct", direct}});
-  }
-  if (!loop.failure_advisory_sent &&
-      loop.consecutive_failed_tools >= kFailedToolAdviseAfter) {
-    loop.failure_advisory_sent = true;
-    conversation_.Push(
-        HarnessMessage("[tool failure advisory] " +
-                       std::to_string(kFailedToolAdviseAfter) +
-                       " consecutive tool calls failed. Reassess the shared "
-                       "premise or execution environment before trying "
-                       "another variant; use existing evidence or a "
-                       "different approach when possible."),
-        MessageKind::kInternal);
-    loop.pending_note = conversation_.Size() - 1;
-    DebugLog("tool_failure_advisory",
+    PushStepNote(loop, std::move(note));
+    DebugLog("repeated_tool_advisory",
              {{"turn", turn_id_},
               {"step", loop.step},
-              {"consecutive_failures", loop.consecutive_failed_tools}});
+              {"repetitions", loop.recovery.repeated_calls},
+              {"direct", direct}});
+  }
+  if (!loop.recovery.failure_advisory_sent &&
+      loop.recovery.consecutive_failed_tools >= kFailedToolAdviseAfter) {
+    loop.recovery.failure_advisory_sent = true;
+    PushStepNote(loop,
+                 "[tool failure advisory] " +
+                     std::to_string(kFailedToolAdviseAfter) +
+                     " consecutive tool calls failed. Reassess the shared "
+                     "premise or execution environment before trying "
+                     "another variant; use existing evidence or a "
+                     "different approach when possible.");
+    DebugLog(
+        "tool_failure_advisory",
+        {{"turn", turn_id_},
+         {"step", loop.step},
+         {"consecutive_failures", loop.recovery.consecutive_failed_tools}});
   }
   // Do not start a network request with only curl's one-second granularity
   // left after tools. Report the owning turn budget instead of a misleading
@@ -342,8 +338,8 @@ Agent::StepFlow Agent::ExecuteToolCalls(const std::vector<ToolCall>& calls,
   return StepFlow::kNextStep;
 }
 
-void Agent::Turn(const std::string& user_input, json user_content, json images,
-                 const std::string& request_id) {
+void Agent::Turn(const std::string& user_input, json user_content,
+                 const json& images, const std::string& request_id) {
   last_error_.clear();
   // A new turn owns its outcome: clients must never re-report the
   // previous turn's stop from a boundary publish before this one ends.
@@ -394,15 +390,8 @@ void Agent::Turn(const std::string& user_input, json user_content, json images,
     Compact(true);
   }
   if (SteeringState().Requested() && SteeringState().QueuedCount() == 0) {
-    conversation_.Push(
-        {{"role", "user"},
-         {"content", attachment ? std::move(user_content) : json(user_input)}},
-        attachment ? MessageKind::kAttachment : MessageKind::kUser);
-    if (!images.empty()) {
-      conversation_.RecordDisplay(conversation_.LastDisplayId(),
-                                  {{"files", images}});
-    }
-    PublishMessage(request_id);
+    PushUserInput(attachment ? std::move(user_content) : json(user_input),
+                  attachment, images, request_id);
     Emit(NoticeEvent(PresentationStatus::kWarned, "interrupted"));
     Emit(Event{EventId::kTurnStopped,
                {{"turn", turn_id_}, {"outcome", "interrupted"}, {"steps", 0}}});
@@ -415,15 +404,8 @@ void Agent::Turn(const std::string& user_input, json user_content, json images,
   StepState loop;
   state.start = conversation_.Size();  // user message and prune_* start
   for (std::string& skill : explicit_skills) PushSkillContext(std::move(skill));
-  conversation_.Push(
-      {{"role", "user"},
-       {"content", attachment ? std::move(user_content) : json(user_input)}},
-      attachment ? MessageKind::kAttachment : MessageKind::kUser);
-  if (!images.empty()) {
-    conversation_.RecordDisplay(conversation_.LastDisplayId(),
-                                {{"files", images}});
-  }
-  PublishMessage(request_id);
+  PushUserInput(attachment ? std::move(user_content) : json(user_input),
+                attachment, images, request_id);
   turn_search_trace_.Reset();
   // Slices the budget block out of the config: a turn-boundary reload may
   // replace api_.config mid-session, and the limits this turn is judged
@@ -501,8 +483,7 @@ void Agent::Turn(const std::string& user_input, json user_content, json images,
       }
       break;
     }
-    if (!ToolCallsWithinLimits(calls, state, state.limits.max_tool_calls,
-                               loop.last_call, loop.repeated_calls)) {
+    if (!ToolCallsWithinLimits(calls, state, loop)) {
       break;
     }
     RecordToolRoundRepetition(calls, loop);
@@ -616,11 +597,7 @@ void Agent::FinishTurn(TurnExecution& state, int64_t step) {
       {"generation_ms", state.metrics.model_generation_ms},
       {"generated_tokens", state.metrics.model_generated_tokens},
       {"usage_reported",
-       state.metrics.usage_reported || state.metrics.usage.input ||
-           state.metrics.usage.output || state.metrics.usage.cache_read ||
-           state.metrics.usage.cache_write || state.metrics.usage.reasoning ||
-           state.metrics.usage.web_searches ||
-           state.metrics.usage.cost_reported},
+       state.metrics.usage_reported || HasUsage(state.metrics.usage)},
       {"usage", UsageJson(state.metrics.usage)}};
   if (!turn_side_statistics_.empty()) {
     summary["background_statistics"] = turn_side_statistics_;

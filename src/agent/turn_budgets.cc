@@ -86,10 +86,11 @@ bool Agent::TurnCostExceeded(TurnExecution& state) {
 }
 
 bool Agent::ToolCallsWithinLimits(const std::vector<ToolCall>& calls,
-                                  TurnExecution& state, int64_t max_tool_calls,
-                                  std::string& last_call,
-                                  int64_t& repeated_calls) {
+                                  TurnExecution& state, StepState& loop) {
   if (calls.empty()) return true;
+  const int64_t max_tool_calls = state.limits.max_tool_calls;
+  std::string& last_call = loop.recovery.last_call;
+  int64_t& repeated_calls = loop.recovery.repeated_calls;
   if (max_tool_calls > 0 &&
       state.metrics.tool_count + static_cast<int64_t>(calls.size()) >
           max_tool_calls) {
@@ -132,18 +133,21 @@ bool Agent::ToolCallsWithinLimits(const std::vector<ToolCall>& calls,
 void Agent::RecordToolRoundRepetition(const std::vector<ToolCall>& calls,
                                       StepState& loop) {
   if (calls.size() != 1) {
-    loop.last_single_tool.clear();
-    loop.same_tool_rounds = 0;
+    loop.recovery.last_single_tool.clear();
+    loop.recovery.same_tool_rounds = 0;
     return;
   }
-  loop.same_tool_rounds =
-      calls[0].name == loop.last_single_tool ? loop.same_tool_rounds + 1 : 1;
-  loop.last_single_tool = calls[0].name;
-  if (loop.same_tool_rounds == kRepeatedToolRoundTraceAfter) {
-    DebugLog("repeated_tool_rounds", {{"turn", turn_id_},
-                                      {"step", loop.step},
-                                      {"tool", calls[0].name},
-                                      {"rounds", loop.same_tool_rounds}});
+  loop.recovery.same_tool_rounds =
+      calls[0].name == loop.recovery.last_single_tool
+          ? loop.recovery.same_tool_rounds + 1
+          : 1;
+  loop.recovery.last_single_tool = calls[0].name;
+  if (loop.recovery.same_tool_rounds == kRepeatedToolRoundTraceAfter) {
+    DebugLog("repeated_tool_rounds",
+             {{"turn", turn_id_},
+              {"step", loop.step},
+              {"tool", calls[0].name},
+              {"rounds", loop.recovery.same_tool_rounds}});
   }
 }
 
@@ -155,7 +159,7 @@ bool Agent::StopForRepeatedRejections(
     std::string key = rejection.tool + "\n" + rejection.issue_code + "\n" +
                       rejection.issue_field + "\n" + rejection.operation;
     if (!seen_this_round.insert(key).second) continue;
-    int64_t rounds = ++loop.rejection_rounds[key];
+    int64_t rounds = ++loop.recovery.rejection_rounds[key];
     if (rounds < kRejectedCallStopAfter) continue;
 
     std::string message = "model repeated an equivalent rejected " +

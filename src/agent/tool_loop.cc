@@ -24,6 +24,7 @@
 #include "include/core/strings.h"
 #include "include/core/term.h"
 #include "include/core/tool_activity.h"
+#include "src/agent/turn_internal.h"
 
 namespace uagent {
 namespace {
@@ -115,13 +116,15 @@ void Agent::AppendToolResult(const ToolCall& call, const std::string& result,
   PublishMessage();
 }
 
-bool Agent::RunCalls(
-    const std::vector<ToolCall>& calls, int64_t& tool_count,
-    std::unordered_map<std::string, int64_t>& tool_counts,
-    std::unordered_map<std::string, std::string>& stable_arguments,
-    int64_t step, std::chrono::steady_clock::time_point deadline,
-    int64_t& consecutive_failed_tools, std::vector<ToolRejection>& rejections,
-    std::vector<ActivityPollResult>& activity_polls) {
+bool Agent::RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
+                     StepState& loop, std::vector<ToolRejection>& rejections,
+                     std::vector<ActivityPollResult>& activity_polls) {
+  int64_t& tool_count = state.metrics.tool_count;
+  auto& tool_counts = loop.tool_counts;
+  auto& stable_arguments = loop.recovery.stable_arguments;
+  const int64_t step = loop.step;
+  const auto deadline = state.deadline;
+  int64_t& consecutive_failed_tools = loop.recovery.consecutive_failed_tools;
   std::vector<CallTask> tasks(calls.size());
   rejections.clear();
   activity_polls.clear();

@@ -107,26 +107,31 @@ struct Agent::TurnExecution {
   bool line_open = false;
 };
 
-// Mutable loop counters and strategy. ApplyQueuedSteering resets only the
-// response-local fields; safety and tool budgets deliberately span the turn.
+// Mutable loop counters and strategy. Safety and tool budgets span the turn;
+// only `recovery` starts over when steering changes the question.
 struct Agent::StepState {
+  // How this line of responses has been going: repetitions, failures and the
+  // advisories already sent about them.
+  struct Recovery {
+    std::unordered_map<std::string, std::string> stable_arguments;
+    std::unordered_map<std::string, int64_t> rejection_rounds;
+    std::string last_call;
+    std::string last_single_tool;
+    int64_t repeated_calls = 0;
+    int64_t same_tool_rounds = 0;
+    int64_t quiet_activity_id = 0;
+    int64_t quiet_activity_polls = 0;
+    int64_t consecutive_failed_tools = 0;
+    int64_t empty_responses = 0;
+    bool failure_advisory_sent = false;
+    bool quiet_activity_advisory_sent = false;
+    bool markup_recovered = false;
+  };
+  Recovery recovery;
   std::unordered_map<std::string, int64_t> tool_counts;
-  std::unordered_map<std::string, std::string> stable_arguments;
-  std::unordered_map<std::string, int64_t> rejection_rounds;
-  std::string last_call;
-  std::string last_single_tool;
   int64_t step = 0;
-  int64_t repeated_calls = 0;
-  int64_t same_tool_rounds = 0;
-  int64_t quiet_activity_id = 0;
-  int64_t quiet_activity_polls = 0;
-  int64_t consecutive_failed_tools = 0;
-  int64_t empty_responses = 0;
   int64_t stop_recoveries = 0;
   int64_t provider_continuations = 0;
-  bool failure_advisory_sent = false;
-  bool quiet_activity_advisory_sent = false;
-  bool markup_recovered = false;
   bool context_overflow_recovery_attempted = false;
   bool detached_records_available = false;
   bool midturn_compaction_enabled = true;

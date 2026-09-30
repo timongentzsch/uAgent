@@ -9,6 +9,11 @@
   `approval needed:`), with no cursor movement, animation or non-ASCII glyphs.
   `UAGENT_REDUCED_MOTION=1` holds the spinner still. See
   [docs/ACCESSIBILITY.md](docs/ACCESSIBILITY.md).
+- The web app meets WCAG 2.2 AA, checked with axe-core: zoom is allowed,
+  fields and lights have visible edges and high-contrast and forced-colours
+  styles, a screen reader hears when a turn starts, needs you or ends, a new
+  decision takes focus, and menus, the composer, image markup and the remote
+  screen work from the keyboard.
 - Undo: `/changes` lists the files the last turn's edit, write and delete
   tools changed, and `/undo [FILE]` puts them back whole. A file changed since
   is kept and says so; shell commands' changes are not tracked. The model is

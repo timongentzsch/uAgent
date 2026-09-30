@@ -173,7 +173,9 @@ def test_coordinator_delegates_a_thread_and_hears_back(root, home, *, binary):
         env = base_env(home, server.url)
         result = run(root, env, "coord", "-p", "delegate a count", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
-        assert_true(result.stdout.strip() == "spawned-ok", result.stdout)
+        # A thread that finishes before the coordinator's next step is heard
+        # within this very turn, so either answer can end it.
+        assert_true(result.stdout.strip() in ("spawned-ok", "noted-event"), result.stdout)
         spawned = json.loads(
             next(
                 tool_results(body["messages"])[0]

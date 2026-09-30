@@ -256,13 +256,32 @@ std::vector<Tool> BuildTools(AppContext& context,
   // Only a session someone can answer gets ask: never headless runs or
   // delegated children, which could only ever time out.
   if (context.channel && InteractiveApprovalAvailable()) {
-    tools.push_back(AskTool([](const json& questions, bool* eof) {
-      return ReadInteraction(
-          {.kind = "ask",
-           .prompt = JsonValue(questions[0], "question", ""),
-           .questions = questions},
-          eof);
-    }));
+    // Option images are snapshotted into the session, as artifacts are, so
+    // every client can show them.
+    AskImage image;
+    if (const std::string session_path = context.channel->SessionPath();
+        !session_path.empty()) {
+      image = [session_path](const std::string& path, std::string& failure) {
+        std::string bytes;
+        if (!ReadRegularFile(path, session::kUploadBytes, bytes, failure)) {
+          return json();
+        }
+        session::AssetStoreResult stored = session::SessionAssets().Store(
+            session_path, bytes, std::filesystem::path(path).filename(),
+            /*committed=*/true);
+        failure = stored.error;
+        return stored.value;
+      };
+    }
+    tools.push_back(AskTool(
+        [](const json& questions, bool* eof) {
+          return ReadInteraction(
+              {.kind = "ask",
+               .prompt = JsonValue(questions[0], "question", ""),
+               .questions = questions},
+              eof);
+        },
+        std::move(image)));
   }
 #ifdef UAGENT_BROWSER  // the web host starts the browser and serves its viewer
   if (!browser::DataDirectory().empty() && context.options.browser_session &&

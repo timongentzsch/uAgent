@@ -109,6 +109,59 @@ def test_ask_takes_their_own_words_and_an_image(root, home, *, binary):
         assert_true("image_url" in json.dumps(final["messages"]), json.dumps(final)[-600:])
 
 
+def test_ask_shows_the_images_and_previews_it_made(root, home, *, binary):
+    """An option can show what it means: an image the agent made in the
+    workspace, snapshotted into the session, and a monospace preview."""
+    (root / "mockups").mkdir()
+    (root / "mockups" / "cards.png").write_bytes(PNG)
+    outside = home / "outside.png"
+    outside.write_bytes(PNG)
+
+    def layout(image):
+        return [
+            {
+                "question": "Which layout?",
+                "header": "Layout",
+                "options": [
+                    {
+                        "label": "Cards",
+                        "description": "a grid of cards",
+                        "image": image,
+                        "preview": "[#][#]\n[#][#]",
+                    },
+                    {"label": "List", "description": "one row each", "preview": "= row"},
+                ],
+            }
+        ]
+
+    def route(_, body):
+        results = tool_results(body["messages"])
+        if not results:
+            return tool_call("ask", {"questions": layout(str(outside))})
+        if len(results) == 1:
+            return tool_call("ask", {"questions": layout("mockups/cards.png")})
+        return event({"content": "ask-ok"})
+
+    with Server([route]) as server:
+        code, output = run_pty(
+            root,
+            base_env(home, server.url),
+            [
+                (b"pick\n", b"image: mockups/cards.png"),
+                (b"\r", b"ask-ok"),
+                b"/q\n",
+            ],
+            binary=binary,
+            timeout=20,
+        )
+        assert_true(code == 0, output[-2000:])
+        # The focused option's preview is drawn under the list.
+        assert_true(b"[#][#]" in output, output[-2000:])
+        results = tool_results(server.requests[-1][1]["messages"])
+        assert_true("made in the workspace" in results[0], results[0])
+        assert_true("Which layout?\n→ Cards" in results[1], results[1])
+
+
 def test_ask_is_absent_where_no_one_can_answer(root, home, *, binary):
     with Server([event({"content": "plain-ok"})]) as server:
         result = run(root, base_env(home, server.url), "-p", "hi", binary=binary)

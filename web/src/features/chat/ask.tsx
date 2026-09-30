@@ -104,6 +104,10 @@ export default function Ask({
           const type = multiple ? "checkbox" : "radio";
           const name = `${id}-${index}`;
           const heading = cleanText(item.header);
+          // Options the agent showed read as cards wide enough to judge.
+          const visual = item.options.some(
+            (option) => option.image?.id || option.preview,
+          );
           return (
             <fieldset class="ask-question" key={index}>
               <legend>
@@ -111,7 +115,7 @@ export default function Ask({
                 {cleanText(item.question)}
                 {multiple && <small class="muted"> Choose any.</small>}
               </legend>
-              <div class="ask-options">
+              <div class={`ask-options${visual ? " visual" : ""}`}>
                 {item.options.map((option) => (
                   <label class="ask-option" key={option.label}>
                     <Input
@@ -143,6 +147,17 @@ export default function Ask({
                         <small>{cleanText(option.description)}</small>
                       )}
                     </span>
+                    {option.image?.id && (
+                      <span class="ask-shot">
+                        <ImageTile
+                          name={cleanText(option.description || option.label)}
+                          src={`/api/sessions/${session}/assets/${option.image.id}`}
+                        />
+                      </span>
+                    )}
+                    {option.preview && (
+                      <pre class="ask-preview">{cleanText(option.preview)}</pre>
+                    )}
                   </label>
                 ))}
                 <label class="ask-option">

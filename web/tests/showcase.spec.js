@@ -280,6 +280,17 @@ for (const width of [1440, 900, 390]) {
       platforms.getByRole("button", { name: "Remove shot.png" }),
     ).toBeVisible();
 
+    // Options the agent showed come with its image and preview; the image's
+    // alt text is the option's description.
+    const layout = ask.getByRole("group", { name: /Layout/ });
+    await expect(
+      layout.getByRole("img", {
+        name: "Sections listed on the left, one open at a time.",
+      }),
+    ).toBeVisible();
+    await expect(layout.locator(".ask-preview")).toHaveCount(2);
+    await layout.getByRole("radio", { name: /^Tabs/ }).check();
+
     // Other needs its text before the answers are complete.
     await expect(submit).toBeDisabled();
     await other.fill("SQLite");
@@ -311,6 +322,7 @@ for (const width of [1440, 900, 390]) {
     expect(JSON.parse(reply.text)).toEqual([
       { choices: [], other: "SQLite" },
       { choices: ["macOS", "Linux"], other: "", attachment_id: ASSET_ID },
+      { choices: ["Tabs"], other: "" },
     ]);
   });
 }

@@ -28,8 +28,8 @@ per-conversation choices made with `/tools`.
 | `web_fetch` | read one public http(s) URL as text | always |
 | `artifact` | hand the user a file to open or download (HTML runs sandboxed, PDFs and images open inline); snapshot into the session's assets | a session with a client |
 | `web_search` | cited web search through OpenRouter's hosted search | an OpenRouter-protocol route or search endpoint |
-| `session` | list linked sessions and message them | always |
-| `ask` | put 1 to 4 multiple-choice questions to the user and wait; they may answer in their own words or with an image | a session someone can answer (never headless runs or children); a thread's questions go to its coordinator first |
+| `session` | list linked sessions and message them; an idle one starts a turn on the message | always |
+| `ask` | put 1 to 4 multiple-choice questions to the user and wait; an option can show an image the agent made in the workspace and a monospace preview; they may answer in their own words or with an image | a session someone can answer (never headless runs or children); a thread's questions go to its coordinator first |
 | `subagent` | delegate a subtask to a durable child session | delegation depth below `UAGENT_SUBAGENT_DEPTH` |
 | `skill` | load an installed skill | a usable skill is installed |
 | `adapt_system` | add to or replace the base prompt for this conversation | `UAGENT_ADAPT_SYSTEM=1`; see [SYSTEM_PROMPTS.md](SYSTEM_PROMPTS.md) |
@@ -117,8 +117,8 @@ durable agent ID.
 
 - `followup` resumes the child's private conversation and prepends its
   stored `directive`; an empty directive clears it.
-- `message` delivers one-shot guidance at the child's next step, or at the next
-  follow-up when it is idle.
+- `message` delivers one-shot guidance at a running child's next step; a
+  finished child runs again on it.
 - `list` reports this session's children with model, toolset and state.
 - Use `activity` to wait for, read or stop ordinary children. `/agents` shows
   the same records.

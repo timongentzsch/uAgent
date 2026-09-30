@@ -90,6 +90,41 @@
   color: var(--muted);
   font-size: var(--font-small);
 }
+/* Options the agent showed, with an image or a preview each: cards wide
+   enough to compare, the picture or preview under the label. A tap on the
+   picture opens it whole; anywhere else on the card chooses it. */
+.ask-options.visual {
+  grid-template-columns: repeat(
+    auto-fit,
+    minmax(min(100%, calc(240rem / 14)), 1fr)
+  );
+}
+.ask-options.visual .ask-option {
+  align-content: start;
+}
+.ask-shot,
+.ask-preview {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+.ask-shot .attachment-tile {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 4 / 3;
+}
+.ask-shot .attachment-tile img {
+  object-fit: contain;
+}
+.ask-preview {
+  margin: 0;
+  max-height: calc(240rem / 14);
+  padding: var(--space-3);
+  overflow: auto;
+  background: var(--surface);
+  font-size: var(--font-micro);
+  line-height: 1.4;
+  white-space: pre;
+}
 .ask-question > .file-button,
 .ask-question > .file-chip {
   justify-self: start;

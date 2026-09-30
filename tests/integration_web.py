@@ -813,6 +813,55 @@ def test_web_atomic_images_and_session_isolation(root, home, *, binary):
             assert_true(client.request(asset)[0] == 404, "asset read followed a symlink")
 
 
+def test_web_ask_shows_option_images_as_session_assets(root, home, *, binary):
+    """An option's image is snapshotted into the session: the browser gets an
+    asset it can load, never the workspace path alone."""
+    workspace = root / "workspace"
+    (workspace / "mockups").mkdir(parents=True)
+    (workspace / "mockups" / "cards.png").write_bytes(PNG)
+    questions = [
+        {
+            "question": "Which layout?",
+            "header": "Layout",
+            "options": [
+                {
+                    "label": "Cards",
+                    "description": "a grid of cards",
+                    "image": "mockups/cards.png",
+                    "preview": "[#][#]",
+                },
+                {"label": "List", "description": "one row each"},
+            ],
+        }
+    ]
+
+    def responder(_, body):
+        if any(message.get("role") == "tool" for message in body["messages"]):
+            return event({"content": "done"})
+        return tool_call("ask", {"questions": questions})
+
+    with Server([responder]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+            client.pair(code)
+            session = client.create(workspace)
+            client.command("submit", session, text="Pick a layout")
+            value = client.until(session, lambda value: bool(value.get("pending")))
+            option = value["pending"]["questions"][0]["options"][0]
+            assert_true(option["preview"] == "[#][#]", option)
+            asset = option["image"]["id"]
+            status, body, headers = client.request(
+                f"/api/sessions/{session['id']}/assets/{asset}"
+            )
+            assert_true(status == 200 and body == PNG, (status, headers))
+            client.command(
+                "reply",
+                session,
+                interaction_id=value["pending"]["id"],
+                text=json.dumps([{"choices": ["Cards"], "other": ""}]),
+            )
+            client.until(session, lambda value: not value.get("pending"))
+
+
 def test_web_approval_interrupt_and_independent_workers(root, home, *, binary):
     first = root / "first"
     second = root / "second"

@@ -119,6 +119,26 @@ std::string Render(const json& question, const Answer& answer, size_t cursor,
     }
     out += row + "\n";
   }
+  // The focused option as the agent showed it: its image, by path, and its
+  // preview, each line made safe and cut to the terminal.
+  if (cursor < options.size()) {
+    const json& focused = options[cursor];
+    const std::string shown =
+        JsonValue(JsonValue(focused, "image", json::object()), "path", "");
+    if (!shown.empty()) {
+      out += std::string(DIM()) +
+             DisplayTrunc("  image: " + TerminalSafe(shown), width) + RST() +
+             "\n";
+    }
+    std::string preview = JsonValue(focused, "preview", "");
+    while (!preview.empty()) {
+      const size_t end = preview.find('\n');
+      out += "  " +
+             DisplayTrunc(TerminalSafe(preview.substr(0, end)), width - 2) +
+             "\n";
+      preview = end == std::string::npos ? "" : preview.substr(end + 1);
+    }
+  }
   if (!answer.image.empty()) {
     out += "  image: " + TerminalSafe(answer.image) + "\n";
   }

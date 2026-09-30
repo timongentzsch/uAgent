@@ -27,7 +27,8 @@ import {
   Time,
   CodeCopy,
 } from "./shared/ui.tsx";
-import { Menu, MenuItem, Popover } from "./shared/popover.tsx";
+import { Menu, MenuItem } from "./shared/menu.tsx";
+import { SheetButton } from "./shared/sheet.tsx";
 import { ConnectionStatus, StatusLed } from "./shared/connection-status.tsx";
 import { applyTheme, applyZoom, normalizeZoom } from "./shared/layout.ts";
 import { ZoomSlider } from "./shared/zoom-slider.tsx";
@@ -70,6 +71,29 @@ const SAMPLE_ASK: Pending = {
         { label: "macOS", description: "Apple silicon and Intel." },
         { label: "Linux", description: "glibc distributions." },
         { label: "Windows", description: "Windows 11 and later." },
+      ],
+    },
+    {
+      header: "Layout",
+      question: "Which layout should the settings page use?",
+      options: [
+        {
+          label: "Sidebar",
+          description: "Sections listed on the left, one open at a time.",
+          image: {
+            id: "fedcba9876543210fedcba9876543210",
+            name: "sidebar.svg",
+            path: "mockups/sidebar.svg",
+          },
+          preview:
+            "+------+----------+\n| Nav  | Section  |\n+------+----------+",
+        },
+        {
+          label: "Tabs",
+          description: "Sections as tabs above one scrolling page.",
+          preview:
+            "[ A ][ B ][ C ]\n+--------------+\n|   Section    |\n+--------------+",
+        },
       ],
     },
   ],
@@ -119,7 +143,7 @@ function BrowserInputSample() {
       }
       bar={
         <>
-          <div class="popover-control browser-status-menu">
+          <div class="sheet-control browser-status-menu">
             <Button variant="quiet" class="browser-status">
               <span>Driving</span>
             </Button>
@@ -282,9 +306,9 @@ function Showcase() {
               <IconButton label="Copy example">
                 <Copy />
               </IconButton>
-              <Popover label="Example popover" trigger={<Wrench />}>
-                <p>Anchored panel content.</p>
-              </Popover>
+              <SheetButton label="Example sheet" trigger={<Wrench />}>
+                <p>Sheet content.</p>
+              </SheetButton>
               <Menu label="Example menu">
                 <MenuItem>First action</MenuItem>
                 <MenuItem>Second action</MenuItem>

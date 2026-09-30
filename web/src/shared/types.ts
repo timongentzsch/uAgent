@@ -286,8 +286,17 @@ export interface AskQuestion {
   question: string;
   // A short chip label.
   header: string;
-  options: { label: string; description: string }[];
+  options: AskOption[];
   multi_select?: boolean;
+}
+// What the agent showed of an option: an image it made, snapshotted into the
+// session (id; the path is for terminals), and a monospace preview. The
+// description is the image's alt text.
+export interface AskOption {
+  label: string;
+  description: string;
+  image?: { id?: string; name?: string; path: string };
+  preview?: string;
 }
 // An ask's reply text is the JSON array of these, one per question in order.
 // An attachment_id is also listed in the reply's attachment_ids.

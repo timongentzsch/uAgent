@@ -25,6 +25,23 @@
 
 ### Changed
 
+- Sessions, coordinators, threads and subagents message each other through a
+  durable mailbox each (`~/.uagent/mail/`) that wakes the recipient at once:
+  a running one reads a message at its next step, even after its final
+  answer, and an idle one starts a turn on it. A coordinator hears a finished
+  thread within milliseconds instead of after a 20-second batch, a message to
+  a finished subagent runs it again, and an idle parent takes up a subagent's
+  result as soon as it finishes. Floods, loops and oversized messages are
+  refused with a reason rather than dropped.
+- Web: panels open as sheets from the edge (from below on a phone), with the
+  same focus, Escape and back behaviour as every dialog: statistics, raw
+  context and HTTP, instructions, tools, the model, permission and activity
+  controls. A row's ⋯ actions stay a dropdown.
+- `ask` options can show what they mean: an image the agent made in the
+  workspace (a mockup, screenshot or diagram; its description is the alt
+  text) and a short monospace preview. The web shows them as cards, single
+  or multiple choice; a terminal shows the focused option's preview and
+  image path.
 - Instructions replace system-prompt documents. Sessions read `AGENTS.md`
   (yours in `~/.uagent/`, then the project's), coordinators also
   `COORDINATOR.md`; they only add to the built-in base, are read when a
@@ -59,6 +76,14 @@
 
 ### Fixed
 
+- A coordinator can delete sessions: `thread close` ends a runtime, and
+  delete closes it first. A socket left by a crashed runtime no longer blocks
+  deletion.
+- On a phone, the sessions drawer slides in again instead of appearing in
+  place, and a sheet no longer sits off the edge at small zoom levels.
+- The web session list shows sessions a coordinator creates or deletes
+  without a refresh, and a session closed by the coordinator reads as closed,
+  not interrupted.
 - Files the agent attached mid-turn no longer count as your messages, so
   message numbers, `/fork N`, `/rewind N` and `/share` line up with what
   you wrote.

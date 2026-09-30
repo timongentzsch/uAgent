@@ -100,11 +100,7 @@ int Application::RunHeadless() {
   if (!agent_.LastError().empty()) {
     return FinishHeadless("", agent_.LastError(), 1);
   }
-  if (answer.empty()) {
-    std::string error = agent_.LastError().empty() ? "agent produced no answer"
-                                                   : agent_.LastError();
-    return FinishHeadless("", std::move(error), 1);
-  }
+  if (answer.empty()) return FinishHeadless("", "agent produced no answer", 1);
   return FinishHeadless(std::move(answer), "", 0);
 }
 

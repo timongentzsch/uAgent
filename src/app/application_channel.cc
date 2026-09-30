@@ -22,15 +22,11 @@
 #include "src/app/application_internal.h"
 
 namespace uagent {
-int Application::FinishInteractive(int status) {
-  SaveSession();
-  Teardown("eof");
-  TerminalRestore();
-  return status;
-}
-
 int Application::RunChannel() {
-  if (!ResumeAtStartup()) return FinishInteractive(2);
+  if (!ResumeAtStartup()) {
+    Teardown("eof");
+    return 2;
+  }
   persist_ = true;
   agent_.GenerateTitles(true);
   EnsureSessionPath();
@@ -99,7 +95,8 @@ int Application::RunChannel() {
   }
   runtime_.processes.SetNotifyFd(-1);
   channel_->SetActivityControl({});
-  return FinishInteractive(0);
+  Teardown("eof");
+  return 0;
 }
 
 json Application::BuildChannelState(bool checkpoint) const {

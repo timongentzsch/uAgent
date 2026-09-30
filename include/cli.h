@@ -112,7 +112,7 @@ using InteractiveReadHandler =
 void SetInteractiveReadHandler(InteractiveReadHandler handler);
 bool InteractiveReadAvailable();
 
-std::string InputPrompt(const char* label = "");
+std::string InputPrompt();
 // One echoed user turn, banded to the right edge. `text` is already display-
 // ready: callers differ in how they sanitize it, and the composer's mapping of
 // newlines to a glyph is what keeps the echo on the rows it drew.
@@ -122,8 +122,6 @@ std::string ReadInteraction(InteractionRequest request, bool* eof);
 // the way every terminal renders a decision. Numbered lists are printed by
 // the command that asks, so only letter-keyed options become hints.
 std::string DecisionPrompt(const std::string& prompt, const json& options);
-std::string ReadChoiceLine(const std::string& prompt, bool& cancelled,
-                           bool& eof);
 std::string ReadChoiceLine(InteractionRequest request, bool& cancelled,
                            bool& eof);
 

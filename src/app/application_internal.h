@@ -42,7 +42,6 @@ class Application {
   void RunPrompt(const std::string& input);
   json InterfaceState() const;
   void ProcessInput(std::string input);
-  int FinishInteractive(int status);
   int RunChannel();
   json BuildChannelState(bool checkpoint) const;
   void PublishChannelState(bool checkpoint = true);

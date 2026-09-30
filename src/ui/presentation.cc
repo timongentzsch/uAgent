@@ -26,6 +26,7 @@
 #include "include/ui/interactive.h"
 
 namespace uagent {
+namespace {
 
 bool PrintSearchReceipt(int64_t searches, const json& annotations, bool details,
                         bool line_open) {
@@ -67,8 +68,6 @@ void PrintCitationSources(const json& annotations) {
     printf("%s- <%s>%s\n", DIM(), TerminalSafe(source.url).c_str(), RST());
   }
 }
-
-namespace {
 
 // Shared by the poll and plain tool-result ladders. The notice ladder above
 // maps kWarned instead of kCancelled and stays separate on purpose.
@@ -113,13 +112,48 @@ std::string Indented(std::string_view text, size_t indent) {
   return out;
 }
 
-}  // namespace
-
 const char* DiffLineStyle(std::string_view line) {
   if (line.starts_with('+')) return GREEN();
   if (line.starts_with('-')) return RED();
   return "";
 }
+
+void PrintMessageHeader() {
+  if (!g_tty) return;
+  // Assistant header is the binary name in ASCII, identical on live turns
+  // and --resume replay. Never the bare unicode mark: it renders as a
+  // random glyph on dumb PTYs and mismatches the spinner labels.
+  printf("%suagent%s\n", BOLD(), RST());
+}
+
+std::string TurnStatsLine(const json& summary) {
+  const json usage = JsonValue(summary, "usage", json::object());
+  auto n = [&](const char* key) { return JsonValue(usage, key, int64_t{0}); };
+  std::string line = FmtCount(n("input")) + " in";
+  for (auto [key, label] : {std::pair{"cache_read", " cached"},
+                            std::pair{"cache_write", " cache write"}}) {
+    if (n(key)) line += " (+" + FmtCount(n(key)) + label + ")";
+  }
+  line += " · " + FmtCount(n("output")) + " out";
+  if (n("reasoning")) line += " (+" + FmtCount(n("reasoning")) + " reasoning)";
+  const double rate = JsonValue(summary, "tokens_per_second", 0.0);
+  const double first = JsonValue(summary, "ttt_ms", -1.0);
+  auto counted = [](int64_t count, const char* unit) {
+    return count ? FmtCount(count) + unit : "";
+  };
+  return AsciiGlyphs(JoinDot(
+      {JsonValue(summary, "usage_reported", true) ? line : "usage not reported",
+       counted(n("web_searches"), " searches"),
+       JsonValue(usage, "cost_reported", false)
+           ? FmtCost(JsonValue(usage, "cost", 0.0))
+           : "",
+       counted(JsonValue(summary, "tool_calls", int64_t{0}), " tools"),
+       rate > 0 ? FmtCount(static_cast<int64_t>(rate)) + " tok/s" : "",
+       first >= 0 ? "first " + FmtDuration(first / 1000) : "",
+       FmtDuration(JsonValue(summary, "duration_ms", 0.0) / 1000)}));
+}
+
+}  // namespace
 
 std::string ColorizeDiffLines(std::string_view text) {
   std::string output;
@@ -138,14 +172,6 @@ std::string ColorizeDiffLines(std::string_view text) {
     begin = end + (newline ? 1 : 0);
   }
   return output;
-}
-
-void PrintMessageHeader() {
-  if (!g_tty) return;
-  // Assistant header is the binary name in ASCII, identical on live turns
-  // and --resume replay. Never the bare unicode mark: it renders as a
-  // random glyph on dumb PTYs and mismatches the spinner labels.
-  printf("%suagent%s\n", BOLD(), RST());
 }
 
 struct TerminalPresenter::State {
@@ -238,33 +264,6 @@ struct TerminalPresenter::State {
 
 TerminalPresenter::TerminalPresenter() = default;
 TerminalPresenter::~TerminalPresenter() { Finish(); }
-
-std::string TurnStatsLine(const json& summary) {
-  const json usage = JsonValue(summary, "usage", json::object());
-  auto n = [&](const char* key) { return JsonValue(usage, key, int64_t{0}); };
-  std::string line = FmtCount(n("input")) + " in";
-  for (auto [key, label] : {std::pair{"cache_read", " cached"},
-                            std::pair{"cache_write", " cache write"}}) {
-    if (n(key)) line += " (+" + FmtCount(n(key)) + label + ")";
-  }
-  line += " · " + FmtCount(n("output")) + " out";
-  if (n("reasoning")) line += " (+" + FmtCount(n("reasoning")) + " reasoning)";
-  const double rate = JsonValue(summary, "tokens_per_second", 0.0);
-  const double first = JsonValue(summary, "ttt_ms", -1.0);
-  auto counted = [](int64_t count, const char* unit) {
-    return count ? FmtCount(count) + unit : "";
-  };
-  return AsciiGlyphs(JoinDot(
-      {JsonValue(summary, "usage_reported", true) ? line : "usage not reported",
-       counted(n("web_searches"), " searches"),
-       JsonValue(usage, "cost_reported", false)
-           ? FmtCost(JsonValue(usage, "cost", 0.0))
-           : "",
-       counted(JsonValue(summary, "tool_calls", int64_t{0}), " tools"),
-       rate > 0 ? FmtCount(static_cast<int64_t>(rate)) + " tok/s" : "",
-       first >= 0 ? "first " + FmtDuration(first / 1000) : "",
-       FmtDuration(JsonValue(summary, "duration_ms", 0.0) / 1000)}));
-}
 
 void TerminalPresenter::Consume(const Event& event) noexcept {
   switch (event.id) {

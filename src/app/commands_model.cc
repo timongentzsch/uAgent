@@ -191,9 +191,6 @@ void HandleModels(AppSession& session, const std::string& argument,
   reply.Print("%s", SaveSelectedModel(session, selected->selection).c_str());
 }
 
-// The route in schema form; the host only earns a segment when no provider
-// scope was resolvable, since `openrouter/...` already names the provider.
-
 void HandleModel(AppSession& session, const std::string& argument,
                  CommandReply& reply) {
   if (argument.empty()) {

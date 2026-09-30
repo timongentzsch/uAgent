@@ -12,13 +12,7 @@
 
 namespace uagent {
 
-bool PrintSearchReceipt(int64_t searches, const json& annotations,
-                        bool details = false, bool line_open = false);
-
-void PrintCitationSources(const json& annotations);
-
 // Unified-diff line styling shared by change receipts and approval previews.
-const char* DiffLineStyle(std::string_view line);
 std::string ColorizeDiffLines(std::string_view text);
 
 class TerminalSpinner;
@@ -45,9 +39,6 @@ class TerminalPresenter {
   std::unique_ptr<State> state_;
   std::unique_ptr<TerminalSpinner> spinner_;
 };
-
-void PrintMessageHeader();
-std::string TurnStatsLine(const json& summary);
 
 void PrintPresentation(const PresentationRecord& record,
                        bool detailed = false) noexcept;

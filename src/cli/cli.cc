@@ -216,10 +216,7 @@ void SetInteractiveReadHandler(InteractiveReadHandler handler) {
 
 bool InteractiveReadAvailable() { return static_cast<bool>(ReadHandler()); }
 
-std::string InputPrompt(const char* label) {
-  return std::string(BOLD()) +
-         (label && *label ? std::string(label) + "> " : "> ") + RST();
-}
+std::string InputPrompt() { return std::string(BOLD()) + "> " + RST(); }
 
 std::string UserEchoRow(const std::string& prompt, const std::string& text) {
   // InputPrompt ends in RST(), which clears the background, so the band is
@@ -300,11 +297,6 @@ std::string ReadInteraction(InteractionRequest request, bool* eof) {
               {"eof", *eof},
               {"answer", answer}}});
   return answer;
-}
-
-std::string ReadChoiceLine(const std::string& prompt, bool& cancelled,
-                           bool& eof) {
-  return ReadChoiceLine({.kind = "choice", .prompt = prompt}, cancelled, eof);
 }
 
 std::string ReadChoiceLine(InteractionRequest request, bool& cancelled,

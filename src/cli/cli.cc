@@ -12,7 +12,9 @@
 #include <cstring>
 #include <iostream>
 #include <string>
+#include <string_view>
 #include <utility>
+#include <vector>
 
 #include "include/core/events.h"
 #include "include/core/limits.h"
@@ -194,6 +196,34 @@ ParsedSlashCommand ParseSlashCommand(const std::string& input) {
     }
   }
   return {};
+}
+
+std::string NearestSlashCommand(const std::string& input) {
+  const std::string word = input.substr(0, input.find(' '));
+  std::string nearest;
+  // More than two edits, or more than half the letters, is another word.
+  size_t best = 3;
+  for (const SlashCommandSpec& command : kSlashCommands) {
+    // Levenshtein over one rolling row; the names are a few bytes long.
+    const std::string_view name = command.name;
+    std::vector<size_t> row(name.size() + 1);
+    for (size_t j = 0; j <= name.size(); ++j) row[j] = j;
+    for (size_t i = 1; i <= word.size(); ++i) {
+      size_t diagonal = row[0];
+      row[0] = i;
+      for (size_t j = 1; j <= name.size(); ++j) {
+        const size_t above = row[j];
+        row[j] = std::min({above + 1, row[j - 1] + 1,
+                           diagonal + (word[i - 1] != name[j - 1])});
+        diagonal = above;
+      }
+    }
+    if (row.back() < best && 2 * row.back() + 1 <= word.size()) {
+      best = row.back();
+      nearest = name;
+    }
+  }
+  return nearest;
 }
 
 ForkArgument ParseForkArgument(const std::string& argument) {

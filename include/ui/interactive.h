@@ -119,6 +119,9 @@ class RawComposer {
   void NextWord();
   void DeletePreviousWord();
   void Complete();
+  // Moves the menu highlight; false when no menu is open, so the arrow
+  // browses history instead.
+  bool Select(int direction);
   // False when no binding names `sequence`.
   bool ApplySequence(const std::string& sequence);
   void History(int direction);
@@ -136,6 +139,8 @@ class RawComposer {
   std::string prompt_;
   std::string buffer_;
   size_t cursor_ = 0;
+  // The highlighted row of the slash command menu; any edit resets it.
+  size_t selected_ = 0;
   TerminalInputDecoder decoder_;
   std::deque<std::string> history_;
   size_t history_index_ = 0;

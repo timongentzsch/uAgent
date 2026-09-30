@@ -304,4 +304,15 @@ void TestSelfDescriptionSchemas() {
   CHECK(ReferenceManifest().find(kVersion) != std::string::npos);
 }
 
+// A mistyped command names its nearest neighbour, never a far-off guess.
+void TestNearestSlashCommand() {
+  CHECK(NearestSlashCommand("/modle") == "/model");
+  CHECK(NearestSlashCommand("/modle gpt-5") == "/model");
+  CHECK(NearestSlashCommand("/halp") == "/help");
+  CHECK(NearestSlashCommand("/cst") == "/cost");
+  CHECK(NearestSlashCommand("/xyzzyq").empty());
+  CHECK(NearestSlashCommand("/").empty());
+  CHECK(NearestSlashCommand("/x").empty());
+}
+
 }  // namespace uagent

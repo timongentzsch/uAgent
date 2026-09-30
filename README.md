@@ -91,6 +91,7 @@ passwords.google.com. The agent can use saved logins but never read them.
 | Enter while working | Queue the draft as steering for the running turn |
 | Shift+Enter, Alt+Enter | Insert a newline in the draft |
 | Tab | Complete a `/command` or an `@path` segment |
+| Up, Down in the `/` menu | Highlight a command; Tab or Enter takes it |
 | Ctrl+X Ctrl+E | Edit the draft in `$VISUAL`/`$EDITOR` |
 | Up, Down, Ctrl+P, Ctrl+N | Previous and next draft from history |
 | Ctrl+A, Ctrl+E, Ctrl+F | Move to the start, to the end, one character right |

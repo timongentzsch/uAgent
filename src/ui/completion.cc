@@ -17,19 +17,25 @@ namespace uagent {
 namespace {
 
 // What a partially typed "/word" could still become; aliases stay hidden.
+// The letters may be spread out ("/mdl" finds /model), but a name that starts
+// with what was typed ranks first.
 Suggestions SlashMatches(const std::string& buffer) {
-  Suggestions found{0, buffer.size(), {}};
+  Suggestions found{0, buffer.size(), {}, true};
   if (buffer.empty() || buffer[0] != '/' ||
       buffer.find(' ') != std::string::npos) {
     return found;
   }
+  std::vector<Suggestion> scattered;
   for (const SlashCommandSpec& command : SlashCommandRegistry()) {
     if (!*command.description) continue;
-    if (std::string_view(command.name).starts_with(buffer)) {
-      found.matches.push_back(
-          {command.name, command.description, *command.argument != 0});
-    }
+    const std::string_view name = command.name;
+    size_t at = 0;
+    for (char ch : name) at += at < buffer.size() && buffer[at] == ch;
+    if (at < buffer.size()) continue;
+    (name.starts_with(buffer) ? found.matches : scattered)
+        .push_back({command.name, command.description, *command.argument != 0});
   }
+  found.matches.insert(found.matches.end(), scattered.begin(), scattered.end());
   return found;
 }
 

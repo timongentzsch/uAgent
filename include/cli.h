@@ -79,6 +79,9 @@ struct ParsedSlashCommand {
 };
 
 ParsedSlashCommand ParseSlashCommand(const std::string& input);
+// The command a mistyped "/word" most likely meant: the nearest name within
+// two edits, else empty.
+std::string NearestSlashCommand(const std::string& input);
 // "/fork [TITLE] [@TURN]": a trailing @N (or a bare number) forks at user
 // turn N, otherwise the whole session. Shared by every client.
 struct ForkArgument {

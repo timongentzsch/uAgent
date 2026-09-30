@@ -270,8 +270,11 @@ void Application::ProcessInput(std::string input) {
     return;
   }
   if (input[0] == '/') {
-    Emit(NoticeEvent(PresentationStatus::kFailed,
-                     "unknown command " + input + "; use /help"));
+    const std::string nearest = NearestSlashCommand(input);
+    Emit(NoticeEvent(
+        PresentationStatus::kFailed,
+        "unknown command " + input + "; " +
+            (nearest.empty() ? "use /help" : "did you mean " + nearest + "?")));
     return;
   }
   RunPrompt(input);

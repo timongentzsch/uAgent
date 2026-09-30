@@ -79,13 +79,18 @@ def test_yolo_toggle_refreshes_approval_state(root, home, *, binary):
 def test_command_help(root, home, *, binary):
     with Server([event({"content": "unused"})]) as server:
         result = run_dialog(
-            root, base_env(home, server.url), "/models\n/wat\n/recap\n/help\n/exit\n", binary=binary
+            root,
+            base_env(home, server.url),
+            "/models\n/wat\n/recap\n/modle\n/help\n/exit\n",
+            binary=binary,
         )
         assert_true(result.returncode == 0, result.stderr)
         # Every quit alias detaches locally instead of reaching the runtime.
         assert_true("use conversation controls" not in result.stdout, result.stdout)
         assert_true("unknown command /wat; use /help" in result.stdout, result.stdout)
         assert_true("unknown command /recap; use /help" in result.stdout, result.stdout)
+        # A near miss names the command it most likely meant.
+        assert_true("unknown command /modle; did you mean /model?" in result.stdout, result.stdout)
         assert_true("commands\n" in result.stdout, result.stdout)
         assert_true("  /attach PATH" in result.stdout, result.stdout)
         assert_true("attach a file to the next turn" in result.stdout, result.stdout)
@@ -319,8 +324,8 @@ def test_multiline_bracketed_paste(root, home, *, binary):
         )
         assert_true(code == 0, output)
         assert_true(b"multiline-paste-ok" in output, output)
-        # A 24-column status keeps its never-dropped segments: state and route.
-        assert_true(b"Ready \xc2\xb7 test\x1b[K" in output, output)
+        # A 24-column status keeps state, route and approval mode.
+        assert_true(b"Ready \xc2\xb7 test \xc2\xb7 Ask\x1b[K" in output, output)
         assert_true(b"\x1b[?2004h" in output and b"\x1b[?2004l" in output, output)
         # The echoed turn is banded to the right edge on every row it spans,
         # and the band is always closed again.
@@ -533,9 +538,9 @@ def test_input_redraw_approval_does_not_pollute_history(root, home, *, binary):
             [
                 (b"go\n", b"Allow run?"),
                 (b"y\n", b"approval-done"),
-                # The idle status carries the route in schema form and the
-                # context window beside what is used.
-                (b"", b"Ready \xc2\xb7 test \xc2\xb7 est. ctx"),
+                # The idle status carries the route in schema form, then the
+                # approval mode, and the context window beside what is used.
+                (b"", b"Ready \xc2\xb7 test \xc2\xb7 Ask \xc2\xb7 ", b"est. ctx", None),
                 (b"probe", b"probe"),  # input broker is accepting drafts
                 b"\x7f" * 5,
                 (b"\x1b[A", b"go"),
@@ -1227,6 +1232,56 @@ def test_input_slash_suggestions_and_tab_completion(root, home, *, binary):
         # its argument needs.
         assert_true(b"/model " in output, output)
         assert_true(not server.get_requests, server.get_requests)
+
+
+def test_input_slash_menu_moves_with_arrows(root, home, *, binary):
+    """Arrows walk the command menu; Tab and Enter take the highlighted row.
+
+    Scattered letters still find a command, and Enter on a partial name only
+    completes it, so a half-typed command never reaches the runtime.
+    """
+    with Server([event({"content": "unused"})]) as server:
+        code, output = run_pty(
+            root,
+            base_env(home, server.url),
+            [
+                (b"/mo", b"> /model  choose"),
+                (b"\x1b[B", b"> /models  search"),
+                (b"\x1b[A", b"> /model  choose"),
+                (b"\x1b[B\r", b"\x1b[49m/models "),
+                (b"\x15/mdls", b"> /models  search"),
+                (b"\t", b"\x1b[49m/models "),
+                b"\x15/q\n",
+            ],
+            binary=binary,
+        )
+        assert_true(code == 0, output)
+        # Neither Enter nor Tab submitted the completed command.
+        assert_true(not server.get_requests, server.get_requests)
+
+
+def test_status_row_names_mode_and_turn_keys(root, home, *, binary):
+    """The idle row names the approval mode; a running turn names its keys."""
+
+    def delayed(_, __):
+        time.sleep(0.7)
+        return event({"content": "status-keys-ok"})
+
+    with Server([delayed]) as server:
+        code, output = run_pty(
+            root,
+            base_env(home, server.url),
+            [
+                (b"work\n", b"Esc stop \xc2\xb7 Ctrl+B background"),
+                (b"", b"status-keys-ok", b"Ready", None),
+                b"/q\n",
+            ],
+            columns=160,
+            startup_marker=b"Ready",
+            binary=binary,
+        )
+        assert_true(code == 0, output)
+        assert_true(re.search(rb"Ready \xc2\xb7 \S+ \xc2\xb7 Ask", output), output)
 
 
 def test_input_at_path_suggestions_and_tab_completion(root, home, *, binary):

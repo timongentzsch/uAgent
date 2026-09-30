@@ -166,6 +166,7 @@ void RawComposer::ResetDraftState() {
   history_index_ = history_.size();
   history_draft_.clear();
   input_limit_bell_ = false;
+  selected_ = 0;
 }
 
 // Readline's spelling, so the gesture is already in the fingers of anyone who
@@ -237,7 +238,14 @@ InteractiveInputEvent RawComposer::Read() {
       if (!Insert("\n")) output_.Write("\a");
       continue;
     }
-    // Both spellings submit: a piped script sends the bare newline.
+    // Both spellings submit: a piped script sends the bare newline. With the
+    // menu open, Enter takes the highlighted command unless the draft already
+    // names one exactly.
+    if ((ch == '\r' || ch == '\n') && !ParseSlashCommand(buffer_).spec &&
+        CompletionMatches(buffer_, cursor_).menu) {
+      Complete();
+      continue;
+    }
     if (ch == '\r' || ch == '\n') {
       std::string line = std::move(buffer_);
       buffer_.clear();
@@ -299,10 +307,16 @@ RawComposer::Layout RawComposer::View() const {
   // measured, and an SGR escape is not width.
   Suggestions found = CompletionMatches(buffer_, cursor_);
   constexpr size_t kShownMatches = 5;
-  for (size_t index = 0; index < found.matches.size() && index < kShownMatches;
-       ++index) {
+  // The window scrolls to keep the highlighted row in view.
+  const size_t selected =
+      std::min(selected_, std::max<size_t>(found.matches.size(), 1) - 1);
+  const size_t first =
+      selected < kShownMatches ? 0 : selected + 1 - kShownMatches;
+  for (size_t index = first;
+       index < found.matches.size() && index < first + kShownMatches; ++index) {
     const Suggestion& match = found.matches[index];
-    std::string suggestion = "  " + match.name;
+    std::string suggestion =
+        (found.menu && index == selected ? "> " : "  ") + match.name;
     if (!match.description.empty()) suggestion += "  " + match.description;
     rows.push_back(DisplayTrunc(TerminalSafe(suggestion), AvailableColumns()));
   }
@@ -320,6 +334,7 @@ bool RawComposer::Insert(const std::string& text) {
   buffer_.insert(cursor_, text);
   cursor_ += text.size();
   input_limit_bell_ = false;
+  selected_ = 0;
   return true;
 }
 
@@ -368,6 +383,14 @@ void RawComposer::Complete() {
     Insert("\t");
     return;
   }
+  if (found.menu) {
+    const Suggestion& pick =
+        found.matches[std::min(selected_, found.matches.size() - 1)];
+    buffer_ = pick.name + (pick.wants_argument ? " " : "");
+    cursor_ = buffer_.size();
+    selected_ = 0;
+    return;
+  }
   // The longest prefix every candidate agrees on: one Tab commits what is
   // certain, and the rows below the draft show what is still open.
   std::string name = found.matches.front().name;
@@ -385,15 +408,32 @@ void RawComposer::Complete() {
   cursor_ = found.begin + name.size();
 }
 
+bool RawComposer::Select(int direction) {
+  // Browsing history keeps going through history even past a recalled
+  // command.
+  if (history_index_ != history_.size()) return false;
+  const Suggestions found = CompletionMatches(buffer_, cursor_);
+  const size_t count = found.matches.size();
+  if (!found.menu || count == 0) return false;
+  selected_ =
+      (std::min(selected_, count - 1) + (direction < 0 ? count - 1 : 1)) %
+      count;
+  return true;
+}
+
 bool RawComposer::ApplySequence(const std::string& sequence) {
   for (const SequenceBinding& binding : kSequenceBindings) {
     if (binding.sequence != sequence) continue;
+    if (binding.action != SequenceAction::kHistoryPrevious &&
+        binding.action != SequenceAction::kHistoryNext) {
+      selected_ = 0;
+    }
     switch (binding.action) {
       case SequenceAction::kHistoryPrevious:
-        History(-1);
+        if (!Select(-1)) History(-1);
         break;
       case SequenceAction::kHistoryNext:
-        History(1);
+        if (!Select(1)) History(1);
         break;
       case SequenceAction::kLeft:
         cursor_ = PreviousUtf8(buffer_, cursor_);

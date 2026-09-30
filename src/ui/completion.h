@@ -23,6 +23,9 @@ struct Suggestions {
   size_t begin = 0;
   size_t end = 0;
   std::vector<Suggestion> matches;
+  // Slash commands form a menu: arrows move a highlighted row and Tab or
+  // Enter take it, where a path completes only as far as its matches agree.
+  bool menu = false;
 };
 
 Suggestions CompletionMatches(const std::string& buffer, size_t cursor);

@@ -18,6 +18,11 @@
   outside this folder), in the terminal and on the approval event.
 - "Queue next": a steer sent with `queue: true` waits for the running turn to
   end and then runs as its own turn.
+- The `/` command menu in the terminal: Up and Down highlight a command, Tab
+  or Enter takes it, and scattered letters match (`/mdl` finds `/model`). A
+  mistyped command asks `did you mean /model?`. The status row leads with
+  route, approval mode, context left and cost, and a running turn shows
+  `Esc stop · Ctrl+B background` while the row has room.
 
 ## v1.2.0 - 2026-09-30
 

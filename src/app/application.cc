@@ -159,11 +159,6 @@ bool Application::ResumeAtStartup() {
         return false;
       }
     }
-  } else if (context_.options.resume_pick) {
-    std::string path = PickSession();
-    if (!path.empty() && !ResumeInto(agent_, path, session_file_)) {
-      return false;
-    }
   } else if (context_.options.resume_latest) {
     std::vector<SessionInfo> sessions = ListSessions();
     if (sessions.empty()) {

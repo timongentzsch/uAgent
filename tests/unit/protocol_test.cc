@@ -666,6 +666,14 @@ void TestOptions() {
   char* invalid_budget[] = {executable, budget, non_finite};
   CHECK(!ParseOptions(3, invalid_budget).Ok());
 
+  // Picking a session is interactive: a headless run resumes with -c.
+  char resume[] = "--resume";
+  char resume_prompt_flag[] = "-p";
+  char resume_prompt[] = "go";
+  char* resume_headless[] = {executable, resume, resume_prompt_flag,
+                             resume_prompt};
+  CHECK(!ParseOptions(4, resume_headless).Ok());
+
   char token_budget[] = "--token-budget";
   char token_count[] = "1200";
   char* token_arguments[] = {executable, token_budget, token_count};

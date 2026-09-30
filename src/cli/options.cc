@@ -194,6 +194,8 @@ ParsedOptions ParseOptions(int argc, char* const argv[]) {
        !parsed.options.attach_paths.empty() ||
        !parsed.options.overrides.empty())) {
     parsed.error = "--control is a standalone management command";
+  } else if (parsed.options.resume_pick && !parsed.options.prompt.empty()) {
+    parsed.error = "--resume picks a session interactively; use -c with -p";
   } else if (parsed.options.json && parsed.options.json_stream) {
     parsed.error = "--json and --json-stream are mutually exclusive";
   } else if ((parsed.options.json || parsed.options.json_stream) &&

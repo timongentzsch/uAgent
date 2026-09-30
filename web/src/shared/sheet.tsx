@@ -23,7 +23,6 @@ export function SheetButton({
   className = "",
   buttonClass = "quiet icon-button",
   sheetClass = "",
-  size = "narrow",
   disabled,
 }: {
   label: string;
@@ -35,7 +34,6 @@ export function SheetButton({
   className?: string;
   buttonClass?: string;
   sheetClass?: string;
-  size?: "narrow" | "compact";
   disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
@@ -57,7 +55,7 @@ export function SheetButton({
         <Modal
           title={heading}
           layout="sheet"
-          size={size}
+          size="narrow"
           className={sheetClass}
           close={() => setOpen(false)}
           lightDismiss

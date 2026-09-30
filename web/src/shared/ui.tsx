@@ -437,29 +437,23 @@ export class ErrorBoundary extends Component<
 export function EventRow({
   title,
   time,
-  status,
   icon,
   messageId,
   children,
-  onToggle,
 }: {
   title: string;
   time?: string;
-  status?: string;
   icon: ComponentChildren;
   messageId?: string;
   children: ComponentChildren;
-  onToggle?: JSX.GenericEventHandler<HTMLDetailsElement>;
 }) {
   return (
     <DisclosureRow
       className="event-row"
       label={title}
-      status={status}
       time={time}
       icon={icon}
       messageId={messageId}
-      onToggle={onToggle}
     >
       <div class="event-body">{children}</div>
     </DisclosureRow>

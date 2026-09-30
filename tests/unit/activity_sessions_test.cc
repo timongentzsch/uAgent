@@ -1220,6 +1220,7 @@ void TestMailbox() {
   };
   auto texts = [](const std::vector<Mail>& mails) {
     std::vector<std::string> out;
+    out.reserve(mails.size());
     for (const Mail& mail : mails) {
       out.push_back(JsonValue(mail.body, "text", ""));
     }

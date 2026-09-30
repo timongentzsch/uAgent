@@ -14,7 +14,7 @@
 namespace uagent {
 
 Tool AdaptSystemTool(const AdaptiveSystemState& state,
-                     SelfDirectiveControl control) {
+                     const SelfDirectiveControl& control) {
   // Replacing the base prompt, or revising a replacement, is the user's call.
   auto mandatory = [&state](const json& args) {
     return JsonValue(args, "action", "set") != "show" &&

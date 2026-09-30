@@ -35,10 +35,10 @@ constexpr size_t kSearchSessions = 50;
 constexpr size_t kReadBlocks = 12;
 constexpr size_t kReadTextChars = 1200;
 constexpr size_t kToolTextChars = 160;
-constexpr size_t kDetailBytes = 16 * 1024;
-constexpr size_t kReportBytes = 8 * 1024;
-constexpr size_t kMessageBytes = 8 * 1024;
-constexpr size_t kDiffBytes = 16 * 1024;
+constexpr size_t kDetailBytes = size_t{16} * 1024;
+constexpr size_t kReportBytes = size_t{8} * 1024;
+constexpr size_t kMessageBytes = size_t{8} * 1024;
+constexpr size_t kDiffBytes = size_t{16} * 1024;
 constexpr auto kCloseTimeout = std::chrono::seconds(5);
 
 // "saved" without a runtime; else what its runtime's snapshot says: waiting
@@ -73,8 +73,10 @@ std::string Age(std::filesystem::file_time_type mtime) {
           .count();
   if (minutes < 1) return "just now";
   if (minutes < 60) return std::to_string(minutes) + " min ago";
-  if (minutes < 48 * 60) return std::to_string(minutes / 60) + " h ago";
-  return std::to_string(minutes / (24 * 60)) + " d ago";
+  if (minutes < int64_t{48} * 60) {
+    return std::to_string(minutes / 60) + " h ago";
+  }
+  return std::to_string(minutes / (int64_t{24} * 60)) + " d ago";
 }
 
 std::string MessageText(const json& message) {
@@ -265,7 +267,7 @@ std::string PinnedPath(const std::string& folder) {
 
 json ReadPinned(const std::string& folder) {
   std::string bytes, error;
-  if (!ReadRegularFile(PinnedPath(folder), 64 * 1024, bytes, error)) {
+  if (!ReadRegularFile(PinnedPath(folder), size_t{64} * 1024, bytes, error)) {
     return json::object();
   }
   json pinned = json::parse(bytes, nullptr, false);
@@ -347,7 +349,7 @@ ToolResult Spawn(const std::string& folder, const json& a) {
   const double limit = DoubleSetting(Cfg("UAGENT_COORDINATOR_DAILY_SPEND_USD"));
   // Each thread gets an equal share of what is left for the free slots.
   const double left = limit > 0 ? limit - SpentToday(folder, threads, true) : 0;
-  const double budget = left / double(cap - working);
+  const double budget = left / static_cast<double>(cap - working);
   if (limit > 0 && budget < 0.01) {
     return ToolFailure(
         ToolErrorCode::kLimitExceeded,

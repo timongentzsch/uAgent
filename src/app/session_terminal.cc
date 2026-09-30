@@ -369,7 +369,7 @@ class Terminal {
   // project, else the session's own folder.
   std::string Folder() const {
     const json header = SessionHeader(path_);
-    const std::string folder = JsonValue(
+    std::string folder = JsonValue(
         JsonValue(header, kSessionHeaderThread, json::object()), "folder", "");
     if (!folder.empty()) return folder;
     return JsonValue(header, kSessionHeaderCwd, CanonicalCwd());

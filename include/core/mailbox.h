@@ -47,8 +47,8 @@ struct Mail {
 inline constexpr size_t kMailboxPending = 64;
 inline constexpr size_t kMailSenderPerMinute = 20;
 inline constexpr int kMailMaxHops = 8;
-inline constexpr int64_t kMailLifetimeMs = 24 * 60 * 60 * 1000;
-inline constexpr size_t kMailBytes = 64 * 1024;
+inline constexpr int64_t kMailLifetimeMs = int64_t{24} * 60 * 60 * 1000;
+inline constexpr size_t kMailBytes = size_t{64} * 1024;
 
 // A session's mailbox id: its canonical session file, hashed, so every process
 // that names the session by any spelling of its path reaches one mailbox.

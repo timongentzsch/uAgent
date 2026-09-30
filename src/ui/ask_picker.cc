@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "include/core/strings.h"
@@ -96,9 +97,10 @@ std::string Render(const json& question, const Answer& answer, size_t cursor,
     const bool other = index == options.size();
     // The composer's prompt glyph marks the row a key acts on.
     std::string row = index == cursor ? "> " : "  ";
-    if (multi)
+    if (multi) {
       row += (other ? !answer.other.empty() : answer.chosen[index]) ? "[x] "
                                                                     : "[ ] ";
+    }
     row += std::to_string(index + 1) + ". ";
     std::string description;
     if (other) {

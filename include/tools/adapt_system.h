@@ -15,7 +15,7 @@ namespace uagent {
 // Persistent instructions are files a person owns, changed through uagent.
 using SelfDirectiveControl = std::function<json(const json&)>;
 Tool AdaptSystemTool(const AdaptiveSystemState& state,
-                     SelfDirectiveControl control);
+                     const SelfDirectiveControl& control);
 
 }  // namespace uagent
 

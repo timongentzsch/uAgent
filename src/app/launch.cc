@@ -3,6 +3,7 @@
 #include "include/app/launch.h"
 
 #include <string>
+#include <vector>
 
 #include "include/core/capture.h"
 #include "include/core/fs.h"

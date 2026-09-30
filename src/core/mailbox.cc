@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cinttypes>
 #include <cstdio>
 #include <deque>
 #include <filesystem>
@@ -84,7 +85,9 @@ bool OverRate(const std::string& from) {
   std::lock_guard lock(mutex);
   const int64_t now = NowMillis();
   auto& times = sent[from];
-  while (!times.empty() && now - times.front() > 60 * 1000) times.pop_front();
+  while (!times.empty() && now - times.front() > int64_t{60} * 1000) {
+    times.pop_front();
+  }
   if (times.size() >= kMailSenderPerMinute) return true;
   times.push_back(now);
   return false;
@@ -194,9 +197,9 @@ std::string SendMail(Mail mail) {
   // order within a millisecond.
   static std::atomic<uint64_t> sequence{0};
   char stamp[64];
-  snprintf(stamp, sizeof stamp, "%013lld-%010d-%08llu",
-           static_cast<long long>(mail.created_ms), static_cast<int>(getpid()),
-           static_cast<unsigned long long>(sequence.fetch_add(1) % 100000000));
+  snprintf(stamp, sizeof stamp, "%013" PRId64 "-%010d-%08" PRIu64,
+           mail.created_ms, static_cast<int>(getpid()),
+           static_cast<uint64_t>(sequence.fetch_add(1) % 100000000));
   std::string error;
   if (!AtomicWriteFile(dir + "/new/" + stamp + "-" + mail.id + ".json", content,
                        kPrivateFileMode, false, error)) {

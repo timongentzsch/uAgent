@@ -372,19 +372,11 @@ class WorkerChannel final : public ApplicationChannel {
       state_["phase"] = "idle";
       ClearAbort();
       NormalizeAbortWake();
-      auto queued = SteeringState().TakeAutoStartMessages();
-      if (!queued.empty()) {
-        input_ = ApplicationInput{
-            .text = std::move(queued.front().text),
-            .request_id = std::move(queued.front().request_id)};
-        for (const json& item : queued.front().attachments) {
+      if (auto next = SteeringState().TakeNextAutoStart()) {
+        input_ = ApplicationInput{.text = std::move(next->text),
+                                  .request_id = std::move(next->request_id)};
+        for (const json& item : next->attachments) {
           input_->attachments.push_back(AttachmentFromJson(item));
-        }
-        for (size_t i = 1; i < queued.size(); ++i) {
-          SteeringState().Queue(
-              std::move(queued[i].text), std::move(queued[i].request_id),
-              queued[i].auto_start, std::move(queued[i].attachments),
-              std::move(queued[i].images));
         }
         busy_ = turn_active_ = true;
         BeginTurn();

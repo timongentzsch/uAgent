@@ -2,6 +2,7 @@
 
 #include "include/core/steering.h"
 
+#include <algorithm>
 #include <mutex>
 #include <string>
 #include <utility>
@@ -68,23 +69,18 @@ std::vector<Steering::Message> Steering::TakeMessages() {
   return result;
 }
 
-std::vector<Steering::Message> Steering::TakeAutoStartMessages() {
-  std::vector<Message> result;
+std::optional<Steering::Message> Steering::TakeNextAutoStart() {
+  std::optional<Message> result;
   {
     std::lock_guard<std::mutex> lock(queue_mutex_);
-    for (auto it = queued_.begin(); it != queued_.end();) {
-      if (it->auto_start) {
-        result.push_back(std::move(*it));
-        it = queued_.erase(it);
-      } else {
-        ++it;
-      }
-    }
-    DrainSteeringWake();
+    auto next = std::find_if(queued_.begin(), queued_.end(),
+                             [](const Message& m) { return m.auto_start; });
+    if (next == queued_.end()) return std::nullopt;
+    result = std::move(*next);
+    queued_.erase(next);
+    if (queued_.empty()) DrainSteeringWake();
   }
-  if (!result.empty()) {
-    DebugLog("steering_delivered", {{"messages", result.size()}});
-  }
+  DebugLog("steering_delivered", {{"messages", 1}});
   return result;
 }
 

@@ -61,12 +61,9 @@ int Application::RunHeadless() {
   auto answer_mail = [&] {
     for (;;) {
       agent_.DeliverMail();
-      auto queued = SteeringState().TakeAutoStartMessages();
-      if (queued.empty() || AbortRequested()) return;
-      for (size_t i = 1; i < queued.size(); ++i) {
-        SteeringState().Queue(std::move(queued[i].text), "", true);
-      }
-      RunTurns(queued.front().text);
+      auto next = SteeringState().TakeNextAutoStart();
+      if (!next || AbortRequested()) return;
+      RunTurns(next->text);
       SaveSession();
     }
   };

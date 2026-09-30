@@ -157,13 +157,18 @@ void TestSignalAndFileWatch() {
           queued[1].text == "second");
     CHECK(SteeringState().QueuedCount() == 0);
 
+    // The next auto-start message is taken alone; the rest keep their order
+    // and payloads, deferred ones included.
     SteeringState().Queue("deferred", "", false);
-    SteeringState().Queue("auto");
-    std::vector<Steering::Message> automatic =
-        SteeringState().TakeAutoStartMessages();
-    CHECK(automatic.size() == 1 && automatic[0].text == "auto");
-    CHECK(SteeringState().QueuedCount() == 1);
-    CHECK(SteeringState().TakeMessages()[0].text == "deferred");
+    SteeringState().Queue("auto", "first-id");
+    SteeringState().Queue("later", "second-id", true, json::array({"a"}));
+    std::optional<Steering::Message> next = SteeringState().TakeNextAutoStart();
+    CHECK(next && next->text == "auto" && next->request_id == "first-id");
+    std::vector<Steering::Message> rest = SteeringState().TakeMessages();
+    CHECK(rest.size() == 2 && rest[0].text == "deferred" &&
+          rest[1].text == "later" && rest[1].request_id == "second-id" &&
+          rest[1].attachments.size() == 1);
+    CHECK(!SteeringState().TakeNextAutoStart());
     close(watched_fd);
     unlink(watched_path);
   }

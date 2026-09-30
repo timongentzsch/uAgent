@@ -8,6 +8,7 @@
 #include <atomic>
 #include <deque>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -41,7 +42,9 @@ class Steering {
   // still queued; consumed steering is never resurrected.
   bool Recall(const std::string& request_id);
   std::vector<Message> TakeMessages();
-  std::vector<Message> TakeAutoStartMessages();
+  // The oldest message that may start a turn, leaving every other queued
+  // message where it is; the new turn's first step applies the rest.
+  std::optional<Message> TakeNextAutoStart();
   size_t QueuedCount() const;
 
  private:

@@ -221,52 +221,45 @@ SessionLoadResult SessionStore::Load(const std::string& path,
 }
 
 SessionLoadResult SessionStore::Inspect(const std::string& path) {
+  const auto fail = [](std::string message,
+                       SessionStoreError code = SessionStoreError::kCorrupt) {
+    return SessionLoadResult{Error(code, std::move(message)), std::nullopt};
+  };
   std::string content, error;
   if (!ReadRegularFile(path, kSessionReadBytes, content, error)) {
-    return {Error(PathExists(path) ? SessionStoreError::kIo
-                                   : SessionStoreError::kNotFound,
-                  error),
-            std::nullopt};
+    return fail(error, PathExists(path) ? SessionStoreError::kIo
+                                        : SessionStoreError::kNotFound);
   }
   size_t newline = content.find('\n');
   if (newline > kSessionHeaderBytes) {
-    return {Error(SessionStoreError::kCorrupt,
-                  "session header is incomplete or too large"),
-            std::nullopt};
+    return fail("session header is incomplete or too large");
   }
   std::string_view header_line(content.data(), newline);
   std::string_view body(content.data() + newline + 1,
                         content.size() - newline - 1);
   if (body.empty()) {
-    return {Error(SessionStoreError::kCorrupt, "session is incomplete"),
-            std::nullopt};
+    return fail("session is incomplete");
   }
 
   json header = json::parse(header_line, nullptr, false);
   if (!ValidHeader(header) || !header.contains("format") ||
       !header["format"].is_number_integer()) {
-    return {Error(SessionStoreError::kCorrupt, "session header is invalid"),
-            std::nullopt};
+    return fail("session header is invalid");
   }
   int64_t format = header["format"].get<int64_t>();
   if (format != kSessionFormat) {
-    return {Error(SessionStoreError::kIncompatible,
-                  "unsupported session format " + std::to_string(format)),
-            std::nullopt};
+    return fail("unsupported session format " + std::to_string(format),
+                SessionStoreError::kIncompatible);
   }
 
   json state = json::parse(body, nullptr, false);
   if (state.is_discarded() || !HasFields(state, kStateFields)) {
-    return {Error(SessionStoreError::kCorrupt,
-                  "session payload is invalid or incomplete"),
-            std::nullopt};
+    return fail("session payload is invalid or incomplete");
   }
   std::vector<MessageKind> message_kinds;
   if (!ParseMessageKinds(state["message_kinds"], state["messages"].size(),
                          message_kinds)) {
-    return {Error(SessionStoreError::kCorrupt,
-                  "session message metadata is invalid or incomplete"),
-            std::nullopt};
+    return fail("session message metadata is invalid or incomplete");
   }
 
   SessionRecord record;
@@ -312,9 +305,7 @@ SessionLoadResult SessionStore::Inspect(const std::string& path) {
   record.state.delivered_mail =
       JsonValue(state, "delivered_mail", json::array());
   if (!ValidState(record.state)) {
-    return {Error(SessionStoreError::kCorrupt,
-                  "session payload is invalid or incomplete"),
-            std::nullopt};
+    return fail("session payload is invalid or incomplete");
   }
   return {{}, std::move(record)};
 }
@@ -537,13 +528,8 @@ json SessionStore::Fork(const std::string& source, const std::string& title,
           ec = std::make_error_code(std::errc::io_error);
           return;
         }
-        Fd input(
-            open(text.c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK));
-        struct stat info{};
-        if (!input || fstat(input.Get(), &info) != 0 ||
-            !S_ISREG(info.st_mode) || info.st_uid != getuid() ||
-            info.st_size < 0 ||
-            static_cast<uint64_t>(info.st_size) > kSessionReadBytes) {
+        Fd input = OpenOwnedRegular(text, kSessionReadBytes);
+        if (!input) {
           it->second.clear();
         } else {
           char buffer[16384];
@@ -569,12 +555,7 @@ json SessionStore::Fork(const std::string& source, const std::string& title,
       }
       value = it->second;
     } else {
-      const std::string from = source + ".assets/", to = path + ".assets/";
-      size_t pos = 0;
-      while ((pos = text.find(from, pos)) != std::string::npos) {
-        text.replace(pos, from.size(), to);
-        pos += to.size();
-      }
+      ReplaceAll(text, source + ".assets/", path + ".assets/");
       value = std::move(text);
     }
   };
@@ -600,13 +581,11 @@ json SessionStore::Fork(const std::string& source, const std::string& title,
   record.metadata.forked_at_time = UtcStamp("%Y%m%dT%H%M%SZ");
   if (!title.empty()) {
     record.metadata.title = title;
-  } else if (fork_turn > 0) {
-    record.metadata.title =
-        Utf8Prefix("Fork of " + record.metadata.title + " @ turn " +
-                       std::to_string(fork_turn),
-                   256);
   } else {
-    record.metadata.title = Utf8Prefix("Fork of " + record.metadata.title, 256);
+    record.metadata.title = Utf8Prefix(
+        "Fork of " + record.metadata.title +
+            (fork_turn > 0 ? " @ turn " + std::to_string(fork_turn) : ""),
+        256);
   }
   record.metadata.custom_title = true;
   auto result =

@@ -166,6 +166,18 @@ std::optional<std::string> ReadFile(const std::string& path, size_t cap) {
   return out;
 }
 
+Fd OpenOwnedRegular(const std::string& path, size_t cap, size_t* size) {
+  Fd fd(open(path.c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK));
+  struct stat info{};
+  if (!fd || fstat(fd.Get(), &info) != 0 || !S_ISREG(info.st_mode) ||
+      info.st_uid != geteuid() || info.st_size < 0 ||
+      static_cast<uintmax_t>(info.st_size) > cap) {
+    return {};
+  }
+  if (size) *size = static_cast<size_t>(info.st_size);
+  return fd;
+}
+
 bool ReadRegularFile(const std::string& path, size_t cap, std::string& out,
                      std::string& error, bool prefix) {
   out.clear();

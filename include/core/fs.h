@@ -132,6 +132,11 @@ std::optional<std::string> ReadFile(const std::string& path, size_t cap);
 
 // Private state and web assets must never follow a final symlink or read a
 // device/FIFO. A prefix read is useful for cheap catalogue headers.
+// A regular file this user owns, opened read-only without following a final
+// symlink; empty when it is anything else or larger than `cap` bytes. `size`
+// receives its size.
+Fd OpenOwnedRegular(const std::string& path, size_t cap,
+                    size_t* size = nullptr);
 bool ReadRegularFile(const std::string& path, size_t cap, std::string& out,
                      std::string& error, bool prefix = false);
 

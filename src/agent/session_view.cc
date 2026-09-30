@@ -2,12 +2,11 @@
 
 #include "include/agent/session_view.h"
 
-#include <fcntl.h>
-#include <sys/stat.h>
 #include <unistd.h>
 
 #include <algorithm>
 #include <charconv>
+#include <cstdint>
 #include <iterator>
 #include <map>
 #include <string>
@@ -697,14 +696,10 @@ json ReadPrivateArtifact(const std::string& path, size_t offset) {
   if (path.empty() || CanonicalAccessPath(file_path.parent_path()) != base) {
     return {{"error", "retained body unavailable"}};
   }
-  Fd file(open((base / file_path.filename()).c_str(),
-               O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK));
-  struct stat info{};
-  if (!file || fstat(file.Get(), &info) || !S_ISREG(info.st_mode) ||
-      info.st_uid != geteuid() || info.st_size < 0) {
-    return {{"error", "retained body unavailable"}};
-  }
-  size_t size = static_cast<size_t>(info.st_size);
+  size_t size = 0;
+  Fd file =
+      OpenOwnedRegular((base / file_path.filename()).string(), SIZE_MAX, &size);
+  if (!file) return {{"error", "retained body unavailable"}};
   offset = std::min(offset, size);
   constexpr size_t kPage = size_t{16} * 1024;
   // Look ahead so the page boundary can be checked against the next byte.

@@ -8,6 +8,7 @@ import type {
   Catalogue,
   PermissionRules,
   Session,
+  CommandFields,
 } from "../../shared/types.ts";
 import {
   Button,
@@ -138,6 +139,15 @@ export default function Settings({
       active = false;
     };
   }, [online, session?.cwd]);
+  // Forgetting one rule or all of them answers with the rules left.
+  const editRules = (fields: CommandFields) => {
+    setRuleError(null);
+    command("permission_rules", null, { ...fields, cwd: session?.cwd })
+      .then((response) => {
+        if (!response.pending) setRules(response.result);
+      })
+      .catch(setRuleError);
+  };
   // Turning notifications on subscribes this device to push where the host
   // offers it, otherwise to notifications while this view is connected.
   const notificationsOn =
@@ -181,145 +191,116 @@ export default function Settings({
   }
   const pane = {
     general: (
-      <>
-        <Group title="Display" footer="Saved on this device.">
-          <SettingRow
-            name="Appearance"
-            htmlFor="appearance"
-            overridden={theme !== DISPLAY.theme}
-            reset={() => setTheme(DISPLAY.theme)}
+      <Group title="Display" footer="Saved on this device.">
+        <SettingRow
+          name="Appearance"
+          htmlFor="appearance"
+          overridden={theme !== DISPLAY.theme}
+          reset={() => setTheme(DISPLAY.theme)}
+        >
+          <ValueSelect
+            id="appearance"
+            value={theme}
+            onChange={(event) => setTheme(event.currentTarget.value)}
           >
-            <ValueSelect
-              id="appearance"
-              value={theme}
-              onChange={(event) => setTheme(event.currentTarget.value)}
-            >
-              <option value="system">System</option>
-              <option value="dark">Dark</option>
-              <option value="light">Light</option>
-            </ValueSelect>
-          </SettingRow>
-          <SettingRow
-            name="Clock"
-            htmlFor="clock"
-            overridden={timePrefs.clock !== defaultTimePrefs.clock}
-            reset={() =>
-              setTimePrefs({ ...timePrefs, clock: defaultTimePrefs.clock })
+            <option value="system">System</option>
+            <option value="dark">Dark</option>
+            <option value="light">Light</option>
+          </ValueSelect>
+        </SettingRow>
+        <SettingRow
+          name="Clock"
+          htmlFor="clock"
+          overridden={timePrefs.clock !== defaultTimePrefs.clock}
+          reset={() =>
+            setTimePrefs({ ...timePrefs, clock: defaultTimePrefs.clock })
+          }
+        >
+          <ValueSelect
+            id="clock"
+            value={timePrefs.clock}
+            onChange={(event) =>
+              setTimePrefs({
+                ...timePrefs,
+                clock: event.currentTarget.value as TimePrefs["clock"],
+              })
             }
           >
-            <ValueSelect
-              id="clock"
-              value={timePrefs.clock}
-              onChange={(event) =>
-                setTimePrefs({
-                  ...timePrefs,
-                  clock: event.currentTarget.value as TimePrefs["clock"],
-                })
-              }
-            >
-              <option value="system">System</option>
-              <option value="12">12-hour</option>
-              <option value="24">24-hour</option>
-            </ValueSelect>
-          </SettingRow>
-          <SettingRow
-            name="Timestamps"
-            htmlFor="timestamps"
-            detail={TIMESTAMP_STYLES[timePrefs.style]}
-            overridden={timePrefs.style !== defaultTimePrefs.style}
-            reset={() =>
-              setTimePrefs({ ...timePrefs, style: defaultTimePrefs.style })
+            <option value="system">System</option>
+            <option value="12">12-hour</option>
+            <option value="24">24-hour</option>
+          </ValueSelect>
+        </SettingRow>
+        <SettingRow
+          name="Timestamps"
+          htmlFor="timestamps"
+          detail={TIMESTAMP_STYLES[timePrefs.style]}
+          overridden={timePrefs.style !== defaultTimePrefs.style}
+          reset={() =>
+            setTimePrefs({ ...timePrefs, style: defaultTimePrefs.style })
+          }
+        >
+          <ValueSelect
+            id="timestamps"
+            value={timePrefs.style}
+            onChange={(event) =>
+              setTimePrefs({
+                ...timePrefs,
+                style: event.currentTarget.value as TimePrefs["style"],
+              })
             }
           >
-            <ValueSelect
-              id="timestamps"
-              value={timePrefs.style}
-              onChange={(event) =>
-                setTimePrefs({
-                  ...timePrefs,
-                  style: event.currentTarget.value as TimePrefs["style"],
-                })
-              }
-            >
-              <option value="smart">Smart</option>
-              <option value="relative">Relative</option>
-              <option value="absolute">Absolute</option>
-            </ValueSelect>
-          </SettingRow>
-          <SettingRow
-            name="Zoom"
-            htmlFor="zoom"
-            detail="Scales the entire interface, conversation included — like browser zoom."
-            overridden={zoom !== DISPLAY.zoom}
-            reset={() => setZoom(DISPLAY.zoom)}
-          >
-            <ZoomSlider zoom={zoom} change={setZoom} />
-          </SettingRow>
-        </Group>
-      </>
+            <option value="smart">Smart</option>
+            <option value="relative">Relative</option>
+            <option value="absolute">Absolute</option>
+          </ValueSelect>
+        </SettingRow>
+        <SettingRow
+          name="Zoom"
+          htmlFor="zoom"
+          detail="Scales the entire interface, conversation included — like browser zoom."
+          overridden={zoom !== DISPLAY.zoom}
+          reset={() => setZoom(DISPLAY.zoom)}
+        >
+          <ZoomSlider zoom={zoom} change={setZoom} />
+        </SettingRow>
+      </Group>
     ),
     models: null,
-    permissions: (
-      <>
-        {session?.cwd && (
-          <Group
-            title={`Remembered for this repository${
-              rules?.rules.length ? ` · ${rules.rules.length}` : ""
-            }`}
-            footer="Exact actions allowed for this repository. Tool definitions and arguments must still match."
-          >
-            {ruleError && (
-              <div class="group-block">
-                <LoadError error={ruleError} />
-              </div>
-            )}
-            {rules?.rules.map((rule) => (
-              <Row key={rule.key} label={rule.tool} detail={rule.preview}>
-                <Button
-                  variant="quiet"
-                  size="compact"
-                  disabled={!online}
-                  onClick={() => {
-                    setRuleError(null);
-                    command("permission_rules", null, {
-                      action: "delete",
-                      key: rule.key,
-                      cwd: session.cwd,
-                    })
-                      .then((response) => {
-                        if (!response.pending) setRules(response.result);
-                      })
-                      .catch(setRuleError);
-                  }}
-                >
-                  Forget
-                </Button>
-              </Row>
-            ))}
-            {rules && !rules.rules.length && (
-              <Row label="No remembered actions." />
-            )}
-            {!!rules?.rules.length && (
-              <Row
-                label="Forget all for this repository"
-                destructive
-                disabled={!online}
-                onClick={() => {
-                  setRuleError(null);
-                  command("permission_rules", null, {
-                    action: "clear",
-                    cwd: session.cwd,
-                  })
-                    .then((response) => {
-                      if (!response.pending) setRules(response.result);
-                    })
-                    .catch(setRuleError);
-                }}
-              />
-            )}
-          </Group>
+    permissions: session?.cwd && (
+      <Group
+        title={`Remembered for this repository${
+          rules?.rules.length ? ` · ${rules.rules.length}` : ""
+        }`}
+        footer="Exact actions allowed for this repository. Tool definitions and arguments must still match."
+      >
+        {ruleError && (
+          <div class="group-block">
+            <LoadError error={ruleError} />
+          </div>
         )}
-      </>
+        {rules?.rules.map((rule) => (
+          <Row key={rule.key} label={rule.tool} detail={rule.preview}>
+            <Button
+              variant="quiet"
+              size="compact"
+              disabled={!online}
+              onClick={() => editRules({ action: "delete", key: rule.key })}
+            >
+              Forget
+            </Button>
+          </Row>
+        ))}
+        {rules && !rules.rules.length && <Row label="No remembered actions." />}
+        {!!rules?.rules.length && (
+          <Row
+            label="Forget all for this repository"
+            destructive
+            disabled={!online}
+            onClick={() => editRules({ action: "clear" })}
+          />
+        )}
+      </Group>
     ),
     agent: (
       <Group>

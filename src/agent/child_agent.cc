@@ -66,58 +66,43 @@ const char* FailureRemedy(ChildAgentFailureStage stage) {
   return "inspect the partial diagnostics before retrying";
 }
 
+// Fixed transport/provider categories, each with the report fragments that
+// identify it. Never an arbitrary diagnostic line: it can contain a
+// credential, URL query, child command or user data even after terminal
+// escaping.
+struct FailureCategory {
+  const char* reason;
+  std::string_view fragments[4];
+};
+constexpr FailureCategory kFailureCategories[] = {
+    {"connection error: Couldn't connect to server",
+     {"couldn't connect to server"}},
+    {"connection error: Could not resolve host", {"could not resolve host"}},
+    {"connection error: SSL connect error", {"ssl connect error"}},
+    {"request timed out", {"timeout was reached", "request timed out"}},
+    {"configured model was rejected",
+     {"model_not_found", "model not found", "unsupported-model",
+      "unsupported model"}},
+    {"provider rate limited the request", {"rate limited", "rate_limit"}},
+    {"provider cost unavailable",
+     {"provider does not report cost", "dollar budget is not enforceable"}},
+    {"session cost limit reached",
+     {"session cost limit reached", "session budget"}},
+    {"tool-call limit reached", {"max_tool_calls", "tool call limit"}},
+    {"step limit reached", {"max_steps", "step limit"}},
+    {"route is not usable",
+     {"no provider configured", "no usable model", "unknown model route"}},
+    {"process could not be spawned", {"cannot spawn shell", "process spawn"}},
+};
+
 std::string KnownFailureReason(std::string_view report) {
   const std::string lower = AsciiLower(std::string(report));
-  // These are fixed transport/provider categories. Do not fall back to an
-  // arbitrary diagnostic line: it can contain a credential, URL query, child
-  // command or user data even after terminal escaping.
-  if (lower.find("couldn't connect to server") != std::string::npos) {
-    return "connection error: Couldn't connect to server";
-  }
-  if (lower.find("could not resolve host") != std::string::npos) {
-    return "connection error: Could not resolve host";
-  }
-  if (lower.find("ssl connect error") != std::string::npos) {
-    return "connection error: SSL connect error";
-  }
-  if (lower.find("timeout was reached") != std::string::npos ||
-      lower.find("request timed out") != std::string::npos) {
-    return "request timed out";
-  }
-  if (lower.find("model_not_found") != std::string::npos ||
-      lower.find("model not found") != std::string::npos ||
-      lower.find("unsupported-model") != std::string::npos ||
-      lower.find("unsupported model") != std::string::npos) {
-    return "configured model was rejected";
-  }
-  if (lower.find("rate limited") != std::string::npos ||
-      lower.find("rate_limit") != std::string::npos) {
-    return "provider rate limited the request";
-  }
-  if (lower.find("provider does not report cost") != std::string::npos ||
-      lower.find("dollar budget is not enforceable") != std::string::npos) {
-    return "provider cost unavailable";
-  }
-  if (lower.find("session cost limit reached") != std::string::npos ||
-      lower.find("session budget") != std::string::npos) {
-    return "session cost limit reached";
-  }
-  if (lower.find("max_tool_calls") != std::string::npos ||
-      lower.find("tool call limit") != std::string::npos) {
-    return "tool-call limit reached";
-  }
-  if (lower.find("max_steps") != std::string::npos ||
-      lower.find("step limit") != std::string::npos) {
-    return "step limit reached";
-  }
-  if (lower.find("no provider configured") != std::string::npos ||
-      lower.find("no usable model") != std::string::npos ||
-      lower.find("unknown model route") != std::string::npos) {
-    return "route is not usable";
-  }
-  if (lower.find("cannot spawn shell") != std::string::npos ||
-      lower.find("process spawn") != std::string::npos) {
-    return "process could not be spawned";
+  for (const FailureCategory& category : kFailureCategories) {
+    for (std::string_view fragment : category.fragments) {
+      if (!fragment.empty() && lower.find(fragment) != std::string::npos) {
+        return category.reason;
+      }
+    }
   }
   size_t http = lower.find("http ");
   if (http != std::string::npos && http + 8 <= lower.size() &&
@@ -157,11 +142,7 @@ std::string ChildAgentFailureReport(std::string_view route,
           ChildAgentEnvelope(std::string(diagnostics))) {
     stopped = ChildAgentStopNote(JsonValue(*envelope, "stop", json()));
     answer = JsonValue(*envelope, "answer", std::string());
-    if (const json* error =
-            envelope->contains("error") ? &(*envelope)["error"] : nullptr;
-        error && error->is_string()) {
-      reported = error->get<std::string>();
-    }
+    reported = JsonValue(*envelope, "error", "");
   }
   // Whatever the child printed besides its envelope. The envelope's own
   // content is rendered above as the reported error, the stop and the partial

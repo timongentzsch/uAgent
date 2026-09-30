@@ -25,7 +25,6 @@ ApprovalMode ResolveApprovalMode(PermissionOverride override,
 
 std::string PermissionKey(const Tool& tool, const json& arguments,
                           ApprovalClass required);
-const char* PermissionScope();
 
 bool RepositoryPermissionAllows(const std::string& root,
                                 const std::string& key);

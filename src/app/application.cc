@@ -219,10 +219,6 @@ void Application::RunPrompt(const std::string& input) {
     content = AttachmentContent(input, attachments_, error);
     if (!error.empty()) {
       input_error_ = error;
-      if (!channel_) {
-        printf("%s%s%s\n", RED(), TerminalSafe(error).c_str(), RST());
-        fflush(stdout);
-      }
       Emit(Event{EventId::kError, {{"error", error}}});
       return;
     }

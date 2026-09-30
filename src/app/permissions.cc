@@ -3,6 +3,7 @@
 #include "include/app/permissions.h"
 
 #include <algorithm>
+#include <iterator>
 #include <string>
 #include <utility>
 
@@ -48,10 +49,34 @@ bool ValidStore(const json& store, std::string& error) {
   return true;
 }
 
+// The rules file, locked for its lifetime. Usable() is false, with `error`
+// set, when it cannot be read or fails validation.
+class RulesFile : public PrivateJsonStore {
+ public:
+  explicit RulesFile(std::string& error)
+      : PrivateJsonStore(kPermissionStoreFile, EmptyStore(),
+                         kPermissionStoreBytes, error),
+        usable_(Ready() && ValidStore(Data(), error)) {}
+
+  bool Usable() const { return usable_; }
+  json& Rules() { return Data()["rules"]; }
+
+ private:
+  bool usable_;
+};
+
+// Matches the rules of `root`, narrowed to `key` when one is given. Every
+// stored rule allows; ValidStore rejects any other effect.
+auto RuleOf(const std::string& root, const std::string* key = nullptr) {
+  return [&root, key](const json& rule) {
+    return JsonValue(rule, "root", "") == root &&
+           (!key || JsonValue(rule, "key", "") == *key);
+  };
+}
+
 std::string PrefixBytes(const std::string& value, size_t limit,
                         bool* truncated = nullptr) {
   if (truncated) *truncated = value.size() > limit;
-  if (value.size() <= limit) return value;
   return Utf8Prefix(value, limit);
 }
 
@@ -130,23 +155,16 @@ std::string PermissionKey(const Tool& tool, const json& arguments,
       JsonDump({{"policy", std::move(policy)}, {"arguments", arguments}}));
 }
 
-const char* PermissionScope() { return "this exact action"; }
-
 bool RepositoryPermissionAllows(const std::string& root,
                                 const std::string& key) {
   std::string error;
-  PrivateJsonStore file(kPermissionStoreFile, EmptyStore(),
-                        kPermissionStoreBytes, error);
-  if (!file.Ready() || !ValidStore(file.Data(), error)) {
+  RulesFile file(error);
+  if (!file.Usable()) {
     DebugLog("permission_rules_error", {{"error", error}});
     return false;
   }
-  return std::any_of(file.Data()["rules"].begin(), file.Data()["rules"].end(),
-                     [&](const json& rule) {
-                       return JsonValue(rule, "root", "") == root &&
-                              JsonValue(rule, "key", "") == key &&
-                              JsonValue(rule, "effect", "") == "allow";
-                     });
+  return std::any_of(file.Rules().begin(), file.Rules().end(),
+                     RuleOf(root, &key));
 }
 
 bool RememberRepositoryPermission(const std::string& root,
@@ -154,23 +172,18 @@ bool RememberRepositoryPermission(const std::string& root,
                                   const std::string& tool,
                                   const std::string& preview,
                                   std::string& error) {
-  PrivateJsonStore file(kPermissionStoreFile, EmptyStore(),
-                        kPermissionStoreBytes, error);
-  if (!file.Ready() || !ValidStore(file.Data(), error)) return false;
-  json& store = file.Data();
-  auto found = std::find_if(store["rules"].begin(), store["rules"].end(),
-                            [&](const json& rule) {
-                              return JsonValue(rule, "root", "") == root &&
-                                     JsonValue(rule, "key", "") == key;
-                            });
+  RulesFile file(error);
+  if (!file.Usable()) return false;
+  json& rules = file.Rules();
+  auto found = std::find_if(rules.begin(), rules.end(), RuleOf(root, &key));
   json rule = {{"root", root},
                {"key", key},
                {"effect", "allow"},
                {"tool", tool},
                {"preview", PrefixBytes(preview, kStoredPreviewBytes)},
                {"created", NowSeconds()}};
-  if (found == store["rules"].end()) {
-    store["rules"].push_back(std::move(rule));
+  if (found == rules.end()) {
+    rules.push_back(std::move(rule));
   } else {
     *found = std::move(rule);
   }
@@ -181,40 +194,27 @@ json PermissionRulesControl(const json& request) {
   const std::string root = CanonicalCwd();
   const std::string action = JsonValue(request, "action", "list");
   std::string error;
-  PrivateJsonStore file(kPermissionStoreFile, EmptyStore(),
-                        kPermissionStoreBytes, error);
-  if (!file.Ready() || !ValidStore(file.Data(), error)) {
-    return {{"error", error}};
-  }
-  json& store = file.Data();
-  if (action == "delete") {
+  RulesFile file(error);
+  if (!file.Usable()) return {{"error", error}};
+  json& rules = file.Rules();
+  if (action == "delete" || action == "clear") {
     const std::string key = JsonValue(request, "key", "");
-    auto& rules = store["rules"];
     const size_t before = rules.size();
-    rules.erase(std::remove_if(rules.begin(), rules.end(),
-                               [&](const json& rule) {
-                                 return JsonValue(rule, "root", "") == root &&
-                                        JsonValue(rule, "key", "") == key;
-                               }),
-                rules.end());
-    if (rules.size() == before) return {{"error", "permission rule not found"}};
-    if (!file.Save(error)) return {{"error", error}};
-  } else if (action == "clear") {
-    auto& rules = store["rules"];
-    rules.erase(std::remove_if(rules.begin(), rules.end(),
-                               [&](const json& rule) {
-                                 return JsonValue(rule, "root", "") == root;
-                               }),
-                rules.end());
+    rules.erase(
+        std::remove_if(rules.begin(), rules.end(),
+                       RuleOf(root, action == "delete" ? &key : nullptr)),
+        rules.end());
+    if (action == "delete" && rules.size() == before) {
+      return {{"error", "permission rule not found"}};
+    }
     if (!file.Save(error)) return {{"error", error}};
   } else if (action != "list") {
     return {{"error", "unknown permission rule action"}};
   }
-  json rules = json::array();
-  for (const auto& rule : store["rules"]) {
-    if (JsonValue(rule, "root", "") == root) rules.push_back(rule);
-  }
-  return {{"root", root}, {"rules", std::move(rules)}};
+  json listed = json::array();
+  std::copy_if(rules.begin(), rules.end(), std::back_inserter(listed),
+               RuleOf(root));
+  return {{"root", root}, {"rules", std::move(listed)}};
 }
 
 AutoPermissionReview ReviewPermission(Api& api, const RuntimeConfig& config,

@@ -6,6 +6,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cstdint>
@@ -155,6 +156,23 @@ bool ResolveProjectTrust(const Options& options, bool& trusted,
   return true;
 }
 
+// Snapshots a file into the session's committed assets, so every client can
+// show it; `name` defaults to the file's own.
+session::AssetStoreResult StoreSessionFile(const std::string& session_path,
+                                           const std::string& path,
+                                           const std::string& name,
+                                           bool tool_copy) {
+  session::AssetStoreResult stored;
+  std::string bytes;
+  if (!ReadRegularFile(path, session::kUploadBytes, bytes, stored.error)) {
+    return stored;
+  }
+  return session::SessionAssets().Store(
+      session_path, bytes,
+      name.empty() ? std::filesystem::path(path).filename().string() : name,
+      /*committed=*/true, tool_copy);
+}
+
 // Project docs and memory context share one byte budget: what the project
 // instructions do not spend is what the memory index may.
 ProjectInstructions LoadInstructions(const std::filesystem::path& workspace,
@@ -205,6 +223,8 @@ std::vector<Tool> BuildTools(AppContext& context,
   // One read of the toolset selector: the three shapes it can take are one
   // decision, not three unrelated conditions.
   const std::string toolset = EnvStr("UAGENT_TOOLSET");
+  const std::string session_path =
+      context.channel ? context.channel->SessionPath() : std::string();
   std::vector<Tool> tools = BuiltinTools(runtime.processes, workspace);
   if (AdaptiveSystemEnabled()) {
     // The agent exists by the time a tool runs.
@@ -249,9 +269,8 @@ std::vector<Tool> BuildTools(AppContext& context,
   // Reading a named URL needs no hosted route, so it does not follow search's
   // availability.
   tools.push_back(WebFetchTool(api));
-  if (context.channel && !context.channel->SessionPath().empty() &&
-      AgentDepth() == 0) {
-    tools.push_back(ArtifactTool(context.channel->SessionPath()));
+  if (!session_path.empty() && AgentDepth() == 0) {
+    tools.push_back(ArtifactTool(session_path));
   }
   // Only a session someone can answer gets ask: never headless runs or
   // delegated children, which could only ever time out.
@@ -259,16 +278,10 @@ std::vector<Tool> BuildTools(AppContext& context,
     // Option images are snapshotted into the session, as artifacts are, so
     // every client can show them.
     AskImage image;
-    if (const std::string session_path = context.channel->SessionPath();
-        !session_path.empty()) {
+    if (!session_path.empty()) {
       image = [session_path](const std::string& path, std::string& failure) {
-        std::string bytes;
-        if (!ReadRegularFile(path, session::kUploadBytes, bytes, failure)) {
-          return json();
-        }
-        session::AssetStoreResult stored = session::SessionAssets().Store(
-            session_path, bytes, std::filesystem::path(path).filename(),
-            /*committed=*/true);
+        session::AssetStoreResult stored =
+            StoreSessionFile(session_path, path, "", /*tool_copy=*/false);
         failure = stored.error;
         return stored.value;
       };
@@ -285,10 +298,9 @@ std::vector<Tool> BuildTools(AppContext& context,
   }
 #ifdef UAGENT_BROWSER  // the web host starts the browser and serves its viewer
   if (!browser::DataDirectory().empty() && context.options.browser_session &&
-      context.channel && !context.channel->SessionPath().empty() &&
-      AgentDepth() == 0) {
+      !session_path.empty() && AgentDepth() == 0) {
     tools.push_back(BrowserTool(
-        HashHex(context.channel->SessionPath()),
+        HashHex(session_path),
         [](const std::string& id, const std::string& prompt, bool* eof) {
           return ReadInteraction(
               {.id = id, .kind = "browser", .prompt = prompt}, eof);
@@ -330,6 +342,48 @@ std::vector<Tool> BuildTools(AppContext& context,
   return tools;
 }
 
+// What a person may answer an ordinary approval with: the option each client
+// offers and every spelling the terminal accepts for it. An answer outside
+// the table is guidance: denied, and queued as steering.
+enum class ApprovalAnswer { kOnce, kSession, kRepository, kDeny, kGuidance };
+
+struct ApprovalChoice {
+  ApprovalAnswer answer;
+  std::string_view value;
+  std::string_view label;
+  std::array<std::string_view, 3> aliases;
+};
+
+constexpr ApprovalChoice kApprovalChoices[] = {
+    {ApprovalAnswer::kOnce, "y", "Allow once", {"y", "yes"}},
+    {ApprovalAnswer::kSession, "s", "Allow for this session", {"s", "session"}},
+    {ApprovalAnswer::kRepository,
+     "a",
+     "Always in this repository",
+     {"a", "always", "repository"}},
+    {ApprovalAnswer::kDeny, "n", "Deny", {"n", "no"}},
+    {ApprovalAnswer::kGuidance, "guidance", "Send guidance", {}},
+};
+
+json ApprovalOptions() {
+  json options = json::array();
+  for (const ApprovalChoice& choice : kApprovalChoices) {
+    options.push_back({{"value", choice.value}, {"label", choice.label}});
+  }
+  return options;
+}
+
+ApprovalAnswer ParseApprovalAnswer(const std::string& answer) {
+  const std::string lowered = AsciiLower(answer);
+  if (lowered.empty()) return ApprovalAnswer::kGuidance;
+  for (const ApprovalChoice& choice : kApprovalChoices) {
+    if (std::ranges::find(choice.aliases, lowered) != choice.aliases.end()) {
+      return choice.answer;
+    }
+  }
+  return ApprovalAnswer::kGuidance;
+}
+
 // Approval policy in one place, so the prompt and the yolo shortcut cannot
 // drift apart from the debug record of what was granted. A mandatory-human
 // call ignores every automatic-approval switch and denies when no human can
@@ -361,91 +415,59 @@ Agent::Approver MakeApprover(AppContext* app) {
           ReviewPermission(app->runtime.permission_api, app->runtime.config,
                            app->runtime.side_usage, turn, tool, raw_payload,
                            app->agent->History().LastText(MessageKind::kUser));
-      const char* choice =
-          decision.decision == AutoPermissionDecision::kAllow  ? "allow"
-          : decision.decision == AutoPermissionDecision::kDeny ? "deny"
-                                                               : "ask";
-      review = {{"choice", choice},
+      const bool ask = decision.decision == AutoPermissionDecision::kAsk;
+      const bool allow = decision.decision == AutoPermissionDecision::kAllow;
+      review = {{"choice", ask ? "ask" : (allow ? "allow" : "deny")},
                 {"probabilities", std::move(decision.probabilities)}};
       if (!decision.error.empty()) review["error"] = decision.error;
-      if (decision.decision == AutoPermissionDecision::kAllow) {
+      // An undecided review with nobody to ask is a denial.
+      if (!ask || !InteractiveApprovalAvailable()) {
         automatic = true;
-        granted = true;
-      } else if (decision.decision == AutoPermissionDecision::kDeny) {
-        automatic = true;
-        granted = false;
-      } else if (!InteractiveApprovalAvailable()) {
-        automatic = true;
-        granted = false;
+        granted = allow;
       }
       DebugLog("permission_review", {{"tool", tool.name}, {"result", review}});
     }
     if (!automatic) {
-      // Print the full command/payload before asking, so long commands are
-      // never truncated in the approval prompt. A tool with more to show than
-      // its one-line label supplies its own preview.
-      std::string payload = TerminalSafe(raw_payload);
       // Reaching µAgent's own configuration is the reason a tool escalates by
       // its path; a tool that escalates for its own reason names it.
       std::string reason = tool.mandatory_reason.empty()
                                ? "changes \u00b5Agent's own configuration"
                                : tool.mandatory_reason;
-      Emit(Event{
-          EventId::kApprovalRequested,
-          {{"id", request_id},
-           {"tool", tool.name},
-           {"preview", payload},
-           {"scope", PermissionScope()},
-           {"mandatory_human", mandatory},
-           {"mandatory_reason", mandatory ? reason : std::string()},
-           {"choices", mandatory ? json::array({"yes", "no"})
-                                 : json::array({"once", "session", "repository",
-                                                "no", "guidance"})}}});
-      if (!app->channel) {
-        if (mandatory) {
-          fprintf(stdout, "%s%s%s\n", YEL(), TerminalSafe(reason).c_str(),
-                  RST());
-        }
-        fprintf(stdout, "%s\n", ColorizeDiffLines(payload).c_str());
-      }
+      // The request carries the full command/payload, so long commands are
+      // never truncated. A tool with more to show than its one-line label
+      // supplies its own preview.
+      Emit(Event{EventId::kApprovalRequested,
+                 {{"id", request_id},
+                  {"tool", tool.name},
+                  {"preview", TerminalSafe(raw_payload)},
+                  {"mandatory_human", mandatory},
+                  {"mandatory_reason", mandatory ? reason : std::string()}}});
+      InteractionRequest request{
+          .id = request_id,
+          .kind = "approval",
+          .prompt = "Allow " + TerminalSafe(tool.name) + "?"};
       if (mandatory && !InteractiveApprovalAvailable()) {
-        fputs(Note(Tone::kError,
-                   "denied: this change needs a person, and no interactive "
-                   "terminal is attached")
-                  .c_str(),
-              stdout);
         granted = false;
       } else if (mandatory) {
-        granted = Confirm(
-            {.id = request_id,
-             .kind = "approval",
-             .prompt = "Allow " + TerminalSafe(tool.name) + "?",
-             .options = json::array({{{"value", "y"}, {"label", "Allow"}},
-                                     {{"value", "n"}, {"label", "Deny"}}})});
+        request.options = json::array({{{"value", "y"}, {"label", "Allow"}},
+                                       {{"value", "n"}, {"label", "Deny"}}});
+        granted = Confirm(std::move(request));
       } else {
-        // Anything else is guidance: denied, and queued as steering.
+        request.options = ApprovalOptions();
         bool cancelled = false;
         bool eof = false;
-        std::string answer = Trim(ReadChoiceLine(
-            {.id = request_id,
-             .kind = "approval",
-             .prompt = "Allow " + TerminalSafe(tool.name) + "?",
-             .options = json::array(
-                 {{{"value", "y"}, {"label", "Allow once"}},
-                  {{"value", "s"}, {"label", "Allow for this session"}},
-                  {{"value", "a"}, {"label", "Always in this repository"}},
-                  {{"value", "n"}, {"label", "Deny"}},
-                  {{"value", "guidance"}, {"label", "Send guidance"}}})},
-            cancelled, eof));
-        std::string choice = AsciiLower(answer);
-        bool remember_session = choice == "s" || choice == "session";
-        bool remember_repository =
-            choice == "a" || choice == "always" || choice == "repository";
-        granted = !cancelled && !eof &&
-                  (choice == "y" || choice == "yes" || remember_session ||
-                   remember_repository);
-        if (granted && remember_session) app->session_approvals.insert(key);
-        if (granted && remember_repository) {
+        std::string answer =
+            Trim(ReadChoiceLine(std::move(request), cancelled, eof));
+        const ApprovalAnswer chosen = cancelled || eof
+                                          ? ApprovalAnswer::kDeny
+                                          : ParseApprovalAnswer(answer);
+        granted = chosen == ApprovalAnswer::kOnce ||
+                  chosen == ApprovalAnswer::kSession ||
+                  chosen == ApprovalAnswer::kRepository;
+        if (chosen == ApprovalAnswer::kSession) {
+          app->session_approvals.insert(key);
+        }
+        if (chosen == ApprovalAnswer::kRepository) {
           std::string error;
           if (!RememberRepositoryPermission(root, key, tool.name, raw_payload,
                                             error)) {
@@ -454,8 +476,7 @@ Agent::Approver MakeApprover(AppContext* app) {
                 "allowed once; could not save permission rule: " + error));
           }
         }
-        if (!granted && !cancelled && !eof && !answer.empty() &&
-            choice != "n" && choice != "no") {
+        if (chosen == ApprovalAnswer::kGuidance && !answer.empty()) {
           SteeringState().Queue(answer);
         }
       }
@@ -533,7 +554,9 @@ void LogReady(const AppContext& context) {
   provenance["sandbox"] = SandboxDiagnosticJson();
   provenance["active_schema_digest"] =
       HashHex(JsonDump(ToolSchemas(context.tools)));
-  provenance["behavior"] = {
+  // The behavior switches are recorded in the provenance and repeated at the
+  // top level of the event.
+  const json behavior = {
       {"reasoning_effort", api.reasoning_effort},
       {"openrouter_variant", config.openrouter_variant},
       {"context_window", api.ctx_window},
@@ -552,40 +575,28 @@ void LogReady(const AppContext& context) {
       {"prompt_overlay",
        overlay_digest.empty() ? json(nullptr) : json(overlay_digest)},
   };
-  Emit(Event{
-      EventId::kSessionReady,
-      {{"base_url", RedactedUrl(api.base_url)},
-       {"model", api.RequestModel()},
-       {"route", RouteSelection(api, context.provider.providers)},
-       {"provenance", std::move(provenance)},
-       {"reasoning_effort", api.reasoning_effort},
-       {"openrouter_variant", config.openrouter_variant},
-       {"capabilities", api.capabilities.DiagnosticJson()},
-       {"configured_models", context.provider.routes.size()},
-       {"context_window", api.ctx_window},
-       {"tools", context.tools.size()},
-       {"toolset", toolset},
-       {"memory", config.memory_enabled},
-       {"memory_generate", config.memory_generate},
-       {"run_mode", run_mode},
-       {"output_mode", context.options.json_stream
-                           ? "json-stream"
-                           : (context.options.json ? "json" : "text")},
-       {"yolo", ApprovalIsYolo()},
-       {"auto_compact_pct", AutoCompactPct()},
-       {"auto_compact_tokens", AutoCompactTokens()},
-       {"openrouter_provider", config.openrouter_provider},
-       {"openrouter_fallbacks", config.openrouter_fallbacks},
-       {"tool_concurrency", ToolConcurrency()},
-       {"tool_result_chars", ToolResultCap()},
-       {"tool_batch_result_chars", ToolBatchResultCap()},
-       {"attachment_mb", AttachmentLimitMb()},
-       {"image_detail", ImageDetail()},
-       {"steering", SteeringEnabled()},
-       {"adaptive_system", AdaptiveSystemEnabled()},
-       {"max_tokens", MaxOutputTokens()},
-       {"limits", config.DiagnosticJson()},
-       {"effective_config", context.config_manager.DiagnosticJson(config)}}});
+  provenance["behavior"] = behavior;
+  json ready = {
+      {"base_url", RedactedUrl(api.base_url)},
+      {"model", api.RequestModel()},
+      {"route", RouteSelection(api, context.provider.providers)},
+      {"provenance", std::move(provenance)},
+      {"capabilities", api.capabilities.DiagnosticJson()},
+      {"configured_models", context.provider.routes.size()},
+      {"tools", context.tools.size()},
+      {"toolset", toolset},
+      {"output_mode", context.options.json_stream
+                          ? "json-stream"
+                          : (context.options.json ? "json" : "text")},
+      {"yolo", ApprovalIsYolo()},
+      {"openrouter_provider", config.openrouter_provider},
+      {"openrouter_fallbacks", config.openrouter_fallbacks},
+      {"attachment_mb", AttachmentLimitMb()},
+      {"image_detail", ImageDetail()},
+      {"limits", config.DiagnosticJson()},
+      {"effective_config", context.config_manager.DiagnosticJson(config)}};
+  ready.update(behavior);
+  Emit(Event{EventId::kSessionReady, std::move(ready)});
   ReportSandbox();
 }
 
@@ -697,10 +708,9 @@ BootstrapResult Bootstrap(Options options, const char* executable,
     return Failure("cannot open debug log: " + Debug().Error());
   }
   if (Debug().Enabled()) {
-    FILE* notice =
-        context->options.prompt.empty() && !channel ? stdout : stderr;
+    // Every bootstrapped run has stdout silenced by now.
     fputs(Note(Tone::kNeutral, "debug trace: " + Debug().Path()).c_str(),
-          notice);
+          stderr);
     Debug().Write("process_start",
                   {{"pid", getpid()},
                    {"cwd", std::filesystem::current_path().string()},
@@ -770,20 +780,13 @@ BootstrapResult Bootstrap(Options options, const char* executable,
         });
   }
   if (context->channel && !context->channel->SessionPath().empty()) {
-    context->agent->KeepToolFiles([session_path =
-                                       context->channel->SessionPath()](
-                                      const std::string& path,
-                                      const std::string& name) -> json {
-      std::string bytes, read_error;
-      if (!ReadRegularFile(path, session::kUploadBytes, bytes, read_error)) {
-        return nullptr;
-      }
-      session::AssetStoreResult stored = session::SessionAssets().Store(
-          session_path, bytes,
-          name.empty() ? std::filesystem::path(path).filename().string() : name,
-          /*committed=*/true, /*tool_copy=*/true);
-      return stored.error.empty() ? std::move(stored.value) : json(nullptr);
-    });
+    context->agent->KeepToolFiles(
+        [session_path = context->channel->SessionPath()](
+            const std::string& path, const std::string& name) -> json {
+          session::AssetStoreResult stored =
+              StoreSessionFile(session_path, path, name, /*tool_copy=*/true);
+          return stored.error.empty() ? std::move(stored.value) : json(nullptr);
+        });
   }
   LogReady(*context);
   return {std::move(context), {}, 0};

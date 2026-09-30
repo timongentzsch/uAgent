@@ -1,6 +1,6 @@
 import type { ComponentChildren } from "preact";
 import { CircleHelp } from "lucide-preact";
-import { Popover } from "../../shared/popover.tsx";
+import { SheetButton } from "../../shared/sheet.tsx";
 import type { Session } from "../../shared/types.ts";
 import { Actions, Button, Time } from "../../shared/ui.tsx";
 import { folderOf } from "../../shared/folder-label.tsx";
@@ -102,22 +102,21 @@ export function CoordinatorHelp({
   editInstructions: () => void;
 }) {
   return (
-    <Popover
+    <SheetButton
       label="What is the coordinator?"
       trigger={<CircleHelp />}
       className="coordinator-help-anchor"
-      panelClass="coordinator-help"
-      align="start"
+      heading="The folder's coordinator"
+      sheetClass="coordinator-help"
     >
       {(close) => (
         <div class="coordinator-help-body">
-          <h2>The folder's coordinator</h2>
           <p>
             One per folder. It keeps track of every conversation here, answers
             questions about them, and hands work to threads. It reads files but
             never edits them or runs commands itself.
           </p>
-          <h2>How it differs from a conversation</h2>
+          <h3>How it differs from a conversation</h3>
           <p>
             A conversation does the work you ask for in it. The coordinator
             manages conversations: it starts threads (ordinary conversations,
@@ -125,7 +124,7 @@ export function CoordinatorHelp({
             cannot settle, asking you when it is unsure. Its notes and goals
             carry over between days. You can open and steer any thread directly.
           </p>
-          <h2>Its instructions</h2>
+          <h3>Its instructions</h3>
           <p>
             It reads every session's AGENTS.md, then its own COORDINATOR.md:
             yours, and the folder's.
@@ -143,6 +142,6 @@ export function CoordinatorHelp({
           </Actions>
         </div>
       )}
-    </Popover>
+    </SheetButton>
   );
 }

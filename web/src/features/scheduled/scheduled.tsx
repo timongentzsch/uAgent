@@ -19,8 +19,8 @@ import {
   Input,
   Textarea,
 } from "../../shared/ui.tsx";
-import { Menu, MenuItem } from "../../shared/popover.tsx";
-import { Popover } from "../../shared/popover.tsx";
+import { Menu, MenuItem } from "../../shared/menu.tsx";
+import { SheetButton } from "../../shared/sheet.tsx";
 import ModelPicker from "../settings/model-picker.tsx";
 import { readStored, writeStored } from "../../state/store.ts";
 import { ProjectField, dateTime, taskActive } from "../settings/management.tsx";
@@ -447,9 +447,8 @@ export default function Scheduled({
                     </Select>
                   </Field>
                 </div>
-                <Popover
+                <SheetButton
                   buttonClass="quiet"
-                  align="start"
                   label="Task model"
                   title="Model, variant and effort"
                   trigger={
@@ -466,7 +465,7 @@ export default function Scheduled({
                       running={false}
                     />
                   )}
-                </Popover>
+                </SheetButton>
                 <div class="editor-actions">
                   <Button disabled={busy} onClick={discard}>
                     Cancel

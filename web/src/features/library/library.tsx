@@ -16,7 +16,7 @@ import {
   DataText,
   Placeholder,
 } from "../../shared/ui.tsx";
-import { Menu, MenuItem } from "../../shared/popover.tsx";
+import { Menu, MenuItem } from "../../shared/menu.tsx";
 import { readStored, writeStored } from "../../state/store.ts";
 import { bytes } from "../../shared/quantities.ts";
 import {

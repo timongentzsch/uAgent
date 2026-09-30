@@ -1,13 +1,8 @@
-/* "Now" popover on the status line, and the inspector sheet. */
+/* The activity sheet on the status line, and the inspector sheet. */
 
 .activities {
   min-width: 0;
   max-width: 100%;
-}
-
-.activity-popover {
-  width: calc(380rem / 14);
-  padding: var(--space-2);
 }
 
 .activity-list {

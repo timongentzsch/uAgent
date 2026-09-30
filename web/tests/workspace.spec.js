@@ -256,6 +256,8 @@ test("unread completions, background activity and conversation lifecycle", async
     page.locator(".tool-disclosure").filter({ hasText: "BROWSER_ACTIVITY" }),
   ).not.toContainText("running");
   await expect(page.locator(".composer .status-led.active")).toBeVisible();
+  // The activity sheet is modal: close it before reaching the page again.
+  await page.keyboard.press("Escape");
   await conversationMenu.click();
   await page
     .locator(".conversation-head")

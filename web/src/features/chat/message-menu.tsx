@@ -1,5 +1,5 @@
 import type { Exchange, PresentedBlock } from "../../shared/types.ts";
-import { Menu, MenuItem } from "../../shared/popover.tsx";
+import { Menu, MenuItem } from "../../shared/menu.tsx";
 
 // Single menu for every transcript row. Thinking and output tokens share
 // the same surface; items hide only when their handler is missing.

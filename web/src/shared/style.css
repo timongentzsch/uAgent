@@ -36,7 +36,6 @@
      timestamps. Nothing smaller, so no text drops under 10px. */
   --font-small: 0.85rem;
   --font-micro: 0.75rem;
-  --popover-gap: var(--space-4);
   /* Motion: the only durations and easings in the app. Reduced motion
      zeroes the durations below, which turns every transition off. */
   --motion-fast: 120ms;
@@ -65,11 +64,11 @@
 :root[data-keyboard] {
   --safe-bottom: 0px;
 }
-/* The two palettes. A user message draws in the other one, and a menu it
-   opens returns to the page's, so every surface gets a complete set. */
+/* The two palettes. A user message draws in the other one, and a sheet or
+   menu it opens returns to the page's, so every surface gets a complete set. */
 :root,
 [data-theme="light"] .message.user,
-[data-theme="dark"] .message.user .popover-panel {
+[data-theme="dark"] .message.user :is(dialog, .menu-panel) {
   color-scheme: dark;
   --bg: #000;
   --surface: #0a0a0a;
@@ -89,12 +88,12 @@
   --accent-active: #ccc;
   --on-accent: #000;
   --knob: #a3a3a3;
-  /* Anything floating over the page: menus, popovers, banners. */
+  /* Anything floating over the page: menus, suggestions, banners. */
   --shadow-float: 0 var(--space-2) var(--space-12) rgb(0 0 0 / 0.7);
 }
 :root[data-theme="light"],
 [data-theme="dark"] .message.user,
-[data-theme="light"] .message.user .popover-panel {
+[data-theme="light"] .message.user :is(dialog, .menu-panel) {
   color-scheme: light;
   --bg: #fff;
   --surface: #fafafa;
@@ -622,6 +621,11 @@ pre code {
   min-height: 0;
   min-width: 0;
 }
+/* The drawer is a dialog: until it opens it is not drawn, so it slides in
+   from its starting style instead of appearing in place. */
+dialog.sidebar:not([open]) {
+  display: none;
+}
 .sidebar-head {
   display: flex;
   align-items: center;
@@ -734,20 +738,17 @@ pre code {
   align-items: center;
   gap: var(--space-2);
 }
-/* The panel only sizes; its body lays out, so a panel given a height by
-   placement never stretches the rows apart. */
-.coordinator-help {
-  width: min(calc(340rem / 14), calc(100vw - 2 * var(--pad)));
-  font-size: var(--font-small);
-}
 .coordinator-help-body {
   display: grid;
   align-content: start;
   gap: var(--space-3);
 }
-.coordinator-help h2 {
+.coordinator-help h3 {
   font-size: var(--font-small);
   font-weight: 600;
+}
+.coordinator-help-body {
+  font-size: var(--font-small);
 }
 .coordinator-help p {
   color: var(--muted);
@@ -1183,7 +1184,7 @@ pre code {
   min-width: 0;
   padding-top: var(--space-1);
 }
-.composer-metrics > .popover-control {
+.composer-metrics > .sheet-control {
   display: flex;
   flex: none;
 }
@@ -1340,45 +1341,39 @@ details[open]:not(.disclosure-row) > summary::before {
   font-size: var(--font-small);
 }
 
-/* Native top-layer popovers share placement and keyboard handling. */
-.popover-control {
+/* A row's ⋯ actions drop down from their button (shared/menu.tsx), a
+   native top-layer popover that fades in from its anchor and out again;
+   allow-discrete keeps it painted until its exit has played. */
+.action-menu {
   position: relative;
 }
-.popover-panel {
-  gap: var(--popover-gap);
+.menu-panel {
   position: fixed;
   inset: auto;
   margin: 0;
-  padding: var(--pad);
+  min-width: calc(180rem / 14);
+  padding: var(--space-2);
   border: 1px solid var(--line);
   background: var(--surface);
   color: var(--text);
   box-shadow: var(--shadow-float);
   overflow: auto;
-}
-/* Panels fade in from their anchor and out again. allow-discrete keeps a
-   hidden panel painted until its exit has played. */
-.popover-panel {
   transition:
     opacity var(--motion-base) var(--ease-out),
     translate var(--motion-base) var(--ease-out),
     display var(--motion-base) allow-discrete,
     overlay var(--motion-base) allow-discrete;
 }
-.popover-panel:not(:popover-open) {
+.menu-panel:not(:popover-open) {
   opacity: 0;
   translate: 0 calc(-4rem / 14);
   transition-timing-function: var(--ease-in);
 }
 @starting-style {
-  .popover-panel:popover-open {
+  .menu-panel:popover-open {
     opacity: 0;
     translate: 0 calc(-4rem / 14);
   }
-}
-.menu-panel {
-  min-width: calc(180rem / 14);
-  padding: var(--space-2);
 }
 .menu-panel button {
   display: block;
@@ -1387,15 +1382,9 @@ details[open]:not(.disclosure-row) > summary::before {
   text-align: left;
   font-size: var(--font-small);
 }
-.model-panel {
-  width: calc(420rem / 14);
-}
 .model-form {
   display: grid;
   gap: var(--gap);
-}
-.permission-panel {
-  width: calc(260rem / 14);
 }
 .dialog-actions,
 .editor-actions {
@@ -1485,11 +1474,33 @@ dialog[data-layout="sheet"] {
 @media (max-width: 600px) {
   /* Edge to edge: the sheet's own surface runs under the home indicator. */
   dialog[data-layout="sheet"] {
+    left: calc(var(--viewport-left) + var(--safe-left));
     width: var(--content-width);
     height: calc(var(--content-height) + var(--safe-bottom));
     max-height: none;
     padding-bottom: var(--safe-bottom);
     border-width: 0;
+  }
+}
+/* A narrow sheet holds a few actions or one control (SheetButton): it keeps
+   the right edge but not the full width, and on a phone rises from the
+   bottom only as tall as its content, like a native action sheet. */
+dialog[data-layout="sheet"][data-size="narrow"] {
+  --dialog-width: calc(400rem / 14);
+}
+dialog[data-layout="sheet"][data-size="medium"] {
+  --dialog-width: calc(700rem / 14);
+}
+dialog[data-layout="sheet"][data-size="wide"] {
+  --dialog-width: calc(900rem / 14);
+}
+@media (max-width: 600px) {
+  dialog[data-layout="sheet"][data-size="narrow"] {
+    top: calc(var(--viewport-top) + var(--viewport-height));
+    transform: translateY(-100%);
+    height: auto;
+    max-height: calc(var(--content-height) + var(--safe-bottom));
+    border-width: 1px 0 0;
   }
 }
 dialog::backdrop {

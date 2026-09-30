@@ -4,30 +4,18 @@ import type { ComponentChildren, JSX } from "preact";
 import { useId, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { Ellipsis } from "lucide-preact";
 
-export function Popover({
+const navigation = ["ArrowDown", "ArrowUp", "Home", "End"];
+
+// A row's actions, in a dropdown under its ⋯ button: a native top-layer
+// popover placed against the button, which follows it while open. Every
+// other overlay is a sheet (see sheet.tsx); a short list of actions belongs
+// beside what it acts on.
+export function Menu({
   label,
-  title = label,
-  trigger,
   children,
-  className = "",
-  buttonClass = "quiet icon-button",
-  panelClass = "model-panel",
-  side = "bottom",
-  align = "end",
-  disabled,
-  menu = false,
 }: {
   label: string;
-  title?: string;
-  trigger: ComponentChildren;
-  children: ComponentChildren | ((close: () => void) => ComponentChildren);
-  className?: string;
-  buttonClass?: string;
-  panelClass?: string;
-  side?: "top" | "bottom";
-  align?: "start" | "end";
-  disabled?: boolean;
-  menu?: boolean;
+  children: ComponentChildren;
 }) {
   const [open, setOpen] = useState(false);
   const anchor = useRef<HTMLButtonElement>(null);
@@ -56,22 +44,17 @@ export function Popover({
         parseFloat(getComputedStyle(element).getPropertyValue("row-gap")) || 0;
       const above = Math.max(0, target.top - y - 2 * gap);
       const below = Math.max(0, y + height - target.bottom - 2 * gap);
-      const upwards =
-        side === "top"
-          ? above >= Math.min(element.scrollHeight, below)
-          : below < Math.min(element.scrollHeight, above);
+      const upwards = below < Math.min(element.scrollHeight, above);
       element.style.maxWidth = `${width - 2 * gap}px`;
       element.style.maxHeight = `${Math.max(1, upwards ? above : below)}px`;
       const box = element.getBoundingClientRect();
-      const left = align === "start" ? target.left : target.right - box.width;
+      const left = target.right - box.width;
       element.style.left = `${Math.max(x + gap, Math.min(left, x + width - box.width - gap))}px`;
       element.style.top = `${Math.max(y + gap, Math.min(upwards ? target.top - box.height - gap : target.bottom + gap, y + height - box.height - gap))}px`;
     };
     place();
     element
-      .querySelector<HTMLElement>(
-        "select:not(:disabled), button:not(:disabled), input:not(:disabled)",
-      )
+      .querySelector<HTMLElement>("button:not(:disabled)")
       ?.focus({ preventScroll: true });
     const stopObserving = observeResize(place, element, button);
     // Follow the anchor wherever layout or scrolling moves it, as
@@ -95,89 +78,84 @@ export function Popover({
     };
   }, [open]);
   return (
-    <div class={`popover-control ${className}`}>
+    <div class="action-menu">
       <button
         type="button"
         ref={anchor}
-        class={buttonClass}
-        title={title}
+        class="quiet icon-button"
+        title={label}
         aria-label={label}
-        aria-haspopup={menu ? "menu" : "dialog"}
+        aria-haspopup="menu"
         aria-controls={open ? id : undefined}
         aria-expanded={open}
-        disabled={disabled}
         onClick={() => (open ? close() : setOpen(true))}
       >
-        {trigger}
+        <Ellipsis />
       </button>
       {open && (
         <div
           ref={panel}
           id={id}
           popover="auto"
-          role={menu ? "menu" : "dialog"}
+          role="menu"
           aria-label={label}
-          class={`popover-panel ${menu ? "menu-panel" : panelClass}`}
+          class="menu-panel"
           onKeyDown={(event) => {
             if (event.key === "Escape") {
               event.preventDefault();
               event.stopPropagation();
               close();
-            }
-            if (
-              !menu ||
-              !["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)
-            )
               return;
+            }
+            if (!navigation.includes(event.key)) return;
             event.preventDefault();
-            const buttons = [
-              ...panel.current!.querySelectorAll<HTMLButtonElement>(
+            const items = [
+              ...event.currentTarget.querySelectorAll<HTMLButtonElement>(
                 "button:not(:disabled)",
               ),
             ];
-            const index = buttons.findIndex(
-              (button) => button === document.activeElement,
+            const index = items.indexOf(
+              document.activeElement as HTMLButtonElement,
             );
-            buttons[
+            const last = items.length - 1;
+            const down = event.key === "ArrowDown";
+            items[
               event.key === "Home"
                 ? 0
                 : event.key === "End"
-                  ? buttons.length - 1
-                  : (index +
-                      (event.key === "ArrowDown" ? 1 : -1) +
-                      buttons.length) %
-                    buttons.length
+                  ? last
+                  : index < 0
+                    ? down
+                      ? 0
+                      : last
+                    : (index + (down ? 1 : last)) % items.length
             ]?.focus();
           }}
           onClick={(event) => {
             if (
-              menu &&
               event.target instanceof Element &&
               event.target.closest("button")
             )
               close();
           }}
         >
-          {typeof children === "function" ? children(close) : children}
+          {children}
         </div>
       )}
     </div>
   );
 }
-export function Menu({
-  label,
-  children,
-}: {
-  label: string;
-  children: ComponentChildren;
-}) {
-  return (
-    <Popover label={label} trigger={<Ellipsis />} className="action-menu" menu>
-      {children}
-    </Popover>
-  );
-}
 
-export function MenuItem(props: JSX.ButtonHTMLAttributes<HTMLButtonElement>) {
-  return <button {...props} role="menuitem" type="button" />;
+export function MenuItem({
+  class: className = "",
+  ...props
+}: JSX.ButtonHTMLAttributes<HTMLButtonElement>) {
+  return (
+    <button
+      {...props}
+      class={`quiet ${className}`}
+      role="menuitem"
+      type="button"
+    />
+  );
 }

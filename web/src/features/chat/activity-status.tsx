@@ -21,7 +21,7 @@ import {
   Terminal,
 } from "lucide-preact";
 import { cleanText, Button, IconButton, DataText } from "../../shared/ui.tsx";
-import { Popover } from "../../shared/popover.tsx";
+import { SheetButton } from "../../shared/sheet.tsx";
 import { command } from "../../state/api.ts";
 import { duration } from "../../shared/duration.ts";
 import type { InspectorTarget } from "./inspector.tsx";
@@ -148,12 +148,10 @@ export function ActivityButton({ open, ...props }: ActivityProps) {
   ];
   const counts = activityLabel(rows);
   return (
-    <Popover
+    <SheetButton
       label="Activity"
-      side="top"
-      align="start"
       buttonClass={`quiet activity-button${counts ? "" : " idle"}`}
-      panelClass="activity-popover"
+      sheetClass="activity-sheet"
       trigger={
         <>
           <Layers />
@@ -198,7 +196,7 @@ export function ActivityButton({ open, ...props }: ActivityProps) {
           </p>
         )
       }
-    </Popover>
+    </SheetButton>
   );
 }
 

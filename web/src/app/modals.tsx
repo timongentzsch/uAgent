@@ -139,7 +139,7 @@ export default function Modals({
                   ? `${modal.unit} statistics`
                   : "Conversation statistics"
           }
-          layout={modal.type === "statistics" ? "panel" : "content"}
+          layout={modal.type === "statistics" ? "sheet" : "content"}
           close={close}
         >
           {modal.type === "statistics" ? (
@@ -237,7 +237,7 @@ export default function Modals({
           }
           className="raw-view"
           size="wide"
-          layout="panel"
+          layout="sheet"
           close={close}
         >
           <Deferred
@@ -262,7 +262,7 @@ export default function Modals({
           title="Instructions"
           className="instructions-view"
           size="wide"
-          layout="panel"
+          layout="sheet"
           close={close}
         >
           <Deferred
@@ -315,7 +315,7 @@ export default function Modals({
           title="Tools"
           className="tools-view"
           size="medium"
-          layout="panel"
+          layout="sheet"
           close={close}
         >
           {toolsSession ? (

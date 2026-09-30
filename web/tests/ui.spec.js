@@ -270,15 +270,15 @@ test("instructions are one stack, edited in place, in a stable dialog", async ({
       `${viewport.width}px`,
     );
     const body = dialog.locator(".dialog-body");
+    // A sheet runs from the safe top to the bottom edge, its content above
+    // the home indicator.
     const bounds = await dialog.boundingBox();
-    expect(bounds.y).toBeGreaterThanOrEqual(safeTop + 8);
-    expect(bounds.y + bounds.height).toBeLessThanOrEqual(
-      viewport.height - safeBottom - 8,
-    );
+    expect(bounds.y).toBeGreaterThanOrEqual(safeTop);
+    expect(bounds.y + bounds.height).toBeLessThanOrEqual(viewport.height);
     await body.evaluate((element) => element.scrollTo(0, 0));
     const header = await dialog.locator("header").first().boundingBox();
-    await body.hover();
-    await page.mouse.wheel(0, 100000);
+    // Scroll the body itself: the wheel over an editor scrolls the editor.
+    await body.evaluate((element) => element.scrollTo(0, element.scrollHeight));
     await expect
       .poll(() =>
         body.evaluate(
@@ -420,42 +420,22 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   await expect(
     picker.getByRole("combobox", { name: "Model", exact: true }),
   ).toBeFocused();
-  // The panel docks after its content lands: place() runs on open for
-  // the shell, then re-places on the content resize, so pin the docked
-  // geometry once it settles instead of sampling mid-growth. The exact
-  // tolerances are unchanged.
+  // It is a sheet at the window's right edge, not a panel beside its button.
   await expect
     .poll(async () => {
-      const anchorBox = await model.boundingBox();
-      const panelBox = await picker.boundingBox();
-      if (!anchorBox || !panelBox) return Number.POSITIVE_INFINITY;
-      const delta = Math.max(
-        Math.abs(anchorBox.x - panelBox.x),
-        Math.abs(anchorBox.y - panelBox.y - panelBox.height - 8),
-      );
-      return delta;
+      const box = await picker.boundingBox();
+      const width = page.viewportSize()?.width ?? 0;
+      return box ? Math.abs(box.x + box.width - width) : Infinity;
     })
     .toBeLessThan(2);
-  // Layout that moves the anchor without resizing it carries the panel along.
-  const docked = async () => {
-    const anchorBox = await model.boundingBox();
-    const panelBox = await picker.boundingBox();
-    return Math.abs(anchorBox.y - panelBox.y - panelBox.height - 8);
-  };
-  await page
-    .locator(".composer")
-    .evaluate((element) => (element.style.marginBottom = "100px"));
-  await expect.poll(docked).toBeLessThan(2);
-  await page
-    .locator(".composer")
-    .evaluate((element) => (element.style.marginBottom = ""));
-  await expect.poll(docked).toBeLessThan(2);
   await page.keyboard.press("Escape");
   await expect(picker).toHaveCount(0);
   await expect(model).toBeFocused();
   await model.click();
   await expect(picker).toBeVisible();
-  await prompt.click();
+  // A tap on the scrim, over the composer, closes the sheet.
+  const promptBox = await prompt.boundingBox();
+  await page.mouse.click(promptBox.x + 10, promptBox.y + 10);
   await expect(picker).toHaveCount(0);
   await expect(prompt).toHaveValue("Keep this draft through popups");
 
@@ -2259,7 +2239,7 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
   );
   // A finished subagent stays reachable from the status line, like /agents.
   await page.getByRole("button", { name: "Activity", exact: true }).click();
-  const idle = page.locator(".activity-popover .activity-open");
+  const idle = page.locator(".activity-sheet .activity-open");
   await expect(idle).toHaveCount(1);
   await expect(idle).toContainText("idle");
   await idle.click();

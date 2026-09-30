@@ -172,9 +172,6 @@ dialog.browser-view[data-layout="sheet"] {
   padding-inline: var(--space-1);
 }
 
-.browser-profile-panel {
-  width: calc(320rem / 14);
-}
 .browser-profile {
   display: grid;
   gap: var(--gap);

@@ -3,7 +3,7 @@ import type ModelPicker from "../settings/model-picker.tsx";
 import { Gauge, ChevronDown } from "lucide-preact";
 import { Deferred, DataText } from "../../shared/ui.tsx";
 import { ModelLoading } from "../../shared/loading.tsx";
-import { Popover } from "../../shared/popover.tsx";
+import { SheetButton } from "../../shared/sheet.tsx";
 
 const modelPicker = () => import("../settings/model-picker.tsx");
 export default function ModelControl(
@@ -11,11 +11,9 @@ export default function ModelControl(
 ) {
   const label = props.selection || props.state?.route || "Select model";
   return (
-    <Popover
+    <SheetButton
       label="Model and effort"
       title={label}
-      side="top"
-      align="start"
       className="model-control"
       buttonClass="quiet model-selector"
       disabled={!props.online || props.running}
@@ -37,6 +35,6 @@ export default function ModelControl(
           fallback={<ModelLoading close={close} />}
         />
       )}
-    </Popover>
+    </SheetButton>
   );
 }

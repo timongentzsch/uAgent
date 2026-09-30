@@ -29,7 +29,7 @@ import { ArrowUp, Paperclip, Shield, Square, X } from "lucide-preact";
 import { command } from "../../state/api.ts";
 import { JumpToLatest } from "../../shared/jump-to-latest.tsx";
 import { dedupeName, encodeMention, matchMention } from "./mention.ts";
-import { Popover } from "../../shared/popover.tsx";
+import { SheetButton } from "../../shared/sheet.tsx";
 import Activities, { ActivityButton } from "../chat/activity-status.tsx";
 import type { InspectorTarget } from "../chat/inspector.tsx";
 import MessageInput from "./message-input.tsx";
@@ -472,12 +472,10 @@ export default function Composer({
               online={online}
               running={running}
             />
-            <Popover
+            <SheetButton
               label="Permissions"
               title={`${permissionLabel}${permission?.mode === "default" ? " · using default permissions" : " · conversation override"}`}
               className="permission-control"
-              panelClass="permission-panel"
-              side="top"
               buttonClass="quiet"
               disabled={!online}
               trigger={
@@ -519,7 +517,7 @@ export default function Composer({
                   </Select>
                 </Field>
               )}
-            </Popover>
+            </SheetButton>
             {running && (
               <IconButton
                 label="Stop"

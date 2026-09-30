@@ -40,7 +40,8 @@ test("the UI showcase covers every shared primitive", async () => {
   const missing = [];
   for (const file of [
     "shared/ui.tsx",
-    "shared/popover.tsx",
+    "shared/sheet.tsx",
+    "shared/menu.tsx",
     "shared/form-controls.tsx",
     "shared/connection-status.tsx",
   ]) {

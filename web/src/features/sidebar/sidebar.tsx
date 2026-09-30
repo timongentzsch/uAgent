@@ -33,7 +33,7 @@ import FolderLabel, {
   folderOf,
 } from "../../shared/folder-label.tsx";
 import SessionName from "../../shared/session-name.tsx";
-import { Menu, MenuItem } from "../../shared/popover.tsx";
+import { Menu, MenuItem } from "../../shared/menu.tsx";
 import { ActivityStatus, active } from "../chat/activity-status.tsx";
 import { ListRow } from "../../shared/list-row.tsx";
 export function ConversationMenu({

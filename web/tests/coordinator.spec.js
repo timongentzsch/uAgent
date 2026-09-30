@@ -49,14 +49,11 @@ for (const [name, viewport] of VIEWPORTS) {
       ),
     ).toBeLessThanOrEqual(0);
     await page.getByLabel("What is the coordinator?").click();
-    const help = page.locator(".coordinator-help");
+    const help = page.getByRole("dialog", { name: "The folder's coordinator" });
     await expect(help.getByText("How it differs")).toBeVisible();
-    // The help sizes to its text: no stretched rows or button.
+    // The help's rows keep their own height in the sheet: no stretched button.
     const button = help.getByRole("button", { name: "Edit instructions" });
     expect((await button.boundingBox()).height).toBeLessThan(60);
-    const panel = await help.boundingBox();
-    const body = await help.locator(".coordinator-help-body").boundingBox();
-    expect(panel.height - body.height).toBeLessThan(60);
     await shot(page, `help-${browserName}-${name}`);
   });
 

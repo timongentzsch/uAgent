@@ -75,7 +75,7 @@ export function BrowserLoading() {
       }
       bar={
         <>
-          <div class="popover-control browser-status-menu">
+          <div class="sheet-control browser-status-menu">
             <Button variant="quiet" class="browser-status" disabled>
               <span>Browser</span>
             </Button>

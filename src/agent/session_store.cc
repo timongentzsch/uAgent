@@ -89,7 +89,6 @@ constexpr Field kStateFields[] = {
     {"adaptive_system", json::value_t::string, false},
     {"adaptive_system_revision", json::value_t::number_unsigned, false},
     {"adaptive_system_mode", json::value_t::string, false},
-    {"tool_displays", json::value_t::object, false},
     {"display", json::value_t::object, false},
     {"delivered_mail", json::value_t::array, false}};
 
@@ -108,8 +107,6 @@ bool ValidState(const SessionState& state,
          (conversation ? conversation->Kinds() : state.message_kinds).size() ==
              messages.size() &&
          (conversation ? conversation->Archive() : state.archive).is_array() &&
-         (conversation ? conversation->ToolDisplays() : state.tool_displays)
-             .is_object() &&
          state.display.is_object() && state.delivered_mail.is_array() &&
          state.adaptive_system.size() <= kAdaptiveSystemBytes &&
          (state.adaptive_system_mode == "overlay" ||
@@ -162,9 +159,7 @@ std::string StateText(const SessionState& state,
   for (const auto& [name, field] :
        {std::pair{"display", &state.display},
         {"messages",
-         conversation ? &conversation->Messages() : &state.messages},
-        {"tool_displays", conversation ? &conversation->ToolDisplays()
-                                       : &state.tool_displays}}) {
+         conversation ? &conversation->Messages() : &state.messages}}) {
     text += "," + JsonDump(name) + ":" + JsonDump(*field);
   }
   // The live archive keeps its segments serialized since archiving.
@@ -179,7 +174,7 @@ std::string StateText(const SessionState& state,
 bool SessionState::RestoreConversation(Conversation& conversation) && {
   return conversation.Restore(std::move(messages), std::move(message_kinds),
                               std::move(archive), archive_dropped_segments,
-                              std::move(tool_displays), display);
+                              display);
 }
 
 SessionStoreStatus SessionStore::Save(const std::string& path,
@@ -311,9 +306,6 @@ SessionLoadResult SessionStore::Inspect(const std::string& path) {
       JsonValue(state, "adaptive_system_mode", "overlay");
   record.state.adaptive_system_revision =
       JsonValue(state, "adaptive_system_revision", uint64_t{0});
-  if (state.contains("tool_displays")) {
-    record.state.tool_displays = std::move(state["tool_displays"]);
-  }
   if (state.contains("display")) {
     record.state.display = std::move(state["display"]);
   }
@@ -470,7 +462,7 @@ json SessionStore::Fork(const std::string& source, const std::string& title,
   if (!conversation.Restore(record.state.messages, record.state.message_kinds,
                             record.state.archive,
                             record.state.archive_dropped_segments,
-                            record.state.tool_displays, record.state.display)) {
+                            record.state.display)) {
     return {{"error", "session conversation state is invalid"}};
   }
   if (!message_id.empty()) {
@@ -494,11 +486,8 @@ json SessionStore::Fork(const std::string& source, const std::string& title,
       return {{"error", "session has fewer than " + std::to_string(fork_turn) +
                             " turns"}};
     }
-    // Orphaned tool displays are tolerated like any other Erase caller:
-    // they are keyed lookups, bounded, and never render without a message.
     record.state.messages = conversation.Messages();
     record.state.message_kinds = conversation.Kinds();
-    record.state.tool_displays = conversation.ToolDisplays();
     record.metadata.turns = fork_turn - 1;
   }
   // The fork's display metadata is the truncated conversation's, so the

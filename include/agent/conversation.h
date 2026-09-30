@@ -46,9 +46,6 @@ class Conversation {
   // since it was archived: a save never re-dumps the archive.
   std::string ArchiveText() const;
   const std::vector<MessageKind>& Kinds() const { return kinds_; }
-  // Rendered tool receipts, keyed by call id. The model never sees these; they
-  // exist so a resumed transcript can redraw a diff instead of a grey line.
-  const json& ToolDisplays() const { return tool_displays_; }
   json DisplayMetadata() const;
   const json& Statistics() const { return statistics_; }
   void AddStatistics(const json& delta);
@@ -78,15 +75,9 @@ class Conversation {
 
   void Reset(json baseline, std::vector<MessageKind> kinds);
   bool Restore(json messages, std::vector<MessageKind> kinds, json archive,
-               int64_t dropped_segments, json tool_displays = json::object(),
-               const json& display = json::object());
+               int64_t dropped_segments, const json& display = json::object());
   void ResetHistory(json baseline, std::vector<MessageKind> kinds);
   void RefreshBaseline(json system);
-
-  // Keeps the receipt only while its call is still in the transcript, so a
-  // compacted turn takes its diffs with it.
-  void RecordToolDisplay(const std::string& call_id, std::string display);
-  const std::string* ToolDisplay(const std::string& call_id) const;
 
   void Push(json message, MessageKind kind);
   // Same as Push, but the message keeps a pre-existing display id (the
@@ -130,8 +121,6 @@ class Conversation {
  private:
   bool AddArchiveSegment(json segment, int64_t archive_cap);
 
-  void PruneToolDisplays();
-
   // Parallel by index and the same length, always. Every mutator below writes
   // both, Restore rejects a mismatched pair off disk, and the read paths index
   // kinds_ with a bound taken from messages_ -- so a new mutator that touches
@@ -141,7 +130,6 @@ class Conversation {
   // json array per model request.
   json messages_ = json::array();
   std::vector<MessageKind> kinds_;
-  json tool_displays_ = json::object();
   std::vector<uint64_t> display_ids_;
   json display_facts_ = json::object();
   // Serialized sizes of display_facts_ entries, kept in lockstep so fact

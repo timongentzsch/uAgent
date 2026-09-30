@@ -16,7 +16,6 @@
 #include "include/core/checked.h"
 #include "include/core/debug.h"
 #include "include/core/json.h"
-#include "include/core/limits.h"
 #include "include/core/strings.h"
 #include "include/core/usage.h"
 #include "include/media/attachments.h"
@@ -155,7 +154,6 @@ bool ParseMessageKind(const std::string& name, MessageKind& kind) {
 
 void Conversation::Reset(json baseline, std::vector<MessageKind> kinds) {
   next_display_id_ = 1;
-  tool_displays_ = json::object();
   display_facts_ = json::object();
   fact_bytes_.clear();
   announced_deliveries_ = json::object();
@@ -171,10 +169,9 @@ void Conversation::Reset(json baseline, std::vector<MessageKind> kinds) {
 
 bool Conversation::Restore(json messages, std::vector<MessageKind> kinds,
                            json archive, int64_t dropped_segments,
-                           json tool_displays, const json& display) {
+                           const json& display) {
   if (!messages.is_array() || messages.empty() ||
-      messages.size() != kinds.size() || !archive.is_array() ||
-      !tool_displays.is_object()) {
+      messages.size() != kinds.size() || !archive.is_array()) {
     return false;
   }
   std::vector<uint64_t> restored_ids;
@@ -210,7 +207,6 @@ bool Conversation::Restore(json messages, std::vector<MessageKind> kinds,
   }
   // Validate before adopting: a failed resume must leave the live session
   // intact.
-  tool_displays_ = std::move(tool_displays);
   NormalizeRoles(messages, kinds);
   messages_ = std::move(messages);
   kinds_ = std::move(kinds);
@@ -263,42 +259,6 @@ void Conversation::ResetHistory(json baseline, std::vector<MessageKind> kinds) {
   for (size_t index = 0; index < messages_.size(); ++index) {
     display_ids_.push_back(next_display_id_++);
   }
-}
-
-// A receipt is worth keeping only while the call it describes is still in the
-// transcript. Pruning against the live messages covers every way one can
-// leave -- compaction, archiving, an explicit erase -- without hooking each.
-void Conversation::PruneToolDisplays() {
-  json kept = json::object();
-  for (auto message_it = messages_.rbegin();
-       message_it != messages_.rend() && kept.size() < kMaxToolDisplays - 1;
-       ++message_it) {
-    const json& message = *message_it;
-    if (!message.is_object()) continue;
-    auto id = message.find("tool_call_id");
-    if (id == message.end() || !id->is_string()) continue;
-    const std::string& key = id->get_ref<const std::string&>();
-    auto stored = tool_displays_.find(key);
-    if (stored != tool_displays_.end()) kept[key] = *stored;
-  }
-  tool_displays_ = std::move(kept);
-}
-
-void Conversation::RecordToolDisplay(const std::string& call_id,
-                                     std::string display) {
-  if (call_id.empty() || display.empty()) return;
-  // Make space before insertion: the current call's result is appended later.
-  if (tool_displays_.size() >= kMaxToolDisplays &&
-      !tool_displays_.contains(call_id)) {
-    PruneToolDisplays();
-  }
-  tool_displays_[call_id] = std::move(display);
-}
-
-const std::string* Conversation::ToolDisplay(const std::string& call_id) const {
-  auto stored = tool_displays_.find(call_id);
-  if (stored == tool_displays_.end() || !stored->is_string()) return nullptr;
-  return &stored->get_ref<const std::string&>();
 }
 
 json Conversation::DisplayMetadata() const {

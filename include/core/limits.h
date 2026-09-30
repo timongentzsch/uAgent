@@ -47,7 +47,6 @@ inline constexpr int kMaxSkillFileDepth = 4;
 inline constexpr size_t kLibraryNameChars = 100;
 inline constexpr size_t kMaxSessionAssets = 64;
 inline constexpr size_t kMaxAgentRecords = 100;
-inline constexpr size_t kMaxToolDisplays = 128;
 inline constexpr size_t kMaxToolsPerMessage = 32;
 inline constexpr size_t kMaxActiveExchanges = 32;
 inline constexpr size_t kMaxPendingSessionCommands = 32;

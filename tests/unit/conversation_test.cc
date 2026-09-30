@@ -286,30 +286,9 @@ void TestConversation() {
   CHECK(resumed.At(0).value("content", "") == "new system");
   CHECK(resumed.At(1).value("content", "") == "continue");
 
-  // A rendered receipt is kept beside the transcript, never inside it: the
-  // model's copy of a tool result must not grow by what the terminal drew.
-  Conversation receipts;
-  receipts.Push({{"role", "user"}, {"content", "edit"}}, MessageKind::kUser);
-  receipts.Push({{"role", "tool"}, {"tool_call_id", "a"}, {"content", "ok"}},
-                MessageKind::kToolResult);
-  receipts.RecordToolDisplay("a", "-old\n+new");
-  receipts.RecordToolDisplay("b", "orphan");
-  receipts.RecordToolDisplay("c", "");  // nothing drawn, nothing kept
-  CHECK(receipts.ToolDisplay("a") != nullptr);
-  CHECK(*receipts.ToolDisplay("a") == "-old\n+new");
-  CHECK(receipts.ToolDisplay("c") == nullptr);
-  CHECK(receipts.At(1).value("content", "") == "ok");
-  CHECK(!receipts.At(1).contains("display"));
-  // Restoring a session carries them back; one written before receipts were
-  // kept simply replays without any.
-  Conversation reloaded;
-  CHECK(reloaded.Restore(receipts.Messages(), receipts.Kinds(), json::array(),
-                         0, receipts.ToolDisplays()));
-  CHECK(reloaded.ToolDisplay("a") != nullptr);
+  // A session written before display metadata existed restores without any.
   Conversation legacy;
-  CHECK(
-      legacy.Restore(receipts.Messages(), receipts.Kinds(), json::array(), 0));
-  CHECK(legacy.ToolDisplay("a") == nullptr);
+  CHECK(legacy.Restore(resumed.Messages(), resumed.Kinds(), json::array(), 0));
 
   Conversation browser;
   browser.Push({{"role", "system"}, {"content", "private system"}},
@@ -341,15 +320,13 @@ void TestConversation() {
             .find("actual supplied reasoning") == std::string::npos);
   Conversation persisted;
   CHECK(persisted.Restore(browser.Messages(), browser.Kinds(),
-                          browser.Archive(), 0, browser.ToolDisplays(),
-                          browser.DisplayMetadata()));
+                          browser.Archive(), 0, browser.DisplayMetadata()));
   CHECK(ConversationView(persisted) == projection);
   CHECK(persisted.Statistics() == browser.Statistics());
   json invalid_display = browser.DisplayMetadata();
   invalid_display["ids"] = {1, 1, 1};
   CHECK(!persisted.Restore(browser.Messages(), browser.Kinds(),
-                           browser.Archive(), 0, browser.ToolDisplays(),
-                           invalid_display));
+                           browser.Archive(), 0, invalid_display));
   CHECK(ConversationView(persisted) == projection);
   CHECK(LastMessageView(browser) == projection["blocks"].back());
   const size_t model_messages = browser.Size();
@@ -359,8 +336,7 @@ void TestConversation() {
   CHECK(completed["incoming"] == 1);
   CHECK(ConversationView(browser)["blocks"].back()["kind"] == "activity");
   CHECK(persisted.Restore(browser.Messages(), browser.Kinds(),
-                          browser.Archive(), 0, browser.ToolDisplays(),
-                          browser.DisplayMetadata()));
+                          browser.Archive(), 0, browser.DisplayMetadata()));
   CHECK(ConversationView(persisted) == ConversationView(browser));
   const json summary = {{"turn", 1},
                         {"tool_calls", 2},
@@ -370,8 +346,7 @@ void TestConversation() {
   CHECK(browser.Size() == model_messages);
   CHECK(ConversationView(browser)["blocks"].back()["summary"] == summary);
   CHECK(persisted.Restore(browser.Messages(), browser.Kinds(),
-                          browser.Archive(), 0, browser.ToolDisplays(),
-                          browser.DisplayMetadata()));
+                          browser.Archive(), 0, browser.DisplayMetadata()));
   CHECK(ConversationView(persisted) == ConversationView(browser));
   json before_compaction = browser.Statistics();
   browser.ArchiveAll("compact", 1, 1, int64_t{1024} * 1024);
@@ -408,7 +383,7 @@ void TestArrivalsSurviveFactEviction() {
   CHECK(conversation.Arrival(id) == arrived);
   Conversation restored;
   CHECK(restored.Restore(conversation.Messages(), conversation.Kinds(),
-                         conversation.Archive(), 0, conversation.ToolDisplays(),
+                         conversation.Archive(), 0,
                          conversation.DisplayMetadata()));
   CHECK(restored.Arrival(id) == arrived);
 }
@@ -430,7 +405,6 @@ void TestSavedTranscriptIndex() {
   conversation.Set(conversation.Size() - 1,
                    {{"role", "user"}, {"content", "pruned live copy"}},
                    MessageKind::kUser);
-  conversation.RecordToolDisplay("call-1", "diff\n-old\n+new");
   const json exchange = {{"request", {{"name", "read_path"}}},
                          {"response", "retained output"}};
   conversation.RecordDisplay(
@@ -477,7 +451,6 @@ void TestSavedTranscriptIndex() {
   record.state.messages = conversation.Messages();
   record.state.message_kinds = conversation.Kinds();
   record.state.archive = conversation.Archive();
-  record.state.tool_displays = conversation.ToolDisplays();
   record.state.display = conversation.DisplayMetadata();
   record.state.adaptive_system = "preserve quotes \" and newlines\n";
   record.state.adaptive_system_revision = 7;
@@ -487,7 +460,6 @@ void TestSavedTranscriptIndex() {
   record.state.messages.clear();
   record.state.message_kinds.clear();
   record.state.archive.clear();
-  record.state.tool_displays.clear();
   REQUIRE(SessionStore::Save(borrowed, record, &conversation).Ok());
   std::string owned_text, borrowed_text, error;
   REQUIRE(ReadRegularFile(owned, kSessionReadBytes, owned_text, error));
@@ -838,7 +810,6 @@ void TestAttachmentDeliveryAnnouncements() {
   Conversation reloaded;
   CHECK(reloaded.Restore(conversation.Messages(), conversation.Kinds(),
                          conversation.Archive(), conversation.DroppedSegments(),
-                         conversation.ToolDisplays(),
                          conversation.DisplayMetadata()));
   CHECK(reloaded.AnnouncedDeliveries(id) == degraded);
   // Sessions written before receipts existed restore without any: the next
@@ -1103,10 +1074,9 @@ void TestForkAtMessageAndShare() {
   CHECK(SessionStore::Save(source, record).Ok());
 
   Conversation conversation;
-  CHECK(conversation.Restore(record.state.messages, record.state.message_kinds,
-                             record.state.archive,
-                             record.state.archive_dropped_segments,
-                             record.state.tool_displays, record.state.display));
+  CHECK(conversation.Restore(
+      record.state.messages, record.state.message_kinds, record.state.archive,
+      record.state.archive_dropped_segments, record.state.display));
   CHECK(conversation.UserTurns() == 3);
   CHECK(conversation.UserMessageText(2) == "see this");
   const uint64_t three = conversation.DisplayIds()[7];

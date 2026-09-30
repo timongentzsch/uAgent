@@ -159,6 +159,10 @@ void RawComposer::Mount(std::string prompt, std::string initial,
   buffer_ = Utf8Prefix(std::move(initial), kInputBufferBytes);
   cursor_ = buffer_.size();
   keep_history_ = keep_history;
+  ResetDraftState();
+}
+
+void RawComposer::ResetDraftState() {
   history_index_ = history_.size();
   history_draft_.clear();
   input_limit_bell_ = false;
@@ -193,9 +197,7 @@ bool RawComposer::EditExternally() {
 void RawComposer::Clear() {
   buffer_.clear();
   cursor_ = 0;
-  history_index_ = history_.size();
-  history_draft_.clear();
-  input_limit_bell_ = false;
+  ResetDraftState();
 }
 
 InteractiveInputEvent RawComposer::Read() {
@@ -244,9 +246,7 @@ InteractiveInputEvent RawComposer::Read() {
         history_.push_back(line);
         if (history_.size() > kInputHistoryEntries) history_.pop_front();
       }
-      history_index_ = history_.size();
-      history_draft_.clear();
-      input_limit_bell_ = false;
+      ResetDraftState();
       return {InteractiveInputKind::kLine, std::move(line)};
     }
     if (ch == 0x02) {

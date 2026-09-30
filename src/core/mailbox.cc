@@ -52,21 +52,18 @@ bool ReadMail(const fs::path& path, Mail& mail) {
   return text && MailFromJson(json::parse(*text, nullptr, false), mail);
 }
 
-// Pending messages with their files, unreadable ones set aside.
-std::vector<std::pair<fs::path, Mail>> ReadPending(const std::string& id) {
+// Pending messages in mailbox `dir` with their files, unreadable ones set
+// aside.
+std::vector<std::pair<fs::path, Mail>> ReadPending(const fs::path& dir) {
   std::vector<std::pair<fs::path, Mail>> pending;
-  const fs::path dir = fs::path(MailboxDir(id)) / "new";
-  for (const fs::path& path : Messages(dir)) {
+  for (const fs::path& path : Messages(dir / "new")) {
     Mail mail;
     if (ReadMail(path, mail)) {
       pending.emplace_back(path, std::move(mail));
       continue;
     }
     std::error_code error;
-    fs::rename(
-        path,
-        fs::path(MailboxDir(id)) / "cur" / (path.filename().string() + ".bad"),
-        error);
+    fs::rename(path, dir / "cur" / (path.filename().string() + ".bad"), error);
   }
   return pending;
 }
@@ -162,9 +159,8 @@ std::string SendMail(Mail mail) {
            " KiB";
   }
   const std::string dir = MailboxDir(mail.to);
-  if (dir.empty()) return "unknown recipient " + mail.to;
   size_t count = 0;
-  for (auto& [path, pending] : ReadPending(mail.to)) {
+  for (auto& [path, pending] : ReadPending(dir)) {
     if (pending.from == mail.from && pending.type == mail.type &&
         pending.body == mail.body) {
       return "";  // the same message is still waiting
@@ -204,17 +200,17 @@ std::string SendMail(Mail mail) {
 std::vector<Mail> TakeMail(const std::string& id,
                            const std::function<bool(const Mail&)>& accept) {
   std::vector<Mail> taken;
-  if (!ValidId(id)) return taken;
-  const fs::path cur = fs::path(MailboxDir(id)) / "cur";
+  const fs::path dir = MailboxDir(id);
+  if (dir.empty()) return taken;
   const int64_t now = NowMillis();
-  for (auto& [path, mail] : ReadPending(id)) {
+  for (auto& [path, mail] : ReadPending(dir)) {
     std::error_code error;
     if (mail.expires_ms && mail.expires_ms < now) {
       fs::remove(path, error);
       continue;
     }
     if (!accept(mail)) continue;
-    fs::rename(path, cur / path.filename(), error);
+    fs::rename(path, dir / "cur" / path.filename(), error);
     if (!error) taken.push_back(std::move(mail));
   }
   return taken;
@@ -222,14 +218,18 @@ std::vector<Mail> TakeMail(const std::string& id,
 
 std::vector<Mail> PendingMail(const std::string& id) {
   std::vector<Mail> pending;
-  if (!ValidId(id)) return pending;
-  for (auto& [path, mail] : ReadPending(id)) pending.push_back(std::move(mail));
+  const fs::path dir = MailboxDir(id);
+  if (dir.empty()) return pending;
+  for (auto& [path, mail] : ReadPending(dir)) {
+    pending.push_back(std::move(mail));
+  }
   return pending;
 }
 
 void AckMail(const std::string& id, const std::vector<std::string>& ids) {
-  if (!ValidId(id) || ids.empty()) return;
-  for (const fs::path& path : Messages(fs::path(MailboxDir(id)) / "cur")) {
+  const fs::path dir = ids.empty() ? "" : MailboxDir(id);
+  if (dir.empty()) return;
+  for (const fs::path& path : Messages(dir / "cur")) {
     const std::string name = path.stem().string();
     for (const std::string& acked : ids) {
       if (name.ends_with("-" + acked)) {
@@ -242,8 +242,8 @@ void AckMail(const std::string& id, const std::vector<std::string>& ids) {
 }
 
 void RecoverMail(const std::string& id) {
-  if (!ValidId(id)) return;
   const fs::path dir = MailboxDir(id);
+  if (dir.empty()) return;
   for (const fs::path& path : Messages(dir / "cur")) {
     std::error_code error;
     fs::rename(path, dir / "new" / path.filename(), error);

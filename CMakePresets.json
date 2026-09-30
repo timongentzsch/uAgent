@@ -126,8 +126,8 @@
       "configurePreset": "sanitize",
       "description": "LeakSanitizer is left at its default: on for ASan on Linux, absent on macOS, where forcing detect_leaks aborts every test binary before it runs.",
       "environment": {
-        "ASAN_OPTIONS": "strict_string_checks=1",
-        "UBSAN_OPTIONS": "print_stacktrace=1:halt_on_error=1"
+        "ASAN_OPTIONS": "strict_string_checks=1:log_path=${sourceDir}/build/sanitize/report",
+        "UBSAN_OPTIONS": "print_stacktrace=1:halt_on_error=1:log_path=${sourceDir}/build/sanitize/report"
       },
       "inherits": "base"
     },
@@ -135,7 +135,7 @@
       "name": "tsan",
       "configurePreset": "tsan",
       "environment": {
-        "TSAN_OPTIONS": "halt_on_error=1:second_deadlock_stack=1"
+        "TSAN_OPTIONS": "halt_on_error=1:second_deadlock_stack=1:log_path=${sourceDir}/build/tsan/report"
       },
       "inherits": "base"
     },

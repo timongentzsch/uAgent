@@ -211,7 +211,7 @@ namespace {
 
 std::filesystem::file_time_type DetachedRecordCutoff() {
   return std::filesystem::file_time_type::clock::now() -
-         std::chrono::hours(24 * TerminalRecordDays());
+         std::chrono::hours(24 * kTerminalDays);
 }
 
 // Reads one terminal record, annotating liveness. A PID is not an identity:
@@ -293,9 +293,9 @@ std::optional<json> FindDetachedRecord(int64_t pid) {
 }
 
 ToolResult ActivityNotFound(int64_t pid) {
-  return ToolFailure(ToolErrorCode::kNotFound,
-                     "error: activity " + std::to_string(pid) +
-                         " is not supervised by uagent");
+  return ToolFailure(
+      ToolErrorCode::kNotFound,
+      "activity " + std::to_string(pid) + " is not supervised by uagent");
 }
 
 ToolResult SaveDetachedRecord(pid_t pid, const std::string& log,
@@ -305,7 +305,7 @@ ToolResult SaveDetachedRecord(pid_t pid, const std::string& log,
   std::string identity = ProcessIdentity(pid);
   if (identity.empty()) {
     return ToolFailure(ToolErrorCode::kProcessFailed,
-                       "error: cannot establish detached process identity");
+                       "cannot establish detached process identity");
   }
   json record = {{"pid", pid},           {"process_identity", identity},
                  {"log", log},           {"command", cmd},

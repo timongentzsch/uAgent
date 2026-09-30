@@ -11,6 +11,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "include/agent.h"
 #include "include/agent/jobs.h"
 #include "include/core/tool_activity.h"
 #include "include/tools/adapt_system.h"
@@ -54,7 +55,17 @@ void TestToolExecutionPolicy() {
   }
 
   AdaptiveSystemState adaptive;
-  Tool adapt = AdaptSystemTool(adaptive);
+  Api adapt_api{RuntimeConfig{}};
+  std::vector<Tool> adapt_tools;
+  ProcessSupervisor adapt_processes;
+  UsageAccumulator adapt_usage;
+  Agent adapt_agent(
+      adapt_api, adapt_tools, adapt_processes, adapt_usage,
+      [](const Tool&, const json&, int64_t) { return false; }, {}, {}, {},
+      &adaptive);
+  Tool adapt = AdaptSystemTool(adaptive, [&adapt_agent](const json& request) {
+    return adapt_agent.SelfDirective(request);
+  });
   CHECK(adapt.capabilities == Capability(ToolCapability::kMutate));
   CHECK(adapt.description.find("exception, not a planning ritual") !=
         std::string::npos);
@@ -266,6 +277,26 @@ void TestToolExecutionPolicy() {
   CHECK(allowed_run &&
         allowed_run->validate({{"command", "python3 other.py"}}));
 
+  // An allowlist (a coordinator's) keeps only its named tools, even when
+  // every capability is allowed and an exact run is authorized.
+  Tool read_tool = inspect;
+  read_tool.name = "read_path";
+  Tool memory_tool = mutate;
+  memory_tool.name = "memory";
+  Tool config_tool = inspect;
+  config_tool.name = "uagent";
+  config_tool.capabilities = 0;
+  std::vector<Tool> pinned{read_tool, memory_tool, config_tool, mutate,
+                           exact_run};
+  ApplyToolPolicy(pinned, {.tool_allowlist = {"read_path", "memory", "uagent"},
+                           .run_allowlist = {"python3 slow_analysis.py"},
+                           .error = ""});
+  // uagent stays: its writes (settings, instructions) always need the user.
+  CHECK(pinned.size() == 3);
+  CHECK(FindTool(pinned, "read_path") != nullptr);
+  CHECK(FindTool(pinned, "memory") != nullptr);
+  CHECK(FindTool(pinned, "uagent") != nullptr);
+
   Tool terminal_only = unbounded;
   terminal_only.name = "terminal_only";
   terminal_only.visibility = Tool::Visibility::kDetachedTerminal;
@@ -278,6 +309,10 @@ void TestToolExecutionPolicy() {
       schema_cache.Get(policies, schemas, {}, {.detached_terminal = true});
   CHECK(available.size() == 2);
   CHECK(available[1]["function"]["name"] == "terminal_only");
+  // Once listed it stays, even after the last process ends: the tool array
+  // is part of the cached prompt.
+  available = schema_cache.Get(policies, schemas, {});
+  CHECK(available.size() == 2);
 
   namespace fs = std::filesystem;
   fs::path log_root = fs::temp_directory_path() /

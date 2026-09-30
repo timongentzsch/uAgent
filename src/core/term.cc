@@ -28,6 +28,11 @@ bool ResolveColorEnabled(bool tty) {
   return tty;
 }
 
+// A dumb terminal shows no SGR at all; any other one shows attributes.
+bool ResolveAttributesEnabled(bool tty) {
+  return tty && EnvStr("TERM") != "dumb";
+}
+
 // Only an explicitly non-UTF-8 locale downgrades the glyphs. An unset locale
 // is ordinary on capable terminals, so it is not evidence of the opposite.
 bool ResolveUnicodeEnabled() {

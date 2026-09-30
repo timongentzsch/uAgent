@@ -9,6 +9,7 @@
 #include <condition_variable>
 #include <cstdint>
 #include <cstdio>
+#include <ctime>
 #include <deque>
 #include <mutex>
 #include <string>
@@ -23,6 +24,8 @@ double ElapsedMs(std::chrono::steady_clock::time_point start);
 std::string UtcStamp(const char* format = "%Y-%m-%dT%H:%M:%SZ");
 std::string LocalStamp();
 std::string LocalDay();
+// `at` in the host's time zone, formatted by strftime.
+std::string LocalTime(std::time_t at, const char* format);
 
 // Subagents are separate processes, so they append what they spent here for
 // this session to fold into its own totals. Named by the parent's pid; pruned

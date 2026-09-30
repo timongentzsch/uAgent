@@ -3,6 +3,7 @@ import os
 import pathlib
 import shlex
 import signal
+import subprocess
 import time
 
 from integration_support import (
@@ -101,7 +102,6 @@ def test_full_run_and_python_terminal_trace(root, home, *, binary):
         ]
     ) as server:
         env = base_env(home, server.url)
-        env["UAGENT_TOOL_BATCH_RESULT_CHARS"] = "8"
         result = run_dialog(root, env, "/verbose\ntrace\n/q\n", "--yolo", timeout=20, binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         for expected in (
@@ -299,7 +299,7 @@ def test_skill_tool_offers_and_opens(root, home, *, binary):
             base_env(home, server.url),
             # Verbose output shows the opened skill body in the tool result.
             [
-                (b"/verbose\n", b"verbose ON"),
+                (b"/verbose\n", b"verbose on"),
                 (b"reply\n", b"skill-ok", b"Ready", None),
                 b"\x04",
             ],
@@ -488,11 +488,9 @@ def test_detached_terminal_survives_and_is_readable(root, home, *, binary):
                 event({"content": "launched"}),
             ]
         ) as launch_server:
-            launch_env = base_env(home, launch_server.url)
-            launch_env["UAGENT_BASH_LOG_BYTES"] = "4096"
             launched = run_dialog(
                 workspace,
-                launch_env,
+                base_env(home, launch_server.url),
                 "launch the server\n/ps\n/q\n",
                 "--yolo",
                 timeout=8,
@@ -588,13 +586,7 @@ def test_detached_terminal_survives_and_is_readable(root, home, *, binary):
             assert_true(record.exists(), record)
             record_data = json.loads(record.read_text(encoding="utf-8"))
             log = pathlib.Path(record_data["log"])
-            log_bytes = sum(
-                path.stat().st_size
-                for path in (log, pathlib.Path(str(log) + ".1"))
-                if path.exists()
-            )
-            assert_true(log_bytes <= 4096, log_bytes)
-            assert_true(pathlib.Path(str(log) + ".1").exists(), log)
+            assert_true("server-ready" in log.read_text(encoding="utf-8"), log)
 
         def verify_stop(_, body):
             result = tool_results(body["messages"])[-1]
@@ -628,6 +620,20 @@ def test_detached_terminal_survives_and_is_readable(root, home, *, binary):
             pid = None
     finally:
         signal_process_group(pid)
+
+
+def test_log_pump_rotates_within_its_bound(root, _home, *, binary):
+    """Detached terminals and MCP stderr share this pump; two half-size
+    segments keep the log bounded without signalling the writer."""
+    log = root / "pump.log"
+    result = subprocess.run(
+        [binary, "--log-pump", str(log), "4096"], input=b"x" * 20000, timeout=10
+    )
+    assert_true(result.returncode == 0, result.returncode)
+    rotated = pathlib.Path(str(log) + ".1")
+    assert_true(rotated.exists(), rotated)
+    log_bytes = log.stat().st_size + rotated.stat().st_size
+    assert_true(0 < log_bytes <= 4096, log_bytes)
 
 
 def test_detached_terminal_tracks_group_after_wrapper_exit(root, home, *, binary):

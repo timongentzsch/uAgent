@@ -1,97 +1,61 @@
-# System prompts
+# Instructions and the system prompt
 
-One native resolver builds the system prompt for model requests and serves
-`/prompt`, the `uagent` tool's `inspect` topic `prompt`, the `adapt_system`
-tool and the web editor (**Settings → System prompt**, or **System prompt** in
-raw context inspection).
+A session's system message is the built-in base followed by the instructions
+people write. Host facts (date, working directory, approval mode) ride in a
+runtime note after it, which is appended anew when one changes, so the cached
+prefix holds. Instructions only ever add; nothing a person or an agent writes
+replaces the base, except the agent's own opt-in self-directive below.
 
-## Layers
+## Instruction files
 
-Layers apply in order: built-in, global, project, conversation. Each layer is
-in one of three modes:
+| | Every session | A folder's coordinator |
+| --- | --- | --- |
+| Yours, in every folder | `~/.uagent/AGENTS.md` | `~/.uagent/COORDINATOR.md` |
+| The project's | `AGENTS.md` at the repository root | `<folder>/.uagent/COORDINATOR.md` |
 
-| Mode | Effect |
-| --- | --- |
-| Inherit | Leaves earlier layers unchanged |
-| Overlay | Appends one instruction block |
-| Replace | Discards inherited behavioral text |
+A session reads `AGENTS.md` files from yours down through the repository root
+to its working directory (one per directory: `AGENTS.override.md`, else
+`AGENTS.md`, else `CLAUDE.md`); where a level has one of the others, that is
+the file every editor below opens. A coordinator then reads its `COORDINATOR.md`
+files, yours first. Together they are bounded to 32 KiB and read once when a
+session starts, so they stay in the cached prefix: an edit reaches new and
+restarted sessions.
 
-Editing inherited text starts a replacement prefilled with that text. An empty
-replacement is valid; reset restores inheritance.
+A project's `AGENTS.md` and `.uagent/COORDINATOR.md` are ordinary repository
+files. Writing yours (`COORDINATOR.md` or any of the three names in
+`~/.uagent`) always needs a person, including under YOLO; reading them does
+not. Editors never write
+through a symbolic link.
 
-| Scope | Location |
-| --- | --- |
-| Global | `~/.uagent/system-prompt.json` |
-| Project | `<working-directory>/.uagent/system-prompt.json` |
-| Conversation | Saved with the conversation; copied by forks |
+## Editing
 
-A document contains `{"mode":"overlay|replace","text":"..."}`. Each document
-and the assembled system message are limited to 64 KiB. An invalid file is
-reported and preserved, and the agent sends no model request until it is
-repaired or reset.
+- Web: **Settings → Agent → Instructions** shows the stack in the order the
+  model reads it; each file is edited in place.
+- Terminal: `/instructions` shows it; `/instructions edit sessions|coordinator
+  user|project` opens `$VISUAL` or `$EDITOR`.
+- Agents: `uagent` action `inspect` topic `instructions`, and
+  `set_instructions` with `audience`, `scope` and the whole `text`; the user
+  approves the exact diff.
+- Scripts: `uagent --control` with `kind=instructions`, `action=show|set`,
+  optional `cwd`, and for `set` the `audience`, `scope` and `text`.
 
-Replacement removes the built-in behavioral and capability guidance. Runtime
-capability facts and repository instructions are separate, labelled sources
-that remain in the assembled message; memory is outside it. Tool schemas,
-approvals, sandboxing and host limits are enforced by the runtime and cannot be
-changed by prompt text.
+`uagent --show-system-prompt [--json]` prints what the model would read, without
+a model call; `/context` shows a live conversation's full request.
 
-## CLI
+## Self-directive
 
-```sh
-uagent --show-system-prompt
-uagent --show-system-prompt --json
-```
+With `UAGENT_ADAPT_SYSTEM=1` the agent gets `adapt_system`: text it adds to
+(overlay) or, with the user's approval, substitutes for (replace) the base, for
+the current conversation only. Writes carry the revision from `show` and a
+non-empty `reason`; an approval is bound to the exact previewed text, expires
+after five minutes and cannot be reused. `/instructions clear` and the web's
+Clear remove it. It is saved with the conversation and copied by forks.
 
-Inspection builds the configured tool registry without a model call. In an
-active conversation, `/prompt show` also includes its overrides and actual tool
-and repository context. Web previews without an active conversation are
-labelled as base-prompt previews.
+## Limits and experiments
 
-```text
-/prompt show
-/prompt edit --scope project
-/prompt set --scope global --mode overlay --file instructions.md
-/prompt set --scope project --mode replace --file "my prompt.md"
-/prompt reset --scope conversation
-```
-
-`--scope` defaults to `conversation` and `set` defaults to `--mode overlay`.
-`edit` opens `$VISUAL` or `$EDITOR` in the terminal and the shared editor in
-the browser; a cancelled edit saves nothing.
-
-Scripts use `uagent --control` with `kind=prompt`, `scope=global|project`,
-`action=show|preview|set|edit|reset` and optional `cwd` to select a project.
-Writes require the `revision` returned by `show`; `set` takes `text` and
-`mode`, and `edit` takes one unique exact `old`/`new` replacement.
-Conversation-scope changes go through the owning session.
-
-## Agent control
-
-With `UAGENT_ADAPT_SYSTEM=1`, the agent gets the `adapt_system` tool with
-`action=show|set|edit|reset` and the same scopes. It must call `show` first and
-pass the returned `revision` plus a non-empty `reason` with every write.
-Global and project writes, replacements, and a first conversation `edit`
-require mandatory human approval, including under YOLO. An approval is bound to
-the exact proposed text and source revisions, expires after five minutes and
-cannot be reused. Manual CLI and web saves are direct user actions and create
-no approval request.
-
-## Updates and inspection
-
-Writes use atomic replacement and revision checks under the shared management
-write lock; a stale save is rejected. Browser drafts persist in tab storage
-across scope switches, refreshes and reopening the editor.
-
-Changes apply to the next model request, including the next step of a running
-turn, never to a request already in flight. Workers detect file changes by file
-stamp at request boundaries, and the web views refresh through the event
-stream. Revisions and timestamps never enter model-visible text, so unchanged
-inputs produce identical system text. Inspection distinguishes the effective
-next prompt from the last prompt sent by the current process; retained HTTP
-captures cover earlier processes.
-
-`UAGENT_PROMPT_OVERLAY` names an experimental JSON file whose named-section
-`replace` entries and `append` text are applied to the built-in base before
-scope resolution. Its digest is recorded in request traces; the scope editor
-never rewrites it.
+The assembled message is limited to 64 KiB. Tool schemas, approvals,
+sandboxing and host limits are enforced by the runtime and cannot be changed by
+prompt text. `UAGENT_PROMPT_OVERLAY` names an experimental JSON file whose
+named-section `replace` entries and `append` text are applied to the built-in
+base, so a variant can be measured without a rebuild; its digest is recorded in
+request traces.

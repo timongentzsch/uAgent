@@ -12,23 +12,24 @@ test("transcript renders while dialog chunks are held", async ({
   const manifest = JSON.parse(
     await readFile(new URL("../dist/.vite/manifest.json", import.meta.url)),
   );
-  const chunks = {
-    "model-picker": "src/features/settings/model-picker.tsx",
-    settings: "src/features/settings/settings.tsx",
-    statistics: "src/features/settings/statistics.tsx",
-    raw: "src/features/settings/raw.tsx",
-    "conversation-actions": "src/features/chat/conversation-actions.tsx",
-    prompt: "src/features/settings/prompt.tsx",
-    library: "src/features/library/library.tsx",
-    scheduled: "src/features/scheduled/scheduled.tsx",
-    decision: "src/features/chat/decision.tsx",
-  };
+  // Every lazily loaded feature chunk (dialogs and pages), from the build
+  // manifest, so a new one is held too. Keyed by module name.
+  const chunks = Object.entries(manifest).filter(
+    ([source, chunk]) =>
+      chunk.isDynamicEntry && source.startsWith("src/features/"),
+  );
+  expect(chunks.length).toBeGreaterThan(5);
   const gates = {};
-  for (const [chunk, source] of Object.entries(chunks)) {
+  for (const [source, chunk] of chunks) {
     let release;
     const gate = new Promise((resolve) => (release = resolve));
-    gates[chunk] = release;
-    await page.route(`**/${manifest[source].file}`, async (route) => {
+    gates[
+      source
+        .split("/")
+        .pop()
+        .replace(/\.tsx?$/, "")
+    ] = release;
+    await page.route(`**/${chunk.file}`, async (route) => {
       await gate;
       await route.continue();
     });

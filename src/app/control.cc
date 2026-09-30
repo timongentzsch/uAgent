@@ -9,28 +9,18 @@
 #include "include/agent/prompt.h"
 #include "include/app/library.h"
 #include "include/app/permissions.h"
-#include "include/app/prompt_control.h"
 #include "include/app/schedule.h"
 #include "include/app/tool_categories.h"
 #include "include/core/capture.h"
 #include "include/core/config.h"
 #include "include/core/effective_config.h"
 #include "include/core/fs.h"
+#include "include/core/project.h"
 #include "include/core/signals.h"
 #include "include/providers.h"
 
 namespace uagent {
 json ManagementControl(const json& request) {
-  if (JsonValue(request, "kind", "") == "prompt") {
-    auto result = PromptControl(
-        request, nullptr,
-        ApplyPromptOverlay(SystemPromptBase(), PromptOverlay(nullptr), nullptr),
-        json::array());
-    result["preview_kind"] =
-        "Base prompt; select an active conversation to include its tools and "
-        "repository context.";
-    return result;
-  }
   if (JsonValue(request, "kind", "") == "models") {
     Api api(RuntimeConfig::FromEnvironment());
     auto provider = ConfigureProvider(api);
@@ -44,6 +34,31 @@ json ManagementControl(const json& request) {
   }
   if (JsonValue(request, "kind", "") == "tool_categories") {
     return ToolCategoriesControl(request);
+  }
+  if (JsonValue(request, "kind", "") == "instructions") {
+    // A person edits these directly; an agent asks through uagent.
+    const std::string cwd = CanonicalCwd();
+    if (JsonValue(request, "action", "show") == "set") {
+      bool coordinator = false, project = false;
+      if (!ParseInstructionTarget(JsonValue(request, "audience", ""),
+                                  JsonValue(request, "scope", ""), coordinator,
+                                  project)) {
+        return {{"error",
+                 "audience is sessions or coordinator, scope user "
+                 "or project"}};
+      }
+      std::optional<std::string> base;
+      if (request.contains("base") && request["base"].is_string()) {
+        base = request["base"].get<std::string>();
+      }
+      const std::string error = WriteInstructionFile(
+          coordinator, project, cwd, JsonValue(request, "text", ""), base);
+      if (!error.empty()) return {{"error", error}};
+    }
+    json shown = InstructionFiles(cwd);
+    shown["base"] = {{"sessions", SystemPromptBase()},
+                     {"coordinator", CoordinatorPromptBase()}};
+    return shown;
   }
   return LibraryControl(request, JsonValue(request, "cwd", CanonicalCwd()));
 }
@@ -69,15 +84,11 @@ int ControlMain(const std::string& argument) {
   } else if (JsonValue(request, "kind", "") == "calendar") {
     result = ScheduleCalendar(request);
   } else {
+    const auto cwd =
+        CanonicalDirectory(JsonValue(request, "cwd", CanonicalCwd()));
     std::error_code error;
-    auto cwd = std::filesystem::canonical(
-        JsonValue(request, "cwd", CanonicalCwd()), error);
-    if (!error && std::filesystem::is_directory(cwd, error)) {
-      std::filesystem::current_path(cwd, error);
-    } else if (!error) {
-      error = std::make_error_code(std::errc::not_a_directory);
-    }
-    if (error) {
+    if (cwd) std::filesystem::current_path(*cwd, error);
+    if (!cwd || error) {
       result = {{"error", "project directory is unavailable"}};
     } else {
       auto manager = ConfigManager::Capture(ProjectConfigTrusted(), {});

@@ -93,29 +93,52 @@ test("reading a paragraph survives offsetting changes inside one message", async
     .toBeLessThan(2);
 
   // A real wheel event may coincide with a layout change. The reader's
-  // movement must survive the anchor compensation in both modes.
-  const beforeWheel = await marker.boundingBox();
-  await box.evaluate((element) => {
-    element.addEventListener(
-      "wheel",
-      () => {
-        const earlier = element.querySelector(
-          '.message:has([data-anchor-id="15"]) [data-anchor-id="5"]',
-        );
-        earlier.style.paddingTop = "200px";
-      },
-      { capture: true, once: true },
-    );
-  });
+  // movement must survive the anchor compensation in both modes, including
+  // on WebKit, which cancels a wheel scroll when scrollTop is written early.
+  // Engines scroll different distances per notch, so a plain wheel first
+  // measures this one's; the coinciding wheel must move most of that.
   const bounds = await box.boundingBox();
   await page.mouse.move(
     bounds.x + bounds.width / 2,
     bounds.y + bounds.height / 2,
   );
+  const settled = async () => {
+    let last = (await marker.boundingBox()).y;
+    await expect
+      .poll(async () => {
+        const next = (await marker.boundingBox()).y;
+        const still = Math.abs(next - last) < 0.5;
+        last = next;
+        return still;
+      })
+      .toBe(true);
+    return last;
+  };
+  const beforePlain = await settled();
+  await page.mouse.wheel(0, -120);
+  // Animated engines start moving after the event; wait for it, then rest.
+  await expect
+    .poll(async () => (await marker.boundingBox()).y - beforePlain)
+    .toBeGreaterThan(5);
+  const notch = (await settled()) - beforePlain;
+  const beforeWheel = await marker.boundingBox();
+  await box.evaluate((element) => {
+    element.addEventListener(
+      "wheel",
+      () => {
+        // A block above the one being read, in the same message.
+        const row = [...element.querySelectorAll(".message")].find((node) =>
+          node.textContent.includes("Anchor paragraph 15."),
+        );
+        row.querySelectorAll("[data-anchor-id]")[5].style.paddingTop = "200px";
+      },
+      { capture: true, once: true },
+    );
+  });
   await page.mouse.wheel(0, -120);
   await expect
     .poll(async () => (await marker.boundingBox()).y - beforeWheel.y)
-    .toBeGreaterThan(40);
+    .toBeGreaterThan(notch * 0.75);
   await expect(
     page.getByRole("button", { name: "Jump to latest" }),
   ).toBeVisible();

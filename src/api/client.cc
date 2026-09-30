@@ -22,6 +22,7 @@
 #include "include/core/debug.h"
 #include "include/core/events.h"
 #include "include/core/json.h"
+#include "include/core/limits.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
@@ -398,10 +399,8 @@ ChatResult Api::Chat(const json& messages, const json& tool_schemas,
   if (estimated == 0) {
     estimated = JsonEstimatedBytes(messages) + JsonEstimatedBytes(tool_schemas);
   }
-  if (config.request_bytes > 0 &&
-      estimated > static_cast<size_t>(config.request_bytes)) {
-    res.error =
-        "request exceeds " + std::to_string(config.request_bytes) + " bytes";
+  if (estimated > kRequestBytes) {
+    res.error = "request exceeds " + std::to_string(kRequestBytes) + " bytes";
     res.request_preparation_ms = ElapsedMs(overall_started);
     res.end_to_end_ms = res.request_preparation_ms;
     return res;
@@ -409,10 +408,9 @@ ChatResult Api::Chat(const json& messages, const json& tool_schemas,
   bool web_available = false;
   std::string payload =
       ChatPayload(messages, tool_schemas, session_id, &web_available);
-  if (config.request_bytes > 0 &&
-      payload.size() > static_cast<size_t>(config.request_bytes)) {
-    res.error = "serialized request exceeds " +
-                std::to_string(config.request_bytes) + " bytes";
+  if (payload.size() > kRequestBytes) {
+    res.error = "serialized request exceeds " + std::to_string(kRequestBytes) +
+                " bytes";
     res.request_preparation_ms = ElapsedMs(overall_started);
     res.end_to_end_ms = res.request_preparation_ms;
     return res;
@@ -547,7 +545,7 @@ JsonResponse Api::Post(const std::string& path, const json& body,
     std::string seconds =
         FmtDuration(static_cast<double>(delay.count()) / 1000.0);
     Emit(NoticeEvent(PresentationStatus::kWarned,
-                     "· " + TerminalSafe(response.error) + " — retry " +
+                     TerminalSafe(response.error) + " — retry " +
                          std::to_string(attempt) + "/" +
                          std::to_string(attempts - 1) + " in " + seconds));
     if (!WaitForRetry(delay)) return response;
@@ -631,7 +629,7 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
   ctx.last_byte = ctx.started;
   ctx.first_event_timeout_s = config.first_event_timeout_s;
   ctx.idle_timeout_s = config.stream_idle_timeout_s;
-  ctx.response_cap = ResponseCap();
+  ctx.response_cap = kResponseBytes;
   ctx.sse = SseParser(ctx.response_cap);
   CurlHeaders headers;
   bool headers_ok = headers.Add("Content-Type: application/json") &&
@@ -771,7 +769,7 @@ JsonResponse Api::Fetch(const std::string& path, const std::string* payload,
     return result;
   }
   SizedBuffer out;
-  out.cap = ResponseCap();
+  out.cap = kResponseBytes;
   CurlHeaders headers;
   bool headers_ok = AddApiHeaders(headers, capabilities.wire_api, api_key);
   if (payload) {

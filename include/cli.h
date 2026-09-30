@@ -23,7 +23,7 @@ enum class SlashCommandId {
   kRewind,
   kShare,
   kPermissions,
-  kPrompt,
+  kInstructions,
   kHttp,
   kDiff,
   kEffort,
@@ -54,6 +54,9 @@ enum class SlashCommandId {
   kVerbose,
   kBtw,
   kYolo,
+  kCoord,
+  kBoard,
+  kOpen,
 };
 
 struct SlashCommandSpec {
@@ -101,6 +104,7 @@ struct InteractionRequest {
   bool keep_history = false;
   std::string initial = "";
   json options = json::array();
+  json questions = nullptr;  // kind "ask": what the ask tool puts to them
 };
 
 using InteractiveReadHandler =

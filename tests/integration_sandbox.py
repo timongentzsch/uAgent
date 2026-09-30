@@ -504,6 +504,31 @@ def test_sandbox_protects_project_authority(root, home, *, binary):
     assert_true(scratch.exists(), "the carve-out took the whole .uagent directory")
 
 
+def test_sandbox_keeps_repository_config_and_hooks(root, home, *, binary):
+    """A command may commit, but not plant config or hooks your own git runs.
+
+    Seatbelt only, like the project config carve-out above.
+    """
+    import subprocess
+
+    if sys.platform != "darwin" or not sandbox_enforced(root, home, binary=binary):
+        return
+    ws = workspace(root)
+    subprocess.run(["git", "init", "-q", str(ws)], check=True)
+    command = (
+        "echo x > tracked && git add tracked && "
+        "git -c user.email=a@b -c user.name=a commit -qm m && echo committed; "
+        "git config core.fsmonitor evil; echo hook > .git/hooks/pre-commit; true"
+    )
+    output = tool_output(root, sandbox_env(home, ""), command, binary=binary)
+    assert_true("committed" in output, output)
+    config = subprocess.run(
+        ["git", "-C", str(ws), "config", "--get", "core.fsmonitor"], capture_output=True, text=True
+    )
+    assert_true(config.stdout.strip() == "", config.stdout)
+    assert_true(not (ws / ".git" / "hooks" / "pre-commit").exists(), "a command planted a hook")
+
+
 def test_sandbox_reports_itself(root, home, *, binary):
     """The two surfaces that answer "what is confining me": /status and startup.
 

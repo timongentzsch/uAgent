@@ -29,6 +29,7 @@ volatile sig_atomic_t g_mcp_pids[kMcpMax] = {};
 volatile sig_atomic_t g_bg_pids[kBgMax] = {};
 bool g_tty = false;
 bool g_color = false;
+bool g_attributes = false;
 bool g_unicode = true;
 volatile sig_atomic_t g_signal_tty = 0;
 

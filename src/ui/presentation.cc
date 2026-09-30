@@ -15,6 +15,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/tool_presentation.h"
 #include "include/api/citations.h"
 #include "include/core/debug.h"
 #include "include/core/strings.h"
@@ -36,16 +37,20 @@ bool PrintSearchReceipt(int64_t searches, const json& annotations, bool details,
                       : std::to_string(sources.size()) + " source" +
                             (sources.size() == 1 ? "" : "s");
   if (searches > 0) {
-    printf("%s  ← web_search ×%s · %s%s\n", DIM(),
-           std::to_string(searches).c_str(), source_summary.c_str(), RST());
+    printf("%s%s%s\n", DIM(),
+           AsciiGlyphs("  ← web_search ×" + std::to_string(searches) + " · " +
+                       source_summary)
+               .c_str(),
+           RST());
   } else {
-    printf("%s  ← %s%s\n", DIM(), source_summary.c_str(), RST());
+    printf("%s%s%s%s\n", DIM(), AsciiGlyphs("  ← ").c_str(),
+           source_summary.c_str(), RST());
   }
   if (!details) return true;
   for (const CitationEntry& source : sources) {
     const std::string& label = source.title.empty() ? source.url : source.title;
-    printf("%s    %s · %s%s\n", DIM(), TerminalSafe(label).c_str(),
-           TerminalSafe(source.url).c_str(), RST());
+    printf("%s    %s%s%s%s\n", DIM(), TerminalSafe(label).c_str(),
+           AsciiGlyphs(" · ").c_str(), TerminalSafe(source.url).c_str(), RST());
     if (!source.content.empty()) {
       printf("%s      %s%s\n", DIM(), TerminalSafe(source.content).c_str(),
              RST());
@@ -71,6 +76,41 @@ const char* ResultStyle(PresentationStatus status) {
   if (status == PresentationStatus::kFailed) return RED();
   if (status == PresentationStatus::kCancelled) return YEL();
   return DIM();
+}
+
+// A command's output as this row shows it: its own colouring (ls --color, a
+// test runner) is dropped, since TerminalSafe would spell each escape out.
+std::string OutputText(std::string_view text) {
+  std::string plain;
+  plain.reserve(text.size());
+  for (size_t at = 0; at < text.size();) {
+    if (text.substr(at, 2) == "\033[") {
+      size_t end = at + 2;
+      while (end < text.size() && Byte(text[end]) >= 0x20 &&
+             Byte(text[end]) <= 0x3f) {
+        ++end;
+      }
+      if (end < text.size() && Byte(text[end]) >= 0x40 &&
+          Byte(text[end]) <= 0x7e) {
+        at = end + 1;
+        continue;
+      }
+    }
+    plain += text[at++];
+  }
+  return TerminalSafe(plain);
+}
+
+// Every line of `text` moved `indent` columns right, as details sit under
+// their row.
+std::string Indented(std::string_view text, size_t indent) {
+  const std::string pad(indent, ' ');
+  std::string out = pad;
+  for (size_t at = 0; at < text.size(); ++at) {
+    out += text[at];
+    if (text[at] == '\n' && at + 1 < text.size()) out += pad;
+  }
+  return out;
 }
 
 }  // namespace
@@ -169,7 +209,7 @@ struct TerminalPresenter::State {
       if (content_started && line_open) markdown.FeedPlain("\n");
       markdown.Control(RST());
       markdown.Control(DIM());
-      markdown.FeedPlain("· Thinking\n");
+      markdown.FeedPlain(AsciiGlyphs("· Thinking\n"));
       line_open = false;
       in_reasoning = true;
     }
@@ -209,22 +249,21 @@ std::string TurnStatsLine(const json& summary) {
   }
   line += " · " + FmtCount(n("output")) + " out";
   if (n("reasoning")) line += " (+" + FmtCount(n("reasoning")) + " reasoning)";
-  if (!JsonValue(summary, "usage_reported", true)) line = "usage not reported";
-  if (n("web_searches")) {
-    line += " · " + FmtCount(n("web_searches")) + " searches";
-  }
-  if (JsonValue(usage, "cost_reported", false)) {
-    line += " · " + FmtCost(JsonValue(usage, "cost", 0.0));
-  }
-  int64_t tools = JsonValue(summary, "tool_calls", int64_t{0});
-  if (tools) line += " · " + FmtCount(tools) + " tools";
-  double rate = JsonValue(summary, "tokens_per_second", 0.0);
-  if (rate > 0) line += " · " + FmtCount(static_cast<int64_t>(rate)) + " tok/s";
-  double first = JsonValue(summary, "ttt_ms", -1.0);
-  if (first >= 0) line += " · first " + FmtDuration(first / 1000);
-  return AsciiGlyphs(
-      line + " · " +
-      FmtDuration(JsonValue(summary, "duration_ms", 0.0) / 1000));
+  const double rate = JsonValue(summary, "tokens_per_second", 0.0);
+  const double first = JsonValue(summary, "ttt_ms", -1.0);
+  auto counted = [](int64_t count, const char* unit) {
+    return count ? FmtCount(count) + unit : "";
+  };
+  return AsciiGlyphs(JoinDot(
+      {JsonValue(summary, "usage_reported", true) ? line : "usage not reported",
+       counted(n("web_searches"), " searches"),
+       JsonValue(usage, "cost_reported", false)
+           ? FmtCost(JsonValue(usage, "cost", 0.0))
+           : "",
+       counted(JsonValue(summary, "tool_calls", int64_t{0}), " tools"),
+       rate > 0 ? FmtCount(static_cast<int64_t>(rate)) + " tok/s" : "",
+       first >= 0 ? "first " + FmtDuration(first / 1000) : "",
+       FmtDuration(JsonValue(summary, "duration_ms", 0.0) / 1000)}));
 }
 
 void TerminalPresenter::Consume(const Event& event) noexcept {
@@ -361,70 +400,71 @@ void TerminalPresenter::Block(const json& block) {
         AttachmentDeliveryRows(JsonValue(block, "deliveries", json::array())));
   } else if (kind == "assistant") {
     // Mirror the stored-transcript printer and the live presenter: the mark
-    // only prints with text (tool-only turns show rows, never a bare mark),
-    // the answer is line-terminated, and tool rows replay the exact live
-    // record from facts instead of being dropped.
+    // only prints with text (tool-only turns show rows, never a bare mark)
+    // and the answer is line-terminated. Tool rows are blocks of their own.
     if (!JsonValue(block, "text", "").empty()) {
       PrintMessageHeader();
       MdPrint(text);
       WriteTerminalRecord("\n");
     }
-    if (const json* tools = JsonArray(block, "tools")) {
-      for (const json& tool : *tools) {
-        const json* replay = JsonObject(tool, "replay");
-        if (!replay) continue;
-        PresentationRecord record;
-        record.kind = PresentationKind::kToolCall;
-        record.id = JsonValue(tool, "call_id", "");
-        record.activity = JsonValue(tool, "activity", json::object());
-        record.title = JsonValue(*replay, "title", "");
-        record.summary = JsonValue(*replay, "summary", "");
-        record.detail = JsonValue(*replay, "detail", "");
-        record.multiline = JsonValue(*replay, "multiline", false);
-        record.skill = JsonValue(tool, "name", "") == "skill";
-        record.poll = JsonValue(*replay, "poll", false);
-        record.view = JsonValue(tool, "view", json(nullptr));
-        PrintPresentation(record, detailed_);
-      }
-    }
   } else if (kind == "turn_summary") {
     WriteTerminalRecord(
         TurnStatsLine(JsonValue(block, "summary", json::object())) + "\n");
   } else if (kind == "compaction") {
-    WriteTerminalRecord("Context compacted\n");
+    // The row the live "compacted" notice drew.
+    WriteTerminalRecord(Note(Tone::kNeutral, "compacted"));
   } else if (kind == "activity") {
     const json memory = JsonValue(block, "memory", json::object());
     if (detailed_ || !JsonValue(memory, "minor", false)) {
-      WriteTerminalRecord("· " + text + "\n");
+      WriteTerminalRecord(Note(Tone::kNeutral, text));
     }
   } else if (kind == "tool_result") {
-    if (const json* replay = JsonObject(block, "replay")) {
-      // Same row the live printer drew: recorded title/summary plus the
-      // block's activity (groups), change (diffs) and final status.
+    // One row per call: the recorded call line, then its result.
+    if (const json* replay = JsonObject(block, "call_replay")) {
       PresentationRecord record;
-      record.kind = PresentationKind::kToolResult;
+      record.kind = PresentationKind::kToolCall;
       record.id = JsonValue(block, "call_id", "");
       record.activity = JsonValue(block, "activity", json::object());
+      record.title = JsonValue(*replay, "title", "");
+      record.summary = JsonValue(*replay, "summary", "");
+      record.detail = JsonValue(*replay, "detail", "");
+      record.multiline = JsonValue(*replay, "multiline", false);
+      record.skill = JsonValue(block, "name", "") == "skill";
+      record.poll = JsonValue(*replay, "poll", false);
+      record.view = JsonValue(block, "view", json(nullptr));
+      PrintPresentation(record, detailed_);
+      // A call that never finished has no result line.
+      if (JsonValue(block, "status", "running") == "running") return;
+    }
+    // Same row the live printer drew: recorded title/summary plus the
+    // block's activity (groups), change (diffs) and final status. A row whose
+    // replay facts were evicted is synthesized from its name and output.
+    const std::string status = JsonValue(block, "status", "");
+    const PresentationStatus final =
+        status == "success"     ? PresentationStatus::kSucceeded
+        : status == "cancelled" ? PresentationStatus::kCancelled
+        : status == "failed" || status == "timed_out"
+            ? PresentationStatus::kFailed
+            : PresentationStatus::kNeutral;
+    const json* replay = JsonObject(block, "replay");
+    PresentationRecord record =
+        replay ? PresentationRecord{}
+               : StoredToolResultPresentation(
+                     JsonValue(block, "name", ""), JsonValue(block, "text", ""),
+                     JsonValue(block, "change", ""), final);
+    if (replay) {
+      record.kind = PresentationKind::kToolResult;
       record.title =
           JsonValue(*replay, "title", JsonValue(block, "name", "tool"));
       record.summary = JsonValue(*replay, "summary", "");
       record.output = JsonValue(block, "text", "");
       record.change = JsonValue(block, "change", "");
       record.view = {{"parts", JsonValue(block, "parts", json::array())}};
-      const std::string status = JsonValue(block, "status", "");
-      record.status = status == "success"     ? PresentationStatus::kSucceeded
-                      : status == "cancelled" ? PresentationStatus::kCancelled
-                      : status == "failed" || status == "timed_out"
-                          ? PresentationStatus::kFailed
-                          : PresentationStatus::kNeutral;
-      PrintPresentation(record, detailed_);
-      return;
+      record.status = final;
     }
-    json activity = JsonValue(block, "activity", json::object());
-    WriteTerminalRecord(
-        TerminalSafe(JsonValue(activity, "label",
-                               JsonValue(block, "name", "Activity"))) +
-        " · " + JsonValue(block, "status", "") + "\n");
+    record.id = JsonValue(block, "call_id", "");
+    record.activity = JsonValue(block, "activity", json::object());
+    PrintPresentation(record, detailed_);
   }
 }
 
@@ -474,8 +514,8 @@ std::string ResultExtras(const PresentationRecord& record, bool detailed) {
     constexpr size_t kTailLines = 3;
     for (size_t i = lines.size() > kTailLines ? lines.size() - kTailLines : 0;
          i < lines.size(); ++i) {
-      text +=
-          std::string(DIM()) + "    " + TerminalSafe(lines[i]) + RST() + "\n";
+      text += std::string(DIM()) +
+              Indented(OutputText(lines[i]), kDetailIndent) + RST() + "\n";
     }
   }
   if (const json* parts = JsonArray(record.view, "parts")) {
@@ -496,8 +536,10 @@ std::string ResultExtras(const PresentationRecord& record, bool detailed) {
                                   : "memory " + id;
       }
       if (!line.empty()) {
-        text += std::string(DIM()) + AsciiGlyphs("    ↳ ") +
-                TerminalSafe(line) + RST() + "\n";
+        text +=
+            std::string(DIM()) +
+            Indented(AsciiGlyphs("↳ " + TerminalSafe(line)), kDetailIndent) +
+            RST() + "\n";
       }
     }
   }
@@ -509,10 +551,11 @@ void PrintPresentation(const PresentationRecord& record,
                        bool detailed) noexcept {
   if (record.kind == PresentationKind::kNotice) {
     if (record.minor && !detailed) return;
-    const char* color = record.status == PresentationStatus::kFailed   ? RED()
-                        : record.status == PresentationStatus::kWarned ? YEL()
-                                                                       : DIM();
-    WriteTerminalRecord(StyledBlock(TerminalSafe(record.title), color));
+    WriteTerminalRecord(
+        Note(record.status == PresentationStatus::kFailed   ? Tone::kError
+             : record.status == PresentationStatus::kWarned ? Tone::kWarn
+                                                            : Tone::kNeutral,
+             TerminalSafe(record.title)));
     return;
   }
   if (record.kind == PresentationKind::kToolCall) {
@@ -542,7 +585,8 @@ void PrintPresentation(const PresentationRecord& record,
     if (detailed) {
       const std::string input = InputPartsText(record.view);
       if (!input.empty()) {
-        WriteTerminalRecord(StyledBlock(TerminalSafe(input), DIM()));
+        WriteTerminalRecord(
+            StyledBlock(Indented(TerminalSafe(input), kDetailIndent), DIM()));
       }
     }
     return;
@@ -552,15 +596,18 @@ void PrintPresentation(const PresentationRecord& record,
   if (const auto group = record.activity.find("group");
       !detailed && group != record.activity.end()) {
     if (JsonValue(*group, "id", "") == record.id) {
-      WriteTerminalRecord(StyledBlock(JsonValue(*group, "label", ""), DIM()));
+      WriteTerminalRecord(StyledBlock(
+          Indented(TerminalSafe(JsonValue(*group, "label", "")), kRowIndent),
+          DIM()));
     }
     return;
   }
 
   if (record.poll) {
     const char* style = ResultStyle(record.status);
-    WriteTerminalRecord(std::string(style) + AsciiGlyphs("• ") +
-                        TerminalSafe(record.summary) + RST() + "\n");
+    WriteTerminalRecord(std::string(style) +
+                        AsciiGlyphs("• " + OutputText(record.summary)) + RST() +
+                        "\n");
     return;
   }
 
@@ -574,8 +621,8 @@ void PrintPresentation(const PresentationRecord& record,
         const char* style = DiffLineStyle(line);
         if (!*style) style = DIM();
         if (!line.empty() && line[0] == '@') line = "@@ " + line.substr(1);
-        output +=
-            std::string(style) + "    " + TerminalSafe(line) + RST() + "\n";
+        output += std::string(style) +
+                  Indented(TerminalSafe(line), kDetailIndent) + RST() + "\n";
       }
       WriteTerminalRecord(output);
     }
@@ -583,21 +630,22 @@ void PrintPresentation(const PresentationRecord& record,
   }
 
   const char* style = ResultStyle(record.status);
-  std::string prefix = AsciiGlyphs("  ← ") + TerminalSafe(record.title);
+  std::string prefix =
+      Indented(AsciiGlyphs("← ") + TerminalSafe(record.title), kRowIndent);
   if (detailed && record.output.find('\n') != std::string::npos) {
     WriteTerminalRecord(std::string(style) + prefix + RST() + "\n" +
-                        TerminalSafe(record.output) + "\n" +
-                        ResultExtras(record, detailed));
+                        Indented(OutputText(record.output), kDetailIndent) +
+                        "\n" + ResultExtras(record, detailed));
     return;
   }
   if (detailed && !record.output.empty()) {
     WriteTerminalRecord(std::string(style) + prefix + ": " +
-                        TerminalSafe(record.output) + RST() + "\n" +
+                        OutputText(record.output) + RST() + "\n" +
                         ResultExtras(record, detailed));
     return;
   }
   WriteTerminalRecord(std::string(style) + prefix + ": " +
-                      TerminalSafe(record.summary) + RST() + "\n" +
+                      AsciiGlyphs(OutputText(record.summary)) + RST() + "\n" +
                       ResultExtras(record, detailed));
 }
 

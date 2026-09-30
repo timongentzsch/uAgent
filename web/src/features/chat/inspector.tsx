@@ -5,13 +5,12 @@ import HistoryStart from "./history-start.tsx";
 import { ContextSummary, SessionSummary } from "./session-summary.tsx";
 import { StatisticsLoading } from "../../shared/statistics-layout.tsx";
 import { useDismiss } from "../../shared/dismiss.ts";
-import { count } from "../../shared/quantities.ts";
 import { duration } from "../../shared/duration.ts";
 import type {
   Activity,
   ActivityDetail,
   Block,
-  Collaborator,
+  Agent,
   JSONValue,
   RawOptions,
   Report,
@@ -25,7 +24,8 @@ import {
   useRef,
   useState,
 } from "preact/hooks";
-import { ArrowDown, ArrowDownToLine, ArrowLeft, Square } from "lucide-preact";
+import { ArrowDownToLine, Square, ChevronLeft } from "lucide-preact";
+import { JumpToLatest } from "../../shared/jump-to-latest.tsx";
 import { command, readPages, manage } from "../../state/api.ts";
 import { useTranscriptHistory } from "../../state/use-transcript-history.ts";
 import { prependHistoryPage } from "../../state/history-page.ts";
@@ -42,13 +42,10 @@ import {
   Skeleton,
   Spinner,
 } from "../../shared/ui.tsx";
-import {
-  active,
-  ActivityStatus,
-  withCollaborators,
-} from "./activity-status.tsx";
+import { active, ActivityStatus, withAgents } from "./activity-status.tsx";
 import Markdown from "../../shared/markdown-view.tsx";
 import { MessageRows, prepareHistoryBlocks } from "./message.tsx";
+import { MessageActions } from "./message-actions.ts";
 
 // What the inspector is opened on: a transcript row, a live activity, or a
 // tool's retained input/output.
@@ -68,6 +65,8 @@ const statisticsDialog = () =>
     default: module.StatisticsContent,
   }));
 const rawDialog = () => import("../settings/raw.tsx");
+// A stable empty list: the history hook compares the newest block each render.
+const noBlocks: readonly { id: string }[] = [];
 
 const childStateOf = (detail: ActivityDetail): State => ({
   view: detail.conversation,
@@ -140,7 +139,7 @@ async function fetchActivityDetail(
 export default function Inspector({
   target,
   items,
-  collaborators,
+  agents,
   cwd,
   running,
   session,
@@ -150,7 +149,7 @@ export default function Inspector({
 }: {
   target: InspectorTarget;
   items: Activity[];
-  collaborators: Collaborator[];
+  agents: Agent[];
   cwd: string;
   running?: boolean;
   session: SessionRef;
@@ -158,7 +157,7 @@ export default function Inspector({
   report: Report;
   close: () => void;
 }) {
-  const rows = withCollaborators(items, collaborators);
+  const rows = withAgents(items, agents);
   const [detail, setDetail] = useState<ActivityDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<unknown>(null);
@@ -274,7 +273,7 @@ export default function Inspector({
     }
   }, [target]);
 
-  // The parent stream already reports collaborator and activity progress.
+  // The parent stream already reports agent and activity progress.
   // Refresh an open child only when that authoritative state changes instead
   // of running a second polling clock beside SSE.
   const rowsVersion = rows
@@ -367,10 +366,10 @@ export default function Inspector({
           {detail && (
             <Button
               variant="quiet"
-              class="with-icon activity-back"
+              class="activity-back"
               onClick={() => setPage(null)}
             >
-              <ArrowLeft aria-hidden="true" />
+              <ChevronLeft />
               Back
             </Button>
           )}
@@ -383,7 +382,9 @@ export default function Inspector({
           ) : (
             detail && (
               <>
-                {active(current || detail) && !detail.statistics_live && (
+                {/* A subagent's totals come from its saved session, so
+                    running work is not in them yet. */}
+                {active(current || detail) && (
                   <p class="muted">
                     Totals reflect the latest saved checkpoint. Current work may
                     not yet be included.
@@ -408,7 +409,6 @@ export default function Inspector({
         <DetailBody
           detail={detail}
           current={current}
-          rows={rows}
           running={running}
           online={online}
           session={session}
@@ -436,7 +436,6 @@ export default function Inspector({
 function DetailBody({
   detail,
   current,
-  rows,
   running,
   online,
   session,
@@ -454,7 +453,6 @@ function DetailBody({
   hidden: boolean;
   detail: ActivityDetail;
   current: Activity;
-  rows: Activity[];
   running?: boolean;
   online: boolean;
   session: SessionRef;
@@ -481,7 +479,7 @@ function DetailBody({
   const thread = useTranscriptHistory(
     setFollowing,
     historyKey,
-    detail.conversation?.blocks.length || 0,
+    detail.conversation?.blocks || noBlocks,
   );
   // Guidance submit lives here (not the panel) so every nesting level
   // sends with its own text and receipt.
@@ -584,6 +582,16 @@ function DetailBody({
     },
     [detail, loadDetail, navigate, report],
   );
+  const threadActions = useMemo(
+    () => ({
+      report,
+      read: readDetail,
+      inspect: openRaw,
+      activity: openNested,
+      statistics: showTurnStats,
+    }),
+    [report, readDetail, openRaw, openNested, showTurnStats],
+  );
   const meta = [
     current.status,
     detail.route || detail.model,
@@ -599,7 +607,7 @@ function DetailBody({
       {ancestors.length > 0 && (
         <Button
           variant="quiet"
-          class="with-icon activity-back"
+          class="activity-back"
           onClick={() => {
             const parent = ancestors.at(-1);
             if (!parent) return;
@@ -607,7 +615,7 @@ function DetailBody({
             navigate(parent);
           }}
         >
-          <ArrowLeft aria-hidden="true" />
+          <ChevronLeft />
           Back to {ancestors.at(-1)?.name || "parent agent"}
         </Button>
       )}
@@ -616,11 +624,7 @@ function DetailBody({
 
       {isAgent && (
         <details class="activity-info">
-          <summary>
-            Task and run details
-            {!!detail.communication?.length &&
-              ` · ${count(detail.communication.length)} messages`}
-          </summary>
+          <summary>Task and run details</summary>
           {detail.description && (
             <section aria-label="About">
               <p class="muted">{cleanText(detail.description)}</p>
@@ -628,32 +632,8 @@ function DetailBody({
           )}
           {detail.directive && (
             <section aria-label="Run details">
-              <SectionTitle>Persistent directive</SectionTitle>
+              <SectionTitle>Directive</SectionTitle>
               <Markdown text={detail.directive} />
-            </section>
-          )}
-          {!!detail.communication?.length && (
-            <section aria-label="Agent communication" class="communication">
-              <SectionTitle>Agent communication</SectionTitle>
-              <ol>
-                {detail.communication.map((message, index) => (
-                  <li key={`${message.time}-${index}`}>
-                    <div class="communication-meta">
-                      <strong>
-                        {rows.find((row) => row.agent_id === message.from)
-                          ?.name || message.from}
-                      </strong>
-                      <span aria-hidden="true">→</span>
-                      <strong>
-                        {rows.find((row) => row.agent_id === message.to)
-                          ?.name || message.to}
-                      </strong>
-                      <time dateTime={message.time}>{message.time}</time>
-                    </div>
-                    <p>{cleanText(message.text)}</p>
-                  </li>
-                ))}
-              </ol>
             </section>
           )}
         </details>
@@ -698,16 +678,13 @@ function DetailBody({
                 }
               />
               {detail.conversation ? (
-                <MessageRows
-                  blocks={detail.conversation.blocks}
-                  read={readDetail}
-                  online={online}
-                  session={childSession}
-                  report={report}
-                  inspect={openRaw}
-                  activity={openNested}
-                  statistics={showTurnStats}
-                />
+                <MessageActions.Provider value={threadActions}>
+                  <MessageRows
+                    blocks={detail.conversation.blocks}
+                    online={online}
+                    session={childSession}
+                  />
+                </MessageActions.Provider>
               ) : loading ? (
                 <Skeleton label="Loading the thread…" />
               ) : (
@@ -730,20 +707,13 @@ function DetailBody({
             </div>
           </div>
           {!following && (
-            <Button
-              variant="quiet"
-              class="jump with-icon"
+            <JumpToLatest
+              unseen={thread.unseen}
               onClick={() => {
                 thread.jumpToLatest();
                 inspect(detail).catch(report);
               }}
-            >
-              Jump to latest{" "}
-              {thread.unseen > 0 && (
-                <span aria-hidden="true">({thread.unseen} new)</span>
-              )}
-              <ArrowDown aria-hidden="true" />
-            </Button>
+            />
           )}
         </section>
       )}
@@ -825,7 +795,7 @@ function DetailBody({
               state={childState}
               selection={model || childState.route}
               online={online}
-              running={isLive || !!detail.persistent || sending}
+              running={isLive || sending}
               save={setModel}
             />
             <Button
@@ -849,11 +819,6 @@ function DetailBody({
               open={() => page({ title: "Subagent statistics", stats: {} })}
             />
           </div>
-          {detail.persistent && (
-            <small class="muted">
-              Persistent agents retain their model across follow-ups.
-            </small>
-          )}
           {notice && <p role="status">{notice}</p>}
         </form>
       )}

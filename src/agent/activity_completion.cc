@@ -198,12 +198,12 @@ ToolResult ToolActivityWait(ProcessSupervisor& supervisor,
           requested_id > 0 ? supervisor.Find(requested_id) : std::nullopt;
       if (!job) {
         return ToolFailure(ToolErrorCode::kNotFound,
-                           "error: activity " + std::to_string(requested_id) +
+                           "activity " + std::to_string(requested_id) +
                                " is not running in this session");
       }
       if (!waitable(*job)) {
         return ToolFailure(ToolErrorCode::kInvalidArguments,
-                           "error: activity " + std::to_string(requested_id) +
+                           "activity " + std::to_string(requested_id) +
                                " is harness maintenance and is not waitable");
       }
       if (std::find(ids.begin(), ids.end(), requested_id) == ids.end()) {
@@ -243,7 +243,7 @@ ToolResult ToolActivityWait(ProcessSupervisor& supervisor,
       return ToolSuccess(LimitOutput(std::move(result), cap));
     }
     if (AbortRequested()) {
-      return ToolCancelled("wait interrupted; " + ActivityCount(running) +
+      return ToolCancelled("wait cancelled; " + ActivityCount(running) +
                            " still running");
     }
     if (SteeringYieldRequested()) {

@@ -5,17 +5,17 @@
 
 | Command | Description |
 | --- | --- |
-| `/agents [ID [output|stop|message TEXT|followup TEXT]]` | inspect, guide or resume delegated collaborators |
+| `/agents [ID [output|stop|message TEXT|followup TEXT]]` | inspect, guide or resume delegated agents |
 | `/attach PATH|clear` | attach a file to the next turn |
 | `/compact` | summarize conversation to prevent hitting the context limit |
 | `/context` | show current model request |
 | `/config [user|project KEY=VALUE|unset KEY|reset]` | show changed settings, change one, or reset a scope |
 | `/fork [TITLE] [@TURN]` | branch this conversation, optionally at user turn N |
-| `/rewind [@TURN]` | rewind this conversation to user turn N |
+| `/rewind [N]` | fork before your message N to edit it; bare, list the numbers |
 | `/share` | export transcript as markdown |
 | `/permissions [default|ask|auto|yolo|rules|forget N|forget all]` | show or change permission mode, or this repository's remembered actions |
 | `/rename TITLE` | rename this conversation |
-| `/prompt [show|edit|set|reset] [--scope global|project|conversation] [--mode overlay|replace] [--file PATH]` | inspect or edit the system prompt |
+| `/instructions [edit sessions|coordinator user|project | clear]` | show or edit instructions; clear this conversation's self-directive |
 | `/http [INDEX [request|response]]` | inspect captured HTTP attempts (latest by default) |
 | `/diff` | show git diff (including untracked files) |
 | `/cost` | show tokens and spend by route |
@@ -46,3 +46,6 @@
 | `/btw QUESTION` | ask a side question without adding it to the conversation |
 | `/verbose` | toggle full reasoning and expanded tool output |
 | `/yolo` | toggle automatic approval |
+| `/coord` | open this folder's coordinator |
+| `/board` | list this folder's sessions and threads |
+| `/open ID` | switch to a session from /board |

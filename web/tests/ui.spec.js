@@ -1,4 +1,4 @@
-import { test, expect } from "./fixtures.js";
+import { test, expect, withoutServiceWorker } from "./fixtures.js";
 import { readFile, writeFile } from "node:fs/promises";
 
 test("mobile chrome keeps an opaque safe area and applies appearance before app startup", async ({
@@ -196,24 +196,12 @@ test("fresh conversation reload keeps one stable loading state", async ({
   }
 });
 
-test("system prompt editing shares revisions, replacement and request previews", async ({
+test("instructions are one stack, edited in place, in a stable dialog", async ({
   page,
   host: fixture,
 }) => {
   await page.goto("/");
   await expect(page.getByText("Connected", { exact: true })).toBeVisible();
-
-  let releaseSnapshot;
-  const snapshotHeld = new Promise((resolve) => (releaseSnapshot = resolve));
-  await page.route(
-    "**/api/sessions/*",
-    async (route) => {
-      const response = await route.fetch();
-      await snapshotHeld;
-      await route.fulfill({ response });
-    },
-    { times: 1 },
-  );
   await page
     .getByRole("complementary")
     .getByRole("button", { name: "New conversation", exact: true })
@@ -223,74 +211,40 @@ test("system prompt editing shares revisions, replacement and request previews",
     .getByRole("button", { name: "Start conversation", exact: true })
     .click();
   await expect(page.locator(".composer .status-led.active")).toBeVisible();
-  releaseSnapshot();
   const composer = page.getByLabel("Message or guidance");
-  await composer.fill("/prompt");
-  await composer.press("Tab");
+  await composer.fill("/instructions");
   await composer.press("Enter");
   const dialog = page.getByRole("dialog", {
-    name: "System prompt",
+    name: "Instructions",
     exact: true,
   });
-  await expect(dialog.getByLabel("Effective system prompt")).toContainText(
-    "You are a coding agent",
-  );
-  await dialog
-    .getByRole("button", { name: "Instructions", exact: true })
-    .click();
-  await dialog.getByRole("button", { name: "Edit inherited prompt" }).click();
-  const editor = dialog.getByLabel("System prompt text");
-  await editor.fill(
-    "Only the project-specific instruction.\nKeep this line break.",
-  );
-  await dialog.getByRole("button", { name: "Preview changes" }).click();
-  await expect(dialog.getByLabel("Effective system prompt")).not.toContainText(
-    "You are a coding agent",
-  );
-  await expect(dialog.getByLabel("Effective system prompt")).toContainText(
-    "[HOST CAPABILITIES]",
-  );
-  const expected = await dialog
-    .getByLabel("Effective system prompt")
-    .textContent();
+  // Top to bottom in the order a session reads it.
+  await expect(dialog.getByLabel("Yours · every session")).toBeEnabled();
+  const headings = await dialog
+    .locator(
+      ".instructions summary, .instruction-card strong, .instructions h3",
+    )
+    .allTextContents();
+  expect(headings).toEqual([
+    "Built-in base",
+    "Yours · every session",
+    "Project · every session",
+    "Coordinator",
+    "Built-in coordinator base",
+    "Yours · coordinator",
+    "Project · coordinator",
+  ]);
+  const yours = dialog.getByLabel("Yours · every session");
+  await yours.fill("Prefer small diffs.\nKeep this line break.");
   await dialog.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(editor).toHaveCount(0);
-  await expect(dialog.getByLabel("Effective system prompt")).toHaveText(
-    expected,
-  );
-  await dialog.getByRole("button", { name: "Edit", exact: true }).click();
-  await editor.fill("Unsent prompt draft");
-  await dialog.getByRole("button", { name: "Close system prompt" }).click();
-  await composer.fill("/prompt");
+  await expect(dialog.getByRole("button", { name: "Save" })).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Close instructions" }).click();
+  await composer.fill("/instructions");
   await composer.press("Enter");
-  await expect(editor).toHaveValue("Unsent prompt draft");
-  await dialog.getByRole("button", { name: "Discard edit" }).click();
-  await page.setViewportSize({ width: 390, height: 600 });
-  expect(
-    await dialog.evaluate((node) => node.scrollWidth <= node.clientWidth + 1),
-  ).toBe(true);
-  await dialog.getByRole("button", { name: "Close system prompt" }).click();
-  await page.getByRole("button", { name: "Raw context", exact: true }).click();
-  await expect(page.getByRole("dialog", { name: "Raw context" })).toContainText(
-    "Only the project-specific instruction.",
+  await expect(dialog.getByLabel("Yours · every session")).toHaveValue(
+    "Prefer small diffs.\nKeep this line break.",
   );
-  await page
-    .getByRole("dialog", { name: "Raw context" })
-    .getByRole("button", { name: "System prompt", exact: true })
-    .click();
-  await dialog
-    .getByRole("button", { name: "Instructions", exact: true })
-    .click();
-  await dialog.getByRole("button", { name: "Reset to inherited" }).click();
-  await dialog
-    .getByRole("button", { name: "Effective prompt", exact: true })
-    .click();
-  await expect(dialog.getByLabel("Effective system prompt")).toContainText(
-    "You are a coding agent",
-  );
-  // Raw viewer CSS has loaded by this point. It must not clip the prompt
-  // depending on which dialog was opened first.
-  // Exercise classic scrollbar gutters even on hosts with overlay scrollbars.
+  // Classic scrollbar gutters, even on hosts with overlay scrollbars.
   await page.addStyleTag({
     content:
       "dialog > header::-webkit-scrollbar, .dialog-body::-webkit-scrollbar { width: 1rem; }",
@@ -315,31 +269,16 @@ test("system prompt editing shares revisions, replacement and request previews",
       "--viewport-width",
       `${viewport.width}px`,
     );
-    await expect(page.locator("html")).toHaveCSS(
-      "--viewport-height",
-      `${viewport.height}px`,
-    );
     const body = dialog.locator(".dialog-body");
+    // A sheet runs from the safe top to the bottom edge, its content above
+    // the home indicator.
     const bounds = await dialog.boundingBox();
-    expect(bounds.y).toBeGreaterThanOrEqual(safeTop + 8);
-    expect(bounds.y + bounds.height).toBeLessThanOrEqual(
-      viewport.height - safeBottom - 8,
-    );
+    expect(bounds.y).toBeGreaterThanOrEqual(safeTop);
+    expect(bounds.y + bounds.height).toBeLessThanOrEqual(viewport.height);
     await body.evaluate((element) => element.scrollTo(0, 0));
-    const header = await dialog.locator("header").boundingBox();
-    const controls = await dialog.locator(".prompt-controls").boundingBox();
-    const close = await dialog
-      .getByRole("button", { name: "Close system prompt" })
-      .boundingBox();
-    expect(
-      Math.abs(controls.x + controls.width - close.x - close.width),
-    ).toBeLessThanOrEqual(1);
-    const heading = await dialog
-      .getByRole("heading", { name: "System prompt", exact: true })
-      .boundingBox();
-    expect(Math.abs(controls.x - heading.x)).toBeLessThanOrEqual(1);
-    await body.hover();
-    await page.mouse.wheel(0, 100000);
+    const header = await dialog.locator("header").first().boundingBox();
+    // Scroll the body itself: the wheel over an editor scrolls the editor.
+    await body.evaluate((element) => element.scrollTo(0, element.scrollHeight));
     await expect
       .poll(() =>
         body.evaluate(
@@ -348,24 +287,25 @@ test("system prompt editing shares revisions, replacement and request previews",
         ),
       )
       .toBeLessThanOrEqual(1);
-    expect(await body.evaluate((element) => element.scrollTop)).toBeGreaterThan(
-      0,
+    expect(await dialog.locator("header").first().boundingBox()).toEqual(
+      header,
     );
-    expect(await dialog.locator("header").boundingBox()).toEqual(header);
     expect(
       await dialog.evaluate(
         (element) => element.scrollWidth <= element.clientWidth + 1,
       ),
     ).toBe(true);
-    const prompt = await dialog
-      .getByLabel("Effective system prompt")
-      .boundingBox();
-    const scroll = await body.boundingBox();
-    expect(prompt.y + prompt.height).toBeLessThanOrEqual(
-      scroll.y + scroll.height,
-    );
   }
-  await dialog.getByRole("button", { name: "Close system prompt" }).click();
+  await page.setViewportSize({ width: 1280, height: 800 });
+  // The request view links back to the instructions.
+  await dialog.getByRole("button", { name: "Close instructions" }).click();
+  await page.getByRole("button", { name: "Raw context", exact: true }).click();
+  await page
+    .getByRole("dialog", { name: "Raw context" })
+    .getByRole("button", { name: "Instructions", exact: true })
+    .click();
+  await expect(dialog.getByLabel("Yours · every session")).toBeVisible();
+  await dialog.getByRole("button", { name: "Close instructions" }).click();
   await composer.fill("/quit");
   await composer.press("Enter");
 });
@@ -374,12 +314,7 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   page,
   host: fixture,
 }, testInfo) => {
-  const errors = [];
-  page.on("pageerror", (error) => errors.push(error.message));
-  // A valid empty worker keeps cold lazy-module tests independent of precaching.
-  await page.route("**/sw.js", (route) =>
-    route.fulfill({ contentType: "text/javascript", body: "" }),
-  );
+  await withoutServiceWorker(page);
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/");
   await expect(page.getByText("Connected", { exact: true })).toBeVisible();
@@ -485,42 +420,22 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   await expect(
     picker.getByRole("combobox", { name: "Model", exact: true }),
   ).toBeFocused();
-  // The panel docks after its content lands: place() runs on open for
-  // the shell, then re-places on the content resize, so pin the docked
-  // geometry once it settles instead of sampling mid-growth. The exact
-  // tolerances are unchanged.
+  // It is a sheet at the window's right edge, not a panel beside its button.
   await expect
     .poll(async () => {
-      const anchorBox = await model.boundingBox();
-      const panelBox = await picker.boundingBox();
-      if (!anchorBox || !panelBox) return Number.POSITIVE_INFINITY;
-      const delta = Math.max(
-        Math.abs(anchorBox.x - panelBox.x),
-        Math.abs(anchorBox.y - panelBox.y - panelBox.height - 8),
-      );
-      return delta;
+      const box = await picker.boundingBox();
+      const width = page.viewportSize()?.width ?? 0;
+      return box ? Math.abs(box.x + box.width - width) : Infinity;
     })
     .toBeLessThan(2);
-  // Layout that moves the anchor without resizing it carries the panel along.
-  const docked = async () => {
-    const anchorBox = await model.boundingBox();
-    const panelBox = await picker.boundingBox();
-    return Math.abs(anchorBox.y - panelBox.y - panelBox.height - 8);
-  };
-  await page
-    .locator(".composer")
-    .evaluate((element) => (element.style.marginBottom = "100px"));
-  await expect.poll(docked).toBeLessThan(2);
-  await page
-    .locator(".composer")
-    .evaluate((element) => (element.style.marginBottom = ""));
-  await expect.poll(docked).toBeLessThan(2);
   await page.keyboard.press("Escape");
   await expect(picker).toHaveCount(0);
   await expect(model).toBeFocused();
   await model.click();
   await expect(picker).toBeVisible();
-  await prompt.click();
+  // A tap on the scrim, over the composer, closes the sheet.
+  const promptBox = await prompt.boundingBox();
+  await page.mouse.click(promptBox.x + 10, promptBox.y + 10);
   await expect(picker).toHaveCount(0);
   await expect(prompt).toHaveValue("Keep this draft through popups");
 
@@ -734,7 +649,6 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
     testInfo.outputPath(`layout.json`),
     JSON.stringify(metrics, null, 2),
   );
-  expect(errors).toEqual([]);
 });
 
 test("code blocks, thinking and HTTP dialogs preserve content and loading geometry", async ({
@@ -742,17 +656,13 @@ test("code blocks, thinking and HTTP dialogs preserve content and loading geomet
   session,
   command,
 }) => {
-  const errors = [];
-  page.on("pageerror", (error) => errors.push(error.message));
   await command("model", {
     session_id: session.id,
     generation: session.generation,
     operation: "select",
     model: "mock/model-b",
   });
-  await page.route("**/sw.js", (route) =>
-    route.fulfill({ contentType: "text/javascript", body: "" }),
-  );
+  await withoutServiceWorker(page);
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto(`/#session=${session.id}`);
   const prompt = page.getByLabel("Message or guidance");
@@ -904,8 +814,6 @@ test("code blocks, thinking and HTTP dialogs preserve content and loading geomet
   await raw
     .getByRole("button", { name: "Close http request/response", exact: true })
     .click();
-
-  expect(errors).toEqual([]);
 });
 
 test("touch controls remain reachable at phone width", async ({
@@ -967,9 +875,7 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
   session,
   host: fixture,
 }) => {
-  await page.route("**/sw.js", (route) =>
-    route.fulfill({ contentType: "text/javascript", body: "" }),
-  );
+  await withoutServiceWorker(page);
   const snapshot = await (
     await context.request.get(`/api/sessions/${session.id}`)
   ).json();
@@ -1109,7 +1015,7 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
   expect(requests).toBe(0);
   const row = page
     .locator(".session-row")
-    .filter({ has: page.locator(".session.selected") });
+    .filter({ has: page.locator(".session[aria-current]") });
   await expect(row.locator("time")).toBeVisible();
   await expect(row.locator(".status-led.active")).toBeVisible();
   const menu = row.getByRole("button", {
@@ -1232,9 +1138,7 @@ test("late snapshots and retired streams cannot replace current session state", 
       close() {}
     };
   });
-  await page.route("**/sw.js", (route) =>
-    route.fulfill({ contentType: "text/javascript", body: "" }),
-  );
+  await withoutServiceWorker(page);
   let release;
   const held = new Promise((resolve) => (release = resolve));
   let requested;
@@ -1372,12 +1276,11 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
     isMobile: true,
     storageState,
   });
+  // Its own phone context, so it collects its own page errors.
   const page = await context.newPage(),
     errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  await page.route("**/sw.js", (route) =>
-    route.fulfill({ contentType: "text/javascript", body: "" }),
-  );
+  await withoutServiceWorker(page);
   // Desktop engines cannot open a phone keyboard. Model an independently
   // resized/panned visual viewport; a window resize alone misses this bug.
   const viewport = async (height, top = 0) => {
@@ -1772,7 +1675,7 @@ test.describe("mobile navigation and commands", () => {
     await expect(page.locator(".composer .status-led.active")).toBeVisible();
     await prompt.fill("/sessions");
     await send.tap();
-    await expect(page.getByLabel("Find a session")).toBeVisible();
+    await expect(page.getByLabel("Find a conversation")).toBeVisible();
     await page
       .getByRole("button", { name: "Close sessions", exact: true })
       .tap();
@@ -2309,7 +2212,7 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
   await expect(
     thread.getByRole("heading", { name: "Verified response", exact: true }),
   ).toHaveCount(2);
-  await expect(detail).not.toContainText("Saved model is unavailable");
+  await expect(detail).not.toContainText("saved model is unavailable");
   await expect(detail.locator(".model-selector")).toContainText("mock/main");
   await detail
     .getByRole("button", { name: "Show full message", exact: true })
@@ -2336,7 +2239,7 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
   );
   // A finished subagent stays reachable from the status line, like /agents.
   await page.getByRole("button", { name: "Activity", exact: true }).click();
-  const idle = page.locator(".activity-popover .activity-open");
+  const idle = page.locator(".activity-sheet .activity-open");
   await expect(idle).toHaveCount(1);
   await expect(idle).toContainText("idle");
   await idle.click();

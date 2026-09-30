@@ -19,6 +19,7 @@
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/usage.h"
+#include "include/media/attachments.h"
 #include "include/providers.h"
 #include "include/ui/sessions.h"
 #include "tests/unit/terminal_test_support.h"
@@ -52,9 +53,6 @@ void TestConversation() {
                     MessageKind::kInternal);
   conversation.Push({{"role", "system"}, {"content", "[runtime advisory]"}},
                     MessageKind::kRuntimeContext);
-  conversation.UpsertTail(
-      {{"role", "user"}, {"content", "[runtime advisory updated]"}},
-      MessageKind::kRuntimeContext);
   conversation.Push({{"role", "assistant"}, {"content", "answer"}},
                     MessageKind::kAssistant);
   CHECK(conversation.FirstUserText() == "Prior context: this is user text");
@@ -62,7 +60,7 @@ void TestConversation() {
   CHECK(conversation.LastAssistantText() == "answer");
   CHECK(conversation.At(2).value("role", "") == "user");
   CHECK(conversation.LastText(MessageKind::kRuntimeContext) ==
-        "[runtime advisory updated]");
+        "[runtime advisory]");
   CHECK(conversation.At(3).value("role", "") == "user");
   // The wire format keeps exactly one system message, at index zero.
   json wire = conversation.Messages();
@@ -82,51 +80,11 @@ void TestConversation() {
   CHECK(conversation.Size() == wire.size());
   CHECK(conversation.Kinds().size() == conversation.Size());
 
-  // UpsertTail keeps a stable historical prefix by relocating changed runtime
-  // context to the end instead of rewriting it in place.
-  Conversation tailed;
-  tailed.Reset(json::array({{{"role", "system"}, {"content", "sys"}}}),
-               {MessageKind::kSystem});
-  tailed.Push({{"role", "user"}, {"content", "history"}}, MessageKind::kUser);
-  tailed.UpsertTail({{"role", "user"}, {"content", "[environment: cols=80]"}},
-                    MessageKind::kRuntimeContext);
-  CHECK(tailed.At(1).value("content", "") == "history");
-  CHECK(tailed.At(2).value("content", "") == "[environment: cols=80]");
-  tailed.UpsertTail({{"role", "user"}, {"content", "[environment: cols=80]"}},
-                    MessageKind::kRuntimeContext);
-  CHECK(tailed.Size() == 3);
-  tailed.Push({{"role", "assistant"}, {"content", "answer"}},
-              MessageKind::kAssistant);
-  tailed.Push({{"role", "user"}, {"content", "next turn"}}, MessageKind::kUser);
-  tailed.UpsertTail({{"role", "user"}, {"content", "[environment: cols=120]"}},
-                    MessageKind::kRuntimeContext);
-  CHECK(tailed.LastText(MessageKind::kRuntimeContext) ==
-        "[environment: cols=120]");
-  CHECK(tailed.At(3).value("content", "") == "next turn");
-  CHECK(tailed.At(4).value("content", "") == "[environment: cols=120]");
-  for (size_t i = 1; i < tailed.Size(); ++i) {
-    CHECK(tailed.At(i).value("role", "") != "system");
-  }
-  // UpsertTail has no caller-level LastText guard: a byte-identical entry that
-  // is not at the tail is still relocated there. EnsureRuntimeContext keeps
-  // the unchanged entry in place; UpsertTail's contract is only "no churn when
-  // the tail already matches".
-  tailed.UpsertTail({{"role", "user"}, {"content", "[environment: cols=120]"}},
-                    MessageKind::kRuntimeContext);
-  CHECK(tailed.Size() == 5);
-  CHECK(tailed.At(4).value("content", "") == "[environment: cols=120]");
-  tailed.Push({{"role", "assistant"}, {"content", "follow-up"}},
-              MessageKind::kAssistant);
-  tailed.UpsertTail({{"role", "user"}, {"content", "[environment: cols=120]"}},
-                    MessageKind::kRuntimeContext);
-  CHECK(tailed.Size() == 6);
-  CHECK(tailed.At(4).value("content", "") == "follow-up");
-  CHECK(tailed.At(5).value("content", "") == "[environment: cols=120]");
   MessageKind environment_kind = MessageKind::kInternal;
   CHECK(!ParseMessageKind("environment", environment_kind));
 
   conversation.ArchiveRange("test", 1, conversation.Size(), 1, 4096);
-  CHECK(conversation.ArchivedSegments() == 1);
+  CHECK(conversation.Archive().size() == 1);
   CHECK(conversation.Archive()[0]["message_kinds"].size() == 4);
   CHECK(conversation.Archive()[0]["message_kinds"][0] == "user");
 
@@ -136,10 +94,10 @@ void TestConversation() {
   bounded.Push({{"role", "user"}, {"content", std::string(80, 'a')}},
                MessageKind::kUser);
   bounded.ArchiveRange("first", 1, bounded.Size(), 1, 4096);
-  CHECK(bounded.ArchivedSegments() == 1);
+  CHECK(bounded.Archive().size() == 1);
   int64_t one_segment_bytes = bounded.ArchivedBytes();
   bounded.ArchiveRange("next", 1, bounded.Size(), 2, one_segment_bytes);
-  CHECK(bounded.ArchivedSegments() == 1);
+  CHECK(bounded.Archive().size() == 1);
   CHECK(bounded.Archive()[0]["turn"] == 2);
   CHECK(bounded.ArchivedBytes() <= one_segment_bytes);
   CHECK(bounded.DroppedSegments() == 1);
@@ -153,11 +111,15 @@ void TestConversation() {
         static_cast<int64_t>(JsonDump(restored.Archive()).size()) - 2);
   CHECK(
       restored.ArchiveRange("next", 1, restored.Size(), 7, one_segment_bytes));
-  CHECK(restored.ArchivedSegments() == 1);
+  CHECK(restored.Archive().size() == 1);
   CHECK(restored.Archive()[0]["turn"] == 7);
   CHECK(restored.DroppedSegments() == 6);
   CHECK(restored.ArchivedBytes() ==
         static_cast<int64_t>(JsonDump(restored.Archive()).size()) - 2);
+  // A save writes the kept segment texts, byte for byte the archive's dump.
+  CHECK(restored.ArchiveText() == JsonDump(restored.Archive()));
+  CHECK(bounded.ArchiveText() == JsonDump(bounded.Archive()));
+  CHECK(Conversation{}.ArchiveText() == "[]");
 
   Conversation rejected;
   rejected.Reset(json::array({{{"role", "system"}, {"content", "sys"}}}),
@@ -165,7 +127,7 @@ void TestConversation() {
   rejected.Push({{"role", "user"}, {"content", "payload"}}, MessageKind::kUser);
   rejected.ArchiveRange("disabled", 1, rejected.Size(), 1, 0);
   rejected.ArchiveRange("oversized", 1, rejected.Size(), 2, 1);
-  CHECK(rejected.ArchivedSegments() == 0);
+  CHECK(rejected.Archive().size() == 0);
   CHECK(rejected.ArchivedBytes() == 0);
   CHECK(rejected.DroppedSegments() == 2);
 
@@ -429,6 +391,28 @@ void TestConversation() {
   CHECK(JsonDump(projection).size() < size_t{384} * 1024);
 }
 
+// A user message's arrival outlives display-fact eviction and a restore: a
+// coordinator's model reads it, so it must never shift under the cache.
+void TestArrivalsSurviveFactEviction() {
+  Conversation conversation;
+  conversation.Push({{"role", "system"}, {"content", "sys"}},
+                    MessageKind::kSystem);
+  conversation.Push({{"role", "user"}, {"content", "hi"}}, MessageKind::kUser);
+  const uint64_t id = conversation.DisplayIds().back();
+  const std::string arrived = conversation.Arrival(id);
+  CHECK(!arrived.empty());
+  for (int index = 0; index < 5000; ++index) {
+    conversation.RecordDisplay("x-" + std::to_string(index), {{"n", index}});
+  }
+  CHECK(!conversation.DisplayFacts().contains("m-" + std::to_string(id)));
+  CHECK(conversation.Arrival(id) == arrived);
+  Conversation restored;
+  CHECK(restored.Restore(conversation.Messages(), conversation.Kinds(),
+                         conversation.Archive(), 0, conversation.ToolDisplays(),
+                         conversation.DisplayMetadata()));
+  CHECK(restored.Arrival(id) == arrived);
+}
+
 void TestSavedTranscriptIndex() {
   TestWorkspace workspace("saved-transcript");
   Conversation conversation;
@@ -556,17 +540,25 @@ void TestCompactionKeepsDisplayIdentity() {
   CHECK(view["more"] == true);
   CHECK(view["blocks"].back()["id"] == "large-63");
 
-  // Live deltas and the saved preview are one response projection. A bounded
-  // checkpoint may enrich metadata, but it cannot shorten a body this client
-  // already received at the same content revision.
+  // Live deltas and the saved preview are one row, keyed by the response id.
+  // A bounded checkpoint may enrich metadata, but it cannot shorten a body
+  // this client already received at the same content revision.
   json state = {{"view", {{"blocks", json::array()}}}};
   const json response = {
       {"response_id", "r-7-3-1"}, {"turn", 7}, {"request", 3}, {"attempt", 1}};
-  CHECK(ApplySessionEvent(state, "response.started", response));
+  json patch;
+  CHECK(ApplySessionEvent(state, "response.started", response, &patch));
+  CHECK(patch["block"]["streaming"] == true);
   CHECK(ApplySessionEvent(
       state, "response.answer.delta",
-      {{"response_id", "r-7-3-1"}, {"text", "complete streamed body"}}));
-  MergeDisplayBlock(state["view"], {{"id", "m-99"},
+      {{"response_id", "r-7-3-1"}, {"text", "complete streamed body"}},
+      &patch));
+  // A client holding the same view appends, never re-reads the body.
+  CHECK((patch == json{{"kind", "block"},
+                       {"id", "r-7-3-1"},
+                       {"append", {{"text", "complete streamed body"}}}}));
+  MergeDisplayBlock(state["view"], {{"id", "r-7-3-1"},
+                                    {"sequence", 99},
                                     {"row_id", "r-7-3-1"},
                                     {"response_id", "r-7-3-1"},
                                     {"kind", "assistant"},
@@ -578,43 +570,34 @@ void TestCompactionKeepsDisplayIdentity() {
                                     {"status", "complete"}});
   REQUIRE(state["view"]["blocks"].size() == 1);
   const json& reconciled = state["view"]["blocks"][0];
-  CHECK(reconciled["id"] == "m-99");
-  CHECK(reconciled["row_id"] == "r-7-3-1");
   CHECK(reconciled["text"] == "complete streamed body");
   CHECK(reconciled["text_bytes"] == 22);
-  CHECK(reconciled["content_revision"] == 1);
   CHECK(reconciled["status"] == "complete");
+  // A saved row has finished streaming.
+  CHECK(!reconciled.contains("streaming"));
 
-  // A response and its tool results share response_id, but each occurrence is
-  // a distinct transcript row. Checkpoint enrichment must preserve the live
-  // assistant body and reasoning while adding every saved result exactly once.
-  CHECK(ApplySessionEvent(
-      state, "response.reasoning.delta",
-      {{"response_id", "r-7-3-1"}, {"text", "visible thinking"}}));
-  MergeDisplayBlock(state["view"], {{"id", "m-100"},
-                                    {"response_id", "r-7-3-1"},
-                                    {"occurrence_id", "r-7-3-1:call-a"},
-                                    {"kind", "tool_result"},
-                                    {"text", "first result"}});
-  MergeDisplayBlock(state["view"], {{"id", "m-101"},
-                                    {"response_id", "r-7-3-1"},
-                                    {"occurrence_id", "r-7-3-1:call-b"},
-                                    {"kind", "tool_result"},
-                                    {"text", "second result"}});
-  REQUIRE(state["view"]["blocks"].size() == 3);
-  CHECK(state["view"]["blocks"][0]["kind"] == "assistant");
-  CHECK(state["view"]["blocks"][0]["reasoning"] == "visible thinking");
-  CHECK(state["view"]["blocks"][1]["text"] == "first result");
-  CHECK(state["view"]["blocks"][2]["text"] == "second result");
-  MergeDisplayBlock(state["view"], {{"id", "m-100"},
-                                    {"response_id", "r-7-3-1"},
-                                    {"occurrence_id", "r-7-3-1:call-a"},
+  // Each call is its own row. A live call and its saved result join on the
+  // detail id, whichever arrives first; the call's fields survive the result.
+  for (const char* id : {"t-a", "t-b"}) {
+    CHECK(ApplySessionEvent(state, "tool.call",
+                            {{"detail_id", id},
+                             {"call_id", std::string("call-") + id},
+                             {"response_id", "r-7-3-1"},
+                             {"name", "read_path"},
+                             {"arguments", {{"path", "a.txt"}}}},
+                            &patch));
+    CHECK(patch["block"]["status"] == "running");
+  }
+  MergeDisplayBlock(state["view"], {{"id", "t-a"},
+                                    {"sequence", 100},
                                     {"kind", "tool_result"},
                                     {"text", "first result"},
-                                    {"status", "completed"}});
+                                    {"status", "success"}});
   REQUIRE(state["view"]["blocks"].size() == 3);
-  CHECK(state["view"]["blocks"][1]["status"] == "completed");
-  CHECK(state["view"]["blocks"][0]["reasoning"] == "visible thinking");
+  CHECK(state["view"]["blocks"][1]["text"] == "first result");
+  CHECK(state["view"]["blocks"][1]["name"] == "read_path");
+  CHECK(state["view"]["blocks"][1]["arguments"] == "{\"path\":\"a.txt\"}");
+  CHECK(state["view"]["blocks"][2]["status"] == "running");
 
   Conversation long_answer;
   long_answer.Reset(json::array({{{"role", "system"}, {"content", "sys"}}}),
@@ -682,7 +665,7 @@ void TestCompactionKeepsDisplayIdentity() {
       replayed, "response.answer.delta",
       {{"response_id", "r-replayed"}, {"offset", 2}, {"text", "ha"}}));
   CHECK(replayed["view"]["blocks"][0]["text"] == "haha");
-  MergeDisplayBlock(replayed["view"], {{"id", "m-replayed"},
+  MergeDisplayBlock(replayed["view"], {{"id", "r-replayed"},
                                        {"response_id", "r-replayed"},
                                        {"kind", "assistant"},
                                        {"text", "haha"},
@@ -745,9 +728,8 @@ void TestHistoryReplaySkipsBareHeader() {
       MessageKind::kAssistant);
   bool prior_unicode = g_unicode;
   g_unicode = true;
-  const std::vector<Tool> no_tools;
   const std::string drawn =
-      CaptureStdout([&] { PrintConversationHistory(replay, no_tools); });
+      CaptureStdout([&] { PrintConversationHistory(replay); });
   g_unicode = prior_unicode;
   CHECK(drawn.find("hi") != std::string::npos);
   CHECK(drawn.find("µ") == std::string::npos);
@@ -760,7 +742,7 @@ void TestHistoryReplaySkipsBareHeader() {
               MessageKind::kAssistant);
   g_unicode = true;
   const std::string voiced =
-      CaptureStdout([&] { PrintConversationHistory(spoken, no_tools); });
+      CaptureStdout([&] { PrintConversationHistory(spoken); });
   g_unicode = prior_unicode;
   CHECK(voiced.find("uagent") != std::string::npos);
   CHECK(voiced.find("µ") == std::string::npos);
@@ -803,8 +785,10 @@ void TestToolResultHealsMissingMetadata() {
   CHECK(result["duration_ms"] == 12.5);
   CHECK(result["detail_id"] == "t-hash1");
   CHECK(!result.contains("receipt_missing"));
-  const json& call = view["blocks"][view["blocks"].size() - 2];
-  CHECK(call["tools"][0]["status"] == "success");
+  // The call and its result are one row: the result keeps its place and
+  // takes the call's arguments.
+  CHECK(view["blocks"].size() == 2);
+  CHECK(result["arguments"] == "{\"command\":\"ls\"}");
   // A message with neither metadata nor facts reads complete, never a
   // forever-"running" ghost.
   conversation.Push(
@@ -961,11 +945,10 @@ void TestAttachmentHistoryRendering() {
                                     {"name", "image.png"},
                                     {"delivery", "Image"},
                                     {"path", path}}})}});
-  const std::vector<Tool> no_tools;
   bool prior_unicode = g_unicode;
   g_unicode = true;
   const std::string drawn =
-      CaptureStdout([&] { PrintConversationHistory(conversation, no_tools); });
+      CaptureStdout([&] { PrintConversationHistory(conversation); });
   g_unicode = prior_unicode;
   CHECK(drawn.find(prompt) != std::string::npos);
   CHECK(drawn.find(path) == std::string::npos);
@@ -984,7 +967,7 @@ void TestAttachmentHistoryRendering() {
                                    quote + "/tmp/x.png" + quote}}})}},
       MessageKind::kUser);
   const std::string kept =
-      CaptureStdout([&] { PrintConversationHistory(literal, no_tools); });
+      CaptureStdout([&] { PrintConversationHistory(literal); });
   CHECK(kept.find("note") != std::string::npos);
   CHECK(kept.find("/tmp/x.png") != std::string::npos);
   CHECK(drawn.find("image.png \u00b7 Image") != std::string::npos);
@@ -1010,8 +993,15 @@ void TestForkAtTurnAndLineage() {
   record.state.message_kinds = {MessageKind::kSystem, MessageKind::kUser,
                                 MessageKind::kAssistant, MessageKind::kUser,
                                 MessageKind::kAssistant};
+  record.metadata.kind = kSessionKindThread;
+  record.metadata.thread = {{"coordinator_id", "c-1"}};
   const std::string source = (workspace.workspace / "source.json").string();
   CHECK(SessionStore::Save(source, record).Ok());
+  // The thread link round-trips; a fork is an ordinary session.
+  auto linked = SessionStore::Inspect(source);
+  CHECK(linked.record->metadata.kind == kSessionKindThread);
+  CHECK(JsonValue(linked.record->metadata.thread, "coordinator_id", "") ==
+        "c-1");
 
   // Turn 2 keeps the prefix before the second user message: 3 messages.
   json forked = SessionStore::Fork(source, "", true, 2);
@@ -1025,6 +1015,8 @@ void TestForkAtTurnAndLineage() {
   CHECK(reloaded.record->metadata.turns == 1);
   CHECK(reloaded.record->metadata.title == "Fork of parent title @ turn 2");
   CHECK(reloaded.record->metadata.parent_session_id == "parent-1");
+  CHECK(reloaded.record->metadata.kind.empty());
+  CHECK(reloaded.record->metadata.thread.empty());
   CHECK(reloaded.record->metadata.forked_at_turn == 2);
   CHECK(!reloaded.record->metadata.forked_at_time.empty());
   // The source still has everything.
@@ -1060,11 +1052,12 @@ void TestForkAtTurnAndLineage() {
   CHECK(!relived.record->metadata.forked_at_time.empty());
 }
 
-// P2: in-place rewind keeps identity and title while stamping a
-// reset-boundary fact; /share renders user/assistant text plus truncated
-// tool results and never leaks system or internal messages.
-void TestRewindAndShare() {
-  TestWorkspace workspace("rewind-share");
+// P2: files attached on request mid-turn share the user role and kind but
+// are not user messages: numbering, /share and forking before a message all
+// count only what the person wrote. /share never leaks system or internal
+// messages.
+void TestForkAtMessageAndShare() {
+  TestWorkspace workspace("fork-share");
   SessionRecord record;
   record.metadata.cwd = CanonicalCwd();
   record.metadata.model = "test";
@@ -1077,58 +1070,66 @@ void TestRewindAndShare() {
       {{"role", "assistant"}, {"content", "uno"}},
       {{"role", "user"},
        {"content",
-        json::array({{{"type", "text"}, {"text", "see this"}},
-                     {{"type", "attachment"}, {"path", "/tmp/a.png"}}})}},
+        json::array(
+            {{{"type", "text"}, {"text", "see this\n\nAttached:\n- path a"}},
+             {{"type", "attachment"}, {"path", "/tmp/a.png"}}})}},
       {{"role", "assistant"}, {"content", "looks good"}},
       {{"role", "tool"}, {"content", "file bytes"}, {"name", "read_path"}},
+      {{"role", "user"},
+       {"content", json::array({{{"type", "text"},
+                                 {"text", std::string(kAttachedOnRequest) +
+                                              "\n\nAttached:\n- path b"}}})}},
       {{"role", "user"}, {"content", "three"}},
       {{"role", "assistant"}, {"content", "tres"}},
       {{"role", "user"}, {"content", "[note]"}},
   });
   record.state.message_kinds = {
-      MessageKind::kSystem,    MessageKind::kUser,
-      MessageKind::kAssistant, MessageKind::kAttachment,
-      MessageKind::kAssistant, MessageKind::kToolResult,
-      MessageKind::kUser,      MessageKind::kAssistant,
-      MessageKind::kInternal};
-  // The share view numbers the three user turns, keeps tool output under a
-  // named fence, and drops the internal note and the system prompt.
+      MessageKind::kSystem,     MessageKind::kUser,
+      MessageKind::kAssistant,  MessageKind::kAttachment,
+      MessageKind::kAssistant,  MessageKind::kToolResult,
+      MessageKind::kAttachment, MessageKind::kUser,
+      MessageKind::kAssistant,  MessageKind::kInternal};
   const std::string markdown = SessionStore::ShareMarkdown(record);
   CHECK(markdown.find("# live title") != std::string::npos);
-  CHECK(markdown.find("## User 1") != std::string::npos);
-  CHECK(markdown.find("one") != std::string::npos);
   CHECK(markdown.find("## User 2") != std::string::npos);
   CHECK(markdown.find("[file: /tmp/a.png]") != std::string::npos);
-  CHECK(markdown.find("## User 3") != std::string::npos);
-  CHECK(markdown.find("three") != std::string::npos);
-  CHECK(markdown.find("## Assistant") != std::string::npos);
-  CHECK(markdown.find("tres") != std::string::npos);
+  CHECK(markdown.find("## Attached") != std::string::npos);
+  CHECK(markdown.find("## User 3\n\nthree") != std::string::npos);
+  CHECK(markdown.find("## User 4") == std::string::npos);
   CHECK(markdown.find("### tool `read_path`") != std::string::npos);
-  CHECK(markdown.find("file bytes") != std::string::npos);
   CHECK(markdown.find("[note]") == std::string::npos);
   CHECK(markdown.find("sys") == std::string::npos);
   const std::string source = (workspace.workspace / "live.json").string();
   CHECK(SessionStore::Save(source, record).Ok());
-  // Rewinding truncates before a user turn; the live /rewind path shares it.
-  auto restore = [&](Conversation& conversation) {
-    return conversation.Restore(
-        record.state.messages, record.state.message_kinds, record.state.archive,
-        record.state.archive_dropped_segments, record.state.tool_displays,
-        record.state.display);
-  };
-  Conversation rewound;
-  CHECK(restore(rewound));
-  CHECK(rewound.TruncateBeforeUserTurn(3));
-  CHECK(rewound.Size() == 6);
-  // Attachments count as user turns: rewinding to 2 keeps the prefix
-  // before it, including turn 1's assistant reply.
-  CHECK(rewound.TruncateBeforeUserTurn(2));
-  CHECK(rewound.Size() == 3);
-  // Out of range and non-positive turns stay errors, never truncations.
-  for (int64_t turn : {int64_t{9}, int64_t{0}, int64_t{-1}}) {
-    CHECK(!rewound.TruncateBeforeUserTurn(turn));
+
+  Conversation conversation;
+  CHECK(conversation.Restore(record.state.messages, record.state.message_kinds,
+                             record.state.archive,
+                             record.state.archive_dropped_segments,
+                             record.state.tool_displays, record.state.display));
+  CHECK(conversation.UserTurns() == 3);
+  CHECK(conversation.UserMessageText(2) == "see this");
+  const uint64_t three = conversation.DisplayIds()[7];
+  CHECK(conversation.UserMessageNumber(three) == 3);
+  CHECK(conversation.UserMessageNumber(conversation.DisplayIds()[6]) == 0);
+
+  // Forking before a message keeps everything before it, including the
+  // files attached on request, and hands its text back to edit.
+  const json forked =
+      SessionStore::Fork(source, "", false, 0, "m-" + std::to_string(three));
+  CHECK(forked.value("prompt", "") == "three");
+  auto fork = SessionStore::Inspect(forked.value("path", ""));
+  REQUIRE(fork.record.has_value());
+  CHECK(fork.record->state.messages.size() == 7);
+  CHECK(fork.record->metadata.parent_session_id == "live-1");
+  CHECK(SessionStore::Inspect(source).record->state.messages.size() == 10);
+  for (const std::string& id : {std::string("m-999"), std::string("x-1")}) {
+    CHECK(SessionStore::Fork(source, "", false, 0, id).contains("error"));
   }
-  CHECK(rewound.Size() == 3);
+  for (int64_t turn : {int64_t{9}, int64_t{-1}}) {
+    CHECK(SessionStore::Fork(source, "", false, turn).contains("error"));
+  }
+
   // The file export lands next to the session and renders its title.
   json shared = SessionStore::Share(source);
   CHECK(!shared.contains("error"));

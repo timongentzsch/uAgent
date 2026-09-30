@@ -7,10 +7,12 @@
 #include <filesystem>
 #include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "include/agent/session_role.h"
 #include "include/agent/session_view.h"
 #include "include/app/library.h"
 #include "include/app/schedule.h"
@@ -140,14 +142,18 @@ bool SessionHost::RefreshCatalogue(bool force) {
   std::lock_guard scan(scan_mutex_);
   if (!force &&
       std::chrono::steady_clock::now() - scanned_ < std::chrono::seconds(1)) {
+    rescan_ = true;
     return false;
   }
+  rescan_ = false;
   scanned_ = std::chrono::steady_clock::now();
-  const auto list = catalogue_.List(SessionScope::kAll);
+  auto list = catalogue_.List(SessionScope::kAll);
   std::lock_guard lock(mutex_);
   bool changed = false;
+  std::set<std::string> listed;
   for (const SessionInfo& item : list) {
     const std::string id = HashHex(item.path);
+    listed.insert(id);
     auto [it, inserted] = sessions_.try_emplace(id, nullptr);
     if (inserted) {
       it->second = std::make_shared<HostSession>();
@@ -160,6 +166,8 @@ bool SessionHost::RefreshCatalogue(bool force) {
       continue;
     }
     session.cwd = item.cwd;
+    session.kind = item.kind;
+    session.folder = JsonValue(item.thread, "folder", "");
     session.incoming = std::max(session.incoming, item.incoming);
     session.title = item.title;
     const FileStamp stamp = SnapshotFile(item.path);
@@ -170,7 +178,32 @@ bool SessionHost::RefreshCatalogue(bool force) {
     if (inserted) session.published = nullptr;
     changed |= PublishMetadata(session.id, session);
   }
+  // Gone from disk and not running: deleted by a coordinator or by hand.
+  // Drafts have no file yet, and a session mid-command is the router's.
+  for (auto it = sessions_.begin(); it != sessions_.end();) {
+    const HostSession& session = *it->second;
+    if (listed.contains(it->first) || session.status == "draft" ||
+        session.status == "updating" || session.status == "deleting" ||
+        session.closing || session.connecting ||
+        (session.pid > 0 && !session.exited) || PathExists(session.path)) {
+      ++it;
+      continue;
+    }
+    replay_.Publish(epoch_, it->first, "", {{"kind", "deleted"}},
+                    !session.run_id.empty());
+    it = sessions_.erase(it);
+    changed = true;
+  }
+  // Waiting event streams send what was published at once.
+  if (changed) changed_.notify_all();
   return changed;
+}
+
+std::optional<std::chrono::steady_clock::time_point> SessionHost::RescanDue()
+    const {
+  std::lock_guard scan(scan_mutex_);
+  if (!rescan_) return std::nullopt;
+  return scanned_ + std::chrono::seconds(1);
 }
 
 void SessionHost::RefreshPresence() {
@@ -185,8 +218,30 @@ void SessionHost::RefreshPresence() {
   }
   for (const auto& session : candidates) {
     if (!PathExists(SocketPath(session->path))) continue;
+    if (session->parked && session->parked == session->updated) continue;
     std::string error;
     ActivateLocked(session, error, lock, false);
+  }
+}
+
+void SessionHost::ParkIdleCoordinators() {
+  std::lock_guard lock(mutex_);
+  const int64_t now = NowMillis();
+  const int64_t idle =
+      std::chrono::duration_cast<std::chrono::milliseconds>(CoordinatorIdle())
+          .count();
+  for (const auto& [id, session] : sessions_) {
+    if (session->kind != kSessionKindCoordinator || session->pid <= 0 ||
+        session->exited || session->closing || session->connecting ||
+        session->turn_active || !session->pending.is_null() ||
+        now - std::max(session->updated, session->activated) < idle) {
+      continue;
+    }
+    // Closing (not closed): the reader stops and the session reads as
+    // saved, while the runtime decides for itself when to exit.
+    session->parked = session->updated;
+    session->closing = true;
+    session->stop.Wake();
   }
 }
 
@@ -235,6 +290,8 @@ json SessionHost::Metadata(const HostSession& session) const {
           {"task_id", session.task_id},
           {"run_id", session.run_id},
           {"cwd", session.cwd},
+          {"kind", session.kind},
+          {"folder", session.folder},
           {"title", session.title},
           {"generation", session.generation},
           {"status", session.status},
@@ -246,7 +303,8 @@ json SessionHost::Metadata(const HostSession& session) const {
           {"phase", JsonValue(session.state, "phase", "idle")},
           {"activities", JsonValue(session.state, "activities", json::array())},
           {"error", session.error},
-          {"pending", !session.pending.is_null()},
+          // Waiting on a person: a coordinator's routed decision is not.
+          {"pending", WaitsOnPerson(session.pending)},
           {"updated", session.updated}};
 }
 

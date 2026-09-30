@@ -17,8 +17,12 @@ interface and machine-readable output from one conversation runtime.
   OpenSSL 3 libcrypto to build Web Push from source (`-DUAGENT_WEB_PUSH=ON`;
   release archives and the Docker image include it)
 
-The default build embeds the prebuilt browser interface from `web/dist`, so it
-needs no Node.js. `-DUAGENT_WEB=OFF` builds a CLI-only binary.
+The browser interface is built from `web/` and embedded in the binary.
+`./install.sh` builds it when Node.js is present; without Node.js the build is
+CLI-only, and each release also ships the built interface
+(`uagent-web-dist-<version>.tar.gz`, unpacked into `web/dist`).
+`-DUAGENT_WEB=OFF` asks for a CLI-only binary, and `-DUAGENT_BROWSER=OFF`
+leaves out the browser appliance.
 
 ## Install
 
@@ -88,7 +92,10 @@ passwords.google.com. The agent can use saved logins but never read them.
 | Shift+Enter, Alt+Enter | Insert a newline in the draft |
 | Tab | Complete a `/command` or an `@path` segment |
 | Ctrl+X Ctrl+E | Edit the draft in `$VISUAL`/`$EDITOR` |
-| Escape | Clear the draft and interrupt the running turn |
+| Up, Down, Ctrl+P, Ctrl+N | Previous and next draft from history |
+| Ctrl+A, Ctrl+E, Ctrl+F | Move to the start, to the end, one character right |
+| Ctrl+W, Ctrl+K, Ctrl+U | Delete the word before the cursor, to the end, to the start |
+| Esc | Clear the draft and interrupt the running turn |
 | Ctrl+B | Move the foreground command to background supervision |
 | Ctrl+C | Interrupt while working; press twice while idle to detach |
 | Ctrl+D on an empty draft | Detach |
@@ -105,9 +112,9 @@ Common slash commands:
 | `/model`, `/models`, `/effort`, `/variant` | Choose route, model, reasoning effort or OpenRouter routing |
 | `/attach PATH`, `/diff`, `/review`, `/init` | Attach a file, show the git diff, review changes, write `AGENTS.md` |
 | `/status`, `/context`, `/cost`, `/http` | Inspect configuration, the model request, spend and captured traffic |
-| `/ps`, `/agents`, `/tools`, `/mcp`, `/permissions`, `/yolo` | Manage background work, collaborators, tools, MCP servers and approval mode |
+| `/ps`, `/agents`, `/tools`, `/mcp`, `/permissions`, `/yolo` | Manage background work, delegated agents, tools, MCP servers and approval mode |
 | `/sessions`, `/new`, `/rename`, `/fork`, `/rewind`, `/compact`, `/share` | Manage sessions and context |
-| `/memory`, `/skills`, `/schedule`, `/prompt`, `/config`, `/restart` | Manage memory, skills, scheduled tasks, system prompt and settings; restart to apply one |
+| `/memory`, `/skills`, `/schedule`, `/instructions`, `/config`, `/restart` | Manage memory, skills, scheduled tasks, instructions and settings; restart to apply one |
 | `/btw QUESTION` | Ask a side question about the conversation; the answer is not added to it |
 | `/verbose`, `/clear`, `/help`, `/quit` | Toggle full output, clear the screen, list all commands, detach |
 

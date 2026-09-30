@@ -18,17 +18,13 @@ CurlRuntime::~CurlRuntime() {
 }
 
 AppRuntime::AppRuntime(RuntimeConfig parsed)
-    : config(std::move(parsed)),
-      api(config),
-      permission_api(config),
-      collaborator(side_usage) {}
+    : config(std::move(parsed)), api(config), permission_api(config) {}
 
 AppRuntime::~AppRuntime() { Shutdown(); }
 
 void AppRuntime::Shutdown() {
   if (shutdown_) return;
   shutdown_ = true;
-  collaborator.Shutdown();
   mcp.ShutdownAll();
   BgShutdownAll(processes);
 }

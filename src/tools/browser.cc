@@ -10,7 +10,6 @@
 #include <utility>
 
 #include "include/browser/browser.h"
-#include "include/cli.h"
 #include "include/core/fs.h"
 #include "include/core/signals.h"
 #include "include/tools/image_result.h"
@@ -23,17 +22,17 @@ constexpr int kSettleMs = 8000;
 // Unchanged probes in a row (about half a second) that count as settled.
 constexpr int kQuietProbes = 2;
 
-ToolResult Handover(const std::string& session_id, const std::string& reason) {
+ToolResult Handover(const std::string& session_id, const std::string& reason,
+                    const BrowserAsk& ask) {
   std::string interaction = session::RandomToken(16);
   json outcome = browser::Request({{"op", "request_human"},
                                    {"session_id", session_id},
                                    {"interaction_id", interaction}});
   if (auto error = JsonValue(outcome, "error", ""); !error.empty()) {
-    return ToolFailure(ToolErrorCode::kRemoteError, "error: " + error);
+    return ToolFailure(ToolErrorCode::kRemoteError, error);
   }
   bool eof = false;
-  std::string answer = ReadInteraction(
-      {.id = interaction, .kind = "browser", .prompt = reason}, &eof);
+  std::string answer = ask(interaction, reason, &eof);
   json status;
   for (int attempt = 0; attempt < 250; ++attempt) {
     status = browser::Request({{"op", "status"}});
@@ -45,9 +44,8 @@ ToolResult Handover(const std::string& session_id, const std::string& reason) {
     browser::Request({{"op", "cancel_handover"},
                       {"session_id", session_id},
                       {"interaction_id", interaction}});
-    return ToolFailure(
-        ToolErrorCode::kRemoteError,
-        "error: browser handover remains paused or was cancelled");
+    return ToolFailure(ToolErrorCode::kRemoteError,
+                       "browser handover remains paused or was cancelled");
   }
   return ToolSuccess(
       "The user finished in the browser and handed it back. Observe the page "
@@ -78,7 +76,7 @@ ToolResult Observation(const std::string& session_id, const std::string& lead,
   }
   if (!failed.empty()) {
     if (lead.empty()) {
-      return ToolFailure(ToolErrorCode::kRemoteError, "error: " + failed);
+      return ToolFailure(ToolErrorCode::kRemoteError, failed);
     }
     return ToolSuccess(done + "The page could not be observed (" + failed +
                        "). Do not repeat the action; call observe.");
@@ -158,7 +156,7 @@ std::string Settle(const std::string& session_id, const ToolContext& context) {
 }
 }  // namespace
 
-Tool BrowserTool(std::string session_id) {
+Tool BrowserTool(std::string session_id, BrowserAsk ask) {
   Tool tool;
   tool.name = "browser";
   tool.description =
@@ -232,12 +230,13 @@ Tool BrowserTool(std::string session_id) {
                                             : json{"Checking", "Checked"};
     return json{{"verb", verb}, {"target", "the browser"}};
   };
-  tool.run = [session_id = std::move(session_id)](const json& args,
-                                                  const ToolContext& context) {
+  tool.run = [session_id = std::move(session_id), ask = std::move(ask)](
+                 const json& args, const ToolContext& context) {
     const std::string action = JsonValue(args, "action", "");
     if (action == "request_human") {
-      return Handover(session_id, JsonValue(args, "reason",
-                                            "Please finish in the browser"));
+      return Handover(session_id,
+                      JsonValue(args, "reason", "Please finish in the browser"),
+                      ask);
     }
     if (action == "observe") return Observation(session_id, "", context);
     json command = args;
@@ -245,7 +244,7 @@ Tool BrowserTool(std::string session_id) {
     command["session_id"] = session_id;
     json outcome = browser::Request(command, 30000);
     if (auto error = JsonValue(outcome, "error", ""); !error.empty()) {
-      return ToolFailure(ToolErrorCode::kRemoteError, "error: " + error);
+      return ToolFailure(ToolErrorCode::kRemoteError, error);
     }
     if (action == "status" || action == "tabs" || action == "release") {
       return ToolSuccess(JsonDump(outcome));

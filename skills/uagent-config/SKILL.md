@@ -17,13 +17,16 @@ this file. Do not load every reference; pick the one the question needs.
 | Which flags exist? | `uagent` action `inspect`, topic `cli`, or `references/cli.md` |
 | Which slash commands exist? | `uagent` action `inspect`, topic `commands`, or `references/slash-commands.md` |
 | Full setting catalogue | `references/configuration.md` |
-| What is in the system prompt? | `references/system-prompt.md` |
+| What is in the system prompt? | `references/system-prompt.md`; how instructions layer onto it: `docs/SYSTEM_PROMPTS.md` in a source checkout |
 | Which prompt is this session actually running? | `uagent` action `inspect`, topic `prompt` (base digest, active sections, overlay) |
 | Which built-in tools and arguments exist? | `uagent` action `inspect`, topic `tools`, or `references/tools.md` |
 | Which model routes are configured, and is a credential set? | `uagent` action `inspect`, topic `routes` |
 | How is µAgent built, and why? | `references/architecture.md` when installed, else `docs/ARCHITECTURE.md` in a source checkout |
 | Limits, recovery or failure triage | `docs/OPERATIONS.md` in a source checkout |
 | Change a setting persistently | `references/self-configuration.md` |
+| What is a folder's coordinator, and how is it opened or limited? | `references/cli.md` (Coordinator), the `UAGENT_COORDINATOR_*` rows of `references/configuration.md` |
+| What instructions do sessions and coordinators read? | `uagent` action `inspect`, topic `instructions` |
+| Change instructions | `uagent` action `set_instructions` with `audience` (sessions or coordinator), `scope` (user or project) and the whole `text`; the user approves the exact diff. The user can also run `/instructions edit` |
 
 `uagent` reports the installed binary, so it beats both these references
 and any recollection when the two disagree. The references are generated from

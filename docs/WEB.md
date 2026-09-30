@@ -120,10 +120,9 @@ MFA, a captcha or bot check, a payment confirmation), the conversation shows
 its reason and **Open browser**, which opens the browser already in your
 control; **Done** returns you to the chat. Only the paired device that took
 control can finish it. Closing the viewer or losing its connection keeps the
-agent paused. Chrome stops by itself after `UAGENT_BROWSER_IDLE_MINUTES`
-(default 15; 0 keeps it running) without browser work, unless you control it
-or the agent is waiting for you, and starts again on the next action. **Stop
-browser** in the status menu releases it at once.
+agent paused. Chrome stops by itself after 15 minutes without browser work,
+unless you control it or the agent is waiting for you, and starts again on the
+next action. **Stop browser** in the status menu releases it at once.
 
 **Chrome profile** selects which login the agent and viewer share; **New
 profile** creates another persistent login. Switching requires control and
@@ -229,6 +228,10 @@ Commands carry stable request IDs and a runtime generation. Repeated delivery
 returns the original receipt; conflicting reuse is rejected; a changed
 generation requires a fresh snapshot. A bounded event suffix lets clients join
 during a turn, and the saved conversation remains the durable replay authority.
+The host folds the runtime's events into its view of the conversation and sends
+browsers what changed as `block` frames: a whole row, fields to set, or text to
+append to a streaming row. A browser applies them to the snapshot it loaded, so
+a reload mid-stream resumes the same rows instead of re-deriving them.
 Browser mutations stay disabled until the server's `ready` watermark and the
 selected snapshot are applied.
 
@@ -306,10 +309,21 @@ inspection. Uploads are claimed before the prompt is accepted, so cleanup
 cannot remove a referenced file. See [Tools](TOOLS.md) for `read_path` media
 input and [Operations](OPERATIONS.md) for extraction and fallback limits.
 
+The image viewer fits the whole image and zooms like a document viewer: the
+**− / + / Fit** controls, ⌘/Ctrl+wheel or a trackpad pinch, ⌘/Ctrl with −, +
+and 0, a touch pinch or a double-tap; the level reads against the image's real
+size.
+
 **Annotate** in the image viewer marks up an image to steer the agent: pen
 strokes and numbered pins with a note each, drawn with mouse, trackpad, finger
-or pencil. **Attach** bakes the marks into a copy that joins the draft (as PNG,
-or JPEG past the upload limit) and replaces the draft image it was drawn on.
+or pencil, zoomed the same way (two fingers pinch; one draws). **Attach** bakes
+the marks into a copy that joins the draft (as PNG, or JPEG past the upload
+limit) and replaces the draft image it was drawn on.
+
+A slash command with its own screen opens it when typed without an argument:
+`/config`, `/permissions`, `/mcp`, `/tools`, `/rename`, `/memory`, `/skills`,
+`/schedule`, `/context` and `/sessions`. With an argument it runs on the host,
+as in the terminal.
 
 ## Offline behavior
 
@@ -339,8 +353,9 @@ or a revoked device clears local UI state.
 
 ## Development
 
-Native builds embed the checked-in `web/dist`; users need no Node runtime. The
-frontend uses strict TypeScript and Preact.
+Native builds embed the built `web/dist` (not committed; CI builds it once for
+every native job, and releases ship it). The frontend uses strict TypeScript
+and Preact.
 
 ```sh
 npm ci --prefix web
@@ -382,9 +397,12 @@ primitives draw their data text as bars and the subtree is inert, so a screen
 and its loading state cannot drift apart. Text of unknown length uses
 `Skeleton`, and unknown content (a document, a live screen) uses one spinner.
 The shell, sidebar, transcript and composer ship in the entry bundle and render
-from the first frame; dialog and page chunks are warmed shortly after boot. `/ui.html` renders the real shared components,
-including the browser viewer controls, without a host connection for visual
-review.
+from the first frame; dialog and page chunks are warmed shortly after boot.
+
+The UI showcase renders the real shared components, including the browser
+viewer controls, without a host connection for visual review. It is a
+development page, not part of the product: `npx vite` in `web/` serves it at
+`/ui.html`, and the Playwright configuration starts that server for its tests.
 
 `web/tests/performance.spec.js` streams 5,000 mock tokens through the real
 EventSource handlers, checks lossless final text and samples frame gaps and

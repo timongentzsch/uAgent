@@ -22,6 +22,7 @@
 #include <cstring>
 #include <filesystem>
 #include <istream>
+#include <optional>
 #include <string>
 #include <system_error>
 #include <utility>
@@ -120,6 +121,14 @@ class ScopedTempFile {
 // source is detectable — cut back to a UTF-8 boundary. Returns whether the
 // source had more to give.
 bool ReadBounded(std::istream& input, size_t cap, std::string& out);
+
+// `path` resolved, when it is an existing directory.
+std::optional<std::filesystem::path> CanonicalDirectory(
+    const std::filesystem::path& path);
+
+// A file's first `cap` bytes (cut to UTF-8), or nothing when it cannot be
+// opened. For files the caller trusts; private state uses ReadRegularFile.
+std::optional<std::string> ReadFile(const std::string& path, size_t cap);
 
 // Private state and web assets must never follow a final symlink or read a
 // device/FIFO. A prefix read is useful for cheap catalogue headers.

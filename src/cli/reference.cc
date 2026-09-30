@@ -39,7 +39,6 @@ std::string Escape(const std::string& text) {
 
 std::string DefaultCell(const json& setting) {
   const json& value = setting["default"];
-  if (value.is_null()) return "derived";
   if (value.is_string()) {
     std::string text = value.get<std::string>();
     return text.empty() ? "empty" : "`" + Escape(text) + "`";
@@ -63,7 +62,16 @@ std::string CliMarkdown() {
   out +=
       "\nPrecedence: these flags override process `UAGENT_*` variables, which "
       "override a trusted `./.uagent/.config`, which overrides "
-      "`~/.uagent/.config`.\n";
+      "`~/.uagent/.config`.\n"
+      "\n## Coordinator\n\n"
+      "`uagent coord [options]` opens this folder's coordinator: one per "
+      "folder, it reads the folder's sessions, delegates threads and decides "
+      "approvals their Auto mode cannot settle. `uagent coord -p PROMPT` runs "
+      "one turn and prints the answer; `--json` adds the stop reason. Inside "
+      "any session, `/coord` opens it, `/board` lists the folder's sessions "
+      "and `/open ID` switches to one. Settings are the `UAGENT_COORDINATOR_*` "
+      "rows of the configuration reference; it reads `COORDINATOR.md` "
+      "(`~/.uagent/` and the folder's `.uagent/`) after `AGENTS.md`.\n";
   return out;
 }
 
@@ -131,15 +139,13 @@ std::string PromptMarkdown() {
   std::string out = "# System prompt\n\n";
   out += kGenerated;
   out +=
-      "This is the built-in behavioral prompt. Global, project and "
-      "conversation "
-      "documents can overlay it or replace it completely. Runtime facts and "
-      "repository instructions remain separate context sources; memory stays "
-      "outside the system message. Use `/prompt` or `--show-system-prompt "
-      "--json` "
-      "to inspect effective text and sources. `UAGENT_PROMPT_OVERLAY` retains "
-      "its section-editing behavior for experiments before scope "
-      "resolution.\n\n";
+      "This is the built-in behavioral prompt. Instruction files (AGENTS.md, "
+      "and COORDINATOR.md for a coordinator) only add to it; the agent's "
+      "opt-in self-directive can change it for one conversation. Memory stays "
+      "outside the system message. Use `/instructions` or "
+      "`--show-system-prompt --json` to inspect the effective text and its "
+      "sources. `UAGENT_PROMPT_OVERLAY` edits named sections for "
+      "experiments.\n\n";
   out += "## Base (" +
          std::to_string(JsonValue(surface, "base_chars", int64_t{0})) +
          " chars)\n\n```text\n" + JsonValue(surface, "base", std::string()) +

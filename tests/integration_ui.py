@@ -4,15 +4,18 @@ import signal
 import sys
 import termios
 import time
+import unicodedata
 
 from integration_support import (
     Server,
     assert_true,
     base_env,
     event,
+    run,
     run_dialog,
     run_pty,
     session_files,
+    timeout_setting,
     tool_call,
     wait_for_echo,
     wait_until_stopped,
@@ -26,7 +29,6 @@ from memory_fixture import project_memory_dir
 def test_yolo_toggle_refreshes_approval_state(root, home, *, binary):
     def route(_, body):
         messages = body["messages"]
-        system = messages[0].get("content", "")
         turns = [
             (index, str(message.get("content", "")))
             for index, message in enumerate(messages)
@@ -43,7 +45,13 @@ def test_yolo_toggle_refreshes_approval_state(root, home, *, binary):
         on_turn = turn_prompt == "check-on"
         expected_mode = "yolo" if on_turn else "ask"
         expected_env = "env-on" if on_turn else "env-off"
-        assert_true(f"approval={expected_mode}" in system, system)
+        # The approval mode is a runtime fact: the latest environment note.
+        environment = [
+            str(message.get("content", ""))
+            for message in messages
+            if str(message.get("content", "")).startswith("[environment:")
+        ]
+        assert_true(environment and f"approval {expected_mode}]" in environment[-1], environment)
         if results:
             assert_true(expected_env in results[-1], results)
             return event({"content": f"{expected_env}-ok"})
@@ -121,7 +129,7 @@ def test_reasoning_modes_render_consistently(root, home, *, binary):
             root,
             env,
             [
-                (b"/verbose\n", b"verbose ON"),
+                (b"/verbose\n", b"verbose on"),
                 # Quit once the turn has settled, however slow the build.
                 (b"go\n", b"Final answer", b"Ready", None),
                 b"/q\n",
@@ -153,6 +161,50 @@ def test_reasoning_modes_render_consistently(root, home, *, binary):
         assert_true(b"Thinking \xc2\xb7 \xe2\x80\xa6" not in compact, compact)
         assert_true(b"****" not in compact, compact)
         assert_true(b"\xc2\xb7 Thinking" not in compact, compact)
+
+
+def test_no_color_keeps_bold_italic_and_dim(root, home, *, binary):
+    # NO_COLOR removes colour, and only colour: bold, italic and dim are
+    # attributes, and inline code keeps the backticks that mark it.
+    with Server([event({"content": "use `make` and **strong** *slant*"})]) as server:
+        env = base_env(home, server.url)
+        env["NO_COLOR"] = "1"
+        code, output = run_pty(
+            root, env, [(b"go\n", b"slant"), b"/q\n"], startup_marker=b"Ready", binary=binary
+        )
+    assert_true(code == 0, output[-2000:])
+    assert_true(b"`make`" in output, output[-2000:])
+    assert_true(b"\x1b[1mstrong" in output and b"\x1b[3mslant" in output, output[-2000:])
+    assert_true(b"\x1b[2mReady" in output, output[-2000:])
+    assert_true(re.search(rb"\x1b\[(3[0-8]|9[0-7]|4[0-8])m", output) is None, output[-2000:])
+
+
+def test_non_utf8_locale_draws_only_ascii(root, home, *, binary):
+    # Every glyph this program draws has an ASCII fallback: spinner, notices,
+    # bullets, tool rows and command replies. The model's text here is ASCII.
+    replies = [
+        tool_call("run", {"command": "printf 'a\\nb\\nc\\n'"}),
+        event({"content": "- item one\n- item two\n\nascii-ok"}),
+    ]
+    with Server(replies) as server:
+        env = base_env(home, server.url)
+        env["LC_ALL"] = "C"
+        code, output = run_pty(
+            root,
+            env,
+            [
+                (b"/verbose\n", b"verbose on"),
+                (b"/verbose\n", b"verbose off"),
+                (b"go\n", b"ascii-ok", b"Ready", None),
+                (b"/cost\n", b"total"),
+                b"/q\n",
+            ],
+            args=("--yolo",),
+            binary=binary,
+        )
+    assert_true(code == 0, output[-2000:])
+    assert_true(b"* item one" in output, output[-2000:])
+    assert_true(re.search(rb"[\x80-\xff]", output) is None, output[-2000:])
 
 
 def test_multiline_bracketed_paste(root, home, *, binary):
@@ -220,6 +272,25 @@ def test_enter_arriving_with_paste_does_not_submit(root, home, *, binary):
         assert_true(code == 0, output)
         assert_true(b"paste-enter-ok" in output, output)
         assert_true(len(server.requests) == 1, server.requests)
+
+
+def test_oversized_paste_says_why_it_was_not_inserted(root, home, *, binary):
+    with Server([event({"content": "after-paste-ok"})]) as server:
+        code, output = run_pty(
+            root,
+            base_env(home, server.url),
+            [
+                (b"\x1b[200~" + b"x" * (70 * 1024) + b"\x1b[201~", b"paste not inserted"),
+                # The next key clears the note; the draft stayed usable.
+                (b"hi\n", b"after-paste-ok"),
+                b"\x04",
+            ],
+            startup_marker=b"Ready",
+            binary=binary,
+        )
+        assert_true(code == 0, output[-2000:])
+        assert_true(b"\a" in output, output[-2000:])
+        assert_true(b"xxxx" not in output, output[-2000:])
 
 
 def test_resume_picker_accepts_enter_when_icrnl_was_disabled(root, home, *, binary):
@@ -339,6 +410,29 @@ def test_input_redraw_history_restores_current_draft(root, home, *, binary):
         assert_true(len(server.requests) == 2, server.requests)
 
 
+def test_input_readline_control_keys(root, home, *, binary):
+    """Ctrl+W deletes a word, Ctrl+P/Ctrl+N walk history, Ctrl+F moves right."""
+
+    def echo(_, body):
+        return event({"content": "got<" + body["messages"][-1].get("content") + ">"})
+
+    with Server([echo]) as server:
+        code, output = run_pty(
+            root,
+            base_env(home, server.url),
+            [
+                (b"alpha beta\x17gamma\n", b"got<", b"Ready", None),
+                (b"\x10\x01\x06X\n", b"got<aX", b"Ready", None),
+                (b"draft\x10\x0e!\n", b"got<draft!>", b"Ready", None),
+                b"\x04",
+            ],
+            binary=binary,
+        )
+        assert_true(code == 0, output[-2000:])
+        sent = [body["messages"][-1].get("content") for _, body in server.requests]
+        assert_true(sent == ["alpha gamma", "aXlpha gamma", "draft!"], sent)
+
+
 def test_input_redraw_approval_does_not_pollute_history(root, home, *, binary):
     def verify_recalled(_, body):
         user = body["messages"][-1].get("content")
@@ -396,6 +490,26 @@ def test_multiline_run_keeps_action_color(root, home, *, binary):
         for index in range(90):
             marker = f"\x1b[1m# color-segment-{index:03d}".encode()
             assert_true(marker in output, (index, output))
+
+
+def test_tool_output_drops_its_own_colours(root, home, *, binary):
+    # A command's colouring is dropped, not spelled out as \x1b[31m text.
+    command = "printf '\\033[31mred-first\\033[0m\\nplain\\n\\033[1;32mgreen-last\\033[m\\n'"
+    with Server(
+        [tool_call("run", {"command": command}), event({"content": "colour-ok"})] * 2
+    ) as server:
+        for verbose in (False, True):
+            code, output = run_pty(
+                root,
+                base_env(home, server.url),
+                [(b"/verbose\n", b"verbose on")] * verbose
+                + [(b"go\n", b"colour-ok", b"Ready", None), b"/q\n"],
+                args=("--yolo",),
+                binary=binary,
+            )
+            assert_true(code == 0, output[-2000:])
+            assert_true(b"red-first" in output and b"green-last" in output, output[-2000:])
+            assert_true(b"\\x1b" not in output, output[-2000:])
 
 
 def test_multiline_rejected_call_shows_arguments(root, home, *, binary):
@@ -464,6 +578,270 @@ def test_input_redraw_streaming_tail_survives_resize(root, home, *, binary):
         assert_true(b"TAIL-BEGIN-TAIL-END" in output, output)
         assert_true(b"\x1eUAGENT\x1f" not in output, output)
         assert_true(re.search(rb"\x1b\[\d+A\x1b\[J", output) is not None, output)
+
+
+class Screen:
+    """Just enough VT100 to replay the client: autowrap with the deferred wrap
+    at the last column, wide glyphs, cursor motion, erase, bold, scrollback."""
+
+    def __init__(self, columns, rows=24):
+        self.columns, self.rows = columns, rows
+        self.lines = [[] for _ in range(rows)]  # scrollback, then the screen
+        self.wrapped = set()  # rows that continue on the next one
+        self.y = self.x = 0  # x == columns is the deferred wrap
+        self.bold = False
+
+    def feed(self, data):
+        text = data.decode(errors="replace")
+        at = 0
+        while at < len(text):
+            char = text[at]
+            at += 1
+            if char == "\x1b":
+                match = re.compile(r"\[([?\d;]*)([@-~])|[^\[]").match(text, at)
+                at = match.end() if match else at
+                if match and match.group(2):
+                    self.control(match.group(1), match.group(2))
+            elif char == "\r":
+                self.x = 0
+            elif char == "\n":
+                self.linefeed()
+            elif char >= " ":
+                self.put(char, 2 if unicodedata.east_asian_width(char) in "WF" else 1)
+
+    def linefeed(self):
+        self.y += 1
+        if self.y == len(self.lines):
+            self.lines.append([])
+
+    def put(self, char, width):
+        if self.x + width > self.columns:
+            self.wrapped.add(self.y)
+            self.x = 0
+            self.linefeed()
+        line = self.lines[self.y]
+        line.extend([(" ", False)] * (self.x + width - len(line)))
+        line[self.x : self.x + width] = [(char, self.bold)] + [("", self.bold)] * (width - 1)
+        self.x += width
+
+    def control(self, params, final):
+        count = int(params) if params.isdigit() else 1
+        top = len(self.lines) - self.rows
+        if final == "A":
+            self.y = max(top, self.y - count)
+        elif final == "B":
+            self.y = min(len(self.lines) - 1, self.y + count)
+        elif final == "C":
+            self.x = self.x + count
+        elif final == "H":
+            self.y, self.x = top, 0
+        elif final in "JK" and params in ("", "0", "2"):
+            if params == "2":
+                self.lines[self.y] = []
+            del self.lines[self.y][self.x :]
+            last = len(self.lines) if final == "J" else self.y + 1
+            first = top if final == "J" and params == "2" else self.y
+            for row in range(first, last):
+                self.wrapped.discard(row)
+                if row != self.y:
+                    self.lines[row] = []
+        elif final == "m":
+            for code in (params or "0").split(";"):
+                if code in ("1", "22", "0"):
+                    self.bold = code == "1"
+        self.x = min(self.x, self.columns - 1) if final in "ABC" else self.x
+
+    def text(self):
+        return "".join(
+            "".join(char for char, _ in line) + ("" if row in self.wrapped else "\n")
+            for row, line in enumerate(self.lines)
+        )
+
+
+def test_streaming_paragraph_taller_than_the_screen(root, home, *, binary):
+    """A paragraph taller than the screen streams without duplicating itself.
+
+    Each repaint used to erase and rewrite the whole unfinished paragraph:
+    bytes per token grew with its length, and once it outgrew the screen the
+    erase could not reach its top, so scrollback filled with copies. Rows the
+    live region cannot hold go to scrollback once; bold a row opened carries
+    over to the next.
+    """
+    words = [f"w{index:03d}abc" + ("界" if index % 7 == 3 else "") for index in range(250)]
+    bold = range(100, 130)
+    tokens = [
+        ("**" if index == bold.start else "")
+        + word
+        + ("**" if index == bold.stop - 1 else "")
+        + " "
+        for index, word in enumerate(words)
+    ]
+
+    def streamed(handler, _):
+        write_sse_sequence(
+            handler,
+            [event({"content": token}, finish=None) for token in tokens] + [event({})],
+            delay=0.015,
+        )
+
+    with Server([streamed]) as server:
+        env = base_env(home, server.url)
+        # One request streams for about four seconds, near the usual budget.
+        env["UAGENT_REQUEST_TIMEOUT"] = timeout_setting(60)
+        code, output = run_pty(
+            root,
+            env,
+            [(b"go\n", b"w249", b"Ready", None), b"/q\n"],
+            timeout=20,
+            binary=binary,
+        )
+    assert_true(code == 0, output[-2000:])
+    screen = Screen(80)
+    screen.feed(output)
+    shown = screen.text().replace("\n", "")  # rows break mid-word
+    for word in words:
+        assert_true(len(re.findall(word + r"(?!\d)", shown)) == 1, (word, shown))
+    for line in screen.lines:
+        row = "".join(char for char, _ in line)
+        for match in re.finditer(r"w(\d{3})", row):
+            number = int(match.group(1))
+            assert_true(line[match.start()][1] == (number in bold), (number, row))
+    streamed_bytes = output.rfind(b"w249") - output.find(b"w000")
+    per_token = streamed_bytes / len(tokens)
+    print(f"  {per_token:.0f} bytes per token", flush=True)
+    assert_true(per_token < 400, per_token)
+
+
+def test_live_region_repaints_in_one_synchronized_write(root, home, *, binary):
+    # Every walk back up the live region, and every erase, is inside one
+    # synchronized update: a terminal never shows an erase without its redraw.
+    def streamed(handler, _):
+        write_sse_sequence(
+            handler,
+            [event({"content": f"part{index} "}, finish=None) for index in range(40)]
+            + [event({"content": "\n\nsync-ok"})],
+            delay=0.01,
+        )
+
+    with Server([streamed]) as server:
+        code, output = run_pty(
+            root,
+            base_env(home, server.url),
+            [(b"go\n", b"sync-ok", b"Ready", None), (b"", b"", 50), b"/q\n"],
+            binary=binary,
+        )
+    assert_true(code == 0, output[-2000:])
+    frames = re.findall(rb"\x1b\[\?2026h(.*?)\x1b\[\?2026l", output, re.S)
+    assert_true(len(frames) > 10, len(frames))
+    outside = re.sub(rb"\x1b\[\?2026h.*?\x1b\[\?2026l", b"", output, flags=re.S)
+    assert_true(re.search(rb"\x1b\[\d*A|\x1b\[J", outside) is None, outside[-2000:])
+
+
+def test_row_exactly_as_wide_as_the_terminal(root, home, *, binary):
+    # A row that fills the last column leaves the cursor waiting to wrap; the
+    # rows after it must still land on their own rows.
+    row = "x" * 79 + "|"
+    with Server([event({"content": row + " next-row-ok"})]) as server:
+        code, output = run_pty(
+            root,
+            base_env(home, server.url),
+            [(b"go\n", b"next-row-ok", b"Ready", None), b"/q\n"],
+            binary=binary,
+        )
+    assert_true(code == 0, output[-2000:])
+    screen = Screen(80)
+    screen.feed(output)
+    lines = ["".join(char for char, _ in line).rstrip() for line in screen.lines]
+    at = lines.index(row)
+    assert_true(lines[at + 1].strip().startswith("next-row-ok"), lines[at - 2 : at + 4])
+
+
+def test_resize_while_the_ask_picker_is_open(root, home, *, binary):
+    question = {
+        "question": "Which database?",
+        "header": "Database",
+        "options": [{"label": "SQLite"}, {"label": "Postgres"}],
+    }
+
+    def route(_, body):
+        if not any(message.get("role") == "tool" for message in body["messages"]):
+            return tool_call("ask", {"questions": [question]})
+        return event({"content": "picked-ok"})
+
+    with Server([route]) as server:
+        code, output = run_pty(
+            root,
+            base_env(home, server.url),
+            [
+                (b"pick\n", b"Esc cancel"),
+                # The picker is drawn again at the new width, not appended.
+                (b"", b"Which database?", 40),
+                (b"\r", b"picked-ok"),
+                b"/q\n",
+            ],
+            binary=binary,
+            timeout=20,
+        )
+    assert_true(code == 0, output[-2000:])
+    # The whole stream: a byte window can start inside an escape sequence
+    # and miss the answer when a platform repaints more.
+    screen = Screen(40)
+    screen.feed(output)
+    shown = screen.text()
+    assert_true(shown.count("Which database? → SQLite") == 1, shown)
+
+
+def test_rows_written_over_the_composer_survive_the_next_repaint(root, home, *, binary):
+    """A picker's answer and a decision's prompt stay in scrollback.
+
+    Both replace the composer's rows for a while; once the composer is back,
+    no repaint may treat their rows as its own.
+    """
+    question = {
+        "question": "Which database?",
+        "header": "Database",
+        "options": [{"label": "SQLite"}, {"label": "Postgres"}],
+    }
+
+    def asked(handler, _):
+        write_sse_sequence(
+            handler,
+            [
+                event({"content": "asking-now"}, finish=None),
+                tool_call("ask", {"questions": [question]}),
+            ],
+        )
+
+    def streamed(handler, _):
+        write_sse_sequence(
+            handler,
+            [event({"content": f"more{index} "}, finish=None) for index in range(5)]
+            + [event({"content": "after-ok"})],
+            delay=0.05,
+        )
+
+    with Server(
+        [asked, streamed, tool_call("run", {"command": "printf ran"}), event({"content": "ran-ok"})]
+    ) as server:
+        code, output = run_pty(
+            root,
+            base_env(home, server.url),
+            [
+                (b"pick\n", b"Esc cancel"),
+                (b"\r", b"after-ok", b"Ready", None),
+                (b"run\n", b"Allow run?"),
+                (b"y\n", b"ran-ok", b"Ready", None),
+                b"/q\n",
+            ],
+            binary=binary,
+            timeout=20,
+        )
+    assert_true(code == 0, output[-2000:])
+    screen = Screen(80)
+    screen.feed(output)
+    shown = screen.text()
+    assert_true(shown.count("Which database? → SQLite") == 1, shown)
+    assert_true(shown.count("Allow run?") == 1, shown)
 
 
 def test_input_redraw_status_animation_does_not_repaint_draft(root, home, *, binary):
@@ -753,7 +1131,8 @@ def test_input_slash_suggestions_and_tab_completion(root, home, *, binary):
             base_env(home, server.url),
             [
                 (b"/mod", b"/models"),
-                (b"\t", b"/model "),
+                # Unchanged rows are not redrawn: wait for the draft's own.
+                (b"\t", b"\x1b[49m/model"),
                 b"\x15/q\n",
             ],
             binary=binary,
@@ -954,32 +1333,33 @@ def test_cli_fork_does_not_inherit_remembered_approvals(root, home, *, binary):
         )
 
 
-def test_system_prompt_editor_updates_next_request(root, home, *, binary):
-    editor = root / "prompt-editor.sh"
+def test_instructions_editor_reaches_new_sessions(root, home, *, binary):
+    editor = root / "instructions-editor.sh"
     editor.write_text('#!/bin/sh\nprintf "Only editor behavior.\\nPreserve newlines.\\n" > "$1"\n')
     editor.chmod(0o755)
+    env = base_env(home, "http://127.0.0.1:9/v1")
+    env["VISUAL"] = str(editor)
+    code, output = run_pty(
+        root,
+        env,
+        [(b"/instructions edit sessions user\n", b"restarted sessions read it"), b"/q\n"],
+        binary=binary,
+    )
+    assert_true(code == 0, output)
+    saved = (home / ".uagent" / "AGENTS.md").read_text()
+    assert_true(saved == "Only editor behavior.\nPreserve newlines.\n", saved)
 
     def answer(_, body):
         prompt = body["messages"][0]["content"]
-        assert_true(prompt.startswith("Only editor behavior.\nPreserve newlines.\n"), prompt)
-        assert_true("Gather only" not in prompt, prompt)
-        return event({"content": "prompt-editor-ok"})
+        # Additive: the base stays, the instructions follow it.
+        assert_true("Read only what the task needs" in prompt, prompt)
+        assert_true("Only editor behavior.\nPreserve newlines." in prompt, prompt)
+        return event({"content": "instructions-ok"})
 
     with Server([answer]) as server:
-        env = base_env(home, server.url)
-        env["VISUAL"] = str(editor)
-        code, output = run_pty(
-            root,
-            env,
-            [
-                (b"/prompt edit\n", b"Only editor behavior."),
-                (b"reply\n", b"prompt-editor-ok"),
-                b"/q\n",
-            ],
-            binary=binary,
-        )
-        assert_true(code == 0, output)
-        assert_true(len(server.requests) == 1, server.requests)
+        result = run(root, base_env(home, server.url), "-p", "reply", binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "instructions-ok", result.stdout)
 
 
 def test_cli_mcp_config_and_restart(root, home, *, binary):

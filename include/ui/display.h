@@ -14,6 +14,7 @@
 
 #include "include/core/env.h"
 #include "include/core/strings.h"
+#include "include/core/style.h"
 #include "include/core/term.h"
 #include "include/core/usage.h"
 
@@ -143,14 +144,10 @@ inline std::string ActivityBar(const ActivityView& view) {
       FmtDuration(std::chrono::duration<double>(view.elapsed).count());
   std::string activity = CurrentTerminalActivity();
   static constexpr auto kSpinnerInterval = std::chrono::milliseconds(100);
-  static constexpr const char* kFrames[] = {"⠋", "⠙", "⠹", "⠸", "⠼",
-                                            "⠴", "⠦", "⠧", "⠇", "⠏"};
   auto ticks =
       std::chrono::duration_cast<std::chrono::milliseconds>(view.elapsed) /
       kSpinnerInterval;
-  std::string prefix =
-      g_unicode ? kFrames[static_cast<size_t>(ticks) % 10]
-                : std::string(1, "|/-\\"[static_cast<size_t>(ticks) % 4]);
+  std::string prefix = SpinnerFrame(static_cast<size_t>(ticks));
   prefix += " ";
   // What the turn is doing, in descending order of how directly the human
   // asked for it. A model round is the one label that names no work, so a
@@ -168,27 +165,23 @@ inline std::string ActivityBar(const ActivityView& view) {
     // duplicating that would leave two places to keep honest instead of one.
     state = view.subagent;
   }
-  std::string route = view.model.empty() ? std::string() : " · " + view.model;
-  std::string suffix = " · " + seconds;
-  suffix += " · " + ContextSummary(view.context_used, view.context_window);
-  if (view.subagents > 0) {
-    suffix += " · agents:" + FmtCount(static_cast<int64_t>(view.subagents));
-  }
-  if (view.background > 0) {
-    suffix += " · bg:" + FmtCount(static_cast<int64_t>(view.background));
-  }
-  if (view.foreground > 0) {
-    suffix += " · Ctrl+B background";
-    if (view.foreground > 1) {
-      suffix +=
-          " " + FmtCount(static_cast<int64_t>(view.foreground)) + " commands";
-    }
-  }
-  if (view.queued > 0) {
-    suffix += " · steer:" + FmtCount(static_cast<int64_t>(view.queued));
-  }
+  auto counted = [](const char* label, size_t count) {
+    return count ? label + FmtCount(static_cast<int64_t>(count)) : "";
+  };
+  std::string suffix =
+      " · " +
+      JoinDot({view.model, seconds,
+               ContextSummary(view.context_used, view.context_window),
+               counted("agents:", view.subagents),
+               counted("bg:", view.background),
+               view.foreground == 0 ? ""
+               : view.foreground == 1
+                   ? "Ctrl+B background"
+                   : "Ctrl+B background " +
+                         FmtCount(static_cast<int64_t>(view.foreground)) +
+                         " commands",
+               counted("steer:", view.queued)});
   size_t width = TerminalWidth(1);
-  suffix = route + suffix;
   if (SteeringEnabled()) {
     std::string hint = " · Esc to interrupt";
     size_t desired = std::min<size_t>(DisplayWidth(state), 64);
@@ -203,20 +196,9 @@ inline std::string ActivityBar(const ActivityView& view) {
 
 // The pinned status row: dim, clipped to the terminal, and cleared to the
 // right so a shorter line never leaves stale text behind.
-// Continuation rows a status row of `columns` display columns has been
-// rewrapped into by a terminal now `width` columns wide. Zero unless the
-// terminal has narrowed since the row was written.
-inline size_t StatusOverflowRows(size_t columns, size_t width) {
-  return columns > 0 && width > 0 ? (columns - 1) / width : 0;
-}
-
-// `columns` reports the width the row actually occupies, which the caller
-// needs to erase it again after a terminal that rewraps has resized.
-inline std::string StatusBarLine(const std::string& status,
-                                 size_t* columns = nullptr) {
+inline std::string StatusBarLine(const std::string& status) {
   std::string text =
       DisplayTrunc(AsciiGlyphs(TerminalSafe(status)), TerminalWidth(1));
-  if (columns) *columns = DisplayWidth(text);
   return std::string(RST()) + DIM() + text + "\033[K" + RST();
 }
 

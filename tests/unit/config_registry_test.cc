@@ -51,47 +51,18 @@ constexpr BoolGetterCheck kBoolGetters[] = {
 
 constexpr GetterCheck kIntGetters[] = {
     {"UAGENT_TOOL_RESULT_CHARS", ToolResultCap},
-    {"UAGENT_TOOL_TRACE_PROTECT_CHARS", ToolTraceProtectChars},
-    {"UAGENT_TOOL_TRACE_PRUNE_MIN_CHARS", ToolTracePruneMinChars},
     {"UAGENT_AUTO_COMPACT_PCT", AutoCompactPct},
     {"UAGENT_AUTO_COMPACT_TOKENS", AutoCompactTokens},
     {"UAGENT_TOOL_CONCURRENCY", ToolConcurrency},
-    {"UAGENT_DEPTH", AgentDepth},
     {"UAGENT_SUBAGENT_MAX_STEPS", SubagentMaxSteps},
     {"UAGENT_SUBAGENT_MAX_TOOL_CALLS", SubagentMaxToolCalls},
-    {"UAGENT_SUBAGENT_CALLS_PER_TURN", SubagentCallsPerTurn},
     {"UAGENT_MAX_TOKENS", MaxOutputTokens},
     {"UAGENT_READ_FILE_LINES", ReadFileLines},
-    {"UAGENT_READ_FILE_MAX_LINES", ReadFileMaxLines},
-    {"UAGENT_READ_FILE_BYTES", ReadFileBytes},
-    {"UAGENT_EDIT_FILE_BYTES", EditFileBytes},
-    {"UAGENT_LIST_DIR_ENTRIES", ListDirEntries},
-    {"UAGENT_LIST_DIR_SCAN_ENTRIES", ListDirScanEntries},
-    {"UAGENT_MEMORY_BYTES", MemoryBytes},
-    {"UAGENT_MEMORY_FILES", MaxMemories},
     {"UAGENT_MEMORY_IDLE_SECONDS", MemoryIdleSeconds},
-    {"UAGENT_MEMORY_EXTRACT_BYTES", MemoryExtractBytes},
-    {"UAGENT_SKILL_BYTES", SkillBodyBytes},
-    {"UAGENT_SKILL_DESC_BYTES", SkillDescriptionBytes},
-    {"UAGENT_SKILLS", MaxSkills},
-    {"UAGENT_GREP_RESULTS", GrepResults},
-    {"UAGENT_BASH_LOG_BYTES", BashLogBytes},
-    {"UAGENT_RUN_YIELD_MS", RunDefaultYieldMs},
     {"UAGENT_MAX_BACKGROUND_JOBS", MaxBackgroundJobs},
-    {"UAGENT_MCP_CONFIG_BYTES", McpConfigBytes},
-    {"UAGENT_MCP_DESC_CHARS", McpDescriptionChars},
-    {"UAGENT_PENDING_ATTACHMENTS", MaxPendingAttachments},
     {"UAGENT_ATTACHMENT_MB", AttachmentLimitMb},
     {"UAGENT_CONTEXT", ContextWindow},
     {"UAGENT_HISTORY_DAYS", HistoryDays},
-    {"UAGENT_HISTORY_FILES", HistoryFiles},
-    {"UAGENT_DEBUG_DAYS", DebugDays},
-    {"UAGENT_DEBUG_FILES", DebugFiles},
-    {"UAGENT_BG_DAYS", BgDays},
-    {"UAGENT_BG_FILES", BgFiles},
-    {"UAGENT_MCP_LOG_DAYS", McpLogDays},
-    {"UAGENT_MCP_LOG_FILES", McpLogFiles},
-    {"UAGENT_TERMINAL_DAYS", TerminalRecordDays},
 };
 
 std::vector<std::string> DirectRuntimeSettingLookups(std::string_view source) {
@@ -191,8 +162,9 @@ void TestConfigRegistryContract() {
   ScopedEnv concurrency("UAGENT_TOOL_CONCURRENCY", "100000");
   CHECK(ToolConcurrency() ==
         FindConfigDescriptor("UAGENT_TOOL_CONCURRENCY")->maximum);
-  ScopedEnv results("UAGENT_GREP_RESULTS", "0");
-  CHECK(GrepResults() == FindConfigDescriptor("UAGENT_GREP_RESULTS")->minimum);
+  ScopedEnv attachment("UAGENT_ATTACHMENT_MB", "0");
+  CHECK(AttachmentLimitMb() ==
+        FindConfigDescriptor("UAGENT_ATTACHMENT_MB")->minimum);
 
   // The diagnostic that feeds /context, /debug-config and uagent never
   // carries a credential.

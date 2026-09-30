@@ -10,11 +10,11 @@
 #include <vector>
 
 #include "include/agent/session_view.h"
+#include "include/app/launch.h"
 #include "include/app/library.h"
 #include "include/app/schedule.h"
 #include "include/app/session.h"
 #include "include/app/session_host.h"
-#include "include/core/capture.h"
 #include "include/core/fs.h"
 #include "include/core/strings.h"
 #include "include/core/time.h"
@@ -51,14 +51,9 @@ std::shared_ptr<HostSession> SessionHost::StartScheduledRun(const json& run) {
   const std::string cwd = JsonValue(run, "cwd", "");
   const std::string id = JsonValue(run, "id", "");
   if (JsonValue(definition, "environment", "local") == "worktree") {
-    auto created =
-        CaptureProcess({"git", "-C", JsonValue(definition, "cwd", ""),
-                        "worktree", "add", "--detach", cwd, "HEAD"},
-                       30);
-    if (!created.Ok()) {
-      RecordRun({id, "failed",
-                 "Cannot create worktree: " +
-                     Utf8Prefix(created.output + created.error, 1024)});
+    if (auto failed = CreateWorktree(JsonValue(definition, "cwd", ""), cwd);
+        !failed.empty()) {
+      RecordRun({id, "failed", failed});
       return {};
     }
   }

@@ -33,10 +33,18 @@ struct ToolTracePruneResult {
 
 enum class ToolPruneMode { kOldResults, kSupersededReads };
 
+// A message the person wrote (a prompt or guidance, with or without files),
+// not files attached on request mid-turn, which share its role and kind.
+bool IsUserMessage(const json& message, MessageKind kind);
+
 class Conversation {
  public:
   const json& Messages() const { return messages_; }
+  int64_t ArchivedBytes() const { return archive_bytes_; }
   const json& Archive() const { return archive_; }
+  // The archive as JSON text, joined from each segment's serialization kept
+  // since it was archived: a save never re-dumps the archive.
+  std::string ArchiveText() const;
   const std::vector<MessageKind>& Kinds() const { return kinds_; }
   // Rendered tool receipts, keyed by call id. The model never sees these; they
   // exist so a resumed transcript can redraw a diff instead of a grey line.
@@ -53,6 +61,10 @@ class Conversation {
   // eviction and session restore, and only the request path writes it.
   json AnnouncedDeliveries(const std::string& id) const;
   void RecordAnnouncedDeliveries(std::string id, json values);
+  // When a user message arrived (UTC), by display id; empty when unknown.
+  // Kept apart from the evictable display facts: a coordinator's model reads
+  // these stamps, so losing one would change its cached prefix.
+  std::string Arrival(uint64_t id) const;
   json RecordEntry(json facts);
   std::string LastDisplayId() const;
 
@@ -62,8 +74,6 @@ class Conversation {
   MessageKind KindAt(size_t index) const { return kinds_[index]; }
   bool HasKind(MessageKind kind) const;
 
-  size_t ArchivedSegments() const { return archive_.size(); }
-  int64_t ArchivedBytes() const { return archive_bytes_; }
   int64_t DroppedSegments() const { return dropped_segments_; }
 
   void Reset(json baseline, std::vector<MessageKind> kinds);
@@ -83,14 +93,17 @@ class Conversation {
   // post-compaction re-push). The id counter advances past it so fresh
   // mints stay unique.
   void PushWithDisplayId(json message, MessageKind kind, uint64_t id);
-  void UpsertTail(json message, MessageKind kind);
   void Set(size_t index, json message, MessageKind kind);
   void Erase(size_t begin, size_t end);
-  // Drops the Nth user turn and everything after it (message-exclusive, so
-  // the dropped turn can be retried fresh). Attachment messages read as
-  // user turns, matching NormalizeRole. False when out of range, leaving
+  // Drops the Nth user message and everything after it (message-exclusive,
+  // so it can be edited and sent again). False when out of range, leaving
   // the conversation untouched.
   bool TruncateBeforeUserTurn(int64_t turn);
+  // The 1-based number of the user message shown as `m-<display id>`, 0 when
+  // it is not a user message or no longer live (compacted away).
+  int64_t UserMessageNumber(uint64_t display_id) const;
+  // The text of the Nth user message, as it was sent.
+  std::string UserMessageText(int64_t turn) const;
 
   std::string LastAssistantText() const;
   std::string LastText(MessageKind kind) const;
@@ -137,11 +150,14 @@ class Conversation {
   // Last announced attachment deliveries per display id. Tiny (a few rows
   // of name/delivery/path), bounded below, never evicted for space.
   json announced_deliveries_ = json::object();
+  // User message arrivals (display id -> UTC time), the newest kArrivals.
+  static constexpr size_t kArrivals = 4096;
+  std::map<uint64_t, std::string> arrivals_;
   json statistics_ = {{"complete", true}};
   uint64_t next_display_id_ = 1;
   size_t display_bytes_ = 0;
   json archive_ = json::array();
-  std::vector<int64_t> archive_sizes_;
+  std::vector<std::string> archive_texts_;  // archive_, one text per segment
   int64_t archive_bytes_ = 0;
   int64_t dropped_segments_ = 0;
 };

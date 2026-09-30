@@ -163,8 +163,7 @@ class Master {
       }
     }
     authority_ = origin_.substr(origin_.find("://") + 3);
-    if (!browser::StartService(executable_, options_.browser_idle_minutes,
-                               browser_process_, error)) {
+    if (!browser::StartService(executable_, browser_process_, error)) {
       return false;
     }
     LoadDevices();
@@ -427,13 +426,24 @@ class Master {
     std::thread stopping([&] {
       for (;;) {
         std::vector<std::string> paths = host_.PresencePaths();
-        auto result = WaitForAnyFileChange(
-            paths, Clock::now() + std::chrono::hours(24), stop.read.Get());
+        // Wakes at least twice per coordinator idle period to let go of
+        // idle coordinators, whether or not a browser is watching, and for a
+        // catalogue scan the throttle deferred.
+        auto deadline = Clock::now() + std::min<Clock::duration>(
+                                           std::chrono::hours(24),
+                                           session::CoordinatorIdle() / 2);
+        if (auto rescan = host_.RescanDue()) {
+          deadline = std::min(deadline, *rescan);
+        }
+        auto result = WaitForAnyFileChange(paths, deadline, stop.read.Get());
         if (result == FileWaitResult::kInterrupted) {
           // A restart was requested over HTTP: its reply is still leaving.
           if (reexec_) std::this_thread::sleep_for(kRestartReply);
           break;
         }
+        host_.ParkIdleCoordinators();
+        // Sessions a coordinator creates or deletes reach every client.
+        host_.RefreshCatalogue();
         bool observed;
         {
           std::lock_guard lock(mutex_);
@@ -685,7 +695,7 @@ void Master::Command(const Request& request, Response& response) {
   json command = json::parse(request.body, nullptr, false);
   const auto category = JsonValue(command, "kind", "");
   if (request.body.size() > kRegularCommandBytes && category != "memory" &&
-      category != "skills" && category != "prompt") {
+      category != "skills" && category != "instructions") {
     Error(response, "command exceeds limit", 413);
     return;
   }
@@ -833,9 +843,7 @@ void Master::Command(const Request& request, Response& response) {
     }
   } else if (kind == "memory" || kind == "skills" || kind == "schedule" ||
              kind == "models" || kind == "permission_rules" ||
-             kind == "tool_categories" ||
-             (kind == "prompt" &&
-              JsonValue(command, "session_id", "").empty())) {
+             kind == "tool_categories" || kind == "instructions") {
     lock.unlock();
     auto result = ControlProcess(command);
     lock.lock();
@@ -843,7 +851,7 @@ void Master::Command(const Request& request, Response& response) {
     error = JsonValue(result, "error", "");
     auto action = JsonValue(command, "action", "list");
     if (error.empty() && action != "list" && action != "get" &&
-        action != "preview") {
+        action != "show" && action != "preview") {
       Publish("", "", {{"kind", "management.changed"}});
     }
   } else if (kind == "restart_conversations") {

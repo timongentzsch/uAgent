@@ -15,6 +15,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 #include <vector>
@@ -40,6 +41,12 @@ struct HostSession {
   json launch = json::object();
   std::string id, path, cwd, title, draft_title, generation, status = "saved",
                                                              error, binary;
+  // "coordinator", "thread" or empty; a thread names its project `folder`.
+  std::string kind, folder;
+  // The `updated` stamp at which the host let go of an idle coordinator;
+  // presence refresh leaves it alone until the file changes. 0 = held.
+  int64_t parked = 0;
+  int64_t activated = 0;  // wall-clock ms of the last successful activation
   json state = json::object(), pending = nullptr;
   std::map<std::string, json> active_exchanges;
   int64_t updated = 0;
@@ -109,8 +116,15 @@ class SessionHost {
   std::vector<HostNotice> WaitForNotices();
   void Stop();
   void LoadDrafts();
+  // Follows the history on disk: sessions created elsewhere (a coordinator's
+  // threads) appear, and those deleted elsewhere go, each published. A scan
+  // within a second of the last is deferred to RescanDue(), never dropped.
   bool RefreshCatalogue(bool force = false);
+  std::optional<std::chrono::steady_clock::time_point> RescanDue() const;
   void RefreshPresence();
+  // Lets go of coordinators idle for CoordinatorIdle() so their runtimes can
+  // exit; one is adopted again once it saves or is activated.
+  void ParkIdleCoordinators();
   // Marks running runtimes (all, or those in `cwd`) for a fresh start that
   // keeps their history: idle ones now, busy ones when their turn ends.
   json RestartRunning(const std::string& cwd);
@@ -143,7 +157,7 @@ class SessionHost {
   std::condition_variable changed_;
   std::atomic<bool> stopping_{false};
   std::map<std::string, std::shared_ptr<HostSession>> sessions_;
-  std::mutex scan_mutex_;
+  mutable std::mutex scan_mutex_;
   SessionCatalogue catalogue_;
   std::mutex history_mutex_;
   struct SavedHistory {
@@ -158,6 +172,7 @@ class SessionHost {
   std::shared_ptr<const SavedHistory> history_;
   std::shared_ptr<const SavedHistory> ReadHistory(const std::string& path);
   std::chrono::steady_clock::time_point scanned_{};
+  bool rescan_ = false;  // a scan was deferred by the one-second throttle
   OutcomeStore outcomes_;
   FileStamp library_stamp_, schedule_stamp_;
   std::map<std::string, FileStamp> prompt_stamps_;
@@ -175,7 +190,8 @@ class SessionHost {
                                              std::string& error);
   Connection OpenRuntime(const HostSession& session, bool create,
                          std::string& error) const;
-  void ApplyRuntimeFrame(HostSession& session, json& frame);
+  // False when the frame changed nothing a browser shows.
+  bool ApplyRuntimeFrame(HostSession& session, json& frame);
   // Outcome labels shared by live frames and the schedule supervisor.
   static std::string RunResultFor(const std::string& outcome);
   std::chrono::steady_clock::time_point NextScheduleDeadline() const;

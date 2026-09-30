@@ -18,7 +18,8 @@ Paths under `~/.uagent` unless shown otherwise.
 | captured large outputs and HTTP exchanges | `artifacts/*` |
 | background command logs | `bg/*` |
 | detached terminal records and logs | `terminals/<pid>.json`, `terminals/logs/*` |
-| collaborators | `collaborators/agent-<id>.json`, `.session.json`, `.comms.jsonl`, and pending `.mail-*.json` |
+| delegated children | `history/<workspace>/agent-<id>.json`, sessions whose header carries `delegation` |
+| mail between sessions, coordinators and children | `mail/<id>/{new,cur}/*.json` |
 | MCP server logs | `mcp/*` |
 | memories | `memory/{global,projects/<repository>}/*.md` |
 | memory audit and extraction claims | `memory/events.jsonl`, `memory/.processed/*` |
@@ -27,7 +28,7 @@ Paths under `~/.uagent` unless shown otherwise.
 | web host discovery, devices and push keys | `web/*` |
 | project trust, model preference, permission rules, tool categories | `config/trusted-projects.json`, `config/model-preference.json`, `config/permissions.json`, `config/tool-categories.json` |
 | configuration | `.config`, and `<workspace>/.uagent/.config` |
-| system prompt overrides | `system-prompt.json`, and `<workspace>/.uagent/system-prompt.json` |
+| instructions | `AGENTS.md`, `COORDINATOR.md`, and `<folder>/.uagent/COORDINATOR.md` |
 | scratch scripts | `<workspace>/.uagent/scratch/*.py`, `*.sh` |
 | Playwright snapshots and logs | `<workspace>/.playwright-cli/*` |
 
@@ -68,7 +69,7 @@ HTTP request and response captures in `artifacts/` for `/http` inspection;
 credential headers are redacted, but prompts and tool output are not. See
 [WEB.md](WEB.md#execution-and-persistence).
 
-## Activities and collaborators
+## Activities and delegated children
 
 Completed output larger than `UAGENT_TOOL_RESULT_CHARS` moves to `artifacts/`
 instead of entering context whole, so a returned path can expire with
@@ -76,11 +77,23 @@ retention. Detached terminal records store a boot-scoped process identity; a
 record whose identity is missing or does not match is treated as exited and
 never signalled.
 
-Each collaborator has a durable ID. A follow-up starts a new supervised child
-from the collaborator's snapshot; a `persistent=true` collaborator keeps its
-worker and processes alive until stopped or until the parent exits. Queued
-messages persist until a follow-up launch succeeds. A saved conversation
-resumes after a restart, but live activities, PTYs and output buffers do not.
+Each delegated child has a durable ID naming its session file. A follow-up
+starts a new supervised child from that saved conversation. A saved
+conversation resumes after a restart, but live activities, PTYs and output
+buffers do not.
+
+## Mail
+
+Sessions, a folder's coordinator and its threads, and delegated children talk
+through one mailbox each, `mail/<id>/`, where `<id>` hashes the canonical
+session file. A message is a private JSON file with a type
+(`task.completed`, `ask`, `steer`, `note`, ...), sender, correlation id and
+body. A send commits by an atomic rename into `new/`. The recipient moves what
+it takes to `cur/` and deletes it once the snapshot holding it is saved, so a
+crash in between delivers it again. The snapshot keeps the latest 256
+delivered ids, so a message delivered twice enters the conversation once.
+Expired (24 h), unreadable and not-yet-permitted messages are never
+delivered; retention prunes the directory like `sessions/`.
 
 ## Memory
 
@@ -98,17 +111,17 @@ retry.
 
 Pruning runs at startup:
 
-| Tree | Settings (days / files) |
+| Tree | Days / files kept |
 | --- | --- |
-| `history/`, `memory/.processed/` | `UAGENT_HISTORY_DAYS` 30 / `UAGENT_HISTORY_FILES` 200 |
-| `sessions/`, `collaborators/` | `UAGENT_DEBUG_DAYS` 14 / `UAGENT_DEBUG_FILES` 50 |
-| `bg/`, `artifacts/` | `UAGENT_BG_DAYS` 7 / `UAGENT_BG_FILES` 200 |
-| `mcp/` | `UAGENT_MCP_LOG_DAYS` 7 / `UAGENT_MCP_LOG_FILES` 100 |
-| exited detached terminals | `UAGENT_TERMINAL_DAYS` 7, removed with their logs |
+| `history/`, `memory/.processed/` | `UAGENT_HISTORY_DAYS` 30 / 200 |
+| `sessions/` | 14 / 50 |
+| `bg/`, `artifacts/` | 7 / 200 |
+| `mcp/` | 7 / 100 |
+| exited detached terminals | 7, removed with their logs |
 
-Collaborator metadata and sessions are pruned together. Journals whose session
-is gone are removed. Each log is also bounded in size by `UAGENT_BASH_LOG_BYTES`
-or `UAGENT_MCP_LOG_BYTES`.
+Delegated children age out with `history/`. Journals whose session is gone are
+removed. Each process log is also bounded in size: 64 MiB for
+commands, 16 MiB for an MCP server.
 
 ## Removal
 

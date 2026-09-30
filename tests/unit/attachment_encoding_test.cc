@@ -10,6 +10,7 @@
 
 #include "include/agent/jobs.h"
 #include "include/core/config.h"
+#include "include/core/limits.h"
 #include "include/media/attachments.h"
 #include "include/tools/files.h"
 #include "include/tools/registry.h"
@@ -117,7 +118,6 @@ void TestAttachmentEncoding() {
   // The media read has no per-turn call cap, so this queue ceiling is what
   // bounds a runaway caller -- including an MCP server, which queues images
   // with no model call to budget against.
-  setenv("UAGENT_PENDING_ATTACHMENTS", "2", 1);
   ProcessSupervisor attachment_processes;
   std::vector<Tool> attachment_tools = BuiltinTools(attachment_processes, root);
   const Tool* attach_tool = FindTool(attachment_tools, "read_path");
@@ -126,18 +126,19 @@ void TestAttachmentEncoding() {
   CHECK(attach_tool != nullptr);
   CHECK(attach_tool &&
         attach_tool->run({{"path", image_path.string()}}, attach_context).Ok());
-  CHECK(Attachments().Add(file.string()).Ok());
+  for (size_t queued = 1; queued < kMaxPendingAttachments; ++queued) {
+    CHECK(Attachments().Add(file.string()).Ok());
+  }
   ToolResult refused_queue = Attachments().Add(file.string());
   CHECK(!refused_queue.Ok());
   CHECK(refused_queue.output.find("too many attachments pending") !=
         std::string::npos);
   // Draining the queue for the next request clears the ceiling again.
   std::vector<Attachment> drained = Attachments().Take();
-  CHECK(drained.size() == 2);
+  CHECK(drained.size() == kMaxPendingAttachments);
   CHECK(drained[0].source_call_id == "call_attach_1");
   CHECK(Attachments().Add(file.string()).Ok());
   CHECK(Attachments().Take().size() == 1);
-  unsetenv("UAGENT_PENDING_ATTACHMENTS");
 
   // Steered content composes exactly like submitted content.
   std::string steer_error;

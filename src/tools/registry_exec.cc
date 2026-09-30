@@ -1,13 +1,13 @@
 // Copyright 2026 Timon Gentzsch
 
 #include <cstdint>
-#include <fstream>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "include/core/env.h"
+#include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/limits.h"
 #include "include/core/strings.h"
@@ -18,22 +18,22 @@ namespace uagent {
 
 void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
                        const std::filesystem::path& workspace) {
-  auto schema = [](const char* s) { return json::parse(s); };
-  // The schema below is a raw JSON literal, so its "maximum" cannot be spelled
-  // as kMaxYieldMs directly; this assert fails the build if the constant moves.
-  static_assert(kMaxYieldMs == 30000, "update \"maximum\" in the run schema");
+  // The schema below is a raw JSON literal, so its yield bounds cannot be
+  // spelled as constants; this assert fails the build if one moves.
+  static_assert(kMaxYieldMs == 30000 && kDefaultYieldMs == 10000,
+                "update yield_ms in the run schema");
   Tool& run = AddTool(
       tools,
       MakeTool("run",
                "Execute a command in cwd; omit cd. Use the project's Python "
                "runner (uv run/pytest). tty=true enables interactive stdin; "
                "detach persists a terminal beyond this session.",
-               schema(R"json({"type":"object","properties":{
+               json::parse(R"json({"type":"object","properties":{
                     "command":{"type":"string"},
                     "shell":{"type":"string","description":"default bash"},
                     "tty":{"type":"boolean","description":"retain an interactive PTY"},
                     "yield_ms":{"type":"integer","minimum":0,"maximum":30000,
-                      "description":"initial wait; 0 blocks to deadline; omitted uses UAGENT_RUN_YIELD_MS"},
+                      "description":"initial wait; 0 blocks to deadline; omitted waits 10000"},
                     "max_output_chars":{"type":"integer","minimum":256,"maximum":65536,
                       "description":"lower per-call returned-output cap"},
                     "detach":{"type":"boolean",
@@ -44,7 +44,7 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
                      supervisor, JsonValue(a, "command", ""), context,
                      JsonValue(a, "detach", false),
                      JsonValue(a, "shell", "bash"), JsonValue(a, "tty", false),
-                     JsonValue(a, "yield_ms", RunDefaultYieldMs()),
+                     JsonValue(a, "yield_ms", kDefaultYieldMs),
                      JsonValue(a, "max_output_chars", int64_t{0}),
                      JsonValue(a, "sandbox", true));
                }));
@@ -59,7 +59,7 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
               "false runs outside the OS sandbox; always asks a person"}};
     // Mandatory rather than mutating: an approval a person did not give is an
     // approval this must not have. Yolo, remembered grants and headless
-    // sessions all fall to a denial, so a collaborator child cannot unconfine
+    // sessions all fall to a denial, so a delegated child cannot unconfine
     // itself no matter what it was launched with.
     run.approval_class = [](const json& a) {
       return JsonValue(a, "sandbox", true) ? ApprovalClass::kNone
@@ -97,15 +97,11 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
   const json intent_schema = {
       {"type", "string"},
       {"enum", CommandIntents()},
-      {"description",
-       "What the command is for: explore (read/list/search), research, edit, "
-       "verify (test/lint/build), run, setup (install/configure). Display "
-       "and grouping only; never changes permissions."}};
+      {"description", "what it is for; display grouping only"}};
   run.parameters["properties"]["intent"] = intent_schema;
   const json description_schema = {
       {"type", json::array({"string", "null"})},
-      {"description",
-       "Optional short action label, e.g. Running tests. Display only."}};
+      {"description", "optional display label, e.g. Running tests"}};
   run.present = [](const json& a) {
     json parts = json::array({CommandPart(JsonValue(a, "command", ""))});
     for (json& part : GenericInputParts(a, {"command"})) {
@@ -126,14 +122,12 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
         tools,
         MakeTool(
             "scratch",
-            "Run a one-off script, never requested project code. Write it "
-            "under .uagent/scratch with write_file (a .py declares its "
-            "dependencies in a PEP 723 `# /// script` header and runs under "
-            "isolated uv; a .sh runs under sh), fix it with edit_file, and "
-            "rerun it here with different `args` instead of rewriting it. "
-            "Prefer this over resending a long pipeline or heredoc through "
-            "run.",
-            schema(
+            "Run a one-off script under .uagent/scratch, never requested "
+            "project code: a .py with a PEP 723 `# /// script` header runs "
+            "under isolated uv, a .sh under sh. Write and fix it with the file "
+            "tools, then rerun it with new args instead of resending a long "
+            "pipeline through run.",
+            json::parse(
                 R"json({"type":"object","additionalProperties":false,"properties":{
                     "path":{"type":"string","minLength":1,
                       "description":"the script's path relative to .uagent/scratch"},
@@ -169,10 +163,8 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
       const auto script =
           ScratchScriptPath(workspace, JsonValue(a, "path", ""), error);
       if (!script) return error;
-      std::ifstream input(*script);
-      std::string source((std::istreambuf_iterator<char>(input)),
-                         std::istreambuf_iterator<char>());
-      return Utf8Trunc(source, kPreviewChars);
+      return Utf8Trunc(ReadFile(*script, kPreviewChars + 1).value_or(""),
+                       kPreviewChars);
     };
     python.stable_argument = "path";
     python.timeout_s = 0;  // bounded by the turn; no model-driven polling

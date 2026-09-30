@@ -17,8 +17,6 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
-#include <fstream>
-#include <iterator>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -207,14 +205,14 @@ bool WaitForTerminal(ProcessSupervisor& supervisor,
 ToolResult JobLimitError(int64_t max_jobs) {
   return ToolFailure(
       ToolErrorCode::kLimitExceeded,
-      "error: background job limit reached (" + std::to_string(max_jobs) + ")");
+      "background job limit reached (" + std::to_string(max_jobs) + ")");
 }
 
 // A child refused for headroom must not read as the pool being full: the
 // parent can still run its own commands, and that is the point.
 ToolResult DelegatedJobLimitError(int64_t max_children, int64_t max_jobs) {
   return ToolFailure(ToolErrorCode::kLimitExceeded,
-                     "error: no free background slot for a delegated child (at "
+                     "no free background slot for a delegated child (at "
                      "most " +
                          std::to_string(max_children) +
                          " concurrent children of " + std::to_string(max_jobs) +
@@ -283,13 +281,13 @@ ShellCommandResult StartDetachedShell(ProcessSupervisor& supervisor,
                          std::to_string(getpid()) + "-XXXXXX");
   std::string log = pending.Path();
   if (!pending) {
-    return {ToolFailure(ToolErrorCode::kInternal,
-                        "error: cannot create log file " + log)};
+    return {
+        ToolFailure(ToolErrorCode::kInternal, "cannot create log file " + log)};
   }
   fchmod(pending.Get(), kPrivateFileMode);
   std::string bounded_cmd =
       "set -o pipefail; (" + cmd + ") 2>&1 | " + ShellQuote(ExecutablePath()) +
-      " --log-pump " + ShellQuote(log) + " " + std::to_string(BashLogBytes());
+      " --log-pump " + ShellQuote(log) + " " + std::to_string(kBashLogBytes);
   pid_t pid = -1;
   ChildEnvironment child_environment(spec.environment, spec.environment_policy);
   int spawn_error =
@@ -299,7 +297,7 @@ ShellCommandResult StartDetachedShell(ProcessSupervisor& supervisor,
   if (spawn_error != 0) {
     return {ToolFailure(
         ToolErrorCode::kUnavailable,
-        "error: cannot spawn shell: " + std::string(strerror(spawn_error)))};
+        "cannot spawn shell: " + std::string(strerror(spawn_error)))};
   }
   log = pending.Release();
   // Past the spawn this call owns a live child: no failure may leave it
@@ -345,9 +343,8 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
     spec.yield_ms = std::clamp(spec.yield_ms, kMinYieldMs, kMaxYieldMs);
   }
   if (shell.empty() || shell.find('\0') != std::string::npos) {
-    return {ToolFailure(
-        ToolErrorCode::kInvalidArguments,
-        "error: shell must be a non-empty executable name or path")};
+    return {ToolFailure(ToolErrorCode::kInvalidArguments,
+                        "shell must be a non-empty executable name or path")};
   }
   std::vector<std::string> wrapper;
   if (std::string error = SandboxWrapperFor(spec, &wrapper); !error.empty()) {
@@ -371,11 +368,10 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
                          std::to_string(getpid()) + "-XXXXXX");
   std::string log = pending.Path();
   if (!pending) {
-    return {ToolFailure(ToolErrorCode::kInternal,
-                        "error: cannot create log file " + log)};
+    return {
+        ToolFailure(ToolErrorCode::kInternal, "cannot create log file " + log)};
   }
   fchmod(pending.Get(), kPrivateFileMode);
-  int64_t log_bytes = BashLogBytes();
   int64_t interaction_cap = ActivityOutputCap(spec.max_output_chars);
   std::string bounded_cmd = cmd;
   pid_t pid = -1;
@@ -384,7 +380,7 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   bool tty = spec.tty;
   if (!tty && pipe(pipe_fds) != 0) {
     return {ToolFailure(ToolErrorCode::kInternal,
-                        "error: cannot create process output pipe")};
+                        "cannot create process output pipe")};
   }
   // Owned from here: every early return closes them, and only the hand-off to
   // the supervisor releases them.
@@ -402,7 +398,7 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   if (spawn_error != 0) {
     return {ToolFailure(
         ToolErrorCode::kUnavailable,
-        "error: cannot spawn shell: " + std::string(strerror(spawn_error)))};
+        "cannot spawn shell: " + std::string(strerror(spawn_error)))};
   }
   // Named after the pid and the activity id: a pid alone is reused within one
   // run and a rename onto a completed job's uncollected log would destroy it,
@@ -424,7 +420,7 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
     RemoveLog(log);
     return {ToolFailure(
         ToolErrorCode::kInternal,
-        "error: cannot duplicate PTY input: " + std::string(strerror(errno)))};
+        "cannot duplicate PTY input: " + std::string(strerror(errno)))};
   }
 
   BgJob foreground{.pid = pid,
@@ -446,7 +442,8 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   }
   int64_t activity_id = *registered;
   int output_fd = tty ? master.Release() : pipe_read.Release();
-  supervisor.RegisterIo(session, output_fd, input.Release(), log_fd, log_bytes);
+  supervisor.RegisterIo(session, output_fd, input.Release(), log_fd,
+                        kBashLogBytes);
 
   // Registered for the signal handler's kill sweep from spawn onward, so a
   // Ctrl-C at any point, including the handover below, reaches the child.
@@ -540,7 +537,7 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
     SignalShellGroup(pid, SIGKILL);
     RemoveLog(log);
     return {ToolFailure(ToolErrorCode::kInternal,
-                        "error: foreground activity ownership was lost"),
+                        "foreground activity ownership was lost"),
             std::nullopt, /*launched=*/true};
   }
   if (is_subagent) {
@@ -686,13 +683,13 @@ ToolResult ToolRunScratch(ProcessSupervisor& supervisor,
   std::string error;
   const auto script = ScratchScriptPath(workspace, relative_path, error);
   if (!script) {
-    return ToolFailure(ToolErrorCode::kInvalidArguments, "error: " + error);
+    return ToolFailure(ToolErrorCode::kInvalidArguments, error);
   }
   std::error_code ec;
   if (!fs::is_regular_file(*script, ec)) {
     return ToolFailure(
         ToolErrorCode::kNotFound,
-        "error: no script at .uagent/scratch/" +
+        "no script at .uagent/scratch/" +
             fs::relative(*script, workspace / ".uagent" / "scratch", ec)
                 .generic_string() +
             "; write it first with write_file");
@@ -704,11 +701,11 @@ ToolResult ToolRunScratch(ProcessSupervisor& supervisor,
       !fs::exists(ignore, ec) &&
       !AtomicWriteFile(ignore.string(), "*\n", kSharedFileMode,
                        /*preserve_mode=*/false, write_error)) {
-    return ToolFailure(ToolErrorCode::kInternal, "error: " + write_error);
+    return ToolFailure(ToolErrorCode::kInternal, write_error);
   }
   if (!args.is_null() && !args.is_array()) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "error: args must be an array of strings");
+                       "args must be an array of strings");
   }
   std::string argv;
   if (args.is_array()) {
@@ -716,7 +713,7 @@ ToolResult ToolRunScratch(ProcessSupervisor& supervisor,
       if (!value.is_string() ||
           value.get_ref<const std::string&>().find('\0') != std::string::npos) {
         return ToolFailure(ToolErrorCode::kInvalidArguments,
-                           "error: args must be strings without NUL");
+                           "args must be strings without NUL");
       }
       argv += ' ' + ShellQuote(value.get<std::string>());
     }
@@ -726,14 +723,12 @@ ToolResult ToolRunScratch(ProcessSupervisor& supervisor,
   if (shell_script) {
     command = "sh " + ShellQuote(script->string()) + argv;
   } else {
-    std::ifstream input(*script);
-    const std::string source((std::istreambuf_iterator<char>(input)),
-                             std::istreambuf_iterator<char>());
+    const std::string source = ReadFile(*script, kEditFileBytes).value_or("");
     const bool uv = ExecutableOnPath("uv");
     if (!uv && PythonScriptHasDependencies(source)) {
       return ToolFailure(
           ToolErrorCode::kUnavailable,
-          "error: this script declares third-party dependencies and requires "
+          "this script declares third-party dependencies and requires "
           "uv on PATH. Install uv or edit the PEP 723 dependency list");
     }
     command =
@@ -773,11 +768,10 @@ ToolResult ToolGrep(ProcessSupervisor& supervisor, const std::string& pattern,
                      !std::filesystem::is_directory(status))) {
     return ToolFailure(
         ToolErrorCode::kNotFound,
-        "error: search path is not a readable file or directory: " + target);
+        "search path is not a readable file or directory: " + target);
   }
-  int64_t max_results = GrepResults();
-  int64_t bytes = GrepBytes();
-  if (ToolResultCap() > 0) bytes = std::min(bytes, ToolResultCap());
+  int64_t max_results = kGrepResults;
+  int64_t bytes = ToolResultCap() > 0 ? ToolResultCap() : 1024;
   bool ripgrep = ExecutableOnPath("rg");
   // Ripgrep searches files in parallel and reports them in completion order, so
   // two identical searches can disagree. That is not cosmetic here: results are
@@ -839,7 +833,7 @@ ToolResult ToolGrep(ProcessSupervisor& supervisor, const std::string& pattern,
   } else if (!outcome.Ok()) {
     if (outcome.error == ToolErrorCode::kProcessFailed) {
       return ToolFailure(ToolErrorCode::kProcessFailed,
-                         "error: search command failed:\n" + output);
+                         "search command failed:\n" + output);
     }
     outcome.output = std::move(output);
     return outcome;

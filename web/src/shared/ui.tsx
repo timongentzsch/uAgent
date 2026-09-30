@@ -1,3 +1,6 @@
+// Base styles load with the primitives every surface is built from, so they
+// always precede feature styles, however the bundle is split.
+import "./style.css";
 import {
   Component,
   createContext,
@@ -48,7 +51,7 @@ export function Time({ value }: { value?: string | number }) {
     </time>
   );
 }
-export async function copyText(text: string) {
+async function copyText(text: string) {
   if (navigator.clipboard) return navigator.clipboard.writeText(text);
   // Clipboard API requires HTTPS; tailnet HTTP still supports user-initiated copy.
   const field = document.createElement("textarea");
@@ -90,11 +93,7 @@ export function CodeCopy({ text }: { text: string }) {
           }
         }}
       >
-        {status === "Copied!" ? (
-          <Check aria-hidden="true" />
-        ) : (
-          <Copy aria-hidden="true" />
-        )}
+        {status === "Copied!" ? <Check /> : <Copy />}
       </IconButton>
       <span class="sr-only" role="status">
         {status}
@@ -239,7 +238,7 @@ export function Row({
       {children && <span class="row-value">{children}</span>}
     </>
   );
-  const chevron = <ChevronRight aria-hidden="true" class="row-chevron" />;
+  const chevron = <ChevronRight class="row-chevron" />;
   return href ? (
     <a class="row button-link" href={href} target="_blank" rel="noreferrer">
       {body}
@@ -592,6 +591,9 @@ const DialogContext = createContext<{
   close: () => void;
 } | null>(null);
 
+// The close of the dialog around the caller: plays its exit, as Close does.
+export const useDialogClose = () => useContext(DialogContext)!.close;
+
 // The one dialog header: title, optional leading control (Back) and actions,
 // then Close. Modal renders it unless its content renders its own.
 export function DialogHeader({
@@ -630,18 +632,23 @@ export function Modal({
   layout = "content",
   actions,
   header = true,
+  lightDismiss = false,
 }: {
   title: string;
   children: ComponentChildren;
   close: () => void;
   className?: string;
-  size?: "compact" | "medium" | "wide" | "browser";
+  // "narrow": a sheet of a few actions or one control (see SheetButton),
+  // which rises from the bottom on a phone instead of filling the screen.
+  size?: "narrow" | "compact" | "medium" | "wide" | "browser";
   // "sheet": full height at the right edge (full screen on a phone).
   layout?: "content" | "panel" | "sheet";
   // Header controls beside Close, for actions on the dialog's subject.
   actions?: ComponentChildren;
   // False when the content renders its own DialogHeader and .dialog-body.
   header?: boolean;
+  // A tap on the scrim closes it, as it does a native sheet.
+  lightDismiss?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
@@ -693,6 +700,10 @@ export function Modal({
       onCancel={(event) => {
         event.preventDefault();
         requestClose();
+      }}
+      // The dialog fills its box, so only the scrim targets the element.
+      onClick={(event) => {
+        if (lightDismiss && event.target === ref.current) requestClose();
       }}
     >
       <DialogContext.Provider

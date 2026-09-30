@@ -50,14 +50,14 @@ export function BrowserTools({
           onPointerDown={keepFocus}
           onClick={keyboard}
         >
-          <Keyboard aria-hidden="true" />
+          <Keyboard />
         </IconButton>
       )}
       <IconButton label="Copy" disabled={disabled} onClick={copy}>
-        <Copy aria-hidden="true" />
+        <Copy />
       </IconButton>
       <IconButton label="Paste" disabled={disabled} onClick={paste}>
-        <ClipboardPaste aria-hidden="true" />
+        <ClipboardPaste />
       </IconButton>
     </>
   );
@@ -75,8 +75,8 @@ export function BrowserLoading() {
       }
       bar={
         <>
-          <div class="popover-control browser-status-menu">
-            <Button variant="quiet" class="with-icon browser-status" disabled>
+          <div class="sheet-control browser-status-menu">
+            <Button variant="quiet" class="browser-status" disabled>
               <span>Browser</span>
             </Button>
           </div>

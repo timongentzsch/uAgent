@@ -89,8 +89,8 @@ test.describe("back closes what is open", () => {
       .locator(".settings-nav")
       .getByRole("button", { name: "Agent", exact: true })
       .tap();
-    await settings.getByRole("button", { name: /System prompt/ }).tap();
-    const prompt = page.getByRole("dialog", { name: "System prompt" });
+    await settings.getByRole("button", { name: /Instructions/ }).tap();
+    const prompt = page.getByRole("dialog", { name: "Instructions" });
     await expect(prompt).toBeVisible();
     // One back closes the swapped-in dialog and reaches the conversation.
     await page.goBack();
@@ -154,4 +154,34 @@ test("a menu reopens after the dialog it opened closes", async ({
   await expect(dialog).toHaveCount(0);
   await menu.click();
   await expect(rename).toBeVisible();
+});
+
+// The phone drawer slides in from the left: a closed dialog must not be
+// drawn, or it would skip its starting style and appear in place.
+test.describe("phone drawer", () => {
+  test.use({
+    reducedMotion: "no-preference",
+    viewport: { width: 390, height: 800 },
+  });
+  test("slides in from the left", async ({ page }) => {
+    await page.goto("/");
+    await expect(page.getByLabel("Open sessions")).toBeVisible();
+    const left = await page.evaluate(async () => {
+      document.querySelector('[aria-label="Open sessions"]').click();
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      return document.querySelector("dialog.drawer").getBoundingClientRect()
+        .left;
+    });
+    expect(left).toBeLessThan(0);
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            document.querySelector("dialog.drawer").getBoundingClientRect()
+              .left,
+        ),
+      )
+      .toBe(0);
+  });
 });

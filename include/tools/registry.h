@@ -10,7 +10,6 @@
 #include <filesystem>
 #include <vector>
 
-#include "include/agent/adaptive_system.h"
 #include "include/agent/process.h"
 #include "include/core/fs.h"
 #include "include/tools/tool.h"
@@ -19,8 +18,7 @@ namespace uagent {
 
 std::vector<Tool> BuiltinTools(
     ProcessSupervisor& supervisor,
-    const std::filesystem::path& workspace = CanonicalAccessPath("."),
-    AdaptiveSystemState* adaptive_system = nullptr);
+    const std::filesystem::path& workspace = CanonicalAccessPath("."));
 
 }  // namespace uagent
 

@@ -72,7 +72,7 @@ export interface Exchange {
 }
 export interface ToolActivity {
   // The call's intent: explore, research, edit, verify, run, setup,
-  // delegate, memory or share (older sessions: change, execute).
+  // delegate, memory or share.
   category?: string;
   label?: string;
   group?: { id: string; label: string };
@@ -83,19 +83,6 @@ export interface ToolReplay {
   poll?: boolean;
   multiline?: boolean;
   detail?: string;
-}
-export interface ToolCall {
-  activity?: ToolActivity;
-  replay?: ToolReplay;
-  id?: string;
-  response_id?: string;
-  occurrence_id?: string;
-  call_id?: string;
-  detail_id?: string;
-  name: string;
-  arguments?: JSONValue;
-  view?: ToolView;
-  status?: string;
 }
 // How a call reads, built natively by each tool (see ToolView in tool.h).
 export type ToolPart =
@@ -183,7 +170,6 @@ export interface Block {
   // Tool calls whose results added these files to context.
   source_call_ids?: string[];
   unavailable_images?: number;
-  tools?: ToolCall[];
   call_id?: string;
   name?: string;
   arguments?: JSONValue;
@@ -249,26 +235,22 @@ export interface Activity {
   // A command the turn is still waiting on, until moved to the background.
   detached?: boolean;
 }
-export interface Collaborator {
+// A child session this conversation delegated to, running or resumable.
+export interface Agent {
   id: string;
   label?: string;
   name?: string;
   description?: string;
-  team?: string;
   model?: string;
   status?: string;
-  persistent?: boolean;
 }
 export interface ActivityDetail extends Activity {
   activity_detail?: ActivityStatusDetail | null;
   phase?: ExecutionPhase;
   context_tokens?: number;
   context_window?: number;
-  statistics_live?: boolean;
   route?: string;
-  persistent?: boolean;
   olderWindow?: boolean;
-  communication?: { from: string; to: string; text: string; time: string }[];
   body?: BodyPage;
   command?: string;
   memory?: Block["memory"];
@@ -280,7 +262,6 @@ export interface ActivityDetail extends Activity {
   statistics?: Statistics;
   usage?: Usage;
   turns?: number;
-  receipt?: string;
 }
 export interface Pending {
   id: string;
@@ -294,6 +275,35 @@ export interface Pending {
     mandatory_reason?: string;
     preview?: string;
   };
+  // kind "ask": the model's questions; `prompt` repeats the first.
+  questions?: AskQuestion[];
+  // A thread's decision goes to its coordinator first; "human" once yielded.
+  route?: "coordinator" | "human";
+  note?: string;
+}
+// Each question also takes a free-text "Other" answer.
+export interface AskQuestion {
+  question: string;
+  // A short chip label.
+  header: string;
+  options: AskOption[];
+  multi_select?: boolean;
+}
+// What the agent showed of an option: an image it made, snapshotted into the
+// session (id; the path is for terminals), and a monospace preview. The
+// description is the image's alt text.
+export interface AskOption {
+  label: string;
+  description: string;
+  image?: { id?: string; name?: string; path: string };
+  preview?: string;
+}
+// An ask's reply text is the JSON array of these, one per question in order.
+// An attachment_id is also listed in the reply's attachment_ids.
+export interface AskAnswer {
+  choices: string[];
+  other: string;
+  attachment_id?: string;
 }
 export interface Permissions {
   mode: string;
@@ -331,6 +341,9 @@ export interface Session {
   generation?: string;
   title?: string;
   cwd?: string;
+  // A folder's coordinator, or a thread it launched (in `folder`).
+  kind?: "coordinator" | "thread" | "";
+  folder?: string;
   status?: SessionStatus;
   presence?: "active" | "";
   updated?: number;
@@ -363,14 +376,20 @@ export interface State {
   variant?: string;
   variants?: string[];
   view?: View;
+  // Bumped by an in-place rewind, which replaces the view.
+  view_epoch?: number;
   turns?: number;
   usage?: Usage;
   route_usage?: Record<string, Usage>;
   system_prompt?: string;
+  // The agent's own conversation-scoped addition (adapt_system).
+  self_directive?: SelfDirective;
+  // Why a coordinator holds its threads' events (today's spend limit).
+  paused?: string;
   statistics?: Statistics;
   activity?: string;
   activities?: Activity[];
-  collaborators?: Collaborator[];
+  agents?: Agent[];
   context_tokens?: number;
   context_window?: number;
   permissions?: Permissions;
@@ -407,7 +426,6 @@ export interface Snapshot {
   metadata: Session;
   state?: State;
   pending?: Pending | null;
-  streamed?: Block[];
   live_truncated?: boolean;
 }
 export interface SlashCommand {
@@ -441,6 +459,8 @@ export interface Outcome {
 }
 export interface EventData extends Omit<Partial<Exchange>, "status"> {
   request_id?: string;
+  // approval.requested: "coordinator" while a thread's coordinator decides.
+  route?: string;
   inspect?: boolean;
   context_tokens?: number;
   output?: string;
@@ -478,9 +498,16 @@ export interface EventData extends Omit<Partial<Exchange>, "status"> {
   };
   error?: string;
   activities?: Activity[];
-  collaborator?: Collaborator;
-  removed?: boolean;
   permissions?: Permissions;
+}
+// A change to one row of the host's view: the whole row, or fields to set
+// and streamed text to append on a row the client already holds.
+export interface BlockPatch {
+  kind: "block";
+  block?: Block;
+  id?: string;
+  set?: Partial<Block>;
+  append?: { text?: string; reasoning?: string };
 }
 // Host envelopes and native EventEmitter payloads share the same SSE channel.
 interface HostEnvelope extends Partial<Omit<Outcome, "pending">> {
@@ -493,6 +520,8 @@ interface HostEnvelope extends Partial<Omit<Outcome, "pending">> {
   generation?: string;
   time?: string;
   type?: string;
+  // Set by the host on events a person should be told about (push).
+  attention_id?: string;
   data?: EventData;
   metadata?: Session;
   state?: State;
@@ -507,6 +536,7 @@ export type HostEvent = HostEnvelope &
   (
     | ({ kind: "outcome" } & Outcome)
     | { kind: "state"; pending?: Pending | null }
+    | BlockPatch
     | {
         kind:
           | "event"
@@ -600,13 +630,32 @@ export interface ToolCategories {
   categories: ToolCategory[];
   assignments: Record<string, string>;
 }
+// One instruction file a person edits: for every session or a folder's
+// coordinator, yours or the project's.
+export interface InstructionFile {
+  audience: "sessions" | "coordinator";
+  scope: "user" | "project";
+  path: string;
+  text: string;
+}
+export interface InstructionStack {
+  files: InstructionFile[];
+  also_loaded: string[];
+  base: { sessions: string; coordinator: string };
+}
+export interface SelfDirective {
+  mode: "overlay" | "replace";
+  text: string;
+  revision: string;
+}
 export interface CommandResults {
   browser: {
     running?: boolean;
     mode?: string;
     created_profile_id?: string;
   };
-  prompt: PromptResult;
+  instructions: InstructionStack;
+  self_directive: { item: SelfDirective };
   memory: LibraryResult;
   skills: LibraryResult;
   schedule: ScheduleResult;
@@ -619,8 +668,9 @@ export interface CommandResults {
   tool_categories: ToolCategories;
   activity: ActivityDetail;
   context: { exchanges: Exchange[] };
-  fork: { id: string };
-  rewind: { turns: number };
+  // A fork cut before a message returns that message, to edit (prompt).
+  // A coordinator rewinds itself in place (`rewound`) instead of forking.
+  fork: { id: string; prompt?: string; rewound?: boolean };
   share: { path: string };
   side: { answer: string };
   create: never;
@@ -643,6 +693,8 @@ export type CommandKind = keyof CommandResults;
 export interface CommandFields {
   // Raw text after a slash command, parsed by the native host.
   argument?: string;
+  // The message a fork is cut before ("m-<id>").
+  message_id?: string;
   detail?: string;
   raw?: boolean;
   offset?: number;
@@ -669,6 +721,10 @@ export interface CommandFields {
   key?: string;
   value?: string;
   cwd?: string;
+  coordinator?: boolean;
+  audience?: string;
+  // Instructions: the text an edit started from; a changed file refuses.
+  base?: string;
   title?: string;
   device_id?: string;
   text?: string;
@@ -715,32 +771,13 @@ export interface RawOptions {
 export type AppModal =
   // handoff: opened for the agent's request (take control, close on Done).
   | { type: "browser"; handoff?: boolean }
-  | { type: "prompt"; scope?: string; edit?: boolean }
+  | { type: "instructions" }
   | StatisticsModal
   | ({ type: "raw" } & RawOptions)
-  | { type: "new" | "settings" }
+  | { type: "new" }
+  // section: a settings section to open on, e.g. from /permissions.
+  | { type: "settings"; section?: string }
   | { type: "tools"; session_id: string };
-
-export interface PromptDocument {
-  scope: string;
-  mode: "inherit" | "overlay" | "replace";
-  text: string;
-  revision: string;
-  path?: string;
-  active?: boolean;
-}
-export interface PromptResult {
-  item: PromptDocument;
-  effective: string;
-  last_sent?: string;
-  inherited: Record<string, string>;
-  sources: PromptDocument[];
-  bytes: number;
-  digest: string;
-  diff?: string;
-  applies?: string;
-  preview_kind?: string;
-}
 
 export interface LibraryItem {
   provenance?: {

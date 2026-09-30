@@ -1,12 +1,10 @@
 import { useCallback, useLayoutEffect, useRef, useState } from "preact/hooks";
-import { maxTranscriptBookmarks } from "../shared/limits.ts";
+import {
+  bookmarks,
+  storeBookmark,
+  type Bookmark,
+} from "./transcript-bookmarks.ts";
 
-type Bookmark = {
-  follow: boolean;
-  message?: string;
-  inner?: string;
-  offset?: number;
-};
 type Anchor = {
   node: HTMLElement;
   message: string;
@@ -16,36 +14,14 @@ type Anchor = {
   within: number;
 };
 
-const BOOKMARKS_KEY = "uagent-transcript-bookmarks";
 const BOTTOM_BAND = 2;
 const MOVE = 1;
-const bookmarks = new Map<string, Bookmark>();
-try {
-  for (const [key, value] of Object.entries(
-    JSON.parse(sessionStorage.getItem(BOOKMARKS_KEY) || "{}"),
-  ).slice(-maxTranscriptBookmarks)) {
-    if (typeof (value as Bookmark)?.follow === "boolean")
-      bookmarks.set(key, value as Bookmark);
-  }
-} catch {
-  // Private browsing can deny session storage. In-memory bookmarks still work.
-}
-
-function storeBookmark(key: string, value: Bookmark) {
-  bookmarks.delete(key);
-  bookmarks.set(key, value);
-  while (bookmarks.size > maxTranscriptBookmarks)
-    bookmarks.delete(bookmarks.keys().next().value!);
-  try {
-    sessionStorage.setItem(
-      BOOKMARKS_KEY,
-      JSON.stringify(Object.fromEntries(bookmarks)),
-    );
-  } catch {
-    // In-memory restoration still works when storage is unavailable.
-  }
-}
-
+// A wheel event's scroll lands after it, over one scroll event or an animated
+// run of them (Linux WebKit). WebKit cancels that scroll when scrollTop is
+// written meanwhile, so compensation waits for the wheel's first scroll and
+// then for the scrolling to go quiet.
+const WHEEL_SETTLE_MS = 250;
+const WHEEL_QUIET_MS = 80;
 function contentY(node: HTMLElement, box: HTMLElement) {
   return (
     node.getBoundingClientRect().top -
@@ -57,6 +33,24 @@ function contentY(node: HTMLElement, box: HTMLElement) {
 
 function offset(node: HTMLElement, box: HTMLElement) {
   return contentY(node, box) - box.scrollTop;
+}
+
+function atEnd(box: HTMLElement) {
+  return box.scrollHeight - box.clientHeight - box.scrollTop <= BOTTOM_BAND;
+}
+
+// Whether an upward gesture from target reaches the transcript itself: a
+// nested scroller (tool output) takes it first while it can still move up.
+function scrollsUp(target: EventTarget | null, box: HTMLElement) {
+  for (
+    let node = target instanceof Element ? target : null;
+    node && node !== box;
+    node = node.parentElement
+  ) {
+    if (node.scrollTop > 0 && node.scrollHeight > node.clientHeight)
+      return false;
+  }
+  return box.scrollTop > 0;
 }
 
 function rowFor(node: HTMLElement): HTMLElement | null {
@@ -117,7 +111,7 @@ function findAnchor(
 export function useTranscriptHistory(
   onFollow: (following: boolean) => void,
   sessionKey: string,
-  arrivals: number,
+  blocks: readonly { id: string }[],
 ) {
   const scroller = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
@@ -128,11 +122,19 @@ export function useTranscriptHistory(
   const key = useRef(sessionKey);
   const pending = useRef<string | null>(sessionKey);
   const lastTop = useRef(0);
-  const lastArrivals = useRef(arrivals);
+  // The newest block seen: unseen counts only blocks appended after it, so
+  // an older history page prepended above never reads as new.
+  const lastBlock = useRef(blocks.at(-1)?.id);
   const [unseen, setUnseen] = useState(0);
   const onFollowRef = useRef(onFollow);
   onFollowRef.current = onFollow;
   const observer = useRef<ResizeObserver | null>(null);
+  // What the observer watches, so a refresh observes only new nodes: each
+  // observe() makes the observer report that node once more.
+  const watched = useRef(new Set<Element>());
+  const wheelAt = useRef(-Infinity);
+  // A compensation waiting for the wheel's scroll to land.
+  const deferred = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const attachScroller = useCallback((node: HTMLDivElement | null) => {
     scroller.current = node;
@@ -200,6 +202,22 @@ export function useTranscriptHistory(
     if (element) writeTop(element.scrollHeight - element.clientHeight);
   }, [writeTop]);
 
+  // A reader who moves down into the end follows again: by scrolling there,
+  // or by a wheel, swipe or key that finds no more room below. Only the
+  // reader's own downward intent counts, so a shrink that clamps the range
+  // (see reconcile) never re-follows on its own.
+  const resumeAtEnd = useCallback(() => {
+    const element = scroller.current;
+    if (following.current || !element || !atEnd(element)) return false;
+    if (deferred.current !== null) {
+      clearTimeout(deferred.current);
+      deferred.current = null;
+    }
+    setFollow(true);
+    pin();
+    return true;
+  }, [pin, setFollow]);
+
   const reconcile = useCallback(() => {
     const element = scroller.current;
     if (!element) return;
@@ -212,6 +230,11 @@ export function useTranscriptHistory(
     const current = anchor.current;
     if (!current) {
       selectAnchor();
+      return;
+    }
+    const waited = performance.now() - wheelAt.current;
+    if (waited < WHEEL_SETTLE_MS) {
+      deferred.current ??= setTimeout(settleWheel, WHEEL_SETTLE_MS - waited);
       return;
     }
     let replaced = false;
@@ -239,22 +262,34 @@ export function useTranscriptHistory(
     capture();
   }, [capture, pin, selectAnchor, writeTop]);
 
+  // Applies a waiting compensation once the wheel's scroll has gone quiet,
+  // or never started.
+  const settleWheel = () => {
+    if (deferred.current === null) return;
+    clearTimeout(deferred.current);
+    deferred.current = null;
+    wheelAt.current = -Infinity;
+    reconcileRef.current();
+  };
+  const reconcileRef = useRef(reconcile);
+  reconcileRef.current = reconcile;
+
   const observe = useCallback(() => {
     const watch = observer.current;
     const element = scroller.current;
     const children = content.current;
     if (!watch || !element || !children) return;
-    watch.disconnect();
-    watch.observe(element);
-    watch.observe(children);
-    for (const child of children.children) {
-      if (child instanceof HTMLElement) watch.observe(child);
-    }
+    const next = new Set<Element>([element, children, ...children.children]);
     const row = anchor.current && rowFor(anchor.current.node);
     if (row) {
-      for (const inner of row.querySelectorAll<HTMLElement>("[data-anchor-id]"))
-        watch.observe(inner);
+      for (const inner of row.querySelectorAll("[data-anchor-id]"))
+        next.add(inner);
     }
+    for (const node of watched.current)
+      if (!next.has(node)) watch.unobserve(node);
+    for (const node of next)
+      if (!watched.current.has(node)) watch.observe(node);
+    watched.current = next;
   }, []);
 
   const restore = useCallback(() => {
@@ -302,7 +337,7 @@ export function useTranscriptHistory(
     key.current = sessionKey;
     pending.current = sessionKey;
     anchor.current = null;
-    lastArrivals.current = arrivals;
+    lastBlock.current = blocks.at(-1)?.id;
     setUnseen(0);
   }, [sessionKey]);
 
@@ -310,9 +345,16 @@ export function useTranscriptHistory(
   useLayoutEffect(() => {
     if (!box?.isConnected || box !== scroller.current || !column) return;
     if (!restore()) reconcile();
-    if (arrivals > lastArrivals.current && !following.current)
-      setUnseen((value) => value + arrivals - lastArrivals.current);
-    lastArrivals.current = arrivals;
+    const last = blocks.at(-1)?.id;
+    if (last !== lastBlock.current) {
+      if (!following.current) {
+        const seen = blocks.findLastIndex(
+          (block) => block.id === lastBlock.current,
+        );
+        if (seen >= 0) setUnseen((value) => value + blocks.length - 1 - seen);
+      }
+      lastBlock.current = last;
+    }
   });
 
   useLayoutEffect(() => {
@@ -321,12 +363,13 @@ export function useTranscriptHistory(
       if (!restore()) reconcile();
     };
     const watch = new ResizeObserver(settle);
-    const mutations = new MutationObserver(() => {
+    const mutations = new MutationObserver((records) => {
       settle();
-      observe();
+      if (records.some((record) => record.type === "childList")) observe();
     });
     const readiness = new MutationObserver(settle);
     observer.current = watch;
+    watched.current = new Set();
     observe();
     mutations.observe(column, {
       subtree: true,
@@ -340,15 +383,23 @@ export function useTranscriptHistory(
       attributeFilter: ["aria-busy"],
     });
     let touchY = 0;
+    // One anchor pick per painted frame, however many scroll events land.
+    let frame = 0;
     const wheel = (event: WheelEvent) => {
-      if (event.deltaY < 0) stopFollowing();
+      wheelAt.current = performance.now();
+      // The ancestor walk reads layout; skip it once already unfollowed.
+      if (event.deltaY < 0) {
+        if (following.current && scrollsUp(event.target, box)) stopFollowing();
+      } else if (event.deltaY > 0) resumeAtEnd();
     };
     const touchStart = (event: TouchEvent) => {
       touchY = event.touches[0]?.clientY || 0;
     };
     const touchMove = (event: TouchEvent) => {
       const next = event.touches[0]?.clientY || touchY;
-      if (next > touchY + MOVE) stopFollowing();
+      if (next > touchY + MOVE) {
+        if (following.current && scrollsUp(event.target, box)) stopFollowing();
+      } else if (next < touchY - MOVE) resumeAtEnd();
       touchY = next;
     };
     const keyDown = (event: KeyboardEvent) => {
@@ -358,35 +409,55 @@ export function useTranscriptHistory(
       )
         return;
       if (["ArrowUp", "PageUp", "Home"].includes(event.key)) stopFollowing();
+      else if (["ArrowDown", "PageDown", "End", " "].includes(event.key))
+        resumeAtEnd();
     };
     const scroll = () => {
+      // Checked before any waiting compensation: the reader's downward
+      // scroll into the end must win even while a wheel is still landing.
+      if (box.scrollTop > lastTop.current + MOVE && resumeAtEnd()) {
+        lastTop.current = box.scrollTop;
+        return;
+      }
+      // The wheel's scroll is still landing: wait until it goes quiet, and
+      // keep the anchor the layout change moved so its shift is compensated.
+      if (deferred.current !== null) {
+        clearTimeout(deferred.current);
+        deferred.current = setTimeout(settleWheel, WHEEL_QUIET_MS);
+        lastTop.current = box.scrollTop;
+        return;
+      }
       const top = box.scrollTop;
       const maximum = Math.max(0, box.scrollHeight - box.clientHeight);
       if (following.current) {
         if (maximum - top > BOTTOM_BAND && top < lastTop.current - MOVE)
           stopFollowing();
       } else {
-        if (top > lastTop.current + MOVE && maximum - top <= BOTTOM_BAND) {
-          setFollow(true);
-          pin();
-        } else {
+        frame ||= requestAnimationFrame(() => {
+          frame = 0;
+          // Following again, or a session switch awaiting its restore, since
+          // the scroll: this pick would describe a state that is gone.
+          if (following.current || pending.current) return;
           selectAnchor();
           observe();
-        }
+        });
       }
       lastTop.current = box.scrollTop;
     };
-    box.addEventListener("wheel", wheel, { passive: true });
+    // Capture: the wheel is recorded before anything it triggers (a layout
+    // change, its mutation callbacks) can ask for compensation.
+    box.addEventListener("wheel", wheel, { passive: true, capture: true });
     box.addEventListener("touchstart", touchStart, { passive: true });
     box.addEventListener("touchmove", touchMove, { passive: true });
     box.addEventListener("keydown", keyDown);
     box.addEventListener("scroll", scroll, { passive: true });
     return () => {
+      cancelAnimationFrame(frame);
       watch.disconnect();
       mutations.disconnect();
       readiness.disconnect();
       if (observer.current === watch) observer.current = null;
-      box.removeEventListener("wheel", wheel);
+      box.removeEventListener("wheel", wheel, { capture: true });
       box.removeEventListener("touchstart", touchStart);
       box.removeEventListener("touchmove", touchMove);
       box.removeEventListener("keydown", keyDown);
@@ -400,6 +471,7 @@ export function useTranscriptHistory(
     pin,
     reconcile,
     restore,
+    resumeAtEnd,
     selectAnchor,
     setFollow,
     stopFollowing,

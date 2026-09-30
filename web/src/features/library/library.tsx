@@ -1,7 +1,7 @@
 import { manage } from "../../state/api.ts";
 import type { LibraryItem } from "../../shared/types.ts";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
-import { Plus, ArrowLeft, ChevronDown, Pencil } from "lucide-preact";
+import { Plus, ChevronDown, Pencil, ChevronLeft } from "lucide-preact";
 import {
   Actions,
   Button,
@@ -16,7 +16,7 @@ import {
   DataText,
   Placeholder,
 } from "../../shared/ui.tsx";
-import { Menu, MenuItem } from "../../shared/popover.tsx";
+import { Menu, MenuItem } from "../../shared/menu.tsx";
 import { readStored, writeStored } from "../../state/store.ts";
 import { bytes } from "../../shared/quantities.ts";
 import {
@@ -26,8 +26,9 @@ import {
   dateTime,
 } from "../settings/management.tsx";
 import Markdown from "../../shared/markdown-view.tsx";
-import FolderLabel, { folderName } from "../sidebar/folder-label.tsx";
+import FolderLabel, { folderName } from "../../shared/folder-label.tsx";
 import "../chat/message.css";
+import { ListRow } from "../../shared/list-row.tsx";
 
 type Draft = {
   item: LibraryItem;
@@ -53,11 +54,13 @@ export default function Library({
   cwd: initial,
   online,
   version,
+  initialKind = "memory",
 }: {
   projects: string[];
   cwd: string;
   online: boolean;
   version: number;
+  initialKind?: "memory" | "skills";
 }) {
   const [cwd, setCwd] = useState(initial || projects[0] || "");
   const [visited, setVisited] = useState([initial]);
@@ -69,7 +72,7 @@ export default function Library({
     setExpanded(true);
     if (scope.startsWith("project:")) setScope(`project:${path}`);
   }
-  const [kind, setKind] = useState<"memory" | "skills">("memory");
+  const [kind, setKind] = useState(initialKind);
   const [scope, setScope] = useState("all");
   const projectFilter = scope.startsWith("project:") ? scope.slice(8) : "";
   const [query, setQuery] = useState("");
@@ -223,24 +226,22 @@ export default function Library({
         ? items.filter((entry) => entry.scope === group)
         : items;
     const list = entries.map((entry) => (
-      <Button
+      <ListRow
         key={entry.key}
-        class={`library-row ${item?.key === entry.key ? "selected" : ""}`}
+        class="library-row"
+        aria-current={item?.key === entry.key || undefined}
         disabled={busy}
         onClick={() => select(entry)}
-      >
-        <span>
-          <DataText>{entry.name}</DataText>
-        </span>
-        <small>
+        title={<DataText>{entry.name}</DataText>}
+        meta={
           <DataText>
             {group ? entry.source : `${entry.scope} · ${entry.source}`}
             {entry.status && entry.status !== "available"
               ? ` · ${entry.status}`
               : ""}
           </DataText>
-        </small>
-      </Button>
+        }
+      />
     ));
     if (!data)
       return <Placeholder label="Loading library…">{list}</Placeholder>;
@@ -277,7 +278,6 @@ export default function Library({
         <ProjectField value={cwd} projects={folders} change={chooseProject} />
         <Button
           variant="primary"
-          class="with-icon"
           disabled={!online || !cwd || busy}
           onClick={() => create()}
         >
@@ -360,7 +360,7 @@ export default function Library({
                             }
                           >
                             <FolderLabel path={path} />
-                            <ChevronDown aria-hidden="true" />
+                            <ChevronDown />
                           </Button>
                         </h2>
                         {path === cwd && expanded && rows("project")}
@@ -377,12 +377,8 @@ export default function Library({
             ) : item ? (
               <>
                 <div class="editor-head">
-                  <Button
-                    variant="quiet"
-                    class="with-icon"
-                    onClick={() => setItem(null)}
-                  >
-                    <ArrowLeft />
+                  <Button variant="quiet" onClick={() => setItem(null)}>
+                    <ChevronLeft />
                     Back
                   </Button>
                   <strong>
@@ -463,7 +459,7 @@ export default function Library({
                 )}
                 <div class="document-toolbar">
                   {item.writable && !editing && (
-                    <Button class="with-icon" onClick={() => setEditing(true)}>
+                    <Button onClick={() => setEditing(true)}>
                       <Pencil />
                       Edit
                     </Button>
@@ -550,15 +546,15 @@ export default function Library({
                       variant="primary"
                       disabled={
                         !online ||
-                        busy ||
                         !dirty ||
                         !content.trim() ||
                         (!item.key && !name.trim()) ||
                         changed
                       }
+                      busy={busy}
                       onClick={() => mutate("set")}
                     >
-                      {busy ? "Saving…" : "Save"}
+                      Save
                     </Button>
                   </div>
                 )}
@@ -606,7 +602,7 @@ export default function Library({
               <Button onClick={() => setDialog(null)}>Cancel</Button>
               <Button
                 type="submit"
-                variant="primary"
+                variant={dialog === "delete" ? "destructive" : "primary"}
                 disabled={busy || !online}
               >
                 {dialog === "delete" ? "Delete" : "Rename"}

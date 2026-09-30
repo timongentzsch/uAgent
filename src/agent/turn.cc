@@ -65,11 +65,11 @@ std::vector<std::string> Agent::ExplicitSkillContext(
     if (!result.ok) {
       Emit(NoticeEvent(
           PresentationStatus::kWarned,
-          "· skill " + skill.name + " unavailable: " + result.output));
+          "skill " + skill.name + " unavailable: " + result.output));
       continue;
     }
-    Emit(NoticeEvent(PresentationStatus::kNeutral,
-                     "· using skill " + skill.name));
+    Emit(
+        NoticeEvent(PresentationStatus::kNeutral, "using skill " + skill.name));
     selected.push_back(std::move(result.output));
   }
   return selected;
@@ -148,12 +148,9 @@ bool Agent::ApplyQueuedSteering(StepState& loop) {
 // Everything that happens before the model call: steering, a refreshed system
 // message, the budget gates, and the schemas this step is allowed to offer.
 Agent::StepFlow Agent::PrepareStep(TurnExecution& state, StepState& loop) {
-  // A collaborator's parent can speak to it mid-run; the guidance arrives as
-  // steering and is applied by the very next statement, so nothing it queues
-  // can strand at the end of a headless turn.
-  DrainCollaboratorMailIntoSteering();
-  // Same for linked peer sessions: file mail drained as ordinary steering.
-  DrainSessionMailIntoSteering();
+  // Mail from its parent, children, coordinator or linked sessions arrives as
+  // steering and is applied by the very next statement.
+  DeliverMail();
   ApplyQueuedSteering(loop);
   RefreshSystemMessage();
   if (!prompt_error_.empty()) {
@@ -406,7 +403,7 @@ void Agent::Turn(const std::string& user_input, json user_content, json images,
                                   {{"files", images}});
     }
     PublishMessage(request_id);
-    Emit(NoticeEvent(PresentationStatus::kWarned, "· interrupted"));
+    Emit(NoticeEvent(PresentationStatus::kWarned, "interrupted"));
     Emit(Event{EventId::kTurnStopped,
                {{"turn", turn_id_}, {"outcome", "interrupted"}, {"steps", 0}}});
     return;
@@ -552,7 +549,7 @@ void Agent::FinishTurn(TurnExecution& state, int64_t step) {
         reason = "completed";
         break;
       case TurnOutcome::kInterrupted:
-        Emit(NoticeEvent(PresentationStatus::kWarned, "· interrupted"));
+        Emit(NoticeEvent(PresentationStatus::kWarned, "interrupted"));
         reason = "cancelled";
         break;
       case TurnOutcome::kError:

@@ -17,6 +17,7 @@
 
 #include "include/agent/session_store.h"
 #include "include/agent/session_view.h"
+#include "include/app/coordinator.h"
 #include "include/app/session.h"
 #include "include/cli.h"
 #include "include/core/signals.h"
@@ -24,9 +25,11 @@
 #include "include/core/style.h"
 #include "include/core/term.h"
 #include "include/md.h"
+#include "include/ui/ask_picker.h"
 #include "include/ui/display.h"
 #include "include/ui/editor.h"
 #include "include/ui/interactive.h"
+#include "include/ui/live_region.h"
 #include "include/ui/presentation.h"
 #include "include/ui/sessions.h"
 
@@ -82,10 +85,13 @@ std::string StatusRow(const json& state,
 
 class Terminal {
  public:
-  Terminal(Connection connection, std::string path)
+  // `draft` starts the composer, e.g. the message a rewind forked before.
+  Terminal(Connection connection, std::string path, std::string draft = "")
       : connection_(std::move(connection)),
         path_(std::move(path)),
-        composer_(output_) {}
+        draft_(std::move(draft)),
+        region_(output_),
+        composer_(output_, region_) {}
   int Run(const std::vector<std::string>& attachments) {
     if (!stop_.Open() || !wake_.Open()) return 1;
     raw_ = isatty(STDIN_FILENO) && output_.Start() && composer_.Start();
@@ -108,14 +114,15 @@ class Terminal {
       wake_.Wake();
     });
     if (raw_) {
-      output_.Write("Connecting\n");
-      composer_.Mount(InputPrompt());
+      region_.Commit("Connecting\n");
+      composer_.Mount(InputPrompt(), draft_);
     }
     std::vector<std::string> files = attachments;
     std::string cooked;
     bool quit = false;
     int exit_code = 0;
     while (!quit && !disconnected_ && !navigate_) {
+      if (raw_) Paint();  // the last input's draft
       bool running;
       {
         std::lock_guard lock(mutex_);
@@ -144,13 +151,10 @@ class Terminal {
         }
         quit_hint_ = true;
         if (raw_) {
-          Unmount();
           composer_.Clear();
-        }
-        output_.Write("Press Ctrl+C again to detach.\n");
-        if (raw_) {
-          output_.Write(StatusBarLine(last_status_, &status_columns_) + "\n");
-          composer_.Remount();
+          region_.Commit("Press Ctrl+C again to detach.\n");
+        } else {
+          output_.Write("Press Ctrl+C again to detach.\n");
         }
       }
       if (AbortRequested()) {
@@ -169,9 +173,35 @@ class Terminal {
       std::string decision = JsonValue(pending, "id", "");
       if (decision != decision_) {
         decision_ = decision;
+        if (!decision.empty() && JsonValue(pending, "kind", "") == "ask" &&
+            raw_) {
+          const json answered =
+              PickAskAnswers(JsonValue(pending, "questions", json::array()),
+                             region_, [this, decision] {
+                               std::lock_guard lock(mutex_);
+                               return JsonValue(pending_, "id", "") == decision;
+                             });
+          // Answered elsewhere meanwhile: nothing left to send.
+          bool live = false;
+          {
+            std::lock_guard lock(mutex_);
+            live = JsonValue(pending_, "id", "") == decision;
+          }
+          if (live) {
+            Send(answered.is_null()
+                     ? json{{"kind", "reply"},
+                            {"interaction_id", decision},
+                            {"text", ""},
+                            {"cancelled", true}}
+                     : json{{"kind", "reply"},
+                            {"interaction_id", decision},
+                            {"text", answered["text"]},
+                            {"attachments", answered["attachments"]}});
+          }
+          continue;
+        }
         if (!decision.empty() && JsonValue(pending, "kind", "") == "editor") {
           std::string text = JsonValue(pending, "initial", "");
-          if (raw_) Unmount();
           bool edited =
               raw_ ? composer_.EditTextExternally(text)
                    : EditExternalText(text, STDIN_FILENO, kAdaptiveSystemBytes);
@@ -179,7 +209,6 @@ class Terminal {
                 {"interaction_id", decision},
                 {"text", text},
                 {"cancelled", !edited}});
-          if (raw_) composer_.Remount();
           continue;
         }
         if (!decision.empty()) {
@@ -188,10 +217,21 @@ class Terminal {
             description = JsonValue(*approval, "mandatory_reason", "") + "\n" +
                           JsonValue(*approval, "preview", "") + "\n";
           }
+          if (const json* questions = JsonArray(pending, "questions")) {
+            for (const json& question : *questions) {
+              description += JsonValue(question, "question", "") + "\n";
+              size_t number = 0;
+              for (const json& option : question["options"]) {
+                description += "  " + std::to_string(++number) + ". " +
+                               JsonValue(option, "label", "") + "\n";
+              }
+            }
+            description +=
+                "Answer with option numbers or your own words; separate "
+                "questions with ;\n";
+          }
           if (raw_) {
-            Unmount();
-            output_.Write(ColorizeDiffLines(TerminalSafe(description)));
-            composer_.Remount();
+            region_.Commit(ColorizeDiffLines(TerminalSafe(description)));
           } else {
             fputs(TerminalSafe(description).c_str(), stdout);
           }
@@ -200,11 +240,11 @@ class Terminal {
             DecisionPrompt(JsonValue(pending, "prompt", ""),
                            JsonValue(pending, "options", json::array())));
         if (raw_) {
-          Unmount();
           if (!decision.empty()) {
             draft_ = composer_.Buffer();
-            output_.Write(prompt + "\n");
-            composer_.Mount("> ", JsonValue(pending, "initial", ""), false);
+            region_.Commit(prompt);
+            composer_.Mount(InputPrompt(), JsonValue(pending, "initial", ""),
+                            false);
           } else {
             composer_.Mount(InputPrompt(), draft_);
           }
@@ -254,120 +294,30 @@ class Terminal {
       }
       if (input.kind != InteractiveInputKind::kLine) continue;
       if (raw_) {
-        output_.Write("\r\033[" +
-                      std::to_string(composer_.LastSubmittedRows() + 1) +
-                      "A\033[J");
         if (decision.empty() && !Trim(input.text).empty()) {
-          output_.Write(UserEchoRow(InputPrompt(), TerminalSafe(input.text)) +
-                        "\n");
+          // A streaming tail is finished where it stands, above the echo.
+          region_.Commit((tail_.empty() ? "" : tail_ + "\n") +
+                         UserEchoRow(InputPrompt(), TerminalSafe(input.text)));
           if (!tail_.empty()) {
             output_.AdoptTail();
             tail_.clear();
+            region_.SetTail("");
           }
         }
-        output_.Write(StatusBarLine(last_status_, &status_columns_) + "\n");
         composer_.Mount(InputPrompt());
       }
       std::string text = Trim(input.text);
-      const ParsedSlashCommand slash = ParseSlashCommand(text);
-      if (slash.spec && slash.spec->id == SlashCommandId::kQuit) break;
-      if (text == "/clear" || text.starts_with("/clear ")) {
-        // Screen only: the session keeps running underneath.
-        if (raw_) {
-          output_.Write("\033[H\033[2J");
-        } else {
-          printf("\033[H\033[2J");
-          fflush(stdout);
-        }
-        continue;
-      }
-      if (text == "/restart") {
-        // A fresh runtime for this conversation, e.g. after a setting that
-        // needs a restart; its history is kept.
-        {
-          std::lock_guard lock(mutex_);
-          if (!waiting_.empty() || running_) {
-            WriteTerminalRecord(
-                "· turn active; interrupt it before restarting\n");
-            continue;
-          }
-          next_ = "/restart";
-        }
-        Send({{"kind", "close"}});
-        break;
-      }
-      if (text == "/reset" || text == "/new" || text == "/sessions" ||
-          text.starts_with("/sessions ") || text == "/resume" ||
-          text.starts_with("/resume ")) {
-        // Guarded switch: never abandon a running turn by accident.
-        {
-          std::lock_guard lock(mutex_);
-          if (!waiting_.empty() || running_) {
-            WriteTerminalRecord(
-                "· turn active; interrupt it before switching sessions\n");
-            continue;
-          }
-        }
-        std::string target = "/reset";
-        if (text != "/reset" && text != "/new") {
-          std::string arg;
-          if (text.starts_with("/sessions ")) {
-            arg = Trim(text.substr(10));
-          } else if (text.starts_with("/resume ")) {
-            arg = Trim(text.substr(8));
-          }
-          std::string matched = arg.empty() ? "" : MatchSessionPrefix(arg);
-          if (!arg.empty() && matched.empty()) {
-            WriteTerminalRecord("· no unique session matches \"" +
-                                TerminalSafe(arg) + "\"\n");
-            continue;
-          }
-          if (matched.empty()) {
-            matched = PickSession();
-            if (matched.empty()) continue;
-          }
-          target = matched;
-        }
-        std::lock_guard lock(mutex_);
-        next_ = target;
-        break;
-      }
+      const Command handled =
+          HandleCommand(ParseSlashCommand(text), !decision.empty(), files);
+      if (handled == Command::kLeave) break;
+      if (handled == Command::kDone) continue;
       if (!decision.empty()) {
-        Send({{"kind", "reply"}, {"interaction_id", decision}, {"text", text}});
-      } else if (text.starts_with("/attach ")) {
-        // Terminals quote dropped paths containing spaces; strip one
-        // surrounding pair so a drop Just Works.
-        std::string file = Unquote(Trim(text.substr(8)));
-        if (file == "clear") {
-          files.clear();
-        } else {
-          files.push_back(CanonicalAccessPath(file).string());
+        // Without raw input an ask is answered on one line.
+        if (JsonValue(pending, "kind", "") == "ask") {
+          text = AskAnswersFromLine(
+              JsonValue(pending, "questions", json::array()), text);
         }
-      } else if (text == "/fork" || text.starts_with("/fork ")) {
-        const ForkArgument fork = ParseForkArgument(text.substr(5));
-        Send({{"kind", "fork"}, {"title", fork.title}, {"turn", fork.turn}});
-      } else if (text == "/rewind" || text.starts_with("/rewind ")) {
-        // Same [@]N grammar as /fork's turn suffix, title aside: rewind
-        // truncates this session in place instead of branching it.
-        const ForkArgument parsed = ParseForkArgument(text.substr(7));
-        Send({{"kind", "rewind"},
-              {"turn", parsed.title.empty() ? parsed.turn : 0}});
-      } else if (text.starts_with("/btw ")) {
-        Send({{"kind", "side"}, {"text", Trim(text.substr(5))}});
-        continue;
-      } else if (text == "/verbose") {
-        presenter_.SetDetailed(!presenter_.Detailed());
-        WriteTerminalRecord(
-            presenter_.Detailed()
-                ? "· verbose ON — full reasoning and tool output\n"
-                : "· verbose off — compact reasoning and tool output\n");
-        wake_.Wake();
-        continue;
-      } else if (text == "/share") {
-        Send({{"kind", "share"}});
-      } else if (text.starts_with("/share ")) {
-        WriteTerminalRecord("· usage: /share\n");
-        continue;
+        Send({{"kind", "reply"}, {"interaction_id", decision}, {"text", text}});
       } else if (!text.empty() || !files.empty()) {
         json command = {{"kind", "submit"}, {"text", text}};
         if (!files.empty()) command["attachments"] = files;
@@ -379,14 +329,14 @@ class Terminal {
     if (!files.empty()) {
       // Staged via /attach but never submitted (EOF/quit/compose-cancel):
       // say so instead of dropping them silently.
-      std::string dropped = "· " + std::to_string(files.size()) +
-                            " staged attachment" +
-                            (files.size() == 1 ? "" : "s") +
-                            " discarded: nothing was submitted\n";
+      const std::string dropped = Note(
+          Tone::kNeutral, std::to_string(files.size()) + " staged attachment" +
+                              (files.size() == 1 ? "" : "s") +
+                              " discarded: nothing was submitted");
       if (raw_) {
-        output_.Write("\r" + TerminalSafe(dropped));
+        region_.Commit(dropped);
       } else {
-        fputs(TerminalSafe(dropped).c_str(), stdout);
+        fputs(dropped.c_str(), stdout);
       }
     }
     stop_.Wake();
@@ -402,7 +352,7 @@ class Terminal {
     }
     if (raw_) {
       Paint();
-      Unmount();
+      region_.Clear();
       composer_.Stop();
       output_.Stop();
     }
@@ -413,8 +363,170 @@ class Terminal {
     return exit_code ? exit_code : failed_ ? 1 : 0;
   }
   const std::string& Next() const { return next_; }
+  // Where Next() opens when it has no file yet (a folder's first coordinator).
+  const std::string& NextFolder() const { return next_folder_; }
+  // The folder whose coordinator this session answers to: a thread's
+  // project, else the session's own folder.
+  std::string Folder() const {
+    const json header = SessionHeader(path_);
+    std::string folder = JsonValue(
+        JsonValue(header, kSessionHeaderThread, json::object()), "folder", "");
+    if (!folder.empty()) return folder;
+    return JsonValue(header, kSessionHeaderCwd, CanonicalCwd());
+  }
+  // A /board id prefix or a unique title match among the folder's sessions.
+  std::string MatchFolderSession(const std::string& argument) const {
+    const std::string wanted = AsciiLower(Trim(argument));
+    if (wanted.empty()) return "";
+    std::string match;
+    for (const SessionInfo& info : FolderSessions(Folder())) {
+      if (!HashHex(info.path).starts_with(wanted) &&
+          AsciiLower(info.title).find(wanted) == std::string::npos) {
+        continue;
+      }
+      if (!match.empty()) return "";
+      match = info.path;
+    }
+    return match;
+  }
+  // What the next session's composer starts with.
+  const std::string& Carry() const { return carry_; }
 
  private:
+  // What a line did: nothing here (it goes on as the reply or to the
+  // runtime), all of it, or ended this session's input loop.
+  enum class Command { kPass, kDone, kLeave };
+
+  // The slash commands this client performs itself. Leaving the session
+  // works while a decision is pending; the rest is then the reply's text.
+  Command HandleCommand(const ParsedSlashCommand& slash, bool deciding,
+                        std::vector<std::string>& files) {
+    if (!slash.spec) return Command::kPass;
+    const std::string& argument = slash.argument;
+    switch (slash.spec->id) {
+      case SlashCommandId::kQuit:
+        return Command::kLeave;
+      case SlashCommandId::kClear:
+        // Screen only: the session keeps running underneath.
+        if (raw_) {
+          region_.Clear();
+          output_.Write(ClearScreen());
+        } else {
+          fputs(ClearScreen(), stdout);
+          fflush(stdout);
+        }
+        return Command::kDone;
+      case SlashCommandId::kBoard:
+        WriteTerminalRecord(TerminalSafe(CoordinatorBoard(Folder())));
+        return Command::kDone;
+      case SlashCommandId::kCoord:
+      case SlashCommandId::kOpen: {
+        std::string target;
+        if (slash.spec->id == SlashCommandId::kCoord) {
+          next_folder_ = Folder();
+          target = CoordinatorPath(next_folder_);
+        } else if (target = MatchFolderSession(argument); target.empty()) {
+          WriteTerminalRecord(
+              Note(Tone::kNeutral, "no unique session in /board matches \"" +
+                                       TerminalSafe(argument) + "\""));
+          return Command::kDone;
+        }
+        return Leave(target, "switching sessions");
+      }
+      case SlashCommandId::kRestart:
+        // A fresh runtime for this conversation, e.g. after a setting that
+        // needs a restart; its history is kept.
+        if (Leave("/restart", "restarting") == Command::kDone) {
+          return Command::kDone;
+        }
+        Send({{"kind", "close"}});
+        return Command::kLeave;
+      case SlashCommandId::kReset:
+        return Leave("/reset", "switching sessions");
+      case SlashCommandId::kSessions: {
+        // Guarded before the picker: never abandon a running turn.
+        if (TurnActive("switching sessions")) return Command::kDone;
+        std::string target =
+            argument.empty() ? PickSession() : MatchSessionPrefix(argument);
+        if (!argument.empty() && target.empty()) {
+          WriteTerminalRecord(Note(
+              Tone::kNeutral,
+              "no unique session matches \"" + TerminalSafe(argument) + "\""));
+        }
+        if (target.empty()) return Command::kDone;
+        return Leave(target, "switching sessions");
+      }
+      default:
+        break;
+    }
+    if (deciding) return Command::kPass;
+    switch (slash.spec->id) {
+      case SlashCommandId::kAttach: {
+        // Bare /attach lists them (host). Terminals quote dropped paths
+        // containing spaces; strip one surrounding pair so a drop Just Works.
+        if (argument.empty()) return Command::kPass;
+        const std::string file = Unquote(argument);
+        if (file == "clear") {
+          files.clear();
+        } else {
+          files.push_back(CanonicalAccessPath(file).string());
+        }
+        return Command::kDone;
+      }
+      case SlashCommandId::kFork: {
+        const ForkArgument fork = ParseForkArgument(argument);
+        Send({{"kind", "fork"}, {"title", fork.title}, {"turn", fork.turn}});
+        return Command::kDone;
+      }
+      case SlashCommandId::kRewind: {
+        // Forks before message N and opens the fork with that message to
+        // edit; the original stays. Bare /rewind lists the numbers (host).
+        if (argument.empty()) return Command::kPass;
+        const ForkArgument parsed = ParseForkArgument(argument);
+        if (parsed.turn <= 0 || !parsed.title.empty()) {
+          WriteTerminalRecord(Note(
+              Tone::kNeutral, "usage: /rewind N (bare /rewind lists them)"));
+          return Command::kDone;
+        }
+        rewinding_ = true;
+        Send({{"kind", "fork"}, {"turn", parsed.turn}});
+        return Command::kDone;
+      }
+      case SlashCommandId::kBtw:
+        if (argument.empty()) return Command::kPass;
+        Send({{"kind", "side"}, {"text", argument}});
+        return Command::kDone;
+      case SlashCommandId::kVerbose:
+        presenter_.SetDetailed(!presenter_.Detailed());
+        WriteTerminalRecord(
+            Note(Tone::kNeutral,
+                 presenter_.Detailed()
+                     ? "verbose on — full reasoning and tool output"
+                     : "verbose off — compact reasoning and tool output"));
+        wake_.Wake();
+        return Command::kDone;
+      case SlashCommandId::kShare:
+        Send({{"kind", "share"}});
+        return Command::kDone;
+      default:
+        return Command::kPass;
+    }
+  }
+  // Says so when a turn is running, which switching would abandon.
+  bool TurnActive(const std::string& before) {
+    std::lock_guard lock(mutex_);
+    if (waiting_.empty() && !running_) return false;
+    WriteTerminalRecord(
+        Note(Tone::kNeutral, "turn active; interrupt it before " + before));
+    return true;
+  }
+  // Ends the input loop to open `target` next, unless a turn is running.
+  Command Leave(const std::string& target, const std::string& before) {
+    if (TurnActive(before)) return Command::kDone;
+    std::lock_guard lock(mutex_);
+    next_ = target;
+    return Command::kLeave;
+  }
   void Send(json command) {
     std::lock_guard lock(send_mutex_);
     if (JsonValue(command, "kind", "") == "reply") interaction_ = false;
@@ -428,7 +540,6 @@ class Terminal {
       own_requests_.insert(command["request_id"]);
       if (JsonValue(command, "kind", "") == "submit" ||
           JsonValue(command, "kind", "") == "fork" ||
-          JsonValue(command, "kind", "") == "rewind" ||
           JsonValue(command, "kind", "") == "share") {
         if (raw_ && JsonValue(command, "kind", "") == "submit" &&
             !JsonValue(command, "text", "").starts_with('/')) {
@@ -479,6 +590,15 @@ class Terminal {
           history_ = true;
         }
       }
+      // A coordinator holding thread events says why, once per change.
+      if (std::string paused = JsonValue(state, "paused", "");
+          paused != paused_) {
+        paused_ = std::move(paused);
+        if (!paused_.empty()) {
+          presenter_.Consume(
+              NoticeEvent(PresentationStatus::kWarned, paused_, false));
+        }
+      }
       wake_.Wake();
     } else if (kind == "activity") {
       presenter_.Consume(AppEvent{0, "", "activity.status", frame, false});
@@ -503,7 +623,7 @@ class Terminal {
           echoed = echoed_.erase(JsonValue(block, "request_id", "")) > 0;
         }
         if (shown_.insert(JsonValue(block, "id", "")).second && !echoed &&
-            (block_kind == "user" || block_kind == "compaction")) {
+            block_kind == "user") {
           presenter_.Block(block);
         }
       } else if (type == "command.completed" && data.contains("output")) {
@@ -512,7 +632,10 @@ class Terminal {
             !data["result"].empty()) {
           output = JsonDump(data["result"], 2);
         }
-        if (!output.empty()) WriteTerminalRecord(TerminalSafe(output) + "\n");
+        // Command replies are this program's own rows, joins and all.
+        if (!output.empty()) {
+          WriteTerminalRecord(AsciiGlyphs(TerminalSafe(output)) + "\n");
+        }
       } else {
         presenter_.Consume(
             AppEvent{0, JsonValue(frame, "time", ""), type, data, false});
@@ -532,22 +655,23 @@ class Terminal {
       }
       const json result = JsonValue(frame, "result", json::object());
       if (result.contains("answer")) {
-        WriteTerminalRecord(StyledBlock("side · not in history", DIM()) +
-                            TerminalSafe(JsonValue(result, "answer", "")) +
-                            "\n");
+        WriteTerminalRecord(
+            StyledBlock(AsciiGlyphs("side · not in history"), DIM()) +
+            TerminalSafe(JsonValue(result, "answer", "")) + "\n");
       } else if (!result.empty()) {
         WriteTerminalRecord(TerminalSafe(JsonDump(result, 2)) + "\n");
       }
-      if (JsonValue(result, "forked", false)) {
+      // A coordinator rewinds in place: reopening its path shows the
+      // shortened conversation, with the message back in the composer.
+      if (JsonValue(result, "forked", false) ||
+          JsonValue(result, "rewound", false)) {
         std::lock_guard lock(mutex_);
         next_ = JsonValue(result, "path", "");
+        if (rewinding_) carry_ = JsonValue(result, "prompt", "");
         navigate_ = true;
         wake_.Wake();
       }
-      if (JsonValue(result, "rewound", false)) {
-        // Same worker, truncated transcript: resync the view in place.
-        Send({{"kind", "refresh"}});
-      }
+      rewinding_ = false;
     } else if (kind == "error") {
       failed_ = true;
       WriteTerminalRecord(TerminalSafe(JsonValue(frame, "error", "")) + "\n");
@@ -557,23 +681,10 @@ class Terminal {
     fflush(stdout);
     wake_.Wake();
   }
-  void Unmount() {
-    if (!composer_.Drawn()) return;
-    output_.Write(
-        "\r\033[" +
-        std::to_string(composer_.CaretRow() + 1 +
-                       DisplayRows(tail_, TerminalWidth()) +
-                       StatusOverflowRows(status_columns_, TerminalWidth())) +
-        "A\033[J");
-    composer_.Detach();
-  }
+  // Brings the live region up to date: new output, the status row and the
+  // draft, repainted only where they changed.
   void Paint() {
     auto update = output_.Read();
-    if (update.adopted_prefix_bytes) {
-      tail_.clear();
-      update.committed.erase(0, update.adopted_prefix_bytes);
-      update.changed = !update.committed.empty() || !update.tail.empty();
-    }
     json state;
     {
       std::lock_guard lock(mutex_);
@@ -585,39 +696,27 @@ class Terminal {
     } else if (!turn_started_) {
       turn_started_ = std::chrono::steady_clock::now();
     }
-    std::string status = StatusRow(
+    if (update.changed) {
+      region_.Commit(std::move(update.committed));
+      tail_ = std::move(update.tail);
+      region_.SetTail(tail_);
+    }
+    region_.SetStatus(StatusBarLine(StatusRow(
         state,
         turn_started_ ? std::chrono::steady_clock::now() - *turn_started_
                       : std::chrono::steady_clock::duration{},
-        interrupting_, presenter_.Detailed());
-    const bool resized = g_terminal_resized != 0;
-    g_terminal_resized = 0;
-    if (!update.changed && !resized && composer_.Drawn()) {
-      if (status == last_status_) return;
-      const size_t rows = composer_.CaretRow() + 1;
-      output_.Write(
-          "\r\033[" + std::to_string(rows) + "A" +
-          StatusBarLine(status, &status_columns_) + "\033[" +
-          std::to_string(rows) + "B\r" +
-          (composer_.CaretColumn()
-               ? "\033[" + std::to_string(composer_.CaretColumn()) + "C"
-               : ""));
-    } else {
-      Unmount();
-      if (update.changed) {
-        output_.Write(update.committed);
-        tail_ = std::move(update.tail);
-      }
-      if (!tail_.empty()) output_.Write(tail_ + "\n");
-      output_.Write(StatusBarLine(status, &status_columns_) + "\n");
-      composer_.Remount();
-    }
-    last_status_ = std::move(status);
+        interrupting_, presenter_.Detailed())));
+    const RawComposer::Layout draft = composer_.View();
+    region_.SetComposer(draft.rows, draft.caret_row, draft.caret_col);
+    region_.Flush();
   }
 
   Connection connection_;
-  std::string path_, decision_, draft_, tail_, waiting_, next_, last_status_;
+  std::string path_, decision_, draft_, tail_, waiting_, next_;
+  std::string next_folder_;
+  std::string paused_;
   InteractiveOutput output_;
+  LiveRegion region_;
   RawComposer composer_;
   TerminalPresenter presenter_;
   Pipe stop_, wake_;
@@ -626,35 +725,123 @@ class Terminal {
   json state_ = json::object(), pending_;
   bool running_ = false, history_ = false, raw_ = false;
   bool quit_hint_ = false;
-  size_t status_columns_ = 0;
   std::optional<std::chrono::steady_clock::time_point> turn_started_;
   std::atomic<bool> interrupting_{false};
   std::atomic<bool> disconnected_{false}, detaching_{false}, ended_{false},
       failed_{false};
   std::atomic<bool> navigate_{false};
+  std::atomic<bool> rewinding_{false};
+  std::string carry_;
   std::atomic<bool> input_blocked_{true}, interaction_{false};
   std::set<std::string> shown_;
   std::set<std::string> own_requests_, echoed_;
 };
 }  // namespace
+int CoordinatorPromptMain(const Options& options) {
+  const std::string cwd = CanonicalCwd();
+  const std::string path = CoordinatorPath(cwd);
+  std::string error;
+  auto connection = Open(ExecutablePath(), cwd, path, "", options, error);
+  if (!connection.socket) {
+    fprintf(stderr, "%s\n", error.c_str());
+    return 1;
+  }
+  auto send = [&](json command) {
+    command["v"] = kProtocol;
+    command["session_id"] = HashHex(path);
+    command["generation"] = connection.generation;
+    command["request_id"] = command.value("request_id", RandomToken(16));
+    return WriteFrame(connection.socket.Get(), command);
+  };
+  const std::string request = RandomToken(16);
+  bool submitted = false, rejected = false, completed = false;
+  json stop = json::object();
+  // The coordinator's session runs on; this request is its growth.
+  Usage before, after;
+  Pipe never;
+  if (!never.Open()) return 1;
+  ReadFrames(
+      connection.socket.Get(), never.read.Get(), kFrameBytes,
+      [&](const json& frame) {
+        const std::string kind = JsonValue(frame, "kind", "");
+        if (kind == "outcome" &&
+            JsonValue(frame, "request_id", "") == request &&
+            !JsonValue(frame, "accepted", false)) {
+          error = JsonValue(frame, "error", "coordinator refused");
+          rejected = true;
+          return false;
+        }
+        if (kind != "state") return true;
+        if (!submitted && !JsonValue(frame, "busy", true)) {
+          before =
+              UsageFromJson(JsonValue(frame["state"], "usage", json::object()));
+          submitted = send({{"kind", "submit"},
+                            {"request_id", request},
+                            {"text", options.prompt}});
+          return submitted;
+        }
+        // Nobody is here to approve: a question is declined.
+        if (const json* pending = JsonObject(frame, "pending")) {
+          fprintf(
+              stderr, "· declined: %s\n",
+              TerminalSafe(JsonValue(*pending, "prompt", "approval")).c_str());
+          send({{"kind", "reply"},
+                {"interaction_id", JsonValue(*pending, "id", "")},
+                {"text", ""}});
+        }
+        if (JsonValue(frame, "checkpoint", false) &&
+            JsonValue(frame, "completed_request_id", "") == request) {
+          // A queued thread event may already have started the next
+          // turn, which clears the stop record.
+          stop = JsonValue(frame["state"], "stop", json::object());
+          after =
+              UsageFromJson(JsonValue(frame["state"], "usage", json::object()));
+          completed = true;
+          return false;
+        }
+        return true;
+      });
+  if (rejected || !completed) {
+    fprintf(stderr, "%s\n",
+            error.empty() ? "coordinator runtime closed" : error.c_str());
+    return 1;
+  }
+  SessionLoadResult saved = SessionStore::Inspect(path);
+  Conversation conversation;
+  std::string answer;
+  if (saved.record &&
+      std::move(saved.record->state).RestoreConversation(conversation)) {
+    answer = conversation.LastAssistantText();
+  }
+  if (options.json) {
+    printf("%s\n",
+           JsonDump({{"answer", answer},
+                     {"session_id", HashHex(path)},
+                     {"usage", UsageJson(UsageDifference(after, before))},
+                     {"stop", stop}})
+               .c_str());
+  } else {
+    printf("%s\n", answer.c_str());
+  }
+  const std::string reason = JsonValue(stop, "reason", "completed");
+  return reason == "completed" ? 0 : 1;
+}
+
 int TerminalMain(Options options) {
   std::string path;
-  if (options.resume_pick) {
+  if (options.Coordinator()) {
+    path = CoordinatorPath(CanonicalCwd());
+  } else if (options.resume_pick) {
     path = PickSession();
   } else if (options.resume_latest) {
     auto sessions = ListSessions();
     if (!sessions.empty()) path = sessions.front().path;
   }
+  std::string draft, folder = CanonicalCwd();
   for (;;) {
-    std::string cwd = CanonicalCwd();
-    if (!path.empty()) {
-      for (const auto& item : ListSessions(SessionScope::kAll)) {
-        if (item.path == path) {
-          cwd = item.cwd;
-          break;
-        }
-      }
-    }
+    // A saved session reopens in its own folder; so does a coordinator
+    // reached from a session in another directory.
+    std::string cwd = JsonValue(SessionHeader(path), kSessionHeaderCwd, folder);
     if (path.empty()) {
       path = UagentDir(kHistoryDir) + "/" + WorkspaceId(cwd) + "/" +
              MakeSessionId() + ".json";
@@ -665,8 +852,11 @@ int TerminalMain(Options options) {
       fprintf(stderr, "%s\n", error.c_str());
       return 1;
     }
-    Terminal terminal(std::move(connection), path);
+    const bool coordinator = path == CoordinatorPath(cwd);
+    if (coordinator) printf("%s", TerminalSafe(CoordinatorBoard(cwd)).c_str());
+    Terminal terminal(std::move(connection), path, draft);
     int result = terminal.Run(options.attach_paths);
+    draft = terminal.Carry();
     options.attach_paths.clear();
     if (result || terminal.Next().empty()) return result;
     if (terminal.Next() == "/restart") {
@@ -676,11 +866,13 @@ int TerminalMain(Options options) {
            ++attempt) {
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
       }
-      printf("· restarted\n");
+      fputs(Note(Tone::kNeutral, "restarted").c_str(), stdout);
     } else if (terminal.Next() == "/reset") {
-      path.clear();
+      // The folder has one coordinator; its reset keeps the same file.
+      if (!coordinator) path.clear();
     } else {
       path = terminal.Next();
+      if (!terminal.NextFolder().empty()) folder = terminal.NextFolder();
     }
   }
 }

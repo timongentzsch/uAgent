@@ -134,7 +134,9 @@ std::string RenderCell(const std::string& text, size_t& visible_columns) {
     char value = text[index];
     if (value == '`') {
       code = !code;
-      output += code ? CODE() : FgDfl();
+      if (code) output += CODE();
+      output += value;
+      if (!code) output += FgDfl();
       continue;
     }
     size_t math_end = code || (value != '$' && value != '\\')
@@ -291,12 +293,12 @@ void MdStream::Pc(char c) {
   Put(c);
 }
 
-// Emission is collected here and handed to stdio once per chunk instead of
-// once per character, which is where a third of the render cost sat: stdio
+// Emission is collected here and written as one tail frame per chunk instead
+// of once per character, which is where a third of the render cost sat: stdio
 // takes its lock — needed, because TerminalSpinner writes stdout from its own
-// thread (core/term.h) — on every single putchar. Every public entry point
-// drains the buffer before returning, so nothing an outside writer can
-// observe has moved.
+// thread when no composer is mounted (core/term.h) — on every call. Every
+// public entry point drains the buffer before returning, so nothing an
+// outside writer can observe has moved.
 void MdStream::Put(char value) {
   outbuf += value;
   TrackRendered(value);
@@ -443,7 +445,7 @@ void MdStream::Classify(char c) {
       return;
     }
     if (!table.empty() && c != '|') FlushTable();  // table ended on this line
-    if (c == '#' || c == '`' || c == '-' || c == '*') {
+    if (c == '#' || c == '`' || c == '~' || c == '-' || c == '*') {
       pre += c;
       return;
     }
@@ -483,17 +485,27 @@ void MdStream::Classify(char c) {
     InlineChar(c);
     return;
   }
-  if (m == '`') {
-    if (c == '`' && mk.size() < 3) {
-      pre += c;
-      if (IsMarkdownFence(Marker())) {  // fence opens
-        Put(DIM());
-        Pv(pre);
-        pre.clear();
-        fence = true;
-        fencehead = true;
-        linestart = false;
-      }
+  if (m == '`' || m == '~') {
+    if (c == m && mk.find_first_not_of(m) == std::string_view::npos) {
+      pre += c;  // the run goes on: its length is what closes the fence
+      return;
+    }
+    if (IsMarkdownFence(mk)) {  // fence opens; `c` starts its info line
+      Put(DIM());
+      Pv(pre);
+      pre.clear();
+      fence = true;
+      fence_char = m;
+      fence_len = mk.size();
+      fencehead = true;
+      linestart = false;
+      Step(c);
+      return;
+    }
+    if (m == '~') {  // a tilde or two is text
+      EmitPre();
+      linestart = false;
+      InlineChar(c);
       return;
     }
     // 1-2 backticks then something else: inline code span(s)
@@ -513,7 +525,7 @@ void MdStream::Classify(char c) {
   // m is '-' or '*' (held marker): bullet if a space follows the single char
   if (mk.size() == 1 && c == ' ') {
     Pv(pre.substr(0, pre.size() - 1));
-    Pv("• ");
+    Pv(AsciiGlyphs("• "));
     pre.clear();
     linestart = false;
     return;
@@ -548,12 +560,18 @@ void MdStream::Classify(char c) {
   InlineChar(c);
 }
 
-// Inside a fence only "```" is structural. The marker line is written here
-// directly rather than through Pc/Pv, so held blanks are released by hand.
+// Inside a fence only a run of its marker, at least as long as the one that
+// opened it, is structural. The marker line is written here directly rather
+// than through Pc/Pv, so held blanks are released by hand.
 void MdStream::FenceClassify(char c) {
   ReleaseBlanks();
   std::string_view mk = Marker();
-  if (mk.size() >= 3) {  // "```" held: it only closes if the line ends here
+  const size_t run = std::min(mk.find_first_not_of(fence_char), mk.size());
+  if (c == fence_char && run == mk.size()) {
+    pre += c;
+    return;
+  }
+  if (run >= fence_len) {  // held: it only closes if the line ends here
     if (c == ' ') {
       pre += c;
       return;
@@ -574,10 +592,6 @@ void MdStream::FenceClassify(char c) {
     return;
   }
   if (c == ' ' && mk.empty()) {
-    pre += c;
-    return;
-  }
-  if (c == '`') {
     pre += c;
     return;
   }
@@ -666,9 +680,11 @@ void MdStream::InlineChar(char c) {
     star = 1;
     return;
   }
-  if (c == '`') {
+  if (c == '`') {  // kept: in the default foreground it marks the span
     code = !code;
-    Put(code ? CODE() : FgDfl());
+    if (code) Put(CODE());
+    Pc(c);
+    if (!code) Put(FgDfl());
     return;
   }
   if (c == '\n') {

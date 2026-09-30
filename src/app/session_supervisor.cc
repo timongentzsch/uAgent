@@ -99,6 +99,7 @@ void SessionHost::DeactivateLocked(HostSession& session) {
   {
     std::lock_guard send_lock(session.send_mutex);
     session.generation.clear();
+    session.socket.Reset();
   }
   session.status = "saved";
   session.error.clear();
@@ -125,6 +126,13 @@ void SessionHost::Received(HostSession* session, json frame) {
   }
   const std::string kind = JsonValue(frame, "kind", "");
   if (kind == "outcome") {
+    // A runtime closed by another client (a coordinator's close or delete)
+    // is about to exit: its end reads as closed, not interrupted.
+    if (JsonValue(frame, "accepted", false) &&
+        JsonValue(JsonValue(frame, "result", json::object()), "operation",
+                  "") == "close") {
+      session->closing = true;
+    }
     // A fork receipt must not become visible until its new conversation is
     // in the catalogue; clients can inspect it immediately after the receipt.
     if (JsonValue(JsonValue(frame, "result", json::object()), "forked",
@@ -142,7 +150,7 @@ void SessionHost::Received(HostSession* session, json frame) {
       return;
     }
   } else {
-    ApplyRuntimeFrame(*session, frame);
+    if (!ApplyRuntimeFrame(*session, frame)) return;
     // Clients adopt the host's lifecycle status rather than re-deriving it.
     if (kind == "state" || kind == "activity") {
       frame["metadata"] = Metadata(*session);
@@ -201,6 +209,7 @@ bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
     return false;
   }
   bool create_now = create;
+  session->parked = 0;
   for (int attempt = 0;; ++attempt) {
     if (session->pid > 0 && !session->exited) {
       if (!RecycleStaleWorkerLocked(session, lock)) return true;
@@ -282,6 +291,7 @@ bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
       create_now = true;
       continue;
     }
+    session->activated = NowMillis();
     replay_.Publish(epoch_, session->id, session->generation,
                     {{"kind", "activated"}, {"metadata", Metadata(*session)}},
                     !session->run_id.empty());
@@ -289,11 +299,16 @@ bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
   }  // for (attempt): single pass unless a stale worker recycled above
 }
 
-void SessionHost::ApplyRuntimeFrame(HostSession& session, json& frame) {
+bool SessionHost::ApplyRuntimeFrame(HostSession& session, json& frame) {
   const std::string kind = JsonValue(frame, "kind", "");
   if (kind == "state") {
     json next = JsonValue(frame, "state", json::object());
-    json view = JsonValue(session.state, "view", json::object());
+    // A rewound conversation starts a new view epoch: its old blocks are
+    // gone, so the checkpoint replaces the view instead of merging into it.
+    json view = JsonValue(next, "view_epoch", uint64_t{0}) ==
+                        JsonValue(session.state, "view_epoch", uint64_t{0})
+                    ? JsonValue(session.state, "view", json::object())
+                    : json::object();
     const json checkpoint_view = JsonValue(next, "view", json::object());
     if (checkpoint_view.is_object()) {
       for (auto it = checkpoint_view.begin(); it != checkpoint_view.end();
@@ -306,13 +321,24 @@ void SessionHost::ApplyRuntimeFrame(HostSession& session, json& frame) {
     }
     if (!view.contains("blocks")) view["blocks"] = json::array();
     next["view"] = std::move(view);
+    // Between checkpoints the worker sends only light state: keep the rest.
+    for (const char* field : session::kCheckpointFields) {
+      if (!next.contains(field) && session.state.contains(field)) {
+        next[field] = std::move(session.state[field]);
+      }
+    }
     session.state = std::move(next);
+    // Browsers hold the host's view, never the worker's partial one, and
+    // apply block patches to it between checkpoints.
+    const bool checkpoint = JsonValue(frame, "checkpoint", false);
+    frame["state"] =
+        checkpoint ? session.state : session::LightState(session.state);
     session.pending = JsonValue(frame, "pending", json(nullptr));
     session.turn_active = JsonValue(frame, "busy", false);
     session.command_busy = JsonValue(frame, "command_busy", false);
     session.guidance = JsonValue(frame, "guidance", uint64_t{0});
     session.status = LiveStatus(session);
-    if (JsonValue(frame, "checkpoint", false)) {
+    if (checkpoint) {
       if (!session.run_id.empty() && !session.turn_active) {
         if (const auto* blocks = JsonArray(session.state["view"], "blocks")) {
           for (auto it = blocks->rbegin(); it != blocks->rend(); ++it) {
@@ -331,7 +357,7 @@ void SessionHost::ApplyRuntimeFrame(HostSession& session, json& frame) {
       if (!title.empty()) session.title = title;
     }
     frame["updated"] = session.updated;
-    return;
+    return true;
   }
   if (kind == "activity") {
     session.state["activity"] = JsonValue(frame, "activity", "Ready");
@@ -340,19 +366,22 @@ void SessionHost::ApplyRuntimeFrame(HostSession& session, json& frame) {
         JsonValue(frame, "activity_detail", json(nullptr));
     session.turn_active = JsonValue(frame, "busy", false);
     session.status = LiveStatus(session);
-    return;
+    return true;
   }
   if (kind == "gap") {
     session.live_truncated = true;
-    return;
+    return true;
   }
   if (kind == "error") {
     session.error = JsonValue(frame, "error", "worker failed");
     session.status = "failed";
-    return;
+    return true;
   }
-  if (kind != "event") return;
+  if (kind != "event") return true;
   const std::string type = JsonValue(frame, "type", "");
+  // Terminal renderings of what the transcript rows already show; terminals
+  // read them from the worker, browsers never do.
+  if (type == "ui.presentation") return false;
   if (!session.run_id.empty()) {
     if (type == "turn.completed") {
       const std::string outcome = JsonValue(frame["data"], "outcome", "error");
@@ -366,7 +395,8 @@ void SessionHost::ApplyRuntimeFrame(HostSession& session, json& frame) {
       session.error = JsonValue(frame["data"], "error", "scheduled run failed");
     }
   }
-  ApplySessionEvent(session.state, type, frame["data"]);
+  json patch;
+  ApplySessionEvent(session.state, type, frame["data"], &patch);
   if (type == "tool.result") {
     const json data = JsonValue(frame, "data", json::object());
     const std::string detail = JsonValue(data, "detail_id", "");
@@ -387,6 +417,17 @@ void SessionHost::ApplyRuntimeFrame(HostSession& session, json& frame) {
     session.incoming =
         std::max(session.incoming, JsonValue(block, "incoming", uint64_t{0}));
   }
+  // Browsers receive what changed in the host's view instead of the events
+  // that changed it, so they apply rows and never re-derive them.
+  if (type == "response.started" || type == "response.answer.delta" ||
+      type == "response.reasoning.delta" || type == "response.finished" ||
+      type == "tool.call" || type == "tool.result" ||
+      type == "message.changed") {
+    if (patch.is_null()) return false;
+    patch["time"] = frame["time"];
+    frame = std::move(patch);
+  }
+  return true;
 }
 
 }  // namespace uagent::session

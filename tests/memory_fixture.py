@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from integration_support import fnv1a64
+
 
 def _safe_component(value: str) -> str:
     value = "".join(
@@ -37,13 +39,6 @@ def _repository_identity(cwd: Path) -> tuple[Path, Path]:
     return common_dir.resolve(), root
 
 
-def _workspace_id(path: Path) -> str:
-    value = 1469598103934665603
-    for byte in str(path).encode():
-        value = ((value ^ byte) * 1099511628211) & 0xFFFFFFFFFFFFFFFF
-    return f"{value:016x}"
-
-
 def global_memory_dir(home: Path) -> Path:
     return home / ".uagent" / "memory" / "global"
 
@@ -56,5 +51,5 @@ def project_memory_dir(home: Path, cwd: Path) -> Path:
         / ".uagent"
         / "memory"
         / "projects"
-        / (f"{_safe_component(label.name)}-{_workspace_id(identity)}")
+        / (f"{_safe_component(label.name)}-{fnv1a64(str(identity))}")
     )

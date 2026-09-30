@@ -20,10 +20,15 @@
 
 #include "include/agent/child_agent.h"
 #include "include/agent/jobs.h"
+#include "include/app/coordinator.h"
+#include "include/app/launch.h"
 #include "include/app/session_host.h"
+#include "include/core/capture.h"
 #include "include/core/config.h"
 #include "include/core/file_watch.h"
 #include "include/core/fs.h"
+#include "include/core/limits.h"
+#include "include/core/mailbox.h"
 #include "include/core/output_buffer.h"
 #include "include/core/platform.h"
 #include "include/core/signals.h"
@@ -171,7 +176,7 @@ void TestSignalAndFileWatch() {
   int catalogue_wake[2] = {-1, -1};
   REQUIRE(pipe(catalogue_wake) == 0);
   const std::string prompt =
-      std::string(project_root) + "/.uagent/system-prompt.json";
+      std::string(project_root) + "/.uagent/COORDINATOR.md";
   FileWaitResult catalogue_changed = FileWaitResult::kTimedOut;
   std::thread catalogue_watcher([&] {
     catalogue_changed = WaitForAnyFileChange(
@@ -428,19 +433,18 @@ void TestActivitySessions() {
   ToolContext context{std::chrono::steady_clock::now() +
                       std::chrono::seconds(10)};
   ProcessSupervisor automatic_yield;
-  setenv("UAGENT_RUN_YIELD_MS", "250", 1);
   std::vector<Tool> yield_tools = BuiltinTools(automatic_yield);
   const Tool* public_run = FindTool(yield_tools, "run");
   CHECK(public_run != nullptr);
   if (public_run) {
-    ToolResult yielded = public_run->run({{"command", "sleep 5"}}, context);
+    ToolResult yielded = public_run->run(
+        {{"command", "sleep 5"}, {"yield_ms", kMinYieldMs}}, context);
     CHECK(yielded.Ok());
     CHECK(yielded.output.find("[running] activity") != std::string::npos);
     for (const BgJob& job : automatic_yield.Snapshot()) {
       CHECK(ToolActivityStop(automatic_yield, ActivityId(job)).Ok());
     }
   }
-  unsetenv("UAGENT_RUN_YIELD_MS");
 
   ProcessSupervisor pty_processes;
   ShellCommandResult started = RunShellCommand(
@@ -707,7 +711,7 @@ void TestActivityWaitAndDelivery() {
     auto wait_time = std::chrono::steady_clock::now() - started_wait;
     interrupt.join();
     CHECK(!interrupted.Ok());
-    CHECK(interrupted.output.find("wait interrupted") != std::string::npos);
+    CHECK(interrupted.output.find("wait cancelled") != std::string::npos);
     CHECK(wait_time < std::chrono::milliseconds(500));
     CHECK(SteeringState().Take());
     CHECK(ToolActivityStop(steering_wait, ActivityId(steering_jobs[0])).Ok());
@@ -1123,91 +1127,175 @@ void TestDetachedActivityOwnership() {
   }
 }
 
-void TestCollaboratorMail() {
-  namespace fs = std::filesystem;
-  TestWorkspace workspace("collaborator-mail");
-  const fs::path dir = fs::path(UagentDir("collaborators"));
-  auto texts = [](const std::vector<QueuedMessage>& mails) {
-    std::vector<std::string> out;
-    out.reserve(mails.size());
-    for (auto& mail : mails) out.push_back(mail.text);
-    return out;
+// A delegated child is an ordinary session file whose header names its role.
+// It must never surface as a session of its own, and its parent must find it.
+void TestThreadWorktreesGoOnlyWhenNothingIsLost() {
+  TestWorkspace workspace("thread-worktree");
+  const std::string project = CanonicalCwd();
+  auto git = [](const std::string& dir, std::vector<std::string> args) {
+    args.insert(args.begin(), {"git", "-C", dir, "-c", "user.email=t@t", "-c",
+                               "user.name=t"});
+    return CaptureProcess(args, 30).Ok();
   };
-
-  // Order is the contract: guidance read out of sequence is guidance the
-  // coordinator did not give.
-  CHECK(WriteCollaboratorMail("agent-aaaa1111", "first").Ok());
-  CHECK(WriteCollaboratorMail("agent-aaaa1111", "second").Ok());
-  CHECK(WriteCollaboratorMail("agent-bbbb2222", "other").Ok());
-  std::vector<std::string> taken =
-      texts(TakeCollaboratorMail("agent-aaaa1111"));
-  CHECK(taken == std::vector<std::string>({"first", "second"}));
-  // Consumed on read, and only the addressee's: a second take returns nothing
-  // while the other collaborator's message is still waiting.
-  CHECK(TakeCollaboratorMail("agent-aaaa1111").empty());
-  CHECK(texts(TakeCollaboratorMail("agent-bbbb2222")) ==
-        std::vector<std::string>({"other"}));
-
-  // Unreadable mail is dropped rather than retried: left in place it would be
-  // reread on every step for as long as the record survives.
-  const fs::path corrupt =
-      dir / "agent-cccc3333.mail-19700101T000000Z-1-0000.json";
-  std::ofstream(corrupt) << "{not json";
-  CHECK(TakeCollaboratorMail("agent-cccc3333").empty());
-  CHECK(!fs::exists(corrupt));
-
-  // An id that could not name a file is answered with silence, not a path
-  // assembled out of it.
-  CHECK(TakeCollaboratorMail("../escape").empty());
-
-  // Mail prunes with the record it belongs to, and while it is unread it is
-  // what keeps that record from looking stale.
-  ScopedEnv days("UAGENT_DEBUG_DAYS", "1");
-  const fs::path record = dir / "agent-dddd4444.json";
-  std::ofstream(record) << "{}\n";
-  const auto stale = fs::file_time_type::clock::now() - std::chrono::hours(72);
-  fs::last_write_time(record, stale);
-  const fs::path forgotten = dir / "agent-eeee5555.json";
-  std::ofstream(forgotten) << "{}\n";
-  fs::last_write_time(forgotten, stale);
-  CHECK(WriteCollaboratorMail("agent-dddd4444", "still waiting").Ok());
-  MaintainArtifacts();
-  CHECK(fs::exists(record));
-  CHECK(texts(TakeCollaboratorMail("agent-dddd4444")) ==
-        std::vector<std::string>({"still waiting"}));
-  CHECK(!fs::exists(forgotten));
+  REQUIRE(git(project, {"init", "-q"}));
+  REQUIRE(git(project, {"commit", "-q", "--allow-empty", "-m", "base"}));
+  const std::string tree = PlanLaunch(project, true, "thread-", "t1").cwd;
+  CHECK(LaunchWorktree(tree) && !LaunchWorktree(project));
+  REQUIRE(CreateWorktree(project, tree).empty());
+  {
+    std::ofstream(tree + "/work.txt") << "x";
+  }
+  CHECK(RemoveWorktree(project, tree).find("uncommitted") != std::string::npos);
+  REQUIRE(git(tree, {"add", "work.txt"}));
+  REQUIRE(git(tree, {"commit", "-q", "-m", "work"}));
+  CHECK(RemoveWorktree(project, tree).find("no branch") != std::string::npos);
+  REQUIRE(git(tree, {"branch", "keep"}));
+  CHECK(RemoveWorktree(project, tree).empty());
+  CHECK(!std::filesystem::exists(tree));
 }
 
-void TestSessionMail() {
+void TestCoordinatorCountsItsOwnSpend() {
+  TestWorkspace workspace("coordinator-spend");
+  ScopedEnv limit("UAGENT_COORDINATOR_DAILY_SPEND_USD", "1");
+  const std::string folder = CanonicalCwd();
+  // The day's first request sets the baseline: yesterday's spend is not
+  // today's.
+  RecordCoordinatorCost(folder, 5.0);
+  CHECK(CoordinatorPause(folder).empty());
+  RecordCoordinatorCost(folder, 5.5);
+  CHECK(CoordinatorPause(folder).empty());
+  RecordCoordinatorCost(folder, 6.0);
+  CHECK(CoordinatorPause(folder).find("spend limit") != std::string::npos);
+}
+
+void TestChildSessionsStayOutOfTheCatalogue() {
   namespace fs = std::filesystem;
-  TestWorkspace workspace("session-mail");
-  auto texts = [](const std::vector<QueuedMessage>& mails) {
+  TestWorkspace workspace("child-sessions");
+  const fs::path dir =
+      fs::path(UagentDir(kHistoryDir)) / WorkspaceId(CanonicalCwd());
+  fs::create_directories(dir);
+  auto write = [&](const std::string& id, const json& extra) {
+    json header = {{"format", kSessionFormat},
+                   {"cwd", CanonicalCwd()},
+                   {"model", "m"},
+                   {"session_id", id},
+                   {"turns", 1},
+                   {"title", id}};
+    header.update(extra);
+    std::ofstream(dir / (id + ".json")) << JsonDump(header) << "\n{}\n";
+  };
+  write("ordinary", json::object());
+  write("agent-aaaa1111",
+        {{kSessionHeaderDelegation, {{"parent", "p"}, {"name", "reviewer"}}}});
+  // A folder lists its coordinator only in the host's whole view.
+  write("coordinator", {{kSessionHeaderKind, kSessionKindCoordinator}});
+  CHECK(CoordinatorPath(CanonicalCwd()) == (dir / "coordinator.json").string());
+  auto ids = [](SessionScope scope) {
     std::vector<std::string> out;
-    out.reserve(mails.size());
-    for (auto& mail : mails) out.push_back(mail.text);
+    for (const SessionInfo& info : ListSessions(scope)) {
+      out.push_back(fs::path(info.path).stem().string());
+    }
     return out;
   };
+  CHECK(ids(SessionScope::kWorkspace) == std::vector<std::string>{"ordinary"});
+  auto all = ids(SessionScope::kAll);
+  std::ranges::sort(all);
+  CHECK(all == (std::vector<std::string>{"coordinator", "ordinary"}));
+  const std::vector<SessionInfo> children =
+      ListSessions(SessionScope::kChildren);
+  CHECK(children.size() == 1);
+  CHECK(JsonValue(children[0].delegation, "name", "") == "reviewer");
+}
 
-  CHECK(WriteSessionMail("sess-aaa", "first", "sess-bbb", 0).Ok());
-  CHECK(WriteSessionMail("sess-aaa", "second", "sess-bbb", 0).Ok());
-  CHECK(WriteSessionMail("sess-ccc", "other", "sess-bbb", 0).Ok());
-  std::vector<QueuedMessage> taken = TakeSessionMail("sess-aaa");
+void TestMailbox() {
+  namespace fs = std::filesystem;
+  TestWorkspace workspace("mailbox");
+  auto note = [](const std::string& from, const std::string& text) {
+    Mail mail;
+    mail.from = from;
+    mail.to = "recipient";
+    mail.type = kMailNote;
+    mail.body = {{"text", text}};
+    return mail;
+  };
+  auto texts = [](const std::vector<Mail>& mails) {
+    std::vector<std::string> out;
+    out.reserve(mails.size());
+    for (const Mail& mail : mails) {
+      out.push_back(JsonValue(mail.body, "text", ""));
+    }
+    return out;
+  };
+  auto all = [](const Mail&) { return true; };
+
+  // A pending message wakes a watcher, and takes come in the order sent.
+  MailboxWatch watch("recipient");
+  CHECK(watch.Get() >= 0);
+  CHECK(SendMail(note("a", "first")).empty());
+  pollfd ready{watch.Get(), POLLIN, 0};
+  CHECK(poll(&ready, 1, 1000) == 1);
+  watch.Drain();
+  CHECK(SendMail(note("a", "second")).empty());
+  CHECK(PendingMail("recipient").size() == 2);
+  std::vector<Mail> taken = TakeMail("recipient", all);
   CHECK(texts(taken) == std::vector<std::string>({"first", "second"}));
-  // Sender survives the round trip; the take consumed only the addressee's.
-  taken = TakeSessionMail("sess-aaa");
-  CHECK(taken.empty());
-  taken = TakeSessionMail("sess-ccc");
-  CHECK(taken.size() == 1 && taken[0].from == "sess-bbb");
+  CHECK(TakeMail("recipient", all).empty());
 
-  // Corrupt mail is dropped, traversal ids are silence.
-  const fs::path corrupt = fs::path(UagentDir("sessions")) / "inbox" /
-                           "sess-ddd.smail-19700101T000000Z-1-0000.json";
-  fs::create_directories(corrupt.parent_path());
+  // Taken but never acknowledged: a restarted runtime receives it again.
+  RecoverMail("recipient");
+  CHECK(texts(TakeMail("recipient", all)).size() == 2);
+  AckMail("recipient", {taken[0].id, taken[1].id});
+  RecoverMail("recipient");
+  CHECK(PendingMail("recipient").empty());
+
+  // A message the recipient does not accept yet stays pending.
+  CHECK(SendMail(note("b", "later")).empty());
+  CHECK(TakeMail("recipient", [](const Mail&) { return false; }).empty());
+  CHECK(PendingMail("recipient").size() == 1);
+  TakeMail("recipient", all);
+
+  // A waiting duplicate is dropped, and a progress report replaces the
+  // pending one for its task.
+  CHECK(SendMail(note("c", "same")).empty());
+  CHECK(SendMail(note("c", "same")).empty());
+  Mail progress = note("c", "step 1");
+  progress.type = kMailTaskProgress;
+  progress.correlation_id = "task";
+  CHECK(SendMail(progress).empty());
+  progress.body = {{"text", "step 2"}};
+  CHECK(SendMail(progress).empty());
+  CHECK(texts(TakeMail("recipient", all)) ==
+        std::vector<std::string>({"same", "step 2"}));
+
+  // Loops, floods and oversized messages are refused with a reason.
+  Mail looping = note("d", "again");
+  looping.hops = kMailMaxHops + 1;
+  CHECK(!SendMail(looping).empty());
+  for (size_t i = 0; i < kMailSenderPerMinute; ++i) {
+    CHECK(SendMail(note("e", "burst " + std::to_string(i))).empty());
+  }
+  CHECK(!SendMail(note("e", "one too many")).empty());
+  CHECK(!SendMail(note("f", std::string(kMailBytes, 'x'))).empty());
+  TakeMail("recipient", all);
+
+  // Expired and unreadable messages are never delivered.
+  Mail stale = note("g", "stale");
+  stale.expires_ms = 1;
+  CHECK(SendMail(stale).empty());
+  const fs::path corrupt =
+      fs::path(MailboxDir("recipient")) / "new" / "0000000000001-bad.json";
   std::ofstream(corrupt) << "{not json";
-  CHECK(TakeSessionMail("sess-ddd").empty());
+  CHECK(TakeMail("recipient", all).empty());
   CHECK(!fs::exists(corrupt));
-  CHECK(TakeSessionMail("../escape").empty());
-  CHECK(!WriteSessionMail("../escape", "x", "y", 0).Ok());
+  CHECK(PendingMail("recipient").empty());
+
+  CHECK(!SendMail([&] {
+           Mail escape = note("h", "x");
+           escape.to = "../escape";
+           return escape;
+         }())
+             .empty());
+  CHECK(TakeMail("../escape", all).empty());
 }
 
 void TestSessionLinks() {
@@ -1234,20 +1322,20 @@ void TestSessionLinks() {
     ScopedEnv peer("UAGENT_INTERNAL_SESSION_PATH", fb.string());
     CHECK(JoinSessionLink(token).Ok());
     CHECK(JoinSessionLink("no-such-token").error == ToolErrorCode::kNotFound);
-    // Gated delivery: linked peers pass, strangers are rejected, and the
-    // hop clamp drops instead of queueing.
-    CHECK(MessageSession("aaa", "hello a", "bbb", 0).Ok());
-    CHECK(MessageSession("zzz", "hello z", "bbb", 0).error ==
+    // Gated delivery: linked peers pass, strangers are rejected, and a
+    // message that looks like a loop is refused, not queued.
+    CHECK(MessageSession("aaa", "hello a").Ok());
+    CHECK(MessageSession("zzz", "hello z").error ==
           ToolErrorCode::kPermissionDenied);
-    CHECK(MessageSession("aaa", "loop", "bbb", 8).Ok());
+    CHECK(!MessageSession("aaa", "loop", kMailMaxHops).Ok());
   }
   CHECK(SharesLink("aaa", "bbb"));
-  std::vector<QueuedMessage> taken = TakeSessionMail("aaa");
+  std::vector<Mail> taken =
+      TakeMail(MailboxIdFor(fa.string()), [](const Mail&) { return true; });
   CHECK(taken.size() == 1);
-  CHECK(taken[0].text == "hello a");
-  CHECK(taken[0].from == "bbb");
-  // The clamped message never reached the inbox.
-  CHECK(TakeSessionMail("aaa").empty());
+  CHECK(JsonValue(taken[0].body, "text", "").ends_with("]\nhello a"));
+  CHECK(taken[0].from == MailboxIdFor(fb.string()));
+  CHECK(taken[0].sender_path == fb.string());
   // Summaries show the linked peer.
   bool saw_bbb = false;
   for (const json& row : SessionSummaries()) {

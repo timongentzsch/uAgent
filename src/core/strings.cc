@@ -270,7 +270,7 @@ std::vector<std::string> WrapLines(const std::string& s, size_t columns) {
   std::string current;
   size_t current_width = 0;
   for (size_t offset = 0; offset < s.size();) {
-    Glyph glyph = NextGlyph(s, offset, state, /*skip_ansi=*/false);
+    Glyph glyph = NextGlyph(s, offset, state, /*skip_ansi=*/true);
     // A single wide glyph wider than the row must not infinite-loop, so put it
     // on a row of its own even if it overflows columns.
     if (current_width + glyph.width > columns && !current.empty()) {
@@ -294,19 +294,17 @@ std::string OneLine(const std::string& s, size_t cap) {
   return Utf8Trunc(FirstLine(s), cap);
 }
 
-// The chrome the agent draws itself: row scaffolding, separators and the
-// spinner. Model and tool text keeps whatever Unicode it carries -- only what
-// this program chose to print is downgraded, and only when the locale says the
-// terminal cannot decode it.
+// The chrome the agent draws itself: row scaffolding and separators; the
+// spinner picks its own ASCII frames (SpinnerFrame). Model and tool text keeps
+// whatever Unicode it carries -- only what this program chose to print is
+// downgraded, and only when the locale says the terminal cannot decode it.
 std::string AsciiGlyphs(std::string_view s) {
   if (g_unicode) return std::string(s);
   static constexpr std::pair<std::string_view, std::string_view> kGlyphs[] = {
       {"·", "-"},   {"—", "--"}, {"…", "..."}, {"→", "->"}, {"←", "<-"},
       {"≤", "<="},  {"≥", ">="}, {"≠", "!="},  {"×", "x"},  {"µ", "u"},
       {"◆", "*"},   {"◇", "o"},  {"•", "*"},   {"│", "|"},  {"↵", "\\n"},
-      {"⇥", "\\t"}, {"⠋", "|"},  {"⠙", "/"},   {"⠹", "-"},  {"⠸", "\\"},
-      {"⠼", "|"},   {"⠴", "/"},  {"⠦", "-"},   {"⠧", "\\"}, {"⠇", "|"},
-      {"⠏", "/"},
+      {"⇥", "\\t"}, {"●", "*"},  {"○", "o"},   {"↑", "^"},  {"↓", "v"},
   };
   std::string out;
   out.reserve(s.size());

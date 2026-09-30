@@ -6,10 +6,12 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/session_store.h"
 #include "include/core/debug.h"
 #include "include/core/events.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
+#include "include/core/style.h"
 #include "include/core/term.h"
 #include "include/providers.h"
 #include "src/app/commands_internal.h"
@@ -31,21 +33,23 @@ std::string SaveSelectedModel(AppSession& session,
           .has_value();
   ActivateCurrentRoute(session);
   std::string error;
-  bool saved = SaveModelPreference(
-      {selected, session.ApiClient().base_url, named_route}, error);
+  // A coordinator's model is its folder's, kept in its session settings; it
+  // must not become the default of every other session.
+  bool saved =
+      session.context.options.Coordinator() ||
+      SaveModelPreference({selected, session.ApiClient().base_url, named_route},
+                          error);
   DebugLog("route_changed", {{"route", selected},
                              {"model", session.ApiClient().model},
                              {"base_url", session.ApiClient().base_url},
                              {"effort", session.ApiClient().reasoning_effort},
                              {"preference_saved", saved}});
-  reply.Print(
-      "%s· model %s%s\n", DIM(),
-      RouteSelection(session.ApiClient(), session.context.provider.providers)
-          .c_str(),
-      RST());
+  reply.Note(Tone::kNeutral,
+             "model " + RouteSelection(session.ApiClient(),
+                                       session.context.provider.providers));
   if (!saved) {
-    reply.Print("%s· model changed but preference was not saved: %s%s\n", YEL(),
-                TerminalSafe(error).c_str(), RST());
+    reply.Note(Tone::kWarn, "model changed but preference was not saved: " +
+                                TerminalSafe(error));
   }
   return reply.output;
 }
@@ -109,11 +113,10 @@ std::optional<ModelCandidate> PickModel(
                        {"supported_efforts", candidate.info.efforts}});
   }
   for (const std::string& unavailable : search.unavailable) {
-    reply.Print("%s· %s catalog unavailable%s\n", YEL(),
-                TerminalSafe(unavailable).c_str(), RST());
+    reply.Note(Tone::kWarn, TerminalSafe(unavailable) + " catalog unavailable");
   }
-  reply.Print("%s· %zu model%s%s\n", DIM(), search.matches.size(),
-              search.matches.size() == 1 ? "" : "s", RST());
+  reply.Note(Tone::kNeutral, std::to_string(search.matches.size()) + " model" +
+                                 (search.matches.size() == 1 ? "" : "s"));
   if (search.matches.empty()) return std::nullopt;
 
   bool cancelled = false;
@@ -124,15 +127,14 @@ std::optional<ModelCandidate> PickModel(
        .options = std::move(options)},
       cancelled, eof);
   if (cancelled || eof || answer.empty()) {
-    reply.Print("%s· keeping %s%s\n", DIM(), TerminalSafe(current).c_str(),
-                RST());
+    reply.Note(Tone::kNeutral, "keeping " + TerminalSafe(current));
     return std::nullopt;
   }
   int64_t selected = 0;
   if (!ParseInt64(answer.c_str(), selected) || selected < 1 ||
       selected > static_cast<int64_t>(search.matches.size())) {
-    reply.Print("%s· not a listed number; keeping %s%s\n", YEL(),
-                TerminalSafe(current).c_str(), RST());
+    reply.Note(Tone::kWarn,
+               "not a listed number; keeping " + TerminalSafe(current));
     return std::nullopt;
   }
   return std::move(search.matches[static_cast<size_t>(selected - 1)]);
@@ -141,22 +143,20 @@ std::optional<ModelCandidate> PickModel(
 void HandleModels(AppSession& session, const std::string& argument,
                   CommandReply& reply) {
   if (argument.empty()) {
-    reply.Print(
-        "%s· use /models QUERY to search every provider, or /models all "
-        "for the full catalog%s\n",
-        DIM(), RST());
+    reply.Note(Tone::kNeutral,
+               "use /models QUERY to search every provider, or /models all "
+               "for the full catalog");
     return;
   }
   std::string suffix =
       argument == "all" ? "" : " for " + TerminalSafe(argument);
-  reply.Print("%s· searching all model catalogs%s%s\n", DIM(), suffix.c_str(),
-              RST());
+  reply.Note(Tone::kNeutral, "searching all model catalogs" + suffix);
   ModelSearch search =
       SearchModels(session.ApiClient(), session.context.provider.routes,
                    session.context.provider.providers, argument);
   if (AbortRequested()) {
     ClearAbort();
-    reply.Print("%s· model search cancelled%s\n", YEL(), RST());
+    reply.Note(Tone::kWarn, "model search cancelled");
     return;
   }
   if (search.matches.empty()) {
@@ -166,9 +166,9 @@ void HandleModels(AppSession& session, const std::string& argument,
     const bool catalogs_down =
         search.queried > 0 && search.unavailable.size() >= search.queried;
     Emit(NoticeEvent(PresentationStatus::kFailed,
-                     catalogs_down ? "Model catalogs are unavailable. Check "
-                                     "provider settings."
-                                   : "No matching models."));
+                     catalogs_down ? "model catalogs are unavailable; check "
+                                     "provider settings"
+                                   : "no matching models"));
     if (!catalogs_down) {
       for (const std::string& unavailable : search.unavailable) {
         Emit(NoticeEvent(PresentationStatus::kWarned,
@@ -179,9 +179,9 @@ void HandleModels(AppSession& session, const std::string& argument,
   if (search.matches.size() > kModelPickerMatches) {
     search.matches.resize(kModelPickerMatches);
     Emit(NoticeEvent(PresentationStatus::kWarned,
-                     "Showing the first " +
+                     "showing the first " +
                          std::to_string(kModelPickerMatches) +
-                         " models; use /models QUERY to narrow the catalog."));
+                         " models; use /models QUERY to narrow the catalog"));
   }
   std::optional<ModelCandidate> selected =
       PickModel(std::move(search), session.ApiClient(),
@@ -205,18 +205,17 @@ void HandleModel(AppSession& session, const std::string& argument,
       SelectModel(session.ApiClient(), session.context.provider.routes,
                   session.context.provider.providers, argument);
   if (selected.empty()) {
-    reply.Print("%s· unknown model %s; use /models%s\n", RED(),
-                TerminalSafe(argument).c_str(), RST());
+    reply.Note(Tone::kError,
+               "unknown model " + TerminalSafe(argument) + "; use /models");
     return;
   }
   if (!requested.effort.empty() &&
       requested.effort != session.ApiClient().reasoning_effort) {
-    reply.Print("%s· effort %s is not supported by this model; using %s%s\n",
-                YEL(), requested.effort.c_str(),
-                session.ApiClient().reasoning_effort.empty()
-                    ? "provider default"
-                    : session.ApiClient().reasoning_effort.c_str(),
-                RST());
+    reply.Note(Tone::kWarn, "effort " + requested.effort +
+                                " is not supported by this model; using " +
+                                (session.ApiClient().reasoning_effort.empty()
+                                     ? "provider default"
+                                     : session.ApiClient().reasoning_effort));
   }
   reply.Print("%s", SaveSelectedModel(session, selected).c_str());
 }
@@ -233,8 +232,7 @@ static void PersistSelectionSuffix(AppSession& session, CommandReply& reply) {
                           api.reasoning_effort, error)) {
     return;
   }
-  reply.Print("%s· this session only — %s%s\n", DIM(),
-              TerminalSafe(error).c_str(), RST());
+  reply.Note(Tone::kNeutral, "this session only — " + TerminalSafe(error));
 }
 
 void HandleEffort(AppSession& session, const std::string& argument,
@@ -243,28 +241,26 @@ void HandleEffort(AppSession& session, const std::string& argument,
     ProbeModel(session.ApiClient(), /*discover_efforts=*/true);
   }
   if (argument.empty()) {
-    reply.Print("%s· effort %s%s\n", DIM(),
-                session.ApiClient().reasoning_effort.empty()
-                    ? "default"
-                    : session.ApiClient().reasoning_effort.c_str(),
-                RST());
+    reply.Note(Tone::kNeutral,
+               "effort " + (session.ApiClient().reasoning_effort.empty()
+                                ? std::string("default")
+                                : session.ApiClient().reasoning_effort));
   } else if (argument == "default") {
     session.ApiClient().reasoning_effort.clear();
     ActivateCurrentRoute(session);
-    reply.Print("%s· effort provider default%s\n", DIM(), RST());
+    reply.Note(Tone::kNeutral, "effort provider default");
     PersistSelectionSuffix(session, reply);
   } else if (!ValidEffort(argument)) {
-    reply.Print(
-        "%s· effort must be none, minimal, low, medium, high, xhigh, or "
-        "max; use default to defer to the provider%s\n",
-        RED(), RST());
+    reply.Note(Tone::kError,
+               "effort must be none, minimal, low, medium, high, xhigh, or "
+               "max; use default to defer to the provider");
   } else if (!SupportsReasoningEffort(session.ApiClient(), argument)) {
-    reply.Print("%s· effort %s is not supported by the active model%s\n", RED(),
-                argument.c_str(), RST());
+    reply.Note(Tone::kError,
+               "effort " + argument + " is not supported by the active model");
   } else {
     session.ApiClient().reasoning_effort = argument;
     ActivateCurrentRoute(session);
-    reply.Print("%s· effort %s%s\n", DIM(), argument.c_str(), RST());
+    reply.Note(Tone::kNeutral, "effort " + argument);
     PersistSelectionSuffix(session, reply);
   }
 }
@@ -272,8 +268,7 @@ void HandleEffort(AppSession& session, const std::string& argument,
 void HandleVariant(AppSession& session, const std::string& argument,
                    CommandReply& reply) {
   if (!session.ApiClient().capabilities.model_variants) {
-    reply.Print("%s· /variant is unavailable on the active route%s\n", RED(),
-                RST());
+    reply.Note(Tone::kError, "/variant is unavailable on the active route");
     return;
   }
   std::string variant = argument;
@@ -283,14 +278,15 @@ void HandleVariant(AppSession& session, const std::string& argument,
         session.ApiClient().config.openrouter_variant.empty()
             ? "default"
             : ":" + session.ApiClient().config.openrouter_variant;
-    reply.Print("%s· variant %s · choose default, nitro, floor, or exacto%s\n",
-                DIM(), label.c_str(), RST());
+    reply.Note(Tone::kNeutral, "variant " + label +
+                                   " · choose default, nitro, floor, or "
+                                   "exacto");
     return;
   }
   if (variant == "default") variant.clear();
   if (!ValidOpenRouterVariant(variant)) {
-    reply.Print("%s· variant must be default, nitro, floor, or exacto%s\n",
-                RED(), RST());
+    reply.Note(Tone::kError,
+               "variant must be default, nitro, floor, or exacto");
     return;
   }
   session.ApiClient().config.openrouter_variant = variant;
@@ -304,7 +300,7 @@ void HandleVariant(AppSession& session, const std::string& argument,
   DebugLog("variant_changed", {{"variant", variant},
                                {"model", session.ApiClient().RequestModel()}});
   std::string label = variant.empty() ? "default" : ":" + variant;
-  reply.Print("%s· variant %s — %s%s\n", DIM(), label.c_str(), detail, RST());
+  reply.Note(Tone::kNeutral, "variant " + label + " — " + detail);
   PersistSelectionSuffix(session, reply);
 }
 

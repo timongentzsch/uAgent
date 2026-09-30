@@ -3,6 +3,7 @@
 #ifndef UAGENT_INCLUDE_AGENT_PATH_POLICY_H_
 #define UAGENT_INCLUDE_AGENT_PATH_POLICY_H_
 
+#include <algorithm>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -12,6 +13,7 @@
 #include "include/core/config.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
+#include "include/core/project.h"
 #include "include/core/sandbox.h"
 #include "include/tools/tool.h"
 
@@ -24,6 +26,14 @@ enum class PathTarget {
   kDirectory,
 };
 
+// Any name an instruction file can have, AGENTS.md's fallbacks included.
+inline bool InstructionFileName(const std::filesystem::path& path) {
+  const std::string name = path.filename().string();
+  return name == "COORDINATOR.md" ||
+         std::ranges::find(kInstructionNames, name) !=
+             std::end(kInstructionNames);
+}
+
 // µAgent's own configuration and trust state. Editing these changes what the
 // agent is allowed to do next launch, so they are never auto-approved. This
 // covers the built-in file tools; the OS sandbox is what stops an approved
@@ -34,10 +44,10 @@ inline bool SelfConfigurationPath(const std::string& path) {
   auto matches = [&](const std::string& target) {
     return !target.empty() && CanonicalAccessPath(target) == candidate;
   };
-  if ((candidate.filename() == "system-prompt.json" &&
-       candidate.parent_path().filename() == ".uagent") ||
-      matches((std::filesystem::path(GlobalBase()) / "system-prompt.json")
-                  .string())) {
+  // Your instructions steer every session or coordinator; a project's are
+  // ordinary repository files, like the rest of its code.
+  if (InstructionFileName(candidate) &&
+      candidate.parent_path() == CanonicalAccessPath(GlobalBase())) {
     return true;
   }
   if (matches(UagentConfigPath()) || matches(ProjectConfigFilePath()) ||
@@ -85,15 +95,15 @@ enum class PathAccess { kRead, kWrite };
 
 // Reads escalate as well as writes: the user and project config files and a
 // workspace .mcp.json carry provider keys and server credentials, so pulling
-// one into context is itself the harm. The trust store is the exception --
-// it holds path hashes and no secret, so only writing it changes what the
-// agent may do next launch.
+// one into context is itself the harm. The trust store and instruction files
+// are the exceptions -- they hold no secret, so only writing them changes
+// what the agent may do next launch.
 inline ApprovalClass PathApprovalClass(const std::string& path,
                                        PathAccess access) {
   if (!SelfConfigurationPath(path)) return ApprovalClass::kNone;
   if (access == PathAccess::kRead &&
       (CanonicalAccessPath(path) == CanonicalAccessPath(TrustStorePath()) ||
-       CanonicalAccessPath(path).filename() == "system-prompt.json")) {
+       InstructionFileName(CanonicalAccessPath(path)))) {
     return ApprovalClass::kNone;
   }
   return ApprovalClass::kMandatoryHuman;

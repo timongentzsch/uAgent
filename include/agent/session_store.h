@@ -29,24 +29,49 @@ inline constexpr const char* kSessionHeaderTitle = "title";
 inline constexpr const char* kSessionHeaderParent = "parent_session_id";
 inline constexpr const char* kSessionHeaderForkTurn = "forked_at_turn";
 inline constexpr const char* kSessionHeaderForkTime = "forked_at_time";
+// Present only on a delegated child: who spawned it and in what role
+// (parent, name, description, directive, mode, model, route, label, memory).
+// Children are addressed by their parent, never listed as sessions.
+inline constexpr const char* kSessionHeaderDelegation = "delegation";
+// Present only on a folder's coordinator ("coordinator") or on a session it
+// launched ("thread"); absent means an ordinary session. A thread also
+// carries its link: {coordinator_id, brief, ceiling}, fixed at spawn.
+inline constexpr const char* kSessionHeaderKind = "kind";
+inline constexpr const char* kSessionHeaderThread = "thread";
 // Optional lineage: empty/zero when this session was never forked. Unknown
 // to older readers, which ignore extra header fields.
 inline constexpr int64_t kSessionFormat = 3;
 inline constexpr size_t kSessionHeaderBytes = size_t{16} * 1024;
 inline constexpr size_t kSessionReadBytes = size_t{64} * 1024 * 1024;
 
-enum class SessionScope { kWorkspace, kAll };
+// kChildren: this workspace's delegated children, which the other scopes skip.
+// No scope lists a coordinator; it is addressed by its folder instead.
+enum class SessionScope { kWorkspace, kAll, kChildren };
 
 struct SessionInfo {
   std::string path, cwd, title;
   int64_t turns = 0;
   uint64_t incoming = 0;
+  double cost = 0;  // reported spend, as of the last save
   int64_t bytes = 0;
   std::filesystem::file_time_type mtime;
   std::string error;
+  json delegation = json::object();
+  std::string kind;
+  json thread = json::object();
 };
 
+// The one coordinator session file of a canonical folder.
+std::string CoordinatorPath(const std::string& cwd);
+
+// The first line of a session file when it is a valid header, else an empty
+// object. Bounded: it never reads the transcript.
+json SessionHeader(const std::string& path);
+
 // A read-only catalogue: bounded headers, one known directory level, no links.
+// The writer lease file that guards a session file.
+std::string SessionLockPath(const std::string& path);
+
 std::vector<SessionInfo> ListSessions(
     SessionScope scope = SessionScope::kWorkspace);
 
@@ -84,6 +109,9 @@ struct SessionMetadata {
   std::string parent_session_id{};
   int64_t forked_at_turn = 0;
   std::string forked_at_time{};
+  json delegation = json::object();
+  std::string kind{};
+  json thread = json::object();
 };
 
 struct SessionState {
@@ -103,6 +131,9 @@ struct SessionState {
   // redraw a diff instead of a grey summary line.
   json tool_displays = json::object();
   json display = json::object();
+  // Ids of the latest mailbox messages taken into the transcript, so one
+  // delivered again after a crash is recognised (see core/mailbox.h).
+  json delivered_mail = json::array();
 
   // Transfer the loaded transcript into its sole runtime owner.
   bool RestoreConversation(Conversation& conversation) &&;
@@ -136,8 +167,12 @@ class SessionStore {
   static SessionLoadResult Load(const std::string& path,
                                 const std::string& expected_cwd);
   static SessionLoadResult Inspect(const std::string& path);
+  // Copies the session, whole or before a user message: the Nth
+  // (`fork_turn`) or the one shown as `message_id` ("m-<id>"). A cut fork
+  // returns that message's text as "prompt", so it can be edited and sent.
   static json Fork(const std::string& path, const std::string& title = "",
-                   bool source_owned = false, int64_t fork_turn = 0);
+                   bool source_owned = false, int64_t fork_turn = 0,
+                   const std::string& message_id = "");
   // Renders the saved session as markdown for /share. Pure transcript view:
   // user and assistant text plus truncated tool results; system, internal
   // and runtime-context messages never leave the session file.

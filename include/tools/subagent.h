@@ -3,7 +3,10 @@
 #ifndef UAGENT_INCLUDE_TOOLS_SUBAGENT_H_
 #define UAGENT_INCLUDE_TOOLS_SUBAGENT_H_
 // Delegation as a tool. Route descriptions and execution share one resolver so
-// the model sees the choices the harness will actually accept.
+// the model sees the choices the harness will actually accept. Every child is
+// an ordinary saved session in this workspace's history whose header names
+// its parent and role; it is addressed by that parent and never listed as a
+// session of its own.
 
 #include <string>
 #include <vector>
@@ -16,28 +19,20 @@
 
 namespace uagent {
 
-class CollaboratorRuntime;
-
-// The workspace's collaborator records, one object each: id, name,
-// description, model, mode, status, and the activity id when the child is
-// still running. Shared with the TUI so `/agents` and the tool's `list`
-// operation cannot drift apart.
-std::vector<json> CollaboratorSummaries(
-    const ProcessSupervisor& processes,
-    const CollaboratorRuntime* runtime = nullptr);
-json InspectCollaborator(const ProcessSupervisor& processes,
-                         const std::string& id,
-                         const json& request = json::object(),
-                         const CollaboratorRuntime* runtime = nullptr);
-ToolResult MessageCollaborator(const ProcessSupervisor& processes,
-                               CollaboratorRuntime* runtime,
-                               const std::string& id, const std::string& text,
-                               const std::string& from = "", int hops = 0);
+// This session's children, one object each: id, name, description, model,
+// mode, label, status, and the activity id while one runs. Shared with the
+// TUI and the web so `/agents` and the tool's `list` cannot drift apart.
+std::vector<json> AgentSummaries(const ProcessSupervisor& processes);
+json InspectAgent(const ProcessSupervisor& processes, const std::string& id,
+                  const json& request = json::object());
+// Guidance a running child reads at its next step, or an idle one at its next
+// followup.
+ToolResult MessageAgent(const ProcessSupervisor& processes,
+                        const std::string& id, const std::string& text);
 
 Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
                   const std::vector<ModelRoute>& routes,
-                  const std::vector<NamedProvider>& providers, bool debug,
-                  CollaboratorRuntime* runtime = nullptr);
+                  const std::vector<NamedProvider>& providers, bool debug);
 
 }  // namespace uagent
 

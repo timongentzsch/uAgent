@@ -1,0 +1,25 @@
+.pairing {
+  max-width: calc(560rem / 14);
+  margin: auto;
+  padding: var(--pad);
+  min-height: 0;
+  overflow: auto;
+}
+.pairing .wordmark {
+  width: calc(48rem / 14);
+  height: calc(48rem / 14);
+  margin-bottom: var(--gap);
+}
+.pairing h1 {
+  font-size: 1.3rem;
+}
+.pairing p {
+  color: var(--muted);
+  margin: var(--pad) 0;
+}
+.pairing form {
+  margin: var(--pad) 0;
+}
+.pairing form button {
+  justify-self: start;
+}

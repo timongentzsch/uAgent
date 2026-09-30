@@ -7,7 +7,6 @@
 // header, read here for the listing, and the full payload.
 
 #include <algorithm>
-#include <cinttypes>
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
@@ -17,6 +16,7 @@
 #include <vector>
 
 #include "include/agent.h"
+#include "include/agent/session_role.h"
 #include "include/agent/session_store.h"
 #include "include/cli.h"
 #include "include/core/events.h"
@@ -24,6 +24,7 @@
 #include "include/core/json.h"
 #include "include/core/limits.h"
 #include "include/core/strings.h"
+#include "include/core/style.h"
 #include "include/core/term.h"
 #include "include/ui/conversation.h"
 #include "include/ui/display.h"
@@ -43,6 +44,7 @@ inline std::string MatchSessionPrefix(const std::string& prefix) {
   }
   std::string match;
   for (const SessionInfo& session : sessions) {
+    if (session.kind == kSessionKindCoordinator) continue;  // `uagent coord`
     const std::string name =
         std::filesystem::path(session.path).filename().string();
     if (AsciiLower(name).find(arg) == std::string::npos &&
@@ -59,7 +61,9 @@ inline std::string MatchSessionPrefix(const std::string& prefix) {
 inline std::string PickSession(bool render = true) {
   std::vector<SessionInfo> sessions = ListSessions();
   if (sessions.empty()) {
-    if (render) printf("%s· no saved sessions%s\n", DIM(), RST());
+    if (render) {
+      fputs(Note(Tone::kNeutral, "no saved sessions").c_str(), stdout);
+    }
     return "";
   }
   auto now = std::filesystem::file_time_type::clock::now();
@@ -72,10 +76,12 @@ inline std::string PickSession(bool render = true) {
     std::string safe_cwd = TerminalSafe(Tilde(s.cwd));
     std::string safe_title = TerminalSafe(FirstLine(s.title));
     if (render) {
-      printf("%s[%zu]%s %s · %s · %s turn%s · %s%s · \"%s\"%s\n", BOLD(), i + 1,
-             RST(), FmtAgo(secs).c_str(), FmtBytes(s.bytes).c_str(),
-             FmtCount(s.turns).c_str(), s.turns == 1 ? "" : "s", DIM(),
-             safe_cwd.c_str(), safe_title.c_str(), RST());
+      const std::string dot = AsciiGlyphs(" · ");
+      printf("%s[%zu]%s %s%s%s%s%s turn%s%s%s%s%s\"%s\"%s\n", BOLD(), i + 1,
+             RST(), FmtAgo(secs).c_str(), dot.c_str(),
+             FmtBytes(s.bytes).c_str(), dot.c_str(), FmtCount(s.turns).c_str(),
+             s.turns == 1 ? "" : "s", dot.c_str(), DIM(), safe_cwd.c_str(),
+             dot.c_str(), safe_title.c_str(), RST());
     }
     options.push_back({{"value", std::to_string(i + 1)},
                        {"title", s.title},
@@ -96,7 +102,9 @@ inline std::string PickSession(bool render = true) {
       n <= static_cast<int64_t>(shown)) {
     return sessions[static_cast<size_t>(n - 1)].path;
   }
-  if (render) printf("%s· not a listed number%s\n", DIM(), RST());
+  if (render) {
+    fputs(Note(Tone::kNeutral, "not a listed number").c_str(), stdout);
+  }
   return "";
 }
 
@@ -109,18 +117,23 @@ inline bool ResumeInto(Agent& agent, const std::string& path,
     std::string safe_path = TerminalSafe(path);
     std::string safe_error = TerminalSafe(error);
     if (render) {
-      printf("%s· could not resume %s: %s%s\n", RED(), safe_path.c_str(),
-             safe_error.c_str(), RST());
+      fputs(Note(Tone::kError,
+                 "could not resume " + safe_path + ": " + safe_error)
+                .c_str(),
+            stdout);
     }
     Emit(Event{EventId::kError, {{"error", "cannot resume: " + error}}});
     return false;
   }
   session_file = path;
   if (render) {
-    printf("%s· resumed — %zu messages%s\n", DIM(), agent.MessageCount() - 1,
-           RST());
-    PrintConversationHistory(agent.History(), agent.Tools());
-    printf("%s· end of history, continuing%s\n", DIM(), RST());
+    fputs(Note(Tone::kNeutral, "resumed — " +
+                                   std::to_string(agent.MessageCount() - 1) +
+                                   " messages")
+              .c_str(),
+          stdout);
+    PrintConversationHistory(agent.History());
+    fputs(Note(Tone::kNeutral, "end of history, continuing").c_str(), stdout);
   }
   return true;
 }

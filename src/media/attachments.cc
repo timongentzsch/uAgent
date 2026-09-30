@@ -21,6 +21,7 @@
 #include "include/core/checked.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
+#include "include/core/limits.h"
 #include "include/core/strings.h"
 
 namespace uagent {
@@ -472,7 +473,7 @@ json AttachmentContent(const std::string& prompt,
     return nullptr;
   }
 
-  std::string text = prompt + "\n\nAttached:";
+  std::string text = prompt + kAttachedList;
   for (const Attachment& attachment : attachments) {
     text += "\n- path " + JsonDump(attachment.path);
     if (!attachment.source_call_id.empty()) {
@@ -874,17 +875,17 @@ ToolResult AttachmentQueue::Add(const std::string& path,
   Attachment attachment;
   std::string error;
   if (!InspectAttachment(path, attachment, error)) {
-    return ToolFailure(ToolErrorCode::kInvalidArguments, "error: " + error);
+    return ToolFailure(ToolErrorCode::kInvalidArguments, error);
   }
   std::string result =
       "attached " + attachment.name + "; queued for the next request";
   std::lock_guard<std::mutex> lock(mutex_);
   // MCP servers queue images without a model call to budget against, so the
   // ceiling lives here rather than only on read_path.
-  if (static_cast<int64_t>(pending_.size()) >= MaxPendingAttachments()) {
+  if (pending_.size() >= kMaxPendingAttachments) {
     return ToolFailure(ToolErrorCode::kLimitExceeded,
-                       "error: too many attachments pending for one step (" +
-                           std::to_string(MaxPendingAttachments()) + ")");
+                       "too many attachments pending for one step (" +
+                           std::to_string(kMaxPendingAttachments) + ")");
   }
   attachment.source_call_id = std::move(source_call_id);
   pending_.push_back(std::move(attachment));

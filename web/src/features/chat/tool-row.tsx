@@ -35,7 +35,7 @@ function fenced(text: string, language = "") {
 
 // The input half of a native ToolView. Each tool chose its parts; this
 // component only knows the closed vocabulary, never a tool name.
-export function ToolInput({ parts }: { parts: ToolPart[] }) {
+function ToolInput({ parts }: { parts: ToolPart[] }) {
   return (
     <>
       {parts.map((part, index) =>

@@ -20,24 +20,22 @@ namespace uagent {
 ToolResult ToolImageResult(const json& content, std::string source_call_id,
                            const char* source, const char* directory) {
   if (!content.contains("data") || !content["data"].is_string()) {
-    return ToolFailure(
-        ToolErrorCode::kRemoteError,
-        std::string("error: ") + source + " image is missing base64 data");
+    return ToolFailure(ToolErrorCode::kRemoteError,
+                       std::string(source) + " image is missing base64 data");
   }
   std::string mime = JsonValue(content, "mimeType", "image/png");
   std::string extension = ImageExtension(mime);
   if (extension.empty()) {
     return ToolFailure(
         ToolErrorCode::kRemoteError,
-        std::string("error: unsupported ") + source + " image type " + mime);
+        std::string("unsupported ") + source + " image type " + mime);
   }
   int64_t limit_mb = AttachmentLimitMb();
   std::string bytes;
   if (!Base64Decode(content["data"].get_ref<const std::string&>(), bytes,
                     static_cast<size_t>(limit_mb) * 1024 * 1024)) {
     return ToolFailure(ToolErrorCode::kRemoteError,
-                       std::string("error: ") + source +
-                           " image is invalid or exceeds " +
+                       std::string(source) + " image is invalid or exceeds " +
                            std::to_string(limit_mb) + " MB");
   }
   static std::atomic<uint64_t> sequence{0};

@@ -256,6 +256,8 @@ test("unread completions, background activity and conversation lifecycle", async
     page.locator(".tool-disclosure").filter({ hasText: "BROWSER_ACTIVITY" }),
   ).not.toContainText("running");
   await expect(page.locator(".composer .status-led.active")).toBeVisible();
+  // The activity sheet is modal: close it before reaching the page again.
+  await page.keyboard.press("Escape");
   await conversationMenu.click();
   await page
     .locator(".conversation-head")
@@ -298,7 +300,7 @@ test("unread completions, background activity and conversation lifecycle", async
     .locator(".conversation-head")
     .getByRole("menuitem", { name: "Delete", exact: true })
     .click();
-  const deleter = page.getByRole("dialog", { name: "Delete conversation" });
+  const deleter = page.getByRole("dialog", { name: "Delete conversation?" });
   await expect(deleter).toContainText("UI refactor proof");
   await expect(deleter).toContainText("closes first");
   await page
@@ -307,7 +309,7 @@ test("unread completions, background activity and conversation lifecycle", async
   // Close-then-delete chains a worker shutdown: the dialog stays up
   // until the worker exits and the record is gone.
   await expect(
-    page.getByRole("dialog", { name: "Delete conversation" }),
+    page.getByRole("dialog", { name: "Delete conversation?" }),
   ).toBeHidden({ timeout: 20000 });
   await expect(page.locator(".conversation-head h1")).toHaveText(
     "Your workspace",
@@ -422,6 +424,8 @@ test("retained history stays bounded and merges overlapping pages once", async (
     );
   }
   expect(await page.locator(".message").count()).toBeLessThanOrEqual(256);
+  // Older pages are history, not arrivals: nothing reads as new.
+  await expect(page.locator(".jump")).not.toContainText("new");
   await page
     .getByRole("button", { name: "Jump to latest", exact: true })
     .click();

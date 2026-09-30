@@ -21,12 +21,8 @@ const ConfigDescriptor* FindConfigDescriptor(std::string_view environment) {
 
 int64_t LongSetting(const ConfigDescriptor& descriptor) {
   const int64_t* value = std::get_if<int64_t>(&descriptor.default_value);
-  return LongSetting(descriptor, value ? *value : 0);
-}
-
-int64_t LongSetting(const ConfigDescriptor& descriptor, int64_t fallback) {
-  return std::clamp(EnvLong(descriptor.EnvName(), fallback), descriptor.minimum,
-                    descriptor.maximum);
+  return std::clamp(EnvLong(descriptor.EnvName(), value ? *value : 0),
+                    descriptor.minimum, descriptor.maximum);
 }
 
 bool BoolSetting(const ConfigDescriptor& descriptor) {
@@ -41,6 +37,16 @@ std::string StringSetting(const ConfigDescriptor& descriptor) {
       std::get_if<std::string_view>(&descriptor.default_value);
   return EnvStr(descriptor.EnvName(),
                 value ? std::string(*value) : std::string());
+}
+
+double DoubleSetting(const ConfigDescriptor& descriptor) {
+  const double* declared = std::get_if<double>(&descriptor.default_value);
+  double value = declared ? *declared : 0.0;
+  const std::string text = EnvStr(descriptor.EnvName());
+  if (!text.empty() && !ParseFiniteDouble(text.c_str(), value)) {
+    value = declared ? *declared : 0.0;
+  }
+  return value;
 }
 
 const char* ConfigTypeName(ConfigType type) {

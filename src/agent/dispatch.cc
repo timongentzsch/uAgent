@@ -10,7 +10,6 @@
 #include <vector>
 
 #include "include/agent/protocol.h"
-#include "include/agent/session_view.h"
 #include "include/api.h"
 #include "include/core/checked.h"
 #include "include/core/debug.h"
@@ -124,7 +123,6 @@ json ToolResultData(const CallTask& task, const ToolCall& call, int64_t turn,
       {"issue_field", task.issue ? task.issue->field : std::string()},
       {"duration_ms", task.duration_ms},
       {"result", task.result.output},
-      {"text", StripModelHints(task.result.output)},
       {"result_chars", task.result.output.size()},
       {"no_change", task.result.no_change},
       {"activity_terminal", task.result.activity_terminal},

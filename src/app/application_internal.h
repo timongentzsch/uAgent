@@ -44,7 +44,7 @@ class Application {
   void ProcessInput(std::string input);
   int FinishInteractive(int status);
   int RunChannel();
-  json BuildChannelState() const;
+  json BuildChannelState(bool checkpoint) const;
   void PublishChannelState(bool checkpoint = true);
   AppContext& context_;
   AppRuntime& runtime_;
@@ -58,7 +58,6 @@ class Application {
   std::string request_id_;
   uint64_t message_subscription_ = 0;
   std::string input_error_;
-  json handoff_budget_;
   ApplicationChannel* channel_ = nullptr;
 };
 

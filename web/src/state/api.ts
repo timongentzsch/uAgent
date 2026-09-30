@@ -1,4 +1,5 @@
 import type {
+  Asset,
   BodyPage,
   CommandFields,
   CommandResults,
@@ -51,6 +52,20 @@ export async function api<T = unknown>(
       "App/server version differs. Save your draft, then update this app.",
     );
   return data as T;
+}
+
+// Stores a file among the session's attachments. Its id then rides a
+// command's attachment_ids, which the host claims and resolves.
+export function uploadAttachment(session: string, file: File, name: string) {
+  return api<Asset>(
+    `/api/sessions/${session}/attachments?name=${encodeURIComponent(name)}`,
+    undefined,
+    {
+      method: "POST",
+      headers: { "Content-Type": file.type || "application/octet-stream" },
+      body: file,
+    },
+  );
 }
 
 export async function readPages(

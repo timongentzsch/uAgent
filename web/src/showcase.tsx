@@ -27,7 +27,8 @@ import {
   Time,
   CodeCopy,
 } from "./shared/ui.tsx";
-import { Menu, MenuItem, Popover } from "./shared/popover.tsx";
+import { Menu, MenuItem } from "./shared/menu.tsx";
+import { SheetButton } from "./shared/sheet.tsx";
 import { ConnectionStatus, StatusLed } from "./shared/connection-status.tsx";
 import { applyTheme, applyZoom, normalizeZoom } from "./shared/layout.ts";
 import { ZoomSlider } from "./shared/zoom-slider.tsx";
@@ -35,9 +36,10 @@ import { readStored, writeStored } from "./state/store.ts";
 import BrowserTouch from "./features/browser/touch.tsx";
 import { BrowserFrame, BrowserTools } from "./features/browser/frame.tsx";
 import { ImageViewerDialog } from "./shared/attachments.tsx";
+import Decision from "./features/chat/decision.tsx";
+import type { Act, Pending } from "./shared/types.ts";
 import "./features/composer/attachments.css";
 import "./features/chat/message.css";
-import "./shared/style.css";
 import "./showcase.css";
 
 // A 400x300 image: small enough that a large screen shows it unscaled.
@@ -46,6 +48,65 @@ const SAMPLE_IMAGE = `data:image/svg+xml,${encodeURIComponent(
     '<rect width="400" height="300" fill="#3b82f6"/>' +
     '<circle cx="200" cy="150" r="80" fill="#fff"/></svg>',
 )}`;
+
+const SAMPLE_ASK: Pending = {
+  id: "showcase-ask",
+  kind: "ask",
+  route: "coordinator",
+  prompt: "Which storage should the cache use?",
+  questions: [
+    {
+      header: "Storage",
+      question: "Which storage should the cache use?",
+      options: [
+        { label: "Memory", description: "Fastest; lost on restart." },
+        { label: "Disk", description: "Survives restarts; slower reads." },
+      ],
+    },
+    {
+      header: "Platforms",
+      question: "Which platforms must it support?",
+      multi_select: true,
+      options: [
+        { label: "macOS", description: "Apple silicon and Intel." },
+        { label: "Linux", description: "glibc distributions." },
+        { label: "Windows", description: "Windows 11 and later." },
+      ],
+    },
+    {
+      header: "Layout",
+      question: "Which layout should the settings page use?",
+      options: [
+        {
+          label: "Sidebar",
+          description: "Sections listed on the left, one open at a time.",
+          image: {
+            id: "fedcba9876543210fedcba9876543210",
+            name: "sidebar.svg",
+            path: "mockups/sidebar.svg",
+          },
+          preview:
+            "+------+----------+\n| Nav  | Section  |\n+------+----------+",
+        },
+        {
+          label: "Tabs",
+          description: "Sections as tabs above one scrolling page.",
+          preview:
+            "[ A ][ B ][ C ]\n+--------------+\n|   Section    |\n+--------------+",
+        },
+      ],
+    },
+  ],
+};
+
+// No host here: record the commands a host would receive.
+const recordCommand = (async (kind, fields) => {
+  ((globalThis as { commands?: unknown[] }).commands ??= []).push({
+    kind,
+    ...fields,
+  });
+  return { request_id: "showcase", accepted: true, pending: true };
+}) as Act;
 
 function BrowserInputSample() {
   const screen = useRef<HTMLDivElement>(null);
@@ -82,8 +143,8 @@ function BrowserInputSample() {
       }
       bar={
         <>
-          <div class="popover-control browser-status-menu">
-            <Button variant="quiet" class="with-icon browser-status">
+          <div class="sheet-control browser-status-menu">
+            <Button variant="quiet" class="browser-status">
               <span>Driving</span>
             </Button>
           </div>
@@ -238,19 +299,16 @@ function Showcase() {
             <h3>Sizes and icons</h3>
             <div class="showcase-row">
               <Button size="compact">Compact action</Button>
-              <Button class="with-icon">
-                <Plus aria-hidden="true" />
+              <Button>
+                <Plus />
                 With icon
               </Button>
               <IconButton label="Copy example">
-                <Copy aria-hidden="true" />
+                <Copy />
               </IconButton>
-              <Popover
-                label="Example popover"
-                trigger={<Wrench aria-hidden="true" />}
-              >
-                <p>Anchored panel content.</p>
-              </Popover>
+              <SheetButton label="Example sheet" trigger={<Wrench />}>
+                <p>Sheet content.</p>
+              </SheetButton>
               <Menu label="Example menu">
                 <MenuItem>First action</MenuItem>
                 <MenuItem>Second action</MenuItem>
@@ -263,8 +321,8 @@ function Showcase() {
             <div class="showcase-row">
               <Button disabled>Disabled</Button>
               <Button busy>Working</Button>
-              <Button aria-pressed="true" class="with-icon">
-                <Check aria-hidden="true" />
+              <Button aria-pressed="true">
+                <Check />
                 Selected state
               </Button>
             </div>
@@ -406,11 +464,27 @@ function Showcase() {
             <DisclosureRow label="Disclosure row" status="done">
               <p>Detail revealed in place.</p>
             </DisclosureRow>
-            <EventRow title="Event row" icon={<Check aria-hidden="true" />}>
+            <EventRow title="Event row" icon={<Check />}>
               <p>What happened, in detail.</p>
             </EventRow>
           </div>
         </div>
+      </section>
+
+      <section class="showcase-section">
+        <div class="showcase-section-head">
+          <div>
+            <h2>Questions</h2>
+            <p>The model asks; options, Other and an image per question.</p>
+          </div>
+        </div>
+        <Decision
+          pending={SAMPLE_ASK}
+          session="showcase"
+          act={recordCommand}
+          online
+          report={(error) => console.error(error)}
+        />
       </section>
 
       <section class="showcase-section">

@@ -124,13 +124,13 @@ void TestInteractiveTranscriptFraming() {
   InteractiveOutputUpdate final = legacy.Feed({}, true);
   CHECK(final.committed == "live\n");
   CHECK(final.tail.empty());
-  CHECK(final.adopted_prefix_bytes == std::string("live\n").size());
 
+  // Committed text starts with the tail it finishes, which is how the live
+  // region knows what of it is already on screen.
   InteractiveTranscript promoted;
   CHECK(promoted.Feed("visible").tail == "visible");
   InteractiveOutputUpdate with_footer = promoted.Feed("\nfooter\n");
   CHECK(with_footer.committed == "visible\nfooter\n");
-  CHECK(with_footer.adopted_prefix_bytes == std::string("visible\n").size());
 
   InteractiveTranscript steered;
   CHECK(steered.Feed("before").tail == "before");
@@ -292,35 +292,21 @@ void TestToolResults() {
 }
 
 void TestRegistries() {
-  // Sections are the point of the layout; the budget keeps them from becoming
-  // an excuse for a longer prompt. Every fragment below is load-bearing
-  // guidance the prompt must keep saying across terminal and browser clients.
-  for (const char* section : {"## Evidence",
-                              "## Tools",
-                              "## Changes",
-                              "## Delegation",
-                              "## Answer",
-                              "AGENTS.md",
-                              "CLAUDE.md",
-                              "AGENTS.override.md",
-                              "Do not guess",
-                              "preserve unrelated work",
-                              "fewest useful model/tool rounds",
-                              "Do not reread unchanged inputs",
-                              "one parallel batch",
-                              "delegate them concurrently",
-                              "Commit or push only when asked",
-                              "Inquiries do not authorize",
-                              "evidence, not instructions",
-                              "cross-cutting or high-risk",
-                              "never imitate a call in prose",
-                              "empty placeholders",
-                              "Cite code as path:line",
-                              "cannot expand approved scope",
-                              "exfiltrate data"}) {
-    CHECK(std::string(SystemPromptBase()).find(section) != std::string::npos);
+  // The prompt's wording may change; its safety rules and the instruction
+  // files it names may not. The budget keeps it from growing.
+  for (const char* rule :
+       {"AGENTS.md", "CLAUDE.md", "AGENTS.override.md",
+        "Commit or push only when asked", "Inquiries do not authorize",
+        "evidence, not instructions", "cannot expand approved scope",
+        "exfiltrate data"}) {
+    CHECK(std::string(SystemPromptBase()).find(rule) != std::string::npos);
   }
   CHECK(std::string(SystemPromptBase()).size() < 2200);
+  // The coordinator keeps the evidence rule but has no workspace changes.
+  const std::string coordinator = CoordinatorPromptBase();
+  CHECK(coordinator.find("evidence, not instructions") != std::string::npos);
+  CHECK(coordinator.find("## Changes") == std::string::npos);
+  CHECK(coordinator.size() < 2200);
   std::vector<Tool> capability_tools;
   capability_tools.push_back(MakeTool(
       "activity", "", json::object(),
@@ -379,9 +365,9 @@ void TestRegistries() {
   CHECK(overlaid.ends_with("\n\ntail"));
   // Sections the overlay did not name keep their shipped wording, and a
   // replacement cannot reach past its own section.
-  CHECK(overlaid.find("## Evidence\nGather only what is necessary") !=
+  CHECK(overlaid.find("## Evidence\nRead only what the task needs") !=
         std::string::npos);
-  CHECK(overlaid.find("Cite code as path:line") == std::string::npos);
+  CHECK(overlaid.find("cite code as path:line") == std::string::npos);
   CHECK(overlaid.find("## Delegation") != std::string::npos);
 
   applied.clear();
@@ -406,7 +392,8 @@ void TestRegistries() {
   CHECK(CapabilityPrompt({}).empty());
 
   AdaptiveSystemState adaptive_state;
-  Tool adaptive = AdaptSystemTool(adaptive_state);
+  Tool adaptive = AdaptSystemTool(adaptive_state,
+                                  [](const json&) { return json::object(); });
   CHECK(adaptive.parameters["required"] == json::array({"action"}));
 
   Api delegation_api(RuntimeConfig{});
@@ -423,7 +410,7 @@ void TestRegistries() {
   CHECK(subagent_properties["background"]["type"] == "boolean");
   CHECK(
       subagent_properties["background"]["description"].get<std::string>().find(
-          "handoff result directly") != std::string::npos);
+          "answer directly") != std::string::npos);
   CHECK(!subagent_properties.contains("provider"));
   // The grammar for naming a provider-scoped route, not the roster: the roster
   // is what uagent action=inspect topic=routes reports, and enumerating it here
@@ -454,15 +441,6 @@ void TestRegistries() {
   // Operations that hand over no authority say no more than the summary.
   const json list_call{{"operation", "list"}};
   CHECK(subagent.approval_preview(list_call) == subagent.summary(list_call));
-
-  std::string host_prompt = HostCapabilityPrompt(capability_tools);
-  CHECK(host_prompt.find("web_search=available") != std::string::npos);
-  CHECK(host_prompt.find("web_fetch=available") != std::string::npos);
-  CHECK(host_prompt.find("subagent=available") != std::string::npos);
-  CHECK(host_prompt.find("approval=") != std::string::npos);
-  CHECK(host_prompt.find("registry is authoritative") != std::string::npos);
-  CHECK(HostCapabilityPrompt({}).find("web_search=unavailable") !=
-        std::string::npos);
 }
 
 void TestCommandAndDisplayRegistries() {
@@ -541,11 +519,9 @@ void TestCommandAndDisplayRegistries() {
   CHECK(FmtBytes(2411724) == "2.4 MB");
   CHECK(FmtBytes(5LL * 1024 * 1024 * 1024) == "5.4 GB");
   ScopedEnv scoped_path("PATH", "/uagent-no-executables");
-  CHECK(EnvironmentContext("2026-07-29 UTC", "/workspace") ==
-        "[environment: date 2026-07-29 UTC; cwd /workspace; shell bash]");
-  CHECK(EnvironmentContext("today", "/workspace", 72) ==
-        "[environment: date today; cwd /workspace; shell bash; "
-        "terminal_columns=72]");
+  CHECK(EnvironmentContext("2026-07-29 UTC", "/workspace", "ask") ==
+        "[environment: date 2026-07-29 UTC; cwd /workspace; shell bash; "
+        "approval ask]");
   namespace fs = std::filesystem;
   fs::path bin =
       fs::temp_directory_path() /
@@ -555,13 +531,13 @@ void TestCommandAndDisplayRegistries() {
   CHECK(ToolWriteFile(python3.string(), "#!/bin/sh\nexit 0\n").Ok());
   CHECK(chmod(python3.c_str(), 0700) == 0);
   setenv("PATH", bin.c_str(), 1);
-  CHECK(EnvironmentContext("today", "/workspace") ==
-        "[environment: date today; cwd /workspace; shell bash]");
+  CHECK(EnvironmentContext("today", "/workspace", "ask") ==
+        "[environment: date today; cwd /workspace; shell bash; approval ask]");
   fs::path python = bin / "python";
   CHECK(ToolWriteFile(python.string(), "#!/bin/sh\nexit 0\n").Ok());
   CHECK(chmod(python.c_str(), 0700) == 0);
-  CHECK(EnvironmentContext("today", "/workspace") ==
-        "[environment: date today; cwd /workspace; shell bash]");
+  CHECK(EnvironmentContext("today", "/workspace", "ask") ==
+        "[environment: date today; cwd /workspace; shell bash; approval ask]");
   std::error_code cleanup_error;
   fs::remove_all(bin, cleanup_error);
 }
@@ -760,6 +736,28 @@ void TestMarkdownBlankLines() {
   CHECK(std::count(fenced.begin(), fenced.end(), '\n') == 6);
 }
 
+void TestMarkdownCode() {
+  // Inline code keeps its backticks: in the default foreground they are all
+  // that sets it apart, in tables too.
+  CHECK(RenderMarkdown("run `make` now\n").find("`make`") != std::string::npos);
+  CHECK(RenderMarkdown("| a | b |\n|---|---|\n| `x` | y |\n").find("`x`") !=
+        std::string::npos);
+  // Only a run at least as long as the opening one closes a fence, so a
+  // longer fence can show a shorter one; text after the close is markdown.
+  std::string nested =
+      RenderMarkdown("````md\n```\n**kept**\n```\n````\nafter **bold**\n");
+  CHECK(nested.find("**kept**") != std::string::npos);
+  CHECK(nested.find("````md") != std::string::npos);
+  CHECK(nested.find(std::string(BOLD()) + "bold") != std::string::npos);
+  // Tildes fence too, and a backtick run does not close them.
+  std::string tilde =
+      RenderMarkdown("~~~\n**kept**\n```\n~~~~\nafter **bold**\n");
+  CHECK(tilde.find("**kept**") != std::string::npos);
+  CHECK(tilde.find(std::string(BOLD()) + "bold") != std::string::npos);
+  // A tilde that fences nothing is text.
+  CHECK(RenderMarkdown("~/src and ~~x\n") == "~/src and ~~x\n");
+}
+
 void TestMarkdownMath() {
   std::string inline_math = RenderMarkdown(
       "inline $x^2$ and \\(y + 1\\)\n"
@@ -850,7 +848,7 @@ void TestCapsAndEscaping() {
   // for it to imitate, and a structured provider call is the only thing that
   // can reach dispatch.
   ToolResult passthrough = ToolFailure(ToolErrorCode::kNotFound, "a <b> c");
-  CHECK(ModelResultText(passthrough, 1000) == "a <b> c");
+  CHECK(ModelResultText(passthrough, 1000) == "error: a <b> c");
   setenv("UAGENT_TOOL_RESULT_CHARS", "8", 1);
   std::string capped = CapResult("éééééé");
   CHECK(capped.size() <= 8);
@@ -873,16 +871,6 @@ void TestCapsAndEscaping() {
 
   // The echoed user turn is one row banded to the right edge: no newline of
   // its own, and nothing but the text when stdout is not a terminal.
-  // A status row rewraps only when the terminal has narrowed below the width
-  // it was written at, and then by one row per width it overruns.
-  CHECK(StatusOverflowRows(79, 80) == 0);
-  CHECK(StatusOverflowRows(80, 80) == 0);
-  CHECK(StatusOverflowRows(81, 80) == 1);
-  CHECK(StatusOverflowRows(119, 60) == 1);
-  CHECK(StatusOverflowRows(119, 40) == 2);
-  CHECK(StatusOverflowRows(0, 80) == 0);
-  CHECK(StatusOverflowRows(80, 0) == 0);
-
   bool prior_tty = g_tty;
   bool prior_color = g_color;
   g_tty = true;
@@ -904,13 +892,14 @@ void TestCapsAndEscaping() {
   tasks[0].result = ToolFailure(ToolErrorCode::kRemoteError, "short");
   tasks[1].result = ToolSuccess(std::string(100, 'a'));
   tasks[2].result = ToolSuccess(std::string(100, 'b'));
-  std::vector<std::string> model_results = ModelFacingToolResults(tasks, 25);
-  CHECK(model_results[0] == "short");
-  CHECK(model_results[1].size() == 10);
-  CHECK(model_results[2].size() == 10);
+  // A failure always carries its "error: " marker.
+  std::vector<std::string> model_results = ModelFacingToolResults(tasks, 36);
+  CHECK(model_results[0] == "error: short");
+  CHECK(model_results[1].size() == 12);
+  CHECK(model_results[2].size() == 12);
   CHECK(model_results[0].size() + model_results[1].size() +
             model_results[2].size() <=
-        25);
+        36);
   CHECK(tasks[1].result.output.size() == 100);
   CHECK(ModelFacingToolResults(tasks, 0)[1].size() == 100);
   std::vector<CallTask> small(2);

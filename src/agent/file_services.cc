@@ -32,7 +32,7 @@ ToolResult ToolAtomicWrite(const std::string& path, const std::string& content,
   std::string error;
   if (!AtomicWriteFile(path, content, create_mode, preserve_mode, error,
                        overwrite)) {
-    return ToolFailure(ToolErrorCode::kInternal, "error: " + error);
+    return ToolFailure(ToolErrorCode::kInternal, error);
   }
   return ToolSuccess("wrote " + std::to_string(content.size()) + " bytes to " +
                      path);

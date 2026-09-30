@@ -54,7 +54,11 @@ class Agent {
         AdaptiveSystemState* adaptive_system = nullptr);
 
   void Reset();
-  json PromptConfiguration(const json& request);
+  // What the model reads now, with its sources.
+  json PromptPreview() const;
+  // The conversation's self-directive (adapt_system): show, preview, set,
+  // edit (one exact replacement) or reset, guarded by its revision.
+  json SelfDirective(const json& request);
   const std::string& LastSentPrompt() const { return last_sent_prompt_; }
 
   const Usage& SessionUsage() const { return session_usage_; }
@@ -80,7 +84,6 @@ class Agent {
 
   // Approval mode is host-owned but can change between interactive turns.
   // Rebuild message zero after the host updates its canonical environment.
-  void ApprovalChanged();
 
   std::string ActiveRoute() const;
 
@@ -98,8 +101,12 @@ class Agent {
   // Data views for consumer interfaces (terminal, web, headless). Rendering
   // lives in ui/; the agent only supplies facts.
   const Conversation& History() const { return conversation_; }
-  const std::vector<Tool>& Tools() const { return tools_; }
   json DisplaySnapshot() const;
+  // Rewinds this conversation in place to just before a user message (by
+  // `turn`, or by its "m-<id>"), returning {prompt} with that message's text,
+  // or {error}. Bumps ViewEpoch: holders of the old view must replace it.
+  json RewindBefore(int64_t turn, const std::string& message_id);
+  uint64_t ViewEpoch() const { return view_epoch_; }
   // /btw: one tool-less model call over the conversation as of the last
   // request or turn end, never recorded. Safe beside a running turn.
   json SideQuestion(const std::string& question) const;
@@ -112,6 +119,13 @@ class Agent {
   using KeepFile =
       std::function<json(const std::string& path, const std::string& name)>;
   void KeepToolFiles(KeepFile keep) { keep_tool_file_ = std::move(keep); }
+  // Coordinator/thread role ({kind, thread}), saved in the session header.
+  void SetSessionRole(json role) { session_role_ = std::move(role); }
+  // Extra context rebuilt for every model request (a coordinator's clock,
+  // pinned notes and board): appended to the request, never stored.
+  void SetRuntimeContext(std::function<std::string()> extra) {
+    runtime_context_ = std::move(extra);
+  }
   void RetainExchanges(bool enabled) {
     retain_exchanges_ = enabled;
     api_.capture_http = enabled;
@@ -142,11 +156,6 @@ class Agent {
   bool Load(const std::string& path, const std::string& expected_cwd,
             std::string& error);
 
-  // Drops the Nth live user turn and everything after it, recording a
-  // reset-boundary display fact. Numbering restarts at the cut; the caller
-  // persists with Save.
-  bool RewindToTurn(int64_t turn, std::string& error);
-
   // Estimated tokens in the request currently represented by the conversation.
   // Provider usage belongs to billing and may be cumulative or stale.
   int64_t ContextUsed() const;
@@ -170,10 +179,18 @@ class Agent {
 
   // Report finished background jobs to the user and hand them to the model.
   // The drain reaps and deletes each log, so its caller owns the only copy.
-  bool DrainBackground();
+  // `children_finished` says whether a delegated child was among them.
+  bool DrainBackground(bool* children_finished = nullptr);
   void ReportMemoryCompletion(BackgroundCompletion& completion);
   void DeliverActivityCompletions(
       const std::vector<BackgroundCompletion>& completions);
+
+  // Takes this session's pending mail (core/mailbox.h) into the conversation:
+  // a wake or step message as queued guidance, which the host starts a turn
+  // with when the message wakes; a passive one as a harness note; an
+  // interrupt stops the running turn after queueing its text. With `hold`,
+  // wake messages stay pending. True when anything was taken.
+  bool DeliverMail(bool hold = false);
 
   // Files the model attached ride in on a user message. Canonical tool results
   // are text-only, so image/file parts cannot travel with them.
@@ -328,6 +345,7 @@ class Agent {
   // rather than restored, so it tracks the current tools/protocol (see load()).
   json SysMsg() const;
   void EnsureRuntimeContext();
+  json CoordinatorRequest(json messages) const;
 
   // Append environment state only when it changes. This preserves every prior
   // request byte for provider caching without repeating cwd metadata each turn.
@@ -395,6 +413,13 @@ class Agent {
   std::string parent_session_id_;
   int64_t forked_at_turn_ = 0;
   std::string forked_at_time_;
+  json session_role_ = json::object();
+  // Mail taken but not yet in a saved snapshot, acknowledged by Save, and the
+  // ids of the latest delivered, so one delivered again is recognised.
+  mutable std::vector<std::string> unacked_mail_;
+  json delivered_mail_ = json::array();
+  uint64_t view_epoch_ = 0;
+  std::function<std::string()> runtime_context_;
   int64_t total_user_turns_ = 0;
   size_t logged_msgs_ = 0;      // messages already written to the debug trace
   std::string logged_schemas_;  // last exact per-request schema snapshot

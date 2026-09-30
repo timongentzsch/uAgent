@@ -18,11 +18,14 @@
 #include <vector>
 
 #include "include/agent/prompt.h"
+#include "include/agent/session_store.h"
 #include "include/api.h"
 #include "include/app/artifact.h"
 #include "include/app/asset_store.h"
+#include "include/app/coordinator.h"
 #include "include/app/reference.h"
 #include "include/app/session.h"
+#include "include/app/uagent_tool.h"
 #include "include/browser/browser.h"
 #include "include/cli.h"
 #include "include/core/config.h"
@@ -31,20 +34,22 @@
 #include "include/core/fd.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
+#include "include/core/limits.h"
 #include "include/core/project.h"
 #include "include/core/sandbox.h"
 #include "include/core/signals.h"
 #include "include/core/skills.h"
 #include "include/core/steering.h"
 #include "include/core/strings.h"
+#include "include/core/style.h"
 #include "include/core/term.h"
 #include "include/mcp/discover.h"
 #include "include/mcp/register.h"
 #include "include/media/attachments.h"
 #include "include/providers.h"
 #include "include/tools/adapt_system.h"
+#include "include/tools/ask.h"
 #include "include/tools/browser.h"
-#include "include/tools/configure.h"
 #include "include/tools/memory.h"
 #include "include/tools/registry.h"
 #include "include/tools/session.h"
@@ -154,25 +159,26 @@ bool ResolveProjectTrust(const Options& options, bool& trusted,
 // instructions do not spend is what the memory index may.
 ProjectInstructions LoadInstructions(const std::filesystem::path& workspace,
                                      const RuntimeConfig& config,
-                                     bool memory_child, size_t project_limit) {
+                                     bool memory_child, bool coordinator) {
   ProjectInstructions instructions;
   if (!memory_child) {
-    instructions = LoadProjectInstructions(workspace, project_limit);
+    instructions =
+        LoadProjectInstructions(workspace, kProjectDocBytes, coordinator);
   }
   if (config.memory_enabled) {
-    size_t remaining = instructions.text.size() >= project_limit
+    size_t remaining = instructions.text.size() >= kProjectDocBytes
                            ? 0
-                           : project_limit - instructions.text.size();
+                           : kProjectDocBytes - instructions.text.size();
     MemoryIndex memories = LoadMemoryIndex(workspace, remaining);
     instructions.memory_index = std::move(memories.text);
     instructions.memory_sources = std::move(memories.sources);
     instructions.memory_truncated |= memories.truncated;
     instructions.memory_limit = remaining;
 
-    size_t always_bytes =
-        static_cast<size_t>(std::max(int64_t{0}, config.memory_always_bytes));
-    if (always_bytes > 0) {
-      MemoryIndex always = LoadAlwaysOnMemory(workspace, always_bytes);
+    // A delegated child's brief is standalone: re-inlining every always-on
+    // memory there only duplicates the parent's context.
+    if (AgentDepth() == 0) {
+      MemoryIndex always = LoadAlwaysOnMemory(workspace, kMemoryAlwaysBytes);
       instructions.memory_always = std::move(always.text);
       for (const std::string& source : always.sources) {
         if (std::find(instructions.memory_sources.begin(),
@@ -183,7 +189,7 @@ ProjectInstructions LoadInstructions(const std::filesystem::path& workspace,
       }
       if (always.truncated) {
         instructions.memory_truncated = true;
-        instructions.memory_limit = always_bytes;
+        instructions.memory_limit = kMemoryAlwaysBytes;
       }
     }
   }
@@ -199,9 +205,14 @@ std::vector<Tool> BuildTools(AppContext& context,
   // One read of the toolset selector: the three shapes it can take are one
   // decision, not three unrelated conditions.
   const std::string toolset = EnvStr("UAGENT_TOOLSET");
-  std::vector<Tool> tools = BuiltinTools(
-      runtime.processes, workspace,
-      AdaptiveSystemEnabled() ? &runtime.adaptive_system : nullptr);
+  std::vector<Tool> tools = BuiltinTools(runtime.processes, workspace);
+  if (AdaptiveSystemEnabled()) {
+    // The agent exists by the time a tool runs.
+    tools.push_back(AdaptSystemTool(runtime.adaptive_system,
+                                    [app = &context](const json& request) {
+                                      return app->agent->SelfDirective(request);
+                                    }));
+  }
   if (!runtime.config.memory_enabled) {
     std::erase_if(tools, [](const Tool& tool) { return tool.memory_store; });
   }
@@ -242,11 +253,46 @@ std::vector<Tool> BuildTools(AppContext& context,
       AgentDepth() == 0) {
     tools.push_back(ArtifactTool(context.channel->SessionPath()));
   }
-#ifdef UAGENT_WEB  // the web host starts the browser and serves its viewer
+  // Only a session someone can answer gets ask: never headless runs or
+  // delegated children, which could only ever time out.
+  if (context.channel && InteractiveApprovalAvailable()) {
+    // Option images are snapshotted into the session, as artifacts are, so
+    // every client can show them.
+    AskImage image;
+    if (const std::string session_path = context.channel->SessionPath();
+        !session_path.empty()) {
+      image = [session_path](const std::string& path, std::string& failure) {
+        std::string bytes;
+        if (!ReadRegularFile(path, session::kUploadBytes, bytes, failure)) {
+          return json();
+        }
+        session::AssetStoreResult stored = session::SessionAssets().Store(
+            session_path, bytes, std::filesystem::path(path).filename(),
+            /*committed=*/true);
+        failure = stored.error;
+        return stored.value;
+      };
+    }
+    tools.push_back(AskTool(
+        [](const json& questions, bool* eof) {
+          return ReadInteraction(
+              {.kind = "ask",
+               .prompt = JsonValue(questions[0], "question", ""),
+               .questions = questions},
+              eof);
+        },
+        std::move(image)));
+  }
+#ifdef UAGENT_BROWSER  // the web host starts the browser and serves its viewer
   if (!browser::DataDirectory().empty() && context.options.browser_session &&
       context.channel && !context.channel->SessionPath().empty() &&
       AgentDepth() == 0) {
-    tools.push_back(BrowserTool(HashHex(context.channel->SessionPath())));
+    tools.push_back(BrowserTool(
+        HashHex(context.channel->SessionPath()),
+        [](const std::string& id, const std::string& prompt, bool* eof) {
+          return ReadInteraction(
+              {.id = id, .kind = "browser", .prompt = prompt}, eof);
+        }));
   }
 #endif
   // The default lean child is an isolation and context-efficiency boundary:
@@ -257,14 +303,16 @@ std::vector<Tool> BuildTools(AppContext& context,
     if (!error.empty()) return {};
   }
   if (CanDelegate()) {
-    tools.push_back(SubagentTool(api, runtime.processes,
-                                 context.provider.routes,
-                                 context.provider.providers,
-                                 context.options.debug, &runtime.collaborator));
+    tools.push_back(
+        SubagentTool(api, runtime.processes, context.provider.routes,
+                     context.provider.providers, context.options.debug));
   }
   // Peer sessions are text-only and isolation-gated by links, so the session
   // tool is safe in every toolset, lean included.
   tools.push_back(SessionTool());
+  if (context.options.Coordinator()) {
+    AddCoordinatorTools(tools, CanonicalCwd());
+  }
   if (toolset == "lean") {
     KeepLeanTools(tools);
   }
@@ -355,15 +403,17 @@ Agent::Approver MakeApprover(AppContext* app) {
                                                 "no", "guidance"})}}});
       if (!app->channel) {
         if (mandatory) {
-          fprintf(stdout, "%s%s%s\n", YEL(), reason.c_str(), RST());
+          fprintf(stdout, "%s%s%s\n", YEL(), TerminalSafe(reason).c_str(),
+                  RST());
         }
         fprintf(stdout, "%s\n", ColorizeDiffLines(payload).c_str());
       }
       if (mandatory && !InteractiveApprovalAvailable()) {
-        fprintf(stdout,
-                "%s\u00b7 denied: this change needs a person, and no "
-                "interactive terminal is attached%s\n",
-                RED(), RST());
+        fputs(Note(Tone::kError,
+                   "denied: this change needs a person, and no interactive "
+                   "terminal is attached")
+                  .c_str(),
+              stdout);
         granted = false;
       } else if (mandatory) {
         granted = Confirm(
@@ -401,7 +451,7 @@ Agent::Approver MakeApprover(AppContext* app) {
                                             error)) {
             Emit(NoticeEvent(
                 PresentationStatus::kWarned,
-                "· allowed once; could not save permission rule: " + error));
+                "allowed once; could not save permission rule: " + error));
           }
         }
         if (!granted && !cancelled && !eof && !answer.empty() &&
@@ -455,9 +505,9 @@ void ReportSandbox() {
                 {"from", true},
                 {"to", false},
                 {"reason", status.reason}}});
-    Emit(NoticeEvent(
-        PresentationStatus::kWarned,
-        "\u00b7 sandbox: " + status.reason + "; commands run unconfined"));
+    Emit(
+        NoticeEvent(PresentationStatus::kWarned,
+                    "sandbox: " + status.reason + "; commands run unconfined"));
   }
   if (status.rejected.empty()) return;
   std::string dropped;
@@ -465,7 +515,7 @@ void ReportSandbox() {
     dropped += (dropped.empty() ? "" : ", ") + root;
   }
   Emit(NoticeEvent(PresentationStatus::kWarned,
-                   "\u00b7 sandbox: not granted as writable: " + dropped));
+                   "sandbox: not granted as writable: " + dropped));
 }
 
 void LogReady(const AppContext& context) {
@@ -603,6 +653,12 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   ConfigManager config_manager =
       ConfigManager::Capture(trusted, options.overrides);
   RuntimeConfig config = config_manager.Initialize();
+  // Route resolution reads UAGENT_MODEL; a coordinator starts on its own
+  // model. A /model saved in its session still wins on resume.
+  if (options.Coordinator() && !options.overrides.contains("UAGENT_MODEL")) {
+    const std::string model = CoordinatorModel();
+    if (!model.empty()) setenv("UAGENT_MODEL", model.c_str(), 1);
+  }
   if (memory_child && !BuildMemoryExtractionPrompt(memory_source, workspace,
                                                    options.prompt, error)) {
     return Failure(std::move(error), 2);
@@ -643,8 +699,8 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   if (Debug().Enabled()) {
     FILE* notice =
         context->options.prompt.empty() && !channel ? stdout : stderr;
-    fprintf(notice, "%s· debug trace: %s%s\n", DIM(), Debug().Path().c_str(),
-            RST());
+    fputs(Note(Tone::kNeutral, "debug trace: " + Debug().Path()).c_str(),
+          notice);
     Debug().Write("process_start",
                   {{"pid", getpid()},
                    {"cwd", std::filesystem::current_path().string()},
@@ -656,13 +712,12 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   }
 
   Api& api = context->runtime.api;
-  size_t project_limit =
-      static_cast<size_t>(context->runtime.config.project_doc_bytes);
-  ProjectInstructions instructions = LoadInstructions(
-      workspace, context->runtime.config, memory_child, project_limit);
+  ProjectInstructions instructions =
+      LoadInstructions(workspace, context->runtime.config, memory_child,
+                       context->options.Coordinator());
   if (instructions.truncated) {
     PrintWarning("project instructions truncated at " +
-                 std::to_string(project_limit) + " bytes");
+                 std::to_string(kProjectDocBytes) + " bytes");
   }
   if (instructions.memory_truncated) {
     PrintWarning("memory context truncated at " +
@@ -688,19 +743,15 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   }
   ActivateRoute(api);
   context->tool_policy = ToolPolicyFromEnvironment();
+  if (context->options.Coordinator()) {
+    context->tool_policy.tool_allowlist.assign(std::begin(kCoordinatorTools),
+                                               std::end(kCoordinatorTools));
+  }
   PrintWarning(context->tool_policy.error);
   std::string tool_error;
   context->tools =
       BuildTools(*context, workspace, trusted_snapshot, skills, tool_error);
   if (!tool_error.empty()) return Failure(tool_error);
-  for (auto& tool : context->tools) {
-    if (tool.name == "adapt_system") {
-      tool = AdaptSystemTool(context->runtime.adaptive_system,
-                             [app = context.get()](const json& request) {
-                               return app->agent->PromptConfiguration(request);
-                             });
-    }
-  }
   context->permission_override.store(context->options.yolo
                                          ? PermissionOverride::kYolo
                                          : PermissionOverride::kDefault);
@@ -710,6 +761,14 @@ BootstrapResult Bootstrap(Options options, const char* executable,
       context->runtime.side_usage, MakeApprover(app), MakeToolRefresher(app),
       std::move(instructions), std::move(skills),
       &context->runtime.adaptive_system);
+  context->agent->SetSessionRole(context->options.session);
+  if (context->options.Coordinator()) {
+    context->agent->SetRuntimeContext(
+        [folder = CanonicalCwd(), agent = context->agent.get()] {
+          RecordCoordinatorCost(folder, agent->SessionUsage().cost);
+          return CoordinatorContext(folder);
+        });
+  }
   if (context->channel && !context->channel->SessionPath().empty()) {
     context->agent->KeepToolFiles([session_path =
                                        context->channel->SessionPath()](

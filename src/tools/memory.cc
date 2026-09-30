@@ -140,7 +140,7 @@ std::optional<std::filesystem::path> CurrentWorkspace(std::string& error) {
 }
 
 std::string MemoryPreview(const std::string& content) {
-  return Utf8Trunc(OneLine(RedactMemorySecrets(content)), 160);
+  return OneLine(RedactMemorySecrets(content), 160);
 }
 
 ToolResult ListMemoryKeys(const std::filesystem::path& cwd) {
@@ -157,7 +157,7 @@ ToolResult SearchMemoryText(const std::string& query,
   std::string needle = AsciiLower(Trim(query));
   if (needle.empty()) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "error: memory search requires a non-empty key query");
+                       "memory search requires a non-empty key query");
   }
   constexpr size_t kMaxMatches = 16;
   constexpr size_t kMaxLineBytes = 320;
@@ -181,8 +181,7 @@ ToolResult SearchMemoryText(const std::string& query,
         continue;
       }
       output += "- " + memory.key + ": " +
-                Utf8Trunc(OneLine(RedactMemorySecrets(line)), kMaxLineBytes) +
-                "\n";
+                OneLine(RedactMemorySecrets(line), kMaxLineBytes) + "\n";
       emitted = true;
       if (capped()) return ToolSuccess(std::move(output));
       break;
@@ -192,10 +191,9 @@ ToolResult SearchMemoryText(const std::string& query,
       if (capped()) return ToolSuccess(std::move(output));
     }
   }
-  return matches
-             ? ToolSuccess(std::move(output))
-             : ToolFailure(ToolErrorCode::kNotFound,
-                           "error: no memory matches: " + TerminalSafe(query));
+  return matches ? ToolSuccess(std::move(output))
+                 : ToolFailure(ToolErrorCode::kNotFound,
+                               "no memory matches: " + TerminalSafe(query));
 }
 
 ToolResult ReadMemoryFile(const MemoryEntry& memory) {
@@ -203,14 +201,13 @@ ToolResult ReadMemoryFile(const MemoryEntry& memory) {
       memory.key.starts_with("global/") || memory.key.starts_with("project/");
   std::ifstream input(memory.path, std::ios::binary);
   if (!input) {
-    return ToolFailure(ToolErrorCode::kNotFound, "error: no such memory");
+    return ToolFailure(ToolErrorCode::kNotFound, "no such memory");
   }
-  size_t max_bytes = static_cast<size_t>(MemoryBytes());
   std::string body;
-  bool truncated = ReadBounded(input, max_bytes, body);
+  bool truncated = ReadBounded(input, kMemoryBytes, body);
   if (truncated && writable) {
     return ToolFailure(ToolErrorCode::kLimitExceeded,
-                       "error: saved memory exceeds configured limit");
+                       "saved memory exceeds configured limit");
   }
   body = RedactMemorySecrets(std::move(body));
   if (truncated) body += "\n[external memory truncated; use search to narrow]";
@@ -224,13 +221,12 @@ ToolResult AccessMemory(const std::string& name, const std::string& scope,
   namespace fs = std::filesystem;
   if (Trim(name).empty()) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "error: memory name must not be empty");
+                       "memory name must not be empty");
   }
-  int64_t max_bytes = MemoryBytes();
-  if (content && static_cast<int64_t>(content->size()) > max_bytes) {
+  if (content && content->size() > kMemoryBytes) {
     return ToolFailure(ToolErrorCode::kLimitExceeded,
-                       "error: a memory is limited to " +
-                           std::to_string(max_bytes) +
+                       "a memory is limited to " +
+                           std::to_string(kMemoryBytes) +
                            " bytes; keep it to the durable lesson");
   }
 
@@ -238,19 +234,16 @@ ToolResult AccessMemory(const std::string& name, const std::string& scope,
   fs::path path = MemoryDirectory(scope, Repository(cwd)) / filename;
 
   if (!LibraryPath(GlobalBase(), path)) {
-    return ToolFailure(ToolErrorCode::kPermissionDenied,
-                       "error: unsafe memory path");
+    return ToolFailure(ToolErrorCode::kPermissionDenied, "unsafe memory path");
   }
   if (forget) {
     std::string previous, error;
-    if (!ReadRegularFile(path.string(), static_cast<size_t>(max_bytes),
-                         previous, error)) {
-      return ToolFailure(ToolErrorCode::kNotFound, "error: " + error);
+    if (!ReadRegularFile(path.string(), kMemoryBytes, previous, error)) {
+      return ToolFailure(ToolErrorCode::kNotFound, error);
     }
     std::error_code code;
     if (!fs::remove(path, code)) {
-      return ToolFailure(ToolErrorCode::kInternal,
-                         "error: cannot delete memory");
+      return ToolFailure(ToolErrorCode::kInternal, "cannot delete memory");
     }
     MemoryEvent event{
         "deleted",
@@ -275,18 +268,18 @@ ToolResult AccessMemory(const std::string& name, const std::string& scope,
 
   if (Trim(*content).empty()) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "error: memory content must not be empty; use forget");
+                       "memory content must not be empty; use forget");
   }
   bool existed = fs::exists(path);
   if (!existed) {
-    int64_t count = 0;
+    size_t count = 0;
     for (const MemoryEntry& memory : ListMemories(cwd)) {
       count += memory.key.starts_with(scope + "/");
     }
-    if (count >= MaxMemories()) {
+    if (count >= kMaxMemories) {
       return ToolFailure(ToolErrorCode::kLimitExceeded,
-                         "error: " + scope + " memory is full (" +
-                             std::to_string(MaxMemories()) +
+                         scope + " memory is full (" +
+                             std::to_string(kMaxMemories) +
                              "); delete or consolidate one before adding "
                              "another");
     }
@@ -300,9 +293,9 @@ ToolResult AccessMemory(const std::string& name, const std::string& scope,
     MakePrivateDir(projects, project.c_str());
   }
   std::string previous, read_error;
-  if (existed && !ReadRegularFile(path.string(), static_cast<size_t>(max_bytes),
-                                  previous, read_error)) {
-    return ToolFailure(ToolErrorCode::kInternal, "error: " + read_error);
+  if (existed &&
+      !ReadRegularFile(path.string(), kMemoryBytes, previous, read_error)) {
+    return ToolFailure(ToolErrorCode::kInternal, read_error);
   }
   std::string action = !existed               ? "created"
                        : previous == *content ? "unchanged"
@@ -347,20 +340,20 @@ static ToolResult MemoryAction(const std::string& action,
   if (action != "get" && action != "set" && action != "forget" &&
       action != "list" && action != "search") {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "error: action must be get, set, forget, list, or "
+                       "action must be get, set, forget, list, or "
                        "search");
   }
   if (action == "list") {
     if (content || !Trim(key).empty()) {
       return ToolFailure(ToolErrorCode::kInvalidArguments,
-                         "error: list does not accept key or content");
+                         "list does not accept key or content");
     }
     return ListMemoryKeys(cwd);
   }
   if (action == "search") {
     if (content) {
       return ToolFailure(ToolErrorCode::kInvalidArguments,
-                         "error: search does not accept content");
+                         "search does not accept content");
     }
     return SearchMemoryText(key, cwd);
   }
@@ -368,7 +361,7 @@ static ToolResult MemoryAction(const std::string& action,
   if (slash == std::string::npos || slash == 0 || slash + 1 == key.size() ||
       key.find('/', slash + 1) != std::string::npos) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "error: memory key must be project/<name> or "
+                       "memory key must be project/<name> or "
                        "global/<name>");
   }
   std::string scope{ScopePrefix(key)};
@@ -376,19 +369,19 @@ static ToolResult MemoryAction(const std::string& action,
   if (scope == "codex" || scope == "claude") {
     if (action != "get" || content) {
       return ToolFailure(ToolErrorCode::kPermissionDenied,
-                         "error: " + scope + " memories are read-only");
+                         scope + " memories are read-only");
     }
     std::vector<MemoryEntry> memories = ListMemories(cwd);
     auto found = std::find_if(
         memories.begin(), memories.end(),
         [&](const MemoryEntry& memory) { return memory.key == key; });
     return found == memories.end()
-               ? ToolFailure(ToolErrorCode::kNotFound, "error: no such memory")
+               ? ToolFailure(ToolErrorCode::kNotFound, "no such memory")
                : ReadMemoryFile(*found);
   }
   if (scope != "project" && scope != "global") {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "error: memory key must start with project/, global/, "
+                       "memory key must start with project/, global/, "
                        "codex/, or claude/");
   }
   const bool has_content =
@@ -402,10 +395,9 @@ static ToolResult MemoryAction(const std::string& action,
   if (action == "forget" && !has_content) {
     return AccessMemory(name, scope, std::nullopt, true, cwd);
   }
-  return ToolFailure(
-      ToolErrorCode::kInvalidArguments,
-      "error: " + action +
-          (action == "set" ? " requires content" : " does not accept content"));
+  return ToolFailure(ToolErrorCode::kInvalidArguments,
+                     action + (action == "set" ? " requires content"
+                                               : " does not accept content"));
 }
 
 ToolResult ToolMemoryAction(const std::string& action, const std::string& key,
@@ -469,7 +461,7 @@ json MemoryControl(const json& request, const std::filesystem::path& cwd) {
     for (const auto& entry : entries) items.push_back(describe(entry, false));
     return {{"items", items},
             {"enabled", RuntimeConfig::FromEnvironment().memory_enabled},
-            {"limit", MemoryBytes()},
+            {"limit", kMemoryBytes},
             {"applies", "new_sessions"}};
   }
   auto found =
@@ -564,7 +556,7 @@ std::vector<MemoryEntry> ListMemories() {
 
 std::vector<MemoryEntry> ListMemories(const std::filesystem::path& cwd,
                                       size_t limit) {
-  if (limit == 0) limit = static_cast<size_t>(MaxMemories());
+  if (limit == 0) limit = kMaxMemories;
   namespace fs = std::filesystem;
   std::vector<MemoryEntry> entries;
   RepositoryPaths repo = Repository(cwd);
@@ -635,7 +627,7 @@ MemoryIndex LoadMemoryIndex(const std::filesystem::path& cwd,
 }
 
 // Behavioral "always-on" slice: global memories are injected whole into the
-// startup context alongside the index, capped by UAGENT_MEMORY_ALWAYS_BYTES.
+// startup context alongside the index, capped by kMemoryAlwaysBytes.
 // Global scope is the applies-everywhere bucket, so these are exactly the
 // standing preferences the agent should not have to go look up.
 //
@@ -667,12 +659,11 @@ MemoryIndex LoadAlwaysOnMemory(const std::filesystem::path& cwd,
 
   MemoryIndex index;
   size_t used = 0;
-  size_t body_cap = static_cast<size_t>(MemoryBytes());
   for (const auto& [bytes, memory] : globals) {
     std::ifstream input(memory.path, std::ios::binary);
     if (!input) continue;
     std::string body;
-    if (ReadBounded(input, body_cap, body)) {
+    if (ReadBounded(input, kMemoryBytes, body)) {
       // Larger than a single memory is allowed to be: it belongs in the index
       // for an explicit get, not in every request.
       index.truncated = true;

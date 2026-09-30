@@ -19,6 +19,7 @@
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
+#include "include/core/limits.h"
 #include "include/mcp/server.h"
 
 namespace uagent {
@@ -171,11 +172,11 @@ inline bool McpResolveRoots(const json& conf, const std::string& configured,
 
 // A trusted ./.mcp.json then ~/.mcp.json — the project layer wins.
 // The credential/config loader never imports a project .env.
-inline json McpLoadConfig(const json& trusted_project, size_t max_bytes) {
-  auto read = [max_bytes](const std::string& path) -> json {
+inline json McpLoadConfig(const json& trusted_project) {
+  auto read = [](const std::string& path) -> json {
     std::error_code ec;
     uintmax_t bytes = std::filesystem::file_size(path, ec);
-    if (!ec && max_bytes > 0 && bytes > max_bytes) {
+    if (!ec && bytes > kMcpConfigBytes) {
       McpError(path, "configuration exceeds byte limit");
       return json::object();
     }

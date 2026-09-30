@@ -20,6 +20,7 @@
 
 #include "include/browser/browser.h"
 #include "include/core/fd.h"
+#include "include/core/platform.h"
 #include "include/web/rfb_filter.h"
 
 namespace uagent::web {
@@ -44,17 +45,6 @@ std::optional<Lease> ReadLease(const std::string& device) {
                status.value("controller", false)};
 }
 
-bool WriteAll(int fd, const std::string& data) {
-  size_t sent = 0;
-  while (sent < data.size()) {
-    pollfd ready{fd, POLLOUT, 0};
-    if (poll(&ready, 1, 2000) <= 0) return false;
-    ssize_t n = write(fd, data.data() + sent, data.size() - sent);
-    if (n <= 0) return false;
-    sent += static_cast<size_t>(n);
-  }
-  return true;
-}
 }  // namespace
 
 ViewerSession RelayBrowserViewer(httplib::ws::WebSocket& socket,
@@ -79,7 +69,7 @@ ViewerSession RelayBrowserViewer(httplib::ws::WebSocket& socket,
   bool driving = initial->controller;
   uint64_t generation = initial->generation;
   const auto release = [&] {
-    if (driving) WriteAll(rfb.Get(), filter.Release());
+    if (driving) WriteAllWithin(rfb.Get(), filter.Release(), 2000);
     driving = false;
   };
   std::thread output([&] {
@@ -118,7 +108,7 @@ ViewerSession RelayBrowserViewer(httplib::ws::WebSocket& socket,
     }
     std::lock_guard lock(input);
     if (!filter.Push(data, forwarded, driving) ||
-        !WriteAll(rfb.Get(), forwarded)) {
+        !WriteAllWithin(rfb.Get(), forwarded, 2000)) {
       break;
     }
   }

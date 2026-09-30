@@ -14,7 +14,7 @@ import {
   Select,
   Textarea,
 } from "../../shared/ui.tsx";
-import { Popover } from "../../shared/popover.tsx";
+import { SheetButton } from "../../shared/sheet.tsx";
 import { ChevronDown, Keyboard } from "lucide-preact";
 import BrowserTouch from "./touch.tsx";
 import { hideTouchCursor, sendPointer } from "./rfb.ts";
@@ -522,13 +522,11 @@ export default function BrowserPanel({
   };
   // Status, page, profiles and stopping share one menu on the status pill.
   const statusMenu = (
-    <Popover
+    <SheetButton
       label={`${detail}. Browser status and profiles`}
       className="browser-status-menu"
-      buttonClass="quiet with-icon browser-status"
-      panelClass="browser-profile-panel"
-      side="top"
-      align="start"
+      buttonClass="quiet browser-status"
+      heading="Browser"
       disabled={!status.ok}
       trigger={
         <>
@@ -545,7 +543,7 @@ export default function BrowserPanel({
             {state}
             {profileName !== "Default" && ` · ${profileName}`}
           </span>
-          <ChevronDown aria-hidden="true" />
+          <ChevronDown />
         </>
       }
     >
@@ -614,7 +612,7 @@ export default function BrowserPanel({
           </form>
         )}
       </div>
-    </Popover>
+    </SheetButton>
   );
 
   // One message at most sits on the screen's top edge.
@@ -771,7 +769,7 @@ export default function BrowserPanel({
               onPointerDown={keepFocus}
               onClick={() => keyboard.current?.blur()}
             >
-              <Keyboard aria-hidden="true" />
+              <Keyboard />
             </IconButton>
           </>
         ) : (

@@ -1,6 +1,7 @@
 import { useState } from "preact/hooks";
 import { api } from "../../state/api.ts";
 import { Button, Mark, Input } from "../../shared/ui.tsx";
+import "./pairing.css";
 export default function Pairing({
   paired,
   report,
@@ -52,9 +53,10 @@ export default function Pairing({
         <Button
           type="submit"
           variant="primary"
-          disabled={busy || !navigator.onLine}
+          busy={busy}
+          disabled={!navigator.onLine}
         >
-          {busy ? "Connecting…" : "Connect device"}
+          Connect device
         </Button>
       </form>
       <p class="muted">

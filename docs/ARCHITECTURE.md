@@ -50,9 +50,9 @@ fuzzers and `uagent_web` link it. Public headers live under `include/`
 (top-level facades plus `include/<module>/`); only module-private shared
 declarations stay in `src/<module>/*_internal.h`. `tests/boundary_test.py`
 rejects any new include that points up this order; its `KNOWN` set lists the
-remaining exceptions. The web bundle embeds
-`web/dist` or fails with instructions (`npm run build` in `web/`, or
-`-DUAGENT_WEB=OFF`).
+remaining exceptions. The web host embeds the
+built `web/dist` (`npm run build` in `web/`, or CI's web-dist artifact); a
+first configure without it builds CLI-only and says how to add the UI.
 
 ## Session runtime and clients
 
@@ -88,23 +88,35 @@ Closing a client detaches it. Closing the runtime cancels work, saves state and
 reaps session-owned children. An internal writer lease prevents two runtimes
 from owning one file; clients do not acquire that lease. Runtime discovery uses
 private sockets, a bounded startup scan and native directory notifications, not
-live JSON sidecars, inbox files or terminal-specific mirroring. Schedule,
+live JSON sidecars or terminal-specific mirroring. Schedule,
 prompt and library invalidation uses the native multi-path watcher and wakes at
 the next actual schedule deadline. Independent conversations may share a project
 folder; edits to shared project files still require coordination.
 
-A normal collaborator follow-up starts a bounded child process from its saved
-conversation. A persistent collaborator instead keeps one same-binary session
-worker and its process supervisor under the parent runtime. Sequential
-handoffs use the worker's ordinary command/checkpoint protocol, so its shell
-and background activities survive between handoffs. Parent shutdown stops that
-worker and its complete process group. A lifetime pipe also closes the worker
-after an abrupt parent exit; it is never inherited by tool executables.
+A delegated child is a headless `-p` run of the same binary, supervised as a
+background activity of its parent. It saves an ordinary session file in the
+workspace's history whose header carries a `delegation` object (parent, name,
+role, directive, mode, model); the catalogue hides such files, and the parent
+finds its children by that header. A follow-up starts a new bounded child
+process from the saved conversation, and a message to a finished child starts
+one on that message. A child's result reaches its parent through the activity
+completion; an idle parent takes it up at once as a turn.
+
+Sessions message each other through durable mailboxes
+([PERSISTENCE.md](PERSISTENCE.md#mail)): linked peers, a parent and its
+children, children of one parent, and a folder's coordinator and its threads.
+Each runtime watches its mailbox (inotify, kqueue on macOS) and delivers at
+the next model step, including after a final answer, which reopens the turn;
+an idle runtime starts a turn on mail meant to wake it, and a headless child
+answers mail that arrives after its last step before it exits. A thread's
+finished turns and questions reach its coordinator this way within
+milliseconds, starting the coordinator's runtime when none runs; at the daily
+spend limit the coordinator's mail waits. Senders are refused, visibly, past 64
+pending messages, 20 a minute or 8 forwards.
 
 Headless `-p` runs use the same application, agent and event policies in one
 process. Their bounded invocation and machine-output contract are separate from
-an attached interactive client. Collaborator processes retain their explicit
-supervisor-owned lifetime.
+an attached interactive client.
 
 ## Events and observability
 
@@ -116,8 +128,7 @@ cannot return a tool result or grant authority.
 
 The command side changes state; the event side reports the change.
 `message.changed` updates visible history, `usage.updated` reports current
-provider accounting, `activities.changed` reports supervised work,
-`collaborator.changed` reports retained-worker lifecycle, and interaction
+provider accounting, `activities.changed` reports supervised work, and interaction
 events carry correlated decisions. Final checkpoints reconcile complete state.
 Terminal Markdown/ANSI and browser DOM state are projections, never alternate
 writers.
@@ -127,7 +138,11 @@ That identity reaches the saved assistant display record, while provider tool
 call IDs remain raw provider facts. Tool occurrences are scoped to the response
 and have a separate retained-detail identity. Content revision and completeness
 are independent: a bounded checkpoint preview at the same revision cannot
-replace a fuller body already held by a client. The runtime also publishes its
+replace a fuller body already held by a client. One reducer
+(`ApplySessionEvent`) folds events into a view of rows: one per message and
+one per tool call, keyed so a live call, its result and the saved message land
+on the same row. The worker, the host and an attached terminal each fold with
+it; browsers receive the host's result as `block` patches. The runtime also publishes its
 canonical execution phase and pending decision; transport connection health
 remains client-owned.
 

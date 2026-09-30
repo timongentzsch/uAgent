@@ -13,6 +13,7 @@
 #include <thread>
 
 #include "include/app/control.h"
+#include "include/app/launch.h"
 #include "include/core/fs.h"
 #include "include/core/lease.h"
 #include "include/core/limits.h"
@@ -87,11 +88,9 @@ json Mutate(const std::function<json(json&)>& change) {
 json Run(const json& task, int64_t at, const std::string& status) {
   auto id = HashHex(MakeSessionId());
   const auto project = JsonValue(task, "cwd", "");
-  const auto cwd = JsonValue(task, "environment", "local") == "worktree"
-                       ? UagentDir("worktrees") + "/" + id
-                       : project;
-  const auto folder = UagentDir(kHistoryDir) + "/" + WorkspaceId(cwd);
-  const auto path = folder + "/scheduled-" + id + ".json";
+  const auto [cwd, path] =
+      PlanLaunch(project, JsonValue(task, "environment", "local") == "worktree",
+                 "scheduled-", id);
   return {{"id", id},
           {"task_id", task["id"]},
           {"task_revision", task["revision"]},
@@ -321,11 +320,8 @@ json ScheduleControl(const json& request) {
                  "provide a name, instructions, execution environment and "
                  "permissions"}};
       }
-      std::error_code ec;
-      auto cwd = std::filesystem::canonical(JsonValue(task, "cwd", ""), ec);
-      if (ec || !std::filesystem::is_directory(cwd, ec)) {
-        return {{"error", "project is unavailable"}};
-      }
+      const auto cwd = CanonicalDirectory(JsonValue(task, "cwd", ""));
+      if (!cwd) return {{"error", "project is unavailable"}};
       if (found == store["tasks"].end() &&
           (!id.empty() || store["tasks"].size() >= kTasks)) {
         return {{"error", "task not found or task limit reached"}};
@@ -352,7 +348,7 @@ json ScheduleControl(const json& request) {
                     {"revision", HashHex(MakeSessionId())},
                     {"name", name},
                     {"prompt", prompt},
-                    {"cwd", cwd.string()},
+                    {"cwd", cwd->string()},
                     {"environment", environment},
                     {"permissions", permissions},
                     {"model", JsonValue(task, "model", "")},

@@ -7,7 +7,7 @@ import type {
   Session,
 } from "../../shared/types.ts";
 import { useEffect, useRef, useState } from "preact/hooks";
-import { SettingRowsLoading } from "../../shared/loading.tsx";
+import { SettingRowsLoading } from "./loading.tsx";
 import { command } from "../../state/api.ts";
 import {
   Actions,

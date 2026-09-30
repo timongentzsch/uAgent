@@ -38,7 +38,7 @@ account for untrusted code.
   remembered rule, and are denied when no interactive client can answer, as
   in a delegated child: writing µAgent's configuration (user and project
   `.uagent/.config`, the trust store, `~/.uagent/config/permissions.json`,
-  `system-prompt.json`, `.mcp.json`) or reading its credential-bearing files
+  your instruction files in `~/.uagent`, `.mcp.json`) or reading its credential-bearing files
   through file tools, the `uagent` tool's `configure` action, and
   `run(sandbox=false)`.
 - Paths are canonicalized to reduce symlink escapes. Writes are atomic.
@@ -110,13 +110,17 @@ Outbound network access is allowed by default because git, npm and pip need it;
 `UAGENT_SANDBOX_NET=0` denies all IP traffic on macOS and outbound TCP on
 Linux, where Landlock cannot express the rest.
 
-A workspace's `.uagent/.config`, `.uagent/system-prompt.json` and `.mcp.json`
-are carved out of the writable workspace on macOS only. Landlock has no deny
-rule, so the same guarantee on Linux would mean not granting the workspace.
-On Linux, a command that changes one of them still revokes project trust, so
-the next launch asks again.
-The built-in file tools and the `uagent` tool still reach these files, with
-mandatory human approval for each change.
+A workspace's `.uagent/.config` and `.mcp.json`, and in a repository its
+`.git/config` and `.git/hooks` (which your own git would run), are carved out
+of the writable workspace on macOS only; sandboxed commands can still commit,
+but not change git config. Landlock has no deny rule, so the same
+guarantee on Linux would mean not granting the workspace. On Linux, a command
+that changes `.config` or `.mcp.json` still revokes project trust, so the next
+launch asks again. A project's instruction files (`AGENTS.md`,
+`.uagent/COORDINATOR.md`) are ordinary repository files that any session in
+it may edit.
+The built-in file tools and the `uagent` tool still reach `.config` and
+`.mcp.json`, with mandatory human approval for each change.
 
 A session can run unconfined in two ways, both reported:
 
@@ -124,7 +128,7 @@ A session can run unconfined in two ways, both reported:
   headless or delegated runs answer no, so a delegated child cannot unconfine
   itself.
 - On a Linux kernel without Landlock, the sandbox degrades: a startup warning,
-  a `capability_changed` event, `sandbox.mode=degraded`, and commands run
+  a `capability.changed` event, `sandbox.mode=degraded`, and commands run
   unconfined. A session that requested the sandbox explicitly, in the
   environment or a config file, refuses to run commands instead.
 

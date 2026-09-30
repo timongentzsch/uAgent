@@ -28,10 +28,11 @@ per-conversation choices made with `/tools`.
 | `web_fetch` | read one public http(s) URL as text | always |
 | `artifact` | hand the user a file to open or download (HTML runs sandboxed, PDFs and images open inline); snapshot into the session's assets | a session with a client |
 | `web_search` | cited web search through OpenRouter's hosted search | an OpenRouter-protocol route or search endpoint |
-| `session` | list linked sessions and message them | always |
-| `subagent` | delegate a subtask to a durable collaborator | delegation depth below `UAGENT_SUBAGENT_DEPTH` |
+| `session` | list linked sessions and message them; an idle one starts a turn on the message | always |
+| `ask` | put 1 to 4 multiple-choice questions to the user and wait; an option can show an image the agent made in the workspace and a monospace preview; they may answer in their own words or with an image | a session someone can answer (never headless runs or children); a thread's questions go to its coordinator first |
+| `subagent` | delegate a subtask to a durable child session | delegation depth below `UAGENT_SUBAGENT_DEPTH` |
 | `skill` | load an installed skill | a usable skill is installed |
-| `adapt_system` | read and revise the system prompt | `UAGENT_ADAPT_SYSTEM=1`; see [SYSTEM_PROMPTS.md](SYSTEM_PROMPTS.md) |
+| `adapt_system` | add to or replace the base prompt for this conversation | `UAGENT_ADAPT_SYSTEM=1`; see [SYSTEM_PROMPTS.md](SYSTEM_PROMPTS.md) |
 | `browser` | drive the shared Chrome of the browser appliance | top-level web sessions with `UAGENT_BROWSER_DATA`; see [WEB.md](WEB.md) |
 | `<server>_<tool>` | tools discovered from MCP servers; see [OPERATIONS.md](OPERATIONS.md#mcp) | configured servers; not in lean children |
 
@@ -63,8 +64,8 @@ follow the permission mode (`/permissions`, `UAGENT_APPROVAL`):
   command sandbox off.
 
 Some actions always need a person: reading or writing µAgent's config files,
-`.mcp.json` or `permissions.json`, writing the project trust store or a
-`system-prompt.json`, changing settings through `uagent`, and
+`.mcp.json` or `permissions.json`, writing the project trust store, your
+instruction files in `~/.uagent`, changing settings through `uagent`, and
 `run(sandbox=false)`. Remembered rules and automatic modes do not apply, and a
 session with nobody to ask denies. Child processes get the sanitized
 environment described in [SECURITY.md](../SECURITY.md).
@@ -88,12 +89,11 @@ environment described in [SECURITY.md](../SECURITY.md).
 
 ## Activities
 
-`run` waits `UAGENT_RUN_YIELD_MS` (10 s) and then returns a still-running
-command as an activity. `yield_ms` of 250–30,000 overrides the wait and `0`
-waits until the command exits. Set `tty=true` only when the process needs
-interactive input; a PTY keeps merged output, writable input, interruption and
-resize. `detach=true` keeps the command running after the session ends, with a
-rotating log.
+`run` waits 10 s and then returns a still-running command as an activity.
+`yield_ms` of 250–30,000 overrides the wait and `0` waits until the command
+exits. Set `tty=true` only when the process needs interactive input; a PTY
+keeps merged output, writable input, interruption and resize. `detach=true`
+keeps the command running after the session ends, with a rotating log.
 
 Every `activity` call names one `operation`:
 
@@ -113,16 +113,13 @@ non-PTY activity is rejected.
 ## Delegation
 
 `subagent` defaults to `operation=spawn` and returns an activity ID and a
-durable collaborator ID.
+durable agent ID.
 
-- `followup` resumes the collaborator's private conversation and prepends its
+- `followup` resumes the child's private conversation and prepends its
   stored `directive`; an empty directive clears it.
-- `message` delivers one-shot guidance at the child's next step, or at the next
-  follow-up when it is idle.
-- `list` reports this workspace's collaborators with model, toolset and state.
-- `persistent=true` keeps one blocking collaborator's session worker and
-  processes alive between handoffs; its model, mode and limits are fixed at
-  spawn. Stop it through `subagent`.
+- `message` delivers one-shot guidance at a running child's next step; a
+  finished child runs again on it.
+- `list` reports this session's children with model, toolset and state.
 - Use `activity` to wait for, read or stop ordinary children. `/agents` shows
   the same records.
 
@@ -130,8 +127,9 @@ durable collaborator ID.
 
 `web_fetch` needs no hosted-search route. It decodes HTML, JSON, XML and plain
 text and refuses other content types; download PDFs and images with `run` and
-open them with `read_path`. Bodies over `UAGENT_WEB_FETCH_BYTES` are truncated
-and marked partial. Pages behind a login or built by scripts need the browser.
+open them with `read_path`. Bodies over the attachment cap
+(`UAGENT_ATTACHMENT_MB`) are truncated and marked partial. Pages behind a login
+or built by scripts need the browser.
 
 Only public Internet addresses are accepted. Every resolved IPv4 and IPv6
 address of the initial request and of each redirect is checked; loopback,

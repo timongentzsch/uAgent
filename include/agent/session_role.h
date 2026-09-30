@@ -1,0 +1,22 @@
+// Copyright 2026 Timon Gentzsch
+#ifndef UAGENT_INCLUDE_AGENT_SESSION_ROLE_H_
+#define UAGENT_INCLUDE_AGENT_SESSION_ROLE_H_
+// The roles a session can have beyond an ordinary conversation: a folder's
+// coordinator, or a thread it started. A session header's `kind` names it.
+
+#include "include/core/json.h"
+
+namespace uagent {
+inline constexpr const char* kSessionKindCoordinator = "coordinator";
+inline constexpr const char* kSessionKindThread = "thread";
+// A thread's decision with this route is its coordinator's to answer.
+inline constexpr const char* kRouteCoordinator = "coordinator";
+
+// A pending decision or approval that waits on a person rather than on the
+// thread's coordinator.
+inline bool WaitsOnPerson(const json& pending) {
+  return pending.is_object() &&
+         JsonValue(pending, "route", "") != kRouteCoordinator;
+}
+}  // namespace uagent
+#endif

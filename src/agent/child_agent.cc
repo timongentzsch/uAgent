@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "include/agent/file_services.h"
+#include "include/agent/session_links.h"
 #include "include/core/debug.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
@@ -28,7 +29,6 @@
 #include "include/core/steering.h"
 #include "include/core/strings.h"
 #include "include/core/time.h"
-#include "include/tools/session.h"
 
 namespace uagent {
 namespace {
@@ -142,6 +142,11 @@ std::string FailureSummary(ChildAgentFailureStage stage,
 std::string ChildAgentFailureReport(std::string_view route,
                                     ChildAgentFailureStage stage,
                                     std::string_view diagnostics) {
+  // Diagnostics often arrive as a failed result's output; its marker is the
+  // carrier's, not part of what the child printed.
+  if (diagnostics.starts_with(kToolErrorPrefix)) {
+    diagnostics.remove_prefix(kToolErrorPrefix.size());
+  }
   // A child that ran and stopped on a limit reports which one, before the
   // diagnostics are squeezed: that line is what tells the caller whether
   // raising a ceiling would change anything.
@@ -203,7 +208,8 @@ std::string ChildAgentFailureReport(std::string_view route,
 
 EnvironmentOverrides ChildAgentEnvironment(SideRoute route) {
   EnvironmentOverrides environment = RouteEnvironment(route);
-  environment.emplace_back("UAGENT_DEPTH", std::to_string(AgentDepth() + 1));
+  environment.emplace_back("UAGENT_INTERNAL_DEPTH",
+                           std::to_string(AgentDepth() + 1));
   environment.emplace_back("UAGENT_API_KEY", std::move(route.api_key));
   environment.emplace_back("UAGENT_USAGE_FILE", UsageLedger());
   return environment;
@@ -271,12 +277,11 @@ std::string ChildAgentStopNote(const json& stop) {
   return note;
 }
 
-const std::string& CollaboratorSessionFile() {
+const std::string& DelegatedSessionFile() {
   static const std::string kSessionFile = [] {
     std::string requested = EnvStr("UAGENT_INTERNAL_SESSION_FILE");
     if (requested.empty()) return std::string();
-    std::filesystem::path root =
-        CanonicalAccessPath(UagentDir("collaborators"));
+    std::filesystem::path root = CanonicalAccessPath(UagentDir(kHistoryDir));
     std::filesystem::path file = CanonicalAccessPath(requested);
     if (!PathWithin(file, root)) return std::string();
     return file.string();
@@ -284,210 +289,27 @@ const std::string& CollaboratorSessionFile() {
   return kSessionFile;
 }
 
-namespace {
-
-// One message per file in a recipient's inbox, oldest first. The name
-// carries a UTC second, the writing pid and a per-process counter, so messages
-// from one sender stay ordered and two senders in the same second interleave
-// by pid rather than by nothing. Flat files because the pruner removes files,
-// not directories.
-struct Mailbox {
-  std::string dir;
-  // Cannot collide with a record name: ids pass SafeFileComponent, whose
-  // alphabet has no dot.
-  std::string_view infix;
-  std::string_view text_field;
-
-  std::vector<std::filesystem::path> Files(const std::string& id) const {
-    std::vector<std::filesystem::path> files;
-    if (id.empty() || SafeFileComponent(id) != id) return files;
-    const std::string prefix = id + std::string(infix);
-    std::error_code error;
-    for (std::filesystem::directory_iterator it(dir, error), end;
-         !error && it != end; it.increment(error)) {
-      std::string name = it->path().filename().string();
-      if (name.starts_with(prefix) && name.ends_with(".json")) {
-        files.push_back(it->path());
-      }
-    }
-    std::sort(files.begin(), files.end());
-    return files;
-  }
-
-  // Nothing when the file is unreadable or malformed; the caller unlinks it
-  // either way, since undeliverable mail would otherwise be retried forever.
-  std::optional<QueuedMessage> Read(const std::filesystem::path& path) const {
-    std::ifstream input(path);
-    json mail = json::parse(input, nullptr, false);
-    if (mail.is_discarded() || !mail.is_object()) return std::nullopt;
-    QueuedMessage out;
-    out.text = JsonValue(mail, std::string(text_field).c_str(), std::string());
-    if (out.text.empty()) return std::nullopt;
-    out.from = JsonValue(mail, "from", std::string());
-    out.hops =
-        std::max(0, static_cast<int>(JsonValue(mail, "hops", int64_t{0})));
-    return out;
-  }
-
-  ToolResult Write(const std::string& id, const std::string& text,
-                   const std::string& from, int hops) const {
-    if (id.empty() || SafeFileComponent(id) != id) {
-      return ToolFailure(ToolErrorCode::kInvalidArguments,
-                         "error: unknown recipient " + id);
-    }
-    if (text.empty()) {
-      return ToolFailure(ToolErrorCode::kInvalidArguments,
-                         "message requires text");
-    }
-    static std::atomic<uint64_t> sequence{0};
-    // Zero-padded so a plain filename sort is chronological within a second.
-    std::string seq = std::to_string(
-        sequence.fetch_add(1, std::memory_order_relaxed) % 10000);
-    seq.insert(0, 4 - std::min<size_t>(4, seq.size()), '0');
-    const std::string path = dir + "/" + id + std::string(infix) +
-                             UtcStamp("%Y%m%dT%H%M%SZ") + "-" +
-                             std::to_string(getpid()) + "-" + seq + ".json";
-    json mail = {{"format", 1},
-                 {std::string(text_field), text},
-                 {"from", from},
-                 {"hops", hops}};
-    return ToolAtomicWrite(path, JsonDump(mail, 2) + "\n", kPrivateFileMode,
-                           /*preserve_mode=*/true);
-  }
-
-  std::vector<QueuedMessage> Take(const std::string& id) const {
-    std::vector<QueuedMessage> messages;
-    for (const std::filesystem::path& path : Files(id)) {
-      std::optional<QueuedMessage> message = Read(path);
-      std::error_code error;
-      std::filesystem::remove(path, error);
-      if (message) messages.push_back(std::move(*message));
-    }
-    return messages;
-  }
-};
-
-Mailbox CollaboratorMailbox() {
-  return {UagentDir("collaborators"), ".mail-", "prompt"};
+const json& OwnDelegation() {
+  static const json kDelegation = [] {
+    if (DelegatedSessionFile().empty()) return json::object();
+    json parsed =
+        json::parse(EnvStr("UAGENT_INTERNAL_DELEGATION"), nullptr, false);
+    return parsed.is_object() ? parsed : json::object();
+  }();
+  return kDelegation;
 }
-
-Mailbox SessionMailbox() {
-  return {UagentDir("sessions") + "/inbox", ".smail-", "text"};
-}
-
-}  // namespace
-
-// The id this process is running as, from the session file the parent handed
-// down. Empty in a process that is not a collaborator.
-std::string OwnCollaboratorId() {
-  const std::string& session = CollaboratorSessionFile();
-  if (session.empty()) return {};
-  std::string name = std::filesystem::path(session).filename().string();
-  constexpr std::string_view kSuffix = ".session.json";
-  if (!name.ends_with(kSuffix)) return {};
-  name.resize(name.size() - kSuffix.size());
-  return name;
-}
-
-std::string OwnTeam() { return EnvStr("UAGENT_TEAM"); }
 
 std::string OwnSessionFile() {
-  const std::string& internal = CollaboratorSessionFile();
-  if (!internal.empty()) return internal;
+  const std::string& delegated = DelegatedSessionFile();
+  if (!delegated.empty()) return delegated;
   return EnvStr("UAGENT_INTERNAL_SESSION_PATH");
 }
 
 std::string OwnSessionId() {
   const std::string file = OwnSessionFile();
   if (file.empty()) return {};
-  std::string name = std::filesystem::path(file).filename().string();
-  for (std::string_view suffix :
-       {std::string_view{".session.json"}, std::string_view{".json"}}) {
-    if (name.ends_with(suffix) && name.size() > suffix.size()) {
-      name.resize(name.size() - suffix.size());
-      return name;
-    }
-  }
-  return {};
-}
-
-ToolResult WriteSessionMail(const std::string& id, const std::string& text,
-                            const std::string& from, int hops) {
-  return SessionMailbox().Write(id, text, from, hops);
-}
-
-std::vector<QueuedMessage> TakeSessionMail(const std::string& id) {
-  return SessionMailbox().Take(id);
-}
-
-void DrainSessionMailIntoSteering() {
-  const std::string id = OwnSessionId();
-  if (id.empty()) return;
-  const Mailbox mailbox = SessionMailbox();
-  const std::vector<std::filesystem::path> files = mailbox.Files(id);
-  if (files.empty()) return;
-  // Titles once per drain, not per file: the summaries scan is directory IO.
-  std::map<std::string, std::string> titles;
-  for (const json& row : SessionSummaries()) {
-    titles[JsonValue(row, "id", "")] = JsonValue(row, "title", "");
-  }
-  for (const std::filesystem::path& path : files) {
-    std::optional<QueuedMessage> mail = mailbox.Read(path);
-    // Gated here, not at take: a message sent before linking is delivered
-    // after linking instead of being dropped or bounced.
-    if (mail && (mail->from.empty() || !SharesLink(mail->from, id))) continue;
-    if (mail) {
-      std::string from = mail->from;
-      auto titled = titles.find(from);
-      if (titled != titles.end() && !titled->second.empty() &&
-          titled->second != from) {
-        from = titled->second + " (" + from + ")";
-      }
-      SteeringState().Queue("[session " + from + "]\n" + mail->text);
-    }
-    std::error_code error;
-    std::filesystem::remove(path, error);
-  }
-}
-
-ToolResult WriteCollaboratorMail(const std::string& id,
-                                 const std::string& prompt,
-                                 const std::string& from, int hops) {
-  return CollaboratorMailbox().Write(id, prompt, from.empty() ? "parent" : from,
-                                     hops);
-}
-
-std::vector<QueuedMessage> TakeCollaboratorMail(const std::string& id) {
-  return CollaboratorMailbox().Take(id);
-}
-
-void DrainCollaboratorMailIntoSteering() {
-  const std::string id = OwnCollaboratorId();
-  if (id.empty()) return;
-  const Mailbox mailbox = CollaboratorMailbox();
-  for (const std::filesystem::path& path : mailbox.Files(id)) {
-    std::optional<QueuedMessage> prompt = mailbox.Read(path);
-    // Queued before the unlink, so a crash in between costs a repeat rather
-    // than the message. The reverse order would lose it outright.
-    if (prompt) {
-      const std::string& from = prompt->from;
-      std::string prefix = "[parent guidance]\n";
-      if (!from.empty() && from != "parent") {
-        // Best-effort sender name; the id alone still routes on failure.
-        std::string name;
-        std::ifstream record(mailbox.dir + "/" + from + ".json");
-        if (record) {
-          json state = json::parse(record, nullptr, false);
-          if (state.is_object()) name = JsonValue(state, "name", "");
-        }
-        prefix = "[peer guidance from " +
-                 (name.empty() ? from : name + " (" + from + ")") + "]\n";
-      }
-      SteeringState().Queue(prefix + prompt->text);
-    }
-    std::error_code error;
-    std::filesystem::remove(path, error);
-  }
+  std::filesystem::path path(file);
+  return path.extension() == ".json" ? path.stem().string() : std::string();
 }
 
 std::string ChildAgentConstraintNotes(const std::vector<std::string>& clamped) {
@@ -522,17 +344,16 @@ std::optional<ToolResult> ChildAgentBudgetBlock(
           : 0;
   if (api.config.session_budget > 0 && remaining_cost <= 0) {
     return ToolFailure(ToolErrorCode::kLimitExceeded,
-                       "error: session cost limit reached");
+                       "session cost limit reached");
   }
   if (api.config.session_token_budget > 0 && remaining_tokens <= 0) {
     return ToolFailure(ToolErrorCode::kLimitExceeded,
-                       "error: session generated-token limit reached");
+                       "session generated-token limit reached");
   }
   if ((api.config.session_budget > 0 || api.config.session_token_budget > 0) &&
       processes.JoinableCount() > 0) {
-    return ToolFailure(
-        ToolErrorCode::kLimitExceeded,
-        "error: budgeted child already running; wait for its result");
+    return ToolFailure(ToolErrorCode::kLimitExceeded,
+                       "budgeted child already running; wait for its result");
   }
   return std::nullopt;
 }

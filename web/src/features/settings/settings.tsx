@@ -22,7 +22,7 @@ import {
   ValueSelect,
 } from "../../shared/ui.tsx";
 import { useEffect, useRef, useState } from "preact/hooks";
-import { SettingRowsLoading } from "../../shared/loading.tsx";
+import { SettingRowsLoading } from "./loading.tsx";
 const configuration = () => import("./configuration.tsx");
 import { api, command } from "../../state/api.ts";
 import { ChevronLeft } from "lucide-preact";
@@ -76,7 +76,8 @@ export default function Settings({
   selected,
   session,
   logout,
-  prompt,
+  instructions,
+  initialSection,
 }: {
   theme: string;
   setTheme: Dispatch<StateUpdater<string>>;
@@ -101,11 +102,14 @@ export default function Settings({
   selected: string;
   session?: Session;
   logout: () => Promise<void>;
-  prompt: () => void;
+  instructions: () => void;
+  initialSection?: string;
 }) {
   // Null until a section is picked: a phone shows the section list first,
   // and a picked section is a layer the back gesture returns from.
-  const [section, setSection] = useState<Section | null>(null);
+  const [section, setSection] = useState<Section | null>(
+    () => SECTIONS.find(([id]) => id === initialSection)?.[0] ?? null,
+  );
   const phone = useMedia("(max-width: 600px)");
   useDismiss(phone && section !== null, () => setSection(null));
   const [error, setError] = useState<unknown>(null);
@@ -326,9 +330,9 @@ export default function Settings({
     agent: (
       <Group>
         <Row
-          label="System prompt"
-          detail="The instructions every conversation starts from."
-          onClick={prompt}
+          label="Instructions"
+          detail="What every session and each folder's coordinator read at start."
+          onClick={instructions}
         />
       </Group>
     ),
@@ -471,15 +475,6 @@ export default function Settings({
       />
     ),
     advanced: null,
-    developer: (
-      <Group>
-        <Row
-          label="UI showcase"
-          detail="Every shared control, in both themes."
-          href="/ui.html"
-        />
-      </Group>
-    ),
   };
   const current = section || "general";
   const title = SECTIONS.find(([id]) => id === current)![1];
@@ -492,10 +487,10 @@ export default function Settings({
           drilled && (
             <Button
               variant="quiet"
-              class="with-icon settings-back"
+              class="settings-back"
               onClick={() => setSection(null)}
             >
-              <ChevronLeft aria-hidden="true" />
+              <ChevronLeft />
               Back
             </Button>
           )

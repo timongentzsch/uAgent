@@ -8,7 +8,6 @@ from integration_support import (
     Server,
     assert_true,
     base_env,
-    budget,
     event,
     function_names,
     run,
@@ -19,27 +18,6 @@ from integration_support import (
     write_session,
 )
 from memory_fixture import global_memory_dir, project_memory_dir
-
-
-def test_collaborator_retention_prunes_whole_records(root, home, *, binary):
-    collaborators = home / ".uagent" / "collaborators"
-    collaborators.mkdir(parents=True)
-    now = time.time()
-    for index, stamp in (("old", now - 120), ("new", now - 60)):
-        (collaborators / f"{index}.json").write_text("{}", encoding="utf-8")
-        (collaborators / f"{index}.session.json").write_text("{}", encoding="utf-8")
-        os.utime(collaborators / f"{index}.json", (stamp, stamp))
-        os.utime(collaborators / f"{index}.session.json", (stamp, stamp))
-
-    with Server([event({"content": "retention-ok"})]) as server:
-        env = base_env(home, server.url)
-        env["UAGENT_DEBUG_FILES"] = "1"
-        result = run(root, env, "-p", "reply", binary=binary)
-        assert_true(result.returncode == 0, result.stderr)
-        assert_true(result.stdout.strip() == "retention-ok", result.stdout)
-
-    remaining = sorted(path.name for path in collaborators.iterdir())
-    assert_true(remaining == ["new.json", "new.session.json"], remaining)
 
 
 def test_project_agent_config_trust(root, home, *, binary):
@@ -408,13 +386,11 @@ def test_memory_background_extractor_releases_failed_claims(root, _home, *, bina
             # claim *says*. `processing` is reclaimable; `done` is not, and a
             # killed extractor claiming completion would skip that session for
             # good.
-            released = False
-            deadline = time.monotonic() + budget(30)
-            while time.monotonic() < deadline:
-                if not markers(case_home):
-                    released = True
-                    break
-                time.sleep(0.02)
+            try:
+                wait_until(lambda: not markers(case_home), "claim released")
+                released = True
+            except AssertionError:
+                released = False
             for marker in markers(case_home):
                 state = marker.read_text(encoding="utf-8").strip()
                 assert_true(state == "processing", f"killed extractor claimed {state!r}")

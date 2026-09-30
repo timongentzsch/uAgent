@@ -1,2 +1,0 @@
-# Bundled output preserves upstream template literals; review web/src instead.
-web/dist/** -whitespace

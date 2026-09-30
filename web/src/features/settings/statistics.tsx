@@ -10,7 +10,7 @@ import {
   UsageRows,
   type Row,
 } from "../../shared/statistics-layout.tsx";
-import { presentMessages } from "../chat/message-view.ts";
+import { presentMessages } from "../../shared/message-view.ts";
 
 const rate = (value?: number) =>
   value && value > 0 ? `${count(value)} tok/s` : "Not recorded";

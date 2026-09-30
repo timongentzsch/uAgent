@@ -11,6 +11,7 @@
 
 #include "include/core/env.h"
 #include "include/core/json.h"
+#include "include/core/limits.h"
 #include "include/core/strings.h"
 #include "include/core/time.h"
 #include "include/mcp/invoke.h"
@@ -21,10 +22,10 @@
 
 namespace uagent {
 
-bool McpToolPageAllowed(const std::string& name, int64_t max_pages,
-                        int64_t& pages, std::set<std::string>& cursors,
+bool McpToolPageAllowed(const std::string& name, int64_t& pages,
+                        std::set<std::string>& cursors,
                         const std::string& cursor) {
-  if (++pages <= max_pages &&
+  if (++pages <= kMcpPages &&
       (cursor.empty() || cursors.insert(cursor).second)) {
     return true;
   }
@@ -32,8 +33,7 @@ bool McpToolPageAllowed(const std::string& name, int64_t max_pages,
   return false;
 }
 
-bool McpConsumeToolPage(McpServer& server, const RuntimeConfig& config,
-                        const json& response, json& listed,
+bool McpConsumeToolPage(McpServer& server, const json& response, json& listed,
                         std::string& cursor) {
   if (!response.contains("result") || !response["result"].is_object()) {
     McpError(server.name,
@@ -46,7 +46,7 @@ bool McpConsumeToolPage(McpServer& server, const RuntimeConfig& config,
     return false;
   }
   for (const json& definition : page) {
-    if (static_cast<int64_t>(listed.size()) >= config.mcp_tools) {
+    if (listed.size() >= kMaxMcpTools) {
       McpError(server.name, "tool count limit exceeded");
       return false;
     }
@@ -62,7 +62,7 @@ bool McpConsumeToolPage(McpServer& server, const RuntimeConfig& config,
   return true;
 }
 
-bool McpFetchToolDefinitions(McpServer& s, const RuntimeConfig& config,
+bool McpFetchToolDefinitions(McpServer& s,
                              std::chrono::steady_clock::time_point deadline,
                              json& listed) {
   listed = json::array();
@@ -70,7 +70,7 @@ bool McpFetchToolDefinitions(McpServer& s, const RuntimeConfig& config,
   std::set<std::string> cursors;
   int64_t pages = 0;
   do {
-    if (!McpToolPageAllowed(s.name, config.mcp_pages, pages, cursors, cursor)) {
+    if (!McpToolPageAllowed(s.name, pages, cursors, cursor)) {
       return false;
     }
     int64_t remaining = SecondsUntil(deadline);
@@ -80,7 +80,7 @@ bool McpFetchToolDefinitions(McpServer& s, const RuntimeConfig& config,
     }
     json params = cursor.empty() ? json::object() : json{{"cursor", cursor}};
     json resp = McpRpc(s, "tools/list", params, remaining);
-    if (!McpConsumeToolPage(s, config, resp, listed, cursor)) return false;
+    if (!McpConsumeToolPage(s, resp, listed, cursor)) return false;
   } while (!cursor.empty());
   return true;
 }
@@ -103,7 +103,6 @@ void McpReplaceServerTools(std::vector<Tool>& tools, McpServer& s,
 
   std::vector<Tool> replacement;
   size_t schema_bytes = 0;
-  size_t max_schema_bytes = static_cast<size_t>(config.mcp_schema_bytes);
   for (const json& definition : listed) {
     if (!definition.is_object() || !definition.contains("name") ||
         !definition["name"].is_string()) {
@@ -158,7 +157,7 @@ void McpReplaceServerTools(std::vector<Tool>& tools, McpServer& s,
         tool.description.size() + JsonDump(tool.parameters).size() +
         (tool.output_schema.is_null() ? 0
                                       : JsonDump(tool.output_schema).size());
-    if (schema_bytes + tool_schema_bytes > max_schema_bytes) {
+    if (schema_bytes + tool_schema_bytes > kMcpSchemaBytes) {
       McpNote(s.name, "remaining tools skipped (schema byte limit)");
       break;
     }
@@ -193,13 +192,13 @@ bool McpLoadServerTools(std::vector<Tool>& tools, McpServer& server,
                         const RuntimeConfig& config,
                         std::chrono::steady_clock::time_point deadline) {
   json listed;
-  if (!McpFetchToolDefinitions(server, config, deadline, listed)) return false;
+  if (!McpFetchToolDefinitions(server, deadline, listed)) return false;
   McpReplaceServerTools(tools, server, config, listed);
   return true;
 }
 
-bool McpSendStartupToolPage(McpServer& server, const RuntimeConfig& config) {
-  if (!McpToolPageAllowed(server.name, config.mcp_pages, server.startup_pages,
+bool McpSendStartupToolPage(McpServer& server) {
+  if (!McpToolPageAllowed(server.name, server.startup_pages,
                           server.startup_cursors, server.startup_cursor)) {
     server.Shutdown();
     return false;
@@ -216,7 +215,7 @@ bool McpSendStartupToolPage(McpServer& server, const RuntimeConfig& config) {
 bool McpAdvanceStartupTools(std::vector<Tool>& tools, McpServer& server,
                             const RuntimeConfig& config) {
   for (;;) {
-    if (server.tools_list_id < 0 && !McpSendStartupToolPage(server, config)) {
+    if (server.tools_list_id < 0 && !McpSendStartupToolPage(server)) {
       return false;
     }
     json response;
@@ -230,7 +229,7 @@ bool McpAdvanceStartupTools(std::vector<Tool>& tools, McpServer& server,
       return false;
     }
     server.tools_list_id = -1;
-    if (!McpConsumeToolPage(server, config, response, server.startup_tools,
+    if (!McpConsumeToolPage(server, response, server.startup_tools,
                             server.startup_cursor)) {
       server.Shutdown();
       return false;

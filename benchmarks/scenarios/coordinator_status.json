@@ -1,0 +1,85 @@
+{
+  "name": "coordinator_status",
+  "description": "The folder's coordinator answers a status question from its board and the sessions' history, verifying claims read-only and leaving the workspace untouched.",
+  "tier": "regression",
+  "variants": [
+    "control"
+  ],
+  "coordinator": true,
+  "prompt": "What's the state of work in this folder? One short line per session, and say what is blocked.",
+  "files": {
+    "src/lexer.c": "/* Normalizes CRLF to LF before tokenizing. */\nint lex(const char *s) { return 0; }\n"
+  },
+  "sessions": [
+    {
+      "name": "fix-lexer",
+      "title": "Fix lexer CRLF crash",
+      "messages": [
+        {
+          "role": "system",
+          "content": "sys"
+        },
+        {
+          "role": "user",
+          "content": "The lexer crashes on CRLF input; fix it."
+        },
+        {
+          "role": "assistant",
+          "content": "Fixed: the lexer now normalizes CRLF. All 42 lexer tests pass."
+        }
+      ]
+    },
+    {
+      "name": "docs-refresh",
+      "title": "Refresh API docs",
+      "messages": [
+        {
+          "role": "system",
+          "content": "sys"
+        },
+        {
+          "role": "user",
+          "content": "Regenerate the API docs."
+        },
+        {
+          "role": "assistant",
+          "content": "Blocked: the docs generator needs DOCS_TOKEN, which is not set in this environment."
+        }
+      ]
+    }
+  ],
+  "script": [
+    {
+      "when": {
+        "tool_results": 0
+      },
+      "respond": {
+        "tool_calls": [
+          {
+            "id": "blocked",
+            "name": "history",
+            "arguments": {
+              "action": "search",
+              "query": "blocked"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "respond": {
+        "content": "- Fix lexer CRLF crash: done, 42 tests pass.\n- Refresh API docs: blocked on a missing DOCS_TOKEN."
+      }
+    }
+  ],
+  "checks": {
+    "workspace_unchanged": true,
+    "answer_contains": [
+      "DOCS_TOKEN"
+    ],
+    "result_contains": [
+      "DOCS_TOKEN"
+    ],
+    "max_requests": 6
+  }
+}

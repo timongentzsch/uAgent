@@ -8,6 +8,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <deque>
+#include <functional>
 #include <map>
 #include <mutex>
 #include <optional>
@@ -17,18 +18,24 @@
 #include <utility>
 #include <vector>
 
-#include "include/agent/child_agent.h"
+#include "include/agent/session_role.h"
 #include "include/agent/session_store.h"
 #include "include/agent/session_view.h"
 #include "include/app/bootstrap.h"
+#include "include/app/coordinator.h"
+#include "include/app/launch.h"
 #include "include/app/session.h"
 #include "include/app/session_command.h"
+#include "include/app/thread_link.h"
 #include "include/browser/browser.h"
 #include "include/cli.h"
 #include "include/core/events.h"
 #include "include/core/fs.h"
+#include "include/core/mailbox.h"
 #include "include/core/signals.h"
 #include "include/core/steering.h"
+#include "include/core/strings.h"
+#include "include/core/time.h"
 
 namespace uagent::session {
 namespace {
@@ -63,6 +70,32 @@ bool ResolveCommandAttachments(const json& command,
   return true;
 }
 
+// An ask's answers as its tool reads them: each answer's attachment_id
+// becomes the path of the file the host claimed under that id. A path a
+// client names itself is dropped, so an answer can only point at an upload.
+std::string AskAnswers(const json& command, const std::string& text,
+                       std::string& error) {
+  json answers = json::parse(text, nullptr, false);
+  std::vector<Attachment> attachments;
+  json images = json::array();
+  if (!answers.is_array() ||
+      !ResolveCommandAttachments(command, attachments, images, error)) {
+    return text;
+  }
+  for (json& answer : answers) {
+    if (!answer.is_object()) continue;
+    const std::string id = JsonValue(answer, "attachment_id", "");
+    answer.erase("attachment_id");
+    answer.erase("image");
+    for (const Attachment& attachment : attachments) {
+      if (!id.empty() && attachment.asset_id == id) {
+        answer["image"] = attachment.path;
+      }
+    }
+  }
+  return JsonDump(answers);
+}
+
 json AttachmentsToJson(const std::vector<Attachment>& attachments) {
   json out = json::array();
   for (const Attachment& attachment : attachments) {
@@ -79,13 +112,17 @@ json AttachmentsToJson(const std::vector<Attachment>& attachments) {
 class WorkerChannel final : public ApplicationChannel {
  public:
   WorkerChannel(std::string path, std::string id, std::string generation,
-                std::string title, bool delegated, bool browser_session)
+                std::string title, bool browser_session, bool coordinator,
+                json thread)
       : path_(std::move(path)),
         id_(std::move(id)),
         generation_(std::move(generation)),
         title_(std::move(title)),
-        delegated_(delegated),
-        browser_session_(browser_session) {}
+        mail_(MailboxIdFor(path_)),
+        browser_session_(browser_session),
+        coordinator_(coordinator) {
+    if (!thread.empty()) link_.emplace(std::move(thread), path_, id_);
+  }
   ~WorkerChannel() override { Close(); }
 
   bool Start() {
@@ -133,6 +170,14 @@ class WorkerChannel final : public ApplicationChannel {
     }
     json data = event.data;
     if (event.type == "approval.requested") {
+      // A thread's approval that Auto could not settle goes to its
+      // coordinator first; one reserved for a person never does.
+      if (link_ && !JsonValue(data, "mandatory_human", false)) {
+        data["route"] = kRouteCoordinator;
+        link_->Ask(JsonValue(data, "id", ""), "approval request",
+                   "asks to run " + JsonValue(data, "tool", ""),
+                   JsonValue(data, "preview", ""), title_);
+      }
       std::lock_guard lock(mutex_);
       approval_ = data;
     }
@@ -172,6 +217,9 @@ class WorkerChannel final : public ApplicationChannel {
   }
 
   std::optional<ApplicationInput> NextInput() override {
+    // Only an idle coordinator times out: its runtime costs nothing between
+    // uses, and any client or mail starts it again.
+    auto idle_since = std::chrono::steady_clock::now();
     for (;;) {
       {
         std::lock_guard lock(mutex_);
@@ -185,10 +233,32 @@ class WorkerChannel final : public ApplicationChannel {
           return result;
         }
       }
+      // Mail wakes it like a client does; the application delivers it.
       pollfd waits[] = {{wake_.read.Get(), POLLIN, 0},
-                        {AbortWakeFd(), POLLIN, 0}};
-      if (poll(waits, 2, -1) < 0 && errno != EINTR) {
+                        {AbortWakeFd(), POLLIN, 0},
+                        {mail_.Get(), POLLIN, 0}};
+      const int ready = poll(waits, 3, PollTimeout());
+      if (ready > 0 && (waits[2].revents & POLLIN)) mail_.Drain();
+      if (ready < 0 && errno != EINTR) {
         return std::nullopt;
+      }
+      if (ready == 0) {
+        // Mail held at the spend limit is looked at again; the application
+        // delivers it once the limit allows.
+        if (Paused() ||
+            (mail_.Get() < 0 && !PendingMail(MailboxIdFor(path_)).empty())) {
+          return ApplicationInput{.wake = true};
+        }
+        // Idle is measured from the last input or wake; any client still
+        // attached (a terminal, or a host that has not let go) keeps it.
+        const auto now = std::chrono::steady_clock::now();
+        std::lock_guard lock(mutex_);
+        if (!input_ && server_.Clients() == 0 &&
+            now - idle_since >= CoordinatorIdle()) {
+          closed_ = true;
+          return std::nullopt;
+        }
+        continue;
       }
       wake_.Drain();
       {
@@ -215,15 +285,44 @@ class WorkerChannel final : public ApplicationChannel {
                  {"initial", request.initial}};
     if (JsonValue(approval_, "id", "") == request.id) {
       decision_["approval"] = approval_;
+      if (approval_.contains("route")) decision_["route"] = approval_["route"];
+    }
+    if (request.kind == "ask") {
+      decision_["questions"] = request.questions;
+      // A thread's questions go to its coordinator first, as its approvals
+      // do; a person is notified only if it yields or does not answer.
+      if (link_) {
+        decision_["route"] = kRouteCoordinator;
+        link_->Ask(request.id, "question", "asks the user",
+                   JsonDump(request.questions), title_);
+      }
+      Send({{"kind", "event"},
+            {"type", "ask.requested"},
+            {"data",
+             {{"id", request.id},
+              {"route", JsonValue(decision_, "route", "human")}}}});
     }
     state_["phase"] = "decision";
     SendState();
+    const auto routed_until =
+        std::chrono::steady_clock::now() + kCoordinatorDecision;
     while (!closed_ && !reply_ && !AbortRequested()) {
+      const bool routed =
+          JsonValue(decision_, "route", "") == kRouteCoordinator;
       lock.unlock();
       pollfd waits[] = {{wake_.read.Get(), POLLIN, 0},
                         {AbortWakeFd(), POLLIN, 0}};
-      poll(waits, 2, -1);
+      poll(waits, 2, routed ? PollTimeoutMs(routed_until) : -1);
       wake_.Drain();
+      lock.lock();
+      if (routed && std::chrono::steady_clock::now() >= routed_until) {
+        EscalateLocked("The coordinator did not decide in time.");
+      }
+    }
+    if (!decided_.empty()) {
+      const std::string note = std::exchange(decided_, "");
+      lock.unlock();
+      Emit(NoticeEvent(PresentationStatus::kNeutral, note));
       lock.lock();
     }
     std::string answer = reply_.value_or("");
@@ -250,6 +349,7 @@ class WorkerChannel final : public ApplicationChannel {
     state_["activity"] = activity;
     state_["phase"] = phase;
     state_["activity_detail"] = std::move(detail);
+    if (!paused_.empty()) state_["paused"] = paused_;
     if (!checkpoint) {
       // Live accounting only: the turn keeps running, so its phase, busy
       // state and queued guidance stay untouched.
@@ -258,6 +358,11 @@ class WorkerChannel final : public ApplicationChannel {
     }
     ready_ = true;
     busy_ = input_.has_value();
+    if (!busy_ && turn_active_ && link_) {
+      link_->Report(JsonValue(JsonValue(state, "stop", json::object()),
+                              "reason", "completed"),
+                    JsonValue(state_, "title", title_));
+    }
     if (!busy_) {
       // Completion events precede saved display/HTTP metadata. Only the final
       // application checkpoint makes the turn idle and accepts another input.
@@ -303,6 +408,57 @@ class WorkerChannel final : public ApplicationChannel {
     // application's control does.
     StopSideQuestion();
     activity_control_ = control;
+  }
+
+  // A session waits for input indefinitely; a coordinator also wakes to
+  // notice it is idle, and a minute later while the spend limit holds its
+  // mail. Without a mailbox watch, mail is looked for once a second.
+  int PollTimeout() {
+    if (mail_.Get() < 0) return 1000;
+    if (!coordinator_) return -1;
+    if (Paused()) return static_cast<int>(kSpendRecheck.count());
+    return static_cast<int>(std::min<int64_t>(
+        kIdlePoll.count(),
+        std::chrono::milliseconds(CoordinatorIdle()).count() / 4));
+  }
+
+  bool Paused() {
+    std::lock_guard lock(mutex_);
+    return !paused_.empty();
+  }
+
+  bool HoldMail() override { return HeldBySpend(); }
+
+  // At today's spend limit a coordinator keeps its mail pending and says so
+  // in its state. Checked outside the lock: it reads the threads' files.
+  bool HeldBySpend() {
+    const std::string pause =
+        coordinator_ ? CoordinatorPause(CanonicalCwd()) : "";
+    std::lock_guard lock(mutex_);
+    if (pause != paused_) {
+      paused_ = pause;
+      if (pause.empty()) {
+        state_.erase("paused");
+      } else {
+        state_["paused"] = pause;
+      }
+      SendState();
+    }
+    return !pause.empty();
+  }
+
+  // The routed decision becomes the user's: shown as theirs, and announced so
+  // the host notifies their devices.
+  void EscalateLocked(const std::string& note) {
+    decision_["route"] = "human";
+    decision_["note"] = note;
+    if (decision_.contains("approval")) {
+      decision_["approval"]["route"] = "human";
+    }
+    SendState();
+    Send({{"kind", "event"},
+          {"type", "approval.escalated"},
+          {"data", {{"id", pending_}, {"note", note}}}});
   }
 
   void Close() {
@@ -442,7 +598,7 @@ class WorkerChannel final : public ApplicationChannel {
   }
   void SendState(bool checkpoint = false) {
     Send({{"kind", "state"},
-          {"state", state_},
+          {"state", checkpoint ? state_ : LightState(state_)},
           {"busy", turn_active_},
           {"command_busy", busy_},
           {"pending", decision_},
@@ -511,6 +667,19 @@ class WorkerChannel final : public ApplicationChannel {
       kind = SessionCommandKind::kSubmit;
     }
     if (closed_) return false;
+    if (link_ && !parsed.text.empty() &&
+        (kind == SessionCommandKind::kSubmit ||
+         kind == SessionCommandKind::kSteer)) {
+      const std::string refused = link_->Admit(
+          JsonValue(parsed.raw, "origin", "") == kRouteCoordinator);
+      if (!refused.empty()) {
+        Send({{"kind", "outcome"},
+              {"request_id", request},
+              {"accepted", false},
+              {"error", refused}});
+        return true;
+      }
+    }
     switch (kind) {
       case SessionCommandKind::kClose: {
         lock.unlock();
@@ -528,25 +697,38 @@ class WorkerChannel final : public ApplicationChannel {
       case SessionCommandKind::kReply: {
         if (pending_.empty() || parsed.interaction_id != pending_ || reply_) {
           error = "decision is stale or already answered";
+        } else if (JsonValue(parsed.raw, "origin", "") == "coordinator" &&
+                   JsonValue(decision_, "route", "") != kRouteCoordinator) {
+          // Only a decision routed to the coordinator is its to answer.
+          error = "this decision belongs to the user";
         } else {
-          reply_ = parsed.text;
+          const bool ask = JsonValue(decision_, "kind", "") == "ask";
+          std::string answer =
+              ask ? AskAnswers(parsed.raw, parsed.text, error) : parsed.text;
+          if (!error.empty()) break;
+          reply_ = std::move(answer);
           reply_cancelled_ = parsed.cancelled;
+          // The decision log: who decided a routed decision, and why.
+          const std::string reason = JsonValue(parsed.raw, "reason", "");
+          if (JsonValue(parsed.raw, "origin", "") == kRouteCoordinator) {
+            decided_ = (ask ? "coordinator answered"
+                            : "coordinator decided " + parsed.text) +
+                       (reason.empty() ? "" : ": " + reason);
+          }
           wake_.Wake();
         }
         break;
       }
-      case SessionCommandKind::kSteer:
-      case SessionCommandKind::kGuide: {
-        const bool guide = kind == SessionCommandKind::kGuide;
-        if (guide && parsed.text.empty()) {
-          // Mail-first ping: payload is on disk, just drain it into the queue.
-          // Best-effort from the worker thread; PrepareStep drains again
-          // anyway.
-          lock.unlock();
-          DrainCollaboratorMailIntoSteering();
-          wake_.Wake();
-          return true;
+      case SessionCommandKind::kEscalate: {
+        if (pending_.empty() || parsed.interaction_id != pending_ || reply_ ||
+            JsonValue(decision_, "route", "") != kRouteCoordinator) {
+          error = "decision is stale or not with the coordinator";
+        } else {
+          EscalateLocked(parsed.text);
         }
+        break;
+      }
+      case SessionCommandKind::kSteer: {
         if (!turn_active_ || parsed.text.empty() ||
             SteeringState().QueuedCount() >= 8) {
           error = "guidance requires an active turn and space in its queue";
@@ -561,7 +743,7 @@ class WorkerChannel final : public ApplicationChannel {
           if (ResolveCommandAttachments(parsed.raw, attachments, images,
                                         error)) {
             SteeringState().Queue(
-                std::string(parsed.text), parsed.client_request_id, !guide,
+                std::string(parsed.text), parsed.client_request_id, true,
                 AttachmentsToJson(attachments), std::move(images));
           }
         }
@@ -633,9 +815,8 @@ class WorkerChannel final : public ApplicationChannel {
       case SessionCommandKind::kConfig:
       case SessionCommandKind::kContext:
       case SessionCommandKind::kFork:
-      case SessionCommandKind::kRewind:
       case SessionCommandKind::kShare:
-      case SessionCommandKind::kPrompt: {
+      case SessionCommandKind::kSelfDirective: {
         if (QueueIdleControl(request, parsed.raw, error)) return true;
         break;
       }
@@ -658,9 +839,6 @@ class WorkerChannel final : public ApplicationChannel {
           error = "session is busy";
         } else {
           ApplicationInput input;
-          if (delegated_) {
-            input.budget = parsed.budget;
-          }
           input.request_id = parsed.client_request_id;
           input.text = parsed.text;
           json images = json::array();
@@ -710,19 +888,25 @@ class WorkerChannel final : public ApplicationChannel {
 
   std::string path_, id_, generation_, title_;
   // Socket callbacks can run while bootstrap initializes the environment.
-  const bool delegated_;
   Pipe wake_;
+  MailboxWatch mail_;
   std::mutex mutex_, control_mutex_;
+  static constexpr auto kIdlePoll = std::chrono::milliseconds(30000);
+  static constexpr auto kCoordinatorDecision = std::chrono::minutes(5);
+  static constexpr auto kSpendRecheck = std::chrono::milliseconds(60000);
   bool closed_ = false, busy_ = true;
   bool turn_active_ = false;
   [[maybe_unused]] bool browser_session_ = false;  // web builds only
+  const bool coordinator_ = false;
+  std::optional<ThreadLink> link_;  // set when this session is a thread
   bool reply_cancelled_ = false;
   bool ready_ = false;
   json notices_ = json::array();
+  std::string paused_;  // why a coordinator holds its mail, if it does
   std::function<json(const json&)> activity_control_;
   std::optional<ApplicationInput> input_;
   std::optional<std::string> reply_;
-  std::string pending_, input_command_, active_command_;
+  std::string pending_, input_command_, active_command_, decided_;
   json decision_ = nullptr, state_ = json::object(), approval_ = nullptr;
   // Destroy the transport first, while all callback state is still alive.
   ReceiptLog receipts_;
@@ -752,28 +936,39 @@ int WorkerMain(int argc, char** argv) {
       }
     }
   }
-  Fd owner(JsonValue(launch, "owner_fd", -1));
+  // The coordinator is known by its path; a thread's link is fixed at launch
+  // and afterwards read back from its own header.
+  if (argv[3] == CoordinatorPath(argv[2])) {
+    options.session = {{"kind", kSessionKindCoordinator}};
+  } else if (const json* role = JsonObject(launch, "session");
+             role && JsonValue(*role, "kind", "") == kSessionKindThread) {
+    options.session = *role;
+  } else if (const json header = SessionHeader(argv[3]);
+             JsonValue(header, kSessionHeaderKind, "") == kSessionKindThread) {
+    options.session = {
+        {"kind", kSessionKindThread},
+        {"thread", JsonValue(header, kSessionHeaderThread, json::object())}};
+  }
+  // A thread runs in Auto mode, sandboxed and within its budget however its
+  // runtime is started again, so a restart never widens it.
+  if (JsonValue(options.session, "kind", "") == kSessionKindThread) {
+    options.overrides["UAGENT_APPROVAL"] = "auto";
+    options.overrides["UAGENT_SANDBOX"] = "true";
+    const double budget = JsonValue(
+        JsonValue(JsonValue(options.session, "thread", json::object()),
+                  "ceiling", json::object()),
+        "budget_usd", 0.0);
+    if (budget > 0) {
+      options.overrides["UAGENT_SESSION_BUDGET"] = std::to_string(budget);
+    }
+  }
   WorkerChannel channel(argv[3], argv[4], RandomToken(16), argv[5],
-                        static_cast<bool>(owner), options.browser_session);
+                        options.browser_session, options.Coordinator(),
+                        JsonValue(options.session, "thread", json::object()));
   if (!channel.Start()) return 2;
   if (chdir(argv[2]) != 0) {
     channel.Send({{"kind", "error"}, {"error", "workspace is unavailable"}});
     return 2;
-  }
-  // Delegated workers belong to the parent session, even after a parent crash.
-  // The pipe is close-on-exec in the parent and never reaches tool children.
-  Pipe watch_stop;
-  std::thread owner_watch;
-  if (owner) {
-    fcntl(owner.Get(), F_SETFD, FD_CLOEXEC);
-    if (!watch_stop.Open()) return 2;
-    owner_watch = std::thread([&] {
-      pollfd waits[] = {{owner.Get(), POLLIN, 0},
-                        {watch_stop.read.Get(), POLLIN, 0}};
-      while (poll(waits, 2, -1) < 0 && errno == EINTR) {
-      }
-      if (waits[0].revents) channel.Close();
-    });
   }
   Observability observation;
   SetObservability(&observation);
@@ -786,8 +981,6 @@ int WorkerMain(int argc, char** argv) {
   int status = boot.Ok() ? RunApplication(*boot.context) : boot.exit_code;
   if (!boot.Ok()) channel.Send({{"kind", "error"}, {"error", boot.error}});
   boot.context.reset();
-  watch_stop.Wake();
-  if (owner_watch.joinable()) owner_watch.join();
   observation.Unsubscribe(subscriber);
   SetObservability(nullptr);
   return status;

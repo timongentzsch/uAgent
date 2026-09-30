@@ -3,8 +3,9 @@
 #ifndef UAGENT_INCLUDE_CORE_STYLE_H_
 #define UAGENT_INCLUDE_CORE_STYLE_H_
 // Presentation helpers shared by the terminal renderers: styling that survives
-// a line break.
+// a line break, and the one shape of a notice row.
 
+#include <initializer_list>
 #include <string>
 #include <string_view>
 
@@ -17,7 +18,7 @@ namespace uagent {
 // carries its own style. A terminal keeps SGR across a soft wrap, but a copied
 // transcript, and any consumer that splits on newlines, does not.
 inline std::string StyledBlock(std::string_view text, const char* open) {
-  if (!g_color || !open || !*open) return std::string(text) + "\n";
+  if (!open || !*open) return std::string(text) + "\n";
   std::string body(text);
   size_t pos = 0;
   while ((pos = body.find('\n', pos)) != std::string::npos) {
@@ -27,8 +28,24 @@ inline std::string StyledBlock(std::string_view text, const char* open) {
   return std::string(open) + body + RST() + "\n";
 }
 
+// Parts joined by " · ", the separator every row uses. Empty parts are
+// skipped, so an optional one needs no condition of its own.
+std::string JoinDot(std::initializer_list<std::string_view> parts);
+
+// Where a row sits under its heading, and where its details sit under it.
+inline constexpr size_t kRowIndent = 2;
+inline constexpr size_t kDetailIndent = 4;
+
+enum class Tone { kNeutral, kWarn, kError };
+
+// A notice row: "· text", dim, yellow or red, ending in a newline. The text is
+// a lowercase fragment with no trailing period; glyphs fall back to ASCII.
+std::string Note(Tone tone, std::string_view text);
+
+// Three or more backticks, or tildes, and nothing else.
 inline bool IsMarkdownFence(std::string_view marker) {
-  return marker.size() >= 3 && marker.substr(0, 3) == "```";
+  return marker.size() >= 3 && (marker[0] == '`' || marker[0] == '~') &&
+         marker.find_first_not_of(marker[0]) == std::string_view::npos;
 }
 
 }  // namespace uagent

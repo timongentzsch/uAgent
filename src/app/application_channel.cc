@@ -10,6 +10,7 @@
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
+#include "include/core/mailbox.h"
 #include "include/core/signals.h"
 #include "include/core/steering.h"
 #include "include/core/strings.h"
@@ -58,11 +59,24 @@ int Application::RunChannel() {
       }
       return answer;
     }
-    return ActivityControl(runtime_.processes, request, &runtime_.collaborator);
+    return ActivityControl(runtime_.processes, request);
   });
+  // Mail a previous runtime took but never saved is delivered again, and
+  // mail that arrived while none ran starts a turn now.
+  RecoverMail(MailboxIdFor(session_file_));
+  if (agent_.DeliverMail(channel_->HoldMail())) SaveSession(false);
   PublishChannelState();
   while (std::optional<ApplicationInput> input = channel_->NextInput()) {
-    agent_.DrainBackground();
+    // A child's result arrives on its own; an idle session also takes it up
+    // at once, as a turn, since it delegated in order to hear back.
+    bool children_finished = false;
+    agent_.DrainBackground(&children_finished);
+    if (children_finished && input->wake) {
+      SteeringState().Queue(
+          "[subagent finished, not a user message] Its result is above.", "",
+          true);
+    }
+    agent_.DeliverMail(channel_->HoldMail());
     agent_.AccountSideUsage();
     request_id_ = input->request_id;
     json result;
@@ -72,7 +86,6 @@ int Application::RunChannel() {
       AppSession session = Session();
       result = SessionControl(session, input->control);
     } else if (!input->wake) {
-      handoff_budget_ = std::move(input->budget);
       for (auto& attachment : input->attachments) {
         attachments_.push_back(std::move(attachment));
       }
@@ -89,14 +102,25 @@ int Application::RunChannel() {
   return FinishInteractive(0);
 }
 
-json Application::BuildChannelState() const {
+json Application::BuildChannelState(bool checkpoint) const {
   json state = InterfaceState();
-  state["view"] = agent_.DisplaySnapshot();
+  // Clients keep these from the last checkpoint (session::kCheckpointFields).
+  if (checkpoint) {
+    state["view"] = agent_.DisplaySnapshot();
+    state["system_prompt"] = agent_.LastSentPrompt();
+    state["http"] = agent_.HttpExchanges();
+  }
+  state["view_epoch"] = agent_.ViewEpoch();
+  // The agent's own self-directive, which the Instructions screen can clear.
+  if (!runtime_.adaptive_system.instructions.empty()) {
+    const AdaptiveSystemState& self = runtime_.adaptive_system;
+    state["self_directive"] = {{"mode", self.mode},
+                               {"text", self.instructions},
+                               {"revision", std::to_string(self.revision)}};
+  }
   state["usage"] = UsageJson(agent_.SessionUsage());
   state["route_usage"] = agent_.RouteUsageJson();
-  state["system_prompt"] = agent_.LastSentPrompt();
   state["statistics"] = agent_.Statistics();
-  state["http"] = agent_.HttpExchanges();
   state["permissions"] = PermissionControl(context_, json::object());
   state["mcp"] = McpStatus(runtime_.mcp, context_.tools);
   state["efforts"] = json::array({"default"});
@@ -115,8 +139,7 @@ json Application::BuildChannelState() const {
   state["turns"] = agent_.UserTurns();
   state["turn_active"] = turn_active_;
   state["activities"] = runtime_.processes.ActivityViews();
-  state["collaborators"] =
-      CollaboratorSummaries(runtime_.processes, &runtime_.collaborator);
+  state["agents"] = AgentSummaries(runtime_.processes);
   state["error"] = input_error_.empty() ? agent_.LastError() : input_error_;
   state["title"] = Utf8Prefix(agent_.FirstUserText(), 256);
   state["stop"] = agent_.LastStop();
@@ -124,7 +147,7 @@ json Application::BuildChannelState() const {
 }
 
 void Application::PublishChannelState(bool checkpoint) {
-  json state = BuildChannelState();
+  json state = BuildChannelState(checkpoint);
   if (channel_) channel_->PublishState(state, checkpoint);
 }
 

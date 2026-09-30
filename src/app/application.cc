@@ -19,6 +19,7 @@
 #include "include/core/json.h"
 #include "include/core/steering.h"
 #include "include/core/strings.h"
+#include "include/core/style.h"
 #include "include/core/term.h"
 #include "include/media/attachments.h"
 #include "include/providers.h"
@@ -32,7 +33,7 @@ Application::Application(AppContext& context)
       api_(runtime_.api),
       agent_(*context.agent),
       session_file_(context.channel ? context.channel->SessionPath()
-                                    : CollaboratorSessionFile()),
+                                    : DelegatedSessionFile()),
       saved_revision_(agent_.Revision()),
       channel_(context.channel) {
   agent_.RetainExchanges(channel_ || context_.options.prompt.empty() ||
@@ -41,7 +42,7 @@ Application::Application(AppContext& context)
       context_.observability.Subscribe([this](const AppEvent& event) {
         if (event.type != "message.changed") return;
         std::string kind = JsonValue(event.data["block"], "kind", "");
-        if ((!CollaboratorSessionFile().empty() || kind == "user" ||
+        if ((!DelegatedSessionFile().empty() || kind == "user" ||
              kind == "attachment") &&
             (persist_ || !session_file_.empty())) {
           SaveSession(true);
@@ -93,7 +94,7 @@ void Application::ReloadConfigAtTurnBoundary() {
               {"source", "config_file"}}});
   if (context_.options.prompt.empty() &&
       (!reload->applied.empty() || !reload->deferred.empty())) {
-    std::string notice = "· configuration reloaded for the next turn";
+    std::string notice = "configuration reloaded for the next turn";
     if (!reload->deferred.empty()) {
       if (reload->deferred.size() == 1) {
         notice += " · 1 setting requires restart";
@@ -110,28 +111,7 @@ void Application::RunTurns(const std::string& input, json content,
                            json images) {
   EnsureSessionPath();
   ReloadConfigAtTurnBoundary();
-  // Delegated handoffs inherit the parent's current remainder. Restored
-  // usage belongs to the worker's cumulative limit, not to a new allowance.
-  const double cost = JsonValue(handoff_budget_, "cost", 0.0);
-  const int64_t tokens = JsonValue(handoff_budget_, "tokens", int64_t{0});
-  if (cost > 0) {
-    const double ceiling = api_.session_cost + cost;
-    api_.config.session_budget =
-        api_.config.session_budget > 0
-            ? std::min(api_.config.session_budget, ceiling)
-            : ceiling;
-  }
-  if (tokens > 0) {
-    const int64_t ceiling =
-        SaturatingNonnegativeAdd(api_.session_generated_tokens, tokens);
-    api_.config.session_token_budget =
-        api_.config.session_token_budget > 0
-            ? std::min(api_.config.session_token_budget, ceiling)
-            : ceiling;
-  }
-  ApprovalMode previous_mode = CurrentApprovalMode();
   PermissionControl(context_, json::object());
-  if (previous_mode != CurrentApprovalMode()) agent_.ApprovalChanged();
   struct TurnGuard {
     bool& flag_;
     explicit TurnGuard(bool& flag) : flag_(flag) { flag_ = true; }
@@ -187,7 +167,7 @@ bool Application::ResumeAtStartup() {
   } else if (context_.options.resume_latest) {
     std::vector<SessionInfo> sessions = ListSessions();
     if (sessions.empty()) {
-      printf("%s· no saved sessions%s\n", DIM(), RST());
+      fputs(Note(Tone::kNeutral, "no saved sessions").c_str(), stdout);
       fflush(stdout);
     } else {
       if (!ResumeInto(agent_, sessions.front().path, session_file_)) {
@@ -229,9 +209,9 @@ void Application::EnsureSessionPath() {
 
 void Application::ReportReplacedExecutable() {
   if (!ExecutableReplaced()) return;
-  context_.observability.Emit(NoticeEvent(
-      PresentationStatus::kNeutral,
-      "· uagent was replaced on disk; restart to run the new build"));
+  context_.observability.Emit(
+      NoticeEvent(PresentationStatus::kNeutral,
+                  "uagent was replaced on disk; restart to run the new build"));
 }
 
 void Application::RunPrompt(const std::string& input) {
@@ -300,7 +280,7 @@ void Application::ProcessInput(std::string input) {
   }
   if (input[0] == '/') {
     Emit(NoticeEvent(PresentationStatus::kFailed,
-                     "· unknown command " + input + "; use /help"));
+                     "unknown command " + input + "; use /help"));
     return;
   }
   RunPrompt(input);

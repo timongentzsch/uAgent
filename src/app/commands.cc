@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cinttypes>
 #include <cstdarg>
 #include <cstdio>
 #include <sstream>
@@ -13,7 +14,6 @@
 #include "include/agent/session_store.h"
 #include "include/agent/session_view.h"
 #include "include/app/control.h"
-#include "include/app/prompt_control.h"
 #include "include/app/self_description.h"
 #include "include/core/events.h"
 #include "include/core/fs.h"
@@ -21,6 +21,7 @@
 #include "include/core/limits.h"
 #include "include/core/steering.h"
 #include "include/core/strings.h"
+#include "include/core/style.h"
 #include "include/core/term.h"
 #include "include/providers.h"
 #include "include/tools/session.h"
@@ -48,6 +49,10 @@ void CommandReply::Print(const char* format, ...) {
   va_end(args);
 }
 
+void CommandReply::Note(Tone tone, std::string_view text) {
+  Print("%s", uagent::Note(tone, text).c_str());
+}
+
 void LoadSessionJournal(AppSession& session, const std::string& previous_path) {
   const json settings = session.ActiveAgent().SessionSettings();
   const std::string route = JsonValue(settings, "route", "");
@@ -57,7 +62,7 @@ void LoadSessionJournal(AppSession& session, const std::string& previous_path) {
                     session.context.provider.providers, route)
             .empty()) {
       Emit(NoticeEvent(PresentationStatus::kFailed,
-                       "Saved model is unavailable: " + route));
+                       "saved model is unavailable: " + route));
     } else {
       ActivateRoute(session.ApiClient());
       session.ActiveAgent().RouteChanged();
@@ -69,7 +74,6 @@ void LoadSessionJournal(AppSession& session, const std::string& previous_path) {
     if (!mode.empty()) ParsePermissionOverride(mode, saved);
     session.context.permission_override.store(saved);
     PermissionControl(session.context, json::object());
-    session.ActiveAgent().ApprovalChanged();
   }
   const json saved_tools = JsonValue(settings, "tools", json::object());
   if (!saved_tools.empty()) {
@@ -102,24 +106,30 @@ CommandReply RunSlashCommand(AppSession& session,
     case SlashCommandId::kFork:
     case SlashCommandId::kVerbose:
     case SlashCommandId::kBtw:
+    case SlashCommandId::kCoord:
+    case SlashCommandId::kBoard:
+    case SlashCommandId::kOpen:
       result = {{"error", "this command belongs to the client"}};
       return reply;
     case SlashCommandId::kClear:
-      reply.Print("\033[H\033[2J");
+      reply.Print("%s", ClearScreen());
       return reply;
     case SlashCommandId::kRewind: {
-      std::string arg = Trim(command.argument);
-      if (arg.starts_with("@")) arg = Trim(arg.substr(1));
-      int64_t turn = 0;
-      if (!arg.empty() && arg.size() <= 9 &&
-          std::all_of(arg.begin(), arg.end(), ::isdigit)) {
-        turn = std::stoll(arg);
-      }
-      if (turn <= 0) {
-        result = {{"error", "usage: /rewind [@]TURN"}};
+      // The clients fork before message N; bare, this lists the numbers.
+      if (!Trim(command.argument).empty()) {
+        result = {{"error", "this command belongs to the client"}};
         return reply;
       }
-      result = SessionControl(session, {{"kind", "rewind"}, {"turn", turn}});
+      const Conversation& history = session.ActiveAgent().History();
+      const int64_t count = history.UserTurns();
+      for (int64_t turn = 1; turn <= count; ++turn) {
+        reply.Print(
+            "%s%3" PRId64 "%s  %s\n", DIM(), turn, RST(),
+            TerminalSafe(FirstLine(history.UserMessageText(turn))).c_str());
+      }
+      reply.Note(Tone::kNeutral,
+                 "/rewind N forks before message N and opens it with "
+                 "that message to edit; the original stays as it is");
       return reply;
     }
     case SlashCommandId::kShare: {
@@ -164,7 +174,6 @@ CommandReply RunSlashCommand(AppSession& session,
         return reply;
       }
       result = PermissionControl(session.context, {{"mode", command.argument}});
-      session.ActiveAgent().ApprovalChanged();
       return reply;
     case SlashCommandId::kRename:
       if (Trim(command.argument).empty()) {
@@ -215,11 +224,9 @@ CommandReply RunSlashCommand(AppSession& session,
     case SlashCommandId::kYolo:
       result = PermissionControl(session.context,
                                  {{"mode", ApprovalIsYolo() ? "ask" : "yolo"}});
-      session.ActiveAgent().ApprovalChanged();
-      reply.Print(
-          "%s· yolo %s%s\n", DIM(),
-          ApprovalIsYolo() ? "ON — automatic ordinary approvals" : "off",
-          RST());
+      reply.Note(Tone::kNeutral, ApprovalIsYolo()
+                                     ? "yolo on — automatic ordinary approvals"
+                                     : "yolo off");
       break;
     case SlashCommandId::kCompact:
       session.ActiveAgent().Compact();
@@ -231,11 +238,9 @@ CommandReply RunSlashCommand(AppSession& session,
     case SlashCommandId::kCost:
       HandleCost(session, reply);
       break;
-    case SlashCommandId::kPrompt:
-      result = PromptCommand(command.argument, [&session](const json& request) {
-        return session.ActiveAgent().PromptConfiguration(request);
-      });
-      return reply;
+    case SlashCommandId::kInstructions:
+      HandleInstructions(session, command.argument, reply);
+      break;
     case SlashCommandId::kMemory:
     case SlashCommandId::kSkills:
     case SlashCommandId::kSchedule:

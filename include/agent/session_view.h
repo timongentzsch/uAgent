@@ -42,9 +42,15 @@ std::string StripAttachedTrailer(const std::string& text);
 // and a subagent's final "[collaborator …]" resume line. Rows link to that
 // work through their parts instead.
 std::string StripModelHints(std::string text);
-void MergeDisplayBlock(json& view, const json& block);
-// Apply an event represented in a session snapshot; false means live-only.
-bool ApplySessionEvent(json& state, const std::string& type, const json& data);
+// Upserts one block by id and returns it (nullptr once evicted from the
+// bounded view).
+const json* MergeDisplayBlock(json& view, const json& block);
+// The one reducer of a session's view: every holder of a view (worker, host,
+// terminal) folds events through it. False means the event is live-only.
+// `patch`, when given, receives the {kind:"block"} frame that brings another
+// copy of the view to the same state, or stays null when no block changed.
+bool ApplySessionEvent(json& state, const std::string& type, const json& data,
+                       json* patch = nullptr);
 json ConversationDetail(const Conversation& conversation, const std::string& id,
                         size_t offset);
 // Exact retained tool arguments/result, independent of presentation previews.

@@ -59,7 +59,7 @@ class ScopedCookedInput {
 constexpr SlashCommandSpec kSlashCommands[] = {
     {SlashCommandId::kAgents, "/agents",
      "[ID [output|stop|message TEXT|followup TEXT]]",
-     "inspect, guide or resume delegated collaborators"},
+     "inspect, guide or resume delegated agents"},
     {SlashCommandId::kAttach, "/attach", "PATH|clear",
      "attach a file to the next turn", false},
     {SlashCommandId::kCompact, "/compact", "",
@@ -70,8 +70,8 @@ constexpr SlashCommandSpec kSlashCommands[] = {
      "show changed settings, change one, or reset a scope"},
     {SlashCommandId::kFork, "/fork", "[TITLE] [@TURN]",
      "branch this conversation, optionally at user turn N", false, true},
-    {SlashCommandId::kRewind, "/rewind", "[@TURN]",
-     "rewind this conversation to user turn N", false, true},
+    {SlashCommandId::kRewind, "/rewind", "[N]",
+     "fork before your message N to edit it; bare, list the numbers", false},
     {SlashCommandId::kShare, "/share", "", "export transcript as markdown",
      false, true},
     {SlashCommandId::kPermissions, "/permissions",
@@ -81,10 +81,9 @@ constexpr SlashCommandSpec kSlashCommands[] = {
      false},
     {SlashCommandId::kRename, "/rename", "TITLE", "rename this conversation",
      false},
-    {SlashCommandId::kPrompt, "/prompt",
-     "[show|edit|set|reset] [--scope global|project|conversation] [--mode "
-     "overlay|replace] [--file PATH]",
-     "inspect or edit the system prompt"},
+    {SlashCommandId::kInstructions, "/instructions",
+     "[edit sessions|coordinator user|project | clear]",
+     "show or edit instructions; clear this conversation's self-directive"},
     {SlashCommandId::kHttp, "/http", "[INDEX [request|response]]",
      "inspect captured HTTP attempts (latest by default)"},
     {SlashCommandId::kDiff, "/diff", "",
@@ -141,6 +140,12 @@ constexpr SlashCommandSpec kSlashCommands[] = {
     {SlashCommandId::kVerbose, "/verbose", "",
      "toggle full reasoning and expanded tool output", false, true, true},
     {SlashCommandId::kYolo, "/yolo", "", "toggle automatic approval", false},
+    {SlashCommandId::kCoord, "/coord", "", "open this folder's coordinator",
+     false, true, true},
+    {SlashCommandId::kBoard, "/board", "",
+     "list this folder's sessions and threads", false, true, true},
+    {SlashCommandId::kOpen, "/open", "ID", "switch to a session from /board",
+     false, true, true},
     {SlashCommandId::kHelp, "/commands", "", ""},
     {SlashCommandId::kQuit, "/exit", "", "", false, true},
     {SlashCommandId::kQuit, "/q", "", "", false, true},
@@ -251,7 +256,7 @@ std::string DecisionPrompt(const std::string& prompt, const json& options) {
       return prompt;
     }
   }
-  if (guidance) hints += " \u2014 or type what to do instead";
+  if (guidance) hints += AsciiGlyphs(" \u2014 or type what to do instead");
   return prompt + hints;
 }
 
@@ -276,7 +281,8 @@ std::string ReadInteraction(InteractionRequest request, bool* eof) {
     *eof = !EditExternalText(answer, STDIN_FILENO, kAdaptiveSystemBytes);
   } else {
     ScopedCookedInput cooked_input;
-    fputs((DecisionPrompt(request.prompt, request.options) + " ").c_str(),
+    fputs((TerminalSafe(DecisionPrompt(request.prompt, request.options)) + " ")
+              .c_str(),
           stdout);
     fputs(request.initial.c_str(), stdout);
     fflush(stdout);

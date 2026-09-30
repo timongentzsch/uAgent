@@ -58,8 +58,7 @@ json SkillControl(const json& request, const std::filesystem::path& cwd) {
         {"status", state},
         {"required_tools", skill.required_tools}};
     std::string content, error;
-    if (!ReadRegularFile(skill.path, static_cast<size_t>(SkillBodyBytes()),
-                         content, error)) {
+    if (!ReadRegularFile(skill.path, kSkillBodyBytes, content, error)) {
       item["error"] = error;
       return item;
     }
@@ -90,7 +89,7 @@ json SkillControl(const json& request, const std::filesystem::path& cwd) {
       items.push_back(describe(skill, false));
     }
     return {{"items", items},
-            {"limit", SkillBodyBytes()},
+            {"limit", kSkillBodyBytes},
             {"applies", "new_sessions"}};
   }
   auto found = std::find_if(
@@ -163,8 +162,7 @@ json SkillControl(const json& request, const std::filesystem::path& cwd) {
   }
   bool existed = PathExists(path.string());
   if (existed &&
-      !ReadRegularFile(path.string(), static_cast<size_t>(SkillBodyBytes()),
-                       previous, error)) {
+      !ReadRegularFile(path.string(), kSkillBodyBytes, previous, error)) {
     return {{"error", error}};
   }
   if (!request.contains("revision") ||
@@ -185,7 +183,7 @@ json SkillControl(const json& request, const std::filesystem::path& cwd) {
     return {{"deleted", key}};
   }
   std::string content = JsonValue(request, "content", ""), description;
-  if (content.size() > static_cast<size_t>(SkillBodyBytes())) {
+  if (content.size() > kSkillBodyBytes) {
     return {{"error", "skill exceeds configured size limit"}};
   }
   std::istringstream input(content);
@@ -209,11 +207,9 @@ json SkillControl(const json& request, const std::filesystem::path& cwd) {
 }
 json LibraryControl(const json& request,
                     const std::filesystem::path& workspace) {
-  std::error_code ec;
-  const auto cwd = std::filesystem::canonical(workspace, ec);
-  if (ec || !std::filesystem::is_directory(cwd, ec)) {
-    return {{"error", "choose an accessible project directory"}};
-  }
+  const auto resolved = CanonicalDirectory(workspace);
+  if (!resolved) return {{"error", "choose an accessible project directory"}};
+  const std::filesystem::path& cwd = *resolved;
   if (JsonValue(request, "kind", "") == "memory") {
     return MemoryControl(request, cwd);
   }

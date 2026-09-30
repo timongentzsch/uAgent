@@ -1,0 +1,37 @@
+{
+  "name": "coordinator_fanout",
+  "description": "Two independent jobs become two threads started in one batch, each with a brief; the coordinator itself changes nothing.",
+  "tier": "regression",
+  "variants": ["control"],
+  "coordinator": true,
+  "env": {"UAGENT_COORDINATOR_ENVIRONMENT": "local", "UAGENT_COORDINATOR_DAILY_SPEND_USD": "1"},
+  "prompt": "Two independent jobs: add an 'Install' section to README.md, and add a 0.2.0 entry to CHANGELOG.md. Delegate them so they run in parallel, then tell me what you started.",
+  "files": {
+    "README.md": "# demo\n\nA small demo project.\n",
+    "CHANGELOG.md": "# Changelog\n\n## 0.1.0\n- First release.\n"
+  },
+  "script": [
+    {
+      "when": {"contains": "Objective:"},
+      "respond": {"content": "thread done"}
+    },
+    {
+      "when": {"tool_results": 0},
+      "respond": {
+        "tool_calls": [
+          {"id": "readme", "name": "thread", "arguments": {"action": "spawn", "title": "README install section", "objective": "Add an Install section to README.md", "done_when": "README.md has an Install section"}},
+          {"id": "changelog", "name": "thread", "arguments": {"action": "spawn", "title": "CHANGELOG 0.2.0", "objective": "Add a 0.2.0 entry to CHANGELOG.md", "done_when": "CHANGELOG.md lists 0.2.0"}}
+        ]
+      }
+    },
+    {
+      "respond": {"content": "Started two threads: README install section and CHANGELOG 0.2.0."}
+    }
+  ],
+  "checks": {
+    "min_batch": 2,
+    "answer_contains": ["README", "CHANGELOG"],
+    "result_contains": ["session_id"],
+    "max_requests": 6
+  }
+}

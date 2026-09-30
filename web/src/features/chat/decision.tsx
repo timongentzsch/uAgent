@@ -1,5 +1,10 @@
-import type { Pending, Act, Report } from "../../shared/types.ts";
-import { useState } from "preact/hooks";
+import type {
+  Pending,
+  Act,
+  CommandFields,
+  Report,
+} from "../../shared/types.ts";
+import { useEffect, useRef, useState } from "preact/hooks";
 import {
   Actions,
   Button,
@@ -8,14 +13,17 @@ import {
   Input,
   Textarea,
 } from "../../shared/ui.tsx";
+import Ask from "./ask.tsx";
 
 export default function Decision({
   pending,
+  session,
   act,
   online,
   report,
 }: {
   pending: Pending;
+  session: string;
   act: Act;
   online: boolean;
   report: Report;
@@ -38,15 +46,21 @@ export default function Decision({
   const [guidance, setGuidance] = useState("");
   const [sending, setSending] = useState(false);
   const approval = pending.approval;
-  const send = async (text: string) => {
+  const asking = pending.kind === "ask";
+  // One reply in flight at a time: answer and cancel share the guard.
+  const answer = async (fields: CommandFields) => {
     setSending(true);
     try {
-      await act("reply", { interaction_id: pending.id, text });
+      await act("reply", { interaction_id: pending.id, ...fields });
     } catch (failure) {
       report(failure);
+    } finally {
       setSending(false);
     }
   };
+  const send = (text: string, attachment_ids?: string[]) =>
+    answer({ text, attachment_ids });
+  const cancel = () => answer({ text: "", cancelled: true });
   const guidanceInput = (
     <label>
       Guidance
@@ -57,24 +71,53 @@ export default function Decision({
       />
     </label>
   );
+  // The panel replaces the composer: whoever was typing there lands here.
+  const heading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    if (document.activeElement === document.body)
+      heading.current?.focus({ preventScroll: true });
+  }, []);
   return (
     <section class="decision" aria-label="Pending decision">
-      <h2>Needs your decision</h2>
-      <div class="decision-preview">
-        {approval && (
-          <>
-            <strong>
-              {approval.tool}
-              {approval.mandatory_human
-                ? ` · ${approval.mandatory_reason || "explicit approval required"}`
-                : ""}
-            </strong>
-            <pre>{cleanText(approval.preview)}</pre>
-          </>
-        )}
-        <p>{cleanText(pending.prompt)}</p>
-      </div>
-      {keyed ? (
+      <h2 ref={heading} tabIndex={-1}>
+        {pending.route === "coordinator"
+          ? "The coordinator is deciding"
+          : asking
+            ? "Needs your answer"
+            : "Needs your decision"}
+      </h2>
+      {pending.route === "coordinator" && (
+        <p class="decision-note">You can still answer first.</p>
+      )}
+      {pending.note && <p class="decision-note">{cleanText(pending.note)}</p>}
+      {!asking && (
+        <div class="decision-preview">
+          {approval && (
+            <>
+              <strong>
+                {approval.tool}
+                {approval.mandatory_human
+                  ? ` · ${approval.mandatory_reason || "explicit approval required"}`
+                  : ""}
+              </strong>
+              <pre>{cleanText(approval.preview)}</pre>
+            </>
+          )}
+          <p>{cleanText(pending.prompt)}</p>
+        </div>
+      )}
+      {asking ? (
+        <Ask
+          id={pending.id}
+          session={session}
+          questions={pending.questions ?? []}
+          online={online}
+          sending={sending}
+          send={(text, ids) => void send(text, ids)}
+          cancel={cancel}
+          report={report}
+        />
+      ) : keyed ? (
         <form
           onSubmit={(event) => {
             event.preventDefault();
@@ -121,7 +164,7 @@ export default function Decision({
         >
           {pending.kind === "editor" ? (
             <label>
-              System prompt
+              Your text
               <Textarea
                 rows={12}
                 value={reply}
@@ -158,16 +201,7 @@ export default function Decision({
             </label>
           )}
           <Actions>
-            <Button
-              onClick={() =>
-                act("reply", {
-                  interaction_id: pending.id,
-                  text: "",
-                  cancelled: true,
-                }).catch(report)
-              }
-              disabled={!online}
-            >
+            <Button onClick={cancel} disabled={!online || sending}>
               Cancel
             </Button>
             <Button

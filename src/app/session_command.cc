@@ -23,7 +23,6 @@ constexpr KindRow kKinds[] = {
     {"interrupt", SessionCommandKind::kInterrupt, true},
     {"reply", SessionCommandKind::kReply, true},
     {"steer", SessionCommandKind::kSteer, true},
-    {"guide", SessionCommandKind::kGuide, false},
     {"recall", SessionCommandKind::kRecall, true},
     {"rename", SessionCommandKind::kRename, true},
     {"refresh", SessionCommandKind::kRefresh, true},
@@ -34,11 +33,11 @@ constexpr KindRow kKinds[] = {
     {"config", SessionCommandKind::kConfig, true},
     {"context", SessionCommandKind::kContext, true},
     {"fork", SessionCommandKind::kFork, true},
-    {"rewind", SessionCommandKind::kRewind, true},
     {"share", SessionCommandKind::kShare, true},
     {"side", SessionCommandKind::kSide, true},
-    {"prompt", SessionCommandKind::kPrompt, true},
+    {"self_directive", SessionCommandKind::kSelfDirective, true},
     {"submit", SessionCommandKind::kSubmit, true},
+    {"escalate", SessionCommandKind::kEscalate, true},
     {"create", SessionCommandKind::kCreate, false},
     {"delete", SessionCommandKind::kDelete, false},
     {"activate", SessionCommandKind::kActivate, false},
@@ -83,7 +82,6 @@ bool ParseSessionCommand(const json& command, const std::string& session_id,
   parsed.operation = JsonValue(command, "operation", "");
   parsed.cancelled = JsonValue(command, "cancelled", false);
   parsed.has_attachments = command.contains("attachments");
-  parsed.budget = JsonValue(command, "budget", json{});
   parsed.raw = command;
   out = std::move(parsed);
   error.clear();

@@ -9,7 +9,6 @@
 #include "include/core/env.h"
 #include "include/core/usage.h"
 #include "include/mcp/server.h"
-#include "include/tools/collaborator_runtime.h"
 
 namespace uagent {
 
@@ -39,7 +38,6 @@ struct AppRuntime {
   AdaptiveSystemState adaptive_system;
   ProcessSupervisor processes;
   UsageAccumulator side_usage;
-  CollaboratorRuntime collaborator;
   McpRuntime mcp;
 
  private:

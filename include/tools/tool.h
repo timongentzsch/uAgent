@@ -222,8 +222,6 @@ class ToolSelection {
   json Save() const;
   json Catalogue(const std::vector<Tool>& tools) const;
 
-  const std::string& Profile() const { return profile_; }
-
  private:
   std::string profile_ = "default";
   std::unordered_map<std::string, bool> overrides_;
@@ -235,6 +233,8 @@ struct ToolAvailability {
 
 struct ToolPolicy {
   uint32_t allowed = kAllToolCapabilities;
+  // When set, only these tools, whatever the capabilities allow: a
+  // delegated child's toolset, or a folder coordinator's.
   std::vector<std::string> tool_allowlist;
   std::vector<std::string> run_allowlist;
   std::string error;
@@ -347,6 +347,10 @@ class ToolSchemaCache {
 
  private:
   bool valid_ = false;
+  // Once a detached terminal has existed, its tools stay listed: the tool
+  // array is part of the cached prompt, and dropping them when the last
+  // process ends would miss the cache once more.
+  bool detached_seen_ = false;
   size_t bytes_ = 0;
   std::vector<size_t> selected_;
   json available_ = json::array();

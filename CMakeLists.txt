@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(uagent VERSION 1.1.1 DESCRIPTION "Lean terminal coding agent" LANGUAGES CXX)
+project(uagent VERSION 1.2.0 DESCRIPTION "Lean terminal coding agent" LANGUAGES CXX)
 include(GNUInstallDirs)
 
 if(NOT UNIX)
@@ -83,8 +83,9 @@ if(UAGENT_BUILD_FUZZERS)
 endif()
 
 # Layered static libs mirror the event-spine dependency DAG:
-#   core_base (leaf: core/transport/media) <- api <- toolcore (tool
-#   vocabulary + provider catalog: no agent, tool, or app dependency)
+#   core_base (leaf: core/transport) <- api <- toolcore (tool
+#   vocabulary, attachments + provider catalog: no agent, tool, or app
+#   dependency)
 #   <- agent (turn loop, session persistence, supervision services:
 #   process/jobs/child_agent, file writes, memory store, observation
 #   records) <- tools (tool surface + mcp adapters, consuming agent
@@ -96,6 +97,7 @@ add_library(
   src/core/activity.cc
   src/core/capture.cc
   src/core/child_env.cc
+  src/core/config.cc
   src/core/config_document.cc
   src/core/config_registry.cc
   src/core/debug.cc
@@ -106,18 +108,21 @@ add_library(
   src/core/file_watch.cc
   src/core/fs.cc
   src/core/library.cc
+  src/core/mailbox.cc
   src/core/platform_posix.cc
   src/core/private_store.cc
+  src/core/project.cc
   src/core/sandbox.cc
   src/core/sandbox_posix.cc
   src/core/signals.cc
   src/core/skills.cc
   src/core/steering.cc
   src/core/strings.cc
+  src/core/style.cc
   src/core/term.cc
+  src/core/usage.cc
   src/transport/session.cc
-  src/transport/sse.cc
-  src/media/attachments.cc)
+  src/transport/sse.cc)
 target_link_libraries(uagent_core_base PUBLIC uagent_options)
 
 add_library(
@@ -131,6 +136,7 @@ target_link_libraries(uagent_api PUBLIC uagent_core_base)
 
 add_library(
   uagent_toolcore
+  src/media/attachments.cc
   src/tools/tool.cc
   src/providers/selection.cc
   src/providers/catalog.cc
@@ -143,6 +149,7 @@ add_library(
   src/agent/activity_log.cc
   src/agent/agent.cc
   src/agent/child_agent.cc
+  src/agent/mail_delivery.cc
   src/agent/conversation.cc
   src/agent/dispatch.cc
   src/agent/file_services.cc
@@ -152,6 +159,7 @@ add_library(
   src/agent/process_io.cc
   src/agent/prompt_profile.cc
   src/agent/request.cc
+  src/agent/session_links.cc
   src/agent/session_store.cc
   src/agent/session_view.cc
   src/agent/tool_loop.cc
@@ -164,8 +172,6 @@ target_link_libraries(uagent_agent PUBLIC uagent_toolcore)
 
 add_library(
   uagent_tools
-  src/browser/browser.cc
-  src/browser/runtime.cc
   src/mcp/discover.cc
   src/mcp/invoke.cc
   src/mcp/register.cc
@@ -173,14 +179,12 @@ add_library(
   src/mcp/rpc.cc
   src/mcp/server.cc
   src/tools/adapt_system.cc
-  src/tools/browser.cc
-  src/tools/collaborator_runtime.cc
+  src/tools/ask.cc
   src/tools/files.cc
   src/tools/image_result.cc
   src/tools/memory.cc
   src/tools/memory_pipeline.cc
   src/tools/policy.cc
-  src/tools/configure.cc
   src/tools/registry.cc
   src/tools/registry_activity.cc
   src/tools/registry_exec.cc
@@ -208,11 +212,14 @@ add_library(
   src/app/config_proposal.cc
   src/app/config_control.cc
   src/app/library.cc
-  src/app/prompt_control.cc
   src/app/permissions.cc
   src/app/tool_categories.cc
   src/app/control.cc
   src/app/schedule.cc
+  src/app/launch.cc
+  src/app/thread_link.cc
+  src/app/uagent_tool.cc
+  src/app/coordinator.cc
   src/cli/options.cc
   src/cli/reference.cc
   src/app/runtime.cc
@@ -232,7 +239,12 @@ add_library(
   src/app/session_terminal.cc
   src/ui/conversation.cc
   src/ui/input_decoder.cc
+  src/ui/ask_picker.cc
   src/ui/interactive.cc
+  src/ui/frame.cc
+  src/ui/completion.cc
+  src/ui/composer.cc
+  src/ui/live_region.cc
   src/ui/editor.cc
   src/ui/markdown.cc
   src/ui/presentation.cc)
@@ -244,17 +256,42 @@ add_library(uagent_core INTERFACE)
 target_link_libraries(uagent_core INTERFACE uagent_app)
 
 add_executable(uagent src/main.cc)
+# The web UI is built, not checked in (`npm ci && npm run build` in web/, or
+# CI's web-dist artifact). A first configure without it builds CLI-only rather
+# than failing; -DUAGENT_WEB=ON insists on it.
+if(NOT DEFINED UAGENT_WEB AND NOT EXISTS
+                             "${CMAKE_CURRENT_SOURCE_DIR}/web/dist/.assets")
+  message(WARNING "web/dist is not built, so this build has no web UI. Run "
+                  "`npm ci && npm run build` in web/, then configure again "
+                  "with -DUAGENT_WEB=ON.")
+  set(UAGENT_WEB OFF CACHE BOOL "Embed the native web master and PWA")
+endif()
 option(UAGENT_WEB "Embed the native web master and PWA" ON)
 option(UAGENT_WEB_PUSH "Build the optional OpenSSL Web Push sender" OFF)
+# The browser appliance (Chrome shown over noVNC) runs only under the web
+# host; without it, src/web/no_browser.cc reports no browser.
+include(CMakeDependentOption)
+cmake_dependent_option(UAGENT_BROWSER "Build the browser appliance" ON
+                       "UAGENT_WEB" OFF)
 if(UAGENT_WEB)
   include(cmake/embed_web.cmake)
-  add_library(uagent_web src/web/master.cc src/web/browser_viewer.cc
-                         src/web/rfb_filter.cc src/web/push.cc
+  add_library(uagent_web src/web/master.cc src/web/push.cc
                          "${_web_generated}")
   target_link_libraries(uagent_web PUBLIC uagent_core)
   target_include_directories(uagent_web SYSTEM PRIVATE third_party/cpp-httplib)
   # The browser appliance only runs under the web host, so builds without it
   # leave the browser unreferenced and the linker drops it.
+  if(UAGENT_BROWSER)
+    target_sources(uagent_tools PRIVATE src/browser/browser.cc
+                                        src/browser/runtime.cc src/tools/browser.cc)
+    target_sources(uagent_web PRIVATE src/web/browser_viewer.cc
+                                      src/web/rfb_filter.cc)
+    foreach(_uagent_target uagent uagent_app uagent_web)
+      target_compile_definitions(${_uagent_target} PRIVATE UAGENT_BROWSER)
+    endforeach()
+  else()
+    target_sources(uagent_web PRIVATE src/web/no_browser.cc)
+  endif()
   target_compile_definitions(uagent PRIVATE UAGENT_WEB)
   target_compile_definitions(uagent_app PRIVATE UAGENT_WEB)
   target_link_libraries(uagent PRIVATE uagent_web)
@@ -310,8 +347,6 @@ include(CTest)
 if(BUILD_TESTING)
   add_executable(
     uagent_tests
-    tests/unit/browser_test.cc
-    src/web/rfb_filter.cc
     tests/unit/activity_sessions_test.cc
     tests/unit/attachment_encoding_test.cc
     tests/unit/config_proposal_test.cc
@@ -341,6 +376,11 @@ if(BUILD_TESTING)
     tests/unit/tool_execution_policy_test.cc
     tests/unit/wire_test.cc)
   target_link_libraries(uagent_tests PRIVATE uagent_core)
+  if(UAGENT_BROWSER)
+    target_sources(uagent_tests PRIVATE tests/unit/browser_test.cc
+                                        src/web/rfb_filter.cc)
+    target_compile_definitions(uagent_tests PRIVATE UAGENT_BROWSER)
+  endif()
   # Its own PCH rather than REUSE_FROM: the test binary carries an extra -D,
   # and a reused header has to have been built with the same command line.
   target_precompile_headers(uagent_tests PRIVATE ${UAGENT_PCH})

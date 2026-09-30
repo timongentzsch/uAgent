@@ -4,6 +4,7 @@ import importlib
 import os
 import pathlib
 import pkgutil
+import shutil
 import sys
 import tempfile
 import time
@@ -83,6 +84,33 @@ def select(arguments):
     return names
 
 
+def remove_suite(root):
+    """Remove the suite's directory once no runtime writes into it: a
+    session that finished at the end of a case can still start another (a
+    thread waking its coordinator) after that case's cleanup."""
+    from integration_support import budget
+    from session_support import close_sessions, runtime_directory
+
+    homes = list(root.glob("*.home"))
+    deadline = time.monotonic() + budget(5)
+    quiet_since = time.monotonic()
+    while time.monotonic() < deadline and time.monotonic() - quiet_since < 1:
+        live = [home for home in homes if any(runtime_directory(home).glob("*.sock"))]
+        for home in live:
+            close_sessions(home)
+        if live:
+            quiet_since = time.monotonic()
+        time.sleep(0.05)
+    for attempt in range(10):
+        try:
+            shutil.rmtree(root)
+            return
+        except OSError:
+            if attempt == 9:
+                raise
+            time.sleep(0.5)
+
+
 def main():
     arguments = parse_args()
     names = select(arguments)
@@ -93,7 +121,8 @@ def main():
     if not names:
         raise SystemExit(f"no integration tests selected (group={arguments.group})")
     label = arguments.group if not (arguments.test or arguments.match) else "selected"
-    with tempfile.TemporaryDirectory(prefix="uagent-integration-") as temp:
+    temp = tempfile.mkdtemp(prefix="uagent-integration-")
+    try:
         root = pathlib.Path(temp)
         # A temp directory of its own, beside the case homes rather than above
         # them. The runner's own TMPDIR is an ancestor of everything under
@@ -125,6 +154,8 @@ def main():
                     stop_sessions(state.parent)
             print(f"passed {name} ({time.monotonic() - started:.3f}s)", flush=True)
         print(f"all {len(names)} {label} integration tests passed")
+    finally:
+        remove_suite(pathlib.Path(temp))
 
 
 if __name__ == "__main__":

@@ -1,13 +1,8 @@
-/* "Now" popover on the status line, and the inspector sheet. */
+/* The activity sheet on the status line, and the inspector sheet. */
 
 .activities {
   min-width: 0;
   max-width: 100%;
-}
-
-.activity-popover {
-  width: calc(380rem / 14);
-  padding: var(--space-2);
 }
 
 .activity-list {
@@ -51,7 +46,7 @@
 .activity-text small,
 .activity-row time {
   color: var(--muted);
-  font-size: 0.75rem;
+  font-size: var(--font-micro);
 }
 
 /* Inspector: one column, zero child margins, sections carry the labels. */
@@ -117,7 +112,7 @@
 .activity-info > summary {
   cursor: pointer;
   color: var(--muted);
-  font-size: 0.8rem;
+  font-size: var(--font-small);
 }
 
 .activity-info > section {
@@ -146,7 +141,7 @@
 
 .detail-meta {
   color: var(--muted);
-  font-size: 0.8rem;
+  font-size: var(--font-small);
 }
 
 .detail-label {
@@ -197,7 +192,7 @@
 
 .thread-progress {
   color: var(--muted);
-  font-size: 0.8rem;
+  font-size: var(--font-small);
   padding: var(--gap) 0;
 }
 
@@ -205,36 +200,6 @@
   flex: none;
   max-height: 5rem;
   overflow: auto;
-}
-
-.communication ol {
-  list-style: none;
-  padding: 0;
-  margin: var(--gap) 0 0;
-}
-
-.communication li {
-  border-top: 1px solid var(--line);
-  padding: var(--gap) 0;
-}
-
-.communication-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  align-items: baseline;
-  font-size: 0.8rem;
-}
-
-.communication-meta time {
-  margin-left: auto;
-  color: var(--muted);
-}
-
-.communication p {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  margin: var(--space-2) 0 0;
 }
 
 .child-thread .history-button {

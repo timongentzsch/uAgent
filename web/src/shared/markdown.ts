@@ -24,8 +24,11 @@ markdown.renderer.rules.table_open = () => '<div class="table-scroll"><table>';
 markdown.renderer.rules.table_close = () => "</table></div>";
 let math: Promise<void> | undefined;
 let highlighting: Promise<void> | undefined;
+// The whole document in one markdown-it pass: the reference the block
+// renderer below must reproduce (see markdown.test.js).
 export async function renderMarkdown(text: string) {
-  return (await renderMarkdownBlocks(text)).map((block) => block.html).join("");
+  await Promise.all(plugins(text));
+  return markdown.render(text);
 }
 
 export interface MarkdownBlock {

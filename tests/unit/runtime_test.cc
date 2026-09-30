@@ -23,6 +23,7 @@
 #include "include/core/config.h"
 #include "include/core/effective_config.h"
 #include "include/core/events.h"
+#include "include/core/fs.h"
 #include "include/core/signals.h"
 #include "include/core/steering.h"
 #include "include/providers.h"
@@ -48,7 +49,7 @@ void TestEarlyTurnInterruption() {
         SteeringState().Request();
       }
       if (event.type == "notice" &&
-          JsonValue(event.data, "text", "") == "· interrupted") {
+          JsonValue(event.data, "text", "") == "interrupted") {
         ++notices;
       }
       if (event.type == "response.started") ++responses;
@@ -189,16 +190,11 @@ void TestRuntimeOwnershipHelpers() {
       {"UAGENT_SESSION_BUDGET", "2.5"},
       {"UAGENT_MAX_TURN_COST", "nan"},
       {"UAGENT_SUBAGENT_MODEL", "fast/model"},
-      {"UAGENT_TOOL_TRACE_PROTECT_CHARS", "1234"},
-      {"UAGENT_TOOL_TRACE_PRUNE_MIN_CHARS", "5678"},
-      {"UAGENT_SESSION_ARCHIVE_BYTES", "-1"},
       {"UAGENT_WEB_SEARCH_MODEL", "vendor/search"},
       {"UAGENT_WEB_SEARCH_BACKEND", "off"},
       {"UAGENT_WEB_SEARCH_EFFORT", "low"},
       {"UAGENT_WEB_SEARCH_ENGINE", "invalid"},
       {"UAGENT_WEB_SEARCH_CONTEXT_SIZE", "huge"},
-      {"UAGENT_WEB_SEARCH_MAX_RESULTS", "99"},
-      {"UAGENT_WEB_SEARCH_MAX_USES", "0"},
       {"UAGENT_MCP_ROOTS", "/tmp/one:/tmp/two"},
       {"UAGENT_OPENROUTER_VARIANT", "floor"},
   };
@@ -212,16 +208,11 @@ void TestRuntimeOwnershipHelpers() {
   CHECK(config.session_budget == 2.5);
   CHECK(config.max_turn_cost == 0);
   CHECK(SubagentModel() == "fast/model");
-  CHECK(ToolTraceProtectChars() == 1234);
-  CHECK(ToolTracePruneMinChars() == 5678);
-  CHECK(config.session_archive_bytes == 0);
   CHECK(config.web_search_model == "vendor/search");
   CHECK(config.web_search_backend == "off");
   CHECK(config.web_search_effort == "low");
   CHECK(config.web_search_engine == "auto");
   CHECK(config.web_search_context_size.empty());
-  CHECK(config.web_search_max_results == 25);
-  CHECK(config.web_search_max_uses == 1);
   CHECK(config.mcp_roots == "/tmp/one:/tmp/two");
   CHECK(config.openrouter_variant == "floor");
   json diagnostics = config.DiagnosticJson();
@@ -233,8 +224,6 @@ void TestRuntimeOwnershipHelpers() {
         config.web_search_backend);
   CHECK(diagnostics.value("openrouter_variant", "") == "floor");
   CHECK(diagnostics.value("mcp_roots", "") == config.mcp_roots);
-  CHECK(diagnostics.value("tool_trace_protect_chars", int64_t{0}) == 1234);
-  CHECK(diagnostics.value("tool_trace_prune_min_chars", int64_t{0}) == 5678);
   for (const auto& entry : kRuntimeEnv) unsetenv(entry.first);
   setenv("UAGENT_OPENROUTER_VARIANT", "invalid", 1);
   CHECK(RuntimeConfig::FromEnvironment().openrouter_variant.empty());
@@ -572,13 +561,6 @@ void TestAttributedUsageAccumulator() {
   CHECK(usage_delta.cost == 0.25);
   CHECK(usage_delta.cost_reported);
 
-  json statistics_delta = NumericStatisticsDifference(
-      {{"model_calls", 8}, {"duration_ms", 7.0}, {"complete", true}},
-      {{"model_calls", 3}, {"duration_ms", 8.0}});
-  CHECK(statistics_delta["model_calls"] == 5);
-  CHECK(statistics_delta["duration_ms"] == 0.0);
-  CHECK(!statistics_delta.contains("complete"));
-
   Usage extreme_current;
   extreme_current.input = std::numeric_limits<int64_t>::max();
   Usage extreme_prior;
@@ -590,9 +572,6 @@ void TestAttributedUsageAccumulator() {
   MergeNumericStatistics(extreme_statistics,
                          {{"calls", std::numeric_limits<uint64_t>::max()}});
   CHECK(extreme_statistics["calls"] == std::numeric_limits<int64_t>::max());
-  statistics_delta = NumericStatisticsDifference(
-      {{"calls", std::numeric_limits<uint64_t>::max()}}, {{"calls", 1}});
-  CHECK(statistics_delta["calls"] == std::numeric_limits<int64_t>::max() - 1);
 }
 
 // Empty UAGENT_IMAGE_MODEL no longer disables vision: an explicit model
@@ -1036,7 +1015,7 @@ void TestEffectiveConfigReload() {
             "UAGENT_MAX_TOOL_CALLS=2\n"
             "UAGENT_MAX_TURN_TOKENS=100\n"
             "UAGENT_SESSION_TOKEN_BUDGET=200\n"
-            "UAGENT_MCP_SERVERS=9\n"
+            "UAGENT_MCP_TIMEOUT=9\n"
             "UAGENT_MODEL=initial-model\n"
             "UAGENT_SESSION_BUDGET=1\n"
             "UAGENT_PERMISSION_URL=https://user:pass@review.example/v1\n"
@@ -1052,7 +1031,7 @@ void TestEffectiveConfigReload() {
   CHECK(active.max_tool_calls == 2);
   CHECK(active.max_turn_tokens == 100);
   CHECK(active.session_token_budget == 200);
-  CHECK(active.mcp_servers == 9);
+  CHECK(active.mcp_timeout_s == 9);
   CHECK(active.session_budget == 3.5);
   CHECK(!active.memory_enabled);
   json diagnostic = manager.DiagnosticJson(active);
@@ -1060,7 +1039,7 @@ void TestEffectiveConfigReload() {
   CHECK(diagnostic["sources"]["UAGENT_SESSION_BUDGET"] == "cli");
   CHECK(diagnostic["provenance"]["max_steps"] == "environment");
   CHECK(diagnostic["provenance"]["max_tool_calls"] == "global-config");
-  CHECK(diagnostic["provenance"]["request_bytes"] == "default");
+  CHECK(diagnostic["provenance"]["request_timeout_s"] == "default");
   std::string shown = JsonDump(diagnostic);
   CHECK(shown.find("private-route-key") == std::string::npos);
   CHECK(shown.find("user:pass") == std::string::npos);
@@ -1069,7 +1048,7 @@ void TestEffectiveConfigReload() {
                       "UAGENT_MAX_TOOL_CALLS=7\n"
                       "UAGENT_MAX_TURN_TOKENS=150\n"
                       "UAGENT_SESSION_TOKEN_BUDGET=250\n"
-                      "UAGENT_MCP_SERVERS=10\n"
+                      "UAGENT_MCP_TIMEOUT=10\n"
                       "UAGENT_MODEL=next-model\n"
                       "OPENROUTER_API_KEY=changed-secret\n")
             .output.starts_with("wrote "));
@@ -1079,11 +1058,11 @@ void TestEffectiveConfigReload() {
   CHECK(reload->active.max_tool_calls == 7);
   CHECK(reload->active.max_turn_tokens == 150);
   CHECK(reload->active.session_token_budget == 250);
-  CHECK(reload->active.mcp_servers == 9);
+  CHECK(reload->active.mcp_timeout_s == 9);
   CHECK(std::find(reload->applied.begin(), reload->applied.end(),
                   "max_tool_calls") != reload->applied.end());
   CHECK(std::find(reload->deferred.begin(), reload->deferred.end(),
-                  "mcp_servers") != reload->deferred.end());
+                  "mcp_timeout_s") != reload->deferred.end());
   CHECK(std::find(reload->deferred.begin(), reload->deferred.end(),
                   "UAGENT_MODEL") != reload->deferred.end());
   CHECK(std::find(reload->deferred.begin(), reload->deferred.end(),

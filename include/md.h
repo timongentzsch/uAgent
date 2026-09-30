@@ -40,6 +40,9 @@ class MdStream {
   bool heading = false;
   bool fence = false;
   bool fencehead = false;
+  // The open fence's marker and run length; a run at least as long closes it.
+  char fence_char = '`';
+  size_t fence_len = 3;
   bool intable = false;
   bool tablemode = false;
   std::string row;

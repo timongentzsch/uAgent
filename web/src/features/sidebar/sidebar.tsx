@@ -2,7 +2,7 @@ import {
   ConnectionStatus,
   type ConnectionPhase,
 } from "../../shared/connection-status.tsx";
-import type { ComponentChildren } from "preact";
+import { Component, type ComponentChildren } from "preact";
 import type {
   Session,
   Report,
@@ -16,6 +16,7 @@ import {
   Settings,
   Library,
   CalendarClock,
+  MessagesSquare,
 } from "lucide-preact";
 import { command } from "../../state/api.ts";
 import {
@@ -24,12 +25,17 @@ import {
   Time,
   Button,
   IconButton,
-  DataText,
   Placeholder,
+  EmptyState,
 } from "../../shared/ui.tsx";
-import FolderLabel from "./folder-label.tsx";
-import { Menu, MenuItem } from "../../shared/popover.tsx";
+import FolderLabel, {
+  folderName,
+  folderOf,
+} from "../../shared/folder-label.tsx";
+import SessionName from "../../shared/session-name.tsx";
+import { Menu, MenuItem } from "../../shared/menu.tsx";
 import { ActivityStatus, active } from "../chat/activity-status.tsx";
+import { ListRow } from "../../shared/list-row.tsx";
 export function ConversationMenu({
   item,
   online,
@@ -131,6 +137,51 @@ const SAMPLE: Session[] = [
   updated: Date.now(),
 }));
 
+// A folder's coordinator: faint until used, pulsing while it works, badged
+// with the decisions waiting on you, which a thread cannot proceed without.
+function CoordinatorButton({
+  folder,
+  coordinator,
+  waiting,
+  online,
+  open,
+}: {
+  folder: string;
+  coordinator?: Session;
+  waiting: number;
+  online: boolean;
+  open: () => void;
+}) {
+  const state = !coordinator
+    ? "idle"
+    : online && coordinator.turn_active
+      ? "working"
+      : "ready";
+  // One name carries the folder, the state and the badge's count.
+  const label = [
+    `Coordinator for ${folderName(folder)}`,
+    state === "working" && "working",
+    waiting > 0 && `${waiting} waiting on you`,
+  ]
+    .filter(Boolean)
+    .join(", ");
+  return (
+    <IconButton
+      label={label}
+      class={`coordinator-button ${state}`}
+      onClick={open}
+      disabled={!online}
+    >
+      <MessagesSquare />
+      {waiting > 0 && (
+        <span class="coordinator-badge" aria-hidden="true">
+          {waiting}
+        </span>
+      )}
+    </IconButton>
+  );
+}
+
 // One conversation in the list: its title, activity and last update.
 function SessionRow({
   item,
@@ -149,55 +200,39 @@ function SessionRow({
 }) {
   return (
     <div class="session-row">
-      <Button
-        class={`session ${selected ? "selected" : ""}`}
+      <ListRow
+        class="session"
         onClick={() => choose(item.id)}
         aria-current={selected ? "page" : undefined}
-      >
-        <span>
-          <DataText>{item.title || "Untitled conversation"}</DataText>
-          {unread && <span class="unread-dot" aria-label="Unread messages" />}
-        </span>
-        <small>
-          <ActivityStatus
-            phase={
-              online &&
-              (item.pending ||
-                item.turn_active ||
-                item.activities?.some(active))
-                ? item.activity || item.status
-                : ""
-            }
-            running={online && item.turn_active}
-            present={online && !!item.presence}
-            items={online ? item.activities || [] : []}
-            pending={online && item.pending}
-          />
-          {item.updated ? <Time value={item.updated} /> : "New conversation"}
-          {item.error && <span title={item.error}> · Needs attention</span>}
-        </small>
-      </Button>
+        title={<SessionName item={item} />}
+        unread={unread && "Unread messages"}
+        meta={
+          <>
+            <ActivityStatus
+              phase={
+                online &&
+                (item.pending ||
+                  item.turn_active ||
+                  item.activities?.some(active))
+                  ? item.activity || item.status
+                  : ""
+              }
+              running={online && item.turn_active}
+              present={online && !!item.presence}
+              items={online ? item.activities || [] : []}
+              pending={online && item.pending}
+            />
+            {item.updated ? <Time value={item.updated} /> : "New conversation"}
+            {item.error && <span title={item.error}> · Needs attention</span>}
+          </>
+        }
+      />
       {menu(item)}
     </div>
   );
 }
 
-export default function Sidebar({
-  loading,
-  sessions,
-  selected,
-  unread,
-  online,
-  connection,
-  choose,
-  menu,
-  refresh,
-  settings,
-  create,
-  page,
-  navigate,
-  scheduledUnread,
-}: {
+type SidebarProps = {
   loading: boolean;
   page: string;
   navigate: (page: "chat" | "library" | "scheduled") => void;
@@ -212,23 +247,63 @@ export default function Sidebar({
   refresh: () => void;
   settings: () => void;
   create: () => void;
-}) {
+  coordinate: (cwd: string) => void;
+};
+
+function SidebarView({
+  loading,
+  sessions,
+  selected,
+  unread,
+  online,
+  connection,
+  choose,
+  menu,
+  refresh,
+  settings,
+  create,
+  coordinate,
+  page,
+  navigate,
+  scheduledUnread,
+}: SidebarProps) {
   const [search, setSearch] = useState("");
   // Until the list arrives, it draws sample rows in its own layout.
   const drawing = loading && !sessions.length;
+  const all = drawing ? SAMPLE : sessions;
+  // Each folder's coordinator is its header icon, not a row. It and its
+  // badge count every session in the folder, whatever the search shows.
+  const coordinators = new Map<string, Session>();
+  const waiting = new Map<string, number>();
+  for (const item of all) {
+    const folder = folderOf(item);
+    if (item.kind === "coordinator") coordinators.set(folder, item);
+    if (item.pending) waiting.set(folder, (waiting.get(folder) || 0) + 1);
+  }
   const groups = new Map<string, Session[]>();
-  for (const item of [...(drawing ? SAMPLE : sessions)]
+  for (const item of [...all]
     .sort((a, b) => (b.updated || 0) - (a.updated || 0))
     .filter((item) =>
       `${item.title} ${item.cwd}`.toLowerCase().includes(search.toLowerCase()),
     )) {
-    if (!groups.has(item.cwd || "")) groups.set(item.cwd || "", []);
-    groups.get(item.cwd || "")!.push(item);
+    const folder = folderOf(item);
+    // A folder with only its coordinator still has a header to open it.
+    if (!groups.has(folder)) groups.set(folder, []);
+    if (item.kind !== "coordinator") groups.get(folder)!.push(item);
   }
   const list = [...groups].map(([cwd, items]) => (
     <section key={cwd}>
       <h2>
         <FolderLabel path={cwd} />
+        {!drawing && (
+          <CoordinatorButton
+            folder={cwd}
+            coordinator={coordinators.get(cwd)}
+            waiting={waiting.get(cwd) || 0}
+            online={online}
+            open={() => coordinate(cwd)}
+          />
+        )}
       </h2>
       {items.map((item) => (
         <SessionRow
@@ -257,12 +332,7 @@ export default function Sidebar({
         >
           <Mark />
         </a>
-        <Button
-          variant="quiet"
-          class="with-icon"
-          onClick={create}
-          disabled={!online}
-        >
+        <Button variant="quiet" onClick={create} disabled={!online}>
           <Plus />
           New conversation
         </Button>
@@ -270,7 +340,6 @@ export default function Sidebar({
       <div class="sidebar-sections">
         <Button
           variant="quiet"
-          class="with-icon"
           aria-current={page === "library" ? "page" : undefined}
           onClick={() => navigate("library")}
         >
@@ -279,7 +348,6 @@ export default function Sidebar({
         </Button>
         <Button
           variant="quiet"
-          class="with-icon"
           aria-current={page === "scheduled" ? "page" : undefined}
           onClick={() => navigate("scheduled")}
         >
@@ -291,8 +359,9 @@ export default function Sidebar({
         </Button>
       </div>
       <label class="search">
-        <span class="sr-only">Find a session</span>
+        <span class="sr-only">Find a conversation</span>
         <Input
+          id="session-search"
           type="search"
           value={search}
           onInput={(event) => setSearch(event.currentTarget.value)}
@@ -301,7 +370,11 @@ export default function Sidebar({
       </label>
       <nav>
         <Placeholder label="Loading conversations…" when={drawing}>
-          {list}
+          {search && !list.length ? (
+            <EmptyState>No conversation matches.</EmptyState>
+          ) : (
+            list
+          )}
         </Placeholder>
       </nav>
       <footer>
@@ -318,4 +391,16 @@ export default function Sidebar({
       </footer>
     </>
   );
+}
+
+// The shell re-renders with every streamed frame; the list only when one of
+// its props changes, which the shell keeps stable.
+export default class Sidebar extends Component<SidebarProps> {
+  shouldComponentUpdate(next: SidebarProps) {
+    const prior = this.props as Record<string, unknown>;
+    return Object.entries(next).some(([key, value]) => prior[key] !== value);
+  }
+  render(props: SidebarProps) {
+    return <SidebarView {...props} />;
+  }
 }

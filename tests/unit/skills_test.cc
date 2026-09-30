@@ -5,9 +5,11 @@
 #include <sys/stat.h>
 
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "include/core/fs.h"
+#include "include/core/limits.h"
 #include "include/core/signals.h"
 #include "include/tools/files.h"
 #include "include/tools/registry.h"
@@ -181,25 +183,29 @@ void TestSkillDiscovery() {
   }));
   unsetenv("UAGENT_SKILL_EXCLUDE");
 
-  // The cap keeps the highest-precedence entries rather than filling up on
-  // user/vendor skills before the workspace is scanned.
-  setenv("UAGENT_SKILLS", "1", 1);
-  skills = LoadSkills(workspace);
-  CHECK(skills.size() == 1);
-  CHECK(skills[0].name == "release");
-  CHECK(skills[0].dir == (workspace / ".uagent/skills/release").string());
-  unsetenv("UAGENT_SKILLS");
+  // The cap keeps the highest-precedence entries: discovery lists the
+  // workspace last, so the earliest-found user/vendor skills give way.
+  std::vector<Skill> many;
+  for (size_t i = 0; i <= kMaxSkills; ++i) {
+    many.push_back({"skill-" + std::to_string(i), "d", "", "", {}, ""});
+  }
+  many = SelectSkills(std::move(many));
+  CHECK(many.size() == kMaxSkills);
+  CHECK(many.front().name == "skill-1");
+  CHECK(many.back().name == "skill-" + std::to_string(kMaxSkills));
 
   // Discovery descriptions are bounded before the tool returns them.
-  setenv("UAGENT_SKILL_DESC_BYTES", "16", 1);
+  write_skill(
+      workspace / ".uagent/skills/verbose",
+      "---\ndescription: " + std::string(kSkillDescriptionBytes + 1, 'x') +
+          "\n---\n\nBody.\n");
   skills = LoadSkills(workspace);
-  int64_t marked = 0;
   for (const Skill& s : skills) {
-    CHECK(s.description.size() <= 16 + strlen("…"));
-    marked += s.description.ends_with("…");
+    // The over-long one says so; short ones are left alone.
+    CHECK(s.description.ends_with("…") == (s.name == "verbose"));
+    CHECK(s.description.size() <= kSkillDescriptionBytes + strlen("…"));
   }
-  CHECK(marked > 0);  // the over-long ones say so; short ones are left alone
-  unsetenv("UAGENT_SKILL_DESC_BYTES");
+  fs::remove_all(workspace / ".uagent/skills/verbose");
 
   std::vector<Skill> catalogue_skills;
   catalogue_skills.reserve(64);

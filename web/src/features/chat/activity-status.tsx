@@ -7,8 +7,7 @@ import {
 import { plural } from "../../shared/quantities.ts";
 import type {
   Activity,
-  ActivityDetail,
-  Collaborator,
+  Agent,
   Pending,
   Report,
   SessionRef,
@@ -22,13 +21,13 @@ import {
   Terminal,
 } from "lucide-preact";
 import { cleanText, Button, IconButton, DataText } from "../../shared/ui.tsx";
-import { Popover } from "../../shared/popover.tsx";
+import { SheetButton } from "../../shared/sheet.tsx";
 import { command } from "../../state/api.ts";
 import { duration } from "../../shared/duration.ts";
 import type { InspectorTarget } from "./inspector.tsx";
 export interface ActivityProps {
   items?: Activity[];
-  collaborators?: Collaborator[];
+  agents?: Agent[];
   session: SessionRef;
   online: boolean;
   report: Report;
@@ -36,14 +35,11 @@ export interface ActivityProps {
 }
 export const active = (item: Activity) =>
   ["running", "starting", "stopping", "finishing"].includes(item.status || "");
-// Supervised activities plus collaborators not already listed as one.
-export function withCollaborators(
-  items: Activity[],
-  collaborators: Collaborator[],
-): Activity[] {
+// Supervised activities plus child agents not already listed as one.
+export function withAgents(items: Activity[], agents: Agent[]): Activity[] {
   return [
     ...items,
-    ...collaborators
+    ...agents
       .filter((child) => !items.some((item) => item.agent_id === child.id))
       .map((child) => ({
         ...child,
@@ -55,7 +51,7 @@ export function withCollaborators(
   ];
 }
 
-export function activityLabel(items: Activity[] = []) {
+function activityLabel(items: Activity[] = []) {
   const running = items.filter(active);
   const agents = running.filter((item) => item.kind === "agent").length;
   const commands = running.length - agents;
@@ -70,7 +66,7 @@ export function ActivityStatus({
   phase = "Ready",
   running,
   items = [],
-  collaborators = [],
+  agents = [],
   pending,
   announce = false,
   present = false,
@@ -79,7 +75,7 @@ export function ActivityStatus({
   phase?: string;
   running?: boolean;
   items?: Activity[];
-  collaborators?: Collaborator[];
+  agents?: Agent[];
   pending?: Pending | boolean | null;
   announce?: boolean;
   present?: boolean;
@@ -87,7 +83,7 @@ export function ActivityStatus({
 }) {
   if (connection && connection !== "connected")
     return <ConnectionStatus phase={connection} />;
-  const counts = activityLabel(withCollaborators(items, collaborators));
+  const counts = activityLabel(withAgents(items, agents));
   return (
     <span
       class="activity-status"
@@ -139,33 +135,26 @@ export default function Activities({
   );
 }
 
-// Always under the input: what is running and persistent sidekicks, then
-// idle agents -- the same set as /agents -- since those stay resumable.
-// Finished commands live only in the conversation.
+// Always under the input: what is running, then idle agents -- the same set
+// as /agents -- since those stay resumable. Finished commands live only in the
+// conversation.
 export function ActivityButton({ open, ...props }: ActivityProps) {
-  const now = withCollaborators(
-    props.items || [],
-    props.collaborators || [],
-  ).filter(
-    (item) => active(item) || (item as ActivityDetail).persistent === true,
-  );
+  const now = (props.items || []).filter(active);
   const rows = [
     ...now,
-    ...withCollaborators([], props.collaborators || []).filter(
+    ...withAgents([], props.agents || []).filter(
       (agent) => !now.some((item) => item.agent_id === agent.agent_id),
     ),
   ];
   const counts = activityLabel(rows);
   return (
-    <Popover
+    <SheetButton
       label="Activity"
-      side="top"
-      align="start"
       buttonClass={`quiet activity-button${counts ? "" : " idle"}`}
-      panelClass="activity-popover"
+      sheetClass="activity-sheet"
       trigger={
         <>
-          <Layers aria-hidden="true" />
+          <Layers />
           {counts ? (
             <span>
               <DataText>{counts}</DataText>
@@ -180,7 +169,7 @@ export function ActivityButton({ open, ...props }: ActivityProps) {
               </span>
             </span>
           )}
-          <ChevronUp aria-hidden="true" />
+          <ChevronUp />
         </>
       }
     >
@@ -203,11 +192,11 @@ export function ActivityButton({ open, ...props }: ActivityProps) {
           </ul>
         ) : (
           <p class="muted small">
-            Nothing running. Background commands and sidekicks appear here.
+            Nothing running. Background commands and agents appear here.
           </p>
         )
       }
-    </Popover>
+    </SheetButton>
   );
 }
 

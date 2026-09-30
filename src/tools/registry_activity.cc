@@ -15,7 +15,6 @@ namespace uagent {
 
 void RegisterActivityTool(std::vector<Tool>& tools,
                           ProcessSupervisor& supervisor) {
-  auto schema = [](const char* s) { return json::parse(s); };
   Tool& activity = AddTool(
       tools,
       MakeTool(
@@ -24,7 +23,7 @@ void RegisterActivityTool(std::vector<Tool>& tools,
           "any/all; "
           "write sends stdin; resize sets PTY dimensions; stop terminates the "
           "process group and removes its log.",
-          schema(
+          json::parse(
               R"json({"type":"object","additionalProperties":false,"properties":{
                   "operation":{"type":"string","enum":["list","poll","wait","write","resize","stop"]},
                   "id":{"type":"integer","minimum":1,"maximum":2147483647,
@@ -77,7 +76,7 @@ void RegisterActivityTool(std::vector<Tool>& tools,
             }
             if (operation == "stop") return ToolActivityStop(supervisor, id);
             return ToolFailure(ToolErrorCode::kInvalidArguments,
-                               "error: unknown activity operation");
+                               "unknown activity operation");
           }));
   activity.canonicalize = [](json& a) {
     std::string operation = JsonValue(a, "operation", "");

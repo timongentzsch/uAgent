@@ -1,16 +1,12 @@
 {
   "name": "superseded_reads",
-  "description": "Repeated changed reads compare step-boundary pruning with control. The old result must be archived and the latest evidence retained.",
+  "description": "Repeated changed reads compare step-boundary pruning with control. Four reads of a 30 KB file fill the fixed 64 KiB protected window, so the oldest are archived and the latest evidence retained.",
   "tier": "regression",
   "variants": [
     "control",
     "pruned"
   ],
   "yolo": true,
-  "env": {
-    "UAGENT_TOOL_TRACE_PROTECT_CHARS": "0",
-    "UAGENT_TOOL_TRACE_PRUNE_MIN_CHARS": "1024"
-  },
   "variant_env": {
     "control": {
       "UAGENT_PRUNE_SUPERSEDED_READS": "0"
@@ -19,12 +15,12 @@
       "UAGENT_PRUNE_SUPERSEDED_READS": "1"
     }
   },
-  "prompt": "Read notes.txt, change OLD-MARKER to NEW-MARKER, reread the file, and verify NEW-MARKER is present.",
+  "prompt": "Read notes.txt, then change its marker from OLD-MARKER to MID-MARKER-1 to MID-MARKER-2 to NEW-MARKER, rereading the file after each change, and verify NEW-MARKER is present.",
   "files": {
     "notes.txt": {
       "text": "OLD-MARKER\n",
       "repeat_text": "row {index:03d}: durable evidence padding abcdefghijklmnopqrstuvwxyz\n",
-      "repeat": 80
+      "repeat": 400
     }
   },
   "script": [
@@ -51,14 +47,14 @@
       "respond": {
         "tool_calls": [
           {
-            "id": "edit",
+            "id": "edit-1",
             "name": "edit_file",
             "arguments": {
               "path": "notes.txt",
               "edits": [
                 {
                   "old": "OLD-MARKER",
-                  "new": "NEW-MARKER"
+                  "new": "MID-MARKER-1"
                 }
               ]
             }
@@ -73,7 +69,7 @@
       "respond": {
         "tool_calls": [
           {
-            "id": "after",
+            "id": "after-1",
             "name": "read_path",
             "arguments": {
               "path": "notes.txt"
@@ -85,6 +81,82 @@
     {
       "when": {
         "tool_results": 3
+      },
+      "respond": {
+        "tool_calls": [
+          {
+            "id": "edit-2",
+            "name": "edit_file",
+            "arguments": {
+              "path": "notes.txt",
+              "edits": [
+                {
+                  "old": "MID-MARKER-1",
+                  "new": "MID-MARKER-2"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "when": {
+        "tool_results": 4
+      },
+      "respond": {
+        "tool_calls": [
+          {
+            "id": "after-2",
+            "name": "read_path",
+            "arguments": {
+              "path": "notes.txt"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "when": {
+        "tool_results": 5
+      },
+      "respond": {
+        "tool_calls": [
+          {
+            "id": "edit-3",
+            "name": "edit_file",
+            "arguments": {
+              "path": "notes.txt",
+              "edits": [
+                {
+                  "old": "MID-MARKER-2",
+                  "new": "NEW-MARKER"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "when": {
+        "tool_results": 6
+      },
+      "respond": {
+        "tool_calls": [
+          {
+            "id": "after-3",
+            "name": "read_path",
+            "arguments": {
+              "path": "notes.txt"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "when": {
+        "tool_results": 7
       },
       "respond": {
         "tool_calls": [
@@ -110,7 +182,7 @@
     "answer_contains": [
       "NEW-MARKER"
     ],
-    "max_requests": 5,
-    "max_tool_calls": 4
+    "max_requests": 9,
+    "max_tool_calls": 8
   }
 }

@@ -1,9 +1,9 @@
 import "./markdown.css";
 import {
   maxPreparedMarkdownChars,
-  progressiveMarkdownScanLines,
   wholeStreamingMarkdownChars,
 } from "./limits.ts";
+import { closedFence, streamingHead } from "./markdown-split.ts";
 import { Component, type ComponentType } from "preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { MarkdownBlock } from "./markdown.ts";
@@ -17,6 +17,13 @@ const loadRenderer = () =>
   (renderer ??= import("./markdown.ts").then((module) => (loaded = module)));
 const prepared = new Map<string, MarkdownBlock[]>();
 let preparedChars = 0;
+// What an entry really holds: its source plus every block's rendered HTML
+// and source slice, which together run to several times the input.
+const retained = (text: string, blocks: MarkdownBlock[]) =>
+  blocks.reduce(
+    (sum, block) => sum + block.html.length + block.source.length,
+    text.length,
+  );
 
 // Completed pages are parsed before they become visible. Keep the same
 // bounded result for the message component's first render; streaming text
@@ -25,14 +32,13 @@ export async function prepareMarkdown(text: string): Promise<MarkdownBlock[]> {
   const cached = prepared.get(text);
   if (cached) return cached;
   const blocks = await (await loadRenderer()).renderMarkdownBlocks(text);
-  if (text.length <= maxPreparedMarkdownChars) {
-    // Concurrent preparation may already have inserted this same source.
-    if (!prepared.has(text)) preparedChars += text.length;
+  // Concurrent preparation may already have inserted this same source.
+  if (text.length <= maxPreparedMarkdownChars && !prepared.has(text)) {
+    preparedChars += retained(text, blocks);
     prepared.set(text, blocks);
-    while (preparedChars > maxPreparedMarkdownChars) {
-      const oldest = prepared.keys().next().value;
-      if (oldest === undefined) break;
-      preparedChars -= oldest.length;
+    for (const [oldest, entry] of prepared) {
+      if (preparedChars <= maxPreparedMarkdownChars) break;
+      preparedChars -= retained(oldest, entry);
       prepared.delete(oldest);
     }
   }
@@ -46,49 +52,6 @@ export function prefetchMarkdown(text = "") {
   void loadRenderer();
   if (/\$|\\[([]/.test(text)) void import("./math.ts");
   if (/```|~~~/.test(text)) void import("./highlight.ts");
-}
-
-function closedFence(source: string) {
-  const lines = source.split("\n");
-  const opening = lines[0].match(/^\s*(`{3,}|~{3,})/);
-  return (
-    !opening ||
-    lines.slice(1).some((line) => {
-      const match = line.match(/^\s*(`{3,}|~{3,})\s*$/);
-      return (
-        !!match &&
-        match[1][0] === opening[1][0] &&
-        match[1].length >= opening[1].length
-      );
-    })
-  );
-}
-
-// Streaming split: the finished part runs through the last blank line whose
-// head has balanced fences; the block still being written after it is
-// rendered from `healTail`, so it reads formatted instead of as raw syntax.
-// Block keys stay stable across frames (see markdownBlocks).
-function balancedFences(head: string): boolean {
-  const fences = head.match(/^[ \t]*(```+|~~~+).*$/gm) || [];
-  let ticks = 0;
-  let tildes = 0;
-  for (const fence of fences) {
-    if (fence.trimStart().startsWith("`")) ticks++;
-    else tildes++;
-  }
-  return ticks % 2 === 0 && tildes % 2 === 0;
-}
-
-function streamingHead(source: string): string {
-  const lines = source.split("\n");
-  const start = Math.max(1, lines.length - progressiveMarkdownScanLines);
-  for (let i = lines.length - 1; i >= start; i--) {
-    if (lines[i].trim() !== "") continue;
-    const head = lines.slice(0, i).join("\n");
-    if (!head.trim() || !balancedFences(head)) continue;
-    return head;
-  }
-  return "";
 }
 
 function plainSegments(tail: string, startLine: number) {

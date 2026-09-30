@@ -13,6 +13,7 @@ Every setting below is read from the running binary's registry. `takes effect` i
 - budget
 - tools
 - delegation
+- coordination
 - search
 - memory
 - skills
@@ -27,7 +28,6 @@ Every setting below is read from the running binary's registry. `takes effect` i
 | --- | --- | --- | --- | --- |
 | `UAGENT_WEB_BIND` | string | `127.0.0.1` | restart-required | web listener address: loopback by default, all interfaces only when explicitly configured |
 | `UAGENT_BROWSER_DATA` | string | empty | restart-required | private browser profile and service directory; empty disables the browser appliance |
-| `UAGENT_BROWSER_IDLE_MINUTES` | integer | `15` | restart-required | minutes without browser work before Chrome stops to free memory; it starts again on the next action; 0 keeps it running |
 | `UAGENT_WEB_PORT` | integer | `8080` | restart-required | global web master's loopback port |
 | `UAGENT_WEB_ORIGIN` | string | empty | restart-required | exact browser origin via an explicitly configured HTTPS or tailnet proxy |
 | `UAGENT_WEB_PUSH_CONTACT` | string | empty | restart-required | VAPID mailto or HTTPS contact; empty disables optional native Web Push |
@@ -59,8 +59,6 @@ Every setting below is read from the running binary's registry. `takes effect` i
 | `UAGENT_FIRST_EVENT_TIMEOUT` | integer | `300` | next-user-turn | seconds to wait for the first streamed event |
 | `UAGENT_STREAM_IDLE_TIMEOUT` | integer | `300` | next-user-turn | seconds of stream silence before aborting |
 | `UAGENT_REQUEST_TIMEOUT` | integer | `600` | next-user-turn | total seconds allowed for one model request |
-| `UAGENT_REQUEST_BYTES` | integer | `67108864` | next-user-turn | maximum serialized request size |
-| `UAGENT_RESPONSE_BYTES` | integer | `33554432` | next-user-turn | maximum accumulated response size |
 
 ## budget
 
@@ -84,20 +82,8 @@ Every setting below is read from the running binary's registry. `takes effect` i
 | --- | --- | --- | --- | --- |
 | `UAGENT_PRUNE_SUPERSEDED_READS` | boolean | `0` | restart-required | experimental step-boundary pruning of superseded reads |
 | `UAGENT_TOOL_RESULT_CHARS` | integer | `8000` | restart-required | characters kept from one tool result |
-| `UAGENT_TOOL_TRACE_PROTECT_CHARS` | integer | `65536` | restart-required | recent tool output never pruned from the trace |
-| `UAGENT_TOOL_TRACE_PRUNE_MIN_CHARS` | integer | `32768` | restart-required | smallest tool result the trace pruner will drop |
 | `UAGENT_READ_FILE_LINES` | integer | `1000` | restart-required | default lines returned by read_path |
-| `UAGENT_READ_FILE_MAX_LINES` | integer | `10000` | restart-required | maximum lines one read_path call may request |
-| `UAGENT_READ_FILE_BYTES` | integer | `32768` | restart-required | maximum bytes returned by read_path |
-| `UAGENT_EDIT_FILE_BYTES` | integer | `10485760` | restart-required | largest file edit_file will rewrite |
-| `UAGENT_LIST_DIR_ENTRIES` | integer | `1000` | restart-required | directory entries returned |
-| `UAGENT_LIST_DIR_SCAN_ENTRIES` | integer | `100000` | restart-required | directory entries scanned before giving up |
-| `UAGENT_GREP_RESULTS` | integer | `200` | restart-required | grep matches kept |
-| `UAGENT_GREP_BYTES` | integer | derived | restart-required | grep result bytes; defaults to the tool-result cap |
-| `UAGENT_BASH_LOG_BYTES` | integer | `67108864` | restart-required | bounded rotating process log |
-| `UAGENT_RUN_YIELD_MS` | integer | `10000` | restart-required | default initial wait for run; 0 disables yielding |
 | `UAGENT_MAX_BACKGROUND_JOBS` | integer | `8` | restart-required | concurrent detached activities |
-| `UAGENT_WEB_FETCH_BYTES` | integer | derived | restart-required | web_fetch download cap; defaults to the attachment cap |
 | `UAGENT_SANDBOX` | boolean | `1` | restart-required | confine shell commands with the OS sandbox |
 | `UAGENT_SANDBOX_NET` | boolean | `1` | restart-required | let sandboxed commands reach the network |
 | `UAGENT_SANDBOX_WRITE` | string | empty | restart-required | extra writable roots for the sandbox, colon-separated |
@@ -106,16 +92,21 @@ Every setting below is read from the running binary's registry. `takes effect` i
 
 | Setting | Type | Default | Takes effect | Description |
 | --- | --- | --- | --- | --- |
-| `UAGENT_DEPTH` | integer | `0` | restart-required | delegation depth of this process; 0 is the coordinator |
 | `UAGENT_SUBAGENT_DEPTH` | integer | `2` | restart-required | deepest delegation level allowed |
 | `UAGENT_SUBAGENT_MAX_STEPS` | integer | `100` | restart-required | model rounds per delegated child |
 | `UAGENT_SUBAGENT_MAX_TOOL_CALLS` | integer | `240` | restart-required | tool calls per delegated child |
 | `UAGENT_SUBAGENT_TIMEOUT` | integer | `0` | restart-required | wall-clock ceiling per delegated child; 0 is the turn |
-| `UAGENT_SUBAGENT_CALLS_PER_TURN` | integer | `32` | restart-required | delegated children one coordinator turn may start |
-| `UAGENT_PERSISTENT_MAX` | integer | `3` | restart-required | live persistent sidekicks kept per conversation |
-| `UAGENT_TEAM` | string | empty | restart-required | team id shared by peer collaborators |
 | `UAGENT_SUBAGENT_MODEL` | string | empty | restart-required | default model route for delegated children |
 | `UAGENT_TOOLSET` | string | empty | restart-required | lean withholds implementation tools from this process |
+
+## coordination
+
+| Setting | Type | Default | Takes effect | Description |
+| --- | --- | --- | --- | --- |
+| `UAGENT_COORDINATOR_MODEL` | string | empty | restart-required | model route of each folder's coordinator; /model inside it overrides this for that folder |
+| `UAGENT_COORDINATOR_MAX_THREADS` | integer | `5` | restart-required | threads one coordinator may run at once |
+| `UAGENT_COORDINATOR_DAILY_SPEND_USD` | number | `20.0` | restart-required | reported cost a coordinator and its threads may spend per day; at it, thread events wait. 0 disables it |
+| `UAGENT_COORDINATOR_ENVIRONMENT` | string | `worktree` | restart-required | where threads run: a fresh git worktree, or the folder itself |
 
 ## search
 
@@ -126,11 +117,6 @@ Every setting below is read from the running binary's registry. `takes effect` i
 | `UAGENT_WEB_SEARCH_EFFORT` | string | empty | restart-required | reasoning effort for the search route |
 | `UAGENT_WEB_SEARCH_ENGINE` | string | `auto` | restart-required | auto, native, exa, firecrawl, parallel, perplexity |
 | `UAGENT_WEB_SEARCH_CONTEXT_SIZE` | string | empty | restart-required | low, medium, or high native search context |
-| `UAGENT_WEB_SEARCH_TIMEOUT` | integer | `60` | next-user-turn | seconds allowed for one search request |
-| `UAGENT_WEB_SEARCH_MAX_TOKENS` | integer | `5000` | next-user-turn | tokens returned by one search |
-| `UAGENT_WEB_SEARCH_CALLS` | integer | `4` | next-user-turn | search calls allowed per turn |
-| `UAGENT_WEB_SEARCH_MAX_RESULTS` | integer | `5` | next-user-turn | results requested per search |
-| `UAGENT_WEB_SEARCH_MAX_USES` | integer | `3` | next-user-turn | hosted search invocations per request |
 
 ## memory
 
@@ -138,20 +124,13 @@ Every setting below is read from the running binary's registry. `takes effect` i
 | --- | --- | --- | --- | --- |
 | `UAGENT_MEMORY` | boolean | `1` | restart-required | enable memory recall and writes |
 | `UAGENT_MEMORY_GENERATE` | boolean | `1` | restart-required | run the background memory extractor |
-| `UAGENT_MEMORY_ALWAYS_BYTES` | integer | `2048` | restart-required | always-on memory slice injected into the prompt |
-| `UAGENT_MEMORY_BYTES` | integer | `2048` | restart-required | bytes stored per memory |
-| `UAGENT_MEMORY_FILES` | integer | `32` | restart-required | memories retained |
 | `UAGENT_MEMORY_IDLE_SECONDS` | integer | `21600` | restart-required | idle seconds before background extraction runs |
-| `UAGENT_MEMORY_EXTRACT_BYTES` | integer | `32768` | restart-required | transcript bytes handed to the extractor |
 | `UAGENT_MEMORY_MODEL` | string | empty | restart-required | model route for background memory extraction |
 
 ## skills
 
 | Setting | Type | Default | Takes effect | Description |
 | --- | --- | --- | --- | --- |
-| `UAGENT_SKILL_BYTES` | integer | `524288` | restart-required | largest skill body loaded when opened |
-| `UAGENT_SKILL_DESC_BYTES` | integer | `1024` | restart-required | skill description bytes shown in the catalogue |
-| `UAGENT_SKILLS` | integer | `64` | restart-required | skills discovered |
 | `UAGENT_SKILL_PATH` | string | empty | restart-required | replace the entire skill search path |
 | `UAGENT_SKILL_EXCLUDE` | string | empty | restart-required | comma-separated skill names to withhold |
 
@@ -161,14 +140,6 @@ Every setting below is read from the running binary's registry. `takes effect` i
 | --- | --- | --- | --- | --- |
 | `UAGENT_MCP_TIMEOUT` | integer | `60` | restart-required | seconds allowed for one MCP call |
 | `UAGENT_MCP_STARTUP_GRACE` | integer | `2` | restart-required | shared startup seconds for optional MCP servers |
-| `UAGENT_MCP_SERVERS` | integer | `32` | restart-required | MCP servers registered |
-| `UAGENT_MCP_PAGES` | integer | `100` | restart-required | pages walked while listing MCP tools |
-| `UAGENT_MCP_TOOLS` | integer | `256` | restart-required | MCP tools registered |
-| `UAGENT_MCP_CONFIG_BYTES` | integer | `1048576` | restart-required | largest .mcp.json accepted |
-| `UAGENT_MCP_RESPONSE_BYTES` | integer | `16777216` | restart-required | largest MCP response accepted |
-| `UAGENT_MCP_SCHEMA_BYTES` | integer | `262144` | restart-required | largest MCP tool schema accepted |
-| `UAGENT_MCP_LOG_BYTES` | integer | `16777216` | restart-required | bounded MCP server log |
-| `UAGENT_MCP_DESC_CHARS` | integer | `400` | restart-required | MCP tool description characters kept |
 | `UAGENT_MCP_ROOTS` | string | empty | restart-required | roots advertised to MCP servers |
 
 ## media
@@ -178,24 +149,13 @@ Every setting below is read from the running binary's registry. `takes effect` i
 | `UAGENT_IMAGE_MODEL` | string | empty | next-user-turn | model route that reads attached images; empty uses the main route when it reads images, else the shared default route |
 | `UAGENT_IMAGE_DETAIL` | string | empty | restart-required | low, high, or original image detail |
 | `UAGENT_PDF_ENGINE` | string | `cloudflare-ai` | restart-required | OpenRouter file-parser engine for documents |
-| `UAGENT_PENDING_ATTACHMENTS` | integer | `8` | restart-required | attachments queued for the next turn |
 | `UAGENT_ATTACHMENT_MB` | integer | `10` | restart-required | largest attachment in mebibytes |
 
 ## retention
 
 | Setting | Type | Default | Takes effect | Description |
 | --- | --- | --- | --- | --- |
-| `UAGENT_PROJECT_DOC_BYTES` | integer | `32768` | restart-required | AGENTS.md bytes injected into the prompt |
-| `UAGENT_SESSION_ARCHIVE_BYTES` | integer | `16777216` | next-user-turn | compacted transcript bytes retained |
 | `UAGENT_HISTORY_DAYS` | integer | `30` | restart-required | days of saved sessions kept |
-| `UAGENT_HISTORY_FILES` | integer | `200` | restart-required | saved sessions kept |
-| `UAGENT_DEBUG_DAYS` | integer | `14` | restart-required | days of debug traces kept |
-| `UAGENT_DEBUG_FILES` | integer | `50` | restart-required | debug traces kept |
-| `UAGENT_BG_DAYS` | integer | `7` | restart-required | days of background logs kept |
-| `UAGENT_BG_FILES` | integer | `200` | restart-required | background logs kept |
-| `UAGENT_MCP_LOG_DAYS` | integer | `7` | restart-required | days of MCP logs kept |
-| `UAGENT_MCP_LOG_FILES` | integer | `100` | restart-required | MCP logs kept |
-| `UAGENT_TERMINAL_DAYS` | integer | `7` | restart-required | days of terminal recordings kept |
 
 ## behaviour
 

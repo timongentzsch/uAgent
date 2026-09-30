@@ -19,20 +19,27 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SESSION_UNITS = (
-    "session_host.cc",
-    "session_router.cc",
-    "session_server.cc",
-    "session_snapshot.cc",
-    "session_supervisor.cc",
-    "session_schedules.cc",
-    "session_terminal.cc",
-    "session_transport.cc",
-    "session_worker.cc",
+    "src/app/session_host.cc",
+    "src/app/session_router.cc",
+    "src/app/session_server.cc",
+    "src/app/session_snapshot.cc",
+    "src/app/session_supervisor.cc",
+    "src/app/session_schedules.cc",
+    "src/app/session_terminal.cc",
+    "src/app/session_transport.cc",
+    "src/app/session_worker.cc",
+    # The view reducer builds the `block` patches the host publishes.
+    "src/agent/session_view.cc",
 )
 WEB_STATE = ("web/src/state", "web/src/app")
 # Frame handlers live in the host-data layer; the app shell only issues
 # operations (act/command) that share some spellings on another plane.
 WEB_HANDLERS = ("web/src/state",)
+
+# Web-side types that never cross the wire, and field prefixes the host
+# builds at runtime (PrefixNumericStatistics).
+WEB_ONLY_TYPES = {"PresentedBlock", "RawOptions"}
+BUILT_PREFIXES = ("side_",)
 
 # Frames the browser consumes: every member needs a native producer in the
 # session units and a handler literal under WEB_STATE.
@@ -40,6 +47,7 @@ BROWSER_FRAMES = frozenset(
     {
         "activated",
         "activity",
+        "block",
         "closed",
         "deactivated",
         "deleted",
@@ -60,17 +68,24 @@ BROWSER_FRAMES = frozenset(
 DOCUMENTED_INTERNAL = frozenset(
     {
         "close",
+        # A coordinator yields a thread's routed decision to the user.
+        "escalate",
         "fork",
         "hello",
         "interrupt",
         "refresh",
         "reply",
-        "rewind",
         "share",
         "side",
+        # A thread's finished turn, sent to its coordinator's runtime.
+        "steer",
         "submit",
     }
 )
+
+# Row kinds the view reducer writes inside `block` frames, spelled like a
+# frame kind in session_view.cc but never one.
+ROW_KINDS = frozenset({"assistant", "tool_result"})
 
 PRODUCED = re.compile(r'\{"kind",\s*"([A-Za-z._-]+)"')
 
@@ -78,7 +93,7 @@ PRODUCED = re.compile(r'\{"kind",\s*"([A-Za-z._-]+)"')
 def produced_kinds():
     kinds = {}
     for unit in SESSION_UNITS:
-        path = ROOT / "src/app" / unit
+        path = ROOT / unit
         if not path.exists():
             continue
         for lineno, line in enumerate(path.read_text().splitlines(), 1):
@@ -97,6 +112,31 @@ def web_handled_kind(kind):
 
 
 class WireContractTest(unittest.TestCase):
+    def test_web_types_name_fields_the_host_sends(self):
+        # A field the web declares for host data but no native source spells
+        # is dead or drifted (a rename on one side only).
+        types = (ROOT / "web/src/shared/types.ts").read_text(encoding="utf-8")
+        native = "".join(
+            path.read_text(encoding="utf-8")
+            for folder in ("src", "include")
+            for path in (ROOT / folder).rglob("*.[ch]*")
+        )
+        missing = []
+        for match in re.finditer(
+            r"export interface (\w+)(?: extends [^{]+)? \{(.*?)\n\}", types, re.S
+        ):
+            name, body = match.groups()
+            if name in WEB_ONLY_TYPES:
+                continue
+            for field in re.findall(r"^\s{2}([a-z_][a-z0-9_]*)\??:", body, re.M):
+                spelled = f'"{field}"' in native or any(
+                    field.startswith(prefix) and f'"{prefix}"' in native
+                    for prefix in BUILT_PREFIXES
+                )
+                if not spelled:
+                    missing.append(f"{name}.{field}")
+        self.assertEqual(missing, [])
+
     def test_browser_frames_have_native_producers(self):
         produced = produced_kinds()
         missing = sorted(k for k in BROWSER_FRAMES if k not in produced)
@@ -112,7 +152,9 @@ class WireContractTest(unittest.TestCase):
 
     def test_no_undocumented_session_kinds(self):
         produced = produced_kinds()
-        unknown = sorted(k for k in produced if k not in BROWSER_FRAMES | DOCUMENTED_INTERNAL)
+        unknown = sorted(
+            k for k in produced if k not in BROWSER_FRAMES | DOCUMENTED_INTERNAL | ROW_KINDS
+        )
         self.assertEqual(
             unknown,
             [],

@@ -90,8 +90,6 @@ constexpr EventPolicy kPolicies[] = {
      EventRedaction::kNone},
     {EventId::kActivitiesChanged, "activities.changed", nullptr, nullptr,
      nullptr, EventRedaction::kNone},
-    {EventId::kCollaboratorChanged, "collaborator.changed", nullptr, nullptr,
-     nullptr, EventRedaction::kNone},
     {EventId::kHttpExchange, "http.exchange", nullptr, nullptr, nullptr,
      EventRedaction::kNone},
     {EventId::kUsageUpdated, "usage.updated", nullptr, "usage.updated", nullptr,

@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "include/browser/browser.h"
+#include "include/core/fd.h"
 #include "include/core/fs.h"
 #include "include/core/platform.h"
 #include "include/tools/files.h"
@@ -141,11 +142,6 @@ std::string CdError(const json& value) {
   }
   const json* object = JsonObject(value, "error");
   return object ? JsonValue(*object, "message", "Chrome rejected action") : "";
-}
-
-bool CloseOnExec(int fd) {
-  int flags = fcntl(fd, F_GETFD);
-  return flags >= 0 && fcntl(fd, F_SETFD, flags | FD_CLOEXEC) == 0;
 }
 
 std::string ProfileName(std::string name) {
@@ -453,15 +449,8 @@ json Runtime::Call(const std::string& method, const json& parameters,
   if (!session.empty()) command["sessionId"] = session;
   std::string packet = JsonDump(command);
   packet.push_back('\0');
-  for (size_t sent = 0; sent < packet.size();) {
-    pollfd ready{cdp_in_.Get(), POLLOUT, 0};
-    if (poll(&ready, 1, 10000) <= 0) {
-      return {{"error", "Chrome write timed out"}};
-    }
-    ssize_t n =
-        write(cdp_in_.Get(), packet.data() + sent, packet.size() - sent);
-    if (n <= 0) return {{"error", "Chrome control pipe closed"}};
-    sent += static_cast<size_t>(n);
+  if (!WriteAllWithin(cdp_in_.Get(), packet, 10000)) {
+    return {{"error", "Chrome control pipe is stuck or closed"}};
   }
   for (;;) {
     size_t end = cdp_buffer_.find('\0');

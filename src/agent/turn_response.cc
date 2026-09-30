@@ -43,7 +43,7 @@ void Agent::RecordModelResponse(
       !token_warning_shown_) {
     token_warning_shown_ = true;
     Emit(NoticeEvent(PresentationStatus::kWarned,
-                     "· provider does not report usage; token budget is not "
+                     "provider does not report usage; token budget is not "
                      "enforceable"));
     DebugLog("token_usage_unavailable", {{"route", ActiveRoute()}});
   }
@@ -51,7 +51,7 @@ void Agent::RecordModelResponse(
       !response_usage.cost_reported && !cost_warning_shown_) {
     cost_warning_shown_ = true;
     Emit(NoticeEvent(PresentationStatus::kWarned,
-                     "· provider does not report cost; dollar budget is not "
+                     "provider does not report cost; dollar budget is not "
                      "enforceable"));
     DebugLog("cost_unavailable", {{"route", ActiveRoute()}});
   }
@@ -129,7 +129,7 @@ Agent::StepFlow Agent::HandleFailedResponse(ChatResult& response,
                                            {"learned_context", api_.ctx_window},
                                            {"messages", conversation_.Size()}});
     Emit(NoticeEvent(PresentationStatus::kNeutral,
-                     "· provider context limit reached — compacting once"));
+                     "provider context limit reached — compacting once"));
     loop.midturn_compaction_enabled = false;
     if (Compact(true, &state.metrics.usage)) {
       state.start = conversation_.Size();
@@ -204,8 +204,7 @@ Agent::StepFlow Agent::HandleEmptyResponse(const ChatResult& response,
             {"attempt", loop.empty_responses},
             {"guided", loop.empty_responses > 1},
             {"finish_reason", response.finish_reason}});
-  Emit(
-      NoticeEvent(PresentationStatus::kNeutral, "· recovering empty response"));
+  Emit(NoticeEvent(PresentationStatus::kNeutral, "recovering empty response"));
   return StepFlow::kNextStep;
 }
 
@@ -255,7 +254,7 @@ Agent::StepFlow Agent::HandleResponseStop(ChatResult& response,
               {"reason", response.finish_reason},
               {"content_chars", response.content.size()}});
     Emit(NoticeEvent(PresentationStatus::kNeutral,
-                     "· continuing a partial model response"));
+                     "continuing a partial model response"));
     return StepFlow::kNextStep;
   }
 
@@ -322,6 +321,8 @@ void Agent::PushAssistantMessage(ChatResult& response,
 
 // Plain prose and no call: the turn is done unless steering reopened it.
 Agent::StepFlow Agent::FinishWithProse(TurnExecution& state, StepState& loop) {
+  // Mail that arrived during the final model call reopens the turn too.
+  DeliverMail();
   if (ApplyQueuedSteering(loop)) return StepFlow::kNextStep;
   if (SteeringState().Requested()) return InterruptTurn(state);
   state.complete = true;

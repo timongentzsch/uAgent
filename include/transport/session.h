@@ -2,11 +2,13 @@
 #ifndef UAGENT_INCLUDE_TRANSPORT_SESSION_H_
 #define UAGENT_INCLUDE_TRANSPORT_SESSION_H_
 
+#include <algorithm>
 #include <chrono>
 #include <functional>
 #include <string>
 #include <string_view>
 
+#include "include/core/env.h"
 #include "include/core/fd.h"
 #include "include/core/json.h"
 #include "include/core/limits.h"
@@ -27,11 +29,17 @@ inline constexpr size_t kHelloBytes = KiB(1);
 inline constexpr size_t kOutputCompactBytes = KiB(64);
 inline constexpr size_t kBufferedNotices = 16;
 inline constexpr size_t kIoBufferBytes = KiB(8);
-inline constexpr size_t kWorkerIdentityBytes = 256;
 inline constexpr int kSocketBacklog = 16;
 inline constexpr auto kConnectTimeout = std::chrono::seconds(2);
 inline constexpr auto kConnectPollInterval = std::chrono::milliseconds(100);
 inline constexpr auto kWorkerShutdownTimeout = std::chrono::seconds(5);
+// A coordinator with nothing to do for this long is let go by the web host
+// and exits once no client holds it; the next message or thread event starts
+// it again. Tests shorten it.
+inline std::chrono::seconds CoordinatorIdle() {
+  return std::chrono::seconds(
+      std::max<int64_t>(1, EnvLong("UAGENT_INTERNAL_COORDINATOR_IDLE_S", 600)));
+}
 inline constexpr auto kStreamBatchInterval =
     std::chrono::milliseconds(kStreamBatchIntervalMs);
 inline constexpr auto kUsagePublishInterval =

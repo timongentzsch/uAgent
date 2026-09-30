@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <filesystem>
 #include <iterator>
 #include <string>
 #include <utility>
@@ -258,6 +259,9 @@ SandboxInputs CollectInputs() {
   SandboxInputs inputs;
   inputs.allow_network = SandboxNetworkAllowed();
   inputs.workspace = CanonicalCwd();
+  std::error_code ec;
+  inputs.git_repository =
+      std::filesystem::is_directory(inputs.workspace + "/.git", ec);
   inputs.global_base = canonical(GlobalBase());
   inputs.tmpdir = canonical(EnvStr("TMPDIR"));
   inputs.terminal_logs = canonical(UagentDir(kTerminalLogsDir));

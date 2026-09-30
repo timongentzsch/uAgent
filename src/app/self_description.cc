@@ -6,6 +6,7 @@
 #include <memory>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "include/agent.h"
@@ -15,6 +16,7 @@
 #include "include/app/artifact.h"
 #include "include/app/config_proposal.h"
 #include "include/app/options.h"
+#include "include/app/uagent_tool.h"
 #include "include/cli.h"
 #include "include/core/config_registry.h"
 #include "include/core/effective_config.h"
@@ -22,8 +24,8 @@
 #include "include/core/sandbox.h"
 #include "include/core/strings.h"
 #include "include/providers.h"
+#include "include/tools/adapt_system.h"
 #include "include/tools/browser.h"
-#include "include/tools/configure.h"
 #include "include/tools/registry.h"
 #include "include/tools/session.h"
 #include "include/tools/skill.h"
@@ -48,20 +50,8 @@ constexpr TopicName kTopics[] = {
 };
 
 json DefaultJson(const ConfigDescriptor& descriptor) {
-  if (const int64_t* value = std::get_if<int64_t>(&descriptor.default_value)) {
-    return *value;
-  }
-  if (const double* value = std::get_if<double>(&descriptor.default_value)) {
-    return *value;
-  }
-  if (const bool* value = std::get_if<bool>(&descriptor.default_value)) {
-    return *value;
-  }
-  if (const std::string_view* value =
-          std::get_if<std::string_view>(&descriptor.default_value)) {
-    return *value;
-  }
-  return nullptr;  // derived from another setting at read time
+  return std::visit([](auto value) { return json(value); },
+                    descriptor.default_value);
 }
 
 json DescriptorJson(const ConfigDescriptor& descriptor) {
@@ -268,16 +258,12 @@ json DescribeSelf(SelfTopic topic, const std::string& name,
       break;
     }
     case SelfTopic::kPrompt: {
-      if (inputs.agent) {
-        return inputs.agent->PromptConfiguration({{"action", "show"}});
-      }
-      out.update(ResolvePrompt(
-          ApplyPromptOverlay(SystemPromptBase(), PromptOverlay(nullptr),
-                             nullptr) +
-              CapabilityPrompt(inputs.tools),
-          PromptDocuments(nullptr),
-          {{{"scope", "runtime"},
-            {"text", Trim(HostCapabilityPrompt(inputs.tools))}}}));
+      if (inputs.agent) return inputs.agent->PromptPreview();
+      out.update(
+          ResolvePrompt(ApplyPromptOverlay(SystemPromptBase(),
+                                           PromptOverlay(nullptr), nullptr) +
+                            CapabilityPrompt(inputs.tools),
+                        nullptr, json::array()));
       out["preview_kind"] =
           "Base prompt without active conversation or repository context.";
       break;
@@ -346,9 +332,12 @@ json ToolSurfaceJson() {
   Api api;
   UsageAccumulator usage;
   const std::string workspace = CanonicalAccessPath(".");
-  std::vector<Tool> tools =
-      BuiltinTools(supervisor, workspace, &adaptive_system);
+  std::vector<Tool> tools = BuiltinTools(supervisor, workspace);
   std::vector<std::pair<Tool, const char*>> conditional;
+  conditional.emplace_back(
+      AdaptSystemTool(adaptive_system,
+                      [](const json&) { return json::object(); }),
+      "UAGENT_ADAPT_SYSTEM");
   conditional.emplace_back(
       UagentTool([](SelfTopic, const std::string&) { return json::object(); },
                  [](ConfigProposalScope, const std::vector<ConfigChange>&) {
@@ -363,8 +352,8 @@ json ToolSurfaceJson() {
       "delegation depth");
   conditional.emplace_back(SessionTool(), "always");
   conditional.emplace_back(ArtifactTool(""), "a session with a client");
-#ifdef UAGENT_WEB
-  conditional.emplace_back(BrowserTool(""),
+#ifdef UAGENT_BROWSER
+  conditional.emplace_back(BrowserTool("", nullptr),
                            "browser appliance, top-level web session");
 #endif
   conditional.emplace_back(SkillTool({}, {}), "skills installed");

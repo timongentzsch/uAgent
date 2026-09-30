@@ -3,11 +3,12 @@
 #include "include/agent/session_store.h"
 
 #include <algorithm>
+#include <charconv>
 #include <filesystem>
 #include <fstream>
-#include <functional>
 #include <iterator>
 #include <map>
+#include <mutex>
 #include <span>
 #include <string>
 #include <system_error>
@@ -16,6 +17,7 @@
 
 #include "include/agent/conversation.h"
 #include "include/agent/file_services.h"
+#include "include/agent/session_role.h"
 #include "include/core/debug.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
@@ -26,6 +28,28 @@
 
 namespace uagent {
 namespace {
+// A retained HTTP body in the private artifacts directory, as display facts
+// name it; anything else a fact holds is left alone.
+bool ArtifactPath(const std::string& text,
+                  const std::filesystem::path& artifacts) {
+  if (text.size() >= kRetainedArtifactPathChars || !text.starts_with("/")) {
+    return false;
+  }
+  const std::filesystem::path file(text);
+  const std::string name = file.filename().string();
+  return (name.starts_with("http-") || name.starts_with("exchange-")) &&
+         CanonicalAccessPath(file.parent_path()) == artifacts;
+}
+
+// Visits every string leaf of a JSON value, depth first.
+template <typename Json, typename Visit>
+void ForEachString(Json& value, const Visit& visit) {
+  if (value.is_object() || value.is_array()) {
+    for (auto& child : value) ForEachString(child, visit);
+  } else if (value.is_string()) {
+    visit(value);
+  }
+}
 
 SessionStoreStatus Error(SessionStoreError code, std::string message) {
   return {code, std::move(message)};
@@ -66,7 +90,8 @@ constexpr Field kStateFields[] = {
     {"adaptive_system_revision", json::value_t::number_unsigned, false},
     {"adaptive_system_mode", json::value_t::string, false},
     {"tool_displays", json::value_t::object, false},
-    {"display", json::value_t::object, false}};
+    {"display", json::value_t::object, false},
+    {"delivered_mail", json::value_t::array, false}};
 
 constexpr Field kHeaderFields[] = {
     {kSessionHeaderCwd, json::value_t::string, true},
@@ -85,7 +110,7 @@ bool ValidState(const SessionState& state,
          (conversation ? conversation->Archive() : state.archive).is_array() &&
          (conversation ? conversation->ToolDisplays() : state.tool_displays)
              .is_object() &&
-         state.display.is_object() &&
+         state.display.is_object() && state.delivered_mail.is_array() &&
          state.adaptive_system.size() <= kAdaptiveSystemBytes &&
          (state.adaptive_system_mode == "overlay" ||
           state.adaptive_system_mode == "replace");
@@ -96,16 +121,22 @@ bool ValidHeader(const json& header) {
 }
 
 json HeaderJson(const SessionMetadata& metadata) {
-  return {{"format", kSessionFormat},
-          {kSessionHeaderCwd, metadata.cwd},
-          {kSessionHeaderModel, metadata.model},
-          {kSessionHeaderSessionId, metadata.session_id},
-          {kSessionHeaderTurns, metadata.turns},
-          {kSessionHeaderTitle, metadata.title},
-          {"custom_title", metadata.custom_title},
-          {kSessionHeaderParent, metadata.parent_session_id},
-          {kSessionHeaderForkTurn, metadata.forked_at_turn},
-          {kSessionHeaderForkTime, metadata.forked_at_time}};
+  json header = {{"format", kSessionFormat},
+                 {kSessionHeaderCwd, metadata.cwd},
+                 {kSessionHeaderModel, metadata.model},
+                 {kSessionHeaderSessionId, metadata.session_id},
+                 {kSessionHeaderTurns, metadata.turns},
+                 {kSessionHeaderTitle, metadata.title},
+                 {"custom_title", metadata.custom_title},
+                 {kSessionHeaderParent, metadata.parent_session_id},
+                 {kSessionHeaderForkTurn, metadata.forked_at_turn},
+                 {kSessionHeaderForkTime, metadata.forked_at_time}};
+  if (!metadata.delegation.empty()) {
+    header[kSessionHeaderDelegation] = metadata.delegation;
+  }
+  if (!metadata.kind.empty()) header[kSessionHeaderKind] = metadata.kind;
+  if (!metadata.thread.empty()) header[kSessionHeaderThread] = metadata.thread;
+  return header;
 }
 
 std::string StateText(const SessionState& state,
@@ -123,7 +154,8 @@ std::string StateText(const SessionState& state,
       {"last_sent_prompt", state.last_sent_prompt},
       {"adaptive_system", state.adaptive_system},
       {"adaptive_system_mode", state.adaptive_system_mode},
-      {"adaptive_system_revision", state.adaptive_system_revision}};
+      {"adaptive_system_revision", state.adaptive_system_revision},
+      {"delivered_mail", state.delivered_mail}};
   // Serialize borrowed arrays directly: the live transcript stays in place.
   std::string text = JsonDump(value);
   text.pop_back();
@@ -131,12 +163,15 @@ std::string StateText(const SessionState& state,
        {std::pair{"display", &state.display},
         {"messages",
          conversation ? &conversation->Messages() : &state.messages},
-        {"archive", conversation ? &conversation->Archive() : &state.archive},
         {"tool_displays", conversation ? &conversation->ToolDisplays()
                                        : &state.tool_displays}}) {
     text += "," + JsonDump(name) + ":" + JsonDump(*field);
   }
-  return text + "}";
+  // The live archive keeps its segments serialized since archiving.
+  return text + ",\"archive\":" +
+         (conversation ? conversation->ArchiveText()
+                       : JsonDump(state.archive)) +
+         "}";
 }
 
 }  // namespace
@@ -154,6 +189,9 @@ SessionStoreStatus SessionStore::Save(const std::string& path,
   header["incoming"] =
       JsonValue(JsonValue(record.state.display, "statistics", json::object()),
                 "incoming", uint64_t{0});
+  // Spend is read across many sessions (a coordinator's daily limit), so it
+  // rides in the header instead of needing the whole state parsed.
+  header["cost"] = record.state.usage.cost;
   // The header is built from a typed struct; only the state can be incomplete.
   if (!ValidState(record.state, conversation)) {
     return Error(SessionStoreError::kInvalid,
@@ -250,6 +288,11 @@ SessionLoadResult SessionStore::Inspect(const std::string& path) {
       JsonValue(header, kSessionHeaderForkTurn, int64_t{0});
   record.metadata.forked_at_time =
       JsonValue(header, kSessionHeaderForkTime, "");
+  record.metadata.delegation =
+      JsonValue(header, kSessionHeaderDelegation, json::object());
+  record.metadata.kind = JsonValue(header, kSessionHeaderKind, "");
+  record.metadata.thread =
+      JsonValue(header, kSessionHeaderThread, json::object());
   record.state.messages = std::move(state["messages"]);
   record.state.message_kinds = std::move(message_kinds);
   record.state.archive = std::move(state["archive"]);
@@ -274,6 +317,8 @@ SessionLoadResult SessionStore::Inspect(const std::string& path) {
   if (state.contains("display")) {
     record.state.display = std::move(state["display"]);
   }
+  record.state.delivered_mail =
+      JsonValue(state, "delivered_mail", json::array());
   if (!ValidState(record.state)) {
     return {Error(SessionStoreError::kCorrupt,
                   "session payload is invalid or incomplete"),
@@ -282,8 +327,34 @@ SessionLoadResult SessionStore::Inspect(const std::string& path) {
   return {{}, std::move(record)};
 }
 
+json SessionHeader(const std::string& path) {
+  std::string prefix, error;
+  if (!ReadRegularFile(path, kSessionHeaderBytes, prefix, error, true)) {
+    return json::object();
+  }
+  const size_t newline = prefix.find('\n');
+  if (newline == std::string::npos) return json::object();
+  json header = json::parse(prefix.substr(0, newline), nullptr, false);
+  return ValidHeader(header) ? header : json::object();
+}
+
+std::string CoordinatorPath(const std::string& cwd) {
+  return (std::filesystem::path(GlobalBase()) / kHistoryDir / WorkspaceId(cwd) /
+          "coordinator.json")
+      .string();
+}
+
+std::string SessionLockPath(const std::string& path) {
+  return CanonicalAccessPath(path).string() + ".lock";
+}
+
 std::vector<SessionInfo> ListSessions(SessionScope scope) {
-  return SessionCatalogue{}.List(scope);
+  // One cache per process: a repeated listing (a coordinator's board every
+  // step) re-reads only the headers that changed.
+  static std::mutex mutex;
+  static SessionCatalogue catalogue;
+  std::lock_guard lock(mutex);
+  return catalogue.List(scope);
 }
 
 std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
@@ -293,7 +364,7 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
   const fs::path base = fs::path(GlobalBase()) / kHistoryDir;
   std::vector<fs::path> directories{base};
   std::error_code ec;
-  if (scope == SessionScope::kWorkspace) {
+  if (scope != SessionScope::kAll) {
     directories.push_back(base / WorkspaceId(current));
   } else {
     for (const auto& entry : fs::directory_iterator(base, ec)) {
@@ -303,6 +374,12 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
       }
     }
   }
+  // Every scope but kAll, the host's whole view, leaves coordinators out.
+  const auto listed = [&](const SessionInfo& info) {
+    return (scope == SessionScope::kAll ||
+            (info.cwd == current && info.kind != kSessionKindCoordinator)) &&
+           info.delegation.empty() != (scope == SessionScope::kChildren);
+  };
   std::vector<SessionInfo> out;
   std::map<std::string, Entry> next;
   for (const fs::path& directory : directories) {
@@ -318,7 +395,7 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
       const FileStamp stamp = SnapshotFile(item.path);
       auto cached = entries_.find(item.path);
       if (cached != entries_.end() && cached->second.stamp == stamp) {
-        if (scope == SessionScope::kAll || cached->second.info.cwd == current) {
+        if (listed(cached->second.info)) {
           out.push_back(cached->second.info);
           next.insert(entries_.extract(cached));
         }
@@ -328,16 +405,8 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
       auto bytes = entry.file_size(ec);
       item.bytes =
           ec ? 0 : static_cast<int64_t>(std::min(bytes, uintmax_t{INT64_MAX}));
-      std::string prefix, error;
-      json header;
-      if (ReadRegularFile(item.path, kSessionHeaderBytes, prefix, error,
-                          true)) {
-        size_t newline = prefix.find('\n');
-        if (newline != std::string::npos) {
-          header = json::parse(prefix.substr(0, newline), nullptr, false);
-        }
-      }
-      if (!ValidHeader(header)) {
+      const json header = SessionHeader(item.path);
+      if (header.empty()) {
         item.title = entry.path().filename().string();
         item.error = "invalid or oversized session header";
       } else {
@@ -345,11 +414,16 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
         item.title = JsonValue(header, kSessionHeaderTitle, "(untitled)");
         item.turns = JsonValue(header, kSessionHeaderTurns, int64_t{0});
         item.incoming = JsonValue(header, "incoming", uint64_t{0});
+        item.cost = JsonValue(header, "cost", 0.0);
+        item.delegation =
+            JsonValue(header, kSessionHeaderDelegation, json::object());
+        item.kind = JsonValue(header, kSessionHeaderKind, "");
+        item.thread = JsonValue(header, kSessionHeaderThread, json::object());
         if (JsonValue(header, "format", int64_t{0}) != kSessionFormat) {
           item.error = "unsupported session format";
         }
       }
-      if (scope == SessionScope::kAll || item.cwd == current) {
+      if (listed(item)) {
         if (stamp.size >= 0 && item.error.empty() &&
             SnapshotFile(item.path) == stamp) {
           next.emplace(item.path, Entry{stamp, item});
@@ -373,11 +447,11 @@ bool ValidSessionTitle(const std::string& title) {
 }
 
 json SessionStore::Fork(const std::string& source, const std::string& title,
-                        bool source_owned, int64_t fork_turn) {
+                        bool source_owned, int64_t fork_turn,
+                        const std::string& message_id) {
   FileLease writer;
   std::string error;
-  if (!source_owned &&
-      !writer.Acquire(CanonicalAccessPath(source).string() + ".lock", error)) {
+  if (!source_owned && !writer.Acquire(SessionLockPath(source), error)) {
     return {{"error", error}};
   }
   auto loaded = Inspect(source);
@@ -399,9 +473,22 @@ json SessionStore::Fork(const std::string& source, const std::string& title,
                             record.state.tool_displays, record.state.display)) {
     return {{"error", "session conversation state is invalid"}};
   }
-  // Fork-at-turn keeps the prefix before the Nth user turn (exclusive, so
-  // the dropped turn can be retried fresh); 0 forks the whole session.
-  // Message-exclusive like OpenCode's slice(0, target).
+  if (!message_id.empty()) {
+    uint64_t id = 0;
+    const auto [end, parsed] = std::from_chars(
+        message_id.data() + std::min<size_t>(2, message_id.size()),
+        message_id.data() + message_id.size(), id);
+    fork_turn = message_id.starts_with("m-") && parsed == std::errc() &&
+                        end == message_id.data() + message_id.size()
+                    ? conversation.UserMessageNumber(id)
+                    : 0;
+    if (fork_turn == 0) {
+      return {{"error", "that message is no longer in the live conversation"}};
+    }
+  }
+  // Keeps the prefix before the Nth user message (exclusive, so it can be
+  // edited and sent again); 0 forks the whole session.
+  const std::string prompt = conversation.UserMessageText(fork_turn);
   if (fork_turn > 0) {
     if (!conversation.TruncateBeforeUserTurn(fork_turn)) {
       return {{"error", "session has fewer than " + std::to_string(fork_turn) +
@@ -414,8 +501,8 @@ json SessionStore::Fork(const std::string& source, const std::string& title,
     record.state.tool_displays = conversation.ToolDisplays();
     record.metadata.turns = fork_turn - 1;
   }
-  // Older format-3 sessions have no display metadata. Normalize it before
-  // recording fork facts so the fork can be restored like any conversation.
+  // The fork's display metadata is the truncated conversation's, so the
+  // fork is restored like any conversation.
   record.state.display = conversation.DisplayMetadata();
   const std::string identity = MakeSessionId();
   const std::string path = (std::filesystem::path(source).parent_path() /
@@ -445,74 +532,66 @@ json SessionStore::Fork(const std::string& source, const std::string& title,
     }
   }
   auto artifacts = CanonicalAccessPath(UagentDir(kArtifactsDir));
-  std::function<void(json&)> rewrite = [&](json& value) {
+  const auto rewrite = [&](json& value) {
     if (ec) return;
-    if (value.is_object() || value.is_array()) {
-      for (json& child : value) rewrite(child);
-    } else if (value.is_string()) {
-      std::string text = value.get<std::string>();
-      const auto file = text.size() < 4096 && text.starts_with("/")
-                            ? std::filesystem::path(text)
-                            : std::filesystem::path();
-      if ((file.filename().string().starts_with("http-") ||
-           file.filename().string().starts_with("exchange-")) &&
-          CanonicalAccessPath(file.parent_path()) == artifacts) {
-        auto [it, added] = copies.try_emplace(text);
-        if (added) {
-          ScopedTempFile copy(
-              (artifacts / (file.filename().string().starts_with("http-")
-                                ? "http-XXXXXX"
-                                : "exchange-XXXXXX"))
-                  .string());
-          if (!copy) {
-            ec = std::make_error_code(std::errc::io_error);
-            return;
-          }
-          Fd input(open(text.c_str(),
-                        O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK));
-          struct stat info{};
-          if (!input || fstat(input.Get(), &info) != 0 ||
-              !S_ISREG(info.st_mode) || info.st_uid != getuid() ||
-              info.st_size < 0 ||
-              static_cast<uint64_t>(info.st_size) > kSessionReadBytes) {
-            it->second.clear();
-          } else {
-            char buffer[16384];
-            size_t copied = 0;
-            for (;;) {
-              ssize_t count = read(input.Get(), buffer, sizeof(buffer));
-              if (count < 0 && errno == EINTR) continue;
-              if (count == 0) break;
-              if (count < 0 ||
-                  static_cast<size_t>(count) > kSessionReadBytes - copied ||
-                  !WriteFully(
-                      copy.Get(),
-                      std::string_view(buffer, static_cast<size_t>(count)))) {
-                ec = std::make_error_code(std::errc::io_error);
-                break;
-              }
-              copied += static_cast<size_t>(count);
+    std::string text = value.get<std::string>();
+    const std::filesystem::path file(text);
+    if (ArtifactPath(text, artifacts)) {
+      auto [it, added] = copies.try_emplace(text);
+      if (added) {
+        ScopedTempFile copy(
+            (artifacts / (file.filename().string().starts_with("http-")
+                              ? "http-XXXXXX"
+                              : "exchange-XXXXXX"))
+                .string());
+        if (!copy) {
+          ec = std::make_error_code(std::errc::io_error);
+          return;
+        }
+        Fd input(
+            open(text.c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK));
+        struct stat info{};
+        if (!input || fstat(input.Get(), &info) != 0 ||
+            !S_ISREG(info.st_mode) || info.st_uid != getuid() ||
+            info.st_size < 0 ||
+            static_cast<uint64_t>(info.st_size) > kSessionReadBytes) {
+          it->second.clear();
+        } else {
+          char buffer[16384];
+          size_t copied = 0;
+          for (;;) {
+            ssize_t count = read(input.Get(), buffer, sizeof(buffer));
+            if (count < 0 && errno == EINTR) continue;
+            if (count == 0) break;
+            if (count < 0 ||
+                static_cast<size_t>(count) > kSessionReadBytes - copied ||
+                !WriteFully(
+                    copy.Get(),
+                    std::string_view(buffer, static_cast<size_t>(count)))) {
+              ec = std::make_error_code(std::errc::io_error);
+              break;
             }
-            // Kept even when partial: the previous hand-rolled cleanup
-            // removed only rejected inputs, not short copies.
-            it->second = copy.Release();
+            copied += static_cast<size_t>(count);
           }
+          // Kept even when partial: the previous hand-rolled cleanup
+          // removed only rejected inputs, not short copies.
+          it->second = copy.Release();
         }
-        value = it->second;
-      } else {
-        const std::string from = source + ".assets/", to = path + ".assets/";
-        size_t pos = 0;
-        while ((pos = text.find(from, pos)) != std::string::npos) {
-          text.replace(pos, from.size(), to);
-          pos += to.size();
-        }
-        value = std::move(text);
       }
+      value = it->second;
+    } else {
+      const std::string from = source + ".assets/", to = path + ".assets/";
+      size_t pos = 0;
+      while ((pos = text.find(from, pos)) != std::string::npos) {
+        text.replace(pos, from.size(), to);
+        pos += to.size();
+      }
+      value = std::move(text);
     }
   };
-  rewrite(record.state.messages);
-  rewrite(record.state.archive);
-  rewrite(record.state.display);
+  ForEachString(record.state.messages, rewrite);
+  ForEachString(record.state.archive, rewrite);
+  ForEachString(record.state.display, rewrite);
   record.state.display["facts"]["fork-origin"] = {
       {"source", HashHex(source)},
       {"title", record.metadata.title},
@@ -524,6 +603,10 @@ json SessionStore::Fork(const std::string& source, const std::string& title,
   record.state.display["statistics"] = {{"incoming", 0}, {"complete", true}};
   record.metadata.session_id = identity;
   record.metadata.parent_session_id = parent_session_id;
+  // A fork is the user's own conversation: never a second coordinator, and
+  // no longer a thread its coordinator steers.
+  record.metadata.kind.clear();
+  record.metadata.thread = json::object();
   record.metadata.forked_at_turn = fork_turn > 0 ? fork_turn : parent_turns;
   record.metadata.forked_at_time = UtcStamp("%Y%m%dT%H%M%SZ");
   if (!title.empty()) {
@@ -546,11 +629,13 @@ json SessionStore::Fork(const std::string& source, const std::string& title,
     }
     return {{"error", result.message}};
   }
-  return {{"forked", true},
-          {"id", HashHex(path)},
-          {"path", path},
-          {"cwd", record.metadata.cwd},
-          {"title", record.metadata.title}};
+  json forked = {{"forked", true},
+                 {"id", HashHex(path)},
+                 {"path", path},
+                 {"cwd", record.metadata.cwd},
+                 {"title", record.metadata.title}};
+  if (fork_turn > 0) forked["prompt"] = prompt;
+  return forked;
 }
 
 namespace {
@@ -601,9 +686,11 @@ std::string SessionStore::ShareMarkdown(const SessionRecord& record) {
        ++index) {
     const MessageKind kind = record.state.message_kinds[index];
     const json& message = record.state.messages[index];
-    if (kind == MessageKind::kUser || kind == MessageKind::kAttachment) {
+    if (IsUserMessage(message, kind)) {
       out += "\n## User " + std::to_string(++user_n) + "\n\n" +
              ShareText(message) + "\n";
+    } else if (kind == MessageKind::kAttachment) {
+      out += "\n## Attached\n\n" + ShareText(message) + "\n";
     } else if (kind == MessageKind::kAssistant) {
       const std::string text = ShareText(message);
       if (text.empty()) continue;  // Tool-call-only message.
@@ -612,7 +699,7 @@ std::string SessionStore::ShareMarkdown(const SessionRecord& record) {
       std::string text = ShareText(message);
       if (text.empty()) continue;
       if (text.size() > kSharedToolResultChars) {
-        text = text.substr(0, kSharedToolResultChars) + "\n...[truncated]";
+        text = Utf8Prefix(text, kSharedToolResultChars) + "\n...[truncated]";
       }
       const std::string name = JsonValue(message, "name", "");
       out += "\n### tool" + (name.empty() ? "" : " `" + name + "`") +
@@ -645,7 +732,7 @@ SessionStoreStatus SessionStore::Rename(const std::string& path,
   }
   FileLease writer;
   std::string error;
-  if (!writer.Acquire(CanonicalAccessPath(path).string() + ".lock", error)) {
+  if (!writer.Acquire(SessionLockPath(path), error)) {
     return Error(SessionStoreError::kIo, std::move(error));
   }
   auto loaded = Inspect(path);
@@ -659,7 +746,7 @@ SessionStoreStatus SessionStore::Remove(const std::string& path,
                                         const std::string& draft_path) {
   FileLease writer;
   std::string error;
-  if (!writer.Acquire(CanonicalAccessPath(path).string() + ".lock", error)) {
+  if (!writer.Acquire(SessionLockPath(path), error)) {
     return Error(SessionStoreError::kIo, std::move(error));
   }
   auto loaded = Inspect(path);
@@ -675,25 +762,14 @@ SessionStoreStatus SessionStore::Remove(const std::string& path,
     const json facts =
         JsonValue(loaded.record->state.display, "facts", json::object());
     const auto artifacts = CanonicalAccessPath(UagentDir(kArtifactsDir));
-    std::function<void(const json&)> remove_artifacts = [&](const json& value) {
-      if (value.is_object() || value.is_array()) {
-        for (const json& child : value) remove_artifacts(child);
-      } else if (value.is_string()) {
-        const auto& text = value.get_ref<const std::string&>();
-        if (text.size() >= kRetainedArtifactPathChars ||
-            !text.starts_with("/")) {
-          return;
-        }
-        const std::filesystem::path body(text);
-        if ((body.filename().string().starts_with("exchange-") ||
-             body.filename().string().starts_with("http-")) &&
-            CanonicalAccessPath(body.parent_path()) == artifacts) {
-          std::error_code ignored;
-          std::filesystem::remove(artifacts / body.filename(), ignored);
-        }
+    ForEachString(facts, [&](const json& value) {
+      const auto& text = value.get_ref<const std::string&>();
+      if (ArtifactPath(text, artifacts)) {
+        std::error_code ignored;
+        std::filesystem::remove(
+            artifacts / std::filesystem::path(text).filename(), ignored);
       }
-    };
-    remove_artifacts(facts);
+    });
   }
   return ec ? Error(SessionStoreError::kIo, ec.message())
             : SessionStoreStatus{};

@@ -52,7 +52,7 @@ std::string PrefixBytes(const std::string& value, size_t limit,
                         bool* truncated = nullptr) {
   if (truncated) *truncated = value.size() > limit;
   if (value.size() <= limit) return value;
-  return value.substr(0, limit);
+  return Utf8Prefix(value, limit);
 }
 
 Usage DecisionUsage(const json& response) {

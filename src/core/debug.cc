@@ -29,19 +29,6 @@ void WriteJsonLine(FILE* file, const json& record) {
   fflush(file);
 }
 
-std::string Stamp(bool utc, const char* format) {
-  std::time_t now = std::time(nullptr);
-  std::tm broken{};
-  if (utc) {
-    gmtime_r(&now, &broken);
-  } else {
-    localtime_r(&now, &broken);
-  }
-  char out[64];
-  std::strftime(out, sizeof out, format, &broken);
-  return out;
-}
-
 std::string DefaultDebugPath() {
   return UagentDir(kSessionsDir) + "/" + UtcStamp("%Y%m%dT%H%M%SZ") + "-" +
          std::to_string(getpid()) + ".jsonl";
@@ -55,13 +42,30 @@ double ElapsedMs(std::chrono::steady_clock::time_point start) {
       .count();
 }
 
-std::string UtcStamp(const char* format) { return Stamp(/*utc=*/true, format); }
-
-std::string LocalStamp() {
-  return Stamp(/*utc=*/false, "%Y-%m-%d %H:%M:%S %Z (UTC%z)");
+std::string UtcStamp(const char* format) {
+  const std::time_t now = std::time(nullptr);
+  std::tm broken{};
+  gmtime_r(&now, &broken);
+  char out[64];
+  std::strftime(out, sizeof out, format, &broken);
+  return out;
 }
 
-std::string LocalDay() { return Stamp(/*utc=*/false, "%Y-%m-%d %Z (UTC%z)"); }
+std::string LocalTime(std::time_t at, const char* format) {
+  std::tm broken{};
+  localtime_r(&at, &broken);
+  char out[64];
+  std::strftime(out, sizeof out, format, &broken);
+  return out;
+}
+
+std::string LocalStamp() {
+  return LocalTime(std::time(nullptr), "%Y-%m-%d %H:%M:%S %Z (UTC%z)");
+}
+
+std::string LocalDay() {
+  return LocalTime(std::time(nullptr), "%Y-%m-%d %Z (UTC%z)");
+}
 
 std::string UsageLedger() {
   return UagentDir(kBgDir) + "/usage-" + std::to_string(getpid()) + ".jsonl";

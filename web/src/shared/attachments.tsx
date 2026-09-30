@@ -42,6 +42,8 @@ export function ImageViewerDialog({
   annotate?: (file: File, draftId?: string) => Promise<boolean>;
 }) {
   const [editing, setEditing] = useState(false);
+  // The image's real width, so the zoom level reads as its actual size.
+  const [natural, setNatural] = useState<number>();
   return (
     <Modal
       title={image.name}
@@ -52,12 +54,8 @@ export function ImageViewerDialog({
       actions={
         <>
           {annotate && (
-            <Button
-              variant="quiet"
-              class="with-icon"
-              onClick={() => setEditing(true)}
-            >
-              <Pencil aria-hidden="true" />
+            <Button variant="quiet" onClick={() => setEditing(true)}>
+              <Pencil />
               Annotate
             </Button>
           )}
@@ -91,8 +89,18 @@ export function ImageViewerDialog({
           }
         />
       ) : (
-        <ZoomSurface key={image.src} label={image.name} dismiss={close}>
-          <img src={image.src} alt={image.name} draggable={false} />
+        <ZoomSurface
+          key={image.src}
+          label={image.name}
+          dismiss={close}
+          natural={natural}
+        >
+          <img
+            src={image.src}
+            alt={image.name}
+            draggable={false}
+            onLoad={(event) => setNatural(event.currentTarget.naturalWidth)}
+          />
         </ZoomSurface>
       )}
     </Modal>
@@ -100,7 +108,7 @@ export function ImageViewerDialog({
 }
 
 // "PDF · 1.2 MB": the extension names the type well enough to recognise.
-export function fileType(name: string, size?: number) {
+function fileType(name: string, size?: number) {
   const dot = name.lastIndexOf(".");
   const kind = dot > 0 ? name.slice(dot + 1).toUpperCase() : "File";
   return size == null ? kind : `${kind} · ${bytes(size)}`;
@@ -128,7 +136,7 @@ export function ImageTile({ src, name, draftId }: ViewedImage) {
   );
 }
 
-export function FileCard({
+function FileCard({
   name,
   size,
   href,
@@ -141,7 +149,7 @@ export function FileCard({
 }) {
   const body = (
     <>
-      <FileText aria-hidden="true" />
+      <FileText />
       <span>
         <strong>{cleanText(name)}</strong>
         <small>{children ?? fileType(name, size)}</small>

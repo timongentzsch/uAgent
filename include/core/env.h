@@ -23,8 +23,6 @@ int64_t EnvLong(const char* name, int64_t dflt);
 // Accessors shared by their consumers and the session_ready diagnostic.
 int64_t ToolResultCap();
 int64_t ToolBatchResultCap();
-int64_t ToolTraceProtectChars();
-int64_t ToolTracePruneMinChars();
 int64_t AutoCompactPct();
 int64_t AutoCompactTokens();
 int64_t ToolConcurrency();
@@ -38,9 +36,8 @@ bool LeanToolset();
 int64_t SubagentMaxSteps();
 int64_t SubagentMaxToolCalls();
 int64_t SubagentTimeoutSeconds();
-int64_t SubagentCallsPerTurn();
-int64_t PersistentMax();
 std::string SubagentModel();
+std::string CoordinatorModel();
 int64_t MaxOutputTokens();
 bool SteeringEnabled();
 bool SandboxEnabled();
@@ -60,48 +57,13 @@ inline bool ValidOpenRouterVariant(std::string_view variant) {
   return Cfg("UAGENT_OPENROUTER_VARIANT").Accepts(variant);
 }
 
-// Bounded tunables. Every UAGENT_* limit the agent honours is declared here
-// with its default and its clamp, so the set can be read — and compared with
-// docs/OPERATIONS.md — without hunting through the modules that apply them.
+// Bounded tunables. Fixed ceilings live in include/core/limits.h.
 int64_t ReadFileLines();
-int64_t ReadFileMaxLines();
-int64_t ReadFileBytes();
-int64_t ReadFileResultChars();
-int64_t EditFileBytes();
-int64_t ListDirEntries();
-int64_t ListDirScanEntries();
-int64_t MemoryBytes();
-int64_t MaxMemories();
 int64_t MemoryIdleSeconds();
-int64_t MemoryExtractBytes();
-int64_t SkillBodyBytes();
-// Descriptions stay bounded because discovery may return several at once;
-// bodies are sent only when a skill is opened.
-int64_t SkillDescriptionBytes();
-int64_t MaxSkills();
-// The download cap for one web_fetch. Pages beyond it are read as far as the
-// cap and marked partial rather than failed.
-int64_t WebFetchBytes();
-int64_t GrepResults();
-int64_t GrepBytes();
-int64_t BashLogBytes();
-int64_t RunDefaultYieldMs();
 int64_t MaxBackgroundJobs();
-int64_t McpConfigBytes();
-int64_t McpDescriptionChars();
-int64_t MaxPendingAttachments();
 int64_t AttachmentLimitMb();
 int64_t ContextWindow();
-// Retention for the pruned artifact trees: days kept, then newest-N kept.
 int64_t HistoryDays();
-int64_t HistoryFiles();
-int64_t DebugDays();
-int64_t DebugFiles();
-int64_t BgDays();
-int64_t BgFiles();
-int64_t McpLogDays();
-int64_t McpLogFiles();
-int64_t TerminalRecordDays();
 std::string ShellEnvironmentAllowlist();
 
 // Approval mode is the one setting a running session can toggle, so it cannot
@@ -158,38 +120,10 @@ struct RuntimeConfig : TurnBudgets {
       RegistryDefault<int64_t>("UAGENT_STREAM_IDLE_TIMEOUT");
   int64_t request_timeout_s =
       RegistryDefault<int64_t>("UAGENT_REQUEST_TIMEOUT");
-  int64_t request_bytes = RegistryDefault<int64_t>("UAGENT_REQUEST_BYTES");
-  int64_t response_bytes = RegistryDefault<int64_t>("UAGENT_RESPONSE_BYTES");
   int64_t tool_timeout_s = RegistryDefault<int64_t>("UAGENT_TOOL_TIMEOUT");
-  int64_t web_search_timeout_s =
-      RegistryDefault<int64_t>("UAGENT_WEB_SEARCH_TIMEOUT");
-  int64_t web_search_max_tokens =
-      RegistryDefault<int64_t>("UAGENT_WEB_SEARCH_MAX_TOKENS");
-  int64_t web_search_calls =
-      RegistryDefault<int64_t>("UAGENT_WEB_SEARCH_CALLS");
-  int64_t web_search_max_results =
-      RegistryDefault<int64_t>("UAGENT_WEB_SEARCH_MAX_RESULTS");
-  int64_t web_search_max_uses =
-      RegistryDefault<int64_t>("UAGENT_WEB_SEARCH_MAX_USES");
   int64_t mcp_timeout_s = RegistryDefault<int64_t>("UAGENT_MCP_TIMEOUT");
   int64_t mcp_startup_grace_s =
       RegistryDefault<int64_t>("UAGENT_MCP_STARTUP_GRACE");
-  int64_t mcp_servers = RegistryDefault<int64_t>("UAGENT_MCP_SERVERS");
-  int64_t mcp_pages = RegistryDefault<int64_t>("UAGENT_MCP_PAGES");
-  int64_t mcp_tools = RegistryDefault<int64_t>("UAGENT_MCP_TOOLS");
-  int64_t mcp_config_bytes =
-      RegistryDefault<int64_t>("UAGENT_MCP_CONFIG_BYTES");
-  int64_t mcp_response_bytes =
-      RegistryDefault<int64_t>("UAGENT_MCP_RESPONSE_BYTES");
-  int64_t mcp_schema_bytes =
-      RegistryDefault<int64_t>("UAGENT_MCP_SCHEMA_BYTES");
-  int64_t mcp_log_bytes = RegistryDefault<int64_t>("UAGENT_MCP_LOG_BYTES");
-  int64_t memory_always_bytes =
-      RegistryDefault<int64_t>("UAGENT_MEMORY_ALWAYS_BYTES");
-  int64_t project_doc_bytes =
-      RegistryDefault<int64_t>("UAGENT_PROJECT_DOC_BYTES");
-  int64_t session_archive_bytes =
-      RegistryDefault<int64_t>("UAGENT_SESSION_ARCHIVE_BYTES");
   std::string approval{RegistryDefault<std::string_view>("UAGENT_APPROVAL")};
   std::string permission_model{
       RegistryDefault<std::string_view>("UAGENT_PERMISSION_MODEL")};

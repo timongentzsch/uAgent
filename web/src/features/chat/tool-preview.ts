@@ -25,7 +25,7 @@ export function diffCounts(change = ""): [number, number] {
 export const formatStat = ([added, removed]: [number, number]) =>
   added || removed ? `+${added} −${removed}` : "";
 
-export const diffStat = (change = "") => formatStat(diffCounts(change));
+const diffStat = (change = "") => formatStat(diffCounts(change));
 
 export function getToolRow(block: Block, running = false): ToolRow {
   const verb = block.view?.verb;

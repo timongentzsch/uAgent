@@ -35,8 +35,30 @@ jobs:
           CI_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: python3 .github/changes.py
 
-  build-and-test:
+  web-dist:
     needs: changes
+    if: needs.changes.outputs.native == 'true' || needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci --prefix web
+      - run: npm run build --prefix web
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: web-dist
+          path: web/dist
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
+
+  build-and-test:
+    needs: [changes, web-dist]
     if: needs.changes.outputs.native == 'true'
     timeout-minutes: 30
     strategy:
@@ -64,6 +86,11 @@ jobs:
       UAGENT_TEST_TIMEOUT_SCALE: "3"
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      # The web UI is built once (web-dist) and embedded by every native build.
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: web-dist
+          path: web/dist
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev libssl-dev
@@ -107,6 +134,14 @@ jobs:
           cmake -S . -B build/cli-only -DCMAKE_BUILD_TYPE=Release -DUAGENT_WEB=OFF -DUAGENT_WARNINGS_AS_ERRORS=ON
           cmake --build build/cli-only --parallel 4
           ctest --test-dir build/cli-only --output-on-failure -j 2 -R '^(core|integration_runtime|integration_providers)$'
+      - name: Build without the browser appliance
+        if: >-
+          github.event_name != 'pull_request' &&
+          matrix.build_type == 'Release' && matrix.target == 'linux-x86_64'
+        run: |
+          cmake -S . -B build/no-browser -DCMAKE_BUILD_TYPE=Release -DUAGENT_BROWSER=OFF -DUAGENT_WARNINGS_AS_ERRORS=ON
+          cmake --build build/no-browser --parallel 4
+          ctest --test-dir build/no-browser --output-on-failure -j 2 -R '^core$'
 
       - name: Package
         if: matrix.build_type == 'Release'
@@ -137,7 +172,7 @@ jobs:
           retention-days: 7
 
   sanitizers:
-    needs: changes
+    needs: [changes, web-dist]
     if: needs.changes.outputs.native == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -147,6 +182,11 @@ jobs:
       UAGENT_TEST_TIMEOUT_SCALE: "6"
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      # The web UI is built once (web-dist) and embedded by every native build.
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: web-dist
+          path: web/dist
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev
       - name: Configure ASan and UBSan
@@ -155,9 +195,14 @@ jobs:
         run: cmake --build --preset sanitize --parallel 4
       - name: Test
         run: ctest --preset sanitize -j 2 -LE source
+      # Session workers run with no stderr, so every process writes its
+      # sanitizer report to a file (CMakePresets.json log_path).
+      - name: Sanitizer reports
+        if: failure()
+        run: cat build/sanitize/report.* 2>/dev/null || echo "no sanitizer report"
 
   thread-sanitizer:
-    needs: changes
+    needs: [changes, web-dist]
     # One run proves little about a race, so it watches every push and the
     # weekly run instead of gating each pull request.
     if: needs.changes.outputs.native == 'true' && github.event_name != 'pull_request'
@@ -169,6 +214,11 @@ jobs:
       UAGENT_TEST_TIMEOUT_SCALE: "6"
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      # The web UI is built once (web-dist) and embedded by every native build.
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: web-dist
+          path: web/dist
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev
       - name: Configure TSan
@@ -181,6 +231,11 @@ jobs:
         run: cmake --build --preset tsan --target uagent_tests uagent --parallel 4
       - name: Test concurrent paths
         run: ctest --preset tsan -j 2 -R '^(core|integration_(runtime|tools|web))$'
+      # Session workers run with no stderr, so every process writes its
+      # sanitizer report to a file (CMakePresets.json log_path).
+      - name: Sanitizer reports
+        if: failure()
+        run: cat build/tsan/report.* 2>/dev/null || echo "no sanitizer report"
 
   fuzzers:
     needs: changes
@@ -212,7 +267,7 @@ jobs:
             /tmp/corpus/input_decoder
 
   coverage:
-    needs: changes
+    needs: [changes, web-dist]
     # A trend floor rather than a correctness gate: pushes and weekly.
     if: needs.changes.outputs.native == 'true' && github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
@@ -221,6 +276,11 @@ jobs:
       UAGENT_TEST_TIMEOUT_SCALE: "3"
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      # The web UI is built once (web-dist) and embedded by every native build.
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: web-dist
+          path: web/dist
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y gcovr libcurl4-openssl-dev
       - name: Configure coverage
@@ -292,12 +352,12 @@ jobs:
       - run: npm ci --prefix web
       - run: npm run format:check --prefix web
       - run: npm run test --prefix web
-      - name: Verify embedded bundle and notices
+      - name: Build bundle and verify notices
         run: |
           npm run build --prefix web
           npm run notices --prefix web
           npm run size --prefix web
-          git diff --exit-code -- web/dist web/THIRD_PARTY_NOTICES.md
+          git diff --exit-code -- web/THIRD_PARTY_NOTICES.md
       # Only the host the browser tests drive; build-and-test already runs
       # the native suites against the same Web Push build.
       - name: Build native push host
@@ -319,7 +379,7 @@ jobs:
           retention-days: 3
 
   cpp-style:
-    needs: changes
+    needs: [changes, web-dist]
     if: needs.changes.outputs.native == 'true'
     runs-on: ubuntu-24.04
     # The full clang-tidy scan covers ~155 translation units and needs most of
@@ -330,6 +390,11 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      # The web UI is built once (web-dist) and embedded by every native build.
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: web-dist
+          path: web/dist
       - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           version: "0.11.28"
@@ -371,7 +436,7 @@ jobs:
   checks:
     name: CI result
     if: always()
-    needs: [changes, build-and-test, sanitizers, thread-sanitizer, fuzzers, coverage, python, cpp-style, web]
+    needs: [changes, web-dist, build-and-test, sanitizers, thread-sanitizer, fuzzers, coverage, python, cpp-style, web]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -403,6 +468,13 @@ jobs:
           pattern: release-*
           path: dist
           merge-multiple: true
+      # The built web UI, for source builds without Node.
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: web-dist
+          path: web-dist
+      - name: Package web UI
+        run: tar -C web-dist -czf "dist/uagent-web-dist-${GITHUB_REF_NAME#v}.tar.gz" .
       - name: Create deterministic SHA-256 manifest
         shell: bash
         run: |

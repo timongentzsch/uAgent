@@ -51,8 +51,8 @@ json PermissionControl(AppContext& context, const json& request) {
 
 json SessionControl(AppSession& session, const json& request) {
   std::string kind = JsonValue(request, "kind", "");
-  if (kind == "prompt") {
-    return session.ActiveAgent().PromptConfiguration(request);
+  if (kind == "self_directive") {
+    return session.ActiveAgent().SelfDirective(request);
   }
   if (kind == "permissions") return PermissionControl(session.context, request);
   if (kind == "tools" &&
@@ -74,11 +74,7 @@ json SessionControl(AppSession& session, const json& request) {
     }
     return result;
   }
-  if (kind == "fork" || kind == "rewind" || kind == "share") {
-    const int64_t turn = JsonValue(request, "turn", int64_t{0});
-    if (kind == "rewind" && turn <= 0) {
-      return {{"error", "usage: /rewind [@]TURN"}};
-    }
+  if (kind == "fork" || kind == "share") {
     if (session.session_file.empty()) {
       if (kind != "fork") return {{"error", "session has no file yet"}};
       session.session_file = UagentDir(kHistoryDir) + "/" +
@@ -86,15 +82,28 @@ json SessionControl(AppSession& session, const json& request) {
                              MakeSessionId() + ".json";
     }
     std::string error;
-    if ((kind == "rewind" &&
-         !session.ActiveAgent().RewindToTurn(turn, error)) ||
-        !session.Save(error)) {
-      return {{"error", error}};
+    // A folder has one coordinator, so "edit from here" rewinds it in place
+    // rather than starting an ordinary conversation beside it.
+    if (kind == "fork" && session.context.options.Coordinator() &&
+        (JsonValue(request, "turn", int64_t{0}) > 0 ||
+         !JsonValue(request, "message_id", "").empty())) {
+      json rewound = session.ActiveAgent().RewindBefore(
+          JsonValue(request, "turn", int64_t{0}),
+          JsonValue(request, "message_id", ""));
+      if (rewound.contains("error")) return rewound;
+      if (!session.Save(error)) return {{"error", error}};
+      rewound["rewound"] = true;
+      rewound["id"] = HashHex(session.session_file);
+      rewound["path"] = session.session_file;
+      rewound["cwd"] = CanonicalCwd();
+      return rewound;
     }
-    if (kind == "rewind") return {{"rewound", true}, {"turns", turn - 1}};
+    if (!session.Save(error)) return {{"error", error}};
     if (kind == "share") return SessionStore::Share(session.session_file);
     return SessionStore::Fork(session.session_file,
-                              JsonValue(request, "title", ""), true, turn);
+                              JsonValue(request, "title", ""), true,
+                              JsonValue(request, "turn", int64_t{0}),
+                              JsonValue(request, "message_id", ""));
   }
   if (kind == "config") {
     return ConfigurationControl(
@@ -109,13 +118,12 @@ json SessionControl(AppSession& session, const json& request) {
 
   if (JsonValue(request, "kind", "") == "activity") {
     if (JsonValue(request, "operation", "") != "followup") {
-      return ActivityControl(session.Runtime().processes, request,
-                             &session.Runtime().collaborator);
+      return ActivityControl(session.Runtime().processes, request);
     }
-    Tool tool = SubagentTool(
-        session.ApiClient(), session.Runtime().processes,
-        session.context.provider.routes, session.context.provider.providers,
-        Debug().Enabled(), &session.Runtime().collaborator);
+    Tool tool =
+        SubagentTool(session.ApiClient(), session.Runtime().processes,
+                     session.context.provider.routes,
+                     session.context.provider.providers, Debug().Enabled());
     json arguments = {{"operation", "followup"},
                       {"agent_id", JsonValue(request, "agent_id", "")},
                       {"prompt", JsonValue(request, "text", "")}};
@@ -155,8 +163,7 @@ json SessionControl(AppSession& session, const json& request) {
                                    session.context.provider.providers)}};
 }
 
-json ActivityControl(ProcessSupervisor& processes, const json& request,
-                     CollaboratorRuntime* runtime) {
+json ActivityControl(ProcessSupervisor& processes, const json& request) {
   std::string operation = JsonValue(request, "operation", "list");
   if (operation == "background") {
     return processes.RequestForegroundBackground()
@@ -170,35 +177,21 @@ json ActivityControl(ProcessSupervisor& processes, const json& request,
   if (operation == "inspect") {
     json result = job ? processes.InspectActivity(id) : json::object();
     if (!agent.empty()) {
-      result.update(InspectCollaborator(processes, agent, request, runtime));
+      result.update(InspectAgent(processes, agent, request));
     }
     return result.empty()
                ? json{{"error", "activity unavailable in this conversation"}}
                : result;
   }
-  if (!job && runtime && !agent.empty()) {
-    ToolResult control;
-    if (operation == "stop") {
-      control = runtime->Stop(agent);
-    } else if (operation == "message" &&
-               !JsonValue(request, "text", "").empty()) {
-      control = MessageCollaborator(processes, runtime, agent,
-                                    JsonValue(request, "text", ""));
-    } else {
-      return {{"error", "unsupported activity operation"}};
-    }
-    return control.Ok()
-               ? json{{"output", control.output}, {"operation", operation}}
-               : json{{"error", control.output}};
-  }
-  if (!job) return {{"error", "activity unavailable in this conversation"}};
   ToolResult result;
-  if (operation == "stop") {
+  if (operation == "message" && !agent.empty() &&
+      !JsonValue(request, "text", "").empty()) {
+    // An idle child is messaged by id; ownership is its header's to decide.
+    result = MessageAgent(processes, agent, JsonValue(request, "text", ""));
+  } else if (!job) {
+    return {{"error", "activity unavailable in this conversation"}};
+  } else if (operation == "stop") {
     result = ToolActivityStop(processes, id);
-  } else if (operation == "message" && !job->source_id.empty() &&
-             !JsonValue(request, "text", "").empty()) {
-    result = MessageCollaborator(processes, runtime, job->source_id,
-                                 JsonValue(request, "text", ""));
   } else {
     return {{"error", "unsupported activity operation"}};
   }
@@ -207,9 +200,9 @@ json ActivityControl(ProcessSupervisor& processes, const json& request,
 }
 
 std::string ActivityText(const json& result) {
-  for (const char* key : {"activities", "collaborators"}) {
+  for (const char* key : {"activities", "agents"}) {
     if (const json* rows = JsonArray(result, key)) {
-      const bool agents = std::string_view(key) == "collaborators";
+      const bool agents = std::string_view(key) == "agents";
       std::string text = std::string(agents ? "subagents" : "background work") +
                          " (" + FmtCount(static_cast<int64_t>(rows->size())) +
                          ")\n";
@@ -226,18 +219,12 @@ std::string ActivityText(const json& result) {
         } else {
           text += id_text;
         }
-        text += "  " + JsonValue(row, "status", "") + " · " +
-                JsonValue(row, "mode", JsonValue(row, "label", ""));
-        for (const char* field : {"model", "progress"}) {
-          const std::string value = JsonValue(row, field, "");
-          if (!value.empty()) {
-            text += " · " + value;
-          }
-        }
-        if (agents && JsonValue(row, "persistent", false)) {
-          text += " · persistent";
-        }
-        text += "\n";
+        text += "  " +
+                JoinDot({JsonValue(row, "status", ""),
+                         JsonValue(row, "mode", JsonValue(row, "label", "")),
+                         JsonValue(row, "model", ""),
+                         JsonValue(row, "progress", "")}) +
+                "\n";
         if (agents) {
           const std::string about =
               Utf8Trunc(JsonValue(row, "description", ""), 120);
@@ -259,7 +246,7 @@ json ActivityCommand(AppSession& session, const ParsedSlashCommand& command) {
   auto& processes = session.Runtime().processes;
   if (target.empty()) {
     return command.spec->id == SlashCommandId::kAgents
-               ? json{{"collaborators", AgentsJson(session)}}
+               ? json{{"agents", AgentsJson(session)}}
                : json{{"activities", processes.ActivityViews()}};
   }
   json request = {{"kind", "activity"},

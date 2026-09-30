@@ -62,6 +62,10 @@ ToolResult ToolSuccess(std::string output, int64_t result_chars) {
 }
 
 ToolResult ToolFailure(ToolErrorCode error, std::string output) {
+  // Every failure the model reads starts with the same marker.
+  if (!output.starts_with(kToolErrorPrefix)) {
+    output.insert(0, kToolErrorPrefix);
+  }
   ToolResult result;
   result.status = CompletionStatus::kFailed;
   result.output = std::move(output);
@@ -386,9 +390,6 @@ void KeepLeanTools(std::vector<Tool>& tools) {
 
 std::string ToolDescription(const Tool& tool) {
   std::string s = tool.description;
-  // Mark tools that actually overlap, so the base prompt's batching rule is
-  // actionable.
-  if (tool.parallel_safe) s += " Batchable with independent calls.";
   if (tool.max_calls_per_turn >= 0) {
     s += " Limit: " + std::to_string(tool.max_calls_per_turn) + "/turn.";
   }

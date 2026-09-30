@@ -1,0 +1,140 @@
+/* The model's questions: cards scroll between the heading and the actions,
+   which stay in reach. */
+.decision form.ask {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  flex-shrink: 1;
+  min-height: 0;
+}
+.ask-questions {
+  display: grid;
+  gap: var(--gap);
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.ask-question {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+  margin: 0;
+  padding: var(--pad);
+  border: 1px solid var(--line);
+}
+/* Floated, the legend is an ordinary grid item instead of a border label. */
+.ask-question > legend {
+  float: left;
+  width: 100%;
+  padding: 0;
+  font-weight: 600;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.ask-question > legend small {
+  font-weight: 400;
+}
+.ask-chip {
+  display: inline-block;
+  margin-right: var(--space-3);
+  padding: 0 var(--space-3);
+  background: var(--raised);
+  color: var(--muted);
+  font-size: var(--font-micro);
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  vertical-align: 0.1em;
+}
+.ask-options {
+  display: grid;
+  grid-template-columns: repeat(
+    auto-fit,
+    minmax(min(100%, calc(200rem / 14)), 1fr)
+  );
+  gap: var(--space-2);
+}
+.ask-option {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: start;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid transparent;
+  background: var(--raised);
+  cursor: pointer;
+  transition: border-color var(--motion-fast) var(--ease-standard);
+}
+.ask-option:has(:checked) {
+  border-color: var(--accent);
+}
+/* The whole row shows focus; the small native control inside does not. */
+.ask-option:has(:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.ask-option input:focus-visible {
+  outline: none;
+}
+.ask-option > span {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.ask-option strong {
+  font-weight: 600;
+}
+.ask-option small {
+  color: var(--muted);
+  font-size: var(--font-small);
+}
+/* Options the agent showed, with an image or a preview each: cards wide
+   enough to compare, the picture or preview under the label. A tap on the
+   picture opens it whole; anywhere else on the card chooses it. */
+.ask-options.visual {
+  grid-template-columns: repeat(
+    auto-fit,
+    minmax(min(100%, calc(240rem / 14)), 1fr)
+  );
+}
+.ask-options.visual .ask-option {
+  align-content: start;
+}
+.ask-shot,
+.ask-preview {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+.ask-shot .attachment-tile {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 4 / 3;
+}
+.ask-shot .attachment-tile img {
+  object-fit: contain;
+}
+.ask-preview {
+  margin: 0;
+  max-height: calc(240rem / 14);
+  padding: var(--space-3);
+  overflow: auto;
+  background: var(--surface);
+  font-size: var(--font-micro);
+  line-height: 1.4;
+  white-space: pre;
+}
+.ask-question > .file-button,
+.ask-question > .file-chip {
+  justify-self: start;
+}
+.ask-question > .file-button {
+  color: var(--muted);
+  font-size: var(--font-small);
+}
+@media (hover: hover) and (pointer: fine) {
+  .ask-option:hover {
+    background: var(--hover);
+  }
+}

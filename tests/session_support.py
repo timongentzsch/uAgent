@@ -7,14 +7,11 @@ import time
 import uuid
 from pathlib import Path
 
-from integration_support import budget
+from integration_support import budget, fnv1a64
 
 
 def runtime_directory(home):
-    value = 1469598103934665603
-    for byte in str(home / ".uagent").encode():
-        value = ((value ^ byte) * 1099511628211) & ((1 << 64) - 1)
-    return Path(f"/tmp/uagent-{os.getuid()}-{value:016x}")
+    return Path(f"/tmp/uagent-{os.getuid()}-{fnv1a64(str(home / '.uagent'))}")
 
 
 class SessionClient:
@@ -38,8 +35,9 @@ class SessionClient:
         self.socket.sendall((json.dumps(command) + "\n").encode())
         return command
 
-    def until(self, predicate):
-        deadline = time.monotonic() + budget(15)
+    def until(self, predicate, seconds=15):
+        self.socket.settimeout(budget(seconds))
+        deadline = time.monotonic() + budget(seconds)
         while time.monotonic() < deadline:
             line = self.stream.readline()
             assert line, self.frames[-5:]
@@ -54,7 +52,8 @@ class SessionClient:
         self.socket.close()
 
 
-def stop_sessions(home):
+def close_sessions(home):
+    """One pass: ask every runtime of `home` to close and wait for it."""
     for path in runtime_directory(home).glob("*.sock"):
         try:
             client = SessionClient(path)
@@ -63,5 +62,26 @@ def stop_sessions(home):
             while client.stream.readline():
                 pass
             client.close()
+        except ConnectionRefusedError:
+            # Left by a runtime that crashed: nothing listens on it.
+            path.unlink(missing_ok=True)
         except (OSError, ValueError):
             pass
+
+
+def stop_sessions(home, settle=0.0):
+    """Close every runtime of `home`. With `settle`, keep closing those a
+    finishing session starts meanwhile (a thread waking its coordinator)
+    until none has appeared for that many seconds, within a short bound."""
+    close_sessions(home)
+    if not settle:
+        return
+    deadline = time.monotonic() + budget(settle * 5)
+    quiet_since = time.monotonic()
+    while time.monotonic() < deadline:
+        if any(runtime_directory(home).glob("*.sock")):
+            close_sessions(home)
+            quiet_since = time.monotonic()
+        elif time.monotonic() - quiet_since >= settle:
+            return
+        time.sleep(0.05)

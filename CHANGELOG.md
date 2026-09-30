@@ -1,5 +1,113 @@
 # Changelog
 
+## v1.2.0 - 2026-09-30
+
+### Upgrade notes
+
+- Messages between sessions and to subagents now live in
+  `~/.uagent/mail/`. Guidance still waiting in the old
+  `~/.uagent/sessions/inbox/` from an earlier version is not delivered and
+  ages out with retention.
+- A coordinator's `thread delete` closes a running session first; `thread
+  stop` still only interrupts its turn.
+
+### Added
+
+- A coordinator per folder (`uagent coord`, `uagent coord -p`, the icon on each
+  folder in the web): it reads the folder's sessions, delegates work to
+  threads (ordinary sessions, sandboxed, in a worktree by default) within a
+  thread cap and a daily spend limit, and decides the approvals their Auto mode
+  cannot settle, yielding to you when unsure. Decisions waiting on you show
+  above its composer; `/coord`, `/board` and `/open` reach it from any
+  terminal session. It idles out when unused.
+- An `ask` tool: the agent puts 1 to 4 questions with options to you and
+  waits. Answer by choosing, in your own words, or with an image, in the web
+  or with an arrow-key picker in the terminal. A thread's questions go to its
+  coordinator first, which answers or hands them to you.
+
+- The image viewer zooms like a document viewer: − / + / Fit controls,
+  ⌘/Ctrl+wheel and ⌘/Ctrl with −, + and 0, with the level against the image's
+  real size. Annotation zooms the same way; two fingers pinch the image.
+- Slash commands with a screen (`/config`, `/permissions`, `/mcp`, `/tools`,
+  `/rename`, `/memory`, `/skills`, `/schedule`) open it in the web UI when
+  typed without an argument.
+
+### Changed
+
+- Sessions, coordinators, threads and subagents message each other through a
+  durable mailbox each (`~/.uagent/mail/`) that wakes the recipient at once:
+  a running one reads a message at its next step, even after its final
+  answer, and an idle one starts a turn on it. A coordinator hears a finished
+  thread within milliseconds instead of after a 20-second batch, a message to
+  a finished subagent runs it again, and an idle parent takes up a subagent's
+  result as soon as it finishes. Floods, loops and oversized messages are
+  refused with a reason rather than dropped.
+- Web: panels open as sheets from the edge (from below on a phone), with the
+  same focus, Escape and back behaviour as every dialog: statistics, raw
+  context and HTTP, instructions, tools, the model, permission and activity
+  controls. A row's ⋯ actions stay a dropdown.
+- `ask` options can show what they mean: an image the agent made in the
+  workspace (a mockup, screenshot or diagram; its description is the alt
+  text) and a short monospace preview. The web shows them as cards, single
+  or multiple choice; a terminal shows the focused option's preview and
+  image path.
+- Instructions replace system-prompt documents. Sessions read `AGENTS.md`
+  (yours in `~/.uagent/`, then the project's), coordinators also
+  `COORDINATOR.md`; they only add to the built-in base, are read when a
+  session starts, and are edited on one **Instructions** screen, with
+  `/instructions`, or by an agent through `uagent set_instructions` with your
+  approval. `system-prompt.json`, its scopes and modes, `/prompt` and the
+  `prompt` control kind are gone; `adapt_system` keeps only the conversation's
+  self-directive.
+
+- Rewind never loses work. Your messages' menu offers **Edit from here**
+  (continue in a fork cut before the message, with it back in the composer)
+  and **Fork from here** (keep the message and its reply). `/rewind N` does
+  the same by number, and a bare `/rewind` lists the numbers. The original
+  conversation stays as it was; files on disk are not changed. The in-place
+  truncation and the `rewind` command kind are gone.
+- 48 internal limits are fixed in the binary instead of being settings: sizes
+  and counts for tool output, requests and responses, delegation, hosted
+  search, memory, skills, MCP, attachments, project instructions and the trace
+  archive, artifact retention except `UAGENT_HISTORY_DAYS`, and Chrome's
+  15-minute idle stop. Their defaults are unchanged; the old names are no
+  longer read. `web_fetch` follows `UAGENT_ATTACHMENT_MB`, and delegated
+  children never inline always-on memory.
+- The delegation depth handed to child processes is `UAGENT_INTERNAL_DEPTH`.
+- Delegated children are ordinary saved sessions: each lives in the
+  workspace's history with a `delegation` header naming its parent and role,
+  stays out of the session list, and hears its parent through the same inbox
+  as linked sessions. `~/.uagent/collaborators/` is no longer used and can be
+  deleted.
+- Removed persistent subagents (`persistent=true`), agent teams
+  (`UAGENT_TEAM`, `broadcast`, `hops`) and the `guide` session command.
+  `followup` resumes a child's conversation as before.
+
+### Fixed
+
+- A coordinator can delete sessions: `thread close` ends a runtime, and
+  delete closes it first. A socket left by a crashed runtime no longer blocks
+  deletion.
+- On a phone, the sessions drawer slides in again instead of appearing in
+  place, and a sheet no longer sits off the edge at small zoom levels.
+- The web session list shows sessions a coordinator creates or deletes
+  without a refresh, and a session closed by the coordinator reads as closed,
+  not interrupted.
+- Files the agent attached mid-turn no longer count as your messages, so
+  message numbers, `/fork N`, `/rewind N` and `/share` line up with what
+  you wrote.
+- Scrolling with a mouse wheel in WebKit browsers (Safari, and Linux WebKit's
+  animated scrolling) is no longer swallowed when content above the paragraph
+  you are reading changes size at that moment.
+- Reloading the web page while an answer streams no longer freezes it at the
+  reloaded text, and a tool that is still running keeps its row. The host
+  sends browsers the rows of its own view of the conversation (whole rows and
+  streamed appends), so a browser never re-derives them from raw events. A
+  tool call and its result are one row everywhere, including history.
+- Tall images fit whole in the viewer instead of overflowing it.
+- `/sessions` in a wide browser window focuses the conversation search.
+- The UI showcase no longer throws on load.
+
 ## v1.1.1 - 2026-09-28
 
 ### Fixed

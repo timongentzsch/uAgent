@@ -33,7 +33,6 @@ std::vector<FileEdit> RequestedEdits(const json& arguments) {
 
 void RegisterFileTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
                        const std::filesystem::path& workspace) {
-  auto schema = [](const char* s) { return json::parse(s); };
   // "." is what a path-less read_path or grep operates on, so the hooks judge
   // the path the call actually reaches. Access is assumed to be the stricter
   // half, so a tool added later escalates until someone marks it read-only.
@@ -70,7 +69,7 @@ void RegisterFileTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
       "Read text/ranges, list directories, or add images/documents to model "
       "context. Omit ranges for media. Use grep for unknown "
       "paths or symbols. Reread only after changes when current text matters.",
-      schema(R"json({"type":"object","properties":{
+      json::parse(R"json({"type":"object","properties":{
                     "path":{"type":"string"},
                     "offset":{"type":"integer","description":"first line or entry (default 1)"},
                     "limit":{"type":"integer","description":"lines or entries (default 1000)"}},
@@ -94,14 +93,14 @@ void RegisterFileTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
   // Reads get a larger, contiguous window than logs and remote output. This
   // avoids paying another model round merely to continue an ordinary source
   // file while keeping every other tool on the global result cap.
-  read.result_chars = ReadFileResultChars();
+  read.result_chars = kReadFileResultChars;
   read.header = Verbs("Reading", "Read");
 
   Tool& write = path_tool(MakeTool(
       "write_file",
       "Create a file. Use edit_file for existing files; overwrite=true "
       "explicitly permits whole-file replacement.",
-      schema(R"json({"type":"object","properties":{
+      json::parse(R"json({"type":"object","properties":{
                   "path":{"type":"string"},
                   "content":{"type":"string"},
                   "overwrite":{"type":"boolean"}},
@@ -138,7 +137,7 @@ void RegisterFileTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
       "edit_file",
       "Apply exact search/replacements to an existing file, batched and "
       "atomic in order.",
-      schema(R"json({"type":"object","properties":{
+      json::parse(R"json({"type":"object","properties":{
                   "path":{"type":"string"},
                   "edits":{"type":"array","minItems":1,"maxItems":64,
                     "description":"one or more exact replacements in order",
@@ -180,7 +179,7 @@ void RegisterFileTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
   Tool& remove = path_tool(MakeTool(
       "delete_file",
       "Delete a regular file and show its removed content as a red diff.",
-      schema(R"json({"type":"object","properties":{
+      json::parse(R"json({"type":"object","properties":{
                   "path":{"type":"string"}},"required":["path"]})json"),
       [](const json& a, const ToolContext&) {
         return ToolDeleteFileWithDisplay(JsonValue(a, "path", ""));
@@ -199,7 +198,7 @@ void RegisterFileTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
       "grep",
       "Search regex or literal text. mode: content returns lines; files "
       "matches paths; matching_files returns paths whose contents match.",
-      schema(R"json({"type":"object","properties":{
+      json::parse(R"json({"type":"object","properties":{
                     "pattern":{"type":"string","minLength":1},"path":{"type":"string"},
                     "glob":{"type":"string"},
                     "mode":{"type":"string","enum":["content","files","matching_files"]},

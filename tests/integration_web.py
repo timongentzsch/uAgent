@@ -19,7 +19,6 @@ from integration_support import (
     session_files,
     timeout_setting,
     tool_call,
-    tool_results,
     wait_until,
     write_json_response,
     write_mcp_server,
@@ -426,11 +425,8 @@ def test_worker_batches_fast_deltas_without_delaying_a_quiet_tail(root, home, *,
                         started = True
                     if frame.get("kind") == "event" and frame.get("type") == "turn.started":
                         started = True
-                    if (
-                        frame.get("kind") == "event"
-                        and frame.get("type") == "response.answer.delta"
-                    ):
-                        deltas.append(frame.get("data", {}).get("text", ""))
+                    if frame.get("kind") == "block" and frame.get("append", {}).get("text"):
+                        deltas.append(frame["append"]["text"])
                         if "".join(deltas).startswith("AB"):
                             observed_tail.set()
                     if started and frame.get("kind") == "state" and not frame.get("busy"):
@@ -815,6 +811,53 @@ def test_web_atomic_images_and_session_isolation(root, home, *, binary):
             source.unlink()
             source.symlink_to(home / ".uagent/web/devices.json")
             assert_true(client.request(asset)[0] == 404, "asset read followed a symlink")
+
+
+def test_web_ask_shows_option_images_as_session_assets(root, home, *, binary):
+    """An option's image is snapshotted into the session: the browser gets an
+    asset it can load, never the workspace path alone."""
+    workspace = root / "workspace"
+    (workspace / "mockups").mkdir(parents=True)
+    (workspace / "mockups" / "cards.png").write_bytes(PNG)
+    questions = [
+        {
+            "question": "Which layout?",
+            "header": "Layout",
+            "options": [
+                {
+                    "label": "Cards",
+                    "description": "a grid of cards",
+                    "image": "mockups/cards.png",
+                    "preview": "[#][#]",
+                },
+                {"label": "List", "description": "one row each"},
+            ],
+        }
+    ]
+
+    def responder(_, body):
+        if any(message.get("role") == "tool" for message in body["messages"]):
+            return event({"content": "done"})
+        return tool_call("ask", {"questions": questions})
+
+    with Server([responder]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+            client.pair(code)
+            session = client.create(workspace)
+            client.command("submit", session, text="Pick a layout")
+            value = client.until(session, lambda value: bool(value.get("pending")))
+            option = value["pending"]["questions"][0]["options"][0]
+            assert_true(option["preview"] == "[#][#]", option)
+            asset = option["image"]["id"]
+            status, body, headers = client.request(f"/api/sessions/{session['id']}/assets/{asset}")
+            assert_true(status == 200 and body == PNG, (status, headers))
+            client.command(
+                "reply",
+                session,
+                interaction_id=value["pending"]["id"],
+                text=json.dumps([{"choices": ["Cards"], "other": ""}]),
+            )
+            client.until(session, lambda value: not value.get("pending"))
 
 
 def test_web_approval_interrupt_and_independent_workers(root, home, *, binary):
@@ -1723,7 +1766,7 @@ def test_web_control_queues_behind_inflight_catalog(root, home, *, binary):
             reader.start()
             try:
                 assert catalog_started.wait(timeout=budget(5)), "catalog did not start"
-                queued = client.command("prompt", session, action="show", scope="conversation")
+                queued = client.command("self_directive", session, action="show")
                 request_id = f"{client.sequence:032x}"
                 assert_true(queued.get("pending"), "control ran before catalog finished")
             finally:
@@ -1745,7 +1788,7 @@ def test_web_control_queues_behind_inflight_catalog(root, home, *, binary):
 def test_web_background_inspection_and_full_exchange(root, home, *, binary):
     project = root / "background-inspection"
     project.mkdir()
-    content = "α🙂" * 9000 + "FULL_BODY_END"
+    content = "α🙂" * 5000 + "FULL_BODY_END"
     (project / "large.txt").write_text(content)
 
     def answer(_, body):
@@ -1761,9 +1804,7 @@ def test_web_background_inspection_and_full_exchange(root, home, *, binary):
         return event({"content": "Foreground done"})
 
     with Server([answer]) as provider:
-        with web_host(
-            binary, root, home, provider.url, extra_env={"UAGENT_READ_FILE_BYTES": "100000"}
-        ) as (client, code, _, _):
+        with web_host(binary, root, home, provider.url) as (client, code, _, _):
             client.pair(code)
             session = client.create(project)
             client.command("submit", session, text="/yolo")
@@ -1900,6 +1941,8 @@ def test_web_child_controls_and_conversation_ownership(root, home, *, binary):
                     )
             finally:
                 release_child.set()
+            # An idle parent takes up its finished child's result as a turn;
+            # controls wait until that turn has ended too.
             snapshot = client.until(
                 session,
                 lambda value: (
@@ -1907,6 +1950,10 @@ def test_web_child_controls_and_conversation_ownership(root, home, *, binary):
                     and any(
                         row.get("status") == "completed"
                         for row in value["state"].get("activities", [])
+                    )
+                    and any(
+                        "[subagent finished" in json.dumps(body["messages"])
+                        for _, body in provider.requests
                     )
                 ),
             )
@@ -2190,100 +2237,6 @@ def test_web_slash_registry_and_attachment_retention(root, home, *, binary):
             assert_true(not any(block["type"] == "file" for block in content), content)
 
 
-def test_persistent_guidance_requires_its_command_receipt(root, home, *, binary):
-    from session_support import SessionClient, runtime_directory
-
-    started, release = threading.Event(), threading.Event()
-
-    def answer(_, body):
-        if any(message.get("content") == "retained worker" for message in body["messages"]):
-            started.set()
-            assert release.wait(budget(10))
-            return event({"content": "worker finished"})
-        if tool_results(body["messages"]):
-            return event({"content": "parent finished"})
-        return tool_call("subagent", {"persistent": True, "prompt": "retained worker"})
-
-    with Server([answer]) as provider:
-        with web_host(binary, root, home, provider.url) as (web, code, _, _):
-            web.pair(code)
-            session = web.create(root)
-            web.command("permissions", session, mode="yolo")
-            web.command("submit", session, text="delegate")
-            try:
-                if not started.wait(budget(5)):
-                    raise AssertionError(web.snapshot(session))
-                snapshot = web.until(session, lambda value: value["state"].get("collaborators"))
-                child = snapshot["state"]["collaborators"][0]
-                live = web.command("activity", session, operation="inspect", agent_id=child["id"])
-                assert_true(live["result"].get("statistics_live"), live)
-                for field in (
-                    "usage",
-                    "statistics",
-                    "turns",
-                    "route",
-                    "context_tokens",
-                    "context_window",
-                ):
-                    assert_true(field in live["result"], live)
-                blocks = live["result"]["conversation"]["blocks"]
-                assert_true(
-                    any("retained worker" in block.get("text", "") for block in blocks), blocks
-                )
-                paths = [
-                    path
-                    for path in runtime_directory(home).glob("*.sock")
-                    if path.stem != session["id"]
-                ]
-                assert_true(len(paths) == 1, paths)
-                client = SessionClient(paths[0])
-                try:
-                    for index in range(8):
-                        command = client.send("guide", text=f"guidance {index}")
-                        receipt = client.until(
-                            lambda frame, request=command["request_id"]: (
-                                frame.get("request_id") == request
-                            )
-                        )
-                        assert_true(receipt.get("accepted"), receipt)
-                finally:
-                    client.close()
-                # The worker still streams its cached state before replying to
-                # every new connection. That state is not a command receipt.
-                result = web.command(
-                    "activity",
-                    session,
-                    operation="message",
-                    agent_id=child["id"],
-                    text="overflow guidance",
-                )
-                if result.get("pending"):
-                    request_id = result["request_id"]
-                    wait_until(
-                        lambda: not web.json(f"/api/receipts/{request_id}")[1].get("pending"),
-                        "collaborator message receipt did not complete",
-                    )
-                    result = web.json(f"/api/receipts/{request_id}")[1]
-                assert_true("queued message" in result["result"]["output"], result)
-                communication = web.command(
-                    "activity", session, operation="inspect", agent_id=child["id"]
-                )["result"]["communication"]
-                assert_true(
-                    communication[-1]["from"] == "parent"
-                    and communication[-1]["to"] == child["id"]
-                    and communication[-1]["text"] == "overflow guidance",
-                    communication,
-                )
-                mail = list((home / ".uagent/collaborators").glob("*.mail-*.json"))
-                assert_true(
-                    not mail or (len(mail) == 1 and "overflow guidance" in mail[0].read_text()),
-                    mail,
-                )
-            finally:
-                release.set()
-            web.until(session, lambda value: value["metadata"]["status"] == "idle")
-
-
 def test_web_session_title_generation_respects_rename(root, home, *, binary):
     release = threading.Event()
     served = []
@@ -2477,3 +2430,94 @@ def test_web_restarts_conversations_and_itself(root, home, *, binary):
             wait_until(restarted, "web host did not come back", timeout=20)
             assert_true(process.poll() is None, "host exited instead of re-exec")
             client.until(session, lambda value: bool(value["metadata"].get("generation")))
+
+
+def test_folder_coordinator_is_one_session_with_its_own_tools(root, home, *, binary):
+    project = root / "coordinated"
+    project.mkdir()
+    with Server([event({"content": "coordinator-ok"})]) as provider:
+        with web_host(binary, root, home, provider.url) as (web, code, _, _env):
+            web.pair(code)
+            first = web.command("create", cwd=str(project), coordinator=True)["session"]
+            again = web.command("create", cwd=str(project), coordinator=True)["session"]
+            assert_true(first["id"] == again["id"], (first, again))
+            assert_true(first["kind"] == "coordinator", first)
+            session = web.command("activate", first)["session"]
+            web.until(session, lambda value: value["metadata"]["status"] == "idle")
+            web.command("submit", session, text="status?")
+            web.until(
+                session,
+                lambda value: any(
+                    block.get("text") == "coordinator-ok"
+                    for block in value["state"]["view"]["blocks"]
+                ),
+            )
+            _, body = provider.requests[-1]
+            names = {tool["function"]["name"] for tool in body.get("tools", [])}
+            assert_true("history" in names and "write_file" not in names, names)
+            _, catalogue, _ = web.json("/api/sessions?refresh=1")
+            listed = catalogue["sessions"]
+            kinds = [item.get("kind") for item in listed if item["cwd"] == str(project.resolve())]
+            assert_true(kinds == ["coordinator"], listed)
+
+
+def test_idle_coordinator_is_let_go_and_exits(root, home, *, binary):
+    from session_support import runtime_directory
+
+    project = root / "idle"
+    project.mkdir()
+    with Server([event({"content": "ok"})]) as provider:
+        with web_host(
+            binary, root, home, provider.url, extra_env={"UAGENT_INTERNAL_COORDINATOR_IDLE_S": "2"}
+        ) as (web, code, _, _env):
+            web.pair(code)
+            session = web.command("create", cwd=str(project), coordinator=True)["session"]
+            web.command("activate", session)
+
+            def sockets():
+                return list(runtime_directory(home).glob("*.sock"))
+
+            wait_until(sockets, "coordinator runtime never started", timeout=10)
+            # The host lets go after the idle period; the runtime then exits.
+            wait_until(lambda: not sockets(), "idle coordinator kept running", timeout=30)
+            again = web.command("create", cwd=str(project), coordinator=True)["session"]
+            assert_true(again["id"] == session["id"], again)
+            web.command("activate", again)
+            wait_until(sockets, "coordinator did not start again", timeout=10)
+
+
+def test_coordinator_edit_from_here_rewinds_in_place(root, home, *, binary):
+    project = root / "rewind"
+    project.mkdir()
+    with Server([event({"content": "one-ok"}), event({"content": "two-ok"})]) as provider:
+        with web_host(binary, root, home, provider.url) as (web, code, _, _env):
+            web.pair(code)
+            session = web.command("create", cwd=str(project), coordinator=True)["session"]
+            session = web.command("activate", session)["session"]
+            web.until(session, lambda value: value["metadata"]["status"] == "idle")
+            for text, answer in (("first", "one-ok"), ("second", "two-ok")):
+                web.command("submit", session, text=text)
+                web.until(
+                    session,
+                    lambda value, answer=answer: (
+                        value["metadata"]["status"] == "idle"
+                        and any(
+                            block.get("text") == answer
+                            for block in value["state"]["view"]["blocks"]
+                        )
+                    ),
+                )
+            rewound = web.command("fork", session, turn=2)["result"]
+            assert_true(rewound.get("rewound") and rewound["id"] == session["id"], rewound)
+            assert_true(rewound["prompt"] == "second", rewound)
+            view = web.until(
+                session,
+                lambda value: (
+                    not any(
+                        block.get("text") in ("second", "two-ok")
+                        for block in value["state"]["view"]["blocks"]
+                    )
+                ),
+            )
+            users = [b["text"] for b in view["state"]["view"]["blocks"] if b["kind"] == "user"]
+            assert_true(users == ["first"], users)

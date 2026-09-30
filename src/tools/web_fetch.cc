@@ -11,6 +11,7 @@
 #include <utility>
 
 #include "include/core/env.h"
+#include "include/core/limits.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
 
@@ -235,10 +236,9 @@ std::string HtmlToText(const std::string& html) {
 Tool WebFetchTool(Api& api) {
   Tool t = MakeTool(
       "web_fetch",
-      "Read one http(s) URL as text. Use it when a specific page is the "
-      "answer — a search result worth verifying, a doc page, a changelog — "
-      "not to crawl. Pages needing a login or scripting need the browser "
-      "skill instead.",
+      "Read one http(s) URL as text when a specific page is the answer; "
+      "do not crawl. Pages needing a login or scripts need the browser "
+      "skill.",
       json::parse(R"json({"type":"object","properties":{
           "url":{"type":"string","description":"absolute http or https URL"}},
           "required":["url"]})json"),
@@ -247,18 +247,22 @@ Tool WebFetchTool(Api& api) {
         std::string scheme = AsciiLower(url.substr(0, url.find(':') + 1));
         if (scheme != "http:" && scheme != "https:") {
           return ToolFailure(ToolErrorCode::kInvalidArguments,
-                             "error: web_fetch needs an absolute http(s) URL");
+                             "web_fetch needs an absolute http(s) URL");
         }
         Api side(api.config);
+        // Capped like an attachment: a document worth fetching is usually
+        // one worth handing to the model, and a 2 MiB cap truncated an
+        // ordinary arXiv paper. Longer pages are read up to it and marked
+        // partial.
         WebResponse page = side.GetUrl(
             url, context.RemainingSeconds(api.config.tool_timeout_s),
-            static_cast<size_t>(WebFetchBytes()));
+            static_cast<size_t>(AttachmentLimitMb()) * kMiB);
         if (AbortRequested()) {
           return ToolCancelled("error: fetch cancelled by user");
         }
         if (!page.error.empty()) {
           return ToolFailure(ToolErrorCode::kRemoteError,
-                             "error: web_fetch " + page.error);
+                             "web_fetch " + page.error);
         }
         bool html = page.content_type.find("html") != std::string::npos;
         if (!html && !Textual(page.content_type)) {
@@ -268,7 +272,7 @@ Tool WebFetchTool(Api& api) {
           // capability that may not be there.
           return ToolFailure(
               ToolErrorCode::kUnavailable,
-              "error: web_fetch cannot read " +
+              "web_fetch cannot read " +
                   (page.content_type.empty() ? "this content type"
                                              : page.content_type) +
                   "; download it and extract its text locally with run or "
@@ -278,9 +282,8 @@ Tool WebFetchTool(Api& api) {
         // indentation that carries meaning in JSON, XML and plain text.
         std::string text = html ? HtmlToText(page.body) : page.body;
         if (Trim(text).empty()) {
-          return ToolFailure(
-              ToolErrorCode::kUnavailable,
-              "error: web_fetch found no text at " + TerminalSafe(url));
+          return ToolFailure(ToolErrorCode::kUnavailable,
+                             "web_fetch found no text at " + TerminalSafe(url));
         }
         std::string head = "[" + TerminalSafe(url);
         if (page.truncated) head += "; truncated at the byte cap";

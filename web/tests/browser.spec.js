@@ -133,8 +133,6 @@ test.describe("phone browser sheet", () => {
   }) => {
     const { serveFramebuffer, touch } = await import("./rfb-fixture.js");
     const remote = await serveFramebuffer(page);
-    const errors = [];
-    page.on("pageerror", (error) => errors.push(error.message));
     await browserStatus(page, {
       mode: "human",
       running: true,
@@ -217,7 +215,6 @@ test.describe("phone browser sheet", () => {
         ),
       ),
     ).toBe(true);
-    expect(errors).toEqual([]);
   });
 
   test("types live into Chrome with special keys and a sticky Ctrl", async ({

@@ -22,32 +22,16 @@
 
 #include "include/app/session.h"
 #include "include/core/child_env.h"
+#include "include/core/fd.h"
 #include "include/core/fs.h"
 #include "include/core/lease.h"
 #include "include/core/platform.h"
 
 namespace uagent::session {
 namespace {
+// The caller holds the runtime lease for a listening path.
 Fd Socket(const std::string& path, bool listen) {
-  Fd socket;
-  if (!listen) {
-    socket = ConnectUnix(path);
-  } else {
-    sockaddr_un address{};
-    address.sun_family = AF_UNIX;
-    if (path.size() >= sizeof(address.sun_path)) return {};
-    std::copy(path.begin(), path.end(), address.sun_path);
-    socket.Reset(::socket(AF_UNIX, SOCK_STREAM, 0));
-    if (!socket) return {};
-    fcntl(socket.Get(), F_SETFD, FD_CLOEXEC);
-    unlink(path.c_str());  // caller holds the runtime lease
-    if (bind(socket.Get(), reinterpret_cast<sockaddr*>(&address),
-             sizeof(address)) ||
-        chmod(path.c_str(), kPrivateFileMode) ||
-        ::listen(socket.Get(), kSocketBacklog)) {
-      return {};
-    }
-  }
+  Fd socket = listen ? ListenUnix(path, kSocketBacklog) : ConnectUnix(path);
   if (socket) fcntl(socket.Get(), F_SETFL, O_NONBLOCK);
   return socket;
 }
@@ -114,26 +98,20 @@ Connection Open(const std::string& executable, const std::string& cwd,
     return {};
   }
   const std::string launch = folder.string() + "/" + RandomToken(16) + ".json";
-  Pipe owner;
-  const bool delegated = options.overrides.contains("UAGENT_DEPTH");
-  if (delegated && !owner.Open()) {
-    error = "cannot create collaborator lifetime pipe";
-    return {};
-  }
-  json config = {{"owner_fd", delegated ? 3 : -1},
-                 {"browser_session", options.browser_session},
+  json config = {{"browser_session", options.browser_session},
                  {"overrides", options.overrides},
                  {"yolo", options.yolo},
                  {"debug", options.debug},
                  {"debug_path", options.debug_path},
-                 {"trust_project", options.trust_project}};
+                 {"trust_project", options.trust_project},
+                 {"session", options.session}};
   if (!AtomicWriteFile(launch, JsonDump(config), 0600, false, error)) return {};
   std::vector<std::string> args{
       executable, "--session-worker", cwd, path, HashHex(path), title, launch};
 #ifdef __linux__
   // A service restart kills its cgroup even after setsid(). Give the runtime
   // a user scope so its lifetime belongs to the session, not the web service.
-  if (!delegated && getenv("INVOCATION_ID")) {
+  if (getenv("INVOCATION_ID")) {
     args.insert(args.begin(), {"systemd-run", "--user", "--scope", "--quiet",
                                "--collect", "--expand-environment=no",
                                "--unit=uagent-session-" + HashHex(path) + "-" +
@@ -150,18 +128,12 @@ Connection Open(const std::string& executable, const std::string& cwd,
   for (int fd : {STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO}) {
     posix_spawn_file_actions_addopen(&actions, fd, "/dev/null", O_RDWR, 0);
   }
-  if (delegated) {
-    posix_spawn_file_actions_adddup2(&actions, owner.read.Get(), 3);
-  }
   pid_t pid = -1;
   // This is the same application continuing in its session process. Keep
   // provider credential references and user limits; tool children apply their
   // separate, restricted environment policy when they are dispatched.
-  std::optional<ChildEnvironment> environment;
-  if (delegated) environment.emplace();
-  int status =
-      posix_spawnp(&pid, args.front().c_str(), &actions, nullptr, argv.data(),
-                   environment ? environment->Data() : ProcessEnvironment());
+  int status = posix_spawnp(&pid, args.front().c_str(), &actions, nullptr,
+                            argv.data(), ProcessEnvironment());
   posix_spawn_file_actions_destroy(&actions);
   if (status) {
     unlink(launch.c_str());
@@ -173,10 +145,7 @@ Connection Open(const std::string& executable, const std::string& cwd,
   auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
   while (std::chrono::steady_clock::now() < deadline) {
     connected = Connect(path);
-    if (connected.socket) {
-      connected.owner = std::move(owner.write);
-      return connected;
-    }
+    if (connected.socket) return connected;
     poll(nullptr, 0, 20);
   }
   unlink(launch.c_str());
@@ -208,6 +177,7 @@ struct Server::State {
   bool replay_gap = false;
   uint64_t sequence = 0;
   std::vector<Client> clients;
+  std::atomic<size_t> client_count{0};
 
   void Run() {
     auto drain_deadline = std::chrono::steady_clock::time_point::max();
@@ -243,7 +213,17 @@ struct Server::State {
       for (auto& frame : frames) {
         frame["sequence"] = ++sequence;
         std::string line = JsonDump(frame) + '\n';
-        if (JsonValue(frame, "kind", "") == "state" &&
+        const bool state = JsonValue(frame, "kind", "") == "state";
+        if (state && !snapshot.is_null() &&
+            !JsonValue(frame, "checkpoint", false)) {
+          // A client that joins now reads its status from the snapshot, so
+          // it follows every state frame, not only checkpoints.
+          for (const char* field :
+               {"busy", "command_busy", "pending", "phase", "guidance"}) {
+            if (frame.contains(field)) snapshot[field] = frame[field];
+          }
+        }
+        if (state &&
             (snapshot.is_null() || JsonValue(frame, "checkpoint", false))) {
           snapshot = frame;
           replay_gap = false;
@@ -335,6 +315,7 @@ struct Server::State {
           clients.push_back(std::move(client));
         }
       }
+      client_count = clients.size();
     }
   }
 };
@@ -362,6 +343,7 @@ bool Server::Start(const std::string& path, const std::string& generation,
   state.thread = std::thread([&state] { state.Run(); });
   return true;
 }
+size_t Server::Clients() const { return state_->client_count; }
 void Server::Publish(json frame) {
   std::lock_guard lock(state_->mutex);
   size_t bytes = JsonEstimatedBytes(frame);

@@ -78,7 +78,7 @@ function Control({
       class={`text-control ${tag === "select" ? "select" : ""} ${className || alias || ""}`}
     >
       {createElement(tag, { ...props, ref })}
-      {tag === "select" && <ChevronDown aria-hidden="true" />}
+      {tag === "select" && <ChevronDown />}
     </span>
   );
 }

@@ -43,7 +43,6 @@ void TestSessionCommandKinds() {
       {"interrupt", session::SessionCommandKind::kInterrupt},
       {"reply", session::SessionCommandKind::kReply},
       {"steer", session::SessionCommandKind::kSteer},
-      {"guide", session::SessionCommandKind::kGuide},
       {"recall", session::SessionCommandKind::kRecall},
       {"rename", session::SessionCommandKind::kRename},
       {"refresh", session::SessionCommandKind::kRefresh},
@@ -53,7 +52,7 @@ void TestSessionCommandKinds() {
       {"config", session::SessionCommandKind::kConfig},
       {"context", session::SessionCommandKind::kContext},
       {"fork", session::SessionCommandKind::kFork},
-      {"prompt", session::SessionCommandKind::kPrompt},
+      {"self_directive", session::SessionCommandKind::kSelfDirective},
       {"submit", session::SessionCommandKind::kSubmit},
   };
   for (const auto& [kind, want] : cases) {
@@ -89,7 +88,6 @@ void TestSessionCommandFields() {
   command["operation"] = "followup";
   command["cancelled"] = true;
   command["attachments"] = json::array();
-  command["budget"] = json{{"usd", 1}};
   session::SessionCommand parsed;
   std::string error;
   REQUIRE(session::ParseSessionCommand(command, kSession, kGeneration, parsed,
@@ -101,7 +99,6 @@ void TestSessionCommandFields() {
   CHECK(parsed.operation == "followup");
   CHECK(parsed.cancelled);
   CHECK(parsed.has_attachments);
-  CHECK((parsed.budget == json{{"usd", 1}}));
   // Absent fields read as empty; attachments absence is observable because
   // the submit fast path depends on it.
   session::SessionCommand bare;
@@ -186,7 +183,7 @@ void TestHostCommandKinds() {
   // Unknown names stay unknown.
   CHECK(session::ParseSessionCommandKind("teleport") ==
         session::SessionCommandKind::kUnknown);
-  // The host runs close, guide and saved-session management itself and
+  // The host runs close and saved-session management itself and
   // forwards everything else; a new kind must choose one explicitly.
   int forwarded = 0;
   for (int raw = 0;
@@ -198,7 +195,6 @@ void TestHostCommandKinds() {
   }
   CHECK(forwarded == 18);
   for (auto local : {session::SessionCommandKind::kClose,
-                     session::SessionCommandKind::kGuide,
                      session::SessionCommandKind::kCreate,
                      session::SessionCommandKind::kDelete,
                      session::SessionCommandKind::kActivate,
@@ -390,17 +386,20 @@ void TestSessionPersistence() {
   auto resumed = SessionStore::Inspect(channel.path);
   REQUIRE(resumed.record.has_value());
   resumed.record->state.messages.push_back(
-      {{"role", "user"}, {"content", "rewind"}});
+      {{"role", "user"}, {"content", "edit me"}});
   resumed.record->state.message_kinds.push_back(MessageKind::kUser);
   resumed.record->state.display = json::object();
   REQUIRE(SessionStore::Save(channel.path, *resumed.record).Ok());
   std::string error;
   REQUIRE(context.agent->Load(channel.path, CanonicalCwd(), error));
-  CHECK(SessionControl(session, {{"kind", "rewind"}, {"turn", 1}})["rewound"] ==
-        true);
-  const auto rewound = SessionStore::Inspect(channel.path);
+  // Rewinding forks before the message and hands it back; the original
+  // conversation keeps it.
+  const json forked = SessionControl(session, {{"kind", "fork"}, {"turn", 1}});
+  CHECK(forked.value("prompt", "") == "edit me");
+  const auto rewound = SessionStore::Inspect(forked.value("path", ""));
   REQUIRE(rewound.record.has_value());
   CHECK(rewound.record->state.messages.size() == 1);
+  CHECK(SessionStore::Inspect(channel.path).record->state.messages.size() == 2);
   const FileStamp checkpoint = SnapshotFile(channel.path);
   CHECK(session.Save(error));
   CHECK(SnapshotFile(channel.path) == checkpoint);
@@ -431,8 +430,11 @@ void TestSessionCatalogueCache() {
   record.state.messages =
       json::array({{{"role", "system"}, {"content", "sys"}}});
   record.state.message_kinds = {MessageKind::kSystem};
+  record.state.usage.cost = 0.25;
   REQUIRE(SessionStore::Save(path, record).Ok());
   SessionCatalogue catalogue;
+  // Spend reads from the header, without parsing the state.
+  CHECK(catalogue.List(SessionScope::kAll).at(0).cost == 0.25);
   auto scan = [&](SessionScope scope = SessionScope::kAll) {
     const auto rows = catalogue.List(scope);
     const auto fresh = ListSessions(scope);
@@ -443,6 +445,7 @@ void TestSessionCatalogueCache() {
       CHECK(rows[i].cwd == fresh[i].cwd);
       CHECK(rows[i].turns == fresh[i].turns);
       CHECK(rows[i].incoming == fresh[i].incoming);
+      CHECK(rows[i].cost == fresh[i].cost);
       CHECK(rows[i].bytes == fresh[i].bytes);
       CHECK(rows[i].mtime == fresh[i].mtime);
       CHECK(rows[i].error == fresh[i].error);

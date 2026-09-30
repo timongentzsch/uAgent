@@ -2,25 +2,9 @@
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  color-scheme: dark;
-  --bg: #000;
-  --surface: #0a0a0a;
-  --raised: #171717;
-  --hover: #232323;
-  --placeholder: #414141;
-  --text: #f5f5f5;
-  --muted: #a3a3a3;
-  --line: #404040;
-  --accent: #fff;
-  --live: #22a35a;
-  --added: #3fb950;
-  --added-bg: rgba(63, 185, 80, 0.12);
-  --removed: #f85149;
-  --removed-bg: rgba(248, 81, 73, 0.12);
   /* Image markup: one colour that reads on any screenshot, in any theme. */
   --mark: #ff3b30;
   --on-mark: #fff;
-  --on-accent: #000;
   --viewport-height: 100dvh;
   --viewport-width: 100%;
   --viewport-top: 0px;
@@ -48,13 +32,21 @@
   /* Controls and spacing use rem throughout so zoom also changes density.
      Fixed pixel floors made the 50–75% range mostly cosmetic. */
   --control: 2.2rem;
+  /* The type ramp below body text: secondary lines, then badges and
+     timestamps. Nothing smaller, so no text drops under 10px. */
   --font-small: 0.85rem;
-  --popover-gap: var(--space-4);
+  --font-micro: 0.75rem;
   /* Motion: the only durations and easings in the app. Reduced motion
      zeroes the durations below, which turns every transition off. */
   --motion-fast: 120ms;
   --motion-base: 200ms;
   --motion-slow: 280ms;
+  /* Theme-independent: what dims the page behind a dialog, and a knob's
+     lift off its track. */
+  --scrim: rgb(0 0 0 / 0.6);
+  --shadow-knob: 0 1px 2px rgb(0 0 0 / 0.25);
+  /* Loops that say something is alive: status lights, skeletons. */
+  --motion-pulse: 1.6s;
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
   --ease-in: cubic-bezier(0.4, 0, 1, 1);
   --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
@@ -72,7 +64,36 @@
 :root[data-keyboard] {
   --safe-bottom: 0px;
 }
-:root[data-theme="light"] {
+/* The two palettes. A user message draws in the other one, and a sheet or
+   menu it opens returns to the page's, so every surface gets a complete set. */
+:root,
+[data-theme="light"] .message.user,
+[data-theme="dark"] .message.user :is(dialog, .menu-panel) {
+  color-scheme: dark;
+  --bg: #000;
+  --surface: #0a0a0a;
+  --raised: #171717;
+  --hover: #232323;
+  --placeholder: #414141;
+  --text: #f5f5f5;
+  --muted: #a3a3a3;
+  --line: #404040;
+  --accent: #fff;
+  --live: #22a35a;
+  --added: #3fb950;
+  --added-bg: rgba(63, 185, 80, 0.12);
+  --removed: #f85149;
+  --removed-bg: rgba(248, 81, 73, 0.12);
+  --accent-hover: #e2e2e2;
+  --accent-active: #ccc;
+  --on-accent: #000;
+  --knob: #a3a3a3;
+  /* Anything floating over the page: menus, suggestions, banners. */
+  --shadow-float: 0 var(--space-2) var(--space-12) rgb(0 0 0 / 0.7);
+}
+:root[data-theme="light"],
+[data-theme="dark"] .message.user,
+[data-theme="light"] .message.user :is(dialog, .menu-panel) {
   color-scheme: light;
   --bg: #fff;
   --surface: #fafafa;
@@ -83,11 +104,16 @@
   --muted: #666;
   --line: #ccc;
   --accent: #000;
+  --accent-hover: #262626;
+  --accent-active: #404040;
+  --live: #1a7f37;
   --added: #1a7f37;
   --added-bg: rgba(26, 127, 55, 0.1);
   --removed: #d1242f;
   --removed-bg: rgba(209, 36, 47, 0.1);
   --on-accent: #fff;
+  --knob: #fff;
+  --shadow-float: 0 var(--space-2) var(--space-6) rgb(0 0 0 / 0.18);
 }
 * {
   box-sizing: border-box;
@@ -152,7 +178,8 @@ textarea {
   border: 1px solid transparent;
   background: var(--raised);
 }
-input[type="checkbox"] {
+input[type="checkbox"],
+input[type="radio"] {
   width: calc(18rem / 14);
   height: calc(18rem / 14);
   min-width: calc(18rem / 14);
@@ -193,8 +220,8 @@ input[type="checkbox"] {
   width: calc(20rem / 14);
   height: calc(20rem / 14);
   border-radius: 50%;
-  background: var(--bg);
-  box-shadow: 0 1px 2px rgb(0 0 0 / 0.25);
+  background: var(--knob);
+  box-shadow: var(--shadow-knob);
   transition: translate var(--motion-fast) var(--ease-standard);
 }
 .switch input[role="switch"]:checked {
@@ -203,6 +230,7 @@ input[type="checkbox"] {
 }
 .switch input[role="switch"]:checked::before {
   translate: calc(16rem / 14) 0;
+  background: var(--on-accent);
 }
 button,
 .file-button,
@@ -211,6 +239,12 @@ button,
   padding: var(--space-2) var(--space-4);
   cursor: pointer;
   line-height: 1.3;
+}
+/* A secondary action inside a row or toolbar: shorter and quieter. */
+.compact-button {
+  min-height: calc(24rem / 14);
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--font-small);
 }
 button:disabled,
 select:disabled {
@@ -234,8 +268,7 @@ select:disabled {
     background: var(--hover);
   }
   .primary:enabled:hover {
-    background: var(--accent);
-    filter: brightness(0.92);
+    background: var(--accent-hover);
   }
   .quiet:enabled:hover {
     background: var(--raised);
@@ -253,8 +286,7 @@ button:enabled:active,
   background: var(--hover);
 }
 .primary:enabled:active {
-  background: var(--accent);
-  filter: brightness(0.85);
+  background: var(--accent-active);
 }
 .destructive {
   color: var(--removed);
@@ -292,7 +324,9 @@ button[aria-pressed="true"] {
   vertical-align: -3px;
   stroke-width: 1.75;
 }
-.with-icon {
+/* A control that shows an icon beside its label lays them out as one row. */
+/* Zero specificity: a component's own layout (rows, menus) still wins. */
+:where(button, .button-link, .file-button):where(:has(> .lucide)) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -307,6 +341,14 @@ select:focus-visible,
 [tabindex]:not([tabindex="-1"]):focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+/* Headings and panels focused by the app, not by the reader, stay unringed. */
+[tabindex="-1"]:focus {
+  outline: none;
 }
 a {
   color: var(--accent);
@@ -328,12 +370,10 @@ input[type="range"] {
   accent-color: var(--accent);
 }
 .select {
+  --input-padding-end: calc(34rem / 14);
   position: relative;
   display: block;
   min-width: 0;
-}
-.select {
-  --input-padding-end: calc(34rem / 14);
 }
 .select select {
   appearance: none;
@@ -450,7 +490,7 @@ pre code {
   color: var(--muted);
 }
 .small {
-  font-size: 0.8rem;
+  font-size: var(--font-small);
 }
 .plain {
   white-space: pre-wrap;
@@ -489,16 +529,13 @@ pre code {
   padding: var(--space-3) var(--space-6);
   border: 1px solid var(--line);
   background: var(--raised);
-  box-shadow: 0 var(--space-2) var(--space-6) rgb(0 0 0 / 0.18);
+  box-shadow: var(--shadow-float);
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--pad);
-  font-size: 0.85rem;
+  font-size: var(--font-small);
   pointer-events: auto;
-}
-.error-banner,
-.update-banner {
   transition:
     opacity var(--motion-base) var(--ease-out),
     translate var(--motion-slow) var(--ease-out);
@@ -531,7 +568,7 @@ pre code {
   gap: var(--space-3);
   color: var(--muted);
   min-height: var(--control);
-  font-size: 0.8rem;
+  font-size: var(--font-small);
 }
 .loading-surface {
   flex: 1;
@@ -584,6 +621,11 @@ pre code {
   min-height: 0;
   min-width: 0;
 }
+/* The drawer is a dialog: until it opens it is not drawn, so it slides in
+   from its starting style instead of appearing in place. */
+dialog.sidebar:not([open]) {
+  display: none;
+}
 .sidebar-head {
   display: flex;
   align-items: center;
@@ -592,11 +634,11 @@ pre code {
   min-height: calc(40rem / 14);
 }
 .sidebar-head button {
-  font-size: 0.8rem;
+  font-size: var(--font-small);
   padding-inline: var(--space-3);
 }
 .search .text-control {
-  font-size: 0.8rem;
+  font-size: var(--font-small);
 }
 .sidebar nav {
   overflow: auto;
@@ -607,7 +649,7 @@ pre code {
   margin-top: var(--space-4);
 }
 .sidebar h2 {
-  font-size: 0.75rem;
+  font-size: var(--font-micro);
   font-weight: 400;
   color: var(--muted);
   padding: var(--space-4);
@@ -616,6 +658,140 @@ pre code {
   display: flex;
   align-items: center;
   gap: var(--gap);
+}
+/* The folder path truncates first; the coordinator icon keeps its place. */
+.sidebar h2:has(.coordinator-button) {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  padding-block: 0;
+  padding-right: 0;
+}
+.sidebar h2 .folder-label {
+  flex: 1;
+  min-width: 0;
+}
+.coordinator-button {
+  position: relative;
+  flex-shrink: 0;
+  color: var(--muted);
+}
+.coordinator-button.idle svg {
+  opacity: 0.45;
+}
+.coordinator-button.ready {
+  color: var(--accent);
+}
+.coordinator-button.working svg {
+  color: var(--accent);
+  animation: led-breathe var(--motion-pulse) var(--ease-standard) infinite;
+}
+.coordinator-badge {
+  position: absolute;
+  top: 0;
+  right: 0;
+  min-width: 1.35em;
+  height: 1.35em;
+  padding-inline: var(--space-1);
+  border-radius: 0.7em;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: var(--font-micro);
+  line-height: 1.35em;
+  text-align: center;
+}
+.thread-mark {
+  color: var(--muted);
+  margin-right: var(--space-2);
+}
+.coordinator-layout {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) calc(240rem / 14);
+}
+.coordinator-chat {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.board {
+  min-height: 0;
+  overflow: auto;
+  border-left: 1px solid var(--line);
+  background: var(--surface);
+  padding: var(--space-4);
+}
+.board section + section {
+  margin-top: var(--space-4);
+}
+.board h2 {
+  font-size: var(--font-micro);
+  font-weight: 400;
+  color: var(--muted);
+  padding: var(--space-2) var(--space-3);
+}
+/* The title keeps the row; the help button sits right after it. */
+.conversation-head > div:first-of-type:has(.coordinator-help-anchor) {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.coordinator-help-body {
+  display: grid;
+  align-content: start;
+  gap: var(--space-3);
+}
+.coordinator-help h3 {
+  font-size: var(--font-small);
+  font-weight: 600;
+}
+.coordinator-help-body {
+  font-size: var(--font-small);
+}
+.coordinator-help p {
+  color: var(--muted);
+}
+.board-note {
+  color: var(--muted);
+  font-size: var(--font-small);
+  padding: var(--space-2) var(--space-3);
+}
+.board-count {
+  font-variant-numeric: tabular-nums;
+}
+.board-row {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  text-align: left;
+  min-width: 0;
+}
+.board-row > span,
+.board-row small {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.board-row small {
+  color: var(--muted);
+}
+/* On a phone the board is a short strip above the chat. */
+@media (max-width: 600px) {
+  .coordinator-layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .board {
+    order: -1;
+    max-height: 30vh;
+    border-left: 0;
+    border-bottom: 1px solid var(--line);
+  }
 }
 .folder-label > span {
   overflow: hidden;
@@ -629,10 +805,10 @@ pre code {
   border-left: 2px solid transparent;
 }
 .session-row:focus-within,
-.session-row:has(.selected) {
+.session-row:has([aria-current]) {
   background: var(--raised);
 }
-.session-row:has(.selected) {
+.session-row:has([aria-current]) {
   border-left-color: var(--accent);
 }
 .session {
@@ -648,11 +824,11 @@ pre code {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-size: 0.85rem;
+  font-size: var(--font-small);
 }
 .session small {
   display: block;
-  font-size: 0.7rem;
+  font-size: var(--font-micro);
   color: var(--muted);
   margin-top: var(--space-1);
   /* Single line, always: activity labels stream in while a turn runs
@@ -680,7 +856,7 @@ pre code {
   border-color: var(--live);
 }
 .status-led.running {
-  animation: led-breathe 1.6s ease-in-out infinite;
+  animation: led-breathe var(--motion-pulse) var(--ease-standard) infinite;
 }
 .status-led.failed {
   background: var(--removed);
@@ -712,12 +888,18 @@ pre code {
 .connection {
   flex: 1;
   color: var(--muted);
-  font-size: 0.7rem;
+  font-size: var(--font-micro);
 }
 .connection .status-led {
   margin-right: var(--space-3);
 }
 .conversation {
+  /* The reading column's side inset: the transcript, the composer and
+     anything between them line up on it. */
+  --column-inset: max(
+    var(--pad),
+    calc((100% - var(--conversation-measure)) / 2)
+  );
   min-width: 0;
   min-height: 0;
   display: flex;
@@ -744,17 +926,14 @@ pre code {
   text-overflow: ellipsis;
 }
 .transcript {
-  /* Sticky is the default state and the hook owns the bottom
-     uncontested; native anchoring only engages while reading history
-     (the hook toggles it inline). Starting at auto lets the browser
-     fight the first mount pin on reload. */
+  /* The transcript hook owns scrolling: it pins the bottom and keeps the
+     paragraph being read in place. Native anchoring would fight both. */
   overflow-anchor: none;
   flex: 1;
   min-height: 0;
   overflow: auto;
   scrollbar-gutter: stable;
-  padding: var(--gap)
-    max(var(--pad), calc((100% - var(--conversation-measure)) / 2));
+  padding: var(--gap) var(--column-inset);
   overscroll-behavior: contain;
 }
 /* Single spacing mechanism for the whole column: uniform gap, zero
@@ -770,10 +949,11 @@ pre code {
   margin-block: 0;
 }
 .retention {
-  font-size: 0.8rem;
+  font-size: var(--font-small);
   color: var(--muted);
   border: 1px dashed var(--line);
   padding: var(--space-4);
+  overflow-anchor: none;
 }
 .empty {
   margin: auto;
@@ -803,16 +983,13 @@ pre code {
   min-height: var(--control);
   overflow-anchor: none;
 }
-.retention {
-  overflow-anchor: none;
-}
 
 /* Draft, controls and status share a compact footer. */
 .composer {
   position: relative;
   flex-shrink: 0;
   min-width: 0;
-  margin: 0 max(var(--pad), calc((100% - var(--conversation-measure)) / 2));
+  margin: 0 var(--column-inset);
   padding: var(--space-2) 0;
   background: var(--bg);
   max-height: calc(var(--viewport-height) - calc(100rem / 14));
@@ -886,7 +1063,7 @@ pre code {
   width: 100%;
   text-align: left;
   justify-content: flex-start;
-  font-size: 0.8rem;
+  font-size: var(--font-small);
   padding-inline: var(--space-3);
 }
 .model-selector > span {
@@ -901,7 +1078,7 @@ pre code {
   flex-shrink: 0;
 }
 .permission-control > button {
-  font-size: 0.8rem;
+  font-size: var(--font-small);
   padding-inline: var(--space-3);
 }
 .file-button {
@@ -926,9 +1103,7 @@ pre code {
   bottom: calc(100% + var(--space-2));
   right: 0;
   background: var(--raised);
-  font-size: 0.75rem;
-}
-.jump {
+  font-size: var(--font-micro);
   transition:
     opacity var(--motion-base) var(--ease-out),
     translate var(--motion-base) var(--ease-out);
@@ -981,7 +1156,7 @@ pre code {
   min-width: 0;
   min-height: calc(24rem / 14);
   padding: 0 var(--space-1);
-  font-size: 0.75rem;
+  font-size: var(--font-micro);
 }
 .activity-status {
   display: inline-flex;
@@ -1009,7 +1184,7 @@ pre code {
   min-width: 0;
   padding-top: var(--space-1);
 }
-.composer-metrics > .popover-control {
+.composer-metrics > .sheet-control {
   display: flex;
   flex: none;
 }
@@ -1020,7 +1195,7 @@ pre code {
   min-width: 0;
   min-height: calc(24rem / 14);
   padding: 0 var(--space-3);
-  font-size: 0.7rem;
+  font-size: var(--font-micro);
 }
 .activity-button > span {
   min-width: 0;
@@ -1052,7 +1227,7 @@ pre code {
   align-items: center;
   flex: 0 1 auto;
   min-width: 0;
-  font-size: 0.7rem;
+  font-size: var(--font-micro);
 }
 .metrics > button {
   font-size: inherit;
@@ -1062,6 +1237,31 @@ pre code {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* Every plain disclosure reads like DisclosureRow: no native triangle, a
+   chevron that turns as it opens. DisclosureRow draws its own. */
+details:not(.disclosure-row) > summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  list-style: none;
+  cursor: pointer;
+}
+details:not(.disclosure-row) > summary::-webkit-details-marker {
+  display: none;
+}
+details:not(.disclosure-row) > summary::before {
+  content: "";
+  flex-shrink: 0;
+  width: calc(16rem / 14);
+  height: calc(16rem / 14);
+  background: currentColor;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 18 6-6-6-6'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+  transition: transform var(--motion-fast) var(--ease-standard);
+}
+details[open]:not(.disclosure-row) > summary::before {
+  transform: rotate(90deg);
 }
 .unread-dot {
   display: inline-block;
@@ -1086,7 +1286,7 @@ pre code {
 .decision-preview {
   min-height: 0;
   overflow: auto;
-  font-size: 0.85rem;
+  font-size: var(--font-small);
 }
 .decision-preview pre {
   margin-top: var(--space-3);
@@ -1100,70 +1300,96 @@ pre code {
   flex-shrink: 0;
   background: none;
 }
-.decision label {
+.decision form > label {
   flex: 1;
   min-width: calc(100rem / 14);
-  font-size: 0.85rem;
+  font-size: var(--font-small);
 }
 .decision h2 {
   flex-shrink: 0;
 }
+/* A coordinator's threads waiting on the user, above its composer; the
+   transcript keeps at least half the column. */
+.escalations {
+  flex-shrink: 0;
+  margin: 0 var(--column-inset);
+  max-height: 50%;
+  overflow: auto;
+  display: grid;
+  gap: var(--gap);
+  padding-bottom: var(--gap);
+}
+.escalation {
+  display: grid;
+  gap: var(--space-2);
+}
+.escalation-paused {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border-left: 3px solid var(--mark);
+  background: var(--raised);
+  font-size: var(--font-small);
+}
+.escalation-thread {
+  justify-self: start;
+  max-width: 100%;
+  font-size: var(--font-small);
+  color: var(--muted);
+}
+.decision-note {
+  color: var(--muted);
+  font-size: var(--font-small);
+}
 
-/* Native top-layer popovers share placement and keyboard handling. */
-.popover-control {
+/* A sheet's button, like any control beside the composer's file input,
+   paints above that input's hit area where a narrow row overlaps them. */
+.sheet-control {
   position: relative;
 }
-.popover-panel {
-  gap: var(--popover-gap);
+/* A row's ⋯ actions drop down from their button (shared/menu.tsx), a
+   native top-layer popover that fades in from its anchor and out again;
+   allow-discrete keeps it painted until its exit has played. */
+.action-menu {
+  position: relative;
+}
+.menu-panel {
   position: fixed;
   inset: auto;
   margin: 0;
-  padding: var(--pad);
+  min-width: calc(180rem / 14);
+  padding: var(--space-2);
   border: 1px solid var(--line);
   background: var(--surface);
   color: var(--text);
+  box-shadow: var(--shadow-float);
   overflow: auto;
-}
-/* Panels fade in from their anchor and out again. allow-discrete keeps a
-   hidden panel painted until its exit has played. */
-.popover-panel {
   transition:
     opacity var(--motion-base) var(--ease-out),
     translate var(--motion-base) var(--ease-out),
     display var(--motion-base) allow-discrete,
     overlay var(--motion-base) allow-discrete;
 }
-.popover-panel:not(:popover-open) {
+.menu-panel:not(:popover-open) {
   opacity: 0;
   translate: 0 calc(-4rem / 14);
   transition-timing-function: var(--ease-in);
 }
 @starting-style {
-  .popover-panel:popover-open {
+  .menu-panel:popover-open {
     opacity: 0;
     translate: 0 calc(-4rem / 14);
   }
-}
-.menu-panel {
-  min-width: calc(180rem / 14);
-  padding: var(--space-2);
 }
 .menu-panel button {
   display: block;
   width: 100%;
   border: 0;
   text-align: left;
-  font-size: 0.85rem;
-}
-.model-panel {
-  width: calc(420rem / 14);
+  font-size: var(--font-small);
 }
 .model-form {
   display: grid;
   gap: var(--gap);
-}
-.permission-panel {
-  width: calc(260rem / 14);
 }
 .dialog-actions,
 .editor-actions {
@@ -1182,10 +1408,9 @@ pre code {
   gap: var(--gap);
   flex-wrap: wrap;
 }
-.segmented button[aria-pressed="true"],
-.raw-tabs [aria-selected="true"],
-.raw-tabs [aria-pressed="true"],
-.weekdays button[aria-pressed="true"] {
+/* Pressed buttons are drawn by button[aria-pressed]; a tab list's
+   selected tab matches them. */
+.raw-tabs [aria-selected="true"] {
   background: var(--accent);
   color: var(--on-accent);
 }
@@ -1254,6 +1479,7 @@ dialog[data-layout="sheet"] {
 @media (max-width: 600px) {
   /* Edge to edge: the sheet's own surface runs under the home indicator. */
   dialog[data-layout="sheet"] {
+    left: calc(var(--viewport-left) + var(--safe-left));
     width: var(--content-width);
     height: calc(var(--content-height) + var(--safe-bottom));
     max-height: none;
@@ -1261,8 +1487,29 @@ dialog[data-layout="sheet"] {
     border-width: 0;
   }
 }
+/* A narrow sheet holds a few actions or one control (SheetButton): it keeps
+   the right edge but not the full width, and on a phone rises from the
+   bottom only as tall as its content, like a native action sheet. */
+dialog[data-layout="sheet"][data-size="narrow"] {
+  --dialog-width: calc(400rem / 14);
+}
+dialog[data-layout="sheet"][data-size="medium"] {
+  --dialog-width: calc(700rem / 14);
+}
+dialog[data-layout="sheet"][data-size="wide"] {
+  --dialog-width: calc(900rem / 14);
+}
+@media (max-width: 600px) {
+  dialog[data-layout="sheet"][data-size="narrow"] {
+    top: calc(var(--viewport-top) + var(--viewport-height));
+    transform: translateY(-100%);
+    height: auto;
+    max-height: calc(var(--content-height) + var(--safe-bottom));
+    border-width: 1px 0 0;
+  }
+}
 dialog::backdrop {
-  background: rgb(0 0 0 / 0.6);
+  background: var(--scrim);
   border-top: var(--safe-top) solid var(--bg);
 }
 dialog > header {
@@ -1312,7 +1559,7 @@ dialog section {
   gap: var(--pad);
   padding: var(--space-3) 0;
   border-bottom: 1px solid var(--line);
-  font-size: 0.85rem;
+  font-size: var(--font-small);
 }
 .stats dt {
   color: var(--muted);
@@ -1356,131 +1603,6 @@ dialog section {
   min-height: 0;
   flex: 1;
 }
-.management-toolbar {
-  display: flex;
-  align-items: end;
-  gap: var(--gap);
-  padding: var(--pad);
-  border-bottom: 1px solid var(--line);
-}
-.management-toolbar > .field {
-  flex: 1;
-  max-width: 34rem;
-}
-.management-toolbar > p {
-  flex: 1;
-  margin: 0;
-}
-.management-body {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-}
-.management-list {
-  flex: 0 0 15rem;
-  padding: var(--gap);
-  overflow: auto;
-  border-right: 1px solid var(--line);
-}
-.management-list > .text-control {
-  margin-bottom: var(--gap);
-  width: 100%;
-}
-.library-row {
-  display: flex;
-  flex-direction: column;
-  text-align: left;
-  width: 100%;
-  gap: var(--space-1);
-  border: 0;
-  background: none;
-  padding: var(--space-3) var(--gap);
-  overflow-wrap: anywhere;
-}
-.management-editor {
-  margin: 0;
-  border: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--gap);
-  padding: var(--pad);
-  min-height: 0;
-  scroll-padding-block: var(--pad);
-  min-width: 0;
-  overflow: auto;
-  flex: 1;
-}
-.editor-head {
-  display: flex;
-  align-items: center;
-  gap: var(--gap);
-}
-.editor-head > button {
-  display: none;
-}
-.run-history {
-  border-top: 1px solid var(--line);
-  padding-top: var(--pad);
-}
-.run-history h2 {
-  font-size: 1em;
-}
-.prompt-editor {
-  display: grid;
-  gap: var(--gap);
-}
-.prompt-controls {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--gap);
-}
-.prompt-controls > * {
-  flex: 1;
-  min-width: min(12rem, 100%);
-}
-.prompt-columns {
-  display: grid;
-  gap: var(--pad);
-}
-.prompt-columns section {
-  margin: 0;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--gap);
-}
-.prompt-tabs {
-  display: flex;
-}
-.prompt-columns.instructions > section:last-child,
-.prompt-columns.effective > section:first-child {
-  display: none;
-}
-.pairing {
-  max-width: calc(560rem / 14);
-  margin: auto;
-  padding: var(--pad);
-  min-height: 0;
-  overflow: auto;
-}
-.pairing .wordmark {
-  width: calc(48rem / 14);
-  height: calc(48rem / 14);
-  margin-bottom: var(--gap);
-}
-.pairing h1 {
-  font-size: 1.3rem;
-}
-.pairing p {
-  color: var(--muted);
-  margin: var(--pad) 0;
-}
-.pairing form {
-  margin: var(--pad) 0;
-}
-.pairing form button {
-  justify-self: start;
-}
 .skeleton {
   padding: var(--space-6) 0;
   width: 100%;
@@ -1493,7 +1615,8 @@ dialog section {
 .skeleton > div {
   display: grid;
   gap: var(--gap);
-  animation: skeleton-pulse 1.6s ease-in-out infinite alternate;
+  animation: skeleton-pulse var(--motion-pulse) var(--ease-standard) infinite
+    alternate;
 }
 @keyframes skeleton-pulse {
   to {
@@ -1517,7 +1640,8 @@ dialog section {
 .text-skeleton {
   color: transparent;
   background: var(--placeholder);
-  animation: skeleton-pulse 1.6s ease-in-out infinite alternate;
+  animation: skeleton-pulse var(--motion-pulse) var(--ease-standard) infinite
+    alternate;
   user-select: none;
 }
 /* A view drawn from sample data (shared/placeholder.tsx): it lays out like
@@ -1527,9 +1651,6 @@ dialog section {
 }
 .placeholder :is(input, textarea, select) {
   color: transparent;
-}
-.placeholder ::placeholder {
-  color: var(--muted);
 }
 
 @media (pointer: coarse) {
@@ -1613,7 +1734,7 @@ dialog section {
     padding-inline: var(--space-2);
   }
   .model-selector {
-    font-size: 0.72rem;
+    font-size: var(--font-micro);
     gap: var(--space-2);
     padding-inline: var(--space-1);
   }
@@ -1623,63 +1744,16 @@ dialog section {
   .permission-control > button {
     min-width: var(--control);
     padding-inline: var(--space-2);
-    font-size: 0.75rem;
+    font-size: var(--font-micro);
     gap: var(--space-2);
   }
   .metrics {
-    font-size: 0.65rem;
+    font-size: var(--font-micro);
     margin-left: auto;
   }
-  .raw-view,
-  .prompt-view {
+  .raw-view {
     width: calc(var(--content-width) - 2 * var(--dialog-gutter));
     height: calc(var(--content-height) - 2 * var(--dialog-gutter));
-  }
-}
-@media (max-width: 900px) {
-  .management-toolbar {
-    flex-wrap: wrap;
-  }
-  .management-toolbar .field {
-    order: 3;
-    min-width: 100%;
-    grid-template-columns: auto minmax(0, 1fr);
-    align-items: center;
-  }
-  .management-toolbar > button {
-    margin-left: auto;
-  }
-  .management-list {
-    flex: 1;
-    border-right: 0;
-  }
-  .management-editor {
-    display: none;
-  }
-  .editor-head > button {
-    display: flex;
-  }
-  .management:has(.has-selection) .management-toolbar > :not(.field),
-  .management:has(.has-selection .schedule-editor) .management-toolbar {
-    display: none;
-  }
-  .management-body.has-selection .management-list {
-    display: none;
-  }
-  .management-body.has-selection .management-editor {
-    display: flex;
-  }
-  .management-body:not(.has-selection) .schedule-editor {
-    display: flex;
-    overflow: visible;
-    flex: none;
-  }
-  .management-body:not(.has-selection):has(.schedule-editor) {
-    flex-direction: column;
-    overflow: auto;
-  }
-  .management-body:not(.has-selection):has(.schedule-editor) .management-list {
-    flex: none;
   }
 }
 @container app (max-height: 500px) {
@@ -1773,6 +1847,10 @@ dialog.sidebar.drawer[open][data-leaving] {
     animation: none !important;
     transition: none !important;
   }
+  /* The one motion that carries meaning: work is still under way. */
+  .spinner {
+    animation: spin 2.4s linear infinite !important;
+  }
 }
 
 .sidebar-sections {
@@ -1816,15 +1894,41 @@ dialog > header .icon-button {
 .zoom-surface[data-zoomed] {
   cursor: grab;
 }
+/* Drawing: the content sets its own cursor. */
+.zoom-surface[data-draw] {
+  cursor: default;
+}
 .zoom-content {
   width: 100%;
   height: 100%;
   display: grid;
+  /* Definite tracks: without them a tall image's max-height has nothing to
+     resolve against and it overflows the surface. */
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
   place-items: center;
   transform-origin: 0 0;
 }
 .zoom-content[data-glide] {
   transition: transform var(--motion-slow) var(--ease-out);
+}
+/* − level + Fit, floating over the content like a document viewer's. */
+.zoom-controls {
+  position: absolute;
+  right: var(--space-4);
+  bottom: calc(var(--space-4) + var(--safe-bottom));
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  border: 1px solid var(--line);
+  background: var(--raised);
+  cursor: default;
+}
+.zoom-controls output {
+  min-width: 5ch;
+  text-align: center;
+  font-size: var(--font-small);
+  font-variant-numeric: tabular-nums;
 }
 .zoom-content > img {
   max-width: 100%;
@@ -1839,7 +1943,7 @@ dialog > header .icon-button {
   margin: 0 0 var(--space-3);
   padding-inline: var(--space-6);
   color: var(--muted);
-  font-size: 0.75rem;
+  font-size: var(--font-micro);
   font-weight: 400;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -1952,14 +2056,12 @@ dialog > header .icon-button {
   margin-inline-start: var(--space-3);
   vertical-align: -0.125em;
   color: var(--live);
+  transition: opacity var(--motion-fast) var(--ease-out);
 }
 @starting-style {
   .setting-saved {
     opacity: 0;
   }
-}
-.setting-saved {
-  transition: opacity var(--motion-fast) var(--ease-out);
 }
 .setting-value > .text-control:not(.value-select) {
   width: calc(160rem / 14);

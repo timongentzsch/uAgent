@@ -5,7 +5,7 @@ import type {
   ScheduleRule,
 } from "../../shared/types.ts";
 import { useEffect, useState } from "preact/hooks";
-import { Plus, ArrowLeft, Play, Square } from "lucide-preact";
+import { Plus, Play, Square, ChevronLeft } from "lucide-preact";
 import {
   Actions,
   Button,
@@ -19,11 +19,13 @@ import {
   Input,
   Textarea,
 } from "../../shared/ui.tsx";
-import { Menu, MenuItem } from "../../shared/popover.tsx";
-import { Popover } from "../../shared/popover.tsx";
+import { Menu, MenuItem } from "../../shared/menu.tsx";
+import { SheetButton } from "../../shared/sheet.tsx";
 import ModelPicker from "../settings/model-picker.tsx";
 import { readStored, writeStored } from "../../state/store.ts";
 import { ProjectField, dateTime, taskActive } from "../settings/management.tsx";
+import { ListRow } from "../../shared/list-row.tsx";
+import { permissionLabels } from "../../shared/display.ts";
 
 const blank = (cwd: string): ScheduledTask => ({
   id: "",
@@ -177,7 +179,6 @@ export default function Scheduled({
         </p>
         <Button
           variant="primary"
-          class="with-icon"
           disabled={!online || busy}
           onClick={() => {
             chooseTask(blank(cwd || projects[0] || ""));
@@ -194,32 +195,32 @@ export default function Scheduled({
       ) : (
         <div class={`management-body ${task ? "has-selection" : ""}`}>
           <div class="management-list">
-            <Button
-              class={`library-row ${!task ? "selected" : ""}`}
+            <ListRow
+              class="library-row"
+              aria-current={!task || undefined}
               onClick={() => setTask(null)}
-            >
-              All runs
-            </Button>
+              title="All runs"
+            />
             {scheduled.tasks.map((entry) => (
-              <Button
+              <ListRow
                 key={entry.id}
-                class={`library-row ${task?.id === entry.id ? "selected" : ""}`}
+                class="library-row"
+                aria-current={task?.id === entry.id || undefined}
                 disabled={busy}
-                onClick={() => {
-                  chooseTask(entry);
-                }}
-              >
-                <span>{entry.name}</span>
-                <small>
-                  {entry.enabled
-                    ? dateTime(entry.next, entry.schedule.timezone)
-                    : "Paused"}
-                  {scheduled.runs.some(
+                onClick={() => chooseTask(entry)}
+                title={entry.name}
+                unread={
+                  scheduled.runs.some(
                     (run) =>
                       run.task_id === entry.id && unread.has(run.session_id),
-                  ) && <span class="unread-dot" aria-label="Unread results" />}
-                </small>
-              </Button>
+                  ) && "Unread results"
+                }
+                meta={
+                  entry.enabled
+                    ? dateTime(entry.next, entry.schedule.timezone)
+                    : "Paused"
+                }
+              />
             ))}
             {!scheduled.tasks.length && (
               <EmptyState>
@@ -231,12 +232,8 @@ export default function Scheduled({
             {task && (
               <>
                 <div class="editor-head">
-                  <Button
-                    variant="quiet"
-                    class="with-icon"
-                    onClick={() => setTask(null)}
-                  >
-                    <ArrowLeft />
+                  <Button variant="quiet" onClick={() => setTask(null)}>
+                    <ChevronLeft />
                     All runs
                   </Button>
                   <strong>{task.id ? task.name : "New task"}</strong>
@@ -444,15 +441,14 @@ export default function Scheduled({
                         })
                       }
                     >
-                      <option value="prompt">Ask</option>
-                      <option value="auto">Auto review</option>
-                      <option value="yolo">YOLO</option>
+                      <option value="prompt">{permissionLabels.ask}</option>
+                      <option value="auto">{permissionLabels.auto}</option>
+                      <option value="yolo">{permissionLabels.yolo}</option>
                     </Select>
                   </Field>
                 </div>
-                <Popover
+                <SheetButton
                   buttonClass="quiet"
-                  align="start"
                   label="Task model"
                   title="Model, variant and effort"
                   trigger={
@@ -469,14 +465,13 @@ export default function Scheduled({
                       running={false}
                     />
                   )}
-                </Popover>
+                </SheetButton>
                 <div class="editor-actions">
                   <Button disabled={busy} onClick={discard}>
                     Cancel
                   </Button>
                   {task.id && (
                     <Button
-                      class="with-icon"
                       disabled={
                         !online ||
                         busy ||
@@ -496,7 +491,6 @@ export default function Scheduled({
                     variant="primary"
                     disabled={
                       !online ||
-                      busy ||
                       !dirty ||
                       !task.name.trim() ||
                       !task.prompt.trim() ||
@@ -504,9 +498,10 @@ export default function Scheduled({
                       changed ||
                       !times?.length
                     }
+                    busy={busy}
                     onClick={() => action("save")}
                   >
-                    {busy ? "Saving…" : "Save"}
+                    Save
                   </Button>
                 </div>
               </>
@@ -522,7 +517,7 @@ export default function Scheduled({
               ) : (
                 runs.map((run) => (
                   <div class="run-row" key={run.id}>
-                    <Button
+                    <ListRow
                       disabled={
                         run.session_available === false ||
                         ["queued", "starting", "missed", "skipped"].includes(
@@ -530,21 +525,12 @@ export default function Scheduled({
                         )
                       }
                       onClick={() => choose(run.session_id).catch(setError)}
+                      title={run.title}
+                      unread={unread.has(run.session_id) && "Unread results"}
+                      meta={`${run.status.replace(/^./, (c) => c.toUpperCase())} · ${dateTime(run.scheduled_for)}`}
                     >
-                      <span>
-                        {run.title}
-                        {unread.has(run.session_id) && (
-                          <span
-                            class="unread-dot"
-                            aria-label="Unread results"
-                          />
-                        )}
-                      </span>
-                      <small>
-                        {run.status} · {dateTime(run.scheduled_for)}
-                      </small>
                       {run.error && <small>{run.error}</small>}
-                    </Button>
+                    </ListRow>
                     {taskActive(run.status) && (
                       <IconButton
                         label="Stop run"
@@ -579,7 +565,7 @@ export default function Scheduled({
               <Button onClick={() => setConfirm(false)}>Cancel</Button>
               <Button
                 type="submit"
-                variant="primary"
+                variant="destructive"
                 disabled={busy || !online}
               >
                 Delete

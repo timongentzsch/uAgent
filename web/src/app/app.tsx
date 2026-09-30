@@ -6,12 +6,9 @@ import type {
   InstallPrompt,
   Block,
   Session,
-  Snapshot,
-  Asset,
   Act,
   CommandKind,
   CommandFields,
-  Activity,
 } from "../shared/types.ts";
 import { failure } from "../shared/types.ts";
 import type { JSX } from "preact";
@@ -24,41 +21,28 @@ import {
   useState,
 } from "preact/hooks";
 import { readStored, writeStored } from "../state/store.ts";
-import { api, command, requestId } from "../state/api.ts";
+import { api, command, requestId, uploadAttachment } from "../state/api.ts";
 import {
-  Mark,
   Modal,
   Deferred,
-  Placeholder,
   IconButton,
   Button,
-  EmptyState,
   Spinner,
   preloadDeferred,
-  Input,
   ErrorBoundary,
 } from "../shared/ui.tsx";
 import { Ellipsis, Globe2, Menu, Settings } from "lucide-preact";
 import { StatusLed } from "../shared/connection-status.tsx";
-import {
-  ImageViewer,
-  ImageViewerDialog,
-  type ViewedImage,
-} from "../shared/attachments.tsx";
+import { ImageViewer, type ViewedImage } from "../shared/attachments.tsx";
 // Prefetch helpers live next to the renderer so marker regexes stay in one
 // place. Loaded dynamically: a static import would drag markdown.css into
 // the initial bundle and break the CSS size budget.
 const markdownView = () => import("../shared/markdown-view.tsx");
-import { StatisticsLoading } from "../shared/statistics-layout.tsx";
 import { useDismiss } from "../shared/dismiss.ts";
-import { SettingsLoading } from "../shared/loading.tsx";
+import { unsent } from "../shared/message-view.ts";
 import Sidebar, { ConversationMenu } from "../features/sidebar/sidebar.tsx";
-import Composer from "../features/composer/composer.tsx";
-import Chat, {
-  TranscriptPlaceholder,
-  prepareHistoryBlocks,
-} from "../features/chat/chat.tsx";
-import { BrowserLoading } from "../features/browser/frame.tsx";
+import { CoordinatorHelp } from "../features/coordinator/board.tsx";
+import { folderName } from "../shared/folder-label.tsx";
 import {
   applyTheme,
   applyZoom,
@@ -69,6 +53,7 @@ import {
 } from "../shared/layout.ts";
 
 import { useHost } from "../state/use-host.ts";
+import { useSnapshots } from "../state/snapshot-store.ts";
 import { parseSlash } from "../features/composer/slash.ts";
 import { dedupeName } from "../features/composer/mention.ts";
 import {
@@ -77,20 +62,13 @@ import {
   type TimePrefs,
 } from "../shared/time.ts";
 import type { InspectorTarget } from "../features/chat/inspector.tsx";
-import { LiveActivities } from "../state/live-activities.ts";
-import { useTranscriptHistory } from "../state/use-transcript-history.ts";
-import { prependHistoryPage } from "../state/history-page.ts";
 import { maxDraftFiles, maxUploadBytes } from "../shared/limits.ts";
-import "../shared/style.css";
+import ChatPage, { isBrowsing, transcriptBlocks } from "./chat-page.tsx";
+import Modals from "./modals.tsx";
 import {
-  browserDialog,
-  conversationActions,
   libraryModule,
   pairing,
-  promptDialog,
-  rawDialog,
-  inspectorDialog,
-  sideAnswer,
+  instructionsDialog,
   scheduledModule,
   settingsDialog,
   toolsDialog,
@@ -106,9 +84,6 @@ import {
 if (typeof history !== "undefined") history.scrollRestoration = "manual";
 
 const emptyDraft = (): Draft => ({ text: "", files: [] });
-const noBlocks: Block[] = [];
-// One empty list, so an idle context value never changes identity.
-const NO_ACTIVITIES: Activity[] = [];
 
 const BROWSER_KEY = "uagent-browser";
 
@@ -116,13 +91,19 @@ const BROWSER_KEY = "uagent-browser";
 function MenuPlaceholder() {
   return (
     <IconButton label="Conversation menu" disabled>
-      <Ellipsis aria-hidden="true" />
+      <Ellipsis />
     </IconButton>
   );
 }
 
+// The shell: navigation, header, toasts and dialogs. It never reads a whole
+// snapshot, only what it selects from one (the session's metadata, whether
+// its agent browses, whether any turn waits), so a streamed frame re-renders
+// the conversation (<ChatPage>), not the shell and its sidebar.
 function App() {
   const [page, setPage] = useState<"chat" | "library" | "scheduled">("chat");
+  // Which Library tab /memory or /skills asked for.
+  const [libraryKind, setLibraryKind] = useState<"memory" | "skills">("memory");
   // Library and Scheduled sit above the conversation: back returns to it.
   useDismiss(page !== "chat", () => setPage("chat"));
   const [drawer, setDrawer] = useState(false);
@@ -142,6 +123,7 @@ function App() {
     question: string;
     answer?: string;
   } | null>(null);
+  const closeSide = useCallback(() => setSide(null), []);
   const onResult = useCallback((value: JSONValue, inspect: boolean) => {
     if (inspect) setModal({ type: "raw", value });
     else setNotice(typeof value === "string" ? value : JSON.stringify(value));
@@ -192,7 +174,6 @@ function App() {
   }, [authenticated, online]);
   const [folder, setFolder] = useState("");
   const [busy, setBusy] = useState(false);
-  const [uploading, setUploading] = useState(false);
   const [zoom, setZoom] = useState(() =>
     normalizeZoom(readStored<number>(storage, "uagent-zoom", 100)),
   );
@@ -207,21 +188,17 @@ function App() {
     () => storage.getItem("uagent-theme") || "system",
   );
   const [inspector, setInspector] = useState<InspectorTarget | null>(null);
-  const snapshot = snapshots[selected];
+  const metadata = useSnapshots(snapshots, (all) => all[selected]?.metadata);
   const session =
-    snapshot?.metadata ||
-    catalogue.sessions.find((item) => item.id === selected);
+    metadata || catalogue.sessions.find((item) => item.id === selected);
   // Until the catalogue answers, the shell renders with placeholders in the
   // places data will fill; a conversation in the URL keeps its surfaces.
   const booting = authenticated === null;
   const opening = booting && !!selected;
-  const toolsSessionId = modal?.type === "tools" ? modal.session_id : "";
-  const toolsSnapshot = snapshots[toolsSessionId];
-  const toolsSession =
-    toolsSnapshot?.metadata ||
-    catalogue.sessions.find((item) => item.id === toolsSessionId);
   const draft = drafts[selected] || emptyDraft();
-  const pending = snapshot?.pending;
+  // Uploads belong to their conversation: one in flight elsewhere never
+  // holds this composer.
+  const uploading = draft.files.some((file) => file.pending);
   const running = online && !!session?.turn_active;
   const showMessageHttp = useCallback(
     (exchanges: NonNullable<Block["http"]>) =>
@@ -238,39 +215,12 @@ function App() {
       }),
     [selected],
   );
-  const view = snapshot?.state?.view;
-  const streamed = snapshot?.streamed || noBlocks;
   // The browser icon shows when this conversation's agent is using it.
-  const browsing = streamed.some(
-    (block) => block.name === "browser" && block.status === "running",
-  );
-  const blocks = useMemo(
-    () => [
-      ...(view?.blocks || []),
-      ...outgoing.filter(
-        (item) =>
-          item.session_id === selected &&
-          !view?.blocks?.some((block) => block.request_id === item.request_id),
-      ),
-      ...streamed,
-    ],
-    [view?.blocks, streamed, outgoing, selected],
-  );
-  // Session-scoped surfaces: switching conversations resumes the saved
-  // scroll position (or pins a fresh one); the hook owns this, so there
-  // is no pin-on-select here to clobber the restore.
-  const {
-    scroller: transcript,
-    content: transcriptContent,
-    attachScroller,
-    attachContent,
-    jumpToLatest,
-    preserveWhile,
-    unseen,
-  } = useTranscriptHistory(
-    setFollowing,
-    page === "chat" ? `${page}:${selected}` : `page:${page}`,
-    blocks.length,
+  const browsing = useSnapshots(snapshots, (all) => isBrowsing(all[selected]));
+  // The update banner holds its reload while a turn waits on a decision.
+  const waiting = useSnapshots(
+    snapshots,
+    (all) => !!update && Object.values(all).some((item) => item.pending),
   );
   function setDraft(value: Draft, id = selected) {
     setDrafts((current) => ({ ...current, [id]: value }));
@@ -300,7 +250,7 @@ function App() {
           scheduledModule,
           statisticsDialog,
           toolsDialog,
-          promptDialog,
+          instructionsDialog,
         ].forEach((load) => preloadDeferred<never>(load).catch(() => {})),
       2000,
     );
@@ -310,6 +260,34 @@ function App() {
     return trackViewport();
   }, []);
   useEffect(() => applyTheme(theme), [theme]);
+  // Files dropped anywhere attach to the open conversation; unhandled, the
+  // browser would open the file in place of the app. File inputs and
+  // dialogs keep their own drops.
+  const drops = useRef({ upload, page });
+  drops.current = { upload, page };
+  useEffect(() => {
+    const files = (event: DragEvent) =>
+      event.dataTransfer?.types.includes("Files") &&
+      !(
+        event.target instanceof HTMLInputElement && event.target.type === "file"
+      );
+    const over = (event: DragEvent) => files(event) && event.preventDefault();
+    const drop = (event: DragEvent) => {
+      if (!files(event)) return;
+      event.preventDefault();
+      if (
+        drops.current.page === "chat" &&
+        !(event.target as Element).closest?.("dialog")
+      )
+        void drops.current.upload([...(event.dataTransfer?.files || [])]);
+    };
+    addEventListener("dragover", over);
+    addEventListener("drop", drop);
+    return () => {
+      removeEventListener("dragover", over);
+      removeEventListener("drop", drop);
+    };
+  }, []);
   useEffect(() => {
     let stop: (() => void) | undefined;
     import("../shared/pwa.ts").then(
@@ -327,6 +305,15 @@ function App() {
     },
     [online, session, correlate],
   );
+  const choose = useCallback(
+    async (id: string) => {
+      setNotice("");
+      setPage("chat");
+      setSelected(id);
+      setDrawer(false);
+    },
+    [setSelected],
+  );
   useEffect(() => {
     const openSession = (event: MessageEvent) => {
       if (
@@ -339,12 +326,6 @@ function App() {
     return () =>
       navigator.serviceWorker?.removeEventListener("message", openSession);
   }, []);
-  async function choose(id: string) {
-    setNotice("");
-    setPage("chat");
-    setSelected(id);
-    setDrawer(false);
-  }
   async function create(event: JSX.TargetedSubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
@@ -357,33 +338,95 @@ function App() {
       setBusy(false);
     }
   }
-  async function startConversation(cwd: string) {
-    const created = await command("create", null, { cwd });
-    if (created.pending) return;
-    setCatalogue((prior) => ({
-      ...prior,
-      sessions: [created.session, ...prior.sessions],
-    }));
-    await choose(created.session.id);
-    await command("activate", created.session);
-    await load(created.session.id);
+  // The host returns a folder's existing coordinator rather than a second.
+  // One start at a time: a double click must not race two activations.
+  const starting = useRef(false);
+  const startConversation = useCallback(
+    async (cwd: string, coordinator = false) => {
+      if (starting.current) return;
+      starting.current = true;
+      try {
+        const created = await command("create", null, { cwd, coordinator });
+        if (created.pending) return;
+        setCatalogue((prior) => ({
+          ...prior,
+          sessions: [
+            created.session,
+            ...prior.sessions.filter(
+              (entry) => entry.id !== created.session.id,
+            ),
+          ],
+        }));
+        // Live before it is shown, so opening never flashes the saved state;
+        // shown even if activating fails, with the failure reported.
+        try {
+          if (created.session.presence !== "active")
+            await command("activate", created.session);
+        } finally {
+          await choose(created.session.id);
+        }
+        await load(created.session.id);
+      } finally {
+        starting.current = false;
+      }
+    },
+    [setCatalogue, choose, load],
+  );
+  // A command with a screen opens it when typed bare; with an argument it
+  // runs on the host, as in the terminal.
+  const screens: Record<string, () => void> = {
+    "/context": showContext,
+    "/config": () => open({ type: "settings" }),
+    "/permissions": () => open({ type: "settings", section: "permissions" }),
+    "/mcp": () => open({ type: "settings", section: "mcp" }),
+    "/tools": () => setModal({ type: "tools", session_id: selected }),
+    "/rename": () => session && setModal({ type: "rename", session }),
+    "/memory": () => showLibrary("memory"),
+    "/skills": () => showLibrary("skills"),
+    "/schedule": () => setPage("scheduled"),
+    // The list is always beside a wide conversation: find in it instead.
+    "/sessions": () =>
+      compact
+        ? setDrawer(true)
+        : document.getElementById("session-search")?.focus(),
+  };
+  function showLibrary(kind: "memory" | "skills") {
+    setLibraryKind(kind);
+    setPage("library");
+  }
+  // A fork opens as its own conversation; the original stays as it was.
+  // Editing (a rewind) also puts the message it forked before back into
+  // the composer.
+  async function forkAndOpen(fields: CommandFields, edit = false) {
+    const result = await command("fork", session, fields);
+    if (result.pending) return;
+    const { id, prompt, rewound } = result.result;
+    if (!rewound) {
+      await refresh();
+      await choose(id);
+      await command("activate", { id, generation: "" });
+    }
+    await load(id);
+    if (edit && prompt) setDraft({ text: prompt, files: [] }, id);
+    if (edit)
+      setNotice(
+        rewound
+          ? "The coordinator rewound to this message; edit and send."
+          : "Continuing in a fork. Files on disk are unchanged.",
+      );
   }
   async function localCommand(text: string) {
     const { name, argument } = parseSlash(catalogue.commands || [], text);
-    if (name === "/context") showContext();
-    else if (name === "/sessions") setDrawer(true);
+    if (!argument && screens[name]) screens[name]();
     else if (name === "/reset") await startConversation(session!.cwd!);
     else if (name === "/quit") {
       await act("close");
       await load(selected);
     } else if (name === "/fork") {
-      const result = await command("fork", session, { argument });
-      if (!result.pending) {
-        await refresh();
-        await choose(result.result.id);
-        await command("activate", { id: result.result.id, generation: "" });
-        await load(result.result.id);
-      }
+      await forkAndOpen({ argument });
+    } else if (name === "/rewind" && argument) {
+      // Bare /rewind runs on the host and lists the message numbers.
+      await forkAndOpen({ argument }, true);
     } else if (name === "/btw") {
       if (!argument) throw new Error("Use /btw QUESTION");
       // The card shows the question; the composer is free again at once.
@@ -402,27 +445,14 @@ function App() {
           report(failure);
         },
       );
-    } else if (name === "/rewind") {
-      const result = await act("rewind", { argument });
-      if (!result.pending) await load(selected);
     } else if (name === "/share") {
       const result = await act("share");
       if (!result.pending)
         setNotice(`Transcript saved to ${result.result.path}`);
-    } else if (
-      name === "/prompt" &&
-      (!argument ||
-        /^(show|edit)(?: --scope (global|project|conversation))?$/.test(
-          argument,
-        ))
-    ) {
-      setModal({
-        type: "prompt",
-        scope: argument.match(/--scope (\w+)/)?.[1],
-        edit: argument.startsWith("edit"),
-      });
+    } else if (name === "/instructions" && !argument) {
+      setModal({ type: "instructions" });
     } else if (name === "/http") {
-      const exchanges = snapshot?.state?.http || [];
+      const exchanges = snapshots.get()[selected]?.state?.http || [];
       const [number, part = "request"] = argument.split(/\s+/);
       const index = number ? Number(number) : exchanges.length;
       if (
@@ -445,8 +475,9 @@ function App() {
     } else return false;
     return true;
   }
-  async function submit(event: Event) {
+  async function submit(event: Event, jumpToLatest: () => void) {
     event.preventDefault();
+    const pending = snapshots.get()[selected]?.pending;
     setNotice("");
     if (
       !online ||
@@ -566,11 +597,37 @@ function App() {
   }
   // Recall returns queued guidance to the composer while it is still
   // queued. Delivered guidance belongs to the turn; dropping the row is
-  // then the only correct move.
-  // Rows skip re-rendering on equal props, so the callbacks they get must
-  // stay the same function; they read the latest state through a ref.
-  const latest = useRef({ online, selected, act, report });
-  latest.current = { online, selected, act, report };
+  // then the only correct move. A send that failed returns the same way,
+  // with nothing to withdraw from the host.
+  // Every row reads these through one context value, so they must stay the
+  // same function; they read the latest state through a ref.
+  const latest = useRef({
+    online,
+    selected,
+    act,
+    report,
+    forkAndOpen,
+    outgoing,
+  });
+  latest.current = { online, selected, act, report, forkAndOpen, outgoing };
+  // From a message's menu: edit it in a fork (fork before it), or keep it
+  // and its reply (fork before the next message of yours).
+  const branchFrom = useCallback((block: Block, edit: boolean) => {
+    const { forkAndOpen, outgoing, selected, report } = latest.current;
+    const blocks = transcriptBlocks(
+      snapshots.get()[selected]?.state?.view,
+      outgoing,
+      selected,
+    );
+    const after = blocks.slice(
+      blocks.findIndex((item) => item.id === block.id) + 1,
+    );
+    const next = after.find((item) => item.kind === "user");
+    forkAndOpen(
+      edit ? { message_id: block.id } : next ? { message_id: next.id } : {},
+      edit,
+    ).catch(report);
+  }, []);
   const openActivity = useCallback(
     (block: Block) => setInspector({ block }),
     [],
@@ -578,16 +635,19 @@ function App() {
   const recallGuidance = useCallback(async (block: Block) => {
     const { online, selected, act, report } = latest.current;
     const target = block.request_id;
-    if (!target || block.status !== "Guidance queued" || !online) return;
+    const queued = block.status === "Guidance queued";
+    if (!target || !(queued || unsent(block)) || (queued && !online)) return;
     const text = block.text || "";
     const id = selected;
-    try {
-      await act("recall", { target_id: target });
-    } catch (error) {
-      const issue = failure(error);
-      if (!/already delivered/i.test(issue.message)) {
-        report(error);
-        return;
+    if (queued) {
+      try {
+        await act("recall", { target_id: target });
+      } catch (error) {
+        const issue = failure(error);
+        if (!/already delivered/i.test(issue.message)) {
+          report(error);
+          return;
+        }
       }
     }
     setOutgoing((items) => items.filter((item) => item.request_id !== target));
@@ -649,7 +709,6 @@ function App() {
         pending: true,
       };
     });
-    setUploading(true);
     setDrafts((current) => ({
       ...current,
       [id]: {
@@ -659,16 +718,10 @@ function App() {
     }));
     try {
       for (const [index, file] of files.entries()) {
-        const asset = await api<Asset>(
-          `/api/sessions/${id}/attachments?name=${encodeURIComponent(pendingFiles[index].name)}`,
-          undefined,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": file.type || "application/octet-stream",
-            },
-            body: file,
-          },
+        const asset = await uploadAttachment(
+          id,
+          file,
+          pendingFiles[index].name,
         );
         setDrafts((current) => ({
           ...current,
@@ -697,7 +750,6 @@ function App() {
           ),
         },
       }));
-      setUploading(false);
     }
   }
   const inspect = useCallback(
@@ -708,32 +760,26 @@ function App() {
       }),
     [selected],
   );
-  // The shared transcript controller retains the visible block through
-  // this bounded page update; this loader only owns data and cursors.
-  async function older() {
-    if (!view?.more || !transcript.current) return;
-    const before = view.before;
-    const id = selected;
-    const value = await api<Snapshot>(`/api/sessions/${id}?before=${before}`);
-    await prepareHistoryBlocks(value.state?.view?.blocks || []);
-    updateView(id, (current) => {
-      if (
-        !value.state?.view ||
-        !current.state?.view ||
-        current.epoch !== value.epoch ||
-        current.metadata.generation !== value.metadata.generation ||
-        current.state?.view?.before !== before
-      )
-        return current;
-      return {
-        ...current,
-        state: {
-          ...current.state,
-          view: prependHistoryPage(value.state.view, current.state.view),
-        },
-      };
-    });
-  }
+  const messageActions = useMemo(
+    () => ({
+      report,
+      recall: recallGuidance,
+      branch: branchFrom,
+      inspect,
+      http: showMessageHttp,
+      activity: openActivity,
+      statistics: showMessageStatistics,
+    }),
+    [
+      report,
+      recallGuidance,
+      branchFrom,
+      inspect,
+      showMessageHttp,
+      openActivity,
+      showMessageStatistics,
+    ],
+  );
   async function logout() {
     try {
       const registration = await navigator.serviceWorker?.getRegistration();
@@ -752,33 +798,52 @@ function App() {
       type: "raw",
       context: true,
       session: selected,
-      exchanges: prepare ? [] : snapshot?.state?.http || [],
+      exchanges: prepare ? [] : snapshots.get()[selected]?.state?.http || [],
       prepare,
     });
   }
 
-  const open = (value: AppModal) => {
+  const open = useCallback((value: AppModal) => {
     setDrawer(false);
     setModal(value);
-  };
-  const conversationMenu = (item: Session) => (
-    <ConversationMenu
-      item={item}
-      online={online}
-      refresh={refresh}
-      choose={choose}
-      loadSnapshot={load}
-      report={report}
-      open={open}
-    />
+  }, []);
+  const conversationMenu = useCallback(
+    (item: Session) => (
+      <ConversationMenu
+        item={item}
+        online={online}
+        refresh={refresh}
+        choose={choose}
+        loadSnapshot={load}
+        report={report}
+        open={open}
+      />
+    ),
+    [online, refresh, choose, load, report, open],
   );
-  const ios =
-    /iPhone|iPad/.test(navigator.userAgent) ||
-    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-  const installed =
-    matchMedia("(display-mode: standalone)").matches ||
-    ("standalone" in navigator && navigator.standalone === true);
-
+  // The sidebar lists conversations, not scheduled runs or their tasks.
+  const listed = useMemo(() => {
+    const runs = new Set(
+      catalogue.scheduled?.runs?.map((run) => run.session_id),
+    );
+    return catalogue.sessions.filter(
+      (entry) => !entry.task_id && !runs.has(entry.id),
+    );
+  }, [catalogue.sessions, catalogue.scheduled]);
+  const navigate = useCallback((value: typeof page) => {
+    setPage(value);
+    setDrawer(false);
+  }, []);
+  const settings = useCallback(() => open({ type: "settings" }), [open]);
+  const cwd = session?.cwd || "";
+  const newConversation = useCallback(() => {
+    setFolder(cwd);
+    open({ type: "new" });
+  }, [cwd, open]);
+  const coordinate = useCallback(
+    (cwd: string) => startConversation(cwd, true).catch(report),
+    [startConversation, report],
+  );
   const projects = [
     ...new Set(
       catalogue.sessions
@@ -790,20 +855,11 @@ function App() {
     <Sidebar
       loading={booting}
       page={page}
-      navigate={(value) => {
-        setPage(value);
-        setDrawer(false);
-      }}
+      navigate={navigate}
       scheduledUnread={
         !!catalogue.scheduled?.runs?.some((run) => unread.has(run.session_id))
       }
-      sessions={catalogue.sessions.filter(
-        (entry) =>
-          !entry.task_id &&
-          !catalogue.scheduled?.runs?.some(
-            (run) => run.session_id === entry.id,
-          ),
-      )}
+      sessions={listed}
       selected={page === "chat" ? selected : ""}
       unread={unread}
       online={online}
@@ -811,50 +867,12 @@ function App() {
       choose={choose}
       menu={conversationMenu}
       refresh={refresh}
-      settings={() => open({ type: "settings" })}
-      create={() => {
-        setFolder(session?.cwd || "");
-        open({ type: "new" });
-      }}
+      settings={settings}
+      create={newConversation}
+      coordinate={coordinate}
     />
   );
 
-  // The conversation's composer; before the session is known, the same
-  // composer drawn from a sample (see <Placeholder>).
-  const composerFor = (item: Session) => (
-    <Composer
-      session={item}
-      commands={catalogue.commands || []}
-      snapshot={snapshot}
-      online={online}
-      connection={connection}
-      draft={draft}
-      setDraft={setDraft}
-      upload={upload}
-      uploading={uploading}
-      busy={busy}
-      submit={submit}
-      act={act}
-      report={report}
-      following={following}
-      unseen={unseen}
-      // Optimistic: pin to the end synchronously (<1 frame),
-      // refresh the snapshot in the background. jumpToLatest
-      // is idempotent and load() dedupes in flight, so rapid
-      // presses stay a single pin + a single fetch.
-      jump={() => {
-        jumpToLatest();
-        load(selected).catch(report);
-      }}
-      openInspector={setInspector}
-      showStatistics={() =>
-        setModal({ type: "statistics", session_id: selected })
-      }
-      showContext={showContext}
-      zoom={zoom}
-      openBrowser={() => setModal({ type: "browser", handoff: true })}
-    />
-  );
   return (
     <TimePrefsContext.Provider value={timePrefs}>
       <ImageViewer.Provider value={setViewed}>
@@ -884,11 +902,9 @@ function App() {
                   (item) => item.text || item.files.length,
                 )
                   ? "Send or copy unsent drafts first."
-                  : uploading
-                    ? "Wait for uploads to finish."
-                    : Object.values(snapshots).some((item) => item.pending)
-                      ? "Wait for the running turn to finish."
-                      : "";
+                  : waiting
+                    ? "Wait for the running turn to finish."
+                    : "";
                 return (
                   <Button
                     variant="primary"
@@ -940,7 +956,7 @@ function App() {
                     label="Open sessions"
                     onClick={() => setDrawer(true)}
                   >
-                    <Menu aria-hidden="true" />
+                    <Menu />
                   </IconButton>
                 )}
                 <div>
@@ -949,6 +965,8 @@ function App() {
                       "Library"
                     ) : page === "scheduled" ? (
                       "Scheduled"
+                    ) : session?.kind === "coordinator" ? (
+                      `Coordinator · ${folderName(session.cwd)}`
                     ) : session ? (
                       session.title || "Your workspace"
                     ) : opening ? (
@@ -959,6 +977,11 @@ function App() {
                       "Your workspace"
                     )}
                   </h1>
+                  {page === "chat" && session?.kind === "coordinator" && (
+                    <CoordinatorHelp
+                      editInstructions={() => open({ type: "instructions" })}
+                    />
+                  )}
                 </div>
                 {browserAvailable && (
                   <IconButton
@@ -969,7 +992,7 @@ function App() {
                     disabled={booting}
                     onClick={() => setModal({ type: "browser" })}
                   >
-                    <Globe2 aria-hidden="true" />
+                    <Globe2 />
                     {browsing && <StatusLed state="running" />}
                   </IconButton>
                 )}
@@ -979,7 +1002,7 @@ function App() {
                       label="Settings"
                       onClick={() => open({ type: "settings" })}
                     >
-                      <Settings aria-hidden="true" />
+                      <Settings />
                     </IconButton>
                   </div>
                 )}
@@ -990,10 +1013,11 @@ function App() {
                     <MenuPlaceholder />
                   ) : null)}
               </header>
-              {page !== "chat" ? (
+              {page !== "chat" && (
                 <Deferred
-                  key={page}
+                  key={page === "library" ? `library:${libraryKind}` : page}
                   load={page === "library" ? libraryModule : scheduledModule}
+                  initialKind={libraryKind}
                   projects={projects}
                   cwd={session?.cwd || projects[0] || ""}
                   online={online}
@@ -1015,307 +1039,88 @@ function App() {
                     </div>
                   }
                 />
-              ) : session ? (
-                <>
-                  {/* Remount the transcript per session: a stale surface's
-                    node detaches, so queued scrolls from it can never
-                    rewrite the live one, and each surface keeps its own
-                    DOM state (expansion, disclosure, scroll). */}
-                  <LiveActivities.Provider
-                    value={snapshot?.state?.activities || NO_ACTIVITIES}
-                  >
-                    <Chat
-                      key={selected}
-                      scroller={transcript}
-                      content={transcriptContent}
-                      attachScroller={attachScroller}
-                      attachContent={attachContent}
-                      preserveWhile={preserveWhile}
-                      selected={selected}
-                      snapshot={snapshot}
-                      loadError={loadErrors[selected]}
-                      blocks={blocks}
-                      session={session}
-                      online={online}
-                      loadSnapshot={load}
-                      older={older}
-                      report={report}
-                      recall={recallGuidance}
-                      inspect={inspect}
-                      http={showMessageHttp}
-                      activity={openActivity}
-                      statistics={showMessageStatistics}
-                    />
-                  </LiveActivities.Provider>
-                  {side && (
-                    <Deferred
-                      load={sideAnswer}
-                      fallback={null}
-                      question={side.question}
-                      answer={side.answer}
-                      close={() => setSide(null)}
-                    />
-                  )}
-                  {composerFor(session)}
-                </>
-              ) : opening ? (
-                // A reload on a conversation: its surfaces, before the
-                // catalogue names the session.
-                <>
-                  <div class="transcript">
-                    <div class="transcript-content">
-                      <TranscriptPlaceholder session={{ id: selected }} />
-                    </div>
-                  </div>
-                  <Placeholder label="Loading composer…">
-                    {composerFor({ id: selected, generation: "placeholder" })}
-                  </Placeholder>
-                </>
-              ) : (
-                <div class="empty">
-                  <Mark className="cursor-mark" />
-                  <h1>Your projects. One workspace.</h1>
-                  <p>
-                    Open a saved session or start in any directory on your host.
-                  </p>
-                  <Button
-                    variant="primary"
-                    onClick={() => setModal({ type: "new" })}
-                    disabled={!online}
-                  >
-                    New conversation
-                  </Button>
-                </div>
               )}
+              <ChatPage
+                store={snapshots}
+                active={page === "chat"}
+                historyKey={
+                  page === "chat" ? `${page}:${selected}` : `page:${page}`
+                }
+                selected={selected}
+                session={session}
+                opening={opening}
+                catalogue={catalogue}
+                online={online}
+                connection={connection}
+                outgoing={outgoing}
+                loadError={loadErrors[selected]}
+                draft={draft}
+                setDraft={setDraft}
+                upload={upload}
+                uploading={uploading}
+                busy={busy}
+                submit={submit}
+                act={act}
+                report={report}
+                following={following}
+                setFollowing={setFollowing}
+                load={load}
+                updateView={updateView}
+                choose={choose}
+                zoom={zoom}
+                side={side}
+                closeSide={closeSide}
+                actions={messageActions}
+                setModal={setModal}
+                setInspector={setInspector}
+                showContext={showContext}
+              />
             </main>
           </div>
         )}
-        {(modal?.type === "statistics" ||
-          modal?.type === "rename" ||
-          modal?.type === "delete") && (
-          <Modal
-            title={
-              modal.type === "rename"
-                ? "Rename conversation"
-                : modal.type === "delete"
-                  ? "Delete conversation"
-                  : "unit" in modal && modal.unit
-                    ? `${modal.unit} statistics`
-                    : "Conversation statistics"
-            }
-            layout={modal.type === "statistics" ? "panel" : "content"}
-            close={() => setModal(null)}
-          >
-            {modal.type === "statistics" ? (
-              <Deferred
-                load={statisticsDialog}
-                fallback={<StatisticsLoading unit={modal.unit} />}
-                modal={modal}
-                loadSnapshot={load}
-              />
-            ) : (
-              <Deferred
-                load={conversationActions}
-                fallback={
-                  <Spinner label="Loading conversation actions…" surface />
-                }
-                key={`${modal.type}-${modal.session.id}`}
-                modal={modal}
-                close={() => setModal(null)}
-                online={online}
-                changed={async (kind: string, id: string) => {
-                  if (kind === "delete") forget(id);
-                  await refresh();
-                }}
-              />
-            )}
-          </Modal>
-        )}
-        {inspector && session && (
-          <Deferred
-            load={inspectorDialog}
-            fallback={null}
-            target={inspector}
-            items={snapshot?.state?.activities || []}
-            collaborators={snapshot?.state?.collaborators || []}
-            cwd={session.cwd || ""}
-            running={running}
-            session={session}
-            online={online}
-            report={report}
-            close={() => setInspector(null)}
-          />
-        )}
-        {modal?.type === "browser" && (
-          <Modal
-            title="Browser"
-            className="browser-view"
-            size="browser"
-            layout={compact ? "sheet" : "panel"}
-            close={() => setModal(null)}
-          >
-            <Deferred
-              load={browserDialog}
-              fallback={<BrowserLoading />}
-              sessions={catalogue.sessions}
-              report={report}
-              close={() => setModal(null)}
-              handoff={modal.handoff}
-            />
-          </Modal>
-        )}
-        {modal?.type === "new" && (
-          <Modal title="New conversation" close={() => setModal(null)}>
-            <form onSubmit={create}>
-              <label>
-                Directory on the host
-                <Input
-                  autoFocus
-                  value={folder}
-                  onInput={(event) => setFolder(event.currentTarget.value)}
-                  placeholder="/path/to/project"
-                  required
-                  autoComplete="off"
-                />
-              </label>
-              <p class="muted">
-                Any accessible directory works, including a folder outside Git.
-                Multiple conversations can work in the same folder.
-              </p>
-              <Button
-                type="submit"
-                variant="primary"
-                disabled={busy || !online}
-              >
-                Start conversation
-              </Button>
-            </form>
-          </Modal>
-        )}
-        {modal?.type === "raw" && (
-          <Modal
-            title={
-              modal.context
-                ? "Raw context"
-                : modal.exchanges !== undefined
-                  ? "HTTP request/response"
-                  : modal.id?.startsWith("t-")
-                    ? "Tool input/output"
-                    : "Full content"
-            }
-            className="raw-view"
-            size="wide"
-            layout="panel"
-            close={() => setModal(null)}
-          >
-            <Deferred
-              load={rawDialog}
-              prompt={() => setModal({ type: "prompt" })}
-              fallback={<Spinner label="Loading full body…" surface />}
-              id={modal.id}
-              session={modal.session}
-              value={modal.value}
-              exchanges={modal.exchanges}
-              latest={
-                modal.session
-                  ? snapshots[modal.session]?.state?.http
-                  : undefined
-              }
-              context={modal.context}
-              prepare={modal.prepare}
-              part={modal.part}
-            />
-          </Modal>
-        )}
-        {modal?.type === "prompt" && (
-          <Modal
-            title="System prompt"
-            className="prompt-view"
-            size="wide"
-            layout="panel"
-            close={() => setModal(null)}
-          >
-            <Deferred
-              load={promptDialog}
-              fallback={<Spinner label="Loading system prompt…" surface />}
-              session={session}
-              projects={projects}
-              online={online}
-              version={managementVersion}
-              scope={modal.scope}
-              edit={modal.edit}
-              lastSent={snapshot?.state?.system_prompt}
-            />
-          </Modal>
-        )}
-        {modal?.type === "settings" && (
-          <Modal
-            title="Settings"
-            className="settings-view"
-            layout="sheet"
-            header={false}
-            close={() => setModal(null)}
-          >
-            <Deferred
-              load={settingsDialog}
-              ownsDialog
-              fallback={<SettingsLoading />}
-              theme={theme}
-              setTheme={setTheme}
-              timePrefs={timePrefs}
-              setTimePrefs={setTimePrefs}
-              zoom={zoom}
-              setZoom={setZoom}
-              installed={installed}
-              install={install}
-              setInstall={setInstall}
-              ios={ios}
-              update={update}
-              drafts={drafts}
-              uploading={uploading}
-              snapshots={snapshots}
-              catalogue={catalogue}
-              online={online}
-              notificationMode={notificationMode}
-              setNotificationMode={setNotificationMode}
-              notifications={notifications}
-              refresh={refresh}
-              selected={selected}
-              session={session}
-              logout={logout}
-              prompt={() => setModal({ type: "prompt" })}
-            />
-          </Modal>
-        )}
-        {modal?.type === "tools" && (
-          <Modal
-            title="Tools"
-            className="tools-view"
-            size="medium"
-            layout="panel"
-            close={() => setModal(null)}
-          >
-            {toolsSession ? (
-              <Deferred
-                load={toolsDialog}
-                fallback={<Spinner label="Loading tools…" surface />}
-                session={toolsSession}
-                online={online}
-                busy={!!toolsSession.turn_active || !!toolsSnapshot?.pending}
-                changed={() => load(toolsSessionId)}
-              />
-            ) : (
-              <EmptyState>Open a conversation to choose its tools.</EmptyState>
-            )}
-          </Modal>
-        )}
-        {viewed && (
-          <ImageViewerDialog
-            image={viewed}
-            close={() => setViewed(null)}
-            annotate={session && online ? attachAnnotated : undefined}
-          />
-        )}
+        <Modals
+          store={snapshots}
+          modal={modal}
+          setModal={setModal}
+          inspector={inspector}
+          setInspector={setInspector}
+          viewed={viewed}
+          setViewed={setViewed}
+          annotate={session && online ? attachAnnotated : undefined}
+          selected={selected}
+          session={session}
+          catalogue={catalogue}
+          online={online}
+          compact={compact}
+          load={load}
+          refresh={refresh}
+          forget={forget}
+          report={report}
+          managementVersion={managementVersion}
+          projects={projects}
+          showContext={showContext}
+          folder={folder}
+          setFolder={setFolder}
+          create={create}
+          busy={busy}
+          preferences={{
+            theme,
+            setTheme,
+            timePrefs,
+            setTimePrefs,
+            zoom,
+            setZoom,
+            install,
+            setInstall,
+            update,
+            drafts,
+            uploading,
+            notificationMode,
+            setNotificationMode,
+            notifications,
+            logout,
+          }}
+        />
       </ImageViewer.Provider>
     </TimePrefsContext.Provider>
   );

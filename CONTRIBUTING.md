@@ -73,8 +73,9 @@ npm run build
 npm run notices
 ```
 
-Commit the rebuilt `web/dist` and `web/THIRD_PARTY_NOTICES.md`; CI fails when
-either differs from a fresh build.
+`web/dist` is build output and not committed; CI builds it once and embeds
+it in every native build. Commit `web/THIRD_PARTY_NOTICES.md` when
+dependencies change; CI fails when it differs from a fresh `npm run notices`.
 
 CI also runs cpplint and clang-tidy. Configure clang-tidy through the `tidy`
 preset: it disables the precompiled header, which another clang cannot read.

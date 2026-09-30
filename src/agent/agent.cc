@@ -5,6 +5,7 @@
 #include <sys/wait.h>
 
 #include <algorithm>
+#include <charconv>
 #include <cstdio>
 #include <filesystem>
 #include <memory>
@@ -15,6 +16,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/child_agent.h"
 #include "include/agent/jobs.h"
 #include "include/agent/memory_store.h"
 #include "include/agent/protocol.h"
@@ -26,6 +28,8 @@
 #include "include/core/debug.h"
 #include "include/core/events.h"
 #include "include/core/fs.h"
+#include "include/core/limits.h"
+#include "include/core/mailbox.h"
 #include "include/core/output_buffer.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
@@ -70,6 +74,24 @@ Agent::Agent(Api& api, std::vector<Tool>& tools, ProcessSupervisor& processes,
 }
 
 json Agent::DisplaySnapshot() const { return ConversationView(conversation_); }
+
+json Agent::RewindBefore(int64_t turn, const std::string& message_id) {
+  if (!message_id.empty()) {
+    uint64_t display_id = 0;
+    if (message_id.starts_with("m-")) {
+      std::from_chars(message_id.data() + 2,
+                      message_id.data() + message_id.size(), display_id);
+    }
+    turn = display_id ? conversation_.UserMessageNumber(display_id) : 0;
+  }
+  const std::string prompt = conversation_.UserMessageText(turn);
+  if (!conversation_.TruncateBeforeUserTurn(turn)) {
+    return {{"error", "that message is no longer in the live conversation"}};
+  }
+  ++revision_;
+  ++view_epoch_;
+  return {{"prompt", prompt}};
+}
 
 void Agent::PublishSideContext(const json* tools) {
   std::shared_ptr<const SideContext> prior;
@@ -340,23 +362,26 @@ json Agent::PreviewContext() {
 
 bool Agent::Save(const std::string& path, std::string& error) const {
   CreatePrivateDirectories(std::filesystem::path(path).parent_path());
-  if (!writer_.Acquire(CanonicalAccessPath(path).string() + ".lock", error,
-                       true)) {
+  if (!writer_.Acquire(SessionLockPath(path), error, true)) {
     return false;
   }
   SessionRecord record;
   // Named, not positional: fifteen fields across the two structs, several of
   // them adjacent same-typed strings and integers, so a field inserted in the
   // header would silently reassign the rest of the save.
-  record.metadata = {.cwd = CanonicalCwd(),
-                     .model = api_.RequestModel(),
-                     .session_id = session_id_,
-                     .turns = UserTurns(),
-                     .title = Utf8Prefix(FirstUserText(), 256),
-                     .custom_title = custom_title_,
-                     .parent_session_id = parent_session_id_,
-                     .forked_at_turn = forked_at_turn_,
-                     .forked_at_time = forked_at_time_};
+  record.metadata = {
+      .cwd = CanonicalCwd(),
+      .model = api_.RequestModel(),
+      .session_id = session_id_,
+      .turns = UserTurns(),
+      .title = Utf8Prefix(FirstUserText(), 256),
+      .custom_title = custom_title_,
+      .parent_session_id = parent_session_id_,
+      .forked_at_turn = forked_at_turn_,
+      .forked_at_time = forked_at_time_,
+      .delegation = OwnDelegation(),
+      .kind = JsonValue(session_role_, "kind", ""),
+      .thread = JsonValue(session_role_, "thread", json::object())};
   record.state = {
       .context_tokens = ContextUsed(),
       .context_window = api_.ctx_window,
@@ -368,18 +393,21 @@ bool Agent::Save(const std::string& path, std::string& error) const {
           adaptive_system_ ? adaptive_system_->mode : "overlay",
       .adaptive_system_revision =
           adaptive_system_ ? adaptive_system_->revision : 0,
-      .display = conversation_.DisplayMetadata()};
+      .display = conversation_.DisplayMetadata(),
+      .delivered_mail = delivered_mail_};
   SessionStoreStatus status = SessionStore::Save(path, record, &conversation_);
   if (!status.Ok()) {
     error = std::move(status.message);
     return false;
   }
+  // Only now is the mail part of the record a restart would load.
+  AckMail(MailboxIdFor(path), std::exchange(unacked_mail_, {}));
   return true;
 }
 
 bool Agent::Load(const std::string& path, const std::string& expected_cwd,
                  std::string& error) {
-  const auto lock_path = CanonicalAccessPath(path).string() + ".lock";
+  const auto lock_path = SessionLockPath(path);
   FileLease next;
   // Claim before reading; keep the current conversation owned on failure.
   if (!writer_.Owns(lock_path) && !next.Acquire(lock_path, error, true)) {
@@ -400,6 +428,7 @@ bool Agent::Load(const std::string& path, const std::string& expected_cwd,
   conversation_ = std::move(restored);
   PublishSideContext();
   last_sent_prompt_ = std::move(record.state.last_sent_prompt);
+  delivered_mail_ = std::move(record.state.delivered_mail);
   if (adaptive_system_) {
     adaptive_system_->instructions = std::move(record.state.adaptive_system);
     adaptive_system_->revision = record.state.adaptive_system_revision;
@@ -409,7 +438,7 @@ bool Agent::Load(const std::string& path, const std::string& expected_cwd,
     if (!adaptive_system_->instructions.empty()) {
       Emit(NoticeEvent(
           PresentationStatus::kNeutral,
-          "· self-directive revision " +
+          "self-directive revision " +
               std::to_string(adaptive_system_->revision) +
               " restored — /status to review, adapt_system to clear"));
     }
@@ -436,36 +465,6 @@ bool Agent::Load(const std::string& path, const std::string& expected_cwd,
   logged_msgs_ = 0;
   logged_schemas_.clear();
   turn_search_trace_.Reset();
-  ++revision_;
-  return true;
-}
-
-bool Agent::RewindToTurn(int64_t turn, std::string& error) {
-  if (turn <= 0) {
-    error = "rewind turn must be positive";
-    return false;
-  }
-  int64_t live = 0;
-  for (MessageKind kind : conversation_.Kinds()) {
-    if (kind == MessageKind::kUser || kind == MessageKind::kAttachment) ++live;
-  }
-  if (turn > live) {
-    error = "session holds fewer than " + std::to_string(turn) +
-            " user turns (older turns may be compacted)";
-    return false;
-  }
-  if (!conversation_.TruncateBeforeUserTurn(turn)) {
-    error = "session holds fewer than " + std::to_string(turn) + " user turns";
-    return false;
-  }
-  // Numbering restarts at the cut like a fork at the same turn, so the
-  // retried turn reuses its number instead of colliding with dropped ids.
-  total_user_turns_ = turn - 1;
-  turn_id_ = turn - 1;
-  logged_msgs_ = std::min(logged_msgs_, conversation_.Size());
-  PublishSideContext();
-  conversation_.RecordDisplay(
-      "reset-boundary", {{"turn", turn}, {"time", UtcStamp("%Y%m%dT%H%M%SZ")}});
   ++revision_;
   return true;
 }
@@ -628,15 +627,14 @@ json Agent::CompactionUserMessages(std::vector<uint64_t>* retained_ids) const {
 bool Agent::Compact(bool automatic, Usage* turn_usage) {
   if (MessageCount() < 2) {
     DebugLog("compact_skip", {{"reason", "empty"}, {"automatic", automatic}});
-    Emit(NoticeEvent(PresentationStatus::kNeutral, "· nothing to compact"));
+    Emit(NoticeEvent(PresentationStatus::kNeutral, "nothing to compact"));
     return false;
   }
   DebugLog("compact_start", {{"automatic", automatic},
                              {"messages", conversation_.Size()},
                              {"context_tokens", ContextUsed()}});
-  Emit(NoticeEvent(
-      PresentationStatus::kNeutral,
-      std::string("· ") + (automatic ? "auto-" : "") + "compacting…"));
+  Emit(NoticeEvent(PresentationStatus::kNeutral,
+                   std::string(automatic ? "auto-" : "") + "compacting…"));
   size_t source_bytes = JsonEstimatedBytes(conversation_.Messages());
   size_t messages_before = conversation_.Size();
   const auto compact_started = std::chrono::steady_clock::now();
@@ -676,7 +674,7 @@ bool Agent::Compact(bool automatic, Usage* turn_usage) {
       Emit(NoticeEvent(PresentationStatus::kFailed, r.error));
     } else {
       Emit(NoticeEvent(PresentationStatus::kNeutral,
-                       "· compaction rejected; context unchanged"));
+                       "compaction rejected; context unchanged"));
     }
     return false;
   }
@@ -716,7 +714,7 @@ bool Agent::Compact(bool automatic, Usage* turn_usage) {
                            {"retained_user_messages", retained_users.size()},
                            {"summary_chars", r.content.size()}});
   printf("\n");
-  Emit(NoticeEvent(PresentationStatus::kNeutral, "· compacted"));
+  Emit(NoticeEvent(PresentationStatus::kNeutral, "compacted"));
   return true;
 }
 
@@ -947,13 +945,11 @@ void Agent::ReportMemoryCompletion(BackgroundCompletion& completion) {
          {"status", warning ? "failed" : "completed"},
          {"turn_root", turn_root_}});
     Emit(Event{EventId::kMessageChanged, {{"block", block}}});
+    // The preview continues the notice, indented under its dot.
+    if (!event.preview.empty()) line += "\n  " + event.preview;
     Emit(NoticeEvent(
         warning ? PresentationStatus::kFailed : PresentationStatus::kNeutral,
         std::move(line), minor));
-    if (!event.preview.empty()) {
-      Emit(NoticeEvent(PresentationStatus::kNeutral, "  " + event.preview,
-                       minor));
-    }
   }
   DebugLog("memory_extract_finished", {{"activity_id", completion.activity_id},
                                        {"action", event.action},
@@ -1064,7 +1060,7 @@ void Agent::DeliverActivityCompletions(
             {"reduced", reduced}});
 }
 
-bool Agent::DrainBackground() {
+bool Agent::DrainBackground(bool* children_finished) {
   bool changed = false;
   // Take one snapshot. A memory child can become drainable at any instant; two
   // separate takes let the generic pass steal a child that completed just
@@ -1083,6 +1079,12 @@ bool Agent::DrainBackground() {
   if (delivered) {
     DeliverActivityCompletions(completions);
     changed = true;
+  }
+  if (children_finished) {
+    *children_finished = std::any_of(
+        completions.begin(), completions.end(), [](const auto& completion) {
+          return completion.kind == ActivityKind::kSubagent;
+        });
   }
   if (DrainAttachments()) changed = true;
   {
@@ -1116,7 +1118,7 @@ bool Agent::DrainAttachments() {
     // re-kinding would feed base64 to the summarizer. Only the attribution
     // differs, carried as a display fact the view projects as agent-side.
     std::string error;
-    json content = AttachmentContent("[attached on request]", sourced, error);
+    json content = AttachmentContent(kAttachedOnRequest, sourced, error);
     if (error.empty()) {
       conversation_.Push({{"role", "user"}, {"content", std::move(content)}},
                          MessageKind::kAttachment);
@@ -1152,7 +1154,7 @@ bool Agent::DrainAttachments() {
 
 bool Agent::DrainUserAttachments(std::vector<Attachment>& attachments) {
   std::string error;
-  json content = AttachmentContent("[attached on request]", attachments, error);
+  json content = AttachmentContent(kAttachedOnRequest, attachments, error);
   if (error.empty()) {
     conversation_.Push({{"role", "user"}, {"content", std::move(content)}},
                        MessageKind::kAttachment);
@@ -1165,7 +1167,7 @@ bool Agent::DrainUserAttachments(std::vector<Attachment>& attachments) {
 
 void Agent::ArchiveAll(const char* reason) {
   conversation_.ArchiveAll(reason, BaselineSize(), turn_id_,
-                           api_.config.session_archive_bytes);
+                           kSessionArchiveBytes);
 }
 
 void Agent::RebuildToolSchemas() {

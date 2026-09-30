@@ -7,6 +7,8 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/session_role.h"
+#include "include/agent/session_store.h"
 #include "include/app/session.h"
 #include "include/core/json.h"
 
@@ -23,8 +25,13 @@ HostReplay ReplayLog::Publish(const std::string& epoch,
   const std::string kind = JsonValue(value, "kind", "");
   HostNotice notice;
   notice.session = session;
-  if (type == "turn.completed" || type == "approval.requested" ||
-      type == "error" || kind == "error") {
+  // A decision routed to a thread's coordinator reaches a person only once
+  // the coordinator yields it (approval.escalated).
+  const bool routed = JsonValue(JsonValue(value, "data", json::object()),
+                                "route", "") == kRouteCoordinator;
+  if (type == "turn.completed" ||
+      ((type == "approval.requested" || type == "ask.requested") && !routed) ||
+      type == "approval.escalated" || type == "error" || kind == "error") {
     notice.attention_id = epoch + ":" + std::to_string(sequence_ + 1);
     value["attention_id"] = notice.attention_id;
   }

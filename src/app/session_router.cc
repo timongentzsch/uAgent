@@ -9,6 +9,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/session_role.h"
 #include "include/agent/session_view.h"
 #include "include/app/library.h"
 #include "include/app/schedule.h"
@@ -34,15 +35,24 @@ SessionCommandResult SessionHost::ExecuteCommand(
   const SessionCommandKind kind =
       ParseSessionCommandKind(JsonValue(command, "kind", ""));
   if (kind == SessionCommandKind::kCreate) {
-    std::error_code ec;
-    auto cwd = std::filesystem::canonical(JsonValue(command, "cwd", ""), ec);
-    if (ec || !std::filesystem::is_directory(cwd, ec)) {
+    const auto resolved = CanonicalDirectory(JsonValue(command, "cwd", ""));
+    if (!resolved) {
       result.error = "choose an accessible directory on the host";
       return result;
     }
-    auto path = UagentDir(kHistoryDir) + "/" + WorkspaceId(cwd.string()) +
-                "/web-" + RandomToken(16) + ".json";
+    const std::filesystem::path& cwd = *resolved;
+    // A folder has one coordinator: asking for it again returns it.
+    const bool coordinator = JsonValue(command, "coordinator", false);
+    auto path = coordinator
+                    ? CoordinatorPath(cwd.string())
+                    : UagentDir(kHistoryDir) + "/" + WorkspaceId(cwd.string()) +
+                          "/web-" + RandomToken(16) + ".json";
+    if (auto known = sessions_.find(HashHex(path)); known != sessions_.end()) {
+      result.outcome["session"] = Metadata(*known->second);
+      return result;
+    }
     auto session = CreateSession(cwd.string(), path, "", result.error);
+    if (session && coordinator) session->kind = kSessionKindCoordinator;
     if (session) {
       result.wake = true;
       result.outcome["session"] = Metadata(*session);
@@ -60,17 +70,13 @@ SessionCommandResult SessionHost::ExecuteCommand(
     result.error = "conversation update in progress";
     return result;
   }
-  if ((kind == SessionCommandKind::kFork ||
-       kind == SessionCommandKind::kRewind) &&
-      command.contains("argument")) {
+  if (kind == SessionCommandKind::kFork && command.contains("argument")) {
     // Browser clients send the typed argument; the grammar lives natively.
-    // Rewind shares /fork's [@]TURN and takes no title.
     const ForkArgument parsed =
         ParseForkArgument(JsonValue(command, "argument", ""));
     command.erase("argument");
-    const bool fork = kind == SessionCommandKind::kFork;
-    if (fork) command["title"] = parsed.title;
-    command["turn"] = fork || parsed.title.empty() ? parsed.turn : 0;
+    command["title"] = parsed.title;
+    command["turn"] = parsed.turn;
   }
   if (kind == SessionCommandKind::kFork && session->pid <= 0) {
     if (JsonValue(command, "generation", "") != session->generation) {
@@ -81,8 +87,9 @@ SessionCommandResult SessionHost::ExecuteCommand(
       lock.unlock();
       json fork =
           SessionStore::Fork(session->path, JsonValue(command, "title", ""),
-                             false, JsonValue(command, "turn", int64_t{0}));
-      if (RefreshCatalogue(true)) changed_.notify_all();
+                             false, JsonValue(command, "turn", int64_t{0}),
+                             JsonValue(command, "message_id", ""));
+      RefreshCatalogue(true);
       lock.lock();
       result.outcome["result"] = fork;
       result.error = JsonValue(fork, "error", "");

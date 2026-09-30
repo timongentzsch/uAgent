@@ -150,9 +150,8 @@ std::vector<Skill> DiscoverSkills(const std::filesystem::path& cwd) {
       // The directory name wins: it is what the model names, and it cannot
       // collide with another skill or carry a path separator.
       std::string name = SafeFileComponent(dir.filename().string());
-      description = Utf8Trunc(std::move(description),
-                              static_cast<size_t>(SkillDescriptionBytes()));
-      argument_hint = Utf8Trunc(OneLine(argument_hint), 128);
+      description = Utf8Trunc(std::move(description), kSkillDescriptionBytes);
+      argument_hint = OneLine(argument_hint, 128);
       Skill skill{name,
                   description,
                   dir.string(),
@@ -180,7 +179,7 @@ std::vector<Skill> SelectSkills(std::vector<Skill> discovered) {
     if (SkillExcluded(skill.name) || Trim(skill.description).empty()) continue;
     std::erase_if(selected,
                   [&](const Skill& prior) { return prior.name == skill.name; });
-    if (static_cast<int64_t>(selected.size()) >= MaxSkills()) {
+    if (selected.size() >= kMaxSkills) {
       selected.erase(selected.begin());
     }
     selected.push_back(std::move(skill));
@@ -197,11 +196,10 @@ SkillReadResult ReadSkillBody(const Skill& skill,
   std::ifstream input(skill.path, std::ios::binary);
   if (!input) return {false, "error: cannot read " + skill.path};
   ParseSkillFrontMatter(input);
-  size_t cap = static_cast<size_t>(SkillBodyBytes());
   std::string body;
-  if (ReadBounded(input, cap, body)) {
-    return {false, "error: " + skill.path + " exceeds " + std::to_string(cap) +
-                       " bytes; raise UAGENT_SKILL_BYTES to load it fully"};
+  if (ReadBounded(input, kSkillBodyBytes, body)) {
+    return {false, "error: " + skill.path + " exceeds " +
+                       std::to_string(kSkillBodyBytes) + " bytes"};
   }
   if (Trim(body).empty()) {
     return {false, "error: " + skill.path + " has no body"};

@@ -3,7 +3,6 @@
 #include "include/app/config_proposal.h"
 
 #include <cctype>
-#include <fstream>
 #include <map>
 #include <set>
 #include <string>
@@ -25,11 +24,9 @@ namespace {
 constexpr auto kProposalLifetime = std::chrono::minutes(5);
 
 std::string ReadFileBytes(const std::string& path, bool& existed) {
-  std::ifstream file(path, std::ios::binary);
-  existed = file.good();
-  if (!existed) return {};
-  return std::string(std::istreambuf_iterator<char>(file),
-                     std::istreambuf_iterator<char>());
+  std::optional<std::string> text = ReadFile(path, kEditFileBytes);
+  existed = text.has_value();
+  return text.value_or("");
 }
 
 // A neighbouring line in the diff may assign a secret this change does not

@@ -37,10 +37,11 @@ function renderers() {
         cache: `${RENDERERS}${(revision >>> 0).toString(16)}`,
       };
     })
-    .catch(() => ({
-      assets: new Set<string>(),
-      cache: `${RENDERERS}empty`,
-    })));
+    .catch(() => {
+      // A failed read is retried next time, never remembered as the list.
+      rendererConfig = undefined;
+      return { assets: new Set<string>(), cache: `${RENDERERS}empty` };
+    }));
 }
 async function cacheRenderers(paths: unknown) {
   const { assets, cache: cacheName } = await renderers();
@@ -77,7 +78,9 @@ registerRoute(
 );
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    renderers().then(async ({ cache }) => {
+    renderers().then(async ({ assets, cache }) => {
+      // Without the current list nothing can be told stale.
+      if (!assets.size) return;
       for (const name of await caches.keys())
         if (name.startsWith(RENDERERS) && name !== cache)
           await caches.delete(name);

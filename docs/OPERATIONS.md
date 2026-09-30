@@ -20,28 +20,28 @@ fixed in the binary.
 | Concern | Default | Setting |
 | --- | --- | --- |
 | first event / stream idle / request | 300 s / 300 s / 600 s | `UAGENT_FIRST_EVENT_TIMEOUT`, `UAGENT_STREAM_IDLE_TIMEOUT`, `UAGENT_REQUEST_TIMEOUT` |
-| request / response size | 64 / 32 MiB | `UAGENT_REQUEST_BYTES`, `UAGENT_RESPONSE_BYTES` |
+| request / response size | 64 / 32 MiB | |
 | turn wall clock, rounds, tool calls | unlimited | `UAGENT_MAX_TURN_SECONDS`, `UAGENT_MAX_STEPS`, `UAGENT_MAX_TOOL_CALLS` |
 | turn generated tokens / reported cost | unlimited | `UAGENT_MAX_TURN_TOKENS`, `UAGENT_MAX_TURN_COST` |
 | session generated tokens / reported cost | unlimited | `UAGENT_SESSION_TOKEN_BUDGET` (`--token-budget`), `UAGENT_SESSION_BUDGET` (`--budget`) |
 | one tool call | 30 s; `run`, `scratch`, `activity` are bounded by the turn | `UAGENT_TOOL_TIMEOUT` |
 | tool result / parallel batch | 8,000 / 16,000 characters | `UAGENT_TOOL_RESULT_CHARS` (batch is twice the result cap) |
-| `read_path` | 1,000 lines, at most 10,000 lines or 32 KiB | `UAGENT_READ_FILE_LINES`, `UAGENT_READ_FILE_MAX_LINES`, `UAGENT_READ_FILE_BYTES` |
-| `grep` | 200 matches | `UAGENT_GREP_RESULTS` |
-| trace pruning | newest 64 KiB protected; results from 32 KiB pruned | `UAGENT_TOOL_TRACE_PROTECT_CHARS`, `UAGENT_TOOL_TRACE_PRUNE_MIN_CHARS` |
+| `read_path` | 1,000 lines, at most 10,000 lines or 32 KiB | `UAGENT_READ_FILE_LINES` (default only) |
+| `grep` | 200 matches | |
+| trace pruning | newest 64 KiB protected; results from 32 KiB pruned | |
 | automatic compaction | 85% of projected context | `UAGENT_AUTO_COMPACT_PCT`, `UAGENT_AUTO_COMPACT_TOKENS` |
-| compacted-trace archive | 16 MiB | `UAGENT_SESSION_ARCHIVE_BYTES` |
+| compacted-trace archive | 16 MiB | |
 | background jobs / foreground tool workers | 8 / 4 | `UAGENT_MAX_BACKGROUND_JOBS`, `UAGENT_TOOL_CONCURRENCY` |
-| `run` initial wait | 10 s; `yield_ms` 250–30,000, or 0 to wait for exit | `UAGENT_RUN_YIELD_MS` |
+| `run` initial wait | 10 s; `yield_ms` 250–30,000, or 0 to wait for exit | |
 | activity output buffer | 1 MiB, equal head and tail | |
 | retained finished activities | 16 | |
 | subagent completion in context | 6,000 characters each, 12 KiB per batch | |
 | delegation depth / rounds / tool calls per child | 2 / 100 / 240 | `UAGENT_SUBAGENT_DEPTH`, `UAGENT_SUBAGENT_MAX_STEPS`, `UAGENT_SUBAGENT_MAX_TOOL_CALLS` |
-| subagent launches per turn / persistent sidekicks | 32 / 3 | `UAGENT_SUBAGENT_CALLS_PER_TURN`, `UAGENT_PERSISTENT_MAX` |
-| memory size / count per scope / always-on slice | 2 KiB / 32 / 2 KiB | `UAGENT_MEMORY_BYTES`, `UAGENT_MEMORY_FILES`, `UAGENT_MEMORY_ALWAYS_BYTES` |
-| memory extraction | 32 KiB of one session after 6 idle hours | `UAGENT_MEMORY_EXTRACT_BYTES`, `UAGENT_MEMORY_IDLE_SECONDS` |
+| subagent launches per turn | 32 | |
+| memory size / count per scope / always-on slice | 2 KiB / 32 / 2 KiB | |
+| memory extraction | 32 KiB of one session after 6 idle hours | `UAGENT_MEMORY_IDLE_SECONDS` |
 | memory event audit | 256 KiB | |
-| skill body / discovery depth | 512 KiB / 6 directories | `UAGENT_SKILL_BYTES` |
+| skill body / discovery depth | 512 KiB / 6 directories | |
 | CLI attachment / web upload | 10 / 8 MiB | `UAGENT_ATTACHMENT_MB` |
 | input history / paste | 200 entries of 16 KiB / 64 KiB | |
 | MCP call / optional-server startup | 60 s / 2 s shared | `UAGENT_MCP_TIMEOUT`, `UAGENT_MCP_STARTUP_GRACE` |
@@ -167,8 +167,8 @@ advertise it.
 - `roots/list` is answered through `input_required` continuations, at most
   eight per call. Tool-list changes arrive over one `subscriptions/listen`
   stream per server. A timed-out request sends `notifications/cancelled`.
-- Server stderr goes to a rotating log under `~/.uagent/mcp/`, bounded by
-  `UAGENT_MCP_LOG_BYTES`. Errors without text point to that log.
+- Server stderr goes to a rotating log under `~/.uagent/mcp/`, bounded at
+  16 MiB. Errors without text point to that log.
 - Not supported: HTTP transport, sampling, elicitation, task extensions,
   `$ref` and output-schema validation, and automatic restart of exited servers.
 

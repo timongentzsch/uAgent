@@ -21,6 +21,8 @@ extern char** environ;
 #include <vector>
 
 #include "include/agent/jobs.h"
+#include "include/agent/session_role.h"
+#include "include/agent/session_store.h"
 #include "include/app/bootstrap.h"
 #include "include/app/control.h"
 #include "include/app/options.h"
@@ -80,6 +82,7 @@ void InitializeProcess() {
   }
   g_tty = isatty(STDOUT_FILENO);
   g_color = ResolveColorEnabled(g_tty);
+  g_attributes = ResolveAttributesEnabled(g_tty);
   // Without a multibyte locale every non-ASCII character measures zero
   // columns, so glyphs are only safe to emit once one is in effect.
   g_unicode = EnsureUtf8Ctype() && ResolveUnicodeEnabled();
@@ -137,7 +140,10 @@ int Main(int argc, char** argv) {
 #endif
   Observability observability;
   SetObservability(&observability);
-  ParsedOptions parsed = ParseOptions(argc, argv);
+  // `uagent coord` opens the folder's coordinator; the rest are its options.
+  const bool coordinator = argc > 1 && std::string_view(argv[1]) == "coord";
+  ParsedOptions parsed =
+      coordinator ? ParseOptions(argc - 1, argv + 1) : ParseOptions(argc, argv);
   if (!parsed.Ok()) {
     if (parsed.options.json_stream) observability.StartJsonStream();
     return Fail(parsed.options.json_stream, parsed.options.json, parsed.error,
@@ -176,10 +182,8 @@ int Main(int argc, char** argv) {
     HeadlessOutput silence;
     if (!silence.Silence()) return 1;
     auto boot = Bootstrap(std::move(parsed.options), argv[0], observability);
-    json result =
-        boot.Ok()
-            ? boot.context->agent->PromptConfiguration({{"action", "show"}})
-            : json{{"error", boot.error}};
+    json result = boot.Ok() ? boot.context->agent->PromptPreview()
+                            : json{{"error", boot.error}};
     boot.context.reset();
     silence.Restore();
     printf("%s\n",
@@ -191,6 +195,19 @@ int Main(int argc, char** argv) {
     return result.contains("error") ? 1 : 0;
   }
   const bool json_stream = parsed.options.json_stream;
+  if (coordinator) {
+    if (parsed.options.web || json_stream || parsed.options.resume_latest ||
+        parsed.options.resume_pick ||
+        (parsed.options.json && parsed.options.prompt.empty())) {
+      fprintf(stderr, "uagent coord takes session options, -p and --json\n");
+      return 2;
+    }
+    parsed.options.session = {{"kind", kSessionKindCoordinator}};
+    if (!parsed.options.prompt.empty()) {
+      return session::CoordinatorPromptMain(parsed.options);
+    }
+    return session::TerminalMain(std::move(parsed.options));
+  }
   if (parsed.options.web) {
 #ifdef UAGENT_WEB
     if (!parsed.options.prompt.empty() || parsed.options.json || json_stream ||
@@ -228,12 +245,10 @@ int Main(int argc, char** argv) {
       fprintf(stderr, "web bind must be 127.0.0.1 or 0.0.0.0\n");
       return 2;
     }
-    int64_t idle = 15;
-    ParseInt64(setting("UAGENT_BROWSER_IDLE_MINUTES", "15").c_str(), idle);
     return web::MasterMain(
         {static_cast<int>(port), setting("UAGENT_WEB_ORIGIN"),
          setting("UAGENT_WEB_PUSH_CONTACT"), bind,
-         setting("UAGENT_BROWSER_DATA"), std::max<int64_t>(0, idle)},
+         setting("UAGENT_BROWSER_DATA")},
         argv);
 #else
     fprintf(stderr, "this build has no web support (UAGENT_WEB=OFF)\n");

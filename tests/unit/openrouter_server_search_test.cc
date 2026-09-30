@@ -9,6 +9,7 @@
 #include "include/api/citations.h"
 #include "include/api/retry.h"
 #include "include/api/stream.h"
+#include "include/core/limits.h"
 #include "include/tools/web_fetch.h"
 #include "include/tools/web_search.h"
 #include "include/ui/display.h"
@@ -173,30 +174,6 @@ void TestOpenRouterServerSearch() {
           usage_case.output + usage_case.reasoning);
   }
 
-  // The status row is one ordered list: everything fits when there is room,
-  // and the least valuable segments go first when there is not.
-  Usage status_usage;
-  status_usage.input = 1200000;
-  status_usage.output = 45300;
-  status_usage.cache_read = 3100000;
-  status_usage.cost = 0.31;
-  StatusView status_view{.context_used = 4700,
-                         .context_window = 1000000,
-                         .model = "openrouter/vendor/model:high",
-                         .approval = "yolo"};
-  setenv("COLUMNS", "200", 1);
-  std::string wide = StatusBar(status_usage, status_view);
-  CHECK(wide.find("ctx 4.7k/1M") != std::string::npos);
-  CHECK(wide.find("1.2M in · 45.3k out") != std::string::npos);
-  CHECK(wide.find("cache 72%") != std::string::npos);
-  CHECK(wide.find("openrouter/vendor/model:high") != std::string::npos);
-  CHECK(wide.find("YOLO") != std::string::npos);
-  // An unknown context window degrades to the used figure alone.
-  status_view.context_window = 0;
-  CHECK(StatusBar(status_usage, status_view).find("ctx 4.7k ") !=
-        std::string::npos);
-  unsetenv("COLUMNS");
-
   RuntimeConfig search_config;
   // A provider-scoped selection is a route of its own: endpoint, key and model
   // all come from it, and the :effort suffix beats the session default.
@@ -282,9 +259,9 @@ void TestOpenRouterServerSearch() {
   CHECK(openrouter_body["max_tool_calls"] == 3);
   UsageAccumulator side_usage;
   Tool search_tool = WebSearchTool(api, side_usage, {});
-  // The configured budget bounds one attempt; the tool deadline covers all of
+  // The request budget bounds one attempt; the tool deadline covers all of
   // them, or a retry would be cancelled before it ran.
-  CHECK(search_tool.timeout_s == config.web_search_timeout_s * kSideAttempts);
+  CHECK(search_tool.timeout_s == kWebSearchTimeoutSeconds * kSideAttempts);
   CHECK(search_tool.parameters["properties"]["queries"]["maxItems"] == 3);
   CHECK(search_tool.parameters["required"] == json::array({"queries"}));
   CHECK(!search_tool.parameters["properties"].contains("query"));

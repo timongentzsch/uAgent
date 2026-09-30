@@ -551,6 +551,14 @@ def descendant_pids(root_pid):
     return found
 
 
+def fnv1a64(text):
+    """The native workspace hash (FNV-1a, 64 bit) as 16 hex digits."""
+    value = 1469598103934665603
+    for byte in text.encode():
+        value = ((value ^ byte) * 1099511628211) & ((1 << 64) - 1)
+    return f"{value:016x}"
+
+
 def wait_until(predicate, message, timeout=30, interval=0.02):
     """Poll until predicate() holds, or fail the test with message."""
     deadline = time.monotonic() + budget(timeout)
@@ -584,6 +592,7 @@ def write_session(
         "session_id": name,
         "turns": len(messages),
         "title": name,
+        "cost": (usage or {}).get("cost", 0),
     }
     fields.update(header)
     payload = {
@@ -609,10 +618,6 @@ def function_tools(body):
 
 def function_names(body):
     return {tool["name"] for tool in function_tools(body)}
-
-
-def function_tool(body, name):
-    return next(tool for tool in function_tools(body) if tool["name"] == name)
 
 
 def large_json_command():

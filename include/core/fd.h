@@ -7,6 +7,7 @@
 
 #include <fcntl.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/un.h>
 #include <unistd.h>
 
@@ -58,6 +59,31 @@ class Fd {
  private:
   int fd_ = -1;
 };
+
+// Marks `fd` close-on-exec; false when it cannot.
+inline bool CloseOnExec(int fd) {
+  const int flags = fcntl(fd, F_GETFD);
+  return flags >= 0 && fcntl(fd, F_SETFD, flags | FD_CLOEXEC) == 0;
+}
+
+// A close-on-exec socket listening at `path`, owner-only, replacing a stale
+// socket file there; empty on failure. The caller owns the path (a lease) and
+// keeps it in a private directory, so the moment before chmod exposes nothing.
+inline Fd ListenUnix(const std::string& path, int backlog) {
+  sockaddr_un address{};
+  address.sun_family = AF_UNIX;
+  if (path.empty() || path.size() >= sizeof(address.sun_path)) return {};
+  path.copy(address.sun_path, path.size());
+  Fd fd(socket(AF_UNIX, SOCK_STREAM, 0));
+  if (!fd || !CloseOnExec(fd.Get())) return {};
+  unlink(path.c_str());
+  if (bind(fd.Get(), reinterpret_cast<sockaddr*>(&address), sizeof(address)) !=
+          0 ||
+      chmod(path.c_str(), 0600) != 0 || listen(fd.Get(), backlog) != 0) {
+    return {};
+  }
+  return fd;
+}
 
 // A blocking, close-on-exec stream connection to a local socket path; empty
 // when the path does not fit or nobody is listening.

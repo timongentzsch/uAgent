@@ -67,7 +67,6 @@ export default function ConversationActions({
         }
       }}
     >
-      {error && <LoadError error={error} />}
       {modal.type === "rename" ? (
         <label>
           Conversation name
@@ -91,11 +90,12 @@ export default function ConversationActions({
             : ""}
         </p>
       )}
+      {error && <LoadError error={error} />}
       <Actions>
         <Button onClick={close}>Cancel</Button>
         <Button
           type="submit"
-          variant="primary"
+          variant={modal.type === "delete" ? "destructive" : "primary"}
           disabled={
             !online || busy || (modal.type === "rename" && !title.trim())
           }

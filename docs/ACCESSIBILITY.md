@@ -50,10 +50,33 @@ implies it.
 
 ## Web app
 
-- Native `<dialog>` sheets and a popover menu, so focus, Escape and the
-  top layer come from the browser.
-- `prefers-reduced-motion` disables the sheet and drawer animations.
-- The ask form follows the ARIA radio and checkbox group patterns.
+The app targets WCAG 2.2 AA, checked with axe-core on every surface a person
+meets.
+
+- **Zoom and contrast.** The viewport never forbids zoom, and the in-app
+  text size goes from 50 to 200%. Field, switch and option edges have a
+  3:1 or better border (`--field-border`), and muted text is at least 4.5:1
+  on every surface it sits on. `prefers-contrast: more` switches to a
+  higher-contrast palette. In forced colours (Windows High Contrast),
+  switches, the current item, pressed buttons and status lights keep their
+  meaning through system colours and shape: a failed light is square.
+- **Announcements.** A screen reader hears the edges of a turn
+  ("Responding", "Needs your input", "Response complete"), never each
+  streamed token. The transcript is a log that is busy while a turn runs. A
+  new decision is an alert and takes focus, unless you are typing. Failures
+  are alerts.
+- **Names.** Each message is named by its author and time ("You, 10:32"),
+  each row menu "Actions for …", and diffs summarise their `+N −M`. Failed
+  tool rows say "Failed" in text and by icon, not only by colour.
+- **Keyboard.** A skip link leads to the conversation. Menus open with the
+  arrow keys on their button, jump by first letter, and close with Tab. The
+  composer is a combobox that announces how many suggestions it has. Image
+  markup places pins with the arrow keys and Enter. The remote browser
+  screen has zoom and scroll buttons.
+- **Structure.** Sheets are native `<dialog>`s and menus are popovers, so
+  focus, Escape and the top layer come from the browser. Markdown headings
+  sit below the page's own. `prefers-reduced-motion` turns off the sheet and
+  drawer animations.
 
 ## Tests
 
@@ -63,3 +86,4 @@ implies it.
 | Plain row marks | `presentation_test.cc` |
 | `NO_COLOR` keeps attributes | `test_no_color_keeps_bold_italic_and_dim` |
 | ASCII fallback | `test_non_utf8_locale_draws_only_ascii` |
+| Web: no axe WCAG 2.2 AA violations in chat, decisions, ask, settings, the drawer; keyboard menus, skip link, forced-colours switch; axe absent from `dist/` | `web/tests/a11y.spec.js` |

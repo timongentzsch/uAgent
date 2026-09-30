@@ -168,10 +168,7 @@ textarea {
 }
 button,
 .file-button,
-.button-link {
-  border: 1px solid transparent;
-  background: var(--raised);
-}
+.button-link,
 input,
 select,
 textarea {
@@ -742,13 +739,11 @@ dialog.sidebar:not([open]) {
   display: grid;
   align-content: start;
   gap: var(--space-3);
+  font-size: var(--font-small);
 }
 .coordinator-help h3 {
   font-size: var(--font-small);
   font-weight: 600;
-}
-.coordinator-help-body {
-  font-size: var(--font-small);
 }
 .coordinator-help p {
   color: var(--muted);
@@ -1436,10 +1431,6 @@ dialog {
   max-height: max(0px, calc(var(--content-height) - 2 * var(--dialog-gutter)));
   overflow: hidden;
 }
-dialog[open] {
-  display: flex;
-  flex-direction: column;
-}
 dialog[data-size="medium"] {
   --dialog-width: calc(700rem / 14);
 }
@@ -1783,6 +1774,8 @@ dialog section {
    below on a phone) and the drawer from the left. `data-leaving` is set by
    Modal while it animates out (see shared/motion.ts). */
 dialog[open] {
+  display: flex;
+  flex-direction: column;
   transition:
     opacity var(--motion-base) var(--ease-out),
     translate var(--motion-slow) var(--ease-out);

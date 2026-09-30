@@ -14,10 +14,16 @@
      double up between header variants. */
   margin: 0;
 }
-/* Drawn in the other palette (see style.css). */
+/* Drawn in the other palette (see style.css), on one line: the prompt,
+   then status, time and menu. Inheritance still flows through the
+   display: contents header. */
 .message.user {
   background: var(--bg);
   color: var(--text);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: var(--gap);
 }
 .message.turn-start {
   /* Additive over the column gap (never collapsing), so turn boundaries
@@ -30,14 +36,6 @@
   gap: var(--gap);
   min-height: var(--control);
   font-size: var(--font-micro);
-}
-/* One line: the prompt, then status, time and menu. Inheritance still
-   flows through the display: contents header. */
-.message.user {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  column-gap: var(--gap);
 }
 .message.user > header {
   display: contents;

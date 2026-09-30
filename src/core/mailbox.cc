@@ -2,7 +2,6 @@
 
 #include "include/core/mailbox.h"
 
-#include <fcntl.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -16,12 +15,6 @@
 #include <string>
 #include <utility>
 #include <vector>
-
-#if defined(__APPLE__)
-#include <sys/event.h>
-#elif defined(__linux__)
-#include <sys/inotify.h>
-#endif
 
 #include "include/core/fs.h"
 #include "include/core/limits.h"
@@ -259,41 +252,11 @@ void RecoverMail(const std::string& id) {
 
 MailboxWatch::MailboxWatch(const std::string& id) {
   const std::string dir = MailboxDir(id);
-  if (dir.empty()) return;
-  const std::string pending = dir + "/new";
-#if defined(__linux__)
-  Fd watcher(inotify_init1(IN_NONBLOCK | IN_CLOEXEC));
-  if (watcher && inotify_add_watch(watcher.Get(), pending.c_str(),
-                                   IN_MOVED_TO | IN_CLOSE_WRITE) >= 0) {
-    fd_ = std::move(watcher);
+  NativeWatch watch;
+  if (!dir.empty() &&
+      watch.Watch(dir + "/new", NativeWatch::Events::kArrivals)) {
+    watch_ = std::move(watch);
   }
-#elif defined(__APPLE__)
-  Fd queue(kqueue());
-  Fd folder(open(pending.c_str(), O_EVTONLY | O_CLOEXEC));
-  if (!queue || !folder) return;
-  fcntl(queue.Get(), F_SETFD, FD_CLOEXEC);
-  struct kevent change;
-  EV_SET(&change, folder.Get(), EVFILT_VNODE, EV_ADD | EV_CLEAR, NOTE_WRITE, 0,
-         nullptr);
-  if (kevent(queue.Get(), &change, 1, nullptr, 0, nullptr) == 0) {
-    fd_ = std::move(queue);
-    directory_ = std::move(folder);
-  }
-#endif
-}
-
-void MailboxWatch::Drain() const {
-  if (!fd_) return;
-#if defined(__linux__)
-  char buffer[4096];
-  while (read(fd_.Get(), buffer, sizeof buffer) > 0) {
-  }
-#elif defined(__APPLE__)
-  struct kevent event;
-  timespec immediately = {0, 0};
-  while (kevent(fd_.Get(), nullptr, 0, &event, 1, &immediately) > 0) {
-  }
-#endif
 }
 
 }  // namespace uagent

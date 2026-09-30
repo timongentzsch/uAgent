@@ -13,7 +13,7 @@
 #include <string>
 #include <vector>
 
-#include "include/core/fd.h"
+#include "include/core/file_watch.h"
 #include "include/core/json.h"
 
 namespace uagent {
@@ -81,14 +81,11 @@ const char* MailDeliveryName(MailDelivery delivery);
 class MailboxWatch {
  public:
   explicit MailboxWatch(const std::string& id);
-  int Get() const { return fd_.Get(); }
-  void Drain() const;
+  int Get() const { return watch_.Get(); }
+  void Drain() const { watch_.Drain(); }
 
  private:
-  Fd fd_;
-  // The watched directory on kqueue, which watches descriptors: it must stay
-  // open as long as the watch does, and close with it.
-  Fd directory_;
+  NativeWatch watch_;
 };
 
 }  // namespace uagent

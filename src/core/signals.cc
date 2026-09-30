@@ -8,13 +8,13 @@
 
 #include <array>
 #include <atomic>
-#include <cerrno>
 #include <mutex>
 #include <string>
 #include <thread>
 #include <utility>
 
 #include "include/core/env.h"
+#include "include/core/fd.h"
 #include "include/core/platform.h"
 #include "include/core/term.h"
 
@@ -104,11 +104,7 @@ void InitializeNotificationsOnce() {
     g_child_wakes->dispatcher = std::thread([] {
       pollfd event = {g_child_dispatch_read, POLLIN, 0};
       while (!g_child_wakes->stopping.load(std::memory_order_relaxed)) {
-        int ready;
-        do {
-          ready = poll(&event, 1, -1);
-        } while (ready < 0 && errno == EINTR);
-        if (ready <= 0) continue;
+        if (PollRetry(&event, 1, -1) <= 0) continue;
         DrainDescriptor(g_child_dispatch_read);
         if (g_child_wakes->stopping.load(std::memory_order_relaxed)) break;
         std::lock_guard<std::mutex> lock(g_child_wakes->mutex);

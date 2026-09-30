@@ -1,9 +1,63 @@
 import "./command-suggestions.css";
 import { useLayoutEffect, useRef, useState } from "preact/hooks";
-import type { JSX, RefObject } from "preact";
+import type { ComponentChildren, JSX, Ref, RefObject } from "preact";
 import type { SlashCommand } from "../../shared/types.ts";
 import { slashCompletion, slashMatches } from "./slash.ts";
 import { Button } from "../../shared/ui.tsx";
+import { nextIndex, plainKey } from "../../shared/listbox-nav.ts";
+
+// What picking a command puts in the composer: a space follows when it
+// takes an argument.
+const completionOf = (entry: SlashCommand) =>
+  entry.command + (entry.argument ? " " : "");
+
+// Options over the composer: the textarea keeps focus and names the
+// active option (`${prefix}-${position}`) as its active descendant.
+export function SuggestionList<T>({
+  id,
+  label,
+  prefix,
+  items,
+  index,
+  pick,
+  keyOf,
+  listRef,
+  children,
+}: {
+  id: string;
+  label: string;
+  prefix: string;
+  items: T[];
+  index: number;
+  pick: (item: T) => void;
+  keyOf?: (item: T) => string;
+  listRef?: Ref<HTMLDivElement>;
+  children: (item: T) => ComponentChildren;
+}) {
+  return (
+    <div
+      id={id}
+      class="command-suggestions"
+      role="listbox"
+      aria-label={label}
+      ref={listRef}
+    >
+      {items.map((item, position) => (
+        <Button
+          key={keyOf?.(item)}
+          role="option"
+          id={`${prefix}-${position}`}
+          aria-selected={position === index}
+          tabIndex={-1}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => pick(item)}
+        >
+          {children(item)}
+        </Button>
+      ))}
+    </div>
+  );
+}
 
 export function useCommandSuggestions(
   commands: SlashCommand[],
@@ -31,35 +85,17 @@ export function useCommandSuggestions(
       ?.scrollIntoView({ block: "nearest" });
   }, [index]);
   function keyDown(event: JSX.TargetedKeyboardEvent<HTMLTextAreaElement>) {
-    if (
-      !matches.length ||
-      event.isComposing ||
-      event.keyCode === 229 ||
-      event.shiftKey ||
-      event.ctrlKey ||
-      event.metaKey ||
-      event.altKey
-    )
+    if (!matches.length || event.keyCode === 229 || !plainKey(event))
       return false;
     if (event.key === "Escape") dismiss(text);
     else if (event.key === "ArrowDown" || event.key === "ArrowUp")
-      select({
-        text,
-        index:
-          (index +
-            (event.key === "ArrowDown" ? 1 : index < 0 ? 0 : -1) +
-            matches.length) %
-          matches.length,
-      });
+      select({ text, index: nextIndex(index, event.key, matches.length) });
     else if (event.key === "Tab") {
-      const value = active
-        ? active.command + (active.argument ? " " : "")
-        : slashCompletion(matches);
+      const value = active ? completionOf(active) : slashCompletion(matches);
       if (value !== text) change(value);
       if (active || matches.length === 1) dismiss(value);
     } else if (event.key === "Enter" && active) {
-      if (!event.repeat)
-        complete(active.command + (active.argument ? " " : ""));
+      if (!event.repeat) complete(completionOf(active));
     } else return false;
     event.preventDefault();
     return true;
@@ -77,29 +113,22 @@ export function useCommandSuggestions(
       onBlur: () => focus(false),
     },
     list: matches.length > 0 && (
-      <div
+      <SuggestionList
         id="command-suggestions"
-        class="command-suggestions"
-        role="listbox"
-        aria-label="Slash commands"
-        ref={list}
+        label="Slash commands"
+        prefix="command"
+        items={matches}
+        index={index}
+        pick={(entry) => complete(completionOf(entry))}
+        listRef={list}
       >
-        {matches.map((entry, position) => (
-          <Button
-            role="option"
-            id={`command-${position}`}
-            aria-selected={position === index}
-            tabIndex={-1}
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() =>
-              complete(entry.command + (entry.argument ? " " : ""))
-            }
-          >
+        {(entry) => (
+          <>
             <strong>{entry.command}</strong>
             <span>{entry.description}</span>
-          </Button>
-        ))}
-      </div>
+          </>
+        )}
+      </SuggestionList>
     ),
   };
 }

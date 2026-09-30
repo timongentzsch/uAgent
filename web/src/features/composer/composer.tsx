@@ -1,7 +1,11 @@
 import type { ConnectionPhase } from "../../shared/connection-status.tsx";
 import { ImageTile } from "../../shared/attachments.tsx";
 import "./attachments.css";
-import { useCommandSuggestions } from "./command-suggestions.tsx";
+import {
+  SuggestionList,
+  useCommandSuggestions,
+} from "./command-suggestions.tsx";
+import { nextIndex, plainKey } from "../../shared/listbox-nav.ts";
 import { parseSlash } from "./slash.ts";
 import {
   Button,
@@ -28,7 +32,12 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import { ArrowUp, Paperclip, Shield, Square, X } from "lucide-preact";
 import { command } from "../../state/api.ts";
 import { JumpToLatest } from "../../shared/jump-to-latest.tsx";
-import { dedupeName, encodeMention, matchMention } from "./mention.ts";
+import {
+  dedupeName,
+  encodeMention,
+  matchMention,
+  mentionOptions,
+} from "./mention.ts";
 import { SheetButton } from "../../shared/sheet.tsx";
 import Activities, { ActivityButton } from "../chat/activity-status.tsx";
 import type { InspectorTarget } from "../chat/inspector.tsx";
@@ -97,10 +106,9 @@ export default function Composer({
   const [mentionClosed, setMentionClosed] = useState(false);
   const mention = matchMention(draft.text, caret);
   const mentionCandidates = mention
-    ? draft.files.filter(
-        (item) =>
-          !item.pending &&
-          item.name.toLowerCase().includes(mention.query.toLowerCase()),
+    ? mentionOptions(
+        draft.files.filter((item) => !item.pending),
+        mention.query,
       )
     : [];
   const mentionOpen =
@@ -128,21 +136,11 @@ export default function Composer({
   const mentionKeyDown = (
     event: JSX.TargetedKeyboardEvent<HTMLTextAreaElement>,
   ) => {
-    if (
-      event.isComposing ||
-      event.shiftKey ||
-      event.ctrlKey ||
-      event.metaKey ||
-      event.altKey
-    )
-      return false;
+    if (!plainKey(event)) return false;
     if (event.key === "Escape") setMentionClosed(true);
     else if (event.key === "ArrowDown" || event.key === "ArrowUp")
       setMentionIndex(
-        (mentionIndex +
-          (event.key === "ArrowDown" ? 1 : mentionIndex < 0 ? 0 : -1) +
-          mentionCandidates.length) %
-          mentionCandidates.length,
+        nextIndex(mentionIndex, event.key, mentionCandidates.length),
       );
     else if (
       event.key === "Tab" ||
@@ -297,27 +295,22 @@ export default function Composer({
         <form onSubmit={send}>
           {suggestions.list}
           {mentionOpen && (
-            <div
+            <SuggestionList
               id="mention-suggestions"
-              class="command-suggestions"
-              role="listbox"
-              aria-label="Attached files"
+              label="Attached files"
+              prefix="mention"
+              items={mentionCandidates}
+              index={mentionIndex}
+              pick={(item) => insertMention(item.id)}
+              keyOf={(item) => item.id}
             >
-              {mentionCandidates.map((item, position) => (
-                <Button
-                  key={item.id}
-                  id={`mention-${position}`}
-                  role="option"
-                  aria-selected={position === mentionIndex}
-                  tabIndex={-1}
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => insertMention(item.id)}
-                >
+              {(item) => (
+                <>
                   <strong>@{item.name}</strong>
                   <span>{bytes(item.bytes)}</span>
-                </Button>
-              ))}
-            </div>
+                </>
+              )}
+            </SuggestionList>
           )}
           <label class="sr-only" for="prompt">
             Message or guidance
@@ -359,15 +352,7 @@ export default function Composer({
             }}
             onKeyDown={(event) => {
               if (mentionOpen && mentionKeyDown(event)) return;
-              if (suggestions.keyDown(event)) return;
-              if (
-                event.isComposing ||
-                event.shiftKey ||
-                event.ctrlKey ||
-                event.metaKey ||
-                event.altKey
-              )
-                return;
+              if (suggestions.keyDown(event) || !plainKey(event)) return;
               if (event.key === "Escape" && running) {
                 event.preventDefault();
                 act("interrupt").catch(report);

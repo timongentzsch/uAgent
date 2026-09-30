@@ -3,6 +3,7 @@ import { settled } from "./motion.ts";
 import type { ComponentChildren, JSX } from "preact";
 import { useId, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { Ellipsis } from "lucide-preact";
+import { nextIndex } from "./listbox-nav.ts";
 
 const navigation = ["ArrowDown", "ArrowUp", "Home", "End"];
 
@@ -117,19 +118,7 @@ export function Menu({
             const index = items.indexOf(
               document.activeElement as HTMLButtonElement,
             );
-            const last = items.length - 1;
-            const down = event.key === "ArrowDown";
-            items[
-              event.key === "Home"
-                ? 0
-                : event.key === "End"
-                  ? last
-                  : index < 0
-                    ? down
-                      ? 0
-                      : last
-                    : (index + (down ? 1 : last)) % items.length
-            ]?.focus();
+            items[nextIndex(index, event.key, items.length)]?.focus();
           }}
           onClick={(event) => {
             if (

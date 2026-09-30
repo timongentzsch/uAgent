@@ -80,7 +80,7 @@ dialog.browser-view[data-layout="sheet"] {
   max-width: calc(100% - 2 * var(--gap));
 }
 /* Zoom and scroll without gestures, in the screen's top corner. */
-.browser-view {
+.browser-view-controls {
   position: absolute;
   top: var(--gap);
   right: var(--gap);

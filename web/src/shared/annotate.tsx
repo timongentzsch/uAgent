@@ -223,6 +223,14 @@ export default function Annotator({
     paint(ctx, image, items, live.current, editing, colors());
   };
   useLayoutEffect(draw, [image, items, editing, scale, view.scale]);
+  // A pin opened for its note takes the keyboard (autofocus only applies
+  // when a document or dialog opens).
+  useEffect(() => {
+    if (editing !== null)
+      stage.current
+        ?.querySelector<HTMLInputElement>(".annotator-note input")
+        ?.focus({ preventScroll: true });
+  }, [editing]);
 
   const undo = () => {
     if (editing === items.length - 1) setEditing(null);
@@ -252,6 +260,7 @@ export default function Annotator({
   };
 
   const down = (event: PointerEvent) => {
+    setAiming(false);
     // A second finger (palm, pinch) abandons the stroke in progress.
     if (!event.isPrimary) {
       live.current = null;
@@ -331,6 +340,7 @@ export default function Annotator({
       placePin(here.x, here.y);
     } else return;
     event.preventDefault();
+    setAiming(true);
   };
   const lift = () => {
     press.current = null;

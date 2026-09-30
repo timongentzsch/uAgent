@@ -39,7 +39,8 @@ test("static UI showcase renders shared flat controls and scales them", async ({
   );
   expect(styles[0].background).toBe(styles[1].background);
   expect(styles[0].border).toBe("rgba(0, 0, 0, 0)");
-  expect(styles[1].border).toBe("rgba(0, 0, 0, 0)");
+  // A field draws its edge (WCAG 1.4.11); a button's label marks it.
+  expect(styles[1].border).not.toBe("rgba(0, 0, 0, 0)");
   expect(styles[0].radius).toBe("0px");
   expect(styles[0].shadow).toBe("none");
 

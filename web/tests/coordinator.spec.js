@@ -97,7 +97,13 @@ for (const [name, viewport] of VIEWPORTS) {
           node.classList.contains("turn-summary")
             ? "stats"
             : node.classList.contains("user")
-              ? node.textContent.replace(/^\s*\d+:\d+\s*(AM|PM)?/, "").trim()
+              ? // What shows: the row's spoken name ("You, 10:32") is not.
+                [...node.children]
+                  .filter((child) => !child.classList.contains("sr-only"))
+                  .map((child) => child.textContent)
+                  .join("")
+                  .replace(/^\s*\d+:\d+\s*(AM|PM)?/, "")
+                  .trim()
               : "",
         ),
       );

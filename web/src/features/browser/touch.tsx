@@ -139,7 +139,10 @@ export default function BrowserTouch({
     );
   };
   const scrollBy = (mask: number) => {
-    const rect = screen.current?.getBoundingClientRect();
+    // The middle of the remote screen, wherever it is letterboxed.
+    const rect = target.current
+      ?.querySelector("canvas")
+      ?.getBoundingClientRect();
     if (!rect) return;
     const centre = {
       x: rect.left + rect.width / 2,
@@ -171,7 +174,11 @@ export default function BrowserTouch({
     // noVNC listens for touch itself; direct touch is handled here.
     const block = (event: Event) => {
       // Controls laid over the screen keep their native touch behaviour.
-      if ((event.target as Element).closest(".browser-card, .browser-view"))
+      if (
+        (event.target as Element).closest(
+          ".browser-card, .browser-view-controls",
+        )
+      )
         return;
       event.preventDefault();
       event.stopPropagation();
@@ -201,7 +208,9 @@ export default function BrowserTouch({
         // Mice go to noVNC; controls laid over the screen keep their taps.
         if (
           event.pointerType === "mouse" ||
-          (event.target as Element).closest(".browser-card, .browser-view")
+          (event.target as Element).closest(
+            ".browser-card, .browser-view-controls",
+          )
         )
           return;
         event.preventDefault();
@@ -330,7 +339,7 @@ export default function BrowserTouch({
     >
       <div class="browser-rfb" ref={target} />
       <span class="browser-touch" ref={ring} aria-hidden="true" />
-      <div class="browser-view" role="group" aria-label="View">
+      <div class="browser-view-controls" role="group" aria-label="View">
         <IconButton label="Zoom out" onClick={() => zoomBy(1 / 1.25)}>
           <Minus />
         </IconButton>

@@ -25,14 +25,6 @@ import { SheetButton } from "../../shared/sheet.tsx";
 import { command } from "../../state/api.ts";
 import { duration } from "../../shared/duration.ts";
 import type { InspectorTarget } from "./inspector.tsx";
-export interface ActivityProps {
-  items?: Activity[];
-  agents?: Agent[];
-  session: SessionRef;
-  online: boolean;
-  report: Report;
-  open: (target: InspectorTarget) => void;
-}
 export const active = (item: Activity) =>
   ["running", "starting", "stopping", "finishing"].includes(item.status || "");
 // Supervised activities plus child agents not already listed as one.
@@ -66,7 +58,6 @@ export function ActivityStatus({
   phase = "Ready",
   running,
   items = [],
-  agents = [],
   pending,
   announce = false,
   present = false,
@@ -75,7 +66,6 @@ export function ActivityStatus({
   phase?: string;
   running?: boolean;
   items?: Activity[];
-  agents?: Agent[];
   pending?: Pending | boolean | null;
   announce?: boolean;
   present?: boolean;
@@ -83,7 +73,7 @@ export function ActivityStatus({
 }) {
   if (connection && connection !== "connected")
     return <ConnectionStatus phase={connection} />;
-  const counts = activityLabel(withAgents(items, agents));
+  const counts = activityLabel(items);
   return (
     <span
       class="activity-status"
@@ -103,49 +93,26 @@ export function ActivityStatus({
     </span>
   );
 }
-// The state above the input: counts live on ActivityButton below it.
-export default function Activities({
-  phase,
-  running,
-  pending,
-  present,
-  connection,
-}: {
-  running?: boolean;
-  phase?: string;
-  pending?: Pending | null;
-  present?: boolean;
-  connection?: ConnectionPhase;
-}) {
-  return (
-    <div class="activities">
-      <div class="status-line">
-        <span class="activity-toggle">
-          <ActivityStatus
-            phase={phase}
-            running={running}
-            pending={pending}
-            present={present}
-            connection={connection}
-            announce
-          />
-        </span>
-      </div>
-    </div>
-  );
-}
 
 // Always under the input: what is running, then idle agents -- the same set
 // as /agents -- since those stay resumable. Finished commands live only in the
 // conversation.
-export function ActivityButton({ open, ...props }: ActivityProps) {
-  const now = (props.items || []).filter(active);
-  const rows = [
-    ...now,
-    ...withAgents([], props.agents || []).filter(
-      (agent) => !now.some((item) => item.agent_id === agent.agent_id),
-    ),
-  ];
+export function ActivityButton({
+  items,
+  agents,
+  session,
+  online,
+  report,
+  open,
+}: {
+  items: Activity[];
+  agents: Agent[];
+  session: SessionRef;
+  online: boolean;
+  report: Report;
+  open: (target: InspectorTarget) => void;
+}) {
+  const rows = withAgents(items.filter(active), agents);
   const counts = activityLabel(rows);
   return (
     <SheetButton
@@ -180,9 +147,9 @@ export function ActivityButton({ open, ...props }: ActivityProps) {
               <ActivityRow
                 key={String(item.id ?? item.agent_id ?? item.label)}
                 item={item}
-                session={props.session}
-                online={props.online}
-                report={props.report}
+                session={session}
+                online={online}
+                report={report}
                 open={() => {
                   close();
                   open({ item });

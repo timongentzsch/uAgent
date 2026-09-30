@@ -39,7 +39,7 @@ import {
   mentionOptions,
 } from "./mention.ts";
 import { SheetButton } from "../../shared/sheet.tsx";
-import Activities, { ActivityButton } from "../chat/activity-status.tsx";
+import { ActivityButton, ActivityStatus } from "../chat/activity-status.tsx";
 import type { InspectorTarget } from "../chat/inspector.tsx";
 import MessageInput from "./message-input.tsx";
 import ModelControl from "./model-control.tsx";
@@ -253,13 +253,23 @@ export default function Composer({
       {!following && !pending && (
         <JumpToLatest unseen={unseen} onClick={jump} />
       )}
-      <Activities
-        present={online && !!session?.presence}
-        connection={connection}
-        phase={detached || state?.activity || (state ? "Ready" : "Loading…")}
-        running={online && running}
-        pending={pending}
-      />
+      {/* The state above the input: counts live on ActivityButton below it. */}
+      <div class="activities">
+        <div class="status-line">
+          <span class="activity-toggle">
+            <ActivityStatus
+              phase={
+                detached || state?.activity || (state ? "Ready" : "Loading…")
+              }
+              running={running}
+              pending={pending}
+              present={online && !!session?.presence}
+              connection={connection}
+              announce
+            />
+          </span>
+        </div>
+      </div>
       {pending?.kind === "browser" ? (
         <section class="decision" aria-label="Browser needs you">
           <h2>Continue in the browser</h2>

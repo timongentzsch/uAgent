@@ -64,7 +64,7 @@ function ToolInput({ parts }: { parts: ToolPart[] }) {
 }
 
 // A link part opens the work it names in the inspector.
-export type OpenLink = (link: LinkPart) => void;
+type OpenLink = (link: LinkPart) => void;
 
 const DIFF_LINES = 40;
 

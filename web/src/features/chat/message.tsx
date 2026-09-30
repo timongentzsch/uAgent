@@ -2,10 +2,11 @@ import "../composer/attachments.css";
 import { TurnFooter } from "./turn-footer.tsx";
 import Markdown, { prepareMarkdown } from "../../shared/markdown-view.tsx";
 import "./message.css";
-import { count } from "../../shared/quantities.ts";
+import { count, plural } from "../../shared/quantities.ts";
 import { Component } from "preact";
 import {
   presentMessages,
+  recallable,
   splitMentionTokens,
   unsent,
 } from "../../shared/message-view.ts";
@@ -57,18 +58,18 @@ function MentionFile({
   id,
   alt,
   files,
-  sessionId,
+  assets,
 }: {
   id: string;
   alt: string;
   files?: (Asset | string)[];
-  sessionId: string;
+  assets: string;
 }) {
   const file = files?.find(
     (item): item is Asset => typeof item === "object" && item.id === id,
   );
   if (!file) return <span class="muted">@{alt} (attachment removed)</span>;
-  const href = `/api/sessions/${sessionId}/assets/${file.id}`;
+  const href = `${assets}${file.id}`;
   return file.image ? (
     <span class="mention-image">
       <ImageTile src={href} name={file.name} />
@@ -180,6 +181,8 @@ function MessageView({ block, online, session }: MessageProps) {
     block.kind === "assistant" ||
     (block.kind === "attachment" && block.origin === "tool");
   const actor = userOwned || row || agentRow ? null : block.kind;
+  const running = block.duration_ms == null && isRunningStatus(block.status);
+  const assets = `/api/sessions/${session.id}/assets/`;
   return (
     <article
       data-message-id={block.key || block.id}
@@ -197,22 +200,19 @@ function MessageView({ block, online, session }: MessageProps) {
             </span>
           )}
           <Time value={block.time} />
-          {recall &&
-            block.request_id &&
-            ((online && block.status === "Guidance queued") ||
-              unsent(block)) && (
-              <IconButton
-                label={
-                  unsent(block)
-                    ? "Return message to composer"
-                    : "Recall guidance to composer"
-                }
-                title="Return to composer"
-                onClick={() => recall(block)}
-              >
-                <X />
-              </IconButton>
-            )}
+          {recall && recallable(block, online) && (
+            <IconButton
+              label={
+                unsent(block)
+                  ? "Return message to composer"
+                  : "Recall guidance to composer"
+              }
+              title="Return to composer"
+              onClick={() => recall(block)}
+            >
+              <X />
+            </IconButton>
+          )}
           <MessageMenu
             label="Message menu"
             block={block}
@@ -222,44 +222,39 @@ function MessageView({ block, online, session }: MessageProps) {
           />
         </header>
       )}
-      {row &&
-        (() => {
-          const running =
-            block.duration_ms == null && isRunningStatus(block.status);
-          return (
-            <>
-              <div class="tool-row-head">
-                <ToolRow
-                  block={block}
-                  running={running}
-                  output={output}
-                  text={text}
-                  expanding={expanding}
-                  loadError={loadError}
-                  retry={() => setRetry(retry + 1)}
-                  online={online}
-                  inspect={inspect}
-                  onToggle={(event) => setExpanded(event.currentTarget.open)}
-                />
-                <MessageMenu
-                  label="Tool menu"
-                  block={block}
-                  statistics={statistics}
-                  http={http}
-                />
-              </div>
-              <ToolInline
-                block={block}
-                text={text}
-                loaded={full !== null}
-                loadFull={() => setWantFull(true)}
-                online={online}
-                assets={`/api/sessions/${session.id}/assets/`}
-                open={activity && ((link) => activity(linkTarget(block, link)))}
-              />
-            </>
-          );
-        })()}
+      {row && (
+        <>
+          <div class="tool-row-head">
+            <ToolRow
+              block={block}
+              running={running}
+              output={output}
+              text={text}
+              expanding={expanding}
+              loadError={loadError}
+              retry={() => setRetry(retry + 1)}
+              online={online}
+              inspect={inspect}
+              onToggle={(event) => setExpanded(event.currentTarget.open)}
+            />
+            <MessageMenu
+              label="Tool menu"
+              block={block}
+              statistics={statistics}
+              http={http}
+            />
+          </div>
+          <ToolInline
+            block={block}
+            text={text}
+            loaded={full !== null}
+            loadFull={() => setWantFull(true)}
+            online={online}
+            assets={assets}
+            open={activity && ((link) => activity(linkTarget(block, link)))}
+          />
+        </>
+      )}
       {block.reasoning && (
         <DisclosureRow
           className="thinking"
@@ -294,7 +289,7 @@ function MessageView({ block, online, session }: MessageProps) {
               id={part.mention.id}
               alt={part.mention.alt}
               files={block.files}
-              sessionId={session.id}
+              assets={assets}
             />
           ),
         )}
@@ -311,7 +306,7 @@ function MessageView({ block, online, session }: MessageProps) {
       {online && !!block.files?.length && !row && (
         <AttachmentList
           files={block.files.filter((file) => typeof file === "object")}
-          href={(id) => `/api/sessions/${session.id}/assets/${id}`}
+          href={(id) => `${assets}${id}`}
         />
       )}
       {!row && block.truncated && (
@@ -430,8 +425,9 @@ const GROUP_VERBS: Record<string, [string, string]> = {
   edit: ["Editing", "Edited"],
 };
 
-const plural = (n: number, one: string, many = `${one}s`) =>
-  n ? `${count(n)} ${n === 1 ? one : many}` : "";
+// Zero counts drop out: only what a group did is named.
+const some = (n: number, one: string, many?: string) =>
+  n ? plural(n, one, many) : "";
 
 // What a group did, in its own terms: files and searches explored, pages
 // researched, each check with its result, lines edited.
@@ -454,20 +450,20 @@ function groupSummary(intent: string, steps: PresentedBlock[]) {
       },
       [0, 0],
     );
-    return [plural(steps.length, "file"), formatStat(total)]
+    return [some(steps.length, "file"), formatStat(total)]
       .filter(Boolean)
       .join(" · ");
   }
   const counts =
     intent === "research"
       ? [
-          plural(named("web_search"), "search", "searches"),
-          plural(steps.length - named("web_search"), "page"),
+          some(named("web_search"), "search", "searches"),
+          some(steps.length - named("web_search"), "page"),
         ]
       : [
-          plural(named("read_path"), "file"),
-          plural(named("grep"), "search", "searches"),
-          plural(steps.length - named("read_path", "grep"), "command"),
+          some(named("read_path"), "file"),
+          some(named("grep"), "search", "searches"),
+          some(steps.length - named("read_path", "grep"), "command"),
         ];
   return counts.filter(Boolean).join(", ");
 }

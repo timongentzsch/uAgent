@@ -44,7 +44,7 @@ import { ImageViewer, type ViewedImage } from "../shared/attachments.tsx";
 // the initial bundle and break the CSS size budget.
 const markdownView = () => import("../shared/markdown-view.tsx");
 import { useDismiss } from "../shared/dismiss.ts";
-import { unsent } from "../shared/message-view.ts";
+import { recallable } from "../shared/message-view.ts";
 import Sidebar, { ConversationMenu } from "../features/sidebar/sidebar.tsx";
 import { CoordinatorHelp } from "../features/coordinator/board.tsx";
 import { folderName } from "../shared/folder-label.tsx";
@@ -614,8 +614,8 @@ function App() {
   const recallGuidance = useCallback(async (block: Block) => {
     const { online, selected, act, report } = latest.current;
     const target = block.request_id;
+    if (!target || !recallable(block, online)) return;
     const queued = block.status === "Guidance queued";
-    if (!target || !(queued || unsent(block)) || (queued && !online)) return;
     const text = block.text || "";
     const id = selected;
     if (queued) {

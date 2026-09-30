@@ -25,6 +25,15 @@ function present(block: Block, source?: Block): PresentedBlock {
 export const unsent = (block: Pick<Block, "status">) =>
   block.status === "Not sent" || block.status === "Not confirmed";
 
+// What returns to the composer: guidance still queued (withdrawn from the
+// host, so only while connected) or a message that never went out.
+export const recallable = (
+  block: Pick<Block, "status" | "request_id">,
+  online: boolean,
+) =>
+  !!block.request_id &&
+  ((online && block.status === "Guidance queued") || unsent(block));
+
 // Flat, stable, uniform rows: the host's view already holds one block per
 // message and one per tool call, so a block is a row. Empty assistant
 // placeholders (a response before its first delta) are dropped: the status
@@ -129,8 +138,7 @@ function foldGroups(rows: PresentedBlock[]): PresentedBlock[] {
   return folded;
 }
 
-export type TextPart =
-  { text: string } | { mention: { id: string; alt: string } };
+type TextPart = { text: string } | { mention: { id: string; alt: string } };
 
 const kMentionToken = /!\[([^\]\n]*)\]\(attachment:([A-Za-z0-9_-]+)\)/g;
 const kFence = /^\s*(`{3,}|~{3,})/;

@@ -36,6 +36,7 @@ import SessionName from "../../shared/session-name.tsx";
 import { Menu, MenuItem } from "../../shared/menu.tsx";
 import { ActivityStatus, active } from "../chat/activity-status.tsx";
 import { ListRow } from "../../shared/list-row.tsx";
+import { waiting } from "../../state/attention.ts";
 export function ConversationMenu({
   item,
   online,
@@ -260,12 +261,8 @@ function SidebarView({
   // Each folder's coordinator is its header icon, not a row. It and its
   // badge count every session in the folder, whatever the search shows.
   const coordinators = new Map<string, Session>();
-  const waiting = new Map<string, number>();
-  for (const item of all) {
-    const folder = folderOf(item);
-    if (item.kind === "coordinator") coordinators.set(folder, item);
-    if (item.pending) waiting.set(folder, (waiting.get(folder) || 0) + 1);
-  }
+  for (const item of all)
+    if (item.kind === "coordinator") coordinators.set(folderOf(item), item);
   const groups = new Map<string, Session[]>();
   for (const item of [...all]
     .sort((a, b) => (b.updated || 0) - (a.updated || 0))
@@ -285,7 +282,7 @@ function SidebarView({
           <CoordinatorButton
             folder={cwd}
             coordinator={coordinators.get(cwd)}
-            waiting={waiting.get(cwd) || 0}
+            waiting={waiting(all, cwd).length}
             online={online}
             open={() => coordinate(cwd)}
           />

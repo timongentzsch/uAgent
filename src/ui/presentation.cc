@@ -438,8 +438,8 @@ void TerminalPresenter::Block(const json& block) {
       if (JsonValue(block, "status", "running") == "running") return;
     }
     // Same row the live printer drew: recorded title/summary plus the
-    // block's activity (groups), change (diffs) and final status. A row saved
-    // before replay facts is synthesized from its name and output.
+    // block's activity (groups), change (diffs) and final status. A row whose
+    // replay facts were evicted is synthesized from its name and output.
     const std::string status = JsonValue(block, "status", "");
     const PresentationStatus final =
         status == "success"     ? PresentationStatus::kSucceeded

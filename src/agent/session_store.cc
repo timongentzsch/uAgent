@@ -502,8 +502,8 @@ json SessionStore::Fork(const std::string& source, const std::string& title,
     record.state.tool_displays = conversation.ToolDisplays();
     record.metadata.turns = fork_turn - 1;
   }
-  // Older format-3 sessions have no display metadata. Normalize it before
-  // recording fork facts so the fork can be restored like any conversation.
+  // The fork's display metadata is the truncated conversation's, so the
+  // fork is restored like any conversation.
   record.state.display = conversation.DisplayMetadata();
   const std::string identity = MakeSessionId();
   const std::string path = (std::filesystem::path(source).parent_path() /

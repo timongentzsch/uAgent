@@ -43,8 +43,9 @@ PresentationRecord ToolResultPresentation(const CallTask& task,
 
 // Kept receipts replay exactly what the live row showed. Only the compact
 // row shape is recorded (title/summary/flags); bodies, diffs and groups
-// already travel on the view block, so facts stay small and sessions saved
-// before this change fall back to the legacy synthesis.
+// already travel on the view block, so facts stay small. A row whose facts
+// were evicted under the display budget is synthesized from its name and
+// output instead (StoredToolResultPresentation).
 json ToolReplayJson(const PresentationRecord& record);
 
 PresentationRecord StoredToolResultPresentation(

@@ -72,7 +72,7 @@ export interface Exchange {
 }
 export interface ToolActivity {
   // The call's intent: explore, research, edit, verify, run, setup,
-  // delegate, memory or share (older sessions: change, execute).
+  // delegate, memory or share.
   category?: string;
   label?: string;
   group?: { id: string; label: string };

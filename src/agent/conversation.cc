@@ -653,7 +653,8 @@ ToolTracePruneResult Conversation::PruneOldToolResults(
     bool superseded = false;
     if (superseded_only) {
       const json* range = JsonArray(message, kReadRangeField);
-      // Older sessions without metadata remain eligible only for age pruning.
+      // A read without a range (truncated, or not a file read) is pruned by
+      // age only.
       if (!range || range->size() != 3 || !(*range)[0].is_string() ||
           !(*range)[1].is_number_integer() ||
           !(*range)[2].is_number_integer() || (*range)[1].get<int64_t>() < 1 ||

@@ -3,9 +3,12 @@ import { settled } from "./motion.ts";
 import type { ComponentChildren, JSX } from "preact";
 import { useId, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { Ellipsis } from "lucide-preact";
-import { nextIndex } from "./listbox-nav.ts";
+import { nextIndex, typeAhead } from "./listbox-nav.ts";
 
 const navigation = ["ArrowDown", "ArrowUp", "Home", "End"];
+const enabledItems = (panel: Element) => [
+  ...panel.querySelectorAll<HTMLButtonElement>("button:not(:disabled)"),
+];
 
 // A row's actions, in a dropdown under its ⋯ button: a native top-layer
 // popover placed against the button, which follows it while open. Every
@@ -19,6 +22,9 @@ export function Menu({
   children: ComponentChildren;
 }) {
   const [open, setOpen] = useState(false);
+  // Which item takes focus on opening: ArrowUp on the button opens at the
+  // last, everything else at the first.
+  const start = useRef<"first" | "last">("first");
   const anchor = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
   const id = useId();
@@ -31,6 +37,10 @@ export function Menu({
     panel.current?.hidePopover();
     anchor.current?.focus({ preventScroll: true });
     unmount();
+  };
+  const openAt = (at: "first" | "last") => {
+    start.current = at;
+    setOpen(true);
   };
   useLayoutEffect(() => {
     if (!open) return;
@@ -54,9 +64,10 @@ export function Menu({
       element.style.top = `${Math.max(y + gap, Math.min(upwards ? target.top - box.height - gap : target.bottom + gap, y + height - box.height - gap))}px`;
     };
     place();
-    element
-      .querySelector<HTMLElement>("button:not(:disabled)")
-      ?.focus({ preventScroll: true });
+    const items = enabledItems(element);
+    (start.current === "last" ? items.at(-1) : items[0])?.focus({
+      preventScroll: true,
+    });
     const stopObserving = observeResize(place, element, button);
     // Follow the anchor wherever layout or scrolling moves it, as
     // floating-ui's autoUpdate does: one rect read per frame while open.
@@ -89,7 +100,12 @@ export function Menu({
         aria-haspopup="menu"
         aria-controls={open ? id : undefined}
         aria-expanded={open}
-        onClick={() => (open ? close() : setOpen(true))}
+        onClick={() => (open ? close() : openAt("first"))}
+        onKeyDown={(event) => {
+          if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+          event.preventDefault();
+          if (!open) openAt(event.key === "ArrowUp" ? "last" : "first");
+        }}
       >
         <Ellipsis />
       </button>
@@ -108,17 +124,30 @@ export function Menu({
               close();
               return;
             }
-            if (!navigation.includes(event.key)) return;
-            event.preventDefault();
-            const items = [
-              ...event.currentTarget.querySelectorAll<HTMLButtonElement>(
-                "button:not(:disabled)",
-              ),
-            ];
+            // Tab leaves the menu from its button, onward or back, as
+            // though the menu had not been open.
+            if (event.key === "Tab") {
+              close();
+              return;
+            }
+            const items = enabledItems(event.currentTarget);
             const index = items.indexOf(
               document.activeElement as HTMLButtonElement,
             );
-            items[nextIndex(index, event.key, items.length)]?.focus();
+            if (navigation.includes(event.key)) {
+              event.preventDefault();
+              items[nextIndex(index, event.key, items.length)]?.focus();
+              return;
+            }
+            if (event.ctrlKey || event.metaKey || event.altKey) return;
+            const match = typeAhead(
+              items.map((item) => item.textContent || ""),
+              index,
+              event.key,
+            );
+            if (match < 0) return;
+            event.preventDefault();
+            items[match].focus();
           }}
           onClick={(event) => {
             if (
@@ -145,6 +174,8 @@ export function MenuItem({
       class={`quiet ${className}`}
       role="menuitem"
       type="button"
+      // Arrows and letters move focus between items; Tab leaves the menu.
+      tabIndex={-1}
     />
   );
 }

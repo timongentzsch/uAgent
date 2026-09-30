@@ -315,7 +315,7 @@ test.describe("touch interaction", () => {
     session,
   }, testInfo) => {
     await page.goto(`/#session=${session.id}`);
-    const input = page.getByRole("textbox", { name: "Message or guidance" });
+    const input = page.getByRole("combobox", { name: "Message or guidance" });
     for (const zoom of [50, 75, 100, 150]) {
       await page.getByRole("button", { name: "Settings", exact: true }).click();
       const settings = page.getByRole("dialog", {

@@ -1,7 +1,13 @@
 // Markup on an image to steer the agent: freehand strokes and numbered pins
 // with a note each, baked into a copy that is attached like any upload.
 // One Pointer Events path serves mouse, trackpad, finger and pencil.
-import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "preact/hooks";
 import { getStroke } from "perfect-freehand";
 import { MapPin, PenLine, Undo2 } from "lucide-preact";
 import { Button, DialogHeader, IconButton, LoadError, Spinner } from "./ui.tsx";
@@ -158,6 +164,11 @@ export default function Annotator({
   const [saveError, setSaveError] = useState<unknown>(null);
   const live = useRef<Stroke | null>(null);
   const press = useRef<{ id: number; x: number; y: number } | null>(null);
+  // The keyboard's crosshair, in image pixels: shown while the canvas has
+  // keyboard focus, where Enter places a pin.
+  const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
+  const [aiming, setAiming] = useState(false);
+  const hint = useId();
 
   useEffect(() => {
     let active = true;
@@ -279,6 +290,10 @@ export default function Annotator({
     )
       return;
     const [x, y] = at(event);
+    placePin(x, y);
+  };
+  // A pin at an image point, or the pin already there opens for its note.
+  const placePin = (x: number, y: number) => {
     // A finger-sized target even where the badge is drawn small.
     const radius = Math.max(
       metrics(image!.width, image!.height).radius,
@@ -291,6 +306,31 @@ export default function Annotator({
     if (hit >= 0) return setEditing(hit);
     setItems([...items, { kind: "pin", x, y, note: "" }]);
     setEditing(items.length);
+  };
+  // Arrows move the crosshair (Shift: further), Enter or Space pins there.
+  const aim = (event: KeyboardEvent) => {
+    if (!image || event.ctrlKey || event.metaKey || event.altKey) return;
+    const here = cursor ?? { x: image.width / 2, y: image.height / 2 };
+    const step =
+      (Math.max(image.width, image.height) * (event.shiftKey ? 10 : 2)) / 100;
+    const move: Record<string, [number, number]> = {
+      ArrowLeft: [-step, 0],
+      ArrowRight: [step, 0],
+      ArrowUp: [0, -step],
+      ArrowDown: [0, step],
+    };
+    if (move[event.key]) {
+      const [dx, dy] = move[event.key];
+      setCursor({
+        x: Math.max(0, Math.min(image.width, here.x + dx)),
+        y: Math.max(0, Math.min(image.height, here.y + dy)),
+      });
+    } else if (event.key === "Enter" || event.key === " ") {
+      if (event.repeat) return;
+      setCursor(here);
+      placePin(here.x, here.y);
+    } else return;
+    event.preventDefault();
   };
   const lift = () => {
     press.current = null;
@@ -387,13 +427,35 @@ export default function Annotator({
               >
                 <canvas
                   ref={canvas}
+                  tabIndex={0}
+                  role="application"
                   aria-label={`Annotate ${name}`}
+                  aria-describedby={hint}
+                  onFocus={(event) =>
+                    setAiming(event.currentTarget.matches(":focus-visible"))
+                  }
+                  onBlur={() => setAiming(false)}
+                  onKeyDown={aim}
                   onPointerDown={down}
                   onPointerMove={move}
                   onPointerUp={up}
                   onPointerCancel={lift}
                 />
               </ZoomSurface>
+              <span id={hint} class="sr-only">
+                Arrow keys move a crosshair, Shift moves it further; Enter
+                places a pin there.
+              </span>
+              {aiming && origin && (
+                <span
+                  class="annotator-crosshair"
+                  aria-hidden="true"
+                  style={{
+                    "--x": `${origin.x + (cursor?.x ?? image.width / 2) * pixel()}px`,
+                    "--y": `${origin.y + (cursor?.y ?? image.height / 2) * pixel()}px`,
+                  }}
+                />
+              )}
               {pin?.kind === "pin" && origin && (
                 <div
                   class="annotator-note"
@@ -420,6 +482,8 @@ export default function Annotator({
                       event.preventDefault();
                       event.stopPropagation();
                       setEditing(null);
+                      // Back to the image, where the keyboard placed it.
+                      canvas.current?.focus({ preventScroll: true });
                     }}
                   />
                 </div>

@@ -1,6 +1,8 @@
 import type { ComponentChildren, RefObject } from "preact";
 import { useEffect, useRef } from "preact/hooks";
-import { BROWSER_GESTURE, wheelNotches } from "./gestures.ts";
+import { ArrowDown, ArrowUp, Minus, Plus } from "lucide-preact";
+import { BROWSER_GESTURE, WHEEL, wheelNotches } from "./gestures.ts";
+import { IconButton } from "../../shared/ui.tsx";
 import { motionEase, motionMs } from "../../shared/motion.ts";
 import {
   capturePointer,
@@ -126,6 +128,25 @@ export default function BrowserTouch({
     clearTimeout(hold.current);
     hold.current = undefined;
   };
+  // Buttons for what a pinch and a swipe do, for anyone who cannot make
+  // them: zoom this device's view about its centre, scroll the page.
+  const zoomBy = (ratio: number) => {
+    const rect = screen.current?.getBoundingClientRect();
+    if (!rect) return;
+    const centre = { x: rect.width / 2, y: rect.height / 2 };
+    setView(
+      pinchView(view.current, rect.width, rect.height, centre, centre, ratio),
+    );
+  };
+  const scrollBy = (mask: number) => {
+    const rect = screen.current?.getBoundingClientRect();
+    if (!rect) return;
+    const centre = {
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2,
+    };
+    for (let notch = 0; notch < 3; notch++) emit(centre, mask, 0);
+  };
   const current = () => [...points.current.values()];
   const local = (point: Point) => {
     const rect = screen.current!.getBoundingClientRect();
@@ -150,7 +171,8 @@ export default function BrowserTouch({
     // noVNC listens for touch itself; direct touch is handled here.
     const block = (event: Event) => {
       // Controls laid over the screen keep their native touch behaviour.
-      if ((event.target as Element).closest(".browser-card")) return;
+      if ((event.target as Element).closest(".browser-card, .browser-view"))
+        return;
       event.preventDefault();
       event.stopPropagation();
     };
@@ -179,7 +201,7 @@ export default function BrowserTouch({
         // Mice go to noVNC; controls laid over the screen keep their taps.
         if (
           event.pointerType === "mouse" ||
-          (event.target as Element).closest(".browser-card")
+          (event.target as Element).closest(".browser-card, .browser-view")
         )
           return;
         event.preventDefault();
@@ -308,6 +330,27 @@ export default function BrowserTouch({
     >
       <div class="browser-rfb" ref={target} />
       <span class="browser-touch" ref={ring} aria-hidden="true" />
+      <div class="browser-view" role="group" aria-label="View">
+        <IconButton label="Zoom out" onClick={() => zoomBy(1 / 1.25)}>
+          <Minus />
+        </IconButton>
+        <IconButton label="Zoom in" onClick={() => zoomBy(1.25)}>
+          <Plus />
+        </IconButton>
+        {pointer && (
+          <>
+            <IconButton label="Scroll up" onClick={() => scrollBy(WHEEL.up)}>
+              <ArrowUp />
+            </IconButton>
+            <IconButton
+              label="Scroll down"
+              onClick={() => scrollBy(WHEEL.down)}
+            >
+              <ArrowDown />
+            </IconButton>
+          </>
+        )}
+      </div>
       {children}
     </div>
   );

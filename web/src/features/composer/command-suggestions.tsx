@@ -102,7 +102,12 @@ export function useCommandSuggestions(
   }
   return {
     keyDown,
+    count: matches.length,
+    // The textarea is the combobox: it keeps focus, the list pops up.
     attributes: {
+      role: "combobox" as const,
+      "aria-haspopup": "listbox" as const,
+      "aria-expanded": matches.length > 0,
       "aria-autocomplete": "list" as const,
       "aria-controls": matches.length ? "command-suggestions" : undefined,
       "aria-activedescendant": active ? `command-${index}` : undefined,

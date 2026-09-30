@@ -17,7 +17,7 @@ import {
   Spinner,
   DataText,
 } from "../../shared/ui.tsx";
-import { bytes } from "../../shared/quantities.ts";
+import { bytes, plural } from "../../shared/quantities.ts";
 import type {
   SlashCommand,
   Session,
@@ -178,6 +178,9 @@ export default function Composer({
     (text) => setDraft({ ...draft, text }),
     input,
   );
+  const suggestionCount = mentionOpen
+    ? mentionCandidates.length
+    : suggestions.count;
   const send = (event: Event) => {
     const slash = parseSlash(commands, draft.text);
     if (slash.name === "/attach" && !slash.argument) {
@@ -325,11 +328,15 @@ export default function Composer({
           <label class="sr-only" for="prompt">
             Message or guidance
           </label>
+          <span class="sr-only" role="status">
+            {suggestionCount > 0 && plural(suggestionCount, "suggestion")}
+          </span>
           <MessageInput
             submit={send}
             resizeKey={zoom}
             {...suggestions.attributes}
             {...(mentionOpen && {
+              "aria-expanded": true,
               "aria-controls": "mention-suggestions",
               "aria-activedescendant":
                 mentionIndex >= 0 ? `mention-${mentionIndex}` : undefined,

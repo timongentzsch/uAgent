@@ -232,6 +232,7 @@ def test_plain_mode_writes_labelled_lines_without_cursor_control(root, home, *, 
     assert_true(code == 0, output[-2000:])
     text = re.sub(rb"\x1b\[[0-9;]*m", b"", output)
     for label in (
+        b"Welcome to uAgent. Try",
         b"you: go",
         b"tool: Running",
         b"Risk: runs commands\r\n",

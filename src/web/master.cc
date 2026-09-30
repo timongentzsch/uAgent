@@ -95,6 +95,14 @@ std::atomic<int> shutdown_fd{-1};
 static_assert(std::atomic<int>::is_always_lock_free);
 void StopSignal(int) { WakeDescriptor(shutdown_fd); }
 
+// The code, and a link that pairs a browser with it on opening: the fragment
+// never reaches a server, and the page drops it once it has paired.
+std::string PairingText(const std::string& origin, const std::string& code) {
+  return "uagent web: " + origin +
+         "\nPairing code (single use, 5 minutes): " + code +
+         "\nOr open: " + origin + "/#pair=" + code + "\n";
+}
+
 void Reply(Response& response, const json& value, int status = 200) {
   response.status = status;
   response.set_content(JsonDump(value), "application/json");
@@ -417,8 +425,7 @@ class Master {
     signal(SIGTERM, StopSignal);
     signal(SIGHUP, StopSignal);
     std::string pairing = Pair();
-    printf("uagent web: %s\nPairing code (single use, 5 minutes): %s\n",
-           origin_.c_str(), pairing.c_str());
+    printf("%s", PairingText(origin_, pairing).c_str());
     fflush(stdout);
     std::thread stopping([&] {
       for (;;) {
@@ -1139,12 +1146,11 @@ int MasterMain(const WebOptions& options, char** argv) {
                       "existing master settings take precedence; using its "
                       "published origin\n");
             }
-            printf(
-                "uagent web: %s\nPairing code (single use, 5 minutes): "
-                "%s\nSuggested host directory: %s\n",
-                JsonValue(identity, "url", "").c_str(),
-                JsonValue(identity, "pairing_code", "").c_str(),
-                CanonicalCwd().c_str());
+            printf("%sSuggested host directory: %s\n",
+                   PairingText(JsonValue(identity, "url", ""),
+                               JsonValue(identity, "pairing_code", ""))
+                       .c_str(),
+                   CanonicalCwd().c_str());
             return 0;
           }
         }

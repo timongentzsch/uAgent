@@ -21,6 +21,8 @@
 #include "include/app/launch.h"
 #include "include/app/session.h"
 #include "include/cli.h"
+#include "include/core/fs.h"
+#include "include/core/limits.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
 #include "include/core/style.h"
@@ -836,7 +838,26 @@ int CoordinatorPromptMain(const Options& options) {
   return reason == "completed" ? 0 : 1;
 }
 
+namespace {
+// Once per home, before the first conversation: what to try and the keys
+// that are easy to miss.
+void Welcome() {
+  const std::string marker = UagentDir(kConfigDir) + "/welcomed";
+  if (PathExists(marker)) return;
+  std::string error;
+  CreatePrivateDirectories(UagentDir(kConfigDir));
+  if (!AtomicWriteFile(marker, "", kPrivateFileMode, false, error)) return;
+  fputs(AsciiGlyphs("Welcome to µAgent. Try \"explain this repository\", "
+                    "\"fix the failing test\" or /help.\n"
+                    "Enter sends · Esc stops a turn · / lists commands · "
+                    "/undo puts back the last turn's file changes\n")
+            .c_str(),
+        stdout);
+}
+}  // namespace
+
 int TerminalMain(Options options) {
+  Welcome();
   std::string path;
   if (options.Coordinator()) {
     path = CoordinatorPath(CanonicalCwd());

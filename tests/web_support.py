@@ -116,6 +116,8 @@ def web_host(binary, root, home, provider, port=None, extra_env=None):
             code = (
                 log.read_text().split("Pairing code (single use, 5 minutes): ")[1].splitlines()[0]
             )
+            # The link beside it pairs a browser on opening.
+            assert f"/#pair={code}\n" in log.read_text(), log.read_text()
             client = WebClient(port)
             yield client, code, process, env
         except (AssertionError, ConnectionError, http.client.HTTPException) as error:

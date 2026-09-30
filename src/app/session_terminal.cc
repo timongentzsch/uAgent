@@ -137,8 +137,14 @@ class Terminal {
     if (!decision.empty()) {
       std::string description;
       if (const json* approval = JsonObject(pending, "approval")) {
-        description = JsonValue(*approval, "mandatory_reason", "") + "\n" +
-                      JsonValue(*approval, "preview", "") + "\n";
+        std::string risks;
+        for (const json& risk : JsonValue(*approval, "risks", json::array())) {
+          risks += (risks.empty() ? "Risk: " : " · ") +
+                   JsonValue(risk, "label", std::string());
+        }
+        if (!risks.empty()) description = AsciiGlyphs(risks) + "\n";
+        description += JsonValue(*approval, "mandatory_reason", "") + "\n" +
+                       JsonValue(*approval, "preview", "") + "\n";
       }
       if (const json* questions = JsonArray(pending, "questions")) {
         for (const json& question : *questions) {

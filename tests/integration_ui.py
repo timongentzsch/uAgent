@@ -225,7 +225,13 @@ def test_plain_mode_writes_labelled_lines_without_cursor_control(root, home, *, 
         )
     assert_true(code == 0, output[-2000:])
     text = re.sub(rb"\x1b\[[0-9;]*m", b"", output)
-    for label in (b"you: go", b"tool: Running", b"result: run", b"uagent:\r\nplain-ok"):
+    for label in (
+        b"you: go",
+        b"tool: Running",
+        b"Risk: runs commands\r\n",
+        b"result: run",
+        b"uagent:\r\nplain-ok",
+    ):
         assert_true(label in text, (label, output[-2000:]))
     assert_true(re.search(rb"\x1b(\[[0-9;?]*[A-Za-ln-z]|\])", output) is None, output[-2000:])
     assert_true(re.search(rb"[\x80-\xff]", output) is None, output[-2000:])

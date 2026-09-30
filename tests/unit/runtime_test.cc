@@ -487,6 +487,30 @@ void TestPermissionAndToolCategoryPolicy() {
   const std::string second =
       PermissionKey(tool, {{"path", "second"}}, approval_class);
   CHECK(first != second);
+
+  // Risks name what approving risks, most serious first: a file write
+  // inside the folder only makes changes; one outside says so.
+  auto risk_ids = [](const json& risks) {
+    std::string ids;
+    for (const json& risk : risks) ids += JsonValue(risk, "id", "") + ",";
+    return ids;
+  };
+  tool.capabilities = Capability(ToolCapability::kMutate);
+  CHECK(risk_ids(ApprovalRisks(tool, {{"path", "a.txt"}}, CanonicalCwd())) ==
+        "writes,");
+  CHECK(risk_ids(ApprovalRisks(tool, {{"path", "/etc/hosts"}},
+                               CanonicalCwd())) == "writes,outside,");
+  Tool command = tool;
+  command.capabilities = Capability(ToolCapability::kExecute) |
+                         Capability(ToolCapability::kMutate);
+  CHECK(risk_ids(ApprovalRisks(command, {{"command", "ls"}}, CanonicalCwd())) ==
+        "runs,");
+  Tool fetch = tool;
+  fetch.mutating = false;
+  fetch.capabilities = Capability(ToolCapability::kInspect) |
+                       Capability(ToolCapability::kExternal);
+  CHECK(risk_ids(ApprovalRisks(fetch, {{"url", "https://x"}},
+                               CanonicalCwd())) == "network,");
   std::string error;
   CHECK(RememberRepositoryPermission(CanonicalCwd(), first, tool.name,
                                      "write first", error));

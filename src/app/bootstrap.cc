@@ -24,6 +24,7 @@
 #include "include/app/artifact.h"
 #include "include/app/asset_store.h"
 #include "include/app/coordinator.h"
+#include "include/app/permissions.h"
 #include "include/app/reference.h"
 #include "include/app/session.h"
 #include "include/app/uagent_tool.h"
@@ -440,6 +441,7 @@ Agent::Approver MakeApprover(AppContext* app) {
                  {{"id", request_id},
                   {"tool", tool.name},
                   {"preview", TerminalSafe(raw_payload)},
+                  {"risks", ApprovalRisks(tool, arguments, root)},
                   {"mandatory_human", mandatory},
                   {"mandatory_reason", mandatory ? reason : std::string()}}});
       InteractionRequest request{

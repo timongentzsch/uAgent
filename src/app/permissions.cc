@@ -155,6 +155,27 @@ std::string PermissionKey(const Tool& tool, const json& arguments,
       JsonDump({{"policy", std::move(policy)}, {"arguments", arguments}}));
 }
 
+json ApprovalRisks(const Tool& tool, const json& arguments,
+                   const std::string& root) {
+  auto has = [&](ToolCapability capability) {
+    return (tool.capabilities & Capability(capability)) != 0;
+  };
+  const std::string path = JsonValue(arguments, "path", "");
+  const std::pair<bool, std::pair<const char*, const char*>> candidates[] = {
+      {has(ToolCapability::kExecute), {"runs", "runs commands"}},
+      {!has(ToolCapability::kExecute) && ToolMutates(tool, arguments),
+       {"writes", "makes changes"}},
+      {has(ToolCapability::kExternal), {"network", "uses the network"}},
+      {!path.empty() && !PathWithin(CanonicalAccessPath(path), root),
+       {"outside", "outside this folder"}},
+  };
+  json risks = json::array();
+  for (const auto& [applies, risk] : candidates) {
+    if (applies) risks.push_back({{"id", risk.first}, {"label", risk.second}});
+  }
+  return risks;
+}
+
 bool RepositoryPermissionAllows(const std::string& root,
                                 const std::string& key) {
   std::string error;

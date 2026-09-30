@@ -134,14 +134,11 @@ export default function Chat({
             when this turn saves.
           </p>
         )}
-        {!snapshot &&
-          (loadError ? (
-            <LoadError error={loadError} retry={retry} />
-          ) : (
-            <TranscriptPlaceholder session={session} />
-          ))}
-        {snapshot && loadError && <LoadError error={loadError} retry={retry} />}
-        {snapshot && !prepared && <TranscriptPlaceholder session={session} />}
+        {!!loadError && <LoadError error={loadError} retry={retry} />}
+        {/* A failed first load shows only its error. */}
+        {(snapshot ? !prepared : !loadError) && (
+          <TranscriptPlaceholder session={session} />
+        )}
         {snapshot && prepared && blocks.length === 0 && (
           <div class="empty">
             <Mark className="cursor-mark" />

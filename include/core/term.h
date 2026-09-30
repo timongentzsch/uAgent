@@ -119,16 +119,7 @@ inline const char* SpinnerFrame(size_t tick) {
 // wakes the thread immediately — it runs on the first-streamed-byte path.
 class TerminalSpinner {
  public:
-  explicit TerminalSpinner(bool enabled = true,
-                           std::string label = kWaitingActivity,
-                           std::chrono::steady_clock::time_point started =
-                               std::chrono::steady_clock::now())
-      : started_(started == std::chrono::steady_clock::time_point()
-                     ? std::chrono::steady_clock::now()
-                     : started),
-        label_(std::move(label)) {
-    Start(enabled);
-  }
+  explicit TerminalSpinner(bool enabled = true) { Start(enabled); }
 
   void Start(bool enabled = true) {
     if (active_ || !enabled || !g_tty) return;
@@ -191,8 +182,9 @@ class TerminalSpinner {
   bool active_ = false;
   size_t frame_ = 0;
   uint64_t activity_id_ = 0;
-  std::chrono::steady_clock::time_point started_;
-  std::string label_;
+  std::chrono::steady_clock::time_point started_ =
+      std::chrono::steady_clock::now();
+  std::string label_ = kWaitingActivity;
   std::thread thread_;
 };
 

@@ -17,7 +17,8 @@ import type {
   SessionRef,
   LinkPart,
 } from "../../shared/types.ts";
-import { useContext, useEffect, useMemo, useState } from "preact/hooks";
+import { useContext, useEffect, useId, useMemo, useState } from "preact/hooks";
+import { TimePrefsContext, formatMoment } from "../../shared/time.ts";
 import { MessageActions } from "./message-actions.ts";
 import { Minimize2, X } from "lucide-preact";
 import {
@@ -79,6 +80,16 @@ function MentionFile({
       @{file.name}
     </a>
   );
+}
+
+// Who wrote a row and when, e.g. "You, 10:32": the row's accessible name
+// and its menu's. Smart and absolute styles only, so it needs no ticking.
+function useRowName(who: string, time?: string) {
+  const prefs = useContext(TimePrefsContext);
+  const date = time ? new Date(time) : null;
+  if (!date || Number.isNaN(date.getTime())) return who;
+  const style = prefs.style === "absolute" ? "absolute" : "smart";
+  return `${who}, ${formatMoment(date, { ...prefs, style })}`;
 }
 
 // Deliveries worth a line: how the model got a file only when it was not
@@ -183,11 +194,26 @@ function MessageView({ block, online, session }: MessageProps) {
   const actor = userOwned || row || agentRow ? null : block.kind;
   const running = block.duration_ms == null && isRunningStatus(block.status);
   const assets = `/api/sessions/${session.id}/assets/`;
+  const nameId = useId();
+  const name = useRowName(
+    userOwned
+      ? "You"
+      : agentRow
+        ? "Assistant"
+        : row
+          ? block.name || "Tool"
+          : block.kind.charAt(0).toUpperCase() + block.kind.slice(1),
+    block.time,
+  );
   return (
     <article
       data-message-id={block.key || block.id}
       className={`message ${row ? "tool" : userOwned ? "user" : "response"}${block.turn_root === block.id ? " turn-start" : ""}`}
+      aria-labelledby={nameId}
     >
+      <h3 class="sr-only" id={nameId}>
+        {name}
+      </h3>
       {!row && (
         <header>
           {actor && <span class="actor">{actor}</span>}
@@ -214,7 +240,7 @@ function MessageView({ block, online, session }: MessageProps) {
             </IconButton>
           )}
           <MessageMenu
-            label="Message menu"
+            label={`Actions for ${name}`}
             block={block}
             statistics={statistics}
             http={http}
@@ -238,7 +264,7 @@ function MessageView({ block, online, session }: MessageProps) {
               onToggle={(event) => setExpanded(event.currentTarget.open)}
             />
             <MessageMenu
-              label="Tool menu"
+              label={`Actions for ${name}`}
               block={block}
               statistics={statistics}
               http={http}
@@ -335,7 +361,7 @@ function MessageView({ block, online, session }: MessageProps) {
               : "Show full message"}
         </Button>
       )}
-      {block.error && <p role="status">{block.error}</p>}
+      {block.error && <p role="alert">{block.error}</p>}
       {(block.unavailable_images || 0) > 0 && (
         <p class="muted">
           {count(block.unavailable_images)} historical image(s) have no retained

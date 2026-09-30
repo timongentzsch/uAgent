@@ -121,7 +121,16 @@ export default function Chat({
       }
       ref={attachBox}
     >
-      <div class="transcript-content" ref={attachColumn}>
+      {/* A log a listener can browse, silent as it streams: the status
+          line above the composer announces a turn's start and end. */}
+      <div
+        class="transcript-content"
+        ref={attachColumn}
+        role="log"
+        aria-label="Conversation"
+        aria-live="off"
+        aria-busy={(online && !!session.turn_active) || undefined}
+      >
         <HistoryStart
           view={view}
           online={online}
@@ -151,9 +160,15 @@ export default function Chat({
         {snapshot && prepared && (
           <MessageRows blocks={blocks} online={online} session={session} />
         )}
-        {session.error && <p class="failure">{session.error}</p>}
+        {session.error && (
+          <p class="failure" role="alert">
+            {session.error}
+          </p>
+        )}
         {snapshot?.state?.error && (
-          <p class="failure">{snapshot.state.error}</p>
+          <p class="failure" role="alert">
+            {snapshot.state.error}
+          </p>
         )}
       </div>
     </div>

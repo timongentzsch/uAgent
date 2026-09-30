@@ -714,9 +714,7 @@ test("code blocks, thinking and HTTP dialogs preserve content and loading geomet
   );
   await page.emulateMedia({ colorScheme: "light" });
 
-  await reply
-    .getByRole("button", { name: "Message menu", exact: true })
-    .click();
+  await reply.getByRole("button", { name: /^Actions for / }).click();
   const rawAction = page.getByRole("menuitem", {
     name: "HTTP request/response",
     exact: true,
@@ -1330,11 +1328,11 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
   };
   try {
     await page.goto(`${fixture.origin}/#session=${session.id}`);
-    // An app, not a page: the interface never pinch- or double-tap-zooms.
-    await expect(page.locator('meta[name="viewport"]')).toHaveAttribute(
-      "content",
-      /maximum-scale=1, user-scalable=no/,
-    );
+    // The viewport never forbids zoom (WCAG 1.4.4); the shell itself
+    // keeps its own pan-only touch action.
+    expect(
+      await page.locator('meta[name="viewport"]').getAttribute("content"),
+    ).not.toMatch(/user-scalable=no|maximum-scale/);
     await expect(page.locator("html")).toHaveCSS("touch-action", "pan-x pan-y");
     const prompt = page.getByLabel("Message or guidance");
     await expect(prompt).toBeVisible();
@@ -2173,7 +2171,7 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
     "none",
   );
   await thread
-    .getByRole("button", { name: "Turn statistics", exact: true })
+    .getByRole("button", { name: /^Turn statistics: / })
     .last()
     .click();
   await expect(
@@ -2234,9 +2232,7 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
   await detail
     .getByRole("button", { name: "Close subagent", exact: true })
     .click();
-  await expect(page.locator(".composer").getByRole("status")).toHaveText(
-    "Ready",
-  );
+  await expect(page.locator(".composer .activity-caption")).toHaveText("Ready");
   // A finished subagent stays reachable from the status line, like /agents.
   await page.getByRole("button", { name: "Activity", exact: true }).click();
   const idle = page.locator(".activity-sheet .activity-open");

@@ -873,153 +873,171 @@ function App() {
             fallback={<Spinner label="Loading connection form…" surface />}
           />
         ) : (
-          <div class="shell">
-            {!compact ? (
-              <aside class="sidebar" aria-label="Projects and sessions">
-                {sidebar}
-              </aside>
-            ) : (
-              drawer && (
-                <Modal
-                  title="Sessions"
-                  className="sidebar drawer"
-                  close={() => setDrawer(false)}
-                >
+          <>
+            {/* First stop for a keyboard: past the sessions list. The hash
+                routes sessions, so the link moves focus itself. */}
+            <a
+              class="skip-link"
+              href="#conversation"
+              onClick={(event) => {
+                event.preventDefault();
+                document
+                  .getElementById("conversation")
+                  ?.focus({ preventScroll: true });
+              }}
+            >
+              Skip to conversation
+            </a>
+            <div class="shell">
+              {!compact ? (
+                <aside class="sidebar" aria-label="Projects and sessions">
                   {sidebar}
-                </Modal>
-              )
-            )}
-            <main class="conversation">
-              <header class="conversation-head">
-                {compact && (
-                  <IconButton
-                    label="Open sessions"
-                    onClick={() => setDrawer(true)}
+                </aside>
+              ) : (
+                drawer && (
+                  <Modal
+                    title="Sessions"
+                    className="sidebar drawer"
+                    close={() => setDrawer(false)}
                   >
-                    <Menu />
-                  </IconButton>
-                )}
-                <div>
-                  <h1 title={session?.cwd}>
-                    {page === "library" ? (
-                      "Library"
-                    ) : page === "scheduled" ? (
-                      "Scheduled"
-                    ) : session?.kind === "coordinator" ? (
-                      `Coordinator · ${folderName(session.cwd)}`
-                    ) : session ? (
-                      session.title || "Your workspace"
-                    ) : opening ? (
-                      <span class="text-skeleton" aria-hidden="true">
-                        Loading conversation
-                      </span>
-                    ) : (
-                      "Your workspace"
-                    )}
-                  </h1>
-                  {page === "chat" && session?.kind === "coordinator" && (
-                    <CoordinatorHelp
-                      editInstructions={() => open({ type: "instructions" })}
-                    />
-                  )}
-                </div>
-                {browserAvailable && (
-                  <IconButton
-                    label={
-                      browsing ? "Open browser, agent working" : "Open browser"
-                    }
-                    class="browser-toggle"
-                    disabled={booting}
-                    onClick={() => setModal({ type: "browser" })}
-                  >
-                    <Globe2 />
-                    {browsing && <StatusLed state="running" />}
-                  </IconButton>
-                )}
-                {compact && (
-                  <div class="conversation-head-actions">
-                    <IconButton
-                      label="Settings"
-                      onClick={() => open({ type: "settings" })}
-                    >
-                      <Settings />
-                    </IconButton>
-                  </div>
-                )}
-                {page === "chat" &&
-                  (session ? (
-                    conversationMenu(session)
-                  ) : opening ? (
-                    // Inert until the session is known.
-                    <IconButton label="Conversation menu" disabled>
-                      <Ellipsis />
-                    </IconButton>
-                  ) : null)}
-              </header>
-              {page !== "chat" && (
-                <Deferred
-                  key={page === "library" ? `library:${libraryKind}` : page}
-                  load={page === "library" ? libraryModule : scheduledModule}
-                  initialKind={libraryKind}
-                  projects={projects}
-                  cwd={session?.cwd || projects[0] || ""}
-                  online={online}
-                  version={managementVersion}
-                  scheduled={catalogue.scheduled}
-                  unread={unread}
-                  choose={choose}
-                  refresh={refresh}
-                  fallback={
-                    <div class="management">
-                      <Spinner
-                        label={
-                          page === "library"
-                            ? "Loading library…"
-                            : "Loading scheduled tasks…"
-                        }
-                        surface
-                      />
-                    </div>
-                  }
-                />
+                    {sidebar}
+                  </Modal>
+                )
               )}
-              <ChatPage
-                store={snapshots}
-                active={page === "chat"}
-                historyKey={
-                  page === "chat" ? `${page}:${selected}` : `page:${page}`
-                }
-                selected={selected}
-                session={session}
-                opening={opening}
-                catalogue={catalogue}
-                online={online}
-                connection={connection}
-                outgoing={outgoing}
-                loadError={loadErrors[selected]}
-                draft={draft}
-                setDraft={setDraft}
-                upload={upload}
-                uploading={uploading}
-                busy={busy}
-                submit={submit}
-                act={act}
-                report={report}
-                following={following}
-                setFollowing={setFollowing}
-                load={load}
-                updateView={updateView}
-                choose={choose}
-                zoom={zoom}
-                side={side}
-                closeSide={closeSide}
-                actions={messageActions}
-                setModal={setModal}
-                setInspector={setInspector}
-                showContext={showContext}
-              />
-            </main>
-          </div>
+              <main class="conversation" id="conversation" tabIndex={-1}>
+                <header class="conversation-head">
+                  {compact && (
+                    <IconButton
+                      label="Open sessions"
+                      onClick={() => setDrawer(true)}
+                    >
+                      <Menu />
+                    </IconButton>
+                  )}
+                  <div>
+                    <h1 title={session?.cwd}>
+                      {page === "library" ? (
+                        "Library"
+                      ) : page === "scheduled" ? (
+                        "Scheduled"
+                      ) : session?.kind === "coordinator" ? (
+                        `Coordinator · ${folderName(session.cwd)}`
+                      ) : session ? (
+                        session.title || "Your workspace"
+                      ) : opening ? (
+                        <span class="text-skeleton" aria-hidden="true">
+                          Loading conversation
+                        </span>
+                      ) : (
+                        "Your workspace"
+                      )}
+                    </h1>
+                    {page === "chat" && session?.kind === "coordinator" && (
+                      <CoordinatorHelp
+                        editInstructions={() => open({ type: "instructions" })}
+                      />
+                    )}
+                  </div>
+                  {browserAvailable && (
+                    <IconButton
+                      label={
+                        browsing
+                          ? "Open browser, agent working"
+                          : "Open browser"
+                      }
+                      class="browser-toggle"
+                      disabled={booting}
+                      onClick={() => setModal({ type: "browser" })}
+                    >
+                      <Globe2 />
+                      {browsing && <StatusLed state="running" />}
+                    </IconButton>
+                  )}
+                  {compact && (
+                    <div class="conversation-head-actions">
+                      <IconButton
+                        label="Settings"
+                        onClick={() => open({ type: "settings" })}
+                      >
+                        <Settings />
+                      </IconButton>
+                    </div>
+                  )}
+                  {page === "chat" &&
+                    (session ? (
+                      conversationMenu(session)
+                    ) : opening ? (
+                      // Inert until the session is known.
+                      <IconButton label="Conversation menu" disabled>
+                        <Ellipsis />
+                      </IconButton>
+                    ) : null)}
+                </header>
+                {page !== "chat" && (
+                  <Deferred
+                    key={page === "library" ? `library:${libraryKind}` : page}
+                    load={page === "library" ? libraryModule : scheduledModule}
+                    initialKind={libraryKind}
+                    projects={projects}
+                    cwd={session?.cwd || projects[0] || ""}
+                    online={online}
+                    version={managementVersion}
+                    scheduled={catalogue.scheduled}
+                    unread={unread}
+                    choose={choose}
+                    refresh={refresh}
+                    fallback={
+                      <div class="management">
+                        <Spinner
+                          label={
+                            page === "library"
+                              ? "Loading library…"
+                              : "Loading scheduled tasks…"
+                          }
+                          surface
+                        />
+                      </div>
+                    }
+                  />
+                )}
+                <ChatPage
+                  store={snapshots}
+                  active={page === "chat"}
+                  historyKey={
+                    page === "chat" ? `${page}:${selected}` : `page:${page}`
+                  }
+                  selected={selected}
+                  session={session}
+                  opening={opening}
+                  catalogue={catalogue}
+                  online={online}
+                  connection={connection}
+                  outgoing={outgoing}
+                  loadError={loadErrors[selected]}
+                  draft={draft}
+                  setDraft={setDraft}
+                  upload={upload}
+                  uploading={uploading}
+                  busy={busy}
+                  submit={submit}
+                  act={act}
+                  report={report}
+                  following={following}
+                  setFollowing={setFollowing}
+                  load={load}
+                  updateView={updateView}
+                  choose={choose}
+                  zoom={zoom}
+                  side={side}
+                  closeSide={closeSide}
+                  actions={messageActions}
+                  setModal={setModal}
+                  setInspector={setInspector}
+                  showContext={showContext}
+                />
+              </main>
+            </div>
+          </>
         )}
         <Modals
           store={snapshots}

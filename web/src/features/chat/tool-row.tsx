@@ -1,4 +1,5 @@
 import { Fragment } from "preact";
+import { CircleX } from "lucide-preact";
 import {
   Button,
   DisclosureRow,
@@ -87,7 +88,13 @@ function OutputBox({
     if (box.current) box.current.scrollTop = box.current.scrollHeight;
   }, [text]);
   return (
-    <pre class="tool-console" ref={box} tabIndex={0} aria-label="Output">
+    <pre
+      class="tool-console"
+      ref={box}
+      tabIndex={0}
+      role="region"
+      aria-label="Output"
+    >
       {more && (
         <Button
           variant="quiet"
@@ -174,6 +181,16 @@ export function ToolRow({
     <DisclosureRow
       className={`tool-disclosure${running || live ? " running" : failed ? " failed" : ""}`}
       label={title}
+      marker={
+        failed &&
+        !running &&
+        !live && (
+          <>
+            <CircleX class="failed-mark" aria-hidden="true" />
+            <span class="sr-only">Failed: </span>
+          </>
+        )
+      }
       status={subtitle}
       onToggle={onToggle}
     >

@@ -103,7 +103,7 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
     ),
   ).toBeLessThan(2);
   await expect(page.getByRole("button", { name: /^Reply to:/ })).toHaveCount(0);
-  await reply.getByLabel("Message menu", { exact: true }).click();
+  await reply.getByLabel(/^Actions for /).click();
   await reply
     .getByRole("menuitem", { name: "HTTP request/response", exact: true })
     .click();
@@ -131,7 +131,7 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
     "print('hello')\n",
   );
   await expect(reply.locator("time")).toHaveAttribute("datetime", /T/);
-  await reply.getByLabel("Message menu", { exact: true }).click();
+  await reply.getByLabel(/^Actions for /).click();
   await reply
     .getByRole("menuitem", { name: "Statistics", exact: true })
     .click();

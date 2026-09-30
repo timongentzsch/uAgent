@@ -67,17 +67,20 @@ test("transcript renders while dialog chunks are held", async ({
   });
   await expect(page.locator(".transcript .group")).toContainText("Explored");
   await expect(
-    page.getByRole("button", { name: "Turn statistics" }).first(),
+    page.getByRole("button", { name: /^Turn statistics: / }).first(),
   ).toBeVisible({ timeout: 30000 });
   // Its styles ship with the transcript (message.css), not the lazy
   // statistics chunk: already laid out before the dialog ever opens.
   await expect(
-    page.getByRole("button", { name: "Turn statistics" }).first(),
+    page.getByRole("button", { name: /^Turn statistics: / }).first(),
   ).toHaveCSS("display", "flex");
 
   // Releasing the statistics chunk must light up the dialog on demand.
   await release("statistics");
-  await page.getByRole("button", { name: "Turn statistics" }).first().click();
+  await page
+    .getByRole("button", { name: /^Turn statistics: / })
+    .first()
+    .click();
   await expect(page.locator("dialog dl.stats").first()).toBeVisible({
     timeout: 15000,
   });

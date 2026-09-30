@@ -12,6 +12,7 @@ import type {
   Report,
   SessionRef,
 } from "../../shared/types.ts";
+import { useRef } from "preact/hooks";
 import {
   ArrowDownToLine,
   Bot,
@@ -71,15 +72,23 @@ export function ActivityStatus({
   present?: boolean;
   connection?: ConnectionPhase;
 }) {
+  // A listener hears a turn's edges, not every step between them: the
+  // visible phase changes with each tool call, the announcement only when
+  // a response starts, needs input or ends.
+  const responded = useRef(false);
+  if (running) responded.current = true;
   if (connection && connection !== "connected")
     return <ConnectionStatus phase={connection} />;
   const counts = activityLabel(items);
+  const announcement = pending
+    ? "Needs your input"
+    : running
+      ? "Responding"
+      : responded.current
+        ? "Response complete"
+        : "";
   return (
-    <span
-      class="activity-status"
-      role={announce ? "status" : undefined}
-      aria-atomic={announce ? "true" : undefined}
-    >
+    <span class="activity-status">
       <StatusLed
         state={running && !pending ? "running" : present ? "active" : "idle"}
       />
@@ -90,6 +99,16 @@ export function ActivityStatus({
         {pending ? "Needs your input" : phase}
       </span>
       {counts && <span class="activity-counts"> · {counts}</span>}
+      {announce && (
+        <span
+          class="sr-only"
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+        >
+          {announcement}
+        </span>
+      )}
     </span>
   );
 }

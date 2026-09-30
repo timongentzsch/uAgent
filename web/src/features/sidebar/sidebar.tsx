@@ -337,7 +337,11 @@ function SidebarView({
           <CalendarClock />
           Scheduled
           {scheduledUnread && (
-            <span class="unread-dot" aria-label="Unread scheduled results" />
+            <span
+              class="unread-dot"
+              role="img"
+              aria-label="Unread scheduled results"
+            />
           )}
         </Button>
       </div>
@@ -351,7 +355,7 @@ function SidebarView({
           placeholder="Find a conversation…"
         />
       </label>
-      <nav>
+      <nav aria-label="Conversations">
         <Placeholder label="Loading conversations…" when={drawing}>
           {search && !list.length ? (
             <EmptyState>No conversation matches.</EmptyState>

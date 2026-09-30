@@ -71,21 +71,33 @@ export default function Decision({
       />
     </label>
   );
-  // The panel replaces the composer: whoever was typing there lands here.
+  // Each new decision (this panel is keyed by it) takes focus, so a
+  // keyboard lands on what the agent waits for; only someone typing
+  // elsewhere keeps their place.
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
-    if (document.activeElement === document.body)
-      heading.current?.focus({ preventScroll: true });
+    const focused = document.activeElement;
+    const typing =
+      focused instanceof HTMLElement &&
+      (focused.isContentEditable ||
+        (focused.matches("input, textarea") && focused.isConnected));
+    if (!typing) heading.current?.focus({ preventScroll: true });
   }, []);
+  const title =
+    pending.route === "coordinator"
+      ? "The coordinator is deciding"
+      : asking
+        ? "Needs your answer"
+        : "Needs your decision";
   return (
     <section class="decision" aria-label="Pending decision">
-      <h2 ref={heading} tabIndex={-1}>
-        {pending.route === "coordinator"
-          ? "The coordinator is deciding"
-          : asking
-            ? "Needs your answer"
-            : "Needs your decision"}
-      </h2>
+      {/* Announced at once, with what it is about. */}
+      <div role="alert">
+        <h2 ref={heading} tabIndex={-1}>
+          {title}
+        </h2>
+        {approval?.tool && <span class="sr-only">: {approval.tool}</span>}
+      </div>
       {pending.route === "coordinator" && (
         <p class="decision-note">You can still answer first.</p>
       )}

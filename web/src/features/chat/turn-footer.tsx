@@ -15,12 +15,9 @@ export function TurnFooter({
   open: () => void;
 }) {
   return (
-    <Button
-      variant="quiet"
-      class="turn-summary"
-      onClick={open}
-      aria-label="Turn statistics"
-    >
+    // The name is the visible numbers, introduced for a listener.
+    <Button variant="quiet" class="turn-summary" onClick={open}>
+      <span class="sr-only">Turn statistics: </span>
       {summary.usage_reported !== false && (
         <span class="turn-tokens">
           {count((summary.usage.input || 0) + (summary.usage.output || 0))}{" "}

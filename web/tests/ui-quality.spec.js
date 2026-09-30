@@ -110,8 +110,7 @@ for (const width of [390, 1280]) {
     try {
       await page.goto(`/#session=${session.id}`);
       const trigger = page.getByRole("button", {
-        name: "Turn statistics",
-        exact: true,
+        name: /^Turn statistics: /,
       });
       await expect(trigger).toBeVisible();
       holdData = true;

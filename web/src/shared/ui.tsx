@@ -466,6 +466,7 @@ export function DisclosureRow({
   status,
   time,
   icon,
+  marker,
   onToggle,
   className = "",
   messageId,
@@ -475,6 +476,8 @@ export function DisclosureRow({
   status?: string;
   time?: string;
   icon?: ComponentChildren;
+  // Leads the label on its line, e.g. a failure mark and its spoken prefix.
+  marker?: ComponentChildren;
   onToggle?: JSX.GenericEventHandler<HTMLDetailsElement>;
   className?: string;
   messageId?: string;
@@ -518,6 +521,7 @@ export function DisclosureRow({
         {icon}
         <ChevronRight class="disclosure-chevron" aria-hidden="true" />
         <span class="disclosure-label" title={label}>
+          {marker}
           {label}
         </span>
         {status && <small>{status}</small>}

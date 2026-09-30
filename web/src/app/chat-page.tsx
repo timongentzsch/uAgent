@@ -18,6 +18,7 @@ import { Mark, Deferred, Placeholder, Button } from "../shared/ui.tsx";
 import Composer from "../features/composer/composer.tsx";
 import Board, { CoordinatorLayout } from "../features/coordinator/board.tsx";
 import Escalations from "../features/coordinator/escalations.tsx";
+import { threadsOf } from "../state/attention.ts";
 import Chat, {
   TranscriptPlaceholder,
   prepareHistoryBlocks,
@@ -207,17 +208,15 @@ export default function ChatPage({
       openBrowser={() => setModal({ type: "browser", handoff: true })}
     />
   );
+  // A coordinator's board and escalations read the same threads.
+  const threads =
+    session?.kind === "coordinator"
+      ? threadsOf(catalogue.sessions, session.cwd || "")
+      : undefined;
   return session ? (
     <CoordinatorLayout
       board={
-        session.kind === "coordinator" && (
-          <Board
-            sessions={catalogue.sessions}
-            folder={session.cwd || ""}
-            online={online}
-            choose={choose}
-          />
-        )
+        threads && <Board threads={threads} online={online} choose={choose} />
       }
     >
       {/* Remount the transcript per session: a stale surface's
@@ -256,10 +255,9 @@ export default function ChatPage({
           close={closeSide}
         />
       )}
-      {session.kind === "coordinator" && (
+      {threads && (
         <Escalations
-          sessions={catalogue.sessions}
-          folder={session.cwd || ""}
+          threads={threads}
           paused={snapshot?.state?.paused}
           online={online}
           choose={choose}

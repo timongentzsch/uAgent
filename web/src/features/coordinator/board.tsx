@@ -3,7 +3,7 @@ import { CircleHelp } from "lucide-preact";
 import { SheetButton } from "../../shared/sheet.tsx";
 import type { Session } from "../../shared/types.ts";
 import { Actions, Button, Time } from "../../shared/ui.tsx";
-import { folderOf } from "../../shared/folder-label.tsx";
+import { waiting } from "../../state/attention.ts";
 import SessionName from "../../shared/session-name.tsx";
 import { ListRow } from "../../shared/list-row.tsx";
 
@@ -12,24 +12,22 @@ const DONE_SHOWN = 8;
 // The folder at a glance, beside its coordinator: what waits on you, what is
 // working, and what is done. Drawn from live session metadata, never stored.
 export default function Board({
-  sessions,
-  folder,
+  threads,
   online,
   choose,
 }: {
-  sessions: Session[];
-  folder: string;
+  threads: Session[];
   online: boolean;
   choose: (id: string) => void;
 }) {
-  const managed = sessions
-    .filter((item) => item.kind !== "coordinator" && folderOf(item) === folder)
-    .sort((a, b) => (b.updated || 0) - (a.updated || 0));
+  const managed = [...threads].sort(
+    (a, b) => (b.updated || 0) - (a.updated || 0),
+  );
   const working = (item: Session) => online && item.turn_active;
   // Each group with how many rows it lists: what is done shows the latest
   // few, and the rest stay in the sidebar.
   const groups: [string, Session[], number][] = [
-    ["Needs you", managed.filter((item) => item.pending), Infinity],
+    ["Needs you", waiting(managed), Infinity],
     [
       "Working",
       managed.filter((item) => !item.pending && working(item)),

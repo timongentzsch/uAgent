@@ -3,7 +3,7 @@ import { useResource } from "../../shared/use-resource.ts";
 import type { Act, Pending, Report, Session } from "../../shared/types.ts";
 import { api, command } from "../../state/api.ts";
 import { Button, Deferred, LoadError, Spinner } from "../../shared/ui.tsx";
-import { folderOf } from "../../shared/folder-label.tsx";
+import { waiting } from "../../state/attention.ts";
 import SessionName from "../../shared/session-name.tsx";
 
 const decisionPanel = () => import("../chat/decision.tsx");
@@ -14,25 +14,20 @@ const decisionPanel = () => import("../chat/decision.tsx");
 // here or in the thread is the same act and the first answer wins. A pause
 // at the spend limit shows here too, for the same reason.
 export default function Escalations({
-  sessions,
-  folder,
+  threads,
   paused,
   online,
   choose,
   report,
 }: {
-  sessions: Session[];
-  folder: string;
+  threads: Session[];
   paused?: string;
   online: boolean;
   choose: (id: string) => void;
   report: Report;
 }) {
-  const waiting = sessions.filter(
-    (item) =>
-      item.pending && item.kind !== "coordinator" && folderOf(item) === folder,
-  );
-  if (!waiting.length && !paused) return null;
+  const decisions = waiting(threads);
+  if (!decisions.length && !paused) return null;
   return (
     <section class="escalations" aria-label="Decisions waiting on you">
       {paused && (
@@ -40,7 +35,7 @@ export default function Escalations({
           {paused}
         </p>
       )}
-      {waiting.map((item) => (
+      {decisions.map((item) => (
         <Escalation
           key={item.id}
           item={item}

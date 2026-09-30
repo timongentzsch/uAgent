@@ -160,7 +160,7 @@ Agent::StepFlow Agent::PrepareStep(TurnExecution& state, StepState& loop) {
   if (refresh_tools_ && refresh_tools_(state.deadline)) RebuildToolSchemas();
   if (TurnDeadlineExceeded(state)) return StepFlow::kEndTurn;
   DrainBackground();
-  MergeSideUsage(state.metrics.usage);
+  AccountSideUsage(&state.metrics.usage);
   if (TurnTokenBudgetExceeded(state, /*before_model=*/true)) {
     return StepFlow::kEndTurn;
   }
@@ -505,7 +505,7 @@ void Agent::Turn(const std::string& user_input, json user_content,
 void Agent::FinishTurn(TurnExecution& state, int64_t step) {
   // Side routes may finish after the last model round. Account them before
   // deciding the terminal reason and constructing caller-visible metadata.
-  MergeSideUsage(state.metrics.usage);
+  AccountSideUsage(&state.metrics.usage);
   if (state.stop.reason == TurnStopReason::kNone &&
       state.stop.outcome != TurnOutcome::kComplete) {
     if (!TurnTokenBudgetExceeded(state)) TurnCostExceeded(state);

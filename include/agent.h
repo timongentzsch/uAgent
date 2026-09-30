@@ -168,12 +168,11 @@ class Agent {
   // without this their cost is missing from the footer and the status bar.
   void DrainSubagentUsage();
 
-  void MergeSideUsage(Usage& turn_usage);
-
-  // Account side work that completed outside an active parent turn. Tagged
-  // delegated work updates its originating turn; untagged side work remains
-  // visible in the session total without being assigned to the wrong turn.
-  void AccountSideUsage();
+  // Account finished side work. What the current turn spawned merges into
+  // `turn` when given; other tagged delegated work updates its originating
+  // turn; untagged side work remains visible in the session total without
+  // being assigned to the wrong turn.
+  void AccountSideUsage(Usage* turn = nullptr);
 
   void MergeSessionUsage(const Usage& usage);
 
@@ -195,10 +194,9 @@ class Agent {
   // Files the model attached ride in on a user message. Canonical tool results
   // are text-only, so image/file parts cannot travel with them.
   bool DrainAttachments();
-  // User-uploaded half of DrainAttachments; sourced files keep their
-  // kAttachment kind for the request pipeline and carry an origin fact
-  // so the view attributes them to the agent instead.
-  bool DrainUserAttachments(std::vector<Attachment>& attachments);
+  // One attachment message for `attachments`, or a note saying why they
+  // could not be attached; true when they were.
+  bool PushAttachments(const std::vector<Attachment>& attachments);
   // Starts the side call that names this session; DrainBackground applies
   // its answer unless the user renamed the session meanwhile.
   void StartTitle(const std::string& user_input);
@@ -255,7 +253,6 @@ class Agent {
   bool ToolCallsWithinLimits(const std::vector<ToolCall>& calls,
                              TurnExecution& state, StepState& loop);
   void FinishTurn(TurnExecution& state, int64_t step);
-  void ApplySideUsage(AccumulatedUsage batch, Usage* current_turn);
   void UpdateTurnSideUsage(int64_t turn, const Usage& usage,
                            const json& statistics);
 
@@ -378,6 +375,10 @@ class Agent {
                 std::vector<ActivityPollResult>& activity_polls);
 
   void RebuildToolSchemas();
+  // After the tool set or its selection changed: the offered schemas, their
+  // size and the logged copy are stale.
+  void InvalidateToolSchemas(bool force_system);
+  void SyncApiSessionUsage();
   std::vector<std::string> ExplicitSkillContext(
       const std::string& user_input) const;
 

@@ -129,7 +129,9 @@ def test_coordinator_answers_headless_and_lists_the_board(root, home, *, binary)
 def test_coordinator_saves_memory_unasked_but_forgets_only_with_the_user(root, home, *, binary):
     with Server(
         [
-            tool_call("memory", {"action": "set", "key": "project/style", "content": "Terse status."}),
+            tool_call(
+                "memory", {"action": "set", "key": "project/style", "content": "Terse status."}
+            ),
             tool_call("memory", {"action": "forget", "key": "project/style"}, call_id="call-2"),
             event({"content": "noted-ok"}),
         ]
@@ -189,11 +191,7 @@ def test_coordinator_delegates_a_thread_and_hears_back(root, home, *, binary):
         assert_true(heard.wait(budget(10)), [json.dumps(b)[-300:] for _, b in server.requests])
         latency = reported["heard"] - reported["finished"]
         assert_true(latency < budget(5), f"coordinator heard back after {latency:.1f}s")
-        threads = [
-            path
-            for path in session_files(home)
-            if path.name.startswith("thread-")
-        ]
+        threads = [path for path in session_files(home) if path.name.startswith("thread-")]
         assert_true(len(threads) == 1, threads)
         header = json.loads(threads[0].read_text(encoding="utf-8").splitlines()[0])
         assert_true(header["kind"] == "thread", header)
@@ -211,7 +209,9 @@ def test_coordinator_delegates_a_thread_and_hears_back(root, home, *, binary):
 def test_coordinator_refuses_spawns_past_its_spend_limit(root, home, *, binary):
     from integration_support import fnv1a64
 
-    coordinator = fnv1a64(str(home / ".uagent" / "history" / fnv1a64(str(root.resolve())) / "coordinator.json"))
+    coordinator = fnv1a64(
+        str(home / ".uagent" / "history" / fnv1a64(str(root.resolve())) / "coordinator.json")
+    )
     write_session(
         home,
         "thread-spent",
@@ -245,7 +245,9 @@ def test_coordinator_refuses_spawns_past_its_spend_limit(root, home, *, binary):
 def test_restarted_threads_keep_their_ceiling_and_user_sessions_stay_asleep(root, home, *, binary):
     from integration_support import fnv1a64
 
-    coordinator = fnv1a64(str(home / ".uagent" / "history" / fnv1a64(str(root.resolve())) / "coordinator.json"))
+    coordinator = fnv1a64(
+        str(home / ".uagent" / "history" / fnv1a64(str(root.resolve())) / "coordinator.json")
+    )
     conversation = [{"role": "system", "content": "sys"}, {"role": "user", "content": "go"}]
     write_session(
         home,
@@ -254,31 +256,53 @@ def test_restarted_threads_keep_their_ceiling_and_user_sessions_stay_asleep(root
         cwd=root,
         usage={"cost": 5, "cost_reported": True},
         kind="thread",
-        thread={"coordinator_id": coordinator, "folder": str(root.resolve()), "ceiling": {"budget_usd": 1}},
+        thread={
+            "coordinator_id": coordinator,
+            "folder": str(root.resolve()),
+            "ceiling": {"budget_usd": 1},
+        },
     )
     write_session(home, "mine", conversation, cwd=root)
     ids = {path.stem: fnv1a64(str(path)) for path in session_files(home)}
+    # The restarted thread's report can reach the coordinator within this
+    # turn, which then answers once more: the last reply repeats.
     with Server(
         [
-            tool_call("thread", {"action": "message", "session_id": ids["thread-over"], "text": "more"}),
-            tool_call("thread", {"action": "message", "session_id": ids["mine"], "text": "more"}, call_id="call-2"),
+            tool_call(
+                "thread", {"action": "message", "session_id": ids["thread-over"], "text": "more"}
+            ),
+            tool_call(
+                "thread",
+                {"action": "message", "session_id": ids["mine"], "text": "more"},
+                call_id="call-2",
+            ),
             event({"content": "done-ok"}),
-        ]
+        ],
+        repeat_last=True,
     ) as server:
         result = run(root, base_env(home, server.url), "coord", "-p", "nudge", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
-        sent, refused = tool_results(server.requests[-1][1]["messages"])
+        sent, refused = tool_results(server.requests[2][1]["messages"])[:2]
         assert_true(sent == "sent", sent)
         assert_true("not running" in refused, refused)
         time.sleep(budget(1))
-        # The restarted thread stopped at its budget before asking the model.
-        assert_true(len(server.requests) == 3, [json.dumps(b)[-200:] for _, b in server.requests])
+        # The restarted thread stopped at its budget before asking the model:
+        # no request ever carried the coordinator's message as a user turn.
+        assert_true(
+            not any(
+                "[from the folder's coordinator] more" in json.dumps(body["messages"])
+                for _, body in server.requests
+            ),
+            [json.dumps(b)[-200:] for _, b in server.requests],
+        )
 
 
 def test_coordinator_messages_a_thread_at_most_three_times_in_a_row(root, home, *, binary):
     from integration_support import fnv1a64
 
-    coordinator = fnv1a64(str(home / ".uagent" / "history" / fnv1a64(str(root.resolve())) / "coordinator.json"))
+    coordinator = fnv1a64(
+        str(home / ".uagent" / "history" / fnv1a64(str(root.resolve())) / "coordinator.json")
+    )
     thread = write_session(
         home,
         "thread-busy",
@@ -286,12 +310,19 @@ def test_coordinator_messages_a_thread_at_most_three_times_in_a_row(root, home, 
         cwd=root,
         usage={"cost": 5, "cost_reported": True},
         kind="thread",
-        thread={"coordinator_id": coordinator, "folder": str(root.resolve()), "ceiling": {"budget_usd": 1}},
+        thread={
+            "coordinator_id": coordinator,
+            "folder": str(root.resolve()),
+            "ceiling": {"budget_usd": 1},
+        },
     )
     message = {"action": "message", "session_id": fnv1a64(str(thread)), "text": "again"}
+    # The restarted thread's report can reach the coordinator within this
+    # turn, which then answers once more: the last reply repeats.
     with Server(
         [tool_call("thread", message, call_id=f"call-{index}") for index in range(4)]
-        + [event({"content": "done-ok"})]
+        + [event({"content": "done-ok"})],
+        repeat_last=True,
     ) as server:
         result = run(root, base_env(home, server.url), "coord", "-p", "nudge", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
@@ -312,7 +343,11 @@ def test_coordinator_holds_thread_events_at_the_spend_limit(root, home, *, binar
         cwd=root,
         usage={"cost": 1.5, "cost_reported": True},
         kind="thread",
-        thread={"coordinator_id": fnv1a64(str(path)), "folder": str(root.resolve()), "day": time.strftime("%Y-%m-%d")},
+        thread={
+            "coordinator_id": fnv1a64(str(path)),
+            "folder": str(root.resolve()),
+            "day": time.strftime("%Y-%m-%d"),
+        },
     )
     with Server([event({"content": "asked-ok"}), event({"content": "event-ran"})]) as server:
         env = base_env(home, server.url)
@@ -325,7 +360,8 @@ def test_coordinator_holds_thread_events_at_the_spend_limit(root, home, *, binar
             client.send("steer", text="[thread event, not a user message] Thread x finished.")
             # Events batch for up to 20 seconds before the limit is checked.
             paused = client.until(
-                lambda frame: frame.get("kind") == "state" and frame["state"].get("paused"), seconds=40
+                lambda frame: frame.get("kind") == "state" and frame["state"].get("paused"),
+                seconds=40,
             )
             assert_true("spend limit" in paused["state"]["paused"], paused)
             assert_true(len(server.requests) == 1, "a held event started a turn")
@@ -339,7 +375,18 @@ def test_coordinator_caps_working_threads_in_worktrees(root, home, *, binary):
 
     for command in (
         ["git", "init", "-q"],
-        ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "base"],
+        [
+            "git",
+            "-c",
+            "user.email=t@t",
+            "-c",
+            "user.name=t",
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "base",
+        ],
     ):
         subprocess.run(command, cwd=root, check=True)
     release = threading.Event()
@@ -354,8 +401,16 @@ def test_coordinator_caps_working_threads_in_worktrees(root, home, *, binary):
         if not tool_results(body["messages"]):
             return tool_calls(
                 [
-                    ("call-1", "thread", {"action": "spawn", "title": "First", "objective": "first"}),
-                    ("call-2", "thread", {"action": "spawn", "title": "Second", "objective": "second"}),
+                    (
+                        "call-1",
+                        "thread",
+                        {"action": "spawn", "title": "First", "objective": "first"},
+                    ),
+                    (
+                        "call-2",
+                        "thread",
+                        {"action": "spawn", "title": "Second", "objective": "second"},
+                    ),
                 ]
             )
         return event({"content": "capped-ok"})
@@ -421,9 +476,7 @@ def test_coordinator_closes_an_idle_thread(root, home, *, binary):
 
 
 def test_coordinator_deletes_only_with_the_user(root, home, *, binary):
-    victim = write_session(
-        home, "keep-me", [{"role": "system", "content": "sys"}], cwd=root
-    )
+    victim = write_session(home, "keep-me", [{"role": "system", "content": "sys"}], cwd=root)
     session_id = __import__("integration_support").fnv1a64(str(victim))
     with Server(
         [
@@ -521,12 +574,17 @@ def test_yielded_and_mandatory_decisions_reach_the_user(root, home, *, binary):
         assert_true(result.returncode == 0, result.stderr)
         assert_true(state["asked"].wait(budget(20)), "approval never reached the coordinator")
         thread = _thread_session(home)
-        socket = runtime_directory(home) / f"{__import__('integration_support').fnv1a64(str(thread))}.sock"
+        socket = (
+            runtime_directory(home)
+            / f"{__import__('integration_support').fnv1a64(str(thread))}.sock"
+        )
         client = SessionClient(socket)
         try:
             yielded = client.until(
-                lambda frame: frame.get("kind") == "state"
-                and (frame.get("pending") or {}).get("route") == "human"
+                lambda frame: (
+                    frame.get("kind") == "state"
+                    and (frame.get("pending") or {}).get("route") == "human"
+                )
             )
             assert_true(yielded["pending"]["note"] == "writes outside the brief", yielded)
             # The user answers the yielded decision as any other.
@@ -617,10 +675,10 @@ def test_coordinator_context_carries_instructions_notes_board_and_time(root, hom
         assert_true("## board" not in stored.read_text(), "coordinator context was stored")
         # The typed text is stored as typed; only the request carries stamps.
         stored_messages = json.loads(stored.read_text().split("\n", 1)[1])["messages"]
+        assert_true(any(m.get("content") == "what now?" for m in stored_messages), stored_messages)
         assert_true(
-            any(m.get("content") == "what now?" for m in stored_messages), stored_messages
+            messages[-1]["role"] == "user" and "## board" in messages[-1]["content"], messages[-1]
         )
-        assert_true(messages[-1]["role"] == "user" and "## board" in messages[-1]["content"], messages[-1])
         users = [m["content"] for m in messages if m["role"] == "user"]
         assert_true(
             any(re.match(r"\[\w{3} \d\d \w{3} \d\d:\d\d \S+\] what now\?", u) for u in users),
@@ -645,8 +703,10 @@ def test_only_checkpoints_carry_the_view(root, home, *, binary):
         try:
             sent = client.send("submit", text="again")
             client.until(
-                lambda frame: frame.get("kind") == "state"
-                and frame.get("completed_request_id") == sent["request_id"]
+                lambda frame: (
+                    frame.get("kind") == "state"
+                    and frame.get("completed_request_id") == sent["request_id"]
+                )
             )
             # After the catch-up snapshot sent on connect.
             states = [frame for frame in client.frames if frame.get("kind") == "state"][1:]

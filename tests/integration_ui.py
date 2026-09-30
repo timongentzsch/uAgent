@@ -11,8 +11,8 @@ from integration_support import (
     assert_true,
     base_env,
     event,
-    run_dialog,
     run,
+    run_dialog,
     run_pty,
     session_files,
     timeout_setting,
@@ -783,8 +783,10 @@ def test_resize_while_the_ask_picker_is_open(root, home, *, binary):
             timeout=20,
         )
     assert_true(code == 0, output[-2000:])
+    # The whole stream: a byte window can start inside an escape sequence
+    # and miss the answer when a platform repaints more.
     screen = Screen(40)
-    screen.feed(output[output.rfind(b"picked-ok") - 4000 :])
+    screen.feed(output)
     shown = screen.text()
     assert_true(shown.count("Which database? → SQLite") == 1, shown)
 

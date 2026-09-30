@@ -849,9 +849,7 @@ def test_web_ask_shows_option_images_as_session_assets(root, home, *, binary):
             option = value["pending"]["questions"][0]["options"][0]
             assert_true(option["preview"] == "[#][#]", option)
             asset = option["image"]["id"]
-            status, body, headers = client.request(
-                f"/api/sessions/{session['id']}/assets/{asset}"
-            )
+            status, body, headers = client.request(f"/api/sessions/{session['id']}/assets/{asset}")
             assert_true(status == 200 and body == PNG, (status, headers))
             client.command(
                 "reply",
@@ -1943,6 +1941,8 @@ def test_web_child_controls_and_conversation_ownership(root, home, *, binary):
                     )
             finally:
                 release_child.set()
+            # An idle parent takes up its finished child's result as a turn;
+            # controls wait until that turn has ended too.
             snapshot = client.until(
                 session,
                 lambda value: (
@@ -1950,6 +1950,10 @@ def test_web_child_controls_and_conversation_ownership(root, home, *, binary):
                     and any(
                         row.get("status") == "completed"
                         for row in value["state"].get("activities", [])
+                    )
+                    and any(
+                        "[subagent finished" in json.dumps(body["messages"])
+                        for _, body in provider.requests
                     )
                 ),
             )
@@ -2469,7 +2473,10 @@ def test_idle_coordinator_is_let_go_and_exits(root, home, *, binary):
             web.pair(code)
             session = web.command("create", cwd=str(project), coordinator=True)["session"]
             web.command("activate", session)
-            sockets = lambda: list(runtime_directory(home).glob("*.sock"))
+
+            def sockets():
+                return list(runtime_directory(home).glob("*.sock"))
+
             wait_until(sockets, "coordinator runtime never started", timeout=10)
             # The host lets go after the idle period; the runtime then exits.
             wait_until(lambda: not sockets(), "idle coordinator kept running", timeout=30)
@@ -2492,16 +2499,24 @@ def test_coordinator_edit_from_here_rewinds_in_place(root, home, *, binary):
                 web.command("submit", session, text=text)
                 web.until(
                     session,
-                    lambda value, answer=answer: value["metadata"]["status"] == "idle"
-                    and any(block.get("text") == answer for block in value["state"]["view"]["blocks"]),
+                    lambda value, answer=answer: (
+                        value["metadata"]["status"] == "idle"
+                        and any(
+                            block.get("text") == answer
+                            for block in value["state"]["view"]["blocks"]
+                        )
+                    ),
                 )
             rewound = web.command("fork", session, turn=2)["result"]
             assert_true(rewound.get("rewound") and rewound["id"] == session["id"], rewound)
             assert_true(rewound["prompt"] == "second", rewound)
             view = web.until(
                 session,
-                lambda value: not any(
-                    block.get("text") in ("second", "two-ok") for block in value["state"]["view"]["blocks"]
+                lambda value: (
+                    not any(
+                        block.get("text") in ("second", "two-ok")
+                        for block in value["state"]["view"]["blocks"]
+                    )
                 ),
             )
             users = [b["text"] for b in view["state"]["view"]["blocks"] if b["kind"] == "user"]

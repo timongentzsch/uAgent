@@ -215,7 +215,11 @@ export function useHost(
                 : outcome.pending
                   ? "Awaiting confirmation"
                   : outcome.accepted
-                    ? "Sent"
+                    ? // Accepted guidance waits for its step and stays
+                      // recallable until the transcript shows it.
+                      item.status === "Guidance queued"
+                      ? item.status
+                      : "Sent"
                     : "Not sent",
               error: outcome.error,
             },

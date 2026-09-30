@@ -52,30 +52,36 @@ class SessionClient:
         self.socket.close()
 
 
+def close_sessions(home):
+    """One pass: ask every runtime of `home` to close and wait for it."""
+    for path in runtime_directory(home).glob("*.sock"):
+        try:
+            client = SessionClient(path)
+            client.send("close")
+            client.socket.settimeout(budget(5))
+            while client.stream.readline():
+                pass
+            client.close()
+        except ConnectionRefusedError:
+            # Left by a runtime that crashed: nothing listens on it.
+            path.unlink(missing_ok=True)
+        except (OSError, ValueError):
+            pass
+
+
 def stop_sessions(home, settle=0.0):
-    """Close every runtime of `home`. With `settle`, also those a finishing
-    session starts meanwhile (a thread waking its coordinator): done once no
-    socket has appeared for that many seconds."""
-    deadline = time.monotonic() + budget(15)
+    """Close every runtime of `home`. With `settle`, keep closing those a
+    finishing session starts meanwhile (a thread waking its coordinator)
+    until none has appeared for that many seconds, within a short bound."""
+    close_sessions(home)
+    if not settle:
+        return
+    deadline = time.monotonic() + budget(settle * 5)
     quiet_since = time.monotonic()
     while time.monotonic() < deadline:
-        sockets = list(runtime_directory(home).glob("*.sock"))
-        if not sockets:
-            if time.monotonic() - quiet_since >= budget(settle):
-                return
-            time.sleep(0.05)
-            continue
-        for path in sockets:
-            try:
-                client = SessionClient(path)
-                client.send("close")
-                client.socket.settimeout(budget(5))
-                while client.stream.readline():
-                    pass
-                client.close()
-            except ConnectionRefusedError:
-                # Left by a runtime that crashed: nothing listens on it.
-                path.unlink(missing_ok=True)
-            except (OSError, ValueError):
-                pass
-        quiet_since = time.monotonic()
+        if any(runtime_directory(home).glob("*.sock")):
+            close_sessions(home)
+            quiet_since = time.monotonic()
+        elif time.monotonic() - quiet_since >= settle:
+            return
+        time.sleep(0.05)

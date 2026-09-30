@@ -88,10 +88,19 @@ def remove_suite(root):
     """Remove the suite's directory once no runtime writes into it: a
     session that finished at the end of a case can still start another (a
     thread waking its coordinator) after that case's cleanup."""
-    from session_support import stop_sessions
+    from integration_support import budget
+    from session_support import close_sessions, runtime_directory
 
-    for home in root.glob("*.home"):
-        stop_sessions(home, settle=1.0)
+    homes = list(root.glob("*.home"))
+    deadline = time.monotonic() + budget(5)
+    quiet_since = time.monotonic()
+    while time.monotonic() < deadline and time.monotonic() - quiet_since < 1:
+        live = [home for home in homes if any(runtime_directory(home).glob("*.sock"))]
+        for home in live:
+            close_sessions(home)
+        if live:
+            quiet_since = time.monotonic()
+        time.sleep(0.05)
     for attempt in range(10):
         try:
             shutil.rmtree(root)

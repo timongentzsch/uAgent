@@ -382,6 +382,7 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
     original_chars = SaturatingAdd(original_chars, task.result.output.size());
     model_chars = SaturatingAdd(model_chars, model_results[index].size());
     AppendToolResult(call, model_results[index], task.result, task.duration_ms);
+    if (task.result.effect) edits_.Record(turn_id_, *task.result.effect);
   }
   bool any_succeeded =
       std::any_of(tasks.begin(), tasks.end(),

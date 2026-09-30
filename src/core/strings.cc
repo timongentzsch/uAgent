@@ -286,6 +286,19 @@ std::vector<std::string> WrapLines(const std::string& s, size_t columns) {
   return rows;
 }
 
+std::vector<std::string_view> DiffLines(std::string_view text) {
+  std::vector<std::string_view> lines;
+  for (size_t begin = 0; begin < text.size();) {
+    size_t end = text.find('\n', begin);
+    std::string_view line = text.substr(begin, end - begin);
+    if (!line.empty() && line.back() == '\r') line.remove_suffix(1);
+    lines.push_back(line);
+    if (end == std::string_view::npos) break;
+    begin = end + 1;
+  }
+  return lines;
+}
+
 std::string FirstLine(const std::string& s) {
   return s.substr(0, s.find('\n'));
 }

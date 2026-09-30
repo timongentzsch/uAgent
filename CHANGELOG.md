@@ -9,6 +9,15 @@
   `approval needed:`), with no cursor movement, animation or non-ASCII glyphs.
   `UAGENT_REDUCED_MOTION=1` holds the spinner still. See
   [docs/ACCESSIBILITY.md](docs/ACCESSIBILITY.md).
+- Undo: `/changes` lists the files the last turn's edit, write and delete
+  tools changed, and `/undo [FILE]` puts them back whole. A file changed since
+  is kept and says so; shell commands' changes are not tracked. The model is
+  told which files were reverted at its next step. Up to 2 MiB per file and
+  64 MiB per session are kept, beside the session.
+- Approvals name their risks (runs commands, makes changes, uses the network,
+  outside this folder), in the terminal and on the approval event.
+- "Queue next": a steer sent with `queue: true` waits for the running turn to
+  end and then runs as its own turn.
 
 ## v1.2.0 - 2026-09-30
 

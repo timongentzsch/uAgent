@@ -37,20 +37,6 @@ namespace {
 // taking the scrollback with it.
 constexpr size_t kMaxDiffDisplayLines = 400;
 
-// Views borrow `text`, so every caller keeps the buffer alive past the diff.
-std::vector<std::string_view> DiffLines(std::string_view text) {
-  std::vector<std::string_view> lines;
-  for (size_t begin = 0; begin < text.size();) {
-    size_t end = text.find('\n', begin);
-    std::string_view line = text.substr(begin, end - begin);
-    if (!line.empty() && line.back() == '\r') line.remove_suffix(1);
-    lines.push_back(line);
-    if (end == std::string_view::npos) break;
-    begin = end + 1;
-  }
-  return lines;
-}
-
 struct EditDisplay {
   std::string body;
   int64_t added = 0;
@@ -557,6 +543,7 @@ ToolResult ToolEditFile(const std::string& path,
   }
 
   const size_t original_size = data.size();
+  std::string original = data;
   EditRun run;
   if (auto refusal = ApplyEdits(data, path, edits, run)) {
     return std::move(*refusal);
@@ -578,6 +565,8 @@ ToolResult ToolEditFile(const std::string& path,
                   std::to_string(original_size) + " -> " +
                   std::to_string(data.size()) + " bytes)");
   result.display = DiffReceipt("Edited", path, run.display);
+  result.effect = FileEffect{CanonicalAccessPath(path).string(), true,
+                             std::move(original), HashHex(data)};
   return result;
 }
 
@@ -674,6 +663,7 @@ ToolResult ToolDeleteFileWithDisplay(const std::string& path) {
     return std::move(*invalid);
   }
   std::optional<std::string> previous = DiffableContents(path);
+  FileEffect effect{CanonicalAccessPath(path).string(), true, previous, ""};
   if (!previous) {
     // Binary/oversized still deletes, just without a diff receipt.
     previous.emplace();
@@ -689,6 +679,7 @@ ToolResult ToolDeleteFileWithDisplay(const std::string& path) {
                        "path does not exist: " + path);
   }
   ToolResult result = ToolSuccess("deleted " + path);
+  result.effect = std::move(effect);
   if (previous->empty()) {
     result.display = "Deleted " + DisplayPath(path) + "\n";
   } else {
@@ -713,7 +704,11 @@ ToolResult ToolWriteFileWithDisplay(const std::string& path,
   }
   ToolResult result =
       ToolAtomicWrite(path, content, kSharedFileMode, true, overwrite);
-  if (!result.Ok() || !previous) return result;
+  if (!result.Ok()) return result;
+  result.effect =
+      FileEffect{CanonicalAccessPath(path).string(), existed,
+                 existed ? previous : std::nullopt, HashHex(content)};
+  if (!previous) return result;
   result.display = WholeFileDiffDisplay(path, *previous, content, existed);
   return result;
 }

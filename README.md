@@ -111,6 +111,7 @@ Common slash commands:
 | --- | --- |
 | `/model`, `/models`, `/effort`, `/variant` | Choose route, model, reasoning effort or OpenRouter routing |
 | `/attach PATH`, `/diff`, `/review`, `/init` | Attach a file, show the git diff, review changes, write `AGENTS.md` |
+| `/changes`, `/undo [FILE]` | List the files the last turn changed; put them back as they were |
 | `/status`, `/context`, `/cost`, `/http` | Inspect configuration, the model request, spend and captured traffic |
 | `/ps`, `/agents`, `/tools`, `/mcp`, `/permissions`, `/yolo` | Manage background work, delegated agents, tools, MCP servers and approval mode |
 | `/sessions`, `/new`, `/rename`, `/fork`, `/rewind`, `/compact`, `/share` | Manage sessions and context |

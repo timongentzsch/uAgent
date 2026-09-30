@@ -229,6 +229,37 @@ CommandReply RunSlashCommand(AppSession& session,
     case SlashCommandId::kCost:
       HandleCost(session, reply);
       break;
+    case SlashCommandId::kChanges:
+      result = session.ActiveAgent().ChangedFiles(0);
+      if (result.empty()) reply.Note(Tone::kNeutral, "no file changes to undo");
+      for (const json& file : result) {
+        reply.Print("%s (+%" PRId64 " -%" PRId64 ")%s\n",
+                    TerminalSafe(JsonValue(file, "path", "")).c_str(),
+                    JsonValue(file, "added", int64_t{0}),
+                    JsonValue(file, "removed", int64_t{0}),
+                    JsonValue(file, "undoable", false) ? "" : " not undoable");
+      }
+      if (!result.empty()) {
+        reply.Note(Tone::kNeutral,
+                   "/undo puts them back; shell commands' "
+                   "changes are not tracked");
+      }
+      break;
+    case SlashCommandId::kUndo:
+      result = session.ActiveAgent().Revert(0, Trim(command.argument));
+      for (const json& path : result["restored"]) {
+        reply.Note(Tone::kNeutral,
+                   "restored " + TerminalSafe(path.get<std::string>()));
+      }
+      for (const json& conflict : result["conflicts"]) {
+        reply.Note(Tone::kWarn,
+                   "kept " + TerminalSafe(JsonValue(conflict, "path", "")) +
+                       ": " + JsonValue(conflict, "reason", ""));
+      }
+      if (result["restored"].empty() && result["conflicts"].empty()) {
+        reply.Note(Tone::kNeutral, "nothing to undo");
+      }
+      break;
     case SlashCommandId::kInstructions:
       HandleInstructions(session, command.argument, reply);
       break;

@@ -66,6 +66,16 @@ struct ReadRange {
   int64_t first = 0, last = 0;
 };
 
+// A file the call changed, for the session's undo (EditJournal): its bytes
+// before the call, unset when it did not exist or they were not kept (binary,
+// too large), and a hash of what it holds now, empty once deleted.
+struct FileEffect {
+  std::string path;
+  bool existed = false;
+  std::optional<std::string> before;
+  std::string after_hash;
+};
+
 struct ToolResult {
   CompletionStatus status = CompletionStatus::kSuccess;
   std::string output;
@@ -79,6 +89,7 @@ struct ToolResult {
   // Display-only view parts shown on the row without expanding it, never
   // model-facing: links to work the call started and files it shared.
   json parts = nullptr;
+  std::optional<FileEffect> effect;
   bool no_change = false;  // activity poll found nothing new
   bool activity_terminal = false;
 

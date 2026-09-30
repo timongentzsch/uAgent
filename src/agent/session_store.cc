@@ -724,6 +724,7 @@ SessionStoreStatus SessionStore::Remove(const std::string& path,
   if (!draft_path.empty()) std::filesystem::remove(draft_path, ec);
   // These are session-owned siblings; remove_all never follows symlinks.
   if (!ec) std::filesystem::remove_all(path + ".assets", ec);
+  if (!ec) std::filesystem::remove_all(path + ".edits", ec);
   if (!ec) std::filesystem::remove(path + ".events.jsonl", ec);
   if (!ec) std::filesystem::remove(path, ec);
   if (!ec && loaded.record) {

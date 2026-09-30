@@ -33,6 +33,7 @@ namespace uagent {
   X(TestMarkdownMath)                            \
   X(TestCapsAndEscaping)                         \
   X(TestFileTools)                               \
+  X(TestEditJournal)                             \
   X(TestMathTransliteration)                     \
   X(TestActivityProjection)                      \
   X(TestReasoningPartReconciliation)             \

@@ -14,6 +14,7 @@ Paths under `~/.uagent` unless shown otherwise.
 | session event journals | `<session>.json.events.jsonl` |
 | session writer lease | `<session>.json.lock` |
 | web uploads | `<session>.json.assets/*` |
+| undo journal: each turn's changed files as they were before it | `<session>.json.edits/{index.json,<turn>-<hash>}` |
 | debug traces | `sessions/*.jsonl` |
 | captured large outputs and HTTP exchanges | `artifacts/*` |
 | background command logs | `bg/*` |

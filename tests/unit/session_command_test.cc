@@ -193,7 +193,7 @@ void TestHostCommandKinds() {
             ? 1
             : 0;
   }
-  CHECK(forwarded == 18);
+  CHECK(forwarded == 19);
   for (auto local : {session::SessionCommandKind::kClose,
                      session::SessionCommandKind::kCreate,
                      session::SessionCommandKind::kDelete,

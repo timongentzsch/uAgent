@@ -109,6 +109,10 @@ json SessionControl(AppSession& session, const json& request) {
         request, session.context.config_manager, session.Runtime().config,
         session.context.config_manager.ProjectTrusted());
   }
+  if (kind == "revert") {
+    return session.ActiveAgent().Revert(JsonValue(request, "turn", int64_t{0}),
+                                        JsonValue(request, "path", ""));
+  }
   if (kind == "context") {
     json preview = session.ActiveAgent().PreviewContext();
     if (preview.contains("error")) return preview;

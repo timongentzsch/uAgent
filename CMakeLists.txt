@@ -152,6 +152,7 @@ add_library(
   src/agent/mail_delivery.cc
   src/agent/conversation.cc
   src/agent/dispatch.cc
+  src/agent/edit_journal.cc
   src/agent/file_services.cc
   src/agent/jobs.cc
   src/agent/memory_store.cc

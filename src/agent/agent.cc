@@ -32,6 +32,7 @@
 #include "include/core/mailbox.h"
 #include "include/core/output_buffer.h"
 #include "include/core/signals.h"
+#include "include/core/steering.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
 #include "include/core/time.h"
@@ -349,6 +350,20 @@ json Agent::PreviewContext() {
     ++revision_;
   }
   return preview;
+}
+
+json Agent::Revert(int64_t turn, const std::string& path) {
+  json result = edits_.Revert(turn ? turn : edits_.LastTurn(), path);
+  std::string files;
+  for (const json& file : result["restored"]) {
+    files += (files.empty() ? "" : ", ") + file.get<std::string>();
+  }
+  // Told once, at the next step, rather than mid-turn.
+  if (!files.empty()) {
+    SteeringState().Queue(
+        "[user reverted: " + files + "; re-read before editing]", "", false);
+  }
+  return result;
 }
 
 bool Agent::Save(const std::string& path, std::string& error) const {

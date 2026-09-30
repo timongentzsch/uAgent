@@ -602,6 +602,9 @@ void Agent::FinishTurn(TurnExecution& state, int64_t step) {
   if (!turn_side_statistics_.empty()) {
     summary["background_statistics"] = turn_side_statistics_;
   }
+  if (json files = edits_.Files(turn_id_); !files.empty()) {
+    summary["files"] = std::move(files);
+  }
   // The stored block already carries the full summary: the footer the live
   // turn prints and the one --resume replays read identical inputs.
   summary.update({{"session_usage", UsageJson(session_usage_)},

@@ -19,6 +19,8 @@
 | `/http [INDEX [request|response]]` | inspect captured HTTP attempts (latest by default) |
 | `/diff` | show git diff (including untracked files) |
 | `/cost` | show tokens and spend by route |
+| `/changes` | list the files the last turn changed |
+| `/undo [FILE]` | put back the files the last turn changed, or one of them |
 | `/debug-config [SETTING]` | show configuration layers, sources and restart-required fields |
 | `/effort LEVEL` | choose how much reasoning effort to use |
 | `/help` | show this help |

@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "include/agent/edit_journal.h"
 #include "include/agent/jobs.h"
 #include "include/agent/path_policy.h"
 #include "include/app/options.h"
@@ -551,6 +552,38 @@ void TestFileTools() {
   fs::remove(binary);
   CHECK(ToolWriteFile(binary.string(), "second body\n").Ok());
   CHECK(FileIdentity(binary.string()) != first);
+}
+
+// Two changes to one file in a turn keep the bytes from before the first,
+// and the journal survives a reopen; an undo restores them only while the
+// file still holds what the turn left.
+void TestEditJournal() {
+  auto write = [](const std::string& path, const std::string& text) {
+    std::string error;
+    REQUIRE(AtomicWriteFile(path, text, kPrivateFileMode, false, error));
+  };
+  TestWorkspace workspace("edit-journal");
+  const std::string file = (workspace.workspace / "a.txt").string();
+  const std::string directory = (workspace.root / "s.json.edits").string();
+  EditJournal journal;
+  journal.Open(directory);
+  write(file, "two\n");
+  journal.Record(3, {file, true, "one\n", HashHex("two\n")});
+  write(file, "three\n");
+  journal.Record(3, {file, true, "two\n", HashHex("three\n")});
+  const json files = journal.Files(3);
+  CHECK(files.size() == 1 && JsonValue(files[0], "added", 0) == 1 &&
+        JsonValue(files[0], "removed", 0) == 1);
+
+  EditJournal reopened;
+  reopened.Open(directory);
+  CHECK(reopened.LastTurn() == 3);
+  write(file, "user\n");
+  CHECK(reopened.Revert(3, "")["conflicts"].size() == 1);
+  write(file, "three\n");
+  CHECK(reopened.Revert(3, "")["restored"].size() == 1);
+  CHECK(ReadFile(file, 64) == "one\n");
+  CHECK(reopened.LastTurn() == 0);
 }
 
 void TestTerminalSafety() {

@@ -17,6 +17,7 @@ from integration_support import (
     session_files,
     timeout_setting,
     tool_call,
+    tool_calls,
     wait_for_echo,
     wait_until_stopped,
     write_mcp_server,
@@ -235,6 +236,57 @@ def test_plain_mode_writes_labelled_lines_without_cursor_control(root, home, *, 
         assert_true(label in text, (label, output[-2000:]))
     assert_true(re.search(rb"\x1b(\[[0-9;?]*[A-Za-ln-z]|\])", output) is None, output[-2000:])
     assert_true(re.search(rb"[\x80-\xff]", output) is None, output[-2000:])
+
+
+def test_undo_puts_back_what_the_last_turn_changed(root, home, *, binary):
+    # /changes lists the turn's files and /undo restores them whole: an edit
+    # reverts, a created file goes, a deleted one comes back. A file changed
+    # since is kept, and says why.
+    (root / "edited.txt").write_text("one\n")
+    (root / "gone.txt").write_text("keep me\n")
+    (root / "later.txt").write_text("first\n")
+    calls = [
+        ("call-1", "edit_file", {"path": "edited.txt", "edits": [{"old": "one", "new": "two"}]}),
+        ("call-2", "write_file", {"path": "fresh.txt", "content": "new\n"}),
+        ("call-3", "delete_file", {"path": "gone.txt"}),
+        ("call-4", "write_file", {"path": "later.txt", "content": "second\n", "overwrite": True}),
+    ]
+
+    def finish(_, _body):
+        # Someone edits later.txt after the tool wrote it.
+        (root / "later.txt").write_text("user\n")
+        return event({"content": "changed-ok"})
+
+    told = []
+
+    def after(_, body):
+        told.append(json.dumps(body["messages"]))
+        return event({"content": "after-ok"})
+
+    with Server([tool_calls(calls), finish, after]) as server:
+        code, output = run_pty(
+            root,
+            base_env(home, server.url),
+            [
+                (b"go\n", b"changed-ok"),
+                (b"/changes\n", b"not tracked"),
+                (b"/undo\n", b"changed since"),
+                (b"again\n", b"after-ok"),
+                (b"/q\n", None),
+            ],
+            args=("--yolo", "--plain"),
+            startup_marker=b"",
+            binary=binary,
+        )
+    assert_true(code == 0, output[-2000:])
+    assert_true(b"edited.txt (+1 -1)" in output, output[-2000:])
+    assert_true((root / "edited.txt").read_text() == "one\n", output[-2000:])
+    assert_true(not (root / "fresh.txt").exists(), output[-2000:])
+    assert_true((root / "gone.txt").read_text() == "keep me\n", output[-2000:])
+    assert_true((root / "later.txt").read_text() == "user\n", output[-2000:])
+    assert_true(b"kept later.txt: changed since" in output, output[-2000:])
+    # The model hears once, at its next step, which files to re-read.
+    assert_true("user reverted: edited.txt, fresh.txt, gone.txt;" in told[0], told)
 
 
 def test_multiline_bracketed_paste(root, home, *, binary):

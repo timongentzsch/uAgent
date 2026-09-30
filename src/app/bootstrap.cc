@@ -782,6 +782,7 @@ BootstrapResult Bootstrap(Options options, const char* executable,
         });
   }
   if (context->channel && !context->channel->SessionPath().empty()) {
+    context->agent->OpenEditJournal(context->channel->SessionPath() + ".edits");
     context->agent->KeepToolFiles(
         [session_path = context->channel->SessionPath()](
             const std::string& path, const std::string& name) -> json {

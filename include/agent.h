@@ -21,6 +21,7 @@
 
 #include "include/agent/adaptive_system.h"
 #include "include/agent/conversation.h"
+#include "include/agent/edit_journal.h"
 #include "include/agent/process.h"
 #include "include/agent/trace.h"
 #include "include/api.h"
@@ -190,6 +191,19 @@ class Agent {
   // interrupt stops the running turn after queueing its text. With `hold`,
   // wake messages stay pending. True when anything was taken.
   bool DeliverMail(bool hold = false);
+
+  // The session's undo (EditJournal), kept in `directory`; unset, nothing is
+  // journaled, as for a subagent.
+  void OpenEditJournal(std::string directory) {
+    edits_.Open(std::move(directory));
+  }
+  // The files `turn` changed (0: the latest turn that changed any).
+  json ChangedFiles(int64_t turn) {
+    return edits_.Files(turn ? turn : edits_.LastTurn());
+  }
+  // Puts them back (all, or only `path`); the model hears which at its next
+  // step, so it re-reads before editing them again.
+  json Revert(int64_t turn, const std::string& path);
 
   // Files the model attached ride in on a user message. Canonical tool results
   // are text-only, so image/file parts cannot travel with them.
@@ -418,6 +432,7 @@ class Agent {
   // ids of the latest delivered, so one delivered again is recognised.
   mutable std::vector<std::string> unacked_mail_;
   json delivered_mail_ = json::array();
+  EditJournal edits_;
   uint64_t view_epoch_ = 0;
   std::function<std::string()> runtime_context_;
   int64_t total_user_turns_ = 0;

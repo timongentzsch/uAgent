@@ -36,6 +36,8 @@ enum class SlashCommandId {
   kModel,
   kModels,
   kCost,
+  kChanges,
+  kUndo,
   kProcesses,
   kPeers,
   kQuit,

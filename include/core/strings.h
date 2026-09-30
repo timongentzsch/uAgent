@@ -173,6 +173,10 @@ struct CommonLineSpan {
   size_t new_end = 0;
 };
 
+// `text` as diff lines, without their CR LF or LF. Views borrow `text`, so
+// every caller keeps the buffer alive past the diff.
+std::vector<std::string_view> DiffLines(std::string_view text);
+
 template <typename Lines>
 inline CommonLineSpan TrimCommonLines(const Lines& old_lines,
                                       const Lines& new_lines) {

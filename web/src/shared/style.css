@@ -1341,6 +1341,11 @@ details[open]:not(.disclosure-row) > summary::before {
   font-size: var(--font-small);
 }
 
+/* A sheet's button, like any control beside the composer's file input,
+   paints above that input's hit area where a narrow row overlaps them. */
+.sheet-control {
+  position: relative;
+}
 /* A row's ⋯ actions drop down from their button (shared/menu.tsx), a
    native top-layer popover that fades in from its anchor and out again;
    allow-discrete keeps it painted until its exit has played. */

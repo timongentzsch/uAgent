@@ -284,26 +284,31 @@ bool SessionHost::Contains(const std::string& id) const {
 }
 
 json SessionHost::Metadata(const HostSession& session) const {
-  return {{"id", session.id},
-          {"task_id", session.task_id},
-          {"run_id", session.run_id},
-          {"cwd", session.cwd},
-          {"kind", session.kind},
-          {"folder", session.folder},
-          {"title", session.title},
-          {"generation", session.generation},
-          {"status", session.status},
-          {"presence", session.pid > 0 && !session.exited ? "active" : ""},
-          {"turn_active", session.turn_active},
-          {"guidance", session.guidance},
-          {"incoming", session.incoming},
-          {"activity", JsonValue(session.state, "activity", "Ready")},
-          {"phase", JsonValue(session.state, "phase", "idle")},
-          {"activities", JsonValue(session.state, "activities", json::array())},
-          {"error", session.error},
-          // Waiting on a person: a coordinator's routed decision is not.
-          {"pending", WaitsOnPerson(session.pending)},
-          {"updated", session.updated}};
+  // Waiting on a person: a coordinator's routed decision is not. What it
+  // waits on is named from the decision in memory, for the inbox row.
+  const bool waits = WaitsOnPerson(session.pending);
+  return {
+      {"id", session.id},
+      {"task_id", session.task_id},
+      {"run_id", session.run_id},
+      {"cwd", session.cwd},
+      {"kind", session.kind},
+      {"folder", session.folder},
+      {"title", session.title},
+      {"generation", session.generation},
+      {"status", session.status},
+      {"presence", session.pid > 0 && !session.exited ? "active" : ""},
+      {"turn_active", session.turn_active},
+      {"guidance", session.guidance},
+      {"incoming", session.incoming},
+      {"activity", JsonValue(session.state, "activity", "Ready")},
+      {"phase", JsonValue(session.state, "phase", "idle")},
+      {"activities", JsonValue(session.state, "activities", json::array())},
+      {"error", session.error},
+      {"pending", waits},
+      {"pending_kind", waits ? JsonValue(session.pending, "kind", "") : ""},
+      {"pending_prompt", waits ? JsonValue(session.pending, "prompt", "") : ""},
+      {"updated", session.updated}};
 }
 
 json SessionHost::LiveSnapshot(const HostSession& session) const {

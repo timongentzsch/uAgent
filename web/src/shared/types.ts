@@ -274,6 +274,8 @@ export interface Pending {
     mandatory_human?: boolean;
     mandatory_reason?: string;
     preview?: string;
+    // What approving risks, most serious first.
+    risks?: { id: "runs" | "writes" | "network" | "outside"; label: string }[];
   };
   // kind "ask": the model's questions; `prompt` repeats the first.
   questions?: AskQuestion[];
@@ -350,6 +352,9 @@ export interface Session {
   incoming?: number;
   turn_active?: boolean;
   pending?: boolean;
+  // What it waits on you for: "approval", "ask", …, and its prompt.
+  pending_kind?: string;
+  pending_prompt?: string;
   activity?: string;
   activities?: Activity[];
   guidance?: number;

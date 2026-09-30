@@ -25,14 +25,17 @@ function present(block: Block, source?: Block): PresentedBlock {
 export const unsent = (block: Pick<Block, "status">) =>
   block.status === "Not sent" || block.status === "Not confirmed";
 
+// Guidance for the running turn, or a message held for after it.
+export const QUEUED_NEXT = "Queued for after this turn";
+export const queuedGuidance = (block: Pick<Block, "status">) =>
+  block.status === "Guidance queued" || block.status === QUEUED_NEXT;
+
 // What returns to the composer: guidance still queued (withdrawn from the
 // host, so only while connected) or a message that never went out.
 export const recallable = (
   block: Pick<Block, "status" | "request_id">,
   online: boolean,
-) =>
-  !!block.request_id &&
-  ((online && block.status === "Guidance queued") || unsent(block));
+) => !!block.request_id && ((online && queuedGuidance(block)) || unsent(block));
 
 // Flat, stable, uniform rows: the host's view already holds one block per
 // message and one per tool call, so a block is a row. Empty assistant

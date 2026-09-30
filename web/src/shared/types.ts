@@ -128,6 +128,19 @@ export interface TurnSummary {
   ttt_ms: number;
   tokens_per_second: number;
   usage: Usage;
+  // Files the turn's edit, write and delete tools changed (at most 50).
+  files?: TurnFile[];
+}
+export interface TurnFile {
+  path: string;
+  added: number;
+  removed: number;
+  undoable: boolean;
+}
+// Why the last turn ended; null while one runs.
+export interface TurnStop {
+  reason: string;
+  detail?: string;
 }
 export interface Block {
   memory?: {
@@ -402,6 +415,7 @@ export interface State {
   http?: Exchange[];
   mcp?: McpServer[];
   error?: string;
+  stop?: TurnStop | null;
 }
 export interface McpServer {
   name: string;
@@ -741,6 +755,11 @@ export interface CommandFields {
   activity_id?: number;
   agent_id?: string;
   before?: number;
+  // Steer: hold the message until the running turn ends ("Queue next").
+  queue?: boolean;
+  // Revert: the turn (0 = latest) and one file of it, or all.
+  turn?: number;
+  path?: string;
 }
 export type Receipt<T> = Outcome &
   ({ pending: true } | { pending?: false; result: T });

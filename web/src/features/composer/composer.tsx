@@ -84,7 +84,7 @@ export default function Composer({
   upload: (files: File[]) => void;
   uploading: boolean;
   busy: boolean;
-  submit: (event: Event) => void;
+  submit: (event: Event, queue?: boolean) => void;
   act: Act;
   report: Report;
   following: boolean;
@@ -181,7 +181,7 @@ export default function Composer({
   const suggestionCount = mentionOpen
     ? mentionCandidates.length
     : suggestions.count;
-  const send = (event: Event) => {
+  const send = (event: Event, queue = false) => {
     const slash = parseSlash(commands, draft.text);
     if (slash.name === "/attach" && !slash.argument) {
       event.preventDefault();
@@ -201,7 +201,7 @@ export default function Composer({
         }
       }
       recalled.current = -1;
-      submit(event);
+      submit(event, queue);
     }
   };
   // Recall only from an empty draft or the entry being browsed, so arrows
@@ -345,7 +345,9 @@ export default function Composer({
             id="prompt"
             inputRef={input}
             rows={1}
-            placeholder={running ? "Add guidance…" : "Ask µAgent…"}
+            placeholder={
+              running ? "Add guidance… (Esc to stop)" : "Ask µAgent…"
+            }
             value={draft.text}
             onInput={(event) => {
               setDraft({ ...draft, text: event.currentTarget.value });
@@ -370,6 +372,12 @@ export default function Composer({
             }}
             onKeyDown={(event) => {
               if (mentionOpen && mentionKeyDown(event)) return;
+              // Alt+Enter holds the message until the turn ends.
+              if (running && event.key === "Enter" && event.altKey) {
+                event.preventDefault();
+                if (!event.repeat) send(event, true);
+                return;
+              }
               if (suggestions.keyDown(event) || !plainKey(event)) return;
               if (event.key === "Escape" && running) {
                 event.preventDefault();
@@ -478,7 +486,8 @@ export default function Composer({
             <SheetButton
               label="Permissions"
               title={`${permissionLabel}${permission?.mode === "default" ? " · using default permissions" : " · conversation override"}`}
-              className="permission-control"
+              // YOLO runs everything unasked: it says so loudly.
+              className={`permission-control${effective === "yolo" ? " yolo" : ""}`}
               buttonClass="quiet"
               disabled={!online}
               trigger={
@@ -521,6 +530,21 @@ export default function Composer({
                 </Field>
               )}
             </SheetButton>
+            {running && (
+              <Button
+                class="queue-next"
+                title="Send when this turn ends (Alt+Enter)"
+                disabled={
+                  !online ||
+                  busy ||
+                  uploading ||
+                  (!draft.text.trim() && !draft.files.length)
+                }
+                onClick={(event) => send(event, true)}
+              >
+                Queue next
+              </Button>
+            )}
             {running && (
               <IconButton
                 label="Stop"

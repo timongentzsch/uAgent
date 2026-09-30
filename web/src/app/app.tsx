@@ -45,7 +45,12 @@ import { ImageViewer, type ViewedImage } from "../shared/attachments.tsx";
 // the initial bundle and break the CSS size budget.
 const markdownView = () => import("../shared/markdown-view.tsx");
 import { useDismiss } from "../shared/dismiss.ts";
-import { recallable } from "../shared/message-view.ts";
+import {
+  QUEUED_NEXT,
+  queuedGuidance,
+  recallable,
+  unsent,
+} from "../shared/message-view.ts";
 import Sidebar, {
   ConversationMenu,
   sessionOrder,
@@ -504,7 +509,7 @@ function App() {
     } else return false;
     return true;
   }
-  async function submit(event: Event, jumpToLatest: () => void) {
+  async function submit(event: Event, jumpToLatest: () => void, queue = false) {
     event.preventDefault();
     const pending = snapshots.get()[selected]?.pending;
     setNotice("");
@@ -553,7 +558,21 @@ function App() {
         return;
       }
     }
-    const kind = running && !pending ? "steer" : "submit";
+    await deliver(id, sent, queue, request_id);
+  }
+  // A message goes out as a row of its own until the host confirms it; a
+  // failed one stays there, with Retry and Return to composer. Guidance
+  // joins the running turn, or with `queue` waits for it to end.
+  async function deliver(
+    id: string,
+    sent: Draft,
+    queue = false,
+    request_id = requestId(),
+  ) {
+    setBusy(true);
+    const kind = running && !snapshots.get()[id]?.pending ? "steer" : "submit";
+    const queued =
+      kind === "steer" && (queue ? QUEUED_NEXT : "Guidance queued");
     const visible = !sent.text.startsWith("/") || sent.files.length;
     if (visible)
       setOutgoing((items) => [
@@ -566,7 +585,7 @@ function App() {
           text: sent.text,
           files: sent.files,
           time: new Date().toISOString(),
-          status: kind === "steer" ? "Guidance queued" : "Sending…",
+          status: queued || "Sending…",
         },
       ]);
     setDrafts((current) =>
@@ -576,21 +595,14 @@ function App() {
       const result = await act(kind, {
         request_id,
         text: sent.text,
-        ...(kind === "submit" || kind === "steer"
-          ? {
-              attachment_ids: sent.files.map((item) => ({
-                id: item.id,
-                name: item.name,
-              })),
-            }
-          : {}),
+        ...(queued && queue && { queue }),
+        attachment_ids: sent.files.map((item) => ({
+          id: item.id,
+          name: item.name,
+        })),
       });
       patchOutgoing(request_id, {
-        status: result.pending
-          ? "Awaiting confirmation"
-          : kind === "steer"
-            ? "Guidance queued"
-            : "Sent",
+        status: result.pending ? "Awaiting confirmation" : queued || "Sent",
       });
     } catch (error) {
       const issue = failure(error);
@@ -600,12 +612,6 @@ function App() {
           error: issue.message,
         });
       else report(issue);
-      if (issue.rejected)
-        setDrafts((current) =>
-          !current[id] || !hasContent(current[id])
-            ? { ...current, [id]: sent }
-            : current,
-        );
     } finally {
       setBusy(false);
     }
@@ -624,6 +630,8 @@ function App() {
     forkAndOpen,
     outgoing,
     session,
+    deliver,
+    busy,
   });
   latest.current = {
     online,
@@ -633,7 +641,27 @@ function App() {
     forkAndOpen,
     outgoing,
     session,
+    deliver,
+    busy,
   };
+  // A failed message sends again as a new request; Continue resumes a
+  // stopped turn. Both leave the composer's draft alone.
+  const retrySend = useCallback((block: Block) => {
+    const { online, selected, deliver, busy } = latest.current;
+    if (!online || busy || !block.request_id || !unsent(block)) return;
+    setOutgoing((items) =>
+      items.filter((item) => item.request_id !== block.request_id),
+    );
+    void deliver(selected, {
+      text: block.text || "",
+      files: (block.files || []).filter((file) => typeof file === "object"),
+    });
+  }, []);
+  const resume = useCallback(() => {
+    const { online, selected, deliver, busy } = latest.current;
+    if (online && !busy)
+      void deliver(selected, { text: "continue", files: [] });
+  }, []);
   // From a message's menu: edit it in a fork (fork before it), or keep it
   // and its reply (fork before the next message of yours).
   const branchFrom = useCallback((block: Block, edit: boolean) => {
@@ -657,7 +685,7 @@ function App() {
     const { online, selected, act, report } = latest.current;
     const target = block.request_id;
     if (!target || !recallable(block, online)) return;
-    const queued = block.status === "Guidance queued";
+    const queued = queuedGuidance(block);
     const text = block.text || "";
     const id = selected;
     if (queued) {
@@ -755,6 +783,8 @@ function App() {
     () => ({
       report,
       recall: recallGuidance,
+      retry: retrySend,
+      resume,
       branch: branchFrom,
       inspect: (id: string) =>
         setInspector({

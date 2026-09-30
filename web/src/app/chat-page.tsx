@@ -116,7 +116,7 @@ export default function ChatPage({
   upload: (files: File[]) => Promise<boolean>;
   uploading: boolean;
   busy: boolean;
-  submit: (event: Event, jump: () => void) => Promise<void>;
+  submit: (event: Event, jump: () => void, queue?: boolean) => Promise<void>;
   act: Act;
   report: Report;
   following: boolean;
@@ -194,7 +194,7 @@ export default function ChatPage({
       upload={upload}
       uploading={uploading}
       busy={busy}
-      submit={(event) => submit(event, jumpToLatest)}
+      submit={(event, queue) => submit(event, jumpToLatest, queue)}
       act={act}
       report={report}
       following={following}

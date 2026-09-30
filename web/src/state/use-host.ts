@@ -23,6 +23,7 @@ import {
 } from "./store.ts";
 import { api, protocol, receiveOutcome } from "./api.ts";
 import { snapshotStore } from "./snapshot-store.ts";
+import { queuedGuidance } from "../shared/message-view.ts";
 import { selectedFromURL, writeSelection } from "../shared/navigation.ts";
 import {
   maxLocalRequests,
@@ -121,11 +122,13 @@ export function useHost(
     readingConversation && following && document.visibilityState === "visible";
   // A failed request means offline only when the event stream agrees; with
   // the stream open it was one request, reported like any other failure.
-  const report = useCallback((error: unknown) => {
+  // An inline report is shown where it happened (a message, a decision);
+  // it only tells whether the host is gone.
+  const report = useCallback((error: unknown, scope?: "inline") => {
     const issue = failure(error);
     if (issue.network && stream.current?.readyState !== EventSource.OPEN)
       setOnline(false);
-    else setError(issue.message);
+    else if (scope !== "inline") setError(issue.message);
   }, []);
   // One session's catalogue entry changes in place; unchanged entries keep
   // the catalogue's identity, so the shell skips the frame.
@@ -271,9 +274,10 @@ export function useHost(
     }
   }, []);
   // A command's outcome, from its receipt or the stream, settles the
-  // outgoing row that sent it.
+  // outgoing row that sent it. True when a row or a waiting caller shows
+  // it, so a refusal needs no banner.
   const settleOutgoing = (outcome: Outcome) => {
-    receiveOutcome(outcome);
+    const awaited = receiveOutcome(outcome);
     patchOutgoing(outcome.request_id, (item) => ({
       status: outcome.unknown
         ? "Not confirmed"
@@ -282,12 +286,16 @@ export function useHost(
           : outcome.accepted
             ? // Accepted guidance waits for its step and stays
               // recallable until the transcript shows it.
-              item.status === "Guidance queued"
+              queuedGuidance(item)
               ? item.status
               : "Sent"
             : "Not sent",
       error: outcome.error,
     }));
+    return (
+      awaited ||
+      outgoingRef.current.some((item) => item.request_id === outcome.request_id)
+    );
   };
   // Jittered exponential backoff; a successful catalogue read resets it.
   const retryLater = () => {
@@ -437,9 +445,7 @@ export function useHost(
           return;
         }
         const data = event.data || {};
-        if (event.kind === "outcome") {
-          settleOutgoing(event);
-        }
+        const shown = event.kind === "outcome" && settleOutgoing(event);
         if (event.kind === "gap") {
           refresh();
           return;
@@ -541,7 +547,7 @@ export function useHost(
           if (event.type === "notice" && data.presentation?.status === "failed")
             report(new Error(data.presentation?.title));
           live.current[id] = applySessionEvent(current, event);
-        } else if (event.kind === "outcome" && !event.accepted)
+        } else if (event.kind === "outcome" && !event.accepted && !shown)
           report(new Error(event.error));
         else if (event.kind === "error") report(new Error(event.error));
         else if (event.kind === "closed" && event.metadata) {

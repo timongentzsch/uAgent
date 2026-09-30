@@ -1168,6 +1168,16 @@ dialog.sidebar:not([open]) {
   font-size: var(--font-small);
   padding-inline: var(--space-3);
 }
+/* YOLO runs every tool unasked: the control says so in red. */
+.permission-control.yolo > button {
+  border: 1px solid var(--removed);
+  color: var(--removed);
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.queue-next {
+  font-size: var(--font-small);
+}
 .file-button {
   position: relative;
   display: inline-flex;
@@ -1251,6 +1261,13 @@ dialog.sidebar:not([open]) {
   gap: 0.4em;
   min-width: 0;
   max-width: 100%;
+}
+/* Not connected: a pill, so the state reads apart from a turn's phase. */
+.connection-pill {
+  padding: 0 var(--space-4);
+  border-radius: 999px;
+  background: var(--raised);
+  color: var(--text);
 }
 .activity-caption {
   min-width: 0;

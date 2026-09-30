@@ -97,8 +97,12 @@ export async function readPages(
 
 const receipts = new Map<string, (outcome: Outcome) => void>();
 
+// True when a command from this page waits on it: its caller shows the
+// outcome, so nothing else needs to.
 export function receiveOutcome(outcome: Outcome) {
-  if (!outcome.pending) receipts.get(outcome.request_id)?.(outcome);
+  const waiting = receipts.get(outcome.request_id);
+  if (!outcome.pending) waiting?.(outcome);
+  return !!waiting;
 }
 
 export async function command<K extends CommandKind>(

@@ -103,8 +103,17 @@ type MessageProps = {
 };
 
 function MessageView({ block, online, session }: MessageProps) {
-  const { read, inspect, report, statistics, activity, recall, branch, http } =
-    useContext(MessageActions);
+  const {
+    read,
+    inspect,
+    report,
+    statistics,
+    activity,
+    recall,
+    retry: resend,
+    branch,
+    http,
+  } = useContext(MessageActions);
   const [full, setFull] = useState<string | null>(null);
   const [expanding, setExpanding] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -361,7 +370,20 @@ function MessageView({ block, online, session }: MessageProps) {
               : "Show full message"}
         </Button>
       )}
-      {block.error && <p role="alert">{block.error}</p>}
+      {(block.error || (resend && unsent(block))) && (
+        <p role="alert" class={unsent(block) ? "failure unsent" : undefined}>
+          {block.error || block.status}
+          {resend && unsent(block) && (
+            <Button
+              size="compact"
+              disabled={!online}
+              onClick={() => resend(block)}
+            >
+              Retry
+            </Button>
+          )}
+        </p>
+      )}
       {(block.unavailable_images || 0) > 0 && (
         <p class="muted">
           {count(block.unavailable_images)} historical image(s) have no retained

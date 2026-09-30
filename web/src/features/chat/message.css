@@ -201,6 +201,24 @@
   color: var(--removed);
   overflow-wrap: anywhere;
 }
+/* A message that did not go out: why, and Retry beside it. */
+.failure.unsent {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  padding-inline: 0;
+}
+/* The transcript's last line after a turn stopped short. */
+.stop-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.3em;
+  margin: var(--space-4) 0 0;
+  padding: 0 var(--space-4);
+  color: var(--muted);
+  font-size: var(--font-small);
+}
 .tool-disclosure > summary small {
   min-width: 0;
   max-width: 32ch;

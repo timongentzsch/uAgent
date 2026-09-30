@@ -6,8 +6,9 @@ import type {
   Snapshot,
 } from "../../shared/types.ts";
 import type { RefObject } from "preact";
-import { useCallback, useEffect, useState } from "preact/hooks";
-import { LoadError, Mark, Placeholder } from "../../shared/ui.tsx";
+import { useCallback, useContext, useEffect, useState } from "preact/hooks";
+import { Button, LoadError, Mark, Placeholder } from "../../shared/ui.tsx";
+import { MessageActions } from "./message-actions.ts";
 import HistoryStart from "./history-start.tsx";
 import { MessageRows, prepareHistoryBlocks } from "./message.tsx";
 
@@ -35,6 +36,35 @@ export function TranscriptPlaceholder({ session }: { session: SessionRef }) {
     <Placeholder label="Loading conversation…">
       <MessageRows blocks={SAMPLE} online={false} session={session} />
     </Placeholder>
+  );
+}
+
+// Why a turn ended short, closing the transcript, with the way on.
+function StopChip({ reason, online }: { reason: string; online: boolean }) {
+  const { resume } = useContext(MessageActions);
+  return (
+    <p class="stop-chip" role="status">
+      <span>
+        {reason === "cancelled"
+          ? "Stopped"
+          : reason === "error"
+            ? "Stopped by an error"
+            : `Stopped: ${reason.replaceAll("_", " ")}`}
+      </span>
+      {resume && (
+        <>
+          {" · "}
+          <Button
+            variant="quiet"
+            size="compact"
+            disabled={!online}
+            onClick={resume}
+          >
+            Continue
+          </Button>
+        </>
+      )}
+    </p>
   );
 }
 
@@ -111,6 +141,14 @@ export default function Chat({
   }
   const view = snapshot?.state?.view;
   const retry = () => loadSnapshot(selected).catch(() => {});
+  // The last turn stopped short, and nothing new has been sent since.
+  const stop = snapshot?.state?.stop;
+  const stopped =
+    !!stop &&
+    stop.reason !== "completed" &&
+    !session.turn_active &&
+    !snapshot?.pending &&
+    !blocks.at(-1)?.id.startsWith("outgoing-");
   return (
     <div
       class="transcript"
@@ -169,6 +207,9 @@ export default function Chat({
           <p class="failure" role="alert">
             {snapshot.state.error}
           </p>
+        )}
+        {stopped && prepared && (
+          <StopChip reason={stop.reason} online={online} />
         )}
       </div>
     </div>

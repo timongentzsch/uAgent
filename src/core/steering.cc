@@ -29,7 +29,12 @@ void NotifySteeringWake() {
   WakeProcessWaits();
 }
 
-void DrainSteeringWake() { DrainDescriptor(g_steering_wake[0]); }
+// Through the same once as the writer: the turn may drain before anything has
+// ever been queued, and the pipe is created by whichever comes first.
+void DrainSteeringWake() {
+  std::call_once(g_steering_wake_once, InitializeSteeringWake);
+  DrainDescriptor(g_steering_wake[0]);
+}
 
 }  // namespace
 

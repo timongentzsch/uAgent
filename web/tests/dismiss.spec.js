@@ -62,10 +62,16 @@ test.describe("back closes what is open", () => {
     const settings = page.getByRole("dialog", { name: "Settings" });
     await settings
       .locator(".settings-nav")
-      .getByRole("button", { name: "Permissions", exact: true })
+      .getByRole("button", {
+        name: "Permissions & allowed actions",
+        exact: true,
+      })
       .tap();
     await expect(
-      settings.getByRole("heading", { name: "Permissions", exact: true }),
+      settings.getByRole("heading", {
+        name: "Permissions & allowed actions",
+        exact: true,
+      }),
     ).toBeVisible();
     await page.goBack();
     await expect(
@@ -87,9 +93,12 @@ test.describe("back closes what is open", () => {
     const settings = page.getByRole("dialog", { name: "Settings" });
     await settings
       .locator(".settings-nav")
-      .getByRole("button", { name: "Agent", exact: true })
+      .getByRole("button", { name: "Instructions", exact: true })
       .tap();
-    await settings.getByRole("button", { name: /Instructions/ }).tap();
+    await settings
+      .locator(".settings-pane")
+      .getByRole("button", { name: /Instructions/ })
+      .tap();
     const prompt = page.getByRole("dialog", { name: "Instructions" });
     await expect(prompt).toBeVisible();
     // One back closes the swapped-in dialog and reaches the conversation.

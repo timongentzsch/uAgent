@@ -433,7 +433,10 @@ test.describe("touch interaction", () => {
       if (await back.isVisible()) await back.click();
       await settings
         .locator(".settings-nav")
-        .getByRole("button", { name: "Permissions", exact: true })
+        .getByRole("button", {
+          name: "Permissions & allowed actions",
+          exact: true,
+        })
         .click();
       await expect(
         settings.getByRole("combobox", {

@@ -76,6 +76,8 @@ export default function Settings({
   session,
   logout,
   instructions,
+  tools,
+  usage,
   initialSection,
 }: {
   theme: string;
@@ -102,6 +104,9 @@ export default function Settings({
   session?: Session;
   logout: () => Promise<void>;
   instructions: () => void;
+  // The open conversation's tools and usage, in their own sheets.
+  tools: () => void;
+  usage: () => void;
   initialSection?: string;
 }) {
   // Null until a section is picked: a phone shows the section list first,
@@ -308,6 +313,34 @@ export default function Settings({
           label="Instructions"
           detail="What every session and each folder's coordinator read at start."
           onClick={instructions}
+        />
+      </Group>
+    ),
+    tools: (
+      <Group>
+        <Row
+          label="Tools for this conversation"
+          detail={
+            selected
+              ? "Which tools the open conversation may use."
+              : "Open a conversation to choose its tools."
+          }
+          disabled={!selected}
+          onClick={tools}
+        />
+      </Group>
+    ),
+    usage: (
+      <Group>
+        <Row
+          label="This conversation's usage"
+          detail={
+            selected
+              ? "Tokens, cost and time spent so far."
+              : "Open a conversation to see its usage."
+          }
+          disabled={!selected}
+          onClick={usage}
         />
       </Group>
     ),

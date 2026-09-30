@@ -1,5 +1,7 @@
 import {
-  Bot,
+  ChartColumn,
+  FileText,
+  Hammer,
   Plug,
   ShieldCheck,
   SlidersHorizontal,
@@ -11,20 +13,24 @@ import { Group, Row } from "../../shared/ui.tsx";
 
 export const SECTIONS = [
   ["general", "General", SlidersHorizontal],
-  ["models", "Models", Sparkles],
-  ["permissions", "Permissions", ShieldCheck],
-  ["agent", "Agent", Bot],
+  ["agent", "Instructions", FileText],
+  ["tools", "Tools", Hammer],
   ["mcp", "MCP servers", Plug],
+  ["permissions", "Permissions & allowed actions", ShieldCheck],
+  ["models", "Models", Sparkles],
   ["devices", "Devices", Smartphone],
+  ["usage", "Usage", ChartColumn],
   ["advanced", "Advanced", Wrench],
 ] as const;
 export type Section = (typeof SECTIONS)[number][0];
-// The list reads in groups: everyday, the agent, this device, escape hatches.
-const NAV: Section[][] = [
-  ["general"],
-  ["models", "permissions", "agent", "mcp"],
-  ["devices"],
-  ["advanced"],
+// The list reads in groups: everyday, what the agent reads and may do, which
+// models, the host and its devices, escape hatches.
+const NAV: [string | undefined, Section[]][] = [
+  [undefined, ["general"]],
+  ["Agent", ["agent", "tools", "mcp", "permissions"]],
+  [undefined, ["models"]],
+  ["Host", ["devices", "usage"]],
+  [undefined, ["advanced"]],
 ];
 
 // Settings and its loading state draw the same list, so it never changes
@@ -38,8 +44,8 @@ export function SettingsNav({
 }) {
   return (
     <nav class="settings-nav" aria-label="Settings sections">
-      {NAV.map((group, index) => (
-        <Group key={index}>
+      {NAV.map(([title, group], index) => (
+        <Group key={index} title={title}>
           {group.map((id) => {
             const [, label, Icon] = SECTIONS.find(
               ([section]) => section === id,

@@ -20,6 +20,10 @@
 .pairing form {
   margin: var(--pad) 0;
 }
+.pairing p.pairing-expired {
+  margin: 0;
+  color: var(--removed);
+}
 .pairing form button {
   justify-self: start;
 }

@@ -2,7 +2,8 @@
 // HTTP boundary; components share these projections instead of redefining them.
 export type JSONValue =
   null | boolean | number | string | JSONValue[] | { [key: string]: JSONValue };
-export type Report = (error: unknown) => void;
+// "inline": the surface that failed shows it; the banner stays clear.
+export type Report = (error: unknown, scope?: "inline") => void;
 export interface Failure extends Error {
   network?: boolean;
   status?: number;

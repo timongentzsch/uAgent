@@ -287,6 +287,7 @@ export default function Composer({
           key={pending.id}
           pending={pending}
           session={session.id}
+          cwd={session.cwd}
           act={act}
           online={online}
           report={report}

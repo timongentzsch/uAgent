@@ -274,7 +274,7 @@ export default function Settings({
     models: null,
     permissions: session?.cwd && (
       <Group
-        title={`Remembered for this repository${
+        title={`Allowed actions${
           rules?.rules.length ? ` · ${rules.rules.length}` : ""
         }`}
         footer="Exact actions allowed for this repository. Tool definitions and arguments must still match."

@@ -120,6 +120,7 @@ test("files read as tiles and cards, tool images sit on their row, and every ima
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
     "base64",
   );
+  await expect(page.locator('input[type="file"]')).toBeEnabled();
   await page.locator('input[type="file"]').setInputFiles([
     { name: "layout.png", mimeType: "image/png", buffer: pixel },
     {

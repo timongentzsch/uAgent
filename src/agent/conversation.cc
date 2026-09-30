@@ -24,6 +24,11 @@ namespace uagent {
 
 namespace {
 
+// What a display fact counts against the metadata budget.
+size_t FactBytes(const std::string& key, const json& value) {
+  return SaturatingAdd(JsonEstimatedBytes(value), key.size());
+}
+
 void NormalizeRole(json& message, MessageKind kind) {
   switch (kind) {
     case MessageKind::kUser:
@@ -225,7 +230,7 @@ bool Conversation::Restore(json messages, std::vector<MessageKind> kinds,
   fact_bytes_.clear();
   if (display_facts_.is_object()) {
     for (const auto& [key, value] : display_facts_.items()) {
-      fact_bytes_[key] = SaturatingAdd(JsonEstimatedBytes(value), key.size());
+      fact_bytes_[key] = FactBytes(key, value);
     }
   }
   // Sessions written before announcement receipts existed restore without
@@ -310,11 +315,9 @@ void Conversation::RecordDisplay(const std::string& key, json facts) {
   }
   if (JsonEstimatedBytes(facts) > kFactBytes) return;
   if (existing != display_facts_.end()) {
-    const size_t prior =
-        SaturatingAdd(JsonEstimatedBytes(*existing), key.size());
-    display_bytes_ -= std::min(display_bytes_, prior);
+    display_bytes_ -= std::min(display_bytes_, FactBytes(key, *existing));
   }
-  const size_t bytes = SaturatingAdd(JsonEstimatedBytes(facts), key.size());
+  const size_t bytes = FactBytes(key, facts);
   display_bytes_ = SaturatingAdd(display_bytes_, bytes);
   display_facts_[key] = facts;
   fact_bytes_[key] = bytes;
@@ -324,18 +327,16 @@ void Conversation::RecordDisplay(const std::string& key, json facts) {
   // key order and re-trigger their notices on every later step. The fact
   // just written never goes: a fresh response would otherwise lose the id
   // that rejoins its live row.
+  const auto stored_bytes = [this](const std::string& name, const json& value) {
+    const auto sized = fact_bytes_.find(name);
+    return sized != fact_bytes_.end() ? sized->second : FactBytes(name, value);
+  };
   while (display_facts_.size() > kFactCount || display_bytes_ > kDisplayBytes) {
     auto victim = display_facts_.end();
     size_t victim_bytes = 0;
     for (auto it = display_facts_.begin(); it != display_facts_.end(); ++it) {
       if (it.key() == key) continue;
-      size_t candidate = 0;
-      if (const auto sized = fact_bytes_.find(it.key());
-          sized != fact_bytes_.end()) {
-        candidate = sized->second;
-      } else {
-        candidate = SaturatingAdd(JsonEstimatedBytes(*it), it.key().size());
-      }
+      const size_t candidate = stored_bytes(it.key(), *it);
       if (victim == display_facts_.end() || candidate > victim_bytes ||
           (candidate == victim_bytes && it.key() < victim.key())) {
         victim = it;
@@ -346,13 +347,7 @@ void Conversation::RecordDisplay(const std::string& key, json facts) {
     if (victim_bytes <= kTinyFactBytes && display_bytes_ <= kDisplayBytes) {
       victim = display_facts_.begin();
       if (victim.key() == key) ++victim;
-      if (const auto sized = fact_bytes_.find(victim.key());
-          sized != fact_bytes_.end()) {
-        victim_bytes = sized->second;
-      } else {
-        victim_bytes =
-            SaturatingAdd(JsonEstimatedBytes(*victim), victim.key().size());
-      }
+      victim_bytes = stored_bytes(victim.key(), *victim);
     }
     display_bytes_ -= std::min(display_bytes_, victim_bytes);
     fact_bytes_.erase(victim.key());
@@ -667,22 +662,17 @@ size_t Conversation::PruneAttachments(size_t begin, const std::string& route) {
         }
       }
     }
-    if (references) {
-      if (kinds_[index] == MessageKind::kAttachment) {
-        kinds_[index] =
-            index == begin ? MessageKind::kUser : MessageKind::kInternal;
+    if (!references) {
+      if (index < begin) continue;
+      attachments += content.empty() ? 0 : content.size() - 1;
+      std::string text;
+      for (const json& part : content) {
+        if (JsonValue(part, "type", "") == "text") {
+          text += JsonValue(part, "text", "");
+        }
       }
-      continue;
+      content = text + "\n[attachments omitted after processing]";
     }
-    if (index < begin) continue;
-    attachments += content.empty() ? 0 : content.size() - 1;
-    std::string text;
-    for (const json& part : content) {
-      if (JsonValue(part, "type", "") == "text") {
-        text += JsonValue(part, "text", "");
-      }
-    }
-    content = text + "\n[attachments omitted after processing]";
     // Reclassified in place: the message stays where it is and only stops
     // being an attachment, so this is the one kind write that has no message
     // write beside it. Bounded by the messages_/kinds_ pairing.
@@ -710,12 +700,10 @@ bool Conversation::ArchiveRange(const char* reason, size_t begin, size_t end,
   json saved = json::array();
   json saved_kinds = json::array();
   json saved_ids = json::array();
-  if (begin < end) {
-    for (size_t index = begin; index < end; ++index) {
-      saved.push_back(messages_[index]);
-      saved_kinds.push_back(MessageKindName(kinds_[index]));
-      saved_ids.push_back(display_ids_[index]);
-    }
+  for (size_t index = begin; index < end; ++index) {
+    saved.push_back(messages_[index]);
+    saved_kinds.push_back(MessageKindName(kinds_[index]));
+    saved_ids.push_back(display_ids_[index]);
   }
   if (saved.empty() && metadata.empty()) return false;
   json segment = {{"turn", turn},

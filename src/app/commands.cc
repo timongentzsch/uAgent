@@ -109,10 +109,9 @@ CommandReply RunSlashCommand(AppSession& session,
     case SlashCommandId::kCoord:
     case SlashCommandId::kBoard:
     case SlashCommandId::kOpen:
-      result = {{"error", "this command belongs to the client"}};
-      return reply;
     case SlashCommandId::kClear:
-      reply.Print("%s", ClearScreen());
+    case SlashCommandId::kShare:
+      result = {{"error", "this command belongs to the client"}};
       return reply;
     case SlashCommandId::kRewind: {
       // The clients fork before message N; bare, this lists the numbers.
@@ -130,14 +129,6 @@ CommandReply RunSlashCommand(AppSession& session,
       reply.Note(Tone::kNeutral,
                  "/rewind N forks before message N and opens it with "
                  "that message to edit; the original stays as it is");
-      return reply;
-    }
-    case SlashCommandId::kShare: {
-      if (!command.argument.empty()) {
-        result = {{"error", "usage: /share"}};
-        return reply;
-      }
-      result = SessionControl(session, {{"kind", "share"}});
       return reply;
     }
     case SlashCommandId::kVariant:
@@ -277,22 +268,16 @@ CommandReply RunSlashCommand(AppSession& session,
       result = SessionSlashPeers();
       reply.Print("%s", TerminalSafe(SessionText(result)).c_str());
       return reply;
-    case SlashCommandId::kTell: {
-      result = SessionSlashTell(command.argument);
+    case SlashCommandId::kTell:
+    case SlashCommandId::kLink:
+      result = command.spec->id == SlashCommandId::kTell
+                   ? SessionSlashTell(command.argument)
+                   : SessionSlashLink(command.argument);
       reply.Print("%s\n",
                   TerminalSafe(JsonValue(result, "output",
                                          JsonValue(result, "error", "")))
                       .c_str());
       return reply;
-    }
-    case SlashCommandId::kLink: {
-      result = SessionSlashLink(command.argument);
-      reply.Print("%s\n",
-                  TerminalSafe(JsonValue(result, "output",
-                                         JsonValue(result, "error", "")))
-                      .c_str());
-      return reply;
-    }
     case SlashCommandId::kDiff:
     case SlashCommandId::kInit:
     case SlashCommandId::kReview:

@@ -356,7 +356,8 @@ json Agent::Revert(int64_t turn, const std::string& path) {
   json result = edits_.Revert(turn ? turn : edits_.LastTurn(), path);
   std::string files;
   for (const json& file : result["restored"]) {
-    files += (files.empty() ? "" : ", ") + file.get<std::string>();
+    if (!files.empty()) files += ", ";
+    files += file.get<std::string>();
   }
   // Told once, at the next step, rather than mid-turn.
   if (!files.empty()) {

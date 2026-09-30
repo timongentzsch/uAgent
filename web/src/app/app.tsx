@@ -20,7 +20,12 @@ import {
   useRef,
   useState,
 } from "preact/hooks";
-import { readStored, writeStored } from "../state/store.ts";
+import {
+  emptyDraft,
+  hasContent,
+  readStored,
+  writeStored,
+} from "../state/store.ts";
 import { api, command, requestId, uploadAttachment } from "../state/api.ts";
 import {
   Modal,
@@ -52,7 +57,7 @@ import {
   trackViewport,
 } from "../shared/layout.ts";
 
-import { useHost } from "../state/use-host.ts";
+import { listedSessions, useHost } from "../state/use-host.ts";
 import { useSnapshots } from "../state/snapshot-store.ts";
 import { parseSlash } from "../features/composer/slash.ts";
 import { dedupeName } from "../features/composer/mention.ts";
@@ -83,18 +88,7 @@ import {
 // scrolling from here on.
 if (typeof history !== "undefined") history.scrollRestoration = "manual";
 
-const emptyDraft = (): Draft => ({ text: "", files: [] });
-
 const BROWSER_KEY = "uagent-browser";
-
-// The conversation menu's button, inert, until the session is known.
-function MenuPlaceholder() {
-  return (
-    <IconButton label="Conversation menu" disabled>
-      <Ellipsis />
-    </IconButton>
-  );
-}
 
 // The shell: navigation, header, toasts and dialogs. It never reads a whole
 // snapshot, only what it selects from one (the session's metadata, whether
@@ -135,7 +129,7 @@ function App() {
     connection,
     loadErrors,
     catalogue,
-    setCatalogue,
+    upsertSession,
     snapshots,
     selected,
     setSelected,
@@ -146,6 +140,7 @@ function App() {
     unread,
     outgoing,
     setOutgoing,
+    patchOutgoing,
     following,
     setFollowing,
     notifications,
@@ -200,21 +195,6 @@ function App() {
   // holds this composer.
   const uploading = draft.files.some((file) => file.pending);
   const running = online && !!session?.turn_active;
-  const showMessageHttp = useCallback(
-    (exchanges: NonNullable<Block["http"]>) =>
-      setModal({ type: "raw", session: selected, exchanges }),
-    [selected],
-  );
-  const showMessageStatistics = useCallback(
-    (block: Block) =>
-      setModal({
-        type: "statistics",
-        session_id: selected,
-        block_id: block.occurrence_id || block.response_id || block.id,
-        unit: block.summary ? "Turn" : "Message",
-      }),
-    [selected],
-  );
   // The browser icon shows when this conversation's agent is using it.
   const browsing = useSnapshots(snapshots, (all) => isBrowsing(all[selected]));
   // The update banner holds its reload while a turn waits on a decision.
@@ -222,8 +202,21 @@ function App() {
     snapshots,
     (all) => !!update && Object.values(all).some((item) => item.pending),
   );
+  // Why an update must wait: unsent work (an upload is one) or a decision.
+  const updateBlocked = Object.values(drafts).some(hasContent)
+    ? "Send or copy unsent drafts first."
+    : waiting
+      ? "Wait for the running turn to finish."
+      : "";
+  // One conversation's draft changes; the others keep theirs.
+  function updateDraft(id: string, change: (draft: Draft) => Draft) {
+    setDrafts((current) => ({
+      ...current,
+      [id]: change(current[id] || emptyDraft()),
+    }));
+  }
   function setDraft(value: Draft, id = selected) {
-    setDrafts((current) => ({ ...current, [id]: value }));
+    updateDraft(id, () => value);
   }
   useEffect(() => {
     writeStored(storage, "uagent-zoom", zoom);
@@ -256,9 +249,7 @@ function App() {
     );
     return () => clearTimeout(warm);
   }, []);
-  useEffect(() => {
-    return trackViewport();
-  }, []);
+  useEffect(trackViewport, []);
   useEffect(() => applyTheme(theme), [theme]);
   // Files dropped anywhere attach to the open conversation; unhandled, the
   // browser would open the file in place of the app. File inputs and
@@ -348,15 +339,7 @@ function App() {
       try {
         const created = await command("create", null, { cwd, coordinator });
         if (created.pending) return;
-        setCatalogue((prior) => ({
-          ...prior,
-          sessions: [
-            created.session,
-            ...prior.sessions.filter(
-              (entry) => entry.id !== created.session.id,
-            ),
-          ],
-        }));
+        upsertSession(created.session);
         // Live before it is shown, so opening never flashes the saved state;
         // shown even if activating fails, with the failure reported.
         try {
@@ -370,7 +353,7 @@ function App() {
         starting.current = false;
       }
     },
-    [setCatalogue, choose, load],
+    [upsertSession, choose, load],
   );
   // A command with a screen opens it when typed bare; with an argument it
   // runs on the host, as in the terminal.
@@ -397,8 +380,12 @@ function App() {
   // A fork opens as its own conversation; the original stays as it was.
   // Editing (a rewind) also puts the message it forked before back into
   // the composer.
-  async function forkAndOpen(fields: CommandFields, edit = false) {
-    const result = await command("fork", session, fields);
+  async function forkAndOpen(
+    target: Session | undefined,
+    fields: CommandFields = {},
+    edit = false,
+  ) {
+    const result = await command("fork", target, fields);
     if (result.pending) return;
     const { id, prompt, rewound } = result.result;
     if (!rewound) {
@@ -423,10 +410,10 @@ function App() {
       await act("close");
       await load(selected);
     } else if (name === "/fork") {
-      await forkAndOpen({ argument });
+      await forkAndOpen(session, { argument });
     } else if (name === "/rewind" && argument) {
       // Bare /rewind runs on the host and lists the message numbers.
-      await forkAndOpen({ argument }, true);
+      await forkAndOpen(session, { argument }, true);
     } else if (name === "/btw") {
       if (!argument) throw new Error("Use /btw QUESTION");
       // The card shows the question; the composer is free again at once.
@@ -517,7 +504,7 @@ function App() {
           parseSlash(catalogue.commands || [], sent.text).name === "/attach" &&
           sent.text.trim().endsWith(" clear")
         )
-          setDrafts((current) => ({ ...current, [id]: emptyDraft() }));
+          updateDraft(id, emptyDraft);
       } catch (error) {
         report(error);
         setBusy(false);
@@ -556,38 +543,24 @@ function App() {
             }
           : {}),
       });
-      setOutgoing((items) =>
-        items.map((item) =>
-          item.request_id === request_id
-            ? {
-                ...item,
-                status: result.pending
-                  ? "Awaiting confirmation"
-                  : kind === "steer"
-                    ? "Guidance queued"
-                    : "Sent",
-              }
-            : item,
-        ),
-      );
+      patchOutgoing(request_id, {
+        status: result.pending
+          ? "Awaiting confirmation"
+          : kind === "steer"
+            ? "Guidance queued"
+            : "Sent",
+      });
     } catch (error) {
       const issue = failure(error);
       if (visible)
-        setOutgoing((items) =>
-          items.map((item) =>
-            item.request_id === request_id
-              ? {
-                  ...item,
-                  status: issue.rejected ? "Not sent" : "Not confirmed",
-                  error: issue.message,
-                }
-              : item,
-          ),
-        );
+        patchOutgoing(request_id, {
+          status: issue.rejected ? "Not sent" : "Not confirmed",
+          error: issue.message,
+        });
       else report(issue);
       if (issue.rejected)
         setDrafts((current) =>
-          !current[id]?.text && !current[id]?.files?.length
+          !current[id] || !hasContent(current[id])
             ? { ...current, [id]: sent }
             : current,
         );
@@ -608,8 +581,17 @@ function App() {
     report,
     forkAndOpen,
     outgoing,
+    session,
   });
-  latest.current = { online, selected, act, report, forkAndOpen, outgoing };
+  latest.current = {
+    online,
+    selected,
+    act,
+    report,
+    forkAndOpen,
+    outgoing,
+    session,
+  };
   // From a message's menu: edit it in a fork (fork before it), or keep it
   // and its reply (fork before the next message of yours).
   const branchFrom = useCallback((block: Block, edit: boolean) => {
@@ -624,14 +606,11 @@ function App() {
     );
     const next = after.find((item) => item.kind === "user");
     forkAndOpen(
+      latest.current.session,
       edit ? { message_id: block.id } : next ? { message_id: next.id } : {},
       edit,
     ).catch(report);
   }, []);
-  const openActivity = useCallback(
-    (block: Block) => setInspector({ block }),
-    [],
-  );
   const recallGuidance = useCallback(async (block: Block) => {
     const { online, selected, act, report } = latest.current;
     const target = block.request_id;
@@ -651,16 +630,11 @@ function App() {
       }
     }
     setOutgoing((items) => items.filter((item) => item.request_id !== target));
-    if (text) {
-      setDrafts((current) => {
-        const prior = current[id]?.text || "";
-        const next = prior ? `${prior}\n${text}` : text;
-        return {
-          ...current,
-          [id]: { ...(current[id] || emptyDraft()), text: next },
-        };
-      });
-    }
+    if (text)
+      updateDraft(id, (draft) => ({
+        ...draft,
+        text: draft.text ? `${draft.text}\n${text}` : text,
+      }));
   }, []);
   // An annotated copy joins the draft and replaces the draft file it was
   // drawn on; a copy of a sent image is simply attached.
@@ -668,16 +642,10 @@ function App() {
     const id = selected;
     if (!(await upload([file]))) return false;
     if (replaces)
-      setDrafts((current) => {
-        const draft = current[id] || emptyDraft();
-        return {
-          ...current,
-          [id]: {
-            ...draft,
-            files: draft.files.filter((item) => item.id !== replaces),
-          },
-        };
-      });
+      updateDraft(id, (draft) => ({
+        ...draft,
+        files: draft.files.filter((item) => item.id !== replaces),
+      }));
     return true;
   }
   // Resolves true once every file is attached to the draft.
@@ -709,12 +677,9 @@ function App() {
         pending: true,
       };
     });
-    setDrafts((current) => ({
-      ...current,
-      [id]: {
-        ...(current[id] || emptyDraft()),
-        files: [...(current[id]?.files || []), ...pendingFiles],
-      },
+    updateDraft(id, (draft) => ({
+      ...draft,
+      files: [...draft.files, ...pendingFiles],
     }));
     try {
       for (const [index, file] of files.entries()) {
@@ -723,16 +688,13 @@ function App() {
           file,
           pendingFiles[index].name,
         );
-        setDrafts((current) => ({
-          ...current,
-          [id]: {
-            ...(current[id] || emptyDraft()),
-            files: (current[id]?.files || []).map((item) =>
-              item.id === pendingFiles[index].id
-                ? { ...asset, name: pendingFiles[index].name }
-                : item,
-            ),
-          },
+        updateDraft(id, (draft) => ({
+          ...draft,
+          files: draft.files.map((item) =>
+            item.id === pendingFiles[index].id
+              ? { ...asset, name: pendingFiles[index].name }
+              : item,
+          ),
         }));
       }
       return true;
@@ -741,44 +703,34 @@ function App() {
       return false;
     } finally {
       const pendingIds = new Set(pendingFiles.map((item) => item.id));
-      setDrafts((current) => ({
-        ...current,
-        [id]: {
-          ...(current[id] || emptyDraft()),
-          files: (current[id]?.files || []).filter(
-            (item) => !pendingIds.has(item.id),
-          ),
-        },
+      updateDraft(id, (draft) => ({
+        ...draft,
+        files: draft.files.filter((item) => !pendingIds.has(item.id)),
       }));
     }
   }
-  const inspect = useCallback(
-    (id: string) =>
-      setInspector({
-        title: id.startsWith("t-") ? "Tool input/output" : "Full content",
-        raw: { id, session: selected },
-      }),
-    [selected],
-  );
   const messageActions = useMemo(
     () => ({
       report,
       recall: recallGuidance,
       branch: branchFrom,
-      inspect,
-      http: showMessageHttp,
-      activity: openActivity,
-      statistics: showMessageStatistics,
+      inspect: (id: string) =>
+        setInspector({
+          title: id.startsWith("t-") ? "Tool input/output" : "Full content",
+          raw: { id, session: selected },
+        }),
+      http: (exchanges: NonNullable<Block["http"]>) =>
+        setModal({ type: "raw", session: selected, exchanges }),
+      activity: (block: Block) => setInspector({ block }),
+      statistics: (block: Block) =>
+        setModal({
+          type: "statistics",
+          session_id: selected,
+          block_id: block.occurrence_id || block.response_id || block.id,
+          unit: block.summary ? "Turn" : "Message",
+        }),
     }),
-    [
-      report,
-      recallGuidance,
-      branchFrom,
-      inspect,
-      showMessageHttp,
-      openActivity,
-      showMessageStatistics,
-    ],
+    [report, recallGuidance, branchFrom, selected],
   );
   async function logout() {
     try {
@@ -807,29 +759,28 @@ function App() {
     setDrawer(false);
     setModal(value);
   }, []);
+  // Forks any conversation from its menu, as /fork does the open one.
+  const fork = useCallback(
+    (item: Session) => latest.current.forkAndOpen(item).catch(report),
+    [report],
+  );
   const conversationMenu = useCallback(
     (item: Session) => (
       <ConversationMenu
         item={item}
         online={online}
-        refresh={refresh}
-        choose={choose}
+        fork={fork}
         loadSnapshot={load}
         report={report}
         open={open}
       />
     ),
-    [online, refresh, choose, load, report, open],
+    [online, fork, load, report, open],
   );
-  // The sidebar lists conversations, not scheduled runs or their tasks.
-  const listed = useMemo(() => {
-    const runs = new Set(
-      catalogue.scheduled?.runs?.map((run) => run.session_id),
-    );
-    return catalogue.sessions.filter(
-      (entry) => !entry.task_id && !runs.has(entry.id),
-    );
-  }, [catalogue.sessions, catalogue.scheduled]);
+  const listed = useMemo(
+    () => listedSessions(catalogue),
+    [catalogue.sessions, catalogue.scheduled],
+  );
   const navigate = useCallback((value: typeof page) => {
     setPage(value);
     setDrawer(false);
@@ -897,31 +848,20 @@ function App() {
           {update && (
             <div role="status" class="update-banner">
               <span>Update available with the latest fixes.</span>
-              {(() => {
-                const blocked = Object.values(drafts).some(
-                  (item) => item.text || item.files.length,
-                )
-                  ? "Send or copy unsent drafts first."
-                  : waiting
-                    ? "Wait for the running turn to finish."
-                    : "";
-                return (
-                  <Button
-                    variant="primary"
-                    disabled={!!blocked}
-                    title={
-                      blocked || "Reloads this view with the latest fixes."
-                    }
-                    onClick={() =>
-                      import("../shared/pwa.ts").then(({ applyUpdate }) =>
-                        applyUpdate(update),
-                      )
-                    }
-                  >
-                    Refresh now
-                  </Button>
-                );
-              })()}
+              <Button
+                variant="primary"
+                disabled={!!updateBlocked}
+                title={
+                  updateBlocked || "Reloads this view with the latest fixes."
+                }
+                onClick={() =>
+                  import("../shared/pwa.ts").then(({ applyUpdate }) =>
+                    applyUpdate(update),
+                  )
+                }
+              >
+                Refresh now
+              </Button>
             </div>
           )}
         </div>
@@ -1010,7 +950,10 @@ function App() {
                   (session ? (
                     conversationMenu(session)
                   ) : opening ? (
-                    <MenuPlaceholder />
+                    // Inert until the session is known.
+                    <IconButton label="Conversation menu" disabled>
+                      <Ellipsis />
+                    </IconButton>
                   ) : null)}
               </header>
               {page !== "chat" && (
@@ -1113,8 +1056,7 @@ function App() {
             install,
             setInstall,
             update,
-            drafts,
-            uploading,
+            updateBlocked: !!updateBlocked,
             notificationMode,
             setNotificationMode,
             notifications,

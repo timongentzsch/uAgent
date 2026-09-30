@@ -7,6 +7,7 @@ import type {
   Outgoing,
   HostEvent,
   Outcome,
+  Session,
 } from "../shared/types.ts";
 import { failure } from "../shared/types.ts";
 import { useCallback, useEffect, useRef, useState } from "preact/hooks";
@@ -18,6 +19,7 @@ import {
   stateFrame,
   readStored,
   writeStored,
+  hasContent,
 } from "./store.ts";
 import { api, protocol, receiveOutcome } from "./api.ts";
 import { snapshotStore } from "./snapshot-store.ts";
@@ -30,6 +32,15 @@ import {
 import type { ConnectionPhase } from "../shared/connection-status.tsx";
 
 const CATALOGUE_KEY = "uagent-catalogue";
+
+// What the sidebar lists: conversations, not scheduled runs or their tasks.
+export function listedSessions({
+  sessions,
+  scheduled,
+}: Pick<Catalogue, "sessions" | "scheduled">) {
+  const runs = new Set(scheduled?.runs?.map((run) => run.session_id));
+  return sessions.filter((item) => !item.task_id && !runs.has(item.id));
+}
 
 // One SSE subscription owns host snapshots, command receipts and read state.
 export function useHost(
@@ -115,6 +126,64 @@ export function useHost(
       setOnline(false);
     else setError(issue.message);
   }, []);
+  // One session's catalogue entry changes in place; unchanged entries keep
+  // the catalogue's identity, so the shell skips the frame.
+  const patchSession = (id: string, change: (item: Session) => Session) =>
+    setCatalogue((prior) => {
+      let changed = false;
+      const sessions = prior.sessions.map((item) => {
+        if (item.id !== id) return item;
+        const next = change(item);
+        changed ||= next !== item;
+        return next;
+      });
+      return changed ? { ...prior, sessions } : prior;
+    });
+  // A new or reactivated session leads the list.
+  const upsertSession = useCallback(
+    (session: Session) =>
+      setCatalogue((prior) => ({
+        ...prior,
+        sessions: [
+          session,
+          ...prior.sessions.filter((item) => item.id !== session.id),
+        ],
+      })),
+    [],
+  );
+  const patchOutgoing = useCallback(
+    (
+      requestId: string,
+      patch: Partial<Outgoing> | ((item: Outgoing) => Partial<Outgoing>),
+    ) =>
+      setOutgoing((items) =>
+        items.map((item) =>
+          item.request_id !== requestId
+            ? item
+            : {
+                ...item,
+                ...(typeof patch === "function" ? patch(item) : patch),
+              },
+        ),
+      ),
+    [],
+  );
+  const dropStream = () => {
+    stream.current?.close();
+    stream.current = undefined;
+    setOnline(false);
+  };
+  // What this device drops when the host no longer knows it.
+  const signedOut = () => {
+    revoked.current = true;
+    catalogueRef.current = undefined;
+    setCatalogue({ sessions: [], devices: [], capabilities: {} });
+    storage.removeItem(CATALOGUE_KEY);
+    setDrafts({});
+    setAuthenticated(false);
+    live.current = {};
+    snapshots.set({});
+  };
   const load = useCallback((id: string) => {
     if (loads.current.has(id)) return loads.current.get(id)!;
     setLoadErrors((prior) => ({ ...prior, [id]: null }));
@@ -204,27 +273,20 @@ export function useHost(
   // outgoing row that sent it.
   const settleOutgoing = (outcome: Outcome) => {
     receiveOutcome(outcome);
-    setOutgoing((items) =>
-      items.map((item) =>
-        item.request_id !== outcome.request_id
-          ? item
-          : {
-              ...item,
-              status: outcome.unknown
-                ? "Not confirmed"
-                : outcome.pending
-                  ? "Awaiting confirmation"
-                  : outcome.accepted
-                    ? // Accepted guidance waits for its step and stays
-                      // recallable until the transcript shows it.
-                      item.status === "Guidance queued"
-                      ? item.status
-                      : "Sent"
-                    : "Not sent",
-              error: outcome.error,
-            },
-      ),
-    );
+    patchOutgoing(outcome.request_id, (item) => ({
+      status: outcome.unknown
+        ? "Not confirmed"
+        : outcome.pending
+          ? "Awaiting confirmation"
+          : outcome.accepted
+            ? // Accepted guidance waits for its step and stays
+              // recallable until the transcript shows it.
+              item.status === "Guidance queued"
+              ? item.status
+              : "Sent"
+            : "Not sent",
+      error: outcome.error,
+    }));
   };
   // Jittered exponential backoff; a successful catalogue read resets it.
   const retryLater = () => {
@@ -246,10 +308,8 @@ export function useHost(
     }
     reconnecting.current = true;
     setConnecting(true);
-    stream.current?.close();
-    stream.current = undefined;
+    dropStream();
     loads.current.clear();
-    setOnline(false);
     const signal = lifetime.current.signal;
     try {
       const list = await api<Catalogue>("/api/sessions?refresh=1", undefined, {
@@ -404,20 +464,10 @@ export function useHost(
               : items,
           );
           if (block.incoming)
-            setCatalogue((prior) =>
-              prior.sessions.some(
-                (item) =>
-                  item.id === id && (item.incoming || 0) < block.incoming!,
-              )
-                ? {
-                    ...prior,
-                    sessions: prior.sessions.map((item) =>
-                      item.id === id
-                        ? { ...item, incoming: block.incoming }
-                        : item,
-                    ),
-                  }
-                : prior,
+            patchSession(id, (item) =>
+              (item.incoming || 0) < block.incoming!
+                ? { ...item, incoming: block.incoming }
+                : item,
             );
         }
         if (
@@ -425,13 +475,7 @@ export function useHost(
           event.metadata
         ) {
           knownSessions.set(id, event.metadata!);
-          setCatalogue((prior) => ({
-            ...prior,
-            sessions: [
-              event.metadata!,
-              ...prior.sessions.filter((item) => item.id !== id),
-            ],
-          }));
+          upsertSession(event.metadata!);
           if (current)
             live.current[id] = {
               ...current,
@@ -461,12 +505,7 @@ export function useHost(
           // Decisions and canonical phase changes flush without text batching.
           if (id === selection.current)
             snapshots.set((prior) => ({ ...prior, [id]: live.current[id] }));
-          setCatalogue((prior) => ({
-            ...prior,
-            sessions: prior.sessions.map((item) =>
-              item.id === id ? metadata : item,
-            ),
-          }));
+          patchSession(id, () => metadata);
         } else if (
           event.kind === "activity" ||
           event.type === "activities.changed"
@@ -476,14 +515,11 @@ export function useHost(
               ...applySessionEvent(current, event),
               ...(event.metadata && { metadata: event.metadata }),
             };
-          setCatalogue((prior) => ({
-            ...prior,
-            sessions: prior.sessions.map((item) =>
-              item.id !== id
-                ? item
-                : event.metadata || { ...item, activities: data.activities },
-            ),
-          }));
+          patchSession(
+            id,
+            (item) =>
+              event.metadata || { ...item, activities: data.activities },
+          );
         } else if (event.kind === "block" && current) {
           live.current[id] = applySessionEvent(current, event);
         } else if (event.kind === "event" && current) {
@@ -516,12 +552,7 @@ export function useHost(
               pending: null,
               metadata,
             };
-          setCatalogue((prior) => ({
-            ...prior,
-            sessions: prior.sessions.map((item) =>
-              item.id === id ? metadata : item,
-            ),
-          }));
+          patchSession(id, () => metadata);
         }
         flush.current(id);
         if (isIncoming(event) && (id !== selection.current || !reading.current))
@@ -545,16 +576,8 @@ export function useHost(
     } catch (error) {
       if (signal.aborted) return;
       setConnecting(false);
-      if (failure(error).status === 401) {
-        revoked.current = true;
-        catalogueRef.current = undefined;
-        setCatalogue({ sessions: [], devices: [], capabilities: {} });
-        storage.removeItem(CATALOGUE_KEY);
-        setDrafts({});
-        setAuthenticated(false);
-        live.current = {};
-        snapshots.set({});
-      } else {
+      if (failure(error).status === 401) signedOut();
+      else {
         report(error);
         if (!catalogueRef.current) setAuthenticated((prior) => prior ?? false);
         retryLater();
@@ -582,9 +605,7 @@ export function useHost(
     };
     const disconnected = () => {
       setConnecting(false);
-      stream.current?.close();
-      stream.current = undefined;
-      setOnline(false);
+      dropStream();
     };
     let navigation: ReturnType<typeof setTimeout> | undefined;
     const hash = () => {
@@ -597,9 +618,7 @@ export function useHost(
     addEventListener("offline", disconnected);
     const suspend = (event: PageTransitionEvent) => {
       if (!event.persisted) return;
-      stream.current?.close();
-      stream.current = undefined;
-      setOnline(false);
+      dropStream();
       setConnecting(false);
     };
     addEventListener("pageshow", recover);
@@ -634,18 +653,11 @@ export function useHost(
   }, [refresh]);
   useEffect(() => {
     if (selected && authenticated) load(selected).catch(() => {});
-  }, [selected, authenticated, load, report]);
+  }, [selected, authenticated, load]);
   // Only what the sidebar lists: scheduled runs and their tasks stay out.
   useEffect(() => {
-    if (!authenticated) return;
-    const runs = new Set(
-      catalogue.scheduled?.runs?.map((run) => run.session_id),
-    );
-    writeStored(
-      storage,
-      CATALOGUE_KEY,
-      catalogue.sessions.filter((item) => !item.task_id && !runs.has(item.id)),
-    );
+    if (authenticated)
+      writeStored(storage, CATALOGUE_KEY, listedSessions(catalogue));
   }, [authenticated, catalogue.sessions, catalogue.scheduled]);
   useEffect(() => {
     writeStored(storage, "uagent-unread", [...unread]);
@@ -658,9 +670,7 @@ export function useHost(
       storage,
       "uagent-drafts",
       Object.fromEntries(
-        Object.entries(drafts).filter(
-          ([, draft]) => draft.text || draft.files.length,
-        ),
+        Object.entries(drafts).filter(([, draft]) => hasContent(draft)),
       ),
     );
   }, [drafts]);
@@ -724,18 +734,11 @@ export function useHost(
     loads.current.clear();
     setLoadErrors({});
     stream.current?.close();
-    live.current = {};
-    snapshots.set({});
-    setDrafts({});
     setOutgoing([]);
-    revoked.current = true;
-    catalogueRef.current = undefined;
-    setCatalogue({ sessions: [], devices: [], capabilities: {} });
-    storage.removeItem(CATALOGUE_KEY);
+    signedOut();
     setOnline(false);
     setConnecting(false);
     connectedOnce.current = false;
-    setAuthenticated(false);
     writeSelection("", true);
     setSelected("");
   }
@@ -760,7 +763,7 @@ export function useHost(
         : "disconnected") as ConnectionPhase,
     loadErrors,
     catalogue,
-    setCatalogue,
+    upsertSession,
     snapshots,
     selected,
     setSelected: select,
@@ -771,6 +774,7 @@ export function useHost(
     unread,
     outgoing,
     setOutgoing,
+    patchOutgoing,
     following,
     setFollowing,
     notifications,

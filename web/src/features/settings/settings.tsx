@@ -4,7 +4,6 @@ import { ZoomSlider } from "../../shared/zoom-slider.tsx";
 import type { Dispatch, StateUpdater, MutableRef } from "preact/hooks";
 import type {
   InstallPrompt,
-  Draft,
   Snapshot,
   Catalogue,
   PermissionRules,
@@ -64,8 +63,7 @@ export default function Settings({
   setInstall,
   ios,
   update,
-  drafts,
-  uploading,
+  updateBlocked,
   snapshots,
   catalogue,
   online,
@@ -90,8 +88,8 @@ export default function Settings({
   setInstall: Dispatch<StateUpdater<InstallPrompt | null>>;
   ios: boolean;
   update: ServiceWorker | null;
-  drafts: Record<string, Draft>;
-  uploading: boolean;
+  // Unsent drafts or a waiting decision hold the reload.
+  updateBlocked: boolean;
   snapshots: Record<string, Snapshot>;
   catalogue: Catalogue;
   online: boolean;
@@ -181,10 +179,6 @@ export default function Settings({
       report(failure);
     }
   }
-  const pendingWork =
-    Object.values(drafts).some((item) => item.text || item.files.length) ||
-    uploading ||
-    Object.values(snapshots).some((item) => item.pending);
   const pane = {
     general: (
       <>
@@ -346,7 +340,7 @@ export default function Settings({
           >
             <Row
               label="Apply update"
-              disabled={pendingWork}
+              disabled={updateBlocked}
               onClick={() => applyUpdate(update)}
             />
           </Group>

@@ -39,16 +39,14 @@ import { ListRow } from "../../shared/list-row.tsx";
 export function ConversationMenu({
   item,
   online,
-  refresh,
-  choose,
+  fork,
   loadSnapshot,
   report,
   open,
 }: {
   item: Session;
   online: boolean;
-  refresh: () => Promise<void>;
-  choose: (id: string) => Promise<void>;
+  fork: (item: Session) => void;
   loadSnapshot: (id: string) => Promise<Snapshot>;
   report: Report;
   open: (modal: AppModal) => void;
@@ -66,19 +64,7 @@ export function ConversationMenu({
             ? "Wait for the running turn to finish before forking"
             : undefined
         }
-        onClick={async () => {
-          try {
-            const response = await command("fork", item);
-            if (response.pending) return;
-            await refresh();
-            await choose(response.result.id);
-            const fork = { id: response.result.id, generation: "" };
-            await command("activate", fork);
-            await loadSnapshot(fork.id);
-          } catch (error) {
-            report(error);
-          }
-        }}
+        onClick={() => fork(item)}
       >
         Fork conversation
       </MenuItem>

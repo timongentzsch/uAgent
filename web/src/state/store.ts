@@ -1,6 +1,7 @@
 import type {
   Block,
   BlockPatch,
+  Draft,
   ExecutionPhase,
   HostEvent,
   Snapshot,
@@ -35,6 +36,11 @@ export function writeStored(
     /* Private storage may be full. */
   }
 }
+
+export const emptyDraft = (): Draft => ({ text: "", files: [] });
+// Unsent work: text or a file, uploaded or still uploading.
+export const hasContent = (draft: Draft) =>
+  !!(draft.text || draft.files.length);
 
 // The host's view is the one source of rows; the browser applies its patches
 // in order. A new row lands in sequence position, so a late retained row

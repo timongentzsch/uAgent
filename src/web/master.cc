@@ -314,11 +314,8 @@ class Master {
                   std::lock_guard lock(mutex_);
                   auto found = requests_.find(DeviceId(request) + ":" +
                                               request.matches[1].str());
-                  if (found != requests_.end() &&
-                      !found->second.worker_request.empty() &&
-                      JsonValue(found->second.outcome, "pending", false)) {
-                    found->second.outcome = host_.CommandOutcome(
-                        found->second.worker_request, request.matches[1].str());
+                  if (found != requests_.end()) {
+                    RefreshReceipt(found->second, request.matches[1].str());
                   }
                   Reply(response,
                         found == requests_.end()
@@ -634,10 +631,6 @@ class Master {
                  : ""));
     Reply(response, {{"v", kProtocol}, {"device", device.id}});
   }
-  void Publish(const std::string& session, const std::string& generation,
-               json value) {
-    host_.Publish(session, generation, std::move(value));
-  }
   void Snapshot(const Request&, Response&);
   void Command(const Request&, Response&);
   void Events(const Request&, Response&);
@@ -661,6 +654,16 @@ class Master {
     bool handling = true;
     std::string worker_request;
   };
+  // A receipt still pending asks the host whether its worker has answered.
+  void RefreshReceipt(Receipt& receipt, const std::string& request_id) {
+    if (!receipt.worker_request.empty() &&
+        JsonValue(receipt.outcome, "pending", false)) {
+      receipt.outcome =
+          host_.CommandOutcome(receipt.worker_request, request_id);
+    }
+  }
+  json BrowserControl(const json& command, const std::string& device,
+                      const std::string& request_id, std::string& error);
   std::map<std::string, Receipt> requests_;
   std::deque<std::string> request_order_;
   std::atomic<bool> stopping_{false};
@@ -693,9 +696,9 @@ void Master::Command(const Request& request, Response& response) {
     return;
   }
   json command = json::parse(request.body, nullptr, false);
-  const auto category = JsonValue(command, "kind", "");
-  if (request.body.size() > kRegularCommandBytes && category != "memory" &&
-      category != "skills" && category != "instructions") {
+  const std::string kind = JsonValue(command, "kind", "");
+  if (request.body.size() > kRegularCommandBytes && kind != "memory" &&
+      kind != "skills" && kind != "instructions") {
     Error(response, "command exceeds limit", 413);
     return;
   }
@@ -717,11 +720,7 @@ void Master::Command(const Request& request, Response& response) {
     if (prior->second.fingerprint != fingerprint) {
       Error(response, "request ID reused with different content", 409);
     } else {
-      if (!prior->second.worker_request.empty() &&
-          JsonValue(prior->second.outcome, "pending", false)) {
-        prior->second.outcome =
-            host_.CommandOutcome(prior->second.worker_request, request_id);
-      }
+      RefreshReceipt(prior->second, request_id);
       Reply(response, prior->second.outcome);
     }
     return;
@@ -742,7 +741,6 @@ void Master::Command(const Request& request, Response& response) {
     requests_.erase(*completed);
     request_order_.erase(completed);
   }
-  std::string kind = JsonValue(command, "kind", "");
   // Recall targets a queued steer by its own id, never the envelope id:
   // request ids are single-use receipts and reuse is rejected above.
   std::string target = JsonValue(command, "target_id", "");
@@ -786,56 +784,14 @@ void Master::Command(const Request& request, Response& response) {
     }
   } else if (kind == "browser" && !browser::DataDirectory().empty()) {
     const std::string action = JsonValue(command, "action", "");
-    const std::string interaction = JsonValue(command, "interaction_id", "");
-    json browser_command = {
-        {"op", action == "done" ? "prepare_done" : action},
-        {"device", device},
-        {"interaction_id", interaction},
-        {"name", JsonValue(command, "name", "")},
-        {"profile_id", JsonValue(command, "profile_id", "")}};
     if (action != "takeover" && action != "done" && action != "stop" &&
         action != "create_profile" && action != "select_profile" &&
         action != "setup_profile") {
       error = "unsupported browser control";
     } else {
       lock.unlock();
-      json result = browser::Request(browser_command, 30000);
-      std::string control_error = JsonValue(result, "error", "");
-      if (control_error.empty() && action == "done") {
-        const std::string session_id = JsonValue(result, "session_id", "");
-        if (!interaction.empty() && session_id.empty()) {
-          control_error = "browser conversation is missing";
-        } else if (!interaction.empty()) {
-          json reply = {{"kind", "reply"},
-                        {"v", kProtocol},
-                        {"session_id", session_id},
-                        {"generation", JsonValue(command, "generation", "")},
-                        {"interaction_id", interaction},
-                        {"text", "done"},
-                        {"request_id", request_id}};
-          auto executed = host_.ExecuteCommand(reply, device, request_id);
-          control_error = executed.error;
-          if (control_error.empty()) {
-            if (executed.wake) host_wake_.Wake();
-          }
-        }
-        if (control_error.empty()) {
-          result = browser::Request({{"op", "done"},
-                                     {"device", device},
-                                     {"interaction_id", interaction}});
-          control_error = JsonValue(result, "error", "");
-          if (control_error == "browser service timed out or disconnected") {
-            json current = browser::Request({{"op", "status"}}, 1000);
-            if (current.value("ok", false) &&
-                JsonValue(current, "mode", "") != "human" &&
-                JsonValue(current, "interaction_id", "").empty() &&
-                JsonValue(current, "session_id", "") == session_id) {
-              result = std::move(current);
-              control_error.clear();
-            }
-          }
-        }
-      }
+      std::string control_error;
+      json result = BrowserControl(command, device, request_id, control_error);
       lock.lock();
       if (DeviceId(request) != device) control_error = "device revoked";
       error = std::move(control_error);
@@ -852,7 +808,7 @@ void Master::Command(const Request& request, Response& response) {
     auto action = JsonValue(command, "action", "list");
     if (error.empty() && action != "list" && action != "get" &&
         action != "show" && action != "preview") {
-      Publish("", "", {{"kind", "management.changed"}});
+      host_.Publish("", "", {{"kind", "management.changed"}});
     }
   } else if (kind == "restart_conversations") {
     // Settings that need a restart reach running conversations only through
@@ -897,6 +853,54 @@ void Master::Command(const Request& request, Response& response) {
   requests_.at(key).outcome = outcome;
   requests_.at(key).handling = false;
   Reply(response, outcome, error.empty() ? 200 : 409);
+}
+
+// Runs a browser control the viewer asked for; `done` also answers the
+// conversation's pending browser decision. Called without mutex_ held.
+json Master::BrowserControl(const json& command, const std::string& device,
+                            const std::string& request_id, std::string& error) {
+  const std::string action = JsonValue(command, "action", "");
+  const std::string interaction = JsonValue(command, "interaction_id", "");
+  json result =
+      browser::Request({{"op", action == "done" ? "prepare_done" : action},
+                        {"device", device},
+                        {"interaction_id", interaction},
+                        {"name", JsonValue(command, "name", "")},
+                        {"profile_id", JsonValue(command, "profile_id", "")}},
+                       30000);
+  error = JsonValue(result, "error", "");
+  if (!error.empty() || action != "done") return result;
+  const std::string session_id = JsonValue(result, "session_id", "");
+  if (!interaction.empty() && session_id.empty()) {
+    error = "browser conversation is missing";
+    return result;
+  }
+  if (!interaction.empty()) {
+    json reply = {{"kind", "reply"},
+                  {"interaction_id", interaction},
+                  {"text", "done"},
+                  {"request_id", request_id}};
+    session::StampFrame(reply, session_id,
+                        JsonValue(command, "generation", ""));
+    auto executed = host_.ExecuteCommand(reply, device, request_id);
+    error = executed.error;
+    if (!error.empty()) return result;
+    if (executed.wake) host_wake_.Wake();
+  }
+  result = browser::Request(
+      {{"op", "done"}, {"device", device}, {"interaction_id", interaction}});
+  error = JsonValue(result, "error", "");
+  if (error == "browser service timed out or disconnected") {
+    json current = browser::Request({{"op", "status"}}, 1000);
+    if (current.value("ok", false) &&
+        JsonValue(current, "mode", "") != "human" &&
+        JsonValue(current, "interaction_id", "").empty() &&
+        JsonValue(current, "session_id", "") == session_id) {
+      result = std::move(current);
+      error.clear();
+    }
+  }
+  return result;
 }
 
 void Master::Events(const Request& request, Response& response) {

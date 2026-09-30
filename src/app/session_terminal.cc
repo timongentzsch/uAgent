@@ -93,6 +93,90 @@ class Terminal {
         draft_(std::move(draft)),
         region_(output_),
         composer_(output_, region_) {}
+
+  // Shows a decision that just arrived, or gives the composer back once it
+  // is gone. True when it was settled here and the loop starts over.
+  bool PresentDecision(const json& pending, const std::string& decision) {
+    if (!decision.empty() && JsonValue(pending, "kind", "") == "ask" && raw_) {
+      const json answered =
+          PickAskAnswers(JsonValue(pending, "questions", json::array()),
+                         region_, [this, decision] {
+                           std::lock_guard lock(mutex_);
+                           return JsonValue(pending_, "id", "") == decision;
+                         });
+      // Answered elsewhere meanwhile: nothing left to send.
+      bool live = false;
+      {
+        std::lock_guard lock(mutex_);
+        live = JsonValue(pending_, "id", "") == decision;
+      }
+      if (live) {
+        Send(answered.is_null()
+                 ? json{{"kind", "reply"},
+                        {"interaction_id", decision},
+                        {"text", ""},
+                        {"cancelled", true}}
+                 : json{{"kind", "reply"},
+                        {"interaction_id", decision},
+                        {"text", answered["text"]},
+                        {"attachments", answered["attachments"]}});
+      }
+      return true;
+    }
+    if (!decision.empty() && JsonValue(pending, "kind", "") == "editor") {
+      std::string text = JsonValue(pending, "initial", "");
+      bool edited =
+          raw_ ? composer_.EditTextExternally(text)
+               : EditExternalText(text, STDIN_FILENO, kAdaptiveSystemBytes);
+      Send({{"kind", "reply"},
+            {"interaction_id", decision},
+            {"text", text},
+            {"cancelled", !edited}});
+      return true;
+    }
+    if (!decision.empty()) {
+      std::string description;
+      if (const json* approval = JsonObject(pending, "approval")) {
+        description = JsonValue(*approval, "mandatory_reason", "") + "\n" +
+                      JsonValue(*approval, "preview", "") + "\n";
+      }
+      if (const json* questions = JsonArray(pending, "questions")) {
+        for (const json& question : *questions) {
+          description += JsonValue(question, "question", "") + "\n";
+          size_t number = 0;
+          for (const json& option : question["options"]) {
+            description += "  " + std::to_string(++number) + ". " +
+                           JsonValue(option, "label", "") + "\n";
+          }
+        }
+        description +=
+            "Answer with option numbers or your own words; separate "
+            "questions with ;\n";
+      }
+      if (raw_) {
+        region_.Commit(ColorizeDiffLines(TerminalSafe(description)));
+      } else {
+        fputs(TerminalSafe(description).c_str(), stdout);
+      }
+    }
+    const std::string prompt = TerminalSafe(
+        DecisionPrompt(JsonValue(pending, "prompt", ""),
+                       JsonValue(pending, "options", json::array())));
+    if (raw_) {
+      if (!decision.empty()) {
+        draft_ = composer_.Buffer();
+        region_.Commit(prompt);
+        composer_.Mount(InputPrompt(), JsonValue(pending, "initial", ""),
+                        false);
+      } else {
+        composer_.Mount(InputPrompt(), draft_);
+      }
+    } else if (!decision.empty()) {
+      printf("%s\n", prompt.c_str());
+    }
+    return false;
+  }
+
   int Run(const std::vector<std::string>& attachments) {
     if (!stop_.Open() || !wake_.Open()) return 1;
     raw_ = isatty(STDIN_FILENO) && output_.Start() && composer_.Start();
@@ -174,84 +258,7 @@ class Terminal {
       std::string decision = JsonValue(pending, "id", "");
       if (decision != decision_) {
         decision_ = decision;
-        if (!decision.empty() && JsonValue(pending, "kind", "") == "ask" &&
-            raw_) {
-          const json answered =
-              PickAskAnswers(JsonValue(pending, "questions", json::array()),
-                             region_, [this, decision] {
-                               std::lock_guard lock(mutex_);
-                               return JsonValue(pending_, "id", "") == decision;
-                             });
-          // Answered elsewhere meanwhile: nothing left to send.
-          bool live = false;
-          {
-            std::lock_guard lock(mutex_);
-            live = JsonValue(pending_, "id", "") == decision;
-          }
-          if (live) {
-            Send(answered.is_null()
-                     ? json{{"kind", "reply"},
-                            {"interaction_id", decision},
-                            {"text", ""},
-                            {"cancelled", true}}
-                     : json{{"kind", "reply"},
-                            {"interaction_id", decision},
-                            {"text", answered["text"]},
-                            {"attachments", answered["attachments"]}});
-          }
-          continue;
-        }
-        if (!decision.empty() && JsonValue(pending, "kind", "") == "editor") {
-          std::string text = JsonValue(pending, "initial", "");
-          bool edited =
-              raw_ ? composer_.EditTextExternally(text)
-                   : EditExternalText(text, STDIN_FILENO, kAdaptiveSystemBytes);
-          Send({{"kind", "reply"},
-                {"interaction_id", decision},
-                {"text", text},
-                {"cancelled", !edited}});
-          continue;
-        }
-        if (!decision.empty()) {
-          std::string description;
-          if (const json* approval = JsonObject(pending, "approval")) {
-            description = JsonValue(*approval, "mandatory_reason", "") + "\n" +
-                          JsonValue(*approval, "preview", "") + "\n";
-          }
-          if (const json* questions = JsonArray(pending, "questions")) {
-            for (const json& question : *questions) {
-              description += JsonValue(question, "question", "") + "\n";
-              size_t number = 0;
-              for (const json& option : question["options"]) {
-                description += "  " + std::to_string(++number) + ". " +
-                               JsonValue(option, "label", "") + "\n";
-              }
-            }
-            description +=
-                "Answer with option numbers or your own words; separate "
-                "questions with ;\n";
-          }
-          if (raw_) {
-            region_.Commit(ColorizeDiffLines(TerminalSafe(description)));
-          } else {
-            fputs(TerminalSafe(description).c_str(), stdout);
-          }
-        }
-        const std::string prompt = TerminalSafe(
-            DecisionPrompt(JsonValue(pending, "prompt", ""),
-                           JsonValue(pending, "options", json::array())));
-        if (raw_) {
-          if (!decision.empty()) {
-            draft_ = composer_.Buffer();
-            region_.Commit(prompt);
-            composer_.Mount(InputPrompt(), JsonValue(pending, "initial", ""),
-                            false);
-          } else {
-            composer_.Mount(InputPrompt(), draft_);
-          }
-        } else if (!decision.empty()) {
-          printf("%s\n", prompt.c_str());
-        }
+        if (PresentDecision(pending, decision)) continue;
       }
       if (!(waits[0].revents & (POLLIN | POLLHUP)) &&
           !(raw_ && (composer_.HasPending() || composer_.WakeDeadline()))) {

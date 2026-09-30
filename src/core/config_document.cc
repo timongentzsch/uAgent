@@ -161,22 +161,11 @@ std::string ConfigUnifiedDiff(const std::string& before,
                               const std::string& label) {
   std::vector<std::string> old_lines = SplitLines(before);
   std::vector<std::string> new_lines = SplitLines(after);
-  const CommonLineSpan span = TrimCommonLines(old_lines, new_lines);
-  const size_t prefix = span.prefix;
   std::string diff = "--- " + label + "\n+++ " + label + "\n";
-  size_t context = prefix > 0 ? 1 : 0;
-  for (size_t index = prefix - context; index < prefix; ++index) {
-    diff += "  " + old_lines[index] + "\n";
-  }
-  for (size_t index = prefix; index < span.old_end; ++index) {
-    diff += "- " + old_lines[index] + "\n";
-  }
-  for (size_t index = prefix; index < span.new_end; ++index) {
-    diff += "+ " + new_lines[index] + "\n";
-  }
-  if (span.new_end < new_lines.size()) {
-    diff += "  " + new_lines[span.new_end] + "\n";
-  }
+  ForEachDiffLine(old_lines, new_lines, TrimCommonLines(old_lines, new_lines),
+                  [&](char marker, const std::string& line) {
+                    diff += std::string(1, marker) + " " + line + "\n";
+                  });
   return diff;
 }
 

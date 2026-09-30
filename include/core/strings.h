@@ -191,6 +191,17 @@ inline CommonLineSpan TrimCommonLines(const Lines& old_lines,
   return {prefix, old_lines.size() - suffix, new_lines.size() - suffix};
 }
 
+// The span as diff lines, one line of context either side: `emit(marker,
+// line)` gets ' ' for context, '-' for removed and '+' for added lines.
+template <typename Lines, typename Emit>
+inline void ForEachDiffLine(const Lines& old_lines, const Lines& new_lines,
+                            const CommonLineSpan& span, Emit&& emit) {
+  if (span.prefix > 0) emit(' ', old_lines[span.prefix - 1]);
+  for (size_t i = span.prefix; i < span.old_end; ++i) emit('-', old_lines[i]);
+  for (size_t i = span.prefix; i < span.new_end; ++i) emit('+', new_lines[i]);
+  if (span.old_end < old_lines.size()) emit(' ', old_lines[span.old_end]);
+}
+
 }  // namespace uagent
 
 #endif  // UAGENT_INCLUDE_CORE_STRINGS_H_

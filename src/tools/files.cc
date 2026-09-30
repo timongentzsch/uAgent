@@ -88,18 +88,10 @@ void AppendLineDiff(EditDisplay& display,
                     const std::vector<std::string_view>& old_lines,
                     const std::vector<std::string_view>& new_lines,
                     const LineDiff& diff) {
-  if (diff.prefix > 0) {
-    AppendDisplayLine(display, ' ', old_lines[diff.prefix - 1]);
-  }
-  for (size_t i = diff.prefix; i < diff.old_end; ++i) {
-    AppendDisplayLine(display, '-', old_lines[i]);
-  }
-  for (size_t i = diff.prefix; i < diff.new_end; ++i) {
-    AppendDisplayLine(display, '+', new_lines[i]);
-  }
-  if (diff.old_end < old_lines.size()) {
-    AppendDisplayLine(display, ' ', old_lines[diff.old_end]);
-  }
+  ForEachDiffLine(old_lines, new_lines, diff,
+                  [&](char marker, std::string_view line) {
+                    AppendDisplayLine(display, marker, line);
+                  });
 }
 
 void AppendEditDisplay(EditDisplay& display, const std::string& data,

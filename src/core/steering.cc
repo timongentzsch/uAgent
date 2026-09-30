@@ -42,11 +42,15 @@ bool Steering::Take() {
 
 void Steering::Queue(std::string input, std::string request_id, bool auto_start,
                      json attachments, json images) {
+  Queue({std::move(input), std::move(request_id), auto_start,
+         std::move(attachments), std::move(images)});
+}
+
+void Steering::Queue(Message message) {
   size_t queued = 0;
   {
     std::lock_guard<std::mutex> lock(queue_mutex_);
-    queued_.push_back({std::move(input), std::move(request_id), auto_start,
-                       std::move(attachments), std::move(images)});
+    queued_.push_back(std::move(message));
     queued = queued_.size();
   }
   NotifySteeringWake();
@@ -57,9 +61,12 @@ std::vector<Steering::Message> Steering::TakeMessages() {
   std::vector<Message> result;
   {
     std::lock_guard<std::mutex> lock(queue_mutex_);
+    auto later = std::stable_partition(
+        queued_.begin(), queued_.end(),
+        [](const Message& message) { return !message.after_turn; });
     result.assign(std::make_move_iterator(queued_.begin()),
-                  std::make_move_iterator(queued_.end()));
-    queued_.clear();
+                  std::make_move_iterator(later));
+    queued_.erase(queued_.begin(), later);
     DrainSteeringWake();
   }
   if (!result.empty()) {
@@ -88,6 +95,12 @@ size_t Steering::QueuedCount() const {
   return queued_.size();
 }
 
+size_t Steering::SteerCount() const {
+  std::lock_guard<std::mutex> lock(queue_mutex_);
+  return static_cast<size_t>(std::ranges::count_if(
+      queued_, [](const Message& message) { return !message.after_turn; }));
+}
+
 bool Steering::Recall(const std::string& request_id) {
   if (request_id.empty()) return false;
   std::lock_guard<std::mutex> lock(queue_mutex_);
@@ -112,7 +125,7 @@ Steering& SteeringState() {
   return steering;
 }
 
-bool SteeringYieldRequested() { return SteeringState().QueuedCount() > 0; }
+bool SteeringYieldRequested() { return SteeringState().SteerCount() > 0; }
 
 int SteeringWakeFd() {
   std::call_once(g_steering_wake_once, InitializeSteeringWake);

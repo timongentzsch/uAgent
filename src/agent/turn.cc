@@ -389,7 +389,7 @@ void Agent::Turn(const std::string& user_input, json user_content,
                               {"projected_tokens", projected_tokens}});
     Compact(true);
   }
-  if (SteeringState().Requested() && SteeringState().QueuedCount() == 0) {
+  if (SteeringState().Requested() && SteeringState().SteerCount() == 0) {
     PushUserInput(attachment ? std::move(user_content) : json(user_input),
                   attachment, images, request_id);
     Emit(NoticeEvent(PresentationStatus::kWarned, "interrupted"));

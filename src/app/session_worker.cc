@@ -795,7 +795,8 @@ class WorkerChannel final : public ApplicationChannel {
   // waits yield on the queued message. Requesting a foreground abort here
   // would report every steer as an interruption. Files ride the same queue:
   // the turn composes them into the steered user message, so steering sees
-  // what the composer showed. The caller holds mutex_.
+  // what the composer showed; `queue` holds it for when the turn ends
+  // instead ("Queue next"). The caller holds mutex_.
   void SteerLocked(const SessionCommand& parsed, std::string& error) {
     if (!turn_active_ || parsed.text.empty() ||
         SteeringState().QueuedCount() >= kGuidanceQueueLimit) {
@@ -805,9 +806,12 @@ class WorkerChannel final : public ApplicationChannel {
     std::vector<Attachment> attachments;
     json images = json::array();
     if (ResolveCommandAttachments(parsed.raw, attachments, images, error)) {
-      SteeringState().Queue(std::string(parsed.text), parsed.client_request_id,
-                            true, AttachmentsToJson(attachments),
-                            std::move(images));
+      SteeringState().Queue(
+          {.text = std::string(parsed.text),
+           .request_id = parsed.client_request_id,
+           .attachments = AttachmentsToJson(attachments),
+           .images = std::move(images),
+           .after_turn = JsonValue(parsed.raw, "queue", false)});
     }
   }
 

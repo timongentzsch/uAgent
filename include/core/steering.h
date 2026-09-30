@@ -28,6 +28,10 @@ class Steering {
     // and their transcript display images. Empty for text-only guidance.
     json attachments = json::array();
     json images = json::array();
+    // Queued for after the running turn ("Queue next"): no step applies it
+    // and no wait yields to it; the turn's end starts it as a turn of its
+    // own, in arrival order with everything else that may start one.
+    bool after_turn = false;
   };
   bool Requested() const { return requested_; }
 
@@ -38,14 +42,18 @@ class Steering {
   void Queue(std::string input, std::string request_id = "",
              bool auto_start = true, json attachments = json::array(),
              json images = json::array());
+  void Queue(Message message);
   // Drop one queued entry by client request id. True when an entry was
   // still queued; consumed steering is never resurrected.
   bool Recall(const std::string& request_id);
+  // Everything the running turn applies now: all but after-turn messages.
   std::vector<Message> TakeMessages();
   // The oldest message that may start a turn, leaving every other queued
   // message where it is; the new turn's first step applies the rest.
   std::optional<Message> TakeNextAutoStart();
   size_t QueuedCount() const;
+  // Queued for the running turn itself, which waits and steps yield to.
+  size_t SteerCount() const;
 
  private:
   std::atomic<bool> requested_{false};

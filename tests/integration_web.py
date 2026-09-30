@@ -1173,6 +1173,42 @@ def test_web_steer_queues_guidance_and_live_accounting(root, home, *, binary):
             )
 
 
+def test_web_queue_next_runs_after_the_turn(root, home, *, binary):
+    # "Queue next" never joins the running turn: it waits for the turn to end
+    # and then runs as a turn of its own.
+    workspace = root / "queue-next"
+    workspace.mkdir()
+
+    def responder(handler, body):
+        if "queue-me" in json.dumps(body["messages"]):
+            return event({"content": "queued answer"})
+        write_sse_sequence(
+            handler,
+            [
+                event({"content": "slow chunk one "}, finish=None),
+                event({"content": "slow chunk two"}),
+            ],
+            delay=0.5,
+        )
+        return None
+
+    with Server([responder]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+            client.pair(code)
+            session = client.create(workspace)
+            client.command("submit", session, text="Slow queue probe")
+            client.until(session, lambda value: value["metadata"]["turn_active"])
+            client.command("steer", session, text="queue-me next", queue=True)
+            done = client.until(
+                session,
+                lambda value: (
+                    not value["metadata"]["turn_active"] and "queued answer" in json.dumps(value)
+                ),
+            )
+            summaries = [block for block in done["state"]["view"]["blocks"] if block.get("summary")]
+            assert_true(len(summaries) == 2, done["state"]["view"]["blocks"])
+
+
 def test_web_recall_queued_guidance(root, home, *, binary):
     workspace = root / "recall-steer"
     workspace.mkdir()

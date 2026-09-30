@@ -169,6 +169,18 @@ void TestSignalAndFileWatch() {
           rest[1].text == "later" && rest[1].request_id == "second-id" &&
           rest[1].attachments.size() == 1);
     CHECK(!SteeringState().TakeNextAutoStart());
+
+    // "Queue next" waits out the running turn: the turn's steps take only
+    // the steer beside it and nothing yields to it; the turn's end starts it.
+    SteeringState().Queue(
+        {.text = "next", .request_id = "", .after_turn = true});
+    SteeringState().Queue("steer");
+    CHECK(SteeringState().SteerCount() == 1 && SteeringYieldRequested());
+    std::vector<Steering::Message> now = SteeringState().TakeMessages();
+    CHECK(now.size() == 1 && now[0].text == "steer");
+    CHECK(SteeringState().QueuedCount() == 1 && !SteeringYieldRequested());
+    next = SteeringState().TakeNextAutoStart();
+    CHECK(next && next->text == "next");
     close(watched_fd);
     unlink(watched_path);
   }

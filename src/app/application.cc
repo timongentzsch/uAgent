@@ -109,7 +109,7 @@ void Application::ReloadConfigAtTurnBoundary() {
 }
 
 void Application::RunTurns(const std::string& input, json content,
-                           json images) {
+                           const json& images) {
   EnsureSessionPath();
   ReloadConfigAtTurnBoundary();
   PermissionControl(context_, json::object());
@@ -122,7 +122,7 @@ void Application::RunTurns(const std::string& input, json content,
   {
     TurnGuard guard(turn_active_);
     if (channel_ || !session_file_.empty()) PublishChannelState(false);
-    agent_.Turn(input, std::move(content), std::move(images), request_id_);
+    agent_.Turn(input, std::move(content), images, request_id_);
     SteeringState().Take();
   }
   if (channel_ || !session_file_.empty()) PublishChannelState(false);
@@ -229,7 +229,7 @@ void Application::RunPrompt(const std::string& input) {
     }
     attachments_.clear();
   }
-  RunTurns(input, std::move(content), std::move(images));
+  RunTurns(input, std::move(content), images);
 }
 
 json Application::InterfaceState() const {

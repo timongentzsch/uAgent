@@ -30,7 +30,7 @@ class Application {
   int LoadInitialAttachments();
   void ReloadConfigAtTurnBoundary();
   void RunTurns(const std::string& input, json content = nullptr,
-                json images = json::array());
+                const json& images = json::array());
   void LogSessionEnd(const char* reason) const;
   void Teardown(const char* reason);
   int FinishHeadless(std::string answer, std::string error, int exit_code);

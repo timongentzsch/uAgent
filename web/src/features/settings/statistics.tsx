@@ -2,6 +2,7 @@ import { duration } from "../../shared/duration.ts";
 import { count } from "../../shared/quantities.ts";
 import type { StatisticsModal, Snapshot, State } from "../../shared/types.ts";
 import { useEffect, useState } from "preact/hooks";
+import { useResource } from "../../shared/use-resource.ts";
 import { LoadError, Time } from "../../shared/ui.tsx";
 import {
   Rows,
@@ -21,28 +22,18 @@ export default function Statistics({
   modal: Extract<StatisticsModal, { type: "statistics" }>;
   loadSnapshot: (id: string) => Promise<Snapshot>;
 }) {
-  const [snapshot, setSnapshot] = useState<Snapshot>();
-  const [error, setError] = useState<unknown>(null);
-  const [attempt, setAttempt] = useState(0);
-  useEffect(() => {
-    let active = true;
-    setSnapshot(undefined);
-    setError(null);
-    loadSnapshot(modal.session_id)
-      .then((value) => {
-        if (active) setSnapshot(value);
-      })
-      .catch((error) => {
-        if (active) setError(error);
-      });
-    return () => {
-      active = false;
-    };
-  }, [modal.session_id, attempt]);
+  const {
+    value: snapshot,
+    error,
+    retry,
+    setValue,
+  } = useResource(() => loadSnapshot(modal.session_id), [modal.session_id]);
+  // Another conversation's numbers never stand in while these load.
+  useEffect(() => setValue(undefined), [modal.session_id]);
   return snapshot ? (
     <StatisticsContent state={snapshot.state} blockId={modal.block_id} />
   ) : error ? (
-    <LoadError error={error} retry={() => setAttempt(attempt + 1)} />
+    <LoadError error={error} retry={retry} />
   ) : (
     <StatisticsLoading unit={modal.unit} />
   );

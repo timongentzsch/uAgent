@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useRef, useState } from "preact/hooks";
+import { useResource } from "../../shared/use-resource.ts";
 import type {
   InstructionFile,
   InstructionStack,
@@ -45,27 +46,25 @@ export default function Instructions({
   const [cwd, setCwd] = useState(session?.cwd || projects[0] || "");
   // Tagged with its project, so another project's files never show, or get
   // saved, under this one.
-  const [loaded, setLoaded] = useState<{
-    cwd: string;
-    stack: InstructionStack;
-  }>();
+  const {
+    value: loaded,
+    error,
+    retry,
+    setValue: setLoaded,
+  } = useResource<{ cwd: string; stack: InstructionStack }>(
+    () =>
+      online
+        ? command("instructions", null, { action: "show", cwd }).then(
+            (value) => {
+              if (value.pending)
+                throw new Error("Reload to see the instructions.");
+              return { cwd, stack: value.result };
+            },
+          )
+        : undefined,
+    [cwd, online, version],
+  );
   const stack = loaded?.cwd === cwd ? loaded.stack : undefined;
-  const [error, setError] = useState<unknown>(null);
-  const [attempt, setAttempt] = useState(0);
-  useEffect(() => {
-    let active = true;
-    setError(null);
-    if (online)
-      command("instructions", null, { action: "show", cwd })
-        .then((value) => {
-          if (value.pending) throw new Error("Reload to see the instructions.");
-          if (active) setLoaded({ cwd, stack: value.result });
-        })
-        .catch((failure) => active && setError(failure));
-    return () => {
-      active = false;
-    };
-  }, [cwd, online, version, attempt]);
   const self = state?.self_directive;
   const card = (file: InstructionFile) => (
     <InstructionCard
@@ -89,7 +88,7 @@ export default function Instructions({
         Changes reach new and restarted sessions.
       </p>
       {error ? (
-        <LoadError error={error} retry={() => setAttempt(attempt + 1)} />
+        <LoadError error={error} retry={retry} />
       ) : (
         <Placeholder label="Loading instructions…" when={!stack}>
           <>

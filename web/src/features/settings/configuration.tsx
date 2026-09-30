@@ -7,6 +7,7 @@ import type {
   Session,
 } from "../../shared/types.ts";
 import { useEffect, useRef, useState } from "preact/hooks";
+import { useResource } from "../../shared/use-resource.ts";
 import { SettingRowsLoading } from "./loading.tsx";
 import { command } from "../../state/api.ts";
 import {
@@ -320,9 +321,6 @@ export default function Configuration({
   // This device's own settings, reset together with the user scope.
   display?: { changed: number; reset: () => void };
 }) {
-  const [data, setData] = useState<ConfigurationData | null>(null);
-  const [error, setError] = useState<unknown>(null);
-  const [attempt, setAttempt] = useState(0);
   const [scope, setScope] = useState<"user" | "project">("user");
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
@@ -330,23 +328,21 @@ export default function Configuration({
   const [shadowed, setShadowed] = useState<string[]>([]);
   const [confirm, setConfirm] = useState(false);
   const target = session?.generation && !session.turn_active ? session : null;
-  useEffect(() => {
-    let active = true;
-    setError(null);
-    command("config", target, { operation: "get" })
-      .then((response) => {
-        if (!active) return;
+  const {
+    value: data,
+    error,
+    retry,
+    setValue: setData,
+    setError,
+  } = useResource<ConfigurationData>(
+    () =>
+      command("config", target, { operation: "get" }).then((response) => {
         if (response.pending)
           throw new Error("Configuration is still loading. Try again shortly.");
-        setData(response.result);
-      })
-      .catch((failure) => {
-        if (active) setError(failure);
-      });
-    return () => {
-      active = false;
-    };
-  }, [target?.id, attempt]);
+        return response.result;
+      }),
+    [target?.id],
+  );
   async function run(fields: Record<string, unknown>) {
     setBusy(true);
     setError(null);
@@ -450,7 +446,7 @@ export default function Configuration({
         </p>
       )}
       {error ? (
-        <LoadError error={error} retry={() => setAttempt(attempt + 1)} />
+        <LoadError error={error} retry={retry} />
       ) : (
         !data && <SettingRowsLoading />
       )}

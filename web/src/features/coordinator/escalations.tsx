@@ -1,4 +1,5 @@
-import { useEffect, useState } from "preact/hooks";
+import { useEffect } from "preact/hooks";
+import { useResource } from "../../shared/use-resource.ts";
 import type { Act, Pending, Report, Session } from "../../shared/types.ts";
 import { api, command } from "../../state/api.ts";
 import { Button, Deferred, LoadError, Spinner } from "../../shared/ui.tsx";
@@ -64,23 +65,22 @@ function Escalation({
   report: Report;
 }) {
   // Undefined while it loads; null once the thread no longer waits.
-  const [pending, setPending] = useState<Pending | null>();
-  const [error, setError] = useState<unknown>(null);
-  const [attempt, setAttempt] = useState(0);
+  const {
+    value: pending,
+    error,
+    retry,
+    setValue: setPending,
+  } = useResource(
+    () =>
+      api<{ pending?: Pending | null }>(`/api/sessions/${item.id}`).then(
+        (snapshot) => snapshot.pending || null,
+      ),
+    [item.id, item.generation, item.updated],
+  );
   // A new thread or worker never shows the last one's decision. A mere
   // update refetches in place, so an answer being typed survives it; the
   // host refuses a reply to an interaction the thread has moved past.
   useEffect(() => setPending(undefined), [item.id, item.generation]);
-  useEffect(() => {
-    let active = true;
-    setError(null);
-    api<{ pending?: Pending | null }>(`/api/sessions/${item.id}`)
-      .then((snapshot) => active && setPending(snapshot.pending || null))
-      .catch((failure) => active && setError(failure));
-    return () => {
-      active = false;
-    };
-  }, [item.id, item.generation, item.updated, attempt]);
   if (pending === null) return null;
   const act: Act = (kind, fields) => command(kind, item, fields);
   const loading = <Spinner label="Loading decision…" surface />;
@@ -94,7 +94,7 @@ function Escalation({
         <SessionName item={item} />
       </Button>
       {error ? (
-        <LoadError error={error} retry={() => setAttempt(attempt + 1)} />
+        <LoadError error={error} retry={retry} />
       ) : pending ? (
         <Deferred
           load={decisionPanel}

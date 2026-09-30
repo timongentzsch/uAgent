@@ -42,6 +42,11 @@
 - Web: a pairing link (`#pair=<code>`) pairs on opening, and a refused code
   says it expired. With nothing open, starter cards begin in a recent folder,
   draft a question about the repository, or run `/help`.
+- Web: **Queue next** (Alt+Enter) beside the composer while a turn runs holds
+  the message until the turn ends; its row reads "Queued for after this turn".
+- Web: a turn that stopped short ends with **Stopped · Continue**.
+- Web: a turn that changed files ends with its receipt (files, lines, cost,
+  time), which opens the files with **Undo** each and **Undo all**.
 
 ### Changed
 
@@ -50,6 +55,18 @@
   coordinator's help is a one-line subtitle. Settings group as General; Agent
   (Instructions, Tools, MCP servers, Permissions & allowed actions); Models;
   Host (Devices, Usage); Advanced.
+- Web: an approval is a card: the command or diff, the folder and its risks,
+  with **Allow once**, **Allow for session**, **Deny**, an **Always allow this
+  exact action here** box and **+ guidance**. Numbered choices are cards, not
+  a dropdown. Settings names the repository's rules *Allowed actions*.
+- Web: a send or decision reply that fails stays where it was made, with
+  **Retry**, instead of the page's error banner; a refused message no longer
+  also returns to the composer. Reconnecting shows as a pill, the running
+  composer reads "Add guidance… (Esc to stop)", and YOLO mode is red.
+- Web: three or more tool calls in a row fold into one row ("Ran 4 commands ·
+  edited 2 files"), whatever their kind; two stay rows of their own.
+- Web: the light theme's diff green and red are darker, to meet WCAG AA on
+  their tinted lines.
 
 ## v1.2.0 - 2026-09-30
 

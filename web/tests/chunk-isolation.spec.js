@@ -61,11 +61,10 @@ test("transcript renders while dialog chunks are held", async ({
   await prompt.press("Enter");
   // Dialog chunks (statistics included) are still held: the tool rows
   // and the turn footer button must render anyway.
-  // Both read-only calls fold into one Explored row.
-  await expect(page.locator(".transcript .tool-disclosure")).toHaveCount(1, {
+  // Two calls stay rows of their own; three or more would fold.
+  await expect(page.locator(".transcript .tool-disclosure")).toHaveCount(2, {
     timeout: 60000,
   });
-  await expect(page.locator(".transcript .group")).toContainText("Explored");
   await expect(
     page.getByRole("button", { name: /^Turn statistics: / }).first(),
   ).toBeVisible({ timeout: 30000 });

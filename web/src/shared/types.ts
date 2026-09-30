@@ -688,6 +688,7 @@ export interface CommandResults {
   tool_categories: ToolCategories;
   activity: ActivityDetail;
   context: { exchanges: Exchange[] };
+  revert: { restored: string[]; conflicts: { path: string; reason: string }[] };
   // A fork cut before a message returns that message, to edit (prompt).
   // A coordinator rewinds itself in place (`rewound`) instead of forking.
   fork: { id: string; prompt?: string; rewound?: boolean };

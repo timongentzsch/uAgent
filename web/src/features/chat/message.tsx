@@ -187,7 +187,11 @@ function MessageView({ block, online, session }: MessageProps) {
     );
   if (block.summary)
     return (
-      <TurnFooter summary={block.summary} open={() => statistics?.(block)} />
+      <TurnFooter
+        summary={block.summary}
+        session={session}
+        open={() => statistics?.(block)}
+      />
     );
   // Attribution, not authorship: the user's bar and agent rows carry no
   // label; only other kinds name themselves. The header below is identical on every row — no
@@ -465,75 +469,40 @@ class Message extends Component<MessageProps> {
   }
 }
 
-// The native four group labels, present while a step runs, past after.
-const GROUP_VERBS: Record<string, [string, string]> = {
-  explore: ["Exploring", "Explored"],
-  research: ["Researching", "Researched"],
-  verify: ["Verifying", "Verified"],
-  edit: ["Editing", "Edited"],
-};
-
-// Zero counts drop out: only what a group did is named.
-const some = (n: number, one: string, many?: string) =>
-  n ? plural(n, one, many) : "";
-
-// What a group did, in its own terms: files and searches explored, pages
-// researched, each check with its result, lines edited.
-function groupSummary(intent: string, steps: PresentedBlock[]) {
-  const named = (...names: string[]) =>
-    steps.filter((step) => names.includes(step.name || "")).length;
-  if (intent === "verify")
-    return steps
-      .map((step) => {
-        const target = (step.view?.target || step.name || "").split("\n")[0];
-        const short = target.length > 24 ? `${target.slice(0, 23)}…` : target;
-        return `${short} ${isRunningStatus(step.status) ? "…" : "✓"}`;
-      })
-      .join(", ");
-  if (intent === "edit") {
-    const total = steps.reduce<[number, number]>(
-      (sum, step) => {
-        const [added, removed] = diffCounts(step.change);
-        return [sum[0] + added, sum[1] + removed];
-      },
-      [0, 0],
-    );
-    return [some(steps.length, "file"), formatStat(total)]
-      .filter(Boolean)
-      .join(" · ");
-  }
-  const counts =
-    intent === "research"
-      ? [
-          some(named("web_search"), "search", "searches"),
-          some(steps.length - named("web_search"), "page"),
-        ]
-      : [
-          some(named("read_path"), "file"),
-          some(named("grep"), "search", "searches"),
-          some(steps.length - named("read_path", "grep"), "command"),
-        ];
-  return counts.filter(Boolean).join(", ");
+// What a folded run did: commands run, files edited, and the edits' lines.
+function groupSummary(steps: PresentedBlock[]) {
+  const edits = steps.filter((step) => step.activity?.category === "edit");
+  const commands = steps.length - edits.length;
+  const lines = edits.reduce<[number, number]>(
+    (sum, step) => {
+      const [added, removed] = diffCounts(step.change);
+      return [sum[0] + added, sum[1] + removed];
+    },
+    [0, 0],
+  );
+  const label = [
+    commands && `Ran ${plural(commands, "command")}`,
+    edits.length &&
+      `${commands ? "edited" : "Edited"} ${plural(edits.length, "file")}`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return { label, lines: formatStat(lines) };
 }
 
-// A run of same-intent calls as one row, expanding to the calls themselves.
+// A run of tool calls as one row, expanding to the calls themselves.
 function GroupRow(props: MessageProps) {
   const steps = props.block.children || [];
-  const intent = props.block.activity?.category || "explore";
   const running = steps.some(
     (step) => step.duration_ms == null && isRunningStatus(step.status),
   );
-  const [present, past] = GROUP_VERBS[intent] || GROUP_VERBS.explore;
+  const { label, lines } = groupSummary(steps);
   return (
-    <article
-      data-message-id={props.block.key}
-      data-intent={intent}
-      className="message tool group"
-    >
+    <article data-message-id={props.block.key} className="message tool group">
       <DisclosureRow
         className={`tool-disclosure${running ? " running" : ""}`}
-        label={running ? present : past}
-        status={groupSummary(intent, steps)}
+        label={label}
+        status={running ? "running" : lines || undefined}
       >
         {steps.map((step) => (
           <Message key={step.key || step.id} {...props} block={step} />

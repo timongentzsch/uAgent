@@ -102,40 +102,48 @@ function attachToolFiles(rows: PresentedBlock[]): PresentedBlock[] {
   return kept;
 }
 
-// Intents whose consecutive calls read as one step (the native four).
-const GROUPED = new Set(["explore", "research", "verify", "edit"]);
+// A run of this many tool calls or more folds into one row.
+const FOLD = 3;
+// Each fold by its first row: a run whose rows are unchanged keeps its
+// group, so as rows stream only the last run is refolded (and re-rendered).
+const folds = new WeakMap<PresentedBlock, PresentedBlock>();
 
-// Consecutive calls of one groupable intent fold into one row ("Explored",
-// "Verified"...), as Codex and opencode do. A failure or a call with
-// something to show (a file, a link) keeps its own row; one call is no group.
+// Consecutive tool calls fold into one row ("Ran 4 commands · edited 2
+// files"), as Codex and opencode do. A failure or a call with something to
+// show (a file, a link) keeps its own row and ends the run. The group takes
+// its first row's key, so the transcript keeps its place when a run folds.
 function foldGroups(rows: PresentedBlock[]): PresentedBlock[] {
   const folded: PresentedBlock[] = [];
   let run: PresentedBlock[] = [];
   const flush = () => {
-    if (run.length > 1) {
-      const key = `group-${run[0].key || run[0].id}`;
-      folded.push({
-        id: key,
-        key,
-        kind: "group",
-        activity: { category: run[0].activity?.category },
-        children: run,
-      });
-    } else folded.push(...run);
+    const first = run[0];
+    if (run.length < FOLD) folded.push(...run);
+    else {
+      const prior = folds.get(first);
+      const same =
+        prior?.children?.length === run.length &&
+        prior.children.every((row, index) => row === run[index]);
+      const key = first.key || first.id;
+      const group = same
+        ? prior
+        : { id: `group-${key}`, key, kind: "group", children: run };
+      folds.set(first, group);
+      folded.push(group);
+    }
     run = [];
   };
   for (const row of rows) {
-    const intent = row.activity?.category || "";
     const joins =
       row.kind === "tool_result" &&
-      GROUPED.has(intent) &&
       !row.parts?.length &&
       !row.files?.length &&
       !isFailedStatus(row.status) &&
       !/cancel/i.test(row.status || "");
-    if (!joins || (run.length && run[0].activity?.category !== intent)) flush();
     if (joins) run.push(row);
-    else folded.push(row);
+    else {
+      flush();
+      folded.push(row);
+    }
   }
   flush();
   return folded;

@@ -1729,13 +1729,9 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
   const prompt = page.getByLabel("Message or guidance");
   await prompt.fill("Exploration probe");
   await prompt.press("Enter");
-  // Two read-only calls fold into one Explored row that expands to both.
-  const explored = page.locator(".transcript .group");
-  await expect(explored).toHaveCount(1);
-  await expect(explored.locator("summary").first()).toContainText("Explored");
-  await explored.locator("summary").first().click();
-  await expect(explored.locator(".message.tool")).toHaveCount(2);
-  await explored.locator("summary").first().click();
+  // Two calls stay rows of their own; only three or more fold.
+  await expect(page.locator(".transcript .tool-disclosure")).toHaveCount(2);
+  await expect(page.locator(".transcript .group")).toHaveCount(0);
   await expect(
     page.getByRole("heading", { name: "Verified response" }),
   ).toBeVisible();
@@ -1791,7 +1787,7 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
     page.getByRole("button", { name: "Jump to latest" }),
   ).toBeVisible();
   await page.reload();
-  await expect(page.locator(".transcript > * .tool-disclosure")).toHaveCount(2);
+  await expect(page.locator(".transcript > * .tool-disclosure")).toHaveCount(3);
   // Retained history replays through the live pipeline: one row per call,
   // none stuck on Running.
   await expect(

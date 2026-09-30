@@ -242,8 +242,11 @@ Browser mutations stay disabled until the server's `ready` watermark and the
 selected snapshot are applied.
 
 Submitted messages show a pending row until the runtime assigns a message ID.
-Reconnect checks receipts and history without resubmitting; explicit rejection
-restores the draft. Session cost follows provider-reported usage and is never
+Reconnect checks receipts and history without resubmitting. A message the host
+refused or never confirmed stays at its row with the reason, **Retry** and
+**Return to composer**; a failed decision reply stays on the decision with
+**Retry**. Neither goes to the page's error banner. While the event stream
+reconnects, the status line shows a “Reconnecting…” pill. Session cost follows provider-reported usage and is never
 invented. The context counter is an estimate of the current request size,
 separate from billing totals.
 
@@ -266,7 +269,22 @@ focuses its decision.
 - The composer combines provider/model, variant and reasoning effort in one
   popup. Changing a selection does not submit a message.
 - `/` commands use the native registry, suggestions and Tab completion. Enter
-  sends; Shift+Enter inserts a newline.
+  sends; Shift+Enter inserts a newline. While a turn runs, Enter adds guidance
+  to it and Esc stops it; **Queue next** (Alt+Enter) holds the message until
+  the turn ends and then runs it as its own turn. The permission control turns
+  red in YOLO mode.
+- An approval shows what it would do (the command, or the change as a diff),
+  the folder and its risks, with **Allow once**, **Allow for session** and
+  **Deny**. **Always allow this exact action here** makes Allow once a rule
+  for the repository, listed under *Allowed actions* in Settings → Permissions;
+  **+ guidance** answers in words instead. Numbered choices are cards.
+- A turn that stopped short (Stop, an error, a step or budget limit) ends with
+  **Stopped · Continue**, which sends `continue`.
+- A turn that changed files ends with its receipt (files, lines, cost, time).
+  It opens the changed files, each with **Undo**, and **Undo all**; a file
+  changed since is kept and says why. Shell commands' changes are not
+  tracked. Three or more tool calls in a row fold into one row (“Ran 4
+  commands · edited 2 files”) that expands to the calls.
 - Ctrl+K (⌘K on a Mac), or the search button atop the sidebar on a phone,
   opens the command palette: conversations, folders, slash commands, settings
   sections and actions, matched by letters in order (a prefix first), each with

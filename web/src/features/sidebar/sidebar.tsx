@@ -17,6 +17,11 @@ import {
   Library,
   CalendarClock,
   MessagesSquare,
+  Search,
+  CircleAlert,
+  LoaderCircle,
+  TriangleAlert,
+  Inbox,
 } from "lucide-preact";
 import { command } from "../../state/api.ts";
 import {
@@ -36,7 +41,14 @@ import SessionName from "../../shared/session-name.tsx";
 import { Menu, MenuItem } from "../../shared/menu.tsx";
 import { ActivityStatus, active } from "../chat/activity-status.tsx";
 import { ListRow } from "../../shared/list-row.tsx";
-import { waiting } from "../../state/attention.ts";
+import {
+  needsYou,
+  statusOf,
+  waiting,
+  type SessionState,
+} from "../../state/attention.ts";
+import { SheetButton } from "../../shared/sheet.tsx";
+import WaitingList from "../coordinator/escalations.tsx";
 export function ConversationMenu({
   item,
   online,
@@ -169,6 +181,41 @@ function CoordinatorButton({
   );
 }
 
+// A row's state as a shape as well as a colour (the LED): waiting on you,
+// working, or failed. The words beside it name it.
+const STATE_ICONS: Partial<Record<SessionState, typeof Inbox>> = {
+  waiting: CircleAlert,
+  working: LoaderCircle,
+  failed: TriangleAlert,
+};
+
+// The list's folders in its order, newest first: each folder's threads
+// (under its coordinator's header), then its conversations. The
+// coordinator is the header, not a row.
+export function groupSessions(sessions: Session[], search = "") {
+  const groups = new Map<string, { threads: Session[]; others: Session[] }>();
+  for (const item of [...sessions]
+    .sort((a, b) => (b.updated || 0) - (a.updated || 0))
+    .filter((item) =>
+      `${item.title} ${item.cwd}`.toLowerCase().includes(search.toLowerCase()),
+    )) {
+    const folder = folderOf(item);
+    // A folder with only its coordinator still has a header to open it.
+    if (!groups.has(folder)) groups.set(folder, { threads: [], others: [] });
+    const group = groups.get(folder)!;
+    if (item.kind === "thread") group.threads.push(item);
+    else if (item.kind !== "coordinator") group.others.push(item);
+  }
+  return groups;
+}
+
+// The rows in the order the list shows them: what Alt+↑/↓ steps through.
+export const sessionOrder = (sessions: Session[]) =>
+  [...groupSessions(sessions).values()].flatMap((group) => [
+    ...group.threads,
+    ...group.others,
+  ]);
+
 // One conversation in the list: its title, activity and last update.
 function SessionRow({
   item,
@@ -185,6 +232,8 @@ function SessionRow({
   choose: (id: string) => void;
   menu: (session: Session) => ComponentChildren;
 }) {
+  const { state } = statusOf(item, online);
+  const Icon = STATE_ICONS[state];
   return (
     <div class="session-row">
       <ListRow
@@ -195,6 +244,7 @@ function SessionRow({
         unread={unread && "Unread messages"}
         meta={
           <>
+            {Icon && <Icon class={`session-state ${state}`} aria-hidden />}
             <ActivityStatus
               phase={
                 online &&
@@ -235,6 +285,8 @@ type SidebarProps = {
   settings: () => void;
   create: () => void;
   coordinate: (cwd: string) => void;
+  palette: () => void;
+  report: Report;
 };
 
 function SidebarView({
@@ -253,6 +305,8 @@ function SidebarView({
   page,
   navigate,
   scheduledUnread,
+  palette,
+  report,
 }: SidebarProps) {
   const [search, setSearch] = useState("");
   // Until the list arrives, it draws sample rows in its own layout.
@@ -263,18 +317,19 @@ function SidebarView({
   const coordinators = new Map<string, Session>();
   for (const item of all)
     if (item.kind === "coordinator") coordinators.set(folderOf(item), item);
-  const groups = new Map<string, Session[]>();
-  for (const item of [...all]
-    .sort((a, b) => (b.updated || 0) - (a.updated || 0))
-    .filter((item) =>
-      `${item.title} ${item.cwd}`.toLowerCase().includes(search.toLowerCase()),
-    )) {
-    const folder = folderOf(item);
-    // A folder with only its coordinator still has a header to open it.
-    if (!groups.has(folder)) groups.set(folder, []);
-    if (item.kind !== "coordinator") groups.get(folder)!.push(item);
-  }
-  const list = [...groups].map(([cwd, items]) => (
+  const row = (item: Session) => (
+    <SessionRow
+      key={item.id}
+      item={item}
+      selected={item.id === selected}
+      unread={unread.has(item.id)}
+      online={online}
+      choose={choose}
+      menu={menu}
+    />
+  );
+  const count = drawing ? 0 : needsYou(all);
+  const list = [...groupSessions(all, search)].map(([cwd, group]) => (
     <section key={cwd}>
       <h2>
         <FolderLabel path={cwd} />
@@ -288,17 +343,16 @@ function SidebarView({
           />
         )}
       </h2>
-      {items.map((item) => (
-        <SessionRow
-          key={item.id}
-          item={item}
-          selected={item.id === selected}
-          unread={unread.has(item.id)}
-          online={online}
-          choose={choose}
-          menu={menu}
-        />
-      ))}
+      {group.threads.length > 0 && (
+        <div
+          class="threads"
+          role="group"
+          aria-label={`Threads of the coordinator for ${folderName(cwd)}`}
+        >
+          {group.threads.map(row)}
+        </div>
+      )}
+      {group.others.map(row)}
     </section>
   ));
   return (
@@ -315,11 +369,40 @@ function SidebarView({
         >
           <Mark />
         </a>
+        <IconButton label="Command palette" onClick={palette}>
+          <Search />
+        </IconButton>
         <Button variant="quiet" onClick={create} disabled={!online}>
           <Plus />
           New conversation
         </Button>
       </div>
+      {count > 0 && (
+        <SheetButton
+          label={`${count} need${count === 1 ? "s" : ""} you`}
+          heading="Needs you"
+          className="needs-you"
+          buttonClass="quiet"
+          trigger={
+            <>
+              <Inbox />
+              {count} need{count === 1 ? "s" : ""} you
+            </>
+          }
+        >
+          {(close) => (
+            <WaitingList
+              sessions={all}
+              online={online}
+              report={report}
+              choose={(id) => {
+                close();
+                choose(id);
+              }}
+            />
+          )}
+        </SheetButton>
+      )}
       <div class="sidebar-sections">
         <Button
           variant="quiet"

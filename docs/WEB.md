@@ -5,9 +5,15 @@ Docker browser appliance and frontend development.
 
 ## Quick start
 
-Run `uagent --web`, open the printed URL and enter the single-use pairing code.
+Run `uagent --web` and open the printed `<origin>/#pair=<code>` link, which
+pairs the browser on opening and then drops the code from the address; or open
+the URL and enter the single-use pairing code. A refused code (used, mistyped
+or older than five minutes) says it expired: run `uagent --web` again.
 Another invocation reuses the running server and prints a fresh code. The
-sidebar lists this OS user's conversations grouped by project directory.
+sidebar lists this OS user's conversations grouped by project directory; a
+folder's coordinator is its header, with the threads it started nested under
+it. With nothing open, starter cards begin a conversation in a recent folder,
+draft a question about the repository, or run `/help`.
 Browsing saved history does not start a model or execute a command.
 
 | Flag | Setting | Default |
@@ -244,7 +250,16 @@ separate from billing totals.
 One status indicator is used in the sidebar and composer: hollow without a live
 runtime, filled when connected, breathing while work runs. A pending decision
 shows a steady indicator and “Needs your input”. A separate dot marks unread
-responses.
+responses. In the sidebar an icon beside the words also marks a row that waits
+on you, is working or failed, so no state rests on colour alone.
+
+Decisions waiting on you are counted once, across every folder. The count
+heads the sidebar (“2 need you”), which opens every waiting decision with its
+folder and question to answer or open in place, and shows in the tab title
+(“(2) µAgent”) and, where the browser supports it, the installed app's badge.
+Answering here or in the session is the same act; the first answer wins. A
+notification opens `#session=<id>&decision=<id>`, which opens the session and
+focuses its decision.
 
 ## Conversation controls
 
@@ -252,6 +267,11 @@ responses.
   popup. Changing a selection does not submit a message.
 - `/` commands use the native registry, suggestions and Tab completion. Enter
   sends; Shift+Enter inserts a newline.
+- Ctrl+K (⌘K on a Mac), or the search button atop the sidebar on a phone,
+  opens the command palette: conversations, folders, slash commands, settings
+  sections and actions, matched by letters in order (a prefix first), each with
+  its shortcut. `?` outside a text field lists every shortcut; Alt+↑ and Alt+↓
+  step through the conversations in sidebar order.
 - Conversation menus provide tools, rename, fork, close, delete and statistics.
   The Tools view controls the active schema and groups tools into persistent
   custom categories. Stop and close a live runtime before deleting its history;
@@ -264,7 +284,9 @@ responses.
   and input. Ordinary subagent follow-ups can select another model; persistent
   agents keep their runtime model. Process children show statistics from their
   latest saved checkpoint and label them as such.
-- Settings contain this device's display settings and every registered
+- Settings group their sections as General; Agent (Instructions, Tools, MCP
+  servers, Permissions & allowed actions); Models; Host (Devices, Usage); and
+  Advanced. They contain this device's display settings and every registered
   setting. Each row shows its current value, the default included, and
   **Reset** while the edited scope changes it; saving the inherited value
   removes the change. Values set by the environment or command line are

@@ -18,3 +18,6 @@ export const instructionsDialog = () =>
   import("../features/settings/instructions.tsx");
 export const settingsDialog = () => import("../features/settings/settings.tsx");
 export const toolsDialog = () => import("../features/settings/tools.tsx");
+export const paletteDialog = () => import("../features/palette/palette.tsx");
+export const shortcutsDialog = () =>
+  paletteDialog().then((module) => ({ default: module.ShortcutList }));

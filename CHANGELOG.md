@@ -31,6 +31,25 @@
   mistyped command asks `did you mean /model?`. The status row leads with
   route, approval mode, context left and cost, and a running turn shows
   `Esc stop · Ctrl+B background` while the row has room.
+- Web: one "N need you" count across every folder heads the sidebar and opens
+  each waiting decision, with its folder and question, to answer in place. The
+  same count shows in the tab title and the installed app's badge, and a
+  notification opens the session at its decision.
+- Web: a command palette (Ctrl/⌘+K, or the search button in the sidebar)
+  finds conversations, folders, slash commands and settings by letters in
+  order, with each item's shortcut. `?` lists the shortcuts; Alt+↑/↓ step
+  through conversations.
+- Web: a pairing link (`#pair=<code>`) pairs on opening, and a refused code
+  says it expired. With nothing open, starter cards begin in a recent folder,
+  draft a question about the repository, or run `/help`.
+
+### Changed
+
+- Web: a coordinator's threads nest under its folder header, and a row that
+  waits on you, works or failed carries an icon beside its words. The
+  coordinator's help is a one-line subtitle. Settings group as General; Agent
+  (Instructions, Tools, MCP servers, Permissions & allowed actions); Models;
+  Host (Devices, Usage); Advanced.
 
 ## v1.2.0 - 2026-09-30
 

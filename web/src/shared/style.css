@@ -736,6 +736,76 @@ dialog.sidebar:not([open]) {
   color: var(--muted);
   margin-right: var(--space-2);
 }
+/* A coordinator's threads hang under its folder header. */
+.sidebar .threads {
+  margin-left: var(--space-4);
+  border-left: 1px solid var(--line);
+}
+.session small .session-state {
+  width: 1em;
+  height: 1em;
+  margin-right: var(--space-2);
+  vertical-align: -0.15em;
+}
+.session-state.waiting {
+  color: var(--accent);
+}
+.session-state.failed {
+  color: var(--removed);
+}
+/* Every folder's waiting decisions, above the list. */
+.needs-you > button {
+  width: 100%;
+  justify-content: flex-start;
+  gap: var(--gap);
+  font-size: var(--font-small);
+  font-weight: 600;
+  color: var(--accent);
+}
+.escalation-where {
+  color: var(--muted);
+}
+/* One line: the words truncate, the link to its instructions stays. */
+.coordinator-subtitle {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--font-small);
+}
+.coordinator-subtitle span {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.coordinator-subtitle button {
+  flex-shrink: 0;
+  font-size: inherit;
+  min-height: 0;
+  padding: 0;
+  text-decoration: underline;
+}
+.starters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(calc(160rem / 14), 1fr));
+  gap: var(--gap);
+  margin-top: var(--space-6);
+  text-align: left;
+}
+.starters button {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-1);
+  height: 100%;
+  padding: var(--space-4);
+  border: 1px solid var(--line);
+  white-space: normal;
+}
+.starters small {
+  color: var(--muted);
+}
 .coordinator-layout {
   flex: 1;
   min-height: 0;
@@ -763,25 +833,6 @@ dialog.sidebar:not([open]) {
   font-weight: 400;
   color: var(--muted);
   padding: var(--space-2) var(--space-3);
-}
-/* The title keeps the row; the help button sits right after it. */
-.conversation-head > div:first-of-type:has(.coordinator-help-anchor) {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-.coordinator-help-body {
-  display: grid;
-  align-content: start;
-  gap: var(--space-3);
-  font-size: var(--font-small);
-}
-.coordinator-help h3 {
-  font-size: var(--font-small);
-  font-weight: 600;
-}
-.coordinator-help p {
-  color: var(--muted);
 }
 .board-note {
   color: var(--muted);
@@ -1369,6 +1420,7 @@ details[open]:not(.disclosure-row) > summary::before {
 .escalation-thread {
   justify-self: start;
   max-width: 100%;
+  text-align: left;
   font-size: var(--font-small);
   color: var(--muted);
 }

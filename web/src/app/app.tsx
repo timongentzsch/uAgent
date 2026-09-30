@@ -9,6 +9,7 @@ import type {
   Act,
   CommandKind,
   CommandFields,
+  SlashCommand,
 } from "../shared/types.ts";
 import { failure } from "../shared/types.ts";
 import type { JSX } from "preact";
@@ -45,7 +46,13 @@ import { ImageViewer, type ViewedImage } from "../shared/attachments.tsx";
 const markdownView = () => import("../shared/markdown-view.tsx");
 import { useDismiss } from "../shared/dismiss.ts";
 import { recallable } from "../shared/message-view.ts";
-import Sidebar, { ConversationMenu } from "../features/sidebar/sidebar.tsx";
+import Sidebar, {
+  ConversationMenu,
+  sessionOrder,
+} from "../features/sidebar/sidebar.tsx";
+import { useShortcuts } from "../shared/shortcuts.ts";
+import { nextIndex } from "../shared/listbox-nav.ts";
+import { focusDecision, followDecisionLink } from "../shared/navigation.ts";
 import { CoordinatorHelp } from "../features/coordinator/board.tsx";
 import { folderName } from "../shared/folder-label.tsx";
 import {
@@ -78,6 +85,8 @@ import {
   settingsDialog,
   toolsDialog,
   statisticsDialog,
+  paletteDialog,
+  shortcutsDialog,
 } from "./dialogs.ts";
 
 // Own scroll restoration from the first paint. history restoration only
@@ -105,6 +114,8 @@ function App() {
   // The drawer belongs to the compact layout; a wider window drops it.
   useEffect(() => setDrawer(false), [compact]);
   const [modal, setModal] = useState<AppModal | null>(null);
+  // The command palette (Mod+K) or the shortcuts sheet (?).
+  const [overlay, setOverlay] = useState<"palette" | "shortcuts" | null>(null);
   // Remembered per device, so the header's browser slot is right from the
   // first frame instead of appearing once the host answers.
   const [browserAvailable, setBrowserAvailable] = useState(
@@ -310,12 +321,19 @@ function App() {
       if (
         event.data?.type === "OPEN_SESSION" &&
         /^[a-f0-9]{16,64}$/.test(event.data.id || "")
-      )
+      ) {
         choose(event.data.id);
+        if (event.data.decision !== undefined) focusDecision();
+      }
     };
+    // A notification's link opened this window at a decision.
+    followDecisionLink();
+    addEventListener("hashchange", followDecisionLink);
     navigator.serviceWorker?.addEventListener("message", openSession);
-    return () =>
+    return () => {
       navigator.serviceWorker?.removeEventListener("message", openSession);
+      removeEventListener("hashchange", followDecisionLink);
+    };
   }, []);
   async function create(event: JSX.TargetedSubmitEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -338,7 +356,7 @@ function App() {
       starting.current = true;
       try {
         const created = await command("create", null, { cwd, coordinator });
-        if (created.pending) return;
+        if (created.pending) return "";
         upsertSession(created.session);
         // Live before it is shown, so opening never flashes the saved state;
         // shown even if activating fails, with the failure reported.
@@ -349,11 +367,35 @@ function App() {
           await choose(created.session.id);
         }
         await load(created.session.id);
+        return created.session.id;
       } finally {
         starting.current = false;
       }
     },
     [upsertSession, choose, load],
+  );
+  // A starter card: a new conversation in a folder, with its draft filled
+  // in or a command run in it.
+  const start = useCallback(
+    async (cwd: string, text = "", run = false) => {
+      try {
+        const id = await startConversation(cwd);
+        if (!id || !text) return;
+        if (!run)
+          setDrafts((current) => ({ ...current, [id]: { text, files: [] } }));
+        else {
+          const request_id = requestId();
+          correlate(request_id);
+          await command("submit", snapshots.get()[id]?.metadata || { id }, {
+            request_id,
+            text,
+          });
+        }
+      } catch (failure) {
+        report(failure);
+      }
+    },
+    [startConversation, correlate, report],
   );
   // A command with a screen opens it when typed bare; with an argument it
   // runs on the host, as in the terminal.
@@ -781,6 +823,47 @@ function App() {
     () => listedSessions(catalogue),
     [catalogue.sessions, catalogue.scheduled],
   );
+  // A slash command from the palette runs as if sent from the composer;
+  // one that needs an argument waits there for it.
+  async function runCommand(entry: SlashCommand) {
+    try {
+      if (entry.argument && !entry.argument.startsWith("[")) {
+        if (!session)
+          throw new Error(`Open a conversation to use ${entry.command}`);
+        setDraft({ ...draft, text: `${entry.command} ` });
+        requestAnimationFrame(() => document.getElementById("prompt")?.focus());
+      } else if (!(await localCommand(entry.command))) {
+        if (!session)
+          throw new Error(`Open a conversation to run ${entry.command}`);
+        if (running)
+          throw new Error(
+            "Wait for this turn to finish before running a slash command.",
+          );
+        await act("submit", { request_id: requestId(), text: entry.command });
+      }
+    } catch (failure) {
+      report(failure);
+    }
+  }
+  // Alt+↑/↓: the conversation above or below in the list.
+  const step = (key: "ArrowUp" | "ArrowDown") => {
+    const order = sessionOrder(listed);
+    if (!order.length) return;
+    const at = order.findIndex((item) => item.id === selected);
+    choose(order[nextIndex(at, key, order.length)].id);
+  };
+  const shortcutActions = {
+    palette: () => setOverlay("palette"),
+    shortcuts: () => setOverlay("shortcuts"),
+    previous: () => step("ArrowUp"),
+    next: () => step("ArrowDown"),
+  };
+  // Only for a paired device: the pairing screen has nothing to find.
+  useShortcuts(authenticated ? shortcutActions : {});
+  const openPalette = useCallback(() => {
+    setDrawer(false);
+    setOverlay("palette");
+  }, []);
   const navigate = useCallback((value: typeof page) => {
     setPage(value);
     setDrawer(false);
@@ -821,6 +904,8 @@ function App() {
       settings={settings}
       create={newConversation}
       coordinate={coordinate}
+      palette={openPalette}
+      report={report}
     />
   );
 
@@ -1034,10 +1119,46 @@ function App() {
                   setModal={setModal}
                   setInspector={setInspector}
                   showContext={showContext}
+                  start={start}
                 />
               </main>
             </div>
           </>
+        )}
+        {overlay && (
+          // Keyed: an action that opens the other one replaces this dialog
+          // instead of closing it under the new one.
+          <Modal
+            key={overlay}
+            title={
+              overlay === "palette" ? "Command palette" : "Keyboard shortcuts"
+            }
+            layout="sheet"
+            size="narrow"
+            lightDismiss
+            close={() => setOverlay(null)}
+          >
+            {overlay === "palette" ? (
+              <Deferred
+                load={paletteDialog}
+                fallback={<Spinner label="Loading…" surface />}
+                sessions={listed}
+                commands={catalogue.commands || []}
+                choose={choose}
+                start={(cwd: string) => void start(cwd)}
+                run={runCommand}
+                settings={(section: string) =>
+                  open({ type: "settings", section })
+                }
+                actions={{ ...shortcutActions, palette: undefined }}
+              />
+            ) : (
+              <Deferred
+                load={shortcutsDialog}
+                fallback={<Spinner label="Loading…" surface />}
+              />
+            )}
+          </Modal>
         )}
         <Modals
           store={snapshots}

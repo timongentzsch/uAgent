@@ -30,6 +30,7 @@ import {
   reconnectMaxDelayMs,
 } from "../shared/limits.ts";
 import type { ConnectionPhase } from "../shared/connection-status.tsx";
+import { needsYou } from "./attention.ts";
 
 const CATALOGUE_KEY = "uagent-catalogue";
 
@@ -659,6 +660,17 @@ export function useHost(
     if (authenticated)
       writeStored(storage, CATALOGUE_KEY, listedSessions(catalogue));
   }, [authenticated, catalogue.sessions, catalogue.scheduled]);
+  // The tab title and the installed app's badge count what needs you;
+  // written only when that count changes.
+  const attention = needsYou(listedSessions(catalogue));
+  useEffect(() => {
+    document.title = attention ? `(${attention}) µAgent` : "µAgent";
+    if ("setAppBadge" in navigator)
+      (attention
+        ? navigator.setAppBadge(attention)
+        : navigator.clearAppBadge()
+      ).catch(() => {});
+  }, [attention]);
   useEffect(() => {
     writeStored(storage, "uagent-unread", [...unread]);
   }, [unread]);

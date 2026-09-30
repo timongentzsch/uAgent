@@ -100,7 +100,7 @@ async function attention(data: Attention | undefined) {
     tag: data.id,
     icon: "/icon-192.png",
     badge: "/icon-192.png",
-    data: { session_id: data.session_id },
+    data: { session_id: data.session_id, decision: data.id },
   });
 }
 self.addEventListener("message", (event) => {
@@ -129,7 +129,12 @@ self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const id = event.notification.data?.session_id;
   if (!/^[a-f0-9]{16,64}$/.test(id || "")) return;
-  const target = new URL(`/#session=${id}`, self.location.origin).href;
+  // To the decision itself: the app opens the session and focuses it.
+  const decision = encodeURIComponent(event.notification.data?.decision || "");
+  const target = new URL(
+    `/#session=${id}&decision=${decision}`,
+    self.location.origin,
+  ).href;
   event.waitUntil(
     (async () => {
       const windows = await self.clients.matchAll({
@@ -140,7 +145,7 @@ self.addEventListener("notificationclick", (event) => {
         (window) => new URL(window.url).origin === self.location.origin,
       );
       if (existing) {
-        existing.postMessage({ type: "OPEN_SESSION", id });
+        existing.postMessage({ type: "OPEN_SESSION", id, decision });
         await existing.focus();
       } else await self.clients.openWindow(target);
     })(),

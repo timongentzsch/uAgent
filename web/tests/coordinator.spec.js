@@ -1,5 +1,6 @@
 // A folder's coordinator opens from its header icon; its board lists the
-// folder's sessions beside the chat, and above it on a phone.
+// folder's sessions beside the chat, and above it on a phone. Its threads
+// nest under that header in the sidebar.
 import { test, expect } from "./fixtures.js";
 
 const VIEWPORTS = [
@@ -48,12 +49,13 @@ for (const [name, viewport] of VIEWPORTS) {
         () => document.documentElement.scrollWidth - window.innerWidth,
       ),
     ).toBeLessThanOrEqual(0);
-    await page.getByLabel("What is the coordinator?").click();
-    const help = page.getByRole("dialog", { name: "The folder's coordinator" });
-    await expect(help.getByText("How it differs")).toBeVisible();
-    // The help's rows keep their own height in the sheet: no stretched button.
-    const button = help.getByRole("button", { name: "Edit instructions" });
-    expect((await button.boundingBox()).height).toBeLessThan(60);
+    // What it is, in one line under its title, with its instructions a tap
+    // away even where the words truncate.
+    const subtitle = page.locator(".coordinator-subtitle");
+    await expect(subtitle).toContainText("hands work to threads");
+    const button = subtitle.getByRole("button", { name: "Edit instructions" });
+    await expect(button).toBeInViewport();
+    expect((await subtitle.boundingBox()).height).toBeLessThan(40);
     await shot(page, `help-${browserName}-${name}`);
   });
 
@@ -162,12 +164,11 @@ for (const [name, viewport] of VIEWPORTS) {
   });
 }
 
-test("the coordinator's help opens its instructions", async ({
+test("the coordinator's subtitle opens its instructions", async ({
   page,
   session,
 }) => {
   await openCoordinator(page, session);
-  await page.getByLabel("What is the coordinator?").click();
   await page.getByRole("button", { name: "Edit instructions" }).click();
   const dialog = page.getByRole("dialog", { name: "Instructions" });
   const coordinator = dialog.getByLabel("Yours · coordinator");
@@ -183,7 +184,6 @@ test("the coordinator's help opens its instructions", async ({
 test("instructions read well on a phone", async ({ page, session }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openCoordinator(page, session);
-  await page.getByLabel("What is the coordinator?").click();
   await page.getByRole("button", { name: "Edit instructions" }).click();
   const dialog = page.getByRole("dialog", { name: "Instructions" });
   await expect(dialog.getByLabel("Yours · coordinator")).toBeEnabled();

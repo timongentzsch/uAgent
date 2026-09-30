@@ -1,6 +1,15 @@
 # Changelog
 
-## Unreleased
+## v1.2.0 - 2026-09-30
+
+### Upgrade notes
+
+- Messages between sessions and to subagents now live in
+  `~/.uagent/mail/`. Guidance still waiting in the old
+  `~/.uagent/sessions/inbox/` from an earlier version is not delivered and
+  ages out with retention.
+- A coordinator's `thread delete` closes a running session first; `thread
+  stop` still only interrupts its turn.
 
 ### Added
 

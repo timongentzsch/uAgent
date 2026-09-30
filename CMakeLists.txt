@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(uagent VERSION 1.1.1 DESCRIPTION "Lean terminal coding agent" LANGUAGES CXX)
+project(uagent VERSION 1.2.0 DESCRIPTION "Lean terminal coding agent" LANGUAGES CXX)
 include(GNUInstallDirs)
 
 if(NOT UNIX)

@@ -1060,9 +1060,8 @@ void TestEffectiveConfigReload() {
   // A parent's handoff to its child is not a setting a file may carry.
   CHECK(!diagnostic["sources"].contains("UAGENT_INTERNAL_TOOLSET"));
   CHECK(!LeanToolset());
-  CHECK(diagnostic["provenance"]["max_steps"] == "environment");
-  CHECK(diagnostic["provenance"]["max_tool_calls"] == "global-config");
-  CHECK(diagnostic["provenance"]["request_timeout_s"] == "default");
+  CHECK(diagnostic["sources"]["UAGENT_MAX_TOOL_CALLS"] == "user");
+  CHECK(!diagnostic["sources"].contains("UAGENT_REQUEST_TIMEOUT"));
   std::string shown = JsonDump(diagnostic);
   CHECK(shown.find("private-route-key") == std::string::npos);
   CHECK(shown.find("user:pass") == std::string::npos);

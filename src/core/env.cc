@@ -293,17 +293,6 @@ std::vector<std::string> RuntimeConfig::ApplyTurnReload(
   return changed;
 }
 
-json RuntimeConfig::ProvenanceJson(const json& env_sources) const {
-  json out = json::object();
-  ForEachBinding([&](const auto& option) {
-    out[option.descriptor->field] =
-        env_sources.is_object()
-            ? JsonValue(env_sources, option.Env(), "default")
-            : std::string("default");
-  });
-  return out;
-}
-
 json RuntimeConfig::DiagnosticJson() const {
   json out;
   ForEachBinding([&](const auto& option) {

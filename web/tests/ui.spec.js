@@ -589,9 +589,7 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
     .locator(".settings-nav")
     .getByRole("button", { name: "General", exact: true })
     .click();
-  await settings
-    .getByRole("button", { name: "Reset Zoom", exact: true })
-    .click();
+  await settings.getByRole("button", { name: /^Zoom .*reset$/ }).click();
   await settings.getByRole("button", { name: "Close settings" }).click();
   await page.setViewportSize({ width: 844, height: 390 });
   await measure("landscape");
@@ -1424,9 +1422,7 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
       .locator(".settings-nav")
       .getByRole("button", { name: "General", exact: true })
       .tap();
-    await settings
-      .getByRole("button", { name: "Reset Zoom", exact: true })
-      .tap();
+    await settings.getByRole("button", { name: /^Zoom .*reset$/ }).tap();
     await settings
       .getByRole("button", { name: "Close settings", exact: true })
       .tap();

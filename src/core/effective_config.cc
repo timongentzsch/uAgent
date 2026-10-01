@@ -95,15 +95,15 @@ EffectiveConfigSnapshot ConfigManager::Read() const {
   json origins = json::object();
   if (!custom_path_.empty()) {
     FileStamp stamp =
-        MergeFile(custom_path_, "custom-config", process_, effective, origins);
+        MergeFile(custom_path_, "file", process_, effective, origins);
     snapshot.files.emplace_back(custom_path_, stamp);
   } else {
     FileStamp global =
-        MergeFile(global_path_, "global-config", process_, effective, origins);
+        MergeFile(global_path_, "user", process_, effective, origins);
     snapshot.files.emplace_back(global_path_, global);
     if (trust_project_) {
-      FileStamp project = MergeFile(project_path_, "project-config", process_,
-                                    effective, origins);
+      FileStamp project =
+          MergeFile(project_path_, "project", process_, effective, origins);
       snapshot.files.emplace_back(project_path_, project);
     }
   }
@@ -120,7 +120,6 @@ EffectiveConfigSnapshot ConfigManager::Read() const {
   snapshot.config = RuntimeConfig::FromValues(effective);
   snapshot.values = effective;
   snapshot.sources = std::move(origins);
-  snapshot.fingerprint = JsonDump(effective);
   return snapshot;
 }
 
@@ -145,7 +144,7 @@ bool ConfigManager::FilesChanged() const {
 std::optional<ConfigReload> ConfigManager::Reload(const RuntimeConfig& active) {
   if (!FilesChanged()) return std::nullopt;
   EffectiveConfigSnapshot next = Read();
-  if (next.fingerprint == current_.fingerprint) {
+  if (next.values == current_.values) {
     current_ = std::move(next);
     return std::nullopt;
   }
@@ -185,7 +184,6 @@ json ConfigManager::DiagnosticJson(const RuntimeConfig& active) const {
   return {{"active", active.DiagnosticJson()},
           {"configured", current_.config.DiagnosticJson()},
           {"sources", current_.sources},
-          {"provenance", current_.config.ProvenanceJson(current_.sources)},
           {"restart_required", deferred_}};
 }
 

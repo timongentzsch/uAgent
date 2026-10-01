@@ -2034,7 +2034,9 @@ def test_web_http_context_configuration_permissions_and_fork(root, home, *, bina
             client.pair(code)
             config = client.command("config")["result"]
             settings = {item["name"]: item for item in config["settings"]}
-            assert_true(len(settings) > 60 and settings["UAGENT_API_KEY"]["value"] is None, config)
+            assert_true(
+                len(settings) > 60 and "effective" not in settings["UAGENT_API_KEY"], config
+            )
             changed = client.command(
                 "config",
                 operation="apply",
@@ -2042,7 +2044,7 @@ def test_web_http_context_configuration_permissions_and_fork(root, home, *, bina
                 changes=[{"key": "UAGENT_APPROVAL", "value": "yolo"}],
             )["result"]
             assert_true(
-                changed["effects"][0]["effect"] == "active at the next user turn",
+                changed["effects"][0]["effect"] == "next_turn",
                 changed["effects"],
             )
             session = client.create(project)

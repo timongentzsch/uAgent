@@ -592,30 +592,31 @@ export interface Model {
 export interface ModelCatalogue {
   models: Model[];
 }
+// One setting as the host states it: its description, then the facts.
 export interface ConfigSetting {
   name: string;
+  label: string;
+  purpose?: string;
   description: string;
   category: string;
   type: string;
   sensitivity: string;
-  scopes: string[];
-  value?: JSONValue;
-  active?: JSONValue;
-  default?: JSONValue;
-  source: string;
   takes_effect: string;
+  default?: JSONValue;
   minimum?: number;
   maximum?: number;
   choices?: string[];
-  // What an empty value falls back to: another setting's name or a phrase.
+  // Listed only in a terminal and the config file.
+  terminal?: boolean;
+  // Your own value (`true` for a secret); absent when unset.
+  set?: JSONValue;
+  // What applies now; absent for a secret.
+  effective?: JSONValue;
+  source: "default" | "user" | "project" | "file" | "environment" | "cli";
+  locked: boolean;
+  // While empty: the setting it takes its value from, or a phrase.
+  follows?: string;
   fallback?: string;
-  // A person's name for the setting and what it is for, where the registry
-  // gives them.
-  label?: string;
-  purpose?: string;
-  // What each config file sets; a secret reports only `true`.
-  user?: JSONValue;
-  project?: JSONValue;
 }
 export interface ConfigChange {
   key: string;
@@ -624,8 +625,11 @@ export interface ConfigChange {
 }
 export interface Configuration {
   settings: ConfigSetting[];
-  project_trusted?: boolean;
-  effects: { key: string; effect: string }[];
+  effects: {
+    key: string;
+    effect: "next_turn" | "restart" | "shadowed";
+    text: string;
+  }[];
 }
 export interface ToolCatalogueItem {
   name: string;

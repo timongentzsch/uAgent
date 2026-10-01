@@ -322,7 +322,9 @@ void HandleDebugConfig(const AppSession& session, const std::string& argument,
           "%s", KeyValueRow(label, TerminalSafe(value), kDetailIndent).c_str());
     };
     row("source", source);
-    if (setting.contains("active")) row("active", JsonDump(setting["active"]));
+    if (setting.contains("effective")) {
+      row("effective", JsonDump(setting["effective"]));
+    }
     row("default", JsonDump(setting["default"]));
     row("takes effect", JsonValue(setting, "takes_effect", std::string()));
   }
@@ -370,10 +372,9 @@ void HandleConfig(AppSession& session, const std::string& argument,
   if (NoteError(reply, result)) return;
   bool restart = false;
   for (const json& effect : JsonValue(result, "effects", json::array())) {
-    const std::string how = JsonValue(effect, "effect", "");
-    restart |= how == "needs a restart";
-    reply.Note(Tone::kNeutral,
-               TerminalSafe(JsonValue(effect, "key", "")) + ": " + how);
+    restart |= JsonValue(effect, "effect", "") == "restart";
+    reply.Note(Tone::kNeutral, TerminalSafe(JsonValue(effect, "key", "")) +
+                                   ": " + JsonValue(effect, "text", ""));
   }
   if (restart) {
     reply.Note(Tone::kWarn,
@@ -385,7 +386,7 @@ void HandleConfig(AppSession& session, const std::string& argument,
     const std::string source = JsonValue(setting, "source", "default");
     if (source == "default") continue;
     ++changed;
-    const json& value = setting["value"];
+    const json value = JsonValue(setting, "effective", json());
     reply.Print("%s = %s%s · %s%s\n",
                 TerminalSafe(JsonValue(setting, "name", "")).c_str(), DIM(),
                 value.is_null()

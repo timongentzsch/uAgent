@@ -832,9 +832,7 @@ void Master::Command(const Request& request, Response& response) {
   } else if (kind == "config" && JsonValue(command, "session_id", "").empty()) {
     lock.unlock();
     auto manager = ConfigManager::Capture(false, {});
-    auto configured = manager.Read();
-    auto result =
-        ConfigurationControl(command, manager, configured.config, false);
+    auto result = ConfigurationControl(command, manager, false);
     lock.lock();
     outcome["result"] = result;
     error = JsonValue(result, "error", "");

@@ -307,8 +307,7 @@ ConfigEffect ClassifyEffect(const ConfigDescriptor& descriptor,
   // A layer above the file keeps winning after the file changes, so saying the
   // value is now active would be false.
   bool shadowed = source == "cli" || source == "environment" ||
-                  source == "command-line" || source == "process" ||
-                  (user_scope && source == "project-config");
+                  (user_scope && source == "project");
   if (shadowed) return ConfigEffect::kPersistedButShadowed;
   return descriptor.reload == ReloadPolicy::kNextUserTurn
              ? ConfigEffect::kActiveNextUserTurn
@@ -327,6 +326,18 @@ const char* ConfigEffectName(ConfigEffect effect) {
       return "saved, but a higher layer keeps winning";
   }
   return "needs a restart";
+}
+
+const char* ConfigEffectToken(ConfigEffect effect) {
+  switch (effect) {
+    case ConfigEffect::kActiveNextUserTurn:
+      return "next_turn";
+    case ConfigEffect::kRestartRequired:
+      return "restart";
+    case ConfigEffect::kPersistedButShadowed:
+      return "shadowed";
+  }
+  return "restart";
 }
 
 std::string ConfigProposal::Preview() const {

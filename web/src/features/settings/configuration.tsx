@@ -1,344 +1,24 @@
-import { count, plural } from "../../shared/quantities.ts";
-import type {
-  JSONValue,
-  ConfigSetting,
-  ConfigChange,
-  Configuration as ConfigurationData,
-  Session,
-} from "../../shared/types.ts";
-import { useEffect, useRef, useState } from "preact/hooks";
-import { useResource } from "../../shared/use-resource.ts";
-import { SettingRowsLoading } from "./loading.tsx";
-import { command } from "../../state/api.ts";
+import { useState } from "preact/hooks";
+import { plural } from "../../shared/quantities.ts";
+import type { ConfigSetting, Session } from "../../shared/types.ts";
 import {
-  Actions,
-  Button,
+  ConfirmModal,
   Group,
   Input,
   LoadError,
-  Modal,
   Row,
-  SettingRow,
-  Switch,
-  ValueSelect,
 } from "../../shared/ui.tsx";
+import { SettingRowsLoading } from "./loading.tsx";
+import { RestartNotice } from "./config/restart-notice.tsx";
+import { SettingItem } from "./config/setting-item.tsx";
+import { SettingSheet } from "./config/setting-sheet.tsx";
+import { useConfiguration } from "./config/use-configuration.ts";
 
-const SAVED_MS = 1_500;
-const RESTART = "needs a restart";
+type Sections = [string, (setting: ConfigSetting) => boolean][];
 
-const stringify = (value?: JSONValue) =>
-  value == null
-    ? ""
-    : typeof value === "boolean"
-      ? value
-        ? "1"
-        : "0"
-      : String(value);
-const normalize = (setting: ConfigSetting, value?: JSONValue) =>
-  setting.type === "boolean"
-    ? ["1", "true", "yes", "on"].includes(stringify(value).toLowerCase())
-      ? "1"
-      : "0"
-    : stringify(value);
-// A value set in the environment or on the command line wins over files.
-const lockedBy = (setting: ConfigSetting) =>
-  setting.source === "environment"
-    ? "Set by the environment; change it there."
-    : setting.source === "cli"
-      ? "Set on the command line; change it there."
-      : undefined;
-// What applies in a scope: a lock's value, the scope's own, else what it
-// inherits (a project from User defaults, User defaults from the default).
-const applied = (setting: ConfigSetting, scope: "user" | "project") =>
-  normalize(
-    setting,
-    lockedBy(setting)
-      ? setting.value
-      : (setting[scope] ??
-          (scope === "project" ? setting.user : undefined) ??
-          setting.default),
-  );
-const nameOf = (setting: ConfigSetting) => setting.label || setting.name;
-// What an unset value means now: the running value where the host reports
-// one, the setting it follows, the built-in default, or the registry's
-// phrase, said the same way on every row.
-function using(
-  setting: ConfigSetting,
-  scope: "user" | "project",
-  find: (name: string) => ConfigSetting | undefined,
-  depth = 0,
-): string {
-  const active = normalize(setting, setting.active);
-  const builtin = normalize(setting, setting.default);
-  const other = setting.fallback ? find(setting.fallback) : undefined;
-  if (other && depth < 3) {
-    const value = active || applied(other, scope);
-    return value
-      ? `Using ${value} · same as ${nameOf(other)}`
-      : `Same as ${nameOf(other)} · ${using(other, scope, find, depth + 1)}`;
-  }
-  if (active && active !== builtin) return `Using ${active}`;
-  if (builtin) return `Using ${builtin} · built-in default`;
-  return setting.fallback ? `Uses ${setting.fallback}` : "Not set";
-}
-// The status line of a row: whose value applies here and why. A number or
-// switch shows its value in the control, so only an override is named.
-function statusOf(
-  setting: ConfigSetting,
-  scope: "user" | "project",
-  find: (name: string) => ConfigSetting | undefined,
-): string | undefined {
-  const own = setting[scope];
-  if (setting.sensitivity !== "public")
-    return own ? "Saved · enter a replacement to change it" : "Not set";
-  if (own !== undefined) {
-    if (normalize(setting, own) === "off") return "Off";
-    const user =
-      scope === "project" && setting.user !== undefined
-        ? ` · your default is ${normalize(setting, setting.user)}`
-        : "";
-    return scope === "project"
-      ? `Set for this project${user}`
-      : "Set in your defaults";
-  }
-  if (scope === "project" && setting.user !== undefined)
-    return `Using ${normalize(setting, setting.user)} · from your defaults`;
-  return setting.type === "string" ? using(setting, scope, find) : undefined;
-}
-// Settings of the web host itself apply when the host restarts, not a
-// conversation.
-const hostSetting = (setting?: ConfigSetting) => setting?.category === "web";
-
-// One registry setting in the edited scope. A text field is empty unless
-// this scope sets it; the status line says what applies instead. Clearing
-// the field, or Reset, removes the override.
-function Setting({
-  setting,
-  scope,
-  save,
-  busy,
-  find,
-}: {
-  setting: ConfigSetting;
-  scope: "user" | "project";
-  save: (change: ConfigChange) => Promise<boolean>;
-  busy: boolean;
-  find: (name: string) => ConfigSetting | undefined;
-}) {
-  const secret = setting.sensitivity !== "public";
-  const own = setting[scope];
-  const locked = lockedBy(setting);
-  const toggle = setting.type === "boolean";
-  const numeric = ["integer", "number"].includes(setting.type);
-  // A switch always shows what applies; any other control only this
-  // scope's own value, or a lock's.
-  const configured = secret
-    ? ""
-    : toggle
-      ? applied(setting, scope)
-      : locked
-        ? normalize(setting, setting.value)
-        : own === undefined
-          ? ""
-          : normalize(setting, own);
-  const inherited = normalize(
-    setting,
-    scope === "project" ? (setting.user ?? setting.default) : setting.default,
-  );
-  // An edit in progress; otherwise the row shows the configured value, so a
-  // save or a change elsewhere never overwrites what is being typed.
-  const [draft, setDraft] = useState<string | null>(null);
-  const value = draft ?? configured;
-  const [saved, setSaved] = useState(false);
-  useEffect(() => {
-    if (!saved) return;
-    const timer = setTimeout(() => setSaved(false), SAVED_MS);
-    return () => clearTimeout(timer);
-  }, [saved]);
-  const disabled = busy || !!locked || !setting.scopes.includes(scope);
-  const id = setting.name;
-  // One save at a time per row: disabling a focused field blurs it, and
-  // that blur must not submit the same value again.
-  const saving = useRef(false);
-  const apply = async (next: string) => {
-    if (disabled || saving.current) return;
-    if (secret ? !next : next === configured) return setDraft(null);
-    // Empty, or a number or switch back to what it inherits, removes the
-    // override; a text value is kept even when it matches, since it then
-    // stops following what it inherits.
-    const unset =
-      !secret && (next === "" || ((toggle || numeric) && next === inherited));
-    if (unset && own === undefined) return setDraft(null);
-    saving.current = true;
-    try {
-      if (await save(unset ? { key: id, unset } : { key: id, value: next })) {
-        setSaved(true);
-        setDraft(null);
-      }
-    } finally {
-      saving.current = false;
-    }
-  };
-  const status = statusOf(setting, scope, find);
-  const described = status || locked ? `${id}-status` : undefined;
-  return (
-    <SettingRow
-      name={nameOf(setting)}
-      label={setting.label || <code>{id}</code>}
-      htmlFor={id}
-      detail={setting.purpose || setting.description}
-      status={status}
-      overridden={own !== undefined}
-      locked={locked}
-      saved={saved}
-      disabled={disabled}
-      reset={() => {
-        setDraft(null);
-        void save({ key: id, unset: true });
-      }}
-    >
-      {toggle ? (
-        <Switch
-          label={nameOf(setting)}
-          checked={value === "1"}
-          disabled={disabled}
-          onChange={(on) => {
-            setDraft(on ? "1" : "0");
-            void apply(on ? "1" : "0");
-          }}
-        />
-      ) : setting.choices?.length ? (
-        <ValueSelect
-          id={id}
-          value={value}
-          disabled={disabled}
-          aria-describedby={described}
-          onChange={(event) => {
-            setDraft(event.currentTarget.value);
-            void apply(event.currentTarget.value);
-          }}
-        >
-          <option value="">Default</option>
-          {setting.choices.map((choice) => (
-            <option key={choice} value={choice}>
-              {choice}
-            </option>
-          ))}
-        </ValueSelect>
-      ) : (
-        <Input
-          id={id}
-          type={secret ? "password" : numeric ? "number" : "text"}
-          enterkeyhint="done"
-          step={setting.type === "integer" ? "1" : "any"}
-          min={
-            Number.isSafeInteger(setting.minimum) ? setting.minimum : undefined
-          }
-          max={
-            Number.isSafeInteger(setting.maximum) ? setting.maximum : undefined
-          }
-          value={value}
-          aria-describedby={described}
-          // A number names the default it keeps; text says nothing is set,
-          // and the status line says what applies instead.
-          placeholder={numeric && inherited ? inherited : "Not set"}
-          disabled={disabled}
-          onInput={(event) => setDraft(event.currentTarget.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") void apply(value);
-          }}
-          onBlur={(event) => {
-            // Leaving the field for its own Reset discards the edit.
-            const next = event.relatedTarget as Element | null;
-            if (next?.closest(".setting-reset")) return;
-            void apply(value);
-          }}
-        />
-      )}
-    </SettingRow>
-  );
-}
-
-// A saved change that only a restart applies offers that restart: the
-// running conversations it reaches, or the web host for its own settings.
-function RestartNotice({
-  keys,
-  host,
-  running,
-  cwd,
-}: {
-  keys: string[];
-  host: boolean;
-  running: number;
-  cwd?: string;
-}) {
-  const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState("");
-  const [error, setError] = useState<unknown>(null);
-  const restart = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      if (host) {
-        await command("restart_host", null);
-        setDone("Restarting the web host…");
-        return;
-      }
-      const response = await command(
-        "restart_conversations",
-        null,
-        cwd ? { cwd } : {},
-      );
-      if (response.pending) return;
-      const { restarting, deferred } = response.result;
-      setDone(
-        [
-          restarting && `Restarted ${plural(restarting, "conversation")}`,
-          deferred && `${plural(deferred, "busy conversation")} after its turn`,
-        ]
-          .filter(Boolean)
-          .join(" · ") || "No conversation was running",
-      );
-    } catch (failure) {
-      setError(failure);
-    } finally {
-      setBusy(false);
-    }
-  };
-  const applies = `Applies ${keys.join(", ")}.`;
-  return (
-    <Group
-      title="Restart to apply"
-      footer={
-        host
-          ? "Conversations keep running; this page reconnects by itself."
-          : "New conversations use it already. Running ones keep their history."
-      }
-    >
-      {done ? (
-        <Row label={done} detail={applies} />
-      ) : host || running > 0 ? (
-        <Row
-          label={
-            host
-              ? "Restart web host"
-              : `Restart ${plural(running, "running conversation")}`
-          }
-          detail={applies}
-          disabled={busy}
-          onClick={() => void restart()}
-        />
-      ) : (
-        <Row label="No conversation is running" detail={applies} />
-      )}
-      {error !== null && <LoadError error={error} />}
-    </Group>
-  );
-}
-
-// With a filter, a settings section embeds just its settings as one flat
-// list; without one, every setting is searchable by category, and the
-// scope can be reset as a whole.
+// The host's settings as rows. A section (`filter`) lists its own; without
+// one this is Advanced: what you changed, what is locked, and a search over
+// the rest.
 export default function Configuration({
   session,
   online,
@@ -350,209 +30,154 @@ export default function Configuration({
   session?: Session;
   online: boolean;
   filter?: (setting: ConfigSetting) => boolean;
-  // Named groups, in order, for a filtered section, e.g. "Models".
-  sections?: [string, (setting: ConfigSetting) => boolean][];
+  sections?: Sections;
   sessions?: Session[];
-  // This device's own settings, reset together with the user scope.
+  // This device's own display settings, reset with the host's.
   display?: { changed: number; reset: () => void };
 }) {
-  const [scope, setScope] = useState<"user" | "project">("user");
+  const config = useConfiguration(session);
   const [query, setQuery] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [restart, setRestart] = useState<string[]>([]);
-  const [shadowed, setShadowed] = useState<string[]>([]);
+  const [editing, setEditing] = useState("");
   const [confirm, setConfirm] = useState(false);
-  const target = session?.generation && !session.turn_active ? session : null;
-  const {
-    value: data,
-    error,
-    retry,
-    setValue: setData,
-    setError,
-  } = useResource<ConfigurationData>(
-    () =>
-      command("config", target, { operation: "get" }).then((response) => {
-        if (response.pending)
-          throw new Error("Configuration is still loading. Try again shortly.");
-        return response.result;
-      }),
-    [target?.id],
+  const find = (name: string) =>
+    config.settings.find((setting) => setting.name === name);
+  const changed = config.settings.filter(
+    (setting) => setting.set !== undefined && setting.sensitivity === "public",
   );
-  async function run(fields: Record<string, unknown>) {
-    setBusy(true);
-    setError(null);
-    try {
-      const response = await command("config", target, { scope, ...fields });
-      if (response.pending) return false;
-      const result: ConfigurationData = response.result;
-      setData(result);
-      const keys = (effect: string) =>
-        result.effects
-          .filter((item) => item.effect === effect)
-          .map((item) => item.key);
-      // Collected while settings are open, so several saves offer one restart.
-      setRestart((current) => [...new Set([...current, ...keys(RESTART)])]);
-      setShadowed(keys("saved, but a higher layer keeps winning"));
-      return true;
-    } catch (failure) {
-      setError(failure);
-    } finally {
-      setBusy(false);
-    }
-    return false;
-  }
-  const save = (change: ConfigChange) =>
-    run({ operation: "apply", changes: [change] });
-  const settings = data?.settings || [];
-  const byName = new Map(settings.map((setting) => [setting.name, setting]));
-  const groups = new Map<string, ConfigSetting[]>(
-    sections?.map(([name]) => [name, []]),
+  const needle = query.trim().toLowerCase();
+  const groups: Sections = filter
+    ? (sections ?? [["", () => true]])
+    : needle
+      ? [["Results", () => true]]
+      : [
+          ["Changed", (setting) => setting.set !== undefined],
+          ["Locked", (setting) => setting.locked],
+        ];
+  const listed = config.settings.filter(
+    (setting) =>
+      (filter ? filter(setting) : true) &&
+      (!needle ||
+        `${setting.label} ${setting.name} ${setting.purpose || ""} ${setting.description}`
+          .toLowerCase()
+          .includes(needle)),
   );
-  for (const setting of settings) {
-    if (filter && !filter(setting)) continue;
-    if (
-      !`${setting.name} ${setting.label || ""} ${setting.purpose || ""} ${setting.description}`
-        .toLowerCase()
-        .includes(query.toLowerCase())
-    )
-      continue;
-    const key =
-      sections?.find(([, member]) => member(setting))?.[0] || setting.category;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key)!.push(setting);
-  }
-  // Reset all covers the scope's public settings; keys stay.
-  const changed =
-    settings.filter(
-      (setting) =>
-        setting.sensitivity === "public" && setting[scope] !== undefined,
-    ).length + (scope === "user" ? display?.changed || 0 : 0);
-  const host = restart.some((key) => hostSetting(byName.get(key)));
-  const running = sessions.filter(
-    (item) =>
-      item.generation && (scope === "user" || item.cwd === session?.cwd),
-  ).length;
-  const projectLocked =
-    scope === "project" && (!target || !data?.project_trusted);
+  // Each setting goes to the first group that takes it.
+  const taken = new Set<string>();
+  const rows = groups.map(([title, member]) => {
+    const own = listed.filter(
+      (setting) => !taken.has(setting.name) && member(setting),
+    );
+    own.forEach((setting) => taken.add(setting.name));
+    return [title, own] as const;
+  });
+  const disabled = config.busy || !online;
+  const edited = editing ? find(editing) : undefined;
+  const resets = changed.length + (display?.changed || 0);
   return (
     <section class="configuration">
       {!filter && (
-        <Group
-          title="Scope"
-          footer="Project values apply to this repository and override your defaults."
-        >
-          <Row label="Change scope">
-            <ValueSelect
-              aria-label="Change scope"
-              value={scope}
-              onChange={(event) =>
-                setScope(event.currentTarget.value as "user" | "project")
-              }
-            >
-              <option value="user">User defaults</option>
-              <option
-                value="project"
-                disabled={!target || !data?.project_trusted}
-              >
-                This project
-              </option>
-            </ValueSelect>
-          </Row>
-          <div class="group-block">
-            <Input
-              type="search"
-              aria-label="Find a setting"
-              placeholder="Find a setting"
-              value={query}
-              onInput={(event) => setQuery(event.currentTarget.value)}
-            />
-          </div>
-        </Group>
+        <div class="group-block">
+          <Input
+            type="search"
+            aria-label="Find a setting"
+            placeholder="Find a setting"
+            value={query}
+            onInput={(event) => setQuery(event.currentTarget.value)}
+          />
+        </div>
       )}
-      {restart.length > 0 && (
+      {config.restart.length > 0 && (
         <RestartNotice
-          key={restart.join()}
-          keys={restart}
-          host={host}
-          running={running}
-          cwd={scope === "project" ? session?.cwd : undefined}
+          key={config.restart.join()}
+          keys={config.restart.map((key) => find(key)?.label || key)}
+          host={config.restart.some((key) => find(key)?.category === "web")}
+          running={sessions.filter((item) => item.generation).length}
         />
       )}
-      {shadowed.length > 0 && (
+      {config.shadowed.length > 0 && (
         <p class="group-footer" role="status">
-          {shadowed.join(", ")}: saved, but a value set in the environment or on
-          the command line keeps winning.
+          {config.shadowed.map((key) => find(key)?.label || key).join(", ")}:
+          saved, but a value set in the environment, on the command line or by
+          this project keeps winning.
         </p>
       )}
-      {error ? (
-        <LoadError error={error} retry={retry} />
+      {config.error != null && !edited ? (
+        <LoadError error={config.error} retry={config.retry} />
       ) : (
-        !data && <SettingRowsLoading />
+        !config.loaded && <SettingRowsLoading />
       )}
-      {[...groups]
-        .filter(([, settings]) => settings.length)
-        .map(([category, settings]) => (
-          <Group
-            key={category}
-            title={
-              sections
-                ? category
-                : filter
-                  ? undefined
-                  : `${category} · ${count(settings.length)}`
-            }
-          >
-            {settings.map((setting) => (
-              <Setting
-                key={`${scope}:${setting.name}`}
-                setting={setting}
-                scope={scope}
-                busy={busy || !online || projectLocked}
-                save={save}
-                find={(name) => byName.get(name)}
-              />
-            ))}
+      {rows.map(
+        ([title, settings]) =>
+          settings.length > 0 && (
+            <Group key={title} title={title || undefined}>
+              {settings.map((setting) => (
+                <SettingItem
+                  key={setting.name}
+                  setting={setting}
+                  disabled={disabled}
+                  open={() => setEditing(setting.name)}
+                  toggle={(on) =>
+                    void config.save(
+                      on === setting.default
+                        ? { key: setting.name, unset: true }
+                        : { key: setting.name, value: on ? "1" : "0" },
+                    )
+                  }
+                />
+              ))}
+            </Group>
+          ),
+      )}
+      {!filter && config.loaded && (
+        <>
+          <p class="group-footer">
+            {needle
+              ? !listed.length && "No setting matches."
+              : "Everything else is at its default. Search to change one."}
+          </p>
+          <Group>
+            <Row
+              label="Reset all to defaults"
+              detail={
+                resets
+                  ? plural(resets, "changed setting")
+                  : "Everything is at its default"
+              }
+              destructive
+              disabled={!resets || disabled}
+              onClick={() => setConfirm(true)}
+            />
           </Group>
-        ))}
-      {!filter && data && (
-        <Group>
-          <Row
-            label="Reset all to defaults"
-            detail={
-              changed
-                ? `${plural(changed, "changed setting")} in ${scope === "user" ? "User defaults" : "this project"}`
-                : "Everything is at its default"
-            }
-            destructive
-            disabled={!changed || busy || !online || projectLocked}
-            onClick={() => setConfirm(true)}
-          />
-        </Group>
+        </>
+      )}
+      {edited && (
+        <SettingSheet
+          key={edited.name}
+          setting={edited}
+          find={find}
+          busy={disabled}
+          error={config.error}
+          save={config.save}
+          close={() => setEditing("")}
+        />
       )}
       {confirm && (
-        <Modal title="Reset all to defaults" close={() => setConfirm(false)}>
-          <p>
-            {scope === "user"
-              ? "Every changed setting in User defaults and this device's display settings returns to its default."
-              : "Every setting this project changes returns to what it inherits."}{" "}
-            API keys and other secrets are kept.
-          </p>
-          <Actions>
-            <Button onClick={() => setConfirm(false)}>Cancel</Button>
-            <Button
-              variant="destructive"
-              busy={busy}
-              onClick={async () => {
-                if (await run({ operation: "reset" })) {
-                  if (scope === "user") display?.reset();
-                  setConfirm(false);
-                }
-              }}
-            >
-              Reset all
-            </Button>
-          </Actions>
-        </Modal>
+        <ConfirmModal
+          title="Reset all to defaults"
+          action="Reset all"
+          busy={config.busy}
+          error={config.error}
+          close={() => setConfirm(false)}
+          confirm={async () => {
+            if (await config.reset()) {
+              display?.reset();
+              setConfirm(false);
+            }
+          }}
+        >
+          Every changed setting and this device's display settings return to
+          their defaults. API keys and other secrets are kept.
+        </ConfirmModal>
       )}
     </section>
   );

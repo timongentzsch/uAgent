@@ -73,6 +73,7 @@ struct ConfigDescriptor {
   // web and the CLI show these instead of the variable name where set.
   std::string_view label = {};
   std::string_view purpose = {};
+  bool terminal = false;
 
   bool Accepts(std::string_view value) const {
     if (choices.empty() || value.empty()) return true;
@@ -174,9 +175,15 @@ consteval ConfigDescriptor Fallback(ConfigDescriptor descriptor,
 
 consteval ConfigDescriptor Named(ConfigDescriptor descriptor,
                                  std::string_view label,
-                                 std::string_view purpose) {
+                                 std::string_view purpose = {}) {
   descriptor.label = label;
   descriptor.purpose = purpose;
+  return descriptor;
+}
+
+// Only a terminal process or a flag uses it; the web does not list it.
+consteval ConfigDescriptor Terminal(ConfigDescriptor descriptor) {
+  descriptor.terminal = true;
   return descriptor;
 }
 
@@ -184,29 +191,43 @@ consteval ConfigDescriptor Named(ConfigDescriptor descriptor,
 
 inline constexpr ConfigDescriptor kConfigRegistry[] = {
     // The web master is per OS user, so its settings never come from a project.
-    registry::Str("UAGENT_WEB_BIND", {}, "127.0.0.1",
-                  ReloadPolicy::kRestartRequired, Sensitivity::kPublic, "web",
-                  "web listener address: loopback by default, all interfaces "
-                  "only when explicitly configured",
-                  kScopeUser),
-    registry::Str("UAGENT_BROWSER_DATA", {}, "", ReloadPolicy::kRestartRequired,
-                  Sensitivity::kPublic, "web",
-                  "private browser profile and service directory; empty "
-                  "disables the browser appliance",
-                  kScopeUser),
-    registry::Int("UAGENT_WEB_PORT", {}, 8080, 1024, 65535,
-                  ReloadPolicy::kRestartRequired, "web",
-                  "global web master's loopback port", kScopeUser),
-    registry::Str("UAGENT_WEB_ORIGIN", {}, "", ReloadPolicy::kRestartRequired,
-                  Sensitivity::kPublic, "web",
-                  "exact browser origin via an explicitly configured HTTPS or "
-                  "tailnet proxy",
-                  kScopeUser),
-    registry::Str("UAGENT_WEB_PUSH_CONTACT", {}, "",
-                  ReloadPolicy::kRestartRequired, Sensitivity::kPublic, "web",
-                  "VAPID mailto or HTTPS contact; empty disables optional "
-                  "native Web Push",
-                  kScopeUser),
+    registry::Terminal(registry::Named(
+        registry::Str(
+            "UAGENT_WEB_BIND", {}, "127.0.0.1", ReloadPolicy::kRestartRequired,
+            Sensitivity::kPublic, "web",
+            "web listener address: loopback by default, all interfaces "
+            "only when explicitly configured",
+            kScopeUser),
+        "Web listen address")),
+    registry::Terminal(registry::Named(
+        registry::Str("UAGENT_BROWSER_DATA", {}, "",
+                      ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
+                      "web",
+                      "private browser profile and service directory; empty "
+                      "disables the browser appliance",
+                      kScopeUser),
+        "Browser data folder")),
+    registry::Terminal(registry::Named(
+        registry::Int("UAGENT_WEB_PORT", {}, 8080, 1024, 65535,
+                      ReloadPolicy::kRestartRequired, "web",
+                      "global web master's loopback port", kScopeUser),
+        "Web port")),
+    registry::Terminal(registry::Named(
+        registry::Str(
+            "UAGENT_WEB_ORIGIN", {}, "", ReloadPolicy::kRestartRequired,
+            Sensitivity::kPublic, "web",
+            "exact browser origin via an explicitly configured HTTPS or "
+            "tailnet proxy",
+            kScopeUser),
+        "Web origin")),
+    registry::Named(
+        registry::Str("UAGENT_WEB_PUSH_CONTACT", {}, "",
+                      ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
+                      "web",
+                      "VAPID mailto or HTTPS contact; empty disables optional "
+                      "native Web Push",
+                      kScopeUser),
+        "Push contact"),
     // Route selection and credentials.
     registry::Named(
         registry::Fallback(
@@ -246,96 +267,147 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
             "provider default"),
         "Reasoning effort",
         "How long the conversation model thinks before answering"),
-    registry::Str("UAGENT_PROVIDERS", {}, "", ReloadPolicy::kRestartRequired,
-                  Sensitivity::kCompositeSecret, "route",
-                  "JSON object of named endpoints, transports, and aliases"),
-    registry::Str("UAGENT_OPENROUTER_PROVIDER", "openrouter_provider", "",
-                  ReloadPolicy::kNextUserTurn, Sensitivity::kPublic, "route",
-                  "pin OpenRouter to one upstream provider"),
-    registry::Choice(
-        registry::Str("UAGENT_OPENROUTER_VARIANT", "openrouter_variant", "",
+    registry::Named(
+        registry::Str(
+            "UAGENT_PROVIDERS", {}, "", ReloadPolicy::kRestartRequired,
+            Sensitivity::kCompositeSecret, "route",
+            "JSON object of named endpoints, transports, and aliases"),
+        "Named providers"),
+    registry::Named(
+        registry::Str("UAGENT_OPENROUTER_PROVIDER", "openrouter_provider", "",
                       ReloadPolicy::kNextUserTurn, Sensitivity::kPublic,
-                      "route", "nitro, floor, or exacto routing preference"),
-        kOpenRouterVariants),
-    registry::Int("UAGENT_CONTEXT", {}, 0, kConfigAnyMin, kConfigAnyMax,
-                  ReloadPolicy::kRestartRequired, "route",
-                  "context-window tokens; 0 uses the provider profile"),
-    registry::Int("UAGENT_MAX_TOKENS", {}, -1, kConfigAnyMin, kConfigAnyMax,
-                  ReloadPolicy::kNextUserTurn, "route",
-                  "maximum response tokens; -1 omits the optional cap"),
+                      "route", "pin OpenRouter to one upstream provider"),
+        "OpenRouter provider"),
+    registry::Named(
+        registry::Choice(
+            registry::Str("UAGENT_OPENROUTER_VARIANT", "openrouter_variant", "",
+                          ReloadPolicy::kNextUserTurn, Sensitivity::kPublic,
+                          "route",
+                          "nitro, floor, or exacto routing preference"),
+            kOpenRouterVariants),
+        "OpenRouter routing"),
+    registry::Named(
+        registry::Int("UAGENT_CONTEXT", {}, 0, kConfigAnyMin, kConfigAnyMax,
+                      ReloadPolicy::kRestartRequired, "route",
+                      "context-window tokens; 0 uses the provider profile"),
+        "Context window"),
+    registry::Named(
+        registry::Int("UAGENT_MAX_TOKENS", {}, -1, kConfigAnyMin, kConfigAnyMax,
+                      ReloadPolicy::kNextUserTurn, "route",
+                      "maximum response tokens; -1 omits the optional cap"),
+        "Response length"),
 
     // Request transport.
-    registry::Int("UAGENT_STREAM_TIMEOUT", "stream_timeout_s", 300,
-                  kConfigAnyMin, kConfigAnyMax, ReloadPolicy::kNextUserTurn,
-                  "request",
-                  "seconds of stream silence allowed, before the first event "
-                  "or between events"),
-    registry::Int("UAGENT_REQUEST_TIMEOUT", "request_timeout_s", 600,
-                  kConfigAnyMin, kConfigAnyMax, ReloadPolicy::kNextUserTurn,
-                  "request", "total seconds allowed for one model request"),
+    registry::Named(
+        registry::Int(
+            "UAGENT_STREAM_TIMEOUT", "stream_timeout_s", 300, kConfigAnyMin,
+            kConfigAnyMax, ReloadPolicy::kNextUserTurn, "request",
+            "seconds of stream silence allowed, before the first event "
+            "or between events"),
+        "Stream timeout"),
+    registry::Named(
+        registry::Int("UAGENT_REQUEST_TIMEOUT", "request_timeout_s", 600,
+                      kConfigAnyMin, kConfigAnyMax, ReloadPolicy::kNextUserTurn,
+                      "request", "total seconds allowed for one model request"),
+        "Request timeout"),
 
     // Turn budgets.
-    registry::Int("UAGENT_MAX_STEPS", "max_steps", 0, 0, kConfigAnyMax,
-                  ReloadPolicy::kNextUserTurn, "budget",
-                  "model rounds per turn; 0 disables the limit"),
-    registry::Int("UAGENT_MAX_TOOL_CALLS", "max_tool_calls", 0, 0,
-                  kConfigAnyMax, ReloadPolicy::kNextUserTurn, "budget",
-                  "tool calls per turn; 0 disables the limit"),
-    registry::Int("UAGENT_MAX_TURN_SECONDS", "max_turn_seconds", 0, 0,
-                  kConfigAnyMax, ReloadPolicy::kNextUserTurn, "budget",
-                  "wall-clock seconds per turn; 0 disables the deadline"),
-    registry::Int("UAGENT_MAX_TURN_TOKENS", "max_turn_tokens", 0, 0,
-                  kConfigAnyMax, ReloadPolicy::kNextUserTurn, "budget",
-                  "generated-token ceiling per turn; 0 disables it"),
-    registry::Int("UAGENT_SESSION_TOKEN_BUDGET", "session_token_budget", 0, 0,
-                  kConfigAnyMax, ReloadPolicy::kNextUserTurn, "budget",
-                  "cumulative generated-token ceiling; 0 disables it"),
-    registry::Dbl("UAGENT_MAX_TURN_COST", "max_turn_cost", 0.0,
-                  ReloadPolicy::kNextUserTurn, "budget",
-                  "reported-cost ceiling per turn; 0 disables it"),
-    registry::Dbl("UAGENT_SESSION_BUDGET", "session_budget", 0.0,
-                  ReloadPolicy::kNextUserTurn, "budget",
-                  "cumulative reported-cost ceiling; 0 disables it"),
-    registry::Int("UAGENT_TOOL_TIMEOUT", "tool_timeout_s", 30, 0, kConfigAnyMax,
-                  ReloadPolicy::kNextUserTurn, "budget",
-                  "seconds one tool call may run"),
-    registry::Int("UAGENT_AUTO_COMPACT_PCT", {}, 85, kConfigAnyMin,
-                  kConfigAnyMax, ReloadPolicy::kNextUserTurn, "budget",
-                  "context percentage that triggers compaction"),
+    registry::Named(
+        registry::Int("UAGENT_MAX_STEPS", "max_steps", 0, 0, kConfigAnyMax,
+                      ReloadPolicy::kNextUserTurn, "budget",
+                      "model rounds per turn; 0 disables the limit"),
+        "Steps per turn"),
+    registry::Named(
+        registry::Int("UAGENT_MAX_TOOL_CALLS", "max_tool_calls", 0, 0,
+                      kConfigAnyMax, ReloadPolicy::kNextUserTurn, "budget",
+                      "tool calls per turn; 0 disables the limit"),
+        "Tool calls per turn"),
+    registry::Named(
+        registry::Int("UAGENT_MAX_TURN_SECONDS", "max_turn_seconds", 0, 0,
+                      kConfigAnyMax, ReloadPolicy::kNextUserTurn, "budget",
+                      "wall-clock seconds per turn; 0 disables the deadline"),
+        "Turn time limit"),
+    registry::Named(
+        registry::Int("UAGENT_MAX_TURN_TOKENS", "max_turn_tokens", 0, 0,
+                      kConfigAnyMax, ReloadPolicy::kNextUserTurn, "budget",
+                      "generated-token ceiling per turn; 0 disables it"),
+        "Tokens per turn"),
+    registry::Named(
+        registry::Int("UAGENT_SESSION_TOKEN_BUDGET", "session_token_budget", 0,
+                      0, kConfigAnyMax, ReloadPolicy::kNextUserTurn, "budget",
+                      "cumulative generated-token ceiling; 0 disables it"),
+        "Conversation token budget"),
+    registry::Named(
+        registry::Dbl("UAGENT_MAX_TURN_COST", "max_turn_cost", 0.0,
+                      ReloadPolicy::kNextUserTurn, "budget",
+                      "reported-cost ceiling per turn; 0 disables it"),
+        "Cost per turn"),
+    registry::Named(
+        registry::Dbl("UAGENT_SESSION_BUDGET", "session_budget", 0.0,
+                      ReloadPolicy::kNextUserTurn, "budget",
+                      "cumulative reported-cost ceiling; 0 disables it"),
+        "Conversation budget"),
+    registry::Named(registry::Int("UAGENT_TOOL_TIMEOUT", "tool_timeout_s", 30,
+                                  0, kConfigAnyMax, ReloadPolicy::kNextUserTurn,
+                                  "budget", "seconds one tool call may run"),
+                    "Tool timeout"),
+    registry::Named(
+        registry::Int("UAGENT_AUTO_COMPACT_PCT", {}, 85, kConfigAnyMin,
+                      kConfigAnyMax, ReloadPolicy::kNextUserTurn, "budget",
+                      "context percentage that triggers compaction"),
+        "Compact at"),
 
     // Tool results and trace retention.
-    registry::Int("UAGENT_TOOL_RESULT_CHARS", {}, 8000, kConfigAnyMin,
-                  kConfigAnyMax, ReloadPolicy::kNextUserTurn, "tools",
-                  "characters kept from one tool result"),
-    registry::Int("UAGENT_READ_FILE_LINES", {}, 1000, kConfigAnyMin,
-                  kConfigAnyMax, ReloadPolicy::kNextUserTurn, "tools",
-                  "default lines returned by read_path"),
+    registry::Named(
+        registry::Int("UAGENT_TOOL_RESULT_CHARS", {}, 8000, kConfigAnyMin,
+                      kConfigAnyMax, ReloadPolicy::kNextUserTurn, "tools",
+                      "characters kept from one tool result"),
+        "Tool result size"),
+    registry::Named(
+        registry::Int("UAGENT_READ_FILE_LINES", {}, 1000, kConfigAnyMin,
+                      kConfigAnyMax, ReloadPolicy::kNextUserTurn, "tools",
+                      "default lines returned by read_path"),
+        "Lines per file read"),
 
     // OS sandbox for agent-run commands. Restart-required because the policy is
     // built once and every spawn is wrapped with it; a mid-session change would
     // leave already-running jobs under the old confinement.
-    registry::Bul("UAGENT_SANDBOX", {}, true, ReloadPolicy::kRestartRequired,
-                  "tools", "confine shell commands with the OS sandbox"),
-    registry::Bul("UAGENT_SANDBOX_NET", {}, true,
-                  ReloadPolicy::kRestartRequired, "tools",
-                  "let sandboxed commands reach the network"),
-    registry::Str("UAGENT_SANDBOX_WRITE", {}, "",
-                  ReloadPolicy::kRestartRequired, Sensitivity::kPublic, "tools",
-                  "extra writable roots for the sandbox, colon-separated"),
+    registry::Named(registry::Bul("UAGENT_SANDBOX", {}, true,
+                                  ReloadPolicy::kRestartRequired, "tools",
+                                  "confine shell commands with the OS sandbox"),
+                    "Sandbox"),
+    registry::Named(registry::Bul("UAGENT_SANDBOX_NET", {}, true,
+                                  ReloadPolicy::kRestartRequired, "tools",
+                                  "let sandboxed commands reach the network"),
+                    "Sandbox network access"),
+    registry::Named(
+        registry::Str("UAGENT_SANDBOX_WRITE", {}, "",
+                      ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
+                      "tools",
+                      "extra writable roots for the sandbox, colon-separated"),
+        "Sandbox writable folders"),
 
     // Delegation.
-    registry::Int("UAGENT_SUBAGENT_DEPTH", {}, 2, 0, kConfigAnyMax,
-                  ReloadPolicy::kRestartRequired, "delegation",
-                  "deepest delegation level allowed"),
-    registry::Int("UAGENT_SUBAGENT_MAX_STEPS", {}, 100, kConfigAnyMin,
-                  kConfigAnyMax, ReloadPolicy::kNextUserTurn, "delegation",
-                  "model rounds per delegated child"),
-    registry::Int("UAGENT_SUBAGENT_MAX_TOOL_CALLS", {}, 240, kConfigAnyMin,
-                  kConfigAnyMax, ReloadPolicy::kNextUserTurn, "delegation",
-                  "tool calls per delegated child"),
-    registry::Int("UAGENT_SUBAGENT_TIMEOUT", {}, 0, 0, kConfigAnyMax,
-                  ReloadPolicy::kNextUserTurn, "delegation",
-                  "wall-clock ceiling per delegated child; 0 is the turn"),
+    registry::Named(
+        registry::Int("UAGENT_SUBAGENT_DEPTH", {}, 2, 0, kConfigAnyMax,
+                      ReloadPolicy::kRestartRequired, "delegation",
+                      "deepest delegation level allowed"),
+        "Delegation depth"),
+    registry::Named(
+        registry::Int("UAGENT_SUBAGENT_MAX_STEPS", {}, 100, kConfigAnyMin,
+                      kConfigAnyMax, ReloadPolicy::kNextUserTurn, "delegation",
+                      "model rounds per delegated child"),
+        "Sub-agent steps"),
+    registry::Named(
+        registry::Int("UAGENT_SUBAGENT_MAX_TOOL_CALLS", {}, 240, kConfigAnyMin,
+                      kConfigAnyMax, ReloadPolicy::kNextUserTurn, "delegation",
+                      "tool calls per delegated child"),
+        "Sub-agent tool calls"),
+    registry::Named(
+        registry::Int("UAGENT_SUBAGENT_TIMEOUT", {}, 0, 0, kConfigAnyMax,
+                      ReloadPolicy::kNextUserTurn, "delegation",
+                      "wall-clock ceiling per delegated child; 0 is the turn"),
+        "Sub-agent time limit"),
     registry::Named(
         registry::Fallback(
             registry::Str("UAGENT_SUBAGENT_MODEL", {}, "",
@@ -357,27 +429,37 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
         "Coordinator model",
         "Plans and supervises a folder's threads; /model inside a coordinator "
         "overrides it there"),
-    registry::Int("UAGENT_COORDINATOR_MAX_THREADS", {}, 5, 1, 64,
-                  ReloadPolicy::kNextUserTurn, "coordination",
-                  "threads one coordinator may run at once"),
-    registry::Dbl("UAGENT_COORDINATOR_DAILY_SPEND_USD", {}, 20.0,
-                  ReloadPolicy::kNextUserTurn, "coordination",
-                  "reported cost a coordinator and its threads may spend per "
-                  "day; at it, thread events wait. 0 disables it"),
-    registry::Choice(
-        registry::Str("UAGENT_COORDINATOR_ENVIRONMENT", {}, "worktree",
-                      ReloadPolicy::kNextUserTurn, Sensitivity::kPublic,
-                      "coordination",
-                      "where threads run: a fresh git worktree, or the "
-                      "folder itself"),
-        kThreadEnvironments),
+    registry::Named(
+        registry::Int("UAGENT_COORDINATOR_MAX_THREADS", {}, 5, 1, 64,
+                      ReloadPolicy::kNextUserTurn, "coordination",
+                      "threads one coordinator may run at once"),
+        "Coordinator threads"),
+    registry::Named(
+        registry::Dbl(
+            "UAGENT_COORDINATOR_DAILY_SPEND_USD", {}, 20.0,
+            ReloadPolicy::kNextUserTurn, "coordination",
+            "reported cost a coordinator and its threads may spend per "
+            "day; at it, thread events wait. 0 disables it"),
+        "Coordinator daily spend"),
+    registry::Named(
+        registry::Choice(
+            registry::Str("UAGENT_COORDINATOR_ENVIRONMENT", {}, "worktree",
+                          ReloadPolicy::kNextUserTurn, Sensitivity::kPublic,
+                          "coordination",
+                          "where threads run: a fresh git worktree, or the "
+                          "folder itself"),
+            kThreadEnvironments),
+        "Where threads run"),
 
     // Web search.
-    registry::Choice(
-        registry::Str("UAGENT_WEB_SEARCH_BACKEND", "web_search_backend", "auto",
-                      ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
-                      "search", "auto, openrouter, or off"),
-        kWebSearchBackends),
+    registry::Named(
+        registry::Choice(
+            registry::Str("UAGENT_WEB_SEARCH_BACKEND", "web_search_backend",
+                          "auto", ReloadPolicy::kRestartRequired,
+                          Sensitivity::kPublic, "search",
+                          "auto, openrouter, or off"),
+            kWebSearchBackends),
+        "Web search"),
     registry::Named(
         registry::Fallback(
             registry::Str("UAGENT_WEB_SEARCH_MODEL", "web_search_model", "",
@@ -387,12 +469,15 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
         "Web search model", "Answers web lookups"),
 
     // Memory.
-    registry::Bul("UAGENT_MEMORY", "memory_enabled", true,
-                  ReloadPolicy::kRestartRequired, "memory",
-                  "enable memory recall and writes"),
-    registry::Bul("UAGENT_MEMORY_GENERATE", "memory_generate", true,
-                  ReloadPolicy::kRestartRequired, "memory",
-                  "run the background memory extractor"),
+    registry::Named(registry::Bul("UAGENT_MEMORY", "memory_enabled", true,
+                                  ReloadPolicy::kRestartRequired, "memory",
+                                  "enable memory recall and writes"),
+                    "Memory"),
+    registry::Named(
+        registry::Bul("UAGENT_MEMORY_GENERATE", "memory_generate", true,
+                      ReloadPolicy::kRestartRequired, "memory",
+                      "run the background memory extractor"),
+        "Memory extraction"),
     registry::Named(
         registry::Fallback(
             registry::Str("UAGENT_MEMORY_MODEL", {}, "",
@@ -404,20 +489,27 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
         "Distils memories from finished conversations in the background"),
 
     // Skills.
-    registry::Str("UAGENT_SKILL_PATH", {}, "", ReloadPolicy::kRestartRequired,
-                  Sensitivity::kPublic, "skills",
-                  "replace the entire skill search path"),
-    registry::Str("UAGENT_SKILL_EXCLUDE", {}, "",
-                  ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
-                  "skills", "comma-separated skill names to withhold"),
+    registry::Terminal(registry::Named(
+        registry::Str("UAGENT_SKILL_PATH", {}, "",
+                      ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
+                      "skills", "replace the entire skill search path"),
+        "Skill folders")),
+    registry::Named(
+        registry::Str("UAGENT_SKILL_EXCLUDE", {}, "",
+                      ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
+                      "skills", "comma-separated skill names to withhold"),
+        "Disabled skills"),
 
     // MCP.
-    registry::Int("UAGENT_MCP_TIMEOUT", "mcp_timeout_s", 60, 1, kConfigAnyMax,
-                  ReloadPolicy::kRestartRequired, "mcp",
-                  "seconds allowed for one MCP call"),
-    registry::Str("UAGENT_MCP_ROOTS", "mcp_roots", "",
-                  ReloadPolicy::kRestartRequired, Sensitivity::kPublic, "mcp",
-                  "roots advertised to MCP servers"),
+    registry::Named(registry::Int("UAGENT_MCP_TIMEOUT", "mcp_timeout_s", 60, 1,
+                                  kConfigAnyMax, ReloadPolicy::kRestartRequired,
+                                  "mcp", "seconds allowed for one MCP call"),
+                    "MCP call timeout"),
+    registry::Named(
+        registry::Str("UAGENT_MCP_ROOTS", "mcp_roots", "",
+                      ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
+                      "mcp", "roots advertised to MCP servers"),
+        "MCP roots"),
 
     // Attachments and terminal media.
     registry::Named(
@@ -433,37 +525,49 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
         "Image reader",
         "Describes attached images when the conversation model cannot see "
         "them"),
-    registry::Str("UAGENT_PDF_ENGINE", "pdf_engine", "cloudflare-ai",
-                  ReloadPolicy::kNextUserTurn, Sensitivity::kPublic, "media",
-                  "OpenRouter file-parser engine for documents"),
-    registry::Int("UAGENT_ATTACHMENT_MB", {}, 10, 1, kConfigMaxMegabytes,
-                  ReloadPolicy::kNextUserTurn, "media",
-                  "largest attachment in mebibytes"),
+    registry::Named(
+        registry::Str("UAGENT_PDF_ENGINE", "pdf_engine", "cloudflare-ai",
+                      ReloadPolicy::kNextUserTurn, Sensitivity::kPublic,
+                      "media", "OpenRouter file-parser engine for documents"),
+        "PDF reader"),
+    registry::Named(
+        registry::Int("UAGENT_ATTACHMENT_MB", {}, 10, 1, kConfigMaxMegabytes,
+                      ReloadPolicy::kNextUserTurn, "media",
+                      "largest attachment in mebibytes"),
+        "Attachment size limit"),
     // Session and artifact retention.
-    registry::Int("UAGENT_HISTORY_DAYS", {}, 30, kConfigAnyMin, kConfigAnyMax,
-                  ReloadPolicy::kNextUserTurn, "retention",
-                  "days of saved sessions kept"),
+    registry::Named(registry::Int("UAGENT_HISTORY_DAYS", {}, 30, kConfigAnyMin,
+                                  kConfigAnyMax, ReloadPolicy::kNextUserTurn,
+                                  "retention", "days of saved sessions kept"),
+                    "History kept"),
 
     // Behaviour switches.
-    registry::Bul("UAGENT_ADAPT_SYSTEM", {}, false,
-                  ReloadPolicy::kRestartRequired, "behaviour",
-                  "expose adapt_system so the model may revise its directive"),
-    registry::Choice(
-        registry::Str("UAGENT_APPROVAL", "approval", "ask",
-                      ReloadPolicy::kNextUserTurn, Sensitivity::kPublic,
-                      "behaviour",
-                      "ask, auto reviewer, or yolo for ordinary mutations"),
-        kApprovalModes),
+    registry::Named(
+        registry::Bul(
+            "UAGENT_ADAPT_SYSTEM", {}, false, ReloadPolicy::kRestartRequired,
+            "behaviour",
+            "expose adapt_system so the model may revise its directive"),
+        "Self-directive tool"),
+    registry::Named(
+        registry::Choice(
+            registry::Str("UAGENT_APPROVAL", "approval", "ask",
+                          ReloadPolicy::kNextUserTurn, Sensitivity::kPublic,
+                          "behaviour",
+                          "ask, auto reviewer, or yolo for ordinary mutations"),
+            kApprovalModes),
+        "Approval mode"),
     registry::Named(
         registry::Str("UAGENT_PERMISSION_MODEL", "permission_model",
                       "~typesafe/jev-latest", ReloadPolicy::kNextUserTurn,
                       Sensitivity::kPublic, "behaviour",
                       "OpenRouter Decisions model used by auto permissions"),
         "Permission reviewer", "Judges risky actions when approval is Auto"),
-    registry::Str("UAGENT_PERMISSION_URL", "permission_url",
-                  "https://openrouter.ai/api/alpha",
-                  ReloadPolicy::kNextUserTurn, Sensitivity::kPublic,
-                  "behaviour", "OpenRouter Decisions API base URL"),
+    registry::Terminal(registry::Named(
+        registry::Str("UAGENT_PERMISSION_URL", "permission_url",
+                      "https://openrouter.ai/api/alpha",
+                      ReloadPolicy::kNextUserTurn, Sensitivity::kPublic,
+                      "behaviour", "OpenRouter Decisions API base URL"),
+        "Permission reviewer address")),
     registry::Named(
         registry::Str("UAGENT_TITLE_MODEL", "title_model", kDefaultModelRoute,
                       ReloadPolicy::kNextUserTurn, Sensitivity::kPublic,
@@ -471,34 +575,55 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                       "model route that names new sessions, or off"),
         "Title model",
         "Names new conversations; off keeps the first message as the title"),
-    registry::Str("UAGENT_TOOL_CAPABILITIES", {}, "",
-                  ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
-                  "behaviour", "restrict the exposed tool capability set"),
-    registry::Str(
-        "UAGENT_SHELL_ENV_ALLOW", {}, "", ReloadPolicy::kNextUserTurn,
-        Sensitivity::kPublic, "behaviour",
-        "comma-separated sensitive variables approved shells may inherit"),
-    registry::Bul("UAGENT_TRUST_PROJECT_CONFIG", {}, false,
-                  ReloadPolicy::kRestartRequired, "behaviour",
-                  "trust this workspace's .mcp.json and config"),
-    registry::Str("UAGENT_CONFIG_FILE", {}, "", ReloadPolicy::kRestartRequired,
-                  Sensitivity::kPublic, "behaviour",
-                  "replace both config-file locations"),
-    registry::Str("UAGENT_DEBUG_LOG", {}, "", ReloadPolicy::kRestartRequired,
-                  Sensitivity::kPublic, "behaviour",
-                  "write a sensitive reconstructable JSONL trace"),
-    registry::Bul("UAGENT_MARKDOWN", {}, true, ReloadPolicy::kRestartRequired,
-                  "behaviour", "render Markdown on a TTY"),
-    registry::Bul("UAGENT_PLAIN", {}, false, ReloadPolicy::kRestartRequired,
-                  "behaviour",
-                  "screen-reader terminal: labelled lines, no animation or "
-                  "cursor control"),
-    registry::Bul("UAGENT_REDUCED_MOTION", {}, false,
-                  ReloadPolicy::kRestartRequired, "behaviour",
-                  "show a still status instead of the terminal spinner"),
-    registry::Str("UAGENT_MEMORY_REDACT_KEYWORDS", {}, "",
-                  ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
-                  "behaviour", "extra keywords redacted from stored memories"),
+    registry::Named(
+        registry::Str("UAGENT_TOOL_CAPABILITIES", {}, "",
+                      ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
+                      "behaviour", "restrict the exposed tool capability set"),
+        "Tool capabilities"),
+    registry::Named(
+        registry::Str(
+            "UAGENT_SHELL_ENV_ALLOW", {}, "",
+            ReloadPolicy::kNextUserTurn, Sensitivity::kPublic, "behaviour",
+            "comma-separated sensitive variables approved shells may inherit"),
+        "Shell variables allowed"),
+    registry::Terminal(registry::Named(
+        registry::Bul("UAGENT_TRUST_PROJECT_CONFIG", {}, false,
+                      ReloadPolicy::kRestartRequired, "behaviour",
+                      "trust this workspace's .mcp.json and config"),
+        "Trust project config")),
+    registry::Terminal(registry::Named(
+        registry::Str("UAGENT_CONFIG_FILE", {}, "",
+                      ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
+                      "behaviour", "replace both config-file locations"),
+        "Config file")),
+    registry::Terminal(registry::Named(
+        registry::Str("UAGENT_DEBUG_LOG", {}, "",
+                      ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
+                      "behaviour",
+                      "write a sensitive reconstructable JSONL trace"),
+        "Debug log")),
+    registry::Terminal(
+        registry::Named(registry::Bul("UAGENT_MARKDOWN", {}, true,
+                                      ReloadPolicy::kRestartRequired,
+                                      "behaviour", "render Markdown on a TTY"),
+                        "Render Markdown")),
+    registry::Terminal(registry::Named(
+        registry::Bul("UAGENT_PLAIN", {}, false, ReloadPolicy::kRestartRequired,
+                      "behaviour",
+                      "screen-reader terminal: labelled lines, no animation or "
+                      "cursor control"),
+        "Plain output")),
+    registry::Terminal(registry::Named(
+        registry::Bul("UAGENT_REDUCED_MOTION", {}, false,
+                      ReloadPolicy::kRestartRequired, "behaviour",
+                      "show a still status instead of the terminal spinner"),
+        "Reduced motion")),
+    registry::Named(
+        registry::Str("UAGENT_MEMORY_REDACT_KEYWORDS", {}, "",
+                      ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
+                      "behaviour",
+                      "extra keywords redacted from stored memories"),
+        "Memory redaction keywords"),
 };
 
 inline std::span<const ConfigDescriptor> ConfigRegistry() {

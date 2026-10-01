@@ -62,6 +62,8 @@ struct ConfigProposal {
 };
 
 const char* ConfigEffectName(ConfigEffect effect);
+// The same, as the token clients switch on: next_turn, restart, shadowed.
+const char* ConfigEffectToken(ConfigEffect effect);
 
 // Validates against the registry, applies the edit to a line-preserving
 // document, re-parses the candidate through the real loader, and confirms each
@@ -74,7 +76,7 @@ ConfigProposal PrepareConfigProposal(ConfigProposalScope scope,
 
 // Human CLI/UI controls share schema, validation, scope and atomic persistence.
 json ConfigurationControl(const json& request, const ConfigManager& manager,
-                          const RuntimeConfig& active, bool project_trusted);
+                          bool project_trusted);
 
 bool ParseConfigScope(std::string_view name, ConfigProposalScope& scope);
 // The change list the settings screen, --control and the uagent tool send:

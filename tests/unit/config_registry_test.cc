@@ -118,6 +118,7 @@ void TestConfigRegistryContract() {
   }
 
   for (const ConfigDescriptor& descriptor : ConfigRegistry()) {
+    CHECK(!descriptor.label.empty());
     if (!descriptor.field.empty()) {
       CHECK(RuntimeConfigField(descriptor.environment) == descriptor.field);
     }

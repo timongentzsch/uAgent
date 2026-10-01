@@ -2381,73 +2381,25 @@ dialog > header .icon-button {
 .empty-state p {
   margin: 0;
 }
-/* A setting row is one grid: name and purpose, then a control column of
-   fixed width that every row shares, with the status line under the
-   control. Nothing in the column changes width, so Reset never moves it. */
-.setting-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) calc(224rem / 14);
-  column-gap: var(--space-6);
-  row-gap: var(--space-2);
-  align-items: start;
+/* A setting's value in its row: muted while it is the default. */
+.setting-summary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
 }
-.setting-row code {
-  font-size: 0.9em;
-}
-.setting-value {
-  display: grid;
-  gap: var(--space-1);
-  min-width: 0;
-}
-.setting-value > :is(.text-control:not(.value-select), [type="range"]) {
-  width: 100%;
-}
-.setting-value > :is(.value-select, .switch) {
-  justify-self: end;
-}
-.setting-value input::placeholder {
+.setting-summary[data-default] {
   color: var(--muted);
-  opacity: 0.7;
 }
-.setting-status {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-3);
-  color: var(--muted);
-  font-size: var(--font-small);
+.setting-sheet {
+  display: grid;
+  gap: var(--space-4);
 }
-.setting-status > span {
-  flex: 1;
-  min-width: 0;
+.setting-sheet p {
+  margin: 0;
+}
+.setting-sheet output {
   overflow-wrap: anywhere;
-}
-.setting-status[data-state="saved"] {
-  color: var(--live);
-}
-.setting-status .setting-reset {
-  flex: none;
-}
-/* On a phone the control takes the full width under the name. */
-@media (max-width: 600px) {
-  .setting-row {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  /* A choice or a switch stays beside its name, as on iOS. */
-  .setting-row:has(> .setting-value > :is(.value-select, .switch)) {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-  .setting-value > .text-control:not(.value-select) {
-    min-height: calc(44rem / 14);
-  }
-  /* Rows breathe apart more than their parts do, so a status line reads as
-     its own field's. Reset keeps a full touch target without adding air. */
-  .setting-row {
-    padding-block: var(--space-4);
-  }
-  .setting-status .setting-reset {
-    min-height: calc(44rem / 14);
-    margin-block: calc(-12rem / 14);
-  }
 }
 .zoom-value {
   min-width: 4ch;

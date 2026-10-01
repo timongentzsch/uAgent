@@ -11,6 +11,8 @@
 #include <string_view>
 #include <vector>
 
+#include "include/core/config.h"
+#include "include/core/effective_config.h"
 #include "include/core/json.h"
 
 namespace uagent {
@@ -50,11 +52,12 @@ json DescribeSelf(SelfTopic topic, const std::string& name,
 
 // The configuration schema alone, used by the build-time reference generator.
 json ConfigSchemaJson();
-// Registered settings (one when `name` is set) with the layer each comes from
-// and, for public ones, the active value. `sources` and `active` are the
-// ConfigManager diagnostic's maps.
-json ConfigSettingsJson(const json& sources, const json& active,
-                        std::string_view name);
+// One entry of facts per setting (one setting when `name` is set): its
+// descriptor, `set` (the user file's own value), `effective` (the configured
+// value that applies), `source`, `locked`. A secret reports only that it is
+// set.
+json ConfigSettingsJson(const EffectiveConfigSnapshot& configured,
+                        const EnvValues& user, std::string_view name);
 json CliSchemaJson();
 // Every listed command; `terminal` marks those the web does not offer.
 json CommandSchemaJson();

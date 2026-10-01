@@ -193,6 +193,34 @@ test("the settings sheet has no violations", async ({ page, session }) => {
   expect(await violations(page)).toEqual([]);
 });
 
+for (const width of [390, 1280])
+  test(`a setting's sheet has no violations at ${width}px, and logging out asks first`, async ({
+    page,
+    session,
+  }) => {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto(`/#session=${session.id}`);
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    const settings = page.getByRole("dialog", { name: "Settings" });
+    const nav = settings.locator(".settings-nav");
+    await nav.getByRole("button", { name: "Models", exact: true }).click();
+    expect(await violations(page)).toEqual([]);
+    await settings.getByRole("button", { name: /^Sub-agent model/ }).click();
+    const sheet = page.getByRole("dialog", { name: "Sub-agent model" });
+    await expect(sheet).toContainText("Follows Conversation model");
+    expect(await violations(page)).toEqual([]);
+    await page.keyboard.press("Escape");
+    const back = settings.getByRole("button", { name: "Back", exact: true });
+    if (await back.isVisible()) await back.click();
+    await nav.getByRole("button", { name: "Devices", exact: true }).click();
+    await settings.getByRole("button", { name: "Log out this device" }).click();
+    const confirm = page.getByRole("dialog", { name: "Log out" });
+    await expect(confirm).toContainText("unpaired");
+    expect(await violations(page)).toEqual([]);
+    await confirm.getByRole("button", { name: "Cancel" }).click();
+    await expect(settings).toBeVisible();
+  });
+
 test.describe("phone", () => {
   test.use({ viewport: { width: 390, height: 844 } });
 

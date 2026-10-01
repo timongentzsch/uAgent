@@ -15,7 +15,6 @@ import {
   Spinner,
   Group,
   Row,
-  SettingRow,
   Switch,
   Input,
   Textarea,
@@ -237,28 +236,21 @@ function Showcase() {
           </div>
           <div class="showcase-card">
             <Group>
-              <SettingRow
-                name="Zoom"
-                htmlFor="zoom"
-                detail="A changed setting offers Reset."
-                overridden={zoom !== 100}
-                reset={() => setZoom(100)}
-              >
-                <ZoomSlider zoom={zoom} change={setZoom} />
-              </SettingRow>
-              <SettingRow
-                name="Locked setting"
-                locked="Set by the environment; change it there."
-                overridden
-                reset={() => {}}
-              >
+              <Row label="Zoom" detail="The value returns to 100% when tapped.">
+                <ZoomSlider
+                  zoom={zoom}
+                  change={setZoom}
+                  reset={() => setZoom(100)}
+                />
+              </Row>
+              <Row label="Locked setting" detail="Locked">
                 <Switch
                   label="Locked setting"
                   checked
                   disabled
                   onChange={() => {}}
                 />
-              </SettingRow>
+              </Row>
             </Group>
           </div>
         </div>

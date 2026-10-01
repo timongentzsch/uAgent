@@ -99,12 +99,16 @@ names one loads as before and the line has no effect.
   still run.
 - `/tell` is gone: the model messages other sessions with its `session` tool,
   and nothing else used the command.
-- Web: settings read as names and purposes ("Title model · Names new
-  conversations"), from the registry, which the CLI shares. A field is empty
-  until it is set, and a line under it says what applies now and why
-  ("Using x · same as Conversation model", "built-in default", "Set by the
-  environment"). Reset sits in that line, so every control keeps one column.
-  Models lists the model roles, then how they are reached.
+- Web: settings are plain rows, each a name and the value that applies, and
+  one sheet edits a setting: what it is for, the value, why it applies,
+  **Use default** and **Save**. Advanced lists only what you changed and what
+  is locked; search finds the rest. The web edits your defaults; a project's
+  override is shown, not edited. Twelve settings only a terminal process uses
+  are not listed.
+- Every setting has a plain name ("Steps per turn", "Title model"), which the
+  host states along with its value, where it comes from and what it follows;
+  `/config` and `/debug-config` print the same facts. A value's source reads
+  `user`, `project`, `file`, `environment`, `cli` or `default`.
 - Web: a coordinator's threads nest under its folder header, and a row that
   waits on you, works or failed carries an icon beside its words. The
   coordinator's help is a one-line subtitle. Settings group as General; Agent

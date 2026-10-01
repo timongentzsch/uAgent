@@ -106,7 +106,7 @@ json SessionControl(AppSession& session, const json& request) {
   }
   if (kind == "config") {
     return ConfigurationControl(
-        request, session.context.config_manager, session.Runtime().config,
+        request, session.context.config_manager,
         session.context.config_manager.ProjectTrusted());
   }
   if (kind == "revert") {

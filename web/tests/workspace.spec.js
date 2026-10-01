@@ -89,42 +89,46 @@ test("appearance and configuration remain usable at large scales", async ({
     .locator(".settings-nav")
     .getByRole("button", { name: "Advanced", exact: true })
     .click();
-  await page.getByLabel("Find a setting").fill("UAGENT_MAX_STEPS");
-  // Settings save themselves: Enter applies the field and says Saved in its
-  // status line.
-  const steps = page.getByRole("spinbutton", { name: /^UAGENT_MAX_STEPS/ });
-  await steps.fill("23");
-  await steps.press("Enter");
-  await expect(
-    page.locator(".setting-status", { hasText: "Saved" }),
-  ).toBeVisible();
-  // A changed value offers Reset; Reset empties the field again, which then
-  // names the default it keeps.
-  const reset = page.getByRole("button", { name: "Reset UAGENT_MAX_STEPS" });
-  await reset.click();
-  await expect(reset).toHaveCount(0);
-  const initial = "0";
-  await expect(steps).toHaveValue("");
-  await expect(steps).toHaveAttribute("placeholder", initial);
-  // Typing the default back removes the override instead of pinning it.
-  await steps.fill("23");
-  await steps.press("Enter");
-  await expect(reset).toBeVisible();
-  await steps.fill(initial);
-  await steps.press("Enter");
-  await expect(reset).toHaveCount(0);
+  // Advanced lists only what was changed or is locked; search finds the
+  // rest by its plain name or its variable.
+  const advanced = page.locator(".configuration");
+  const changed = advanced.getByRole("button", { name: /^Steps per turn/ });
+  await expect(changed).toHaveCount(0);
+  await expect(advanced).toContainText("Everything else is at its default");
+  const find = page.getByLabel("Find a setting");
+  // A setting only a terminal uses is not offered here.
+  await find.fill("UAGENT_MARKDOWN");
+  await expect(advanced).toContainText("No setting matches.");
+  await find.fill("UAGENT_MAX_STEPS");
+  await changed.click();
+  // One sheet edits it: what it is for, the value, why, and two ways out.
+  const sheet = page.getByRole("dialog", { name: "Steps per turn" });
+  await expect(sheet).toContainText("Default: 0");
+  await expect(sheet).toContainText("applies from your next message");
+  await sheet.getByRole("spinbutton").fill("23");
+  await sheet.getByRole("button", { name: "Save" }).click();
+  await expect(sheet).toHaveCount(0);
+  await find.fill("");
+  await expect(changed).toContainText("23");
+  // Use default removes the change, and the row leaves the list.
+  await changed.click();
+  await sheet.getByRole("button", { name: "Use default" }).click();
+  await expect(sheet).toHaveCount(0);
+  await expect(changed).toHaveCount(0);
 
   // Reset all asks first, then returns every change to its default.
-  await steps.fill("24");
-  await steps.press("Enter");
-  await expect(reset).toBeVisible();
+  await find.fill("steps per turn");
+  await changed.click();
+  await sheet.getByRole("spinbutton").fill("24");
+  await sheet.getByRole("spinbutton").press("Enter");
+  await find.fill("");
+  await expect(changed).toContainText("24");
   await page.getByRole("button", { name: /Reset all to defaults/ }).click();
   const confirm = page.getByRole("dialog", { name: "Reset all to defaults" });
   await expect(confirm).toContainText("API keys");
   await confirm.getByRole("button", { name: "Reset all", exact: true }).click();
   await expect(confirm).toHaveCount(0);
-  await expect(reset).toHaveCount(0);
-  await expect(steps).toHaveValue("");
+  await expect(changed).toHaveCount(0);
   await page.getByRole("button", { name: "Back", exact: true }).click();
   await page
     .locator(".settings-nav")
@@ -570,24 +574,29 @@ test("locked settings and restart to apply", async ({ page, session }) => {
     .locator(".settings-nav")
     .getByRole("button", { name: "Advanced", exact: true })
     .click();
-  const find = page.getByLabel("Find a setting");
-  await find.fill("UAGENT_CONTEXT");
-  const context = page.locator(".setting-row").filter({
-    hasText: "UAGENT_CONTEXT",
-  });
+  // A locked setting is listed, with its value and no way to edit it.
+  const advanced = page.locator(".configuration");
+  const locked = advanced.getByRole("button", { name: /^Context window/ });
+  await expect(locked).toContainText("Locked");
+  await locked.click();
+  const context = page.getByRole("dialog", { name: "Context window" });
   await expect(context).toContainText("Set by the environment");
-  await expect(context.getByRole("spinbutton")).toBeDisabled();
+  await expect(context.getByRole("spinbutton")).toHaveCount(0);
+  await expect(context.getByRole("button", { name: "Save" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
 
-  await find.fill("UAGENT_MAX_TOKENS");
-  const tokens = page.getByRole("spinbutton", { name: /^UAGENT_MAX_TOKENS/ });
-  await tokens.fill("1000");
-  await tokens.press("Enter");
+  // A setting that needs a restart offers one, once, for what is running.
+  const find = page.getByLabel("Find a setting");
+  await find.fill("mcp call timeout");
+  await advanced.getByRole("button", { name: /^MCP call timeout/ }).click();
+  const timeout = page.getByRole("dialog", { name: "MCP call timeout" });
+  await expect(timeout).toContainText("applies after a restart");
+  await timeout.getByRole("spinbutton").fill("90");
+  await timeout.getByRole("button", { name: "Save" }).click();
   const notice = page.getByRole("region", { name: "Restart to apply" });
-  await expect(notice).toContainText("UAGENT_MAX_TOKENS");
+  await expect(notice).toContainText("MCP call timeout");
   await notice
     .getByRole("button", { name: /^Restart 1 running conversation/ })
     .click();
   await expect(notice).toContainText("Restarted 1 conversation");
-  await page.getByRole("button", { name: "Reset UAGENT_MAX_TOKENS" }).click();
-  await expect(tokens).not.toHaveValue("1000");
 });

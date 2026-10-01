@@ -124,7 +124,7 @@ json SkillControl(const json& request, const std::filesystem::path& cwd) {
          {"scope", "user"},
          {"changes",
           json::array({{{"key", "UAGENT_SKILL_EXCLUDE"}, {"value", value}}})}},
-        manager, settings.config, false);
+        manager, false);
     if (!result.contains("error")) LibraryChanged();
     return result;
   }

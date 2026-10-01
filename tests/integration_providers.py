@@ -999,8 +999,8 @@ def test_uagent_tool_reports_live_configuration(root, home, *, binary):
         described = json.loads(tool_results(body["messages"])[-1])
         setting = described["settings"][0]
         assert_true(setting["name"] == "UAGENT_MAX_TOOL_CALLS", setting)
-        assert_true(setting["active"] == 120, setting)
-        assert_true(setting["source"] == "global-config", setting)
+        assert_true(setting["effective"] == 120, setting)
+        assert_true(setting["source"] == "user", setting)
         assert_true(setting["default"] == 0, setting)
         assert_true(setting["takes_effect"] == "next-user-turn", setting)
         return tool_call("uagent", {"action": "inspect", "topic": "status"}, call_id="call-2")

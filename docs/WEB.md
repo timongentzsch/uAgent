@@ -312,13 +312,16 @@ focuses its decision.
   latest saved checkpoint and label them as such.
 - Settings group their sections as General; Agent (Instructions, Tools, MCP
   servers, Permissions & allowed actions); Models; Host (Devices); and
-  Advanced. They contain this device's display settings and every registered
-  setting. Each row shows its current value, the default included, and
-  **Reset** while the edited scope changes it; saving the inherited value
-  removes the change. Values set by the environment or command line are
-  shown locked. **Reset all to defaults** (Advanced) resets a scope, and in
-  User defaults this device's display settings too; API keys are kept. A
-  change that needs a restart offers it: running conversations restart once
+  Advanced. General holds this device's display settings. Every other
+  setting is a row with its name and the value that applies: a switch flips
+  in place, anything else opens a sheet with what it is for, the value, why
+  it applies, **Use default** and **Save**. Advanced lists what you changed
+  and what the environment or command line locks; its search finds any other
+  setting. The web edits your defaults; a project's override is shown and is
+  edited in its `.uagent/.config` or with `/config project`. **Reset all to
+  defaults** (Advanced) also resets this device's display settings; API keys
+  are kept. A change that needs a restart offers it: running conversations
+  restart once
   idle and keep their history, and the web host re-execs itself for its own
   settings. The terminal has the same through `/config`, `/restart`, `/mcp`
   and `/permissions rules`. **MCP servers** lists the open conversation's

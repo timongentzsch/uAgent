@@ -439,12 +439,8 @@ test.describe("touch interaction", () => {
         })
         .click();
       await expect(
-        settings.getByRole("combobox", {
-          name: "UAGENT_APPROVAL",
-          exact: true,
-        }),
+        settings.getByRole("button", { name: /^Approval mode/ }),
       ).toBeVisible();
-      await scaledFields(settings, zoom);
       if (await back.isVisible()) await back.click();
       await settings
         .locator(".settings-nav")
@@ -454,14 +450,15 @@ test.describe("touch interaction", () => {
         name: "Find a setting",
       });
       await search.fill("timeout");
-      await expect(
-        settings.locator('.setting-row input[type="number"]').first(),
-      ).toBeVisible();
       await scaledFields(settings, zoom);
+      // A setting's own field lives in its sheet.
+      await settings.getByRole("button", { name: /^Tool timeout/ }).click();
+      const sheet = page.getByRole("dialog", { name: "Tool timeout" });
+      await expect(sheet.getByRole("spinbutton")).toBeVisible();
+      await scaledFields(sheet, zoom);
+      await page.keyboard.press("Escape");
       await search.fill("memory");
-      await expect(
-        settings.locator('.setting-row [role="switch"]').first(),
-      ).toBeVisible();
+      await expect(settings.locator('[role="switch"]').first()).toBeVisible();
       await scaledFields(settings, zoom);
       await settings.getByRole("button", { name: "Close settings" }).click();
       await page.getByRole("button", { name: "Model and effort" }).click();

@@ -24,9 +24,7 @@ bool IsDerivedDiagnosticKey(const std::string& key) {
 void TestRuntimeConfigCoherence() {
   const RuntimeConfig config = RuntimeConfig::FromEnvironment();
   const json diagnostic = config.DiagnosticJson();
-  const json provenance = config.ProvenanceJson(json::object());
   REQUIRE(diagnostic.is_object());
-  REQUIRE(provenance.is_object());
 
   std::set<std::string> registry_fields;
   for (const ConfigDescriptor& descriptor : ConfigRegistry()) {
@@ -35,10 +33,8 @@ void TestRuntimeConfigCoherence() {
   }
   CHECK(!registry_fields.empty());
 
-  // Every registered field is visible in both JSON projections.
   for (const std::string& field : registry_fields) {
     CHECK(diagnostic.contains(field));
-    CHECK(provenance.contains(field));
   }
 
   // Every diagnostic key traces back to the registry or the derived list.

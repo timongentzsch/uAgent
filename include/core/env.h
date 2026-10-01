@@ -145,7 +145,6 @@ struct RuntimeConfig : TurnBudgets {
   std::vector<std::string> ApplyTurnReload(const RuntimeConfig& next);
 
   json DiagnosticJson() const;
-  json ProvenanceJson(const json& env_sources) const;
 };
 
 }  // namespace uagent

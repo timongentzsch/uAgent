@@ -260,6 +260,8 @@ HostWaitState SessionHost::RunSchedules(bool& recovered) {
     for (const auto& [id, session] : sessions_) {
       projects.push_back(session->cwd);
     }
+    std::ranges::sort(projects);
+    projects.erase(std::ranges::unique(projects).begin(), projects.end());
   }
   for (auto& item : tick.commands) {
     if (!item.session->Send(std::move(item.command))) {

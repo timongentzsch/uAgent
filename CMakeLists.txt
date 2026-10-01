@@ -176,7 +176,6 @@ add_library(
   src/mcp/discover.cc
   src/mcp/invoke.cc
   src/mcp/register.cc
-  src/mcp/result.cc
   src/mcp/rpc.cc
   src/mcp/server.cc
   src/tools/adapt_system.cc

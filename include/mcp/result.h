@@ -21,14 +21,10 @@
 #include "include/mcp/server.h"
 #include "include/media/attachments.h"
 #include "include/tools/files.h"
+#include "include/tools/image_result.h"
 #include "include/tools/tool.h"
 
 namespace uagent {
-
-// Decode one MCP image block, save it privately and queue it as an
-// attachment. Defined in src/mcp/result.cc: the per-process sequence it
-// names must not be duplicated into every including translation unit.
-ToolResult McpImageResult(const json& content, std::string source_call_id = {});
 
 // tools/call response -> bounded model-readable text. Binary images are saved
 // and queued separately; their base64 never enters the tool result history.
@@ -58,7 +54,7 @@ inline ToolResult McpResultText(const McpServer& s, const json& resp,
       if (type == "text" && c.contains("text") && c["text"].is_string()) {
         text += c["text"].get<std::string>();
       } else if (type == "image") {
-        ToolResult image = McpImageResult(c, source_call_id);
+        ToolResult image = ToolImageResult(c, source_call_id, "mcp", kMcpDir);
         text += image.output;
         if (!image.Ok() && local_error == ToolErrorCode::kNone) {
           local_error = image.error;

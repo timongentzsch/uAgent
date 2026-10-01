@@ -575,9 +575,11 @@ class Terminal {
     }
   }
   void Receive(const json& frame) {
+    static const json kNone = json::object();
     auto kind = JsonValue(frame, "kind", "");
     if (kind == "state") {
-      const json state = JsonValue(frame, "state", json::object());
+      auto sent = frame.find("state");
+      const json& state = sent != frame.end() ? *sent : kNone;
       {
         std::lock_guard lock(mutex_);
         for (const char* field :
@@ -601,8 +603,8 @@ class Terminal {
             presenter_.Consume(AppEvent{0, "", "notice", notice, false});
           }
         }
-        const json view = JsonValue(state, "view", json::object());
-        if (const json* blocks = JsonArray(view, "blocks")) {
+        const json* view = JsonObject(state, "view");
+        if (const json* blocks = view ? JsonArray(*view, "blocks") : nullptr) {
           for (const auto& block : *blocks) {
             shown_.insert(JsonValue(block, "id", ""));
             presenter_.Block(block);
@@ -627,7 +629,8 @@ class Terminal {
       wake_.Wake();
     } else if (kind == "event") {
       std::string type = JsonValue(frame, "type", "");
-      json data = JsonValue(frame, "data", json::object());
+      auto sent = frame.find("data");
+      const json& data = sent != frame.end() ? *sent : kNone;
       if (type == "session.ended") ended_ = true;
       if (type == "notice" && !history_) return;
       if (type == "usage.updated") {
@@ -635,7 +638,8 @@ class Terminal {
         ApplySessionEvent(state_, type, data);
         wake_.Wake();
       } else if (type == "message.changed") {
-        json block = JsonValue(data, "block", json::object());
+        const json* found = JsonObject(data, "block");
+        const json& block = found ? *found : kNone;
         const auto block_kind = JsonValue(block, "kind", "");
         bool echoed = false;
         {

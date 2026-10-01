@@ -19,7 +19,7 @@ import {
 } from "../../shared/zoom.ts";
 
 type Gesture =
-  | { kind: "pending"; start: Point; time: number }
+  | { kind: "pending"; start: Point }
   | { kind: "scroll"; travel: Point; at: Point }
   | { kind: "pan" }
   | { kind: "drag" }
@@ -217,11 +217,7 @@ export default function BrowserTouch({
         points.current.set(event.pointerId, point);
         const all = current();
         if (all.length === 1) {
-          gesture.current = {
-            kind: "pending",
-            start: point,
-            time: event.timeStamp,
-          };
+          gesture.current = { kind: "pending", start: point };
           if (send.current)
             hold.current = window.setTimeout(() => {
               if (gesture.current?.kind !== "pending") return;

@@ -477,36 +477,21 @@ export default function BrowserPanel({
   const canChangeProfile =
     driving || (status.mode === "idle" && !status.running && !status.leased);
   // Short enough to fit beside the tools on a phone; the menu says more.
-  const state = !status.ok
-    ? "Browser"
+  const [state, detail] = !status.ok
+    ? ["Browser", "Loading"]
     : otherDevice
-      ? "In use"
+      ? ["In use", "Another device is driving"]
       : driving
         ? status.waiting
-          ? "Your turn"
-          : "Driving"
+          ? ["Your turn", "The agent is waiting for you"]
+          : ["Driving", "You're driving"]
         : status.waiting
-          ? "Needs you"
+          ? ["Needs you", "The agent needs you"]
           : status.mode === "agent" && status.running
-            ? "Agent"
+            ? ["Agent", "The agent is working"]
             : status.running
-              ? "Watching"
-              : "Stopped";
-  const detail = !status.ok
-    ? "Loading"
-    : otherDevice
-      ? "Another device is driving"
-      : driving
-        ? status.waiting
-          ? "The agent is waiting for you"
-          : "You're driving"
-        : status.waiting
-          ? "The agent needs you"
-          : status.mode === "agent" && status.running
-            ? "The agent is working"
-            : status.running
-              ? "Watching"
-              : "Chrome is stopped";
+              ? ["Watching", "Watching"]
+              : ["Stopped", "Chrome is stopped"];
   const createProfile = (event: Event) => {
     event.preventDefault();
     void run(async () => {
@@ -781,26 +766,15 @@ export default function BrowserPanel({
               copy={() => void copy()}
               paste={() => void paste()}
             />
-            {driving ? (
-              <Button
-                variant="primary"
-                class="browser-primary"
-                disabled={busy}
-                title="Hand the browser back to the agent"
-                onClick={() => void done()}
-              >
-                Done
-              </Button>
-            ) : (
-              <Button
-                variant="primary"
-                class="browser-primary"
-                disabled={busy || otherDevice || !status.ok}
-                onClick={() => void control("takeover")}
-              >
-                Take over
-              </Button>
-            )}
+            <Button
+              variant="primary"
+              class="browser-primary"
+              disabled={busy || (!driving && (otherDevice || !status.ok))}
+              title={driving ? "Hand the browser back to the agent" : undefined}
+              onClick={() => void (driving ? done() : control("takeover"))}
+            >
+              {driving ? "Done" : "Take over"}
+            </Button>
           </>
         )
       }

@@ -13,6 +13,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/core/config_registry.h"
 #include "include/core/debug.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
@@ -84,7 +85,8 @@ bool ApplyProviderTemplate(Api& api, const ProviderTemplate& provider) {
 }
 
 ProviderCatalog LoadProviderCatalog() {
-  json providers = json::parse(EnvStr("UAGENT_PROVIDERS"), nullptr, false);
+  json providers =
+      json::parse(SettingText(Cfg("UAGENT_PROVIDERS")), nullptr, false);
   ProviderCatalog catalog;
   if (!providers.is_object()) return catalog;
   for (const auto& [provider_name, provider] : providers.items()) {

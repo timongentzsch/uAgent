@@ -31,6 +31,7 @@
 #include "include/browser/browser.h"
 #include "include/cli.h"
 #include "include/core/config.h"
+#include "include/core/config_registry.h"
 #include "include/core/debug.h"
 #include "include/core/env.h"
 #include "include/core/fd.h"
@@ -666,7 +667,7 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   // model. A /model saved in its session still wins on resume.
   if (options.Coordinator() && !options.overrides.contains("UAGENT_MODEL")) {
     const std::string model = CoordinatorModel();
-    if (!model.empty()) setenv("UAGENT_MODEL", model.c_str(), 1);
+    if (!model.empty()) OverrideSetting("UAGENT_MODEL", model);
   }
   if (memory_child && !BuildMemoryExtractionPrompt(memory_source, workspace,
                                                    options.prompt, error)) {
@@ -683,7 +684,7 @@ BootstrapResult Bootstrap(Options options, const char* executable,
       options.yolo ? PermissionOverride::kYolo : PermissionOverride::kDefault,
       configured_mode));
   if (!options.debug) {
-    options.debug_path = EnvStr("UAGENT_DEBUG_LOG");
+    options.debug_path = SettingText(Cfg("UAGENT_DEBUG_LOG"));
     options.debug = !options.debug_path.empty();
   }
 

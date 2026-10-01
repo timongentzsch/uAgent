@@ -370,7 +370,7 @@ ConfigProposal PrepareConfigProposal(ConfigProposalScope scope,
         "that trust, so start uagent with --trust-project-config first";
     return proposal;
   }
-  if (!EnvStr("UAGENT_CONFIG_FILE").empty()) {
+  if (!SettingText(Cfg("UAGENT_CONFIG_FILE")).empty()) {
     proposal.error =
         "UAGENT_CONFIG_FILE replaces both config locations; edit that file "
         "directly";

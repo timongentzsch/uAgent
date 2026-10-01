@@ -22,6 +22,7 @@
 #include "include/agent/session_store.h"
 #include "include/api.h"
 #include "include/core/child_env.h"
+#include "include/core/config_registry.h"
 #include "include/core/env.h"
 #include "include/core/fd.h"
 #include "include/core/fs.h"
@@ -179,7 +180,7 @@ std::string StartMemoryExtractor(ProcessSupervisor& processes, const Api& api,
 
   // Extraction is a small, bounded summarization job, so it can run on a
   // cheaper or local route than the conversation.
-  std::string selection = EnvStr("UAGENT_MEMORY_MODEL");
+  std::string selection = SettingText(Cfg("UAGENT_MEMORY_MODEL"));
   ProviderCatalog catalog =
       selection.empty() ? ProviderCatalog{} : SessionProviderCatalog();
   SideRoute route =

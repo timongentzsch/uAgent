@@ -7,6 +7,7 @@
 #include <string>
 #include <utility>
 
+#include "include/core/config_registry.h"
 #include "include/core/debug.h"
 #include "include/core/fs.h"
 #include "include/core/private_store.h"
@@ -245,7 +246,7 @@ AutoPermissionReview ReviewPermission(Api& api, const RuntimeConfig& config,
                                       const std::string& user_request) {
   AutoPermissionReview result;
   api.base_url = config.permission_url;
-  api.api_key = EnvStr("OPENROUTER_API_KEY");
+  api.api_key = SettingText(Cfg("OPENROUTER_API_KEY"));
   api.capabilities.wire_api = WireApi::kChatCompletions;
   if (api.api_key.empty()) {
     result.error = "OPENROUTER_API_KEY is not configured";

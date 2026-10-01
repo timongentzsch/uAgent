@@ -129,6 +129,7 @@ RuntimeConfig ConfigManager::Initialize() {
   for (const auto& [key, value] : current_.values) {
     setenv(key.c_str(), value.c_str(), cli_.contains(key) ? 1 : 0);
   }
+  PublishSettings(current_.values);
   initialized_ = true;
   return current_.config;
 }
@@ -154,21 +155,29 @@ std::optional<ConfigReload> ConfigManager::Reload(const RuntimeConfig& active) {
   reload.deferred = DifferentKeys(next.config, reload.active);
   std::set<std::string> deferred(reload.deferred.begin(),
                                  reload.deferred.end());
+  // Unbound settings are read on use from the published values.
+  auto unbound = [&](const std::string& key) {
+    if (!RuntimeConfigField(key).empty()) return;
+    const ConfigDescriptor* descriptor = FindConfigDescriptor(key);
+    if (descriptor && descriptor->reload == ReloadPolicy::kNextUserTurn) {
+      reload.applied.push_back(key);
+    } else {
+      deferred.insert(key);
+    }
+  };
   for (const auto& [key, value] : next.values) {
     auto old_value = current_.values.find(key);
-    bool changed =
-        old_value == current_.values.end() || old_value->second != value;
-    if (changed && RuntimeConfigField(key).empty()) deferred.insert(key);
+    if (old_value == current_.values.end() || old_value->second != value) {
+      unbound(key);
+    }
   }
   for (const auto& entry : current_.values) {  // keys the reload dropped
-    if (!next.values.contains(entry.first) &&
-        RuntimeConfigField(entry.first).empty()) {
-      deferred.insert(entry.first);
-    }
+    if (!next.values.contains(entry.first)) unbound(entry.first);
   }
   reload.deferred.assign(deferred.begin(), deferred.end());
   deferred_ = reload.deferred;
   current_ = std::move(next);
+  PublishSettings(current_.values);
   return reload;
 }
 

@@ -11,6 +11,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/core/config_registry.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
@@ -73,7 +74,7 @@ std::vector<std::filesystem::path> SkillSearchPath(
     const std::filesystem::path& cwd) {
   namespace fs = std::filesystem;
   std::vector<fs::path> path;
-  std::string custom = EnvStr("UAGENT_SKILL_PATH");
+  std::string custom = SettingText(Cfg("UAGENT_SKILL_PATH"));
   if (!custom.empty()) {
     for (const std::string& entry : SplitPathList(custom)) {
       if (!Trim(entry).empty()) path.emplace_back(Trim(entry));
@@ -114,7 +115,7 @@ std::vector<std::filesystem::path> SkillSearchPath(
 
 bool SkillExcluded(const std::string& name) {
   for (const std::string& entry :
-       SplitPathList(EnvStr("UAGENT_SKILL_EXCLUDE"), ',')) {
+       SplitPathList(SettingText(Cfg("UAGENT_SKILL_EXCLUDE")), ',')) {
     if (Trim(entry) == name) return true;
   }
   return false;

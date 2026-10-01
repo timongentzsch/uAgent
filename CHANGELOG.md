@@ -87,6 +87,11 @@ names one loads as before and the line has no effect.
 
 ### Changed
 
+- A changed setting applies from your next message wherever it is read when
+  used: limits, output caps, attachment size, sub-agent and coordinator
+  budgets and models, the search and image models, history retention. A
+  restart is asked for only where it is needed: the route and credentials,
+  the sandbox, the tool set, memory on or off, and MCP.
 - Web: the `/` list offers only what the page has no control for. Commands
   with their own control (`/attach`, `/model`, `/models`, `/effort`,
   `/variant`, `/yolo`, `/sessions`, `/agents`, `/ps`, `/cost`, `/changes`,

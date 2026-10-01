@@ -11,6 +11,7 @@
 #include <utility>
 
 #include "include/core/config.h"
+#include "include/core/config_registry.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/project.h"
@@ -51,7 +52,8 @@ inline bool SelfConfigurationPath(const std::string& path) {
     return true;
   }
   if (matches(UagentConfigPath()) || matches(ProjectConfigFilePath()) ||
-      matches(TrustStorePath()) || matches(EnvStr("UAGENT_CONFIG_FILE")) ||
+      matches(TrustStorePath()) ||
+      matches(SettingText(Cfg("UAGENT_CONFIG_FILE"))) ||
       matches(UagentDir(kConfigDir) + "/" + kPermissionStoreFile)) {
     return true;
   }

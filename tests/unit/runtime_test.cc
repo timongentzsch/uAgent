@@ -1072,6 +1072,7 @@ void TestEffectiveConfigReload() {
                       "UAGENT_MAX_TURN_TOKENS=150\n"
                       "UAGENT_SESSION_TOKEN_BUDGET=250\n"
                       "UAGENT_MCP_TIMEOUT=10\n"
+                      "UAGENT_TOOL_RESULT_CHARS=1234\n"
                       "UAGENT_MODEL=next-model\n"
                       "OPENROUTER_API_KEY=changed-secret\n")
             .output.starts_with("wrote "));
@@ -1093,6 +1094,20 @@ void TestEffectiveConfigReload() {
   CHECK(
       JsonDump(manager.DiagnosticJson(reload->active)).find("changed-secret") ==
       std::string::npos);
+  // A setting read on use applies with the reload: environ is untouched and
+  // a child started afterwards is told the new value.
+  CHECK(std::find(reload->applied.begin(), reload->applied.end(),
+                  "UAGENT_TOOL_RESULT_CHARS") != reload->applied.end());
+  CHECK(ToolResultCap() == 1234);
+  CHECK(getenv("UAGENT_TOOL_RESULT_CHARS") == nullptr);
+  ChildEnvironment child({}, ChildEnvironmentPolicy::kIndependentAgent);
+  bool told = false;
+  for (char** entry = child.Data(); entry && *entry; ++entry) {
+    told |= std::string_view(*entry) == "UAGENT_TOOL_RESULT_CHARS=1234";
+  }
+  CHECK(told);
+  OverrideSetting("UAGENT_TOOL_RESULT_CHARS", "99");
+  CHECK(ToolResultCap() == 99);
 }
 
 }  // namespace uagent

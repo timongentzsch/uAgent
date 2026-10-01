@@ -13,6 +13,7 @@
 
 #include <cstdint>
 #include <limits>
+#include <map>
 #include <span>
 #include <string>
 #include <string_view>
@@ -260,7 +261,7 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                   ReloadPolicy::kRestartRequired, "route",
                   "context-window tokens; 0 uses the provider profile"),
     registry::Int("UAGENT_MAX_TOKENS", {}, -1, kConfigAnyMin, kConfigAnyMax,
-                  ReloadPolicy::kRestartRequired, "route",
+                  ReloadPolicy::kNextUserTurn, "route",
                   "maximum response tokens; -1 omits the optional cap"),
 
     // Request transport.
@@ -299,15 +300,15 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                   ReloadPolicy::kNextUserTurn, "budget",
                   "seconds one tool call may run"),
     registry::Int("UAGENT_AUTO_COMPACT_PCT", {}, 85, kConfigAnyMin,
-                  kConfigAnyMax, ReloadPolicy::kRestartRequired, "budget",
+                  kConfigAnyMax, ReloadPolicy::kNextUserTurn, "budget",
                   "context percentage that triggers compaction"),
 
     // Tool results and trace retention.
     registry::Int("UAGENT_TOOL_RESULT_CHARS", {}, 8000, kConfigAnyMin,
-                  kConfigAnyMax, ReloadPolicy::kRestartRequired, "tools",
+                  kConfigAnyMax, ReloadPolicy::kNextUserTurn, "tools",
                   "characters kept from one tool result"),
     registry::Int("UAGENT_READ_FILE_LINES", {}, 1000, kConfigAnyMin,
-                  kConfigAnyMax, ReloadPolicy::kRestartRequired, "tools",
+                  kConfigAnyMax, ReloadPolicy::kNextUserTurn, "tools",
                   "default lines returned by read_path"),
 
     // OS sandbox for agent-run commands. Restart-required because the policy is
@@ -327,18 +328,18 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                   ReloadPolicy::kRestartRequired, "delegation",
                   "deepest delegation level allowed"),
     registry::Int("UAGENT_SUBAGENT_MAX_STEPS", {}, 100, kConfigAnyMin,
-                  kConfigAnyMax, ReloadPolicy::kRestartRequired, "delegation",
+                  kConfigAnyMax, ReloadPolicy::kNextUserTurn, "delegation",
                   "model rounds per delegated child"),
     registry::Int("UAGENT_SUBAGENT_MAX_TOOL_CALLS", {}, 240, kConfigAnyMin,
-                  kConfigAnyMax, ReloadPolicy::kRestartRequired, "delegation",
+                  kConfigAnyMax, ReloadPolicy::kNextUserTurn, "delegation",
                   "tool calls per delegated child"),
     registry::Int("UAGENT_SUBAGENT_TIMEOUT", {}, 0, 0, kConfigAnyMax,
-                  ReloadPolicy::kRestartRequired, "delegation",
+                  ReloadPolicy::kNextUserTurn, "delegation",
                   "wall-clock ceiling per delegated child; 0 is the turn"),
     registry::Named(
         registry::Fallback(
             registry::Str("UAGENT_SUBAGENT_MODEL", {}, "",
-                          ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
+                          ReloadPolicy::kNextUserTurn, Sensitivity::kPublic,
                           "delegation",
                           "default model route for delegated children"),
             "UAGENT_MODEL"),
@@ -357,15 +358,15 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
         "Plans and supervises a folder's threads; /model inside a coordinator "
         "overrides it there"),
     registry::Int("UAGENT_COORDINATOR_MAX_THREADS", {}, 5, 1, 64,
-                  ReloadPolicy::kRestartRequired, "coordination",
+                  ReloadPolicy::kNextUserTurn, "coordination",
                   "threads one coordinator may run at once"),
     registry::Dbl("UAGENT_COORDINATOR_DAILY_SPEND_USD", {}, 20.0,
-                  ReloadPolicy::kRestartRequired, "coordination",
+                  ReloadPolicy::kNextUserTurn, "coordination",
                   "reported cost a coordinator and its threads may spend per "
                   "day; at it, thread events wait. 0 disables it"),
     registry::Choice(
         registry::Str("UAGENT_COORDINATOR_ENVIRONMENT", {}, "worktree",
-                      ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
+                      ReloadPolicy::kNextUserTurn, Sensitivity::kPublic,
                       "coordination",
                       "where threads run: a fresh git worktree, or the "
                       "folder itself"),
@@ -380,7 +381,7 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
     registry::Named(
         registry::Fallback(
             registry::Str("UAGENT_WEB_SEARCH_MODEL", "web_search_model", "",
-                          ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
+                          ReloadPolicy::kNextUserTurn, Sensitivity::kPublic,
                           "search", "model route used for search"),
             "conversation model on OpenRouter, else the default route"),
         "Web search model", "Answers web lookups"),
@@ -395,7 +396,7 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
     registry::Named(
         registry::Fallback(
             registry::Str("UAGENT_MEMORY_MODEL", {}, "",
-                          ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
+                          ReloadPolicy::kNextUserTurn, Sensitivity::kPublic,
                           "memory",
                           "model route for background memory extraction"),
             "UAGENT_MODEL"),
@@ -433,14 +434,14 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
         "Describes attached images when the conversation model cannot see "
         "them"),
     registry::Str("UAGENT_PDF_ENGINE", "pdf_engine", "cloudflare-ai",
-                  ReloadPolicy::kRestartRequired, Sensitivity::kPublic, "media",
+                  ReloadPolicy::kNextUserTurn, Sensitivity::kPublic, "media",
                   "OpenRouter file-parser engine for documents"),
     registry::Int("UAGENT_ATTACHMENT_MB", {}, 10, 1, kConfigMaxMegabytes,
-                  ReloadPolicy::kRestartRequired, "media",
+                  ReloadPolicy::kNextUserTurn, "media",
                   "largest attachment in mebibytes"),
     // Session and artifact retention.
     registry::Int("UAGENT_HISTORY_DAYS", {}, 30, kConfigAnyMin, kConfigAnyMax,
-                  ReloadPolicy::kRestartRequired, "retention",
+                  ReloadPolicy::kNextUserTurn, "retention",
                   "days of saved sessions kept"),
 
     // Behaviour switches.
@@ -474,7 +475,7 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                   ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
                   "behaviour", "restrict the exposed tool capability set"),
     registry::Str(
-        "UAGENT_SHELL_ENV_ALLOW", {}, "", ReloadPolicy::kRestartRequired,
+        "UAGENT_SHELL_ENV_ALLOW", {}, "", ReloadPolicy::kNextUserTurn,
         Sensitivity::kPublic, "behaviour",
         "comma-separated sensitive variables approved shells may inherit"),
     registry::Bul("UAGENT_TRUST_PROJECT_CONFIG", {}, false,
@@ -519,6 +520,15 @@ consteval const ConfigDescriptor& Cfg(std::string_view environment) {
   UnregisteredConfigSetting();
   return kConfigRegistry[0];
 }
+
+// A session's settings, apart from environ, which is never rewritten after
+// startup. Lookup order: override, published configuration, environ.
+using SettingValues = std::map<std::string, std::string>;
+void PublishSettings(SettingValues values);
+void OverrideSetting(std::string_view environment, std::string value);
+void ClearSettings();
+SettingValues CurrentSettings();
+std::string SettingText(const ConfigDescriptor& descriptor);
 
 int64_t LongSetting(const ConfigDescriptor& descriptor);
 bool BoolSetting(const ConfigDescriptor& descriptor);

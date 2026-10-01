@@ -117,12 +117,7 @@ void TestConfigRegistryContract() {
     }
   }
 
-  // A RuntimeConfig-backed setting must name its field, and a reloadable one
-  // must be RuntimeConfig-backed: nothing else is re-read at a turn boundary.
   for (const ConfigDescriptor& descriptor : ConfigRegistry()) {
-    if (descriptor.reload == ReloadPolicy::kNextUserTurn) {
-      CHECK(!descriptor.field.empty());
-    }
     if (!descriptor.field.empty()) {
       CHECK(RuntimeConfigField(descriptor.environment) == descriptor.field);
     }

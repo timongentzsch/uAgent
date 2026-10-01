@@ -20,6 +20,7 @@
 #include <sys/syscall.h>
 #endif
 
+#include "include/core/config_registry.h"
 #include "include/core/env.h"
 #include "include/core/fd.h"
 #include "include/core/fs.h"
@@ -304,7 +305,7 @@ SandboxStatus BuildStatus() {
   // configuration layer exports what a file, the environment or a flag
   // supplied, and never the registry defaults. That is the whole of the
   // provenance the two unenforceable tiers need.
-  const bool requested = !EnvStr("UAGENT_SANDBOX").empty();
+  const bool requested = !SettingText(Cfg("UAGENT_SANDBOX")).empty();
   if (status.level == SandboxLevel::kUnavailable) {
     status.mode = requested ? SandboxMode::kRefused : SandboxMode::kDegraded;
     status.reason =
@@ -424,7 +425,7 @@ std::vector<std::string> SandboxWrapperArgv(const SandboxStatus& status) {
 }
 
 std::vector<std::string> HiddenPaths() {
-  const std::string browser = EnvStr("UAGENT_BROWSER_DATA");
+  const std::string browser = SettingText(Cfg("UAGENT_BROWSER_DATA"));
   if (browser.empty() || browser.front() != '/') return {};
   std::string canonical = CanonicalAccessPath(browser).string();
   struct stat info{};

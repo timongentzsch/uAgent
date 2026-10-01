@@ -13,6 +13,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/core/config_registry.h"
 #include "include/core/debug.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
@@ -169,11 +170,13 @@ void ActivateRoute(Api& api) {
 }
 
 ProviderSetup ConfigureProvider(Api& api) {
-  api.base_url = StripTrailingSlashes(EnvStr("UAGENT_BASE_URL"));
+  api.base_url = StripTrailingSlashes(SettingText(Cfg("UAGENT_BASE_URL")));
   api.api_key = EnvStr("UAGENT_API_KEY", kPlaceholderApiKey);
-  ModelSelection requested = ParseModelSelection(EnvStr("UAGENT_MODEL"));
+  ModelSelection requested =
+      ParseModelSelection(SettingText(Cfg("UAGENT_MODEL")));
   api.model = requested.base;
-  const std::string configured_effort = EnvStr("UAGENT_REASONING_EFFORT");
+  const std::string configured_effort =
+      SettingText(Cfg("UAGENT_REASONING_EFFORT"));
   const std::string configured_variant = api.config.openrouter_variant;
   api.reasoning_effort = configured_effort;
   api.ctx_window = ContextWindow();
@@ -263,7 +266,7 @@ ProviderSetup ConfigureProvider(Api& api) {
     setup.warning +=
         "ignoring invalid reasoning effort: " + api.reasoning_effort;
     api.reasoning_effort.clear();
-    setenv("UAGENT_REASONING_EFFORT", "", 1);
+    OverrideSetting("UAGENT_REASONING_EFFORT", "");
   }
   return setup;
 }

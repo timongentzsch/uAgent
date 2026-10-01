@@ -10,6 +10,7 @@
 
 #include "include/api/citations.h"
 #include "include/api/retry.h"
+#include "include/core/config_registry.h"
 #include "include/core/debug.h"
 #include "include/core/env.h"
 #include "include/core/limits.h"
@@ -93,7 +94,7 @@ WebSearchRoute SelectWebSearchRoute(
         candidate(provider.base_url, provider.api_key, DefaultSearchModel()));
     break;
   }
-  if (std::string key = EnvStr("OPENROUTER_API_KEY"); !key.empty()) {
+  if (std::string key = SettingText(Cfg("OPENROUTER_API_KEY")); !key.empty()) {
     candidates.push_back(candidate("https://openrouter.ai/api/v1",
                                    std::move(key), DefaultSearchModel()));
   }

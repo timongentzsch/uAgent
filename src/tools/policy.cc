@@ -9,6 +9,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/core/config_registry.h"
 #include "include/core/env.h"
 #include "include/core/strings.h"
 #include "include/tools/tool.h"
@@ -337,7 +338,7 @@ std::string StableArgumentError(
 
 ToolPolicy ToolPolicyFromEnvironment() {
   ToolPolicy policy;
-  std::string configured = Trim(EnvStr("UAGENT_TOOL_CAPABILITIES"));
+  std::string configured = Trim(SettingText(Cfg("UAGENT_TOOL_CAPABILITIES")));
   if (!configured.empty()) {
     policy.allowed = 0;
     for (const std::string& entry : SplitPathList(configured, ',')) {

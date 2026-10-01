@@ -9,6 +9,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/core/config_registry.h"
 #include "include/core/env.h"
 #include "include/core/platform.h"
 #include "include/core/strings.h"
@@ -58,34 +59,28 @@ ChildEnvironment::ChildEnvironment(const EnvironmentOverrides& overrides,
   if (policy == ChildEnvironmentPolicy::kApprovedShell) {
     allow_list = ShellAllowList();
   }
+  auto permitted = [&](const std::string& key) {
+    return !SensitiveEnvironmentKey(key) ||
+           std::find(allow_list.begin(), allow_list.end(), key) !=
+               allow_list.end();
+  };
+  auto set = [&](const std::string& key, const std::string& value) {
+    std::erase_if(
+        values_, [&](const std::string& entry) { return KeyOf(entry) == key; });
+    values_.push_back(key + "=" + value);
+  };
   for (char** current = ProcessEnvironment(); current && *current; ++current) {
     std::string entry(*current);
-    std::string key = KeyOf(entry);
-    bool allowed = std::find(allow_list.begin(), allow_list.end(), key) !=
-                   allow_list.end();
-    if (!SensitiveEnvironmentKey(key) || allowed) {
-      values_.push_back(std::move(entry));
-    }
+    if (permitted(KeyOf(entry))) values_.push_back(std::move(entry));
   }
-  // Approval mode can be toggled mid-session and no longer lives in environ,
-  // so children are told the live value rather than an inherited stale one.
+  // environ predates reloads and session choices.
+  for (const auto& [key, value] : CurrentSettings()) {
+    if (permitted(key)) set(key, value);
+  }
   if (policy != ChildEnvironmentPolicy::kIndependentAgent) {
-    values_.erase(std::remove_if(values_.begin(), values_.end(),
-                                 [](const std::string& entry) {
-                                   return KeyOf(entry) == "UAGENT_APPROVAL";
-                                 }),
-                  values_.end());
-    values_.push_back(std::string("UAGENT_APPROVAL=") +
-                      ApprovalModeName(CurrentApprovalMode()));
+    set("UAGENT_APPROVAL", ApprovalModeName(CurrentApprovalMode()));
   }
-  for (const auto& [key, value] : overrides) {
-    values_.erase(std::remove_if(values_.begin(), values_.end(),
-                                 [&](const std::string& entry) {
-                                   return KeyOf(entry) == key;
-                                 }),
-                  values_.end());
-    values_.push_back(key + "=" + value);
-  }
+  for (const auto& [key, value] : overrides) set(key, value);
   pointers_.reserve(values_.size() + 1);
   for (std::string& value : values_) pointers_.push_back(value.data());
   pointers_.push_back(nullptr);

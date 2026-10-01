@@ -57,11 +57,9 @@ void TestSessionCommandKinds() {
   };
   for (const auto& [kind, want] : cases) {
     session::SessionCommand parsed;
-    std::string error = "dirty";
     REQUIRE(session::ParseSessionCommand(CommandEnvelope(kind), kSession,
-                                         kGeneration, parsed, error));
+                                         kGeneration, parsed));
     CHECK(parsed.kind == want);
-    CHECK(error.empty());
     CHECK(parsed.request_id == kRequest);
   }
   // Missing or unrecognized kinds flow through as kUnknown so the caller
@@ -72,9 +70,8 @@ void TestSessionCommandKinds() {
                                    {"request_id", kRequest}},
                               CommandEnvelope("teleport")}) {
     session::SessionCommand parsed;
-    std::string error;
-    REQUIRE(session::ParseSessionCommand(command, kSession, kGeneration, parsed,
-                                         error));
+    REQUIRE(
+        session::ParseSessionCommand(command, kSession, kGeneration, parsed));
     CHECK(parsed.kind == session::SessionCommandKind::kUnknown);
   }
 }
@@ -89,9 +86,7 @@ void TestSessionCommandFields() {
   command["cancelled"] = true;
   command["attachments"] = json::array();
   session::SessionCommand parsed;
-  std::string error;
-  REQUIRE(session::ParseSessionCommand(command, kSession, kGeneration, parsed,
-                                       error));
+  REQUIRE(session::ParseSessionCommand(command, kSession, kGeneration, parsed));
   CHECK(parsed.text == "hello");
   CHECK(parsed.client_request_id == "client-1");
   CHECK(parsed.interaction_id == "interaction-1");
@@ -103,7 +98,7 @@ void TestSessionCommandFields() {
   // the submit fast path depends on it.
   session::SessionCommand bare;
   REQUIRE(session::ParseSessionCommand(CommandEnvelope("submit"), kSession,
-                                       kGeneration, bare, error));
+                                       kGeneration, bare));
   CHECK(bare.text.empty());
   CHECK(!bare.cancelled);
   CHECK(!bare.has_attachments);
@@ -111,20 +106,19 @@ void TestSessionCommandFields() {
 
 void TestSessionCommandRejects() {
   session::SessionCommand parsed;
-  std::string error;
   json wrong_session = CommandEnvelope("submit");
   wrong_session["session_id"] = "other";
   CHECK(!session::ParseSessionCommand(wrong_session, kSession, kGeneration,
-                                      parsed, error));
+                                      parsed));
   json wrong_generation = CommandEnvelope("submit");
   wrong_generation["generation"] = "other";
   CHECK(!session::ParseSessionCommand(wrong_generation, kSession, kGeneration,
-                                      parsed, error));
+                                      parsed));
   for (const std::string bad : {"", "short", "0123456789ABCDEF", "xyz-!@#"}) {
     json command = CommandEnvelope("submit");
     command["request_id"] = bad;
-    CHECK(!session::ParseSessionCommand(command, kSession, kGeneration, parsed,
-                                        error));
+    CHECK(
+        !session::ParseSessionCommand(command, kSession, kGeneration, parsed));
   }
 }
 

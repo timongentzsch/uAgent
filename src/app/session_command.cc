@@ -66,8 +66,7 @@ bool ForwardsToWorker(SessionCommandKind kind) {
 }
 
 bool ParseSessionCommand(const json& command, const std::string& session_id,
-                         const std::string& generation, SessionCommand& out,
-                         std::string& error) {
+                         const std::string& generation, SessionCommand& out) {
   if (JsonValue(command, "session_id", "") != session_id ||
       JsonValue(command, "generation", "") != generation) {
     return false;
@@ -85,7 +84,6 @@ bool ParseSessionCommand(const json& command, const std::string& session_id,
   parsed.has_attachments = command.contains("attachments");
   parsed.raw = command;
   out = std::move(parsed);
-  error.clear();
   return true;
 }
 

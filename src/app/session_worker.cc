@@ -645,9 +645,7 @@ class WorkerChannel final : public ApplicationChannel {
   bool Command(const json& command) {
     SessionCommand parsed;
     std::string error;
-    if (!ParseSessionCommand(command, id_, generation_, parsed, error)) {
-      return false;
-    }
+    if (!ParseSessionCommand(command, id_, generation_, parsed)) return false;
     const std::string& request = parsed.request_id;
     json previous;
     switch (receipts_.Check(command, request, previous)) {

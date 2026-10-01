@@ -568,26 +568,6 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   return {std::move(running), std::nullopt, /*launched=*/true};
 }
 
-ToolResult ToolRunApprovedShell(ProcessSupervisor& supervisor,
-                                const std::string& command,
-                                const ToolContext& context, bool detach,
-                                const std::string& shell, bool tty,
-                                int64_t yield_ms, int64_t max_output_chars,
-                                bool sandbox) {
-  return RunShellCommand(
-             supervisor, context,
-             {.command = command,
-              .shell = shell,
-              .background = detach,
-              .detach = detach,
-              .tty = tty,
-              .sandbox = sandbox,
-              .yield_ms = yield_ms,
-              .max_output_chars = max_output_chars,
-              .environment_policy = ChildEnvironmentPolicy::kApprovedShell})
-      .result;
-}
-
 bool StartsWithShellWord(const std::string& command, const std::string& word) {
   std::string trimmed = Trim(command);
   return trimmed == word ||

@@ -26,11 +26,12 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
                 "update yield_ms in the run schema");
   Tool& run = AddTool(
       tools,
-      MakeTool("run",
-               "Execute a command in cwd; omit cd. tty=true enables "
-               "interactive stdin; detach persists a terminal beyond this "
-               "session.",
-               json::parse(R"json({"type":"object","properties":{
+      MakeTool(
+          "run",
+          "Execute a command in cwd; omit cd. tty=true enables "
+          "interactive stdin; detach persists a terminal beyond this "
+          "session.",
+          json::parse(R"json({"type":"object","properties":{
                     "command":{"type":"string"},
                     "shell":{"type":"string","description":"default bash"},
                     "tty":{"type":"boolean","description":"retain an interactive PTY"},
@@ -41,15 +42,23 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
                     "detach":{"type":"boolean",
                       "description":"persist terminal and log"}},
                     "required":["command"]})json"),
-               [&supervisor](const json& a, const ToolContext& context) {
-                 return ToolRunApprovedShell(
-                     supervisor, JsonValue(a, "command", ""), context,
-                     JsonValue(a, "detach", false),
-                     JsonValue(a, "shell", "bash"), JsonValue(a, "tty", false),
-                     JsonValue(a, "yield_ms", kDefaultYieldMs),
-                     JsonValue(a, "max_output_chars", int64_t{0}),
-                     JsonValue(a, "sandbox", true));
-               }));
+          [&supervisor](const json& a, const ToolContext& context) {
+            const bool detach = JsonValue(a, "detach", false);
+            return RunShellCommand(
+                       supervisor, context,
+                       {.command = JsonValue(a, "command", ""),
+                        .shell = JsonValue(a, "shell", "bash"),
+                        .background = detach,
+                        .detach = detach,
+                        .tty = JsonValue(a, "tty", false),
+                        .sandbox = JsonValue(a, "sandbox", true),
+                        .yield_ms = JsonValue(a, "yield_ms", kDefaultYieldMs),
+                        .max_output_chars =
+                            JsonValue(a, "max_output_chars", int64_t{0}),
+                        .environment_policy =
+                            ChildEnvironmentPolicy::kApprovedShell})
+                .result;
+          }));
   // The hatch exists only where there is something to escape. Advertising it
   // unconditionally would spend schema tokens on an argument that does nothing,
   // and invite the model to reach for it on a host that never confined

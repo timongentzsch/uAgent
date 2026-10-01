@@ -389,20 +389,26 @@ test.describe("touch interaction", () => {
     );
     expect(await fields.count()).toBeGreaterThan(0);
     for (const field of await fields.all()) {
-      const measured = await field.evaluate((node) => {
-        const style = getComputedStyle(node);
-        const wrapper = node.parentElement;
-        const box = node.getBoundingClientRect();
-        const parent = wrapper.getBoundingClientRect();
-        return {
-          font: parseFloat(style.fontSize),
-          painted:
-            parseFloat(style.fontSize) * new DOMMatrix(style.transform).a,
-          intended: parseFloat(getComputedStyle(wrapper).fontSize),
-          widthError: Math.abs(box.width - parent.width),
-          heightError: Math.abs(box.height - parent.height),
-        };
-      });
+      const measure = () =>
+        field.evaluate((node) => {
+          const style = getComputedStyle(node);
+          const wrapper = node.parentElement;
+          const box = node.getBoundingClientRect();
+          const parent = wrapper.getBoundingClientRect();
+          return {
+            font: parseFloat(style.fontSize),
+            painted:
+              parseFloat(style.fontSize) * new DOMMatrix(style.transform).a,
+            intended: parseFloat(getComputedStyle(wrapper).fontSize),
+            widthError: Math.abs(box.width - parent.width),
+            heightError: Math.abs(box.height - parent.height),
+          };
+        });
+      // A field in a surface that just opened takes its box a frame later.
+      await expect
+        .poll(async () => (await measure()).heightError)
+        .toBeLessThan(1);
+      const measured = await measure();
       expect(measured.font).toBeGreaterThanOrEqual(16);
       expect(measured.painted).toBeCloseTo(measured.intended, 2);
       if (zoom <= 75) expect(measured.painted).toBeLessThan(16);

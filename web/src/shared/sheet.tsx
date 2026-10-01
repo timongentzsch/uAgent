@@ -51,7 +51,12 @@ export function SheetButton({
         aria-haspopup="dialog"
         aria-expanded={open}
         disabled={disabled}
-        onClick={() => setOpen(true)}
+        // Safari does not focus a clicked button, and the sheet returns
+        // focus to whatever had it.
+        onClick={(event) => {
+          event.currentTarget.focus({ preventScroll: true });
+          setOpen(true);
+        }}
       >
         {trigger}
       </Button>

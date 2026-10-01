@@ -2,7 +2,7 @@
 // stopping and continuing, retrying a send that failed, and undoing the
 // files a turn changed.
 import { test, expect } from "./fixtures.js";
-import { access } from "node:fs/promises";
+import { access, realpath } from "node:fs/promises";
 
 // The mock provider answers as model-b.
 test.beforeEach(({ command, session }) =>
@@ -34,7 +34,8 @@ test("always allowing an action remembers it in Settings", async ({
   await send(page, "request approval");
   const card = page.getByRole("region", { name: "Pending decision" });
   await expect(card).toContainText("browser-proof.txt");
-  await expect(card).toContainText(`in ${host.project}`);
+  // The host names the folder by its real path (/private/var on macOS).
+  await expect(card).toContainText(`in ${await realpath(host.project)}`);
   await expect(card.locator(".risk-chip").first()).toBeVisible();
   await expect(
     card.getByRole("button", { name: "Allow for session" }),

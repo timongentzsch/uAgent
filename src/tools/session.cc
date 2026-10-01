@@ -32,9 +32,8 @@ ToolResult MessageSession(const std::string& id, const std::string& text,
     return ToolFailure(ToolErrorCode::kNotFound, "unknown session " + id);
   }
   if (!SharesLink(me, id)) {
-    return ToolFailure(
-        ToolErrorCode::kPermissionDenied,
-        "session " + id + " is not linked with this one");
+    return ToolFailure(ToolErrorCode::kPermissionDenied,
+                       "session " + id + " is not linked with this one");
   }
   if (text.empty()) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,

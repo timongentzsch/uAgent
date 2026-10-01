@@ -483,14 +483,11 @@ export function useTranscriptHistory(
   }, [
     box,
     column,
-    capture,
     observe,
-    pin,
     reconcile,
     restore,
     resumeAtEnd,
     selectAnchor,
-    setFollow,
     stopFollowing,
   ]);
 
@@ -512,7 +509,6 @@ export function useTranscriptHistory(
 
   return {
     scroller,
-    content,
     attachScroller,
     attachContent,
     preserveWhile,

@@ -8,6 +8,7 @@
 #include <deque>
 #include <filesystem>
 #include <fstream>
+#include <initializer_list>
 #include <iterator>
 #include <memory>
 #include <string>
@@ -229,104 +230,59 @@ json JournalPresentationJson(const PresentationRecord& record) {
 
 json JournalProjection(const Event& event) {
   json data = json::object();
-  auto copy = [&](const char* key) {
-    if (event.data.contains(key)) data[key] = event.data[key];
+  auto copy = [&](std::initializer_list<const char*> keys) {
+    for (const char* key : keys) {
+      if (event.data.contains(key)) data[key] = event.data[key];
+    }
   };
   switch (event.id) {
     case EventId::kSessionReady:
-      copy("model");
-      copy("route");
-      copy("context_window");
-      copy("capabilities");
-      copy("toolset");
-      copy("provenance");
+      copy({"model", "route", "context_window", "capabilities", "toolset",
+            "provenance"});
       if (event.data.contains("base_url") &&
           event.data["base_url"].is_string()) {
         data["host"] = UrlHost(event.data["base_url"].get<std::string>());
       }
       break;
     case EventId::kSessionResumed:
-      copy("model");
-      copy("messages");
+      copy({"model", "messages"});
       break;
     case EventId::kSessionEnded:
-      copy("reason");
-      copy("usage");
-      copy("context_tokens");
+      copy({"reason", "usage", "context_tokens"});
       break;
     case EventId::kTurnStarted:
-      copy("turn");
-      copy("origin");
-      copy("messages");
-      copy("context_tokens");
+      copy({"turn", "origin", "messages", "context_tokens"});
       break;
     case EventId::kTurnStopped:
     case EventId::kTurnCompleted:
-      copy("turn");
-      copy("outcome");
-      copy("steps");
-      copy("tool_calls");
-      copy("duration_ms");
-      copy("ttt_ms");
-      copy("tokens_per_second");
-      copy("generation_ms");
-      copy("generated_tokens");
-      copy("usage");
-      copy("session_usage");
-      copy("messages");
-      copy("context_tokens");
+      copy({"turn", "outcome", "steps", "tool_calls", "duration_ms", "ttt_ms",
+            "tokens_per_second", "generation_ms", "generated_tokens", "usage",
+            "session_usage", "messages", "context_tokens"});
       break;
     case EventId::kToolCall:
-      copy("turn");
-      copy("step");
-      copy("occurrence_id");
-      copy("name");
-      copy("arguments_digest");
-      copy("issue_code");
-      copy("issue_field");
+      copy({"turn", "step", "occurrence_id", "name", "arguments_digest",
+            "issue_code", "issue_field"});
       break;
     case EventId::kToolResult:
-      copy("turn");
-      copy("step");
-      copy("occurrence_id");
-      copy("name");
-      copy("status");
-      copy("completion_status");
+      copy({"turn", "step", "occurrence_id", "name", "status",
+            "completion_status"});
       // Which failure, not just that one happened: a journal that cannot name
       // the category cannot tell the next iteration what to fix.
-      copy("error_code");
-      copy("issue_code");
-      copy("issue_field");
-      copy("activity_operation");
-      copy("no_change");
-      copy("activity_terminal");
-      copy("duration_ms");
-      copy("result_chars");
-      copy("artifact_path");
-      copy("artifact_bytes");
+      copy({"error_code", "issue_code", "issue_field", "activity_operation",
+            "no_change", "activity_terminal", "duration_ms", "result_chars",
+            "artifact_path", "artifact_bytes"});
       break;
     case EventId::kActivityCompleted:
-      copy("id");
-      copy("kind");
-      copy("command");
-      copy("status");
-      copy("output_chars");
+      copy({"id", "kind", "command", "status", "output_chars"});
       break;
     case EventId::kCapabilityChanged:
-      copy("feature");
-      copy("from");
-      copy("to");
-      copy("reason");
+      copy({"feature", "from", "to", "reason"});
       break;
     case EventId::kConfigChanged:
-      copy("permissions");
-      copy("changed");
-      copy("deferred");
-      copy("source");
+      copy({"permissions", "changed", "deferred", "source"});
       break;
     case EventId::kPromptChanged:
-      copy("scope");
-      copy("revision");
+      copy({"scope", "revision"});
       break;
     default:
       break;

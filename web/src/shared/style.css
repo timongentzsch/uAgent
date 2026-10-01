@@ -823,24 +823,27 @@ dialog.sidebar:not([open]) {
 .board-count {
   font-variant-numeric: tabular-nums;
 }
-.board-row {
-  width: 100%;
+/* A list entry (see ListRow): its title over a muted line. */
+.list-row {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
   gap: var(--space-1);
-  text-align: left;
   min-width: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+}
+.list-row small {
+  color: var(--muted);
+}
+.board-row {
+  width: 100%;
 }
 .board-row > span,
 .board-row small {
-  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.board-row small {
-  color: var(--muted);
 }
 /* In its phone sheet the board is the sheet's content, not a column. */
 .side-sheet .board {
@@ -868,24 +871,16 @@ dialog.sidebar:not([open]) {
 }
 .session {
   flex: 1;
-  min-width: 0;
-  text-align: left;
-  border: 0;
-  background: none;
   padding: var(--space-3) var(--space-4);
 }
 .session > span {
-  display: block;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   font-size: var(--font-small);
 }
 .session small {
-  display: block;
   font-size: var(--font-micro);
-  color: var(--muted);
-  margin-top: var(--space-1);
   /* Single line, always: activity labels stream in while a turn runs
      and a wrap would change the row height (sidebar ticking). The
      time keeps its title tooltip; overflow ellipsizes like the title. */

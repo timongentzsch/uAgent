@@ -29,13 +29,7 @@
   width: 100%;
 }
 .library-row {
-  display: flex;
-  flex-direction: column;
-  text-align: left;
   width: 100%;
-  gap: var(--space-1);
-  border: 0;
-  background: none;
   padding: var(--space-3) var(--gap);
   overflow-wrap: anywhere;
 }
@@ -66,10 +60,6 @@
 }
 .run-history h2 {
   font-size: 1em;
-}
-.library-row small,
-.run-row small {
-  color: var(--muted);
 }
 .library-row[aria-current] {
   background: var(--raised);
@@ -157,14 +147,8 @@
 }
 .run-row > button:first-child {
   flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
   gap: var(--space-2);
   padding: var(--space-4) var(--space-2);
-  text-align: left;
-  background: none;
-  border: 0;
 }
 @media (max-width: 900px) {
   .editor-actions > small {

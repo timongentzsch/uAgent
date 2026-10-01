@@ -51,7 +51,6 @@ export default function Board({
           {items.slice(0, limit).map((item) => (
             <ListRow
               key={item.id}
-              variant="quiet"
               class="board-row"
               onClick={() => choose(item.id)}
               title={<SessionName item={item} />}

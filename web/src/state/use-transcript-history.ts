@@ -57,34 +57,47 @@ function rowFor(node: HTMLElement): HTMLElement | null {
   return node.closest<HTMLElement>("[data-message-id]");
 }
 
-function visibleAnchor(box: HTMLElement, column: HTMLElement): Anchor | null {
+const isRow = (node: Element | null | undefined): node is HTMLElement =>
+  node instanceof HTMLElement && !!node.dataset.messageId;
+
+// The first row showing in the box. Rows stack in order, so the search starts
+// at `from`, the row picked last, and steps to the first row that ends below
+// the top edge; without `from` it scans from the first row.
+function visibleAnchor(
+  box: HTMLElement,
+  column: HTMLElement,
+  from?: Element | null,
+): Anchor | null {
   const top = box.getBoundingClientRect().top + box.clientTop;
   const bottom = top + box.clientHeight;
-  for (const child of column.children) {
-    if (!(child instanceof HTMLElement) || !child.dataset.messageId) continue;
-    const rect = child.getBoundingClientRect();
-    if (rect.bottom <= top + 1 || rect.top >= bottom) continue;
-    let node = child;
-    for (const inner of child.querySelectorAll<HTMLElement>(
-      "[data-anchor-id]",
-    )) {
-      const area = inner.getBoundingClientRect();
-      if (area.bottom > top + 1 && area.top < bottom) {
-        node = inner;
-        break;
-      }
+  const above = (row: Element) => row.getBoundingClientRect().bottom <= top + 1;
+  let child = from?.parentElement === column ? from : column.firstElementChild;
+  while (child && (!isRow(child) || above(child)))
+    child = child.nextElementSibling;
+  for (
+    let prior = child?.previousElementSibling;
+    prior && !(isRow(prior) && above(prior));
+    prior = prior.previousElementSibling
+  )
+    if (isRow(prior)) child = prior;
+  if (!isRow(child) || child.getBoundingClientRect().top >= bottom) return null;
+  let node = child;
+  for (const inner of child.querySelectorAll<HTMLElement>("[data-anchor-id]")) {
+    const area = inner.getBoundingClientRect();
+    if (area.bottom > top + 1 && area.top < bottom) {
+      node = inner;
+      break;
     }
-    const nodeRect = node.getBoundingClientRect();
-    return {
-      node,
-      message: child.dataset.messageId,
-      inner: node === child ? undefined : node.dataset.anchorId,
-      contentY: contentY(node, box),
-      height: nodeRect.height,
-      within: Math.max(0, top - nodeRect.top),
-    };
   }
-  return null;
+  const nodeRect = node.getBoundingClientRect();
+  return {
+    node,
+    message: child.dataset.messageId!,
+    inner: node === child ? undefined : node.dataset.anchorId,
+    contentY: contentY(node, box),
+    height: nodeRect.height,
+    within: Math.max(0, top - nodeRect.top),
+  };
 }
 
 function findAnchor(
@@ -173,12 +186,15 @@ export function useTranscriptHistory(
     });
   }, []);
 
+  // True when the pick moved to another row.
   const selectAnchor = useCallback(() => {
     const element = scroller.current;
     const children = content.current;
-    if (!element || !children) return;
-    anchor.current = visibleAnchor(element, children);
+    if (!element || !children) return false;
+    const from = anchor.current && rowFor(anchor.current.node);
+    anchor.current = visibleAnchor(element, children, from);
     capture();
+    return (anchor.current && rowFor(anchor.current.node)) !== from;
   }, [capture]);
 
   const setFollow = useCallback((value: boolean) => {
@@ -438,8 +454,9 @@ export function useTranscriptHistory(
           // Following again, or a session switch awaiting its restore, since
           // the scroll: this pick would describe a state that is gone.
           if (following.current || pending.current) return;
-          selectAnchor();
-          observe();
+          // The rows are watched as they change; a new anchor row adds its
+          // inner anchors.
+          if (selectAnchor()) observe();
         });
       }
       lastTop.current = box.scrollTop;

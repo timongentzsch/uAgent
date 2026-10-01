@@ -82,7 +82,6 @@ export default function Settings({
   logout,
   instructions,
   tools,
-  usage,
   initialSection,
 }: {
   theme: string;
@@ -109,9 +108,8 @@ export default function Settings({
   session?: Session;
   logout: () => Promise<void>;
   instructions: () => void;
-  // The open conversation's tools and usage, in their own sheets.
+  // The open conversation's tools, in their own sheet.
   tools: () => void;
-  usage: () => void;
   initialSection?: string;
 }) {
   // Null until a section is picked: a phone shows the section list first,
@@ -332,20 +330,6 @@ export default function Settings({
           }
           disabled={!selected}
           onClick={tools}
-        />
-      </Group>
-    ),
-    usage: (
-      <Group>
-        <Row
-          label="This conversation's usage"
-          detail={
-            selected
-              ? "Tokens, cost and time spent so far."
-              : "Open a conversation to see its usage."
-          }
-          disabled={!selected}
-          onClick={usage}
         />
       </Group>
     ),

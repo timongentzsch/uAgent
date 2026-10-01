@@ -307,7 +307,6 @@ export default function Modals({
             session={session}
             instructions={() => setModal({ type: "instructions" })}
             tools={() => setModal({ type: "tools", session_id: selected })}
-            usage={() => setModal({ type: "statistics", session_id: selected })}
           />
         </Modal>
       )}

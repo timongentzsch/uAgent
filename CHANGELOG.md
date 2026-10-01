@@ -72,7 +72,7 @@
   waits on you, works or failed carries an icon beside its words. The
   coordinator's help is a one-line subtitle. Settings group as General; Agent
   (Instructions, Tools, MCP servers, Permissions & allowed actions); Models;
-  Host (Devices, Usage); Advanced.
+  Host (Devices); Advanced.
 - Web: an approval is a card: the command or diff, the folder and its risks,
   with **Deny**, **Allow for session** and **Allow once** in one row; **More
   options** holds the **Always allow this exact action here** box and

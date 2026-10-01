@@ -1,5 +1,4 @@
 import {
-  ChartColumn,
   FileText,
   Hammer,
   Plug,
@@ -19,7 +18,6 @@ export const SECTIONS = [
   ["permissions", "Permissions & allowed actions", ShieldCheck],
   ["models", "Models", Sparkles],
   ["devices", "Devices", Smartphone],
-  ["usage", "Usage", ChartColumn],
   ["advanced", "Advanced", Wrench],
 ] as const;
 export type Section = (typeof SECTIONS)[number][0];
@@ -29,7 +27,7 @@ const NAV: [string | undefined, Section[]][] = [
   [undefined, ["general"]],
   ["Agent", ["agent", "tools", "mcp", "permissions"]],
   [undefined, ["models"]],
-  ["Host", ["devices", "usage"]],
+  ["Host", ["devices"]],
   [undefined, ["advanced"]],
 ];
 

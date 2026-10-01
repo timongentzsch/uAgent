@@ -311,7 +311,7 @@ focuses its decision.
   agents keep their runtime model. Process children show statistics from their
   latest saved checkpoint and label them as such.
 - Settings group their sections as General; Agent (Instructions, Tools, MCP
-  servers, Permissions & allowed actions); Models; Host (Devices, Usage); and
+  servers, Permissions & allowed actions); Models; Host (Devices); and
   Advanced. They contain this device's display settings and every registered
   setting. Each row shows its current value, the default included, and
   **Reset** while the edited scope changes it; saving the inherited value

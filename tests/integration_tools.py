@@ -87,6 +87,48 @@ def test_read_path_puts_media_in_context(root, home, *, binary):
         assert_true(not blobs, blobs)
 
 
+def test_a_loaded_skill_survives_compaction(root, home, *, binary):
+    """The summary replaces the turns, not the procedure being followed."""
+    workspace = root / "skill-compact-workspace"
+    skill = workspace / ".uagent" / "skills" / "demo"
+    skill.mkdir(parents=True)
+    (skill / "SKILL.md").write_text(
+        "---\nname: demo\ndescription: demo-description\n---\n\nkept-body-sentinel\n",
+        encoding="utf-8",
+    )
+
+    def summarize(_, body):
+        assert_true("tools" not in body, body)
+        return event({"content": "the user is following the demo skill"})
+
+    def after(_, body):
+        serialized = json.dumps(body["messages"])
+        assert_true("model-generated context summary" in serialized, serialized)
+        assert_true("long-answer" not in serialized, serialized)
+        kept = serialized.count("kept-body-sentinel")
+        return event({"content": "skill-kept" if kept == 1 else f"skill-lost-{kept}"})
+
+    with Server(
+        [
+            tool_call("skill", {"query": "demo"}),
+            tool_call("skill", {"query": "demo"}),
+            event({"content": "long-answer " * 400}),
+            summarize,
+            after,
+        ]
+    ) as server:
+        result = run_dialog(
+            workspace,
+            base_env(home, server.url),
+            "open the demo skill\n/compact\ncontinue\n/q\n",
+            timeout=30,
+            binary=binary,
+        )
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true("skill-kept" in result.stdout, result.stdout)
+        assert_true(len(server.requests) == 5, len(server.requests))
+
+
 def test_scratch_attaches_the_image_its_script_wrote(root, home, *, binary):
     """One round renders and shows: no read_path call in between."""
     workspace = root / "render-workspace"

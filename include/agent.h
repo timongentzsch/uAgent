@@ -314,6 +314,9 @@ class Agent {
   std::string PrepareRequestMessages(const json& source, json& projected,
                                      bool analyze, json* deliveries = nullptr);
   json CompactionMessages() const;
+  // Skill instructions this conversation loaded, newest first within a
+  // bound: a summary cannot stand in for a procedure being followed.
+  json CompactionSkillMessages() const;
   // Retained recent user instructions for the post-compaction context.
   // Optionally fills retained_ids with the source display id per message
   // (same order), so the re-push can keep its identity instead of minting

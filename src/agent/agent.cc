@@ -580,6 +580,47 @@ json Agent::CompactionMessages() const {
   return messages;
 }
 
+json Agent::CompactionSkillMessages() const {
+  size_t remaining = size_t{32} * 1024;
+  if (api_.ctx_window > 0) {
+    remaining = std::min(
+        remaining,
+        std::max(size_t{4} * 1024, static_cast<size_t>(api_.ctx_window) / 4));
+  }
+  std::vector<const std::string*> newest_first;
+  for (size_t index = conversation_.Size(); index > BaselineSize(); --index) {
+    const MessageKind kind = conversation_.KindAt(index - 1);
+    const std::string* content =
+        JsonStringRef(conversation_.At(index - 1), "content");
+    // What `$skill` pushed, and what the skill tool returned for a body (a
+    // catalogue listing does not open with the skill's name).
+    if (!content || !((kind == MessageKind::kInternal &&
+                       content->starts_with("[explicit skill instructions")) ||
+                      (kind == MessageKind::kToolResult &&
+                       content->starts_with("[skill ")))) {
+      continue;
+    }
+    // A skill opened twice is kept once; one that no longer fits is left out
+    // whole rather than cut mid-procedure.
+    if (content->size() > remaining ||
+        std::ranges::any_of(newest_first, [&](const std::string* kept) {
+          return *kept == *content;
+        })) {
+      continue;
+    }
+    remaining -= content->size();
+    newest_first.push_back(content);
+  }
+  json retained = json::array();
+  for (auto it = newest_first.rbegin(); it != newest_first.rend(); ++it) {
+    retained.push_back(HarnessMessage(
+        (*it)->starts_with("[skill ")
+            ? "[skill instructions kept across compaction]\n" + **it
+            : **it));
+  }
+  return retained;
+}
+
 json Agent::CompactionUserMessages(std::vector<uint64_t>* retained_ids) const {
   // A summary is lossy by definition. Keep recent real user instructions as
   // an independent source of truth, while bounding them to a small fraction
@@ -646,6 +687,7 @@ bool Agent::Compact(bool automatic, Usage* turn_usage) {
   json compact_messages = CompactionMessages();
   std::vector<uint64_t> retained_ids;
   json retained_users = CompactionUserMessages(&retained_ids);
+  json retained_skills = CompactionSkillMessages();
   size_t projected_bytes = JsonEstimatedBytes(compact_messages);
   ChatResult r = Chat("compact", -1, json::array(), &compact_messages);
   Usage compact_usage = AccountModelUsage(r.usage);
@@ -659,6 +701,7 @@ bool Agent::Compact(bool automatic, Usage* turn_usage) {
            r.content}};
   json replacement = BaselineMessages();
   replacement.push_back(runtime_context);
+  for (const auto& skill : retained_skills) replacement.push_back(skill);
   for (const auto& user : retained_users) replacement.push_back(user);
   replacement.push_back(summary);
   const size_t replacement_bytes = JsonEstimatedBytes(replacement);
@@ -688,6 +731,9 @@ bool Agent::Compact(bool automatic, Usage* turn_usage) {
                            BaselineSize(), turn_id_, kSessionArchiveBytes);
   conversation_.ResetHistory(BaselineMessages(), BaselineKinds());
   conversation_.Push(std::move(runtime_context), MessageKind::kRuntimeContext);
+  for (json& skill : retained_skills) {
+    conversation_.Push(std::move(skill), MessageKind::kInternal);
+  }
   size_t retained_count = retained_users.size();
   for (size_t i = 0; i < retained_users.size(); ++i) {
     // Keep the source display id so the archived original and this re-push

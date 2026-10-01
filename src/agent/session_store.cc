@@ -378,10 +378,8 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
       const FileStamp stamp = SnapshotFile(item.path);
       auto cached = entries_.find(item.path);
       if (cached != entries_.end() && cached->second.stamp == stamp) {
-        if (listed(cached->second.info)) {
-          out.push_back(cached->second.info);
-          next.insert(entries_.extract(cached));
-        }
+        if (listed(cached->second.info)) out.push_back(cached->second.info);
+        next.insert(entries_.extract(cached));
         continue;
       }
       item.mtime = entry.last_write_time(ec);
@@ -406,13 +404,11 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
           item.error = "unsupported session format";
         }
       }
-      if (listed(item)) {
-        if (stamp.size >= 0 && item.error.empty() &&
-            SnapshotFile(item.path) == stamp) {
-          next.emplace(item.path, Entry{stamp, item});
-        }
-        out.push_back(std::move(item));
+      if (stamp.size >= 0 && item.error.empty() &&
+          SnapshotFile(item.path) == stamp) {
+        next.emplace(item.path, Entry{stamp, item});
       }
+      if (listed(item)) out.push_back(std::move(item));
     }
   }
   entries_ = std::move(next);

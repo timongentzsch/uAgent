@@ -25,11 +25,9 @@ enum class MailDelivery { kWake, kStep, kPassive, kInterrupt };
 
 // Message types. The type, not the text, says what a message is.
 inline constexpr const char* kMailTaskCompleted = "task.completed";
-inline constexpr const char* kMailTaskFailed = "task.failed";
 inline constexpr const char* kMailTaskProgress = "task.progress";
 inline constexpr const char* kMailAsk = "ask";
 inline constexpr const char* kMailSteer = "steer";
-inline constexpr const char* kMailCancel = "cancel";
 inline constexpr const char* kMailNote = "note";
 
 struct Mail {

@@ -715,7 +715,7 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
     res.retryable = res.retryable || RetryableHttpStatus(res.http_status);
     return res;
   }
-  if (!CollectToolCalls(ctx.calls, res)) return res;
+  CollectToolCalls(ctx.calls, res);
   return res;
 }
 

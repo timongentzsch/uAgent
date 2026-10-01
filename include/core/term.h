@@ -77,12 +77,6 @@ inline const char* ItalOff() { return Attribute("\033[23m"); }
 inline const char* FgDfl() { return Sgr("\033[39m"); }  // default foreground
 // Cursor control, not colour, so no gate: only a terminal's own paths write it.
 inline const char* ClearScreen() { return "\033[H\033[2J"; }
-inline void TerminalRestore() {
-  if (!g_tty) return;
-  fputs(kTerminalRestore, stdout);
-  fputs(kTerminalModeReset, stdout);
-  fflush(stdout);
-}
 inline void TerminalClearToEnd() {
   if (!g_tty) return;
   fputs("\r\033[K", stdout);

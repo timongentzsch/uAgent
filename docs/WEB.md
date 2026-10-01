@@ -272,13 +272,22 @@ focuses its decision.
   to it and Esc stops it; **Queue next** (Alt+Enter) holds the message until
   the turn ends and then runs it as its own turn. The permission control turns
   red in YOLO mode.
-- An approval shows what it would do (the command, or the change as a diff),
-  the folder and its risks, with **Allow once**, **Allow for session** and
-  **Deny**. **Always allow this exact action here** makes Allow once a rule
-  for the repository, listed under *Allowed actions* in Settings → Permissions;
-  **+ guidance** answers in words instead. Numbered choices are cards.
-- A turn that stopped short (Stop, an error, a step or budget limit) ends with
-  **Stopped · Continue**, which sends `continue`.
+- The composer is one shape in every turn state. Its action row has fixed
+  places: Attach, the model (the only one that stretches), Permissions, and
+  one primary button, which is Send, or Stop while a turn runs and the draft
+  is empty. The status line above it is one line: the phase on the left, and
+  on the right **Queue next** (while a turn runs and there is a draft) or
+  **Continue** (after a stop).
+- An approval opens above the input, which stays in place, read-only, until
+  it is answered; Permissions stays usable. The card shows what it would do
+  (the command, or the change as a diff, scrolling past about six lines), the
+  folder and its risks, with **Deny**, **Allow for session** and **Allow
+  once** in one row. Under **More options**, **Always allow this exact action
+  here** makes Allow once a rule for the repository, listed under *Allowed
+  actions* in Settings → Permissions, and **+ guidance** answers in words
+  instead. Numbered choices are cards.
+- After a turn stopped short (Stop, an error, a step or budget limit) the
+  status line reads **Stopped** with **Continue**, which sends `continue`.
 - A turn that changed files ends with its receipt (files, lines, cost, time).
   It opens the changed files, each with **Undo**, and **Undo all**; a file
   changed since is kept and says why. Shell commands' changes are not

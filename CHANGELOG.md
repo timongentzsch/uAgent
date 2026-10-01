@@ -41,9 +41,15 @@
   through conversations.
 - Web: a pairing link (`#pair=<code>`) pairs on opening, and a refused code
   says it expired.
-- Web: **Queue next** (Alt+Enter) beside the composer while a turn runs holds
-  the message until the turn ends; its row reads "Queued for after this turn".
-- Web: a turn that stopped short ends with **Stopped · Continue**.
+- Web: **Queue next** (Alt+Enter) on the status line above the composer, once
+  a running turn has a draft, holds the message until the turn ends; its row
+  reads "Queued for after this turn".
+- Web: after a turn stopped short the status line reads **Stopped**, with
+  **Continue** beside it.
+- Web: the composer keeps one shape while idle, running, stopped and waiting
+  on a decision. Its buttons hold their places: the primary is Send, or Stop
+  while a turn runs with nothing to send. A decision opens above the input,
+  which waits read-only until it is answered.
 - Web: a turn that changed files ends with its receipt (files, lines, cost,
   time), which opens the files with **Undo** each and **Undo all**.
 
@@ -68,9 +74,10 @@
   (Instructions, Tools, MCP servers, Permissions & allowed actions); Models;
   Host (Devices, Usage); Advanced.
 - Web: an approval is a card: the command or diff, the folder and its risks,
-  with **Allow once**, **Allow for session**, **Deny**, an **Always allow this
-  exact action here** box and **+ guidance**. Numbered choices are cards, not
-  a dropdown. Settings names the repository's rules *Allowed actions*.
+  with **Deny**, **Allow for session** and **Allow once** in one row; **More
+  options** holds the **Always allow this exact action here** box and
+  **+ guidance**. A long preview scrolls inside about six lines. Numbered
+  choices are cards, not a dropdown. Settings names the repository's rules *Allowed actions*.
 - Web: a send or decision reply that fails stays where it was made, with
   **Retry**, instead of the page's error banner; a refused message no longer
   also returns to the composer. Reconnecting shows as a pill, the running

@@ -94,8 +94,8 @@ std::string AddReasoningDetails(const json& details, ChatResult& result) {
            key == "signature") &&
           value.is_string() && target->contains(key) &&
           (*target)[key].is_string()) {
-        (*target)[key] =
-            (*target)[key].get<std::string>() + value.get<std::string>();
+        (*target)[key].get_ref<std::string&>() +=
+            value.get_ref<const std::string&>();
       } else if (!target->contains(key) || (*target)[key].is_null()) {
         (*target)[key] = value;
       }
@@ -338,21 +338,20 @@ int64_t JsonArraySize(const json& value, const char* key) {
 
 int ResponsesSlot(const json& value, ResponsesStreamState& state,
                   const std::map<int, ToolCall>& calls) {
+  const std::string* item_id = JsonStringRef(value, "item_id");
+  if (const json* item = JsonObject(value, "item"); !item_id && item) {
+    item_id = JsonStringRef(*item, "id");
+  }
+  const bool named = item_id && !item_id->empty();
   int64_t output_index = JsonValue(value, "output_index", int64_t{-1});
   if (output_index >= 0 &&
       output_index <= static_cast<int64_t>(std::numeric_limits<int>::max())) {
     int slot = static_cast<int>(output_index);
-    std::string item_id = JsonValue(
-        value, "item_id",
-        JsonValue(JsonValue(value, "item", json::object()), "id", ""));
-    if (!item_id.empty()) state.item_slots[item_id] = slot;
+    if (named) state.item_slots[*item_id] = slot;
     return slot;
   }
-  std::string item_id =
-      JsonValue(value, "item_id",
-                JsonValue(JsonValue(value, "item", json::object()), "id", ""));
-  if (!item_id.empty()) {
-    auto found = state.item_slots.find(item_id);
+  if (named) {
+    auto found = state.item_slots.find(*item_id);
     if (found != state.item_slots.end()) return found->second;
   }
   return calls.empty() ? 0 : calls.rbegin()->first + 1;
@@ -670,7 +669,11 @@ WireStreamDelta DecodeAnthropicEvent(const json& value, ChatResult& result,
     const std::string delta_type = JsonValue(*event_delta, "type", "");
     if (delta_type == "text_delta") {
       delta.content = JsonValue(*event_delta, "text", "");
-      block.block["text"] = JsonValue(block.block, "text", "") + delta.content;
+      if (json& text = block.block["text"]; text.is_string()) {
+        text.get_ref<std::string&>() += delta.content;
+      } else {
+        text = delta.content;
+      }
     } else if (delta_type == "input_json_delta") {
       delta.tool_arguments = true;
       std::string fragment = JsonValue(*event_delta, "partial_json", "");
@@ -680,11 +683,18 @@ WireStreamDelta DecodeAnthropicEvent(const json& value, ChatResult& result,
       AddReasoningDelta(delta, "thinking/" + std::to_string(index), "reasoning",
                         JsonValue(*event_delta, "thinking", ""));
       result.reasoning_field = true;
-      block.block["thinking"] =
-          JsonValue(block.block, "thinking", "") + delta.reasoning;
+      if (json& thinking = block.block["thinking"]; thinking.is_string()) {
+        thinking.get_ref<std::string&>() += delta.reasoning;
+      } else {
+        thinking = delta.reasoning;
+      }
     } else if (delta_type == "signature_delta") {
-      block.block["signature"] = JsonValue(block.block, "signature", "") +
-                                 JsonValue(*event_delta, "signature", "");
+      std::string fragment = JsonValue(*event_delta, "signature", "");
+      if (json& signature = block.block["signature"]; signature.is_string()) {
+        signature.get_ref<std::string&>() += fragment;
+      } else {
+        signature = std::move(fragment);
+      }
     } else if (delta_type == "citations_delta" &&
                event_delta->contains("citation")) {
       const json& citation = (*event_delta)["citation"];

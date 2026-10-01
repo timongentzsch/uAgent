@@ -15,6 +15,7 @@ import { Input } from "./form-controls.tsx";
 import { capturePointer, TAP_SLOP_PX, type ZoomView } from "./zoom.ts";
 import { ZoomSurface } from "./zoom-surface.tsx";
 import { maxUploadBytes } from "./limits.ts";
+import { useAction } from "./use-action.ts";
 import "./annotate.css";
 
 type Point = [x: number, y: number, pressure: number];
@@ -159,9 +160,8 @@ export default function Annotator({
   const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
   // The zoom over that fit (see ZoomSurface).
   const [view, setView] = useState<ZoomView>({ scale: 1, x: 0, y: 0 });
-  const [busy, setBusy] = useState(false);
   // A failed export keeps the markup on screen, unlike a failed load.
-  const [saveError, setSaveError] = useState<unknown>(null);
+  const save = useAction();
   const live = useRef<Stroke | null>(null);
   const press = useRef<{ id: number; x: number; y: number } | null>(null);
   // The keyboard's crosshair, in image pixels: shown while the canvas has
@@ -262,12 +262,7 @@ export default function Annotator({
   const down = (event: PointerEvent) => {
     setAiming(false);
     // A second finger (palm, pinch) abandons the stroke in progress.
-    if (!event.isPrimary) {
-      live.current = null;
-      press.current = null;
-      draw();
-      return;
-    }
+    if (!event.isPrimary) return lift();
     if (event.pointerType === "mouse" && event.button !== 0) return;
     capturePointer(canvas.current!, event.pointerId);
     press.current = { id: event.pointerId, x: event.clientX, y: event.clientY };
@@ -357,11 +352,9 @@ export default function Annotator({
       ),
     );
 
-  async function done() {
-    if (!image) return;
-    setBusy(true);
-    setSaveError(null);
-    try {
+  const done = () =>
+    image &&
+    save.run(async () => {
       const output = document.createElement("canvas");
       output.width = image.width;
       output.height = image.height;
@@ -381,12 +374,7 @@ export default function Annotator({
       await attach(
         new File([blob], `${base}-annotated.${extension}`, { type: blob.type }),
       );
-    } catch (failure) {
-      setSaveError(failure);
-    } finally {
-      setBusy(false);
-    }
-  }
+    });
 
   const pin = editing === null ? null : items[editing];
   // Where the image sits in the stage: centred at the fit, then zoomed.
@@ -405,7 +393,7 @@ export default function Annotator({
             </Button>
             <Button
               variant="primary"
-              busy={busy}
+              busy={save.busy}
               disabled={!image || !items.length}
               onClick={done}
             >
@@ -499,7 +487,7 @@ export default function Annotator({
                 </div>
               )}
             </div>
-            {saveError && <LoadError error={saveError} />}
+            {save.error && <LoadError error={save.error} />}
             <div class="annotator-tools">
               <div class="segmented" aria-label="Annotation tool">
                 <Button

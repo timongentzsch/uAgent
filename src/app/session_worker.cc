@@ -413,11 +413,9 @@ class WorkerChannel final : public ApplicationChannel {
     return !paused_.empty();
   }
 
-  bool HoldMail() override { return HeldBySpend(); }
-
   // At today's spend limit a coordinator keeps its mail pending and says so
   // in its state. Checked outside the lock: it reads the threads' files.
-  bool HeldBySpend() {
+  bool HoldMail() override {
     const std::string pause =
         coordinator_ ? CoordinatorPause(CanonicalCwd()) : "";
     std::lock_guard lock(mutex_);

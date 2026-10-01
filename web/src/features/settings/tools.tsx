@@ -1,5 +1,5 @@
 import "./tools.css";
-import { useEffect, useMemo, useState } from "preact/hooks";
+import { useMemo, useState } from "preact/hooks";
 import type {
   Session,
   ToolCategories,
@@ -15,6 +15,8 @@ import {
   Select,
 } from "../../shared/ui.tsx";
 import { command } from "../../state/api.ts";
+import { useAction } from "../../shared/use-action.ts";
+import { useResource } from "../../shared/use-resource.ts";
 
 const labels: Record<string, string> = {
   workspace: "Workspace",
@@ -70,16 +72,35 @@ export default function Tools({
   busy: boolean;
   changed: () => void;
 }) {
-  const [catalogue, setCatalogue] = useState<ToolCatalogue | null>(null);
   const [categories, setCategories] = useState<ToolCategories>({
     categories: [],
     assignments: {},
   });
+  const {
+    value: catalogue,
+    error: toolError,
+    setValue: setCatalogue,
+    setError,
+  } = useResource<ToolCatalogue>(async () => {
+    const [response, categoryResponse] = await Promise.all([
+      command("tools", session, { operation: "catalog" }),
+      command("tool_categories", null, { action: "list" }),
+    ]);
+    if (response.pending || categoryResponse.pending)
+      throw new Error("Tool settings are still loading. Try again shortly.");
+    // The categories are the host's, the same for every session.
+    setCategories(categoryResponse.result);
+    return response.result;
+  }, [session.id, session.generation]);
   const [query, setQuery] = useState("");
   const [saving, setSaving] = useState("");
   const [categoryName, setCategoryName] = useState("");
-  const [categorySaving, setCategorySaving] = useState(false);
-  const [error, setError] = useState<unknown>(null);
+  const {
+    run: saveCategories,
+    busy: categorySaving,
+    error: categoryError,
+  } = useAction();
+  const error = toolError ?? categoryError;
 
   const update = async (fields: {
     operation: string;
@@ -129,49 +150,17 @@ export default function Tools({
     }
   };
 
-  useEffect(() => {
-    let active = true;
-    Promise.all([
-      command("tools", session, { operation: "catalog" }),
-      command("tool_categories", null, { action: "list" }),
-    ])
-      .then(([response, categoryResponse]) => {
-        if (!active) return;
-        if (response.pending || categoryResponse.pending)
-          throw new Error(
-            "Tool settings are still loading. Try again shortly.",
-          );
-        setCatalogue(response.result);
-        setCategories(categoryResponse.result);
-      })
-      .catch((failure) => {
-        if (active) setError(failure);
-      });
-    return () => {
-      active = false;
-    };
-  }, [session.id, session.generation]);
-
-  const updateCategories = async (fields: {
+  const updateCategories = (fields: {
     action: string;
     name?: string;
     category_id?: string;
-  }) => {
-    setCategorySaving(true);
-    setError(null);
-    try {
+  }) =>
+    saveCategories(async () => {
       const response = await command("tool_categories", null, fields);
       if (response.pending)
         throw new Error("Tool categories are still saving. Try again shortly.");
       setCategories(response.result);
-      return true;
-    } catch (failure) {
-      setError(failure);
-      return false;
-    } finally {
-      setCategorySaving(false);
-    }
-  };
+    });
 
   const categoryLabel = (id: string) =>
     labels[id] ||
@@ -377,27 +366,29 @@ export default function Tools({
                     {tool.reason && <small class="muted">{tool.reason}</small>}
                   </span>
                 </label>
-                <Select
-                  aria-label={`Category for ${tool.title}`}
-                  value={categories.assignments[tool.name] || ""}
-                  disabled={!online || categorySaving}
-                  onChange={(event) =>
-                    updateCategories({
-                      action: "assign",
-                      name: tool.name,
-                      category_id: event.currentTarget.value,
-                    })
-                  }
-                >
-                  <option value="">
-                    Default · {labels[tool.category] || tool.category}
-                  </option>
-                  {categories.categories.map((item) => (
-                    <option value={item.id} key={item.id}>
-                      {item.name}
+                {categories.categories.length > 0 && (
+                  <Select
+                    aria-label={`Category for ${tool.title}`}
+                    value={categories.assignments[tool.name] || ""}
+                    disabled={!online || categorySaving}
+                    onChange={(event) =>
+                      updateCategories({
+                        action: "assign",
+                        name: tool.name,
+                        category_id: event.currentTarget.value,
+                      })
+                    }
+                  >
+                    <option value="">
+                      Default · {labels[tool.category] || tool.category}
                     </option>
-                  ))}
-                </Select>
+                    {categories.categories.map((item) => (
+                      <option value={item.id} key={item.id}>
+                        {item.name}
+                      </option>
+                    ))}
+                  </Select>
+                )}
               </div>
             ))}
           </section>

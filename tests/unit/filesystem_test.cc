@@ -160,7 +160,8 @@ void TestFileTools() {
       ToolReadFile(ordinary_source.string(), 1, 0).output;
   CHECK(ordinary_read.find("line 300\n") != std::string::npos);
   CHECK(ordinary_read.find("more available") == std::string::npos);
-  ToolResult first_edit = ToolEditFile(file.string(), "two", "three");
+  ToolResult first_edit =
+      ToolEditFile(file.string(), {{"two", "three", false}});
   CHECK(first_edit.output.starts_with("edited "));
   CHECK(first_edit.display.find("Edited " + file.string() + " (+1 -1)") !=
         std::string::npos);
@@ -202,11 +203,11 @@ void TestFileTools() {
   CHECK(binary_result.display.empty());
 
   ToolResult missing_edit =
-      ToolEditFile(file.string(), "missing", "replacement");
+      ToolEditFile(file.string(), {{"missing", "replacement", false}});
   CHECK(!missing_edit.Ok());
   CHECK(missing_edit.error == ToolErrorCode::kNotFound);
   ToolResult anchored_miss =
-      ToolEditFile(file.string(), "three\nmissing", "replacement");
+      ToolEditFile(file.string(), {{"three\nmissing", "replacement", false}});
   CHECK(!anchored_miss.Ok());
   CHECK(anchored_miss.output.find("nearby current line 2: three") !=
         std::string::npos);
@@ -216,44 +217,46 @@ void TestFileTools() {
 
   struct stat before{}, after{};
   CHECK(stat(file.c_str(), &before) == 0);
-  CHECK(ToolEditFile(file.string(), "three", "three")
+  CHECK(ToolEditFile(file.string(), {{"three", "three", false}})
             .output.starts_with("already applied "));
   CHECK(stat(file.c_str(), &after) == 0);
   CHECK(before.st_ino == after.st_ino);
-  CHECK(ToolEditFile(file.string(), "two", "three")
+  CHECK(ToolEditFile(file.string(), {{"two", "three", false}})
             .output.starts_with("already applied "));
 
   fs::path crlf = root / "crlf.txt";
   CHECK(ToolWriteFile(crlf.string(), "one\r\ntwo\r\n")
             .output.starts_with("wrote "));
-  CHECK(ToolEditFile(crlf.string(), "one\ntwo\n", "ONE\ntwo\n")
+  CHECK(ToolEditFile(crlf.string(), {{"one\ntwo\n", "ONE\ntwo\n", false}})
             .output.starts_with("edited "));
   CHECK(contents(crlf) == "ONE\r\ntwo\r\n");
-  CHECK(ToolEditFile(crlf.string(), "two", "two\nthree")
+  CHECK(ToolEditFile(crlf.string(), {{"two", "two\nthree", false}})
             .output.starts_with("edited "));
   CHECK(contents(crlf) == "ONE\r\ntwo\r\nthree\r\n");
-  CHECK(ToolEditFile(file.string(), "one\r\nthree\r\n", "ONE\r\nthree\r\n")
+  CHECK(ToolEditFile(file.string(),
+                     {{"one\r\nthree\r\n", "ONE\r\nthree\r\n", false}})
             .output.starts_with("edited "));
   CHECK(contents(file) == "ONE\nthree\n");
 
   fs::path mixed = root / "mixed.txt";
   CHECK(ToolWriteFile(mixed.string(), "a\r\nb\nc\n")
             .output.starts_with("wrote "));
-  CHECK(
-      ToolEditFile(mixed.string(), "c", "x\ny").output.starts_with("edited "));
+  CHECK(ToolEditFile(mixed.string(), {{"c", "x\ny", false}})
+            .output.starts_with("edited "));
   CHECK(contents(mixed) == "a\r\nb\nx\ny\n");
 
   fs::path literal_crlf = root / "literal-crlf.txt";
   CHECK(ToolWriteFile(literal_crlf.string(), "payload\n")
             .output.starts_with("wrote "));
-  CHECK(ToolEditFile(literal_crlf.string(), "payload", "a\r\nb")
+  CHECK(ToolEditFile(literal_crlf.string(), {{"payload", "a\r\nb", false}})
             .output.starts_with("edited "));
   CHECK(contents(literal_crlf) == "a\r\nb\n");
 
   fs::path bom = root / "bom.txt";
   CHECK(ToolWriteFile(bom.string(), "\xEF\xBB\xBFone\n")
             .output.starts_with("wrote "));
-  CHECK(ToolEditFile(bom.string(), "one", "two").output.starts_with("edited "));
+  CHECK(ToolEditFile(bom.string(), {{"one", "two", false}})
+            .output.starts_with("edited "));
   CHECK(contents(bom) == "\xEF\xBB\xBFtwo\n");
 
   fs::path batch = root / "batch.txt";
@@ -268,7 +271,7 @@ void TestFileTools() {
   CHECK(contents(batch) == "beta one gamma\n");
   CHECK(ToolWriteFile(batch.string(), "same same\n")
             .output.starts_with("wrote "));
-  CHECK(ToolEditFile(batch.string(), "same", "other")
+  CHECK(ToolEditFile(batch.string(), {{"same", "other", false}})
             .output.find("matches 2 times") != std::string::npos);
   CHECK(contents(batch) == "same same\n");
   CHECK(ToolEditFile(batch.string(), {{"same", "changed", true},
@@ -276,7 +279,7 @@ void TestFileTools() {
             .output.find("edit 2 `old` not found") != std::string::npos);
   CHECK(contents(batch) == "same same\n");
   ToolResult repeated =
-      ToolEditFile(batch.string(), "same", "changed", /*replace_all=*/true);
+      ToolEditFile(batch.string(), {{"same", "changed", true}});
   CHECK(repeated.display.find("(+2 -2)") != std::string::npos);
   CHECK(repeated.display.find("2 matches") != std::string::npos);
 
@@ -391,7 +394,7 @@ void TestFileTools() {
   struct stat st{};
   CHECK(stat(private_file.c_str(), &st) == 0);
   CHECK((st.st_mode & 0777) == 0600);
-  CHECK(ToolEditFile(private_file.string(), "secret", "private")
+  CHECK(ToolEditFile(private_file.string(), {{"secret", "private", false}})
             .output.starts_with("edited "));
   CHECK(stat(private_file.c_str(), &st) == 0);
   CHECK((st.st_mode & 0777) == 0600);

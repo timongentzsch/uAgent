@@ -577,11 +577,6 @@ std::optional<ToolResult> ApplyFileEdits(std::string& data,
   return ApplyEdits(data, path, edits, run);
 }
 
-ToolResult ToolEditFile(const std::string& path, const std::string& old_s,
-                        const std::string& new_s, bool replace_all) {
-  return ToolEditFile(path, {{old_s, new_s, replace_all}});
-}
-
 namespace {
 
 bool LikelyTextSample(std::string_view sample) {
@@ -662,12 +657,8 @@ ToolResult ToolDeleteFileWithDisplay(const std::string& path) {
   if (auto invalid = ValidatePathTarget(path, PathTarget::kDeletableFile)) {
     return std::move(*invalid);
   }
-  std::optional<std::string> previous = DiffableContents(path);
-  FileEffect effect{CanonicalAccessPath(path).string(), true, previous, ""};
-  if (!previous) {
-    // Binary/oversized still deletes, just without a diff receipt.
-    previous.emplace();
-  }
+  FileEffect effect{CanonicalAccessPath(path).string(), true,
+                    DiffableContents(path), ""};
   // The path policy above already rejected a missing or non-regular target, so
   // remove() reporting nothing removed means it vanished in between.
   std::error_code ec;
@@ -679,12 +670,13 @@ ToolResult ToolDeleteFileWithDisplay(const std::string& path) {
                        "path does not exist: " + path);
   }
   ToolResult result = ToolSuccess("deleted " + path);
-  result.effect = std::move(effect);
-  if (previous->empty()) {
+  // Binary/oversized still deletes, just without a diff receipt.
+  if (!effect.before || effect.before->empty()) {
     result.display = "Deleted " + DisplayPath(path) + "\n";
   } else {
-    result.display = DeletedFileDiffDisplay(path, *previous);
+    result.display = DeletedFileDiffDisplay(path, *effect.before);
   }
+  result.effect = std::move(effect);
   return result;
 }
 

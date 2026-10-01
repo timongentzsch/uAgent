@@ -76,11 +76,14 @@ std::string ResolveShellExecutable(const std::string& shell) {
   return shell;
 }
 
-int SpawnShellWithFallback(const std::string& shell, std::string& command,
+int SpawnShellWithFallback(const std::string& shell, const std::string& command,
                            const std::vector<std::string>& wrapper,
                            const posix_spawn_file_actions_t& actions,
-                           const posix_spawnattr_t& attributes,
-                           char* const* environment, pid_t& pid) {
+                           PosixSpawnFlags group_flag, char* const* environment,
+                           pid_t& pid) {
+  posix_spawnattr_t attributes;
+  posix_spawnattr_init(&attributes);
+  ConfigureShellSpawn(attributes, group_flag);
   auto spawn = [&](const std::string& executable) {
     std::vector<char*> argv;
     argv.reserve(wrapper.size() + 4);
@@ -89,7 +92,7 @@ int SpawnShellWithFallback(const std::string& shell, std::string& command,
     }
     argv.push_back(const_cast<char*>(executable.c_str()));
     argv.push_back(const_cast<char*>("-c"));
-    argv.push_back(command.data());
+    argv.push_back(const_cast<char*>(command.c_str()));
     argv.push_back(nullptr);
     // The program is the wrapper when there is one; the shell is then just its
     // first argument, and `command` stays unwrapped either way.
@@ -97,19 +100,20 @@ int SpawnShellWithFallback(const std::string& shell, std::string& command,
     return posix_spawnp(&pid, program, &actions, &attributes, argv.data(),
                         environment);
   };
-  if (!wrapper.empty()) return spawn(ResolveShellExecutable(shell));
-  int error = spawn(shell);
+  int error = spawn(wrapper.empty() ? shell : ResolveShellExecutable(shell));
   // `bash` is the documented default, so fall back to the usual absolute
   // paths before giving up on a PATH that does not have it.
-  if (error != 0 && shell == "bash") error = spawn("/bin/bash");
-  if (error != 0 && shell == "bash") error = spawn("/bin/sh");
+  const bool fallback = wrapper.empty() && shell == "bash";
+  if (error != 0 && fallback) error = spawn("/bin/bash");
+  if (error != 0 && fallback) error = spawn("/bin/sh");
+  posix_spawnattr_destroy(&attributes);
   return error;
 }
 
 // Spawn `shell -c command` with stdin at /dev/null, both output streams on the
 // log, default signal dispositions, and its own process group (or session, for
 // a detached terminal). Returns the posix_spawnp errno; `pid` is set on 0.
-int SpawnLoggedShell(const std::string& shell, std::string& command,
+int SpawnLoggedShell(const std::string& shell, const std::string& command,
                      const std::vector<std::string>& wrapper, int log_fd,
                      bool detach, char* const* environment, pid_t& pid) {
   posix_spawn_file_actions_t actions;
@@ -119,22 +123,18 @@ int SpawnLoggedShell(const std::string& shell, std::string& command,
   posix_spawn_file_actions_adddup2(&actions, log_fd, STDOUT_FILENO);
   posix_spawn_file_actions_adddup2(&actions, log_fd, STDERR_FILENO);
   posix_spawn_file_actions_addclose(&actions, log_fd);
-  posix_spawnattr_t attributes;
-  posix_spawnattr_init(&attributes);
   PosixSpawnFlags group_flag = POSIX_SPAWN_SETPGROUP;
 #ifdef POSIX_SPAWN_SETSID
   if (detach) group_flag = POSIX_SPAWN_SETSID;
 #endif
-  ConfigureShellSpawn(attributes, group_flag);
   int error = SpawnShellWithFallback(shell, command, wrapper, actions,
-                                     attributes, environment, pid);
-  posix_spawnattr_destroy(&attributes);
+                                     group_flag, environment, pid);
   posix_spawn_file_actions_destroy(&actions);
   return error;
 }
 
 // master_fd is set only on success; the caller owns it from then on.
-int SpawnPtyShell(const std::string& shell, std::string& command,
+int SpawnPtyShell(const std::string& shell, const std::string& command,
                   const std::vector<std::string>& wrapper,
                   char* const* environment, pid_t& pid, int& master_fd) {
 #if defined(__unix__) || defined(__APPLE__)
@@ -160,16 +160,12 @@ int SpawnPtyShell(const std::string& shell, std::string& command,
   posix_spawn_file_actions_adddup2(&actions, STDIN_FILENO, STDOUT_FILENO);
   posix_spawn_file_actions_adddup2(&actions, STDIN_FILENO, STDERR_FILENO);
   posix_spawn_file_actions_addclose(&actions, master.Get());
-  posix_spawnattr_t attributes;
-  posix_spawnattr_init(&attributes);
   PosixSpawnFlags group_flag = POSIX_SPAWN_SETPGROUP;
 #ifdef POSIX_SPAWN_SETSID
   group_flag = POSIX_SPAWN_SETSID;
 #endif
-  ConfigureShellSpawn(attributes, group_flag);
   int error = SpawnShellWithFallback(shell, command, wrapper, actions,
-                                     attributes, environment, pid);
-  posix_spawnattr_destroy(&attributes);
+                                     group_flag, environment, pid);
   posix_spawn_file_actions_destroy(&actions);
   if (error == 0) master_fd = master.Release();
   return error;
@@ -370,7 +366,6 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   }
   fchmod(pending.Get(), kPrivateFileMode);
   int64_t interaction_cap = ActivityOutputCap(spec.max_output_chars);
-  std::string bounded_cmd = cmd;
   pid_t pid = -1;
   int master_fd = -1;
   int pipe_fds[2] = {-1, -1};
@@ -386,9 +381,9 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   session->tty = tty;
   ChildEnvironment child_environment(spec.environment, spec.environment_policy);
   int spawn_error =
-      tty ? SpawnPtyShell(shell, bounded_cmd, wrapper, child_environment.Data(),
-                          pid, master_fd)
-          : SpawnLoggedShell(shell, bounded_cmd, wrapper, pipe_fds[1],
+      tty ? SpawnPtyShell(shell, cmd, wrapper, child_environment.Data(), pid,
+                          master_fd)
+          : SpawnLoggedShell(shell, cmd, wrapper, pipe_fds[1],
                              /*detach=*/false, child_environment.Data(), pid);
   pipe_write.Reset();
   Fd master(master_fd);

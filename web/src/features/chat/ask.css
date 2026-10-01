@@ -16,7 +16,7 @@
 /* A header runs to 24 characters and there are up to nine steps: each
    keeps to a short tab and shows the rest in its title. */
 .ask-steps button {
-  max-width: 14ch;
+  max-width: 22ch;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

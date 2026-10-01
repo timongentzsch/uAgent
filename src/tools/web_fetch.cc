@@ -280,8 +280,8 @@ Tool WebFetchTool(Api& api) {
         }
         // Non-markup arrives readable; reflowing it would only destroy the
         // indentation that carries meaning in JSON, XML and plain text.
-        std::string text = html ? HtmlToText(page.body) : page.body;
-        if (Trim(text).empty()) {
+        std::string text = html ? HtmlToText(page.body) : std::move(page.body);
+        if (text.find_first_not_of(" \t\r\n") == std::string::npos) {
           return ToolFailure(ToolErrorCode::kUnavailable,
                              "web_fetch found no text at " + TerminalSafe(url));
         }

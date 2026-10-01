@@ -842,18 +842,11 @@ dialog.sidebar:not([open]) {
 .board-row small {
   color: var(--muted);
 }
-/* On a phone the board is a short strip above the chat. */
-@media (max-width: 600px) {
-  .coordinator-layout {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr);
-  }
-  .board {
-    order: -1;
-    max-height: 30vh;
-    border-left: 0;
-    border-bottom: 1px solid var(--line);
-  }
+/* In its phone sheet the board is the sheet's content, not a column. */
+.side-sheet .board {
+  border-left: 0;
+  background: none;
+  padding: 0;
 }
 .folder-label > span {
   overflow: hidden;
@@ -1615,6 +1608,27 @@ dialog[data-layout="sheet"] {
     max-height: none;
     padding-bottom: var(--safe-bottom);
     border-width: 0;
+  }
+}
+/* A side sheet keeps its right edge on a phone too, most of the width, the
+   mirror of the sessions drawer: it holds a list to glance at and leave. */
+@media (max-width: 600px) {
+  dialog[data-layout="sheet"].side-sheet {
+    --dialog-width: min(calc(340rem / 14), calc(var(--content-width) * 0.86));
+    left: calc(
+      var(--viewport-left) + var(--safe-left) + var(--content-width) -
+        var(--dialog-width)
+    );
+    width: var(--dialog-width);
+    border-width: 0 0 0 1px;
+  }
+  dialog[data-layout="sheet"].side-sheet[open][data-leaving] {
+    translate: 100% 0;
+  }
+  @starting-style {
+    dialog[data-layout="sheet"].side-sheet[open] {
+      translate: 100% 0;
+    }
   }
 }
 /* A narrow sheet holds a few actions or one control (SheetButton): it keeps

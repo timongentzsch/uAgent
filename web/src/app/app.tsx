@@ -37,7 +37,7 @@ import {
   preloadDeferred,
   ErrorBoundary,
 } from "../shared/ui.tsx";
-import { Ellipsis, Globe2, Menu, Settings } from "lucide-preact";
+import { Ellipsis, Globe2, ListTree, Menu, Settings } from "lucide-preact";
 import { StatusLed } from "../shared/connection-status.tsx";
 import { ImageViewer, type ViewedImage } from "../shared/attachments.tsx";
 // Prefetch helpers live next to the renderer so marker regexes stay in one
@@ -58,7 +58,8 @@ import Sidebar, {
 import { useShortcuts } from "../shared/shortcuts.ts";
 import { nextIndex } from "../shared/listbox-nav.ts";
 import { focusDecision, followDecisionLink } from "../shared/navigation.ts";
-import { CoordinatorHelp } from "../features/coordinator/board.tsx";
+import Board, { CoordinatorHelp } from "../features/coordinator/board.tsx";
+import { threadsOf, waiting as waitingOn } from "../state/attention.ts";
 import { folderName } from "../shared/folder-label.tsx";
 import {
   applyTheme,
@@ -116,6 +117,10 @@ function App() {
   useDismiss(page !== "chat", () => setPage("chat"));
   const [drawer, setDrawer] = useState(false);
   const compact = useMedia("(max-width: 900px)");
+  // On a phone a coordinator's board slides in from the right on demand
+  // instead of taking the top of its chat.
+  const phone = useMedia("(max-width: 600px)");
+  const [boardOpen, setBoardOpen] = useState(false);
   // The drawer belongs to the compact layout; a wider window drops it.
   useEffect(() => setDrawer(false), [compact]);
   const [modal, setModal] = useState<AppModal | null>(null);
@@ -1045,6 +1050,25 @@ function App() {
                       {browsing && <StatusLed state="running" />}
                     </IconButton>
                   )}
+                  {phone &&
+                    page === "chat" &&
+                    session?.kind === "coordinator" &&
+                    (() => {
+                      const waits = waitingOn(
+                        threadsOf(catalogue.sessions, session.cwd || ""),
+                      ).length;
+                      return (
+                        <IconButton
+                          label={waits ? `Board, ${waits} need you` : "Board"}
+                          aria-haspopup="dialog"
+                          aria-expanded={boardOpen}
+                          onClick={() => setBoardOpen(true)}
+                        >
+                          <ListTree />
+                          {waits > 0 && <StatusLed state="active" />}
+                        </IconButton>
+                      );
+                    })()}
                   {compact && (
                     <div class="conversation-head-actions">
                       <IconButton
@@ -1065,6 +1089,24 @@ function App() {
                       </IconButton>
                     ) : null)}
                 </header>
+                {boardOpen && phone && session?.kind === "coordinator" && (
+                  <Modal
+                    title="Board"
+                    layout="sheet"
+                    className="side-sheet"
+                    lightDismiss
+                    close={() => setBoardOpen(false)}
+                  >
+                    <Board
+                      threads={threadsOf(catalogue.sessions, session.cwd || "")}
+                      online={online}
+                      choose={(id) => {
+                        setBoardOpen(false);
+                        void choose(id);
+                      }}
+                    />
+                  </Modal>
+                )}
                 {page !== "chat" && (
                   <Deferred
                     key={page === "library" ? `library:${libraryKind}` : page}

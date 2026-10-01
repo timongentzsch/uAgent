@@ -4,6 +4,7 @@ import { Button, Time } from "../../shared/ui.tsx";
 import { waiting } from "../../state/attention.ts";
 import SessionName from "../../shared/session-name.tsx";
 import { ListRow } from "../../shared/list-row.tsx";
+import { useMedia } from "../../shared/layout.ts";
 
 const DONE_SHOWN = 8;
 
@@ -73,7 +74,8 @@ export default function Board({
 }
 
 // A coordinator's chat keeps the conversation column; the board sits beside
-// it, or above it on a phone. Other conversations render unchanged.
+// it. On a phone the header's Board button opens it from the right instead.
+// Other conversations render unchanged.
 export function CoordinatorLayout({
   board,
   children,
@@ -81,7 +83,8 @@ export function CoordinatorLayout({
   board: ComponentChildren;
   children: ComponentChildren;
 }) {
-  if (!board) return <>{children}</>;
+  const phone = useMedia("(max-width: 600px)");
+  if (!board || phone) return <>{children}</>;
   return (
     <div class="coordinator-layout">
       <div class="coordinator-chat">{children}</div>

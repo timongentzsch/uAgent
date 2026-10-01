@@ -1,6 +1,6 @@
 // A folder's coordinator opens from its header icon; its board lists the
-// folder's sessions beside the chat, and above it on a phone. Its threads
-// nest under that header in the sidebar.
+// folder's sessions beside the chat, and slides in from the right on a
+// phone. Its threads nest under that header in the sidebar.
 import { test, expect } from "./fixtures.js";
 
 const VIEWPORTS = [
@@ -20,11 +20,39 @@ async function openCoordinator(page, session) {
     .getByLabel(/^Coordinator for /)
     .first()
     .click();
+  // Beside the chat, or behind the header's Board button on a phone.
   await expect(
-    page.getByRole("complementary", { name: "Board" }),
+    page
+      .getByRole("complementary", { name: "Board" })
+      .or(page.getByRole("button", { name: /^Board/ })),
   ).toBeVisible();
   return new URL(page.url()).hash.match(/session=([a-f0-9]+)/)[1];
 }
+
+test("on a phone the board slides in from the right", async ({
+  page,
+  session,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openCoordinator(page, session);
+  // Nothing stacks above the chat.
+  await expect(page.locator(".conversation .board")).toHaveCount(0);
+  await page.getByRole("button", { name: /^Board/ }).click();
+  const sheet = page.getByRole("dialog", { name: "Board" });
+  await expect(
+    sheet.getByRole("complementary", { name: "Board" }),
+  ).toBeVisible();
+  // Settled against the right edge, leaving the chat visible to its left.
+  await expect
+    .poll(async () => {
+      const box = await sheet.boundingBox();
+      return Math.round(box.x + box.width);
+    })
+    .toBe(390);
+  expect((await sheet.boundingBox()).x).toBeGreaterThan(30);
+  await page.keyboard.press("Escape");
+  await expect(sheet).toHaveCount(0);
+});
 
 async function shot(page, name) {
   if (process.env.UAGENT_SCREENSHOTS) {
@@ -156,7 +184,7 @@ for (const [name, viewport] of VIEWPORTS) {
     await expect(waiting.getByText("Allow memory?")).toBeVisible();
     // The transcript keeps at least half the column.
     const box = await waiting.boundingBox();
-    const column = await page.locator(".coordinator-chat").boundingBox();
+    const column = await page.locator("#conversation").boundingBox();
     expect(box.height).toBeLessThanOrEqual(column.height / 2 + 1);
     await shot(page, `escalation-${browserName}-${name}`);
     await waiting.getByRole("button", { name: "Allow once" }).click();

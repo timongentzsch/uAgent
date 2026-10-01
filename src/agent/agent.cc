@@ -226,8 +226,7 @@ void Agent::PublishMessage(const std::string& request_id) {
                 {"reply_excerpt", reply_excerpt_}};
   if (kind == MessageKind::kAssistant) links["http"] = api_.http_exchanges;
   conversation_.RecordDisplay(conversation_.LastDisplayId(), std::move(links));
-  if (conversation_.KindAt(conversation_.Size() - 1) ==
-      MessageKind::kAssistant) {
+  if (kind == MessageKind::kAssistant) {
     conversation_.AddStatistics({{"incoming", 1}});
     conversation_.RecordDisplay(
         conversation_.LastDisplayId(),

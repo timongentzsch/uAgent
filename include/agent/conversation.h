@@ -98,7 +98,6 @@ class Conversation {
   std::string LastText(MessageKind kind) const;
   std::string FirstUserText() const;
   int64_t UserTurns() const;
-  size_t UserVisibleCount() const;
   bool HasRecentToolResult(const std::string& name,
                            const std::string& arguments,
                            const std::string& result) const;

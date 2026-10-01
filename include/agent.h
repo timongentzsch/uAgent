@@ -79,7 +79,7 @@ class Agent {
   // final assistant prose — the whole result of a headless (-p) run
   std::string LastText() const { return conversation_.LastAssistantText(); }
 
-  size_t MessageCount() const { return conversation_.UserVisibleCount(); }
+  size_t MessageCount() const { return conversation_.Size(); }
 
   void RouteChanged();
 
@@ -299,8 +299,6 @@ class Agent {
   StepFlow FinishWithProse(TurnExecution& state, StepState& loop);
   StepFlow ExecuteToolCalls(const std::vector<ToolCall>& calls,
                             TurnExecution& state, StepState& loop);
-
-  void ArchiveAll(const char* reason);
 
   ChatResult Chat(const char* purpose, int64_t step, const json& schemas,
                   const json* request_messages = nullptr);

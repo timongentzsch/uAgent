@@ -540,8 +540,6 @@ int64_t Conversation::UserTurns() const {
   return turns;
 }
 
-size_t Conversation::UserVisibleCount() const { return kinds_.size(); }
-
 bool Conversation::HasRecentToolResult(const std::string& name,
                                        const std::string& arguments,
                                        const std::string& result) const {

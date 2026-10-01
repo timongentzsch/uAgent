@@ -685,7 +685,8 @@ bool Agent::Compact(bool automatic, Usage* turn_usage) {
     return false;
   }
   PruneAttachments(BaselineSize());
-  ArchiveAll(automatic ? "auto_compact" : "manual_compact");
+  conversation_.ArchiveAll(automatic ? "auto_compact" : "manual_compact",
+                           BaselineSize(), turn_id_, kSessionArchiveBytes);
   conversation_.ResetHistory(BaselineMessages(), BaselineKinds());
   conversation_.Push(std::move(runtime_context), MessageKind::kRuntimeContext);
   size_t retained_count = retained_users.size();
@@ -1154,11 +1155,6 @@ bool Agent::PushAttachments(const std::vector<Attachment>& attachments) {
   conversation_.Push({{"role", "user"}, {"content", std::move(content)}},
                      MessageKind::kAttachment);
   return true;
-}
-
-void Agent::ArchiveAll(const char* reason) {
-  conversation_.ArchiveAll(reason, BaselineSize(), turn_id_,
-                           kSessionArchiveBytes);
 }
 
 void Agent::InvalidateToolSchemas(bool force_system) {

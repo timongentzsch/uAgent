@@ -99,7 +99,7 @@ int Application::RunChannel() {
   return 0;
 }
 
-json Application::BuildChannelState(bool checkpoint) const {
+void Application::PublishChannelState(bool checkpoint) {
   json state = InterfaceState();
   // Clients keep these from the last checkpoint (session::kCheckpointFields).
   if (checkpoint) {
@@ -140,11 +140,6 @@ json Application::BuildChannelState(bool checkpoint) const {
   state["error"] = input_error_.empty() ? agent_.LastError() : input_error_;
   state["title"] = Utf8Prefix(agent_.FirstUserText(), 256);
   state["stop"] = agent_.LastStop();
-  return state;
-}
-
-void Application::PublishChannelState(bool checkpoint) {
-  json state = BuildChannelState(checkpoint);
   if (channel_) channel_->PublishState(state, checkpoint);
 }
 

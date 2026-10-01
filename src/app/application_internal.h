@@ -43,7 +43,6 @@ class Application {
   json InterfaceState() const;
   void ProcessInput(std::string input);
   int RunChannel();
-  json BuildChannelState(bool checkpoint) const;
   void PublishChannelState(bool checkpoint = true);
   AppContext& context_;
   AppRuntime& runtime_;

@@ -128,6 +128,13 @@ names one loads as before and the line has no effect.
 - Web: the light theme's diff green and red are darker, to meet WCAG AA on
   their tinted lines.
 
+### Fixed
+
+- Data races found by ThreadSanitizer: flags shared with signal handlers are
+  atomics, the session journal has its own lock, and the mail rate limiter
+  and the settings store are never destroyed at exit while a thread may still
+  use them.
+
 ## v1.2.0 - 2026-09-30
 
 ### Upgrade notes

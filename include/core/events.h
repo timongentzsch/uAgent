@@ -179,21 +179,24 @@ class ActivityProjection;
 
 // Bounded metadata-only session journal. It never enters model context and is
 // flushed as a private sidecar beside the existing format-3 session snapshot.
+// Locked: events are appended from whichever thread emits them, while the
+// session is saved from the main one.
 class SessionJournal {
  public:
-  void SetEnabled(bool enabled) {
-    enabled_ = enabled;
-    if (!enabled_) Clear();
-  }
+  void SetEnabled(bool enabled);
   void Append(const Event& event, const EventPolicy& policy) noexcept;
   bool Load(const std::string& path, std::string& error);
   bool Flush(const std::string& path, std::string& error) const;
   void Clear();
-  size_t Size() const { return lines_.size(); }
+  size_t Size() const;
 
  private:
   static constexpr size_t kMaxEvents = 512;
   static constexpr size_t kMaxBytes = size_t{256} * 1024;
+
+  void ClearLocked();
+
+  mutable std::mutex mutex_;
 
   std::deque<std::string> lines_;
   size_t bytes_ = 0;

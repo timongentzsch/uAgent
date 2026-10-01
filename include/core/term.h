@@ -36,7 +36,7 @@ extern bool g_unicode;
 extern bool g_plain;
 // Off for plain and for reduced motion: the spinner holds a still label.
 extern bool g_motion;
-extern volatile sig_atomic_t g_signal_tty;
+extern std::atomic<int> g_signal_tty;
 bool ResolveColorEnabled(bool tty);
 bool ResolveAttributesEnabled(bool tty);
 bool ResolveUnicodeEnabled();

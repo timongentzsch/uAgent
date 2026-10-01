@@ -70,8 +70,9 @@ std::vector<std::pair<fs::path, Mail>> ReadPending(const fs::path& dir) {
 
 // A sender's recent sends, per process: the rate is one sender's to keep.
 bool OverRate(const std::string& from) {
-  static std::mutex mutex;
-  static std::map<std::string, std::deque<int64_t>> sent;
+  // Never destroyed: a thread may still send while the process exits.
+  static auto& mutex = *new std::mutex;
+  static auto& sent = *new std::map<std::string, std::deque<int64_t>>;
   std::lock_guard lock(mutex);
   const int64_t now = NowMillis();
   auto& times = sent[from];

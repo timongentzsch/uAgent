@@ -30,7 +30,8 @@ struct SettingStore {
 };
 
 SettingStore& Settings() {
-  static SettingStore store;
+  // Never destroyed: a thread may still read settings while the process exits.
+  static SettingStore& store = *new SettingStore;
   return store;
 }
 

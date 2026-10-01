@@ -15,8 +15,11 @@
 
 namespace uagent {
 
-extern volatile sig_atomic_t g_streaming;
-extern volatile sig_atomic_t g_terminal_resized;
+// State shared with signal handlers. A handler may run on another thread, so
+// these are lock-free atomics, which are also async-signal-safe.
+using SignalFlag = std::atomic<int>;
+extern SignalFlag g_streaming;
+extern SignalFlag g_terminal_resized;
 // argv[0], so the agent can re-invoke itself for a subagent. A bare name is
 // resolved by the child's shell via PATH; a relative one still works because
 // fork keeps the cwd.
@@ -38,14 +41,14 @@ bool ExecutableReplaced();
 extern std::atomic_flag g_signal_abort;
 extern std::atomic<bool> g_thread_abort;
 inline constexpr int kMcpMax = 64;  // tracked MCP server processes
-extern volatile sig_atomic_t g_mcp_pids[kMcpMax];
+extern SignalFlag g_mcp_pids[kMcpMax];
 // Supervised processes, foreground and background, that SIGINT kills.
 inline constexpr int kBgMax = 64;
-extern volatile sig_atomic_t g_bg_pids[kBgMax];
+extern SignalFlag g_bg_pids[kBgMax];
 
 // Pid slot tables read by the signal handler. Parallel tool workers claim slots
 // concurrently, so writers serialise here; the handler only ever reads.
-void TrackPid(volatile sig_atomic_t* slots, int count, pid_t pid, bool add);
+void TrackPid(SignalFlag* slots, int count, pid_t pid, bool add);
 
 // A request running beside the main turn (a /btw side question) must neither
 // see nor clear the turn's abort: while a LocalAbort is alive, its thread

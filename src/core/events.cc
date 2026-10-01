@@ -355,6 +355,7 @@ const EventPolicy& PolicyFor(EventId id) {
 
 void SessionJournal::Append(const Event& event,
                             const EventPolicy& policy) noexcept {
+  std::lock_guard lock(mutex_);
   if (!enabled_ || !policy.Durable() || !policy.journal_type) {
     return;
   }
@@ -376,11 +377,9 @@ void SessionJournal::Append(const Event& event,
 }
 
 bool SessionJournal::Load(const std::string& path, std::string& error) {
-  if (!enabled_) {
-    Clear();
-    return true;
-  }
-  Clear();
+  std::lock_guard lock(mutex_);
+  ClearLocked();
+  if (!enabled_) return true;
   std::ifstream input(path);
   if (!input) {
     std::error_code ec;
@@ -421,15 +420,34 @@ bool SessionJournal::Load(const std::string& path, std::string& error) {
 }
 
 bool SessionJournal::Flush(const std::string& path, std::string& error) const {
-  if (!enabled_ || path.empty()) return true;
   std::string content;
-  content.reserve(bytes_);
-  for (const std::string& line : lines_) content += line + '\n';
+  {
+    std::lock_guard lock(mutex_);
+    if (!enabled_ || path.empty()) return true;
+    content.reserve(bytes_);
+    for (const std::string& line : lines_) content += line + '\n';
+  }
   return AtomicWriteFile(path, content, kPrivateFileMode,
                          /*preserve_mode=*/false, error);
 }
 
+void SessionJournal::SetEnabled(bool enabled) {
+  std::lock_guard lock(mutex_);
+  enabled_ = enabled;
+  if (!enabled_) ClearLocked();
+}
+
 void SessionJournal::Clear() {
+  std::lock_guard lock(mutex_);
+  ClearLocked();
+}
+
+size_t SessionJournal::Size() const {
+  std::lock_guard lock(mutex_);
+  return lines_.size();
+}
+
+void SessionJournal::ClearLocked() {
   lines_.clear();
   bytes_ = 0;
   sequence_ = 0;

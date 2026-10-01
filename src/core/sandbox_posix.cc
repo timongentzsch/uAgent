@@ -26,6 +26,7 @@
 #include "include/core/fs.h"
 #include "include/core/sandbox.h"
 #include "include/core/signals.h"
+#include "include/core/strings.h"
 
 // Everything that has to ask the host what it can enforce, and the Linux
 // trampoline that enforces it. The platform split lives inside this file so
@@ -270,16 +271,9 @@ SandboxInputs CollectInputs() {
   // root written as ~/.uagent/.. is not textually inside ~/.uagent, so the
   // ancestor screen would let it past and both mechanisms would then resolve
   // it back to the home directory.
-  const std::string raw = SandboxWriteRoots();
-  for (size_t start = 0; start < raw.size();) {
-    size_t end = raw.find(':', start);
-    if (end == std::string::npos) end = raw.size();
-    std::string root = canonical(raw.substr(start, end - start));
-    if (!root.empty()) {
-      if (!inputs.extra_roots.empty()) inputs.extra_roots += ':';
-      inputs.extra_roots += root;
-    }
-    start = end + 1;
+  for (const std::string& raw : SplitPathList(SandboxWriteRoots())) {
+    std::string root = canonical(raw);
+    if (!root.empty()) inputs.extra_roots.push_back(std::move(root));
   }
   const std::string home = UserHome();
   if (!home.empty()) {

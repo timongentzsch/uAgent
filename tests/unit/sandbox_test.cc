@@ -68,7 +68,8 @@ void TestSandboxPolicy() {
   // The regression this whole design exists for: no root may be ~/.uagent or
   // an ancestor of it, or the config and the trust store come along with it.
   SandboxInputs reaching = BaseInputs();
-  reaching.extra_roots = "/home/u/.uagent:/home/u:/:/home/u/.uagent/..";
+  reaching.extra_roots = {"/home/u/.uagent", "/home/u", "/",
+                          "/home/u/.uagent/.."};
   SandboxPolicyResult guarded = BuildSandboxPolicy(reaching);
   for (const std::string& root : guarded.policy.writable_roots) {
     CHECK(!SandboxPathWithin("/home/u/.uagent", root));
@@ -80,7 +81,7 @@ void TestSandboxPolicy() {
   // Relative roots are rejected rather than resolved: this code never touches
   // the filesystem, so it cannot know what one would resolve to.
   SandboxInputs relative = BaseInputs();
-  relative.extra_roots = "build:./out:/opt/ok";
+  relative.extra_roots = {"build", "./out", "/opt/ok"};
   SandboxPolicyResult filtered = BuildSandboxPolicy(relative);
   CHECK(Rejected(filtered, "build"));
   CHECK(Rejected(filtered, "./out"));
@@ -89,7 +90,7 @@ void TestSandboxPolicy() {
   // A root nested in another is folded away, and duplicates with it, so the
   // profile is a function of the set rather than of discovery order.
   SandboxInputs nested = BaseInputs();
-  nested.extra_roots = "/home/u/work/sub:/home/u/work:/opt/a:/opt/a";
+  nested.extra_roots = {"/home/u/work/sub", "/home/u/work", "/opt/a", "/opt/a"};
   SandboxPolicy folded = BuildSandboxPolicy(nested).policy;
   CHECK(!HasRoot(folded, "/home/u/work/sub"));
   CHECK(HasRoot(folded, "/home/u/work"));

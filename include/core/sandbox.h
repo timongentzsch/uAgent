@@ -55,7 +55,7 @@ struct SandboxInputs {
   // ~/.uagent/terminals/logs -- the one deliberate exception inside
   // global_base, because a detached job's own log pump writes there.
   std::string terminal_logs;
-  std::string extra_roots;  // raw UAGENT_SANDBOX_WRITE, colon-separated
+  std::vector<std::string> extra_roots;  // UAGENT_SANDBOX_WRITE, one per entry
   bool allow_network = true;
   // The workspace already is a repository (its .git is a directory), so its
   // config and hooks exist and must not be rewritten; before `git init` they

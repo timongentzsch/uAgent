@@ -18,7 +18,6 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
-#include <functional>
 #include <istream>
 #include <queue>
 #include <string>

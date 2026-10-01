@@ -3,13 +3,11 @@
 #include "include/app/commands.h"
 
 #include <algorithm>
-#include <cctype>
 #include <cinttypes>
 #include <cstdarg>
 #include <cstdio>
 #include <sstream>
 #include <string>
-#include <utility>
 
 #include "include/agent/session_store.h"
 #include "include/agent/session_view.h"

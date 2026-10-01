@@ -3,11 +3,8 @@
 #include "include/agent/trace.h"
 
 #include <algorithm>
-#include <cstdint>
-#include <cstdio>
 #include <string>
 #include <utility>
-#include <vector>
 
 #include "include/agent/conversation.h"
 #include "include/agent/protocol.h"

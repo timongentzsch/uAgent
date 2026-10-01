@@ -14,7 +14,6 @@
 #include <deque>
 #include <filesystem>
 #include <mutex>
-#include <optional>
 #include <string>
 #include <thread>
 #include <utility>

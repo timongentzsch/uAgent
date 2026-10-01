@@ -3,7 +3,6 @@
 #include "include/tools/registry.h"
 
 #include <filesystem>
-#include <utility>
 #include <vector>
 
 #include "src/tools/registry_internal.h"

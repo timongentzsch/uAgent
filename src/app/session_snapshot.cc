@@ -1,7 +1,6 @@
 // Copyright 2026 Timon Gentzsch
 
 #include <algorithm>
-#include <chrono>
 #include <filesystem>
 #include <map>
 #include <memory>

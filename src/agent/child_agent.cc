@@ -5,13 +5,9 @@
 #include <unistd.h>
 
 #include <algorithm>
-#include <atomic>
 #include <cctype>
 #include <cstddef>
 #include <filesystem>
-#include <fstream>
-#include <iterator>
-#include <map>
 #include <optional>
 #include <string>
 #include <string_view>

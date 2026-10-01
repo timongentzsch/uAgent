@@ -15,7 +15,6 @@
 #include <atomic>
 #include <cerrno>
 #include <chrono>
-#include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <memory>

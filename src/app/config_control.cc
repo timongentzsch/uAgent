@@ -1,6 +1,5 @@
 // Copyright 2026 Timon Gentzsch
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "include/app/config_proposal.h"

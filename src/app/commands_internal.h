@@ -6,7 +6,6 @@
 // RunSlashCommand (commands.cc) dispatches; model, session and control
 // units define. Public entry points stay in include/app/commands.h.
 
-#include <optional>
 #include <string>
 
 #include "include/app/commands.h"

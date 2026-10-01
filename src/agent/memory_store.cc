@@ -11,7 +11,6 @@
 #include <cctype>
 #include <cerrno>
 #include <cstring>
-#include <filesystem>
 #include <fstream>
 #include <regex>
 #include <string>

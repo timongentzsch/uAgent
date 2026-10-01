@@ -9,7 +9,6 @@
 #include <atomic>
 #include <cctype>
 #include <cstdio>
-#include <cstring>
 #include <iostream>
 #include <string>
 #include <string_view>

@@ -137,11 +137,9 @@ bool Coordinate(const json& command, const char* name, int& result) {
 }
 
 std::string CdError(const json& value) {
-  if (value.contains("error") && value["error"].is_string()) {
-    return value["error"].get<std::string>();
-  }
   const json* object = JsonObject(value, "error");
-  return object ? JsonValue(*object, "message", "Chrome rejected action") : "";
+  return object ? JsonValue(*object, "message", "Chrome rejected action")
+                : JsonValue(value, "error", "");
 }
 
 std::string ProfileName(std::string name) {
@@ -969,23 +967,17 @@ json Runtime::Execute(const json& command) {
       return {{"error", "coordinates exceed the observed viewport"}};
     }
     observation_.clear();
-    json pressed = Call("Input.dispatchMouseEvent",
-                        {{"type", "mousePressed"},
-                         {"x", x},
-                         {"y", y},
-                         {"button", "left"},
-                         {"clickCount", 1}},
-                        page_session_);
-    if (auto reason = CdError(pressed); !reason.empty()) {
-      return {{"error", reason}};
-    }
-    reply = Call("Input.dispatchMouseEvent",
-                 {{"type", "mouseReleased"},
+    json event = {{"type", "mousePressed"},
                   {"x", x},
                   {"y", y},
                   {"button", "left"},
-                  {"clickCount", 1}},
-                 page_session_);
+                  {"clickCount", 1}};
+    json pressed = Call("Input.dispatchMouseEvent", event, page_session_);
+    if (auto reason = CdError(pressed); !reason.empty()) {
+      return {{"error", reason}};
+    }
+    event["type"] = "mouseReleased";
+    reply = Call("Input.dispatchMouseEvent", event, page_session_);
   } else if (op == "type") {
     std::string value = JsonValue(command, "text", "");
     if (value.size() > 32768) return {{"error", "text exceeds limit"}};

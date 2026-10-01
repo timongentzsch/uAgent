@@ -36,12 +36,7 @@ bool EditExternalText(std::string& text, int terminal_fd, size_t limit) {
                      const_cast<char* const*>(argv), ProcessEnvironment());
     posix_spawn_file_actions_destroy(&actions);
     int status = 0;
-    pid_t waited = -1;
-    if (spawned == 0) {
-      do {
-        waited = waitpid(pid, &status, 0);
-      } while (waited < 0 && errno == EINTR);
-    }
+    const pid_t waited = spawned == 0 ? WaitPid(pid, &status) : -1;
     std::string edited;
     ok = waited == pid && WIFEXITED(status) && WEXITSTATUS(status) == 0 &&
          ReadRegularFile(draft.Path(), limit, edited, error);

@@ -146,9 +146,8 @@ void McpReplaceServerTools(std::vector<Tool>& tools, McpServer& s,
           return McpInvokeRemote(*server, remote_name, arguments, call_timeout,
                                  context);
         });
-    if (definition.contains("outputSchema") &&
-        definition["outputSchema"].is_object()) {
-      tool.output_schema = definition["outputSchema"];
+    if (const json* schema = JsonObject(definition, "outputSchema")) {
+      tool.output_schema = *schema;
     }
     tool.provider = provider;
     tool.timeout_s = config.mcp_timeout_s;

@@ -11,12 +11,7 @@
 
 #include <algorithm>
 #include <chrono>
-#include <cstdint>
 #include <cstdio>
-#include <cstring>
-#include <map>
-#include <memory>
-#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -124,12 +119,6 @@ std::string McpStderrHint(const std::string& name) {
   return " (stderr: " + McpLogPath(name) + ")";
 }
 
-bool McpBufferOk(McpServer& s) {
-  if (s.rbuf.size() <= kMcpResponseBytes) return true;
-  s.Shutdown();
-  return false;
-}
-
 bool McpFillBuffer(McpServer& s, bool eof_is_fatal) {
   char buffer[1 << 16];
   ssize_t count;
@@ -142,7 +131,9 @@ bool McpFillBuffer(McpServer& s, bool eof_is_fatal) {
     return false;
   }
   s.rbuf.append(buffer, static_cast<size_t>(count));
-  return McpBufferOk(s);
+  if (s.rbuf.size() <= kMcpResponseBytes) return true;
+  s.Shutdown();
+  return false;
 }
 
 bool McpTakeLine(McpServer& s, std::string& line) {

@@ -99,12 +99,8 @@ std::string AskAnswers(const json& command, const std::string& text,
 json AttachmentsToJson(const std::vector<Attachment>& attachments) {
   json out = json::array();
   for (const Attachment& attachment : attachments) {
-    out.push_back({{"path", attachment.path},
-                   {"name", attachment.name},
-                   {"mime", attachment.mime},
-                   {"bytes", attachment.bytes},
-                   {"image", attachment.image},
-                   {"id", attachment.asset_id}});
+    out.push_back(AttachmentDisplayJson(attachment));
+    out.back()["path"] = attachment.path;
   }
   return out;
 }
@@ -476,14 +472,9 @@ class WorkerChannel final : public ApplicationChannel {
   void QueueDelta(const AppEvent& event) {
     const auto now = std::chrono::steady_clock::now();
     const std::string key = DeltaKey(event);
-    if (JsonValue(event.data, "reset", false)) {
+    if (JsonValue(event.data, "reset", false) ||
+        sent_delta_keys_.insert(key).second) {
       FlushTransientEvents();
-      DeliverEvent(event);
-      return;
-    }
-    if (!sent_delta_keys_.contains(key)) {
-      FlushTransientEvents();
-      sent_delta_keys_.insert(key);
       DeliverEvent(event);
       return;
     }

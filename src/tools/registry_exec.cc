@@ -6,11 +6,13 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/path_policy.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/limits.h"
 #include "include/core/strings.h"
+#include "include/tools/files.h"
 #include "include/tools/shell.h"
 #include "src/tools/registry_internal.h"
 
@@ -126,19 +128,37 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
             "project code: a .py with a PEP 723 `# /// script` header runs "
             "under isolated uv, a .sh under sh. Write and fix it with the file "
             "tools, then rerun it with new args instead of resending a long "
-            "pipeline through run.",
+            "pipeline through run. attach names an image it wrote, to see it "
+            "with the result.",
             json::parse(
                 R"json({"type":"object","additionalProperties":false,"properties":{
                     "path":{"type":"string","minLength":1,
                       "description":"the script's path relative to .uagent/scratch"},
                     "args":{"type":"array","items":{"type":"string","maxLength":4096},"maxItems":32,
-                      "description":"argv for this run, read from sys.argv or $@"}},
+                      "description":"argv for this run, read from sys.argv or $@"},
+                    "attach":{"type":"string","minLength":1,
+                      "description":"workspace path of an image the script writes"}},
                     "required":["path"]})json"),
             [&supervisor, workspace](const json& a,
                                      const ToolContext& context) {
-              return ToolRunScratch(
+              ToolResult result = ToolRunScratch(
                   supervisor, workspace, JsonValue(a, "path", ""),
                   JsonValue(a, "args", json(nullptr)), context);
+              // The picture a script rendered arrives with its result, not
+              // a read_path round later. Only from where a read needs no
+              // approval: anything else stays read_path's to ask for.
+              const std::string attach = JsonValue(a, "attach", "");
+              if (!result.Ok() || attach.empty()) return result;
+              if (PathApprovalRequired(attach, CanonicalCwd()) ||
+                  PathApprovalClass(attach, PathAccess::kRead) !=
+                      ApprovalClass::kNone) {
+                result.output += "\n[not attached: " + attach +
+                                 " is outside the workspace; use read_path]";
+                return result;
+              }
+              ToolResult attached = ToolReadFile(attach, 1, 0, context.call_id);
+              result.output += "\n" + attached.output;
+              return result;
             }));
     python.declared_intent = true;
     python.parameters["properties"]["intent"] = intent_schema;

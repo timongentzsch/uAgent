@@ -129,6 +129,15 @@ void TestPythonTool() {
   CHECK(scratch_tool && scratch_tool->approval_preview({{"path", "priv.sh"}}) ==
                             "sudo printf before\n");
 
+  // attach queues an image the script wrote; a path that a read would have
+  // to ask for is left to read_path, and the run still succeeds.
+  write("shot.sh", "printf done\n");
+  result = scratch_tool->run(
+      {{"path", "shot.sh"}, {"attach", (root / "out.png").string()}},
+      ToolContext{});
+  CHECK(result.Ok());
+  CHECK(result.output.find("[not attached") != std::string::npos);
+
   CHECK(
       ToolRunScratch(supervisor, root, "other.rb").output.find(".py or .sh") !=
       std::string::npos);

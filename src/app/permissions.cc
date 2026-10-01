@@ -30,18 +30,14 @@ json EmptyStore() {
 }
 
 bool ValidStore(const json& store, std::string& error) {
-  if (!store.is_object() ||
-      JsonValue(store, "version", int64_t{0}) != kPermissionStoreVersion ||
-      !store.contains("rules") || !store["rules"].is_array()) {
+  if (JsonValue(store, "version", int64_t{0}) != kPermissionStoreVersion ||
+      !JsonArray(store, "rules")) {
     error = "permission rules file is invalid";
     return false;
   }
   for (const auto& rule : store["rules"]) {
-    if (!rule.is_object() || !rule.contains("root") ||
-        !rule["root"].is_string() || !rule.contains("key") ||
-        !rule["key"].is_string() || !rule.contains("tool") ||
-        !rule["tool"].is_string() || !rule.contains("preview") ||
-        !rule["preview"].is_string() ||
+    if (!JsonStringRef(rule, "root") || !JsonStringRef(rule, "key") ||
+        !JsonStringRef(rule, "tool") || !JsonStringRef(rule, "preview") ||
         JsonValue(rule, "effect", "") != "allow") {
       error = "permission rules file contains an invalid rule";
       return false;
@@ -73,12 +69,6 @@ auto RuleOf(const std::string& root, const std::string* key = nullptr) {
     return JsonValue(rule, "root", "") == root &&
            (!key || JsonValue(rule, "key", "") == *key);
   };
-}
-
-std::string PrefixBytes(const std::string& value, size_t limit,
-                        bool* truncated = nullptr) {
-  if (truncated) *truncated = value.size() > limit;
-  return Utf8Prefix(value, limit);
 }
 
 Usage DecisionUsage(const json& response) {
@@ -202,7 +192,7 @@ bool RememberRepositoryPermission(const std::string& root,
                {"key", key},
                {"effect", "allow"},
                {"tool", tool},
-               {"preview", PrefixBytes(preview, kStoredPreviewBytes)},
+               {"preview", Utf8Prefix(preview, kStoredPreviewBytes)},
                {"created", NowSeconds()}};
   if (found == rules.end()) {
     rules.push_back(std::move(rule));
@@ -252,8 +242,6 @@ AutoPermissionReview ReviewPermission(Api& api, const RuntimeConfig& config,
     result.error = "OPENROUTER_API_KEY is not configured";
     return result;
   }
-  bool truncated = false;
-  std::string shown = PrefixBytes(preview, kReviewerPreviewBytes, &truncated);
   const std::string model = config.permission_model;
   json request = {
       {"model", model},
@@ -262,8 +250,8 @@ AutoPermissionReview ReviewPermission(Api& api, const RuntimeConfig& config,
         {"provider", tool.provider},
         {"working_directory", CanonicalCwd()},
         {"user_request", user_request},
-        {"action", std::move(shown)},
-        {"action_truncated", truncated}}},
+        {"action", Utf8Prefix(preview, kReviewerPreviewBytes)},
+        {"action_truncated", preview.size() > kReviewerPreviewBytes}}},
       {"questions",
        {{"permission",
          {{"type", "choice"},

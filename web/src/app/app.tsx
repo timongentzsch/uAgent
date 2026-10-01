@@ -249,7 +249,6 @@ function App() {
     writeStored(storage, "uagent-zoom", zoom);
     applyZoom(zoom);
   }, [zoom]);
-  // The shared transcript controller restores a returning conversation.
   useEffect(() => {
     // The core renderer chunk is needed for every assistant message, so
     // fetch it immediately at boot (not idle: on mobile the idle callback
@@ -605,24 +604,9 @@ function App() {
       setBusy(false);
     }
   }
-  // Recall returns queued guidance to the composer while it is still
-  // queued. Delivered guidance belongs to the turn; dropping the row is
-  // then the only correct move. A send that failed returns the same way,
-  // with nothing to withdraw from the host.
   // Every row reads these through one context value, so they must stay the
   // same function; they read the latest state through a ref.
-  const latest = useRef({
-    online,
-    selected,
-    act,
-    report,
-    forkAndOpen,
-    outgoing,
-    session,
-    deliver,
-    busy,
-  });
-  latest.current = {
+  const current = {
     online,
     selected,
     act,
@@ -633,6 +617,8 @@ function App() {
     deliver,
     busy,
   };
+  const latest = useRef(current);
+  latest.current = current;
   // A failed message sends again as a new request; Continue resumes a
   // stopped turn. Both leave the composer's draft alone.
   const retrySend = useCallback((block: Block) => {
@@ -670,6 +656,10 @@ function App() {
       edit,
     ).catch(report);
   }, []);
+  // Recall returns queued guidance to the composer while it is still
+  // queued. Delivered guidance belongs to the turn; dropping the row is
+  // then the only correct move. A send that failed returns the same way,
+  // with nothing to withdraw from the host.
   const recallGuidance = useCallback(async (block: Block) => {
     const { online, selected, act, report } = latest.current;
     const target = block.request_id;

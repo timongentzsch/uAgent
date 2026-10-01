@@ -405,7 +405,9 @@ void DisplayBlocks(const Conversation& conversation, uint64_t sequence,
                 {"kind", entry.kind},
                 {"text", Utf8Trunc(text, kPreviewChars - 3)},
                 {"truncated", text.size() > kPreviewChars}};
-  json metadata = JsonValue(facts, id.c_str(), json::object());
+  static const json kNone = json::object();
+  const auto recorded = facts.find(id);
+  const json& metadata = recorded != facts.end() ? *recorded : kNone;
   for (const char* key : {"time",
                           "incoming",
                           "activity_id",
@@ -480,8 +482,9 @@ void DisplayBlocks(const Conversation& conversation, uint64_t sequence,
         std::string detail_id = DetailId(response_id, call_id);
         const json* found =
             FindToolFacts(facts, detail_id, call_id, &detail_id);
-        const json detail = found ? *found : json::object();
-        json function = JsonValue(call, "function", json::object());
+        const json& detail = found ? *found : kNone;
+        const json* named = JsonObject(call, "function");
+        const json& function = named ? *named : kNone;
         json row = {{"id", detail_id},
                     {"sequence", sequence},
                     {"kind", "tool_result"},
@@ -513,7 +516,7 @@ void DisplayBlocks(const Conversation& conversation, uint64_t sequence,
     std::string call_id = JsonValue(message, "tool_call_id", "");
     std::string detail_id = JsonValue(metadata, "detail_id", "t-" + call_id);
     const json* found = FindToolFacts(facts, detail_id, call_id, &detail_id);
-    const json detail = found ? *found : json::object();
+    const json& detail = found ? *found : kNone;
     // Retained rows finished by definition: a missing receipt is a gap in
     // history, never live activity (live rows stream separately). Say so
     // explicitly instead of counterfeiting a "running" state.

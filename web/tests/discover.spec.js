@@ -1,5 +1,5 @@
 // Finding your way without knowing where things are: the command palette,
-// the shortcuts sheet, conversations by keyboard, starter cards, and pairing
+// the shortcuts sheet, conversations by keyboard, the home screen, and pairing
 // by link.
 import { test, expect } from "./fixtures.js";
 
@@ -87,17 +87,16 @@ test("? lists the shortcuts, and Alt+arrows step through conversations", async (
     .toBe(`#session=${session.id}`);
 });
 
-test("a starter card starts a conversation with its question drafted", async ({
+test("the home screen asks one question and offers one way to start", async ({
   page,
-  session,
 }) => {
   await page.goto("/");
-  const starters = page.getByRole("navigation", { name: "Start from" });
-  await starters.getByRole("button", { name: /Ask about this repo/ }).click();
-  await expect(page.getByLabel("Message or guidance")).toHaveValue(
-    /overview of this repository/,
-  );
-  expect(new URL(page.url()).hash).not.toBe(`#session=${session.id}`);
+  await expect(
+    page.getByRole("heading", { name: "What are we working on?" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("navigation", { name: "Start from" }),
+  ).toHaveCount(0);
 });
 
 test("the palette opens from the phone's sidebar", async ({

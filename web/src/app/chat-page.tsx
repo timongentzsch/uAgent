@@ -30,11 +30,6 @@ import { useTranscriptHistory } from "../state/use-transcript-history.ts";
 import { prependHistoryPage } from "../state/history-page.ts";
 import { useSnapshots, type SnapshotStore } from "../state/snapshot-store.ts";
 import { sideAnswer } from "./dialogs.ts";
-import { folderName, folderOf } from "../shared/folder-label.tsx";
-
-const STARTERS = 3;
-const ASK_ABOUT_REPO =
-  "Give me an overview of this repository: what it does, how it is laid out, and how to build and test it.";
 
 // One empty list, so an idle context value never changes identity.
 const NO_ACTIVITIES: Activity[] = [];
@@ -98,7 +93,6 @@ export default function ChatPage({
   setModal,
   setInspector,
   showContext,
-  start,
 }: {
   store: SnapshotStore;
   active: boolean;
@@ -131,8 +125,6 @@ export default function ChatPage({
   setModal: (modal: AppModal | null) => void;
   setInspector: (target: InspectorTarget | null) => void;
   showContext: () => void;
-  // A new conversation in a folder, its draft filled in or a command run.
-  start: (cwd: string, text?: string, run?: boolean) => void;
 }) {
   const snapshot = useSnapshots(store, (all) => all[selected]);
   const view = snapshot?.state?.view;
@@ -216,22 +208,6 @@ export default function ChatPage({
       openBrowser={() => setModal({ type: "browser", handoff: true })}
     />
   );
-  // Where to start without typing: the latest folders, a question about the
-  // latest, and what can be typed.
-  const folders = [
-    ...new Set(
-      [...catalogue.sessions]
-        .sort((a, b) => (b.updated || 0) - (a.updated || 0))
-        .map(folderOf)
-        .filter(Boolean),
-    ),
-  ].slice(0, STARTERS);
-  const starter = (label: string, detail: string, run: () => void) => (
-    <Button variant="quiet" onClick={run} disabled={!online}>
-      <strong>{label}</strong>
-      <small>{detail}</small>
-    </Button>
-  );
   // A coordinator's board and escalations read the same threads.
   const threads =
     session?.kind === "coordinator"
@@ -307,8 +283,8 @@ export default function ChatPage({
   ) : (
     <div class="empty">
       <Mark className="cursor-mark" />
-      <h1>Your projects. One workspace.</h1>
-      <p>Open a saved session or start in any directory on your host.</p>
+      <h1>What are we working on?</h1>
+      <p>Pick a folder on your host, or open a conversation from the list.</p>
       <Button
         variant="primary"
         onClick={() => setModal({ type: "new" })}
@@ -316,23 +292,6 @@ export default function ChatPage({
       >
         New conversation
       </Button>
-      {folders.length > 0 && (
-        <nav class="starters" aria-label="Start from">
-          {folders.map((folder) =>
-            starter(
-              `New in ${folderName(folder)}`,
-              "Start a conversation",
-              () => start(folder),
-            ),
-          )}
-          {starter("Ask about this repo", folderName(folders[0]), () =>
-            start(folders[0], ASK_ABOUT_REPO),
-          )}
-          {starter("/help", "What you can type", () =>
-            start(folders[0], "/help", true),
-          )}
-        </nav>
-      )}
     </div>
   );
 }

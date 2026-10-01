@@ -12,8 +12,7 @@ or older than five minutes) says it expired: run `uagent --web` again.
 Another invocation reuses the running server and prints a fresh code. The
 sidebar lists this OS user's conversations grouped by project directory; a
 folder's coordinator is its header, with the threads it started nested under
-it. With nothing open, starter cards begin a conversation in a recent folder,
-draft a question about the repository, or run `/help`.
+it.
 Browsing saved history does not start a model or execute a command.
 
 | Flag | Setting | Default |

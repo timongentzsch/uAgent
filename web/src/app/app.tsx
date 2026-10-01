@@ -379,29 +379,6 @@ function App() {
     },
     [upsertSession, choose, load],
   );
-  // A starter card: a new conversation in a folder, with its draft filled
-  // in or a command run in it.
-  const start = useCallback(
-    async (cwd: string, text = "", run = false) => {
-      try {
-        const id = await startConversation(cwd);
-        if (!id || !text) return;
-        if (!run)
-          setDrafts((current) => ({ ...current, [id]: { text, files: [] } }));
-        else {
-          const request_id = requestId();
-          correlate(request_id);
-          await command("submit", snapshots.get()[id]?.metadata || { id }, {
-            request_id,
-            text,
-          });
-        }
-      } catch (failure) {
-        report(failure);
-      }
-    },
-    [startConversation, correlate, report],
-  );
   // A command with a screen opens it when typed bare; with an argument it
   // runs on the host, as in the terminal.
   const screens: Record<string, () => void> = {
@@ -1149,7 +1126,6 @@ function App() {
                   setModal={setModal}
                   setInspector={setInspector}
                   showContext={showContext}
-                  start={start}
                 />
               </main>
             </div>
@@ -1175,7 +1151,9 @@ function App() {
                 sessions={listed}
                 commands={catalogue.commands || []}
                 choose={choose}
-                start={(cwd: string) => void start(cwd)}
+                start={(cwd: string) =>
+                  void startConversation(cwd).catch(report)
+                }
                 run={runCommand}
                 settings={(section: string) =>
                   open({ type: "settings", section })

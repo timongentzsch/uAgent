@@ -787,25 +787,6 @@ dialog.sidebar:not([open]) {
   padding: 0;
   text-decoration: underline;
 }
-.starters {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(calc(160rem / 14), 1fr));
-  gap: var(--gap);
-  margin-top: var(--space-6);
-  text-align: left;
-}
-.starters button {
-  display: grid;
-  justify-items: start;
-  gap: var(--space-1);
-  height: 100%;
-  padding: var(--space-4);
-  border: 1px solid var(--line);
-  white-space: normal;
-}
-.starters small {
-  color: var(--muted);
-}
 .coordinator-layout {
   flex: 1;
   min-height: 0;

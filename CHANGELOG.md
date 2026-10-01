@@ -40,8 +40,7 @@
   order, with each item's shortcut. `?` lists the shortcuts; Alt+↑/↓ step
   through conversations.
 - Web: a pairing link (`#pair=<code>`) pairs on opening, and a refused code
-  says it expired. With nothing open, starter cards begin in a recent folder,
-  draft a question about the repository, or run `/help`.
+  says it expired.
 - Web: **Queue next** (Alt+Enter) beside the composer while a turn runs holds
   the message until the turn ends; its row reads "Queued for after this turn".
 - Web: a turn that stopped short ends with **Stopped · Continue**.

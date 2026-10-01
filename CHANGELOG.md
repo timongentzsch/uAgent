@@ -42,6 +42,11 @@ names one loads as before and the line has no effect.
 
 ### Added
 
+- `scratch` takes `attach`: the workspace path of an image its script
+  writes, which reaches the model with the result instead of a `read_path`
+  call a round later.
+- Web: the conversation menu exports the transcript, compacts and restarts
+  the conversation; typed `/restart` does the same.
 - `uagent --plain` (or `UAGENT_PLAIN=1`) for screen readers: append-only
   lines that open with a spoken label (`you:`, `tool:`, `result:`,
   `approval needed:`), with no cursor movement, animation or non-ASCII glyphs.
@@ -93,6 +98,14 @@ names one loads as before and the line has no effect.
 
 ### Changed
 
+- `ask` takes up to 8 questions (was 4) and headers up to 24 characters
+  (12 stays the aim); one that is too long is refused by name. In the web the
+  questions are answered a page at a time, with a review before Submit when
+  there are three or more.
+- Web: every dialog closes on a tap outside it, and a sidebar row shows one
+  status mark.
+- A reconnecting web client reads its backlog a batch at a time; state frames,
+  published events and streamed text are no longer copied on the way through.
 - A changed setting applies from your next message wherever it is read when
   used: limits, output caps, attachment size, sub-agent and coordinator
   budgets and models, the search and image models, history retention. A
@@ -136,6 +149,13 @@ names one loads as before and the line has no effect.
 
 ### Fixed
 
+- The `session` tool lists sessions without a prompt.
+- A stream error sent as a bare string keeps its text and is classified on
+  the Responses and Anthropic dialects too.
+- A command that `pkill -f` matched and killed says so.
+- Web: a sheet returns focus to its button in Safari; a notice replaces an
+  older error in the banner; the mention list keeps its selected option in
+  view.
 - Data races found by ThreadSanitizer: flags shared with signal handlers are
   atomics, the session journal has its own lock, and the mail rate limiter
   and the settings store are never destroyed at exit while a thread may still

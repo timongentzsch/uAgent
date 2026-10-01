@@ -434,6 +434,11 @@ std::string ActivityLabel(const std::string& label, size_t columns) {
   return prefix + tail;
 }
 
+namespace {
+
+constexpr uint64_t kFnv1aOffsetBasis = 1469598103934665603ULL;
+constexpr uint64_t kFnv1aPrime = 1099511628211ULL;
+
 uint64_t Fnv1aUpdate(uint64_t hash, const char* data, size_t size) {
   for (size_t i = 0; i < size; ++i) {
     hash ^= static_cast<unsigned char>(data[i]);
@@ -441,6 +446,14 @@ uint64_t Fnv1aUpdate(uint64_t hash, const char* data, size_t size) {
   }
   return hash;
 }
+
+std::string Hex64(uint64_t value) {
+  std::ostringstream output;
+  output << std::hex << std::setfill('0') << std::setw(16) << value;
+  return output.str();
+}
+
+}  // namespace
 
 std::string HashHex(const std::string& data) {
   return Hex64(Fnv1aUpdate(kFnv1aOffsetBasis, data.data(), data.size()));
@@ -511,13 +524,8 @@ bool OpenaiUrl(std::string url) {
   return UrlHost(std::move(url)) == "api.openai.com";
 }
 
-std::string_view BeforeFirst(std::string_view s, char delim) noexcept {
-  size_t pos = s.find(delim);
-  return pos == std::string_view::npos ? s : s.substr(0, pos);
-}
-
 std::string_view ScopePrefix(std::string_view key) noexcept {
-  return BeforeFirst(key, '/');
+  return key.substr(0, key.find('/'));
 }
 
 std::string TruncatedHash(std::string_view data, size_t chars) {
@@ -620,12 +628,6 @@ int64_t TerminalColumns() {
 size_t TerminalWidth(int64_t reserved) {
   return static_cast<size_t>(
       std::max(int64_t{1}, TerminalColumns() - reserved));
-}
-
-std::string Hex64(uint64_t value) {
-  std::ostringstream output;
-  output << std::hex << std::setfill('0') << std::setw(16) << value;
-  return output.str();
 }
 
 }  // namespace uagent

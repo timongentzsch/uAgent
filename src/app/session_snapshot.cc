@@ -33,8 +33,6 @@ size_t ClampedOffset(const std::string& text) {
   return static_cast<size_t>(std::max(int64_t{0}, offset));
 }
 
-// Attachment display names travel in frames and land on disk-adjacent
-// records: no path separators, no control bytes, bounded length.
 // The instruction files a person edits, whose changes the web shows live.
 std::vector<std::string> PromptPaths(const std::vector<std::string>& projects) {
   std::vector<std::string> paths;

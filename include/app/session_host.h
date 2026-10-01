@@ -2,8 +2,6 @@
 
 #ifndef UAGENT_INCLUDE_APP_SESSION_HOST_H_
 #define UAGENT_INCLUDE_APP_SESSION_HOST_H_
-// Transport-independent host event ordering and bounded reconnect replay.
-// The HTTP adapter serializes these frames but does not own their sequence.
 
 #include <atomic>
 #include <chrono>

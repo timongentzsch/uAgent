@@ -7,8 +7,7 @@
 // through one file mailbox, which also carries a parent's guidance to its
 // delegated children. Isolation
 // is the default: two sessions read each other's mail only while a link file
-// names them both. Sessions started under yolo auto-join the workspace link;
-// everyone else joins with a token from /link.
+// names them both. Sessions started under yolo auto-join the workspace link.
 
 #include <string>
 #include <vector>
@@ -26,14 +25,6 @@ ToolResult MessageSession(const std::string& id, const std::string& text,
 
 // Text-only peer messaging for every toolset, lean included.
 Tool SessionTool();
-
-// Terminal rendering for /peers: subagent-style rows with names first.
-std::string SessionText(const json& result);
-
-// /peers, /link handlers. Print-ready {output}/{error} objects;
-// the dispatcher prints them like ActivityCommand results.
-json SessionSlashPeers();
-json SessionSlashLink(const std::string& argument);
 
 }  // namespace uagent
 

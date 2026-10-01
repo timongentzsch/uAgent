@@ -107,8 +107,6 @@ constexpr SlashCommandSpec kSlashCommands[] = {
     {SlashCommandId::kHelp, "/help", "", "show this help", kTerminal},
     {SlashCommandId::kInit, "/init", "",
      "create an AGENTS.md file with instructions for \u00b5Agent"},
-    {SlashCommandId::kLink, "/link", "[TOKEN]",
-     "create a session link or join one with its token", kTerminal},
     {SlashCommandId::kMemory, "/memory",
      "[list|get KEY|set KEY @FILE|forget KEY|rename KEY TARGET|copy KEY "
      "TARGET]",
@@ -124,8 +122,6 @@ constexpr SlashCommandSpec kSlashCommands[] = {
      "search and select across providers", kTerminal},
     {SlashCommandId::kProcesses, "/ps", "[ID [output|stop]]",
      "inspect or stop background work", kTerminal},
-    {SlashCommandId::kPeers, "/peers", "", "list linked and linkable sessions",
-     kTerminal},
     {SlashCommandId::kQuit, "/quit", "", "exit uagent",
      kNoViewer | kClientOnly | kTerminal},
     {SlashCommandId::kReset, "/reset", "", "start a new chat",

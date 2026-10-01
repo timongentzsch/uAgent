@@ -151,53 +151,6 @@ ToolResult EnsureSessionAutoLink() {
   return saved.Ok() ? ToolSuccess({}) : saved;
 }
 
-ToolResult CreateSessionLink(std::string& token) {
-  json me = OwnMember();
-  if (!me.is_object()) {
-    return ToolFailure(ToolErrorCode::kUnavailable,
-                       "no saved session file yet; say something first "
-                       "so the session persists, then link");
-  }
-  token = session::RandomToken(9);
-  if (token.empty() || SafeFileComponent(token) != token) {
-    return ToolFailure(ToolErrorCode::kUnavailable,
-                       "cannot mint a link token right now");
-  }
-  json members = json::array();
-  members.push_back(std::move(me));
-  ToolResult saved = WriteLink(token, members);
-  if (!saved.Ok()) return saved;
-  return ToolSuccess(token);
-}
-
-ToolResult JoinSessionLink(const std::string& token) {
-  if (!ValidLinkName(token)) {
-    return ToolFailure(ToolErrorCode::kInvalidArguments, "bad link token");
-  }
-  json link = ReadLink(token);
-  if (!link.is_object()) {
-    return ToolFailure(ToolErrorCode::kNotFound, "unknown link token");
-  }
-  json me = OwnMember();
-  if (!me.is_object()) {
-    return ToolFailure(ToolErrorCode::kUnavailable,
-                       "no saved session file yet; say something first "
-                       "so the session persists, then link");
-  }
-  json members = JsonValue(link, "members", json::array());
-  const std::string id = JsonValue(me, "id", "");
-  if (!HasMember(members, id)) {
-    if (members.size() >= kSessionLinkMembers) {
-      return ToolFailure(ToolErrorCode::kLimitExceeded,
-                         "link is full (32 sessions)");
-    }
-    members.push_back(std::move(me));
-    ToolResult saved = WriteLink(token, members);
-    if (!saved.Ok()) return saved;
-  }
-  return ToolSuccess(token);
-}
-
 namespace {
 
 // All ids this process shares any link with, including itself.

@@ -295,17 +295,6 @@ CommandReply RunSlashCommand(AppSession& session,
       result = ActivityCommand(session, command);
       reply.Print("%s", TerminalSafe(ActivityText(result)).c_str());
       return reply;
-    case SlashCommandId::kPeers:
-      result = SessionSlashPeers();
-      reply.Print("%s", TerminalSafe(SessionText(result)).c_str());
-      return reply;
-    case SlashCommandId::kLink:
-      result = SessionSlashLink(command.argument);
-      reply.Print("%s\n",
-                  TerminalSafe(JsonValue(result, "output",
-                                         JsonValue(result, "error", "")))
-                      .c_str());
-      return reply;
     case SlashCommandId::kDiff:
     case SlashCommandId::kInit:
     case SlashCommandId::kReview:

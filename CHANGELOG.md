@@ -14,6 +14,12 @@ names one loads as before and the line has no effect.
   instead, as in `UAGENT_WEB_SEARCH_MODEL=vendor/model:low`; without a suffix
   the provider's default applies.
 - Removed: `UAGENT_PRUNE_SUPERSEDED_READS`, an experiment that stayed off.
+- Removed: `/link` and `/peers`, and with them token links between sessions.
+  The `session` tool still reaches sessions that share a workspace under
+  yolo, which link by themselves; a link file made from a token is still
+  honoured until its sessions are gone.
+- Web: typed `/quit` no longer closes the conversation's runtime (in a
+  terminal it only detaches). Use Close session in the conversation menu.
 - Merged: `UAGENT_FIRST_EVENT_TIMEOUT` and `UAGENT_STREAM_IDLE_TIMEOUT` are
   one `UAGENT_STREAM_TIMEOUT` (300 s), the stream silence allowed before the
   first event or between events.

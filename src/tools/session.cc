@@ -34,7 +34,7 @@ ToolResult MessageSession(const std::string& id, const std::string& text,
   if (!SharesLink(me, id)) {
     return ToolFailure(
         ToolErrorCode::kPermissionDenied,
-        "session " + id + " is not linked; join its link first (/link)");
+        "session " + id + " is not linked with this one");
   }
   if (text.empty()) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
@@ -87,7 +87,7 @@ Tool SessionTool() {
   Tool tool = MakeTool(
       "session",
       "Message another live uagent session linked with this one (yolo "
-      "sessions auto-link per workspace; otherwise /link TOKEN). list shows "
+      "sessions auto-link per workspace). list shows "
       "linked, then linkable sessions; message reaches the peer at its next "
       "step, or starts its turn when it is idle; broadcast reaches every "
       "linked session. Unlinked "
@@ -146,41 +146,6 @@ Tool SessionTool() {
                : json{{"verb", {"Messaging", "Messaged"}}};
   };
   return tool;
-}
-
-std::string SessionText(const json& result) {
-  const json* rows = JsonArray(result, "sessions");
-  if (rows == nullptr) return JsonDump(result, 2) + "\n";
-  std::string text =
-      "sessions (" + FmtCount(static_cast<int64_t>(rows->size())) + ")\n";
-  for (const json& row : *rows) {
-    const std::string id = JsonValue(row, "id", "");
-    std::string title = JsonValue(row, "title", "");
-    if (title.empty()) title = id;
-    text += (JsonValue(row, "linked", false) ? "" : "[unlinked] ") + title;
-    if (title != id) text += " (" + id + ")";
-    text += "\n";
-  }
-  return text;
-}
-
-json SessionSlashPeers() {
-  (void)EnsureSessionAutoLink();
-  return {{"sessions", SessionSummaries()}};
-}
-
-json SessionSlashLink(const std::string& argument) {
-  std::string token = Trim(argument);
-  if (token.empty()) {
-    std::string created;
-    ToolResult made = CreateSessionLink(created);
-    if (!made.Ok()) return {{"error", made.output}};
-    return {{"output", "link token: " + created +
-                           "\nhand it to another session as /link " + created}};
-  }
-  ToolResult joined = JoinSessionLink(token);
-  if (!joined.Ok()) return {{"error", joined.output}};
-  return {{"output", "joined link " + token}};
 }
 
 }  // namespace uagent

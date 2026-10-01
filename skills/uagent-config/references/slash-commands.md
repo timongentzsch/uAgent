@@ -25,14 +25,12 @@
 | `/effort LEVEL` | choose how much reasoning effort to use |
 | `/help` | show this help |
 | `/init` | create an AGENTS.md file with instructions for µAgent |
-| `/link [TOKEN]` | create a session link or join one with its token |
 | `/memory [list|get KEY|set KEY @FILE|forget KEY|rename KEY TARGET|copy KEY TARGET]` | manage project and global memories |
 | `/skills [list|get ID|set KEY @FILE|forget ID|enable ID|disable ID]` | inspect and manage installed skills |
 | `/schedule [list|JSON]` | manage scheduled tasks and runs |
 | `/model NAME` | choose what model to use |
 | `/models [QUERY]` | search and select across providers |
 | `/ps [ID [output|stop]]` | inspect or stop background work |
-| `/peers` | list linked and linkable sessions |
 | `/quit` | exit uagent |
 | `/reset` | start a new chat |
 | `/clear` | clear the screen |

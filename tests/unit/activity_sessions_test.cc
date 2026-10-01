@@ -1311,15 +1311,17 @@ void TestSessionLinks() {
   }
   ScopedEnv self("UAGENT_INTERNAL_SESSION_PATH", fa.string());
   CHECK(!SharesLink("aaa", "bbb"));
-  std::string token;
-  CHECK(CreateSessionLink(token).Ok());
-  CHECK(!token.empty());
+  // Only yolo sessions join the workspace link.
+  const ApprovalMode before = CurrentApprovalMode();
+  SetApprovalMode(ApprovalMode::kAsk);
+  CHECK(EnsureSessionAutoLink().Ok());
+  SetApprovalMode(ApprovalMode::kYolo);
+  CHECK(EnsureSessionAutoLink().Ok());
   CHECK(SharesLink("aaa", "aaa"));
   CHECK(!SharesLink("aaa", "bbb"));
   {
     ScopedEnv peer("UAGENT_INTERNAL_SESSION_PATH", fb.string());
-    CHECK(JoinSessionLink(token).Ok());
-    CHECK(JoinSessionLink("no-such-token").error == ToolErrorCode::kNotFound);
+    CHECK(EnsureSessionAutoLink().Ok());
     // Gated delivery: linked peers pass, strangers are rejected, and a
     // message that looks like a loop is refused, not queued.
     CHECK(MessageSession("aaa", "hello a").Ok());
@@ -1327,6 +1329,7 @@ void TestSessionLinks() {
           ToolErrorCode::kPermissionDenied);
     CHECK(!MessageSession("aaa", "loop", kMailMaxHops).Ok());
   }
+  SetApprovalMode(before);
   CHECK(SharesLink("aaa", "bbb"));
   std::vector<Mail> taken =
       TakeMail(MailboxIdFor(fa.string()), [](const Mail&) { return true; });

@@ -651,11 +651,8 @@ export function useHost(
     };
     addEventListener("online", refresh);
     addEventListener("offline", disconnected);
-    const suspend = (event: PageTransitionEvent) => {
-      if (!event.persisted) return;
-      dropStream();
-      setConnecting(false);
-    };
+    const suspend = (event: PageTransitionEvent) =>
+      event.persisted && disconnected();
     addEventListener("pageshow", recover);
     addEventListener("pagehide", suspend);
     addEventListener("hashchange", hash);

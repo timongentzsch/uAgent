@@ -119,10 +119,7 @@ export async function command<K extends CommandKind>(
     abort = () => resolve({ request_id, accepted: true, pending: true });
     options.signal?.addEventListener("abort", abort, { once: true });
     receipts.set(request_id, resolve);
-    timeout = setTimeout(
-      () => resolve({ request_id, accepted: true, pending: true }),
-      commandReceiptWaitMs,
-    );
+    timeout = setTimeout(abort, commandReceiptWaitMs);
   });
   try {
     let result = await api<Outcome>(

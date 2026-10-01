@@ -1066,10 +1066,7 @@ function App() {
                     })()}
                   {compact && (
                     <div class="conversation-head-actions">
-                      <IconButton
-                        label="Settings"
-                        onClick={() => open({ type: "settings" })}
-                      >
+                      <IconButton label="Settings" onClick={settings}>
                         <Settings />
                       </IconButton>
                     </div>

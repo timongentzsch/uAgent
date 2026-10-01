@@ -54,15 +54,7 @@ export function McpServers({
         const rows = servers.filter((server) => server.scope === scope);
         return (
           <Group key={scope} title={title} footer={file}>
-            {!rows.length && (
-              <Row
-                label={
-                  scope === "global"
-                    ? "No global servers"
-                    : "No project servers"
-                }
-              />
-            )}
+            {!rows.length && <Row label={`No ${scope} servers`} />}
             {rows.map((server) => {
               const expanded = open === server.name;
               const detail = [

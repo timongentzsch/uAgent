@@ -28,15 +28,7 @@ const labels: Record<string, string> = {
   mcp: "MCP",
 };
 
-const categoryOrder = [
-  "workspace",
-  "execute",
-  "web",
-  "collaborate",
-  "memory",
-  "system",
-  "mcp",
-];
+const categoryOrder = Object.keys(labels);
 
 // What the list draws while the catalogue loads (see <Placeholder>).
 const SAMPLE: ToolCatalogue = {

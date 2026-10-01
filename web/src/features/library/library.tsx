@@ -206,6 +206,7 @@ export default function Library({
     }
   }
   const current = data?.items?.find((entry) => entry.key === item?.key);
+  const off = (current?.status || item?.status) === "disabled";
   const changed = !!(
     item?.key &&
     data &&
@@ -397,17 +398,9 @@ export default function Library({
                       {kind === "skills" && (
                         <MenuItem
                           disabled={!online || busy}
-                          onClick={() =>
-                            mutate(
-                              (current?.status || item.status) === "disabled"
-                                ? "enable"
-                                : "disable",
-                            )
-                          }
+                          onClick={() => mutate(off ? "enable" : "disable")}
                         >
-                          {(current?.status || item.status) === "disabled"
-                            ? "Enable globally"
-                            : "Disable globally"}
+                          {off ? "Enable globally" : "Disable globally"}
                         </MenuItem>
                       )}
                       {item.writable && kind === "memory" && (

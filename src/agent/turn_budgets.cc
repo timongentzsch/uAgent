@@ -31,6 +31,38 @@ void Agent::FailBudget(TurnExecution& state, TurnStopReason reason,
   Emit(NoticeEvent(PresentationStatus::kFailed, last_error_));
 }
 
+void Agent::Advise(Fault fault, StepState& loop, const std::string& about) {
+  const int64_t strike = loop.recovery.strikes[static_cast<size_t>(fault)];
+  for (const auto& advice : kFaultRules[static_cast<size_t>(fault)].advice) {
+    if (advice.note && (advice.at == 0 || advice.at == strike)) {
+      PushStepNote(loop, FaultText(advice.note, strike, about));
+    }
+  }
+}
+
+bool Agent::Strike(Fault fault, TurnExecution& state, StepState& loop,
+                   const std::string& about, bool advise) {
+  const FaultRule& rule = kFaultRules[static_cast<size_t>(fault)];
+  const int64_t strike = ++loop.recovery.strikes[static_cast<size_t>(fault)];
+  const bool stop = rule.stop_after > 0 && strike >= rule.stop_after;
+  DebugLog("model_fault", {{"turn", turn_id_},
+                           {"step", loop.step},
+                           {"fault", rule.name},
+                           {"strike", strike},
+                           {"stopped", stop}});
+  if (!stop) {
+    if (advise) Advise(fault, loop, about);
+    return true;
+  }
+  std::string message = FaultText(rule.stopped, strike, about);
+  if (rule.stop_reason == TurnStopReason::kNone) {
+    FailTurn(state, std::move(message));
+  } else {
+    FailBudget(state, rule.stop_reason, std::move(message));
+  }
+  return false;
+}
+
 bool Agent::TurnDeadlineExceeded(TurnExecution& state,
                                  std::chrono::seconds reserve) {
   if (std::chrono::steady_clock::now() + reserve < state.deadline) return false;
@@ -90,7 +122,8 @@ bool Agent::ToolCallsWithinLimits(const std::vector<ToolCall>& calls,
   if (calls.empty()) return true;
   const int64_t max_tool_calls = state.limits.max_tool_calls;
   std::string& last_call = loop.recovery.last_call;
-  int64_t& repeated_calls = loop.recovery.repeated_calls;
+  int64_t& repeated_calls =
+      loop.recovery.strikes[static_cast<size_t>(Fault::kRepeat)];
   if (max_tool_calls > 0 &&
       state.metrics.tool_count + static_cast<int64_t>(calls.size()) >
           max_tool_calls) {
@@ -99,11 +132,9 @@ bool Agent::ToolCallsWithinLimits(const std::vector<ToolCall>& calls,
         "tool call limit reached (" + std::to_string(max_tool_calls) + ")");
     return false;
   }
-  // Valid repetition is recoverable: ExecuteToolCalls inserts staged advice
-  // after successful results. This high ceiling only catches a model that
-  // ignores both instructions; deterministic schema/policy rejections use a
-  // separate lower bound because the same request cannot start succeeding.
-  bool repeated = false;
+  // Valid repetition is counted here and advised on by ExecuteToolCalls once
+  // the results are in; deterministic schema/policy rejections use a separate
+  // lower bound because the same request cannot start succeeding.
   for (const ToolCall& call : calls) {
     const Tool* tool = FindTool(tools_, call.name);
     json arguments = json::parse(call.args, nullptr, false);
@@ -117,16 +148,13 @@ bool Agent::ToolCallsWithinLimits(const std::vector<ToolCall>& calls,
     std::string normalized =
         arguments.is_object() ? JsonDump(arguments) : call.args;
     std::string signature = call.name + "\n" + normalized;
-    repeated_calls = signature == last_call ? repeated_calls + 1 : 1;
+    if (signature != last_call) repeated_calls = 0;
     last_call = std::move(signature);
-    repeated = repeated || repeated_calls >= kRepeatedCallStopAfter;
+    if (!Strike(Fault::kRepeat, state, loop, "", /*advise=*/false)) {
+      return false;
+    }
   }
-  if (!repeated) return true;
-  FailBudget(state, TurnStopReason::kRepeatedCalls,
-             "model repeated the same tool call " +
-                 std::to_string(kRepeatedCallStopAfter) +
-                 " times after two recovery instructions");
-  return false;
+  return true;
 }
 
 // Worth a trace record long before it is worth stopping the turn.

@@ -87,6 +87,55 @@ def test_read_path_puts_media_in_context(root, home, *, binary):
         assert_true(not blobs, blobs)
 
 
+def test_a_malformed_tool_call_is_answered_not_fatal(root, home, *, binary):
+    """The model hears what was wrong with its call and sends it again."""
+    workspace = root / "malformed-workspace"
+    workspace.mkdir()
+    (workspace / "note.txt").write_text("malformed-recovered\n", encoding="utf-8")
+
+    def broken(arguments, name="read_path"):
+        return event(
+            {
+                "tool_calls": [
+                    {"index": 0, "id": "bad", "function": {"name": name, "arguments": arguments}}
+                ]
+            },
+            finish="tool_calls",
+        )
+
+    def corrected(_, body):
+        result = tool_results(body["messages"])[-1]
+        assert_true("not one complete JSON object" in result, result)
+        assert_true('{"path": "note' in result, result)
+        return tool_call("read_path", {"path": "note.txt"})
+
+    def nameless_then(_, body):
+        # A call with no function name ran nothing; the note says so.
+        assert_true("without a function name" in json.dumps(body["messages"]), body)
+        return event({"content": "recovered-ok"})
+
+    with Server(
+        [
+            broken('{"path": "note'),
+            corrected,
+            broken('{"path": "note.txt"}', name=""),
+            nameless_then,
+        ]
+    ) as server:
+        result = run(
+            workspace,
+            base_env(home, server.url),
+            "--yolo",
+            "-p",
+            "read it",
+            timeout=30,
+            binary=binary,
+        )
+        assert_true(result.returncode == 0, (result.stdout, result.stderr))
+        assert_true(result.stdout.strip() == "recovered-ok", result.stdout)
+        assert_true(len(server.requests) == 4, len(server.requests))
+
+
 def test_a_loaded_skill_survives_compaction(root, home, *, binary):
     """The summary replaces the turns, not the procedure being followed."""
     workspace = root / "skill-compact-workspace"

@@ -240,13 +240,17 @@ struct StreamCtx {
   }
 };
 
-inline bool CollectToolCalls(std::map<int, ToolCall>& streamed,
+inline void CollectToolCalls(std::map<int, ToolCall>& streamed,
                              ChatResult& result) {
   std::set<std::string> ids;
   for (auto it = streamed.begin(); it != streamed.end();) {
     auto current = it++;
     int index = current->first;
     ToolCall& call = current->second;
+    // Some models send no arguments at all for a call that takes none.
+    if (call.args.find_first_not_of(" \t\r\n") == std::string::npos) {
+      call.args = "{}";
+    }
     json arguments = json::parse(call.args, nullptr, false);
     if (call.name.empty() || arguments.is_discarded() ||
         !arguments.is_object()) {
@@ -261,8 +265,19 @@ inline bool CollectToolCalls(std::map<int, ToolCall>& streamed,
         streamed.erase(current);
         break;
       }
-      result.error = "invalid model tool call: incomplete function";
-      return false;
+      // A model's mistake is the model's to correct, never the turn's end:
+      // a named call is answered with an error like any other bad argument,
+      // and a nameless one, which nothing can answer, is dropped.
+      DebugLog("malformed_tool_call", {{"stream_index", index},
+                                       {"name", call.name},
+                                       {"args_chars", call.args.size()}});
+      if (call.name.empty()) {
+        ++result.nameless_tool_calls;
+        streamed.erase(current);
+        continue;
+      }
+      call.malformed = std::move(call.args);
+      call.args = "{}";
     }
     std::string original = call.id;
     std::string base =
@@ -286,7 +301,6 @@ inline bool CollectToolCalls(std::map<int, ToolCall>& streamed,
     (void)index;
     result.tool_calls.push_back(std::move(call));
   }
-  return true;
 }
 
 }  // namespace uagent

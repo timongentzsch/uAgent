@@ -94,10 +94,10 @@ void Agent::PushUserInput(json content, bool attachment, const json& images,
   PublishMessage(request_id);
 }
 
-// A harness note for this step only: erased once the model has answered it.
+// A harness note for this step only; several in one step go out as one.
 void Agent::PushStepNote(StepState& loop, std::string note) {
-  conversation_.Push(HarnessMessage(std::move(note)), MessageKind::kInternal);
-  loop.pending_note = conversation_.Size() - 1;
+  if (!loop.note.empty()) loop.note += "\n\n";
+  loop.note += note;
 }
 
 // Every interruption ends the turn the same way, whatever noticed it first.
@@ -176,10 +176,6 @@ Agent::StepFlow Agent::PrepareStep(TurnExecution& state, StepState& loop) {
         MaybeCompactDuringTurn(state.metrics.usage, state.start);
     if (compacted != MidturnCompact::kNotNeeded) {
       loop.midturn_compaction_enabled = false;
-      // A successful compaction rebuilt the history, so a recorded note
-      // index no longer refers to its note; a failed one left history
-      // exactly as it was, and the note still has to be retracted.
-      if (compacted == MidturnCompact::kSucceeded) loop.pending_note.reset();
       return StepFlow::kRetryStep;
     }
   }
@@ -190,78 +186,24 @@ Agent::StepFlow Agent::PrepareStep(TurnExecution& state, StepState& loop) {
 bool Agent::HandleActivityPollResults(
     const std::vector<ActivityPollResult>& polls, bool exclusive,
     TurnExecution& state, StepState& loop) {
-  auto reset = [&] {
-    loop.recovery.quiet_activity_id = 0;
-    loop.recovery.quiet_activity_polls = 0;
-    loop.recovery.quiet_activity_advisory_sent = false;
-  };
-
+  int64_t& quiet_polls =
+      loop.recovery.strikes[static_cast<size_t>(Fault::kQuietPoll)];
   bool successful = false;
   for (const ActivityPollResult& poll : polls) successful |= poll.ok;
   if (successful) {
     loop.recovery.last_call.clear();
-    loop.recovery.repeated_calls = 0;
+    loop.recovery.strikes[static_cast<size_t>(Fault::kRepeat)] = 0;
   }
-  if (!exclusive || polls.size() != 1) {
-    if (!polls.empty()) reset();
+  // Only a lone poll that came back running and unchanged counts.
+  if (polls.size() != 1 || !exclusive || !polls.front().ok ||
+      polls.front().terminal || !polls.front().no_change) {
+    if (!polls.empty()) quiet_polls = 0;
     return false;
   }
-
-  const ActivityPollResult& poll = polls.front();
-  if (!poll.ok || poll.terminal || !poll.no_change) {
-    reset();
-    return false;
-  }
-  if (loop.recovery.quiet_activity_id != poll.id) {
-    reset();
-    loop.recovery.quiet_activity_id = poll.id;
-  }
-  ++loop.recovery.quiet_activity_polls;
-
-  // A slow activity answers "(no new output)" honestly, so quiet polls steer
-  // rather than end the turn that owns the work. The ceiling still bounds a
-  // model that ignores every escalation: UAGENT_MAX_STEPS defaults to off.
-  if (loop.recovery.quiet_activity_polls >= kActivityPollStopAfter) {
-    FailTurn(state, "activity " + std::to_string(poll.id) +
-                        " is still running, "
-                        "but the model polled it " +
-                        std::to_string(loop.recovery.quiet_activity_polls) +
-                        " times without new output and without waiting on it");
-    DebugLog("activity_poll_loop",
-             {{"turn", turn_id_},
-              {"step", loop.step},
-              {"activity_id", poll.id},
-              {"polls", loop.recovery.quiet_activity_polls}});
-    return true;
-  }
-  if (loop.recovery.quiet_activity_polls == kActivityPollAdviseAfter ||
-      loop.recovery.quiet_activity_polls == kActivityPollDirectAfter) {
-    const bool mandatory =
-        loop.recovery.quiet_activity_polls == kActivityPollDirectAfter;
-    std::string note =
-        "[activity poll advisory] Activity " + std::to_string(poll.id) +
-        " is still running and has "
-        "returned no new output " +
-        std::to_string(loop.recovery.quiet_activity_polls) + " times. ";
-    note += mandatory ? "Stop polling it: this turn ends in an error if you "
-                        "keep polling without waiting. Either issue one "
-                        "activity call with operation=wait, mode=any and "
-                        "wait_ms, or read the output it writes elsewhere, or "
-                        "do independent work and revisit it later."
-                      : "Do not poll it again immediately. If completion "
-                        "blocks the next step, issue one bounded activity "
-                        "call with operation=wait, mode=any, and wait_ms; "
-                        "otherwise continue independent work.";
-    PushStepNote(loop, std::move(note));
-    loop.recovery.quiet_activity_advisory_sent = true;
-    DebugLog("activity_poll_advisory",
-             {{"turn", turn_id_},
-              {"step", loop.step},
-              {"activity_id", poll.id},
-              {"polls", loop.recovery.quiet_activity_polls},
-              {"mandatory", mandatory}});
-  }
-  return false;
+  const int64_t id = polls.front().id;
+  if (loop.recovery.quiet_activity_id != id) quiet_polls = 0;
+  loop.recovery.quiet_activity_id = id;
+  return !Strike(Fault::kQuietPoll, state, loop, std::to_string(id));
 }
 
 Agent::StepFlow Agent::ExecuteToolCalls(const std::vector<ToolCall>& calls,
@@ -285,44 +227,9 @@ Agent::StepFlow Agent::ExecuteToolCalls(const std::vector<ToolCall>& calls,
   if (StopForRepeatedRejections(rejections, state, loop)) {
     return StepFlow::kEndTurn;
   }
-  if (rejections.empty() && loop.recovery.consecutive_failed_tools == 0 &&
-      (loop.recovery.repeated_calls == kRepeatedCallAdviseAfter ||
-       loop.recovery.repeated_calls == kRepeatedCallDirectAfter)) {
-    const bool direct =
-        loop.recovery.repeated_calls == kRepeatedCallDirectAfter;
-    std::string note =
-        "[repeated tool advisory] The same tool and arguments have already "
-        "run " +
-        std::to_string(loop.recovery.repeated_calls) + " consecutive times. ";
-    note +=
-        direct ? "Do not issue that unchanged call again. Use its existing "
-                 "result, change the arguments or strategy, or use a bounded "
-                 "wait operation when you are observing ongoing work."
-               : "Reassess whether another identical result can add evidence. "
-                 "Use the current result, change the request, or use a bounded "
-                 "wait operation when you are observing ongoing work.";
-    PushStepNote(loop, std::move(note));
-    DebugLog("repeated_tool_advisory",
-             {{"turn", turn_id_},
-              {"step", loop.step},
-              {"repetitions", loop.recovery.repeated_calls},
-              {"direct", direct}});
-  }
-  if (!loop.recovery.failure_advisory_sent &&
-      loop.recovery.consecutive_failed_tools >= kFailedToolAdviseAfter) {
-    loop.recovery.failure_advisory_sent = true;
-    PushStepNote(loop,
-                 "[tool failure advisory] " +
-                     std::to_string(kFailedToolAdviseAfter) +
-                     " consecutive tool calls failed. Reassess the shared "
-                     "premise or execution environment before trying "
-                     "another variant; use existing evidence or a "
-                     "different approach when possible.");
-    DebugLog(
-        "tool_failure_advisory",
-        {{"turn", turn_id_},
-         {"step", loop.step},
-         {"consecutive_failures", loop.recovery.consecutive_failed_tools}});
+  if (rejections.empty() &&
+      loop.recovery.strikes[static_cast<size_t>(Fault::kFailedTools)] == 0) {
+    Advise(Fault::kRepeat, loop);
   }
   // Do not start a network request with only curl's one-second granularity
   // left after tools. Report the owning turn budget instead of a misleading
@@ -424,22 +331,16 @@ void Agent::Turn(const std::string& user_input, json user_content,
     }
 
     const json& schemas = available_schemas_.Schemas();
-    ChatResult response = Chat("turn", loop.step, schemas);
-    if (loop.pending_note) {
-      // The index was the tail when it was recorded. If history moved under
-      // it anyway, erasing blind would drop a real message, so drop the note
-      // instead and leave a trace of the contract having been broken.
-      if (*loop.pending_note < conversation_.Size() &&
-          conversation_.KindAt(*loop.pending_note) == MessageKind::kInternal) {
-        conversation_.Erase(*loop.pending_note, *loop.pending_note + 1);
-      } else {
-        DebugLog("pending_note_stale", {{"turn", turn_id_},
-                                        {"step", loop.step},
-                                        {"index", *loop.pending_note},
-                                        {"size", conversation_.Size()}});
-      }
-      loop.pending_note.reset();
+    // The step's note is the request's last message and leaves with the
+    // answer, so a nudge never accumulates in history.
+    const bool noted = !loop.note.empty();
+    if (noted) {
+      conversation_.Push(HarnessMessage(std::exchange(loop.note, {})),
+                         MessageKind::kInternal);
     }
+    ChatResult response = Chat("turn", loop.step, schemas);
+    if (noted)
+      conversation_.Erase(conversation_.Size() - 1, conversation_.Size());
     flow = HandleFailedResponse(response, state, loop, schemas, attachment);
     if (flow == StepFlow::kEndTurn) break;
     if (flow == StepFlow::kNextStep) continue;
@@ -472,22 +373,33 @@ void Agent::Turn(const std::string& user_input, json user_content,
     if (flow == StepFlow::kEndTurn) break;
     if (flow == StepFlow::kNextStep) continue;
 
+    // A call without a function name was dropped: the rest of the response
+    // stands, and the model hears about the one that did not run.
+    if (response.nameless_tool_calls > 0) {
+      if (!Strike(Fault::kNameless, state, loop)) break;
+      if (calls.empty()) continue;
+    }
     if (calls.empty() && (ContainsForeignToolCallMarkup(response.content) ||
                           response.suppressed)) {
-      if (HandleUnparsedToolMarkup(state, loop) == StepFlow::kNextStep) {
-        continue;
-      }
-      break;
+      if (!Strike(Fault::kMarkup, state, loop)) break;
+      continue;
     }
     if (!ToolCallsWithinLimits(calls, state, loop)) {
       break;
     }
     RecordToolRoundRepetition(calls, loop);
     if (calls.empty() && response.content.empty()) {
-      if (HandleEmptyResponse(response, state, loop) == StepFlow::kNextStep) {
-        continue;
+      if (!Strike(Fault::kEmpty, state, loop,
+                  state.metrics.tool_count > 0
+                      ? "Return the final answer from existing results. Do "
+                        "not repeat completed work."
+                      : "The previous reply arrived empty. Answer the "
+                        "request directly.")) {
+        break;
       }
-      break;
+      Emit(NoticeEvent(PresentationStatus::kNeutral,
+                       "recovering empty response"));
+      continue;
     }
 
     PushAssistantMessage(response, calls);

@@ -208,7 +208,7 @@ def test_partial_stop_policy_continues_prose_and_salvages_calls(root, home, *, b
         assert_true(len(server.requests) == 1, len(server.requests))
 
 
-def test_empty_partial_stop_fails_without_invalid_continuation(root, home, *, binary):
+def test_empty_partial_stop_continues_once_then_fails(root, home, *, binary):
     empty_thinking = event(
         {},
         finish="length",
@@ -218,14 +218,22 @@ def test_empty_partial_stop_fails_without_invalid_continuation(root, home, *, bi
             "completion_tokens_details": {"reasoning_tokens": 4},
         },
     )
-    with Server([empty_thinking]) as server:
+
+    def again(_, body):
+        # Nothing arrived to keep, so no empty assistant message is replayed:
+        # the model is only told to carry on.
+        assert_true("partial model response: length" in json.dumps(body["messages"]), body)
+        assert_true(body["messages"][-2]["role"] != "assistant", body["messages"])
+        return empty_thinking
+
+    with Server([empty_thinking, again]) as server:
         result = run(root, base_env(home, server.url), "-p", "finish safely", binary=binary)
         assert_true(result.returncode == 1, result.stdout)
         assert_true(
             "model response stopped before completion (length)" in result.stderr,
             result.stderr,
         )
-        assert_true(len(server.requests) == 1, server.requests)
+        assert_true(len(server.requests) == 2, server.requests)
 
 
 def test_empty_response_after_tools_recovers(root, home, *, binary):

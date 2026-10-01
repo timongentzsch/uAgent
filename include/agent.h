@@ -38,6 +38,7 @@ namespace uagent {
 struct BackgroundCompletion;
 struct CallTask;
 enum class TurnStopReason;
+enum class Fault;
 
 class Agent {
  public:
@@ -283,9 +284,11 @@ class Agent {
   StepFlow HandleFailedResponse(ChatResult& response, TurnExecution& state,
                                 StepState& loop, const json& schemas,
                                 bool attachment);
-  StepFlow HandleUnparsedToolMarkup(TurnExecution& state, StepState& loop);
-  StepFlow HandleEmptyResponse(const ChatResult& response, TurnExecution& state,
-                               StepState& loop);
+  // Counts one more of a model's faults; false once that ends the turn.
+  // `advise` tells the model what its rule says at this strike.
+  bool Strike(Fault fault, TurnExecution& state, StepState& loop,
+              const std::string& about = "", bool advise = true);
+  void Advise(Fault fault, StepState& loop, const std::string& about = "");
   StepFlow HandleResponseStop(ChatResult& response, size_t tool_call_count,
                               TurnExecution& state, StepState& loop);
   void RecordToolRoundRepetition(const std::vector<ToolCall>& calls,

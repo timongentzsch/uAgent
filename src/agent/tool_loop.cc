@@ -149,10 +149,15 @@ void Agent::PrepareCall(const ToolCall& call, CallTask& task,
   if (tool) CanonicalizeToolArguments(*tool, task.args, &task.clamped);
   const json& arguments = task.args;
   bool valid = false;
-  if (arguments.is_discarded() || !arguments.is_object()) {
+  if (!call.malformed.empty()) {
     ToolArgumentIssue issue = ArgumentIssue(
         "arguments.malformed", "malformed tool arguments (not valid JSON)");
-    reject(task, ToolErrorCode::kInvalidArguments, "error: " + issue.message,
+    reject(task, ToolErrorCode::kInvalidArguments,
+           "error: nothing ran: the arguments were not one complete JSON "
+           "object. Send the call again with every argument inside a single "
+           "JSON object. Received " +
+               std::to_string(call.malformed.size()) +
+               " characters, starting: " + Utf8Trunc(call.malformed, 200),
            "malformed_arguments", issue);
   } else if (!tool) {
     ToolArgumentIssue issue =
@@ -274,7 +279,6 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
                      std::vector<ActivityPollResult>& activity_polls) {
   const int64_t step = loop.step;
   const auto deadline = state.deadline;
-  int64_t& consecutive_failed_tools = loop.recovery.consecutive_failed_tools;
   std::vector<CallTask> tasks(calls.size());
   rejections.clear();
   activity_polls.clear();
@@ -398,8 +402,12 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
   int64_t failed =
       std::count_if(tasks.begin(), tasks.end(),
                     [](const CallTask& task) { return !task.result.Ok(); });
-  consecutive_failed_tools =
-      any_succeeded ? 0 : consecutive_failed_tools + failed;
+  if (any_succeeded) {
+    loop.recovery.strikes[static_cast<size_t>(Fault::kFailedTools)] = 0;
+  }
+  for (int64_t count = any_succeeded ? 0 : failed; count > 0; --count) {
+    Strike(Fault::kFailedTools, state, loop);
+  }
   for (size_t index = 0; index < tasks.size(); ++index) {
     const CallTask& task = tasks[index];
     if (calls[index].name == "activity" && task.args.is_object() &&

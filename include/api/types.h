@@ -104,6 +104,9 @@ struct ToolCall {
   std::string response_id{};
   std::string occurrence_id{};
   std::string detail_id{};
+  // What the model sent when it was not a JSON object: `args` is then `{}`
+  // so history replays, and the call is answered with an error, not run.
+  std::string malformed{};
 };
 
 struct ChatResult {
@@ -144,6 +147,9 @@ struct ChatResult {
   std::string remote_error_type;
   std::string remote_error_code;
   RemoteErrorKind remote_error_kind = RemoteErrorKind::kNone;
+  // Calls that named no function: nothing can answer them, so they are
+  // dropped and the model is told when that leaves the response empty.
+  int64_t nameless_tool_calls = 0;
   bool interrupted = false;
   bool suppressed = false;
   bool semantic_progress = false;

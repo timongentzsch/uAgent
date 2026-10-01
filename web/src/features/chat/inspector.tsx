@@ -24,7 +24,7 @@ import {
   useRef,
   useState,
 } from "preact/hooks";
-import { ArrowDownToLine, Square, ChevronLeft } from "lucide-preact";
+import { ChevronLeft } from "lucide-preact";
 import { JumpToLatest } from "../../shared/jump-to-latest.tsx";
 import { command, readPages, manage } from "../../state/api.ts";
 import { useTranscriptHistory } from "../../state/use-transcript-history.ts";
@@ -35,14 +35,18 @@ import {
   Deferred,
   EmptyState,
   Field,
-  IconButton,
   LoadError,
   Modal,
   SectionTitle,
   Skeleton,
   Spinner,
 } from "../../shared/ui.tsx";
-import { active, ActivityStatus, withAgents } from "./activity-status.tsx";
+import {
+  active,
+  ActivityControls,
+  ActivityStatus,
+  withAgents,
+} from "./activity-status.tsx";
 import Markdown from "../../shared/markdown-view.tsx";
 import { MessageRows, prepareHistoryBlocks } from "./message.tsx";
 import { MessageActions } from "./message-actions.ts";
@@ -164,7 +168,6 @@ export default function Inspector({
   const [page, setPage] = useState<Page | null>(null);
   // An inner page is a layer of its own: back returns to the activity.
   useDismiss(page !== null, () => setPage(null));
-  const [busy, setBusy] = useState(false);
   const inspection = useRef(0);
   const inspectionRequest = useRef<AbortController>();
   // Progress ticks can outpace a refresh: one runs at a time and the latest
@@ -314,22 +317,6 @@ export default function Inspector({
         ? detail?.name || "Subagent"
         : "Activity");
 
-  async function act(operation: "stop" | "background") {
-    if (!current) return;
-    setBusy(true);
-    try {
-      await command("activity", session, {
-        operation,
-        activity_id: current.id || 0,
-        agent_id: current.agent_id || "",
-        text: "",
-      });
-    } catch (failure) {
-      report(failure);
-    } finally {
-      setBusy(false);
-    }
-  }
   const live = !!current && !page && active(current);
 
   return (
@@ -340,24 +327,13 @@ export default function Inspector({
       close={close}
       actions={
         live && (
-          <>
-            {current.kind !== "agent" && current.detached === false && (
-              <IconButton
-                label="Move to background"
-                disabled={!online || busy}
-                onClick={() => act("background")}
-              >
-                <ArrowDownToLine />
-              </IconButton>
-            )}
-            <IconButton
-              label={`Stop ${title}`}
-              disabled={!online || busy || current.status === "stopping"}
-              onClick={() => act("stop")}
-            >
-              <Square />
-            </IconButton>
-          </>
+          <ActivityControls
+            item={current}
+            name={title}
+            session={session}
+            online={online}
+            report={report}
+          />
         )
       }
     >

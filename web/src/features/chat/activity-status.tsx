@@ -24,6 +24,7 @@ import {
 import { cleanText, Button, IconButton, DataText } from "../../shared/ui.tsx";
 import { SheetButton } from "../../shared/sheet.tsx";
 import { command } from "../../state/api.ts";
+import { useAction } from "../../shared/use-action.ts";
 import { duration } from "../../shared/duration.ts";
 import type { InspectorTarget } from "./inspector.tsx";
 export const active = (item: Activity) =>
@@ -194,6 +195,53 @@ export function ActivityButton({
   );
 }
 
+// What a running activity can be told: Stop, and for a command the turn
+// still waits on, Move to background.
+export function ActivityControls({
+  item,
+  name,
+  session,
+  online,
+  report,
+}: {
+  item: Activity;
+  name: string;
+  session: SessionRef;
+  online: boolean;
+  report: Report;
+}) {
+  const { run, busy } = useAction();
+  const act = (operation: "stop" | "background") =>
+    run(() =>
+      command("activity", session, {
+        operation,
+        activity_id: item.id || 0,
+        agent_id: item.agent_id || "",
+        text: "",
+      }).catch(report),
+    );
+  return (
+    <>
+      {item.kind !== "agent" && item.detached === false && (
+        <IconButton
+          label="Move to background"
+          disabled={!online || busy}
+          onClick={() => act("background")}
+        >
+          <ArrowDownToLine />
+        </IconButton>
+      )}
+      <IconButton
+        label={`Stop ${name}`}
+        disabled={!online || busy || item.status === "stopping"}
+        onClick={() => act("stop")}
+      >
+        <Square />
+      </IconButton>
+    </>
+  );
+}
+
 function ActivityRow({
   item,
   session,
@@ -209,13 +257,6 @@ function ActivityRow({
 }) {
   const name =
     item.kind === "agent" ? item.name || item.label : item.label || "Command";
-  const act = (operation: "stop" | "background") =>
-    command("activity", session, {
-      operation,
-      activity_id: item.id || 0,
-      agent_id: item.agent_id || "",
-      text: "",
-    }).catch(report);
   return (
     <li class="activity-row">
       <Button
@@ -236,23 +277,14 @@ function ActivityRow({
           </small>
         </span>
       </Button>
-      {active(item) && item.kind !== "agent" && item.detached === false && (
-        <IconButton
-          label="Move to background"
-          disabled={!online}
-          onClick={() => act("background")}
-        >
-          <ArrowDownToLine />
-        </IconButton>
-      )}
       {active(item) && (
-        <IconButton
-          label={`Stop ${name}`}
-          disabled={!online || item.status === "stopping"}
-          onClick={() => act("stop")}
-        >
-          <Square />
-        </IconButton>
+        <ActivityControls
+          item={item}
+          name={name || ""}
+          session={session}
+          online={online}
+          report={report}
+        />
       )}
     </li>
   );

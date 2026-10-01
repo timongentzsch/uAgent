@@ -183,17 +183,6 @@ export default function Inspector({
     [],
   );
 
-  // Bound loader shared with nested viewers (which own their UI state).
-  const loadDetail = useCallback(
-    (
-      item: ActivityDetail,
-      before?: number,
-      prior?: ActivityDetail | null,
-      signal?: AbortSignal,
-    ) => fetchActivityDetail(session, cwd, item, before, prior, signal),
-    [session, cwd],
-  );
-
   async function inspect(
     item: ActivityDetail,
     before?: number,
@@ -219,7 +208,9 @@ export default function Inspector({
       setError(null);
     }
     try {
-      const next = await loadDetail(
+      const next = await fetchActivityDetail(
+        session,
+        cwd,
         item,
         before,
         before ? detail : undefined,
@@ -292,12 +283,7 @@ export default function Inspector({
     .join("|");
   useEffect(() => {
     if (!detail || loading || detail.olderWindow) return;
-    const item = rows.find((item) =>
-      detail.agent_id
-        ? item.agent_id === detail.agent_id
-        : item.id === detail.id,
-    );
-    inspect(item || detail, undefined, true).catch(report);
+    inspect(current || detail, undefined, true).catch(report);
   }, [rowsVersion, detail?.id, detail?.agent_id, detail?.olderWindow, loading]);
 
   const current =
@@ -399,7 +385,7 @@ export default function Inspector({
             setDetail(next);
           }}
           page={setPage}
-          loadDetail={loadDetail}
+          cwd={cwd}
           hidden={!!page}
         />
       ) : (
@@ -421,7 +407,7 @@ function DetailBody({
   report,
   navigate,
   page,
-  loadDetail,
+  cwd,
   hidden,
 }: {
   // Hidden, not unmounted, while a page is shown: the draft and thread
@@ -438,12 +424,7 @@ function DetailBody({
   report: Report;
   navigate: (detail: ActivityDetail) => void;
   page: (page: Page) => void;
-  loadDetail: (
-    item: ActivityDetail,
-    before?: number,
-    prior?: ActivityDetail | null,
-    signal?: AbortSignal,
-  ) => Promise<ActivityDetail>;
+  cwd: string;
 }) {
   const isAgent = !!detail.agent_id && !detail.memory;
   const isLive = active(current);
@@ -536,7 +517,9 @@ function DetailBody({
     async (block: Block) => {
       const { signal } = lifetime.current;
       try {
-        const full = await loadDetail(
+        const full = await fetchActivityDetail(
+          session,
+          cwd,
           {
             activity_id: block.activity_id,
             agent_id: block.agent_id,
@@ -556,7 +539,7 @@ function DetailBody({
         if (!signal.aborted) report(failure);
       }
     },
-    [detail, loadDetail, navigate, report],
+    [detail, session, cwd, navigate, report],
   );
   const threadActions = useMemo(
     () => ({

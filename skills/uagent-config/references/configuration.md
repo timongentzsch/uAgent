@@ -113,7 +113,6 @@ Every setting below is read from the running binary's registry. `takes effect` i
 | --- | --- | --- | --- | --- |
 | `UAGENT_WEB_SEARCH_BACKEND` | string | `auto` | restart-required | auto, openrouter, or off |
 | `UAGENT_WEB_SEARCH_MODEL` | string | empty | restart-required | model route used for search |
-| `UAGENT_WEB_SEARCH_EFFORT` | string | empty | restart-required | reasoning effort for the search route |
 | `UAGENT_WEB_SEARCH_ENGINE` | string | `auto` | restart-required | auto, native, exa, firecrawl, parallel, perplexity |
 | `UAGENT_WEB_SEARCH_CONTEXT_SIZE` | string | empty | restart-required | low, medium, or high native search context |
 

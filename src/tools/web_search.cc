@@ -105,10 +105,6 @@ WebSearchRoute SelectWebSearchRoute(
 
 json WebSearchRequest(const WebSearchRoute& route, const RuntimeConfig& config,
                       const std::string& prompt) {
-  // A `:effort` suffix on the selection is more specific than the session-wide
-  // UAGENT_WEB_SEARCH_EFFORT default.
-  const std::string& effort =
-      route.effort.empty() ? config.web_search_effort : route.effort;
   json parameters = {
       {"engine", config.web_search_engine},
       {"max_results", kWebSearchMaxResults},
@@ -126,7 +122,7 @@ json WebSearchRequest(const WebSearchRoute& route, const RuntimeConfig& config,
       {"tools", json::array({{{"type", "openrouter:web_search"},
                               {"parameters", std::move(parameters)}}})},
       {"messages", json::array({{{"role", "user"}, {"content", prompt}}})}};
-  if (!effort.empty()) body["reasoning"] = {{"effort", effort}};
+  if (!route.effort.empty()) body["reasoning"] = {{"effort", route.effort}};
   return body;
 }
 
@@ -212,11 +208,9 @@ Tool WebSearchTool(Api& api, UsageAccumulator& usage,
                     {"reported", normalized.web_searches}});
         }
         if (response.body.is_object()) {
-          const std::string& effort = active.effort.empty()
-                                          ? api.config.web_search_effort
-                                          : active.effort;
           usage.Add(
-              RouteKey(active.base_url, "web_search", active.model, effort),
+              RouteKey(active.base_url, "web_search", active.model,
+                       active.effort),
               normalized, context.turn_id,
               {{"model_calls", 1},
                {"model_ms", ElapsedMs(started)},

@@ -689,12 +689,6 @@ BootstrapResult Bootstrap(Options options, const char* executable,
     options.debug = !options.debug_path.empty();
   }
 
-  if (!config.web_search_effort.empty() &&
-      !ValidEffort(config.web_search_effort)) {
-    PrintWarning("ignoring invalid UAGENT_WEB_SEARCH_EFFORT=" +
-                 config.web_search_effort);
-    config.web_search_effort.clear();
-  }
   auto context =
       std::make_unique<AppContext>(std::move(config), std::move(config_manager),
                                    std::move(options), observability, channel);

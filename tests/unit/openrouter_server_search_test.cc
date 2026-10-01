@@ -176,7 +176,7 @@ void TestOpenRouterServerSearch() {
 
   RuntimeConfig search_config;
   // A provider-scoped selection is a route of its own: endpoint, key and model
-  // all come from it, and the :effort suffix beats the session default.
+  // all come from it, and the :effort suffix sets the reasoning effort.
   setenv("UAGENT_PROVIDERS",
          R"json({"seeker":{"base_url":"https://seek.example/v1",
                             "api_key":"seek-key",
@@ -186,7 +186,6 @@ void TestOpenRouterServerSearch() {
          1);
   RuntimeConfig scoped_config = search_config;
   scoped_config.web_search_model = "seeker/finder-model:high";
-  scoped_config.web_search_effort = "low";
   Api scoped_api(scoped_config);
   scoped_api.base_url = "https://inference.example/v1";
   scoped_api.api_key = "inference-key";

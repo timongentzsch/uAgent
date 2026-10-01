@@ -418,11 +418,6 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                           "search", "model route used for search"),
             "conversation model on OpenRouter, else the default route"),
         "Web search model", "Answers web lookups"),
-    registry::Fallback(
-        registry::Str("UAGENT_WEB_SEARCH_EFFORT", "web_search_effort", "",
-                      ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
-                      "search", "reasoning effort for the search route"),
-        "provider default"),
     registry::Choice(
         registry::Str("UAGENT_WEB_SEARCH_ENGINE", "web_search_engine", "auto",
                       ReloadPolicy::kRestartRequired, Sensitivity::kPublic,

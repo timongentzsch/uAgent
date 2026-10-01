@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Upgrade notes
+
+Settings that left the registry are no longer read. A config file that still
+names one loads as before and the line has no effect.
+
+- Removed: `UAGENT_STEERING` (it gated nothing) and
+  `UAGENT_OPENROUTER_FALLBACKS`. A provider pinned with
+  `UAGENT_OPENROUTER_PROVIDER` no longer falls back to another.
+- Removed: `UAGENT_WEB_SEARCH_EFFORT`. Put the effort on the search model
+  instead, as in `UAGENT_WEB_SEARCH_MODEL=vendor/model:low`; without a suffix
+  the provider's default applies.
+
 ### Added
 
 - `uagent --plain` (or `UAGENT_PLAIN=1`) for screen readers: append-only

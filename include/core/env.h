@@ -134,8 +134,6 @@ struct RuntimeConfig : TurnBudgets {
       RegistryDefault<std::string_view>("UAGENT_OPENROUTER_VARIANT")};
   std::string web_search_backend{
       RegistryDefault<std::string_view>("UAGENT_WEB_SEARCH_BACKEND")};
-  std::string web_search_effort{
-      RegistryDefault<std::string_view>("UAGENT_WEB_SEARCH_EFFORT")};
   std::string web_search_model{
       RegistryDefault<std::string_view>("UAGENT_WEB_SEARCH_MODEL")};
   std::string web_search_engine{

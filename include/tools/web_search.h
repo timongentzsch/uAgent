@@ -21,7 +21,7 @@ struct WebSearchRoute {
   std::string api_key;
   std::string model;
   // From a `:effort` suffix on UAGENT_WEB_SEARCH_MODEL; empty means the
-  // UAGENT_WEB_SEARCH_EFFORT default.
+  // provider default.
   std::string effort;
 
   bool Valid() const {

@@ -84,7 +84,7 @@ for (const width of [390, 1280]) {
     const dataRequested = new Promise((resolve) => (reachedData = resolve));
     let holdData = false;
     await page.route(
-      `**/${manifest["src/features/settings/statistics.tsx"].file}`,
+      `**/${manifest["src/features/chat/statistics.tsx"].file}`,
       async (route) => {
         await code;
         await route.continue();

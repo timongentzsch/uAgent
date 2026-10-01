@@ -10,7 +10,13 @@ import type {
   Session,
 } from "../shared/types.ts";
 import { failure } from "../shared/types.ts";
-import { useCallback, useEffect, useRef, useState } from "preact/hooks";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "preact/hooks";
 import {
   retainedViews,
   applySessionEvent,
@@ -36,7 +42,7 @@ import { needsYou } from "./attention.ts";
 const CATALOGUE_KEY = "uagent-catalogue";
 
 // What the sidebar lists: conversations, not scheduled runs or their tasks.
-export function listedSessions({
+function listedSessions({
   sessions,
   scheduled,
 }: Pick<Catalogue, "sessions" | "scheduled">) {
@@ -514,10 +520,15 @@ export function useHost(
               ...applySessionEvent(current, event),
               ...(event.metadata && { metadata: event.metadata }),
             };
+          // A repeat of the activities it has keeps the session's identity.
           patchSession(
             id,
             (item) =>
-              event.metadata || { ...item, activities: data.activities },
+              event.metadata ||
+              (JSON.stringify(item.activities) ===
+              JSON.stringify(data.activities)
+                ? item
+                : { ...item, activities: data.activities }),
           );
         } else if (event.kind === "block" && current) {
           live.current[id] = applySessionEvent(current, event);
@@ -652,13 +663,16 @@ export function useHost(
     if (selected && authenticated) load(selected).catch(() => {});
   }, [selected, authenticated, load]);
   // Only what the sidebar lists: scheduled runs and their tasks stay out.
+  const listed = useMemo(
+    () => listedSessions(catalogue),
+    [catalogue.sessions, catalogue.scheduled],
+  );
   useEffect(() => {
-    if (authenticated)
-      writeStored(storage, CATALOGUE_KEY, listedSessions(catalogue));
-  }, [authenticated, catalogue.sessions, catalogue.scheduled]);
+    if (authenticated) writeStored(storage, CATALOGUE_KEY, listed);
+  }, [authenticated, listed]);
   // The tab title and the installed app's badge count what needs you;
   // written only when that count changes.
-  const attention = needsYou(listedSessions(catalogue));
+  const attention = needsYou(listed);
   useEffect(() => {
     document.title = attention ? `(${attention}) µAgent` : "µAgent";
     if ("setAppBadge" in navigator)
@@ -771,6 +785,7 @@ export function useHost(
         : "disconnected") as ConnectionPhase,
     loadErrors,
     catalogue,
+    listed,
     upsertSession,
     snapshots,
     selected,

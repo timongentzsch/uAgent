@@ -259,22 +259,24 @@ export const sessionOrder = (sessions: Session[]) =>
     ...group.others,
   ]);
 
-// One conversation in the list: its title, activity and last update.
-function SessionRow({
-  item,
-  selected,
-  unread,
-  online,
-  choose,
-  menu,
-}: {
+type SessionRowProps = {
   item: Session;
   selected: boolean;
   unread: boolean;
   online: boolean;
   choose: (id: string) => void;
   menu: (session: Session) => ComponentChildren;
-}) {
+};
+
+// One conversation in the list: its title, activity and last update.
+function SessionRowView({
+  item,
+  selected,
+  unread,
+  online,
+  choose,
+  menu,
+}: SessionRowProps) {
   const { state } = statusOf(item, online);
   const Icon = STATE_ICONS[state];
   return (
@@ -310,6 +312,21 @@ function SessionRow({
       {menu(item)}
     </div>
   );
+}
+
+const changed = (prior: object, next: object) =>
+  Object.entries(next).some(
+    ([key, value]) => (prior as Record<string, unknown>)[key] !== value,
+  );
+
+// A patch to one session keeps the others' objects, so only its row renders.
+class SessionRow extends Component<SessionRowProps> {
+  shouldComponentUpdate(next: SessionRowProps) {
+    return changed(this.props, next);
+  }
+  render(props: SessionRowProps) {
+    return <SessionRowView {...props} />;
+  }
 }
 
 type SidebarProps = {
@@ -509,8 +526,7 @@ function SidebarView({
 // its props changes, which the shell keeps stable.
 export default class Sidebar extends Component<SidebarProps> {
   shouldComponentUpdate(next: SidebarProps) {
-    const prior = this.props as Record<string, unknown>;
-    return Object.entries(next).some(([key, value]) => prior[key] !== value);
+    return changed(this.props, next);
   }
   render(props: SidebarProps) {
     return <SidebarView {...props} />;

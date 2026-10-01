@@ -210,4 +210,6 @@ test("streaming renders only what changed", async ({ page }) => {
     "running",
   );
   expect(ticks.ToolRow).toBe(20);
+  // The sidebar renders that session's row, not the other forty.
+  expect(ticks.SessionRow).toBe(20);
 });

@@ -72,7 +72,7 @@ import {
   trackViewport,
 } from "../shared/layout.ts";
 
-import { listedSessions, useHost } from "../state/use-host.ts";
+import { useHost } from "../state/use-host.ts";
 import { useSnapshots } from "../state/snapshot-store.ts";
 import { parseSlash } from "../features/composer/slash.ts";
 import { dedupeName } from "../features/composer/mention.ts";
@@ -156,6 +156,7 @@ function App() {
     connection,
     loadErrors,
     catalogue,
+    listed,
     upsertSession,
     snapshots,
     selected,
@@ -828,10 +829,6 @@ function App() {
       />
     ),
     [online, fork, load, report, open],
-  );
-  const listed = useMemo(
-    () => listedSessions(catalogue),
-    [catalogue.sessions, catalogue.scheduled],
   );
   // A slash command from the palette runs as if sent from the composer;
   // one that needs an argument waits there for it.

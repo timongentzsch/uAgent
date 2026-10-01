@@ -455,7 +455,9 @@ json Runtime::Call(const std::string& method, const json& parameters,
   for (;;) {
     size_t end = cdp_buffer_.find('\0');
     if (end != std::string::npos) {
-      json response = json::parse(cdp_buffer_.substr(0, end), nullptr, false);
+      json response = json::parse(
+          cdp_buffer_.begin(),
+          cdp_buffer_.begin() + static_cast<ptrdiff_t>(end), nullptr, false);
       cdp_buffer_.erase(0, end + 1);
       if (JsonValue(response, "id", int64_t{-1}) == id) return response;
       // Events have no reply id. Only the main frame's loading state is

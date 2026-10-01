@@ -86,8 +86,6 @@ int64_t SubagentTimeoutSeconds() {
 // also clamp any thinking budget derived from it.
 int64_t MaxOutputTokens() { return LongSetting(Cfg("UAGENT_MAX_TOKENS")); }
 
-bool SteeringEnabled() { return BoolSetting(Cfg("UAGENT_STEERING")); }
-
 bool SandboxEnabled() { return BoolSetting(Cfg("UAGENT_SANDBOX")); }
 
 bool SandboxNetworkAllowed() { return BoolSetting(Cfg("UAGENT_SANDBOX_NET")); }
@@ -224,7 +222,6 @@ constexpr FieldBinding<std::string> kStringOptions[] = {
     {&Cfg("UAGENT_MCP_ROOTS"), &RuntimeConfig::mcp_roots},
 };
 constexpr FieldBinding<bool> kBoolOptions[] = {
-    {&Cfg("UAGENT_OPENROUTER_FALLBACKS"), &RuntimeConfig::openrouter_fallbacks},
     {&Cfg("UAGENT_MEMORY"), &RuntimeConfig::memory_enabled},
     {&Cfg("UAGENT_MEMORY_GENERATE"), &RuntimeConfig::memory_generate},
 };

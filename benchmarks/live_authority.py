@@ -101,7 +101,6 @@ def apply_authority(env: dict[str, str], declaration: dict[str, Any]) -> None:
             "UAGENT_STREAM_IDLE_TIMEOUT": str(limits["max_session_seconds"]),
             "UAGENT_MAX_TURN_COST": "0",
             "UAGENT_SESSION_BUDGET": "0",
-            "UAGENT_OPENROUTER_FALLBACKS": "0",
         }
     )
 

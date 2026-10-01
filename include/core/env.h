@@ -39,7 +39,6 @@ int64_t SubagentTimeoutSeconds();
 std::string SubagentModel();
 std::string CoordinatorModel();
 int64_t MaxOutputTokens();
-bool SteeringEnabled();
 bool SandboxEnabled();
 // Outbound TCP. Allowed by default: git, npm and pip all need it.
 bool SandboxNetworkAllowed();
@@ -152,8 +151,6 @@ struct RuntimeConfig : TurnBudgets {
   std::string pdf_engine{
       RegistryDefault<std::string_view>("UAGENT_PDF_ENGINE")};
   std::string mcp_roots{RegistryDefault<std::string_view>("UAGENT_MCP_ROOTS")};
-  bool openrouter_fallbacks =
-      RegistryDefault<bool>("UAGENT_OPENROUTER_FALLBACKS");
   bool memory_enabled = RegistryDefault<bool>("UAGENT_MEMORY");
   bool memory_generate = RegistryDefault<bool>("UAGENT_MEMORY_GENERATE");
 

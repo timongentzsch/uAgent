@@ -242,7 +242,6 @@ void TestRuntimeOwnershipHelpers() {
 
   RuntimeConfig routed;
   routed.openrouter_provider = "streamlake";
-  routed.openrouter_fallbacks = true;
   Api api(routed);
   api.base_url = "https://openrouter.ai/api/v1";
   api.capabilities =
@@ -252,7 +251,7 @@ void TestRuntimeOwnershipHelpers() {
       api.BuildRequestBody(json::array(), json::array(), "stable-session");
   CHECK(body.value("session_id", "") == "stable-session");
   CHECK(body["provider"]["order"][0] == "streamlake");
-  CHECK(body["provider"].value("allow_fallbacks", false));
+  CHECK(!body["provider"].value("allow_fallbacks", true));
   CHECK(!body.contains("stream_options"));
   api.config.openrouter_variant = "nitro";
   body = api.BuildRequestBody(json::array(), json::array(), "stable-session");

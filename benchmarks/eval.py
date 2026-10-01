@@ -976,7 +976,6 @@ def eval_self_test() -> int:
         "UAGENT_MAX_TOOL_CALLS": "4",
         "UAGENT_MAX_TOKENS": "512",
         "UAGENT_MAX_TURN_SECONDS": "30",
-        "UAGENT_OPENROUTER_FALLBACKS": "0",
     }
     for name, expected in expected_env.items():
         if env.get(name) != expected:

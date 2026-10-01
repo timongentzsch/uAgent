@@ -40,7 +40,6 @@ struct BoolGetterCheck {
 // validator would then normalize and whose getter would have to restate the
 // default -- fails here rather than drifting quietly.
 constexpr BoolGetterCheck kBoolGetters[] = {
-    {"UAGENT_STEERING", SteeringEnabled},
     {"UAGENT_SANDBOX", SandboxEnabled},
     {"UAGENT_SANDBOX_NET", SandboxNetworkAllowed},
     {"UAGENT_ADAPT_SYSTEM", AdaptiveSystemEnabled},

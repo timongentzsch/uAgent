@@ -57,7 +57,6 @@ BEHAVIOR_FIELDS = (
     "tool_concurrency",
     "tool_result_chars",
     "tool_batch_result_chars",
-    "steering",
     "adaptive_system",
     "max_tokens",
     "prompt_overlay",

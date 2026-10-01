@@ -48,7 +48,6 @@ Every setting below is read from the running binary's registry. `takes effect` i
 | `UAGENT_PROVIDER_PROTOCOL` | string | empty | restart-required | openai or openrouter (anthropic is an alias of openai) |
 | `UAGENT_OPENROUTER_PROVIDER` | string | empty | next-user-turn | pin OpenRouter to one upstream provider |
 | `UAGENT_OPENROUTER_VARIANT` | string | empty | next-user-turn | nitro, floor, or exacto routing preference |
-| `UAGENT_OPENROUTER_FALLBACKS` | boolean | `1` | next-user-turn | allow OpenRouter to fall back to another provider |
 | `UAGENT_CONTEXT` | integer | `0` | restart-required | context-window tokens; 0 uses the provider profile |
 | `UAGENT_MAX_TOKENS` | integer | `-1` | restart-required | maximum response tokens; -1 omits the optional cap |
 
@@ -161,7 +160,6 @@ Every setting below is read from the running binary's registry. `takes effect` i
 
 | Setting | Type | Default | Takes effect | Description |
 | --- | --- | --- | --- | --- |
-| `UAGENT_STEERING` | boolean | `1` | restart-required | accept typed steering during a turn |
 | `UAGENT_ADAPT_SYSTEM` | boolean | `0` | restart-required | expose adapt_system so the model may revise its directive |
 | `UAGENT_PROMPT_OVERLAY` | string | empty | restart-required | experiment: JSON file replacing base prompt sections so a variant can be measured without a rebuild; prompt text only |
 | `UAGENT_APPROVAL` | string | `ask` | next-user-turn | ask, auto reviewer, or yolo for ordinary mutations |

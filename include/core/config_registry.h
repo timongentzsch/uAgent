@@ -273,9 +273,6 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                       ReloadPolicy::kNextUserTurn, Sensitivity::kPublic,
                       "route", "nitro, floor, or exacto routing preference"),
         kOpenRouterVariants),
-    registry::Bul("UAGENT_OPENROUTER_FALLBACKS", "openrouter_fallbacks", true,
-                  ReloadPolicy::kNextUserTurn, "route",
-                  "allow OpenRouter to fall back to another provider"),
     registry::Int("UAGENT_CONTEXT", {}, 0, kConfigAnyMin, kConfigAnyMax,
                   ReloadPolicy::kRestartRequired, "route",
                   "context-window tokens; 0 uses the provider profile"),
@@ -509,8 +506,6 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                   "days of saved sessions kept"),
 
     // Behaviour switches.
-    registry::Bul("UAGENT_STEERING", {}, true, ReloadPolicy::kRestartRequired,
-                  "behaviour", "accept typed steering during a turn"),
     registry::Bul("UAGENT_ADAPT_SYSTEM", {}, false,
                   ReloadPolicy::kRestartRequired, "behaviour",
                   "expose adapt_system so the model may revise its directive"),

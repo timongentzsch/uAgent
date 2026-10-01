@@ -577,9 +577,10 @@ json Api::BuildRequestBody(const json& messages, const json& tool_schemas,
   if (capabilities.session_passthrough && !session_id.empty()) {
     body["session_id"] = session_id;
   }
+  // A pin is a pin: another provider never answers in its place.
   if (capabilities.provider_routing && !config.openrouter_provider.empty()) {
     body["provider"] = {{"order", json::array({config.openrouter_provider})},
-                        {"allow_fallbacks", config.openrouter_fallbacks}};
+                        {"allow_fallbacks", false}};
   }
   return body;
 }

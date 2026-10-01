@@ -49,16 +49,14 @@ SessionHost::SessionHost(std::string epoch, size_t byte_limit,
   scheduled_view_ = ScheduleControl({{"action", "list"}});
 }
 
-HostReplay SessionHost::Publish(const std::string& session,
-                                const std::string& generation, json value) {
+void SessionHost::Publish(const std::string& session,
+                          const std::string& generation, json value) {
   std::lock_guard lock(mutex_);
   auto owner = sessions_.find(session);
   const bool run_owned =
       owner != sessions_.end() && !owner->second->run_id.empty();
-  HostReplay published =
-      replay_.Publish(epoch_, session, generation, std::move(value), run_owned);
+  replay_.Publish(epoch_, session, generation, std::move(value), run_owned);
   changed_.notify_all();
-  return published;
 }
 
 uint64_t SessionHost::Cursor() const {

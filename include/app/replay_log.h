@@ -42,8 +42,8 @@ class ReplayLog {
   // Appends one host event, evicting oldest-first past either bound.
   // run_owned mirrors the old sessions_ lookup: a live scheduled run wakes
   // the scheduler even for otherwise quiet kinds.
-  HostReplay Publish(const std::string& epoch, const std::string& session,
-                     const std::string& generation, json value, bool run_owned);
+  void Publish(const std::string& epoch, const std::string& session,
+               const std::string& generation, json value, bool run_owned);
   uint64_t Cursor() const { return sequence_; }
   ReplayBatch Read(uint64_t next, bool valid, uint64_t watermark) const;
   bool HasNotices() const { return !notices_.empty(); }

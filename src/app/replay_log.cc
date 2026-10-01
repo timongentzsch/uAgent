@@ -17,10 +17,9 @@ namespace uagent::session {
 ReplayLog::ReplayLog(size_t byte_limit, size_t event_limit)
     : byte_limit_(byte_limit), event_limit_(event_limit) {}
 
-HostReplay ReplayLog::Publish(const std::string& epoch,
-                              const std::string& session,
-                              const std::string& generation, json value,
-                              bool run_owned) {
+void ReplayLog::Publish(const std::string& epoch, const std::string& session,
+                        const std::string& generation, json value,
+                        bool run_owned) {
   const std::string type = JsonValue(value, "type", "");
   const std::string kind = JsonValue(value, "kind", "");
   HostNotice notice;
@@ -42,9 +41,8 @@ HostReplay ReplayLog::Publish(const std::string& epoch,
   value["epoch"] = epoch;
   value["sequence"] = ++sequence_;
   StampFrame(value, session, generation);
-  HostReplay published{sequence_, JsonDump(value)};
-  replay_bytes_ += published.frame.size();
-  replay_.push_back(published);
+  replay_.push_back({sequence_, JsonDump(value)});
+  replay_bytes_ += replay_.back().frame.size();
   while (replay_bytes_ > byte_limit_ || replay_.size() > event_limit_) {
     replay_bytes_ -= replay_.front().frame.size();
     replay_.pop_front();
@@ -57,7 +55,6 @@ HostReplay ReplayLog::Publish(const std::string& epoch,
       pending.attention_id = std::move(notice.attention_id);
     }
   }
-  return published;
 }
 
 ReplayBatch ReplayLog::Read(uint64_t next, bool valid,

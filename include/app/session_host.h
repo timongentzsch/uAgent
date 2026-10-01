@@ -108,8 +108,8 @@ class SessionHost {
   SessionHost(std::string epoch, size_t byte_limit, std::string executable = {},
               std::string directory = {}, size_t event_limit = 2048);
 
-  HostReplay Publish(const std::string& session, const std::string& generation,
-                     json value);
+  void Publish(const std::string& session, const std::string& generation,
+               json value);
   uint64_t Cursor() const;
   ReplayBatch ReadReplay(uint64_t next, bool valid, uint64_t watermark) const;
   void WaitForReplay(uint64_t cursor, std::chrono::seconds timeout);

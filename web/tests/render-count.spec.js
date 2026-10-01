@@ -83,7 +83,7 @@ test("streaming renders only what changed", async ({ page }) => {
   await expect(page.locator('[data-message-id="m-119"]')).toBeVisible();
   await page.evaluate(() => import("/src/render-count.ts"));
 
-  const counts = await page.evaluate(
+  const { streamed: counts, ticks } = await page.evaluate(
     async ({ epoch, id, generation, cursor }) => {
       let sequence = cursor + 1;
       const send = (fields) =>
@@ -133,7 +133,60 @@ test("streaming renders only what changed", async ({ page }) => {
       }
       send({ kind: "block", id: "reply", set: { streaming: false } });
       await frame();
-      return globalThis.renderCounts;
+      const streamed = { ...globalThis.renderCounts };
+      // Background work the turn started, then twenty of its progress ticks.
+      send({
+        kind: "block",
+        block: {
+          id: "spawn",
+          kind: "tool_result",
+          name: "spawn",
+          status: "success",
+          text: "started",
+          parts: [{ kind: "link", to: "agent", id: "child", label: "Open" }],
+          sequence: sequence,
+        },
+      });
+      // Failed calls keep their own rows and link to no work.
+      for (let index = 0; index < 5; index++)
+        send({
+          kind: "block",
+          block: {
+            id: `failed-${index}`,
+            kind: "tool_result",
+            name: "read_path",
+            status: "failed",
+            text: "missing",
+            sequence: sequence,
+          },
+        });
+      await frame();
+      const before = { ...globalThis.renderCounts };
+      for (let index = 0; index < 20; index++) {
+        send({
+          kind: "event",
+          type: "activities.changed",
+          data: {
+            activities: [
+              {
+                id: 1,
+                kind: "agent",
+                agent_id: "child",
+                status: "running",
+                progress: `step ${index}`,
+              },
+            ],
+          },
+        });
+        await frame();
+      }
+      const ticks = Object.fromEntries(
+        Object.entries(globalThis.renderCounts).map(([name, count]) => [
+          name,
+          count - (before[name] || 0),
+        ]),
+      );
+      return { streamed, ticks };
     },
     {
       epoch: EPOCH,
@@ -152,4 +205,9 @@ test("streaming renders only what changed", async ({ page }) => {
   expect(counts.SessionRow || 0).toBe(0);
   expect(counts.ChatPage).toBeLessThanOrEqual(62);
   expect(counts.MessageView).toBeLessThanOrEqual(62 + 6);
+  // A tick of background work renders the one tool row that links to it.
+  await expect(page.locator('[data-message-id="spawn"]')).toContainText(
+    "running",
+  );
+  expect(ticks.ToolRow).toBe(20);
 });

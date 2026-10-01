@@ -1,4 +1,4 @@
-import { Fragment } from "preact";
+import { Fragment, createContext } from "preact";
 import { CircleX } from "lucide-preact";
 import {
   Button,
@@ -11,6 +11,7 @@ import DiffView from "./diff-view.tsx";
 import Markdown from "../../shared/markdown-view.tsx";
 import { cleanText, isFailedStatus } from "../../shared/display.ts";
 import type {
+  Activity,
   FilePart,
   LinkPart,
   PresentedBlock,
@@ -110,12 +111,17 @@ function OutputBox({
   );
 }
 
+// Never provided: reading it subscribes a row to nothing.
+const NoActivities = createContext<Activity[]>([]);
+
 // The work a row started, while it still runs: its LED and elapsed time.
+// Only a row that links to work follows the live activities; the rest sit
+// out their ticks.
 function useLive(block: PresentedBlock) {
   const link = block.parts?.find(
     (part): part is LinkPart => part.kind === "link",
   );
-  const live = useContext(LiveActivities).find((item) =>
+  const live = useContext(link ? LiveActivities : NoActivities).find((item) =>
     link?.to === "agent"
       ? item.agent_id === String(link.id)
       : link?.to === "activity" && item.id === Number(link.id),

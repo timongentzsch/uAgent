@@ -5,6 +5,7 @@ import { Plus, ChevronDown, Pencil, ChevronLeft } from "lucide-preact";
 import {
   Actions,
   Button,
+  ConfirmModal,
   EmptyState,
   Field,
   LoadError,
@@ -567,45 +568,45 @@ export default function Library({
           </fieldset>
         </div>
       )}
-      {dialog && item && (
-        <Modal
-          title={dialog === "delete" ? `Delete ${item.name}?` : "Rename memory"}
+      {dialog === "delete" && item && (
+        <ConfirmModal
+          title={`Delete ${item.name}?`}
+          action="Delete"
+          busy={busy}
+          error={error}
+          confirm={() => online && mutate("forget")}
           close={() => setDialog(null)}
         >
+          Delete this {item.scope}{" "}
+          {kind === "memory" ? "memory" : "skill manifest"}?
+          {kind === "skills" && " Supporting files are kept."}
+        </ConfirmModal>
+      )}
+      {dialog === "rename" && item && (
+        <Modal title="Rename memory" close={() => setDialog(null)}>
           <form
             onSubmit={(event) => {
               event.preventDefault();
               if (busy || !online) return;
-              mutate(
-                dialog === "delete" ? "forget" : "rename",
-                dialog === "rename" ? `${item.scope}/${rename}` : undefined,
-              );
+              mutate("rename", `${item.scope}/${rename}`);
             }}
           >
-            {dialog === "delete" ? (
-              <p>
-                Delete this {item.scope}{" "}
-                {kind === "memory" ? "memory" : "skill manifest"}?
-                {kind === "skills" && " Supporting files are kept."}
-              </p>
-            ) : (
-              <Field label="Name">
-                <Input
-                  autoFocus
-                  value={rename}
-                  onInput={(event) => setRename(event.currentTarget.value)}
-                />
-              </Field>
-            )}
+            <Field label="Name">
+              <Input
+                autoFocus
+                value={rename}
+                onInput={(event) => setRename(event.currentTarget.value)}
+              />
+            </Field>
             {error && <LoadError error={error} />}
             <Actions>
               <Button onClick={() => setDialog(null)}>Cancel</Button>
               <Button
                 type="submit"
-                variant={dialog === "delete" ? "destructive" : "primary"}
+                variant="primary"
                 disabled={busy || !online}
               >
-                {dialog === "delete" ? "Delete" : "Rename"}
+                Rename
               </Button>
             </Actions>
           </form>

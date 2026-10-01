@@ -70,6 +70,151 @@ json Agent::ModelRequest() {
       session_id_);
 }
 
+// Records what each attachment was delivered as and announces the first
+// delivery and every later change.
+void Agent::AnnounceDeliveries(const json& deliveries) {
+  std::map<std::string, json> grouped;
+  const auto& ids = conversation_.DisplayIds();
+  for (json delivery : deliveries) {
+    size_t index = JsonValue(delivery, "message_index", size_t{0});
+    delivery.erase("message_index");
+    if (index >= ids.size()) continue;
+    std::string id = "m-" + std::to_string(ids[index]);
+    if (!grouped[id].is_array()) grouped[id] = json::array();
+    grouped[id].push_back(std::move(delivery));
+  }
+  std::vector<std::string> updated;
+  for (const auto& [id, values] : grouped) {
+    json previous = JsonValue(
+        JsonValue(conversation_.DisplayFacts(), id.c_str(), json::object()),
+        "deliveries", json::array());
+    if (previous != values) {
+      conversation_.RecordDisplay(id, {{"deliveries", values}});
+      updated.push_back(id);
+    }
+    // Notices dedupe against explicit announcement receipts, not the
+    // evictable display facts: under fact pressure the gallery row can
+    // be dropped and re-recorded every step, which re-printed this line
+    // after every tool result. Only the first delivery and later
+    // delivery changes (Image -> File reference) announce.
+    if (conversation_.AnnouncedDeliveries(id) == values) continue;
+    conversation_.RecordAnnouncedDeliveries(id, values);
+    for (const json& delivery : values) {
+      Emit(NoticeEvent(PresentationStatus::kNeutral,
+                       JsonValue(delivery, "name", "") + " · " +
+                           JsonValue(delivery, "delivery", "")));
+    }
+  }
+  if (!updated.empty()) {
+    json snapshot = DisplaySnapshot();
+    for (const json& block : snapshot["blocks"]) {
+      if (std::find(updated.begin(), updated.end(),
+                    JsonValue(block, "id", "")) != updated.end()) {
+        Emit(Event{EventId::kMessageChanged, {{"block", block}}});
+      }
+    }
+  }
+}
+
+void Agent::DebugModelRequest(int64_t request, int64_t step,
+                              const char* purpose, const json& schemas,
+                              size_t schema_bytes, const json& messages,
+                              size_t message_bytes,
+                              const json* request_messages, bool projected) {
+  // A full snapshot after any shrink plus per-step deltas reconstructs every
+  // request without re-dumping the whole history on every step.
+  json record = {
+      {"request", request},
+      {"turn", turn_id_},
+      {"step", step},
+      {"purpose", purpose},
+      {"model", api_.RequestModel()},
+      {"session_id", session_id_},
+      {"total_messages", conversation_.Size()},
+      {"tool_schemas", schemas.size()},
+      {"schema_bytes", schema_bytes},
+      {"parallel_tools", api_.capabilities.parallel_tools},
+      {"include_usage", api_.capabilities.stream_usage_option},
+      {"system_revision", adaptive_system_ ? adaptive_system_->revision : 0}};
+  // An experiment that changed the prompt has to be visible in the same
+  // record as the request it shaped, or a report cannot be attributed.
+  std::string overlay_digest;
+  PromptOverlay(&overlay_digest);
+  if (!overlay_digest.empty()) record["prompt_overlay"] = overlay_digest;
+  if (request_messages || projected) {
+    record["messages"] = messages;
+    record["message_bytes"] = message_bytes;
+    record["projected_context"] = true;
+  } else if (step <= 0 || logged_msgs_ == 0 ||
+             logged_msgs_ > conversation_.Size()) {
+    record["messages"] = conversation_.Messages();
+    record["message_bytes"] = message_bytes;
+  } else {
+    json added = json::array();
+    for (size_t i = logged_msgs_; i < conversation_.Size(); ++i) {
+      added.push_back(conversation_.At(i));
+    }
+    record["new_message_bytes"] = JsonEstimatedBytes(added);
+    record["new_messages"] = std::move(added);
+  }
+  if (!request_messages) logged_msgs_ = conversation_.Size();
+  std::string serialized_schemas = JsonDump(schemas);
+  if (serialized_schemas != logged_schemas_) {
+    record["schema_snapshot"] = schemas;
+    logged_schemas_ = std::move(serialized_schemas);
+  }
+  Debug().Write("model_request", std::move(record));
+}
+
+void Agent::DebugModelResponse(int64_t request, int64_t step,
+                               const char* purpose, const ChatResult& result) {
+  json calls = json::array();
+  for (const ToolCall& call : result.tool_calls) {
+    calls.push_back(
+        {{"id", call.id}, {"name", call.name}, {"arguments", call.args}});
+  }
+  Debug().Write(
+      "model_response",
+      {{"request", request},
+       {"turn", turn_id_},
+       {"step", step},
+       {"purpose", purpose},
+       {"duration_ms", result.duration_ms},
+       {"request_preparation_ms", result.request_preparation_ms},
+       {"end_to_end_ms", result.end_to_end_ms},
+       {"first_event_ms", result.first_event_ms},
+       {"first_token_ms", result.first_token_ms},
+       {"dns_ms", result.dns_ms},
+       {"connect_ms", result.connect_ms},
+       {"tls_ms", result.tls_ms},
+       {"pretransfer_ms", result.pretransfer_ms},
+       {"start_transfer_ms", result.start_transfer_ms},
+       {"http_status", result.http_status},
+       {"finish_reason", result.finish_reason},
+       {"stop_cause", ResponseStopCauseName(result.stop_cause)},
+       {"stop_details", result.stop_details},
+       {"incomplete", result.incomplete},
+       {"content", result.content},
+       {"content_chars", result.content.size()},
+       {"reasoning", result.reasoning},
+       {"reasoning_chars", result.reasoning.size()},
+       {"reasoning_field", result.reasoning_field},
+       {"reasoning_content_field", result.reasoning_content_field},
+       {"reasoning_details", result.reasoning_details},
+       {"reasoning_details_field", result.reasoning_details_field},
+       {"tool_calls", std::move(calls)},
+       {"annotations", result.annotations},
+       {"usage", result.usage},
+       {"error", result.error},
+       {"remote_error_type", result.remote_error_type},
+       {"remote_error_code", result.remote_error_code},
+       {"remote_error_kind", RemoteErrorKindName(result.remote_error_kind)},
+       {"interrupted", result.interrupted},
+       {"suppressed", result.suppressed},
+       {"semantic_progress", result.semantic_progress},
+       {"retryable", result.retryable}});
+}
+
 ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
                        const json* request_messages) {
   if (api_.config.session_budget > 0 &&
@@ -88,47 +233,7 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
       PrepareRequestMessages(source, projected, true, &deliveries);
   if (!projected.is_null()) {
     if (!request_messages && !deliveries.empty()) {
-      std::map<std::string, json> grouped;
-      const auto& ids = conversation_.DisplayIds();
-      for (json delivery : deliveries) {
-        size_t index = JsonValue(delivery, "message_index", size_t{0});
-        delivery.erase("message_index");
-        if (index >= ids.size()) continue;
-        std::string id = "m-" + std::to_string(ids[index]);
-        if (!grouped[id].is_array()) grouped[id] = json::array();
-        grouped[id].push_back(std::move(delivery));
-      }
-      std::vector<std::string> updated;
-      for (const auto& [id, values] : grouped) {
-        json previous = JsonValue(
-            JsonValue(conversation_.DisplayFacts(), id.c_str(), json::object()),
-            "deliveries", json::array());
-        if (previous != values) {
-          conversation_.RecordDisplay(id, {{"deliveries", values}});
-          updated.push_back(id);
-        }
-        // Notices dedupe against explicit announcement receipts, not the
-        // evictable display facts: under fact pressure the gallery row can
-        // be dropped and re-recorded every step, which re-printed this line
-        // after every tool result. Only the first delivery and later
-        // delivery changes (Image -> File reference) announce.
-        if (conversation_.AnnouncedDeliveries(id) == values) continue;
-        conversation_.RecordAnnouncedDeliveries(id, values);
-        for (const json& delivery : values) {
-          Emit(NoticeEvent(PresentationStatus::kNeutral,
-                           JsonValue(delivery, "name", "") + " · " +
-                               JsonValue(delivery, "delivery", "")));
-        }
-      }
-      if (!updated.empty()) {
-        json snapshot = DisplaySnapshot();
-        for (const json& block : snapshot["blocks"]) {
-          if (std::find(updated.begin(), updated.end(),
-                        JsonValue(block, "id", "")) != updated.end()) {
-            Emit(Event{EventId::kMessageChanged, {{"block", block}}});
-          }
-        }
-      }
+      AnnounceDeliveries(deliveries);
     }
     if (!preparation_error.empty()) {
       Emit(NoticeEvent(PresentationStatus::kWarned, preparation_error));
@@ -154,49 +259,8 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
   const size_t message_bytes = JsonEstimatedBytes(messages);
   const size_t estimated_bytes = SaturatingAdd(message_bytes, schema_bytes);
   if (Debug().Enabled()) {
-    // A full snapshot after any shrink plus per-step deltas reconstructs every
-    // request without re-dumping the whole history on every step.
-    json record = {
-        {"request", request},
-        {"turn", turn_id_},
-        {"step", step},
-        {"purpose", purpose},
-        {"model", api_.RequestModel()},
-        {"session_id", session_id_},
-        {"total_messages", conversation_.Size()},
-        {"tool_schemas", schemas.size()},
-        {"schema_bytes", schema_bytes},
-        {"parallel_tools", api_.capabilities.parallel_tools},
-        {"include_usage", api_.capabilities.stream_usage_option},
-        {"system_revision", adaptive_system_ ? adaptive_system_->revision : 0}};
-    // An experiment that changed the prompt has to be visible in the same
-    // record as the request it shaped, or a report cannot be attributed.
-    std::string overlay_digest;
-    PromptOverlay(&overlay_digest);
-    if (!overlay_digest.empty()) record["prompt_overlay"] = overlay_digest;
-    if (request_messages || !projected.is_null()) {
-      record["messages"] = messages;
-      record["message_bytes"] = message_bytes;
-      record["projected_context"] = true;
-    } else if (step <= 0 || logged_msgs_ == 0 ||
-               logged_msgs_ > conversation_.Size()) {
-      record["messages"] = conversation_.Messages();
-      record["message_bytes"] = message_bytes;
-    } else {
-      json added = json::array();
-      for (size_t i = logged_msgs_; i < conversation_.Size(); ++i) {
-        added.push_back(conversation_.At(i));
-      }
-      record["new_message_bytes"] = JsonEstimatedBytes(added);
-      record["new_messages"] = std::move(added);
-    }
-    if (!request_messages) logged_msgs_ = conversation_.Size();
-    std::string serialized_schemas = JsonDump(schemas);
-    if (serialized_schemas != logged_schemas_) {
-      record["schema_snapshot"] = schemas;
-      logged_schemas_ = std::move(serialized_schemas);
-    }
-    Debug().Write("model_request", std::move(record));
+    DebugModelRequest(request, step, purpose, schemas, schema_bytes, messages,
+                      message_bytes, request_messages, !projected.is_null());
   }
   int64_t turn_budget = 0;
   if (active_deadline_ != std::chrono::steady_clock::time_point::max()) {
@@ -300,53 +364,7 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
     metrics["generated_tokens"] = usage.GeneratedTokens();
   }
   conversation_.AddStatistics(metrics);
-  if (Debug().Enabled()) {
-    json calls = json::array();
-    for (const ToolCall& call : result.tool_calls) {
-      calls.push_back(
-          {{"id", call.id}, {"name", call.name}, {"arguments", call.args}});
-    }
-    Debug().Write(
-        "model_response",
-        {{"request", request},
-         {"turn", turn_id_},
-         {"step", step},
-         {"purpose", purpose},
-         {"duration_ms", result.duration_ms},
-         {"request_preparation_ms", result.request_preparation_ms},
-         {"end_to_end_ms", result.end_to_end_ms},
-         {"first_event_ms", result.first_event_ms},
-         {"first_token_ms", result.first_token_ms},
-         {"dns_ms", result.dns_ms},
-         {"connect_ms", result.connect_ms},
-         {"tls_ms", result.tls_ms},
-         {"pretransfer_ms", result.pretransfer_ms},
-         {"start_transfer_ms", result.start_transfer_ms},
-         {"http_status", result.http_status},
-         {"finish_reason", result.finish_reason},
-         {"stop_cause", ResponseStopCauseName(result.stop_cause)},
-         {"stop_details", result.stop_details},
-         {"incomplete", result.incomplete},
-         {"content", result.content},
-         {"content_chars", result.content.size()},
-         {"reasoning", result.reasoning},
-         {"reasoning_chars", result.reasoning.size()},
-         {"reasoning_field", result.reasoning_field},
-         {"reasoning_content_field", result.reasoning_content_field},
-         {"reasoning_details", result.reasoning_details},
-         {"reasoning_details_field", result.reasoning_details_field},
-         {"tool_calls", std::move(calls)},
-         {"annotations", result.annotations},
-         {"usage", result.usage},
-         {"error", result.error},
-         {"remote_error_type", result.remote_error_type},
-         {"remote_error_code", result.remote_error_code},
-         {"remote_error_kind", RemoteErrorKindName(result.remote_error_kind)},
-         {"interrupted", result.interrupted},
-         {"suppressed", result.suppressed},
-         {"semantic_progress", result.semantic_progress},
-         {"retryable", result.retryable}});
-  }
+  if (Debug().Enabled()) DebugModelResponse(request, step, purpose, result);
   return result;
 }
 

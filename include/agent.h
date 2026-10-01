@@ -302,6 +302,13 @@ class Agent {
 
   ChatResult Chat(const char* purpose, int64_t step, const json& schemas,
                   const json* request_messages = nullptr);
+  void AnnounceDeliveries(const json& deliveries);
+  void DebugModelRequest(int64_t request, int64_t step, const char* purpose,
+                         const json& schemas, size_t schema_bytes,
+                         const json& messages, size_t message_bytes,
+                         const json* request_messages, bool projected);
+  void DebugModelResponse(int64_t request, int64_t step, const char* purpose,
+                          const ChatResult& result);
   // Leaves projected null when the source already needs no preparation.
   std::string PrepareRequestMessages(const json& source, json& projected,
                                      bool analyze, json* deliveries = nullptr);

@@ -121,8 +121,9 @@ std::optional<ToolArgumentIssue> InvalidObjectValue(const json& schema,
   }
 
   auto found = schema.find("properties");
-  const json properties =
-      found != schema.end() && found->is_object() ? *found : json::object();
+  static const json kNone = json::object();
+  const json& properties =
+      found != schema.end() && found->is_object() ? *found : kNone;
   if (!JsonValue(schema, "additionalProperties", true)) {
     for (const auto& [name, child] : value.items()) {
       (void)child;

@@ -253,7 +253,6 @@ class Agent {
   std::string ApplyImageAnalysisFallback(json& messages, bool analyze = true,
                                          json* deliveries = nullptr);
 
-  void AddRouteUsage(const Usage& usage);
   Usage AccountModelUsage(const json& reported);
 
   void FailTurn(TurnExecution& state, std::string message);

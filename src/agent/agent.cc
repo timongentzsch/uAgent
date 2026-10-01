@@ -282,17 +282,13 @@ std::string Agent::ActiveRoute() const {
                   api_.RequestModel(), api_.reasoning_effort);
 }
 
-void Agent::AddRouteUsage(const Usage& usage) {
-  route_usage_[ActiveRoute()].Merge(usage);
-}
-
 // Every model response is billed the same way: parse the provider's usage
 // block once, then charge it to the session and to the active route.
 Usage Agent::AccountModelUsage(const json& reported) {
   Usage usage;
   usage.Add(reported);
   MergeSessionUsage(usage);
-  AddRouteUsage(usage);
+  route_usage_[ActiveRoute()].Merge(usage);
   return usage;
 }
 
@@ -786,22 +782,19 @@ void Agent::DrainSubagentUsage() {
       const int64_t parent_turn = JsonValue(entry, "parent_turn", int64_t{0});
       const json statistics = FlattenNumericStatistics(
           JsonValue(entry, "statistics", json::object()), "side_");
-      if (entry.contains("routes") && entry["routes"].is_object()) {
-        bool first = true;
-        for (const auto& [route, value] : entry["routes"].items()) {
+      bool first = true;
+      if (const json* routes = JsonObject(entry, "routes")) {
+        for (const auto& [route, value] : routes->items()) {
           // Statistics describe the whole child and therefore belong on one
           // record, even when its usage spans several provider routes.
           side_usage_.Add(route, UsageFromJson(value), parent_turn,
                           first ? statistics : json::object());
           first = false;
         }
-        if (first) {
-          side_usage_.Add(JsonValue(entry, "route", "delegated/unknown"), child,
-                          parent_turn, statistics);
-        }
-      } else {
-        std::string route = JsonValue(entry, "route", "delegated/unknown");
-        side_usage_.Add(route, child, parent_turn, statistics);
+      }
+      if (first) {
+        side_usage_.Add(JsonValue(entry, "route", "delegated/unknown"), child,
+                        parent_turn, statistics);
       }
     } else {
       side_usage_.Add(UsageFromJson(entry));

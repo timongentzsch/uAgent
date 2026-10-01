@@ -121,9 +121,7 @@ std::string SessionLinkDir() { return UagentDir("links"); }
 bool SharesLink(const std::string& a, const std::string& b) {
   if (a.empty() || b.empty() || a == b) return a == b && !a.empty();
   for (const std::string& name : LinkFiles()) {
-    json link = ReadLink(name);
-    if (!link.is_object()) continue;
-    const json members = JsonValue(link, "members", json::array());
+    const json members = JsonValue(ReadLink(name), "members", json::array());
     if (HasMember(members, a) && HasMember(members, b)) return true;
   }
   return false;
@@ -134,9 +132,7 @@ ToolResult EnsureSessionAutoLink() {
   json me = OwnMember();
   if (!me.is_object()) return ToolSuccess({});
   const std::string name = AutoLinkName();
-  json link = ReadLink(name);
-  json members = !link.is_object() ? json::array()
-                                   : JsonValue(link, "members", json::array());
+  json members = JsonValue(ReadLink(name), "members", json::array());
   const std::string id = JsonValue(me, "id", "");
   if (HasMember(members, id)) return ToolSuccess({});
   if (members.size() >= kSessionLinkMembers) {
@@ -156,9 +152,7 @@ std::vector<json> LinkedMembers() {
   std::vector<json> out;
   if (me.empty()) return out;
   for (const std::string& name : LinkFiles()) {
-    json link = ReadLink(name);
-    if (!link.is_object()) continue;
-    const json members = JsonValue(link, "members", json::array());
+    const json members = JsonValue(ReadLink(name), "members", json::array());
     if (!HasMember(members, me)) continue;
     for (const json& member : members) {
       if (!member.is_object()) continue;

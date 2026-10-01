@@ -312,13 +312,14 @@ void Conversation::RecordDisplay(const std::string& key, json facts) {
     merged.update(facts);
     facts = std::move(merged);
   }
-  if (JsonEstimatedBytes(facts) > kFactBytes) return;
+  const size_t estimated = JsonEstimatedBytes(facts);
+  if (estimated > kFactBytes) return;
   if (existing != display_facts_.end()) {
     display_bytes_ -= std::min(display_bytes_, FactBytes(key, *existing));
   }
-  const size_t bytes = FactBytes(key, facts);
+  const size_t bytes = SaturatingAdd(estimated, key.size());
   display_bytes_ = SaturatingAdd(display_bytes_, bytes);
-  display_facts_[key] = facts;
+  display_facts_[key] = std::move(facts);
   fact_bytes_[key] = bytes;
   // Metadata is independently bounded. Evict the largest fact first: fat
   // tool rows yield the most headroom, while tiny control receipts
@@ -553,7 +554,8 @@ bool Conversation::HasRecentToolResult(const std::string& name,
     }
     if (kinds_[current] != MessageKind::kToolResult) continue;
     const json& message = messages_[current];
-    if (JsonValue(message, "content", "") != result) continue;
+    const std::string* content = JsonStringRef(message, "content");
+    if (content ? *content != result : !result.empty()) continue;
     std::string id = JsonValue(message, "tool_call_id", "");
     if (id.empty()) continue;
     for (size_t call_index = current; call_index > 0; --call_index) {

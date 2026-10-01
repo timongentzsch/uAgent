@@ -306,8 +306,6 @@ test("instructions are one stack, edited in place, in a stable dialog", async ({
     .click();
   await expect(dialog.getByLabel("Yours · every session")).toBeVisible();
   await dialog.getByRole("button", { name: "Close instructions" }).click();
-  await composer.fill("/quit");
-  await composer.press("Enter");
 });
 
 test("compact surfaces stay anchored, accessible and usable while loading", async ({
@@ -1697,8 +1695,13 @@ test.describe("mobile navigation and commands", () => {
       .toContain("Survives reload");
     await page.reload();
     await expect(prompt).toHaveValue("Survives reload");
-    await prompt.fill("/q");
-    await send.tap();
+    // Close session ends the runtime; typed /quit does not (it detaches a
+    // terminal).
+    await page
+      .locator(".conversation-head")
+      .getByLabel("Conversation menu", { exact: true })
+      .tap();
+    await page.getByRole("menuitem", { name: "Close session" }).tap();
     await expect(
       page.getByRole("button", { name: "Resume in this host directory" }),
     ).toBeVisible();

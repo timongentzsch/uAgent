@@ -125,9 +125,10 @@ class SessionHost {
   // Lets go of coordinators idle for CoordinatorIdle() so their runtimes can
   // exit; one is adopted again once it saves or is activated.
   void ParkIdleCoordinators();
-  // Marks running runtimes (all, or those in `cwd`) for a fresh start that
-  // keeps their history: idle ones now, busy ones when their turn ends.
-  json RestartRunning(const std::string& cwd);
+  // Marks running runtimes (all, those in `cwd`, or the one named `only`)
+  // for a fresh start that keeps their history: idle ones now, busy ones
+  // when their turn ends.
+  json RestartRunning(const std::string& cwd, const std::string& only = "");
   json CommandOutcome(const std::string& worker_request,
                       const std::string& client_request) const {
     return outcomes_.CommandOutcome(worker_request, client_request);

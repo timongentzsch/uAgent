@@ -303,7 +303,9 @@ focuses its decision.
   sections and actions, matched by letters in order (a prefix first), each with
   its shortcut. `?` outside a text field lists every shortcut; Alt+↑ and Alt+↓
   step through the conversations in sidebar order.
-- Conversation menus provide tools, rename, fork, close, delete and statistics.
+- Conversation menus provide tools, rename, fork, statistics, export of the
+  transcript, compact, restart, close and delete. Typed `/restart` does the
+  same as the menu; `/quit` detaches a terminal and closes nothing here.
   The Tools view controls the active schema and groups tools into persistent
   custom categories. Stop and close a live runtime before deleting its history;
   project files are unaffected.

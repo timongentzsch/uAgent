@@ -23,7 +23,7 @@ import {
   TriangleAlert,
   Inbox,
 } from "lucide-preact";
-import { command } from "../../state/api.ts";
+import { command, manage } from "../../state/api.ts";
 import {
   Mark,
   Input,
@@ -49,12 +49,30 @@ import {
 } from "../../state/attention.ts";
 import { SheetButton } from "../../shared/sheet.tsx";
 import WaitingList from "../coordinator/escalations.tsx";
+// The conversation's transcript as Markdown on the host; says where.
+export async function shareTranscript(item: Session) {
+  const result = await command("share", item);
+  return result.pending ? "" : `Transcript saved to ${result.result.path}`;
+}
+// A fresh runtime that keeps the history, e.g. for a setting that needs it.
+export async function restartConversation(item: Session) {
+  const { restarting, deferred } = await manage("restart_conversations", {
+    target_id: item.id,
+  });
+  return restarting
+    ? "Conversation restarted."
+    : deferred
+      ? "Restarts when this turn ends."
+      : "Nothing to restart: this conversation is not running.";
+}
+
 export function ConversationMenu({
   item,
   online,
   fork,
   loadSnapshot,
   report,
+  notify,
   open,
 }: {
   item: Session;
@@ -62,6 +80,8 @@ export function ConversationMenu({
   fork: (item: Session) => void;
   loadSnapshot: (id: string) => Promise<Snapshot>;
   report: Report;
+  // Says what an action did, where the conversation shows its notices.
+  notify: (text: string) => void;
   open: (modal: AppModal) => void;
 }) {
   return (
@@ -100,6 +120,30 @@ export function ConversationMenu({
       >
         Tools
       </MenuItem>
+      <MenuItem
+        disabled={!online}
+        onClick={() => void shareTranscript(item).then(notify, report)}
+      >
+        Export transcript
+      </MenuItem>
+      {item.generation && (
+        <MenuItem
+          disabled={!online || item.turn_active}
+          onClick={() =>
+            void command("submit", item, { text: "/compact" }).catch(report)
+          }
+        >
+          Compact
+        </MenuItem>
+      )}
+      {item.generation && (
+        <MenuItem
+          disabled={!online}
+          onClick={() => void restartConversation(item).then(notify, report)}
+        >
+          Restart
+        </MenuItem>
+      )}
       {item.generation && (
         <MenuItem
           disabled={!online}

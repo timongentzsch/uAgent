@@ -53,7 +53,9 @@ import {
 } from "../shared/message-view.ts";
 import Sidebar, {
   ConversationMenu,
+  restartConversation,
   sessionOrder,
+  shareTranscript,
 } from "../features/sidebar/sidebar.tsx";
 import { useShortcuts } from "../shared/shortcuts.ts";
 import { nextIndex } from "../shared/listbox-nav.ts";
@@ -435,9 +437,12 @@ function App() {
     const { name, argument } = parseSlash(catalogue.commands || [], text);
     if (!argument && screens[name]) screens[name]();
     else if (name === "/reset") await startConversation(session!.cwd!);
-    else if (name === "/quit") {
-      await act("close");
-      await load(selected);
+    // In a terminal /quit detaches and the runtime stays; here that is just
+    // leaving the page, so it never closes anything.
+    else if (name === "/quit")
+      throw new Error("Use Close session in the conversation menu.");
+    else if (name === "/restart") {
+      setNotice(await restartConversation(session!));
     } else if (name === "/fork") {
       await forkAndOpen(session, { argument });
     } else if (name === "/rewind" && argument) {
@@ -462,9 +467,7 @@ function App() {
         },
       );
     } else if (name === "/share") {
-      const result = await act("share");
-      if (!result.pending)
-        setNotice(`Transcript saved to ${result.result.path}`);
+      setNotice(await shareTranscript(session!));
     } else if (name === "/instructions" && !argument) {
       setModal({ type: "instructions" });
     } else if (name === "/http") {
@@ -826,6 +829,7 @@ function App() {
         fork={fork}
         loadSnapshot={load}
         report={report}
+        notify={setNotice}
         open={open}
       />
     ),

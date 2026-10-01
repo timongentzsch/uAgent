@@ -2439,6 +2439,19 @@ def test_web_restarts_conversations_and_itself(root, home, *, binary):
             assert_true("Remembered answer" in json.dumps(value), value)
             other = client.command("restart_conversations", cwd=str(root / "elsewhere"))
             assert_true(other["result"] == {"restarting": 0, "deferred": 0}, other)
+            # One conversation by id (the web's Restart): another id leaves it.
+            other = client.command("restart_conversations", target_id="no-such-session")
+            assert_true(other["result"] == {"restarting": 0, "deferred": 0}, other)
+            generation = value["metadata"]["generation"]
+            one = client.command("restart_conversations", target_id=session["id"])
+            assert_true(one["result"] == {"restarting": 1, "deferred": 0}, one)
+            value = client.until(
+                session,
+                lambda value: (
+                    value["metadata"].get("generation") not in ("", generation)
+                    and value["metadata"]["status"] == "idle"
+                ),
+            )
 
             # A busy conversation finishes its turn first, then restarts.
             generation = value["metadata"]["generation"]

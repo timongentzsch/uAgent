@@ -245,13 +245,15 @@ void SessionHost::ParkIdleCoordinators() {
   }
 }
 
-json SessionHost::RestartRunning(const std::string& cwd) {
+json SessionHost::RestartRunning(const std::string& cwd,
+                                 const std::string& only) {
   std::unique_lock lock(mutex_);
   std::vector<std::shared_ptr<HostSession>> idle;
   int64_t deferred = 0;
   for (const auto& [id, session] : sessions_) {
     if (session->pid <= 0 || session->exited || session->closing ||
-        (!cwd.empty() && session->cwd != cwd)) {
+        (!cwd.empty() && session->cwd != cwd) ||
+        (!only.empty() && id != only)) {
       continue;
     }
     session->restart = true;

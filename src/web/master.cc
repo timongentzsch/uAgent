@@ -822,7 +822,8 @@ void Master::Command(const Request& request, Response& response) {
     // a fresh runtime; each keeps its history and restarts when idle.
     lock.unlock();
     outcome["result"] =
-        host_.RestartRunning(JsonValue(command, "cwd", std::string()));
+        host_.RestartRunning(JsonValue(command, "cwd", std::string()),
+                             JsonValue(command, "target_id", std::string()));
     lock.lock();
   } else if (kind == "restart_host") {
     // The stop loop lets this reply go out before it stops the server.

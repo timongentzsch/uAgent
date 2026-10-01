@@ -601,3 +601,40 @@ test("locked settings and restart to apply", async ({ page, session }) => {
     .click();
   await expect(notice).toContainText("Restarted 1 conversation");
 });
+
+// What the terminal does with /share and /restart, from the conversation
+// menu; /quit detaches a terminal and so closes nothing here.
+test("the conversation menu exports and restarts; /quit closes nothing", async ({
+  page,
+  session,
+}) => {
+  await page.goto(`/#session=${session.id}`);
+  const generation = () =>
+    page.evaluate(
+      (id) =>
+        fetch(`/api/sessions/${id}`)
+          .then((response) => response.json())
+          .then((value) => value.metadata.generation),
+      session.id,
+    );
+  const composer = page.getByLabel("Message or guidance");
+  await composer.fill("/quit");
+  await composer.press("Enter");
+  await expect(
+    page.getByText("Use Close session in the conversation menu."),
+  ).toBeVisible();
+  expect(await generation()).toBe(session.generation);
+  await page.getByRole("button", { name: "Dismiss", exact: true }).click();
+
+  const head = page.locator(".conversation-head");
+  const menu = head.getByLabel("Conversation menu", { exact: true });
+  const item = (name) => head.getByRole("menuitem", { name, exact: true });
+  await menu.click();
+  await expect(item("Compact")).toBeVisible();
+  await item("Export transcript").click();
+  await expect(page.getByText(/^Transcript saved to .+\.md$/)).toBeVisible();
+  await menu.click();
+  await item("Restart").click();
+  await expect(page.getByText("Conversation restarted.")).toBeVisible();
+  await expect.poll(generation).not.toBe(session.generation);
+});

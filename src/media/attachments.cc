@@ -702,9 +702,16 @@ bool PrepareAttachments(json& messages,
                         bool vision_fallback, const std::string& route,
                         std::string& error, json* deliveries) {
   bool changed = false;
-  uintmax_t remaining =
+  const uintmax_t limit =
       static_cast<uintmax_t>(AttachmentLimitMb()) * 1024 * 1024;
+  uintmax_t remaining = limit;
   if (deliveries) *deliveries = json::array();
+  // A part the model cannot be sent as it is.
+  auto hidden = [&](const std::string& type) {
+    return (type == "file" && !capabilities.file_input) ||
+           (type == "image_url" && !capabilities.image_input &&
+            !vision_fallback);
+  };
   // Fingerprints of parts already prepared in this request. Re-reading an
   // unchanged file (the model re-reading an attached screenshot, the same
   // path queued twice in one step) must reference the first copy instead
@@ -717,13 +724,19 @@ bool PrepareAttachments(json& messages,
     if (!message.contains("content") || !message["content"].is_array()) {
       continue;
     }
+    // A message with nothing to prepare keeps its parts where they are.
+    if (std::none_of(message["content"].begin(), message["content"].end(),
+                     [&](const json& part) {
+                       const std::string type = JsonValue(part, "type", "");
+                       return type == "attachment" || hidden(type);
+                     })) {
+      continue;
+    }
     json prepared = json::array();
     for (const json& part : message["content"]) {
       const std::string type = JsonValue(part, "type", "");
       if (type != "attachment") {
-        if ((type == "file" && !capabilities.file_input) ||
-            (type == "image_url" && !capabilities.image_input &&
-             !vision_fallback)) {
+        if (hidden(type)) {
           prepared.push_back({{"type", "text"},
                               {"text",
                                "[attachment not visible to this model; use the "
@@ -788,10 +801,8 @@ bool PrepareAttachments(json& messages,
           std::string header;
           if (ReadRegularFile(path, 5, header, detail, true) &&
               header == "%PDF-") {
-            std::string data = Base64File(
-                attachment,
-                static_cast<uintmax_t>(AttachmentLimitMb()) * 1024 * 1024,
-                detail, "data:application/pdf;base64,");
+            std::string data = Base64File(attachment, limit, detail,
+                                          "data:application/pdf;base64,");
             if (detail.empty()) {
               prepared.push_back(
                   {{"type", "file"},
@@ -805,10 +816,7 @@ bool PrepareAttachments(json& messages,
         } else if (IsAudioMime(attachment.mime) && capabilities.audio_input) {
           // OpenRouter takes raw base64 plus a format word, never a data
           // URI, and no audio URLs at all.
-          std::string data = Base64File(
-              attachment,
-              static_cast<uintmax_t>(AttachmentLimitMb()) * 1024 * 1024, detail,
-              "");
+          std::string data = Base64File(attachment, limit, detail, "");
           if (detail.empty()) {
             prepared.push_back({{"type", "input_audio"},
                                 {"input_audio",
@@ -819,10 +827,8 @@ bool PrepareAttachments(json& messages,
         } else if (IsVideoMime(attachment.mime) && capabilities.video_input) {
           // Local files ride as base64 data URLs, mirroring image_url;
           // remote URLs stay provider-specific and are out of scope.
-          std::string data = Base64File(
-              attachment,
-              static_cast<uintmax_t>(AttachmentLimitMb()) * 1024 * 1024, detail,
-              "data:" + attachment.mime + ";base64,");
+          std::string data = Base64File(attachment, limit, detail,
+                                        "data:" + attachment.mime + ";base64,");
           if (detail.empty()) {
             prepared.push_back({{"type", "video_url"},
                                 {"video_url", {{"url", std::move(data)}}}});

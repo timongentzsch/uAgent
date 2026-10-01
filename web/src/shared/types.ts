@@ -48,7 +48,6 @@ export interface Statistics {
   ttft_ms?: number;
   generation_ms?: number;
   generated_tokens?: number;
-  usage_samples?: number;
   side_recorded_turns?: number;
   side_tool_calls?: number;
   side_model_calls?: number;
@@ -68,8 +67,6 @@ export interface Exchange {
   request_headers?: string;
   response_headers?: string;
   turn_root?: string;
-  reply_to?: string;
-  reply_excerpt?: string;
 }
 export interface ToolActivity {
   // The call's intent: explore, research, edit, verify, run, setup,
@@ -77,13 +74,6 @@ export interface ToolActivity {
   category?: string;
   label?: string;
   group?: { id: string; label: string };
-}
-export interface ToolReplay {
-  title?: string;
-  summary?: string;
-  poll?: boolean;
-  multiline?: boolean;
-  detail?: string;
 }
 // How a call reads, built natively by each tool (see ToolView in tool.h).
 export type ToolPart =
@@ -156,7 +146,6 @@ export interface Block {
     automatic: boolean;
     messages_before: number;
     messages_after: number;
-    retained_user_messages: number;
     duration_ms: number;
   };
   deliveries?: { name: string; delivery: string }[];
@@ -167,10 +156,6 @@ export interface Block {
   content_complete?: boolean;
   text_bytes?: number;
   retained_text_bytes?: number;
-  reasoning_revision?: number;
-  reasoning_complete?: boolean;
-  reasoning_bytes?: number;
-  retained_reasoning_bytes?: number;
   kind: string;
   text?: string;
   time?: string;
@@ -194,8 +179,6 @@ export interface Block {
   duration_ms?: number;
   // Retained tool_result whose receipt facts are gone: its fallbacks
   // ("tool"/"running") must never shadow the call record it joins.
-  receipt_missing?: boolean;
-  replay?: ToolReplay;
   ttft_ms?: number;
   tokens_per_second?: number;
   route?: string;
@@ -205,8 +188,6 @@ export interface Block {
   usage_reported?: boolean;
   http?: Exchange[];
   turn_root?: string;
-  reply_to?: string;
-  reply_excerpt?: string;
   activity_id?: number;
   agent_id?: string;
   // Parts that stay visible on the row: files shared, work started.
@@ -352,7 +333,6 @@ export type SessionStatus =
   | "deleting";
 export interface Session {
   task_id?: string;
-  run_id?: string;
   id: string;
   generation?: string;
   title?: string;
@@ -367,7 +347,6 @@ export interface Session {
   turn_active?: boolean;
   pending?: boolean;
   // What it waits on you for: "approval", "ask", …, and its prompt.
-  pending_kind?: string;
   pending_prompt?: string;
   activity?: string;
   activities?: Activity[];
@@ -399,7 +378,6 @@ export interface State {
   view_epoch?: number;
   turns?: number;
   usage?: Usage;
-  route_usage?: Record<string, Usage>;
   system_prompt?: string;
   // The agent's own conversation-scoped addition (adapt_system).
   self_directive?: SelfDirective;
@@ -507,8 +485,6 @@ export interface EventData extends Omit<Partial<Exchange>, "status"> {
   agent_id?: string;
   activity_id?: number;
   parts?: Block["parts"];
-  preview_truncated?: boolean;
-  completion_status?: string;
   status?: string | number;
   duration_ms?: number;
   activity?: ToolActivity;
@@ -873,7 +849,6 @@ export interface ScheduledRun {
   session_available?: boolean;
   id: string;
   task_id: string;
-  task_revision: string;
   title: string;
   scheduled_for: number;
   updated: number;
@@ -885,7 +860,6 @@ export interface ScheduledRun {
 }
 export interface ScheduledState {
   error?: string;
-  runner_active?: boolean;
   tasks: ScheduledTask[];
   runs: ScheduledRun[];
   revision: string;

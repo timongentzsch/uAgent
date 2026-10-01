@@ -153,12 +153,18 @@ export async function command<K extends CommandKind>(
   }
 }
 
+// A command whose answer is its result: the host's own, or a conversation's
+// when `session` names one. A result that has not arrived in time is an
+// error here, so callers handle one outcome.
 export async function manage<K extends CommandKind>(
   kind: K,
   fields: CommandFields = {},
-  signal?: AbortSignal,
+  {
+    session = null,
+    signal,
+  }: { session?: SessionRef | null; signal?: AbortSignal } = {},
 ): Promise<CommandResults[K]> {
-  const result = await command(kind, null, fields, { signal });
+  const result = await command(kind, session, fields, { signal });
   if (result.pending)
     throw new Error(
       "The operation is still pending. Refresh to inspect its result.",

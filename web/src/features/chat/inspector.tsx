@@ -98,7 +98,7 @@ async function fetchActivityDetail(
         cwd,
         key: item.memory.key,
       },
-      signal,
+      { signal },
     );
     if (!result.item || result.item.error)
       throw new Error(result.item?.error || "Memory is no longer available.");

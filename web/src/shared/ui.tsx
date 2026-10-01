@@ -357,6 +357,39 @@ export function EmptyState({
   );
 }
 
+// Asks before something that cannot be taken back: what will happen, then
+// Cancel and the action, named by what it does.
+export function ConfirmModal({
+  title,
+  children,
+  action = title,
+  busy,
+  error,
+  confirm,
+  close,
+}: {
+  title: string;
+  children: ComponentChildren;
+  action?: string;
+  busy?: boolean;
+  error?: unknown;
+  confirm: () => void;
+  close: () => void;
+}) {
+  return (
+    <Modal title={title} close={close}>
+      <p>{children}</p>
+      {error != null && <LoadError error={error} />}
+      <Actions>
+        <Button onClick={close}>Cancel</Button>
+        <Button variant="destructive" busy={busy} onClick={confirm}>
+          {action}
+        </Button>
+      </Actions>
+    </Modal>
+  );
+}
+
 // A dialog's or form's buttons, trailing and in reading order.
 export function Actions({ children }: { children: ComponentChildren }) {
   return <div class="dialog-actions">{children}</div>;

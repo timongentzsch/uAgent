@@ -8,6 +8,7 @@ import {
   Field,
   IconButton,
   Mark,
+  ConfirmModal,
   Modal,
   Select,
   Skeleton,
@@ -189,7 +190,7 @@ function Showcase() {
   );
   const [enabled, setEnabled] = useState(true);
   const [dialog, setDialog] = useState<
-    "example" | "browser" | "loading" | "image" | null
+    "example" | "confirm" | "browser" | "loading" | "image" | null
   >(null);
 
   useEffect(() => applyTheme(theme), [theme]);
@@ -496,6 +497,7 @@ function Showcase() {
         </div>
         <div class="showcase-row">
           <Button onClick={() => setDialog("example")}>Open dialog</Button>
+          <Button onClick={() => setDialog("confirm")}>Ask first</Button>
           <Button onClick={() => setDialog("loading")}>
             Open loading dialog
           </Button>
@@ -534,6 +536,15 @@ function Showcase() {
             </Button>
           </Actions>
         </Modal>
+      )}
+      {dialog === "confirm" && (
+        <ConfirmModal
+          title="Forget all"
+          confirm={() => setDialog(null)}
+          close={() => setDialog(null)}
+        >
+          Every remembered action for this repository is forgotten.
+        </ConfirmModal>
       )}
       {dialog === "loading" && (
         <Modal

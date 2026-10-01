@@ -254,24 +254,28 @@ class Master {
                  [this](const Request& request, Response& response) {
                    Authenticate(request, response);
                  });
-    server_.Get("/api/sessions", [this](const Request& request,
-                                        Response& response) {
-      if (request.has_param("refresh")) {
-        host_.RefreshCatalogue(true);
-      }
-      host_.RefreshPresence();
-      std::lock_guard lock(mutex_);
-      json catalogue = host_.Catalogue();
-      Reply(response, {{"v", kProtocol},
-                       {"epoch", epoch_},
-                       {"cursor", catalogue["cursor"]},
-                       {"sessions", catalogue["sessions"]},
-                       {"commands", CommandSchemaJson()},
-                       {"capabilities", push_->Capabilities(DeviceId(request))},
-                       {"devices", PublicDevices()},
-                       {"scheduled", catalogue["scheduled"]},
-                       {"device", DeviceId(request)}});
-    });
+    server_.Get(
+        "/api/sessions", [this](const Request& request, Response& response) {
+          if (request.has_param("refresh")) {
+            host_.RefreshCatalogue(true);
+          }
+          host_.RefreshPresence();
+          std::unique_lock lock(mutex_);
+          json catalogue = host_.Catalogue();
+          const std::string device = DeviceId(request);
+          const json body = {{"v", kProtocol},
+                             {"epoch", epoch_},
+                             {"cursor", std::move(catalogue["cursor"])},
+                             {"sessions", std::move(catalogue["sessions"])},
+                             {"commands", CommandSchemaJson()},
+                             {"capabilities", push_->Capabilities(device)},
+                             {"devices", PublicDevices()},
+                             {"scheduled", std::move(catalogue["scheduled"])},
+                             {"device", device}};
+          // Every /api request authenticates under this lock.
+          lock.unlock();
+          Reply(response, body);
+        });
     server_.Get(R"(/api/sessions/([a-f0-9]{16,64}))",
                 [this](const Request& request, Response& response) {
                   Snapshot(request, response);

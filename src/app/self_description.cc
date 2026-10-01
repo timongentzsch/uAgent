@@ -214,13 +214,16 @@ json CliSchemaJson() {
   return flags;
 }
 
-json CommandSchemaJson() {
-  json commands = json::array();
-  for (const SlashCommandSpec& command : SlashCommandRegistry()) {
-    if (!*command.description) continue;
-    commands.push_back(CommandJson(command));
-  }
-  return commands;
+const json& CommandSchemaJson() {
+  static const json kCommands = [] {
+    json commands = json::array();
+    for (const SlashCommandSpec& command : SlashCommandRegistry()) {
+      if (!*command.description) continue;
+      commands.push_back(CommandJson(command));
+    }
+    return commands;
+  }();
+  return kCommands;
 }
 
 json DescribeSelf(SelfTopic topic, const std::string& name,

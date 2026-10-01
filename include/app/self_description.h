@@ -60,7 +60,7 @@ json ConfigSettingsJson(const EffectiveConfigSnapshot& configured,
                         const EnvValues& user, std::string_view name);
 json CliSchemaJson();
 // Every listed command; `terminal` marks those the web does not offer.
-json CommandSchemaJson();
+const json& CommandSchemaJson();
 
 // The model-facing surface: the base prompt with its sections and every
 // capability fragment, and the built-in tool schemas as the model receives

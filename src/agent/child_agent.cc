@@ -192,7 +192,7 @@ EnvironmentOverrides ChildAgentEnvironment(SideRoute route) {
   environment.emplace_back("UAGENT_INTERNAL_DEPTH",
                            std::to_string(AgentDepth() + 1));
   environment.emplace_back("UAGENT_API_KEY", std::move(route.api_key));
-  environment.emplace_back("UAGENT_USAGE_FILE", UsageLedger());
+  environment.emplace_back("UAGENT_INTERNAL_USAGE_FILE", UsageLedger());
   return environment;
 }
 

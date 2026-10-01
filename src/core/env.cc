@@ -42,7 +42,7 @@ int64_t ToolBatchResultCap() {
 int64_t AutoCompactPct() { return LongSetting(Cfg("UAGENT_AUTO_COMPACT_PCT")); }
 
 int64_t AutoCompactTokens() {
-  return LongSetting(Cfg("UAGENT_AUTO_COMPACT_TOKENS"));
+  return EnvLong("UAGENT_INTERNAL_AUTO_COMPACT_TOKENS", 0);
 }
 
 int64_t AgentDepth() { return EnvLong("UAGENT_INTERNAL_DEPTH", 0); }
@@ -51,7 +51,7 @@ bool CanDelegate() {
   return AgentDepth() < LongSetting(Cfg("UAGENT_SUBAGENT_DEPTH"));
 }
 
-bool LeanToolset() { return StringSetting(Cfg("UAGENT_TOOLSET")) == "lean"; }
+bool LeanToolset() { return EnvStr("UAGENT_INTERNAL_TOOLSET") == "lean"; }
 
 // The parent runs with no step ceiling at all (RuntimeConfig::max_steps), so a
 // child that reads a handful of files per step used to be cut off mid-review
@@ -99,11 +99,11 @@ bool TrustProjectConfig() {
 }
 
 bool HeadlessProgressEnabled() {
-  return BoolSetting(Cfg("UAGENT_HEADLESS_PROGRESS"));
+  return EnvStr("UAGENT_INTERNAL_HEADLESS_PROGRESS") == "1";
 }
 
 std::string PromptOverlayPath() {
-  return StringSetting(Cfg("UAGENT_PROMPT_OVERLAY"));
+  return EnvStr("UAGENT_INTERNAL_PROMPT_OVERLAY");
 }
 
 int64_t ReadFileLines() { return LongSetting(Cfg("UAGENT_READ_FILE_LINES")); }

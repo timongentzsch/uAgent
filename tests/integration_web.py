@@ -1935,7 +1935,10 @@ def test_web_child_controls_and_conversation_ownership(root, home, *, binary):
             root,
             home,
             provider.url,
-            extra_env={"UAGENT_MODEL": "mock/old", "UAGENT_PROVIDER_PROTOCOL": "openrouter"},
+            extra_env={
+                "UAGENT_MODEL": "mock/old",
+                "UAGENT_INTERNAL_PROVIDER_PROTOCOL": "openrouter",
+            },
         ) as (client, code, _, _):
             client.pair(code)
             session = client.create(project)
@@ -2031,7 +2034,7 @@ def test_web_http_context_configuration_permissions_and_fork(root, home, *, bina
             client.pair(code)
             config = client.command("config")["result"]
             settings = {item["name"]: item for item in config["settings"]}
-            assert_true(len(settings) > 80 and settings["UAGENT_API_KEY"]["value"] is None, config)
+            assert_true(len(settings) > 60 and settings["UAGENT_API_KEY"]["value"] is None, config)
             changed = client.command(
                 "config",
                 operation="apply",

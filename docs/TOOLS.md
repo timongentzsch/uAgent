@@ -8,7 +8,7 @@ the set a live session currently advertises, including MCP tools.
 ## Inventory
 
 The registry is built at startup and refreshed when MCP tool lists change. It is
-filtered by the toolset (`UAGENT_TOOLSET=lean` withholds implementation tools),
+filtered by the toolset (a `lean` child gets no implementation tools),
 `UAGENT_TOOL_CAPABILITIES` (`inspect`, `execute`, `mutate`, `delegate`,
 `external`), route capabilities, installed skills, delegation depth and
 per-conversation choices made with `/tools`.

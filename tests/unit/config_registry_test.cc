@@ -45,13 +45,11 @@ constexpr BoolGetterCheck kBoolGetters[] = {
     {"UAGENT_ADAPT_SYSTEM", AdaptiveSystemEnabled},
     {"UAGENT_MARKDOWN", MarkdownEnabled},
     {"UAGENT_TRUST_PROJECT_CONFIG", TrustProjectConfig},
-    {"UAGENT_HEADLESS_PROGRESS", HeadlessProgressEnabled},
 };
 
 constexpr GetterCheck kIntGetters[] = {
     {"UAGENT_TOOL_RESULT_CHARS", ToolResultCap},
     {"UAGENT_AUTO_COMPACT_PCT", AutoCompactPct},
-    {"UAGENT_AUTO_COMPACT_TOKENS", AutoCompactTokens},
     {"UAGENT_SUBAGENT_MAX_STEPS", SubagentMaxSteps},
     {"UAGENT_SUBAGENT_MAX_TOOL_CALLS", SubagentMaxToolCalls},
     {"UAGENT_MAX_TOKENS", MaxOutputTokens},

@@ -42,10 +42,6 @@ Every setting below is read from the running binary's registry. `takes effect` i
 | `UAGENT_MODEL` | string | empty | restart-required | model or named route as [provider/]model[:variant][:effort] |
 | `UAGENT_REASONING_EFFORT` | string | empty | restart-required | none, minimal, low, medium, high, xhigh, or max |
 | `UAGENT_PROVIDERS 🔒` | string | empty | restart-required | JSON object of named endpoints, transports, and aliases |
-| `UAGENT_WIRE_API` | string | `chat_completions` | restart-required | chat_completions, responses, or anthropic_messages |
-| `UAGENT_HOSTED_TOOLS` | string | empty | restart-required | comma-separated hosted capabilities; currently web_search |
-| `UAGENT_MODEL_FEATURES` | string | empty | restart-required | JSON model capabilities: reasoning_summary, adaptive_thinking |
-| `UAGENT_PROVIDER_PROTOCOL` | string | empty | restart-required | openai or openrouter (anthropic is an alias of openai) |
 | `UAGENT_OPENROUTER_PROVIDER` | string | empty | next-user-turn | pin OpenRouter to one upstream provider |
 | `UAGENT_OPENROUTER_VARIANT` | string | empty | next-user-turn | nitro, floor, or exacto routing preference |
 | `UAGENT_CONTEXT` | integer | `0` | restart-required | context-window tokens; 0 uses the provider profile |
@@ -71,7 +67,6 @@ Every setting below is read from the running binary's registry. `takes effect` i
 | `UAGENT_SESSION_BUDGET` | number | `0.0` | next-user-turn | cumulative reported-cost ceiling; 0 disables it |
 | `UAGENT_TOOL_TIMEOUT` | integer | `30` | next-user-turn | seconds one tool call may run |
 | `UAGENT_AUTO_COMPACT_PCT` | integer | `85` | restart-required | context percentage that triggers compaction |
-| `UAGENT_AUTO_COMPACT_TOKENS` | integer | `0` | restart-required | absolute token trigger for compaction; 0 uses the percentage |
 
 ## tools
 
@@ -92,7 +87,6 @@ Every setting below is read from the running binary's registry. `takes effect` i
 | `UAGENT_SUBAGENT_MAX_TOOL_CALLS` | integer | `240` | restart-required | tool calls per delegated child |
 | `UAGENT_SUBAGENT_TIMEOUT` | integer | `0` | restart-required | wall-clock ceiling per delegated child; 0 is the turn |
 | `UAGENT_SUBAGENT_MODEL` | string | empty | restart-required | default model route for delegated children |
-| `UAGENT_TOOLSET` | string | empty | restart-required | lean withholds implementation tools from this process |
 
 ## coordination
 
@@ -151,7 +145,6 @@ Every setting below is read from the running binary's registry. `takes effect` i
 | Setting | Type | Default | Takes effect | Description |
 | --- | --- | --- | --- | --- |
 | `UAGENT_ADAPT_SYSTEM` | boolean | `0` | restart-required | expose adapt_system so the model may revise its directive |
-| `UAGENT_PROMPT_OVERLAY` | string | empty | restart-required | experiment: JSON file replacing base prompt sections so a variant can be measured without a rebuild; prompt text only |
 | `UAGENT_APPROVAL` | string | `ask` | next-user-turn | ask, auto reviewer, or yolo for ordinary mutations |
 | `UAGENT_PERMISSION_MODEL` | string | `~typesafe/jev-latest` | next-user-turn | OpenRouter Decisions model used by auto permissions |
 | `UAGENT_PERMISSION_URL` | string | `https://openrouter.ai/api/alpha` | next-user-turn | OpenRouter Decisions API base URL |
@@ -161,9 +154,7 @@ Every setting below is read from the running binary's registry. `takes effect` i
 | `UAGENT_TRUST_PROJECT_CONFIG` | boolean | `0` | restart-required | trust this workspace's .mcp.json and config |
 | `UAGENT_CONFIG_FILE` | string | empty | restart-required | replace both config-file locations |
 | `UAGENT_DEBUG_LOG` | string | empty | restart-required | write a sensitive reconstructable JSONL trace |
-| `UAGENT_USAGE_FILE` | string | empty | restart-required | append per-turn usage records to this path |
 | `UAGENT_MARKDOWN` | boolean | `1` | restart-required | render Markdown on a TTY |
 | `UAGENT_PLAIN` | boolean | `0` | restart-required | screen-reader terminal: labelled lines, no animation or cursor control |
 | `UAGENT_REDUCED_MOTION` | boolean | `0` | restart-required | show a still status instead of the terminal spinner |
-| `UAGENT_HEADLESS_PROGRESS` | boolean | `0` | restart-required | echo progress lines in headless mode |
 | `UAGENT_MEMORY_REDACT_KEYWORDS` | string | empty | restart-required | extra keywords redacted from stored memories |

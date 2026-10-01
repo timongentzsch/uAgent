@@ -248,19 +248,6 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
     registry::Str("UAGENT_PROVIDERS", {}, "", ReloadPolicy::kRestartRequired,
                   Sensitivity::kCompositeSecret, "route",
                   "JSON object of named endpoints, transports, and aliases"),
-    registry::Str("UAGENT_WIRE_API", {}, "chat_completions",
-                  ReloadPolicy::kRestartRequired, Sensitivity::kPublic, "route",
-                  "chat_completions, responses, or anthropic_messages"),
-    registry::Str("UAGENT_HOSTED_TOOLS", {}, "", ReloadPolicy::kRestartRequired,
-                  Sensitivity::kPublic, "route",
-                  "comma-separated hosted capabilities; currently web_search"),
-    registry::Str(
-        "UAGENT_MODEL_FEATURES", {}, "", ReloadPolicy::kRestartRequired,
-        Sensitivity::kPublic, "route",
-        "JSON model capabilities: reasoning_summary, adaptive_thinking"),
-    registry::Str("UAGENT_PROVIDER_PROTOCOL", {}, "",
-                  ReloadPolicy::kRestartRequired, Sensitivity::kPublic, "route",
-                  "openai or openrouter (anthropic is an alias of openai)"),
     registry::Str("UAGENT_OPENROUTER_PROVIDER", "openrouter_provider", "",
                   ReloadPolicy::kNextUserTurn, Sensitivity::kPublic, "route",
                   "pin OpenRouter to one upstream provider"),
@@ -314,10 +301,6 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
     registry::Int("UAGENT_AUTO_COMPACT_PCT", {}, 85, kConfigAnyMin,
                   kConfigAnyMax, ReloadPolicy::kRestartRequired, "budget",
                   "context percentage that triggers compaction"),
-    registry::Int(
-        "UAGENT_AUTO_COMPACT_TOKENS", {}, 0, 0, kConfigAnyMax,
-        ReloadPolicy::kRestartRequired, "budget",
-        "absolute token trigger for compaction; 0 uses the percentage"),
 
     // Tool results and trace retention.
     registry::Int("UAGENT_TOOL_RESULT_CHARS", {}, 8000, kConfigAnyMin,
@@ -360,9 +343,6 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                           "default model route for delegated children"),
             "UAGENT_MODEL"),
         "Sub-agent model", "Runs the side tasks a conversation delegates"),
-    registry::Str("UAGENT_TOOLSET", {}, "", ReloadPolicy::kRestartRequired,
-                  Sensitivity::kPublic, "delegation",
-                  "lean withholds implementation tools from this process"),
 
     // Coordination.
     registry::Named(
@@ -467,12 +447,6 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
     registry::Bul("UAGENT_ADAPT_SYSTEM", {}, false,
                   ReloadPolicy::kRestartRequired, "behaviour",
                   "expose adapt_system so the model may revise its directive"),
-    registry::Str("UAGENT_PROMPT_OVERLAY", {}, "",
-                  ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
-                  "behaviour",
-                  "experiment: JSON file replacing base prompt sections so a "
-                  "variant can be measured without a rebuild; prompt text "
-                  "only"),
     registry::Choice(
         registry::Str("UAGENT_APPROVAL", "approval", "ask",
                       ReloadPolicy::kNextUserTurn, Sensitivity::kPublic,
@@ -512,9 +486,6 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
     registry::Str("UAGENT_DEBUG_LOG", {}, "", ReloadPolicy::kRestartRequired,
                   Sensitivity::kPublic, "behaviour",
                   "write a sensitive reconstructable JSONL trace"),
-    registry::Str("UAGENT_USAGE_FILE", {}, "", ReloadPolicy::kRestartRequired,
-                  Sensitivity::kPublic, "behaviour",
-                  "append per-turn usage records to this path"),
     registry::Bul("UAGENT_MARKDOWN", {}, true, ReloadPolicy::kRestartRequired,
                   "behaviour", "render Markdown on a TTY"),
     registry::Bul("UAGENT_PLAIN", {}, false, ReloadPolicy::kRestartRequired,
@@ -524,9 +495,6 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
     registry::Bul("UAGENT_REDUCED_MOTION", {}, false,
                   ReloadPolicy::kRestartRequired, "behaviour",
                   "show a still status instead of the terminal spinner"),
-    registry::Bul("UAGENT_HEADLESS_PROGRESS", {}, false,
-                  ReloadPolicy::kRestartRequired, "behaviour",
-                  "echo progress lines in headless mode"),
     registry::Str("UAGENT_MEMORY_REDACT_KEYWORDS", {}, "",
                   ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
                   "behaviour", "extra keywords redacted from stored memories"),

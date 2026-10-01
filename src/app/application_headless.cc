@@ -83,7 +83,7 @@ int Application::RunHeadless() {
   agent_.AccountSideUsage();
   context_.output.Restore();
 
-  std::string ledger = EnvStr("UAGENT_USAGE_FILE");
+  std::string ledger = EnvStr("UAGENT_INTERNAL_USAGE_FILE");
   if (!ledger.empty()) {
     std::string error;
     json entry = {

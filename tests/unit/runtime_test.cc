@@ -617,6 +617,7 @@ void TestAgentConfigAllowlist() {
   CHECK(AgentConfigKey("OPENROUTER_MODEL"));
   CHECK(AgentConfigKey("OPENROUTER_EFFORT"));
   CHECK(!AgentConfigKey("OPENAI_API_KEY"));
+  CHECK(!AgentConfigKey("UAGENT_INTERNAL_DEPTH"));
 
   fs::path root =
       fs::temp_directory_path() /
@@ -651,7 +652,7 @@ void TestChildEnvironmentPolicy() {
   ScopedEnv scoped_access("SERVICE_ACCESS_KEY", "secret");
   ScopedEnv scoped_private("SIGNING_PRIVATE_KEY", "secret");
   ScopedEnv scoped_cookie("SESSION_COOKIE", "secret");
-  ScopedEnv scoped_usage("UAGENT_USAGE_FILE", "/tmp/ledger");
+  ScopedEnv scoped_usage("UAGENT_INTERNAL_USAGE_FILE", "/tmp/ledger");
   ScopedEnv scoped_providers("UAGENT_PROVIDERS", "private-provider-config");
   ScopedEnv scoped_safe("UAGENT_CHILD_ENV_SAFE", "visible");
   ScopedEnv scoped_allow("UAGENT_SHELL_ENV_ALLOW",
@@ -664,7 +665,7 @@ void TestChildEnvironmentPolicy() {
   CHECK(!shell.Contains("SERVICE_ACCESS_KEY"));
   CHECK(!shell.Contains("SIGNING_PRIVATE_KEY"));
   CHECK(!shell.Contains("SESSION_COOKIE"));
-  CHECK(!shell.Contains("UAGENT_USAGE_FILE"));
+  CHECK(!shell.Contains("UAGENT_INTERNAL_USAGE_FILE"));
   CHECK(!shell.Contains("UAGENT_PROVIDERS"));
   CHECK(shell.Contains("UAGENT_CHILD_ENV_SAFE"));
 
@@ -675,13 +676,13 @@ void TestChildEnvironmentPolicy() {
   CHECK(!approved.Contains("SERVICE_ACCESS_KEY"));
   CHECK(!approved.Contains("SIGNING_PRIVATE_KEY"));
   CHECK(!approved.Contains("SESSION_COOKIE"));
-  CHECK(!approved.Contains("UAGENT_USAGE_FILE"));
+  CHECK(!approved.Contains("UAGENT_INTERNAL_USAGE_FILE"));
   CHECK(!approved.Contains("UAGENT_PROVIDERS"));
 
-  ChildEnvironment delegated(
-      {{"UAGENT_API_KEY", "explicit"}, {"UAGENT_USAGE_FILE", "/tmp/child"}});
+  ChildEnvironment delegated({{"UAGENT_API_KEY", "explicit"},
+                              {"UAGENT_INTERNAL_USAGE_FILE", "/tmp/child"}});
   CHECK(delegated.Contains("UAGENT_API_KEY"));
-  CHECK(delegated.Contains("UAGENT_USAGE_FILE"));
+  CHECK(delegated.Contains("UAGENT_INTERNAL_USAGE_FILE"));
 
   SideRoute route;
   route.base_url = "https://child.example/v1";
@@ -705,9 +706,9 @@ void TestChildEnvironmentPolicy() {
   CHECK(child_value("UAGENT_MODEL") == "child-model");
   CHECK(child_value("UAGENT_CONTEXT") == "32768");
   CHECK(child_value("UAGENT_REASONING_EFFORT") == "high");
-  CHECK(child_value("UAGENT_PROVIDER_PROTOCOL") == "openrouter");
-  CHECK(child_value("UAGENT_WIRE_API") == "responses");
-  CHECK(child_value("UAGENT_HOSTED_TOOLS") == "web_search");
+  CHECK(child_value("UAGENT_INTERNAL_PROVIDER_PROTOCOL") == "openrouter");
+  CHECK(child_value("UAGENT_INTERNAL_WIRE_API") == "responses");
+  CHECK(child_value("UAGENT_INTERNAL_HOSTED_TOOLS") == "web_search");
   CHECK(child_value("UAGENT_OPENROUTER_VARIANT") == "nitro");
   ChildEnvironment child(child_overrides);
   CHECK(!child.Contains("UAGENT_PROVIDERS"));
@@ -804,11 +805,12 @@ void TestNamedProviders() {
   ScopedEnv scoped_effort("UAGENT_REASONING_EFFORT",
                           std::getenv("UAGENT_REASONING_EFFORT"));
   ScopedEnv scoped_context("UAGENT_CONTEXT", std::getenv("UAGENT_CONTEXT"));
-  ScopedEnv scoped_protocol("UAGENT_PROVIDER_PROTOCOL",
-                            std::getenv("UAGENT_PROVIDER_PROTOCOL"));
-  ScopedEnv scoped_wire("UAGENT_WIRE_API", std::getenv("UAGENT_WIRE_API"));
-  ScopedEnv scoped_hosted("UAGENT_HOSTED_TOOLS",
-                          std::getenv("UAGENT_HOSTED_TOOLS"));
+  ScopedEnv scoped_protocol("UAGENT_INTERNAL_PROVIDER_PROTOCOL",
+                            std::getenv("UAGENT_INTERNAL_PROVIDER_PROTOCOL"));
+  ScopedEnv scoped_wire("UAGENT_INTERNAL_WIRE_API",
+                        std::getenv("UAGENT_INTERNAL_WIRE_API"));
+  ScopedEnv scoped_hosted("UAGENT_INTERNAL_HOSTED_TOOLS",
+                          std::getenv("UAGENT_INTERNAL_HOSTED_TOOLS"));
   ScopedEnv scoped_providers("UAGENT_PROVIDERS",
                              std::getenv("UAGENT_PROVIDERS"));
   ScopedEnv scoped_openrouter("OPENROUTER_API_KEY",
@@ -855,8 +857,8 @@ void TestNamedProviders() {
   // routes. Suffixes configure policy and never leak into the provider model
   // identifier.
   setenv("UAGENT_MODEL", "codex-local/gpt-5.6-luna:nitro:low", 1);
-  setenv("UAGENT_WIRE_API", "invalid-direct-wire", 1);
-  setenv("UAGENT_PROVIDER_PROTOCOL", "invalid-direct-protocol", 1);
+  setenv("UAGENT_INTERNAL_WIRE_API", "invalid-direct-wire", 1);
+  setenv("UAGENT_INTERNAL_PROVIDER_PROTOCOL", "invalid-direct-protocol", 1);
   unsetenv("UAGENT_BASE_URL");
   unsetenv("UAGENT_REASONING_EFFORT");
   RuntimeConfig startup_config;
@@ -1008,8 +1010,8 @@ void TestNamedProviders() {
 
   setenv("UAGENT_BASE_URL", "https://direct.test/v1", 1);
   setenv("UAGENT_MODEL", "direct-model", 1);
-  setenv("UAGENT_WIRE_API", "invalid-direct-wire", 1);
-  setenv("UAGENT_PROVIDER_PROTOCOL", "invalid-direct-protocol", 1);
+  setenv("UAGENT_INTERNAL_WIRE_API", "invalid-direct-wire", 1);
+  setenv("UAGENT_INTERNAL_PROVIDER_PROTOCOL", "invalid-direct-protocol", 1);
   Api invalid_direct(RuntimeConfig{});
   ProviderSetup invalid_setup = ConfigureProvider(invalid_direct);
   CHECK(invalid_direct.base_url.empty());
@@ -1024,10 +1026,12 @@ void TestEffectiveConfigReload() {
   ScopedEnv scoped_model("UAGENT_MODEL");
   ScopedEnv scoped_route_key("OPENROUTER_API_KEY");
   ScopedEnv scoped_review_url("UAGENT_PERMISSION_URL");
+  ScopedEnv scoped_toolset("UAGENT_INTERNAL_TOOLSET");
   std::string path = UagentConfigPath();
   CHECK(ToolWriteFile(
             path,
             "UAGENT_MAX_STEPS=4\n"
+            "UAGENT_INTERNAL_TOOLSET=lean\n"
             "UAGENT_MAX_TOOL_CALLS=2\n"
             "UAGENT_MAX_TURN_TOKENS=100\n"
             "UAGENT_SESSION_TOKEN_BUDGET=200\n"
@@ -1053,6 +1057,9 @@ void TestEffectiveConfigReload() {
   json diagnostic = manager.DiagnosticJson(active);
   CHECK(diagnostic["sources"]["UAGENT_MAX_STEPS"] == "environment");
   CHECK(diagnostic["sources"]["UAGENT_SESSION_BUDGET"] == "cli");
+  // A parent's handoff to its child is not a setting a file may carry.
+  CHECK(!diagnostic["sources"].contains("UAGENT_INTERNAL_TOOLSET"));
+  CHECK(!LeanToolset());
   CHECK(diagnostic["provenance"]["max_steps"] == "environment");
   CHECK(diagnostic["provenance"]["max_tool_calls"] == "global-config");
   CHECK(diagnostic["provenance"]["request_timeout_s"] == "default");

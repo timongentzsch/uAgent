@@ -93,7 +93,7 @@ def test_prompt_overlay_reaches_the_live_prompt(root, home, *, binary):
 
     with Server([verify]) as server:
         env = base_env(home, server.url)
-        env["UAGENT_PROMPT_OVERLAY"] = str(overlay)
+        env["UAGENT_INTERNAL_PROMPT_OVERLAY"] = str(overlay)
         result = run(workspace, env, "-p", "reply", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "overlay-ok", result.stdout)
@@ -107,7 +107,7 @@ def test_prompt_overlay_reaches_the_live_prompt(root, home, *, binary):
     overlay.write_text("{not json", encoding="utf-8")
     with Server([baseline]) as server:
         env = base_env(home, server.url)
-        env["UAGENT_PROMPT_OVERLAY"] = str(overlay)
+        env["UAGENT_INTERNAL_PROMPT_OVERLAY"] = str(overlay)
         result = run(workspace, env, "-p", "reply", binary=binary)
         assert_true(result.stdout.strip() == "base-ok", result.stdout)
 

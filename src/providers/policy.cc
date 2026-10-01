@@ -54,13 +54,15 @@ EnvironmentOverrides RouteEnvironment(const SideRoute& route) {
   return {
       {"UAGENT_BASE_URL", route.base_url},
       {"UAGENT_MODEL", route.model},
-      {"UAGENT_MODEL_FEATURES", JsonDump(route.features)},
+      {"UAGENT_INTERNAL_MODEL_FEATURES", JsonDump(route.features)},
       {"UAGENT_REASONING_EFFORT", route.effort},
       {"UAGENT_OPENROUTER_VARIANT", route.variant},
       {"UAGENT_CONTEXT", std::to_string(route.context)},
-      {"UAGENT_PROVIDER_PROTOCOL", ProviderProtocolName(route.protocol)},
-      {"UAGENT_WIRE_API", WireApiName(route.wire_api)},
-      {"UAGENT_HOSTED_TOOLS", route.hosted_web_search ? "web_search" : ""},
+      {"UAGENT_INTERNAL_PROVIDER_PROTOCOL",
+       ProviderProtocolName(route.protocol)},
+      {"UAGENT_INTERNAL_WIRE_API", WireApiName(route.wire_api)},
+      {"UAGENT_INTERNAL_HOSTED_TOOLS",
+       route.hosted_web_search ? "web_search" : ""},
   };
 }
 
@@ -175,8 +177,9 @@ ProviderSetup ConfigureProvider(Api& api) {
   const std::string configured_variant = api.config.openrouter_variant;
   api.reasoning_effort = configured_effort;
   api.ctx_window = ContextWindow();
-  std::string protocol_setting = EnvStr("UAGENT_PROVIDER_PROTOCOL");
-  std::string wire_setting = EnvStr("UAGENT_WIRE_API", "chat_completions");
+  std::string protocol_setting = EnvStr("UAGENT_INTERNAL_PROVIDER_PROTOCOL");
+  std::string wire_setting =
+      EnvStr("UAGENT_INTERNAL_WIRE_API", "chat_completions");
   std::optional<WireApi> configured_wire = ParseWireApi(wire_setting);
   WireApi wire_api = configured_wire.value_or(WireApi::kChatCompletions);
   std::optional<ProviderProtocol> configured_protocol;
@@ -186,7 +189,8 @@ ProviderSetup ConfigureProvider(Api& api) {
   ProviderProtocol protocol =
       configured_protocol.value_or(ProviderProtocol::kOpenAi);
   json hosted_tools = json::array();
-  for (std::string tool : SplitPathList(EnvStr("UAGENT_HOSTED_TOOLS"), ',')) {
+  for (std::string tool :
+       SplitPathList(EnvStr("UAGENT_INTERNAL_HOSTED_TOOLS"), ',')) {
     tool = Trim(tool);
     if (!tool.empty()) hosted_tools.push_back(std::move(tool));
   }
@@ -194,7 +198,7 @@ ProviderSetup ConfigureProvider(Api& api) {
       CapabilitiesForRoute(protocol, api.base_url, wire_api,
                            HasHostedTool(hosted_tools, HostedTool::kWebSearch));
   api.capabilities.SetModelFeatures(
-      json::parse(EnvStr("UAGENT_MODEL_FEATURES"), nullptr, false));
+      json::parse(EnvStr("UAGENT_INTERNAL_MODEL_FEATURES"), nullptr, false));
 
   ProviderCatalog catalog = SessionProviderCatalog();
   ProviderSetup setup{

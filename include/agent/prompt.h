@@ -36,9 +36,9 @@ std::vector<std::string_view> PromptSections();
 std::string ApplyPromptOverlay(std::string prompt, const json& overlay,
                                std::vector<std::string>* applied);
 
-// The overlay named by UAGENT_PROMPT_OVERLAY, or an empty object when unset,
-// unreadable or malformed: an experiment must not be able to break a session.
-// `digest` receives a short content hash when a file was read.
+// The overlay named by UAGENT_INTERNAL_PROMPT_OVERLAY, or an empty object when
+// unset, unreadable or malformed: an experiment must not be able to break a
+// session. `digest` receives a short content hash when a file was read.
 json PromptOverlay(std::string* digest);
 
 // Optional workflow rules, kept out of the cacheable base unless the matching

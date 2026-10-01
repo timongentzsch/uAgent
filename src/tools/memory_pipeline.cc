@@ -193,7 +193,7 @@ std::string StartMemoryExtractor(ProcessSupervisor& processes, const Api& api,
                       {"UAGENT_REQUEST_TIMEOUT", "300"},
                       {"UAGENT_MEMORY", "1"},
                       {"UAGENT_MEMORY_GENERATE", "0"},
-                      {"UAGENT_TOOLSET", "memory"},
+                      {"UAGENT_INTERNAL_TOOLSET", "memory"},
                       {"UAGENT_INTERNAL_MEMORY_SOURCE", source}});
   if (api.config.session_budget > 0) {
     double remaining = api.config.session_budget - api.session_cost;

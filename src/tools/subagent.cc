@@ -506,7 +506,7 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
             environment.end(),
             {{"UAGENT_MAX_STEPS", std::to_string(steps)},
              {"UAGENT_MAX_TOOL_CALLS", std::to_string(tool_calls)},
-             {"UAGENT_TOOLSET", mode},
+             {"UAGENT_INTERNAL_TOOLSET", mode},
              {"UAGENT_INTERNAL_PARENT_TURN", std::to_string(context.turn_id)},
              {"UAGENT_MEMORY", child_memory ? "1" : "0"},
              {"UAGENT_INTERNAL_SESSION_FILE", AgentPath(id)},
@@ -515,7 +515,7 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
         // is read once, where progress lines would only pad the answer the
         // parent quotes.
         if (background) {
-          environment.emplace_back("UAGENT_HEADLESS_PROGRESS", "1");
+          environment.emplace_back("UAGENT_INTERNAL_HEADLESS_PROGRESS", "1");
         }
         // Tightening is the caller's to do; loosening is not. A requested
         // budget above what the session has left is clamped, and the clamp is

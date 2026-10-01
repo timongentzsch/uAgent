@@ -36,9 +36,9 @@ std::vector<std::string> ShellAllowList() {
 bool SensitiveEnvironmentKey(std::string_view key) {
   std::string lower = AsciiLower(std::string(key));
   if (lower == "uagent_api_key" || lower == "uagent_providers" ||
-      lower == "uagent_session_budget" || lower == "uagent_usage_file" ||
-      lower == "openrouter_api_key" || lower == "ssh_auth_sock" ||
-      lower == "xauthority") {
+      lower == "uagent_session_budget" ||
+      lower == "uagent_internal_usage_file" || lower == "openrouter_api_key" ||
+      lower == "ssh_auth_sock" || lower == "xauthority") {
     return true;
   }
   if (CredentialLikeKey(lower)) return true;

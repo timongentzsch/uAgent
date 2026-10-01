@@ -325,7 +325,7 @@ def test_tool_trace_repeated_rounds_are_telemetry_only(root, home, *, binary):
     ) as server:
         env = base_env(home, server.url)
         env["UAGENT_AUTO_COMPACT_PCT"] = "0"
-        env["UAGENT_AUTO_COMPACT_TOKENS"] = "0"
+        env["UAGENT_INTERNAL_AUTO_COMPACT_TOKENS"] = "0"
         result = run(root, env, "--yolo", f"--debug={trace}", "-p", "inspect lines", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip().endswith("rounds-finished"), result.stdout)

@@ -223,7 +223,7 @@ std::vector<Tool> BuildTools(AppContext& context,
   AppRuntime& runtime = context.runtime;
   // One read of the toolset selector: the three shapes it can take are one
   // decision, not three unrelated conditions.
-  const std::string toolset = EnvStr("UAGENT_TOOLSET");
+  const std::string toolset = EnvStr("UAGENT_INTERNAL_TOOLSET");
   const std::string session_path =
       context.channel ? context.channel->SessionPath() : std::string();
   std::vector<Tool> tools = BuiltinTools(runtime.processes, workspace);

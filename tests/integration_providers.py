@@ -206,7 +206,7 @@ def test_openrouter_named_search_contract_and_errors(root, home, *, binary):
             env = base_env(home, model_server.url)
             env.update(
                 {
-                    "UAGENT_PROVIDER_PROTOCOL": "openrouter",
+                    "UAGENT_INTERNAL_PROVIDER_PROTOCOL": "openrouter",
                     "UAGENT_WEB_SEARCH_BACKEND": "openrouter",
                     "UAGENT_PROVIDERS": json.dumps(
                         {
@@ -279,7 +279,7 @@ def test_openrouter_reasoning_details_survive_tool_step(root, home, *, binary):
     )
     with Server([first, verify_tool_step]) as server:
         env = base_env(home, server.url)
-        env["UAGENT_PROVIDER_PROTOCOL"] = "openrouter"
+        env["UAGENT_INTERNAL_PROVIDER_PROTOCOL"] = "openrouter"
         result = run(root, env, "-p", "inspect", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "openrouter-replay-ok", result.stdout)
@@ -669,8 +669,8 @@ def test_provider_responses_native_search_and_function_replay(root, home, *, bin
         env.update(
             {
                 "UAGENT_API_KEY": "response-key",
-                "UAGENT_WIRE_API": "responses",
-                "UAGENT_HOSTED_TOOLS": "web_search",
+                "UAGENT_INTERNAL_WIRE_API": "responses",
+                "UAGENT_INTERNAL_HOSTED_TOOLS": "web_search",
                 "UAGENT_WEB_SEARCH_BACKEND": "auto",
                 "UAGENT_PROVIDERS": json.dumps(
                     {
@@ -804,8 +804,8 @@ def test_hosted_search_reports_one_lifecycle_on_either_route(root, home, *, bina
             env.update(
                 {
                     "UAGENT_API_KEY": "search-key",
-                    "UAGENT_WIRE_API": wire_api,
-                    "UAGENT_HOSTED_TOOLS": "web_search",
+                    "UAGENT_INTERNAL_WIRE_API": wire_api,
+                    "UAGENT_INTERNAL_HOSTED_TOOLS": "web_search",
                     "UAGENT_WEB_SEARCH_BACKEND": "auto",
                     "UAGENT_PROVIDERS": json.dumps(
                         {
@@ -958,8 +958,8 @@ def test_provider_anthropic_native_search_pause_turn_replay(root, home, *, binar
         env.update(
             {
                 "UAGENT_API_KEY": "anthropic-key",
-                "UAGENT_WIRE_API": "anthropic_messages",
-                "UAGENT_HOSTED_TOOLS": "web_search",
+                "UAGENT_INTERNAL_WIRE_API": "anthropic_messages",
+                "UAGENT_INTERNAL_HOSTED_TOOLS": "web_search",
                 "UAGENT_WEB_SEARCH_BACKEND": "auto",
                 "UAGENT_PROVIDERS": json.dumps(
                     {
@@ -1114,7 +1114,10 @@ def test_provider_summary_capability_fallback(root, home, *, binary):
     with Server([reject, answer]) as server:
         env = base_env(home, server.url)
         env.update(
-            {"UAGENT_WIRE_API": "responses", "UAGENT_MODEL_FEATURES": '{"reasoning_summary":true}'}
+            {
+                "UAGENT_INTERNAL_WIRE_API": "responses",
+                "UAGENT_INTERNAL_MODEL_FEATURES": '{"reasoning_summary":true}',
+            }
         )
         result = run(root, env, "-p", "inspect", binary=binary)
         assert_true(result.returncode == 0, result.stderr)

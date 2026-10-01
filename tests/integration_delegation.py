@@ -797,7 +797,7 @@ def test_subagent_recursion_is_depth_bounded(root, home, *, binary):
         env = base_env(home, server.url)
         env["UAGENT_INTERNAL_DEPTH"] = "1"
         env["UAGENT_SUBAGENT_DEPTH"] = "2"
-        env["UAGENT_TOOLSET"] = "lean"
+        env["UAGENT_INTERNAL_TOOLSET"] = "lean"
         result = run(root, env, "-p", "probe", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "False", result.stdout)

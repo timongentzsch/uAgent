@@ -22,6 +22,17 @@ names one loads as before and the line has no effect.
   `UAGENT_MEMORY_IDLE_SECONDS` (6 hours), `UAGENT_WEB_SEARCH_ENGINE` (`auto`),
   and `UAGENT_WEB_SEARCH_CONTEXT_SIZE` and `UAGENT_IMAGE_DETAIL` (the
   provider's default).
+- Set per provider now: `UAGENT_WIRE_API`, `UAGENT_HOSTED_TOOLS`,
+  `UAGENT_MODEL_FEATURES` and `UAGENT_PROVIDER_PROTOCOL` are the `wire_api`,
+  `hosted_tools`, `features` and `protocol` keys of a provider in
+  `UAGENT_PROVIDERS`. An endpoint named only by `UAGENT_BASE_URL` speaks
+  Chat Completions; one that needs anything else becomes a named provider,
+  selected as `UAGENT_MODEL=name/model`.
+- No longer settings: `UAGENT_TOOLSET`, `UAGENT_HEADLESS_PROGRESS`,
+  `UAGENT_USAGE_FILE`, `UAGENT_AUTO_COMPACT_TOKENS` and
+  `UAGENT_PROMPT_OVERLAY`. A parent agent hands them to its children, and
+  the eval harness sets the overlay with `--prompt-overlay`.
+- A config file can no longer set a `UAGENT_INTERNAL_*` name.
 
 ### Added
 

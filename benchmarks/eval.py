@@ -266,9 +266,9 @@ def case_environment(scenario: dict[str, Any], variant: str, arguments, mock) ->
     if mock is not None:
         # A mocked scenario declares its inputs; it never inherits them. Run
         # from inside a live session the shell carries that session's route --
-        # UAGENT_WIRE_API alone makes the binary speak a dialect this mock does
-        # not serve -- and every case fails for a reason the scenario is not
-        # about. Names this function sets below are reapplied deliberately.
+        # UAGENT_INTERNAL_WIRE_API alone makes the binary speak a dialect this
+        # mock does not serve -- and every case fails for a reason the scenario
+        # is not about. Names this function sets below are reapplied deliberately.
         env = {key: value for key, value in env.items() if not key.startswith("UAGENT_")}
     env.update(
         {
@@ -279,7 +279,7 @@ def case_environment(scenario: dict[str, Any], variant: str, arguments, mock) ->
             "UAGENT_MAX_TOOL_CALLS": "12",
             "UAGENT_MAX_TURN_SECONDS": str(arguments.timeout),
             "UAGENT_AUTO_COMPACT_PCT": "0",
-            "UAGENT_AUTO_COMPACT_TOKENS": "1" if variant == "compacted" else "0",
+            "UAGENT_INTERNAL_AUTO_COMPACT_TOKENS": "1" if variant == "compacted" else "0",
         }
     )
     env.update({key: str(value) for key, value in scenario.get("env", {}).items()})
@@ -287,11 +287,11 @@ def case_environment(scenario: dict[str, Any], variant: str, arguments, mock) ->
         {key: str(value) for key, value in scenario.get("variant_env", {}).get(variant, {}).items()}
     )
     if arguments.prompt_overlay:
-        env["UAGENT_PROMPT_OVERLAY"] = str(Path(arguments.prompt_overlay).resolve())
+        env["UAGENT_INTERNAL_PROMPT_OVERLAY"] = str(Path(arguments.prompt_overlay).resolve())
     if arguments.toolset != "full":
-        env["UAGENT_TOOLSET"] = arguments.toolset
+        env["UAGENT_INTERNAL_TOOLSET"] = arguments.toolset
     else:
-        env.pop("UAGENT_TOOLSET", None)
+        env.pop("UAGENT_INTERNAL_TOOLSET", None)
     if mock is not None:
         # Keep the hermetic loopback transport independent of runner-level proxy
         # configuration (notably macOS system libcurl behavior).
@@ -1070,7 +1070,7 @@ def parse_args():
     parser.add_argument("--check", action="store_true", help="fail on baseline regressions")
     parser.add_argument("--update", action="store_true", help="rewrite the committed baseline")
     parser.add_argument("--report", type=Path, help="write the full JSON report")
-    parser.add_argument("--prompt-overlay", type=Path, help="UAGENT_PROMPT_OVERLAY for every run")
+    parser.add_argument("--prompt-overlay", type=Path, help="prompt overlay JSON for every run")
     parser.add_argument("--run", action="store_true", help="allow opt-in live provider calls")
     parser.add_argument("--model", action="append", default=[], help="model route; repeatable")
     parser.add_argument(

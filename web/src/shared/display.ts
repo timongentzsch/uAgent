@@ -9,6 +9,9 @@ export const permissionLabels = {
   auto: "Auto review",
   yolo: "YOLO",
 } as const;
+// Any other mode asks.
+export const permissionLabel = (mode?: string) =>
+  permissionLabels[mode === "yolo" || mode === "auto" ? mode : "ask"];
 
 export const cleanText = (text = "") =>
   text.replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "");

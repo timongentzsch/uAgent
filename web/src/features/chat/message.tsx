@@ -194,8 +194,7 @@ function MessageView({ block, online, session }: MessageProps) {
       />
     );
   // Attribution, not authorship: the user's bar and agent rows carry no
-  // label; only other kinds name themselves. The header below is identical on every row — no
-  // per-step variants, so chrome and spacing can never drift apart.
+  // label; only other kinds name themselves.
   // Receipts (memory saves, finished background work) read as tool rows.
   const row = tool || block.kind === "activity";
   const userOwned =
@@ -537,7 +536,7 @@ export async function prepareHistoryBlocks(blocks: Block[]) {
 }
 
 // Flat list with stable keys: one row per message, tool call or attachment.
-// presentMessages is memoized per blocks array; per-row shouldComponentUpdate
+// The rows are memoized per blocks array; per-row shouldComponentUpdate
 // skips unchanged rows during streaming.
 // Keys are scoped to the session: stable message IDs are local to a
 // conversation, so a reused instance must never carry expansion,

@@ -46,7 +46,7 @@ import ModelControl from "./model-control.tsx";
 import { ContextSummary, SessionSummary } from "../chat/session-summary.tsx";
 const decisionPanel = () => import("../chat/decision.tsx");
 import { maxRecalledPromptSessions } from "../../shared/limits.ts";
-import { permissionLabels } from "../../shared/display.ts";
+import { permissionLabel, permissionLabels } from "../../shared/display.ts";
 // Prompts sent from this page per session, oldest first: Up and Down recall
 // them the way the terminal composer does.
 const sentPrompts = new Map<string, string[]>();
@@ -278,10 +278,7 @@ export default function Composer({
   const permission = state?.permissions;
   const effective =
     permission?.mode === "default" ? permission.default : permission?.mode;
-  const permissionLabel =
-    permissionLabels[
-      effective === "yolo" || effective === "auto" ? effective : "ask"
-    ];
+  const effectiveLabel = permissionLabel(effective);
   return (
     <section class="composer">
       {!following && !pending && (
@@ -564,7 +561,7 @@ export default function Composer({
             />
             <SheetButton
               label="Permissions"
-              title={`${permissionLabel}${permission?.mode === "default" ? " · using default permissions" : " · conversation override"}`}
+              title={`${effectiveLabel}${permission?.mode === "default" ? " · using default permissions" : " · conversation override"}`}
               // YOLO runs everything unasked: it says so loudly.
               className={`permission-control${effective === "yolo" ? " yolo" : ""}`}
               disabled={!online}
@@ -572,7 +569,7 @@ export default function Composer({
                 <>
                   <Shield />
                   <span>
-                    <DataText>{permissionLabel}</DataText>
+                    <DataText>{effectiveLabel}</DataText>
                   </span>
                 </>
               }
@@ -591,15 +588,7 @@ export default function Composer({
                     }
                   >
                     <option value="default">
-                      Default ·{" "}
-                      {
-                        permissionLabels[
-                          permission?.default === "yolo" ||
-                          permission?.default === "auto"
-                            ? permission.default
-                            : "ask"
-                        ]
-                      }
+                      Default · {permissionLabel(permission?.default)}
                     </option>
                     {Object.entries(permissionLabels).map(([value, label]) => (
                       <option value={value}>{label}</option>

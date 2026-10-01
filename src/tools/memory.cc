@@ -438,7 +438,9 @@ json MemoryControl(const json& request, const std::filesystem::path& cwd) {
     value["revision"] = DocumentRevision(entry.path, content);
     value["bytes"] = content.size();
     value["modified"] = SnapshotFile(entry.path).modified_seconds * 1000;
-    const auto recent = body ? LoadMemoryEvents() : events;
+    const auto reloaded =
+        body ? LoadMemoryEvents() : std::vector<MemoryEvent>{};
+    const auto& recent = body ? reloaded : events;
     for (auto event = recent.rbegin(); event != recent.rend(); ++event) {
       if (event->key != entry.key ||
           (scope == "project" &&

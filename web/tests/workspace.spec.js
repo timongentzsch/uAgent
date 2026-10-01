@@ -121,6 +121,7 @@ test("appearance and configuration remain usable at large scales", async ({
   await changed.click();
   await sheet.getByRole("spinbutton").fill("24");
   await sheet.getByRole("spinbutton").press("Enter");
+  await expect(sheet).toHaveCount(0);
   await find.fill("");
   await expect(changed).toContainText("24");
   await page.getByRole("button", { name: /Reset all to defaults/ }).click();

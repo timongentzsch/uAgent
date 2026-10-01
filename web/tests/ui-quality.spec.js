@@ -457,6 +457,7 @@ test.describe("touch interaction", () => {
       await expect(sheet.getByRole("spinbutton")).toBeVisible();
       await scaledFields(sheet, zoom);
       await page.keyboard.press("Escape");
+      await expect(sheet).toHaveCount(0);
       await search.fill("memory");
       await expect(settings.locator('[role="switch"]').first()).toBeVisible();
       await scaledFields(settings, zoom);

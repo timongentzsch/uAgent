@@ -24,7 +24,6 @@ std::string CaptureUrl(std::string url) {
   return url;
 }
 std::string PrivateBody(std::string_view body) {
-  CreatePrivateDirectories(UagentDir(kArtifactsDir));
   ScopedTempFile file(UagentDir(kArtifactsDir) + "/http-XXXXXX");
   if (file && WriteFully(file.Get(), body)) return file.Release();
   return {};

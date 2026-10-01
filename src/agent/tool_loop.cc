@@ -77,7 +77,6 @@ void Agent::AppendToolResult(const ToolCall& call, const std::string& result,
         {"status", CompletionStatusName(original.status)},
         {"complete", true}};
     std::string body = JsonDump(exchange);
-    CreatePrivateDirectories(UagentDir(kArtifactsDir));
     ScopedTempFile file(UagentDir(kArtifactsDir) + "/exchange-XXXXXX");
     if (file && WriteFully(file.Get(), body)) {
       facts["exchange_path"] = file.Release();

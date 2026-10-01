@@ -849,7 +849,6 @@ void Welcome() {
   const std::string marker = UagentDir(kConfigDir) + "/welcomed";
   if (PathExists(marker)) return;
   std::string error;
-  CreatePrivateDirectories(UagentDir(kConfigDir));
   if (!AtomicWriteFile(marker, "", kPrivateFileMode, false, error)) return;
   fputs(AsciiGlyphs("Welcome to µAgent. Try \"explain this repository\", "
                     "\"fix the failing test\" or /help.\n"

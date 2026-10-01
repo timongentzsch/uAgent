@@ -329,10 +329,6 @@ export function useHost(
       revoked.current = false;
       catalogueRef.current = list;
       setCatalogue(list);
-      // Activation can precede the first snapshot of a newly created session.
-      const knownSessions = new Map(
-        list.sessions.map((session) => [session.id, session]),
-      );
       setUnread(
         (prior) =>
           new Set([
@@ -481,7 +477,6 @@ export function useHost(
           ["activated", "deactivated", "metadata"].includes(event.kind) &&
           event.metadata
         ) {
-          knownSessions.set(id, event.metadata!);
           upsertSession(event.metadata!);
           if (current)
             live.current[id] = {
@@ -492,10 +487,7 @@ export function useHost(
               pending: event.kind === "metadata" ? current.pending : null,
             };
         }
-        if (event.kind === "deleted") {
-          knownSessions.delete(id);
-          forget(id);
-        }
+        if (event.kind === "deleted") forget(id);
         if (event.kind === "state") {
           const phase = event.phase || event.state?.phase || "idle";
           const pendingDecision = event.pending ?? null;
@@ -598,8 +590,6 @@ export function useHost(
     }
   }, [load, report, forget, onResult]);
   useEffect(() => {
-    // Scroll restoration is owned from module scope (see above); the
-    // transcript hook is the only writer from the first paint on.
     refresh();
     const recover = (event?: Event) => {
       if (document.visibilityState !== "visible") return;

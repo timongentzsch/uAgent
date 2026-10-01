@@ -108,11 +108,8 @@ std::vector<std::string> LinkFiles() {
 
 std::string MemberTitle(const std::string& id, const std::string& path) {
   if (!path.empty()) {
-    auto loaded = SessionStore::Inspect(path);
-    if (loaded.record && !loaded.record->metadata.title.empty() &&
-        loaded.record->metadata.title != "(untitled)") {
-      return loaded.record->metadata.title;
-    }
+    std::string title = JsonValue(SessionHeader(path), kSessionHeaderTitle, "");
+    if (!title.empty() && title != "(untitled)") return title;
   }
   return id;
 }
@@ -188,6 +185,7 @@ std::string LinkedSessionPath(const std::string& id) {
 std::vector<json> SessionSummaries() {
   const std::string me = OwnSessionId();
   std::vector<json> rows;
+  // A linked session is already a row by the time the workspace ones arrive.
   auto push = [&](std::string id, std::string title, bool linked) {
     if (id.empty() || id == me) return;
     for (const json& row : rows) {
@@ -207,7 +205,7 @@ std::vector<json> SessionSummaries() {
     if (!info.error.empty()) continue;
     std::string stem =
         std::filesystem::path(info.path).filename().stem().string();
-    push(stem, info.title.empty() ? stem : info.title, SharesLink(me, stem));
+    push(stem, info.title.empty() ? stem : info.title, false);
   }
   return rows;
 }

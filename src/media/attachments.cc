@@ -553,23 +553,30 @@ bool RasterizeVector(const std::string& path, const std::string& out,
       "imagemagick) or attach a PNG instead";
   return false;
 }
+// Identity for within-request dedup: same bytes on disk. Size and mtime
+// catch edits; an unreadable mtime disables dedup for the part.
+std::string AttachmentFingerprint(const Attachment& attachment) {
+  if (attachment.path.empty()) return "";
+  std::error_code ec;
+  auto mtime = std::filesystem::last_write_time(attachment.path, ec);
+  if (ec) return "";
+  const int64_t nanos = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                            mtime.time_since_epoch())
+                            .count();
+  return attachment.path + "|" + std::to_string(attachment.bytes) + "|" +
+         std::to_string(nanos);
+}
+
 std::string PreparedImage(const Attachment& attachment, std::string& mime,
                           std::string& error) {
   constexpr size_t kImageBytes = size_t{4} * 1024 * 1024;
   static std::mutex mutex;
   static std::map<std::string, std::pair<std::string, std::string>> cache;
-  std::error_code ec;
-  auto stamp = std::filesystem::last_write_time(attachment.path, ec);
-  if (ec) {
+  const std::string key = AttachmentFingerprint(attachment);
+  if (key.empty()) {
     error = "image is no longer available";
     return "";
   }
-  std::string key =
-      attachment.path + ":" +
-      std::to_string(std::chrono::duration_cast<std::chrono::nanoseconds>(
-                         stamp.time_since_epoch())
-                         .count()) +
-      ":" + std::to_string(attachment.bytes);
   {
     std::lock_guard lock(mutex);
     if (auto found = cache.find(key); found != cache.end()) {
@@ -678,22 +685,6 @@ std::string PreparedImage(const Attachment& attachment, std::string& mime,
     cache.erase(cache.begin());
   }
   return encoded;
-}
-}  // namespace
-
-namespace {
-// Identity for within-request dedup: same bytes on disk. Size and mtime
-// catch edits; an unreadable mtime disables dedup for the part.
-std::string AttachmentFingerprint(const Attachment& attachment) {
-  if (attachment.path.empty()) return "";
-  std::error_code ec;
-  auto mtime = std::filesystem::last_write_time(attachment.path, ec);
-  if (ec) return "";
-  const int64_t nanos = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                            mtime.time_since_epoch())
-                            .count();
-  return attachment.path + "|" + std::to_string(attachment.bytes) + "|" +
-         std::to_string(nanos);
 }
 }  // namespace
 

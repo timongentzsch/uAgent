@@ -63,6 +63,13 @@ showcaseTest("an ask decision has no violations", async ({ page }) => {
   await page.goto(SHOWCASE_URL);
   const ask = page.getByRole("region", { name: "Pending decision" });
   await ask.scrollIntoViewIfNeeded();
+  await expect(ask.getByRole("button", { name: "Next" })).toBeVisible();
+  expect(await violations(page, ".decision")).toEqual([]);
+  // The review page: one tap each on the two single-choice questions.
+  await ask.getByRole("radio", { name: /^Memory/ }).click();
+  await ask.getByRole("checkbox", { name: /^macOS/ }).check();
+  await ask.getByRole("button", { name: "Next" }).click();
+  await ask.getByRole("radio", { name: /^Tabs/ }).click();
   await expect(ask.getByRole("button", { name: "Submit" })).toBeVisible();
   expect(await violations(page, ".decision")).toEqual([]);
 });

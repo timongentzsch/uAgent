@@ -136,7 +136,7 @@ export default function Raw({
         )}
         {(http || tool) && (
           <div
-            class="raw-tabs"
+            class="tabs"
             role="tablist"
             aria-label="Exchange"
             onKeyDown={(event) => {
@@ -204,7 +204,7 @@ export default function Raw({
         )}
       </div>
       <Actions>
-        <div class="raw-tabs" role="group" aria-label="Body display">
+        <div class="tabs" role="group" aria-label="Body display">
           {([false, true] as const).map((raw) => (
             <Button
               type="button"

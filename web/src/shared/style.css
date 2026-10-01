@@ -1666,7 +1666,7 @@ details[open]:not(.disclosure-row) > summary::before {
   flex-wrap: wrap;
 }
 .segmented,
-.raw-tabs,
+.tabs,
 .document-toolbar,
 .weekdays {
   display: flex;
@@ -1676,7 +1676,7 @@ details[open]:not(.disclosure-row) > summary::before {
 }
 /* Pressed buttons are drawn by button[aria-pressed]; a tab list's
    selected tab matches them. */
-.raw-tabs [aria-selected="true"] {
+.tabs [aria-selected="true"] {
   background: var(--accent);
   color: var(--on-accent);
 }

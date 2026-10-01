@@ -255,6 +255,11 @@ shows a steady indicator and “Needs your input”. A separate dot marks unread
 responses. In the sidebar an icon beside the words also marks a row that waits
 on you, is working or failed, so no state rests on colour alone.
 
+The agent's questions are answered a page at a time: the steps above the page
+show which are answered and lead back to any already seen, a tap on a single
+choice moves on, and three or more questions end on a review of every answer
+before Submit.
+
 Decisions waiting on you are counted once, across every folder. The count
 heads the sidebar (“2 need you”), which opens every waiting decision with its
 folder and question to answer or open in place, and shows in the tab title

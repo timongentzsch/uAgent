@@ -239,8 +239,24 @@ for (const width of [1440, 900, 390]) {
     await expect(
       ask.getByRole("heading", { name: "The coordinator is deciding" }),
     ).toBeVisible();
+    // One question to a page: Next until the review, which holds Submit.
     const submit = ask.getByRole("button", { name: "Submit" });
-    await expect(submit).toBeDisabled();
+    const next = ask.getByRole("button", { name: "Next" });
+    const step = (name) => ask.getByRole("tab", { name });
+    const contained = () =>
+      ask.evaluate((section) =>
+        [section, ...section.querySelectorAll("*")].every(
+          (node) =>
+            node.getBoundingClientRect().right <= innerWidth + 0.5 &&
+            node.scrollWidth <= node.clientWidth + 1,
+        ),
+      );
+    await expect(submit).toHaveCount(0);
+    await expect(next).toBeDisabled();
+    await expect(step(/Storage/)).toHaveAttribute("aria-selected", "true");
+    // The steps lead back, never ahead of what has been seen.
+    await expect(step(/Platforms/)).toBeDisabled();
+    await expect(ask.getByRole("group", { name: /Platforms/i })).toHaveCount(0);
 
     await ask.getByRole("button", { name: "Cancel" }).click();
     await expect.poll(commands).toEqual([
@@ -252,10 +268,18 @@ for (const width of [1440, 900, 390]) {
       },
     ]);
 
-    // Single choice: arrow keys move the choice; Other excludes the options.
-    const storage = ask.getByRole("group", { name: /Storage/ });
+    // Single choice: a tap answers and moves on; Back keeps the answer.
+    const storage = ask.getByRole("group", { name: /Storage/i });
     const memory = storage.getByRole("radio", { name: /^Memory/ });
-    await memory.check();
+    // A click, not check(): the page has moved on before it could re-read.
+    await memory.click();
+    const platforms = ask.getByRole("group", { name: /Platforms/i });
+    await expect(platforms).toBeVisible();
+    await expect(step(/Storage/)).toHaveAccessibleName(/Answered/);
+    await ask.getByRole("button", { name: "Back" }).click();
+    await expect(memory).toBeChecked();
+    // Arrow keys move the choice and stay on the page; Other excludes the
+    // options and needs its text.
     // Safari does not focus a clicked radio.
     await memory.focus();
     await page.keyboard.press("ArrowDown");
@@ -264,12 +288,15 @@ for (const width of [1440, 900, 390]) {
     await expect(
       storage.getByRole("radio", { name: /^Disk/ }),
     ).not.toBeChecked();
+    await expect(next).toBeDisabled();
     const other = storage.getByRole("textbox", {
       name: "Other answer: Storage",
     });
+    await other.fill("SQLite");
+    // Enter goes on, as Next does.
+    await other.press("Enter");
 
-    // Multiple choice, with an image.
-    const platforms = ask.getByRole("group", { name: /Platforms/ });
+    // Multiple choice, with an image: waits for Next.
     await platforms.getByRole("checkbox", { name: /^macOS/ }).check();
     await platforms.getByRole("checkbox", { name: /^Linux/ }).check();
     await platforms.getByLabel("Attach image: Platforms").setInputFiles({
@@ -280,37 +307,42 @@ for (const width of [1440, 900, 390]) {
     await expect(
       platforms.getByRole("button", { name: "Remove shot.png" }),
     ).toBeVisible();
+    await expect(platforms).toBeVisible();
+    expect(await contained()).toBe(true);
+    await next.click();
 
     // Options the agent showed come with its image and preview; the image's
     // alt text is the option's description.
-    const layout = ask.getByRole("group", { name: /Layout/ });
+    const layout = ask.getByRole("group", { name: /Layout/i });
     await expect(
       layout.getByRole("img", {
         name: "Sections listed on the left, one open at a time.",
       }),
     ).toBeVisible();
     await expect(layout.locator(".ask-preview")).toHaveCount(2);
-    await layout.getByRole("radio", { name: /^Tabs/ }).check();
-
-    // Other needs its text before the answers are complete.
-    await expect(submit).toBeDisabled();
-    await other.fill("SQLite");
-    await expect(submit).toBeEnabled();
+    expect(await contained()).toBe(true);
     if (process.env.UAGENT_SCREENSHOTS)
       await ask.screenshot({
         path: `${process.env.UAGENT_SCREENSHOTS}/ask-${browserName}-${width}.png`,
       });
+    await layout.getByRole("radio", { name: /^Tabs/ }).click();
+
+    // The review lists every answer; a row leads back to its question.
+    await expect(step("Review")).toHaveAttribute("aria-selected", "true");
+    await expect(submit).toBeEnabled();
+    await ask.getByRole("button", { name: /^Storage.*SQLite/ }).click();
+    await expect(other).toHaveValue("SQLite");
+    await step("Review").click();
+    await expect(
+      ask.getByRole("button", { name: /^Platforms.*macOS, Linux, shot\.png/ }),
+    ).toBeVisible();
+    if (process.env.UAGENT_SCREENSHOTS)
+      await ask.screenshot({
+        path: `${process.env.UAGENT_SCREENSHOTS}/ask-review-${browserName}-${width}.png`,
+      });
 
     // Nothing spills sideways at this width.
-    expect(
-      await ask.evaluate((section) =>
-        [section, ...section.querySelectorAll("*")].every(
-          (node) =>
-            node.getBoundingClientRect().right <= innerWidth + 0.5 &&
-            node.scrollWidth <= node.clientWidth + 1,
-        ),
-      ),
-    ).toBe(true);
+    expect(await contained()).toBe(true);
 
     await submit.click();
     await expect.poll(async () => (await commands()).length).toBe(2);

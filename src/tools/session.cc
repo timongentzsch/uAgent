@@ -169,20 +169,6 @@ json SessionSlashPeers() {
   return {{"sessions", SessionSummaries()}};
 }
 
-json SessionSlashTell(const std::string& argument) {
-  (void)EnsureSessionAutoLink();
-  std::string args = Trim(argument);
-  size_t space = args.find_first_of(" \t");
-  if (space == std::string::npos) {
-    return {{"error", "usage: /tell ID TEXT"}};
-  }
-  std::string text = Trim(args.substr(space));
-  if (text.empty()) return {{"error", "usage: /tell ID TEXT"}};
-  ToolResult sent = MessageSession(args.substr(0, space), text);
-  return sent.Ok() ? json{{"output", sent.output}}
-                   : json{{"error", sent.output}};
-}
-
 json SessionSlashLink(const std::string& argument) {
   std::string token = Trim(argument);
   if (token.empty()) {

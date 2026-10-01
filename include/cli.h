@@ -46,7 +46,6 @@ enum class SlashCommandId {
   kReview,
   kSessions,
   kStatus,
-  kTell,
   kTools,
   kMcp,
   kRename,
@@ -61,16 +60,25 @@ enum class SlashCommandId {
   kOpen,
 };
 
+// What a command is beyond its name, as flags a registry row can read aloud.
+enum SlashCommandFlag : unsigned {
+  // Its reply is a receipt, not a result worth opening in a viewer.
+  kNoViewer = 1U << 0,
+  // Conversation navigation a client performs itself; a runtime refuses it.
+  kClientOnly = 1U << 1,
+  // Listed only at a terminal: the web has its own control for it, or it
+  // means nothing in a browser. The host still runs it when typed there.
+  kTerminal = 1U << 2,
+};
+
 struct SlashCommandSpec {
   SlashCommandId id;
   const char* name;
   const char* argument;
   const char* description;
-  bool inspect_result = true;  // Queries may open a result viewer.
-  // Conversation navigation a client performs itself; a runtime refuses it.
-  bool client_only = false;
-  // Only meaningful at a terminal, so the browser does not offer it.
-  bool terminal_only = false;
+  unsigned flags = 0;
+
+  bool Has(SlashCommandFlag flag) const { return (flags & flag) != 0; }
 };
 
 struct ParsedSlashCommand {

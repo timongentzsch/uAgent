@@ -112,7 +112,7 @@ json CommandJson(const SlashCommandSpec& command) {
           {"usage", std::move(usage)},
           {"description", command.description},
           {"alias", !*command.description},
-          {"client_only", command.client_only}};
+          {"client_only", command.Has(kClientOnly)}};
 }
 
 }  // namespace
@@ -173,7 +173,9 @@ json CliSchemaJson() {
 json CommandSchemaJson(bool browser) {
   json commands = json::array();
   for (const SlashCommandSpec& command : SlashCommandRegistry()) {
-    if (!*command.description || (browser && command.terminal_only)) continue;
+    if (!*command.description || (browser && command.Has(kTerminal))) {
+      continue;
+    }
     commands.push_back(CommandJson(command));
   }
   return commands;

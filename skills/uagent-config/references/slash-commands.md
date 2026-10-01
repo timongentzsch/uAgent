@@ -40,7 +40,6 @@
 | `/review [TARGET]` | review my current changes and find issues |
 | `/sessions [PREFIX]` | resume a saved chat, optionally matching PREFIX |
 | `/status` | show current session configuration and token usage |
-| `/tell ID TEXT` | message a linked session |
 | `/tools [on|off NAME|profile NAME|reset]` | inspect or choose tools for this conversation |
 | `/mcp [retry|on|off NAME]` | show MCP servers; retry one or switch it on or off |
 | `/restart` | restart this conversation to apply settings that need it |

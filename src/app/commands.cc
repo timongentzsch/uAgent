@@ -299,11 +299,8 @@ CommandReply RunSlashCommand(AppSession& session,
       result = SessionSlashPeers();
       reply.Print("%s", TerminalSafe(SessionText(result)).c_str());
       return reply;
-    case SlashCommandId::kTell:
     case SlashCommandId::kLink:
-      result = command.spec->id == SlashCommandId::kTell
-                   ? SessionSlashTell(command.argument)
-                   : SessionSlashLink(command.argument);
+      result = SessionSlashLink(command.argument);
       reply.Print("%s\n",
                   TerminalSafe(JsonValue(result, "output",
                                          JsonValue(result, "error", "")))

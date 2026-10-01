@@ -49,6 +49,13 @@
 
 ### Changed
 
+- Web: the `/` list offers only what the page has no control for. Commands
+  with their own control (`/attach`, `/model`, `/models`, `/effort`,
+  `/variant`, `/yolo`, `/sessions`, `/agents`, `/ps`, `/cost`, `/changes`,
+  `/undo`, `/help`) are listed at the terminal only; typed in the web they
+  still run.
+- `/tell` is gone: the model messages other sessions with its `session` tool,
+  and nothing else used the command.
 - Web: settings read as names and purposes ("Title model · Names new
   conversations"), from the registry, which the CLI shares. A field is empty
   until it is set, and a line under it says what applies now and why

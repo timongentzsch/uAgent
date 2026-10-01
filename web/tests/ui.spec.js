@@ -1622,15 +1622,21 @@ test.describe("mobile navigation and commands", () => {
     );
     expect(documents).toBe(0);
     expect(streams).toBe(0);
-    await prompt.fill("/mo");
+    await prompt.fill("/comp");
     await prompt.press("Tab");
-    await expect(prompt).toHaveValue("/model");
+    await expect(prompt).toHaveValue("/compact");
     await expect(page.locator(".message.user")).toHaveCount(1);
+    // The list offers what the page has no control for: nothing for files,
+    // the model or the approval mode, which have their own.
     await prompt.fill("/");
+    const offered = page.getByRole("option");
+    await expect(offered.filter({ hasText: "/compact" })).toHaveCount(1);
+    for (const owned of ["/attach", "/model", "/yolo", "/tell"])
+      await expect(offered.filter({ hasText: owned })).toHaveCount(0);
     await prompt.press("ArrowDown");
     await expect(prompt).toHaveAttribute("aria-activedescendant", "command-0");
     await prompt.press("Enter");
-    await expect(prompt).toHaveValue("/agents ");
+    await expect(prompt).toHaveValue("/compact");
     await prompt.fill("/sta");
     await page.getByRole("option", { name: /\/status/ }).tap();
     await expect(prompt).toHaveValue("/status");

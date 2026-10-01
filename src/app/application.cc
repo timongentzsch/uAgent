@@ -263,7 +263,7 @@ void Application::ProcessInput(std::string input) {
                {{"request_id", request_id_},
                 {"command", command.spec->name},
                 {"argument", command.argument},
-                {"inspect", command.spec->inspect_result},
+                {"inspect", !command.spec->Has(kNoViewer)},
                 {"output", Trim(reply.output)},
                 {"result", std::move(reply.result)},
                 {"state", InterfaceState()}}});

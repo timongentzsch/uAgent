@@ -30,10 +30,9 @@ Tool SessionTool();
 // Terminal rendering for /peers: subagent-style rows with names first.
 std::string SessionText(const json& result);
 
-// /peers, /tell, /link handlers. Print-ready {output}/{error} objects;
+// /peers, /link handlers. Print-ready {output}/{error} objects;
 // the dispatcher prints them like ActivityCommand results.
 json SessionSlashPeers();
-json SessionSlashTell(const std::string& argument);
 json SessionSlashLink(const std::string& argument);
 
 }  // namespace uagent

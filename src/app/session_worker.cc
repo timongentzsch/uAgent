@@ -871,7 +871,7 @@ class WorkerChannel final : public ApplicationChannel {
       error = "empty message";
     }
     ParsedSlashCommand slash = ParseSlashCommand(input.text);
-    if (slash.spec && slash.spec->client_only) {
+    if (slash.spec && slash.spec->Has(kClientOnly)) {
       error = "use conversation controls to navigate, branch, or close";
     }
     if (!error.empty()) return;

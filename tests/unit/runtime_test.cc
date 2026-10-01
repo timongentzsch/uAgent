@@ -234,8 +234,7 @@ void TestRuntimeOwnershipHelpers() {
   CHECK(defaults.max_turn_cost == 0);
   CHECK(AutoCompactTokens() == 0);
   CHECK(defaults.max_turn_seconds == 0);
-  CHECK(defaults.first_event_timeout_s == 300);
-  CHECK(defaults.stream_idle_timeout_s == 300);
+  CHECK(defaults.stream_timeout_s == 300);
   CHECK(defaults.request_timeout_s == 600);
 
   RuntimeConfig routed;

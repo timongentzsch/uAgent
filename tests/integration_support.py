@@ -31,8 +31,7 @@ SMALL_PNG = base64.b64decode(
 # deadline being retuned by hand.
 TIMEOUT_SCALE = float(os.environ.get("UAGENT_TEST_TIMEOUT_SCALE", "1"))
 REQUEST_TIMEOUT_SECONDS = 5
-FIRST_EVENT_TIMEOUT_SECONDS = 2
-STREAM_IDLE_TIMEOUT_SECONDS = 5
+STREAM_TIMEOUT_SECONDS = 5
 
 
 def budget(seconds):
@@ -218,8 +217,7 @@ def base_env(home, url):
             "UAGENT_MODEL": "test",
             "UAGENT_CONTEXT": "16384",
             "UAGENT_REQUEST_TIMEOUT": timeout_setting(REQUEST_TIMEOUT_SECONDS),
-            "UAGENT_FIRST_EVENT_TIMEOUT": timeout_setting(FIRST_EVENT_TIMEOUT_SECONDS),
-            "UAGENT_STREAM_IDLE_TIMEOUT": timeout_setting(STREAM_IDLE_TIMEOUT_SECONDS),
+            "UAGENT_STREAM_TIMEOUT": timeout_setting(STREAM_TIMEOUT_SECONDS),
             # A background title request would consume scripted responses.
             "UAGENT_TITLE_MODEL": "off",
         }

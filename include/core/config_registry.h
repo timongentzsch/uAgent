@@ -281,12 +281,11 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                   "maximum response tokens; -1 omits the optional cap"),
 
     // Request transport.
-    registry::Int("UAGENT_FIRST_EVENT_TIMEOUT", "first_event_timeout_s", 300,
+    registry::Int("UAGENT_STREAM_TIMEOUT", "stream_timeout_s", 300,
                   kConfigAnyMin, kConfigAnyMax, ReloadPolicy::kNextUserTurn,
-                  "request", "seconds to wait for the first streamed event"),
-    registry::Int("UAGENT_STREAM_IDLE_TIMEOUT", "stream_idle_timeout_s", 300,
-                  kConfigAnyMin, kConfigAnyMax, ReloadPolicy::kNextUserTurn,
-                  "request", "seconds of stream silence before aborting"),
+                  "request",
+                  "seconds of stream silence allowed, before the first event "
+                  "or between events"),
     registry::Int("UAGENT_REQUEST_TIMEOUT", "request_timeout_s", 600,
                   kConfigAnyMin, kConfigAnyMax, ReloadPolicy::kNextUserTurn,
                   "request", "total seconds allowed for one model request"),

@@ -127,8 +127,7 @@ def test_subagent_auto_join_continues_turn(root, home, *, binary):
 
     with Server([route]) as server:
         env = base_env(home, server.url)
-        env["UAGENT_FIRST_EVENT_TIMEOUT"] = "4"
-        env["UAGENT_STREAM_IDLE_TIMEOUT"] = "4"
+        env["UAGENT_STREAM_TIMEOUT"] = "4"
         result = run(root, env, "--yolo", "-p", "delegate", timeout=8, binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "late-task-ok", result.stdout)

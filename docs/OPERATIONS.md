@@ -19,7 +19,7 @@ fixed in the binary.
 
 | Concern | Default | Setting |
 | --- | --- | --- |
-| first event / stream idle / request | 300 s / 300 s / 600 s | `UAGENT_FIRST_EVENT_TIMEOUT`, `UAGENT_STREAM_IDLE_TIMEOUT`, `UAGENT_REQUEST_TIMEOUT` |
+| stream silence (before the first event or between events) / request | 300 s / 600 s | `UAGENT_STREAM_TIMEOUT`, `UAGENT_REQUEST_TIMEOUT` |
 | request / response size | 64 / 32 MiB | |
 | turn wall clock, rounds, tool calls | unlimited | `UAGENT_MAX_TURN_SECONDS`, `UAGENT_MAX_STEPS`, `UAGENT_MAX_TOOL_CALLS` |
 | turn generated tokens / reported cost | unlimited | `UAGENT_MAX_TURN_TOKENS`, `UAGENT_MAX_TURN_COST` |

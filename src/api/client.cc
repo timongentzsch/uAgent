@@ -219,46 +219,33 @@ int64_t CurlRetryAfterSeconds(CURL* handle) {
 #endif
 }
 
+// One silence allowance, measured from the request until the first event and
+// from the last byte after it.
+std::chrono::steady_clock::time_point StreamDeadline(const StreamCtx& context) {
+  return (context.res->first_event_ms < 0 ? context.started
+                                          : context.last_byte) +
+         std::chrono::seconds(context.stream_timeout_s);
+}
+
 bool StreamDeadlineExpired(StreamCtx* context) {
-  if (!context) return false;
-  auto now = std::chrono::steady_clock::now();
-  if (context->res->first_event_ms < 0 && context->first_event_timeout_s > 0 &&
-      now >= context->started +
-                 std::chrono::seconds(context->first_event_timeout_s)) {
-    context->timeout_reason = "model produced no event within " +
-                              std::to_string(context->first_event_timeout_s) +
-                              "s";
-    return true;
+  if (!context || context->stream_timeout_s <= 0 ||
+      std::chrono::steady_clock::now() < StreamDeadline(*context)) {
+    return false;
   }
-  if (context->idle_timeout_s > 0 &&
-      now >=
-          context->last_byte + std::chrono::seconds(context->idle_timeout_s)) {
-    context->timeout_reason = "model stream was idle for " +
-                              std::to_string(context->idle_timeout_s) + "s";
-    return true;
-  }
-  return false;
+  context->timeout_reason =
+      (context->res->first_event_ms < 0 ? "model produced no event within "
+                                        : "model stream was idle for ") +
+      std::to_string(context->stream_timeout_s) + "s";
+  return true;
 }
 
 int CurlPollTimeout(CURLM* multi, StreamCtx* context) {
   long curl_timeout = -1;  // NOLINT: libcurl ABI
   (void)curl_multi_timeout(multi, &curl_timeout);
   int64_t timeout = curl_timeout >= 0 ? curl_timeout : 10000;
-  if (context) {
-    auto deadline = std::chrono::steady_clock::time_point::max();
-    if (context->res->first_event_ms < 0 &&
-        context->first_event_timeout_s > 0) {
-      deadline = context->started +
-                 std::chrono::seconds(context->first_event_timeout_s);
-    }
-    if (context->idle_timeout_s > 0) {
-      deadline =
-          std::min(deadline, context->last_byte +
-                                 std::chrono::seconds(context->idle_timeout_s));
-    }
-    if (deadline != std::chrono::steady_clock::time_point::max()) {
-      timeout = std::min<int64_t>(timeout, PollTimeoutMs(deadline));
-    }
+  if (context && context->stream_timeout_s > 0) {
+    timeout =
+        std::min<int64_t>(timeout, PollTimeoutMs(StreamDeadline(*context)));
   }
   return static_cast<int>(
       std::clamp<int64_t>(timeout, 0, std::numeric_limits<int>::max()));
@@ -627,8 +614,7 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
   ctx.wire_api = capabilities.wire_api;
   ctx.started = std::chrono::steady_clock::now();
   ctx.last_byte = ctx.started;
-  ctx.first_event_timeout_s = config.first_event_timeout_s;
-  ctx.idle_timeout_s = config.stream_idle_timeout_s;
+  ctx.stream_timeout_s = config.stream_timeout_s;
   ctx.response_cap = kResponseBytes;
   ctx.sse = SseParser(ctx.response_cap);
   CurlHeaders headers;

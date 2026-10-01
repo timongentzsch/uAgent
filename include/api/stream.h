@@ -42,10 +42,9 @@ struct StreamCtx {
   WireStreamState wire_state;
   std::chrono::steady_clock::time_point started;
   std::chrono::steady_clock::time_point last_byte;
-  // 0 is unbounded here as everywhere else; a real request overwrites all
-  // three from RuntimeConfig, which is where the tunable defaults live.
-  int64_t first_event_timeout_s = 0;
-  int64_t idle_timeout_s = 0;
+  // 0 is unbounded here as everywhere else; a real request overwrites both
+  // limits; the tunable default lives in RuntimeConfig.
+  int64_t stream_timeout_s = 0;
   size_t response_cap = 0;
   size_t received = 0;
   std::string timeout_reason;

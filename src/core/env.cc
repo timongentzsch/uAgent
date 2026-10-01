@@ -188,8 +188,7 @@ struct FieldBinding {
 };
 
 constexpr FieldBinding<int64_t> kLongOptions[] = {
-    {&Cfg("UAGENT_FIRST_EVENT_TIMEOUT"), &RuntimeConfig::first_event_timeout_s},
-    {&Cfg("UAGENT_STREAM_IDLE_TIMEOUT"), &RuntimeConfig::stream_idle_timeout_s},
+    {&Cfg("UAGENT_STREAM_TIMEOUT"), &RuntimeConfig::stream_timeout_s},
     {&Cfg("UAGENT_REQUEST_TIMEOUT"), &RuntimeConfig::request_timeout_s},
     {&Cfg("UAGENT_MAX_STEPS"), &RuntimeConfig::max_steps},
     {&Cfg("UAGENT_MAX_TOOL_CALLS"), &RuntimeConfig::max_tool_calls},

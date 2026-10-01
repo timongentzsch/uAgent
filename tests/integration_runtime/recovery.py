@@ -37,7 +37,7 @@ def test_first_event_timeout(root, home, *, binary):
 
     with Server([stall, stall, stall]) as server:
         env = base_env(home, server.url)
-        env["UAGENT_FIRST_EVENT_TIMEOUT"] = "1"
+        env["UAGENT_STREAM_TIMEOUT"] = "1"
         started = time.monotonic()
         result = run(root, env, "-p", "probe", binary=binary)
         elapsed = time.monotonic() - started

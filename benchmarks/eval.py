@@ -306,8 +306,7 @@ def case_environment(scenario: dict[str, Any], variant: str, arguments, mock) ->
                 "UAGENT_API_KEY": "evaluation-placeholder",
                 "UAGENT_CONTEXT": "16384",
                 "UAGENT_REQUEST_TIMEOUT": "10",
-                "UAGENT_FIRST_EVENT_TIMEOUT": "5",
-                "UAGENT_STREAM_IDLE_TIMEOUT": "5",
+                "UAGENT_STREAM_TIMEOUT": "5",
             }
         )
         env.pop("UAGENT_PROVIDERS", None)

@@ -113,10 +113,7 @@ struct TurnBudgets {
 
 struct RuntimeConfig : TurnBudgets {
   using Values = std::map<std::string, std::string>;
-  int64_t first_event_timeout_s =
-      RegistryDefault<int64_t>("UAGENT_FIRST_EVENT_TIMEOUT");
-  int64_t stream_idle_timeout_s =
-      RegistryDefault<int64_t>("UAGENT_STREAM_IDLE_TIMEOUT");
+  int64_t stream_timeout_s = RegistryDefault<int64_t>("UAGENT_STREAM_TIMEOUT");
   int64_t request_timeout_s =
       RegistryDefault<int64_t>("UAGENT_REQUEST_TIMEOUT");
   int64_t tool_timeout_s = RegistryDefault<int64_t>("UAGENT_TOOL_TIMEOUT");

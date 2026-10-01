@@ -320,8 +320,7 @@ def test_memory_background_extractor_releases_failed_claims(root, _home, *, bina
             env = base_env(case_home, server.url)
             env["UAGENT_MEMORY_IDLE_SECONDS"] = "0"
             env["UAGENT_REQUEST_TIMEOUT"] = "1"
-            env["UAGENT_FIRST_EVENT_TIMEOUT"] = "1"
-            env["UAGENT_STREAM_IDLE_TIMEOUT"] = "1"
+            env["UAGENT_STREAM_TIMEOUT"] = "1"
 
             def completion_logged():
                 return trace.exists() and '"event":"memory_extract_finished"' in trace.read_text(

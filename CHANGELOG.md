@@ -14,6 +14,9 @@ names one loads as before and the line has no effect.
   instead, as in `UAGENT_WEB_SEARCH_MODEL=vendor/model:low`; without a suffix
   the provider's default applies.
 - Removed: `UAGENT_PRUNE_SUPERSEDED_READS`, an experiment that stayed off.
+- Merged: `UAGENT_FIRST_EVENT_TIMEOUT` and `UAGENT_STREAM_IDLE_TIMEOUT` are
+  one `UAGENT_STREAM_TIMEOUT` (300 s), the stream silence allowed before the
+  first event or between events.
 
 ### Added
 

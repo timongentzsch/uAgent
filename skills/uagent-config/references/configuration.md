@@ -55,8 +55,7 @@ Every setting below is read from the running binary's registry. `takes effect` i
 
 | Setting | Type | Default | Takes effect | Description |
 | --- | --- | --- | --- | --- |
-| `UAGENT_FIRST_EVENT_TIMEOUT` | integer | `300` | next-user-turn | seconds to wait for the first streamed event |
-| `UAGENT_STREAM_IDLE_TIMEOUT` | integer | `300` | next-user-turn | seconds of stream silence before aborting |
+| `UAGENT_STREAM_TIMEOUT` | integer | `300` | next-user-turn | seconds of stream silence allowed, before the first event or between events |
 | `UAGENT_REQUEST_TIMEOUT` | integer | `600` | next-user-turn | total seconds allowed for one model request |
 
 ## budget

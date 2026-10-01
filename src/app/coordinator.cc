@@ -299,16 +299,18 @@ double CoordinatorCostToday(const std::string& folder) {
 }
 
 // Today's spend against the daily limit: the coordinator's own turns and its
-// threads'. With `reserve`, a working thread counts its whole budget, so
+// threads'. A thread flagged in `working` counts its whole budget, so
 // threads running at once can never overshoot the limit.
 double SpentToday(const std::string& folder,
-                  const std::vector<SessionInfo>& threads, bool reserve) {
+                  const std::vector<SessionInfo>& threads,
+                  const std::vector<bool>& working) {
   const std::string today = Today();
   double spent = CoordinatorCostToday(folder);
-  for (const SessionInfo& info : threads) {
+  for (size_t i = 0; i < threads.size(); ++i) {
+    const SessionInfo& info = threads[i];
     if (JsonValue(info.thread, "day", "") != today) continue;
     const double cost = info.cost;
-    spent += reserve && Working(info)
+    spent += i < working.size() && working[i]
                  ? std::max(cost, ThreadBudget(info.thread))
                  : cost;
   }
@@ -347,7 +349,10 @@ ToolResult Spawn(const std::string& folder, const json& a) {
   const std::string coordinator = CoordinatorId(folder);
   const int64_t cap = LongSetting(Cfg("UAGENT_COORDINATOR_MAX_THREADS"));
   const std::vector<SessionInfo> threads = OwnThreads(folder);
-  const int64_t working = std::ranges::count_if(threads, Working);
+  // Each probe opens the thread's socket: one per thread serves both checks.
+  std::vector<bool> busy;
+  for (const SessionInfo& info : threads) busy.push_back(Working(info));
+  const int64_t working = std::ranges::count(busy, true);
   if (working >= cap) {
     return ToolFailure(ToolErrorCode::kLimitExceeded,
                        std::to_string(cap) +
@@ -356,7 +361,7 @@ ToolResult Spawn(const std::string& folder, const json& a) {
   }
   const double limit = DoubleSetting(Cfg("UAGENT_COORDINATOR_DAILY_SPEND_USD"));
   // Each thread gets an equal share of what is left for the free slots.
-  const double left = limit > 0 ? limit - SpentToday(folder, threads, true) : 0;
+  const double left = limit > 0 ? limit - SpentToday(folder, threads, busy) : 0;
   const double budget = left / static_cast<double>(cap - working);
   if (limit > 0 && budget < 0.01) {
     return ToolFailure(
@@ -809,7 +814,7 @@ void RecordCoordinatorCost(const std::string& folder, double cost) {
 
 std::string CoordinatorPause(const std::string& folder) {
   const double limit = DoubleSetting(Cfg("UAGENT_COORDINATOR_DAILY_SPEND_USD"));
-  if (limit <= 0 || SpentToday(folder, OwnThreads(folder), false) < limit) {
+  if (limit <= 0 || SpentToday(folder, OwnThreads(folder), {}) < limit) {
     return "";
   }
   return "Paused: today's spend limit of " + FmtCost(limit) +

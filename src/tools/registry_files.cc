@@ -106,8 +106,10 @@ void RegisterFileTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
                   "overwrite":{"type":"boolean"}},
                   "required":["path","content"]})json"),
       [](const json& a, const ToolContext&) {
+        static const std::string kNone;
+        const std::string* content = JsonStringRef(a, "content");
         return ToolWriteFileWithDisplay(JsonValue(a, "path", ""),
-                                        JsonValue(a, "content", ""),
+                                        content ? *content : kNone,
                                         JsonValue(a, "overwrite", false));
       }));
   write.mutates = outside_scratch;
@@ -118,13 +120,15 @@ void RegisterFileTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
                 {"target", JsonValue(a, "path", "")}};
   };
   write.summary = [](const json& a) {
+    const std::string* content = JsonStringRef(a, "content");
     return "write " + JsonValue(a, "path", "") + " · " +
-           FmtBytes(static_cast<int64_t>(
-               JsonValue(a, "content", std::string()).size()));
+           FmtBytes(static_cast<int64_t>(content ? content->size() : 0));
   };
   write.approval_preview = [](const json& a) {
+    static const std::string kNone;
+    const std::string* content = JsonStringRef(a, "content");
     return WriteDiffPreview(JsonValue(a, "path", ""),
-                            JsonValue(a, "content", ""));
+                            content ? *content : kNone);
   };
 
   Tool& edit = path_tool(MakeTool(

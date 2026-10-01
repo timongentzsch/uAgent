@@ -1,9 +1,10 @@
 import "./palette.css";
 import { useLayoutEffect, useRef, useState } from "preact/hooks";
 import type { Session, SlashCommand } from "../../shared/types.ts";
-import { Button, Input, useDialogClose } from "../../shared/ui.tsx";
+import { Input, useDialogClose } from "../../shared/ui.tsx";
 import { folderName, folderOf } from "../../shared/folder-label.tsx";
 import { nextIndex, plainKey } from "../../shared/listbox-nav.ts";
+import { SuggestionList } from "../composer/command-suggestions.tsx";
 import { fuzzy } from "../composer/slash.ts";
 import { SECTIONS, type Section } from "../settings/settings-nav.tsx";
 import { SHORTCUTS, keysOf, type ShortcutId } from "../../shared/shortcuts.ts";
@@ -57,7 +58,6 @@ export default function Palette({
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);
   const root = useRef<HTMLDivElement>(null);
-  const list = useRef<HTMLDivElement>(null);
   const recent = [...sessions].sort(
     (a, b) => (b.updated || 0) - (a.updated || 0),
   );
@@ -104,11 +104,6 @@ export default function Palette({
   useLayoutEffect(() => {
     root.current?.querySelector("input")?.focus({ preventScroll: true });
   }, []);
-  useLayoutEffect(() => {
-    list.current
-      ?.querySelector('[aria-selected="true"]')
-      ?.scrollIntoView({ block: "nearest" });
-  }, [active]);
   const open = (item: Item) => {
     close();
     item.run();
@@ -141,30 +136,24 @@ export default function Palette({
           event.preventDefault();
         }}
       />
-      <div
+      <SuggestionList
         id="palette-results"
         class="palette-results"
-        role="listbox"
-        aria-label="Results"
-        ref={list}
+        label="Results"
+        prefix="palette"
+        items={shown}
+        index={shown.indexOf(active)}
+        pick={open}
+        keyOf={(item) => item.key}
       >
-        {shown.map((item, position) => (
-          <Button
-            key={item.key}
-            variant="quiet"
-            role="option"
-            id={`palette-${position}`}
-            aria-selected={item === active}
-            tabIndex={-1}
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => open(item)}
-          >
+        {(item) => (
+          <>
             <span class="palette-label">{item.label}</span>
             <span class="palette-detail">{item.detail}</span>
             {item.shortcut && <Keys id={item.shortcut} />}
-          </Button>
-        ))}
-      </div>
+          </>
+        )}
+      </SuggestionList>
       {!shown.length && <p class="palette-empty">Nothing matches.</p>}
     </div>
   );

@@ -1,6 +1,6 @@
 import "./command-suggestions.css";
 import { useLayoutEffect, useRef, useState } from "preact/hooks";
-import type { ComponentChildren, JSX, Ref, RefObject } from "preact";
+import type { ComponentChildren, JSX, RefObject } from "preact";
 import type { SlashCommand } from "../../shared/types.ts";
 import { slashCompletion, slashMatches } from "./slash.ts";
 import { Button } from "../../shared/ui.tsx";
@@ -11,8 +11,9 @@ import { nextIndex, plainKey } from "../../shared/listbox-nav.ts";
 const completionOf = (entry: SlashCommand) =>
   entry.command + (entry.argument ? " " : "");
 
-// Options over the composer: the textarea keeps focus and names the
-// active option (`${prefix}-${position}`) as its active descendant.
+// Options under a field that keeps focus and names the active option
+// (`${prefix}-${position}`) as its active descendant; the active option
+// stays in view. By default they pop up over the composer.
 export function SuggestionList<T>({
   id,
   label,
@@ -21,7 +22,7 @@ export function SuggestionList<T>({
   index,
   pick,
   keyOf,
-  listRef,
+  class: className = "command-suggestions",
   children,
 }: {
   id: string;
@@ -31,20 +32,27 @@ export function SuggestionList<T>({
   index: number;
   pick: (item: T) => void;
   keyOf?: (item: T) => string;
-  listRef?: Ref<HTMLDivElement>;
+  class?: string;
   children: (item: T) => ComponentChildren;
 }) {
+  const list = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    list.current
+      ?.querySelector('[aria-selected="true"]')
+      ?.scrollIntoView({ block: "nearest" });
+  }, [items[index]]);
   return (
     <div
       id={id}
-      class="command-suggestions"
+      class={`suggestions ${className}`}
       role="listbox"
       aria-label={label}
-      ref={listRef}
+      ref={list}
     >
       {items.map((item, position) => (
         <Button
           key={keyOf?.(item)}
+          variant="quiet"
           role="option"
           id={`${prefix}-${position}`}
           aria-selected={position === index}
@@ -68,7 +76,6 @@ export function useCommandSuggestions(
   const [selection, select] = useState({ text: "", index: -1 });
   const [dismissed, dismiss] = useState<string | null>(null);
   const [focused, focus] = useState(false);
-  const list = useRef<HTMLDivElement>(null);
   const matches =
     focused && dismissed !== text ? slashMatches(commands, text) : [];
   const index = selection.text === text ? selection.index : -1;
@@ -79,11 +86,6 @@ export function useCommandSuggestions(
     select({ text: value, index: -1 });
     input.current?.focus({ preventScroll: true });
   }
-  useLayoutEffect(() => {
-    list.current
-      ?.querySelector('[aria-selected="true"]')
-      ?.scrollIntoView({ block: "nearest" });
-  }, [index]);
   function keyDown(event: JSX.TargetedKeyboardEvent<HTMLTextAreaElement>) {
     if (!matches.length || event.keyCode === 229 || !plainKey(event))
       return false;
@@ -125,7 +127,6 @@ export function useCommandSuggestions(
         items={matches}
         index={index}
         pick={(entry) => complete(completionOf(entry))}
-        listRef={list}
       >
         {(entry) => (
           <>

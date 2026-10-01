@@ -187,7 +187,6 @@ class SessionJournal {
   void Append(const Event& event, const EventPolicy& policy) noexcept;
   bool Load(const std::string& path, std::string& error);
   bool Flush(const std::string& path, std::string& error) const;
-  void Clear();
   size_t Size() const;
 
  private:

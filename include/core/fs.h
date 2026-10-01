@@ -93,8 +93,6 @@ class ScopedTempFile {
  public:
   explicit ScopedTempFile(const std::string& pattern);
   ~ScopedTempFile();
-  ScopedTempFile(ScopedTempFile&& other) noexcept;
-  ScopedTempFile& operator=(ScopedTempFile&& other) noexcept;
   ScopedTempFile(const ScopedTempFile&) = delete;
   ScopedTempFile& operator=(const ScopedTempFile&) = delete;
 

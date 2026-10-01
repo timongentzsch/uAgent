@@ -102,22 +102,6 @@ ScopedTempFile::~ScopedTempFile() {
   if (!keep_ && !path_.empty()) unlink(path_.c_str());
 }
 
-ScopedTempFile::ScopedTempFile(ScopedTempFile&& other) noexcept
-    : path_(std::move(other.path_)),
-      fd_(std::move(other.fd_)),
-      keep_(std::exchange(other.keep_, true)) {}
-
-ScopedTempFile& ScopedTempFile::operator=(ScopedTempFile&& other) noexcept {
-  if (this != &other) {
-    fd_.Reset();
-    if (!keep_ && !path_.empty()) unlink(path_.c_str());
-    fd_ = std::move(other.fd_);
-    path_ = std::move(other.path_);
-    keep_ = std::exchange(other.keep_, true);
-  }
-  return *this;
-}
-
 void ScopedTempFile::Close() { fd_.Reset(); }
 
 std::string ScopedTempFile::Release() {

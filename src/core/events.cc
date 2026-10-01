@@ -437,11 +437,6 @@ void SessionJournal::SetEnabled(bool enabled) {
   if (!enabled_) ClearLocked();
 }
 
-void SessionJournal::Clear() {
-  std::lock_guard lock(mutex_);
-  ClearLocked();
-}
-
 size_t SessionJournal::Size() const {
   std::lock_guard lock(mutex_);
   return lines_.size();

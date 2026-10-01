@@ -175,7 +175,9 @@ SnapshotResult SessionHost::Snapshot(const std::string& id,
     const int status = body.contains("error") ? 404 : 200;
     return {std::move(body), status};
   }
-  if (query.raw && query.has_detail) {
+  if (query.has_detail) {
+    // The live view names a row's stored exchange, or its diff stored whole.
+    const char* stored = query.raw ? "exchange_path" : "change_path";
     std::string path;
     json inline_exchange = nullptr;
     bool turn_active = false;
@@ -192,7 +194,7 @@ SnapshotResult SessionHost::Snapshot(const std::string& id,
       if (blocks) {
         for (const json& block : *blocks) {
           if (JsonValue(block, "detail_id", "") == query.detail) {
-            path = JsonValue(block, "exchange_path", "");
+            path = JsonValue(block, stored, "");
             break;
           }
           if (const json* tools = JsonArray(block, "tools")) {
@@ -201,7 +203,7 @@ SnapshotResult SessionHost::Snapshot(const std::string& id,
                   return JsonValue(tool, "detail_id", "") == query.detail;
                 });
             if (found != tools->end()) {
-              path = JsonValue(*found, "exchange_path", "");
+              path = JsonValue(*found, stored, "");
               const json retained_request = {
                   {"name", JsonValue(*found, "name", "")},
                   {"arguments", JsonValue(*found, "arguments", "")}};
@@ -224,7 +226,7 @@ SnapshotResult SessionHost::Snapshot(const std::string& id,
       const int status = body.contains("error") ? 404 : 200;
       return {std::move(body), status};
     }
-    if (turn_active && !inline_exchange.is_null()) {
+    if (query.raw && turn_active && !inline_exchange.is_null()) {
       std::string text = JsonDump(inline_exchange);
       return {{{"text", text.substr(std::min(text.size(), start))},
                {"next", text.size()},

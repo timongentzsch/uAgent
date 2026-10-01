@@ -25,8 +25,8 @@ inline constexpr size_t MiB(size_t n) { return n * kMiB; }
 inline constexpr size_t kPreviewChars = 4096;
 inline constexpr size_t kCatalogueHeaderBytes = 4096;
 inline constexpr size_t kTraceSummaryChars = 512;
-// Retained change/diff preview on a tool-result fact: larger than the trace
-// summary because a diff is the whole row, but still bounded.
+// The opening of a change/diff that a tool-result fact and its live event
+// carry. A longer diff is kept whole in a private artifact the row names.
 inline constexpr size_t kChangePreviewChars = size_t{16} * 1024;
 // Decoded-image cache cap and largest dimension kept for vision payloads.
 inline constexpr size_t kImageCacheBytes = size_t{16} * 1024 * 1024;

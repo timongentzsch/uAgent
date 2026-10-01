@@ -197,6 +197,7 @@ json PresentationJson(const PresentationRecord& record) {
   if (!record.change.empty()) {
     value["change"] = record.change;
   }
+  if (!record.change_path.empty()) value["change_path"] = record.change_path;
   if (!record.output.empty()) value["output"] = record.output;
   if (!record.view.is_null()) value["view"] = record.view;
   if (record.minor) value["minor"] = true;

@@ -69,7 +69,10 @@ void Agent::AppendToolResult(const ToolCall& call, const std::string& result,
       {"duration_ms", duration_ms},
       {"output", Utf8Trunc(StripModelHints(original.output), kPreviewChars)},
       {"truncated", original.output.size() > kPreviewChars},
-      {"change", Utf8Trunc(original.display, kChangePreviewChars)}};
+      {"change", original.display}};
+  if (!original.display_path.empty()) {
+    facts["change_path"] = original.display_path;
+  }
   if (retain_exchanges_) {
     json exchange = {
         {"request", {{"name", call.name}, {"arguments", call.args}}},
@@ -359,7 +362,17 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
   std::vector<std::string> model_results = ModelFacingToolResults(tasks);
   std::vector<json> activities;
   activities.reserve(tasks.size());
-  for (const CallTask& task : tasks) {
+  for (CallTask& task : tasks) {
+    // A fact and a frame are bounded, so a long diff is stored whole beside
+    // the retained exchanges and the row carries its opening.
+    if (std::string& diff = task.result.display;
+        diff.size() > kChangePreviewChars) {
+      ScopedTempFile file(UagentDir(kArtifactsDir) + "/exchange-XXXXXX");
+      if (file && WriteFully(file.Get(), diff)) {
+        task.result.display_path = file.Release();
+      }
+      diff = Utf8Prefix(std::move(diff), kChangePreviewChars);
+    }
     json activity = task.activity;
     activity["status"] = CompletionStatusName(task.result.status);
     // This receipt comes from the operation, never from shell intent.

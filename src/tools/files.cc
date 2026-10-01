@@ -32,40 +32,18 @@ namespace uagent {
 
 namespace {
 
-// A receipt exists to be read before approving, so it shows whole lines and a
-// realistic edit in full. The cap is what keeps a ten-megabyte replace from
-// taking the scrollback with it.
-constexpr size_t kMaxDiffDisplayLines = 400;
-
 struct EditDisplay {
   std::string body;
   int64_t added = 0;
   int64_t removed = 0;
-  size_t lines = 0;
-  bool truncated = false;
 };
 
-void AppendDisplayLine(EditDisplay& display, char marker,
-                       std::string_view text) {
-  if (display.lines >= kMaxDiffDisplayLines) {
-    display.truncated = true;
-    return;
-  }
-  display.body += marker;
-  display.body += text;
-  display.body += '\n';
-  ++display.lines;
-}
-
-// "<Verb> <path> (+added -removed)" over the diff lines. A diff cut at the
-// line cap says so, rather than ending mid-file as if that were the change.
+// "<Verb> <path> (+added -removed)" over the diff lines.
 std::string DiffReceipt(const char* verb, const std::string& path,
                         const EditDisplay& display) {
-  std::string out = std::string(verb) + " " + DisplayPath(path) + " (+" +
-                    std::to_string(display.added) + " -" +
-                    std::to_string(display.removed) + ")\n" + display.body;
-  if (display.truncated) out += " … diff truncated\n";
-  return out;
+  return std::string(verb) + " " + DisplayPath(path) + " (+" +
+         std::to_string(display.added) + " -" +
+         std::to_string(display.removed) + ")\n" + display.body;
 }
 
 using LineDiff = CommonLineSpan;
@@ -76,7 +54,7 @@ void AppendLineDiff(EditDisplay& display,
                     const LineDiff& diff) {
   ForEachDiffLine(old_lines, new_lines, diff,
                   [&](char marker, std::string_view line) {
-                    AppendDisplayLine(display, marker, line);
+                    (display.body += marker).append(line) += '\n';
                   });
 }
 
@@ -111,7 +89,7 @@ void AppendEditDisplay(EditDisplay& display, const std::string& data,
               '\n'));
   std::string location = "line " + std::to_string(line);
   if (applied > 1) location += " · " + std::to_string(applied) + " matches";
-  AppendDisplayLine(display, '@', location);
+  display.body += "@" + location + "\n";
   AppendLineDiff(display, old_lines, new_lines, diff);
 }
 

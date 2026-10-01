@@ -1047,6 +1047,49 @@ def test_web_artifact_is_shared_sandboxed_and_downloadable(root, home, *, binary
             )
 
 
+def test_web_long_diff_is_stored_whole_and_served_by_detail(root, home, *, binary):
+    lines = [f"line {index:04d} of a long file" for index in range(2000)]
+    content = "\n".join([*lines, "LAST_DIFF_LINE", ""])
+
+    def responder(_, body):
+        if any(message.get("role") == "tool" for message in body["messages"]):
+            return event({"content": "written"})
+        return tool_call("write_file", {"path": "long.txt", "content": content}, call_id="long")
+
+    with Server([responder]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+            client.pair(code)
+            session = client.create(root)
+            client.command("permissions", session, mode="yolo")
+            client.command("submit", session, text="Write the long file")
+            value = client.until(
+                session,
+                lambda value: (
+                    "written" in json.dumps(value) and not value["metadata"]["turn_active"]
+                ),
+            )
+            row = next(
+                block for block in value["state"]["view"]["blocks"] if block.get("change_path")
+            )
+            # The row carries the diff's opening, within a fact and a frame.
+            assert_true(row["change"].startswith("Created long.txt (+2001 -0)\n"), row)
+            assert_true(len(row["change"]) <= 16 * 1024 and "…" not in row["change"], row)
+            diff = ""
+            offset = 0
+            while True:
+                status, page, _ = client.json(
+                    f"/api/sessions/{session['id']}?detail={row['detail_id']}&offset={offset}"
+                )
+                assert_true(status == 200, page)
+                diff += page["text"]
+                if not page["more"]:
+                    break
+                offset = page["next"]
+            assert_true(diff.startswith(row["change"]), diff[:200])
+            assert_true(diff.endswith("+line 1999 of a long file\n+LAST_DIFF_LINE\n"), diff[-200:])
+            assert_true(diff.count("\n") == 2002, diff.count("\n"))
+
+
 def p256_public_key():
     """A fresh uncompressed P-256 point, as a browser's p256dh key."""
     pem = subprocess.run(

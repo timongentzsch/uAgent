@@ -532,7 +532,10 @@ void DisplayBlocks(const Conversation& conversation, uint64_t sequence,
       block["duration_ms"] = detail["duration_ms"];
     }
     block["detail_id"] = detail_id;
-    block["change"] = Utf8Trunc(JsonValue(detail, "change", ""), kPreviewChars);
+    block["change"] = JsonValue(detail, "change", "");
+    if (detail.contains("change_path")) {
+      block["change_path"] = detail["change_path"];
+    }
     if (detail.contains("parts")) block["parts"] = detail["parts"];
     // The preview keeps the start of a long result; its end is where a
     // command reports how it went, so rows can show that tail.
@@ -637,6 +640,10 @@ json TranscriptView::Detail(const std::string& id, size_t offset) const {
   const json& facts = conversation.DisplayFacts();
   if (id.starts_with("t-")) {
     json detail = JsonValue(facts, id.c_str(), json::object());
+    // A diff stored whole is the row in full.
+    if (detail.contains("change_path")) {
+      return ReadPrivateArtifact(JsonValue(detail, "change_path", ""), offset);
+    }
     text = JsonValue(detail, "output", "");
     std::string change = JsonValue(detail, "change", "");
     if (!change.empty()) {

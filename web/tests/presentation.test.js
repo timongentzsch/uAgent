@@ -156,11 +156,10 @@ test("change receipts classify git-style lines", () => {
     "-removed",
     "+added",
     "@line 3",
-    " … diff truncated",
   ];
   assert.deepEqual(
     change.map((line, index) => diffLineClass(line, index === 0)),
-    ["diff-head", "diff-ctx", "diff-del", "diff-add", "diff-hunk", "diff-cut"],
+    ["diff-head", "diff-ctx", "diff-del", "diff-add", "diff-hunk"],
   );
   assert.equal(diffLineClass("@@ -1,3 +1,4 @@", false), "diff-hunk");
   assert.equal(diffLineClass("--- a/f", false), "diff-head");

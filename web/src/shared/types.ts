@@ -183,6 +183,7 @@ export interface Block {
   tokens_per_second?: number;
   route?: string;
   change?: string;
+  change_path?: string; // set when `change` is only a stored diff's opening
   truncated?: boolean;
   usage?: Usage;
   usage_reported?: boolean;

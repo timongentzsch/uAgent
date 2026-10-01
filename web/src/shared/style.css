@@ -488,9 +488,6 @@ pre code {
 .diff-hunk {
   color: var(--muted);
 }
-.diff-cut {
-  color: var(--muted);
-}
 .diff-ctx {
   color: var(--muted);
 }

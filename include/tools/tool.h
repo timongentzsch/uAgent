@@ -86,6 +86,8 @@ struct ToolResult {
   // registry cap; a bounded richer result can raise it.
   int64_t result_chars = -1;
   std::string display;  // optional terminal-only receipt
+  // The whole receipt, once the turn loop has cut `display` to its opening.
+  std::string display_path;
   // Display-only view parts shown on the row without expanding it, never
   // model-facing: links to work the call started and files it shared.
   json parts = nullptr;

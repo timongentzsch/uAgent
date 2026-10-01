@@ -163,6 +163,16 @@ function MessageView({ block, online, session }: MessageProps) {
     session.id,
     retry,
   ]);
+  // A long diff arrives as its opening; the row shows the stored whole.
+  const [change, setChange] = useState<string>();
+  useEffect(() => {
+    if (!online || !block.change_path) return;
+    const abort = new AbortController();
+    load(block.detail_id || `t-${block.call_id}`, false, abort.signal)
+      .then((page) => setChange(page.text))
+      .catch((error) => abort.signal.aborted || setLoadError(error));
+    return () => abort.abort();
+  }, [online, block.change_path, session.id, retry]);
   const output = useMemo(
     () => (expanded ? cleanText(text) : ""),
     [expanded, text],
@@ -283,7 +293,7 @@ function MessageView({ block, online, session }: MessageProps) {
             />
           </div>
           <ToolInline
-            block={block}
+            block={change ? { ...block, change } : block}
             text={text}
             loaded={full !== null}
             loadFull={() => setWantFull(true)}

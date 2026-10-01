@@ -68,8 +68,6 @@ function ToolInput({ parts }: { parts: ToolPart[] }) {
 // A link part opens the work it names in the inspector.
 type OpenLink = (link: LinkPart) => void;
 
-const DIFF_LINES = 40;
-
 // A command's output as a terminal shows it: one box that opens scrolled to
 // the end and scrolls back through everything the row holds. A long result
 // keeps only its start and end in the row, so earlier output loads on demand.
@@ -167,7 +165,6 @@ export function ToolRow({
       .join(" · ");
   }
   const failed = isFailedStatus(block.status);
-  const diff = block.change?.includes("\n") ? block.change : "";
   // Short one-line arguments read as facts beside the tool's name; long or
   // multi-line ones stay blocks below.
   const brief = ([, value]: [string, string]) =>
@@ -258,9 +255,6 @@ export function ToolRow({
             </p>
           )
         )}
-        {diff.split("\n").length > DIFF_LINES && (
-          <DiffView text={cleanText(diff)} />
-        )}
       </div>
     </DisclosureRow>
   );
@@ -286,7 +280,6 @@ export function ToolInline({
   open?: OpenLink;
 }) {
   const diff = block.change?.includes("\n") ? block.change : "";
-  const lines = diff.split("\n");
   // Until the full text loads, a truncated result shows its end.
   const more = !!block.truncated && !loaded;
   const output =
@@ -298,15 +291,7 @@ export function ToolInline({
   if (!diff && !output && !parts.length && !files.length) return null;
   return (
     <div class="tool-inline">
-      {diff && (
-        <DiffView text={cleanText(lines.slice(0, DIFF_LINES).join("\n"))} />
-      )}
-      {lines.length > DIFF_LINES && (
-        <p class="small muted">
-          {lines.length - DIFF_LINES} more lines · expand the row for the full
-          diff
-        </p>
-      )}
+      {diff && <DiffView text={cleanText(diff)} />}
       {output && (
         <OutputBox
           text={output}

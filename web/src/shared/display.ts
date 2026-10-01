@@ -27,7 +27,6 @@ export function diffLineClass(line: string, first: boolean): string {
   if (marker === "+") return "diff-add";
   if (marker === "-") return "diff-del";
   if (marker === "@") return "diff-hunk";
-  if (/^[ +-]?… /.test(line)) return "diff-cut";
   return "diff-ctx";
 }
 

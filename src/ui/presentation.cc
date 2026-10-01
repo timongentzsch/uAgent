@@ -18,6 +18,7 @@
 #include "include/agent/tool_presentation.h"
 #include "include/api/citations.h"
 #include "include/core/debug.h"
+#include "include/core/fs.h"
 #include "include/core/strings.h"
 #include "include/core/style.h"
 #include "include/core/term.h"
@@ -172,6 +173,7 @@ PresentationRecord PresentationFromJson(const json& value) {
   record.summary = JsonValue(value, "summary", "");
   record.detail = JsonValue(value, "detail", "");
   record.change = JsonValue(value, "change", "");
+  record.change_path = JsonValue(value, "change_path", "");
   record.multiline = JsonValue(value, "multiline", false);
   record.id = JsonValue(value, "id", "");
   record.skill = JsonValue(value, "skill", false);
@@ -470,6 +472,7 @@ void TerminalPresenter::Block(const json& block) {
     }
     record.id = JsonValue(block, "call_id", "");
     record.activity = JsonValue(block, "activity", json::object());
+    record.change_path = JsonValue(block, "change_path", "");
     PrintPresentation(record, detailed_);
   }
 }
@@ -617,7 +620,9 @@ void PrintPresentation(const PresentationRecord& record,
   }
 
   if (!record.change.empty()) {
-    std::istringstream input(record.change);
+    // A long diff is kept whole: both sides, each line a marker longer.
+    std::istringstream input(ReadFile(record.change_path, 4 * kEditFileBytes)
+                                 .value_or(record.change));
     std::string line;
     if (std::getline(input, line)) {
       std::string output = std::string(DIM()) + RowMark(Mark::kChange) + RST() +

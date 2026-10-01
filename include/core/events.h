@@ -99,6 +99,8 @@ struct PresentationRecord {
   // told by its diff, but a script that was written and then run also has
   // something to say, so `change` and `detail` can both be set.
   std::string change;
+  // Where a diff longer than the opening `change` carries is kept whole.
+  std::string change_path;
   // Opening a skill changes how the whole turn proceeds, so it is marked in
   // the scrollback rather than reading as one more tool row.
   bool skill = false;

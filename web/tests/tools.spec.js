@@ -98,6 +98,36 @@ test("a shared file previews inline in the conversation, sandboxed", async ({
   );
 });
 
+test("a long diff shows whole on its row, live and after a reload", async ({
+  page,
+  session,
+  command,
+}) => {
+  await command("model", {
+    session_id: session.id,
+    generation: session.generation,
+    operation: "select",
+    model: "mock/model-b",
+  });
+  await command("permissions", {
+    session_id: session.id,
+    generation: session.generation,
+    mode: "yolo",
+  });
+  await page.goto(`/#session=${session.id}`);
+  const prompt = page.getByLabel("Message or guidance");
+  await prompt.fill("Long diff probe");
+  await prompt.press("Enter");
+  const diff = page.locator(".tool-inline .diff");
+  await expect(diff).toContainText("Created long.txt (+2001 -0)");
+  await expect(diff.locator("span")).toHaveCount(2002);
+  await expect(diff.locator("span").last()).toHaveText("+LAST_DIFF_LINE");
+  await page.reload();
+  await expect(diff.locator("span")).toHaveCount(2002);
+  await expect(diff.locator("span").last()).toHaveText("+LAST_DIFF_LINE");
+  await expect(page.locator(".message.tool")).not.toContainText("more lines");
+});
+
 test("files read as tiles and cards, tool images sit on their row, and every image opens the viewer", async ({
   page,
   session,

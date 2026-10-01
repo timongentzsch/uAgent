@@ -295,6 +295,23 @@ def test_undo_puts_back_what_the_last_turn_changed(root, home, *, binary):
     assert_true("user reverted: edited.txt, fresh.txt, gone.txt;" in told[0], told)
 
 
+def test_long_diff_prints_whole_live_and_on_resume(root, home, *, binary):
+    content = "".join(f"line {index:04d} of a long file\n" for index in range(2000))
+    write = tool_call("write_file", {"path": "long.txt", "content": content + "LAST_DIFF_LINE\n"})
+    with Server([write, event({"content": "wrote-ok"})]) as server:
+        # Room for the call's arguments, so the turn does not compact.
+        env = base_env(home, server.url) | {"UAGENT_CONTEXT": "200000"}
+        for args, payload in (
+            (("--yolo", "--plain"), [(b"go\n", b"wrote-ok"), (b"/q\n", None)]),
+            (("-c", "--plain"), [(b"/q\n", None)]),
+        ):
+            code, output = run_pty(root, env, payload, args=args, startup_marker=b"", binary=binary)
+            assert_true(code == 0, output[-2000:])
+            assert_true(b"long.txt (+2001 -0)" in output, output[-2000:])
+            assert_true(b"    +line 1999 of a long file\x1b" in output, output[-2000:])
+            assert_true(b"    +LAST_DIFF_LINE\x1b" in output, output[-2000:])
+
+
 def test_multiline_bracketed_paste(root, home, *, binary):
     def verify(_, body):
         pasted = body["messages"][-1].get("content")

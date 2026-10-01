@@ -12,7 +12,6 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
-#include <cstring>
 #include <memory>
 #include <stop_token>
 #include <string>
@@ -368,13 +367,6 @@ size_t ProcessSupervisor::Count() const {
   return jobs_.size();
 }
 
-size_t ProcessSupervisor::Count(ActivityKind kind) const {
-  std::lock_guard<std::mutex> lock(mutex_);
-  return static_cast<size_t>(
-      std::count_if(jobs_.begin(), jobs_.end(),
-                    [kind](const BgJob& job) { return job.kind == kind; }));
-}
-
 std::vector<SubagentView> ProcessSupervisor::SubagentViews() const {
   std::vector<SubagentView> views;
   const int64_t now = NowMillis();
@@ -688,14 +680,7 @@ void ProcessSupervisor::IoLoop(const std::stop_token& stop) {
             log_fd = session->log_fd.Get();
             notify = true;
           }
-          size_t offset = 0;
-          while (log_fd >= 0 && offset < keep) {
-            ssize_t written =
-                write(log_fd, bytes.data() + offset, keep - offset);
-            if (written < 0 && errno == EINTR) continue;
-            if (written <= 0) break;
-            offset += static_cast<size_t>(written);
-          }
+          if (log_fd >= 0) (void)WriteAll(log_fd, bytes.data(), keep);
         }
       }
 

@@ -4,6 +4,7 @@
 #include <poll.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cerrno>
@@ -317,7 +318,8 @@ void TestActivityBufferAndAdmission() {
   CHECK(views[0].source_id == "agent-1a2b3c4d");
   CHECK(views[0].label == "haiku");
   CHECK(views[0].tail == "writing");
-  CHECK(delegating.Count(ActivityKind::kSubagent) == 1);
+  CHECK(std::ranges::count(delegating.Snapshot(), ActivityKind::kSubagent,
+                           &BgJob::kind) == 1);
   CHECK(delegating.Count() == 2);
   // Looking is not draining: the tool that joins the child still needs every
   // byte the transcript holds.

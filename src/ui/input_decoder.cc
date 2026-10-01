@@ -64,6 +64,15 @@ void TerminalInputDecoder::FeedPaste(const unsigned char*& data, size_t& size) {
   }
 }
 
+TerminalInputToken TerminalInputDecoder::TakeSequence(size_t count) {
+  std::string sequence(pending_.begin(),
+                       pending_.begin() + static_cast<std::ptrdiff_t>(count));
+  Consume(count);
+  ResetEscape();
+  return TerminalInputToken{TerminalInputTokenKind::kSequence,
+                            std::move(sequence)};
+}
+
 TerminalInputToken TerminalInputDecoder::TakePaste() {
   ReplaceAll(paste_, "\r\n", "\n");
   ReplaceAll(paste_, "\r", "\n");
@@ -302,15 +311,7 @@ std::optional<TerminalInputToken> TerminalInputDecoder::Next(
                                 kInputEscapeDelay))) {
       return std::nullopt;
     }
-    if (meta != std::string::npos && meta > 0) {
-      std::string sequence(
-          pending_.begin(),
-          pending_.begin() + static_cast<std::ptrdiff_t>(meta));
-      Consume(meta);
-      ResetEscape();
-      return TerminalInputToken{TerminalInputTokenKind::kSequence,
-                                std::move(sequence)};
-    }
+    if (meta != std::string::npos && meta > 0) return TakeSequence(meta);
     if (pending_[1] == 0x1b || late) {
       pending_.pop_front();
       ResetEscape();
@@ -326,23 +327,13 @@ std::optional<TerminalInputToken> TerminalInputDecoder::Next(
         ResetEscape();
         continue;
       }
-      std::string sequence(
-          pending_.begin(),
-          pending_.begin() + static_cast<std::ptrdiff_t>(string_bytes));
-      Consume(string_bytes);
-      ResetEscape();
-      return TerminalInputToken{TerminalInputTokenKind::kSequence,
-                                std::move(sequence)};
+      return TakeSequence(string_bytes);
     }
 
     // The coordinate bytes may be arbitrary, including 0x1b, so take a block.
     if (StartsX10Mouse()) {
       if (pending_.size() < 6) return std::nullopt;
-      std::string sequence(pending_.begin(), pending_.begin() + 6);
-      Consume(6);
-      ResetEscape();
-      return TerminalInputToken{TerminalInputTokenKind::kSequence,
-                                std::move(sequence)};
+      return TakeSequence(6);
     }
 
     size_t sequence_bytes = CompleteCsiBytes();
@@ -358,25 +349,9 @@ std::optional<TerminalInputToken> TerminalInputDecoder::Next(
     if (sequence_bytes == 0) {
       sequence_bytes = 2;
     }
-    std::string sequence(
-        pending_.begin(),
-        pending_.begin() + static_cast<std::ptrdiff_t>(sequence_bytes));
-    Consume(sequence_bytes);
-    ResetEscape();
-    return TerminalInputToken{TerminalInputTokenKind::kSequence,
-                              std::move(sequence)};
+    return TakeSequence(sequence_bytes);
   }
   return std::nullopt;
-}
-
-void TerminalInputDecoder::Reset() {
-  pending_.clear();
-  paste_.clear();
-  pasting_ = false;
-  paste_ready_ = false;
-  paste_overflow_ = false;
-  pending_overflow_ = false;
-  ResetEscape();
 }
 
 }  // namespace uagent

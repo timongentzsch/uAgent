@@ -55,6 +55,8 @@ class TerminalInputDecoder {
   void AppendPasteByte(unsigned char byte);
   void FeedPaste(const unsigned char*& data, size_t& size);
   TerminalInputToken TakePaste();
+  // The first `count` pending bytes as one sequence token.
+  TerminalInputToken TakeSequence(size_t count);
   // Bytes of the CSI starting `at`, once its final byte has arrived.
   size_t CompleteCsiBytes(size_t at = 0) const;
   // ESC before a key that is itself several bytes: Meta with a UTF-8

@@ -3,7 +3,6 @@
 #include "include/tools/ask.h"
 
 #include <algorithm>
-#include <cctype>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -20,10 +19,8 @@ constexpr size_t kPreviewLines = 40;
 constexpr size_t kPreviewBytes = 4000;
 
 bool ImageFile(const std::string& path) {
-  std::string extension = std::filesystem::path(path).extension().string();
-  std::ranges::transform(extension, extension.begin(), [](unsigned char c) {
-    return static_cast<char>(std::tolower(c));
-  });
+  std::string extension =
+      AsciiLower(std::filesystem::path(path).extension().string());
   for (const char* known : {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"}) {
     if (extension == known) return true;
   }

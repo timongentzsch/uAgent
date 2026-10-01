@@ -1,24 +1,14 @@
 // Copyright 2026 Timon Gentzsch
 
 #include <algorithm>
-#include <atomic>
 #include <cctype>
-#include <chrono>
 #include <cstdlib>
-#include <fstream>
-#include <future>
-#include <iterator>
-#include <set>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "include/core/config_registry.h"
-#include "include/core/debug.h"
 #include "include/core/env.h"
-#include "include/core/fs.h"
-#include "include/core/limits.h"
-#include "include/core/signals.h"
 #include "include/core/strings.h"
 #include "include/providers.h"
 
@@ -188,30 +178,21 @@ ProviderCatalog SessionProviderCatalog() {
 }
 
 int64_t CatalogContextLength(const json& model) {
-  if (int64_t context = JsonValue(model, "context_length", int64_t{0})) {
-    return context;
+  // Anthropic's catalog spells the same window max_input_tokens.
+  for (const char* key :
+       {"context_length", "max_input_tokens", "max_model_len"}) {
+    if (int64_t context = JsonValue(model, key, int64_t{0})) return context;
   }
-  // Anthropic's catalog spells the same window this way.
-  if (int64_t context = JsonValue(model, "max_input_tokens", int64_t{0})) {
-    return context;
-  }
-  if (int64_t context = JsonValue(model, "max_model_len", int64_t{0})) {
-    return context;
-  }
-  if (model.contains("meta") && model["meta"].is_object()) {
-    return JsonValue(model["meta"], "n_ctx_train", int64_t{0});
-  }
-  return 0;
+  const json* meta = JsonObject(model, "meta");
+  return meta ? JsonValue(*meta, "n_ctx_train", int64_t{0}) : 0;
 }
 
 std::optional<std::vector<ModelInfo>> ParseModels(const json& response) {
-  if (!response.is_object() || !response.contains("data") ||
-      !response["data"].is_array()) {
-    return std::nullopt;
-  }
+  const json* data = JsonArray(response, "data");
+  if (!data) return std::nullopt;
 
   std::vector<ModelInfo> models;
-  for (const json& model : response["data"]) {
+  for (const json& model : *data) {
     if (!model.is_object()) continue;
     std::string id = JsonValue(model, "id", "");
     if (id.empty()) continue;

@@ -448,7 +448,6 @@ export default function Scheduled({
                   </Field>
                 </div>
                 <SheetButton
-                  buttonClass="quiet"
                   label="Task model"
                   title="Model, variant and effort"
                   trigger={

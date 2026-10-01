@@ -1094,7 +1094,6 @@ function App() {
                     title="Board"
                     layout="sheet"
                     className="side-sheet"
-                    lightDismiss
                     close={() => setBoardOpen(false)}
                   >
                     <Board
@@ -1183,7 +1182,6 @@ function App() {
             }
             layout="sheet"
             size="narrow"
-            lightDismiss
             close={() => setOverlay(null)}
           >
             {overlay === "palette" ? (

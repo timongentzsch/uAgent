@@ -144,7 +144,7 @@ export function ActivityButton({
   return (
     <SheetButton
       label="Activity"
-      buttonClass={`quiet activity-button${counts ? "" : " idle"}`}
+      buttonClass={`activity-button${counts ? "" : " idle"}`}
       sheetClass="activity-sheet"
       trigger={
         <>

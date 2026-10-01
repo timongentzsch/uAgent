@@ -299,7 +299,11 @@ function Showcase() {
               <IconButton label="Copy example">
                 <Copy />
               </IconButton>
-              <SheetButton label="Example sheet" trigger={<Wrench />}>
+              <SheetButton
+                label="Example sheet"
+                size="icon"
+                trigger={<Wrench />}
+              >
                 <p>Sheet content.</p>
               </SheetButton>
               <Menu label="Example menu">

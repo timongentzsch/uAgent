@@ -1,4 +1,4 @@
-import { Input } from "./ui.tsx";
+import { Button, Input } from "./ui.tsx";
 import { minimumZoom, maximumZoom } from "./layout.ts";
 
 // The interface zoom as a slider with its value. With `reset`, the value is
@@ -27,15 +27,15 @@ export function ZoomSlider({
         onInput={(event) => change?.(Number(event.currentTarget.value))}
       />
       {reset ? (
-        <button
-          type="button"
-          class="quiet zoom-value"
+        <Button
+          variant="quiet"
+          class="zoom-value"
           aria-label={`Zoom ${zoom}%, reset`}
           title="Reset zoom"
           onClick={reset}
         >
           {zoom}%
-        </button>
+        </Button>
       ) : (
         <span class="zoom-value">{zoom}%</span>
       )}

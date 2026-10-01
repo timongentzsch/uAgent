@@ -15,7 +15,7 @@ export default function ModelControl(
       label="Model and effort"
       title={label}
       className="model-control"
-      buttonClass="quiet model-selector"
+      buttonClass="model-selector"
       disabled={!props.online || props.running}
       trigger={
         <>

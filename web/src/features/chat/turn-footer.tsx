@@ -76,7 +76,6 @@ export function TurnFooter({
           layout="sheet"
           size="narrow"
           close={() => setReviewing(false)}
-          lightDismiss
         >
           <Deferred
             load={review}

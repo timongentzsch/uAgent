@@ -1,6 +1,6 @@
 import type { ComponentChildren } from "preact";
 import { useState } from "preact/hooks";
-import { Modal, useDialogClose } from "./ui.tsx";
+import { Button, Modal, useDialogClose } from "./ui.tsx";
 
 type Content = ComponentChildren | ((close: () => void) => ComponentChildren);
 
@@ -21,7 +21,8 @@ export function SheetButton({
   trigger,
   children,
   className = "",
-  buttonClass = "quiet icon-button",
+  buttonClass = "",
+  size = "default",
   sheetClass = "",
   disabled,
 }: {
@@ -33,14 +34,17 @@ export function SheetButton({
   children: Content;
   className?: string;
   buttonClass?: string;
+  // "icon" when the trigger is an icon alone.
+  size?: "default" | "icon";
   sheetClass?: string;
   disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   return (
     <div class={`sheet-control ${className}`}>
-      <button
-        type="button"
+      <Button
+        variant="quiet"
+        size={size}
         class={buttonClass}
         title={title}
         aria-label={label}
@@ -50,7 +54,7 @@ export function SheetButton({
         onClick={() => setOpen(true)}
       >
         {trigger}
-      </button>
+      </Button>
       {open && (
         <Modal
           title={heading}
@@ -58,7 +62,6 @@ export function SheetButton({
           size="narrow"
           className={sheetClass}
           close={() => setOpen(false)}
-          lightDismiss
         >
           <SheetContent>{children}</SheetContent>
         </Modal>

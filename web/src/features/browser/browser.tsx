@@ -525,7 +525,7 @@ export default function BrowserPanel({
     <SheetButton
       label={`${detail}. Browser status and profiles`}
       className="browser-status-menu"
-      buttonClass="quiet browser-status"
+      buttonClass="browser-status"
       heading="Browser"
       disabled={!status.ok}
       trigger={

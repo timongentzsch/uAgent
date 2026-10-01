@@ -4,6 +4,7 @@ import type { ComponentChildren, JSX } from "preact";
 import { useId, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { Ellipsis } from "lucide-preact";
 import { nextIndex, typeAhead } from "./listbox-nav.ts";
+import { Button, IconButton } from "./ui.tsx";
 
 const navigation = ["ArrowDown", "ArrowUp", "Home", "End"];
 const enabledItems = (panel: Element) => [
@@ -91,12 +92,9 @@ export function Menu({
   }, [open]);
   return (
     <div class="action-menu">
-      <button
-        type="button"
-        ref={anchor}
-        class="quiet icon-button"
-        title={label}
-        aria-label={label}
+      <IconButton
+        buttonRef={anchor}
+        label={label}
         aria-haspopup="menu"
         aria-controls={open ? id : undefined}
         aria-expanded={open}
@@ -108,7 +106,7 @@ export function Menu({
         }}
       >
         <Ellipsis />
-      </button>
+      </IconButton>
       {open && (
         <div
           ref={panel}
@@ -164,16 +162,12 @@ export function Menu({
   );
 }
 
-export function MenuItem({
-  class: className = "",
-  ...props
-}: JSX.ButtonHTMLAttributes<HTMLButtonElement>) {
+export function MenuItem(props: JSX.ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
-    <button
+    <Button
       {...props}
-      class={`quiet ${className}`}
+      variant="quiet"
       role="menuitem"
-      type="button"
       // Arrows and letters move focus between items; Tab leaves the menu.
       tabIndex={-1}
     />

@@ -382,7 +382,6 @@ function SidebarView({
           label={`${count} need${count === 1 ? "s" : ""} you`}
           heading="Needs you"
           className="needs-you"
-          buttonClass="quiet"
           trigger={
             <>
               <Inbox />

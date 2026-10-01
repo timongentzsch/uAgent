@@ -567,7 +567,6 @@ export default function Composer({
               title={`${permissionLabel}${permission?.mode === "default" ? " · using default permissions" : " · conversation override"}`}
               // YOLO runs everything unasked: it says so loudly.
               className={`permission-control${effective === "yolo" ? " yolo" : ""}`}
-              buttonClass="quiet"
               disabled={!online}
               trigger={
                 <>

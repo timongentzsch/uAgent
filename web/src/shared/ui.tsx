@@ -7,6 +7,7 @@ import {
   type ComponentChildren,
   type ComponentType,
   type JSX,
+  type Ref,
   type RefObject,
 } from "preact";
 import { failure } from "./types.ts";
@@ -377,11 +378,7 @@ export function LoadError({
   return (
     <div class="load-error">
       <p role="alert">{failure(error).message}</p>
-      {retry && (
-        <button type="button" onClick={retry}>
-          Retry
-        </button>
-      )}
+      {retry && <Button onClick={retry}>Retry</Button>}
     </div>
   );
 }
@@ -507,6 +504,7 @@ export function Button({
   size = "default",
   busy = false,
   class: className = "",
+  buttonRef,
   children,
   disabled,
   ...props
@@ -514,11 +512,14 @@ export function Button({
   variant?: "primary" | "secondary" | "quiet" | "destructive";
   size?: "default" | "compact" | "icon";
   busy?: boolean;
+  // The element, for a caller that places or focuses against it (a menu).
+  buttonRef?: Ref<HTMLButtonElement>;
 }) {
   return (
     <button
       type="button"
       {...props}
+      ref={buttonRef}
       class={`${variant} ${size === "default" ? "" : `${size}-button`} ${className}`}
       disabled={disabled || busy}
       aria-busy={busy || undefined}
@@ -537,6 +538,7 @@ export function IconButton({
   label: string;
   // Quiet unless it is the surface's main action (Send).
   variant?: "primary" | "quiet";
+  buttonRef?: Ref<HTMLButtonElement>;
 }) {
   return (
     <Button
@@ -601,7 +603,6 @@ export function Modal({
   layout = "content",
   actions,
   header = true,
-  lightDismiss = false,
 }: {
   title: string;
   children: ComponentChildren;
@@ -616,10 +617,24 @@ export function Modal({
   actions?: ComponentChildren;
   // False when the content renders its own DialogHeader and .dialog-body.
   header?: boolean;
-  // A tap on the scrim closes it, as it does a native sheet.
-  lightDismiss?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
+  // A tap on the scrim closes every dialog, as it does a native sheet. The
+  // scrim targets the dialog element, as does its own padding, so the point
+  // decides; a press that began inside (a text selection dragged out) does
+  // not count.
+  const pressedScrim = useRef(false);
+  const onScrim = (event: MouseEvent) => {
+    const dialog = ref.current;
+    if (!dialog || event.target !== dialog) return false;
+    const box = dialog.getBoundingClientRect();
+    return (
+      event.clientX < box.left ||
+      event.clientX > box.right ||
+      event.clientY < box.top ||
+      event.clientY > box.bottom
+    );
+  };
   const heading = useRef<HTMLHeadingElement>(null);
   const titleId = useId();
   // Every way the person closes it (Close, Escape, the back gesture) plays
@@ -670,9 +685,11 @@ export function Modal({
         event.preventDefault();
         requestClose();
       }}
-      // The dialog fills its box, so only the scrim targets the element.
+      onPointerDown={(event) => {
+        pressedScrim.current = onScrim(event);
+      }}
       onClick={(event) => {
-        if (lightDismiss && event.target === ref.current) requestClose();
+        if (pressedScrim.current && onScrim(event)) requestClose();
       }}
     >
       <DialogContext.Provider

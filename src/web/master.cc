@@ -5,25 +5,18 @@
 
 #include <arpa/inet.h>
 #include <curl/curl.h>
-#include <fcntl.h>
 #include <httplib.h>
-#include <poll.h>
 #include <signal.h>
-#include <spawn.h>
-#include <sys/stat.h>
-#include <sys/wait.h>
 #include <unistd.h>
 
 #include <algorithm>
 #include <atomic>
 #include <cctype>
 #include <chrono>
-#include <condition_variable>
 #include <cstddef>
 #include <cstdio>
 #include <cstring>
 #include <deque>
-#include <filesystem>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -37,13 +30,9 @@
 #include "include/app/bootstrap.h"
 #include "include/app/config_proposal.h"
 #include "include/app/control.h"
-#include "include/app/library.h"
-#include "include/app/schedule.h"
 #include "include/app/self_description.h"
 #include "include/app/session_host.h"
 #include "include/browser/browser.h"
-#include "include/core/capture.h"
-#include "include/core/child_env.h"
 #include "include/core/effective_config.h"
 #include "include/core/env.h"
 #include "include/core/file_watch.h"

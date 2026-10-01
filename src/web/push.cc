@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "include/core/fs.h"
+#include "include/core/time.h"
 #include "include/tools/files.h"
 #include "include/web/protocol.h"
 #ifdef UAGENT_WEB_PUSH
@@ -265,13 +266,13 @@ struct PushSender::Impl {
             kPushAttentionLifetime) {
           break;
         }
+        const auto same = [&](const Subscription& current) {
+          return current.device == subscription.device &&
+                 current.endpoint == subscription.endpoint;
+        };
         {
           std::lock_guard lock(mutex);
-          if (std::none_of(subscriptions.begin(), subscriptions.end(),
-                           [&](const Subscription& current) {
-                             return current.device == subscription.device &&
-                                    current.endpoint == subscription.endpoint;
-                           })) {
+          if (std::none_of(subscriptions.begin(), subscriptions.end(), same)) {
             continue;
           }
         }
@@ -288,9 +289,7 @@ struct PushSender::Impl {
                                   {"session_id", attention.session}}));
         std::string authorization = VapidAuthorization(
             key.get(), PushServiceOrigin(subscription.endpoint), contact,
-            std::chrono::duration_cast<std::chrono::seconds>(
-                std::chrono::system_clock::now().time_since_epoch())
-                    .count() +
+            NowSeconds() +
                 std::chrono::duration_cast<std::chrono::seconds>(kVapidLifetime)
                     .count());
         if (body.empty() || authorization.empty()) {
@@ -301,10 +300,7 @@ struct PushSender::Impl {
           int64_t status = Deliver(subscription.endpoint, authorization, body);
           if (status == 404 || status == 410) {
             std::lock_guard lock(mutex);
-            std::erase_if(subscriptions, [&](const Subscription& current) {
-              return current.device == subscription.device &&
-                     current.endpoint == subscription.endpoint;
-            });
+            std::erase_if(subscriptions, same);
             Persist();
             break;
           }

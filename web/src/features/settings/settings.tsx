@@ -52,6 +52,11 @@ const agent = (setting: ConfigSetting) =>
   ["memory", "skills", "delegation"].includes(setting.category) &&
   !setting.name.endsWith("_MODEL");
 const CONFIG = { models, permissions, agent, advanced: undefined };
+// The models first, each a role; then how they are reached.
+const MODEL_SECTIONS: [string, (setting: ConfigSetting) => boolean][] = [
+  ["Models", (setting) => setting.name.endsWith("_MODEL")],
+  ["Connection", () => true],
+];
 export default function Settings({
   theme,
   setTheme,
@@ -535,6 +540,7 @@ export default function Settings({
                 },
               }}
               filter={CONFIG[current as keyof typeof CONFIG]}
+              sections={current === "models" ? MODEL_SECTIONS : undefined}
               fallback={<SettingRowsLoading />}
             />
           )}

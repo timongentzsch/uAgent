@@ -90,20 +90,22 @@ test("appearance and configuration remain usable at large scales", async ({
     .getByRole("button", { name: "Advanced", exact: true })
     .click();
   await page.getByLabel("Find a setting").fill("UAGENT_MAX_STEPS");
-  // Settings save themselves: Enter applies the field and shows ✓.
+  // Settings save themselves: Enter applies the field and says Saved in its
+  // status line.
   const steps = page.getByRole("spinbutton", { name: /^UAGENT_MAX_STEPS/ });
   await steps.fill("23");
   await steps.press("Enter");
   await expect(
-    page.locator(".setting-row").getByRole("img", { name: "Saved" }),
+    page.locator(".setting-status", { hasText: "Saved" }),
   ).toBeVisible();
-  // A changed value offers Reset; Reset shows the default again.
+  // A changed value offers Reset; Reset empties the field again, which then
+  // names the default it keeps.
   const reset = page.getByRole("button", { name: "Reset UAGENT_MAX_STEPS" });
   await reset.click();
   await expect(reset).toHaveCount(0);
-  // The default shows as the value itself, not as a placeholder.
   const initial = "0";
-  await expect(steps).toHaveValue(initial);
+  await expect(steps).toHaveValue("");
+  await expect(steps).toHaveAttribute("placeholder", initial);
   // Typing the default back removes the override instead of pinning it.
   await steps.fill("23");
   await steps.press("Enter");
@@ -122,7 +124,7 @@ test("appearance and configuration remain usable at large scales", async ({
   await confirm.getByRole("button", { name: "Reset all", exact: true }).click();
   await expect(confirm).toHaveCount(0);
   await expect(reset).toHaveCount(0);
-  await expect(steps).toHaveValue(initial);
+  await expect(steps).toHaveValue("");
   await page.getByRole("button", { name: "Back", exact: true }).click();
   await page
     .locator(".settings-nav")

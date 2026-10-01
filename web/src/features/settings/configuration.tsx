@@ -58,27 +58,60 @@ const applied = (setting: ConfigSetting, scope: "user" | "project") =>
           (scope === "project" ? setting.user : undefined) ??
           setting.default),
   );
-// What an empty value falls back to: another setting, followed to the value
-// that applies, or the phrase the registry gives.
-function fallbackLabel(
+const nameOf = (setting: ConfigSetting) => setting.label || setting.name;
+// What an unset value means now: the running value where the host reports
+// one, the setting it follows, the built-in default, or the registry's
+// phrase, said the same way on every row.
+function using(
   setting: ConfigSetting,
   scope: "user" | "project",
   find: (name: string) => ConfigSetting | undefined,
   depth = 0,
 ): string {
+  const active = normalize(setting, setting.active);
+  const builtin = normalize(setting, setting.default);
   const other = setting.fallback ? find(setting.fallback) : undefined;
-  if (!other || depth > 3) return setting.fallback || "";
-  const value =
-    applied(other, scope) || fallbackLabel(other, scope, find, depth + 1);
-  return value ? `${value} (${other.name})` : `Same as ${other.name}`;
+  if (other && depth < 3) {
+    const value = active || applied(other, scope);
+    return value
+      ? `Using ${value} · same as ${nameOf(other)}`
+      : `Same as ${nameOf(other)} · ${using(other, scope, find, depth + 1)}`;
+  }
+  if (active && active !== builtin) return `Using ${active}`;
+  if (builtin) return `Using ${builtin} · built-in default`;
+  return setting.fallback ? `Uses ${setting.fallback}` : "Not set";
+}
+// The status line of a row: whose value applies here and why. A number or
+// switch shows its value in the control, so only an override is named.
+function statusOf(
+  setting: ConfigSetting,
+  scope: "user" | "project",
+  find: (name: string) => ConfigSetting | undefined,
+): string | undefined {
+  const own = setting[scope];
+  if (setting.sensitivity !== "public")
+    return own ? "Saved · enter a replacement to change it" : "Not set";
+  if (own !== undefined) {
+    if (normalize(setting, own) === "off") return "Off";
+    const user =
+      scope === "project" && setting.user !== undefined
+        ? ` · your default is ${normalize(setting, setting.user)}`
+        : "";
+    return scope === "project"
+      ? `Set for this project${user}`
+      : "Set in your defaults";
+  }
+  if (scope === "project" && setting.user !== undefined)
+    return `Using ${normalize(setting, setting.user)} · from your defaults`;
+  return setting.type === "string" ? using(setting, scope, find) : undefined;
 }
 // Settings of the web host itself apply when the host restarts, not a
 // conversation.
 const hostSetting = (setting?: ConfigSetting) => setting?.category === "web";
 
-// One registry setting in the edited scope: it shows what applies there,
-// its own value or the one it inherits, and Reset only while it overrides.
-// Saving the inherited value removes the override instead of pinning it.
+// One registry setting in the edited scope. A text field is empty unless
+// this scope sets it; the status line says what applies instead. Clearing
+// the field, or Reset, removes the override.
 function Setting({
   setting,
   scope,
@@ -94,18 +127,24 @@ function Setting({
 }) {
   const secret = setting.sensitivity !== "public";
   const own = setting[scope];
+  const locked = lockedBy(setting);
+  const toggle = setting.type === "boolean";
+  const numeric = ["integer", "number"].includes(setting.type);
+  // A switch always shows what applies; any other control only this
+  // scope's own value, or a lock's.
+  const configured = secret
+    ? ""
+    : toggle
+      ? applied(setting, scope)
+      : locked
+        ? normalize(setting, setting.value)
+        : own === undefined
+          ? ""
+          : normalize(setting, own);
   const inherited = normalize(
     setting,
     scope === "project" ? (setting.user ?? setting.default) : setting.default,
   );
-  const locked = lockedBy(setting);
-  const configured = secret
-    ? ""
-    : locked || own === undefined
-      ? applied(setting, scope)
-      : normalize(setting, own);
-  // An empty value still says what applies instead of looking unset.
-  const fallback = secret ? "" : fallbackLabel(setting, scope, find);
   // An edit in progress; otherwise the row shows the configured value, so a
   // save or a change elsewhere never overwrites what is being typed.
   const [draft, setDraft] = useState<string | null>(null);
@@ -124,8 +163,12 @@ function Setting({
   const apply = async (next: string) => {
     if (disabled || saving.current) return;
     if (secret ? !next : next === configured) return setDraft(null);
-    const unset = !secret && next === inherited;
-    if (unset && own === undefined) return;
+    // Empty, or a number or switch back to what it inherits, removes the
+    // override; a text value is kept even when it matches, since it then
+    // stops following what it inherits.
+    const unset =
+      !secret && (next === "" || ((toggle || numeric) && next === inherited));
+    if (unset && own === undefined) return setDraft(null);
     saving.current = true;
     try {
       if (await save(unset ? { key: id, unset } : { key: id, value: next })) {
@@ -136,12 +179,15 @@ function Setting({
       saving.current = false;
     }
   };
+  const status = statusOf(setting, scope, find);
+  const described = status || locked ? `${id}-status` : undefined;
   return (
     <SettingRow
-      name={id}
-      label={<code>{id}</code>}
+      name={nameOf(setting)}
+      label={setting.label || <code>{id}</code>}
       htmlFor={id}
-      detail={setting.description}
+      detail={setting.purpose || setting.description}
+      status={status}
       overridden={own !== undefined}
       locked={locked}
       saved={saved}
@@ -151,9 +197,9 @@ function Setting({
         void save({ key: id, unset: true });
       }}
     >
-      {setting.type === "boolean" ? (
+      {toggle ? (
         <Switch
-          label={id}
+          label={nameOf(setting)}
           checked={value === "1"}
           disabled={disabled}
           onChange={(on) => {
@@ -166,16 +212,13 @@ function Setting({
           id={id}
           value={value}
           disabled={disabled}
+          aria-describedby={described}
           onChange={(event) => {
             setDraft(event.currentTarget.value);
             void apply(event.currentTarget.value);
           }}
         >
-          {!setting.choices.includes(inherited) && (
-            <option value={inherited}>
-              {fallback ? `Default · ${fallback}` : "Default"}
-            </option>
-          )}
+          <option value="">Default</option>
           {setting.choices.map((choice) => (
             <option key={choice} value={choice}>
               {choice}
@@ -185,13 +228,7 @@ function Setting({
       ) : (
         <Input
           id={id}
-          type={
-            secret
-              ? "password"
-              : ["integer", "number"].includes(setting.type)
-                ? "number"
-                : "text"
-          }
+          type={secret ? "password" : numeric ? "number" : "text"}
           enterkeyhint="done"
           step={setting.type === "integer" ? "1" : "any"}
           min={
@@ -201,15 +238,10 @@ function Setting({
             Number.isSafeInteger(setting.maximum) ? setting.maximum : undefined
           }
           value={value}
-          placeholder={
-            secret
-              ? locked
-                ? "Configured"
-                : own
-                  ? "Configured · enter replacement"
-                  : "Not set"
-              : fallback || "Not set"
-          }
+          aria-describedby={described}
+          // A number names the default it keeps; text says nothing is set,
+          // and the status line says what applies instead.
+          placeholder={numeric && inherited ? inherited : "Not set"}
           disabled={disabled}
           onInput={(event) => setDraft(event.currentTarget.value)}
           onKeyDown={(event) => {
@@ -311,12 +343,15 @@ export default function Configuration({
   session,
   online,
   filter,
+  sections,
   sessions = [],
   display,
 }: {
   session?: Session;
   online: boolean;
   filter?: (setting: ConfigSetting) => boolean;
+  // Named groups, in order, for a filtered section, e.g. "Models".
+  sections?: [string, (setting: ConfigSetting) => boolean][];
   sessions?: Session[];
   // This device's own settings, reset together with the user scope.
   display?: { changed: number; reset: () => void };
@@ -370,17 +405,21 @@ export default function Configuration({
     run({ operation: "apply", changes: [change] });
   const settings = data?.settings || [];
   const byName = new Map(settings.map((setting) => [setting.name, setting]));
-  const groups = new Map<string, ConfigSetting[]>();
+  const groups = new Map<string, ConfigSetting[]>(
+    sections?.map(([name]) => [name, []]),
+  );
   for (const setting of settings) {
     if (filter && !filter(setting)) continue;
     if (
-      !`${setting.name} ${setting.description}`
+      !`${setting.name} ${setting.label || ""} ${setting.purpose || ""} ${setting.description}`
         .toLowerCase()
         .includes(query.toLowerCase())
     )
       continue;
-    if (!groups.has(setting.category)) groups.set(setting.category, []);
-    groups.get(setting.category)!.push(setting);
+    const key =
+      sections?.find(([, member]) => member(setting))?.[0] || setting.category;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(setting);
   }
   // Reset all covers the scope's public settings; keys stay.
   const changed =
@@ -450,23 +489,31 @@ export default function Configuration({
       ) : (
         !data && <SettingRowsLoading />
       )}
-      {[...groups].map(([category, settings]) => (
-        <Group
-          key={category}
-          title={filter ? undefined : `${category} · ${count(settings.length)}`}
-        >
-          {settings.map((setting) => (
-            <Setting
-              key={`${scope}:${setting.name}`}
-              setting={setting}
-              scope={scope}
-              busy={busy || !online || projectLocked}
-              save={save}
-              find={(name) => byName.get(name)}
-            />
-          ))}
-        </Group>
-      ))}
+      {[...groups]
+        .filter(([, settings]) => settings.length)
+        .map(([category, settings]) => (
+          <Group
+            key={category}
+            title={
+              sections
+                ? category
+                : filter
+                  ? undefined
+                  : `${category} · ${count(settings.length)}`
+            }
+          >
+            {settings.map((setting) => (
+              <Setting
+                key={`${scope}:${setting.name}`}
+                setting={setting}
+                scope={scope}
+                busy={busy || !online || projectLocked}
+                save={save}
+                find={(name) => byName.get(name)}
+              />
+            ))}
+          </Group>
+        ))}
       {!filter && data && (
         <Group>
           <Row

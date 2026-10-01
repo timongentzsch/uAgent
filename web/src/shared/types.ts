@@ -606,6 +606,10 @@ export interface ConfigSetting {
   choices?: string[];
   // What an empty value falls back to: another setting's name or a phrase.
   fallback?: string;
+  // A person's name for the setting and what it is for, where the registry
+  // gives them.
+  label?: string;
+  purpose?: string;
   // What each config file sets; a secret reports only `true`.
   user?: JSONValue;
   project?: JSONValue;

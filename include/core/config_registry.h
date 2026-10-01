@@ -68,6 +68,10 @@ struct ConfigDescriptor {
   // What applies while the value is empty, when the default cannot say it:
   // another setting's name, or a short phrase.
   std::string_view fallback = {};
+  // A person's name for the setting and what it is for, in a sentence; the
+  // web and the CLI show these instead of the variable name where set.
+  std::string_view label = {};
+  std::string_view purpose = {};
 
   bool Accepts(std::string_view value) const {
     if (choices.empty() || value.empty()) return true;
@@ -171,6 +175,14 @@ consteval ConfigDescriptor Fallback(ConfigDescriptor descriptor,
   return descriptor;
 }
 
+consteval ConfigDescriptor Named(ConfigDescriptor descriptor,
+                                 std::string_view label,
+                                 std::string_view purpose) {
+  descriptor.label = label;
+  descriptor.purpose = purpose;
+  return descriptor;
+}
+
 }  // namespace registry
 
 inline constexpr ConfigDescriptor kConfigRegistry[] = {
@@ -199,28 +211,44 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                   "native Web Push",
                   kScopeUser),
     // Route selection and credentials.
-    registry::Fallback(
-        registry::Str("UAGENT_BASE_URL", {}, "", ReloadPolicy::kRestartRequired,
-                      Sensitivity::kPublic, "route", "active API base URL"),
-        "OpenRouter when OPENROUTER_API_KEY is set"),
-    registry::Str("UAGENT_API_KEY", {}, kPlaceholderApiKey,
-                  ReloadPolicy::kRestartRequired, Sensitivity::kSecret, "route",
-                  "credential for the active route"),
-    registry::Str("OPENROUTER_API_KEY", {}, "", ReloadPolicy::kRestartRequired,
-                  Sensitivity::kSecret, "route",
-                  "OpenRouter credential used when no base URL is set"),
-    registry::Fallback(
-        registry::Str(
-            "UAGENT_MODEL", {}, "", ReloadPolicy::kRestartRequired,
-            Sensitivity::kPublic, "route",
-            "model or named route as [provider/]model[:variant][:effort]"),
-        "last /model choice, else the provider default"),
-    registry::Fallback(
-        registry::Str("UAGENT_REASONING_EFFORT", {}, "",
-                      ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
+    registry::Named(
+        registry::Fallback(
+            registry::Str("UAGENT_BASE_URL", {}, "",
+                          ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
+                          "route", "active API base URL"),
+            "OpenRouter when OPENROUTER_API_KEY is set"),
+        "API address",
+        "Where requests go; empty uses OpenRouter when its key is set"),
+    registry::Named(
+        registry::Str("UAGENT_API_KEY", {}, kPlaceholderApiKey,
+                      ReloadPolicy::kRestartRequired, Sensitivity::kSecret,
+                      "route", "credential for the active route"),
+        "API key", "Credential sent to the API address"),
+    registry::Named(
+        registry::Str("OPENROUTER_API_KEY", {}, "",
+                      ReloadPolicy::kRestartRequired, Sensitivity::kSecret,
                       "route",
-                      "none, minimal, low, medium, high, xhigh, or max"),
-        "provider default"),
+                      "OpenRouter credential used when no base URL is set"),
+        "OpenRouter key",
+        "Credential for OpenRouter, used when no API address is set"),
+    registry::Named(
+        registry::Fallback(
+            registry::Str(
+                "UAGENT_MODEL", {}, "", ReloadPolicy::kRestartRequired,
+                Sensitivity::kPublic, "route",
+                "model or named route as [provider/]model[:variant][:effort]"),
+            "last /model choice, else the provider default"),
+        "Conversation model",
+        "Answers your messages; /model switches it for one conversation"),
+    registry::Named(
+        registry::Fallback(
+            registry::Str("UAGENT_REASONING_EFFORT", {}, "",
+                          ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
+                          "route",
+                          "none, minimal, low, medium, high, xhigh, or max"),
+            "provider default"),
+        "Reasoning effort",
+        "How long the conversation model thinks before answering"),
     registry::Str("UAGENT_PROVIDERS", {}, "", ReloadPolicy::kRestartRequired,
                   Sensitivity::kCompositeSecret, "route",
                   "JSON object of named endpoints, transports, and aliases"),
@@ -341,24 +369,30 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
     registry::Int("UAGENT_SUBAGENT_TIMEOUT", {}, 0, 0, kConfigAnyMax,
                   ReloadPolicy::kRestartRequired, "delegation",
                   "wall-clock ceiling per delegated child; 0 is the turn"),
-    registry::Fallback(
-        registry::Str("UAGENT_SUBAGENT_MODEL", {}, "",
-                      ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
-                      "delegation",
-                      "default model route for delegated children"),
-        "UAGENT_MODEL"),
+    registry::Named(
+        registry::Fallback(
+            registry::Str("UAGENT_SUBAGENT_MODEL", {}, "",
+                          ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
+                          "delegation",
+                          "default model route for delegated children"),
+            "UAGENT_MODEL"),
+        "Sub-agent model", "Runs the side tasks a conversation delegates"),
     registry::Str("UAGENT_TOOLSET", {}, "", ReloadPolicy::kRestartRequired,
                   Sensitivity::kPublic, "delegation",
                   "lean withholds implementation tools from this process"),
 
     // Coordination.
-    registry::Fallback(
-        registry::Str("UAGENT_COORDINATOR_MODEL", {}, "",
-                      ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
-                      "coordination",
-                      "model route of each folder's coordinator; /model "
-                      "inside it overrides this for that folder"),
-        "UAGENT_MODEL"),
+    registry::Named(
+        registry::Fallback(
+            registry::Str("UAGENT_COORDINATOR_MODEL", {}, "",
+                          ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
+                          "coordination",
+                          "model route of each folder's coordinator; /model "
+                          "inside it overrides this for that folder"),
+            "UAGENT_MODEL"),
+        "Coordinator model",
+        "Plans and supervises a folder's threads; /model inside a coordinator "
+        "overrides it there"),
     registry::Int("UAGENT_COORDINATOR_MAX_THREADS", {}, 5, 1, 64,
                   ReloadPolicy::kRestartRequired, "coordination",
                   "threads one coordinator may run at once"),
@@ -380,11 +414,13 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                       ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
                       "search", "auto, openrouter, or off"),
         kWebSearchBackends),
-    registry::Fallback(
-        registry::Str("UAGENT_WEB_SEARCH_MODEL", "web_search_model", "",
-                      ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
-                      "search", "model route used for search"),
-        "conversation model on OpenRouter, else the default route"),
+    registry::Named(
+        registry::Fallback(
+            registry::Str("UAGENT_WEB_SEARCH_MODEL", "web_search_model", "",
+                          ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
+                          "search", "model route used for search"),
+            "conversation model on OpenRouter, else the default route"),
+        "Web search model", "Answers web lookups"),
     registry::Fallback(
         registry::Str("UAGENT_WEB_SEARCH_EFFORT", "web_search_effort", "",
                       ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
@@ -413,11 +449,15 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
     registry::Int("UAGENT_MEMORY_IDLE_SECONDS", {}, int64_t{6} * 60 * 60, 0,
                   int64_t{48} * 60 * 60, ReloadPolicy::kRestartRequired,
                   "memory", "idle seconds before background extraction runs"),
-    registry::Fallback(
-        registry::Str("UAGENT_MEMORY_MODEL", {}, "",
-                      ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
-                      "memory", "model route for background memory extraction"),
-        "UAGENT_MODEL"),
+    registry::Named(
+        registry::Fallback(
+            registry::Str("UAGENT_MEMORY_MODEL", {}, "",
+                          ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
+                          "memory",
+                          "model route for background memory extraction"),
+            "UAGENT_MODEL"),
+        "Memory model",
+        "Distils memories from finished conversations in the background"),
 
     // Skills.
     registry::Str("UAGENT_SKILL_PATH", {}, "", ReloadPolicy::kRestartRequired,
@@ -439,14 +479,19 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                   "roots advertised to MCP servers"),
 
     // Attachments and terminal media.
-    registry::Fallback(
-        registry::Str("UAGENT_IMAGE_MODEL", "image_model", "",
-                      ReloadPolicy::kNextUserTurn, Sensitivity::kPublic,
-                      "media",
-                      "model route that reads attached images; empty uses the "
-                      "main route when it reads images, else the shared "
-                      "default route"),
-        "main route if it reads images, else the default route"),
+    registry::Named(
+        registry::Fallback(
+            registry::Str(
+                "UAGENT_IMAGE_MODEL",
+                "image_model", "",
+                ReloadPolicy::kNextUserTurn, Sensitivity::kPublic, "media",
+                "model route that reads attached images; empty uses the "
+                "main route when it reads images, else the shared "
+                "default route"),
+            "main route if it reads images, else the default route"),
+        "Image reader",
+        "Describes attached images when the conversation model cannot see "
+        "them"),
     registry::Fallback(
         registry::Str("UAGENT_IMAGE_DETAIL", {}, "",
                       ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
@@ -481,17 +526,23 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                       "behaviour",
                       "ask, auto reviewer, or yolo for ordinary mutations"),
         kApprovalModes),
-    registry::Str("UAGENT_PERMISSION_MODEL", "permission_model",
-                  "~typesafe/jev-latest", ReloadPolicy::kNextUserTurn,
-                  Sensitivity::kPublic, "behaviour",
-                  "OpenRouter Decisions model used by auto permissions"),
+    registry::Named(
+        registry::Str("UAGENT_PERMISSION_MODEL", "permission_model",
+                      "~typesafe/jev-latest", ReloadPolicy::kNextUserTurn,
+                      Sensitivity::kPublic, "behaviour",
+                      "OpenRouter Decisions model used by auto permissions"),
+        "Permission reviewer", "Judges risky actions when approval is Auto"),
     registry::Str("UAGENT_PERMISSION_URL", "permission_url",
                   "https://openrouter.ai/api/alpha",
                   ReloadPolicy::kNextUserTurn, Sensitivity::kPublic,
                   "behaviour", "OpenRouter Decisions API base URL"),
-    registry::Str("UAGENT_TITLE_MODEL", "title_model", kDefaultModelRoute,
-                  ReloadPolicy::kNextUserTurn, Sensitivity::kPublic,
-                  "behaviour", "model route that names new sessions, or off"),
+    registry::Named(
+        registry::Str("UAGENT_TITLE_MODEL", "title_model", kDefaultModelRoute,
+                      ReloadPolicy::kNextUserTurn, Sensitivity::kPublic,
+                      "behaviour",
+                      "model route that names new sessions, or off"),
+        "Title model",
+        "Names new conversations; off keeps the first message as the title"),
     registry::Str("UAGENT_TOOL_CAPABILITIES", {}, "",
                   ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
                   "behaviour", "restrict the exposed tool capability set"),

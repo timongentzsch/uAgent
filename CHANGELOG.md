@@ -49,6 +49,12 @@
 
 ### Changed
 
+- Web: settings read as names and purposes ("Title model · Names new
+  conversations"), from the registry, which the CLI shares. A field is empty
+  until it is set, and a line under it says what applies now and why
+  ("Using x · same as Conversation model", "built-in default", "Set by the
+  environment"). Reset sits in that line, so every control keeps one column.
+  Models lists the model roles, then how they are reached.
 - Web: a coordinator's threads nest under its folder header, and a row that
   waits on you, works or failed carries an icon beside its words. The
   coordinator's help is a one-line subtitle. Settings group as General; Agent

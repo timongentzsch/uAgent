@@ -25,9 +25,9 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
   Tool& run = AddTool(
       tools,
       MakeTool("run",
-               "Execute a command in cwd; omit cd. Use the project's Python "
-               "runner (uv run/pytest). tty=true enables interactive stdin; "
-               "detach persists a terminal beyond this session.",
+               "Execute a command in cwd; omit cd. tty=true enables "
+               "interactive stdin; detach persists a terminal beyond this "
+               "session.",
                json::parse(R"json({"type":"object","properties":{
                     "command":{"type":"string"},
                     "shell":{"type":"string","description":"default bash"},

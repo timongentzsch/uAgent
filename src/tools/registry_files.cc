@@ -190,8 +190,10 @@ void RegisterFileTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
   };
   Tool& grep = path_tool(MakeTool(
       "grep",
-      "Search regex or literal text. mode: content returns lines; files "
-      "matches paths; matching_files returns paths whose contents match.",
+      "Search file contents by regex (literal=true for fixed text). mode: "
+      "content (default) returns matching lines; matching_files returns the "
+      "files that contain a match; files matches the pattern against file "
+      "paths instead of contents.",
       json::parse(R"json({"type":"object","properties":{
                     "pattern":{"type":"string","minLength":1},"path":{"type":"string"},
                     "glob":{"type":"string"},

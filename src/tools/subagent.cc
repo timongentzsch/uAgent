@@ -369,10 +369,9 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
       "Delegate an isolated subtask whose compact result saves parent "
       "rounds; for orthogonal parts, one task per part in one batch. spawn "
       "starts a child, followup resumes it, message guides a running child at "
-      "its next step or runs a finished one again, and activity waits on, "
-      "reads or stops it. Name the "
-      "reusable role and describe it at spawn. Keep background=true while "
-      "you have other work.",
+      "its next step or runs a finished one again; the activity tool waits "
+      "on, reads or stops it. Name the reusable role and describe it at "
+      "spawn. Keep background=true while you have other work.",
       {{"type", "object"}, {"properties", std::move(properties)}},
       [&api, &routes, &providers, debug, &processes](
           const json& arguments, const ToolContext& context) {

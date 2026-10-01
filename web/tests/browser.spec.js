@@ -207,6 +207,17 @@ test.describe("phone browser sheet", () => {
       .poll(async () => (await canvas.boundingBox()).width / view.width)
       .toBeGreaterThan(2);
     expect(masks()).toEqual([]);
+
+    // Zoomed in, one finger pans the view by its travel; Chrome hears nothing.
+    const zoomed = await canvas.boundingBox();
+    const middle = view.x + view.width / 2;
+    await touch(viewport, "pointerdown", 8, middle, y);
+    await touch(viewport, "pointermove", 8, middle + 60, y);
+    await touch(viewport, "pointerup", 8, middle + 60, y);
+    await expect
+      .poll(async () => (await canvas.boundingBox()).x - zoomed.x)
+      .toBeCloseTo(60, 0);
+    expect(masks()).toEqual([]);
     // noVNC's own touch cursor stays hidden behind the modal.
     expect(
       await page.evaluate(() =>

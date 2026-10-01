@@ -55,12 +55,15 @@ export default function BrowserTouch({
   const view = useRef<ZoomView>({ scale: 1, x: 0, y: 0 });
   const send = useRef(pointer);
   send.current = pointer;
+  // The screen's size, kept by the resize observer: a moving finger reads
+  // no layout for it.
+  const size = useRef({ width: 0, height: 0 });
 
   const setView = (next: ZoomView) => {
-    const rect = screen.current?.getBoundingClientRect();
     const element = target.current;
-    if (!rect || !element) return;
-    view.current = constrainView(next, rect.width, rect.height);
+    if (!element) return;
+    const { width, height } = size.current;
+    view.current = constrainView(next, width, height);
     const { scale, x, y } = view.current;
     // noVNC scales its canvas from the container's real size; an outer CSS
     // scale would bypass its coordinate conversion.
@@ -131,12 +134,9 @@ export default function BrowserTouch({
   // Buttons for what a pinch and a swipe do, for anyone who cannot make
   // them: zoom this device's view about its centre, scroll the page.
   const zoomBy = (ratio: number) => {
-    const rect = screen.current?.getBoundingClientRect();
-    if (!rect) return;
-    const centre = { x: rect.width / 2, y: rect.height / 2 };
-    setView(
-      pinchView(view.current, rect.width, rect.height, centre, centre, ratio),
-    );
+    const { width, height } = size.current;
+    const centre = { x: width / 2, y: height / 2 };
+    setView(pinchView(view.current, width, height, centre, centre, ratio));
   };
   const scrollBy = (mask: number) => {
     // The middle of the remote screen, wherever it is letterboxed.
@@ -169,7 +169,10 @@ export default function BrowserTouch({
   useEffect(() => {
     const element = screen.current;
     if (!element) return;
-    const observer = new ResizeObserver(() => setView(view.current));
+    const observer = new ResizeObserver(() => {
+      size.current = element.getBoundingClientRect();
+      setView(view.current);
+    });
     observer.observe(element);
     // noVNC listens for touch itself; direct touch is handled here.
     const block = (event: Event) => {
@@ -275,12 +278,11 @@ export default function BrowserTouch({
           next.travel = rest;
           for (const mask of masks) emit(next.at, mask, 0);
         } else if (next?.kind === "pan") {
-          const rect = screen.current!.getBoundingClientRect();
           setView(
             panView(
               view.current,
-              rect.width,
-              rect.height,
+              size.current.width,
+              size.current.height,
               point.x - previous.x,
               point.y - previous.y,
             ),
@@ -298,12 +300,11 @@ export default function BrowserTouch({
               midpoint(all).y - next.midpoint.y,
             ) > BROWSER_GESTURE.movementSlopPx;
           if (!next.moved) return;
-          const rect = screen.current!.getBoundingClientRect();
           setView(
             pinchView(
               next.view,
-              rect.width,
-              rect.height,
+              size.current.width,
+              size.current.height,
               next.midpoint,
               midpoint(all),
               next.distance > 0 ? distance(all) / next.distance : 1,

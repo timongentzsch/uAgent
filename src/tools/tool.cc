@@ -443,7 +443,7 @@ json GenericInputParts(const json& args,
   constexpr size_t kFieldChars = 160;
   json rows = json::array();
   for (const auto& [key, value] : args.items()) {
-    if (key == "intent" || key == "description" || value.is_null() ||
+    if (key == "intent" || value.is_null() ||
         std::find(skip.begin(), skip.end(), key) != skip.end()) {
       continue;
     }

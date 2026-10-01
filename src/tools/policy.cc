@@ -324,13 +324,15 @@ std::optional<ToolArgumentIssue> FindToolArgumentIssue(const Tool& tool,
 
 std::string StableArgumentError(
     const Tool& tool, const json& args,
-    std::unordered_map<std::string, std::string>& values) {
+    std::unordered_map<std::string, std::string>& values, bool bind) {
   if (tool.stable_argument.empty()) return "";
   auto value = args.find(tool.stable_argument);
   if (value == args.end() || !value->is_string()) return "";
   std::string key = tool.name + "\n" + tool.stable_argument;
-  auto [found, inserted] = values.emplace(key, value->get<std::string>());
-  if (inserted || found->second == value->get_ref<const std::string&>()) {
+  if (bind) values.emplace(key, value->get<std::string>());
+  auto found = values.find(key);
+  if (found == values.end() ||
+      found->second == value->get_ref<const std::string&>()) {
     return "";
   }
   return "error: `" + tool.stable_argument + "` must remain `" + found->second +

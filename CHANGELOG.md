@@ -14,6 +14,10 @@ names one loads as before and the line has no effect.
   instead, as in `UAGENT_WEB_SEARCH_MODEL=vendor/model:low`; without a suffix
   the provider's default applies.
 - Removed: `UAGENT_PRUNE_SUPERSEDED_READS`, an experiment that stayed off.
+- Tool parameters have one plain type each. `run` and `scratch` lose the
+  optional `description` label (a "string or null" a provider's tool-call
+  conversion cut the arguments at), and `session` takes one `session_id`;
+  `broadcast` still reaches every linked session.
 - Removed: `/link` and `/peers`, and with them token links between sessions.
   The `session` tool still reaches sessions that share a workspace under
   yolo, which link by themselves; a link file made from a token is still
@@ -149,6 +153,14 @@ names one loads as before and the line has no effect.
 
 ### Fixed
 
+- A model's malformed tool call is answered with an error it can correct
+  instead of ending the turn, and every other model fault (an empty or cut-off
+  response, tool markup in prose, a call without a name) is told to the model
+  before it can end one.
+- `scratch` holds a turn to its script only once that script has run: a
+  rejected path no longer blocks the corrected one.
+- A file diff is shown whole in the web and the terminal; past its opening it
+  is read from a file kept with the session's artifacts.
 - The `session` tool lists sessions without a prompt.
 - A stream error sent as a bare string keeps its text and is classified on
   the Responses and Anthropic dialects too.

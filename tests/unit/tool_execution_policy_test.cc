@@ -180,7 +180,10 @@ void TestToolExecutionPolicy() {
   tool.stable_argument = "path";
   tool.parameters["properties"]["path"] = {{"type", "string"}};
   std::unordered_map<std::string, std::string> stable_arguments;
-  CHECK(StableArgumentError(tool, {{"path", "one"}}, stable_arguments).empty());
+  // Only a call that succeeded binds the value; until then any may be tried.
+  CHECK(StableArgumentError(tool, {{"path", "bad"}}, stable_arguments).empty());
+  CHECK(StableArgumentError(tool, {{"path", "one"}}, stable_arguments, true)
+            .empty());
   CHECK(StableArgumentError(tool, {{"path", "one"}}, stable_arguments).empty());
   CHECK(StableArgumentError(tool, {{"path", "two"}}, stable_arguments)
             .find("reuse") != std::string::npos);

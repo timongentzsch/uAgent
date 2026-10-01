@@ -110,9 +110,6 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
       {"enum", CommandIntents()},
       {"description", "what it is for; display grouping only"}};
   run.parameters["properties"]["intent"] = intent_schema;
-  const json description_schema = {
-      {"type", json::array({"string", "null"})},
-      {"description", "optional display label, e.g. Running tests"}};
   run.present = [](const json& a) {
     json parts = json::array({CommandPart(JsonValue(a, "command", ""))});
     for (json& part : GenericInputParts(a, {"command"})) {
@@ -120,7 +117,6 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
     }
     return parts;
   };
-  run.parameters["properties"]["description"] = description_schema;
 
   // ToolRunScratch runs a .py under uv when it is there and falls back to
   // python3 otherwise, so a host with neither can only ever answer this tool
@@ -171,7 +167,6 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
             }));
     python.declared_intent = true;
     python.parameters["properties"]["intent"] = intent_schema;
-    python.parameters["properties"]["description"] = description_schema;
     python.mutating = true;
     python.capabilities = Capability(ToolCapability::kExecute) |
                           Capability(ToolCapability::kMutate);

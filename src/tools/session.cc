@@ -66,10 +66,7 @@ Tool SessionTool() {
           {"enum", json::array({"list", "message"})},
           {"description", "list linked/linkable sessions or message one"}}},
         {"session_id",
-         {{"type", json::array({"string", "array"})},
-          {"items", {{"type", "string"}}},
-          {"description",
-           "peer session id for message; accepts an array for fan-out"}}},
+         {{"type", "string"}, {"description", "peer session id for message"}}},
         {"broadcast",
          {{"type", "boolean"},
           {"description", "message only: fan out to every linked session"}}},
@@ -104,15 +101,8 @@ Tool SessionTool() {
         }
         std::string prompt = JsonValue(arguments, "prompt", "");
         std::vector<std::string> targets;
-        const json* ids = JsonArray(arguments, "session_id");
-        if (ids != nullptr) {
-          for (const json& entry : *ids) {
-            if (entry.is_string()) targets.push_back(entry.get<std::string>());
-          }
-        } else {
-          std::string single = JsonValue(arguments, "session_id", "");
-          if (!single.empty()) targets.push_back(single);
-        }
+        std::string single = JsonValue(arguments, "session_id", "");
+        if (!single.empty()) targets.push_back(single);
         if (targets.empty() && JsonValue(arguments, "broadcast", false)) {
           for (const json& row : SessionSummaries()) {
             if (JsonValue(row, "linked", false)) {

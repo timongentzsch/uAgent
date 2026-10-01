@@ -332,11 +332,11 @@ void ClampToolArguments(const Tool& tool, json& args,
 void CanonicalizeToolArguments(const Tool& tool, json& args,
                                std::vector<std::string>* clamped = nullptr);
 
-// A tool's `stable_argument` must keep the same value for a whole turn.
-// `values` carries that per-turn memory for the caller.
+// A tool's `stable_argument` must keep the value its first successful call of
+// the turn had (`bind` records it); `values` carries that per-turn memory.
 std::string StableArgumentError(
     const Tool& tool, const json& args,
-    std::unordered_map<std::string, std::string>& values);
+    std::unordered_map<std::string, std::string>& values, bool bind = false);
 
 json ToolSchema(const Tool& tool);
 

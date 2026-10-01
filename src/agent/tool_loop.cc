@@ -142,13 +142,6 @@ void Agent::PrepareCall(const ToolCall& call, CallTask& task,
   task.args = task.raw_args;
   task.tool = FindTool(tools_, call.name);
   const Tool* tool = task.tool;
-  std::string description;
-  if (tool && tool->declared_intent && task.args.is_object()) {
-    // Display metadata never reaches validation, permission decisions or
-    // execution. The original tool call remains intact for exact replay.
-    description = ActivityLabel(JsonValue(task.args, "description", ""));
-    task.args.erase("description");
-  }
   if (tool) CanonicalizeToolArguments(*tool, task.args, &task.clamped);
   const json& arguments = task.args;
   bool valid = false;
@@ -237,11 +230,8 @@ void Agent::PrepareCall(const ToolCall& call, CallTask& task,
   task.activity["occurrence_id"] = call.occurrence_id;
   task.activity["detail_id"] = call.detail_id;
   task.activity["status_label"] =
-      valid && !description.empty() ? description
-      : tool ? ActivityLabel(ToolTitle(*tool) + " · " + task.label)
-             : ActivityLabel(call.name);
-  task.activity["label_source"] =
-      valid && !description.empty() ? "model_intent" : "tool";
+      tool ? ActivityLabel(ToolTitle(*tool) + " · " + task.label)
+           : ActivityLabel(call.name);
   conversation_.RecordDisplay(call.detail_id, {{"activity", task.activity}});
   Event call_event{EventId::kToolCall, ToolCallData(call, turn_id_, step)};
   call_event.data["activity"] = task.activity;
@@ -408,6 +398,13 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
     model_chars = SaturatingAdd(model_chars, model_results[index].size());
     AppendToolResult(call, model_results[index], task.result, task.duration_ms);
     if (task.result.effect) edits_.Record(turn_id_, *task.result.effect);
+  }
+  // A value that failed binds nothing: the model may correct it.
+  for (const CallTask& task : tasks) {
+    if (task.result.Ok() && task.tool) {
+      StableArgumentError(*task.tool, task.args, loop.recovery.stable_arguments,
+                          /*bind=*/true);
+    }
   }
   bool any_succeeded =
       std::any_of(tasks.begin(), tasks.end(),

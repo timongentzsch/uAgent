@@ -35,16 +35,12 @@ ToolResult SearchError(int64_t http_status, const std::string& detail) {
 
 WebSearchResult ParseWebSearch(const json& response) {
   WebSearchResult result;
-  if (!response.is_object() || !response.contains("choices") ||
-      !response["choices"].is_array() || response["choices"].empty()) {
-    return result;
-  }
-  const json& choice = response["choices"][0];
-  if (!choice.is_object() || !choice.contains("message") ||
-      !choice["message"].is_object()) {
-    return result;
-  }
-  const json& message = choice["message"];
+  const json* choices = JsonArray(response, "choices");
+  if (!choices || choices->empty()) return result;
+  const json& choice = choices->front();
+  const json* found = JsonObject(choice, "message");
+  if (!found) return result;
+  const json& message = *found;
   result.text = JsonValue(message, "content", "");
   result.annotations = JsonValue(message, "annotations", json::array());
   result.searches = 1;

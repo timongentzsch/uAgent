@@ -283,14 +283,6 @@ SideRoute ResolveSubagentRoute(const Api& api,
       requested.empty() ? NormalizeModelId(SubagentModel()) : requested);
 }
 
-std::string SubagentTargetLabel(const Api& api,
-                                const std::vector<ModelRoute>& routes,
-                                const std::vector<NamedProvider>& providers,
-                                const std::string& requested) {
-  return RouteSelection(ResolveSubagentRoute(api, routes, providers, requested),
-                        providers);
-}
-
 std::string SubagentDiagnosticRoute(
     const SideRoute& route, const std::vector<NamedProvider>& providers) {
   std::string selected = route.selection;
@@ -624,9 +616,11 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
     std::string prompt = JsonValue(arguments, "prompt", "");
     std::string id = JsonValue(arguments, "agent_id", "");
     if (operation == "message") return "[message " + id + "] " + prompt;
-    std::string label = SubagentTargetLabel(
-        api, routes, providers,
-        NormalizeModelId(JsonValue(arguments, "model", "")));
+    std::string label =
+        RouteSelection(ResolveSubagentRoute(
+                           api, routes, providers,
+                           NormalizeModelId(JsonValue(arguments, "model", ""))),
+                       providers);
     const std::string name = JsonValue(arguments, "name", "");
     if (!name.empty()) label = name + " · " + label;
     if (JsonValue(arguments, "mode", "lean") == "full") label += " · full";

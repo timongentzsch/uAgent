@@ -11,7 +11,6 @@
 #include <unistd.h>
 
 #include <algorithm>
-#include <array>
 #include <cctype>
 #include <cstdint>
 #include <cstdio>
@@ -22,7 +21,6 @@
 #include <optional>
 #include <string>
 #include <string_view>
-#include <thread>
 #include <utility>
 #include <vector>
 
@@ -467,9 +465,7 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   }
 
   if (cancelled) {
-    auto stop_deadline =
-        std::chrono::steady_clock::now() + std::chrono::seconds(2);
-    exited = WaitForTerminal(supervisor, session, stop_deadline);
+    exited = WaitForTerminal(supervisor, session, DeadlineAfter(2));
   }
   // Every path below that does not background the child takes its signal
   // registration back out.
@@ -521,9 +517,7 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
     BgTrackSignal(pid, false);
     (void)supervisor.RemoveForeground(pid);
     SignalShellGroup(pid, SIGKILL);
-    auto stop_deadline =
-        std::chrono::steady_clock::now() + std::chrono::seconds(2);
-    WaitForTerminal(supervisor, session, stop_deadline);
+    WaitForTerminal(supervisor, session, DeadlineAfter(2));
     return finish([](std::string output, int) {
       if (!output.empty() && output.back() != '\n') output += '\n';
       output += "error: command exceeded its execution deadline";

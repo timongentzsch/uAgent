@@ -501,8 +501,8 @@ bool Agent::ContextNeedsCompaction(size_t pending_bytes, size_t schema_bytes,
          (tokens > 0 && projected_tokens >= tokens);
 }
 
-Agent::MidturnCompact Agent::MaybeCompactDuringTurn(
-    const json& available_schemas, Usage& usage, size_t& turn_start) {
+Agent::MidturnCompact Agent::MaybeCompactDuringTurn(Usage& usage,
+                                                    size_t& turn_start) {
   // Encoded parts must reach the model once. They are pruned at the turn
   // boundary and must never be fed to the summarizer instead.
   if (conversation_.HasKind(MessageKind::kAttachment)) {
@@ -510,9 +510,8 @@ Agent::MidturnCompact Agent::MaybeCompactDuringTurn(
   }
   int64_t pressure = 0;
   int64_t projected_tokens = 0;
-  if (!ContextNeedsCompaction(/*pending_bytes=*/0,
-                              JsonEstimatedBytes(available_schemas), pressure,
-                              projected_tokens)) {
+  if (!ContextNeedsCompaction(/*pending_bytes=*/0, available_schemas_.Bytes(),
+                              pressure, projected_tokens)) {
     return MidturnCompact::kNotNeeded;
   }
   DebugLog("midturn_compact", {{"turn", turn_id_},

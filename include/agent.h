@@ -329,8 +329,7 @@ class Agent {
     kFailed,
   };
 
-  MidturnCompact MaybeCompactDuringTurn(const json& available_schemas,
-                                        Usage& usage, size_t& turn_start);
+  MidturnCompact MaybeCompactDuringTurn(Usage& usage, size_t& turn_start);
 
   // Encoded attachment bytes are never durable conversation state, including
   // on provider errors and interruption. Keep only a textual record.

@@ -169,11 +169,11 @@ Agent::StepFlow Agent::PrepareStep(TurnExecution& state, StepState& loop) {
                            processes_.DetachedCount() > 0 ||
                            loop.detached_records_available,
   };
-  const json& schemas = available_schemas_.Get(
-      tools_, schemas_, loop.tool_counts, availability, &tool_selection_);
+  available_schemas_.Get(tools_, schemas_, loop.tool_counts, availability,
+                         &tool_selection_);
   if (loop.step > 0 && loop.midturn_compaction_enabled) {
     MidturnCompact compacted =
-        MaybeCompactDuringTurn(schemas, state.metrics.usage, state.start);
+        MaybeCompactDuringTurn(state.metrics.usage, state.start);
     if (compacted != MidturnCompact::kNotNeeded) {
       loop.midturn_compaction_enabled = false;
       // A successful compaction rebuilt the history, so a recorded note

@@ -509,8 +509,16 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   if (exited) {
     BgTrackSignal(pid, false);
     (void)supervisor.RemoveForeground(pid);
-    return finish([](std::string output, int status) {
+    return finish([&cmd](std::string output, int status) {
       output += FmtExit(status, /*show_ok=*/false);
+      // pkill -f and its kin match on the whole command line, and this
+      // command's own shell carries the pattern in its.
+      if (WIFSIGNALED(status) && (cmd.find("pkill -f") != std::string::npos ||
+                                  cmd.find("pgrep -f") != std::string::npos)) {
+        output +=
+            "\n[the pattern matched this command's own shell; match "
+            "the process name instead, e.g. pkill -x NAME]";
+      }
       return ProcessResult(std::move(output), status);
     });
   }

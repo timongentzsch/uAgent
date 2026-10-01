@@ -8,7 +8,6 @@
 #include <array>
 #include <cerrno>
 #include <cstdint>
-#include <cstdio>
 #include <limits>
 #include <optional>
 #include <string>
@@ -428,16 +427,14 @@ ChatResult Api::Chat(const json& messages, const json& tool_schemas,
   for (int attempt = 1; attempt <= kChatAttempts; ++attempt) {
     int64_t attempt_timeout = attempt_limit;
     if (request_timeout > 0) {
-      auto remaining = std::chrono::ceil<std::chrono::seconds>(
-          deadline - std::chrono::steady_clock::now());
-      if (remaining.count() <= 0) {
+      const int64_t remaining = SecondsUntil(deadline);
+      if (remaining <= 0) {
         res.error = "request deadline exhausted before retry";
         stamp();
         return res;
       }
-      attempt_timeout = attempt_limit > 0
-                            ? std::min(attempt_limit, remaining.count())
-                            : remaining.count();
+      attempt_timeout =
+          attempt_limit > 0 ? std::min(attempt_limit, remaining) : remaining;
     }
     auto attempt_started = std::chrono::steady_clock::now();
     json metadata = exchange_context;
@@ -485,11 +482,7 @@ ChatResult Api::Chat(const json& messages, const json& tool_schemas,
     retry["attempt"] = attempt + 1;
     retry["max_attempts"] = kChatAttempts;
     retry["delay_ms"] = delay.count();
-    retry["retry_at_ms"] =
-        std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::system_clock::now().time_since_epoch())
-            .count() +
-        delay.count();
+    retry["retry_at_ms"] = NowMillis() + delay.count();
     Emit(Event{EventId::kResponseRetry, std::move(retry)});
     if (!WaitForRetry(delay)) {
       res.error.clear();

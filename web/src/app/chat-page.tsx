@@ -137,7 +137,6 @@ export default function ChatPage({
   // is no pin-on-select here to clobber the restore.
   const {
     scroller: transcript,
-    content: transcriptContent,
     attachScroller,
     attachContent,
     jumpToLatest,
@@ -242,8 +241,6 @@ export default function ChatPage({
         <MessageActions.Provider value={actions}>
           <Chat
             key={selected}
-            scroller={transcript}
-            content={transcriptContent}
             attachScroller={attachScroller}
             attachContent={attachContent}
             preserveWhile={preserveWhile}

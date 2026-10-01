@@ -19,7 +19,6 @@ import {
   MessagesSquare,
   Search,
   CircleAlert,
-  LoaderCircle,
   TriangleAlert,
   Inbox,
 } from "lucide-preact";
@@ -225,11 +224,11 @@ function CoordinatorButton({
   );
 }
 
-// A row's state as a shape as well as a colour (the LED): waiting on you,
-// working, or failed. The words beside it name it.
+// A row that waits on you or failed shows that as a shape in place of the
+// LED; a working row keeps the LED, which breathes. The words beside it name
+// the state.
 const STATE_ICONS: Partial<Record<SessionState, typeof Inbox>> = {
   waiting: CircleAlert,
-  working: LoaderCircle,
   failed: TriangleAlert,
 };
 

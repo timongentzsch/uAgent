@@ -747,6 +747,10 @@ dialog.sidebar:not([open]) {
   margin-right: var(--space-2);
   vertical-align: -0.15em;
 }
+/* One indicator to a row: the shape stands in for the LED. */
+.session small .session-state + .activity-status > .status-led {
+  display: none;
+}
 .session-state.waiting {
   color: var(--accent);
 }

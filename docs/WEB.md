@@ -252,8 +252,9 @@ separate from billing totals.
 One status indicator is used in the sidebar and composer: hollow without a live
 runtime, filled when connected, breathing while work runs. A pending decision
 shows a steady indicator and “Needs your input”. A separate dot marks unread
-responses. In the sidebar an icon beside the words also marks a row that waits
-on you, is working or failed, so no state rests on colour alone.
+responses. In the sidebar a row that waits on you or failed shows an icon in
+place of the indicator, and a working row keeps the breathing indicator, so
+each row has one mark and no state rests on colour alone.
 
 The agent's questions are answered a page at a time: the steps above the page
 show which are answered and lead back to any already seen, a tap on a single

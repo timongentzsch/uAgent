@@ -21,9 +21,9 @@ import {
 } from "../../shared/ui.tsx";
 import { Menu, MenuItem } from "../../shared/menu.tsx";
 import { SheetButton } from "../../shared/sheet.tsx";
-import ModelPicker from "../settings/model-picker.tsx";
+import ModelPicker from "../composer/model-picker.tsx";
 import { readStored, writeStored } from "../../state/store.ts";
-import { ProjectField, dateTime, taskActive } from "../settings/management.tsx";
+import { ProjectField, dateTime, taskActive } from "../library/management.tsx";
 import { ListRow } from "../../shared/list-row.tsx";
 import { permissionLabels } from "../../shared/display.ts";
 

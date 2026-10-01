@@ -61,10 +61,10 @@ type Page = {
 };
 
 const statisticsDialog = () =>
-  import("../settings/statistics.tsx").then((module) => ({
+  import("./statistics.tsx").then((module) => ({
     default: module.StatisticsContent,
   }));
-const rawDialog = () => import("../settings/raw.tsx");
+const rawDialog = () => import("./raw.tsx");
 // A stable empty list: the history hook compares the newest block each render.
 const noBlocks: readonly { id: string }[] = [];
 

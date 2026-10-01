@@ -24,7 +24,7 @@ import {
   ProjectField,
   ScopeField,
   dateTime,
-} from "../settings/management.tsx";
+} from "./management.tsx";
 import Markdown from "../../shared/markdown-view.tsx";
 import FolderLabel, { folderName } from "../../shared/folder-label.tsx";
 import "../chat/message.css";

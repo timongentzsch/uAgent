@@ -5,15 +5,14 @@
 export const libraryModule = () => import("../features/library/library.tsx");
 export const scheduledModule = () =>
   import("../features/scheduled/scheduled.tsx");
-export const pairing = () => import("../features/settings/pairing.tsx");
+export const pairing = () => import("../features/pairing/pairing.tsx");
 export const browserDialog = () => import("../features/browser/browser.tsx");
-export const rawDialog = () => import("../features/settings/raw.tsx");
+export const rawDialog = () => import("../features/chat/raw.tsx");
 export const inspectorDialog = () => import("../features/chat/inspector.tsx");
 export const sideAnswer = () => import("../features/chat/side-answer.tsx");
 export const conversationActions = () =>
   import("../features/chat/conversation-actions.tsx");
-export const statisticsDialog = () =>
-  import("../features/settings/statistics.tsx");
+export const statisticsDialog = () => import("../features/chat/statistics.tsx");
 export const instructionsDialog = () =>
   import("../features/settings/instructions.tsx");
 export const settingsDialog = () => import("../features/settings/settings.tsx");

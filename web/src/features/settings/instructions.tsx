@@ -15,7 +15,7 @@ import {
   Placeholder,
   Textarea,
 } from "../../shared/ui.tsx";
-import { ProjectField } from "./management.tsx";
+import { ProjectField } from "../library/management.tsx";
 import "./instructions.css";
 
 const TITLES: Record<string, string> = {

@@ -165,7 +165,6 @@ struct Tool {
   using Header = std::function<json(const json&)>;
 
   std::string name;
-  std::string title;     // short human label, derived from name by default
   std::string category;  // workspace, execute, web, collaborate, memory, mcp
   std::string description;
   json parameters;               // JSON-schema for the args

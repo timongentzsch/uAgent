@@ -2,7 +2,9 @@ import type { SlashCommand } from "../../shared/types.ts";
 
 export function slashMatches(commands: SlashCommand[], text: string) {
   return /^\/[^\s]*$/.test(text)
-    ? commands.filter((entry) => entry.command.startsWith(text))
+    ? commands.filter(
+        (entry) => !entry.terminal && entry.command.startsWith(text),
+      )
     : [];
 }
 

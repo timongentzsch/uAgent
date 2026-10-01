@@ -35,7 +35,6 @@
 | `/peers` | list linked and linkable sessions |
 | `/quit` | exit uagent |
 | `/reset` | start a new chat |
-| `/new` | start a new chat |
 | `/clear` | clear the screen |
 | `/review [TARGET]` | review my current changes and find issues |
 | `/sessions [PREFIX]` | resume a saved chat, optionally matching PREFIX |

@@ -454,6 +454,9 @@ export interface SlashCommand {
   aliases: string[];
   usage: string;
   description: string;
+  // Listed only at a terminal: this page has its own control for it. Typed
+  // here it still runs, and its aliases still resolve.
+  terminal?: boolean;
 }
 export interface Catalogue {
   commands?: SlashCommand[];

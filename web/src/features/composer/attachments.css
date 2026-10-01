@@ -165,3 +165,9 @@ dialog.image-view[data-layout="panel"] {
 .mention-chip {
   vertical-align: baseline;
 }
+/* Files staged on the host from a terminal, with the way to drop them. */
+.host-files {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}

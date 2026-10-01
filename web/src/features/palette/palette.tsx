@@ -85,7 +85,7 @@ export default function Palette({
       run: () => start(folder),
     })),
     ...commands
-      .filter((entry) => entry.description)
+      .filter((entry) => entry.description && !entry.terminal)
       .map((entry) => ({
         key: `command:${entry.command}`,
         label: `${entry.command} — ${entry.description}`,

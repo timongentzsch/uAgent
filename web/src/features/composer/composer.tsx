@@ -352,7 +352,7 @@ export default function Composer({
                   disabled={!queueing || !online || busy || uploading}
                   onClick={(event) => send(event, true)}
                 >
-                  Queue next <kbd aria-hidden="true">⌥↵</kbd>
+                  Queue next <kbd aria-hidden="true">Alt+Enter</kbd>
                 </Button>
               )}
             </span>
@@ -453,9 +453,18 @@ export default function Composer({
             }}
           />
           {!!state?.attachments && (
-            <small class="muted">
-              {state.attachments} file(s) attached on the host · /attach clear
-              to remove
+            <small class="muted host-files">
+              {state.attachments} file(s) attached on the host
+              <Button
+                variant="quiet"
+                size="compact"
+                disabled={!online}
+                onClick={() =>
+                  act("submit", { text: "/attach clear" }).catch(report)
+                }
+              >
+                Remove
+              </Button>
             </small>
           )}
           {draft.files.length > 0 && (

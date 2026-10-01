@@ -266,7 +266,7 @@ class Master {
                        {"epoch", epoch_},
                        {"cursor", catalogue["cursor"]},
                        {"sessions", catalogue["sessions"]},
-                       {"commands", CommandSchemaJson(true)},
+                       {"commands", CommandSchemaJson()},
                        {"capabilities", push_->Capabilities(DeviceId(request))},
                        {"devices", PublicDevices()},
                        {"scheduled", catalogue["scheduled"]},

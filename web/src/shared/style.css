@@ -1104,16 +1104,41 @@ dialog.sidebar:not([open]) {
   border: 0;
   background: transparent;
 }
+/* Fixed slots in every turn state: Attach, Model (the one flexible item),
+   Permissions, then the primary circle. Nothing is inserted or removed, so
+   nothing beside a thumb moves when a turn starts, stops or waits. */
 .composer-actions {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-1) var(--space-2) var(--space-2);
   min-width: 0;
 }
-.composer-actions > .primary {
-  margin-left: auto;
+/* A pending decision holds the input; Permissions can still settle it. */
+.composer-actions[data-held] > :not(.permission-control) {
+  opacity: 0.5;
+  pointer-events: none;
+}
+/* Send and Stop are one control: the icons sit on top of each other and
+   cross-fade, so the button itself never changes. */
+.composer-primary {
+  position: relative;
+}
+.composer-primary > .lucide {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  transition: opacity var(--motion-fast) var(--ease-out);
+}
+.composer-primary > .stop-icon {
+  fill: currentColor;
+  width: calc(12rem / 14);
+  height: calc(12rem / 14);
+}
+.composer-primary[data-mode="stop"] > .send-icon,
+.composer-primary[data-mode="send"] > .stop-icon {
+  opacity: 0;
 }
 .model-control {
   flex: 1;
@@ -1142,15 +1167,11 @@ dialog.sidebar:not([open]) {
   font-size: var(--font-small);
   padding-inline: var(--space-3);
 }
-/* YOLO runs every tool unasked: the control says so in red. */
+/* YOLO runs every tool unasked: the control says so in red, in the same
+   box as any other mode. */
 .permission-control.yolo > button {
-  border: 1px solid var(--removed);
+  border-color: var(--removed);
   color: var(--removed);
-  font-weight: 600;
-  text-transform: uppercase;
-}
-.queue-next {
-  font-size: var(--font-small);
 }
 .file-button {
   position: relative;
@@ -1206,18 +1227,61 @@ dialog.sidebar:not([open]) {
     scale: 0.97;
   }
 }
+/* One fixed-height line above the input: the phase left, one action slot
+   right (Queue next while a turn runs, Continue after a stop). */
 .status-line {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--gap);
   min-width: 0;
-  padding-bottom: var(--space-2);
+  height: calc(28rem / 14);
+  margin-bottom: var(--space-1);
 }
 /* One line at any width: a long state ("Waiting for approval…") truncates. */
 .status-line > :first-child {
   flex: 0 1 auto;
   min-width: 0;
+}
+.status-line > .activity-toggle {
+  min-height: 0;
+}
+.status-action {
+  display: flex;
+  flex: none;
+  align-items: center;
+}
+/* The slot's action appears and leaves by opacity alone. */
+.status-action > button {
+  position: relative;
+  min-height: calc(24rem / 14);
+  padding-block: 0;
+  font-size: var(--font-micro);
+  transition:
+    opacity var(--motion-fast) var(--ease-out),
+    visibility var(--motion-fast) allow-discrete;
+}
+@starting-style {
+  .status-action > button {
+    opacity: 0;
+  }
+}
+.status-action > button[data-shown="false"] {
+  opacity: 0;
+  visibility: hidden;
+}
+.status-action kbd {
+  margin-left: var(--space-2);
+  color: var(--muted);
+  font: inherit;
+}
+@media (pointer: coarse) {
+  /* A 40px touch on a 24px line, mostly above it, clear of the input. */
+  .status-action > button::after {
+    content: "";
+    position: absolute;
+    inset: calc(-12rem / 14) 0 calc(-4rem / 14);
+  }
 }
 .activity-toggle {
   display: flex;
@@ -1353,21 +1417,63 @@ details[open]:not(.disclosure-row) > summary::before {
 .decision {
   display: flex;
   flex-direction: column;
-  gap: var(--gap);
+  gap: var(--space-3);
   border: 1px solid var(--accent);
-  padding: var(--space-6);
+  padding: var(--space-4) var(--space-6);
   max-height: min(
     calc(var(--viewport-height) * 0.65),
     calc(var(--viewport-height) - calc(100rem / 14))
   );
+  /* The one surface that enters: a short fade and a 4px rise. */
+  transition:
+    opacity 160ms var(--ease-out),
+    translate 160ms var(--ease-out);
+}
+@starting-style {
+  .decision {
+    opacity: 0;
+    translate: 0 calc(4rem / 14);
+  }
+}
+/* Above the composer's status line, which stays put below it. */
+.composer > .decision {
+  margin-bottom: var(--space-2);
 }
 .decision-preview {
   min-height: 0;
   overflow: auto;
   font-size: var(--font-small);
 }
-.decision-preview pre {
-  margin-top: var(--space-3);
+/* About six lines of the command or diff; the rest scrolls inside. */
+.decision-preview :is(pre, .diff) {
+  margin-top: 0;
+  max-height: calc(6lh + 2 * var(--space-2));
+  overflow: auto;
+}
+/* The title, then the tool it is about, on one line. */
+.decision-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-4);
+  min-width: 0;
+  flex-shrink: 0;
+}
+.decision-head > [role="alert"] {
+  flex: none;
+}
+.decision-tool {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-small);
+}
+.decision-where {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  margin-top: var(--space-2);
 }
 .decision form {
   display: flex;
@@ -1383,16 +1489,15 @@ details[open]:not(.disclosure-row) > summary::before {
   min-width: calc(100rem / 14);
   font-size: var(--font-small);
 }
-.decision > [role="alert"] {
-  flex-shrink: 0;
-}
 /* An approval's headline: the command or change, where, and what it risks. */
 .decision-command {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 .decision-folder {
-  margin-top: var(--space-2);
+  flex: 0 1 auto;
+  min-width: 0;
+  margin: 0;
   color: var(--muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1400,9 +1505,10 @@ details[open]:not(.disclosure-row) > summary::before {
 }
 .risk-chips {
   display: flex;
+  flex: none;
   flex-wrap: wrap;
   gap: var(--space-2);
-  margin: var(--space-3) 0 0;
+  margin: 0;
   padding: 0;
   list-style: none;
 }
@@ -1418,10 +1524,43 @@ details[open]:not(.disclosure-row) > summary::before {
 .decision .decision-card {
   flex-direction: column;
   align-items: stretch;
+  gap: var(--space-2);
 }
-.decision-card .dialog-actions > button {
-  min-height: calc(var(--control) * 1.2);
-  padding-inline: var(--space-6);
+/* Deny · Allow for session · Allow once: one row of equal buttons. */
+.decision-answers {
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  gap: var(--space-2);
+}
+.decision-answers > button {
+  min-width: 0;
+  padding-inline: var(--space-2);
+  font-size: var(--font-small);
+}
+.decision-more > summary {
+  width: fit-content;
+  color: var(--muted);
+  font-size: var(--font-micro);
+  cursor: pointer;
+}
+.decision-more-body {
+  display: grid;
+  gap: var(--space-3);
+  padding-top: var(--space-3);
+  font-size: var(--font-small);
+}
+.decision-more-body > .dialog-actions {
+  justify-content: flex-start;
+}
+.decision-guidance {
+  display: flex;
+  align-items: end;
+  gap: var(--gap);
+}
+.decision-guidance > label {
+  flex: 1;
+  min-width: 0;
 }
 .decision-always {
   display: flex;

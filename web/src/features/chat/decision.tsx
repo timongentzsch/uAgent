@@ -96,14 +96,16 @@ export default function Decision({
   );
   // Each new decision (this panel is keyed by it) takes focus, so a
   // keyboard lands on what the agent waits for; only someone typing
-  // elsewhere keeps their place.
+  // elsewhere keeps their place. The composer's input, held read-only
+  // below a pending decision, is not a place being typed in.
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     const focused = document.activeElement;
     const typing =
       focused instanceof HTMLElement &&
       (focused.isContentEditable ||
-        (focused.matches("input, textarea") && focused.isConnected));
+        (focused.matches("input:not([readonly]), textarea:not([readonly])") &&
+          focused.isConnected));
     if (!typing) heading.current?.focus({ preventScroll: true });
   }, []);
   const title =
@@ -119,14 +121,30 @@ export default function Decision({
     /^[+-]/m.test(preview) &&
     (/^@@ /m.test(preview) || /\(\+\d+ -\d+\)$/.test(preview.split("\n")[0]));
   const card = !!approval && keyed;
+  // Anything past the three answers folds under More options.
+  const extra = options.filter((item) => !CARD.has(item.value));
+  const more = offers(ALWAYS) || offers(GUIDANCE) || extra.length > 0;
   return (
     <section class="decision" aria-label="Pending decision">
-      {/* Announced at once, with what it is about. */}
-      <div role="alert">
-        <h2 ref={heading} tabIndex={-1}>
-          {title}
-        </h2>
-        {approval?.tool && <span class="sr-only">: {approval.tool}</span>}
+      <div class="decision-head">
+        {/* Announced at once, with what it is about. */}
+        <div role="alert">
+          <h2 ref={heading} tabIndex={-1}>
+            {title}
+          </h2>
+          {approval?.tool && <span class="sr-only">: {approval.tool}</span>}
+        </div>
+        {approval && !asking && (
+          <strong
+            class="decision-tool"
+            title={approval.mandatory_reason || undefined}
+          >
+            {approval.tool}
+            {approval.mandatory_human
+              ? ` · ${approval.mandatory_reason || "explicit approval required"}`
+              : ""}
+          </strong>
+        )}
       </div>
       {pending.route === "coordinator" && (
         <p class="decision-note">You can still answer first.</p>
@@ -136,30 +154,29 @@ export default function Decision({
         <div class="decision-preview">
           {approval && (
             <>
-              <strong>
-                {approval.tool}
-                {approval.mandatory_human
-                  ? ` · ${approval.mandatory_reason || "explicit approval required"}`
-                  : ""}
-              </strong>
               {diff ? (
                 <DiffView text={preview} />
               ) : (
                 <pre class="decision-command">{preview}</pre>
               )}
-              {cwd && (
-                <p class="decision-folder" title={cwd}>
-                  in {cwd}
-                </p>
-              )}
-              {!!approval.risks?.length && (
-                <ul class="risk-chips" aria-label="Risks">
-                  {approval.risks.map((risk) => (
-                    <li class="risk-chip" data-risk={risk.id} key={risk.id}>
-                      {risk.label}
-                    </li>
-                  ))}
-                </ul>
+              {/* Where it runs and what it risks share one line. */}
+              {(cwd || !!approval.risks?.length) && (
+                <div class="decision-where">
+                  {cwd && (
+                    <p class="decision-folder" title={cwd}>
+                      in {cwd}
+                    </p>
+                  )}
+                  {!!approval.risks?.length && (
+                    <ul class="risk-chips" aria-label="Risks">
+                      {approval.risks.map((risk) => (
+                        <li class="risk-chip" data-risk={risk.id} key={risk.id}>
+                          {risk.label}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               )}
             </>
           )}
@@ -197,17 +214,19 @@ export default function Decision({
             void send(guidance);
           }}
         >
-          {offers(ALWAYS) && (
-            <label class="decision-always">
-              <Input
-                type="checkbox"
-                checked={always}
-                onChange={(event) => setAlways(event.currentTarget.checked)}
-              />
-              Always allow this exact action here
-            </label>
-          )}
-          <Actions>
+          {/* The three answers in one row of equal buttons, the usual one
+              last, nearest the thumb. */}
+          <div class="decision-answers">
+            {offers(DENY) && (
+              <Button disabled={idle} onClick={() => void send(DENY)}>
+                Deny
+              </Button>
+            )}
+            {offers(ALLOW_SESSION) && (
+              <Button disabled={idle} onClick={() => void send(ALLOW_SESSION)}>
+                Allow for session
+              </Button>
+            )}
             {offers(ALLOW_ONCE) && (
               <Button
                 variant="primary"
@@ -217,45 +236,58 @@ export default function Decision({
                 Allow once
               </Button>
             )}
-            {offers(ALLOW_SESSION) && (
-              <Button disabled={idle} onClick={() => void send(ALLOW_SESSION)}>
-                Allow for session
-              </Button>
-            )}
-            {options
-              .filter((item) => !CARD.has(item.value))
-              .map((item) => (
-                <Button
-                  key={item.value}
-                  disabled={idle}
-                  onClick={() => void send(item.value)}
-                >
-                  {item.label}
-                </Button>
-              ))}
-            {offers(DENY) && (
-              <Button disabled={idle} onClick={() => void send(DENY)}>
-                Deny
-              </Button>
-            )}
-            {offers(GUIDANCE) && (
-              <Button
-                variant="quiet"
-                aria-expanded={reply === GUIDANCE}
-                disabled={idle}
-                onClick={() => setReply(reply === GUIDANCE ? DENY : GUIDANCE)}
-              >
-                + guidance
-              </Button>
-            )}
-          </Actions>
-          {reply === GUIDANCE && (
-            <>
-              {guidanceInput}
-              <Button type="submit" variant="primary" disabled={idle}>
-                Send guidance
-              </Button>
-            </>
+          </div>
+          {more && (
+            <details class="decision-more">
+              <summary>More options</summary>
+              <div class="decision-more-body">
+                {offers(ALWAYS) && (
+                  <label class="decision-always">
+                    <Input
+                      type="checkbox"
+                      checked={always}
+                      onChange={(event) =>
+                        setAlways(event.currentTarget.checked)
+                      }
+                    />
+                    Always allow this exact action here
+                  </label>
+                )}
+                {(extra.length > 0 || offers(GUIDANCE)) && (
+                  <Actions>
+                    {extra.map((item) => (
+                      <Button
+                        key={item.value}
+                        disabled={idle}
+                        onClick={() => void send(item.value)}
+                      >
+                        {item.label}
+                      </Button>
+                    ))}
+                    {offers(GUIDANCE) && (
+                      <Button
+                        variant="quiet"
+                        aria-expanded={reply === GUIDANCE}
+                        disabled={idle}
+                        onClick={() =>
+                          setReply(reply === GUIDANCE ? DENY : GUIDANCE)
+                        }
+                      >
+                        + guidance
+                      </Button>
+                    )}
+                  </Actions>
+                )}
+                {reply === GUIDANCE && (
+                  <div class="decision-guidance">
+                    {guidanceInput}
+                    <Button type="submit" variant="primary" disabled={idle}>
+                      Send guidance
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </details>
           )}
         </form>
       ) : keyed ? (

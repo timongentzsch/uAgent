@@ -73,6 +73,8 @@ export default function Composer({
   showStatistics,
   openBrowser,
   zoom,
+  stopped,
+  resume,
 }: {
   session: Session;
   commands: SlashCommand[];
@@ -95,9 +97,16 @@ export default function Composer({
   showStatistics: () => void;
   openBrowser: () => void;
   zoom: number;
+  // Why the last turn stopped short, while nothing has been sent since.
+  stopped?: string;
+  // Continues that stopped turn.
+  resume?: () => void;
 }) {
   const input = useRef<HTMLTextAreaElement>(null);
   const recalled = useRef(-1);
+  // A send empties the draft and turns Send into Stop under the same
+  // finger: a second tap that soon is the first one repeated, not a stop.
+  const lastSent = useRef(0);
   const [renaming, setRenaming] = useState<string | null>(null);
   // @-mention over attached files: caret-driven, independent of the
   // slash menu (slash only matches a lone leading /command).
@@ -182,6 +191,11 @@ export default function Composer({
     ? mentionCandidates.length
     : suggestions.count;
   const send = (event: Event, queue = false) => {
+    // A pending decision holds the draft until it is answered.
+    if (snapshot?.pending) {
+      event.preventDefault();
+      return;
+    }
     const slash = parseSlash(commands, draft.text);
     if (slash.name === "/attach" && !slash.argument) {
       event.preventDefault();
@@ -201,6 +215,7 @@ export default function Composer({
         }
       }
       recalled.current = -1;
+      lastSent.current = performance.now();
       submit(event, queue);
     }
   };
@@ -227,7 +242,7 @@ export default function Composer({
   // Reconnecting keeps the last known request and activities on screen,
   // inert (their controls follow `online`), so resuming never reflows.
   const pending = snapshot?.pending;
-  // Focus left with the decision panel returns to the composer it replaced.
+  // Focus left with the decision card returns to the input below it.
   const decided = useRef(!!pending);
   useEffect(() => {
     if (!pending && decided.current && document.activeElement === document.body)
@@ -244,6 +259,22 @@ export default function Composer({
     ? (session?.status || "").charAt(0).toUpperCase() +
       (session?.status || "").slice(1)
     : "";
+  const empty = !draft.text.trim() && !draft.files.length;
+  // The one primary control: Stop while a turn runs and there is nothing
+  // to send, Send otherwise. Its icons cross-fade in place.
+  const stopping = running && empty;
+  const unsendable = !online || busy || uploading || empty || !!pending;
+  const stopLabel = !stopped
+    ? ""
+    : stopped === "cancelled"
+      ? "Stopped"
+      : stopped === "error"
+        ? "Stopped by an error"
+        : `Stopped: ${stopped.replaceAll("_", " ")}`;
+  // The status line's one action slot: Queue next while a turn runs with
+  // a draft, Continue after a stop. It shows by opacity, never by reflow.
+  const queueing = running && !pending && !empty;
+  const continuing = !running && !pending && !!stopLabel && !!resume;
   const permission = state?.permissions;
   const effective =
     permission?.mode === "default" ? permission.default : permission?.mode;
@@ -256,6 +287,33 @@ export default function Composer({
       {!following && !pending && (
         <JumpToLatest unseen={unseen} onClick={jump} />
       )}
+      {pending?.kind === "browser" ? (
+        <section class="decision" aria-label="Browser needs you">
+          <h2>Continue in the browser</h2>
+          <p>{pending.prompt || "The agent needs you to finish in Chrome."}</p>
+          <Button variant="primary" disabled={!online} onClick={openBrowser}>
+            Open browser
+          </Button>
+        </section>
+      ) : (
+        pending && (
+          <Deferred
+            load={decisionPanel}
+            key={pending.id}
+            pending={pending}
+            session={session.id}
+            cwd={session.cwd}
+            act={act}
+            online={online}
+            report={report}
+            fallback={
+              <section class="decision">
+                <Spinner label="Loading decision…" surface />
+              </section>
+            }
+          />
+        )
+      )}
       {/* The state above the input: counts live on ActivityButton below it. */}
       <div class="activities">
         <div class="status-line">
@@ -266,38 +324,42 @@ export default function Composer({
               }
               running={running}
               pending={pending}
+              stopped={continuing ? stopLabel : undefined}
               present={online && !!session?.presence}
               connection={connection}
               announce
             />
           </span>
+          {(running || continuing) && (
+            <span class="status-action">
+              {continuing ? (
+                <Button
+                  variant="quiet"
+                  size="compact"
+                  disabled={!online}
+                  onClick={resume}
+                >
+                  Continue
+                </Button>
+              ) : (
+                <Button
+                  variant="quiet"
+                  size="compact"
+                  data-shown={queueing}
+                  aria-label="Queue next"
+                  aria-keyshortcuts="Alt+Enter"
+                  title="Send when this turn ends (Alt+Enter)"
+                  disabled={!queueing || !online || busy || uploading}
+                  onClick={(event) => send(event, true)}
+                >
+                  Queue next <kbd aria-hidden="true">⌥↵</kbd>
+                </Button>
+              )}
+            </span>
+          )}
         </div>
       </div>
-      {pending?.kind === "browser" ? (
-        <section class="decision" aria-label="Browser needs you">
-          <h2>Continue in the browser</h2>
-          <p>{pending.prompt || "The agent needs you to finish in Chrome."}</p>
-          <Button variant="primary" disabled={!online} onClick={openBrowser}>
-            Open browser
-          </Button>
-        </section>
-      ) : pending ? (
-        <Deferred
-          load={decisionPanel}
-          key={pending.id}
-          pending={pending}
-          session={session.id}
-          cwd={session.cwd}
-          act={act}
-          online={online}
-          report={report}
-          fallback={
-            <section class="decision">
-              <Spinner label="Loading decision…" surface />
-            </section>
-          }
-        />
-      ) : !session.generation ? (
+      {!session.generation ? (
         <Button
           variant="primary"
           disabled={!online}
@@ -345,8 +407,13 @@ export default function Composer({
             id="prompt"
             inputRef={input}
             rows={1}
+            readOnly={!!pending}
             placeholder={
-              running ? "Add guidance… (Esc to stop)" : "Ask µAgent…"
+              pending
+                ? "Decide above to continue"
+                : running
+                  ? "Add guidance… (Esc to stop)"
+                  : "Ask µAgent…"
             }
             value={draft.text}
             onInput={(event) => {
@@ -373,7 +440,7 @@ export default function Composer({
             onKeyDown={(event) => {
               if (mentionOpen && mentionKeyDown(event)) return;
               // Alt+Enter holds the message until the turn ends.
-              if (running && event.key === "Enter" && event.altKey) {
+              if (queueing && event.key === "Enter" && event.altKey) {
                 event.preventDefault();
                 if (!event.repeat) send(event, true);
                 return;
@@ -462,14 +529,17 @@ export default function Composer({
               ))}
             </div>
           )}
-          <div class="composer-actions">
+          {/* Fixed slots: Attach, Model (the only one that flexes),
+              Permissions, then the primary. A pending decision dims all but
+              Permissions, which can still settle it for the conversation. */}
+          <div class="composer-actions" data-held={!!pending || undefined}>
             <label class="file-button icon-button" title="Attach files">
               <Paperclip />
               <Input
                 type="file"
                 aria-label="Attach files"
                 multiple
-                disabled={!online || uploading}
+                disabled={!online || uploading || !!pending}
                 onChange={(event) => {
                   upload([...(event.currentTarget.files || [])]);
                   event.currentTarget.value = "";
@@ -481,7 +551,7 @@ export default function Composer({
               session={session}
               state={state}
               online={online}
-              running={running}
+              running={running || !!pending}
             />
             <SheetButton
               label="Permissions"
@@ -530,42 +600,27 @@ export default function Composer({
                 </Field>
               )}
             </SheetButton>
-            {running && (
-              <Button
-                class="queue-next"
-                title="Send when this turn ends (Alt+Enter)"
-                disabled={
-                  !online ||
-                  busy ||
-                  uploading ||
-                  (!draft.text.trim() && !draft.files.length)
-                }
-                onClick={(event) => send(event, true)}
-              >
-                Queue next
-              </Button>
-            )}
-            {running && (
-              <IconButton
-                label="Stop"
-                disabled={!online}
-                onClick={() => act("interrupt").catch(report)}
-              >
-                <Square />
-              </IconButton>
-            )}
             <IconButton
-              type="submit"
+              class="composer-primary"
+              data-mode={stopping ? "stop" : "send"}
+              type={stopping ? "button" : "submit"}
               variant="primary"
-              label={running ? "Send guidance" : "Send"}
-              disabled={
-                !online ||
-                busy ||
-                uploading ||
-                (!draft.text.trim() && !draft.files.length)
+              label={stopping ? "Stop" : running ? "Send guidance" : "Send"}
+              title={
+                stopping ? "Stop (Esc)" : running ? "Send guidance" : "Send"
+              }
+              disabled={stopping ? !online || !!pending : unsendable}
+              onClick={
+                stopping
+                  ? () => {
+                      if (performance.now() - lastSent.current < 500) return;
+                      act("interrupt").catch(report);
+                    }
+                  : undefined
               }
             >
-              <ArrowUp />
+              <ArrowUp class="send-icon" aria-hidden="true" />
+              <Square class="stop-icon" aria-hidden="true" />
             </IconButton>
           </div>
         </form>

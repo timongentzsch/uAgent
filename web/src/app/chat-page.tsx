@@ -172,6 +172,17 @@ export default function ChatPage({
   }
   if (!active) return null;
 
+  // The last turn stopped short, and nothing new has been sent since: the
+  // status line above the composer says so and offers Continue.
+  const stop = snapshot?.state?.stop;
+  const stopped =
+    stop &&
+    stop.reason !== "completed" &&
+    !session?.turn_active &&
+    !snapshot?.pending &&
+    !blocks.at(-1)?.id.startsWith("outgoing-")
+      ? stop.reason
+      : undefined;
   // The conversation's composer; before the session is known, the same
   // composer drawn from a sample (see <Placeholder>).
   const composerFor = (item: Session) => (
@@ -206,6 +217,8 @@ export default function ChatPage({
       showContext={showContext}
       zoom={zoom}
       openBrowser={() => setModal({ type: "browser", handoff: true })}
+      stopped={stopped}
+      resume={actions.resume}
     />
   );
   // A coordinator's board and escalations read the same threads.

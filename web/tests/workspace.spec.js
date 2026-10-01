@@ -186,7 +186,7 @@ test("unread completions, background activity and conversation lifecycle", async
   await page.getByLabel("Message or guidance").fill("Unread completion probe");
   await page.getByRole("button", { name: "Send", exact: true }).click();
   await expect(
-    page.getByRole("button", { name: "Send guidance", exact: true }),
+    page.getByRole("button", { name: "Stop", exact: true }),
   ).toBeVisible();
   await page.evaluate((hash) => {
     location.hash = hash;

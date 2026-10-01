@@ -60,6 +60,7 @@ export function ActivityStatus({
   running,
   items = [],
   pending,
+  stopped,
   announce = false,
   present = false,
   connection,
@@ -68,6 +69,9 @@ export function ActivityStatus({
   running?: boolean;
   items?: Activity[];
   pending?: Pending | boolean | null;
+  // Why the last turn stopped short ("Stopped"): shown and announced in
+  // place of the phase until something new is sent.
+  stopped?: string;
   announce?: boolean;
   present?: boolean;
   connection?: ConnectionPhase;
@@ -84,19 +88,23 @@ export function ActivityStatus({
     ? "Needs your input"
     : running
       ? "Responding"
-      : responded.current
-        ? "Response complete"
-        : "";
+      : stopped
+        ? stopped
+        : responded.current
+          ? "Response complete"
+          : "";
+  const caption = pending
+    ? "Needs your input"
+    : !running && stopped
+      ? stopped
+      : phase;
   return (
     <span class="activity-status">
       <StatusLed
         state={running && !pending ? "running" : present ? "active" : "idle"}
       />
-      <span
-        class="activity-caption"
-        title={pending ? "Needs your input" : phase}
-      >
-        {pending ? "Needs your input" : phase}
+      <span class="activity-caption" title={caption}>
+        {caption}
       </span>
       {counts && <span class="activity-counts"> · {counts}</span>}
       {announce && (

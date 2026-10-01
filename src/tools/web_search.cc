@@ -103,16 +103,12 @@ WebSearchRoute SelectWebSearchRoute(
   return {};
 }
 
-json WebSearchRequest(const WebSearchRoute& route, const RuntimeConfig& config,
-                      const std::string& prompt) {
+json WebSearchRequest(const WebSearchRoute& route, const std::string& prompt) {
   json parameters = {
-      {"engine", config.web_search_engine},
+      {"engine", "auto"},
       {"max_results", kWebSearchMaxResults},
       {"max_total_results", kWebSearchMaxResults * kWebSearchMaxUses},
       {"max_uses", kWebSearchMaxUses}};
-  if (!config.web_search_context_size.empty()) {
-    parameters["search_context_size"] = config.web_search_context_size;
-  }
   json body = {
       {"model", route.model},
       {"stream", false},
@@ -170,7 +166,7 @@ Tool WebSearchTool(Api& api, UsageAccumulator& usage,
                              "only source-supported claims; preserve provider/"
                              "model scope and omit unasked pricing:\n" +
                              numbered;
-        json body = WebSearchRequest(active, api.config, prompt);
+        json body = WebSearchRequest(active, prompt);
         int64_t timeout = context.RemainingSeconds(kWebSearchTimeoutSeconds);
         auto started = std::chrono::steady_clock::now();
         DebugLog("side_request", {{"kind", "web_search"},

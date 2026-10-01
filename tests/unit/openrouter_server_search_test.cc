@@ -194,8 +194,7 @@ void TestOpenRouterServerSearch() {
   CHECK(scoped.api_key == "seek-key");
   CHECK(scoped.model == "finder-model");
   CHECK(scoped.effort == "high");
-  CHECK(WebSearchRequest(scoped, scoped_config, "q")["reasoning"]["effort"] ==
-        "high");
+  CHECK(WebSearchRequest(scoped, "q")["reasoning"]["effort"] == "high");
   // A selection scoped to a provider that does not speak the OpenRouter
   // protocol disables search rather than searching somewhere else.
   RuntimeConfig foreign_config = scoped_config;
@@ -239,22 +238,18 @@ void TestOpenRouterServerSearch() {
   Api disabled_api(disabled_config);
   CHECK(!SelectWebSearchRoute(disabled_api, {}).Valid());
 
-  RuntimeConfig openrouter_config;
-  openrouter_config.web_search_engine = "exa";
-  openrouter_config.web_search_context_size = "high";
   WebSearchRoute openrouter_route{"https://openrouter.ai/api/v1", "key",
                                   "vendor/search-model", ""};
-  json openrouter_body =
-      WebSearchRequest(openrouter_route, openrouter_config, "current facts");
+  json openrouter_body = WebSearchRequest(openrouter_route, "current facts");
   CHECK(openrouter_body["model"] == "vendor/search-model");
   CHECK(openrouter_body["tools"].size() == 1);
   CHECK(openrouter_body["tools"][0]["type"] == "openrouter:web_search");
-  CHECK(openrouter_body["tools"][0]["parameters"]["engine"] == "exa");
+  CHECK(openrouter_body["tools"][0]["parameters"]["engine"] == "auto");
   CHECK(openrouter_body["tools"][0]["parameters"]["max_uses"] == 3);
   CHECK(openrouter_body["tools"][0]["parameters"]["max_results"] == 5);
   CHECK(openrouter_body["tools"][0]["parameters"]["max_total_results"] == 15);
-  CHECK(openrouter_body["tools"][0]["parameters"]["search_context_size"] ==
-        "high");
+  CHECK(!openrouter_body["tools"][0]["parameters"].contains(
+      "search_context_size"));
   CHECK(openrouter_body["max_tool_calls"] == 3);
   UsageAccumulator side_usage;
   Tool search_tool = WebSearchTool(api, side_usage, {});

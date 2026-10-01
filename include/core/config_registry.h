@@ -88,10 +88,6 @@ inline constexpr std::string_view kWebSearchBackends[] = {"auto", "openrouter",
                                                           "off"};
 inline constexpr std::string_view kApprovalModes[] = {"ask", "auto", "yolo"};
 inline constexpr std::string_view kThreadEnvironments[] = {"worktree", "local"};
-inline constexpr std::string_view kWebSearchEngines[] = {
-    "auto", "native", "exa", "firecrawl", "parallel", "perplexity"};
-inline constexpr std::string_view kWebSearchContextSizes[] = {"low", "medium",
-                                                              "high"};
 
 // Default model route when nothing is configured: DeepSeek flash through
 // OpenRouter auto-routing. One constant so the provider template and side-model
@@ -315,9 +311,6 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
     registry::Int("UAGENT_TOOL_TIMEOUT", "tool_timeout_s", 30, 0, kConfigAnyMax,
                   ReloadPolicy::kNextUserTurn, "budget",
                   "seconds one tool call may run"),
-    registry::Int("UAGENT_TOOL_CONCURRENCY", {}, 4, 1, kFgMax,
-                  ReloadPolicy::kRestartRequired, "budget",
-                  "parallel foreground tool workers"),
     registry::Int("UAGENT_AUTO_COMPACT_PCT", {}, 85, kConfigAnyMin,
                   kConfigAnyMax, ReloadPolicy::kRestartRequired, "budget",
                   "context percentage that triggers compaction"),
@@ -333,9 +326,6 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
     registry::Int("UAGENT_READ_FILE_LINES", {}, 1000, kConfigAnyMin,
                   kConfigAnyMax, ReloadPolicy::kRestartRequired, "tools",
                   "default lines returned by read_path"),
-    registry::Int("UAGENT_MAX_BACKGROUND_JOBS", {}, 8, 1, kBgMax,
-                  ReloadPolicy::kRestartRequired, "tools",
-                  "concurrent detached activities"),
 
     // OS sandbox for agent-run commands. Restart-required because the policy is
     // built once and every spawn is wrapped with it; a mid-session change would
@@ -414,18 +404,6 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                           "search", "model route used for search"),
             "conversation model on OpenRouter, else the default route"),
         "Web search model", "Answers web lookups"),
-    registry::Choice(
-        registry::Str("UAGENT_WEB_SEARCH_ENGINE", "web_search_engine", "auto",
-                      ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
-                      "search",
-                      "auto, native, exa, firecrawl, parallel, perplexity"),
-        kWebSearchEngines),
-    registry::Choice(
-        registry::Str("UAGENT_WEB_SEARCH_CONTEXT_SIZE",
-                      "web_search_context_size", "",
-                      ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
-                      "search", "low, medium, or high native search context"),
-        kWebSearchContextSizes),
 
     // Memory.
     registry::Bul("UAGENT_MEMORY", "memory_enabled", true,
@@ -434,9 +412,6 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
     registry::Bul("UAGENT_MEMORY_GENERATE", "memory_generate", true,
                   ReloadPolicy::kRestartRequired, "memory",
                   "run the background memory extractor"),
-    registry::Int("UAGENT_MEMORY_IDLE_SECONDS", {}, int64_t{6} * 60 * 60, 0,
-                  int64_t{48} * 60 * 60, ReloadPolicy::kRestartRequired,
-                  "memory", "idle seconds before background extraction runs"),
     registry::Named(
         registry::Fallback(
             registry::Str("UAGENT_MEMORY_MODEL", {}, "",
@@ -459,9 +434,6 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
     registry::Int("UAGENT_MCP_TIMEOUT", "mcp_timeout_s", 60, 1, kConfigAnyMax,
                   ReloadPolicy::kRestartRequired, "mcp",
                   "seconds allowed for one MCP call"),
-    registry::Int("UAGENT_MCP_STARTUP_GRACE", "mcp_startup_grace_s", 2, 0,
-                  kConfigAnyMax, ReloadPolicy::kRestartRequired, "mcp",
-                  "shared startup seconds for optional MCP servers"),
     registry::Str("UAGENT_MCP_ROOTS", "mcp_roots", "",
                   ReloadPolicy::kRestartRequired, Sensitivity::kPublic, "mcp",
                   "roots advertised to MCP servers"),
@@ -480,11 +452,6 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
         "Image reader",
         "Describes attached images when the conversation model cannot see "
         "them"),
-    registry::Fallback(
-        registry::Str("UAGENT_IMAGE_DETAIL", {}, "",
-                      ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
-                      "media", "low, high, or original image detail"),
-        "provider default"),
     registry::Str("UAGENT_PDF_ENGINE", "pdf_engine", "cloudflare-ai",
                   ReloadPolicy::kRestartRequired, Sensitivity::kPublic, "media",
                   "OpenRouter file-parser engine for documents"),

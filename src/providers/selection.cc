@@ -315,7 +315,7 @@ ModelSearch SearchModels(const Api& api, const std::vector<ModelRoute>& routes,
   std::vector<CatalogModels> responses(catalogs.size());
   std::atomic<size_t> next{0};
   size_t worker_count =
-      std::min(catalogs.size(), static_cast<size_t>(ToolConcurrency()));
+      std::min(catalogs.size(), static_cast<size_t>(kToolConcurrency));
   std::vector<std::future<void>> workers;
   workers.reserve(worker_count);
   for (size_t worker = 0; worker < worker_count; ++worker) {

@@ -17,6 +17,11 @@ names one loads as before and the line has no effect.
 - Merged: `UAGENT_FIRST_EVENT_TIMEOUT` and `UAGENT_STREAM_IDLE_TIMEOUT` are
   one `UAGENT_STREAM_TIMEOUT` (300 s), the stream silence allowed before the
   first event or between events.
+- Fixed values now, at what was each default: `UAGENT_TOOL_CONCURRENCY` (4),
+  `UAGENT_MAX_BACKGROUND_JOBS` (8), `UAGENT_MCP_STARTUP_GRACE` (2 s),
+  `UAGENT_MEMORY_IDLE_SECONDS` (6 hours), `UAGENT_WEB_SEARCH_ENGINE` (`auto`),
+  and `UAGENT_WEB_SEARCH_CONTEXT_SIZE` and `UAGENT_IMAGE_DETAIL` (the
+  provider's default).
 
 ### Added
 

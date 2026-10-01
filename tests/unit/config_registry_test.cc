@@ -52,13 +52,10 @@ constexpr GetterCheck kIntGetters[] = {
     {"UAGENT_TOOL_RESULT_CHARS", ToolResultCap},
     {"UAGENT_AUTO_COMPACT_PCT", AutoCompactPct},
     {"UAGENT_AUTO_COMPACT_TOKENS", AutoCompactTokens},
-    {"UAGENT_TOOL_CONCURRENCY", ToolConcurrency},
     {"UAGENT_SUBAGENT_MAX_STEPS", SubagentMaxSteps},
     {"UAGENT_SUBAGENT_MAX_TOOL_CALLS", SubagentMaxToolCalls},
     {"UAGENT_MAX_TOKENS", MaxOutputTokens},
     {"UAGENT_READ_FILE_LINES", ReadFileLines},
-    {"UAGENT_MEMORY_IDLE_SECONDS", MemoryIdleSeconds},
-    {"UAGENT_MAX_BACKGROUND_JOBS", MaxBackgroundJobs},
     {"UAGENT_ATTACHMENT_MB", AttachmentLimitMb},
     {"UAGENT_CONTEXT", ContextWindow},
     {"UAGENT_HISTORY_DAYS", HistoryDays},
@@ -158,9 +155,11 @@ void TestConfigRegistryContract() {
   }
 
   // Bounds are enforced, not merely documented.
-  ScopedEnv concurrency("UAGENT_TOOL_CONCURRENCY", "100000");
-  CHECK(ToolConcurrency() ==
-        FindConfigDescriptor("UAGENT_TOOL_CONCURRENCY")->maximum);
+  {
+    ScopedEnv attachment("UAGENT_ATTACHMENT_MB", "99999999999999999");
+    CHECK(AttachmentLimitMb() ==
+          FindConfigDescriptor("UAGENT_ATTACHMENT_MB")->maximum);
+  }
   ScopedEnv attachment("UAGENT_ATTACHMENT_MB", "0");
   CHECK(AttachmentLimitMb() ==
         FindConfigDescriptor("UAGENT_ATTACHMENT_MB")->minimum);

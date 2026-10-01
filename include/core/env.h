@@ -25,7 +25,6 @@ int64_t ToolResultCap();
 int64_t ToolBatchResultCap();
 int64_t AutoCompactPct();
 int64_t AutoCompactTokens();
-int64_t ToolConcurrency();
 // Delegation depth: 0 is the interactive coordinator. A subagent may delegate
 // again while it stays under the cap, so nesting is bounded, not banned.
 int64_t AgentDepth();
@@ -58,8 +57,6 @@ inline bool ValidOpenRouterVariant(std::string_view variant) {
 
 // Bounded tunables. Fixed ceilings live in include/core/limits.h.
 int64_t ReadFileLines();
-int64_t MemoryIdleSeconds();
-int64_t MaxBackgroundJobs();
 int64_t AttachmentLimitMb();
 int64_t ContextWindow();
 int64_t HistoryDays();
@@ -118,8 +115,6 @@ struct RuntimeConfig : TurnBudgets {
       RegistryDefault<int64_t>("UAGENT_REQUEST_TIMEOUT");
   int64_t tool_timeout_s = RegistryDefault<int64_t>("UAGENT_TOOL_TIMEOUT");
   int64_t mcp_timeout_s = RegistryDefault<int64_t>("UAGENT_MCP_TIMEOUT");
-  int64_t mcp_startup_grace_s =
-      RegistryDefault<int64_t>("UAGENT_MCP_STARTUP_GRACE");
   std::string approval{RegistryDefault<std::string_view>("UAGENT_APPROVAL")};
   std::string permission_model{
       RegistryDefault<std::string_view>("UAGENT_PERMISSION_MODEL")};
@@ -133,10 +128,6 @@ struct RuntimeConfig : TurnBudgets {
       RegistryDefault<std::string_view>("UAGENT_WEB_SEARCH_BACKEND")};
   std::string web_search_model{
       RegistryDefault<std::string_view>("UAGENT_WEB_SEARCH_MODEL")};
-  std::string web_search_engine{
-      RegistryDefault<std::string_view>("UAGENT_WEB_SEARCH_ENGINE")};
-  std::string web_search_context_size{
-      RegistryDefault<std::string_view>("UAGENT_WEB_SEARCH_CONTEXT_SIZE")};
   std::string image_model{
       RegistryDefault<std::string_view>("UAGENT_IMAGE_MODEL")};
   std::string title_model{

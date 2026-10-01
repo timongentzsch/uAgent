@@ -45,10 +45,6 @@ int64_t AutoCompactTokens() {
   return LongSetting(Cfg("UAGENT_AUTO_COMPACT_TOKENS"));
 }
 
-int64_t ToolConcurrency() {
-  return LongSetting(Cfg("UAGENT_TOOL_CONCURRENCY"));
-}
-
 int64_t AgentDepth() { return EnvLong("UAGENT_INTERNAL_DEPTH", 0); }
 
 bool CanDelegate() {
@@ -111,14 +107,6 @@ std::string PromptOverlayPath() {
 }
 
 int64_t ReadFileLines() { return LongSetting(Cfg("UAGENT_READ_FILE_LINES")); }
-
-int64_t MemoryIdleSeconds() {
-  return LongSetting(Cfg("UAGENT_MEMORY_IDLE_SECONDS"));
-}
-
-int64_t MaxBackgroundJobs() {
-  return LongSetting(Cfg("UAGENT_MAX_BACKGROUND_JOBS"));
-}
 
 int64_t AttachmentLimitMb() { return LongSetting(Cfg("UAGENT_ATTACHMENT_MB")); }
 
@@ -197,7 +185,6 @@ constexpr FieldBinding<int64_t> kLongOptions[] = {
     {&Cfg("UAGENT_SESSION_TOKEN_BUDGET"), &RuntimeConfig::session_token_budget},
     {&Cfg("UAGENT_TOOL_TIMEOUT"), &RuntimeConfig::tool_timeout_s},
     {&Cfg("UAGENT_MCP_TIMEOUT"), &RuntimeConfig::mcp_timeout_s},
-    {&Cfg("UAGENT_MCP_STARTUP_GRACE"), &RuntimeConfig::mcp_startup_grace_s},
 };
 constexpr FieldBinding<double> kDoubleOptions[] = {
     {&Cfg("UAGENT_MAX_TURN_COST"), &RuntimeConfig::max_turn_cost},
@@ -211,9 +198,6 @@ constexpr FieldBinding<std::string> kStringOptions[] = {
     {&Cfg("UAGENT_OPENROUTER_VARIANT"), &RuntimeConfig::openrouter_variant},
     {&Cfg("UAGENT_WEB_SEARCH_BACKEND"), &RuntimeConfig::web_search_backend},
     {&Cfg("UAGENT_WEB_SEARCH_MODEL"), &RuntimeConfig::web_search_model},
-    {&Cfg("UAGENT_WEB_SEARCH_ENGINE"), &RuntimeConfig::web_search_engine},
-    {&Cfg("UAGENT_WEB_SEARCH_CONTEXT_SIZE"),
-     &RuntimeConfig::web_search_context_size},
     {&Cfg("UAGENT_IMAGE_MODEL"), &RuntimeConfig::image_model},
     {&Cfg("UAGENT_TITLE_MODEL"), &RuntimeConfig::title_model},
     {&Cfg("UAGENT_PDF_ENGINE"), &RuntimeConfig::pdf_engine},

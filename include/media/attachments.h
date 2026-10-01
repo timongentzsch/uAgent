@@ -36,8 +36,6 @@ std::string SvgMime(std::string_view bytes);
 std::string AudioMime(std::string_view bytes);
 std::string VideoMime(std::string_view bytes);
 
-std::string ImageDetail();
-
 bool InspectAttachment(std::string path, Attachment& out, std::string& error);
 
 // Route capability is passed explicitly; attachment helpers do not maintain a

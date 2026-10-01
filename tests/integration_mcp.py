@@ -430,7 +430,6 @@ def test_optional_mcp_servers_share_startup_grace(root, home, *, binary):
 
     with Server([tool_call("fast_echo", {}), final]) as server:
         env = base_env(home, server.url)
-        env["UAGENT_MCP_STARTUP_GRACE"] = "1"
         env["UAGENT_MCP_TIMEOUT"] = "8"
         started = time.monotonic()
         result = run(
@@ -439,7 +438,7 @@ def test_optional_mcp_servers_share_startup_grace(root, home, *, binary):
         elapsed = time.monotonic() - started
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "optional-ok", result.stdout)
-        assert_true(elapsed < budget(4), f"optional startup took {elapsed:.2f}s")
+        assert_true(elapsed < budget(5), f"optional startup took {elapsed:.2f}s")
 
 
 def test_optional_mcp_refresh_never_blocks_a_model_step(root, home, *, binary):
@@ -482,7 +481,6 @@ def test_optional_mcp_refresh_never_blocks_a_model_step(root, home, *, binary):
 
     with Server([route]) as server:
         env = base_env(home, server.url)
-        env["UAGENT_MCP_STARTUP_GRACE"] = "1"
         started = time.monotonic()
         result = run(
             workspace, env, "--trust-project-config", "--yolo", "-p", "probe", binary=binary
@@ -490,7 +488,7 @@ def test_optional_mcp_refresh_never_blocks_a_model_step(root, home, *, binary):
         elapsed = time.monotonic() - started
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "nonblocking-ok", result.stdout)
-        assert_true(elapsed < budget(3), f"optional refresh blocked for {elapsed:.2f}s")
+        assert_true(elapsed < budget(4), f"optional refresh blocked for {elapsed:.2f}s")
 
 
 def test_optional_mcp_notification_before_discovery_is_not_fatal(root, home, *, binary):
@@ -507,7 +505,7 @@ def test_optional_mcp_notification_before_discovery_is_not_fatal(root, home, *, 
         "    if method == 'server/discover':\n"
         "        print(json.dumps({'jsonrpc': '2.0', 'method': "
         "'notifications/message', 'params': {'message': 'booting'}}), flush=True)\n"
-        "        time.sleep(1.3)\n"
+        "        time.sleep(2.3)\n"
         "        result = {'supportedVersions': ['2026-07-28'], "
         "'capabilities': {'tools': {}}}\n"
         "    elif method == 'tools/list':\n"
@@ -548,7 +546,6 @@ def test_optional_mcp_notification_before_discovery_is_not_fatal(root, home, *, 
 
     with Server([route]) as server:
         env = base_env(home, server.url)
-        env["UAGENT_MCP_STARTUP_GRACE"] = "1"
         result = run(
             workspace, env, "--trust-project-config", "--yolo", "-p", "probe", binary=binary
         )
@@ -574,7 +571,7 @@ def test_optional_mcp_slow_tool_list_resumes_one_request(root, home, *, binary):
         "'capabilities': {'tools': {}}}\n"
         "    elif method == 'tools/list':\n"
         "        count.write_text(count.read_text() + '1' if count.exists() else '1')\n"
-        "        time.sleep(2.2)\n"
+        "        time.sleep(3.2)\n"
         "        result = {'tools': [{'name': 'echo', 'description': 'echo', "
         "'inputSchema': {'type': 'object', 'properties': {}}}]}\n"
         "    elif method == 'tools/call':\n"
@@ -608,11 +605,10 @@ def test_optional_mcp_slow_tool_list_resumes_one_request(root, home, *, binary):
             return tool_call("delayed_echo", {})
         if results:
             return event({"content": "delayed-missing"})
-        return tool_call("run", {"command": "sleep 1.5"})
+        return tool_call("run", {"command": "sleep 2.5"})
 
     with Server([route]) as server:
         env = base_env(home, server.url)
-        env["UAGENT_MCP_STARTUP_GRACE"] = "1"
         env["UAGENT_MCP_TIMEOUT"] = "8"
         result = run(
             workspace, env, "--trust-project-config", "--yolo", "-p", "probe", binary=binary

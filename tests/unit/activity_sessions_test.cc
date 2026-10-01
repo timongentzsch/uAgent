@@ -1062,13 +1062,13 @@ void TestDetachedActivityOwnership() {
   // build, test or search it needs to check their work. Children stop short of
   // the ceiling; the parent's own command still gets a slot.
   {
-    ScopedEnv pool("UAGENT_MAX_BACKGROUND_JOBS", "4");
-
     // The parent's own busy jobs must never refuse delegation: a child
     // competes against other children, not against its parent.
     ProcessSupervisor parent_busy;
-    CHECK(parent_busy.TryAdd({.pid = 999801, .cmd = "own-a"}, 4));
-    CHECK(parent_busy.TryAdd({.pid = 999802, .cmd = "own-b"}, 4));
+    CHECK(parent_busy.TryAdd({.pid = 999801, .cmd = "own-a"},
+                             kMaxBackgroundJobs));
+    CHECK(parent_busy.TryAdd({.pid = 999802, .cmd = "own-b"},
+                             kMaxBackgroundJobs));
     ShellCommandResult admitted =
         RunShellCommand(parent_busy, context,
                         {.command = "printf child-admitted",
@@ -1079,18 +1079,19 @@ void TestDetachedActivityOwnership() {
 
     // Children stop short of the ceiling so the parent keeps slots of its own.
     ProcessSupervisor children_busy;
-    CHECK(children_busy.TryAdd(
-        {.pid = 999803, .cmd = "child-a", .kind = ActivityKind::kSubagent}, 4));
-    CHECK(children_busy.TryAdd(
-        {.pid = 999804, .cmd = "child-b", .kind = ActivityKind::kSubagent}, 4));
+    for (pid_t pid = 999803; pid < 999803 + kMaxDelegatedJobs; ++pid) {
+      CHECK(children_busy.TryAdd(
+          {.pid = pid, .cmd = "child", .kind = ActivityKind::kSubagent},
+          kMaxBackgroundJobs));
+    }
     ShellCommandResult refused =
         RunShellCommand(children_busy, context,
-                        {.command = "echo third-child",
+                        {.command = "echo one-child-too-many",
                          .immediate = true,
                          .activity_kind = ActivityKind::kSubagent});
     CHECK(!refused.result.Ok());
     CHECK(!refused.launched);
-    CHECK(refused.result.output.find("at most 2 concurrent children") !=
+    CHECK(refused.result.output.find("at most 6 concurrent children") !=
           std::string::npos);
 
     ShellCommandResult own =
@@ -1101,46 +1102,26 @@ void TestDetachedActivityOwnership() {
 
     // Detached terminals outlive the session, so the pool bounds them too.
     ProcessSupervisor detached_pool;
-    for (pid_t pid = 999811; pid < 999815; ++pid) {
+    for (pid_t pid = 999811; pid < 999811 + kMaxBackgroundJobs; ++pid) {
       CHECK(detached_pool.TryAdd(
-          {.pid = pid, .cmd = "held", .kind = ActivityKind::kDetached}, 4));
+          {.pid = pid, .cmd = "held", .kind = ActivityKind::kDetached},
+          kMaxBackgroundJobs));
     }
     CHECK(!detached_pool.TryAdd(
-        {.pid = 999815, .cmd = "overflow", .kind = ActivityKind::kDetached},
-        4));
+        {.pid = 999831, .cmd = "overflow", .kind = ActivityKind::kDetached},
+        kMaxBackgroundJobs));
     ShellCommandResult refused_detach = RunShellCommand(
         detached_pool, context,
         {.command = "sleep 21", .detach = true, .immediate = true});
     CHECK(!refused_detach.result.Ok());
-    CHECK(refused_detach.result.output.find("background job limit reached") !=
-          std::string::npos);
+    CHECK(refused_detach.result.output.find(
+              "background job limit reached (8)") != std::string::npos);
     CHECK(!FindRunningDetachedActivity("sleep 21").has_value());
     // The record is written before the pool decides, so the refusal has to
     // take it back out: a stale record aims a later stop at whatever inherits
     // the reaped pid.
     CHECK(DetachedRecords().empty());
     (void)detached_pool.TakeAllForShutdown();
-  }
-
-  // A pool too small to hold the headroom still admits a child: delegation
-  // stays possible, and the parent waits rather than the reverse.
-  {
-    ScopedEnv tiny("UAGENT_MAX_BACKGROUND_JOBS", "1");
-    ProcessSupervisor single;
-    ShellCommandResult child =
-        RunShellCommand(single, context,
-                        {.command = "printf tiny-pool",
-                         .activity_kind = ActivityKind::kSubagent});
-    CHECK(child.result.Ok());
-    CHECK(child.result.output.find("tiny-pool") != std::string::npos);
-    CHECK(single.TryAdd(
-        {.pid = 999821, .cmd = "holder", .kind = ActivityKind::kSubagent}, 1));
-    ShellCommandResult blocked =
-        RunShellCommand(single, context, {.command = "printf blocked"});
-    CHECK(!blocked.result.Ok());
-    CHECK(blocked.result.output.find("background job limit reached (1)") !=
-          std::string::npos);
-    (void)single.TakeAllForShutdown();
   }
 }
 

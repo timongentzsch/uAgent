@@ -70,7 +70,6 @@ Every setting below is read from the running binary's registry. `takes effect` i
 | `UAGENT_MAX_TURN_COST` | number | `0.0` | next-user-turn | reported-cost ceiling per turn; 0 disables it |
 | `UAGENT_SESSION_BUDGET` | number | `0.0` | next-user-turn | cumulative reported-cost ceiling; 0 disables it |
 | `UAGENT_TOOL_TIMEOUT` | integer | `30` | next-user-turn | seconds one tool call may run |
-| `UAGENT_TOOL_CONCURRENCY` | integer | `4` | restart-required | parallel foreground tool workers |
 | `UAGENT_AUTO_COMPACT_PCT` | integer | `85` | restart-required | context percentage that triggers compaction |
 | `UAGENT_AUTO_COMPACT_TOKENS` | integer | `0` | restart-required | absolute token trigger for compaction; 0 uses the percentage |
 
@@ -80,7 +79,6 @@ Every setting below is read from the running binary's registry. `takes effect` i
 | --- | --- | --- | --- | --- |
 | `UAGENT_TOOL_RESULT_CHARS` | integer | `8000` | restart-required | characters kept from one tool result |
 | `UAGENT_READ_FILE_LINES` | integer | `1000` | restart-required | default lines returned by read_path |
-| `UAGENT_MAX_BACKGROUND_JOBS` | integer | `8` | restart-required | concurrent detached activities |
 | `UAGENT_SANDBOX` | boolean | `1` | restart-required | confine shell commands with the OS sandbox |
 | `UAGENT_SANDBOX_NET` | boolean | `1` | restart-required | let sandboxed commands reach the network |
 | `UAGENT_SANDBOX_WRITE` | string | empty | restart-required | extra writable roots for the sandbox, colon-separated |
@@ -111,8 +109,6 @@ Every setting below is read from the running binary's registry. `takes effect` i
 | --- | --- | --- | --- | --- |
 | `UAGENT_WEB_SEARCH_BACKEND` | string | `auto` | restart-required | auto, openrouter, or off |
 | `UAGENT_WEB_SEARCH_MODEL` | string | empty | restart-required | model route used for search |
-| `UAGENT_WEB_SEARCH_ENGINE` | string | `auto` | restart-required | auto, native, exa, firecrawl, parallel, perplexity |
-| `UAGENT_WEB_SEARCH_CONTEXT_SIZE` | string | empty | restart-required | low, medium, or high native search context |
 
 ## memory
 
@@ -120,7 +116,6 @@ Every setting below is read from the running binary's registry. `takes effect` i
 | --- | --- | --- | --- | --- |
 | `UAGENT_MEMORY` | boolean | `1` | restart-required | enable memory recall and writes |
 | `UAGENT_MEMORY_GENERATE` | boolean | `1` | restart-required | run the background memory extractor |
-| `UAGENT_MEMORY_IDLE_SECONDS` | integer | `21600` | restart-required | idle seconds before background extraction runs |
 | `UAGENT_MEMORY_MODEL` | string | empty | restart-required | model route for background memory extraction |
 
 ## skills
@@ -135,7 +130,6 @@ Every setting below is read from the running binary's registry. `takes effect` i
 | Setting | Type | Default | Takes effect | Description |
 | --- | --- | --- | --- | --- |
 | `UAGENT_MCP_TIMEOUT` | integer | `60` | restart-required | seconds allowed for one MCP call |
-| `UAGENT_MCP_STARTUP_GRACE` | integer | `2` | restart-required | shared startup seconds for optional MCP servers |
 | `UAGENT_MCP_ROOTS` | string | empty | restart-required | roots advertised to MCP servers |
 
 ## media
@@ -143,7 +137,6 @@ Every setting below is read from the running binary's registry. `takes effect` i
 | Setting | Type | Default | Takes effect | Description |
 | --- | --- | --- | --- | --- |
 | `UAGENT_IMAGE_MODEL` | string | empty | next-user-turn | model route that reads attached images; empty uses the main route when it reads images, else the shared default route |
-| `UAGENT_IMAGE_DETAIL` | string | empty | restart-required | low, high, or original image detail |
 | `UAGENT_PDF_ENGINE` | string | `cloudflare-ai` | restart-required | OpenRouter file-parser engine for documents |
 | `UAGENT_ATTACHMENT_MB` | integer | `10` | restart-required | largest attachment in mebibytes |
 

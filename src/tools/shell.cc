@@ -202,20 +202,21 @@ bool WaitForTerminal(ProcessSupervisor& supervisor,
   }
 }
 
-ToolResult JobLimitError(int64_t max_jobs) {
-  return ToolFailure(
-      ToolErrorCode::kLimitExceeded,
-      "background job limit reached (" + std::to_string(max_jobs) + ")");
+ToolResult JobLimitError() {
+  return ToolFailure(ToolErrorCode::kLimitExceeded,
+                     "background job limit reached (" +
+                         std::to_string(kMaxBackgroundJobs) + ")");
 }
 
 // A child refused for headroom must not read as the pool being full: the
 // parent can still run its own commands, and that is the point.
-ToolResult DelegatedJobLimitError(int64_t max_children, int64_t max_jobs) {
+ToolResult DelegatedJobLimitError() {
   return ToolFailure(ToolErrorCode::kLimitExceeded,
                      "no free background slot for a delegated child (at "
                      "most " +
-                         std::to_string(max_children) +
-                         " concurrent children of " + std::to_string(max_jobs) +
+                         std::to_string(kMaxDelegatedJobs) +
+                         " concurrent children of " +
+                         std::to_string(kMaxBackgroundJobs) +
                          " background slots; the rest stay reserved for this "
                          "agent's own commands). Wait for a child to finish");
 }
@@ -276,7 +277,6 @@ ShellCommandResult StartDetachedShell(ProcessSupervisor& supervisor,
                         std::to_string(existing->pid) +
                         "; verify readiness with activity output")};
   }
-  int64_t max_jobs = MaxBackgroundJobs();
   ScopedTempFile pending(UagentDir(kTerminalLogsDir) + "/pending-" +
                          std::to_string(getpid()) + "-XXXXXX");
   std::string log = pending.Path();
@@ -321,8 +321,8 @@ ShellCommandResult StartDetachedShell(ProcessSupervisor& supervisor,
             .display_label = std::move(spec.activity_label),
             .receipt_path = std::move(spec.receipt_path),
             .source_id = std::move(spec.source_id)};
-  if (!supervisor.TryAdd(std::move(job), max_jobs)) {
-    return fail_and_reap(JobLimitError(max_jobs));
+  if (!supervisor.TryAdd(std::move(job), kMaxBackgroundJobs)) {
+    return fail_and_reap(JobLimitError());
   }
   ToolResult detached =
       ToolSuccess("[detached] pid " + std::to_string(pid) + ", log: " + log +
@@ -353,14 +353,11 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   if (spec.detach) return StartDetachedShell(supervisor, spec, wrapper);
 
   // Everything below is the supervised foreground lifecycle.
-  int64_t max_jobs = MaxBackgroundJobs();
   bool is_subagent = spec.activity_kind == ActivityKind::kSubagent;
-  int64_t max_children = std::max<int64_t>(1, max_jobs - kDelegatedJobHeadroom);
-  std::optional<ActivityReservation> reservation =
-      supervisor.ReserveActivity(max_jobs, is_subagent ? max_children : 0);
+  std::optional<ActivityReservation> reservation = supervisor.ReserveActivity(
+      kMaxBackgroundJobs, is_subagent ? kMaxDelegatedJobs : 0);
   if (!reservation) {
-    return {is_subagent ? DelegatedJobLimitError(max_children, max_jobs)
-                        : JobLimitError(max_jobs)};
+    return {is_subagent ? DelegatedJobLimitError() : JobLimitError()};
   }
   int64_t window =
       spec.immediate ? 0 : context.RemainingSeconds(int64_t{1} << 30);
@@ -438,7 +435,7 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   if (!registered) {
     KillProcess(pid);
     RemoveLog(log);
-    return {JobLimitError(max_jobs)};
+    return {JobLimitError()};
   }
   int64_t activity_id = *registered;
   int output_fd = tty ? master.Release() : pipe_read.Release();

@@ -192,8 +192,6 @@ void TestRuntimeOwnershipHelpers() {
       {"UAGENT_SUBAGENT_MODEL", "fast/model"},
       {"UAGENT_WEB_SEARCH_MODEL", "vendor/search"},
       {"UAGENT_WEB_SEARCH_BACKEND", "off"},
-      {"UAGENT_WEB_SEARCH_ENGINE", "invalid"},
-      {"UAGENT_WEB_SEARCH_CONTEXT_SIZE", "huge"},
       {"UAGENT_MCP_ROOTS", "/tmp/one:/tmp/two"},
       {"UAGENT_OPENROUTER_VARIANT", "floor"},
   };
@@ -209,8 +207,6 @@ void TestRuntimeOwnershipHelpers() {
   CHECK(SubagentModel() == "fast/model");
   CHECK(config.web_search_model == "vendor/search");
   CHECK(config.web_search_backend == "off");
-  CHECK(config.web_search_engine == "auto");
-  CHECK(config.web_search_context_size.empty());
   CHECK(config.mcp_roots == "/tmp/one:/tmp/two");
   CHECK(config.openrouter_variant == "floor");
   json diagnostics = config.DiagnosticJson();

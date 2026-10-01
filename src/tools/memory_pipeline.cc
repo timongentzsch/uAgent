@@ -120,7 +120,7 @@ void SweepOrphanedReceipts(const std::filesystem::path& cwd) {
 std::string ClaimCandidate(const std::filesystem::path& cwd,
                            const std::string& excluded, std::string& error) {
   auto now = std::filesystem::file_time_type::clock::now();
-  auto idle = std::chrono::seconds(MemoryIdleSeconds());
+  auto idle = std::chrono::seconds(kMemoryIdleSeconds);
   auto oldest = std::chrono::hours(24 * std::max(int64_t{1}, HistoryDays()));
   for (const SessionInfo& session : ListSessions()) {
     auto age = now - session.mtime;

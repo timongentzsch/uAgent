@@ -242,14 +242,6 @@ std::string AudioFormat(const std::string& mime) {
   return "wav";
 }
 
-std::string ImageDetail() {
-  std::string detail = EnvStr("UAGENT_IMAGE_DETAIL");
-  return detail == "low" || detail == "high" || detail == "original" ||
-                 detail == "auto"
-             ? detail
-             : "";
-}
-
 std::string AttachmentMime(const std::string& name) {
   std::string ext =
       AsciiLower(std::filesystem::path(name).extension().string());
@@ -787,10 +779,8 @@ bool PrepareAttachments(json& messages,
           std::string mime;
           std::string data = PreparedImage(attachment, mime, detail);
           if (!data.empty()) {
-            json image = {{"url", std::move(data)}};
-            if (!ImageDetail().empty()) image["detail"] = ImageDetail();
-            prepared.push_back(
-                {{"type", "image_url"}, {"image_url", std::move(image)}});
+            prepared.push_back({{"type", "image_url"},
+                                {"image_url", {{"url", std::move(data)}}}});
             delivery = capabilities.image_input ? "Image" : "Via vision model";
           }
         } else if (attachment.mime == "application/pdf" &&

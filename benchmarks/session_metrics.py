@@ -54,7 +54,6 @@ BEHAVIOR_FIELDS = (
     "approval",
     "auto_compact_pct",
     "auto_compact_tokens",
-    "tool_concurrency",
     "tool_result_chars",
     "tool_batch_result_chars",
     "adaptive_system",

@@ -19,6 +19,14 @@ from integration_support import (
 )
 from memory_fixture import global_memory_dir, project_memory_dir
 
+# Background extraction leaves a session alone for six idle hours.
+IDLE_SECONDS = 7 * 60 * 60
+
+
+def age(path, seconds=IDLE_SECONDS):
+    stamp = time.time() - seconds
+    os.utime(path, (stamp, stamp))
+
 
 def test_project_agent_config_trust(root, home, *, binary):
     workspace = root / "config-workspace"
@@ -176,6 +184,7 @@ def test_memory_background_extractor_is_bounded(root, home, *, binary):
         turns=2,
         title="durable preference",
     )
+    age(session)
     target = project_memory_dir(home, workspace) / "extracted.md"
 
     def extract(_, body):
@@ -215,7 +224,6 @@ def test_memory_background_extractor_is_bounded(root, home, *, binary):
 
     with Server([extract, search, inspect, write, finish]) as server:
         env = base_env(home, server.url)
-        env["UAGENT_MEMORY_IDLE_SECONDS"] = "0"
 
         def extracted():
             markers = list((home / ".uagent/memory/.processed").rglob("*.state"))
@@ -244,8 +252,9 @@ def test_memory_background_extractor_is_bounded(root, home, *, binary):
             workspace, env, b"/q\n", before_payload=lambda: time.sleep(0.2), binary=binary
         )
         assert_true(code == 0 and len(server.requests) == 5, output)
-        time.sleep(0.01)
-        os.utime(session, None)
+        # Idle, and newer than its marker: the source is eligible again.
+        for marker in (home / ".uagent/memory/.processed").rglob("*.state"):
+            age(marker, IDLE_SECONDS + 60)
         disabled = dict(env)
         disabled["UAGENT_MEMORY_GENERATE"] = "0"
         code, output = run_pty(
@@ -259,7 +268,7 @@ def test_memory_background_extractor_releases_failed_claims(root, _home, *, bina
         case_home = root / f"memory-{name}-home"
         workspace = root / f"memory-{name}-workspace"
         workspace.mkdir()
-        write_session(
+        session = write_session(
             case_home,
             "extract",
             [
@@ -272,6 +281,7 @@ def test_memory_background_extractor_releases_failed_claims(root, _home, *, bina
             turns=2,
             title=name,
         )
+        age(session)
         return case_home, workspace
 
     def markers(case_home):
@@ -280,7 +290,6 @@ def test_memory_background_extractor_releases_failed_claims(root, _home, *, bina
     no_write_home, no_write_workspace = scenario("no-write")
     with Server([event({"content": "Nothing durable to save."})]) as server:
         env = base_env(no_write_home, server.url)
-        env["UAGENT_MEMORY_IDLE_SECONDS"] = "0"
 
         def wait_for_done():
             wait_until(
@@ -318,7 +327,6 @@ def test_memory_background_extractor_releases_failed_claims(root, _home, *, bina
         trace = root / f"memory-{name}.jsonl"
         with Server([responder]) as server:
             env = base_env(case_home, server.url)
-            env["UAGENT_MEMORY_IDLE_SECONDS"] = "0"
             env["UAGENT_REQUEST_TIMEOUT"] = "1"
             env["UAGENT_STREAM_TIMEOUT"] = "1"
 

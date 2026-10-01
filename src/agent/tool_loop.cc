@@ -283,11 +283,10 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
   for (size_t index = 0; index < tasks.size(); ++index) {
     if (tasks[index].execute) runnable.push_back(index);
   }
-  int64_t limit = std::max(int64_t{1}, ToolConcurrency());
   if (Debug().Enabled()) {
     // Any two adjacent runnable calls that are both parallel-safe form a batch.
     bool parallel = false;
-    for (size_t i = 1; limit > 1 && !parallel && i < runnable.size(); ++i) {
+    for (size_t i = 1; !parallel && i < runnable.size(); ++i) {
       parallel = tasks[runnable[i - 1]].tool->parallel_safe &&
                  tasks[runnable[i]].tool->parallel_safe;
     }
@@ -296,7 +295,7 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
                                  {"calls", calls.size()},
                                  {"runnable", runnable.size()},
                                  {"parallel", parallel},
-                                 {"concurrency_limit", limit}});
+                                 {"concurrency_limit", kToolConcurrency}});
   }
 
   ToolContext context{deadline};
@@ -306,7 +305,7 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
     size_t first = runnable[begin];
     // ParallelRunEnd returns `begin` for a call that is not parallel-safe, so
     // both the serial and the lone-safe-call cases advance by one.
-    size_t end = limit <= 1 ? begin : ParallelRunEnd(runnable, tasks, begin);
+    size_t end = ParallelRunEnd(runnable, tasks, begin);
     if (end <= begin + 1) {
       ExecuteCall(tasks[first], calls[first], turn_id_, step, context,
                   api_.config.tool_timeout_s);
@@ -314,7 +313,8 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
       continue;
     }
     std::atomic<size_t> next{begin};
-    size_t workers_count = std::min(end - begin, static_cast<size_t>(limit));
+    size_t workers_count =
+        std::min(end - begin, static_cast<size_t>(kToolConcurrency));
     std::vector<std::future<void>> workers;
     workers.reserve(workers_count);
     for (size_t index = 0; index < workers_count; ++index) {

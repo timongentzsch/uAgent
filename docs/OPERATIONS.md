@@ -31,7 +31,7 @@ fixed in the binary.
 | trace pruning | newest 64 KiB protected; results from 32 KiB pruned | |
 | automatic compaction | 85% of projected context | `UAGENT_AUTO_COMPACT_PCT`, `UAGENT_AUTO_COMPACT_TOKENS` |
 | compacted-trace archive | 16 MiB | |
-| background jobs / foreground tool workers | 8 / 4 | `UAGENT_MAX_BACKGROUND_JOBS`, `UAGENT_TOOL_CONCURRENCY` |
+| background jobs / foreground tool workers | 8 / 4 | |
 | `run` initial wait | 10 s; `yield_ms` 250–30,000, or 0 to wait for exit | |
 | activity output buffer | 1 MiB, equal head and tail | |
 | retained finished activities | 16 | |
@@ -39,12 +39,12 @@ fixed in the binary.
 | delegation depth / rounds / tool calls per child | 2 / 100 / 240 | `UAGENT_SUBAGENT_DEPTH`, `UAGENT_SUBAGENT_MAX_STEPS`, `UAGENT_SUBAGENT_MAX_TOOL_CALLS` |
 | subagent launches per turn | 32 | |
 | memory size / count per scope / always-on slice | 2 KiB / 32 / 2 KiB | |
-| memory extraction | 32 KiB of one session after 6 idle hours | `UAGENT_MEMORY_IDLE_SECONDS` |
+| memory extraction | 32 KiB of one session after 6 idle hours | |
 | memory event audit | 256 KiB | |
 | skill body / discovery depth | 512 KiB / 6 directories | |
 | CLI attachment / web upload | 10 / 8 MiB | `UAGENT_ATTACHMENT_MB` |
 | input history / paste | 200 entries of 16 KiB / 64 KiB | |
-| MCP call / optional-server startup | 60 s / 2 s shared | `UAGENT_MCP_TIMEOUT`, `UAGENT_MCP_STARTUP_GRACE` |
+| MCP call / optional-server startup | 60 s / 2 s shared | `UAGENT_MCP_TIMEOUT` (call only) |
 | macOS sandbox profile | 64 KiB; larger profiles refuse the command | |
 
 Raise a bound only with a representative measurement.
@@ -157,9 +157,9 @@ requires the stateless `2026-07-28` protocol and rejects servers that do not
 advertise it.
 
 - Servers are required by default: a startup, discovery or tool-list failure
-  stops bootstrap. Servers marked `"required": false` share the
-  `UAGENT_MCP_STARTUP_GRACE` window, and a slow one finishes discovery at a
-  later turn boundary without delaying model steps.
+  stops bootstrap. Servers marked `"required": false` share a 2 s startup
+  window, and a slow one finishes discovery at a later turn boundary without
+  delaying model steps.
 - The workspace is the default root. `UAGENT_MCP_ROOTS` (colon-separated) or a
   server's `roots` array in `.mcp.json` replaces it; per-server paths are
   relative to that file. Roots are cooperative protocol scope, not a sandbox:

@@ -618,7 +618,7 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
   tool.retain_output = true;
   tool.available_in_lean = false;
   // Concurrency is enforced by the spawn path (RunShellCommand reserves an
-  // activity slot bounded by MaxBackgroundJobs); this is only a runaway
+  // activity slot bounded by kMaxBackgroundJobs); this is only a runaway
   // ceiling.
   tool.max_calls_per_turn = kSubagentCallsPerTurn;
   auto describe = [&api, &routes, &providers](const json& arguments) {

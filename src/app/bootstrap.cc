@@ -568,7 +568,6 @@ void LogReady(const AppContext& context) {
       {"approval", ApprovalModeName(CurrentApprovalMode())},
       {"auto_compact_pct", AutoCompactPct()},
       {"auto_compact_tokens", AutoCompactTokens()},
-      {"tool_concurrency", ToolConcurrency()},
       {"tool_result_chars", ToolResultCap()},
       {"tool_batch_result_chars", ToolBatchResultCap()},
       {"adaptive_system", AdaptiveSystemEnabled()},
@@ -592,7 +591,6 @@ void LogReady(const AppContext& context) {
       {"yolo", ApprovalIsYolo()},
       {"openrouter_provider", config.openrouter_provider},
       {"attachment_mb", AttachmentLimitMb()},
-      {"image_detail", ImageDetail()},
       {"limits", config.DiagnosticJson()},
       {"effective_config", context.config_manager.DiagnosticJson(config)}};
   ready.update(behavior);

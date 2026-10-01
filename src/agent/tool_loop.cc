@@ -115,18 +115,15 @@ void Agent::AppendToolResult(const ToolCall& call, const std::string& result,
   PublishMessage();
 }
 
-bool Agent::RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
-                     StepState& loop, std::vector<ToolRejection>& rejections,
-                     std::vector<ActivityPollResult>& activity_polls) {
+// Validates one call, publishes its activity row and asks for approval. A
+// call that may run leaves with task.execute set; any other already has its
+// result.
+void Agent::PrepareCall(const ToolCall& call, CallTask& task,
+                        TurnExecution& state, StepState& loop) {
   int64_t& tool_count = state.metrics.tool_count;
   auto& tool_counts = loop.tool_counts;
   auto& stable_arguments = loop.recovery.stable_arguments;
   const int64_t step = loop.step;
-  const auto deadline = state.deadline;
-  int64_t& consecutive_failed_tools = loop.recovery.consecutive_failed_tools;
-  std::vector<CallTask> tasks(calls.size());
-  rejections.clear();
-  activity_polls.clear();
   auto reject = [](CallTask& task, ToolErrorCode code, std::string message,
                    const char* status,
                    std::optional<ToolArgumentIssue> issue = std::nullopt) {
@@ -138,144 +135,156 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
     return issue.message.starts_with("error:") ? issue.message
                                                : "error: " + issue.message;
   };
+  task.raw_args = json::parse(call.args, nullptr, false);
+  task.args = task.raw_args;
+  task.tool = FindTool(tools_, call.name);
+  const Tool* tool = task.tool;
+  std::string description;
+  if (tool && tool->declared_intent && task.args.is_object()) {
+    // Display metadata never reaches validation, permission decisions or
+    // execution. The original tool call remains intact for exact replay.
+    description = ActivityLabel(JsonValue(task.args, "description", ""));
+    task.args.erase("description");
+  }
+  if (tool) CanonicalizeToolArguments(*tool, task.args, &task.clamped);
+  const json& arguments = task.args;
+  bool valid = false;
+  if (arguments.is_discarded() || !arguments.is_object()) {
+    ToolArgumentIssue issue = ArgumentIssue(
+        "arguments.malformed", "malformed tool arguments (not valid JSON)");
+    reject(task, ToolErrorCode::kInvalidArguments, "error: " + issue.message,
+           "malformed_arguments", issue);
+  } else if (!tool) {
+    ToolArgumentIssue issue =
+        ArgumentIssue("tool.unknown", "unknown tool " + call.name);
+    reject(task, ToolErrorCode::kNotFound, "error: unknown tool " + call.name,
+           "unknown_tool", issue);
+  } else if (!tool_selection_.Enabled(*tool)) {
+    ToolArgumentIssue issue =
+        ArgumentIssue("tool.inactive", "inactive tool " + call.name);
+    reject(task, ToolErrorCode::kUnavailable,
+           "error: tool is inactive for this conversation: " + call.name,
+           "inactive_tool", issue);
+  } else if (auto issue = FindToolArgumentIssue(*tool, arguments)) {
+    std::string message = "error: invalid tool argument: " + issue->message;
+    reject(task, ToolErrorCode::kInvalidArguments, std::move(message),
+           "invalid_argument", std::move(issue));
+  } else if (tool->validate) {
+    auto semantic_issue = tool->validate(arguments);
+    if (semantic_issue) {
+      std::string message = issue_message(*semantic_issue);
+      reject(task, ToolErrorCode::kInvalidArguments, std::move(message),
+             "rejected", std::move(semantic_issue));
+    } else {
+      valid = true;
+    }
+  } else {
+    valid = true;
+  }
+  if (valid) {
+    std::string stable =
+        StableArgumentError(*tool, arguments, stable_arguments);
+    if (!stable.empty()) {
+      ToolArgumentIssue issue =
+          ArgumentIssue("arguments.unstable", stable, tool->stable_argument);
+      reject(task, ToolErrorCode::kInvalidArguments, std::move(stable),
+             "unstable_argument", issue);
+      valid = false;
+    }
+  }
+  if (valid && tool->max_calls_per_turn >= 0 &&
+      tool_counts[call.name] >= tool->max_calls_per_turn) {
+    std::string message =
+        "error: " + call.name + " reached its per-turn call limit (" +
+        std::to_string(tool->max_calls_per_turn) +
+        "); continue from the results you have — do not reimplement it "
+        "with run";
+    ToolArgumentIssue issue = ArgumentIssue("tool.call_limit", message);
+    reject(task, ToolErrorCode::kLimitExceeded, std::move(message),
+           "call_limit", issue);
+    valid = false;
+  }
+  if (valid) task.label = ToolSummary(*tool, arguments);
+  if (!valid) {
+    const json& shown =
+        task.raw_args.is_discarded() ? task.args : task.raw_args;
+    task.label = tool && tool->redact_invalid_arguments
+                     ? ToolSummary(*tool, arguments)
+                 : shown.is_discarded() ? call.args
+                                        : JsonDump(shown);
+  }
+  const ApprovalClass required =
+      valid ? RequiredApproval(*tool, arguments) : ApprovalClass::kNone;
+  task.activity = {
+      {"id", call.id},
+      {"category", valid ? ToolActivityCategory(*tool, arguments) : "run"},
+      {"label", task.label},
+      {"groupable", valid &&
+                        (required == ApprovalClass::kNone ||
+                         (required == ApprovalClass::kYoloEligibleMutation &&
+                          ApprovalIsYolo())) &&
+                        call.name != "skill"}};
+  task.activity["response_id"] = call.response_id;
+  task.activity["call_id"] = call.id;
+  task.activity["occurrence_id"] = call.occurrence_id;
+  task.activity["detail_id"] = call.detail_id;
+  task.activity["status_label"] =
+      valid && !description.empty() ? description
+      : tool ? ActivityLabel(ToolTitle(*tool) + " · " + task.label)
+             : ActivityLabel(call.name);
+  task.activity["label_source"] =
+      valid && !description.empty() ? "model_intent" : "tool";
+  conversation_.RecordDisplay(call.detail_id, {{"activity", task.activity}});
+  Event call_event{EventId::kToolCall, ToolCallData(call, turn_id_, step)};
+  call_event.data["activity"] = task.activity;
+  if (task.issue) {
+    call_event.data["issue_code"] = task.issue->code;
+    call_event.data["issue_field"] = task.issue->field;
+  }
+  call_event.presentation = ToolCallPresentation(task, call);
+  if (call_event.presentation) {
+    call_event.data["view"] = call_event.presentation->view;
+    // --resume replays the row from facts: same title/summary/flags the
+    // live printer saw, so history matches execution exactly.
+    conversation_.RecordDisplay(
+        call.detail_id,
+        {{"call_replay", ToolReplayJson(*call_event.presentation)}});
+  }
+  Emit(std::move(call_event));
+  if (valid) {
+    if (required == ApprovalClass::kNone ||
+        approve_(*tool, arguments, turn_id_)) {
+      task.execute = true;
+      ++tool_count;
+      ++tool_counts[call.name];
+    } else {
+      reject(task, ToolErrorCode::kPermissionDenied,
+             "user denied this action; ask for guidance or try a different "
+             "approach",
+             "denied");
+    }
+  }
+  if (!task.execute) {
+    EmitToolResultObservation(task, call, turn_id_, step);
+  }
+}
+
+bool Agent::RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
+                     StepState& loop, std::vector<ToolRejection>& rejections,
+                     std::vector<ActivityPollResult>& activity_polls) {
+  const int64_t step = loop.step;
+  const auto deadline = state.deadline;
+  int64_t& consecutive_failed_tools = loop.recovery.consecutive_failed_tools;
+  std::vector<CallTask> tasks(calls.size());
+  rejections.clear();
+  activity_polls.clear();
   for (size_t index = 0; index < calls.size(); ++index) {
     const ToolCall& call = calls[index];
     CallTask& task = tasks[index];
     if (calls.size() > 1) {
       task.ordinal = "[" + std::to_string(index + 1) + "] ";
     }
-    task.raw_args = json::parse(call.args, nullptr, false);
-    task.args = task.raw_args;
-    task.tool = FindTool(tools_, call.name);
-    const Tool* tool = task.tool;
-    std::string description;
-    if (tool && tool->declared_intent && task.args.is_object()) {
-      // Display metadata never reaches validation, permission decisions or
-      // execution. The original tool call remains intact for exact replay.
-      description = ActivityLabel(JsonValue(task.args, "description", ""));
-      task.args.erase("description");
-    }
-    if (tool) CanonicalizeToolArguments(*tool, task.args, &task.clamped);
-    const json& arguments = task.args;
-    bool valid = false;
-    if (arguments.is_discarded() || !arguments.is_object()) {
-      ToolArgumentIssue issue = ArgumentIssue(
-          "arguments.malformed", "malformed tool arguments (not valid JSON)");
-      reject(task, ToolErrorCode::kInvalidArguments, "error: " + issue.message,
-             "malformed_arguments", issue);
-    } else if (!tool) {
-      ToolArgumentIssue issue =
-          ArgumentIssue("tool.unknown", "unknown tool " + call.name);
-      reject(task, ToolErrorCode::kNotFound, "error: unknown tool " + call.name,
-             "unknown_tool", issue);
-    } else if (!tool_selection_.Enabled(*tool)) {
-      ToolArgumentIssue issue =
-          ArgumentIssue("tool.inactive", "inactive tool " + call.name);
-      reject(task, ToolErrorCode::kUnavailable,
-             "error: tool is inactive for this conversation: " + call.name,
-             "inactive_tool", issue);
-    } else if (auto issue = FindToolArgumentIssue(*tool, arguments)) {
-      std::string message = "error: invalid tool argument: " + issue->message;
-      reject(task, ToolErrorCode::kInvalidArguments, std::move(message),
-             "invalid_argument", std::move(issue));
-    } else if (tool->validate) {
-      auto semantic_issue = tool->validate(arguments);
-      if (semantic_issue) {
-        std::string message = issue_message(*semantic_issue);
-        reject(task, ToolErrorCode::kInvalidArguments, std::move(message),
-               "rejected", std::move(semantic_issue));
-      } else {
-        valid = true;
-      }
-    } else {
-      valid = true;
-    }
-    if (valid) {
-      std::string stable =
-          StableArgumentError(*tool, arguments, stable_arguments);
-      if (!stable.empty()) {
-        ToolArgumentIssue issue =
-            ArgumentIssue("arguments.unstable", stable, tool->stable_argument);
-        reject(task, ToolErrorCode::kInvalidArguments, std::move(stable),
-               "unstable_argument", issue);
-        valid = false;
-      }
-    }
-    if (valid && tool->max_calls_per_turn >= 0 &&
-        tool_counts[call.name] >= tool->max_calls_per_turn) {
-      std::string message =
-          "error: " + call.name + " reached its per-turn call limit (" +
-          std::to_string(tool->max_calls_per_turn) +
-          "); continue from the results you have — do not reimplement it "
-          "with run";
-      ToolArgumentIssue issue = ArgumentIssue("tool.call_limit", message);
-      reject(task, ToolErrorCode::kLimitExceeded, std::move(message),
-             "call_limit", issue);
-      valid = false;
-    }
-    if (valid) task.label = ToolSummary(*tool, arguments);
-    if (!valid) {
-      const json& shown =
-          task.raw_args.is_discarded() ? task.args : task.raw_args;
-      task.label = tool && tool->redact_invalid_arguments
-                       ? ToolSummary(*tool, arguments)
-                   : shown.is_discarded() ? call.args
-                                          : JsonDump(shown);
-    }
-    const ApprovalClass required =
-        valid ? RequiredApproval(*tool, arguments) : ApprovalClass::kNone;
-    task.activity = {
-        {"id", call.id},
-        {"category", valid ? ToolActivityCategory(*tool, arguments) : "run"},
-        {"label", task.label},
-        {"groupable", valid &&
-                          (required == ApprovalClass::kNone ||
-                           (required == ApprovalClass::kYoloEligibleMutation &&
-                            ApprovalIsYolo())) &&
-                          call.name != "skill"}};
-    task.activity["response_id"] = call.response_id;
-    task.activity["call_id"] = call.id;
-    task.activity["occurrence_id"] = call.occurrence_id;
-    task.activity["detail_id"] = call.detail_id;
-    task.activity["status_label"] =
-        valid && !description.empty() ? description
-        : tool ? ActivityLabel(ToolTitle(*tool) + " · " + task.label)
-               : ActivityLabel(call.name);
-    task.activity["label_source"] =
-        valid && !description.empty() ? "model_intent" : "tool";
-    conversation_.RecordDisplay(call.detail_id, {{"activity", task.activity}});
-    Event call_event{EventId::kToolCall, ToolCallData(call, turn_id_, step)};
-    call_event.data["activity"] = task.activity;
-    if (task.issue) {
-      call_event.data["issue_code"] = task.issue->code;
-      call_event.data["issue_field"] = task.issue->field;
-    }
-    call_event.presentation = ToolCallPresentation(task, call);
-    if (call_event.presentation) {
-      call_event.data["view"] = call_event.presentation->view;
-      // --resume replays the row from facts: same title/summary/flags the
-      // live printer saw, so history matches execution exactly.
-      conversation_.RecordDisplay(
-          call.detail_id,
-          {{"call_replay", ToolReplayJson(*call_event.presentation)}});
-    }
-    Emit(std::move(call_event));
-    if (valid) {
-      if (required == ApprovalClass::kNone ||
-          approve_(*tool, arguments, turn_id_)) {
-        task.execute = true;
-        ++tool_count;
-        ++tool_counts[call.name];
-      } else {
-        reject(task, ToolErrorCode::kPermissionDenied,
-               "user denied this action; ask for guidance or try a different "
-               "approach",
-               "denied");
-      }
-    }
-    if (!task.execute) {
-      EmitToolResultObservation(task, call, turn_id_, step);
-    }
+    PrepareCall(call, task, state, loop);
   }
 
   std::vector<size_t> runnable;

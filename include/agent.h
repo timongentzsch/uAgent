@@ -36,6 +36,7 @@
 namespace uagent {
 
 struct BackgroundCompletion;
+struct CallTask;
 enum class TurnStopReason;
 
 class Agent {
@@ -388,6 +389,8 @@ class Agent {
   void PushToolResultMessage(const ToolCall& call, json message);
 
   // returns true if the user interrupted the batch
+  void PrepareCall(const ToolCall& call, CallTask& task, TurnExecution& state,
+                   StepState& loop);
   bool RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
                 StepState& loop, std::vector<ToolRejection>& rejections,
                 std::vector<ActivityPollResult>& activity_polls);

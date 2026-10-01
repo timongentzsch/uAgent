@@ -4,7 +4,6 @@
 
 #include <algorithm>
 #include <cstddef>
-#include <cstdint>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -149,13 +148,8 @@ std::vector<std::string> EncodeSandboxPolicy(const SandboxPolicy& policy) {
 bool DecodeSandboxPolicy(const std::vector<std::string>& words,
                          SandboxPolicy* policy, size_t* consumed) {
   if (words.size() < 2) return false;
-  if (words[0] == "net=1") {
-    policy->allow_network = true;
-  } else if (words[0] == "net=0") {
-    policy->allow_network = false;
-  } else {
-    return false;
-  }
+  if (words[0] != "net=1" && words[0] != "net=0") return false;
+  policy->allow_network = words[0] == "net=1";
   constexpr std::string_view kRootsPrefix = "roots=";
   if (!words[1].starts_with(kRootsPrefix)) return false;
   std::string_view digits =

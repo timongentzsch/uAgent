@@ -79,8 +79,7 @@ std::string SettingText(const ConfigDescriptor& descriptor) {
 int64_t LongSetting(const ConfigDescriptor& descriptor) {
   const int64_t* declared = std::get_if<int64_t>(&descriptor.default_value);
   int64_t value = declared ? *declared : 0;
-  int64_t parsed = 0;
-  if (ParseInt64(SettingText(descriptor).c_str(), parsed)) value = parsed;
+  ParseInt64(SettingText(descriptor).c_str(), value);
   return std::clamp(value, descriptor.minimum, descriptor.maximum);
 }
 
@@ -102,10 +101,7 @@ std::string StringSetting(const ConfigDescriptor& descriptor) {
 double DoubleSetting(const ConfigDescriptor& descriptor) {
   const double* declared = std::get_if<double>(&descriptor.default_value);
   double value = declared ? *declared : 0.0;
-  const std::string text = SettingText(descriptor);
-  if (!text.empty() && !ParseFiniteDouble(text.c_str(), value)) {
-    value = declared ? *declared : 0.0;
-  }
+  ParseFiniteDouble(SettingText(descriptor).c_str(), value);
   return value;
 }
 

@@ -27,12 +27,9 @@ void Usage::Add(const json& value) {
   };
   auto first = [&](std::initializer_list<Alias> candidates) {
     for (const Alias& alias : candidates) {
-      int64_t found =
-          alias.parent
-              ? (value.contains(alias.parent) && value[alias.parent].is_object()
-                     ? JsonValue(value[alias.parent], alias.field, int64_t{0})
-                     : int64_t{0})
-              : JsonValue(value, alias.field, int64_t{0});
+      const json* scope =
+          alias.parent ? JsonObject(value, alias.parent) : &value;
+      int64_t found = scope ? JsonValue(*scope, alias.field, int64_t{0}) : 0;
       if (found) return found;
     }
     return int64_t{0};
@@ -79,14 +76,8 @@ void Usage::Add(const json& value) {
   if (value.contains("cost") && value["cost"].is_number()) {
     MergeCost(value["cost"].get<double>(), true);
   }
-  const json* server_tools = nullptr;
-  if (value.contains("server_tool_use_details") &&
-      value["server_tool_use_details"].is_object()) {
-    server_tools = &value["server_tool_use_details"];
-  } else if (value.contains("server_tool_use") &&
-             value["server_tool_use"].is_object()) {
-    server_tools = &value["server_tool_use"];
-  }
+  const json* server_tools = JsonObject(value, "server_tool_use_details");
+  if (!server_tools) server_tools = JsonObject(value, "server_tool_use");
   if (server_tools) {
     web_searches = SaturatingNonnegativeAdd(
         web_searches,

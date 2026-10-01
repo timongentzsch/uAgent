@@ -14,7 +14,6 @@ extern char** environ;
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
-#include <memory>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -284,13 +283,9 @@ int Main(int argc, char** argv) {
   }
   BootstrapResult boot =
       Bootstrap(std::move(parsed.options), argv[0], observability);
-  if (!boot.Ok()) {
-    int code = Fail(json_stream, json_envelope, boot.error, boot.exit_code);
-    boot.context.reset();
-    observability.Shutdown();
-    return code;
-  }
-  int code = RunApplication(*boot.context);
+  int code = boot.Ok()
+                 ? RunApplication(*boot.context)
+                 : Fail(json_stream, json_envelope, boot.error, boot.exit_code);
   // Direct owners stop in deterministic reverse order: application/runtime,
   // then observational sinks, then process-level signal state at exit.
   boot.context.reset();

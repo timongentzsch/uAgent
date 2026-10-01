@@ -10,7 +10,10 @@ import {
   distance,
   midpoint,
   panView,
+  pinchStart,
+  pinchTo,
   pinchView,
+  type Pinch,
   type Point,
   type ZoomView,
 } from "../../shared/zoom.ts";
@@ -21,15 +24,7 @@ type Gesture =
   | { kind: "pan" }
   | { kind: "drag" }
   // Two fingers: a tap right-clicks; once they move, they pinch and pan.
-  | {
-      kind: "two";
-      at: Point;
-      time: number;
-      moved: boolean;
-      distance: number;
-      midpoint: Point;
-      view: ZoomView;
-    }
+  | ({ kind: "two"; at: Point; time: number; moved: boolean } & Pinch)
   | { kind: "done" };
 
 // The remote screen under direct touch. `pointer` receives framebuffer
@@ -240,15 +235,12 @@ export default function BrowserTouch({
             emitHeld(all[0], 0);
             fade();
           }
-          const inside = all.map(local);
           gesture.current = {
             kind: "two",
             at: midpoint(all),
             time: event.timeStamp,
             moved: false,
-            distance: distance(inside),
-            midpoint: midpoint(inside),
-            view: { ...view.current },
+            ...pinchStart(all.map(local), view.current),
           };
         }
       }}
@@ -300,16 +292,7 @@ export default function BrowserTouch({
               midpoint(all).y - next.midpoint.y,
             ) > BROWSER_GESTURE.movementSlopPx;
           if (!next.moved) return;
-          setView(
-            pinchView(
-              next.view,
-              size.current.width,
-              size.current.height,
-              next.midpoint,
-              midpoint(all),
-              next.distance > 0 ? distance(all) / next.distance : 1,
-            ),
-          );
+          setView(pinchTo(next, all, size.current.width, size.current.height));
         }
       }}
       onPointerUpCapture={(event) => {

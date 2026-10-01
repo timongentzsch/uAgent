@@ -1,4 +1,5 @@
 import { useRef, useState } from "preact/hooks";
+import { useAction } from "../../shared/use-action.ts";
 import { useResource } from "../../shared/use-resource.ts";
 import type {
   InstructionFile,
@@ -187,15 +188,12 @@ function InstructionCard({
   const [draft, setDraft] = useState<{ text: string; base: string } | null>(
     null,
   );
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<unknown>(null);
+  const { run, busy, error } = useAction();
   const field = useRef<HTMLTextAreaElement>(null);
   const text = draft?.text ?? file.text;
   const changed = text !== file.text;
   async function save() {
-    setBusy(true);
-    setError(null);
-    try {
+    await run(async () => {
       const value = await command("instructions", null, {
         action: "set",
         cwd,
@@ -208,13 +206,9 @@ function InstructionCard({
         saved(value.result);
         setDraft(null);
       }
-    } catch (failure) {
-      setError(failure);
-    } finally {
-      setBusy(false);
-      // Save leaves with the edit; focus stays in the field, not the page.
-      field.current?.focus();
-    }
+    });
+    // Save leaves with the edit; focus stays in the field, not the page.
+    field.current?.focus();
   }
   const title = TITLES[`${file.audience}/${file.scope}`];
   return (

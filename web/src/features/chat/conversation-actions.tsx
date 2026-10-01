@@ -1,6 +1,7 @@
 import { useState } from "preact/hooks";
 import type { StatisticsModal } from "../../shared/types.ts";
 import { command } from "../../state/api.ts";
+import { useAction } from "../../shared/use-action.ts";
 import { Actions, Button, LoadError, Input } from "../../shared/ui.tsx";
 export default function ConversationActions({
   modal,
@@ -14,15 +15,12 @@ export default function ConversationActions({
   close: () => void;
 }) {
   const [title, setTitle] = useState(modal.session.title || "");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<unknown>(null);
+  const { run, busy, error } = useAction();
   return (
     <form
-      onSubmit={async (event) => {
+      onSubmit={(event) => {
         event.preventDefault();
-        setBusy(true);
-        setError(null);
-        try {
+        void run(async () => {
           if (modal.type === "delete" && modal.session.generation) {
             // Live sessions close first: close aborts a running turn
             // gracefully, then delete removes the record. A closing worker
@@ -60,11 +58,7 @@ export default function ConversationActions({
           }
           await changed(modal.type, modal.session.id);
           close();
-        } catch (error) {
-          setError(error);
-        } finally {
-          setBusy(false);
-        }
+        });
       }}
     >
       {modal.type === "rename" ? (

@@ -306,22 +306,25 @@ bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
 bool SessionHost::ApplyRuntimeFrame(HostSession& session, json& frame) {
   const std::string kind = JsonValue(frame, "kind", "");
   if (kind == "state") {
-    json next = JsonValue(frame, "state", json::object());
+    auto sent = frame.find("state");
+    json next = sent != frame.end() ? std::move(*sent) : json::object();
     // A rewound conversation starts a new view epoch: its old blocks are
     // gone, so the checkpoint replaces the view instead of merging into it.
-    json view = JsonValue(next, "view_epoch", uint64_t{0}) ==
-                        JsonValue(session.state, "view_epoch", uint64_t{0})
-                    ? JsonValue(session.state, "view", json::object())
-                    : json::object();
-    const json checkpoint_view = JsonValue(next, "view", json::object());
-    if (checkpoint_view.is_object()) {
-      for (auto it = checkpoint_view.begin(); it != checkpoint_view.end();
+    json view = json::object();
+    if (auto held = session.state.find("view");
+        held != session.state.end() &&
+        JsonValue(next, "view_epoch", uint64_t{0}) ==
+            JsonValue(session.state, "view_epoch", uint64_t{0})) {
+      view = std::move(*held);
+    }
+    if (const json* checkpoint_view = JsonObject(next, "view")) {
+      for (auto it = checkpoint_view->begin(); it != checkpoint_view->end();
            ++it) {
         if (it.key() != "blocks") view[it.key()] = it.value();
       }
-    }
-    if (const json* blocks = JsonArray(checkpoint_view, "blocks")) {
-      for (const json& block : *blocks) MergeDisplayBlock(view, block);
+      if (const json* blocks = JsonArray(*checkpoint_view, "blocks")) {
+        for (const json& block : *blocks) MergeDisplayBlock(view, block);
+      }
     }
     if (!view.contains("blocks")) view["blocks"] = json::array();
     next["view"] = std::move(view);
@@ -402,7 +405,7 @@ bool SessionHost::ApplyRuntimeFrame(HostSession& session, json& frame) {
   json patch;
   ApplySessionEvent(session.state, type, frame["data"], &patch);
   if (type == "tool.result") {
-    const json data = JsonValue(frame, "data", json::object());
+    const json& data = frame["data"];
     const std::string detail = JsonValue(data, "detail_id", "");
     if (!detail.empty()) {
       if (session.active_exchanges.size() >= kMaxActiveExchanges) {
@@ -417,7 +420,7 @@ bool SessionHost::ApplyRuntimeFrame(HostSession& session, json& frame) {
     }
   }
   if (type == "message.changed") {
-    const json block = frame["data"]["block"];
+    const json& block = frame["data"]["block"];
     session.incoming =
         std::max(session.incoming, JsonValue(block, "incoming", uint64_t{0}));
   }

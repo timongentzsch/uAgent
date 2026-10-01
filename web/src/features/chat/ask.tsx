@@ -154,6 +154,7 @@ export default function Ask({
                 size="compact"
                 id={`${id}-step-${at}`}
                 role="tab"
+                title={step}
                 aria-controls={`${id}-page`}
                 aria-selected={at === page}
                 tabIndex={at === page ? 0 : -1}

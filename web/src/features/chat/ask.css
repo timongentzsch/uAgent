@@ -13,6 +13,14 @@
   justify-content: space-between;
   gap: var(--gap);
 }
+/* A header runs to 24 characters and there are up to nine steps: each
+   keeps to a short tab and shows the rest in its title. */
+.ask-steps button {
+  max-width: 14ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .ask-steps > small {
   flex-shrink: 0;
   white-space: nowrap;

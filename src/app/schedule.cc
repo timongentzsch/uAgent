@@ -207,10 +207,7 @@ json ScheduleCalendar(const json& request) {
     std::set<int> days;
     if (const json* selected = JsonArray(schedule, "days")) {
       for (const auto& day : *selected) {
-        if (!day.is_number_integer()) {
-          return {{"error", "weekdays must be integers 0–6"}};
-        }
-        auto value = day.get<int64_t>();
+        const int64_t value = day.is_number_integer() ? day.get<int64_t>() : -1;
         if (value < 0 || value > 6) {
           return {{"error", "weekdays must be integers 0–6"}};
         }

@@ -155,20 +155,17 @@ void Application::Teardown(const char* reason) {
 bool Application::ResumeAtStartup() {
   std::string previous_path = session_file_;
   if (!session_file_.empty()) {
-    if (PathExists(session_file_)) {
-      if (!ResumeInto(agent_, session_file_, session_file_, !channel_)) {
-        return false;
-      }
+    if (PathExists(session_file_) &&
+        !ResumeInto(agent_, session_file_, session_file_, !channel_)) {
+      return false;
     }
   } else if (context_.options.resume_latest) {
     std::vector<SessionInfo> sessions = ListSessions();
     if (sessions.empty()) {
       fputs(Note(Tone::kNeutral, "no saved sessions").c_str(), stdout);
       fflush(stdout);
-    } else {
-      if (!ResumeInto(agent_, sessions.front().path, session_file_)) {
-        return false;
-      }
+    } else if (!ResumeInto(agent_, sessions.front().path, session_file_)) {
+      return false;
     }
   }
   AppSession session = Session();

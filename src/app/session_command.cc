@@ -44,13 +44,6 @@ constexpr KindRow kKinds[] = {
     {"activate", SessionCommandKind::kActivate, false},
 };
 
-const KindRow* FindKind(SessionCommandKind kind) {
-  for (const KindRow& row : kKinds) {
-    if (row.kind == kind) return &row;
-  }
-  return nullptr;
-}
-
 }  // namespace
 
 SessionCommandKind ParseSessionCommandKind(std::string_view kind) {
@@ -61,8 +54,10 @@ SessionCommandKind ParseSessionCommandKind(std::string_view kind) {
 }
 
 bool ForwardsToWorker(SessionCommandKind kind) {
-  const KindRow* row = FindKind(kind);
-  return row && row->forwarded;
+  for (const KindRow& row : kKinds) {
+    if (row.kind == kind) return row.forwarded;
+  }
+  return false;
 }
 
 bool ParseSessionCommand(const json& command, const std::string& session_id,

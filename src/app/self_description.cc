@@ -49,15 +49,11 @@ constexpr TopicName kTopics[] = {
     {SelfTopic::kRoutes, "routes"},
 };
 
-json DefaultJson(const ConfigDescriptor& descriptor) {
-  return std::visit([](auto value) { return json(value); },
-                    descriptor.default_value);
-}
-
 json DescriptorJson(const ConfigDescriptor& descriptor) {
   json entry = {{"name", descriptor.environment},
                 {"type", ConfigTypeName(descriptor.type)},
-                {"default", DefaultJson(descriptor)},
+                {"default", std::visit([](auto value) { return json(value); },
+                                       descriptor.default_value)},
                 {"takes_effect", ReloadPolicyName(descriptor.reload)},
                 {"sensitivity", SensitivityName(descriptor.sensitivity)},
                 {"category", descriptor.category},

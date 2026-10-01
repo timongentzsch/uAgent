@@ -885,8 +885,9 @@ void TestActivityWaitAndDelivery() {
             .result.Ok());
   std::vector<BgJob> memory_jobs = memory_activity.Snapshot();
   CHECK(memory_jobs.size() == 1);
-  CHECK(ToolActivityList(memory_activity).output.find("[memory] activity") !=
-        std::string::npos);
+  CHECK(
+      ToolActivityOutput(memory_activity, 0).output.find("[memory] activity") !=
+      std::string::npos);
   // A wait consumes the completion it observes, so extraction must stay out of
   // reach: the harness drains it into the memory audit instead. It is still
   // listed, just not waitable.
@@ -898,7 +899,7 @@ void TestActivityWaitAndDelivery() {
     CHECK(!named.Ok());
     CHECK(named.output.find("not waitable") != std::string::npos);
   }
-  CHECK(ToolActivityList(memory_activity)
+  CHECK(ToolActivityOutput(memory_activity, 0)
             .output.find("extracting from source-123") != std::string::npos);
   if (!memory_jobs.empty()) {
     WaitForActivityDrain(memory_activity, memory_jobs[0]);

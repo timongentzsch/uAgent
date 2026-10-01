@@ -136,11 +136,6 @@ static ToolResult FormatActivityList(const std::vector<BgJob>& supervised,
   return ToolSuccess(std::move(output));
 }
 
-ToolResult ToolActivityList(const ProcessSupervisor& supervisor) {
-  return FormatActivityList(supervisor.Snapshot(), {},
-                            "(no active background work)");
-}
-
 std::string DrainActivityOutput(const BgJob& job, int64_t cap) {
   if (!job.session) return ReadLogTail(job.log, cap);
   std::string raw;

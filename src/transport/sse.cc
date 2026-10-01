@@ -46,12 +46,6 @@ bool SseParser::Finish() {
   return Dispatch();
 }
 
-std::vector<SseEvent> SseParser::TakeEvents() {
-  std::vector<SseEvent> events;
-  TakeEvents(events);
-  return events;
-}
-
 void SseParser::TakeEvents(std::vector<SseEvent>& out) {
   out.clear();
   out.swap(events_);

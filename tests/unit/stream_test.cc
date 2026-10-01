@@ -472,7 +472,8 @@ void TestSseFraming() {
     CHECK(parser.Feed(std::string_view(wire).substr(0, split)));
     CHECK(parser.Feed(std::string_view(wire).substr(split)));
     CHECK(parser.Finish());
-    std::vector<SseEvent> events = parser.TakeEvents();
+    std::vector<SseEvent> events;
+    parser.TakeEvents(events);
     CHECK(events.size() == 2);
     if (events.size() == 2) {
       CHECK(events[0].event == "update");
@@ -486,9 +487,13 @@ void TestSseFraming() {
 
   SseParser final_event;
   CHECK(final_event.Feed("data: tail"));
-  CHECK(final_event.TakeEvents().empty());
+  std::vector<SseEvent> tail;
+  final_event.TakeEvents(tail);
+  CHECK(tail.empty());
   CHECK(final_event.Finish());
-  CHECK(final_event.TakeEvents()[0].data == "tail");
+  final_event.TakeEvents(tail);
+  REQUIRE(tail.size() == 1);
+  CHECK(tail[0].data == "tail");
 
   SseParser bounded(8);
   CHECK(!bounded.Feed("data: payload-too-large\n\n"));

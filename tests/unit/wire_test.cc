@@ -417,7 +417,9 @@ void TestWireStreams() {
     std::map<int, ToolCall> calls;
     WireStreamState state;
     std::string text;
-    for (const SseEvent& event : parser.TakeEvents()) {
+    std::vector<SseEvent> events;
+    parser.TakeEvents(events);
+    for (const SseEvent& event : events) {
       text +=
           DecodeWireStreamEvent(api, event.data, result, calls, state).content;
     }

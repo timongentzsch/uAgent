@@ -29,7 +29,8 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   std::string_view input(reinterpret_cast<const char*>(data), size);
   uagent::SseParser whole(64 * 1024);
   bool whole_ok = whole.Feed(input) && whole.Finish();
-  std::vector<uagent::SseEvent> whole_events = whole.TakeEvents();
+  std::vector<uagent::SseEvent> whole_events;
+  whole.TakeEvents(whole_events);
 
   uagent::SseParser chunked(64 * 1024);
   bool chunked_ok = true;
@@ -40,7 +41,8 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     offset += width;
   }
   chunked_ok = chunked_ok && chunked.Finish();
-  std::vector<uagent::SseEvent> chunked_events = chunked.TakeEvents();
+  std::vector<uagent::SseEvent> chunked_events;
+  chunked.TakeEvents(chunked_events);
   if (whole_ok != chunked_ok || whole.Error() != chunked.Error() ||
       !SameEvents(whole_events, chunked_events)) {
     __builtin_trap();

@@ -242,7 +242,7 @@ struct Server::State {
         }
         if (state &&
             (snapshot.is_null() || JsonValue(frame, "checkpoint", false))) {
-          snapshot = frame;
+          snapshot = std::move(frame);
           replay_gap = false;
           replay.clear();
           replay_bytes = 0;

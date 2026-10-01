@@ -122,6 +122,32 @@ void TestSessionCommandRejects() {
   }
 }
 
+// A reader catching up takes the backlog a batch at a time: Read stops at
+// its byte budget and the next call continues from where the reader got to.
+void TestReplayLogReadsInBatches() {
+  session::ReplayLog log(1024 * 1024, 1024);
+  for (int index = 0; index < 10; ++index) {
+    log.Publish("e", "s", "g",
+                {{"kind", "note"}, {"pad", std::string(90, 'x')}}, false);
+  }
+  session::ReplayBatch first = log.Read(0, true, log.Cursor(), 250);
+  CHECK(!first.reset);
+  CHECK(first.events.size() > 1 && first.events.size() < 10);
+  CHECK(first.events.front().sequence == 1);
+  uint64_t next = first.events.back().sequence;
+  size_t seen = first.events.size();
+  while (next < log.Cursor()) {
+    session::ReplayBatch more = log.Read(next, true, log.Cursor(), 250);
+    REQUIRE(!more.events.empty());
+    CHECK(more.events.front().sequence == next + 1);
+    next = more.events.back().sequence;
+    seen += more.events.size();
+  }
+  CHECK(seen == 10);
+  // A watermark holds back what was published after the reader connected.
+  CHECK(log.Read(0, true, 3, 1 << 20).events.size() == 3);
+}
+
 void TestReceiptLog() {
   session::ReceiptLog log;
   json command = CommandEnvelope("submit");

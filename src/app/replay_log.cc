@@ -57,17 +57,19 @@ void ReplayLog::Publish(const std::string& epoch, const std::string& session,
   }
 }
 
-ReplayBatch ReplayLog::Read(uint64_t next, bool valid,
-                            uint64_t watermark) const {
+ReplayBatch ReplayLog::Read(uint64_t next, bool valid, uint64_t watermark,
+                            size_t byte_budget) const {
   ReplayBatch batch;
   batch.cursor = sequence_;
   batch.reset = !valid || next > sequence_ ||
                 (!replay_.empty() && next + 1 < replay_.front().sequence);
   if (batch.reset) return batch;
+  size_t bytes = 0;
   for (const HostReplay& event : replay_) {
-    if (event.sequence > next && event.sequence <= watermark) {
-      batch.events.push_back(event);
-    }
+    if (event.sequence <= next) continue;
+    if (event.sequence > watermark || bytes >= byte_budget) break;
+    batch.events.push_back(event);
+    bytes += event.frame.size();
   }
   return batch;
 }

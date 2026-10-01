@@ -947,7 +947,8 @@ void Master::Events(const Request& request, Response& response) {
         if (stopping_ || !authorized()) {
           return false;
         }
-        auto replay = host_.ReadReplay(next, valid, replay_watermark);
+        auto replay = host_.ReadReplay(next, valid, replay_watermark,
+                                       kWebEventBatchBytes);
         if (replay.reset) {
           guard.unlock();
           std::string reset = "event: resync\ndata: {}\n\n";
@@ -957,17 +958,19 @@ void Master::Events(const Request& request, Response& response) {
           sink.done();
           return true;
         }
+        // Caught up: wait for news, then read again. A reader still
+        // replaying sends the batch just read.
         if (ready_sent) {
           guard.unlock();
           host_.WaitForReplay(next, kReplayWait);
           guard.lock();
           if (stopping_ || !authorized()) return false;
-        }
-        replay = host_.ReadReplay(
-            next, valid, ready_sent ? host_.Cursor() : replay_watermark);
-        if (replay.reset) {
-          valid = false;
-          return true;
+          replay = host_.ReadReplay(next, valid, host_.Cursor(),
+                                    kWebEventBatchBytes);
+          if (replay.reset) {
+            valid = false;
+            return true;
+          }
         }
         std::string batch;
         for (const session::HostReplay& event : replay.events) {

@@ -109,7 +109,8 @@ class SessionHost {
   void Publish(const std::string& session, const std::string& generation,
                json value);
   uint64_t Cursor() const;
-  ReplayBatch ReadReplay(uint64_t next, bool valid, uint64_t watermark) const;
+  ReplayBatch ReadReplay(uint64_t next, bool valid, uint64_t watermark,
+                         size_t byte_budget) const;
   void WaitForReplay(uint64_t cursor, std::chrono::seconds timeout);
   std::vector<HostNotice> WaitForNotices();
   void Stop();

@@ -64,6 +64,7 @@ namespace uagent {
   X(TestSessionCommandFields)                    \
   X(TestSessionCommandRejects)                   \
   X(TestReceiptLog)                              \
+  X(TestReplayLogReadsInBatches)                 \
   X(TestReceiptLogBackpressure)                  \
   X(TestHostCommandKinds)                        \
   X(TestToolCopiesKeepRoomForUserFiles)          \

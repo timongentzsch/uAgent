@@ -45,7 +45,11 @@ class ReplayLog {
   void Publish(const std::string& epoch, const std::string& session,
                const std::string& generation, json value, bool run_owned);
   uint64_t Cursor() const { return sequence_; }
-  ReplayBatch Read(uint64_t next, bool valid, uint64_t watermark) const;
+  // Events after `next` up to `watermark`, stopping once `byte_budget` of
+  // frames is reached: a reader sends one batch at a time, and copying the
+  // whole backlog for each would hold the host for megabytes.
+  ReplayBatch Read(uint64_t next, bool valid, uint64_t watermark,
+                   size_t byte_budget) const;
   bool HasNotices() const { return !notices_.empty(); }
   std::vector<HostNotice> TakeNotices();
 

@@ -65,9 +65,10 @@ uint64_t SessionHost::Cursor() const {
 }
 
 ReplayBatch SessionHost::ReadReplay(uint64_t next, bool valid,
-                                    uint64_t watermark) const {
+                                    uint64_t watermark,
+                                    size_t byte_budget) const {
   std::lock_guard lock(mutex_);
-  return replay_.Read(next, valid, watermark);
+  return replay_.Read(next, valid, watermark, byte_budget);
 }
 
 void SessionHost::WaitForReplay(uint64_t cursor, std::chrono::seconds timeout) {

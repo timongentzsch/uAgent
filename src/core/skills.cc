@@ -2,8 +2,6 @@
 
 #include "include/core/skills.h"
 
-#include <unistd.h>
-
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
@@ -12,7 +10,6 @@
 #include <vector>
 
 #include "include/core/config_registry.h"
-#include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
 #include "include/core/signals.h"
@@ -50,18 +47,6 @@ void ParseSkillFrontMatter(std::istream& input, std::string* description,
 std::filesystem::path InstalledSkillsPath() {
   namespace fs = std::filesystem;
   fs::path executable = ExecutablePath();
-  if (executable.empty()) return {};
-  if (!executable.has_parent_path()) {
-    for (const std::string& entry : SplitPathList(EnvStr("PATH"))) {
-      fs::path candidate = fs::path(entry) / executable;
-      std::error_code ec;
-      if (fs::is_regular_file(candidate, ec) &&
-          access(candidate.c_str(), X_OK) == 0) {
-        executable = std::move(candidate);
-        break;
-      }
-    }
-  }
   if (!executable.has_parent_path()) return {};
   std::error_code ec;
   fs::path resolved = fs::canonical(executable, ec);

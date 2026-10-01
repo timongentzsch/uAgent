@@ -36,11 +36,15 @@ export function SuggestionList<T>({
   children: (item: T) => ComponentChildren;
 }) {
   const list = useRef<HTMLDivElement>(null);
+  // Follows the option, not the render: a caller that rebuilds its items on
+  // every render (the palette, while a turn streams) must not pull a list the
+  // person scrolled back to its active option each time.
+  const current = items[index];
   useLayoutEffect(() => {
     list.current
       ?.querySelector('[aria-selected="true"]')
       ?.scrollIntoView({ block: "nearest" });
-  }, [items[index]]);
+  }, [index, current && keyOf ? keyOf(current) : current]);
   return (
     <div
       id={id}

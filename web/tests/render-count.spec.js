@@ -186,6 +186,7 @@ test("streaming renders only what changed", async ({ page }) => {
           count - (before[name] || 0),
         ]),
       );
+      globalThis.testSequence = sequence;
       return { streamed, ticks };
     },
     {
@@ -212,4 +213,57 @@ test("streaming renders only what changed", async ({ page }) => {
   expect(ticks.ToolRow).toBe(20);
   // The sidebar renders that session's row, not the other forty.
   expect(ticks.SessionRow).toBe(20);
+
+  // The palette fills its sheet, and a list the person scrolled stays where
+  // they left it while events keep re-rendering the app behind it.
+  await page.keyboard.press("ControlOrMeta+k");
+  const palette = page.getByRole("dialog", { name: "Command palette" });
+  const results = palette.getByRole("listbox", { name: "Results" });
+  await expect(results.getByRole("option").first()).toBeVisible();
+  const gap = await results.evaluate(
+    (list) =>
+      list.closest("dialog").getBoundingClientRect().bottom -
+      list.getBoundingClientRect().bottom,
+  );
+  expect(gap).toBeLessThan(40);
+  await results.evaluate((list) => (list.scrollTop = list.scrollHeight));
+  const scrolled = await results.evaluate((list) => list.scrollTop);
+  expect(scrolled).toBeGreaterThan(0);
+  const renders = await page.evaluate(
+    async ({ epoch, id, generation }) => {
+      const before = globalThis.renderCounts.Palette || 0;
+      for (let index = 0; index < 10; index++) {
+        globalThis.testStream.dispatchEvent(
+          new MessageEvent("update", {
+            data: JSON.stringify({
+              v: 2,
+              epoch,
+              sequence: globalThis.testSequence++,
+              session_id: id,
+              generation,
+              kind: "event",
+              type: "activities.changed",
+              data: {
+                activities: [
+                  {
+                    id: 1,
+                    kind: "agent",
+                    agent_id: "child",
+                    status: "running",
+                    progress: `later ${index}`,
+                  },
+                ],
+              },
+            }),
+          }),
+        );
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      return (globalThis.renderCounts.Palette || 0) - before;
+    },
+    { epoch: EPOCH, id: ID, generation: SESSIONS[0].generation },
+  );
+  // The premise: the palette did re-render under the person's scroll.
+  expect(renders).toBeGreaterThan(0);
+  expect(await results.evaluate((list) => list.scrollTop)).toBe(scrolled);
 });

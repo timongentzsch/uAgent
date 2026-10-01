@@ -1,10 +1,15 @@
+/* The palette fills its sheet: the search stays put and the results take
+   the rest of the height and scroll. */
 .palette {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: var(--gap);
+  height: 100%;
   min-height: 0;
 }
 .palette-results {
-  max-height: min(calc(420rem / 14), calc(var(--viewport-height) * 0.6));
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
 }

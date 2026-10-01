@@ -261,6 +261,12 @@ void TestRuntimeOwnershipHelpers() {
   body = api.BuildRequestBody(json::array(), json::array(), "stable-session");
   CHECK(body["reasoning"].value("effort", "") == "low");
   CHECK(!body.contains("reasoning_effort"));
+  // Anthropic models behind OpenRouter cache only when asked to.
+  CHECK(!body.contains("cache_control"));
+  api.model = "anthropic/claude-test";
+  body = api.BuildRequestBody(json::array(), json::array(), "stable-session");
+  CHECK(body["cache_control"].value("type", "") == "ephemeral");
+  api.model = "test:free";
   api.base_url = "http://127.0.0.1:8080/v1";
   api.capabilities =
       CapabilitiesForRoute(ProviderProtocol::kOpenAi, api.base_url);

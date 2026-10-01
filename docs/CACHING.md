@@ -16,6 +16,10 @@ CLI and web sessions share one request encoder and one usage accounting path.
   breakpoint on the system block so the tools and system prefix stay reachable
   once a long tool round exceeds the automatic 20-block lookback. See
   [Anthropic prompt caching](https://platform.claude.com/docs/en/build-with-claude/prompt-caching).
+- **OpenRouter.** Most providers behind it cache matching prefixes by
+  themselves. Anthropic models do not, so a request for an `anthropic/…` model
+  carries the same top-level `cache_control`. See
+  [OpenRouter prompt caching](https://openrouter.ai/docs/features/prompt-caching).
 - **All routes.** Every model request carries an `X-Session-Id` header so a
   proxy can keep account affinity across wire dialects. Account failover in
   such a proxy can still move a request to a cold cache.

@@ -562,6 +562,13 @@ json Api::BuildRequestBody(const json& messages, const json& tool_schemas,
     body["plugins"] = json::array(
         {{{"id", "file-parser"}, {"pdf", {{"engine", config.pdf_engine}}}}});
   }
+  // OpenRouter caches most providers' prefixes by itself. Anthropic models
+  // cache only when asked, and the top-level form moves the breakpoint along
+  // as the conversation grows.
+  if (capabilities.OpenRouter() && (request.model.starts_with("anthropic/") ||
+                                    request.model.starts_with("~anthropic/"))) {
+    body["cache_control"] = {{"type", "ephemeral"}};
+  }
   int64_t max_tokens = MaxOutputTokens();
   if (max_tokens > 0) {
     body[capabilities.max_completion_tokens ? "max_completion_tokens"

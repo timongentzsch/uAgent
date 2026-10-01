@@ -104,6 +104,17 @@ std::string AddReasoningDetails(const json& details, ChatResult& result) {
   return streamed_text;
 }
 
+void ApplyStreamError(const json& error, ChatResult& result,
+                      std::string fallback) {
+  // A provider may send the error as a bare string; it is classified and
+  // shown like an object's message.
+  result.retryable =
+      ApplyRemoteError(error, result) || BarrenStreamError(result);
+  result.error = error.is_string()
+                     ? error.get<std::string>()
+                     : JsonValue(error, "message", std::move(fallback));
+}
+
 // OpenAI Chat Completions and compatible providers.
 WireStreamDelta DecodeChatCompletionsEvent(
     const json& value, ChatResult& result,
@@ -117,9 +128,7 @@ WireStreamDelta DecodeChatCompletionsEvent(
     if (nested.is_object()) envelope = &nested;
   }
   if (envelope->contains("error")) {
-    result.retryable = ApplyRemoteError((*envelope)["error"], result) ||
-                       BarrenStreamError(result);
-    result.error = JsonErrorMessage(*envelope, "stream failed");
+    ApplyStreamError((*envelope)["error"], result, "stream failed");
     return delta;
   }
   // Some providers inject the bare {"type":"…error","message":"…"} shape
@@ -128,9 +137,7 @@ WireStreamDelta DecodeChatCompletionsEvent(
   if (!value.contains("choices") && envelope->contains("message") &&
       (*envelope)["message"].is_string() &&
       JsonValue(*envelope, "type", "").ends_with("error")) {
-    result.retryable =
-        ApplyRemoteError(*envelope, result) || BarrenStreamError(result);
-    result.error = (*envelope)["message"].get<std::string>();
+    ApplyStreamError(*envelope, result, {});
     return delta;
   }
   if (value.contains("usage") && !value["usage"].is_null()) {
@@ -276,17 +283,6 @@ json ParseEvent(std::string_view data) {
   data = data.substr(begin, end - begin + 1);
   if (data == "[DONE]") return json(nullptr);
   return json::parse(data.begin(), data.end(), nullptr, false);
-}
-
-void ApplyStreamError(const json& error, ChatResult& result,
-                      std::string fallback) {
-  // A provider may send the error as a bare string; it is classified and
-  // shown like an object's message.
-  result.retryable =
-      ApplyRemoteError(error, result) || BarrenStreamError(result);
-  result.error = error.is_string()
-                     ? error.get<std::string>()
-                     : JsonValue(error, "message", std::move(fallback));
 }
 
 int HostedToolRank(HostedToolPhase phase) {

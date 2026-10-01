@@ -85,9 +85,8 @@ python3 benchmarks/eval.py --self-test
 - A scenario's `tier` is `regression` (gates the build) or `capability`
   (reported only; the eval suggests promoting it once it passes).
 - `variants` and `variant_env` compare settings within one scenario, for
-  example `read_volume` (250/500/1000-line reads) and `superseded_reads`
-  (`control`/`pruned`). A `compacted` variant fails if it scores below its
-  `control`.
+  example `read_volume` (250/500/1000-line reads). A `compacted` variant fails
+  if it scores below its `control`.
 - Reports include pass@1, pass@k, pass^k with a Wilson 95% interval, rounds,
   idle rounds, failure categories, context size, latency and usage.
 

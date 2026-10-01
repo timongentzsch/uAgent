@@ -12,7 +12,6 @@
 #include <vector>
 
 #include "include/agent/protocol.h"
-#include "include/api/wire.h"
 #include "include/core/checked.h"
 #include "include/core/debug.h"
 #include "include/core/json.h"
@@ -568,15 +567,10 @@ bool Conversation::HasRecentToolResult(const std::string& name,
 
 ToolTracePruneResult Conversation::PruneOldToolResults(
     size_t protect_chars, size_t minimum_reclaim_chars,
-    const std::vector<std::string>& retained_tools, ToolPruneMode mode,
-    int64_t archive_cap) {
+    const std::vector<std::string>& retained_tools) {
   if (minimum_reclaim_chars == 0) return {};
-  const bool superseded_only = mode == ToolPruneMode::kSupersededReads;
   const std::unordered_set<std::string> retained(retained_tools.begin(),
                                                  retained_tools.end());
-  if (superseded_only && (archive_cap <= 0 || retained.contains("read_path"))) {
-    return {};
-  }
   struct Candidate {
     size_t index;
     std::string replacement;
@@ -585,7 +579,6 @@ ToolTracePruneResult Conversation::PruneOldToolResults(
   size_t protected_chars = 0;
   size_t reclaimable_chars = 0;
   int64_t user_turns = 0;
-  std::unordered_set<std::string> newer_reads;
 
   for (size_t index = messages_.size(); index > 0; --index) {
     size_t current = index - 1;
@@ -593,7 +586,7 @@ ToolTracePruneResult Conversation::PruneOldToolResults(
       ++user_turns;
       continue;
     }
-    if ((!superseded_only && user_turns < kProtectedUserTurns) ||
+    if (user_turns < kProtectedUserTurns ||
         kinds_[current] != MessageKind::kToolResult) {
       continue;
     }
@@ -601,27 +594,11 @@ ToolTracePruneResult Conversation::PruneOldToolResults(
     const std::string* content = JsonStringRef(message, "content");
     if (!content || content->size() < kMinimumPrunableResultChars ||
         content->starts_with(kCompactedToolOutput) ||
-        (!superseded_only &&
-         retained.contains(ToolResultName(messages_, kinds_, current)))) {
+        retained.contains(ToolResultName(messages_, kinds_, current))) {
       continue;
-    }
-    bool superseded = false;
-    if (superseded_only) {
-      const json* range = JsonArray(message, kReadRangeField);
-      // A read without a range (truncated, or not a file read) is pruned by
-      // age only.
-      if (!range || range->size() != 3 || !(*range)[0].is_string() ||
-          !(*range)[1].is_number_integer() ||
-          !(*range)[2].is_number_integer() || (*range)[1].get<int64_t>() < 1 ||
-          (*range)[2] < (*range)[1]) {
-        continue;
-      }
-      superseded = !newer_reads.insert(JsonDump(*range)).second;
     }
     protected_chars = SaturatingAdd(protected_chars, content->size());
-    if (protected_chars <= protect_chars || (superseded_only && !superseded)) {
-      continue;
-    }
+    if (protected_chars <= protect_chars) continue;
     std::string replacement = CompactedResult(*content);
     if (replacement.size() >= content->size()) continue;
     size_t reclaimed = content->size() - replacement.size();
@@ -632,10 +609,6 @@ ToolTracePruneResult Conversation::PruneOldToolResults(
   if (reclaimable_chars < minimum_reclaim_chars) return {};
   ToolTracePruneResult result;
   for (Candidate& candidate : candidates) {
-    if (superseded_only && !ArchiveRange("superseded_read", candidate.index,
-                                         candidate.index + 1, 0, archive_cap)) {
-      continue;
-    }
     ++result.results;
     result.reclaimed_chars +=
         JsonStringRef(messages_[candidate.index], "content")->size() -

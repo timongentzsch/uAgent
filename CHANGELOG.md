@@ -13,6 +13,7 @@ names one loads as before and the line has no effect.
 - Removed: `UAGENT_WEB_SEARCH_EFFORT`. Put the effort on the search model
   instead, as in `UAGENT_WEB_SEARCH_MODEL=vendor/model:low`; without a suffix
   the provider's default applies.
+- Removed: `UAGENT_PRUNE_SUPERSEDED_READS`, an experiment that stayed off.
 
 ### Added
 

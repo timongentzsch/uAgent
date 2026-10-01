@@ -31,8 +31,6 @@ struct ToolTracePruneResult {
   size_t reclaimed_chars = 0;
 };
 
-enum class ToolPruneMode { kOldResults, kSupersededReads };
-
 // A message the person wrote (a prompt or guidance, with or without files),
 // not files attached on request mid-turn, which share its role and kind.
 bool IsUserMessage(const json& message, MessageKind kind);
@@ -106,8 +104,7 @@ class Conversation {
                            const std::string& result) const;
   ToolTracePruneResult PruneOldToolResults(
       size_t protect_chars, size_t minimum_reclaim_chars,
-      const std::vector<std::string>& retained_tools,
-      ToolPruneMode mode = ToolPruneMode::kOldResults, int64_t archive_cap = 0);
+      const std::vector<std::string>& retained_tools);
 
   size_t PruneAttachments(size_t begin, const std::string& route = "");
   void ArchiveTurn(size_t turn_start, int64_t turn, int64_t archive_cap,

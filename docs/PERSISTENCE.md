@@ -55,8 +55,8 @@ user chose.
   a workspace. The lease is the locked descriptor, not the lock file's
   existence.
 - A successful, untruncated file read stores `_uagent_read_range`
-  (`[path, first_line, last_line]`) in its tool message so superseded-read
-  pruning works after resume. Wire requests omit it.
+  (`[path, first_line, last_line]`) in its tool message. Wire requests omit
+  it.
 
 The event journal (`uagent.session.event.v1`) keeps at most 512 records or
 256 KiB of turn, tool, capability, configuration, presentation and artifact

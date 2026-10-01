@@ -223,51 +223,6 @@ void TestConversation() {
   CHECK(small_batch.PruneOldToolResults(0, 2000, {}).results == 0);
   CHECK(small_batch.At(2).value("content", "") == std::string(1500, 'x'));
 
-  Conversation snapshots;
-  snapshots.Reset(json::array({{{"role", "user"}, {"content", "inspect"}}}),
-                  {MessageKind::kUser});
-  auto read_snapshot = [&](const char* id, const std::string& output,
-                           bool complete = true) {
-    snapshots.Push(
-        {{"role", "assistant"},
-         {"tool_calls",
-          json::array({{{"id", id},
-                        {"function",
-                         {{"name", "read_path"},
-                          {"arguments", R"({"path":"notes"})"}}}}})}},
-        MessageKind::kAssistant);
-    json message = {
-        {"role", "tool"}, {"tool_call_id", id}, {"content", output}};
-    if (complete) message[kReadRangeField] = {"notes", 1, 100};
-    snapshots.Push(std::move(message), MessageKind::kToolResult);
-  };
-  const std::string before =
-      "arbitrary display wording\n" + std::string(2000, 'a');
-  const std::string after =
-      "limited is just file content\n" + std::string(2000, 'b');
-  read_snapshot("before", before);
-  read_snapshot("after", after);
-  read_snapshot("failed", "error: " + std::string(2000, 'e'), false);
-  CHECK(snapshots.Restore(json::parse(JsonDump(snapshots.Messages())),
-                          snapshots.Kinds(), json::array(), 0));
-  CHECK(snapshots.PruneOldToolResults(0, 1024, {}).results == 0);
-  CHECK(snapshots
-            .PruneOldToolResults(0, 1024, {}, ToolPruneMode::kSupersededReads,
-                                 512)
-            .results == 0);
-  CHECK(snapshots
-            .PruneOldToolResults(0, 1024, {}, ToolPruneMode::kSupersededReads,
-                                 16384)
-            .results == 1);
-  CHECK(snapshots.At(2)["content"] != before);
-  CHECK(snapshots.At(4)["content"] == after);
-  CHECK(snapshots.At(6)["content"] == "error: " + std::string(2000, 'e'));
-  CHECK(snapshots.Archive()[0]["messages"][0]["content"] == before);
-  CHECK(snapshots
-            .PruneOldToolResults(0, 1024, {}, ToolPruneMode::kSupersededReads,
-                                 16384)
-            .results == 0);
-
   json kinds = MessageKindsJson(conversation.Kinds());
   std::vector<MessageKind> parsed;
   CHECK(ParseMessageKinds(kinds, conversation.Size(), parsed));

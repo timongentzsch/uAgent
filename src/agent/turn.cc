@@ -20,7 +20,6 @@
 #include "include/api/citations.h"
 #include "include/api/retry.h"
 #include "include/core/checked.h"
-#include "include/core/config_registry.h"
 #include "include/core/debug.h"
 #include "include/core/env.h"
 #include "include/core/events.h"
@@ -172,9 +171,6 @@ Agent::StepFlow Agent::PrepareStep(TurnExecution& state, StepState& loop) {
   };
   const json& schemas = available_schemas_.Get(
       tools_, schemas_, loop.tool_counts, availability, &tool_selection_);
-  if (loop.step > 0 && BoolSetting(Cfg("UAGENT_PRUNE_SUPERSEDED_READS"))) {
-    PruneOldToolResults(ToolPruneMode::kSupersededReads);
-  }
   if (loop.step > 0 && loop.midturn_compaction_enabled) {
     MidturnCompact compacted =
         MaybeCompactDuringTurn(schemas, state.metrics.usage, state.start);

@@ -134,6 +134,10 @@ function App() {
     () => storage.getItem(BROWSER_KEY) === "1",
   );
   const [notice, setNotice] = useState("");
+  // The banner shows one line: a new notice replaces an older error.
+  useEffect(() => {
+    if (notice) setError("");
+  }, [notice]);
   // The one image viewer every tile opens.
   const [viewed, setViewed] = useState<ViewedImage | null>(null);
   const [side, setSide] = useState<{

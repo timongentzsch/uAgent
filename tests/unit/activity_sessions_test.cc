@@ -1331,6 +1331,8 @@ void TestSessionLinks() {
   }
   SetApprovalMode(before);
   CHECK(SharesLink("aaa", "bbb"));
+  // Listing needs no prompt.
+  CHECK(!FindToolArgumentIssue(SessionTool(), {{"operation", "list"}}));
   std::vector<Mail> taken =
       TakeMail(MailboxIdFor(fa.string()), [](const Mail&) { return true; });
   CHECK(taken.size() == 1);

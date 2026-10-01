@@ -624,7 +624,7 @@ test("the conversation menu exports and restarts; /quit closes nothing", async (
     page.getByText("Use Close session in the conversation menu."),
   ).toBeVisible();
   expect(await generation()).toBe(session.generation);
-  await page.getByRole("button", { name: "Dismiss", exact: true }).click();
+  // The notice that follows replaces this error in the one banner.
 
   const head = page.locator(".conversation-head");
   const menu = head.getByLabel("Conversation menu", { exact: true });

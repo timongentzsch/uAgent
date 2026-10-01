@@ -140,9 +140,7 @@ SessionCommandResult SessionHost::ExecuteCommand(
       session->title = title;
       session->draft_title = title;
       session->updated = NowMillis();
-      replay_.Publish(epoch_, session->id, "",
-                      {{"kind", "metadata"}, {"metadata", Metadata(*session)}},
-                      !session->run_id.empty());
+      PublishMetadata(session->id, *session);
     }
     return result;
   }

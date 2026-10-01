@@ -280,14 +280,13 @@ json ParseEvent(std::string_view data) {
 
 void ApplyStreamError(const json& error, ChatResult& result,
                       std::string fallback) {
-  if (error.is_object()) {
-    result.retryable =
-        ApplyRemoteError(error, result) || BarrenStreamError(result);
-    result.error = JsonValue(error, "message", std::move(fallback));
-  } else {
-    result.retryable = BarrenStreamError(result);
-    result.error = std::move(fallback);
-  }
+  // A provider may send the error as a bare string; it is classified and
+  // shown like an object's message.
+  result.retryable =
+      ApplyRemoteError(error, result) || BarrenStreamError(result);
+  result.error = error.is_string()
+                     ? error.get<std::string>()
+                     : JsonValue(error, "message", std::move(fallback));
 }
 
 int HostedToolRank(HostedToolPhase phase) {

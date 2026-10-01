@@ -385,6 +385,17 @@ void TestSseChunkPartitions() {
   CHECK(flat_error.error == "JSON error injected into SSE stream");
   CHECK(SafeToRetry(flat_error));
 
+  // A string-valued error keeps its text and classification on the
+  // Responses dialect too.
+  ChatResult string_error;
+  WireStreamState string_state;
+  DecodeWireStreamEvent(WireApi::kResponses,
+                        R"({"error":"maximum context length exceeded"})",
+                        string_error, no_tool_calls, string_state);
+  CHECK(string_error.error == "maximum context length exceeded");
+  CHECK(string_error.remote_error_kind ==
+        RemoteErrorKind::kContextLengthExceeded);
+
   // The same frame after visible output is not replayed: StreamCtx has
   // already appended the answer text the user has seen.
   ChatResult answered_then_error;

@@ -37,7 +37,7 @@ ToolResult MessageSession(const std::string& id, const std::string& text,
   }
   if (text.empty()) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "message requires text");
+                       "message requires prompt");
   }
   const std::string own = OwnSessionFile();
   const std::string title = JsonValue(SessionHeader(own), "title", "");
@@ -81,8 +81,7 @@ Tool SessionTool() {
           {"minimum", 0},
           {"maximum", 8},
           {"description",
-           "message only: peer-forward count for loop clamping"}}}}},
-      {"required", json::array({"prompt"})}};
+           "message only: peer-forward count for loop clamping"}}}}}};
   Tool tool = MakeTool(
       "session",
       "Message another live uagent session linked with this one (yolo "

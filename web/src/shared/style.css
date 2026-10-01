@@ -411,10 +411,6 @@ label,
   justify-content: space-between;
   gap: var(--pad);
 }
-.field-label output {
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
 .field-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

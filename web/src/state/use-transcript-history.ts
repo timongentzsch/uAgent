@@ -498,7 +498,6 @@ export function useTranscriptHistory(
     content,
     attachScroller,
     attachContent,
-    stopFollowing,
     preserveWhile,
     jumpToLatest,
     unseen,

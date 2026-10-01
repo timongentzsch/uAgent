@@ -117,21 +117,16 @@ export function Mark({ className = "" }: { className?: string }) {
 }
 export function Field({
   label,
-  value,
   children,
   help,
 }: {
   label: string;
-  value?: ComponentChildren;
   children: ComponentChildren;
   help?: string;
 }) {
   return (
     <label class="field">
-      <span class="field-label">
-        {label}
-        {value !== undefined && <output>{value}</output>}
-      </span>
+      <span class="field-label">{label}</span>
       {children}
       {help && <small class="muted">{help}</small>}
     </label>
@@ -208,7 +203,6 @@ export function Row({
   onClick,
   destructive = false,
   current,
-  href,
   disabled,
   expanded,
 }: {
@@ -216,8 +210,6 @@ export function Row({
   detail?: ComponentChildren;
   children?: ComponentChildren;
   onClick?: () => void;
-  // A link out instead of an action.
-  href?: string;
   disabled?: boolean;
   destructive?: boolean;
   // The destination shown beside the list (a two-column layout).
@@ -240,13 +232,7 @@ export function Row({
       {children && <span class="row-value">{children}</span>}
     </>
   );
-  const chevron = <ChevronRight class="row-chevron" />;
-  return href ? (
-    <a class="row button-link" href={href} target="_blank" rel="noreferrer">
-      {body}
-      {chevron}
-    </a>
-  ) : onClick ? (
+  return onClick ? (
     <Button
       variant="quiet"
       class={`row${destructive ? " destructive-row" : ""}`}
@@ -256,7 +242,7 @@ export function Row({
       onClick={onClick}
     >
       {body}
-      {chevron}
+      <ChevronRight class="row-chevron" />
     </Button>
   ) : (
     <div class="row">{body}</div>

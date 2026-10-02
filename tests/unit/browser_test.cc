@@ -9,7 +9,10 @@
 #include <vector>
 
 #include "include/browser/runtime.h"
+#include "include/core/fs.h"
 #include "include/core/json.h"
+#include "include/core/lease.h"
+#include "include/transport/session.h"
 #include "include/web/rfb_filter.h"
 #include "tests/unit/test_support.h"
 
@@ -107,6 +110,16 @@ void TestBrowserHandoverRecovery() {
   }
   browser::Runtime orphaned;
   CHECK(orphaned.Execute({{"op", "status"}}).value("mode", "") == "human");
+  // While its conversation runs (it holds its socket's lease), it stays.
+  {
+    CreatePrivateDirectories(RuntimeDir());
+    FileLease running;
+    std::string error;
+    CHECK(running.Acquire(session::SocketPathForId(kSession) + ".lock", error,
+                          true));
+    orphaned.StopIfIdle(std::chrono::minutes(kIdleMinutes));
+    CHECK(orphaned.Execute({{"op", "status"}}).value("mode", "") == "human");
+  }
   orphaned.StopIfIdle(std::chrono::minutes(kIdleMinutes));
   CHECK(orphaned.Execute({{"op", "status"}}).value("mode", "") == "idle");
   CHECK(!std::filesystem::exists(directory / "handover.json"));

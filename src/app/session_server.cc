@@ -349,7 +349,9 @@ bool Server::Start(const std::string& path, const std::string& generation,
   state.binary = FileIdentity(ExecutablePath());
   state.command = std::move(command);
   std::string error;
-  if (!state.lease.Acquire(state.path + ".lock", error) || !state.wake.Open()) {
+  // Published, so others can tell a running session from one that is gone.
+  if (!state.lease.Acquire(state.path + ".lock", error, true) ||
+      !state.wake.Open()) {
     return false;
   }
   state.listener = Socket(state.path, true);

@@ -124,7 +124,7 @@ json SkillControl(const json& request, const std::filesystem::path& cwd) {
          {"scope", "user"},
          {"changes",
           json::array({{{"key", "UAGENT_SKILL_EXCLUDE"}, {"value", value}}})}},
-        manager, settings.config, false);
+        manager, false);
     if (!result.contains("error")) LibraryChanged();
     return result;
   }
@@ -210,12 +210,9 @@ json LibraryControl(const json& request,
   const auto resolved = CanonicalDirectory(workspace);
   if (!resolved) return {{"error", "choose an accessible project directory"}};
   const std::filesystem::path& cwd = *resolved;
-  if (JsonValue(request, "kind", "") == "memory") {
-    return MemoryControl(request, cwd);
-  }
-  if (JsonValue(request, "kind", "") == "skills") {
-    return SkillControl(request, cwd);
-  }
+  const std::string kind = JsonValue(request, "kind", "");
+  if (kind == "memory") return MemoryControl(request, cwd);
+  if (kind == "skills") return SkillControl(request, cwd);
   return {{"error", "unknown library kind"}};
 }
 }  // namespace uagent

@@ -2,7 +2,8 @@
 // HTTP boundary; components share these projections instead of redefining them.
 export type JSONValue =
   null | boolean | number | string | JSONValue[] | { [key: string]: JSONValue };
-export type Report = (error: unknown) => void;
+// "inline": the surface that failed shows it; the banner stays clear.
+export type Report = (error: unknown, scope?: "inline") => void;
 export interface Failure extends Error {
   network?: boolean;
   status?: number;
@@ -47,7 +48,6 @@ export interface Statistics {
   ttft_ms?: number;
   generation_ms?: number;
   generated_tokens?: number;
-  usage_samples?: number;
   side_recorded_turns?: number;
   side_tool_calls?: number;
   side_model_calls?: number;
@@ -67,8 +67,6 @@ export interface Exchange {
   request_headers?: string;
   response_headers?: string;
   turn_root?: string;
-  reply_to?: string;
-  reply_excerpt?: string;
 }
 export interface ToolActivity {
   // The call's intent: explore, research, edit, verify, run, setup,
@@ -76,13 +74,6 @@ export interface ToolActivity {
   category?: string;
   label?: string;
   group?: { id: string; label: string };
-}
-export interface ToolReplay {
-  title?: string;
-  summary?: string;
-  poll?: boolean;
-  multiline?: boolean;
-  detail?: string;
 }
 // How a call reads, built natively by each tool (see ToolView in tool.h).
 export type ToolPart =
@@ -127,6 +118,19 @@ export interface TurnSummary {
   ttt_ms: number;
   tokens_per_second: number;
   usage: Usage;
+  // Files the turn's edit, write and delete tools changed (at most 50).
+  files?: TurnFile[];
+}
+export interface TurnFile {
+  path: string;
+  added: number;
+  removed: number;
+  undoable: boolean;
+}
+// Why the last turn ended; null while one runs.
+export interface TurnStop {
+  reason: string;
+  detail?: string;
 }
 export interface Block {
   memory?: {
@@ -142,7 +146,6 @@ export interface Block {
     automatic: boolean;
     messages_before: number;
     messages_after: number;
-    retained_user_messages: number;
     duration_ms: number;
   };
   deliveries?: { name: string; delivery: string }[];
@@ -153,10 +156,6 @@ export interface Block {
   content_complete?: boolean;
   text_bytes?: number;
   retained_text_bytes?: number;
-  reasoning_revision?: number;
-  reasoning_complete?: boolean;
-  reasoning_bytes?: number;
-  retained_reasoning_bytes?: number;
   kind: string;
   text?: string;
   time?: string;
@@ -180,19 +179,16 @@ export interface Block {
   duration_ms?: number;
   // Retained tool_result whose receipt facts are gone: its fallbacks
   // ("tool"/"running") must never shadow the call record it joins.
-  receipt_missing?: boolean;
-  replay?: ToolReplay;
   ttft_ms?: number;
   tokens_per_second?: number;
   route?: string;
   change?: string;
+  change_path?: string; // set when `change` is only a stored diff's opening
   truncated?: boolean;
   usage?: Usage;
   usage_reported?: boolean;
   http?: Exchange[];
   turn_root?: string;
-  reply_to?: string;
-  reply_excerpt?: string;
   activity_id?: number;
   agent_id?: string;
   // Parts that stay visible on the row: files shared, work started.
@@ -274,6 +270,8 @@ export interface Pending {
     mandatory_human?: boolean;
     mandatory_reason?: string;
     preview?: string;
+    // What approving risks, most serious first.
+    risks?: { id: "runs" | "writes" | "network" | "outside"; label: string }[];
   };
   // kind "ask": the model's questions; `prompt` repeats the first.
   questions?: AskQuestion[];
@@ -336,7 +334,6 @@ export type SessionStatus =
   | "deleting";
 export interface Session {
   task_id?: string;
-  run_id?: string;
   id: string;
   generation?: string;
   title?: string;
@@ -350,6 +347,8 @@ export interface Session {
   incoming?: number;
   turn_active?: boolean;
   pending?: boolean;
+  // What it waits on you for: "approval", "ask", …, and its prompt.
+  pending_prompt?: string;
   activity?: string;
   activities?: Activity[];
   guidance?: number;
@@ -380,7 +379,6 @@ export interface State {
   view_epoch?: number;
   turns?: number;
   usage?: Usage;
-  route_usage?: Record<string, Usage>;
   system_prompt?: string;
   // The agent's own conversation-scoped addition (adapt_system).
   self_directive?: SelfDirective;
@@ -396,6 +394,7 @@ export interface State {
   http?: Exchange[];
   mcp?: McpServer[];
   error?: string;
+  stop?: TurnStop | null;
 }
 export interface McpServer {
   name: string;
@@ -434,6 +433,9 @@ export interface SlashCommand {
   aliases: string[];
   usage: string;
   description: string;
+  // Listed only at a terminal: this page has its own control for it. Typed
+  // here it still runs, and its aliases still resolve.
+  terminal?: boolean;
 }
 export interface Catalogue {
   commands?: SlashCommand[];
@@ -484,8 +486,6 @@ export interface EventData extends Omit<Partial<Exchange>, "status"> {
   agent_id?: string;
   activity_id?: number;
   parts?: Block["parts"];
-  preview_truncated?: boolean;
-  completion_status?: string;
   status?: string | number;
   duration_ms?: number;
   activity?: ToolActivity;
@@ -569,26 +569,31 @@ export interface Model {
 export interface ModelCatalogue {
   models: Model[];
 }
+// One setting as the host states it: its description, then the facts.
 export interface ConfigSetting {
   name: string;
+  label: string;
+  purpose?: string;
   description: string;
   category: string;
   type: string;
   sensitivity: string;
-  scopes: string[];
-  value?: JSONValue;
-  active?: JSONValue;
-  default?: JSONValue;
-  source: string;
   takes_effect: string;
+  default?: JSONValue;
   minimum?: number;
   maximum?: number;
   choices?: string[];
-  // What an empty value falls back to: another setting's name or a phrase.
+  // Listed only in a terminal and the config file.
+  terminal?: boolean;
+  // Your own value (`true` for a secret); absent when unset.
+  set?: JSONValue;
+  // What applies now; absent for a secret.
+  effective?: JSONValue;
+  source: "default" | "user" | "project" | "file" | "environment" | "cli";
+  locked: boolean;
+  // While empty: the setting it takes its value from, or a phrase.
+  follows?: string;
   fallback?: string;
-  // What each config file sets; a secret reports only `true`.
-  user?: JSONValue;
-  project?: JSONValue;
 }
 export interface ConfigChange {
   key: string;
@@ -597,8 +602,11 @@ export interface ConfigChange {
 }
 export interface Configuration {
   settings: ConfigSetting[];
-  project_trusted?: boolean;
-  effects: { key: string; effect: string }[];
+  effects: {
+    key: string;
+    effect: "next_turn" | "restart" | "shadowed";
+    text: string;
+  }[];
 }
 export interface ToolCatalogueItem {
   name: string;
@@ -668,6 +676,7 @@ export interface CommandResults {
   tool_categories: ToolCategories;
   activity: ActivityDetail;
   context: { exchanges: Exchange[] };
+  revert: { restored: string[]; conflicts: { path: string; reason: string }[] };
   // A fork cut before a message returns that message, to edit (prompt).
   // A coordinator rewinds itself in place (`rewound`) instead of forking.
   fork: { id: string; prompt?: string; rewound?: boolean };
@@ -735,6 +744,11 @@ export interface CommandFields {
   activity_id?: number;
   agent_id?: string;
   before?: number;
+  // Steer: hold the message until the running turn ends ("Queue next").
+  queue?: boolean;
+  // Revert: the turn (0 = latest) and one file of it, or all.
+  turn?: number;
+  path?: string;
 }
 export type Receipt<T> = Outcome &
   ({ pending: true } | { pending?: false; result: T });
@@ -836,7 +850,6 @@ export interface ScheduledRun {
   session_available?: boolean;
   id: string;
   task_id: string;
-  task_revision: string;
   title: string;
   scheduled_for: number;
   updated: number;
@@ -848,7 +861,6 @@ export interface ScheduledRun {
 }
 export interface ScheduledState {
   error?: string;
-  runner_active?: boolean;
   tasks: ScheduledTask[];
   runs: ScheduledRun[];
   revision: string;

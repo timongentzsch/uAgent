@@ -151,63 +151,6 @@ Agent::StepFlow Agent::HandleFailedResponse(ChatResult& response,
   return StepFlow::kEndTurn;
 }
 
-// Text that imitates a tool protocol but parses as nothing. One correction is
-// worth sending; a second means the model will not recover.
-Agent::StepFlow Agent::HandleUnparsedToolMarkup(TurnExecution& state,
-                                                StepState& loop) {
-  if (!loop.markup_recovered) {
-    loop.markup_recovered = true;
-    conversation_.Push(
-        HarnessMessage("[invalid model tool markup] The attempted call was "
-                       "not executed. Return prose using existing results; "
-                       "do not imitate a tool protocol."),
-        MessageKind::kInternal);
-    loop.pending_note = conversation_.Size() - 1;
-    DebugLog("foreign_tool_markup_recovery",
-             {{"turn", turn_id_}, {"step", loop.step}});
-    return StepFlow::kNextStep;
-  }
-  state.stop.outcome = TurnOutcome::kError;
-  last_error_ = "model repeatedly returned invalid tool markup";
-  return StepFlow::kEndTurn;
-}
-
-// A completion with no answer and no call carries nothing to react to, so the
-// first one is replayed unchanged, a repeat earns a guiding note, and only a
-// third ends the turn: a barren provider response must not cost the work this
-// turn has already done.
-Agent::StepFlow Agent::HandleEmptyResponse(const ChatResult& response,
-                                           TurnExecution& state,
-                                           StepState& loop) {
-  constexpr int64_t kEmptyResponseAttempts = 3;
-  if (++loop.empty_responses >= kEmptyResponseAttempts) {
-    FailTurn(state, "model returned an empty response");
-    return StepFlow::kEndTurn;
-  }
-  // The first replay goes out unchanged: only a repeat is evidence that the
-  // model needs steering rather than another attempt.
-  if (loop.empty_responses > 1) {
-    conversation_.Push(
-        HarnessMessage(state.metrics.tool_count > 0
-                           ? "[empty model response] Return the final "
-                             "answer from existing results. Do not "
-                             "repeat completed work."
-                           : "[empty model response] The previous reply "
-                             "arrived empty. Answer the request "
-                             "directly."),
-        MessageKind::kInternal);
-    loop.pending_note = conversation_.Size() - 1;
-  }
-  DebugLog("empty_response_recovery",
-           {{"turn", turn_id_},
-            {"step", loop.step},
-            {"attempt", loop.empty_responses},
-            {"guided", loop.empty_responses > 1},
-            {"finish_reason", response.finish_reason}});
-  Emit(NoticeEvent(PresentationStatus::kNeutral, "recovering empty response"));
-  return StepFlow::kNextStep;
-}
-
 // A provider stop is separate from transport success. Salvage complete calls
 // only for truncation; otherwise one bounded continuation prevents a partial
 // prose response or an unfamiliar stop reason from being accepted as final.
@@ -235,34 +178,24 @@ Agent::StepFlow Agent::HandleResponseStop(ChatResult& response,
 
   // Unknown provider reasons get one retry even when they accompanied calls.
   // Do not execute those calls: a future policy stop must fail closed, while
-  // the retry gives a harmless new spelling a chance to complete normally.
-  const bool continuable = (cause == ResponseStopCause::kOther) ||
-                           (!response.content.empty() && !has_tool_calls &&
-                            (cause == ResponseStopCause::kLength ||
-                             cause == ResponseStopCause::kInputLimit));
-  if (continuable && loop.stop_recoveries++ == 0) {
-    PushAssistantMessage(response, {});
-    conversation_.Push(
-        HarnessMessage("[partial model response: " + response.finish_reason +
-                       "] Continue exactly where the response stopped. Do "
-                       "not repeat completed content or work."),
-        MessageKind::kInternal);
-    loop.pending_note = conversation_.Size() - 1;
-    DebugLog("partial_response_continuation",
-             {{"turn", turn_id_},
-              {"step", loop.step},
-              {"reason", response.finish_reason},
-              {"content_chars", response.content.size()}});
-    Emit(NoticeEvent(PresentationStatus::kNeutral,
-                     "continuing a partial model response"));
-    return StepFlow::kNextStep;
+  // the retry gives a harmless new spelling a chance to complete normally. A
+  // response cut off by its length continues too, with whatever it had.
+  const std::string reason = response.finish_reason.empty()
+                                 ? ResponseStopCauseName(cause)
+                                 : response.finish_reason;
+  const bool continuable =
+      cause == ResponseStopCause::kOther ||
+      (!has_tool_calls && (cause == ResponseStopCause::kLength ||
+                           cause == ResponseStopCause::kInputLimit));
+  if (!continuable) {
+    FailTurn(state, FaultText(kStoppedBeforeCompletion, 0, reason));
+    return StepFlow::kEndTurn;
   }
-
-  std::string reason = response.finish_reason.empty()
-                           ? ResponseStopCauseName(cause)
-                           : response.finish_reason;
-  FailTurn(state, "model response stopped before completion (" + reason + ")");
-  return StepFlow::kEndTurn;
+  if (!Strike(Fault::kCutOff, state, loop, reason)) return StepFlow::kEndTurn;
+  if (!response.content.empty()) PushAssistantMessage(response, {});
+  Emit(NoticeEvent(PresentationStatus::kNeutral,
+                   "continuing a partial model response"));
+  return StepFlow::kNextStep;
 }
 
 // Worth a trace record long before it is worth stopping the turn.

@@ -5,11 +5,12 @@ import { IconButton } from "./ui.tsx";
 import {
   capturePointer,
   constrainView,
-  distance,
   MAXIMUM_ZOOM,
-  midpoint,
   panView,
+  pinchStart,
+  pinchTo,
   pinchView,
+  type Pinch,
   type Point,
   type ZoomView,
   TAP_SLOP_PX,
@@ -57,11 +58,7 @@ export function ZoomSurface({
   const viewChanged = useRef(onView);
   viewChanged.current = onView;
   const points = useRef(new Map<number, Point>());
-  const pinch = useRef<{
-    distance: number;
-    midpoint: Point;
-    view: ZoomView;
-  } | null>(null);
+  const pinch = useRef<Pinch | null>(null);
   const start = useRef<Point | null>(null);
   const moved = useRef(false);
   // Where the gesture began, read before pointer capture retargets the rest
@@ -159,12 +156,10 @@ export function ZoomSurface({
         const point = { x: event.clientX, y: event.clientY };
         points.current.set(event.pointerId, point);
         if (points.current.size === 2) {
-          const inside = [...points.current.values()].map(local);
-          pinch.current = {
-            distance: distance(inside),
-            midpoint: midpoint(inside),
-            view: { ...view.current },
-          };
+          pinch.current = pinchStart(
+            [...points.current.values()].map(local),
+            view.current,
+          );
           moved.current = true;
         }
         // A drawing keeps its own pointer; only a pinch belongs here.
@@ -185,17 +180,7 @@ export function ZoomSurface({
         const { width, height } = bounds();
         if (points.current.size === 2 && pinch.current) {
           const inside = [...points.current.values()].map(local);
-          const from = pinch.current;
-          apply(
-            pinchView(
-              from.view,
-              width,
-              height,
-              from.midpoint,
-              midpoint(inside),
-              from.distance > 0 ? distance(inside) / from.distance : 1,
-            ),
-          );
+          apply(pinchTo(pinch.current, inside, width, height));
           return;
         }
         if (draw) return;

@@ -124,7 +124,6 @@ Tool MakeTool(std::string name, std::string description, json parameters,
 }
 
 std::string ToolTitle(const Tool& tool) {
-  if (!tool.title.empty()) return tool.title;
   std::string title = tool.name;
   bool capitalize = true;
   for (char& ch : title) {
@@ -179,11 +178,6 @@ bool ProfileEnabled(std::string_view profile, const Tool& tool) {
   return kMinimal.contains(tool.name);
 }
 
-bool KnownTool(const std::vector<Tool>& tools, std::string_view name) {
-  return std::any_of(tools.begin(), tools.end(),
-                     [&](const Tool& tool) { return tool.name == name; });
-}
-
 }  // namespace
 
 bool ToolSelection::Enabled(const Tool& tool) const {
@@ -214,7 +208,8 @@ bool ToolSelection::Configure(const json& request,
   }
   if (operation == "set") {
     const std::string name = JsonValue(request, "name", "");
-    if (!KnownTool(tools, name)) {
+    const Tool* tool = FindTool(tools, name);
+    if (!tool) {
       error = "unknown or unavailable tool";
       return false;
     }
@@ -223,9 +218,8 @@ bool ToolSelection::Configure(const json& request,
       error = "tool active state must be boolean";
       return false;
     }
-    const Tool* tool = FindTool(tools, name);
     const bool active = found->get<bool>();
-    if (tool && active == ProfileEnabled(profile_, *tool)) {
+    if (active == ProfileEnabled(profile_, *tool)) {
       overrides_.erase(name);
     } else {
       overrides_[name] = active;
@@ -449,7 +443,7 @@ json GenericInputParts(const json& args,
   constexpr size_t kFieldChars = 160;
   json rows = json::array();
   for (const auto& [key, value] : args.items()) {
-    if (key == "intent" || key == "description" || value.is_null() ||
+    if (key == "intent" || value.is_null() ||
         std::find(skip.begin(), skip.end(), key) != skip.end()) {
       continue;
     }

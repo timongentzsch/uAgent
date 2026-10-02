@@ -3,7 +3,6 @@
 #include "include/tools/ask.h"
 
 #include <algorithm>
-#include <cctype>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -20,10 +19,8 @@ constexpr size_t kPreviewLines = 40;
 constexpr size_t kPreviewBytes = 4000;
 
 bool ImageFile(const std::string& path) {
-  std::string extension = std::filesystem::path(path).extension().string();
-  std::ranges::transform(extension, extension.begin(), [](unsigned char c) {
-    return static_cast<char>(std::tolower(c));
-  });
+  std::string extension =
+      AsciiLower(std::filesystem::path(path).extension().string());
   for (const char* known : {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"}) {
     if (extension == known) return true;
   }
@@ -80,18 +77,22 @@ json ShownQuestions(json questions, const AskImage& image, std::string& notes) {
 }  // namespace
 
 std::optional<std::string> AskQuestionsIssue(const json& questions) {
-  if (!questions.is_array() || questions.empty() || questions.size() > 4) {
-    return "ask 1 to 4 questions";
+  if (!questions.is_array() || questions.empty() || questions.size() > 8) {
+    return "ask 1 to 8 questions";
   }
   for (const json& question : questions) {
     const json* options = JsonArray(question, "options");
     const std::string header = JsonValue(question, "header", "");
     const auto characters = std::ranges::count_if(
         header, [](unsigned char byte) { return (byte & 0xC0) != 0x80; });
-    if (JsonValue(question, "question", "").empty() || header.empty() ||
-        characters > 12) {
-      return "each question needs its text and a header of at most 12 "
-             "characters";
+    if (JsonValue(question, "question", "").empty() || header.empty()) {
+      return "each question needs its text and a header";
+    }
+    // The header names a step or a chip: 12 characters is the aim, and a
+    // longer one is refused by name so only it needs rewriting.
+    if (characters > 24) {
+      return "the header \"" + header + "\" is " + std::to_string(characters) +
+             " characters; use at most 24, about 12";
     }
     if (!options || options->size() < 2 || options->size() > 4) {
       return "each question needs 2 to 4 options; Other is always offered";
@@ -121,7 +122,7 @@ std::optional<std::string> AskQuestionsIssue(const json& questions) {
 Tool AskTool(AskPerson ask, AskImage image) {
   Tool tool = MakeTool(
       "ask",
-      "Ask the user 1 to 4 questions and wait for the answers. Use it when a "
+      "Ask the user 1 to 8 questions and wait for the answers. Use it when a "
       "decision is theirs and no tool can settle it; a single open question "
       "belongs in your answer instead. Give each question a short header "
       "and 2 to 4 distinct options, recommended first; the user can always "
@@ -129,10 +130,10 @@ Tool AskTool(AskPerson ask, AskImage image) {
       "multi_select when the options are not exclusive. Options that differ "
       "in look can show an image you made or a monospace preview.",
       json::parse(R"json({"type":"object","properties":{
-        "questions":{"type":"array","minItems":1,"maxItems":4,"items":{
+        "questions":{"type":"array","minItems":1,"maxItems":8,"items":{
           "type":"object","properties":{
             "question":{"type":"string"},
-            "header":{"type":"string","description":"chip label, 12 characters at most"},
+            "header":{"type":"string","description":"short label, about 12 characters"},
             "options":{"type":"array","minItems":2,"maxItems":4,"items":{
               "type":"object","properties":{
                 "label":{"type":"string"},

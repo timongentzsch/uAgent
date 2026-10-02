@@ -79,6 +79,18 @@ dialog.browser-view[data-layout="sheet"] {
   translate: -50% 0;
   max-width: calc(100% - 2 * var(--gap));
 }
+/* Zoom and scroll without gestures, in the screen's top corner. */
+.browser-view-controls {
+  position: absolute;
+  top: var(--gap);
+  right: var(--gap);
+  display: flex;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text);
+}
 .browser-card {
   position: absolute;
   inset-inline: var(--gap);

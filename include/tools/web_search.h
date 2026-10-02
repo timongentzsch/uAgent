@@ -21,7 +21,7 @@ struct WebSearchRoute {
   std::string api_key;
   std::string model;
   // From a `:effort` suffix on UAGENT_WEB_SEARCH_MODEL; empty means the
-  // UAGENT_WEB_SEARCH_EFFORT default.
+  // provider default.
   std::string effort;
 
   bool Valid() const {
@@ -38,8 +38,7 @@ struct WebSearchResult {
 
 WebSearchRoute SelectWebSearchRoute(
     const Api& api, const std::vector<NamedProvider>& providers);
-json WebSearchRequest(const WebSearchRoute& route, const RuntimeConfig& config,
-                      const std::string& prompt);
+json WebSearchRequest(const WebSearchRoute& route, const std::string& prompt);
 WebSearchResult ParseWebSearch(const json& response);
 Tool WebSearchTool(Api& api, UsageAccumulator& usage,
                    std::vector<NamedProvider> providers);

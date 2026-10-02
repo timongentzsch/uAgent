@@ -8,7 +8,6 @@
 #include <array>
 #include <cerrno>
 #include <cstdint>
-#include <cstdio>
 #include <limits>
 #include <optional>
 #include <string>
@@ -219,46 +218,33 @@ int64_t CurlRetryAfterSeconds(CURL* handle) {
 #endif
 }
 
+// One silence allowance, measured from the request until the first event and
+// from the last byte after it.
+std::chrono::steady_clock::time_point StreamDeadline(const StreamCtx& context) {
+  return (context.res->first_event_ms < 0 ? context.started
+                                          : context.last_byte) +
+         std::chrono::seconds(context.stream_timeout_s);
+}
+
 bool StreamDeadlineExpired(StreamCtx* context) {
-  if (!context) return false;
-  auto now = std::chrono::steady_clock::now();
-  if (context->res->first_event_ms < 0 && context->first_event_timeout_s > 0 &&
-      now >= context->started +
-                 std::chrono::seconds(context->first_event_timeout_s)) {
-    context->timeout_reason = "model produced no event within " +
-                              std::to_string(context->first_event_timeout_s) +
-                              "s";
-    return true;
+  if (!context || context->stream_timeout_s <= 0 ||
+      std::chrono::steady_clock::now() < StreamDeadline(*context)) {
+    return false;
   }
-  if (context->idle_timeout_s > 0 &&
-      now >=
-          context->last_byte + std::chrono::seconds(context->idle_timeout_s)) {
-    context->timeout_reason = "model stream was idle for " +
-                              std::to_string(context->idle_timeout_s) + "s";
-    return true;
-  }
-  return false;
+  context->timeout_reason =
+      (context->res->first_event_ms < 0 ? "model produced no event within "
+                                        : "model stream was idle for ") +
+      std::to_string(context->stream_timeout_s) + "s";
+  return true;
 }
 
 int CurlPollTimeout(CURLM* multi, StreamCtx* context) {
   long curl_timeout = -1;  // NOLINT: libcurl ABI
   (void)curl_multi_timeout(multi, &curl_timeout);
   int64_t timeout = curl_timeout >= 0 ? curl_timeout : 10000;
-  if (context) {
-    auto deadline = std::chrono::steady_clock::time_point::max();
-    if (context->res->first_event_ms < 0 &&
-        context->first_event_timeout_s > 0) {
-      deadline = context->started +
-                 std::chrono::seconds(context->first_event_timeout_s);
-    }
-    if (context->idle_timeout_s > 0) {
-      deadline =
-          std::min(deadline, context->last_byte +
-                                 std::chrono::seconds(context->idle_timeout_s));
-    }
-    if (deadline != std::chrono::steady_clock::time_point::max()) {
-      timeout = std::min<int64_t>(timeout, PollTimeoutMs(deadline));
-    }
+  if (context && context->stream_timeout_s > 0) {
+    timeout =
+        std::min<int64_t>(timeout, PollTimeoutMs(StreamDeadline(*context)));
   }
   return static_cast<int>(
       std::clamp<int64_t>(timeout, 0, std::numeric_limits<int>::max()));
@@ -433,21 +419,22 @@ ChatResult Api::Chat(const json& messages, const json& tool_schemas,
   auto deadline = request_timeout > 0
                       ? DeadlineAfter(started, request_timeout)
                       : std::chrono::steady_clock::time_point::max();
+  auto stamp = [&] {
+    res.request_preparation_ms = preparation_ms;
+    res.duration_ms = ElapsedMs(started);
+    res.end_to_end_ms = ElapsedMs(overall_started);
+  };
   for (int attempt = 1; attempt <= kChatAttempts; ++attempt) {
     int64_t attempt_timeout = attempt_limit;
     if (request_timeout > 0) {
-      auto remaining = std::chrono::ceil<std::chrono::seconds>(
-          deadline - std::chrono::steady_clock::now());
-      if (remaining.count() <= 0) {
+      const int64_t remaining = SecondsUntil(deadline);
+      if (remaining <= 0) {
         res.error = "request deadline exhausted before retry";
-        res.duration_ms = ElapsedMs(started);
-        res.request_preparation_ms = preparation_ms;
-        res.end_to_end_ms = ElapsedMs(overall_started);
+        stamp();
         return res;
       }
-      attempt_timeout = attempt_limit > 0
-                            ? std::min(attempt_limit, remaining.count())
-                            : remaining.count();
+      attempt_timeout =
+          attempt_limit > 0 ? std::min(attempt_limit, remaining) : remaining;
     }
     auto attempt_started = std::chrono::steady_clock::now();
     json metadata = exchange_context;
@@ -469,19 +456,12 @@ ChatResult Api::Chat(const json& messages, const json& tool_schemas,
     json recorded =
         exchange.Finish(res.http_status, res.interrupted, res.error);
     if (!recorded.is_null()) http_exchanges.push_back(std::move(recorded));
-    res.request_preparation_ms = preparation_ms;
-    if (res.first_event_ms >= 0) {
-      res.first_event_ms +=
-          std::chrono::duration<double, std::milli>(attempt_started - started)
-              .count();
-    }
-    if (res.first_token_ms >= 0) {
-      res.first_token_ms +=
-          std::chrono::duration<double, std::milli>(attempt_started - started)
-              .count();
-    }
-    res.duration_ms = ElapsedMs(started);
-    res.end_to_end_ms = ElapsedMs(overall_started);
+    const double offset_ms =
+        std::chrono::duration<double, std::milli>(attempt_started - started)
+            .count();
+    if (res.first_event_ms >= 0) res.first_event_ms += offset_ms;
+    if (res.first_token_ms >= 0) res.first_token_ms += offset_ms;
+    stamp();
     if (attempt == kChatAttempts || !SafeToRetry(res)) return res;
 
     std::chrono::milliseconds delay =
@@ -502,17 +482,12 @@ ChatResult Api::Chat(const json& messages, const json& tool_schemas,
     retry["attempt"] = attempt + 1;
     retry["max_attempts"] = kChatAttempts;
     retry["delay_ms"] = delay.count();
-    retry["retry_at_ms"] =
-        std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::system_clock::now().time_since_epoch())
-            .count() +
-        delay.count();
+    retry["retry_at_ms"] = NowMillis() + delay.count();
     Emit(Event{EventId::kResponseRetry, std::move(retry)});
     if (!WaitForRetry(delay)) {
       res.error.clear();
       res.interrupted = true;
-      res.duration_ms = ElapsedMs(started);
-      res.end_to_end_ms = ElapsedMs(overall_started);
+      stamp();
       return res;
     }
   }
@@ -627,8 +602,7 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
   ctx.wire_api = capabilities.wire_api;
   ctx.started = std::chrono::steady_clock::now();
   ctx.last_byte = ctx.started;
-  ctx.first_event_timeout_s = config.first_event_timeout_s;
-  ctx.idle_timeout_s = config.stream_idle_timeout_s;
+  ctx.stream_timeout_s = config.stream_timeout_s;
   ctx.response_cap = kResponseBytes;
   ctx.sse = SseParser(ctx.response_cap);
   CurlHeaders headers;
@@ -729,7 +703,7 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
     res.retryable = res.retryable || RetryableHttpStatus(res.http_status);
     return res;
   }
-  if (!CollectToolCalls(ctx.calls, res)) return res;
+  CollectToolCalls(ctx.calls, res);
   return res;
 }
 

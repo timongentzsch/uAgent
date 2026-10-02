@@ -152,6 +152,7 @@ add_library(
   src/agent/mail_delivery.cc
   src/agent/conversation.cc
   src/agent/dispatch.cc
+  src/agent/edit_journal.cc
   src/agent/file_services.cc
   src/agent/jobs.cc
   src/agent/memory_store.cc
@@ -175,7 +176,6 @@ add_library(
   src/mcp/discover.cc
   src/mcp/invoke.cc
   src/mcp/register.cc
-  src/mcp/result.cc
   src/mcp/rpc.cc
   src/mcp/server.cc
   src/tools/adapt_system.cc

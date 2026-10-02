@@ -1,5 +1,203 @@
 # Changelog
 
+## Unreleased
+
+### Upgrade notes
+
+Settings that left the registry are no longer read. A config file that still
+names one loads as before and the line has no effect.
+
+- Removed: `UAGENT_STEERING` (it gated nothing) and
+  `UAGENT_OPENROUTER_FALLBACKS`. A provider pinned with
+  `UAGENT_OPENROUTER_PROVIDER` no longer falls back to another.
+- Removed: `UAGENT_WEB_SEARCH_EFFORT`. Put the effort on the search model
+  instead, as in `UAGENT_WEB_SEARCH_MODEL=vendor/model:low`; without a suffix
+  the provider's default applies.
+- Removed: `UAGENT_PRUNE_SUPERSEDED_READS`, an experiment that stayed off.
+- Tool parameters have one plain type each. `run` and `scratch` lose the
+  optional `description` label (a "string or null" a provider's tool-call
+  conversion cut the arguments at), and `session` takes one `session_id`;
+  `broadcast` still reaches every linked session.
+- Removed: `/link` and `/peers`, and with them token links between sessions.
+  The `session` tool still reaches sessions that share a workspace under
+  yolo, which link by themselves; a link file made from a token is still
+  honoured until its sessions are gone.
+- Web: typed `/quit` no longer closes the conversation's runtime (in a
+  terminal it only detaches). Use Close session in the conversation menu.
+- Merged: `UAGENT_FIRST_EVENT_TIMEOUT` and `UAGENT_STREAM_IDLE_TIMEOUT` are
+  one `UAGENT_STREAM_TIMEOUT` (300 s), the stream silence allowed before the
+  first event or between events.
+- Fixed values now, at what was each default: `UAGENT_TOOL_CONCURRENCY` (4),
+  `UAGENT_MAX_BACKGROUND_JOBS` (8), `UAGENT_MCP_STARTUP_GRACE` (2 s),
+  `UAGENT_MEMORY_IDLE_SECONDS` (6 hours), `UAGENT_WEB_SEARCH_ENGINE` (`auto`),
+  and `UAGENT_WEB_SEARCH_CONTEXT_SIZE` and `UAGENT_IMAGE_DETAIL` (the
+  provider's default).
+- Set per provider now: `UAGENT_WIRE_API`, `UAGENT_HOSTED_TOOLS`,
+  `UAGENT_MODEL_FEATURES` and `UAGENT_PROVIDER_PROTOCOL` are the `wire_api`,
+  `hosted_tools`, `features` and `protocol` keys of a provider in
+  `UAGENT_PROVIDERS`. An endpoint named only by `UAGENT_BASE_URL` speaks
+  Chat Completions; one that needs anything else becomes a named provider,
+  selected as `UAGENT_MODEL=name/model`.
+- No longer settings: `UAGENT_TOOLSET`, `UAGENT_HEADLESS_PROGRESS`,
+  `UAGENT_USAGE_FILE`, `UAGENT_AUTO_COMPACT_TOKENS` and
+  `UAGENT_PROMPT_OVERLAY`. A parent agent hands them to its children, and
+  the eval harness sets the overlay with `--prompt-overlay`.
+- A config file can no longer set a `UAGENT_INTERNAL_*` name.
+
+### Added
+
+- Web: the conversation menu exports the transcript, compacts and restarts
+  the conversation; typed `/restart` does the same.
+- `uagent --plain` (or `UAGENT_PLAIN=1`) for screen readers: append-only
+  lines that open with a spoken label (`you:`, `tool:`, `result:`,
+  `approval needed:`), with no cursor movement, animation or non-ASCII glyphs.
+  `UAGENT_REDUCED_MOTION=1` holds the spinner still. See
+  [docs/ACCESSIBILITY.md](docs/ACCESSIBILITY.md).
+- The web app meets WCAG 2.2 AA, checked with axe-core: zoom is allowed,
+  fields and lights have visible edges and high-contrast and forced-colours
+  styles, a screen reader hears when a turn starts, needs you or ends, a new
+  decision takes focus, and menus, the composer, image markup and the remote
+  screen work from the keyboard.
+- Undo: `/changes` lists the files the last turn's edit, write and delete
+  tools changed, and `/undo [FILE]` puts them back whole. A file changed since
+  is kept and says so; shell commands' changes are not tracked. The model is
+  told which files were reverted at its next step. Up to 2 MiB per file and
+  64 MiB per session are kept, beside the session.
+- Approvals name their risks (runs commands, makes changes, uses the network,
+  outside this folder), in the terminal and on the approval event.
+- "Queue next": a steer sent with `queue: true` waits for the running turn to
+  end and then runs as its own turn.
+- `uagent --web` prints a link beside the pairing code that pairs a browser
+  on opening, and the first terminal session in a home says what to try and
+  which keys to know.
+- The `/` command menu in the terminal: Up and Down highlight a command, Tab
+  or Enter takes it, and scattered letters match (`/mdl` finds `/model`). A
+  mistyped command asks `did you mean /model?`. The status row leads with
+  route, approval mode, context left and cost, and a running turn shows
+  `Esc stop · Ctrl+B background` while the row has room.
+- Web: one "N need you" count across every folder heads the sidebar and opens
+  each waiting decision, with its folder and question, to answer in place. The
+  same count shows in the tab title and the installed app's badge, and a
+  notification opens the session at its decision.
+- Web: a command palette (Ctrl/⌘+K, or the search button in the sidebar)
+  finds conversations, folders, slash commands and settings by letters in
+  order, with each item's shortcut. `?` lists the shortcuts; Alt+↑/↓ step
+  through conversations.
+- Web: a pairing link (`#pair=<code>`) pairs on opening, and a refused code
+  says it expired.
+- Web: **Queue next** (Alt+Enter) on the status line above the composer, once
+  a running turn has a draft, holds the message until the turn ends; its row
+  reads "Queued for after this turn".
+- Web: after a turn stopped short the status line reads **Stopped**, with
+  **Continue** beside it.
+- Web: the composer keeps one shape while idle, running, stopped and waiting
+  on a decision. Its buttons hold their places: the primary is Send, or Stop
+  while a turn runs with nothing to send. A decision opens above the input,
+  which waits read-only until it is answered.
+- Web: Settings, Display has **Animations**: Off stops every animation and
+  transition on this device (a working spinner still turns); System follows
+  the device's reduced-motion setting.
+- Web: a turn that changed files ends with its receipt (files, lines, cost,
+  time), which opens the files with **Undo** each and **Undo all**.
+
+### Changed
+
+- A session's runtime stops after 15 minutes with nothing to do (no turn, no
+  queued message, no running command, no terminal attached), and with it its
+  MCP servers. The next message starts it again with its model and permission
+  mode: in the web the composer stays, with no Resume step, and the `session`
+  tool starts a coordinator or thread its message found stopped. Coordinators
+  follow the same rule (15 minutes, was 10). A runtime that ends with nothing
+  under way reads as saved, not interrupted.
+- `ask` takes up to 8 questions (was 4) and headers up to 24 characters
+  (12 stays the aim); one that is too long is refused by name. In the web the
+  questions are answered a page at a time, with a review before Submit when
+  there are three or more.
+- Web: every dialog closes on a tap outside it, and a sidebar row shows one
+  status mark.
+- A reconnecting web client reads its backlog a batch at a time; state frames,
+  published events and streamed text are no longer copied on the way through.
+- A changed setting applies from your next message wherever it is read when
+  used: limits, output caps, attachment size, sub-agent and coordinator
+  budgets and models, the search and image models, history retention. A
+  restart is asked for only where it is needed: the route and credentials,
+  the sandbox, the tool set, memory on or off, and MCP.
+- Web: the `/` list offers only what the page has no control for. Commands
+  with their own control (`/attach`, `/model`, `/models`, `/effort`,
+  `/variant`, `/yolo`, `/sessions`, `/agents`, `/ps`, `/cost`, `/changes`,
+  `/undo`, `/help`) are listed at the terminal only; typed in the web they
+  still run.
+- `/tell` is gone: the model messages other sessions with its `session` tool,
+  and nothing else used the command.
+- Web: settings are plain rows, each a name and the value that applies, and
+  one sheet edits a setting: what it is for, the value, why it applies,
+  **Use default** and **Save**. Advanced lists only what you changed and what
+  is locked; search finds the rest. The web edits your defaults; a project's
+  override is shown, not edited. Twelve settings only a terminal process uses
+  are not listed.
+- Every setting has a plain name ("Steps per turn", "Title model"), which the
+  host states along with its value, where it comes from and what it follows;
+  `/config` and `/debug-config` print the same facts. A value's source reads
+  `user`, `project`, `file`, `environment`, `cli` or `default`.
+- Web: a coordinator's threads nest under its folder header, and a row that
+  waits on you, works or failed carries an icon beside its words. The
+  coordinator's help is a one-line subtitle. Settings group as General; Agent
+  (Instructions, Tools, MCP servers, Permissions & allowed actions); Models;
+  Host (Devices); Advanced.
+- Web: an approval is a card: the command or diff, the folder and its risks,
+  with **Deny**, **Allow for session** and **Allow once** in one row; **More
+  options** holds the **Always allow this exact action here** box and
+  **+ guidance**. A long preview scrolls inside about six lines. Numbered
+  choices are cards, not a dropdown. Settings names the repository's rules *Allowed actions*.
+- Web: a send or decision reply that fails stays where it was made, with
+  **Retry**, instead of the page's error banner; a refused message no longer
+  also returns to the composer. Reconnecting shows as a pill, the running
+  composer reads "Add guidance… (Esc to stop)", and YOLO mode is red.
+- Web: three or more tool calls in a row fold into one row ("Ran 4 commands ·
+  edited 2 files"), whatever their kind; two stay rows of their own.
+- Web: the light theme's diff green and red are darker, to meet WCAG AA on
+  their tinted lines.
+
+### Fixed
+
+- A model's malformed tool call is answered with an error it can correct
+  instead of ending the turn, and every other model fault (an empty or cut-off
+  response, tool markup in prose, a call without a name) is told to the model
+  before it can end one.
+- `scratch` runs any script in its folder: a turn is no longer held to the
+  first one it ran.
+- A rejected enum value names the allowed ones.
+- Browser: when a turn ends only the tab the agent was on stays open; watching
+  no longer keeps an idle Chrome running; a human request whose conversation
+  no longer runs is dropped; Chrome skips component and on-device model
+  downloads and bounds its page cache.
+- Browser: the agent's current tab was forgotten at every Chrome start, so
+  the status showed no page and a popup was not followed until a tab was
+  selected by hand.
+- A coordinator and its threads are linked by where their sessions are kept,
+  whatever mode they run in and before any of them has used the tool, so
+  threads can message each other and their coordinator with the `session`
+  tool. The tool names a session by the id boards and lists
+  show, and a refused message points at `list`.
+- A thread's finished turn reaches its coordinator with the answer in it (the
+  first 1,500 characters), so the coordinator no longer calls `history` to
+  read it.
+- Web: a message from another session or a thread event is shown as an event
+  row with its sender, not as a message of yours.
+- A file diff is shown whole in the web and the terminal; past its opening it
+  is read from a file kept with the session, for as long as the conversation.
+- The `session` tool lists sessions without a prompt.
+- A stream error sent as a bare string keeps its text and is classified on
+  the Responses and Anthropic dialects too.
+- A command that `pkill -f` matched and killed says so.
+- Web: a sheet returns focus to its button in Safari; a notice replaces an
+  older error in the banner; the mention list keeps its selected option in
+  view.
+- Data races found by ThreadSanitizer: flags shared with signal handlers are
+  atomics, the session journal has its own lock, and the mail rate limiter
+  and the settings store are never destroyed at exit while a thread may still
+  use them.
+
 ## v1.2.0 - 2026-09-30
 
 ### Upgrade notes

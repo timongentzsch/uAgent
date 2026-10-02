@@ -383,24 +383,32 @@ void TestConfigurationResetKeepsSecrets() {
     }
     return json();
   };
-  json got =
-      ConfigurationControl({{"operation", "get"}}, manager, active, false);
-  CHECK(find(got, "UAGENT_MAX_TOOL_CALLS")["user"] == "40");
-  CHECK(!find(got, "UAGENT_MAX_TOOL_CALLS").contains("project"));
-  CHECK(find(got, "OPENROUTER_API_KEY")["user"] == true);
-  CHECK(!find(got, "UAGENT_MAX_STEPS").contains("user"));
+  json got = ConfigurationControl({{"operation", "get"}}, manager, false);
+  // Facts, typed like the default: what the user file sets, what applies and
+  // where that comes from. A secret says only that it is set.
+  const json calls = find(got, "UAGENT_MAX_TOOL_CALLS");
+  CHECK(calls["set"] == 40 && calls["effective"] == 40);
+  CHECK(calls["source"] == "user" && calls["locked"] == false);
+  CHECK(find(got, "OPENROUTER_API_KEY")["set"] == true);
+  CHECK(!find(got, "OPENROUTER_API_KEY").contains("effective"));
+  const json steps = find(got, "UAGENT_MAX_STEPS");
+  CHECK(!steps.contains("set") && steps["effective"] == steps["default"]);
+  CHECK(steps["source"] == "default");
+  // A model role names the setting it follows and takes its value.
+  CHECK(find(got, "UAGENT_SUBAGENT_MODEL")["follows"] == "UAGENT_MODEL");
 
   json reset = ConfigurationControl({{"operation", "reset"}, {"scope", "user"}},
-                                    manager, active, false);
+                                    manager, false);
   CHECK(!reset.contains("error"));
   CHECK(reset["effects"].size() == 2);
-  CHECK(!find(reset, "UAGENT_MAX_TOOL_CALLS").contains("user"));
-  CHECK(find(reset, "OPENROUTER_API_KEY")["user"] == true);
+  CHECK(reset["effects"][0]["effect"] == "next_turn");
+  CHECK(!find(reset, "UAGENT_MAX_TOOL_CALLS").contains("set"));
+  CHECK(find(reset, "OPENROUTER_API_KEY")["set"] == true);
   CHECK(Read(config).find("OPENROUTER_API_KEY=keep-me") != std::string::npos);
   CHECK(Read(config).find("UAGENT_MAX_TOOL_CALLS") == std::string::npos);
   // Nothing left to reset is not an error and writes nothing.
   json again = ConfigurationControl({{"operation", "reset"}, {"scope", "user"}},
-                                    manager, active, false);
+                                    manager, false);
   CHECK(!again.contains("error"));
   CHECK(again["effects"].empty());
 }

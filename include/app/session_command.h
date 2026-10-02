@@ -36,6 +36,7 @@ enum class SessionCommandKind {
   kModel,
   kConfig,
   kContext,
+  kRevert,
   kFork,
   kShare,
   kSide,
@@ -62,7 +63,7 @@ struct SessionCommand {
   std::string operation;
   bool cancelled = false;
   bool has_attachments = false;
-  // Null when absent, matching JsonValue(command, "budget", json{}).
+  // The whole command, for the fields only one handler reads.
   json raw;
 };
 
@@ -72,8 +73,7 @@ struct SessionCommand {
 // unrecognized kind is NOT a parse failure — it flows through as kUnknown so
 // the caller answers "unsupported command" with an outcome.
 bool ParseSessionCommand(const json& command, const std::string& session_id,
-                         const std::string& generation, SessionCommand& out,
-                         std::string& error);
+                         const std::string& generation, SessionCommand& out);
 
 enum class ReceiptVerdict {
   kNew,     // First sight: caller processes the command.

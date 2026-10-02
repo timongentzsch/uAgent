@@ -8,6 +8,7 @@
 #include <string_view>
 #include <vector>
 
+#include "include/core/config_registry.h"
 #include "include/core/sandbox.h"
 #include "tests/unit/test_cases.h"
 #include "tests/unit/test_support.h"
@@ -78,6 +79,7 @@ int RunTests(int argc, char** argv) {
     ++selected;
     std::cerr << "[ run ] " << test.name << '\n';
     const auto started = std::chrono::steady_clock::now();
+    ClearSettings();
     test.run();
     const auto elapsed = std::chrono::duration<double>(
                              std::chrono::steady_clock::now() - started)

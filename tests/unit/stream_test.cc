@@ -326,7 +326,7 @@ void TestSseChunkPartitions() {
   std::map<int, ToolCall> missing_id = {
       {0, ToolCall{"", "read_file", R"({"path":"x"})"}}};
   ChatResult normalized;
-  CHECK(CollectToolCalls(missing_id, normalized));
+  CollectToolCalls(missing_id, normalized);
   CHECK(normalized.tool_calls.size() == 1);
   CHECK(normalized.tool_calls[0].id == "uagent-call-0");
 
@@ -334,16 +334,30 @@ void TestSseChunkPartitions() {
       {0, ToolCall{"same", "read_file", R"({"path":"x"})"}},
       {1, ToolCall{"same", "read_path", R"({"path":"."})"}}};
   normalized = {};
-  CHECK(CollectToolCalls(duplicate_ids, normalized));
+  CollectToolCalls(duplicate_ids, normalized);
   CHECK(normalized.tool_calls.size() == 2);
   CHECK(normalized.tool_calls[0].id == "same");
   CHECK(normalized.tool_calls[1].id == "same-2");
 
   std::map<int, ToolCall> malformed = {
       {0, ToolCall{"call", "read_file", R"({"path")"}}};
+  // A model's malformed call never fails the response: with a name it is
+  // kept, replayable, for the tool loop to answer with an error.
   ChatResult invalid;
-  CHECK(!CollectToolCalls(malformed, invalid));
-  CHECK(invalid.error.find("incomplete function") != std::string::npos);
+  CollectToolCalls(malformed, invalid);
+  CHECK(invalid.error.empty());
+  REQUIRE(invalid.tool_calls.size() == 1);
+  CHECK(invalid.tool_calls[0].args == "{}");
+  CHECK(invalid.tool_calls[0].malformed == R"({"path")");
+  // No arguments at all means none; a call without a name is dropped.
+  std::map<int, ToolCall> quirks = {{0, ToolCall{"a", "status", ""}},
+                                    {1, ToolCall{"b", "", R"({"x":1})"}}};
+  ChatResult tolerated;
+  CollectToolCalls(quirks, tolerated);
+  REQUIRE(tolerated.tool_calls.size() == 1);
+  CHECK(tolerated.tool_calls[0].args == "{}");
+  CHECK(tolerated.tool_calls[0].malformed.empty());
+  CHECK(tolerated.nameless_tool_calls == 1);
 
   std::map<int, ToolCall> truncated = {
       {0, {"complete", "read_path", R"({"path":"README.md"})"}},
@@ -351,11 +365,10 @@ void TestSseChunkPartitions() {
   ChatResult salvaged;
   salvaged.finish_reason = "max_tokens";
   salvaged.stop_cause = ResponseStopCause::kLength;
-  CHECK(CollectToolCalls(truncated, salvaged));
+  CollectToolCalls(truncated, salvaged);
   CHECK(salvaged.error.empty());
   CHECK(salvaged.tool_calls.size() == 1);
   CHECK(salvaged.tool_calls[0].id == "complete");
-  CHECK(invalid.tool_calls.empty());
   CHECK(ClassifyResponseStop("model_context_window_exceeded") ==
         ResponseStopCause::kLength);
 
@@ -384,6 +397,17 @@ void TestSseChunkPartitions() {
       flat_error, no_tool_calls);
   CHECK(flat_error.error == "JSON error injected into SSE stream");
   CHECK(SafeToRetry(flat_error));
+
+  // A string-valued error keeps its text and classification on the
+  // Responses dialect too.
+  ChatResult string_error;
+  WireStreamState string_state;
+  DecodeWireStreamEvent(WireApi::kResponses,
+                        R"({"error":"maximum context length exceeded"})",
+                        string_error, no_tool_calls, string_state);
+  CHECK(string_error.error == "maximum context length exceeded");
+  CHECK(string_error.remote_error_kind ==
+        RemoteErrorKind::kContextLengthExceeded);
 
   // The same frame after visible output is not replayed: StreamCtx has
   // already appended the answer text the user has seen.
@@ -448,7 +472,8 @@ void TestSseFraming() {
     CHECK(parser.Feed(std::string_view(wire).substr(0, split)));
     CHECK(parser.Feed(std::string_view(wire).substr(split)));
     CHECK(parser.Finish());
-    std::vector<SseEvent> events = parser.TakeEvents();
+    std::vector<SseEvent> events;
+    parser.TakeEvents(events);
     CHECK(events.size() == 2);
     if (events.size() == 2) {
       CHECK(events[0].event == "update");
@@ -462,9 +487,13 @@ void TestSseFraming() {
 
   SseParser final_event;
   CHECK(final_event.Feed("data: tail"));
-  CHECK(final_event.TakeEvents().empty());
+  std::vector<SseEvent> tail;
+  final_event.TakeEvents(tail);
+  CHECK(tail.empty());
   CHECK(final_event.Finish());
-  CHECK(final_event.TakeEvents()[0].data == "tail");
+  final_event.TakeEvents(tail);
+  REQUIRE(tail.size() == 1);
+  CHECK(tail[0].data == "tail");
 
   SseParser bounded(8);
   CHECK(!bounded.Feed("data: payload-too-large\n\n"));

@@ -6,7 +6,6 @@
 #include <algorithm>
 #include <cerrno>
 #include <chrono>
-#include <memory>
 #include <mutex>
 #include <optional>
 #include <string>

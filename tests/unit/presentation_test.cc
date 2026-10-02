@@ -14,6 +14,7 @@
 #include "include/agent/tool_presentation.h"
 #include "include/app/options.h"
 #include "include/core/activity.h"
+#include "include/core/style.h"
 #include "include/core/term.h"
 #include "include/tools/registry.h"
 #include "include/ui/display.h"
@@ -252,6 +253,15 @@ void TestPollCollapse() {
         }).find("    model text: µ · ← …\n    second") != std::string::npos);
   CHECK(StatusBarLine("thinking · 2s").find("thinking - 2s") !=
         std::string::npos);
+
+  // Plain mode speaks each row's kind instead of drawing its glyph.
+  g_plain = true;
+  compact.status = PresentationStatus::kFailed;
+  CHECK(CaptureStdout([&] { PrintPresentation(compact); }).find("failed: ") !=
+        std::string::npos);
+  CHECK(Note(Tone::kError, "gone") == "error: gone\n");
+  CHECK(Note(Tone::kNeutral, "compacted") == "compacted\n");
+  g_plain = false;
   g_unicode = prior_unicode;
 
   // Only an explicitly non-UTF-8 locale downgrades; an unset one is no
@@ -521,20 +531,30 @@ void TestActivityBar() {
   // Counters are omitted at zero rather than rendered as "bg:0".
   CHECK(first.find("bg:") == std::string::npos);
   CHECK(first.find("steer:") == std::string::npos);
-  CHECK(first.find("Ctrl+B") == std::string::npos);
 
   ActivityView busy = Working(std::chrono::milliseconds(0));
   busy.background = 2;
   busy.queued = 3;
   busy.foreground = 1;
-  std::string loaded = ActivityBar(busy);
-  CHECK(loaded.find("bg:2") != std::string::npos);
-  CHECK(loaded.find("steer:3") != std::string::npos);
-  CHECK(loaded.find("Ctrl+B background") != std::string::npos);
-  // One foreground command reads as a bare hint; more than one is counted.
-  CHECK(loaded.find("commands") == std::string::npos);
-  busy.foreground = 2;
-  CHECK(ActivityBar(busy).find("2 commands") != std::string::npos);
+  {
+    FixedWidth columns(120);
+    std::string loaded = ActivityBar(busy);
+    CHECK(loaded.find("bg:2") != std::string::npos);
+    CHECK(loaded.find("steer:3") != std::string::npos);
+    // The keys that act on the turn close the row; one foreground command
+    // reads as the bare hint, more than one is counted.
+    CHECK(loaded.ends_with(" · Esc stop · Ctrl+B background"));
+    busy.foreground = 2;
+    CHECK(ActivityBar(busy).find("Ctrl+B background 2 commands") !=
+          std::string::npos);
+  }
+  // The hint is the first thing a narrow row gives up, before the counters.
+  {
+    FixedWidth columns(60);
+    std::string narrow = ActivityBar(busy);
+    CHECK(narrow.find("Esc stop") == std::string::npos);
+    CHECK(narrow.find("steer:3") != std::string::npos);
+  }
 
   // Delegated children get a chip of their own and lend the row their newest
   // progress line: a parent that is only waiting on a child would otherwise
@@ -612,9 +632,9 @@ void TestStatusBarDropsByPriority() {
     wide = StatusBar(usage, view);
   }
   CHECK(wide ==
-        "anthropic/claude-sonnet-4-5 · est. ctx 12k/1.3M · 99% left · "
-        "12k in · 3.4k out · cache 33% · $0.4200 · bg:1 · "
-        "verbose · /help for shortcuts · Ask");
+        "anthropic/claude-sonnet-4-5 · Ask · 99% left · $0.4200 · "
+        "est. ctx 12k/1.3M · bg:1 · 12k in · 3.4k out · cache 33% · "
+        "verbose · /help for shortcuts");
 
   // Each narrower width is a prefix of the priorities that survive: 7 (the
   // hint) goes first, then 6 (verbose), then 5 (cache), and so on.
@@ -627,6 +647,9 @@ void TestStatusBarDropsByPriority() {
   CHECK(medium.find("verbose") == std::string::npos);
   CHECK(medium.find("anthropic/claude-sonnet-4-5") != std::string::npos);
   CHECK(DisplayWidth(medium) <= 80);
+  // Route, approval mode, headroom and spend are the last to go.
+  CHECK(medium.starts_with(
+      "anthropic/claude-sonnet-4-5 · Ask · 99% left · $0.4200"));
 
   std::string narrow;
   {

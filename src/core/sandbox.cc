@@ -4,7 +4,6 @@
 
 #include <algorithm>
 #include <cstddef>
-#include <cstdint>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -84,12 +83,8 @@ SandboxPolicyResult BuildSandboxPolicy(const SandboxInputs& inputs) {
     Offer(cache, inputs, &accepted, &result.rejected);
   }
   Offer(inputs.terminal_logs, inputs, &accepted, &result.rejected);
-  for (size_t start = 0; start < inputs.extra_roots.size();) {
-    size_t end = inputs.extra_roots.find(':', start);
-    if (end == std::string::npos) end = inputs.extra_roots.size();
-    Offer(std::string_view(inputs.extra_roots).substr(start, end - start),
-          inputs, &accepted, &result.rejected);
-    start = end + 1;
+  for (const std::string& root : inputs.extra_roots) {
+    Offer(root, inputs, &accepted, &result.rejected);
   }
   FoldNested(&accepted);
   result.policy.writable_roots = std::move(accepted);
@@ -153,13 +148,8 @@ std::vector<std::string> EncodeSandboxPolicy(const SandboxPolicy& policy) {
 bool DecodeSandboxPolicy(const std::vector<std::string>& words,
                          SandboxPolicy* policy, size_t* consumed) {
   if (words.size() < 2) return false;
-  if (words[0] == "net=1") {
-    policy->allow_network = true;
-  } else if (words[0] == "net=0") {
-    policy->allow_network = false;
-  } else {
-    return false;
-  }
+  if (words[0] != "net=1" && words[0] != "net=0") return false;
+  policy->allow_network = words[0] == "net=1";
   constexpr std::string_view kRootsPrefix = "roots=";
   if (!words[1].starts_with(kRootsPrefix)) return false;
   std::string_view digits =

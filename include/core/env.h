@@ -25,7 +25,6 @@ int64_t ToolResultCap();
 int64_t ToolBatchResultCap();
 int64_t AutoCompactPct();
 int64_t AutoCompactTokens();
-int64_t ToolConcurrency();
 // Delegation depth: 0 is the interactive coordinator. A subagent may delegate
 // again while it stays under the cap, so nesting is bounded, not banned.
 int64_t AgentDepth();
@@ -39,7 +38,6 @@ int64_t SubagentTimeoutSeconds();
 std::string SubagentModel();
 std::string CoordinatorModel();
 int64_t MaxOutputTokens();
-bool SteeringEnabled();
 bool SandboxEnabled();
 // Outbound TCP. Allowed by default: git, npm and pip all need it.
 bool SandboxNetworkAllowed();
@@ -59,8 +57,6 @@ inline bool ValidOpenRouterVariant(std::string_view variant) {
 
 // Bounded tunables. Fixed ceilings live in include/core/limits.h.
 int64_t ReadFileLines();
-int64_t MemoryIdleSeconds();
-int64_t MaxBackgroundJobs();
 int64_t AttachmentLimitMb();
 int64_t ContextWindow();
 int64_t HistoryDays();
@@ -114,16 +110,11 @@ struct TurnBudgets {
 
 struct RuntimeConfig : TurnBudgets {
   using Values = std::map<std::string, std::string>;
-  int64_t first_event_timeout_s =
-      RegistryDefault<int64_t>("UAGENT_FIRST_EVENT_TIMEOUT");
-  int64_t stream_idle_timeout_s =
-      RegistryDefault<int64_t>("UAGENT_STREAM_IDLE_TIMEOUT");
+  int64_t stream_timeout_s = RegistryDefault<int64_t>("UAGENT_STREAM_TIMEOUT");
   int64_t request_timeout_s =
       RegistryDefault<int64_t>("UAGENT_REQUEST_TIMEOUT");
   int64_t tool_timeout_s = RegistryDefault<int64_t>("UAGENT_TOOL_TIMEOUT");
   int64_t mcp_timeout_s = RegistryDefault<int64_t>("UAGENT_MCP_TIMEOUT");
-  int64_t mcp_startup_grace_s =
-      RegistryDefault<int64_t>("UAGENT_MCP_STARTUP_GRACE");
   std::string approval{RegistryDefault<std::string_view>("UAGENT_APPROVAL")};
   std::string permission_model{
       RegistryDefault<std::string_view>("UAGENT_PERMISSION_MODEL")};
@@ -135,14 +126,8 @@ struct RuntimeConfig : TurnBudgets {
       RegistryDefault<std::string_view>("UAGENT_OPENROUTER_VARIANT")};
   std::string web_search_backend{
       RegistryDefault<std::string_view>("UAGENT_WEB_SEARCH_BACKEND")};
-  std::string web_search_effort{
-      RegistryDefault<std::string_view>("UAGENT_WEB_SEARCH_EFFORT")};
   std::string web_search_model{
       RegistryDefault<std::string_view>("UAGENT_WEB_SEARCH_MODEL")};
-  std::string web_search_engine{
-      RegistryDefault<std::string_view>("UAGENT_WEB_SEARCH_ENGINE")};
-  std::string web_search_context_size{
-      RegistryDefault<std::string_view>("UAGENT_WEB_SEARCH_CONTEXT_SIZE")};
   std::string image_model{
       RegistryDefault<std::string_view>("UAGENT_IMAGE_MODEL")};
   std::string title_model{
@@ -152,8 +137,6 @@ struct RuntimeConfig : TurnBudgets {
   std::string pdf_engine{
       RegistryDefault<std::string_view>("UAGENT_PDF_ENGINE")};
   std::string mcp_roots{RegistryDefault<std::string_view>("UAGENT_MCP_ROOTS")};
-  bool openrouter_fallbacks =
-      RegistryDefault<bool>("UAGENT_OPENROUTER_FALLBACKS");
   bool memory_enabled = RegistryDefault<bool>("UAGENT_MEMORY");
   bool memory_generate = RegistryDefault<bool>("UAGENT_MEMORY_GENERATE");
 
@@ -162,7 +145,6 @@ struct RuntimeConfig : TurnBudgets {
   std::vector<std::string> ApplyTurnReload(const RuntimeConfig& next);
 
   json DiagnosticJson() const;
-  json ProvenanceJson(const json& env_sources) const;
 };
 
 }  // namespace uagent

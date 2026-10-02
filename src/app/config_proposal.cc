@@ -208,8 +208,7 @@ std::string PrettyCompositeValue(const std::string& value) {
 }
 
 std::string RedactSecretAssignments(
-    const std::string& bytes, const std::set<std::string>& credential_keys,
-    bool omit_composites) {
+    const std::string& bytes, const std::set<std::string>& credential_keys) {
   std::string out;
   size_t start = 0;
   while (start <= bytes.size()) {
@@ -220,29 +219,15 @@ std::string RedactSecretAssignments(
     if (ParseConfigAssignment(line, assignment)) {
       const std::string& key = assignment.key;
       const ConfigDescriptor* descriptor = FindConfigDescriptor(key);
-      if (omit_composites && descriptor &&
+      if (descriptor &&
           descriptor->sensitivity == Sensitivity::kCompositeSecret) {
         if (end == std::string::npos) break;
         start = end + 1;
         continue;
       }
-      if (credential_keys.count(key) || CredentialLikeKey(key)) {
+      if (credential_keys.count(key) || CredentialLikeKey(key) ||
+          (descriptor && descriptor->sensitivity != Sensitivity::kPublic)) {
         line = key + "=<redacted>";
-      } else if (descriptor &&
-                 descriptor->sensitivity != Sensitivity::kPublic) {
-        if (descriptor->sensitivity == Sensitivity::kCompositeSecret) {
-          std::string value = Unquote(assignment.value);
-          std::string literal;
-          std::string error;
-          if (ConfigValueLiteral(DisplayValue(*descriptor, value), literal,
-                                 error)) {
-            line = key + "=" + literal;
-          } else {
-            line = key + "=<redacted>";
-          }
-        } else {
-          line = key + "=<redacted>";
-        }
       }
     }
     out += line;
@@ -307,8 +292,7 @@ ConfigEffect ClassifyEffect(const ConfigDescriptor& descriptor,
   // A layer above the file keeps winning after the file changes, so saying the
   // value is now active would be false.
   bool shadowed = source == "cli" || source == "environment" ||
-                  source == "command-line" || source == "process" ||
-                  (user_scope && source == "project-config");
+                  (user_scope && source == "project");
   if (shadowed) return ConfigEffect::kPersistedButShadowed;
   return descriptor.reload == ReloadPolicy::kNextUserTurn
              ? ConfigEffect::kActiveNextUserTurn
@@ -327,6 +311,18 @@ const char* ConfigEffectName(ConfigEffect effect) {
       return "saved, but a higher layer keeps winning";
   }
   return "needs a restart";
+}
+
+const char* ConfigEffectToken(ConfigEffect effect) {
+  switch (effect) {
+    case ConfigEffect::kActiveNextUserTurn:
+      return "next_turn";
+    case ConfigEffect::kRestartRequired:
+      return "restart";
+    case ConfigEffect::kPersistedButShadowed:
+      return "shadowed";
+  }
+  return "restart";
 }
 
 std::string ConfigProposal::Preview() const {
@@ -370,7 +366,7 @@ ConfigProposal PrepareConfigProposal(ConfigProposalScope scope,
         "that trust, so start uagent with --trust-project-config first";
     return proposal;
   }
-  if (!EnvStr("UAGENT_CONFIG_FILE").empty()) {
+  if (!SettingText(Cfg("UAGENT_CONFIG_FILE")).empty()) {
     proposal.error =
         "UAGENT_CONFIG_FILE replaces both config locations; edit that file "
         "directly";
@@ -486,11 +482,9 @@ ConfigProposal PrepareConfigProposal(ConfigProposalScope scope,
   const std::set<std::string> credential_keys =
       CredentialAssignmentKeys(before, after);
   const std::string redacted_before =
-      RedactSecretAssignments(proposal.snapshot, credential_keys,
-                              /*omit_composites=*/true);
+      RedactSecretAssignments(proposal.snapshot, credential_keys);
   const std::string redacted_after =
-      RedactSecretAssignments(proposal.candidate, credential_keys,
-                              /*omit_composites=*/true);
+      RedactSecretAssignments(proposal.candidate, credential_keys);
   if (redacted_before != redacted_after) {
     proposal.diff =
         ConfigUnifiedDiff(redacted_before, redacted_after, proposal.target);

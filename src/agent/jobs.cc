@@ -10,14 +10,11 @@
 #include <unistd.h>
 
 #include <algorithm>
-#include <array>
 #include <cerrno>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
-#include <filesystem>
-#include <fstream>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -134,11 +131,6 @@ static ToolResult FormatActivityList(const std::vector<BgJob>& supervised,
     output += "\n[activity list truncated]\n";
   }
   return ToolSuccess(std::move(output));
-}
-
-ToolResult ToolActivityList(const ProcessSupervisor& supervisor) {
-  return FormatActivityList(supervisor.Snapshot(), {},
-                            "(no active background work)");
 }
 
 std::string DrainActivityOutput(const BgJob& job, int64_t cap) {
@@ -489,20 +481,11 @@ ToolResult ToolActivityInput(const ProcessSupervisor& supervisor, int64_t id,
                                std::to_string(id) + ": " +
                                std::strerror(interrupt_error));
       }
-    } else {
-      size_t offset = 0;
-      while (offset < chars.size()) {
-        ssize_t count =
-            write(input.Get(), chars.data() + offset, chars.size() - offset);
-        if (count < 0 && errno == EINTR) continue;
-        if (count <= 0) {
-          int write_error = errno;
-          return ToolFailure(ToolErrorCode::kProcessFailed,
-                             "could not write activity " + std::to_string(id) +
-                                 " stdin: " + std::strerror(write_error));
-        }
-        offset += static_cast<size_t>(count);
-      }
+    } else if (!WriteAll(input.Get(), chars.data(), chars.size())) {
+      int write_error = errno;
+      return ToolFailure(ToolErrorCode::kProcessFailed,
+                         "could not write activity " + std::to_string(id) +
+                             " stdin: " + std::strerror(write_error));
     }
   }
   input.Reset();

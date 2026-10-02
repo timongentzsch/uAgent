@@ -13,11 +13,8 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
-#include <iterator>
 #include <optional>
-#include <regex>
 #include <string>
-#include <string_view>
 #include <system_error>
 #include <utility>
 #include <vector>
@@ -75,12 +72,6 @@ std::filesystem::path RepositoryIdentity(const std::filesystem::path& cwd) {
   return CanonicalOrSelf(common_dir);
 }
 
-std::filesystem::path RepositoryLabel(const std::filesystem::path& cwd,
-                                      const std::filesystem::path& identity) {
-  return identity.filename() == ".git" ? identity.parent_path()
-                                       : ProjectRoot(cwd);
-}
-
 struct RepositoryPaths {
   std::filesystem::path identity;
   std::filesystem::path label;
@@ -88,7 +79,8 @@ struct RepositoryPaths {
 
 RepositoryPaths Repository(const std::filesystem::path& cwd) {
   std::filesystem::path identity = RepositoryIdentity(cwd);
-  std::filesystem::path label = RepositoryLabel(cwd, identity);
+  std::filesystem::path label =
+      identity.filename() == ".git" ? identity.parent_path() : ProjectRoot(cwd);
   return {std::move(identity), std::move(label)};
 }
 
@@ -438,7 +430,9 @@ json MemoryControl(const json& request, const std::filesystem::path& cwd) {
     value["revision"] = DocumentRevision(entry.path, content);
     value["bytes"] = content.size();
     value["modified"] = SnapshotFile(entry.path).modified_seconds * 1000;
-    const auto recent = body ? LoadMemoryEvents() : events;
+    const auto reloaded =
+        body ? LoadMemoryEvents() : std::vector<MemoryEvent>{};
+    const auto& recent = body ? reloaded : events;
     for (auto event = recent.rbegin(); event != recent.rend(); ++event) {
       if (event->key != entry.key ||
           (scope == "project" &&

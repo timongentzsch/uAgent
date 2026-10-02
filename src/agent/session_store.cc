@@ -5,8 +5,6 @@
 #include <algorithm>
 #include <charconv>
 #include <filesystem>
-#include <fstream>
-#include <iterator>
 #include <map>
 #include <mutex>
 #include <span>
@@ -89,7 +87,6 @@ constexpr Field kStateFields[] = {
     {"adaptive_system", json::value_t::string, false},
     {"adaptive_system_revision", json::value_t::number_unsigned, false},
     {"adaptive_system_mode", json::value_t::string, false},
-    {"tool_displays", json::value_t::object, false},
     {"display", json::value_t::object, false},
     {"delivered_mail", json::value_t::array, false}};
 
@@ -108,8 +105,6 @@ bool ValidState(const SessionState& state,
          (conversation ? conversation->Kinds() : state.message_kinds).size() ==
              messages.size() &&
          (conversation ? conversation->Archive() : state.archive).is_array() &&
-         (conversation ? conversation->ToolDisplays() : state.tool_displays)
-             .is_object() &&
          state.display.is_object() && state.delivered_mail.is_array() &&
          state.adaptive_system.size() <= kAdaptiveSystemBytes &&
          (state.adaptive_system_mode == "overlay" ||
@@ -162,9 +157,7 @@ std::string StateText(const SessionState& state,
   for (const auto& [name, field] :
        {std::pair{"display", &state.display},
         {"messages",
-         conversation ? &conversation->Messages() : &state.messages},
-        {"tool_displays", conversation ? &conversation->ToolDisplays()
-                                       : &state.tool_displays}}) {
+         conversation ? &conversation->Messages() : &state.messages}}) {
     text += "," + JsonDump(name) + ":" + JsonDump(*field);
   }
   // The live archive keeps its segments serialized since archiving.
@@ -179,7 +172,7 @@ std::string StateText(const SessionState& state,
 bool SessionState::RestoreConversation(Conversation& conversation) && {
   return conversation.Restore(std::move(messages), std::move(message_kinds),
                               std::move(archive), archive_dropped_segments,
-                              std::move(tool_displays), display);
+                              display);
 }
 
 SessionStoreStatus SessionStore::Save(const std::string& path,
@@ -226,52 +219,45 @@ SessionLoadResult SessionStore::Load(const std::string& path,
 }
 
 SessionLoadResult SessionStore::Inspect(const std::string& path) {
+  const auto fail = [](std::string message,
+                       SessionStoreError code = SessionStoreError::kCorrupt) {
+    return SessionLoadResult{Error(code, std::move(message)), std::nullopt};
+  };
   std::string content, error;
   if (!ReadRegularFile(path, kSessionReadBytes, content, error)) {
-    return {Error(PathExists(path) ? SessionStoreError::kIo
-                                   : SessionStoreError::kNotFound,
-                  error),
-            std::nullopt};
+    return fail(error, PathExists(path) ? SessionStoreError::kIo
+                                        : SessionStoreError::kNotFound);
   }
   size_t newline = content.find('\n');
   if (newline > kSessionHeaderBytes) {
-    return {Error(SessionStoreError::kCorrupt,
-                  "session header is incomplete or too large"),
-            std::nullopt};
+    return fail("session header is incomplete or too large");
   }
   std::string_view header_line(content.data(), newline);
   std::string_view body(content.data() + newline + 1,
                         content.size() - newline - 1);
   if (body.empty()) {
-    return {Error(SessionStoreError::kCorrupt, "session is incomplete"),
-            std::nullopt};
+    return fail("session is incomplete");
   }
 
   json header = json::parse(header_line, nullptr, false);
   if (!ValidHeader(header) || !header.contains("format") ||
       !header["format"].is_number_integer()) {
-    return {Error(SessionStoreError::kCorrupt, "session header is invalid"),
-            std::nullopt};
+    return fail("session header is invalid");
   }
   int64_t format = header["format"].get<int64_t>();
   if (format != kSessionFormat) {
-    return {Error(SessionStoreError::kIncompatible,
-                  "unsupported session format " + std::to_string(format)),
-            std::nullopt};
+    return fail("unsupported session format " + std::to_string(format),
+                SessionStoreError::kIncompatible);
   }
 
   json state = json::parse(body, nullptr, false);
   if (state.is_discarded() || !HasFields(state, kStateFields)) {
-    return {Error(SessionStoreError::kCorrupt,
-                  "session payload is invalid or incomplete"),
-            std::nullopt};
+    return fail("session payload is invalid or incomplete");
   }
   std::vector<MessageKind> message_kinds;
   if (!ParseMessageKinds(state["message_kinds"], state["messages"].size(),
                          message_kinds)) {
-    return {Error(SessionStoreError::kCorrupt,
-                  "session message metadata is invalid or incomplete"),
-            std::nullopt};
+    return fail("session message metadata is invalid or incomplete");
   }
 
   SessionRecord record;
@@ -311,18 +297,13 @@ SessionLoadResult SessionStore::Inspect(const std::string& path) {
       JsonValue(state, "adaptive_system_mode", "overlay");
   record.state.adaptive_system_revision =
       JsonValue(state, "adaptive_system_revision", uint64_t{0});
-  if (state.contains("tool_displays")) {
-    record.state.tool_displays = std::move(state["tool_displays"]);
-  }
   if (state.contains("display")) {
     record.state.display = std::move(state["display"]);
   }
   record.state.delivered_mail =
       JsonValue(state, "delivered_mail", json::array());
   if (!ValidState(record.state)) {
-    return {Error(SessionStoreError::kCorrupt,
-                  "session payload is invalid or incomplete"),
-            std::nullopt};
+    return fail("session payload is invalid or incomplete");
   }
   return {{}, std::move(record)};
 }
@@ -395,10 +376,8 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
       const FileStamp stamp = SnapshotFile(item.path);
       auto cached = entries_.find(item.path);
       if (cached != entries_.end() && cached->second.stamp == stamp) {
-        if (listed(cached->second.info)) {
-          out.push_back(cached->second.info);
-          next.insert(entries_.extract(cached));
-        }
+        if (listed(cached->second.info)) out.push_back(cached->second.info);
+        next.insert(entries_.extract(cached));
         continue;
       }
       item.mtime = entry.last_write_time(ec);
@@ -423,13 +402,11 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
           item.error = "unsupported session format";
         }
       }
-      if (listed(item)) {
-        if (stamp.size >= 0 && item.error.empty() &&
-            SnapshotFile(item.path) == stamp) {
-          next.emplace(item.path, Entry{stamp, item});
-        }
-        out.push_back(std::move(item));
+      if (stamp.size >= 0 && item.error.empty() &&
+          SnapshotFile(item.path) == stamp) {
+        next.emplace(item.path, Entry{stamp, item});
       }
+      if (listed(item)) out.push_back(std::move(item));
     }
   }
   entries_ = std::move(next);
@@ -470,7 +447,7 @@ json SessionStore::Fork(const std::string& source, const std::string& title,
   if (!conversation.Restore(record.state.messages, record.state.message_kinds,
                             record.state.archive,
                             record.state.archive_dropped_segments,
-                            record.state.tool_displays, record.state.display)) {
+                            record.state.display)) {
     return {{"error", "session conversation state is invalid"}};
   }
   if (!message_id.empty()) {
@@ -494,11 +471,8 @@ json SessionStore::Fork(const std::string& source, const std::string& title,
       return {{"error", "session has fewer than " + std::to_string(fork_turn) +
                             " turns"}};
     }
-    // Orphaned tool displays are tolerated like any other Erase caller:
-    // they are keyed lookups, bounded, and never render without a message.
     record.state.messages = conversation.Messages();
     record.state.message_kinds = conversation.Kinds();
-    record.state.tool_displays = conversation.ToolDisplays();
     record.metadata.turns = fork_turn - 1;
   }
   // The fork's display metadata is the truncated conversation's, so the
@@ -548,13 +522,8 @@ json SessionStore::Fork(const std::string& source, const std::string& title,
           ec = std::make_error_code(std::errc::io_error);
           return;
         }
-        Fd input(
-            open(text.c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK));
-        struct stat info{};
-        if (!input || fstat(input.Get(), &info) != 0 ||
-            !S_ISREG(info.st_mode) || info.st_uid != getuid() ||
-            info.st_size < 0 ||
-            static_cast<uint64_t>(info.st_size) > kSessionReadBytes) {
+        Fd input = OpenOwnedRegular(text, kSessionReadBytes);
+        if (!input) {
           it->second.clear();
         } else {
           char buffer[16384];
@@ -580,12 +549,7 @@ json SessionStore::Fork(const std::string& source, const std::string& title,
       }
       value = it->second;
     } else {
-      const std::string from = source + ".assets/", to = path + ".assets/";
-      size_t pos = 0;
-      while ((pos = text.find(from, pos)) != std::string::npos) {
-        text.replace(pos, from.size(), to);
-        pos += to.size();
-      }
+      ReplaceAll(text, source + ".assets/", path + ".assets/");
       value = std::move(text);
     }
   };
@@ -611,13 +575,11 @@ json SessionStore::Fork(const std::string& source, const std::string& title,
   record.metadata.forked_at_time = UtcStamp("%Y%m%dT%H%M%SZ");
   if (!title.empty()) {
     record.metadata.title = title;
-  } else if (fork_turn > 0) {
-    record.metadata.title =
-        Utf8Prefix("Fork of " + record.metadata.title + " @ turn " +
-                       std::to_string(fork_turn),
-                   256);
   } else {
-    record.metadata.title = Utf8Prefix("Fork of " + record.metadata.title, 256);
+    record.metadata.title = Utf8Prefix(
+        "Fork of " + record.metadata.title +
+            (fork_turn > 0 ? " @ turn " + std::to_string(fork_turn) : ""),
+        256);
   }
   record.metadata.custom_title = true;
   auto result =
@@ -756,6 +718,7 @@ SessionStoreStatus SessionStore::Remove(const std::string& path,
   if (!draft_path.empty()) std::filesystem::remove(draft_path, ec);
   // These are session-owned siblings; remove_all never follows symlinks.
   if (!ec) std::filesystem::remove_all(path + ".assets", ec);
+  if (!ec) std::filesystem::remove_all(path + ".edits", ec);
   if (!ec) std::filesystem::remove(path + ".events.jsonl", ec);
   if (!ec) std::filesystem::remove(path, ec);
   if (!ec && loaded.record) {

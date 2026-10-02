@@ -170,7 +170,7 @@ std::string McpRegister(std::vector<Tool>& tools, McpRuntime& runtime,
 
   // Optional servers share one small startup window instead of each adding a
   // full timeout. Anything still booting is discovered at a turn boundary.
-  auto optional_deadline = DeadlineAfter(config.mcp_startup_grace_s);
+  auto optional_deadline = DeadlineAfter(kMcpStartupGraceSeconds);
   for (;;) {
     bool pending = false;
     for (auto& b : boots) {
@@ -230,7 +230,7 @@ void Restart(std::vector<Tool>& tools, McpRuntime& runtime,
   if (!McpStartConfigured(server, config, id, server.error)) return;
   server.discovery_id = id;
   server.startup = McpStartupState::kDiscovering;
-  auto deadline = DeadlineAfter(config.mcp_startup_grace_s);
+  auto deadline = DeadlineAfter(kMcpStartupGraceSeconds);
   while (server.alive && server.startup != McpStartupState::kReady &&
          std::chrono::steady_clock::now() < deadline) {
     if (McpAdvanceStartup(tools, server, config)) {

@@ -17,7 +17,8 @@ import { api } from "../state/api.ts";
 import { Mark, Deferred, Placeholder, Button } from "../shared/ui.tsx";
 import Composer from "../features/composer/composer.tsx";
 import Board, { CoordinatorLayout } from "../features/coordinator/board.tsx";
-import Escalations from "../features/coordinator/escalations.tsx";
+import WaitingList from "../features/coordinator/escalations.tsx";
+import { threadsOf } from "../state/attention.ts";
 import Chat, {
   TranscriptPlaceholder,
   prepareHistoryBlocks,
@@ -109,7 +110,7 @@ export default function ChatPage({
   upload: (files: File[]) => Promise<boolean>;
   uploading: boolean;
   busy: boolean;
-  submit: (event: Event, jump: () => void) => Promise<void>;
+  submit: (event: Event, jump: () => void, queue?: boolean) => Promise<void>;
   act: Act;
   report: Report;
   following: boolean;
@@ -136,7 +137,6 @@ export default function ChatPage({
   // is no pin-on-select here to clobber the restore.
   const {
     scroller: transcript,
-    content: transcriptContent,
     attachScroller,
     attachContent,
     jumpToLatest,
@@ -171,6 +171,17 @@ export default function ChatPage({
   }
   if (!active) return null;
 
+  // The last turn stopped short, and nothing new has been sent since: the
+  // status line above the composer says so and offers Continue.
+  const stop = snapshot?.state?.stop;
+  const stopped =
+    stop &&
+    stop.reason !== "completed" &&
+    !session?.turn_active &&
+    !snapshot?.pending &&
+    !blocks.at(-1)?.id.startsWith("outgoing-")
+      ? stop.reason
+      : undefined;
   // The conversation's composer; before the session is known, the same
   // composer drawn from a sample (see <Placeholder>).
   const composerFor = (item: Session) => (
@@ -185,7 +196,7 @@ export default function ChatPage({
       upload={upload}
       uploading={uploading}
       busy={busy}
-      submit={(event) => submit(event, jumpToLatest)}
+      submit={(event, queue) => submit(event, jumpToLatest, queue)}
       act={act}
       report={report}
       following={following}
@@ -205,19 +216,19 @@ export default function ChatPage({
       showContext={showContext}
       zoom={zoom}
       openBrowser={() => setModal({ type: "browser", handoff: true })}
+      stopped={stopped}
+      resume={actions.resume}
     />
   );
+  // A coordinator's board and escalations read the same threads.
+  const threads =
+    session?.kind === "coordinator"
+      ? threadsOf(catalogue.sessions, session.cwd || "")
+      : undefined;
   return session ? (
     <CoordinatorLayout
       board={
-        session.kind === "coordinator" && (
-          <Board
-            sessions={catalogue.sessions}
-            folder={session.cwd || ""}
-            online={online}
-            choose={choose}
-          />
-        )
+        threads && <Board threads={threads} online={online} choose={choose} />
       }
     >
       {/* Remount the transcript per session: a stale surface's
@@ -230,8 +241,6 @@ export default function ChatPage({
         <MessageActions.Provider value={actions}>
           <Chat
             key={selected}
-            scroller={transcript}
-            content={transcriptContent}
             attachScroller={attachScroller}
             attachContent={attachContent}
             preserveWhile={preserveWhile}
@@ -256,8 +265,8 @@ export default function ChatPage({
           close={closeSide}
         />
       )}
-      {session.kind === "coordinator" && (
-        <Escalations
+      {threads && (
+        <WaitingList
           sessions={catalogue.sessions}
           folder={session.cwd || ""}
           paused={snapshot?.state?.paused}
@@ -284,8 +293,8 @@ export default function ChatPage({
   ) : (
     <div class="empty">
       <Mark className="cursor-mark" />
-      <h1>Your projects. One workspace.</h1>
-      <p>Open a saved session or start in any directory on your host.</p>
+      <h1>What are we working on?</h1>
+      <p>Pick a folder on your host, or open a conversation from the list.</p>
       <Button
         variant="primary"
         onClick={() => setModal({ type: "new" })}

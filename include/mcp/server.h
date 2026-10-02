@@ -131,8 +131,6 @@ std::string McpLogPath(const std::string& name);
 // model or user sees, so the next step is always obvious.
 std::string McpStderrHint(const std::string& name);
 
-bool McpBufferOk(McpServer& s);
-
 // Append one available chunk of server stdout to the read buffer. Returns
 // false when the server closed or the response cap was hit. McpWrite's
 // opportunistic drain tolerates EOF, so it passes eof_is_fatal=false.

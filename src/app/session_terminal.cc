@@ -6,7 +6,6 @@
 #include <atomic>
 #include <chrono>
 #include <cstdio>
-#include <filesystem>
 #include <mutex>
 #include <optional>
 #include <set>
@@ -18,8 +17,11 @@
 #include "include/agent/session_store.h"
 #include "include/agent/session_view.h"
 #include "include/app/coordinator.h"
+#include "include/app/launch.h"
 #include "include/app/session.h"
 #include "include/cli.h"
+#include "include/core/fs.h"
+#include "include/core/limits.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
 #include "include/core/style.h"
@@ -92,9 +94,105 @@ class Terminal {
         draft_(std::move(draft)),
         region_(output_),
         composer_(output_, region_) {}
+
+  // Shows a decision that just arrived, or gives the composer back once it
+  // is gone. True when it was settled here and the loop starts over.
+  bool PresentDecision(const json& pending, const std::string& decision) {
+    if (!decision.empty() && JsonValue(pending, "kind", "") == "ask" && raw_) {
+      const json answered =
+          PickAskAnswers(JsonValue(pending, "questions", json::array()),
+                         region_, [this, decision] {
+                           std::lock_guard lock(mutex_);
+                           return JsonValue(pending_, "id", "") == decision;
+                         });
+      // Answered elsewhere meanwhile: nothing left to send.
+      bool live = false;
+      {
+        std::lock_guard lock(mutex_);
+        live = JsonValue(pending_, "id", "") == decision;
+      }
+      if (live) {
+        Send(answered.is_null()
+                 ? json{{"kind", "reply"},
+                        {"interaction_id", decision},
+                        {"text", ""},
+                        {"cancelled", true}}
+                 : json{{"kind", "reply"},
+                        {"interaction_id", decision},
+                        {"text", answered["text"]},
+                        {"attachments", answered["attachments"]}});
+      }
+      return true;
+    }
+    if (!decision.empty() && JsonValue(pending, "kind", "") == "editor") {
+      std::string text = JsonValue(pending, "initial", "");
+      bool edited =
+          raw_ ? composer_.EditTextExternally(text)
+               : EditExternalText(text, STDIN_FILENO, kAdaptiveSystemBytes);
+      Send({{"kind", "reply"},
+            {"interaction_id", decision},
+            {"text", text},
+            {"cancelled", !edited}});
+      return true;
+    }
+    if (!decision.empty()) {
+      std::string description;
+      if (const json* approval = JsonObject(pending, "approval")) {
+        std::string risks;
+        for (const json& risk : JsonValue(*approval, "risks", json::array())) {
+          risks += (risks.empty() ? "Risk: " : " · ") +
+                   JsonValue(risk, "label", std::string());
+        }
+        if (!risks.empty()) description = AsciiGlyphs(risks) + "\n";
+        description += JsonValue(*approval, "mandatory_reason", "") + "\n" +
+                       JsonValue(*approval, "preview", "") + "\n";
+      }
+      if (const json* questions = JsonArray(pending, "questions")) {
+        for (const json& question : *questions) {
+          description += JsonValue(question, "question", "") + "\n";
+          size_t number = 0;
+          for (const json& option : question["options"]) {
+            description += "  " + std::to_string(++number) + ". " +
+                           JsonValue(option, "label", "") + "\n";
+          }
+        }
+        description +=
+            "Answer with option numbers or your own words; separate "
+            "questions with ;\n";
+      }
+      if (raw_) {
+        region_.Commit(ColorizeDiffLines(TerminalSafe(description)));
+      } else {
+        fputs(TerminalSafe(description).c_str(), stdout);
+      }
+    }
+    const std::string prompt = TerminalSafe(
+        DecisionPrompt(JsonValue(pending, "prompt", ""),
+                       JsonValue(pending, "options", json::array())));
+    if (raw_) {
+      if (!decision.empty()) {
+        draft_ = composer_.Buffer();
+        region_.Commit(prompt);
+        composer_.Mount(InputPrompt(), JsonValue(pending, "initial", ""),
+                        false);
+      } else {
+        composer_.Mount(InputPrompt(), draft_);
+      }
+    } else if (!decision.empty()) {
+      const char* label = !g_plain ? ""
+                          : JsonValue(pending, "kind", "") == "ask"
+                              ? "question: "
+                              : "approval needed: ";
+      printf("%s%s\n", label, prompt.c_str());
+    }
+    return false;
+  }
+
   int Run(const std::vector<std::string>& attachments) {
     if (!stop_.Open() || !wake_.Open()) return 1;
-    raw_ = isatty(STDIN_FILENO) && output_.Start() && composer_.Start();
+    // Plain mode reads cooked lines: the composer repaints in place.
+    raw_ = !g_plain && isatty(STDIN_FILENO) && output_.Start() &&
+           composer_.Start();
     if (!raw_) output_.Stop();
     SetPersistentComposer(raw_);
     SetTerminalWakeFd(wake_.write.Get());
@@ -173,84 +271,7 @@ class Terminal {
       std::string decision = JsonValue(pending, "id", "");
       if (decision != decision_) {
         decision_ = decision;
-        if (!decision.empty() && JsonValue(pending, "kind", "") == "ask" &&
-            raw_) {
-          const json answered =
-              PickAskAnswers(JsonValue(pending, "questions", json::array()),
-                             region_, [this, decision] {
-                               std::lock_guard lock(mutex_);
-                               return JsonValue(pending_, "id", "") == decision;
-                             });
-          // Answered elsewhere meanwhile: nothing left to send.
-          bool live = false;
-          {
-            std::lock_guard lock(mutex_);
-            live = JsonValue(pending_, "id", "") == decision;
-          }
-          if (live) {
-            Send(answered.is_null()
-                     ? json{{"kind", "reply"},
-                            {"interaction_id", decision},
-                            {"text", ""},
-                            {"cancelled", true}}
-                     : json{{"kind", "reply"},
-                            {"interaction_id", decision},
-                            {"text", answered["text"]},
-                            {"attachments", answered["attachments"]}});
-          }
-          continue;
-        }
-        if (!decision.empty() && JsonValue(pending, "kind", "") == "editor") {
-          std::string text = JsonValue(pending, "initial", "");
-          bool edited =
-              raw_ ? composer_.EditTextExternally(text)
-                   : EditExternalText(text, STDIN_FILENO, kAdaptiveSystemBytes);
-          Send({{"kind", "reply"},
-                {"interaction_id", decision},
-                {"text", text},
-                {"cancelled", !edited}});
-          continue;
-        }
-        if (!decision.empty()) {
-          std::string description;
-          if (const json* approval = JsonObject(pending, "approval")) {
-            description = JsonValue(*approval, "mandatory_reason", "") + "\n" +
-                          JsonValue(*approval, "preview", "") + "\n";
-          }
-          if (const json* questions = JsonArray(pending, "questions")) {
-            for (const json& question : *questions) {
-              description += JsonValue(question, "question", "") + "\n";
-              size_t number = 0;
-              for (const json& option : question["options"]) {
-                description += "  " + std::to_string(++number) + ". " +
-                               JsonValue(option, "label", "") + "\n";
-              }
-            }
-            description +=
-                "Answer with option numbers or your own words; separate "
-                "questions with ;\n";
-          }
-          if (raw_) {
-            region_.Commit(ColorizeDiffLines(TerminalSafe(description)));
-          } else {
-            fputs(TerminalSafe(description).c_str(), stdout);
-          }
-        }
-        const std::string prompt = TerminalSafe(
-            DecisionPrompt(JsonValue(pending, "prompt", ""),
-                           JsonValue(pending, "options", json::array())));
-        if (raw_) {
-          if (!decision.empty()) {
-            draft_ = composer_.Buffer();
-            region_.Commit(prompt);
-            composer_.Mount(InputPrompt(), JsonValue(pending, "initial", ""),
-                            false);
-          } else {
-            composer_.Mount(InputPrompt(), draft_);
-          }
-        } else if (!decision.empty()) {
-          printf("%s\n", prompt.c_str());
-        }
+        if (PresentDecision(pending, decision)) continue;
       }
       if (!(waits[0].revents & (POLLIN | POLLHUP)) &&
           !(raw_ && (composer_.HasPending() || composer_.WakeDeadline()))) {
@@ -530,9 +551,7 @@ class Terminal {
   void Send(json command) {
     std::lock_guard lock(send_mutex_);
     if (JsonValue(command, "kind", "") == "reply") interaction_ = false;
-    command["v"] = kProtocol;
-    command["session_id"] = HashHex(path_);
-    command["generation"] = connection_.generation;
+    StampFrame(command, HashHex(path_), connection_.generation);
     command["request_id"] = RandomToken(16);
     command["client_request_id"] = command["request_id"];
     {
@@ -555,9 +574,11 @@ class Terminal {
     }
   }
   void Receive(const json& frame) {
+    static const json kNone = json::object();
     auto kind = JsonValue(frame, "kind", "");
     if (kind == "state") {
-      const json state = JsonValue(frame, "state", json::object());
+      auto sent = frame.find("state");
+      const json& state = sent != frame.end() ? *sent : kNone;
       {
         std::lock_guard lock(mutex_);
         for (const char* field :
@@ -581,8 +602,8 @@ class Terminal {
             presenter_.Consume(AppEvent{0, "", "notice", notice, false});
           }
         }
-        const json view = JsonValue(state, "view", json::object());
-        if (const json* blocks = JsonArray(view, "blocks")) {
+        const json* view = JsonObject(state, "view");
+        if (const json* blocks = view ? JsonArray(*view, "blocks") : nullptr) {
           for (const auto& block : *blocks) {
             shown_.insert(JsonValue(block, "id", ""));
             presenter_.Block(block);
@@ -607,7 +628,8 @@ class Terminal {
       wake_.Wake();
     } else if (kind == "event") {
       std::string type = JsonValue(frame, "type", "");
-      json data = JsonValue(frame, "data", json::object());
+      auto sent = frame.find("data");
+      const json& data = sent != frame.end() ? *sent : kNone;
       if (type == "session.ended") ended_ = true;
       if (type == "notice" && !history_) return;
       if (type == "usage.updated") {
@@ -615,7 +637,8 @@ class Terminal {
         ApplySessionEvent(state_, type, data);
         wake_.Wake();
       } else if (type == "message.changed") {
-        json block = JsonValue(data, "block", json::object());
+        const json* found = JsonObject(data, "block");
+        const json& block = found ? *found : kNone;
         const auto block_kind = JsonValue(block, "kind", "");
         bool echoed = false;
         {
@@ -747,9 +770,7 @@ int CoordinatorPromptMain(const Options& options) {
     return 1;
   }
   auto send = [&](json command) {
-    command["v"] = kProtocol;
-    command["session_id"] = HashHex(path);
-    command["generation"] = connection.generation;
+    StampFrame(command, HashHex(path), connection.generation);
     command["request_id"] = command.value("request_id", RandomToken(16));
     return WriteFrame(connection.socket.Get(), command);
   };
@@ -758,49 +779,42 @@ int CoordinatorPromptMain(const Options& options) {
   json stop = json::object();
   // The coordinator's session runs on; this request is its growth.
   Usage before, after;
-  Pipe never;
-  if (!never.Open()) return 1;
-  ReadFrames(
-      connection.socket.Get(), never.read.Get(), kFrameBytes,
-      [&](const json& frame) {
-        const std::string kind = JsonValue(frame, "kind", "");
-        if (kind == "outcome" &&
-            JsonValue(frame, "request_id", "") == request &&
-            !JsonValue(frame, "accepted", false)) {
-          error = JsonValue(frame, "error", "coordinator refused");
-          rejected = true;
-          return false;
-        }
-        if (kind != "state") return true;
-        if (!submitted && !JsonValue(frame, "busy", true)) {
-          before =
-              UsageFromJson(JsonValue(frame["state"], "usage", json::object()));
-          submitted = send({{"kind", "submit"},
-                            {"request_id", request},
-                            {"text", options.prompt}});
-          return submitted;
-        }
-        // Nobody is here to approve: a question is declined.
-        if (const json* pending = JsonObject(frame, "pending")) {
-          fprintf(
-              stderr, "· declined: %s\n",
+  ReadFrames(connection.socket.Get(), -1, kFrameBytes, [&](const json& frame) {
+    const std::string kind = JsonValue(frame, "kind", "");
+    if (kind == "outcome" && JsonValue(frame, "request_id", "") == request &&
+        !JsonValue(frame, "accepted", false)) {
+      error = JsonValue(frame, "error", "coordinator refused");
+      rejected = true;
+      return false;
+    }
+    if (kind != "state") return true;
+    if (!submitted && !JsonValue(frame, "busy", true)) {
+      before =
+          UsageFromJson(JsonValue(frame["state"], "usage", json::object()));
+      submitted = send({{"kind", "submit"},
+                        {"request_id", request},
+                        {"text", options.prompt}});
+      return submitted;
+    }
+    // Nobody is here to approve: a question is declined.
+    if (const json* pending = JsonObject(frame, "pending")) {
+      fprintf(stderr, "· declined: %s\n",
               TerminalSafe(JsonValue(*pending, "prompt", "approval")).c_str());
-          send({{"kind", "reply"},
-                {"interaction_id", JsonValue(*pending, "id", "")},
-                {"text", ""}});
-        }
-        if (JsonValue(frame, "checkpoint", false) &&
-            JsonValue(frame, "completed_request_id", "") == request) {
-          // A queued thread event may already have started the next
-          // turn, which clears the stop record.
-          stop = JsonValue(frame["state"], "stop", json::object());
-          after =
-              UsageFromJson(JsonValue(frame["state"], "usage", json::object()));
-          completed = true;
-          return false;
-        }
-        return true;
-      });
+      send({{"kind", "reply"},
+            {"interaction_id", JsonValue(*pending, "id", "")},
+            {"text", ""}});
+    }
+    if (JsonValue(frame, "checkpoint", false) &&
+        JsonValue(frame, "completed_request_id", "") == request) {
+      // A queued thread event may already have started the next
+      // turn, which clears the stop record.
+      stop = JsonValue(frame["state"], "stop", json::object());
+      after = UsageFromJson(JsonValue(frame["state"], "usage", json::object()));
+      completed = true;
+      return false;
+    }
+    return true;
+  });
   if (rejected || !completed) {
     fprintf(stderr, "%s\n",
             error.empty() ? "coordinator runtime closed" : error.c_str());
@@ -827,7 +841,25 @@ int CoordinatorPromptMain(const Options& options) {
   return reason == "completed" ? 0 : 1;
 }
 
+namespace {
+// Once per home, before the first conversation: what to try and the keys
+// that are easy to miss.
+void Welcome() {
+  const std::string marker = UagentDir(kConfigDir) + "/welcomed";
+  if (PathExists(marker)) return;
+  std::string error;
+  if (!AtomicWriteFile(marker, "", kPrivateFileMode, false, error)) return;
+  fputs(AsciiGlyphs("Welcome to µAgent. Try \"explain this repository\", "
+                    "\"fix the failing test\" or /help.\n"
+                    "Enter sends · Esc stops a turn · / lists commands · "
+                    "/undo puts back the last turn's file changes\n")
+            .c_str(),
+        stdout);
+}
+}  // namespace
+
 int TerminalMain(Options options) {
+  Welcome();
   std::string path;
   if (options.Coordinator()) {
     path = CoordinatorPath(CanonicalCwd());
@@ -843,8 +875,7 @@ int TerminalMain(Options options) {
     // reached from a session in another directory.
     std::string cwd = JsonValue(SessionHeader(path), kSessionHeaderCwd, folder);
     if (path.empty()) {
-      path = UagentDir(kHistoryDir) + "/" + WorkspaceId(cwd) + "/" +
-             MakeSessionId() + ".json";
+      path = HistoryPath(cwd, MakeSessionId());
     }
     std::string error;
     auto connection = Open(ExecutablePath(), cwd, path, "", options, error);

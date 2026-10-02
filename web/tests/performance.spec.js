@@ -22,7 +22,7 @@ for (const labels of [false, true])
     const started = performance.now();
     await page.goto(`/#session=${session.id}`);
     await expect(page.getByLabel("Message or guidance")).toBeEnabled();
-    await expect(page.locator(".composer").getByRole("status")).toHaveText(
+    await expect(page.locator(".composer .activity-caption")).toHaveText(
       "Ready",
     );
     const startupMs = performance.now() - started;

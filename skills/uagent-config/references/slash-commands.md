@@ -19,26 +19,24 @@
 | `/http [INDEX [request|response]]` | inspect captured HTTP attempts (latest by default) |
 | `/diff` | show git diff (including untracked files) |
 | `/cost` | show tokens and spend by route |
+| `/changes` | list the files the last turn changed |
+| `/undo [FILE]` | put back the files the last turn changed, or one of them |
 | `/debug-config [SETTING]` | show configuration layers, sources and restart-required fields |
 | `/effort LEVEL` | choose how much reasoning effort to use |
 | `/help` | show this help |
 | `/init` | create an AGENTS.md file with instructions for µAgent |
-| `/link [TOKEN]` | create a session link or join one with its token |
 | `/memory [list|get KEY|set KEY @FILE|forget KEY|rename KEY TARGET|copy KEY TARGET]` | manage project and global memories |
 | `/skills [list|get ID|set KEY @FILE|forget ID|enable ID|disable ID]` | inspect and manage installed skills |
 | `/schedule [list|JSON]` | manage scheduled tasks and runs |
 | `/model NAME` | choose what model to use |
 | `/models [QUERY]` | search and select across providers |
 | `/ps [ID [output|stop]]` | inspect or stop background work |
-| `/peers` | list linked and linkable sessions |
 | `/quit` | exit uagent |
 | `/reset` | start a new chat |
-| `/new` | start a new chat |
 | `/clear` | clear the screen |
 | `/review [TARGET]` | review my current changes and find issues |
 | `/sessions [PREFIX]` | resume a saved chat, optionally matching PREFIX |
 | `/status` | show current session configuration and token usage |
-| `/tell ID TEXT` | message a linked session |
 | `/tools [on|off NAME|profile NAME|reset]` | inspect or choose tools for this conversation |
 | `/mcp [retry|on|off NAME]` | show MCP servers; retry one or switch it on or off |
 | `/restart` | restart this conversation to apply settings that need it |

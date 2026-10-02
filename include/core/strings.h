@@ -123,12 +123,6 @@ size_t TerminalWidth(int64_t reserved = 0);
 std::string TerminalSummary(const std::string& text,
                             size_t reserved_columns = 0);
 
-inline constexpr uint64_t kFnv1aOffsetBasis = 1469598103934665603ULL;
-inline constexpr uint64_t kFnv1aPrime = 1099511628211ULL;
-uint64_t Fnv1aUpdate(uint64_t hash, const char* data, size_t size);
-
-std::string Hex64(uint64_t value);
-
 // Stable short digest for session and workspace identity.
 std::string HashHex(const std::string& data);
 
@@ -155,9 +149,6 @@ bool OpenaiUrl(std::string url);
 // are chosen once, not re-typed at every call site.
 std::string TruncatedHash(std::string_view data, size_t chars);
 
-// Delimiter splits without allocating or disagreeing on npos handling.
-// BeforeFirst("project/name", '/') -> "project"; no delimiter -> whole.
-std::string_view BeforeFirst(std::string_view s, char delim) noexcept;
 // Scope prefix of a `scope/name` key ("project" in "project/foo").
 // No '/' -> whole input; empty input -> empty.
 std::string_view ScopePrefix(std::string_view key) noexcept;
@@ -172,6 +163,10 @@ struct CommonLineSpan {
   size_t old_end = 0;
   size_t new_end = 0;
 };
+
+// `text` as diff lines, without their CR LF or LF. Views borrow `text`, so
+// every caller keeps the buffer alive past the diff.
+std::vector<std::string_view> DiffLines(std::string_view text);
 
 template <typename Lines>
 inline CommonLineSpan TrimCommonLines(const Lines& old_lines,
@@ -189,6 +184,17 @@ inline CommonLineSpan TrimCommonLines(const Lines& old_lines,
     ++suffix;
   }
   return {prefix, old_lines.size() - suffix, new_lines.size() - suffix};
+}
+
+// The span as diff lines, one line of context either side: `emit(marker,
+// line)` gets ' ' for context, '-' for removed and '+' for added lines.
+template <typename Lines, typename Emit>
+inline void ForEachDiffLine(const Lines& old_lines, const Lines& new_lines,
+                            const CommonLineSpan& span, Emit&& emit) {
+  if (span.prefix > 0) emit(' ', old_lines[span.prefix - 1]);
+  for (size_t i = span.prefix; i < span.old_end; ++i) emit('-', old_lines[i]);
+  for (size_t i = span.prefix; i < span.new_end; ++i) emit('+', new_lines[i]);
+  if (span.old_end < old_lines.size()) emit(' ', old_lines[span.old_end]);
 }
 
 }  // namespace uagent

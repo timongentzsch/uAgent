@@ -13,7 +13,7 @@
 #include <string>
 #include <vector>
 
-#include "include/core/fd.h"
+#include "include/core/file_watch.h"
 #include "include/core/json.h"
 
 namespace uagent {
@@ -25,11 +25,9 @@ enum class MailDelivery { kWake, kStep, kPassive, kInterrupt };
 
 // Message types. The type, not the text, says what a message is.
 inline constexpr const char* kMailTaskCompleted = "task.completed";
-inline constexpr const char* kMailTaskFailed = "task.failed";
 inline constexpr const char* kMailTaskProgress = "task.progress";
 inline constexpr const char* kMailAsk = "ask";
 inline constexpr const char* kMailSteer = "steer";
-inline constexpr const char* kMailCancel = "cancel";
 inline constexpr const char* kMailNote = "note";
 
 struct Mail {
@@ -81,11 +79,11 @@ const char* MailDeliveryName(MailDelivery delivery);
 class MailboxWatch {
  public:
   explicit MailboxWatch(const std::string& id);
-  int Get() const { return fd_.Get(); }
-  void Drain() const;
+  int Get() const { return watch_.Get(); }
+  void Drain() const { watch_.Drain(); }
 
  private:
-  Fd fd_;
+  NativeWatch watch_;
 };
 
 }  // namespace uagent

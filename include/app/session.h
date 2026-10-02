@@ -37,6 +37,9 @@ struct Connection {
   std::string binary;
 };
 Connection Connect(const std::string& path);
+// Open hands a runtime its options in a private launch file; this reads them
+// back, all but the session role, which the worker vets itself.
+Options OptionsFromLaunch(const json& launch);
 Connection Open(const std::string& executable, const std::string& cwd,
                 const std::string& path, const std::string& title,
                 const Options& options, std::string& error);

@@ -330,7 +330,7 @@ def test_partial_usage_reconciles_without_double_counting(root, home, *, binary)
             provider.url,
             extra_env={
                 "UAGENT_REQUEST_TIMEOUT": timeout_setting(PARTIAL_USAGE_REQUEST_SECONDS),
-                "UAGENT_STREAM_IDLE_TIMEOUT": timeout_setting(PARTIAL_USAGE_REQUEST_SECONDS),
+                "UAGENT_STREAM_TIMEOUT": timeout_setting(PARTIAL_USAGE_REQUEST_SECONDS),
             },
         ) as (client, code, _, _):
             client.pair(code)
@@ -1047,6 +1047,52 @@ def test_web_artifact_is_shared_sandboxed_and_downloadable(root, home, *, binary
             )
 
 
+def test_web_long_diff_is_stored_whole_and_served_by_detail(root, home, *, binary):
+    lines = [f"line {index:04d} of a long file" for index in range(2000)]
+    content = "\n".join([*lines, "LAST_DIFF_LINE", ""])
+
+    def responder(_, body):
+        if any(message.get("role") == "tool" for message in body["messages"]):
+            return event({"content": "written"})
+        return tool_call("write_file", {"path": "long.txt", "content": content}, call_id="long")
+
+    with Server([responder]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+            client.pair(code)
+            session = client.create(root)
+            client.command("permissions", session, mode="yolo")
+            client.command("submit", session, text="Write the long file")
+            value = client.until(
+                session,
+                lambda value: (
+                    "written" in json.dumps(value) and not value["metadata"]["turn_active"]
+                ),
+            )
+            row = next(
+                block for block in value["state"]["view"]["blocks"] if block.get("change_path")
+            )
+            # It is kept with the session's edits, so it lasts as long as the
+            # conversation and leaves with it.
+            assert_true(".json.edits/diff-" in row["change_path"], row["change_path"])
+            # The row carries the diff's opening, within a fact and a frame.
+            assert_true(row["change"].startswith("Created long.txt (+2001 -0)\n"), row)
+            assert_true(len(row["change"]) <= 16 * 1024 and "…" not in row["change"], row)
+            diff = ""
+            offset = 0
+            while True:
+                status, page, _ = client.json(
+                    f"/api/sessions/{session['id']}?detail={row['detail_id']}&offset={offset}"
+                )
+                assert_true(status == 200, page)
+                diff += page["text"]
+                if not page["more"]:
+                    break
+                offset = page["next"]
+            assert_true(diff.startswith(row["change"]), diff[:200])
+            assert_true(diff.endswith("+line 1999 of a long file\n+LAST_DIFF_LINE\n"), diff[-200:])
+            assert_true(diff.count("\n") == 2002, diff.count("\n"))
+
+
 def p256_public_key():
     """A fresh uncompressed P-256 point, as a browser's p256dh key."""
     pem = subprocess.run(
@@ -1171,6 +1217,42 @@ def test_web_steer_queues_guidance_and_live_accounting(root, home, *, binary):
                 summaries and all(summary.get("outcome") == "complete" for summary in summaries),
                 done["state"]["view"]["blocks"],
             )
+
+
+def test_web_queue_next_runs_after_the_turn(root, home, *, binary):
+    # "Queue next" never joins the running turn: it waits for the turn to end
+    # and then runs as a turn of its own.
+    workspace = root / "queue-next"
+    workspace.mkdir()
+
+    def responder(handler, body):
+        if "queue-me" in json.dumps(body["messages"]):
+            return event({"content": "queued answer"})
+        write_sse_sequence(
+            handler,
+            [
+                event({"content": "slow chunk one "}, finish=None),
+                event({"content": "slow chunk two"}),
+            ],
+            delay=0.5,
+        )
+        return None
+
+    with Server([responder]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+            client.pair(code)
+            session = client.create(workspace)
+            client.command("submit", session, text="Slow queue probe")
+            client.until(session, lambda value: value["metadata"]["turn_active"])
+            client.command("steer", session, text="queue-me next", queue=True)
+            done = client.until(
+                session,
+                lambda value: (
+                    not value["metadata"]["turn_active"] and "queued answer" in json.dumps(value)
+                ),
+            )
+            summaries = [block for block in done["state"]["view"]["blocks"] if block.get("summary")]
+            assert_true(len(summaries) == 2, done["state"]["view"]["blocks"])
 
 
 def test_web_recall_queued_guidance(root, home, *, binary):
@@ -1399,10 +1481,10 @@ def test_session_runtime_crash_isolation(root, home, *, binary):
                 if row.split()[1] == str(process.pid) and str(root / "workspace-0") in row
             )
             os.kill(victim, signal.SIGKILL)
-            client.until(sessions[0], lambda value: value["metadata"]["status"] == "interrupted")
+            # It had nothing under way, so nothing was interrupted: it is saved.
+            client.until(sessions[0], lambda value: value["metadata"]["status"] == "saved")
             client.command("submit", sessions[1], text="Continue independently")
             client.until(sessions[1], lambda value: "Unaffected worker" in json.dumps(value))
-            client.command("close", sessions[0])
             resumed = client.command("activate", sessions[0])["session"]
             assert_true(resumed["generation"] != sessions[0]["generation"], resumed)
             client.until(resumed, lambda value: value["metadata"]["status"] == "idle")
@@ -1899,7 +1981,10 @@ def test_web_child_controls_and_conversation_ownership(root, home, *, binary):
             root,
             home,
             provider.url,
-            extra_env={"UAGENT_MODEL": "mock/old", "UAGENT_PROVIDER_PROTOCOL": "openrouter"},
+            extra_env={
+                "UAGENT_MODEL": "mock/old",
+                "UAGENT_INTERNAL_PROVIDER_PROTOCOL": "openrouter",
+            },
         ) as (client, code, _, _):
             client.pair(code)
             session = client.create(project)
@@ -1995,7 +2080,9 @@ def test_web_http_context_configuration_permissions_and_fork(root, home, *, bina
             client.pair(code)
             config = client.command("config")["result"]
             settings = {item["name"]: item for item in config["settings"]}
-            assert_true(len(settings) > 80 and settings["UAGENT_API_KEY"]["value"] is None, config)
+            assert_true(
+                len(settings) > 60 and "effective" not in settings["UAGENT_API_KEY"], config
+            )
             changed = client.command(
                 "config",
                 operation="apply",
@@ -2003,7 +2090,7 @@ def test_web_http_context_configuration_permissions_and_fork(root, home, *, bina
                 changes=[{"key": "UAGENT_APPROVAL", "value": "yolo"}],
             )["result"]
             assert_true(
-                changed["effects"][0]["effect"] == "active at the next user turn",
+                changed["effects"][0]["effect"] == "next_turn",
                 changed["effects"],
             )
             session = client.create(project)
@@ -2398,6 +2485,19 @@ def test_web_restarts_conversations_and_itself(root, home, *, binary):
             assert_true("Remembered answer" in json.dumps(value), value)
             other = client.command("restart_conversations", cwd=str(root / "elsewhere"))
             assert_true(other["result"] == {"restarting": 0, "deferred": 0}, other)
+            # One conversation by id (the web's Restart): another id leaves it.
+            other = client.command("restart_conversations", target_id="no-such-session")
+            assert_true(other["result"] == {"restarting": 0, "deferred": 0}, other)
+            generation = value["metadata"]["generation"]
+            one = client.command("restart_conversations", target_id=session["id"])
+            assert_true(one["result"] == {"restarting": 1, "deferred": 0}, one)
+            value = client.until(
+                session,
+                lambda value: (
+                    value["metadata"].get("generation") not in ("", generation)
+                    and value["metadata"]["status"] == "idle"
+                ),
+            )
 
             # A busy conversation finishes its turn first, then restarts.
             generation = value["metadata"]["generation"]
@@ -2468,7 +2568,7 @@ def test_idle_coordinator_is_let_go_and_exits(root, home, *, binary):
     project.mkdir()
     with Server([event({"content": "ok"})]) as provider:
         with web_host(
-            binary, root, home, provider.url, extra_env={"UAGENT_INTERNAL_COORDINATOR_IDLE_S": "2"}
+            binary, root, home, provider.url, extra_env={"UAGENT_INTERNAL_IDLE_S": "2"}
         ) as (web, code, _, _env):
             web.pair(code)
             session = web.command("create", cwd=str(project), coordinator=True)["session"]
@@ -2484,6 +2584,34 @@ def test_idle_coordinator_is_let_go_and_exits(root, home, *, binary):
             assert_true(again["id"] == session["id"], again)
             web.command("activate", again)
             wait_until(sockets, "coordinator did not start again", timeout=10)
+
+
+def test_idle_session_stops_and_a_message_starts_it_again(root, home, *, binary):
+    from session_support import runtime_directory
+
+    project = root / "idle-session"
+    project.mkdir()
+    with Server([event({"content": "first-ok"}), event({"content": "second-ok"})]) as provider:
+        with web_host(
+            binary, root, home, provider.url, extra_env={"UAGENT_INTERNAL_IDLE_S": "2"}
+        ) as (web, code, _, _env):
+            web.pair(code)
+            session = web.create(project)
+            web.command("permissions", session, mode="yolo")
+            web.command("submit", session, text="one")
+            web.until(session, lambda value: "first-ok" in json.dumps(value))
+
+            def sockets():
+                return list(runtime_directory(home).glob("*.sock"))
+
+            wait_until(lambda: not sockets(), "idle session kept running", timeout=30)
+            saved = web.until(session, lambda value: value["metadata"]["status"] == "saved")
+            assert_true("first-ok" in json.dumps(saved), saved)
+            # No resume step: the message itself starts the runtime.
+            web.command("submit", saved["metadata"], text="two")
+            again = web.until(session, lambda value: "second-ok" in json.dumps(value))
+            # The same session: its settings came back with it.
+            assert_true(again["state"]["permissions"]["mode"] == "yolo", again["state"])
 
 
 def test_coordinator_edit_from_here_rewinds_in_place(root, home, *, binary):

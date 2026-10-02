@@ -41,7 +41,6 @@ std::optional<ProviderProtocol> ParseProviderProtocol(
 const char* WireApiName(WireApi wire_api);
 std::optional<WireApi> ParseWireApi(std::string_view wire_api);
 bool HasHostedTool(const json& hosted_tools, HostedTool tool);
-json HostedToolsJson(bool web_search);
 
 struct ProviderCapabilities {
   ProviderProtocol protocol = ProviderProtocol::kOpenAi;

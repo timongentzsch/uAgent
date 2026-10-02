@@ -1,6 +1,6 @@
 import type { ComponentChildren } from "preact";
 import { useState } from "preact/hooks";
-import { Modal, useDialogClose } from "./ui.tsx";
+import { Button, Modal, useDialogClose } from "./ui.tsx";
 
 type Content = ComponentChildren | ((close: () => void) => ComponentChildren);
 
@@ -21,9 +21,9 @@ export function SheetButton({
   trigger,
   children,
   className = "",
-  buttonClass = "quiet icon-button",
+  buttonClass = "",
+  size = "default",
   sheetClass = "",
-  size = "narrow",
   disabled,
 }: {
   label: string;
@@ -34,33 +34,39 @@ export function SheetButton({
   children: Content;
   className?: string;
   buttonClass?: string;
+  // "icon" when the trigger is an icon alone.
+  size?: "default" | "icon";
   sheetClass?: string;
-  size?: "narrow" | "compact";
   disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   return (
     <div class={`sheet-control ${className}`}>
-      <button
-        type="button"
+      <Button
+        variant="quiet"
+        size={size}
         class={buttonClass}
         title={title}
         aria-label={label}
         aria-haspopup="dialog"
         aria-expanded={open}
         disabled={disabled}
-        onClick={() => setOpen(true)}
+        // Safari does not focus a clicked button, and the sheet returns
+        // focus to whatever had it.
+        onClick={(event) => {
+          event.currentTarget.focus({ preventScroll: true });
+          setOpen(true);
+        }}
       >
         {trigger}
-      </button>
+      </Button>
       {open && (
         <Modal
           title={heading}
           layout="sheet"
-          size={size}
+          size="narrow"
           className={sheetClass}
           close={() => setOpen(false)}
-          lightDismiss
         >
           <SheetContent>{children}</SheetContent>
         </Modal>

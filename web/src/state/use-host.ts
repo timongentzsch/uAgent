@@ -7,9 +7,16 @@ import type {
   Outgoing,
   HostEvent,
   Outcome,
+  Session,
 } from "../shared/types.ts";
 import { failure } from "../shared/types.ts";
-import { useCallback, useEffect, useRef, useState } from "preact/hooks";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "preact/hooks";
 import {
   retainedViews,
   applySessionEvent,
@@ -18,9 +25,11 @@ import {
   stateFrame,
   readStored,
   writeStored,
+  hasContent,
 } from "./store.ts";
 import { api, protocol, receiveOutcome } from "./api.ts";
 import { snapshotStore } from "./snapshot-store.ts";
+import { queuedGuidance } from "../shared/message-view.ts";
 import { selectedFromURL, writeSelection } from "../shared/navigation.ts";
 import {
   maxLocalRequests,
@@ -28,8 +37,35 @@ import {
   reconnectMaxDelayMs,
 } from "../shared/limits.ts";
 import type { ConnectionPhase } from "../shared/connection-status.tsx";
+import { needsYou } from "./attention.ts";
 
 const CATALOGUE_KEY = "uagent-catalogue";
+
+// What the sidebar lists: conversations, not scheduled runs or their tasks.
+function listedSessions({
+  sessions,
+  scheduled,
+}: Pick<Catalogue, "sessions" | "scheduled">) {
+  const runs = new Set(scheduled?.runs?.map((run) => run.session_id));
+  return sessions.filter((item) => !item.task_id && !runs.has(item.id));
+}
+
+// A stream message's event, or nothing when its envelope is not one.
+function envelope(data: string): HostEvent | undefined {
+  try {
+    const event = JSON.parse(data);
+    if (
+      event &&
+      typeof event.kind === "string" &&
+      typeof event.sequence === "number" &&
+      typeof event.session_id === "string"
+    )
+      return event;
+  } catch {
+    /* Not JSON. */
+  }
+  return undefined;
+}
 
 // One SSE subscription owns host snapshots, command receipts and read state.
 export function useHost(
@@ -109,12 +145,72 @@ export function useHost(
     readingConversation && following && document.visibilityState === "visible";
   // A failed request means offline only when the event stream agrees; with
   // the stream open it was one request, reported like any other failure.
-  const report = useCallback((error: unknown) => {
+  // An inline report is shown where it happened (a message, a decision);
+  // it only tells whether the host is gone.
+  const report = useCallback((error: unknown, scope?: "inline") => {
     const issue = failure(error);
     if (issue.network && stream.current?.readyState !== EventSource.OPEN)
       setOnline(false);
-    else setError(issue.message);
+    else if (scope !== "inline") setError(issue.message);
   }, []);
+  // One session's catalogue entry changes in place; unchanged entries keep
+  // the catalogue's identity, so the shell skips the frame.
+  const patchSession = (id: string, change: (item: Session) => Session) =>
+    setCatalogue((prior) => {
+      let changed = false;
+      const sessions = prior.sessions.map((item) => {
+        if (item.id !== id) return item;
+        const next = change(item);
+        changed ||= next !== item;
+        return next;
+      });
+      return changed ? { ...prior, sessions } : prior;
+    });
+  // A new or reactivated session leads the list.
+  const upsertSession = useCallback(
+    (session: Session) =>
+      setCatalogue((prior) => ({
+        ...prior,
+        sessions: [
+          session,
+          ...prior.sessions.filter((item) => item.id !== session.id),
+        ],
+      })),
+    [],
+  );
+  const patchOutgoing = useCallback(
+    (
+      requestId: string,
+      patch: Partial<Outgoing> | ((item: Outgoing) => Partial<Outgoing>),
+    ) =>
+      setOutgoing((items) =>
+        items.map((item) =>
+          item.request_id !== requestId
+            ? item
+            : {
+                ...item,
+                ...(typeof patch === "function" ? patch(item) : patch),
+              },
+        ),
+      ),
+    [],
+  );
+  const dropStream = () => {
+    stream.current?.close();
+    stream.current = undefined;
+    setOnline(false);
+  };
+  // What this device drops when the host no longer knows it.
+  const signedOut = () => {
+    revoked.current = true;
+    catalogueRef.current = undefined;
+    setCatalogue({ sessions: [], devices: [], capabilities: {} });
+    storage.removeItem(CATALOGUE_KEY);
+    setDrafts({});
+    setAuthenticated(false);
+    live.current = {};
+    snapshots.set({});
+  };
   const load = useCallback((id: string) => {
     if (loads.current.has(id)) return loads.current.get(id)!;
     setLoadErrors((prior) => ({ ...prior, [id]: null }));
@@ -201,25 +297,27 @@ export function useHost(
     }
   }, []);
   // A command's outcome, from its receipt or the stream, settles the
-  // outgoing row that sent it.
+  // outgoing row that sent it. True when a row or a waiting caller shows
+  // it, so a refusal needs no banner.
   const settleOutgoing = (outcome: Outcome) => {
-    receiveOutcome(outcome);
-    setOutgoing((items) =>
-      items.map((item) =>
-        item.request_id !== outcome.request_id
-          ? item
-          : {
-              ...item,
-              status: outcome.unknown
-                ? "Not confirmed"
-                : outcome.pending
-                  ? "Awaiting confirmation"
-                  : outcome.accepted
-                    ? "Sent"
-                    : "Not sent",
-              error: outcome.error,
-            },
-      ),
+    const awaited = receiveOutcome(outcome);
+    patchOutgoing(outcome.request_id, (item) => ({
+      status: outcome.unknown
+        ? "Not confirmed"
+        : outcome.pending
+          ? "Awaiting confirmation"
+          : outcome.accepted
+            ? // Accepted guidance waits for its step and stays
+              // recallable until the transcript shows it.
+              queuedGuidance(item)
+              ? item.status
+              : "Sent"
+            : "Not sent",
+      error: outcome.error,
+    }));
+    return (
+      awaited ||
+      outgoingRef.current.some((item) => item.request_id === outcome.request_id)
     );
   };
   // Jittered exponential backoff; a successful catalogue read resets it.
@@ -233,6 +331,171 @@ export function useHost(
       delay * (0.5 + Math.random() / 2),
     );
   };
+  // One event of the stream, applied in order to the catalogue, the outgoing
+  // rows and its session's snapshot.
+  const applyEvent = (event: HostEvent) => {
+    if (
+      event.kind === "management.changed" ||
+      (event.kind === "event" && event.type === "prompt.changed")
+    ) {
+      setManagementVersion((version) => version + 1);
+      return;
+    }
+    if (event.kind === "scheduled.changed" && event.scheduled) {
+      setCatalogue((prior) => ({ ...prior, scheduled: event.scheduled }));
+      return;
+    }
+    const data = event.data || {};
+    const shown = event.kind === "outcome" && settleOutgoing(event);
+    if (event.kind === "gap") {
+      refresh();
+      return;
+    }
+    const id = event.session_id;
+    const current = live.current[id];
+    if (current && event.sequence <= current.cursor) return;
+    if (
+      current?.metadata.generation &&
+      current.metadata.generation !== event.generation &&
+      event.kind !== "activated" &&
+      event.kind !== "deactivated" &&
+      event.kind !== "metadata" &&
+      event.kind !== "deleted"
+    )
+      return;
+    const activities = () => {
+      if (current)
+        live.current[id] = {
+          ...applySessionEvent(current, event),
+          ...(event.metadata && { metadata: event.metadata }),
+        };
+      // A repeat of the activities it has keeps the session's identity.
+      patchSession(
+        id,
+        (item) =>
+          event.metadata ||
+          (JSON.stringify(item.activities) === JSON.stringify(data.activities)
+            ? item
+            : { ...item, activities: data.activities }),
+      );
+    };
+    switch (event.kind) {
+      case "block":
+        if (event.block) {
+          const block = event.block;
+          // Unchanged state keeps its identity, so the shell skips the frame.
+          setOutgoing((items) =>
+            items.some((item) => item.request_id === block.request_id)
+              ? items.filter((item) => item.request_id !== block.request_id)
+              : items,
+          );
+          if (block.incoming)
+            patchSession(id, (item) =>
+              (item.incoming || 0) < block.incoming!
+                ? { ...item, incoming: block.incoming }
+                : item,
+            );
+        }
+        if (current) live.current[id] = applySessionEvent(current, event);
+        break;
+      case "activated":
+      case "deactivated":
+      case "metadata":
+        if (!event.metadata) break;
+        upsertSession(event.metadata);
+        if (current)
+          live.current[id] = {
+            ...current,
+            epoch: event.epoch,
+            cursor: event.sequence,
+            metadata: event.metadata,
+            pending: event.kind === "metadata" ? current.pending : null,
+          };
+        break;
+      case "deleted":
+        forget(id);
+        break;
+      case "state": {
+        const phase = event.phase || event.state?.phase || "idle";
+        const pendingDecision = event.pending ?? null;
+        const metadata = event.metadata!;
+        const projected: Snapshot = {
+          ...current,
+          epoch: event.epoch,
+          cursor: event.sequence,
+          metadata,
+          state: stateFrame(current?.state, event.state, phase),
+          pending: pendingDecision,
+        };
+        live.current[id] = keepOlderPages(current, projected);
+        // Decisions and canonical phase changes flush without text batching.
+        if (id === selection.current)
+          snapshots.set((prior) => ({ ...prior, [id]: live.current[id] }));
+        patchSession(id, () => metadata);
+        break;
+      }
+      case "activity":
+        activities();
+        break;
+      case "event":
+        if (event.type === "activities.changed") {
+          activities();
+          break;
+        }
+        if (!current) break;
+        if (
+          id === selection.current &&
+          event.type === "command.completed" &&
+          !!data.request_id &&
+          localRequests.current.delete(data.request_id) &&
+          (data.output?.trim() || Object.keys(data.result || {}).length)
+        ) {
+          onResult(
+            Object.keys(data.result || {}).length ? data.result! : data.output!,
+            data.inspect !== false,
+          );
+        }
+        if (event.type === "notice" && data.presentation?.status === "failed")
+          report(new Error(data.presentation?.title));
+        live.current[id] = applySessionEvent(current, event);
+        break;
+      case "outcome":
+        if (!event.accepted && !shown) report(new Error(event.error));
+        break;
+      case "error":
+        report(new Error(event.error));
+        break;
+      case "closed": {
+        const metadata = event.metadata;
+        if (!metadata) break;
+        if (current)
+          live.current[id] = {
+            ...current,
+            cursor: event.sequence,
+            pending: null,
+            metadata,
+          };
+        patchSession(id, () => metadata);
+        break;
+      }
+    }
+    flush.current(id);
+    if (isIncoming(event) && (id !== selection.current || !reading.current))
+      setUnread((prior) => (prior.has(id) ? prior : new Set([...prior, id])));
+    // The host decides what needs a person; its id dedupes with push.
+    if (event.attention_id) {
+      if (
+        notifications.current &&
+        !subscribed.current &&
+        document.visibilityState !== "visible"
+      )
+        navigator.serviceWorker?.controller?.postMessage({
+          type: "ATTENTION",
+          id: event.attention_id,
+          session_id: id,
+        });
+    }
+  };
   const refresh = useCallback(async () => {
     clearTimeout(retry.current.timer);
     setManagementVersion((value) => value + 1);
@@ -242,10 +505,8 @@ export function useHost(
     }
     reconnecting.current = true;
     setConnecting(true);
-    stream.current?.close();
-    stream.current = undefined;
+    dropStream();
     loads.current.clear();
-    setOnline(false);
     const signal = lifetime.current.signal;
     try {
       const list = await api<Catalogue>("/api/sessions?refresh=1", undefined, {
@@ -256,10 +517,6 @@ export function useHost(
       revoked.current = false;
       catalogueRef.current = list;
       setCatalogue(list);
-      // Activation can precede the first snapshot of a newly created session.
-      const knownSessions = new Map(
-        list.sessions.map((session) => [session.id, session]),
-      );
       setUnread(
         (prior) =>
           new Set([
@@ -334,17 +591,8 @@ export function useHost(
       });
       events.addEventListener("update", (message) => {
         if (stream.current !== events || signal.aborted) return;
-        let event: HostEvent;
-        try {
-          event = JSON.parse(message.data);
-          if (
-            !event ||
-            typeof event.kind !== "string" ||
-            typeof event.sequence !== "number" ||
-            typeof event.session_id !== "string"
-          )
-            throw new Error("Invalid event envelope");
-        } catch {
+        const event = envelope(message.data);
+        if (!event) {
           events.close();
           refresh();
           return;
@@ -360,197 +608,13 @@ export function useHost(
           setConnecting(false);
           return;
         }
-        if (
-          event.kind === "management.changed" ||
-          (event.kind === "event" && event.type === "prompt.changed")
-        ) {
-          setManagementVersion((version) => version + 1);
-          return;
-        }
-        if (event.kind === "scheduled.changed" && event.scheduled) {
-          setCatalogue((prior) => ({ ...prior, scheduled: event.scheduled }));
-          return;
-        }
-        const data = event.data || {};
-        if (event.kind === "outcome") {
-          settleOutgoing(event);
-        }
-        if (event.kind === "gap") {
-          refresh();
-          return;
-        }
-        const id = event.session_id;
-        const current = live.current[id];
-        if (current && event.sequence <= current.cursor) return;
-        if (
-          current?.metadata.generation &&
-          current.metadata.generation !== event.generation &&
-          event.kind !== "activated" &&
-          event.kind !== "deactivated" &&
-          event.kind !== "metadata" &&
-          event.kind !== "deleted"
-        )
-          return;
-        if (event.kind === "block" && event.block) {
-          const block = event.block;
-          // Unchanged state keeps its identity, so the shell skips the frame.
-          setOutgoing((items) =>
-            items.some((item) => item.request_id === block.request_id)
-              ? items.filter((item) => item.request_id !== block.request_id)
-              : items,
-          );
-          if (block.incoming)
-            setCatalogue((prior) =>
-              prior.sessions.some(
-                (item) =>
-                  item.id === id && (item.incoming || 0) < block.incoming!,
-              )
-                ? {
-                    ...prior,
-                    sessions: prior.sessions.map((item) =>
-                      item.id === id
-                        ? { ...item, incoming: block.incoming }
-                        : item,
-                    ),
-                  }
-                : prior,
-            );
-        }
-        if (
-          ["activated", "deactivated", "metadata"].includes(event.kind) &&
-          event.metadata
-        ) {
-          knownSessions.set(id, event.metadata!);
-          setCatalogue((prior) => ({
-            ...prior,
-            sessions: [
-              event.metadata!,
-              ...prior.sessions.filter((item) => item.id !== id),
-            ],
-          }));
-          if (current)
-            live.current[id] = {
-              ...current,
-              epoch: event.epoch,
-              cursor: event.sequence,
-              metadata: event.metadata!,
-              pending: event.kind === "metadata" ? current.pending : null,
-            };
-        }
-        if (event.kind === "deleted") {
-          knownSessions.delete(id);
-          forget(id);
-        }
-        if (event.kind === "state") {
-          const phase = event.phase || event.state?.phase || "idle";
-          const pendingDecision = event.pending ?? null;
-          const metadata = event.metadata!;
-          const projected: Snapshot = {
-            ...current,
-            epoch: event.epoch,
-            cursor: event.sequence,
-            metadata,
-            state: stateFrame(current?.state, event.state, phase),
-            pending: pendingDecision,
-          };
-          live.current[id] = keepOlderPages(current, projected);
-          // Decisions and canonical phase changes flush without text batching.
-          if (id === selection.current)
-            snapshots.set((prior) => ({ ...prior, [id]: live.current[id] }));
-          setCatalogue((prior) => ({
-            ...prior,
-            sessions: prior.sessions.map((item) =>
-              item.id === id ? metadata : item,
-            ),
-          }));
-        } else if (
-          event.kind === "activity" ||
-          event.type === "activities.changed"
-        ) {
-          if (current)
-            live.current[id] = {
-              ...applySessionEvent(current, event),
-              ...(event.metadata && { metadata: event.metadata }),
-            };
-          setCatalogue((prior) => ({
-            ...prior,
-            sessions: prior.sessions.map((item) =>
-              item.id !== id
-                ? item
-                : event.metadata || { ...item, activities: data.activities },
-            ),
-          }));
-        } else if (event.kind === "block" && current) {
-          live.current[id] = applySessionEvent(current, event);
-        } else if (event.kind === "event" && current) {
-          if (
-            id === selection.current &&
-            event.type === "command.completed" &&
-            !!data.request_id &&
-            localRequests.current.delete(data.request_id) &&
-            (data.output?.trim() || Object.keys(data.result || {}).length)
-          ) {
-            onResult(
-              Object.keys(data.result || {}).length
-                ? data.result!
-                : data.output!,
-              data.inspect !== false,
-            );
-          }
-          if (event.type === "notice" && data.presentation?.status === "failed")
-            report(new Error(data.presentation?.title));
-          live.current[id] = applySessionEvent(current, event);
-        } else if (event.kind === "outcome" && !event.accepted)
-          report(new Error(event.error));
-        else if (event.kind === "error") report(new Error(event.error));
-        else if (event.kind === "closed" && event.metadata) {
-          const metadata = event.metadata;
-          if (current)
-            live.current[id] = {
-              ...current,
-              cursor: event.sequence,
-              pending: null,
-              metadata,
-            };
-          setCatalogue((prior) => ({
-            ...prior,
-            sessions: prior.sessions.map((item) =>
-              item.id === id ? metadata : item,
-            ),
-          }));
-        }
-        flush.current(id);
-        if (isIncoming(event) && (id !== selection.current || !reading.current))
-          setUnread((prior) =>
-            prior.has(id) ? prior : new Set([...prior, id]),
-          );
-        // The host decides what needs a person; its id dedupes with push.
-        if (event.attention_id) {
-          if (
-            notifications.current &&
-            !subscribed.current &&
-            document.visibilityState !== "visible"
-          )
-            navigator.serviceWorker?.controller?.postMessage({
-              type: "ATTENTION",
-              id: event.attention_id,
-              session_id: id,
-            });
-        }
+        applyEvent(event);
       });
     } catch (error) {
       if (signal.aborted) return;
       setConnecting(false);
-      if (failure(error).status === 401) {
-        revoked.current = true;
-        catalogueRef.current = undefined;
-        setCatalogue({ sessions: [], devices: [], capabilities: {} });
-        storage.removeItem(CATALOGUE_KEY);
-        setDrafts({});
-        setAuthenticated(false);
-        live.current = {};
-        snapshots.set({});
-      } else {
+      if (failure(error).status === 401) signedOut();
+      else {
         report(error);
         if (!catalogueRef.current) setAuthenticated((prior) => prior ?? false);
         retryLater();
@@ -564,8 +628,6 @@ export function useHost(
     }
   }, [load, report, forget, onResult]);
   useEffect(() => {
-    // Scroll restoration is owned from module scope (see above); the
-    // transcript hook is the only writer from the first paint on.
     refresh();
     const recover = (event?: Event) => {
       if (document.visibilityState !== "visible") return;
@@ -578,9 +640,7 @@ export function useHost(
     };
     const disconnected = () => {
       setConnecting(false);
-      stream.current?.close();
-      stream.current = undefined;
-      setOnline(false);
+      dropStream();
     };
     let navigation: ReturnType<typeof setTimeout> | undefined;
     const hash = () => {
@@ -591,13 +651,8 @@ export function useHost(
     };
     addEventListener("online", refresh);
     addEventListener("offline", disconnected);
-    const suspend = (event: PageTransitionEvent) => {
-      if (!event.persisted) return;
-      stream.current?.close();
-      stream.current = undefined;
-      setOnline(false);
-      setConnecting(false);
-    };
+    const suspend = (event: PageTransitionEvent) =>
+      event.persisted && disconnected();
     addEventListener("pageshow", recover);
     addEventListener("pagehide", suspend);
     addEventListener("hashchange", hash);
@@ -630,19 +685,26 @@ export function useHost(
   }, [refresh]);
   useEffect(() => {
     if (selected && authenticated) load(selected).catch(() => {});
-  }, [selected, authenticated, load, report]);
+  }, [selected, authenticated, load]);
   // Only what the sidebar lists: scheduled runs and their tasks stay out.
+  const listed = useMemo(
+    () => listedSessions(catalogue),
+    [catalogue.sessions, catalogue.scheduled],
+  );
   useEffect(() => {
-    if (!authenticated) return;
-    const runs = new Set(
-      catalogue.scheduled?.runs?.map((run) => run.session_id),
-    );
-    writeStored(
-      storage,
-      CATALOGUE_KEY,
-      catalogue.sessions.filter((item) => !item.task_id && !runs.has(item.id)),
-    );
-  }, [authenticated, catalogue.sessions, catalogue.scheduled]);
+    if (authenticated) writeStored(storage, CATALOGUE_KEY, listed);
+  }, [authenticated, listed]);
+  // The tab title and the installed app's badge count what needs you;
+  // written only when that count changes.
+  const attention = needsYou(listed);
+  useEffect(() => {
+    document.title = attention ? `(${attention}) µAgent` : "µAgent";
+    if ("setAppBadge" in navigator)
+      (attention
+        ? navigator.setAppBadge(attention)
+        : navigator.clearAppBadge()
+      ).catch(() => {});
+  }, [attention]);
   useEffect(() => {
     writeStored(storage, "uagent-unread", [...unread]);
   }, [unread]);
@@ -654,9 +716,7 @@ export function useHost(
       storage,
       "uagent-drafts",
       Object.fromEntries(
-        Object.entries(drafts).filter(
-          ([, draft]) => draft.text || draft.files.length,
-        ),
+        Object.entries(drafts).filter(([, draft]) => hasContent(draft)),
       ),
     );
   }, [drafts]);
@@ -720,18 +780,11 @@ export function useHost(
     loads.current.clear();
     setLoadErrors({});
     stream.current?.close();
-    live.current = {};
-    snapshots.set({});
-    setDrafts({});
     setOutgoing([]);
-    revoked.current = true;
-    catalogueRef.current = undefined;
-    setCatalogue({ sessions: [], devices: [], capabilities: {} });
-    storage.removeItem(CATALOGUE_KEY);
+    signedOut();
     setOnline(false);
     setConnecting(false);
     connectedOnce.current = false;
-    setAuthenticated(false);
     writeSelection("", true);
     setSelected("");
   }
@@ -756,7 +809,8 @@ export function useHost(
         : "disconnected") as ConnectionPhase,
     loadErrors,
     catalogue,
-    setCatalogue,
+    listed,
+    upsertSession,
     snapshots,
     selected,
     setSelected: select,
@@ -767,6 +821,7 @@ export function useHost(
     unread,
     outgoing,
     setOutgoing,
+    patchOutgoing,
     following,
     setFollowing,
     notifications,

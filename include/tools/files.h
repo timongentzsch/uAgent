@@ -29,6 +29,9 @@ std::optional<std::string> DiffableContents(const std::string& path);
 std::string WholeFileDiffDisplay(const std::string& path,
                                  const std::string& previous,
                                  const std::string& content, bool existed);
+// The write approval: the receipt the write would draw, or "no changes".
+std::string WriteDiffPreview(const std::string& path,
+                             const std::string& content);
 std::string DeletedFileDiffDisplay(const std::string& path,
                                    const std::string& previous);
 std::string StripLineNumbers(const std::string& text);
@@ -47,8 +50,6 @@ ToolResult ToolEditFile(const std::string& path,
 std::optional<ToolResult> ApplyFileEdits(std::string& data,
                                          const std::string& path,
                                          const std::vector<FileEdit>& edits);
-ToolResult ToolEditFile(const std::string& path, const std::string& old_text,
-                        const std::string& new_text, bool replace_all = false);
 ToolResult ToolListDir(const std::string& path, int64_t offset = 1,
                        int64_t limit = 0, bool include_small_files = false);
 

@@ -1,9 +1,75 @@
 import "./command-suggestions.css";
 import { useLayoutEffect, useRef, useState } from "preact/hooks";
-import type { JSX, RefObject } from "preact";
+import type { ComponentChildren, JSX, RefObject } from "preact";
 import type { SlashCommand } from "../../shared/types.ts";
 import { slashCompletion, slashMatches } from "./slash.ts";
 import { Button } from "../../shared/ui.tsx";
+import { nextIndex, plainKey } from "../../shared/listbox-nav.ts";
+
+// What picking a command puts in the composer: a space follows when it
+// takes an argument.
+const completionOf = (entry: SlashCommand) =>
+  entry.command + (entry.argument ? " " : "");
+
+// Options under a field that keeps focus and names the active option
+// (`${prefix}-${position}`) as its active descendant; the active option
+// stays in view. By default they pop up over the composer.
+export function SuggestionList<T>({
+  id,
+  label,
+  prefix,
+  items,
+  index,
+  pick,
+  keyOf,
+  class: className = "command-suggestions",
+  children,
+}: {
+  id: string;
+  label: string;
+  prefix: string;
+  items: T[];
+  index: number;
+  pick: (item: T) => void;
+  keyOf?: (item: T) => string;
+  class?: string;
+  children: (item: T) => ComponentChildren;
+}) {
+  const list = useRef<HTMLDivElement>(null);
+  // Follows the option, not the render: a caller that rebuilds its items on
+  // every render (the palette, while a turn streams) must not pull a list the
+  // person scrolled back to its active option each time.
+  const current = items[index];
+  useLayoutEffect(() => {
+    list.current
+      ?.querySelector('[aria-selected="true"]')
+      ?.scrollIntoView({ block: "nearest" });
+  }, [index, current && keyOf ? keyOf(current) : current]);
+  return (
+    <div
+      id={id}
+      class={`suggestions ${className}`}
+      role="listbox"
+      aria-label={label}
+      ref={list}
+    >
+      {items.map((item, position) => (
+        <Button
+          key={keyOf?.(item)}
+          variant="quiet"
+          role="option"
+          id={`${prefix}-${position}`}
+          aria-selected={position === index}
+          tabIndex={-1}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => pick(item)}
+        >
+          {children(item)}
+        </Button>
+      ))}
+    </div>
+  );
+}
 
 export function useCommandSuggestions(
   commands: SlashCommand[],
@@ -14,7 +80,6 @@ export function useCommandSuggestions(
   const [selection, select] = useState({ text: "", index: -1 });
   const [dismissed, dismiss] = useState<string | null>(null);
   const [focused, focus] = useState(false);
-  const list = useRef<HTMLDivElement>(null);
   const matches =
     focused && dismissed !== text ? slashMatches(commands, text) : [];
   const index = selection.text === text ? selection.index : -1;
@@ -25,48 +90,30 @@ export function useCommandSuggestions(
     select({ text: value, index: -1 });
     input.current?.focus({ preventScroll: true });
   }
-  useLayoutEffect(() => {
-    list.current
-      ?.querySelector('[aria-selected="true"]')
-      ?.scrollIntoView({ block: "nearest" });
-  }, [index]);
   function keyDown(event: JSX.TargetedKeyboardEvent<HTMLTextAreaElement>) {
-    if (
-      !matches.length ||
-      event.isComposing ||
-      event.keyCode === 229 ||
-      event.shiftKey ||
-      event.ctrlKey ||
-      event.metaKey ||
-      event.altKey
-    )
+    if (!matches.length || event.keyCode === 229 || !plainKey(event))
       return false;
     if (event.key === "Escape") dismiss(text);
     else if (event.key === "ArrowDown" || event.key === "ArrowUp")
-      select({
-        text,
-        index:
-          (index +
-            (event.key === "ArrowDown" ? 1 : index < 0 ? 0 : -1) +
-            matches.length) %
-          matches.length,
-      });
+      select({ text, index: nextIndex(index, event.key, matches.length) });
     else if (event.key === "Tab") {
-      const value = active
-        ? active.command + (active.argument ? " " : "")
-        : slashCompletion(matches);
+      const value = active ? completionOf(active) : slashCompletion(matches);
       if (value !== text) change(value);
       if (active || matches.length === 1) dismiss(value);
     } else if (event.key === "Enter" && active) {
-      if (!event.repeat)
-        complete(active.command + (active.argument ? " " : ""));
+      if (!event.repeat) complete(completionOf(active));
     } else return false;
     event.preventDefault();
     return true;
   }
   return {
     keyDown,
+    count: matches.length,
+    // The textarea is the combobox: it keeps focus, the list pops up.
     attributes: {
+      role: "combobox" as const,
+      "aria-haspopup": "listbox" as const,
+      "aria-expanded": matches.length > 0,
       "aria-autocomplete": "list" as const,
       "aria-controls": matches.length ? "command-suggestions" : undefined,
       "aria-activedescendant": active ? `command-${index}` : undefined,
@@ -77,29 +124,21 @@ export function useCommandSuggestions(
       onBlur: () => focus(false),
     },
     list: matches.length > 0 && (
-      <div
+      <SuggestionList
         id="command-suggestions"
-        class="command-suggestions"
-        role="listbox"
-        aria-label="Slash commands"
-        ref={list}
+        label="Slash commands"
+        prefix="command"
+        items={matches}
+        index={index}
+        pick={(entry) => complete(completionOf(entry))}
       >
-        {matches.map((entry, position) => (
-          <Button
-            role="option"
-            id={`command-${position}`}
-            aria-selected={position === index}
-            tabIndex={-1}
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() =>
-              complete(entry.command + (entry.argument ? " " : ""))
-            }
-          >
+        {(entry) => (
+          <>
             <strong>{entry.command}</strong>
             <span>{entry.description}</span>
-          </Button>
-        ))}
-      </div>
+          </>
+        )}
+      </SuggestionList>
     ),
   };
 }

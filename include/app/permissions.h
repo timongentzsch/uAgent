@@ -25,7 +25,12 @@ ApprovalMode ResolveApprovalMode(PermissionOverride override,
 
 std::string PermissionKey(const Tool& tool, const json& arguments,
                           ApprovalClass required);
-const char* PermissionScope();
+
+// What approving this call risks, for the headline of its approval: runs,
+// writes, network, outside (the folder `root`). [{id, label}], most serious
+// first; empty for a call that only reads.
+json ApprovalRisks(const Tool& tool, const json& arguments,
+                   const std::string& root);
 
 bool RepositoryPermissionAllows(const std::string& root,
                                 const std::string& key);

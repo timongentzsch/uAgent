@@ -97,11 +97,9 @@ def apply_authority(env: dict[str, str], declaration: dict[str, Any]) -> None:
             "UAGENT_MAX_TOKENS": str(limits["max_output_tokens_per_call"]),
             "UAGENT_MAX_TURN_SECONDS": str(limits["max_session_seconds"]),
             "UAGENT_REQUEST_TIMEOUT": str(limits["max_session_seconds"]),
-            "UAGENT_FIRST_EVENT_TIMEOUT": str(limits["max_session_seconds"]),
-            "UAGENT_STREAM_IDLE_TIMEOUT": str(limits["max_session_seconds"]),
+            "UAGENT_STREAM_TIMEOUT": str(limits["max_session_seconds"]),
             "UAGENT_MAX_TURN_COST": "0",
             "UAGENT_SESSION_BUDGET": "0",
-            "UAGENT_OPENROUTER_FALLBACKS": "0",
         }
     )
 

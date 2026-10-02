@@ -45,6 +45,22 @@
     calc(100% - var(--note-width) - var(--space-4))
   );
 }
+/* The keyboard's aim (--x, --y: the point in the stage). */
+.annotator-crosshair {
+  position: absolute;
+  left: var(--x);
+  top: var(--y);
+  width: calc(24rem / 14);
+  height: calc(24rem / 14);
+  translate: -50% -50%;
+  pointer-events: none;
+  background:
+    linear-gradient(var(--mark), var(--mark)) center / 2px 100% no-repeat,
+    linear-gradient(var(--mark), var(--mark)) center / 100% 2px no-repeat;
+  outline: 1px solid var(--on-mark);
+  outline-offset: 2px;
+  border-radius: 50%;
+}
 .annotator-tools {
   display: flex;
   align-items: center;

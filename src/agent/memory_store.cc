@@ -11,7 +11,6 @@
 #include <cctype>
 #include <cerrno>
 #include <cstring>
-#include <filesystem>
 #include <fstream>
 #include <regex>
 #include <string>
@@ -19,6 +18,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/core/config_registry.h"
 #include "include/core/env.h"
 #include "include/core/fd.h"
 #include "include/core/fs.h"
@@ -44,7 +44,7 @@ const std::vector<std::string>& RedactKeywords() {
     }
     constexpr size_t kMaxExtra = 32;
     constexpr size_t kMaxKeywordBytes = 64;
-    std::string configured = EnvStr("UAGENT_MEMORY_REDACT_KEYWORDS");
+    std::string configured = SettingText(Cfg("UAGENT_MEMORY_REDACT_KEYWORDS"));
     size_t added = 0;
     for (size_t begin = 0; begin <= configured.size() && added < kMaxExtra;) {
       size_t end = configured.find(',', begin);

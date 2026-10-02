@@ -9,6 +9,9 @@ export const permissionLabels = {
   auto: "Auto review",
   yolo: "YOLO",
 } as const;
+// Any other mode asks.
+export const permissionLabel = (mode?: string) =>
+  permissionLabels[mode === "yolo" || mode === "auto" ? mode : "ask"];
 
 export const cleanText = (text = "") =>
   text.replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "");
@@ -24,7 +27,6 @@ export function diffLineClass(line: string, first: boolean): string {
   if (marker === "+") return "diff-add";
   if (marker === "-") return "diff-del";
   if (marker === "@") return "diff-hunk";
-  if (/^[ +-]?… /.test(line)) return "diff-cut";
   return "diff-ctx";
 }
 

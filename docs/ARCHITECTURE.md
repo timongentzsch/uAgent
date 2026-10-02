@@ -165,8 +165,8 @@ Responses routes send `reasoning.summary: auto` unless effort is `none`.
 Anthropic routes send adaptive thinking with `display: summarized` when the
 Models API catalog advertises adaptive thinking and an effort other than
 `none` is set. Other routes opt in with the `reasoning_summary` and
-`adaptive_thinking` model features (provider `features` or
-`UAGENT_MODEL_FEATURES`), which override catalog metadata. A 400 response
+`adaptive_thinking` model features (a provider's `features` in
+`UAGENT_PROVIDERS`), which override catalog metadata. A 400 response
 that rejects the summary field turns summary requests off for that route and
 retries only if the attempt produced no progress. Signed or opaque reasoning is replayed to the provider unchanged.
 

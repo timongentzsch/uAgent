@@ -9,7 +9,10 @@
 #include <vector>
 
 #include "include/browser/runtime.h"
+#include "include/core/fs.h"
 #include "include/core/json.h"
+#include "include/core/lease.h"
+#include "include/transport/session.h"
 #include "include/web/rfb_filter.h"
 #include "tests/unit/test_support.h"
 
@@ -97,6 +100,30 @@ void TestBrowserHandoverRecovery() {
                                    {"session_id", kSession},
                                    {"interaction_id", kInteraction}});
   CHECK(released.value("mode", "") == "idle");
+  CHECK(!std::filesystem::exists(directory / "handover.json"));
+  // A handover whose conversation no longer runs is dropped by the idle
+  // check: nobody is left to hand the browser back to.
+  {
+    std::ofstream saved(directory / "handover.json");
+    saved << JsonDump(
+        {{"session_id", kSession}, {"interaction_id", kInteraction}});
+  }
+  browser::Runtime orphaned;
+  CHECK(orphaned.Execute({{"op", "status"}}).value("mode", "") == "human");
+  // While its conversation runs (it holds its socket's lease), it stays.
+  {
+    CreatePrivateDirectories(RuntimeDir());
+    FileLease running;
+    std::string error;
+    CHECK(running.Acquire(session::SocketPathForId(kSession) + ".lock", error,
+                          true));
+    orphaned.StopIfIdle(std::chrono::minutes(kIdleMinutes));
+    CHECK(orphaned.Execute({{"op", "status"}}).value("mode", "") == "human");
+    // A runtime that exits removes its lease.
+    std::filesystem::remove(session::SocketPathForId(kSession) + ".lock");
+  }
+  orphaned.StopIfIdle(std::chrono::minutes(kIdleMinutes));
+  CHECK(orphaned.Execute({{"op", "status"}}).value("mode", "") == "idle");
   CHECK(!std::filesystem::exists(directory / "handover.json"));
 }
 
@@ -298,6 +325,19 @@ void TestBrowserHandBackOnClose() {
   CHECK(runtime.Execute({{"op", "status"}}).value("mode", "") == "agent");
   CHECK(!runtime.Execute({{"op", "tabs"}, {"session_id", kSession}})
              .contains("error"));
+  // The end of a turn leaves only its current tab open.
+  CHECK(!runtime.Execute({{"op", "release"}, {"session_id", kSession}})
+             .contains("error"));
+  std::vector<std::string> closed_tabs;
+  std::ifstream cdp(fs::canonical(workspace.root) / "browser" / "profile" /
+                    "cdp.jsonl");
+  for (std::string line; std::getline(cdp, line);) {
+    const json command = json::parse(line);
+    if (command.value("method", "") == "Target.closeTarget") {
+      closed_tabs.push_back(command["params"].value("targetId", ""));
+    }
+  }
+  CHECK(closed_tabs == std::vector<std::string>({"left-open"}));
   CHECK(runtime.Execute({{"op", "takeover"}, {"device", kDevice}})
             .value("running", false));
   runtime.StopIfIdle(std::chrono::minutes(0));

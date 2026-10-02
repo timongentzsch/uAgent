@@ -8,41 +8,43 @@
 
 #include <array>
 #include <atomic>
-#include <cerrno>
 #include <mutex>
 #include <string>
 #include <thread>
 #include <utility>
 
 #include "include/core/env.h"
+#include "include/core/fd.h"
 #include "include/core/platform.h"
 #include "include/core/term.h"
 
 namespace uagent {
 
-volatile sig_atomic_t g_streaming = 0;
-volatile sig_atomic_t g_terminal_resized = 0;
+SignalFlag g_streaming = 0;
+SignalFlag g_terminal_resized = 0;
 std::atomic_flag g_signal_abort = ATOMIC_FLAG_INIT;
 std::atomic<bool> g_thread_abort{false};
 thread_local std::atomic<bool>* g_local_abort = nullptr;
-volatile sig_atomic_t g_mcp_pids[kMcpMax] = {};
-volatile sig_atomic_t g_bg_pids[kBgMax] = {};
+SignalFlag g_mcp_pids[kMcpMax] = {};
+SignalFlag g_bg_pids[kBgMax] = {};
 bool g_tty = false;
 bool g_color = false;
 bool g_attributes = false;
 bool g_unicode = true;
-volatile sig_atomic_t g_signal_tty = 0;
+bool g_plain = false;
+bool g_motion = true;
+SignalFlag g_signal_tty = 0;
 
 namespace {
 
-// Read by the fatal-signal and suspend handlers. Published before the armed
-// flag and cleared after it, so observing the flag means observing the struct.
+// Read by handlers, which may run on another thread: the atomic flag is
+// stored after the structs, so observing it means observing them.
 termios g_cooked_termios{};
 termios g_raw_termios{};
-volatile sig_atomic_t g_termios_armed = 0;
+std::atomic<bool> g_termios_armed{false};
 // Nothing drains the REPL's stdout pipe once the process is exiting or
 // stopped, so handlers write to the terminal descriptor the composer saved.
-volatile sig_atomic_t g_signal_terminal_fd = STDOUT_FILENO;
+SignalFlag g_signal_terminal_fd = STDOUT_FILENO;
 constexpr char kBracketedPasteOn[] = "\033[?2004h";
 
 void WriteToTerminal(const char* bytes, size_t size) {
@@ -59,10 +61,10 @@ void RestoreTerminalModesFromHandler() {
 }
 
 constexpr int kChildWakeMax = 32;
-volatile sig_atomic_t g_abort_wake_write = -1;
-volatile sig_atomic_t g_child_signal_write = -1;
-volatile sig_atomic_t g_child_dispatch_write = -1;
-volatile sig_atomic_t g_terminal_wake_write = -1;
+SignalFlag g_abort_wake_write = -1;
+SignalFlag g_child_signal_write = -1;
+SignalFlag g_child_dispatch_write = -1;
+SignalFlag g_terminal_wake_write = -1;
 int g_abort_wake_read = -1;
 int g_child_signal_read = -1;
 int g_child_dispatch_read = -1;
@@ -104,11 +106,7 @@ void InitializeNotificationsOnce() {
     g_child_wakes->dispatcher = std::thread([] {
       pollfd event = {g_child_dispatch_read, POLLIN, 0};
       while (!g_child_wakes->stopping.load(std::memory_order_relaxed)) {
-        int ready;
-        do {
-          ready = poll(&event, 1, -1);
-        } while (ready < 0 && errno == EINTR);
-        if (ready <= 0) continue;
+        if (PollRetry(&event, 1, -1) <= 0) continue;
         DrainDescriptor(g_child_dispatch_read);
         if (g_child_wakes->stopping.load(std::memory_order_relaxed)) break;
         std::lock_guard<std::mutex> lock(g_child_wakes->mutex);
@@ -234,7 +232,7 @@ void NormalizeAbortWake() {
   if (AbortRequested()) WakeDescriptor(g_abort_wake_write);
 }
 
-void TrackPid(volatile sig_atomic_t* slots, int count, pid_t pid, bool add) {
+void TrackPid(SignalFlag* slots, int count, pid_t pid, bool add) {
   static std::mutex slots_mutex;
   std::lock_guard<std::mutex> lock(slots_mutex);
   for (int index = 0; index < count; ++index) {
@@ -247,9 +245,9 @@ void TrackPid(volatile sig_atomic_t* slots, int count, pid_t pid, bool add) {
 
 static_assert(std::atomic<bool>::is_always_lock_free);
 std::atomic<bool> g_signal_idle_interrupt{false};
-volatile sig_atomic_t g_quit_gesture = 0;
-volatile sig_atomic_t g_graceful_shutdown = 0;
-volatile sig_atomic_t g_shutdown_requested = 0;
+SignalFlag g_quit_gesture = 0;
+SignalFlag g_graceful_shutdown = 0;
+SignalFlag g_shutdown_requested = 0;
 
 void SetQuitGesture(bool enabled) { g_quit_gesture = enabled ? 1 : 0; }
 void SetGracefulShutdown(bool enabled) {
@@ -298,16 +296,13 @@ void SigintHandler(int signal_number) {
 }
 
 void ArmTerminalModes(const termios& cooked, const termios& raw) {
+  g_termios_armed = false;
   g_cooked_termios = cooked;
   g_raw_termios = raw;
-  std::atomic_signal_fence(std::memory_order_release);
-  g_termios_armed = 1;
+  g_termios_armed = true;
 }
 
-void DisarmTerminalModes() {
-  g_termios_armed = 0;
-  std::atomic_signal_fence(std::memory_order_release);
-}
+void DisarmTerminalModes() { g_termios_armed = false; }
 
 void SetSignalTerminalFd(int fd) {
   g_signal_terminal_fd = static_cast<sig_atomic_t>(fd < 0 ? STDOUT_FILENO : fd);

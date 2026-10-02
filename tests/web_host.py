@@ -98,6 +98,15 @@ def answer(handler, body):
             )
         if "artifact-share" not in done:
             return tool_call("artifact", {"path": "report.html"}, call_id="artifact-share")
+    if "Long diff probe" in prompt and not any(
+        message.get("tool_call_id") == "long-write" for message in body["messages"]
+    ):
+        lines = [f"line {index:04d} of a long file" for index in range(2000)]
+        return tool_call(
+            "write_file",
+            {"path": "long.txt", "content": "\n".join([*lines, "LAST_DIFF_LINE", ""])},
+            call_id="long-write",
+        )
     if "request approval" in prompt and not any(
         message.get("role") == "tool" for message in body["messages"]
     ):

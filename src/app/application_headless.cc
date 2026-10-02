@@ -61,12 +61,9 @@ int Application::RunHeadless() {
   auto answer_mail = [&] {
     for (;;) {
       agent_.DeliverMail();
-      auto queued = SteeringState().TakeAutoStartMessages();
-      if (queued.empty() || AbortRequested()) return;
-      for (size_t i = 1; i < queued.size(); ++i) {
-        SteeringState().Queue(std::move(queued[i].text), "", true);
-      }
-      RunTurns(queued.front().text);
+      auto next = SteeringState().TakeNextAutoStart();
+      if (!next || AbortRequested()) return;
+      RunTurns(next->text);
       SaveSession();
     }
   };
@@ -86,7 +83,7 @@ int Application::RunHeadless() {
   agent_.AccountSideUsage();
   context_.output.Restore();
 
-  std::string ledger = EnvStr("UAGENT_USAGE_FILE");
+  std::string ledger = EnvStr("UAGENT_INTERNAL_USAGE_FILE");
   if (!ledger.empty()) {
     std::string error;
     json entry = {
@@ -103,11 +100,7 @@ int Application::RunHeadless() {
   if (!agent_.LastError().empty()) {
     return FinishHeadless("", agent_.LastError(), 1);
   }
-  if (answer.empty()) {
-    std::string error = agent_.LastError().empty() ? "agent produced no answer"
-                                                   : agent_.LastError();
-    return FinishHeadless("", std::move(error), 1);
-  }
+  if (answer.empty()) return FinishHeadless("", "agent produced no answer", 1);
   return FinishHeadless(std::move(answer), "", 0);
 }
 

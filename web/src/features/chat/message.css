@@ -14,10 +14,16 @@
      double up between header variants. */
   margin: 0;
 }
-/* Drawn in the other palette (see style.css). */
+/* Drawn in the other palette (see style.css), on one line: the prompt,
+   then status, time and menu. Inheritance still flows through the
+   display: contents header. */
 .message.user {
   background: var(--bg);
   color: var(--text);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: var(--gap);
 }
 .message.turn-start {
   /* Additive over the column gap (never collapsing), so turn boundaries
@@ -30,14 +36,6 @@
   gap: var(--gap);
   min-height: var(--control);
   font-size: var(--font-micro);
-}
-/* One line: the prompt, then status, time and menu. Inheritance still
-   flows through the display: contents header. */
-.message.user {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  column-gap: var(--gap);
 }
 .message.user > header {
   display: contents;
@@ -178,9 +176,23 @@
     background-position: -150% 0;
   }
 }
+/* A forced palette cannot draw text through a gradient: plain text. */
+@media (forced-colors: active) {
+  .tool-disclosure.running > summary .disclosure-label {
+    background: none;
+    -webkit-background-clip: border-box;
+    background-clip: border-box;
+    color: CanvasText;
+    animation: none;
+  }
+}
 .tool-disclosure.failed > summary,
 .tool-disclosure.failed > summary small {
   color: var(--removed);
+}
+/* Failure is marked, not only coloured. */
+.failed-mark {
+  margin-right: var(--space-2);
 }
 /* A session or turn error under the transcript, in the tool-failure red. */
 .failure {
@@ -188,6 +200,14 @@
   padding: var(--space-1) var(--space-4);
   color: var(--removed);
   overflow-wrap: anywhere;
+}
+/* A message that did not go out: why, and Retry beside it. */
+.failure.unsent {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  padding-inline: 0;
 }
 .tool-disclosure > summary small {
   min-width: 0;
@@ -295,6 +315,10 @@
   border-left: 1px solid var(--line);
   overflow-wrap: anywhere;
 }
+/* A message from another session keeps its lines. */
+.event-body > p {
+  white-space: pre-wrap;
+}
 .event-body .markdown {
   color: var(--text);
 }
@@ -311,6 +335,42 @@
   color: var(--muted);
   font-size: var(--font-micro);
   text-align: left;
+}
+/* A turn that changed files: its receipt, then its statistics. */
+.turn-receipt {
+  display: flex;
+  flex-wrap: wrap;
+}
+.turn-receipt > .turn-summary + .turn-summary {
+  padding-left: 0.3em;
+}
+.turn-receipt > .turn-summary:first-child {
+  padding-right: 0;
+}
+.turn-files {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-4) 0;
+  padding: 0;
+  list-style: none;
+}
+.turn-files > li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+}
+.turn-file-path {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.turn-files small {
+  color: var(--muted);
+}
+.turn-files .failure {
+  flex-basis: 100%;
+  padding: 0;
 }
 @media (max-width: 600px) {
   .turn-tokens {

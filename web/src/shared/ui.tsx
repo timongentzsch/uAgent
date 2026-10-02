@@ -7,6 +7,7 @@ import {
   type ComponentChildren,
   type ComponentType,
   type JSX,
+  type Ref,
   type RefObject,
 } from "preact";
 import { failure } from "./types.ts";
@@ -29,6 +30,7 @@ export { Input, Textarea, Select } from "./form-controls.tsx";
 import { Input, Select } from "./form-controls.tsx";
 
 import { cleanText } from "./display.ts";
+import { useResource } from "./use-resource.ts";
 export { cleanText };
 import {
   TimePrefsContext,
@@ -115,21 +117,16 @@ export function Mark({ className = "" }: { className?: string }) {
 }
 export function Field({
   label,
-  value,
   children,
   help,
 }: {
   label: string;
-  value?: ComponentChildren;
   children: ComponentChildren;
   help?: string;
 }) {
   return (
     <label class="field">
-      <span class="field-label">
-        {label}
-        {value !== undefined && <output>{value}</output>}
-      </span>
+      <span class="field-label">{label}</span>
       {children}
       {help && <small class="muted">{help}</small>}
     </label>
@@ -206,7 +203,6 @@ export function Row({
   onClick,
   destructive = false,
   current,
-  href,
   disabled,
   expanded,
 }: {
@@ -214,8 +210,6 @@ export function Row({
   detail?: ComponentChildren;
   children?: ComponentChildren;
   onClick?: () => void;
-  // A link out instead of an action.
-  href?: string;
   disabled?: boolean;
   destructive?: boolean;
   // The destination shown beside the list (a two-column layout).
@@ -238,13 +232,7 @@ export function Row({
       {children && <span class="row-value">{children}</span>}
     </>
   );
-  const chevron = <ChevronRight class="row-chevron" />;
-  return href ? (
-    <a class="row button-link" href={href} target="_blank" rel="noreferrer">
-      {body}
-      {chevron}
-    </a>
-  ) : onClick ? (
+  return onClick ? (
     <Button
       variant="quiet"
       class={`row${destructive ? " destructive-row" : ""}`}
@@ -254,73 +242,10 @@ export function Row({
       onClick={onClick}
     >
       {body}
-      {chevron}
+      <ChevronRight class="row-chevron" />
     </Button>
   ) : (
     <div class="row">{body}</div>
-  );
-}
-
-// The frame every setting shares, wherever its value lives: label and
-// detail, its control, a ✓ after a save, and Reset while the value differs
-// from the one it would otherwise inherit. A locked value is set somewhere
-// this interface cannot change, and says where.
-export function SettingRow({
-  name,
-  label = name,
-  htmlFor,
-  detail,
-  overridden = false,
-  locked,
-  saved = false,
-  disabled,
-  reset,
-  children,
-}: {
-  // Names the setting for assistive technology, e.g. "Reset Zoom".
-  name: string;
-  label?: ComponentChildren;
-  htmlFor?: string;
-  detail?: ComponentChildren;
-  overridden?: boolean;
-  locked?: string;
-  saved?: boolean;
-  disabled?: boolean;
-  reset: () => void;
-  children: ComponentChildren;
-}) {
-  return (
-    <div class="row setting-row">
-      <span class="row-text">
-        <label class="row-label" htmlFor={htmlFor}>
-          <DataText>{label}</DataText>
-          {saved && (
-            <Check class="setting-saved" aria-label="Saved" role="img" />
-          )}
-        </label>
-        {detail && (
-          <small class="row-detail">
-            <DataText>{detail}</DataText>
-          </small>
-        )}
-        {locked && <small class="row-detail">{locked}</small>}
-      </span>
-      <span class="row-value setting-value">
-        {children}
-        {overridden && !locked && (
-          <Button
-            variant="quiet"
-            size="compact"
-            class="setting-reset"
-            aria-label={`Reset ${name}`}
-            disabled={disabled}
-            onClick={reset}
-          >
-            Reset
-          </Button>
-        )}
-      </span>
-    </div>
   );
 }
 
@@ -337,6 +262,39 @@ export function EmptyState({
       <p>{children}</p>
       {action}
     </div>
+  );
+}
+
+// Asks before something that cannot be taken back: what will happen, then
+// Cancel and the action, named by what it does.
+export function ConfirmModal({
+  title,
+  children,
+  action = title,
+  busy,
+  error,
+  confirm,
+  close,
+}: {
+  title: string;
+  children: ComponentChildren;
+  action?: string;
+  busy?: boolean;
+  error?: unknown;
+  confirm: () => void;
+  close: () => void;
+}) {
+  return (
+    <Modal title={title} close={close}>
+      <p>{children}</p>
+      {error != null && <LoadError error={error} />}
+      <Actions>
+        <Button onClick={close}>Cancel</Button>
+        <Button variant="destructive" busy={busy} onClick={confirm}>
+          {action}
+        </Button>
+      </Actions>
+    </Modal>
   );
 }
 
@@ -406,11 +364,7 @@ export function LoadError({
   return (
     <div class="load-error">
       <p role="alert">{failure(error).message}</p>
-      {retry && (
-        <button type="button" onClick={retry}>
-          Retry
-        </button>
-      )}
+      {retry && <Button onClick={retry}>Retry</Button>}
     </div>
   );
 }
@@ -437,29 +391,23 @@ export class ErrorBoundary extends Component<
 export function EventRow({
   title,
   time,
-  status,
   icon,
   messageId,
   children,
-  onToggle,
 }: {
   title: string;
   time?: string;
-  status?: string;
   icon: ComponentChildren;
   messageId?: string;
   children: ComponentChildren;
-  onToggle?: JSX.GenericEventHandler<HTMLDetailsElement>;
 }) {
   return (
     <DisclosureRow
       className="event-row"
       label={title}
-      status={status}
       time={time}
       icon={icon}
       messageId={messageId}
-      onToggle={onToggle}
     >
       <div class="event-body">{children}</div>
     </DisclosureRow>
@@ -471,6 +419,7 @@ export function DisclosureRow({
   status,
   time,
   icon,
+  marker,
   onToggle,
   className = "",
   messageId,
@@ -480,6 +429,8 @@ export function DisclosureRow({
   status?: string;
   time?: string;
   icon?: ComponentChildren;
+  // Leads the label on its line, e.g. a failure mark and its spoken prefix.
+  marker?: ComponentChildren;
   onToggle?: JSX.GenericEventHandler<HTMLDetailsElement>;
   className?: string;
   messageId?: string;
@@ -523,6 +474,7 @@ export function DisclosureRow({
         {icon}
         <ChevronRight class="disclosure-chevron" aria-hidden="true" />
         <span class="disclosure-label" title={label}>
+          {marker}
           {label}
         </span>
         {status && <small>{status}</small>}
@@ -538,6 +490,7 @@ export function Button({
   size = "default",
   busy = false,
   class: className = "",
+  buttonRef,
   children,
   disabled,
   ...props
@@ -545,11 +498,14 @@ export function Button({
   variant?: "primary" | "secondary" | "quiet" | "destructive";
   size?: "default" | "compact" | "icon";
   busy?: boolean;
+  // The element, for a caller that places or focuses against it (a menu).
+  buttonRef?: Ref<HTMLButtonElement>;
 }) {
   return (
     <button
       type="button"
       {...props}
+      ref={buttonRef}
       class={`${variant} ${size === "default" ? "" : `${size}-button`} ${className}`}
       disabled={disabled || busy}
       aria-busy={busy || undefined}
@@ -568,6 +524,7 @@ export function IconButton({
   label: string;
   // Quiet unless it is the surface's main action (Send).
   variant?: "primary" | "quiet";
+  buttonRef?: Ref<HTMLButtonElement>;
 }) {
   return (
     <Button
@@ -632,7 +589,6 @@ export function Modal({
   layout = "content",
   actions,
   header = true,
-  lightDismiss = false,
 }: {
   title: string;
   children: ComponentChildren;
@@ -647,10 +603,24 @@ export function Modal({
   actions?: ComponentChildren;
   // False when the content renders its own DialogHeader and .dialog-body.
   header?: boolean;
-  // A tap on the scrim closes it, as it does a native sheet.
-  lightDismiss?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
+  // A tap on the scrim closes every dialog, as it does a native sheet. The
+  // scrim targets the dialog element, as does its own padding, so the point
+  // decides; a press that began inside (a text selection dragged out) does
+  // not count.
+  const pressedScrim = useRef(false);
+  const onScrim = (event: MouseEvent) => {
+    const dialog = ref.current;
+    if (!dialog || event.target !== dialog) return false;
+    const box = dialog.getBoundingClientRect();
+    return (
+      event.clientX < box.left ||
+      event.clientX > box.right ||
+      event.clientY < box.top ||
+      event.clientY > box.bottom
+    );
+  };
   const heading = useRef<HTMLHeadingElement>(null);
   const titleId = useId();
   // Every way the person closes it (Close, Escape, the back gesture) plays
@@ -701,9 +671,11 @@ export function Modal({
         event.preventDefault();
         requestClose();
       }}
-      // The dialog fills its box, so only the scrim targets the element.
+      onPointerDown={(event) => {
+        pressedScrim.current = onScrim(event);
+      }}
       onClick={(event) => {
-        if (lightDismiss && event.target === ref.current) requestClose();
+        if (pressedScrim.current && onScrim(event)) requestClose();
       }}
     >
       <DialogContext.Provider
@@ -752,25 +724,15 @@ export function Deferred<P extends object>({
   ownsDialog?: boolean;
 }) {
   const dialog = useContext(DialogContext);
-  const [Component, setComponent] = useState<ComponentType<P> | null>(
-    () => (modules.get(load) as ComponentType<P> | undefined) || null,
+  const {
+    value: Component,
+    error,
+    retry,
+  } = useResource(
+    () => preloadDeferred(load),
+    [load],
+    () => modules.get(load) as ComponentType<P> | undefined,
   );
-  const [error, setError] = useState<unknown>(null);
-  const [attempt, setAttempt] = useState(0);
-  useEffect(() => {
-    let active = true;
-    setError(null);
-    preloadDeferred(load)
-      .then((component) => {
-        if (active) setComponent(() => component);
-      })
-      .catch((failure) => {
-        if (active) setError(failure);
-      });
-    return () => {
-      active = false;
-    };
-  }, [load, attempt]);
   return Component ? (
     <Component {...(props as P)} />
   ) : error ? (
@@ -780,11 +742,11 @@ export function Deferred<P extends object>({
       <>
         <DialogHeader title={dialog.title} />
         <div class="dialog-body">
-          <LoadError error={error} retry={() => setAttempt(attempt + 1)} />
+          <LoadError error={error} retry={retry} />
         </div>
       </>
     ) : (
-      <LoadError error={error} retry={() => setAttempt(attempt + 1)} />
+      <LoadError error={error} retry={retry} />
     )
   ) : fallback === undefined ? (
     <Spinner surface />

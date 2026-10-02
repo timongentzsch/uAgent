@@ -9,7 +9,6 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
-#include <optional>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -22,6 +21,7 @@
 #include "include/agent/session_store.h"
 #include "include/api.h"
 #include "include/core/child_env.h"
+#include "include/core/config_registry.h"
 #include "include/core/env.h"
 #include "include/core/fd.h"
 #include "include/core/fs.h"
@@ -120,7 +120,7 @@ void SweepOrphanedReceipts(const std::filesystem::path& cwd) {
 std::string ClaimCandidate(const std::filesystem::path& cwd,
                            const std::string& excluded, std::string& error) {
   auto now = std::filesystem::file_time_type::clock::now();
-  auto idle = std::chrono::seconds(MemoryIdleSeconds());
+  auto idle = std::chrono::seconds(kMemoryIdleSeconds);
   auto oldest = std::chrono::hours(24 * std::max(int64_t{1}, HistoryDays()));
   for (const SessionInfo& session : ListSessions()) {
     auto age = now - session.mtime;
@@ -179,7 +179,7 @@ std::string StartMemoryExtractor(ProcessSupervisor& processes, const Api& api,
 
   // Extraction is a small, bounded summarization job, so it can run on a
   // cheaper or local route than the conversation.
-  std::string selection = EnvStr("UAGENT_MEMORY_MODEL");
+  std::string selection = SettingText(Cfg("UAGENT_MEMORY_MODEL"));
   ProviderCatalog catalog =
       selection.empty() ? ProviderCatalog{} : SessionProviderCatalog();
   SideRoute route =
@@ -193,7 +193,7 @@ std::string StartMemoryExtractor(ProcessSupervisor& processes, const Api& api,
                       {"UAGENT_REQUEST_TIMEOUT", "300"},
                       {"UAGENT_MEMORY", "1"},
                       {"UAGENT_MEMORY_GENERATE", "0"},
-                      {"UAGENT_TOOLSET", "memory"},
+                      {"UAGENT_INTERNAL_TOOLSET", "memory"},
                       {"UAGENT_INTERNAL_MEMORY_SOURCE", source}});
   if (api.config.session_budget > 0) {
     double remaining = api.config.session_budget - api.session_cost;

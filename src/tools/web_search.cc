@@ -10,6 +10,7 @@
 
 #include "include/api/citations.h"
 #include "include/api/retry.h"
+#include "include/core/config_registry.h"
 #include "include/core/debug.h"
 #include "include/core/env.h"
 #include "include/core/limits.h"
@@ -34,16 +35,12 @@ ToolResult SearchError(int64_t http_status, const std::string& detail) {
 
 WebSearchResult ParseWebSearch(const json& response) {
   WebSearchResult result;
-  if (!response.is_object() || !response.contains("choices") ||
-      !response["choices"].is_array() || response["choices"].empty()) {
-    return result;
-  }
-  const json& choice = response["choices"][0];
-  if (!choice.is_object() || !choice.contains("message") ||
-      !choice["message"].is_object()) {
-    return result;
-  }
-  const json& message = choice["message"];
+  const json* choices = JsonArray(response, "choices");
+  if (!choices || choices->empty()) return result;
+  const json& choice = choices->front();
+  const json* found = JsonObject(choice, "message");
+  if (!found) return result;
+  const json& message = *found;
   result.text = JsonValue(message, "content", "");
   result.annotations = JsonValue(message, "annotations", json::array());
   result.searches = 1;
@@ -93,7 +90,7 @@ WebSearchRoute SelectWebSearchRoute(
         candidate(provider.base_url, provider.api_key, DefaultSearchModel()));
     break;
   }
-  if (std::string key = EnvStr("OPENROUTER_API_KEY"); !key.empty()) {
+  if (std::string key = SettingText(Cfg("OPENROUTER_API_KEY")); !key.empty()) {
     candidates.push_back(candidate("https://openrouter.ai/api/v1",
                                    std::move(key), DefaultSearchModel()));
   }
@@ -103,20 +100,12 @@ WebSearchRoute SelectWebSearchRoute(
   return {};
 }
 
-json WebSearchRequest(const WebSearchRoute& route, const RuntimeConfig& config,
-                      const std::string& prompt) {
-  // A `:effort` suffix on the selection is more specific than the session-wide
-  // UAGENT_WEB_SEARCH_EFFORT default.
-  const std::string& effort =
-      route.effort.empty() ? config.web_search_effort : route.effort;
+json WebSearchRequest(const WebSearchRoute& route, const std::string& prompt) {
   json parameters = {
-      {"engine", config.web_search_engine},
+      {"engine", "auto"},
       {"max_results", kWebSearchMaxResults},
       {"max_total_results", kWebSearchMaxResults * kWebSearchMaxUses},
       {"max_uses", kWebSearchMaxUses}};
-  if (!config.web_search_context_size.empty()) {
-    parameters["search_context_size"] = config.web_search_context_size;
-  }
   json body = {
       {"model", route.model},
       {"stream", false},
@@ -126,7 +115,7 @@ json WebSearchRequest(const WebSearchRoute& route, const RuntimeConfig& config,
       {"tools", json::array({{{"type", "openrouter:web_search"},
                               {"parameters", std::move(parameters)}}})},
       {"messages", json::array({{{"role", "user"}, {"content", prompt}}})}};
-  if (!effort.empty()) body["reasoning"] = {{"effort", effort}};
+  if (!route.effort.empty()) body["reasoning"] = {{"effort", route.effort}};
   return body;
 }
 
@@ -134,12 +123,12 @@ Tool WebSearchTool(Api& api, UsageAccumulator& usage,
                    std::vector<NamedProvider> providers) {
   Tool t = MakeTool(
       "web_search",
-      "Search the web with cited sources; batch related queries up to the "
-      "schema limit. Include dates or cutoffs in recency queries. Independent "
-      "calls overlap. Do not repeat.",
+      "Search the web with cited sources; put up to 4 related queries in one "
+      "call. Include dates or cutoffs in recency queries. Do not repeat a "
+      "search.",
       json::parse(R"json({"type":"object","properties":{
           "queries":{"type":"array","items":{"type":"string","minLength":1},
-            "minItems":1,"maxItems":4,"description":"1-4 queries"}},
+            "minItems":1,"maxItems":4}},
           "required":["queries"]})json"),
       [&api, &usage, providers = std::move(providers)](
           const json& a, const ToolContext& context) -> ToolResult {
@@ -174,7 +163,7 @@ Tool WebSearchTool(Api& api, UsageAccumulator& usage,
                              "only source-supported claims; preserve provider/"
                              "model scope and omit unasked pricing:\n" +
                              numbered;
-        json body = WebSearchRequest(active, api.config, prompt);
+        json body = WebSearchRequest(active, prompt);
         int64_t timeout = context.RemainingSeconds(kWebSearchTimeoutSeconds);
         auto started = std::chrono::steady_clock::now();
         DebugLog("side_request", {{"kind", "web_search"},
@@ -212,11 +201,9 @@ Tool WebSearchTool(Api& api, UsageAccumulator& usage,
                     {"reported", normalized.web_searches}});
         }
         if (response.body.is_object()) {
-          const std::string& effort = active.effort.empty()
-                                          ? api.config.web_search_effort
-                                          : active.effort;
           usage.Add(
-              RouteKey(active.base_url, "web_search", active.model, effort),
+              RouteKey(active.base_url, "web_search", active.model,
+                       active.effort),
               normalized, context.turn_id,
               {{"model_calls", 1},
                {"model_ms", ElapsedMs(started)},

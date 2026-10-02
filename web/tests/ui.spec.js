@@ -306,8 +306,6 @@ test("instructions are one stack, edited in place, in a stable dialog", async ({
     .click();
   await expect(dialog.getByLabel("Yours · every session")).toBeVisible();
   await dialog.getByRole("button", { name: "Close instructions" }).click();
-  await composer.fill("/quit");
-  await composer.press("Enter");
 });
 
 test("compact surfaces stay anchored, accessible and usable while loading", async ({
@@ -589,9 +587,7 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
     .locator(".settings-nav")
     .getByRole("button", { name: "General", exact: true })
     .click();
-  await settings
-    .getByRole("button", { name: "Reset Zoom", exact: true })
-    .click();
+  await settings.getByRole("button", { name: /^Zoom .*reset$/ }).click();
   await settings.getByRole("button", { name: "Close settings" }).click();
   await page.setViewportSize({ width: 844, height: 390 });
   await measure("landscape");
@@ -714,9 +710,7 @@ test("code blocks, thinking and HTTP dialogs preserve content and loading geomet
   );
   await page.emulateMedia({ colorScheme: "light" });
 
-  await reply
-    .getByRole("button", { name: "Message menu", exact: true })
-    .click();
+  await reply.getByRole("button", { name: /^Actions for / }).click();
   const rawAction = page.getByRole("menuitem", {
     name: "HTTP request/response",
     exact: true,
@@ -1330,11 +1324,11 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
   };
   try {
     await page.goto(`${fixture.origin}/#session=${session.id}`);
-    // An app, not a page: the interface never pinch- or double-tap-zooms.
-    await expect(page.locator('meta[name="viewport"]')).toHaveAttribute(
-      "content",
-      /maximum-scale=1, user-scalable=no/,
-    );
+    // The viewport never forbids zoom (WCAG 1.4.4); the shell itself
+    // keeps its own pan-only touch action.
+    expect(
+      await page.locator('meta[name="viewport"]').getAttribute("content"),
+    ).not.toMatch(/user-scalable=no|maximum-scale/);
     await expect(page.locator("html")).toHaveCSS("touch-action", "pan-x pan-y");
     const prompt = page.getByLabel("Message or guidance");
     await expect(prompt).toBeVisible();
@@ -1426,9 +1420,7 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
       .locator(".settings-nav")
       .getByRole("button", { name: "General", exact: true })
       .tap();
-    await settings
-      .getByRole("button", { name: "Reset Zoom", exact: true })
-      .tap();
+    await settings.getByRole("button", { name: /^Zoom .*reset$/ }).tap();
     await settings
       .getByRole("button", { name: "Close settings", exact: true })
       .tap();
@@ -1624,15 +1616,21 @@ test.describe("mobile navigation and commands", () => {
     );
     expect(documents).toBe(0);
     expect(streams).toBe(0);
-    await prompt.fill("/mo");
+    await prompt.fill("/comp");
     await prompt.press("Tab");
-    await expect(prompt).toHaveValue("/model");
+    await expect(prompt).toHaveValue("/compact");
     await expect(page.locator(".message.user")).toHaveCount(1);
+    // The list offers what the page has no control for: nothing for files,
+    // the model or the approval mode, which have their own.
     await prompt.fill("/");
+    const offered = page.getByRole("option");
+    await expect(offered.filter({ hasText: "/compact" })).toHaveCount(1);
+    for (const owned of ["/attach", "/model", "/yolo", "/tell"])
+      await expect(offered.filter({ hasText: owned })).toHaveCount(0);
     await prompt.press("ArrowDown");
     await expect(prompt).toHaveAttribute("aria-activedescendant", "command-0");
     await prompt.press("Enter");
-    await expect(prompt).toHaveValue("/agents ");
+    await expect(prompt).toHaveValue("/compact");
     await prompt.fill("/sta");
     await page.getByRole("option", { name: /\/status/ }).tap();
     await expect(prompt).toHaveValue("/status");
@@ -1697,14 +1695,14 @@ test.describe("mobile navigation and commands", () => {
       .toContain("Survives reload");
     await page.reload();
     await expect(prompt).toHaveValue("Survives reload");
-    await prompt.fill("/q");
-    await send.tap();
-    await expect(
-      page.getByRole("button", { name: "Resume in this host directory" }),
-    ).toBeVisible();
+    // Close session ends the runtime; typed /quit does not (it detaches a
+    // terminal).
     await page
-      .getByRole("button", { name: "Resume in this host directory" })
+      .locator(".conversation-head")
+      .getByLabel("Conversation menu", { exact: true })
       .tap();
+    await page.getByRole("menuitem", { name: "Close session" }).tap();
+    // A closed session keeps its composer: the next message starts it again.
     await expect(prompt).toBeVisible();
     await prompt.fill("/att");
   });
@@ -1731,13 +1729,9 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
   const prompt = page.getByLabel("Message or guidance");
   await prompt.fill("Exploration probe");
   await prompt.press("Enter");
-  // Two read-only calls fold into one Explored row that expands to both.
-  const explored = page.locator(".transcript .group");
-  await expect(explored).toHaveCount(1);
-  await expect(explored.locator("summary").first()).toContainText("Explored");
-  await explored.locator("summary").first().click();
-  await expect(explored.locator(".message.tool")).toHaveCount(2);
-  await explored.locator("summary").first().click();
+  // Two calls stay rows of their own; only three or more fold.
+  await expect(page.locator(".transcript .tool-disclosure")).toHaveCount(2);
+  await expect(page.locator(".transcript .group")).toHaveCount(0);
   await expect(
     page.getByRole("heading", { name: "Verified response" }),
   ).toBeVisible();
@@ -1793,7 +1787,7 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
     page.getByRole("button", { name: "Jump to latest" }),
   ).toBeVisible();
   await page.reload();
-  await expect(page.locator(".transcript > * .tool-disclosure")).toHaveCount(2);
+  await expect(page.locator(".transcript > * .tool-disclosure")).toHaveCount(3);
   // Retained history replays through the live pipeline: one row per call,
   // none stuck on Running.
   await expect(
@@ -2173,7 +2167,7 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
     "none",
   );
   await thread
-    .getByRole("button", { name: "Turn statistics", exact: true })
+    .getByRole("button", { name: /^Turn statistics: / })
     .last()
     .click();
   await expect(
@@ -2234,9 +2228,7 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
   await detail
     .getByRole("button", { name: "Close subagent", exact: true })
     .click();
-  await expect(page.locator(".composer").getByRole("status")).toHaveText(
-    "Ready",
-  );
+  await expect(page.locator(".composer .activity-caption")).toHaveText("Ready");
   // A finished subagent stays reachable from the status line, like /agents.
   await page.getByRole("button", { name: "Activity", exact: true }).click();
   const idle = page.locator(".activity-sheet .activity-open");

@@ -87,6 +87,119 @@ def test_read_path_puts_media_in_context(root, home, *, binary):
         assert_true(not blobs, blobs)
 
 
+def test_a_malformed_tool_call_is_answered_not_fatal(root, home, *, binary):
+    """The model hears what was wrong with its call and sends it again."""
+    workspace = root / "malformed-workspace"
+    workspace.mkdir()
+    (workspace / "note.txt").write_text("malformed-recovered\n", encoding="utf-8")
+
+    def broken(arguments, name="read_path"):
+        return event(
+            {
+                "tool_calls": [
+                    {"index": 0, "id": "bad", "function": {"name": name, "arguments": arguments}}
+                ]
+            },
+            finish="tool_calls",
+        )
+
+    def corrected(_, body):
+        result = tool_results(body["messages"])[-1]
+        assert_true("not one complete JSON object" in result, result)
+        assert_true('{"path": "note' in result, result)
+        return tool_call("read_path", {"path": "note.txt"})
+
+    def nameless_then(_, body):
+        # A call with no function name ran nothing; the note says so.
+        assert_true("without a function name" in json.dumps(body["messages"]), body)
+        return event({"content": "recovered-ok"})
+
+    with Server(
+        [
+            broken('{"path": "note'),
+            corrected,
+            broken('{"path": "note.txt"}', name=""),
+            nameless_then,
+        ]
+    ) as server:
+        result = run(
+            workspace,
+            base_env(home, server.url),
+            "--yolo",
+            "-p",
+            "read it",
+            timeout=30,
+            binary=binary,
+        )
+        assert_true(result.returncode == 0, (result.stdout, result.stderr))
+        assert_true(result.stdout.strip() == "recovered-ok", result.stdout)
+        assert_true(len(server.requests) == 4, len(server.requests))
+
+
+def test_a_loaded_skill_survives_compaction(root, home, *, binary):
+    """The summary replaces the turns, not the procedure being followed."""
+    workspace = root / "skill-compact-workspace"
+    skill = workspace / ".uagent" / "skills" / "demo"
+    skill.mkdir(parents=True)
+    (skill / "SKILL.md").write_text(
+        "---\nname: demo\ndescription: demo-description\n---\n\nkept-body-sentinel\n",
+        encoding="utf-8",
+    )
+
+    def summarize(_, body):
+        assert_true("tools" not in body, body)
+        return event({"content": "the user is following the demo skill"})
+
+    def after(_, body):
+        serialized = json.dumps(body["messages"])
+        assert_true("model-generated context summary" in serialized, serialized)
+        assert_true("long-answer" not in serialized, serialized)
+        kept = serialized.count("kept-body-sentinel")
+        return event({"content": "skill-kept" if kept == 1 else f"skill-lost-{kept}"})
+
+    with Server(
+        [
+            tool_call("skill", {"query": "demo"}),
+            tool_call("skill", {"query": "demo"}),
+            event({"content": "long-answer " * 400}),
+            summarize,
+            after,
+        ]
+    ) as server:
+        result = run_dialog(
+            workspace,
+            base_env(home, server.url),
+            "open the demo skill\n/compact\ncontinue\n/q\n",
+            timeout=30,
+            binary=binary,
+        )
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true("skill-kept" in result.stdout, result.stdout)
+        assert_true(len(server.requests) == 5, len(server.requests))
+
+
+def test_an_attachment_over_the_budget_is_warned_about_once(root, home, *, binary):
+    workspace = root / "budget-workspace"
+    workspace.mkdir()
+    for name in ("one.pdf", "two.pdf"):
+        (workspace / name).write_bytes(b"%PDF-1.4\n" + b"\x00" * (700 * 1024))
+    steps = [
+        tool_call("read_path", {"path": "one.pdf"}, call_id="one"),
+        tool_call("read_path", {"path": "two.pdf"}, call_id="two"),
+        tool_call("run", {"command": "true"}, call_id="third"),
+        tool_call("run", {"command": "true"}, call_id="fourth"),
+        event({"content": "budget-ok"}),
+    ]
+    with Server(steps) as server:
+        env = base_env(home, server.url)
+        env["UAGENT_ATTACHMENT_MB"] = "1"
+        result = run_dialog(workspace, env, "look\n/q\n", "--yolo", timeout=40, binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true("budget-ok" in result.stdout, result.stdout)
+        said = result.stdout.count("request attachment budget exceeded")
+        assert_true(said == 1, (said, result.stdout[-1500:]))
+
+
 def test_full_run_and_python_terminal_trace(root, home, *, binary):
     shell_command = "printf 'shell-one\\n'\nprintf 'shell-two\\n'"
     python_code = "print('python-one')\nprint('python-two')"
@@ -325,7 +438,7 @@ def test_tool_trace_repeated_rounds_are_telemetry_only(root, home, *, binary):
     ) as server:
         env = base_env(home, server.url)
         env["UAGENT_AUTO_COMPACT_PCT"] = "0"
-        env["UAGENT_AUTO_COMPACT_TOKENS"] = "0"
+        env["UAGENT_INTERNAL_AUTO_COMPACT_TOKENS"] = "0"
         result = run(root, env, "--yolo", f"--debug={trace}", "-p", "inspect lines", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip().endswith("rounds-finished"), result.stdout)
@@ -965,32 +1078,3 @@ def test_approval_remembers_exact_action_and_forwards_a_refusal(root, home, *, b
         # The refusal reached the model as guidance rather than a bare denial.
         assert_true(refusal.get("steered"), (refusal, output))
         assert_true(b"approval-done" in output, output)
-
-
-def test_execution_description_is_display_only(root, home, *, binary):
-    descriptions = ["Checking test output", {"invalid": "display metadata"}]
-    steps = []
-    for index, description in enumerate(descriptions):
-        steps.append(
-            tool_call("run", {"command": f"printf label-proof-{index}", "description": description})
-        )
-    steps.append(event({"content": "description-ok"}))
-    with Server(steps) as server:
-        result = run(
-            root, base_env(home, server.url), "--yolo", "-p", "exercise labels", binary=binary
-        )
-        assert_true(result.returncode == 0, result.stderr)
-        assert_true("description-ok" in result.stdout, result.stdout)
-        final = server.requests[-1][1]
-        assert_true(
-            any("label-proof-0" in output for output in tool_results(final["messages"])), final
-        )
-        assert_true(
-            any("label-proof-1" in output for output in tool_results(final["messages"])), final
-        )
-        replay = [
-            json.loads(call["function"]["arguments"])["description"]
-            for message in final["messages"]
-            for call in message.get("tool_calls", [])
-        ]
-        assert_true(replay == descriptions, replay)

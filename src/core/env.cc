@@ -42,11 +42,7 @@ int64_t ToolBatchResultCap() {
 int64_t AutoCompactPct() { return LongSetting(Cfg("UAGENT_AUTO_COMPACT_PCT")); }
 
 int64_t AutoCompactTokens() {
-  return LongSetting(Cfg("UAGENT_AUTO_COMPACT_TOKENS"));
-}
-
-int64_t ToolConcurrency() {
-  return LongSetting(Cfg("UAGENT_TOOL_CONCURRENCY"));
+  return EnvLong("UAGENT_INTERNAL_AUTO_COMPACT_TOKENS", 0);
 }
 
 int64_t AgentDepth() { return EnvLong("UAGENT_INTERNAL_DEPTH", 0); }
@@ -55,7 +51,7 @@ bool CanDelegate() {
   return AgentDepth() < LongSetting(Cfg("UAGENT_SUBAGENT_DEPTH"));
 }
 
-bool LeanToolset() { return StringSetting(Cfg("UAGENT_TOOLSET")) == "lean"; }
+bool LeanToolset() { return EnvStr("UAGENT_INTERNAL_TOOLSET") == "lean"; }
 
 // The parent runs with no step ceiling at all (RuntimeConfig::max_steps), so a
 // child that reads a handful of files per step used to be cut off mid-review
@@ -86,8 +82,6 @@ int64_t SubagentTimeoutSeconds() {
 // also clamp any thinking budget derived from it.
 int64_t MaxOutputTokens() { return LongSetting(Cfg("UAGENT_MAX_TOKENS")); }
 
-bool SteeringEnabled() { return BoolSetting(Cfg("UAGENT_STEERING")); }
-
 bool SandboxEnabled() { return BoolSetting(Cfg("UAGENT_SANDBOX")); }
 
 bool SandboxNetworkAllowed() { return BoolSetting(Cfg("UAGENT_SANDBOX_NET")); }
@@ -105,22 +99,14 @@ bool TrustProjectConfig() {
 }
 
 bool HeadlessProgressEnabled() {
-  return BoolSetting(Cfg("UAGENT_HEADLESS_PROGRESS"));
+  return EnvStr("UAGENT_INTERNAL_HEADLESS_PROGRESS") == "1";
 }
 
 std::string PromptOverlayPath() {
-  return StringSetting(Cfg("UAGENT_PROMPT_OVERLAY"));
+  return EnvStr("UAGENT_INTERNAL_PROMPT_OVERLAY");
 }
 
 int64_t ReadFileLines() { return LongSetting(Cfg("UAGENT_READ_FILE_LINES")); }
-
-int64_t MemoryIdleSeconds() {
-  return LongSetting(Cfg("UAGENT_MEMORY_IDLE_SECONDS"));
-}
-
-int64_t MaxBackgroundJobs() {
-  return LongSetting(Cfg("UAGENT_MAX_BACKGROUND_JOBS"));
-}
 
 int64_t AttachmentLimitMb() { return LongSetting(Cfg("UAGENT_ATTACHMENT_MB")); }
 
@@ -190,8 +176,7 @@ struct FieldBinding {
 };
 
 constexpr FieldBinding<int64_t> kLongOptions[] = {
-    {&Cfg("UAGENT_FIRST_EVENT_TIMEOUT"), &RuntimeConfig::first_event_timeout_s},
-    {&Cfg("UAGENT_STREAM_IDLE_TIMEOUT"), &RuntimeConfig::stream_idle_timeout_s},
+    {&Cfg("UAGENT_STREAM_TIMEOUT"), &RuntimeConfig::stream_timeout_s},
     {&Cfg("UAGENT_REQUEST_TIMEOUT"), &RuntimeConfig::request_timeout_s},
     {&Cfg("UAGENT_MAX_STEPS"), &RuntimeConfig::max_steps},
     {&Cfg("UAGENT_MAX_TOOL_CALLS"), &RuntimeConfig::max_tool_calls},
@@ -200,7 +185,6 @@ constexpr FieldBinding<int64_t> kLongOptions[] = {
     {&Cfg("UAGENT_SESSION_TOKEN_BUDGET"), &RuntimeConfig::session_token_budget},
     {&Cfg("UAGENT_TOOL_TIMEOUT"), &RuntimeConfig::tool_timeout_s},
     {&Cfg("UAGENT_MCP_TIMEOUT"), &RuntimeConfig::mcp_timeout_s},
-    {&Cfg("UAGENT_MCP_STARTUP_GRACE"), &RuntimeConfig::mcp_startup_grace_s},
 };
 constexpr FieldBinding<double> kDoubleOptions[] = {
     {&Cfg("UAGENT_MAX_TURN_COST"), &RuntimeConfig::max_turn_cost},
@@ -213,18 +197,13 @@ constexpr FieldBinding<std::string> kStringOptions[] = {
     {&Cfg("UAGENT_OPENROUTER_PROVIDER"), &RuntimeConfig::openrouter_provider},
     {&Cfg("UAGENT_OPENROUTER_VARIANT"), &RuntimeConfig::openrouter_variant},
     {&Cfg("UAGENT_WEB_SEARCH_BACKEND"), &RuntimeConfig::web_search_backend},
-    {&Cfg("UAGENT_WEB_SEARCH_EFFORT"), &RuntimeConfig::web_search_effort},
     {&Cfg("UAGENT_WEB_SEARCH_MODEL"), &RuntimeConfig::web_search_model},
-    {&Cfg("UAGENT_WEB_SEARCH_ENGINE"), &RuntimeConfig::web_search_engine},
-    {&Cfg("UAGENT_WEB_SEARCH_CONTEXT_SIZE"),
-     &RuntimeConfig::web_search_context_size},
     {&Cfg("UAGENT_IMAGE_MODEL"), &RuntimeConfig::image_model},
     {&Cfg("UAGENT_TITLE_MODEL"), &RuntimeConfig::title_model},
     {&Cfg("UAGENT_PDF_ENGINE"), &RuntimeConfig::pdf_engine},
     {&Cfg("UAGENT_MCP_ROOTS"), &RuntimeConfig::mcp_roots},
 };
 constexpr FieldBinding<bool> kBoolOptions[] = {
-    {&Cfg("UAGENT_OPENROUTER_FALLBACKS"), &RuntimeConfig::openrouter_fallbacks},
     {&Cfg("UAGENT_MEMORY"), &RuntimeConfig::memory_enabled},
     {&Cfg("UAGENT_MEMORY_GENERATE"), &RuntimeConfig::memory_generate},
 };
@@ -312,17 +291,6 @@ std::vector<std::string> RuntimeConfig::ApplyTurnReload(
     changed.emplace_back(option.descriptor->field);
   });
   return changed;
-}
-
-json RuntimeConfig::ProvenanceJson(const json& env_sources) const {
-  json out = json::object();
-  ForEachBinding([&](const auto& option) {
-    out[option.descriptor->field] =
-        env_sources.is_object()
-            ? JsonValue(env_sources, option.Env(), "default")
-            : std::string("default");
-  });
-  return out;
 }
 
 json RuntimeConfig::DiagnosticJson() const {

@@ -86,3 +86,32 @@ export function pinchView(
     height,
   );
 }
+
+// Two fingers as a pinch began: their spread and middle, and the view then.
+export interface Pinch {
+  distance: number;
+  midpoint: Point;
+  view: ZoomView;
+}
+
+export const pinchStart = (points: Point[], view: ZoomView): Pinch => ({
+  distance: distance(points),
+  midpoint: midpoint(points),
+  view: { ...view },
+});
+
+// The view once those fingers have moved to `points`.
+export const pinchTo = (
+  start: Pinch,
+  points: Point[],
+  width: number,
+  height: number,
+) =>
+  pinchView(
+    start.view,
+    width,
+    height,
+    start.midpoint,
+    midpoint(points),
+    start.distance > 0 ? distance(points) / start.distance : 1,
+  );

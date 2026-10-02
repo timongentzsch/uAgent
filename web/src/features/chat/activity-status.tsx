@@ -12,6 +12,7 @@ import type {
   Report,
   SessionRef,
 } from "../../shared/types.ts";
+import { useRef } from "preact/hooks";
 import {
   ArrowDownToLine,
   Bot,
@@ -23,16 +24,9 @@ import {
 import { cleanText, Button, IconButton, DataText } from "../../shared/ui.tsx";
 import { SheetButton } from "../../shared/sheet.tsx";
 import { command } from "../../state/api.ts";
+import { useAction } from "../../shared/use-action.ts";
 import { duration } from "../../shared/duration.ts";
 import type { InspectorTarget } from "./inspector.tsx";
-export interface ActivityProps {
-  items?: Activity[];
-  agents?: Agent[];
-  session: SessionRef;
-  online: boolean;
-  report: Report;
-  open: (target: InspectorTarget) => void;
-}
 export const active = (item: Activity) =>
   ["running", "starting", "stopping", "finishing"].includes(item.status || "");
 // Supervised activities plus child agents not already listed as one.
@@ -66,8 +60,8 @@ export function ActivityStatus({
   phase = "Ready",
   running,
   items = [],
-  agents = [],
   pending,
+  stopped,
   announce = false,
   present = false,
   connection,
@@ -75,82 +69,83 @@ export function ActivityStatus({
   phase?: string;
   running?: boolean;
   items?: Activity[];
-  agents?: Agent[];
   pending?: Pending | boolean | null;
+  // Why the last turn stopped short ("Stopped"): shown and announced in
+  // place of the phase until something new is sent.
+  stopped?: string;
   announce?: boolean;
   present?: boolean;
   connection?: ConnectionPhase;
 }) {
+  // A listener hears a turn's edges, not every step between them: the
+  // visible phase changes with each tool call, the announcement only when
+  // a response starts, needs input or ends.
+  const responded = useRef(false);
+  if (running) responded.current = true;
   if (connection && connection !== "connected")
     return <ConnectionStatus phase={connection} />;
-  const counts = activityLabel(withAgents(items, agents));
+  const counts = activityLabel(items);
+  const announcement = pending
+    ? "Needs your input"
+    : running
+      ? "Responding"
+      : stopped
+        ? stopped
+        : responded.current
+          ? "Response complete"
+          : "";
+  const caption = pending
+    ? "Needs your input"
+    : !running && stopped
+      ? stopped
+      : phase;
   return (
-    <span
-      class="activity-status"
-      role={announce ? "status" : undefined}
-      aria-atomic={announce ? "true" : undefined}
-    >
+    <span class="activity-status">
       <StatusLed
         state={running && !pending ? "running" : present ? "active" : "idle"}
       />
-      <span
-        class="activity-caption"
-        title={pending ? "Needs your input" : phase}
-      >
-        {pending ? "Needs your input" : phase}
+      <span class="activity-caption" title={caption}>
+        {caption}
       </span>
       {counts && <span class="activity-counts"> · {counts}</span>}
-    </span>
-  );
-}
-// The state above the input: counts live on ActivityButton below it.
-export default function Activities({
-  phase,
-  running,
-  pending,
-  present,
-  connection,
-}: {
-  running?: boolean;
-  phase?: string;
-  pending?: Pending | null;
-  present?: boolean;
-  connection?: ConnectionPhase;
-}) {
-  return (
-    <div class="activities">
-      <div class="status-line">
-        <span class="activity-toggle">
-          <ActivityStatus
-            phase={phase}
-            running={running}
-            pending={pending}
-            present={present}
-            connection={connection}
-            announce
-          />
+      {announce && (
+        <span
+          class="sr-only"
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+        >
+          {announcement}
         </span>
-      </div>
-    </div>
+      )}
+    </span>
   );
 }
 
 // Always under the input: what is running, then idle agents -- the same set
 // as /agents -- since those stay resumable. Finished commands live only in the
 // conversation.
-export function ActivityButton({ open, ...props }: ActivityProps) {
-  const now = (props.items || []).filter(active);
-  const rows = [
-    ...now,
-    ...withAgents([], props.agents || []).filter(
-      (agent) => !now.some((item) => item.agent_id === agent.agent_id),
-    ),
-  ];
+export function ActivityButton({
+  items,
+  agents,
+  session,
+  online,
+  report,
+  open,
+}: {
+  items: Activity[];
+  agents: Agent[];
+  session: SessionRef;
+  online: boolean;
+  report: Report;
+  open: (target: InspectorTarget) => void;
+}) {
+  const rows = withAgents(items.filter(active), agents);
   const counts = activityLabel(rows);
   return (
     <SheetButton
       label="Activity"
-      buttonClass={`quiet activity-button${counts ? "" : " idle"}`}
+      buttonClass={`activity-button${counts ? "" : " idle"}`}
       sheetClass="activity-sheet"
       trigger={
         <>
@@ -180,9 +175,9 @@ export function ActivityButton({ open, ...props }: ActivityProps) {
               <ActivityRow
                 key={String(item.id ?? item.agent_id ?? item.label)}
                 item={item}
-                session={props.session}
-                online={props.online}
-                report={props.report}
+                session={session}
+                online={online}
+                report={report}
                 open={() => {
                   close();
                   open({ item });
@@ -197,6 +192,53 @@ export function ActivityButton({ open, ...props }: ActivityProps) {
         )
       }
     </SheetButton>
+  );
+}
+
+// What a running activity can be told: Stop, and for a command the turn
+// still waits on, Move to background.
+export function ActivityControls({
+  item,
+  name,
+  session,
+  online,
+  report,
+}: {
+  item: Activity;
+  name: string;
+  session: SessionRef;
+  online: boolean;
+  report: Report;
+}) {
+  const { run, busy } = useAction();
+  const act = (operation: "stop" | "background") =>
+    run(() =>
+      command("activity", session, {
+        operation,
+        activity_id: item.id || 0,
+        agent_id: item.agent_id || "",
+        text: "",
+      }).catch(report),
+    );
+  return (
+    <>
+      {item.kind !== "agent" && item.detached === false && (
+        <IconButton
+          label="Move to background"
+          disabled={!online || busy}
+          onClick={() => act("background")}
+        >
+          <ArrowDownToLine />
+        </IconButton>
+      )}
+      <IconButton
+        label={`Stop ${name}`}
+        disabled={!online || busy || item.status === "stopping"}
+        onClick={() => act("stop")}
+      >
+        <Square />
+      </IconButton>
+    </>
   );
 }
 
@@ -215,13 +257,6 @@ function ActivityRow({
 }) {
   const name =
     item.kind === "agent" ? item.name || item.label : item.label || "Command";
-  const act = (operation: "stop" | "background") =>
-    command("activity", session, {
-      operation,
-      activity_id: item.id || 0,
-      agent_id: item.agent_id || "",
-      text: "",
-    }).catch(report);
   return (
     <li class="activity-row">
       <Button
@@ -242,23 +277,14 @@ function ActivityRow({
           </small>
         </span>
       </Button>
-      {active(item) && item.kind !== "agent" && item.detached === false && (
-        <IconButton
-          label="Move to background"
-          disabled={!online}
-          onClick={() => act("background")}
-        >
-          <ArrowDownToLine />
-        </IconButton>
-      )}
       {active(item) && (
-        <IconButton
-          label={`Stop ${name}`}
-          disabled={!online || item.status === "stopping"}
-          onClick={() => act("stop")}
-        >
-          <Square />
-        </IconButton>
+        <ActivityControls
+          item={item}
+          name={name || ""}
+          session={session}
+          online={online}
+          report={report}
+        />
       )}
     </li>
   );

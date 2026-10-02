@@ -117,6 +117,15 @@ class FileLease {
     return !LiveOwner(path).empty();
   }
 
+  // Whether the lease is missing or names an owner that no longer runs. One
+  // that names nobody (its holder did not publish, as runtimes before this
+  // rule) is not known to be gone.
+  static bool OwnerGone(const std::string& path) {
+    struct stat info{};
+    if (lstat(path.c_str(), &info) != 0) return true;
+    return info.st_size > 0 && !HasLiveOwner(path);
+  }
+
   void Reset() {
     if (published_ && fd_) ClearOwner();
     published_ = false;

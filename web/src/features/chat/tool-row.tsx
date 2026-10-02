@@ -1,4 +1,5 @@
-import { Fragment } from "preact";
+import { Fragment, createContext } from "preact";
+import { CircleX } from "lucide-preact";
 import {
   Button,
   DisclosureRow,
@@ -10,6 +11,7 @@ import DiffView from "./diff-view.tsx";
 import Markdown from "../../shared/markdown-view.tsx";
 import { cleanText, isFailedStatus } from "../../shared/display.ts";
 import type {
+  Activity,
   FilePart,
   LinkPart,
   PresentedBlock,
@@ -64,9 +66,7 @@ function ToolInput({ parts }: { parts: ToolPart[] }) {
 }
 
 // A link part opens the work it names in the inspector.
-export type OpenLink = (link: LinkPart) => void;
-
-const DIFF_LINES = 40;
+type OpenLink = (link: LinkPart) => void;
 
 // A command's output as a terminal shows it: one box that opens scrolled to
 // the end and scrolls back through everything the row holds. A long result
@@ -87,7 +87,13 @@ function OutputBox({
     if (box.current) box.current.scrollTop = box.current.scrollHeight;
   }, [text]);
   return (
-    <pre class="tool-console" ref={box} tabIndex={0} aria-label="Output">
+    <pre
+      class="tool-console"
+      ref={box}
+      tabIndex={0}
+      role="region"
+      aria-label="Output"
+    >
       {more && (
         <Button
           variant="quiet"
@@ -103,12 +109,17 @@ function OutputBox({
   );
 }
 
+// Never provided: reading it subscribes a row to nothing.
+const NoActivities = createContext<Activity[]>([]);
+
 // The work a row started, while it still runs: its LED and elapsed time.
+// Only a row that links to work follows the live activities; the rest sit
+// out their ticks.
 function useLive(block: PresentedBlock) {
   const link = block.parts?.find(
     (part): part is LinkPart => part.kind === "link",
   );
-  const live = useContext(LiveActivities).find((item) =>
+  const live = useContext(link ? LiveActivities : NoActivities).find((item) =>
     link?.to === "agent"
       ? item.agent_id === String(link.id)
       : link?.to === "activity" && item.id === Number(link.id),
@@ -154,7 +165,6 @@ export function ToolRow({
       .join(" · ");
   }
   const failed = isFailedStatus(block.status);
-  const diff = block.change?.includes("\n") ? block.change : "";
   // Short one-line arguments read as facts beside the tool's name; long or
   // multi-line ones stay blocks below.
   const brief = ([, value]: [string, string]) =>
@@ -174,6 +184,16 @@ export function ToolRow({
     <DisclosureRow
       className={`tool-disclosure${running || live ? " running" : failed ? " failed" : ""}`}
       label={title}
+      marker={
+        failed &&
+        !running &&
+        !live && (
+          <>
+            <CircleX class="failed-mark" aria-hidden="true" />
+            <span class="sr-only">Failed: </span>
+          </>
+        )
+      }
       status={subtitle}
       onToggle={onToggle}
     >
@@ -235,9 +255,6 @@ export function ToolRow({
             </p>
           )
         )}
-        {diff.split("\n").length > DIFF_LINES && (
-          <DiffView text={cleanText(diff)} />
-        )}
       </div>
     </DisclosureRow>
   );
@@ -263,7 +280,6 @@ export function ToolInline({
   open?: OpenLink;
 }) {
   const diff = block.change?.includes("\n") ? block.change : "";
-  const lines = diff.split("\n");
   // Until the full text loads, a truncated result shows its end.
   const more = !!block.truncated && !loaded;
   const output =
@@ -275,15 +291,7 @@ export function ToolInline({
   if (!diff && !output && !parts.length && !files.length) return null;
   return (
     <div class="tool-inline">
-      {diff && (
-        <DiffView text={cleanText(lines.slice(0, DIFF_LINES).join("\n"))} />
-      )}
-      {lines.length > DIFF_LINES && (
-        <p class="small muted">
-          {lines.length - DIFF_LINES} more lines · expand the row for the full
-          diff
-        </p>
-      )}
+      {diff && <DiffView text={cleanText(diff)} />}
       {output && (
         <OutputBox
           text={output}

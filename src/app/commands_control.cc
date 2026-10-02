@@ -10,6 +10,7 @@
 #include "include/agent/session_store.h"
 #include "include/app/commands.h"
 #include "include/app/config_proposal.h"
+#include "include/app/launch.h"
 #include "include/core/events.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
@@ -77,9 +78,7 @@ json SessionControl(AppSession& session, const json& request) {
   if (kind == "fork" || kind == "share") {
     if (session.session_file.empty()) {
       if (kind != "fork") return {{"error", "session has no file yet"}};
-      session.session_file = UagentDir(kHistoryDir) + "/" +
-                             WorkspaceId(CanonicalCwd()) + "/" +
-                             MakeSessionId() + ".json";
+      session.session_file = HistoryPath(CanonicalCwd(), MakeSessionId());
     }
     std::string error;
     // A folder has one coordinator, so "edit from here" rewinds it in place
@@ -107,8 +106,12 @@ json SessionControl(AppSession& session, const json& request) {
   }
   if (kind == "config") {
     return ConfigurationControl(
-        request, session.context.config_manager, session.Runtime().config,
+        request, session.context.config_manager,
         session.context.config_manager.ProjectTrusted());
+  }
+  if (kind == "revert") {
+    return session.ActiveAgent().Revert(JsonValue(request, "turn", int64_t{0}),
+                                        JsonValue(request, "path", ""));
   }
   if (kind == "context") {
     json preview = session.ActiveAgent().PreviewContext();

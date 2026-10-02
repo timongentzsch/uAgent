@@ -1,7 +1,6 @@
 // Copyright 2026 Timon Gentzsch
 
 #include <algorithm>
-#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <optional>
@@ -10,6 +9,7 @@
 #include <vector>
 
 #include "include/agent/child_agent.h"
+#include "include/app/launch.h"
 #include "include/cli.h"
 #include "include/core/checked.h"
 #include "include/core/debug.h"
@@ -108,7 +108,7 @@ void Application::ReloadConfigAtTurnBoundary() {
 }
 
 void Application::RunTurns(const std::string& input, json content,
-                           json images) {
+                           const json& images) {
   EnsureSessionPath();
   ReloadConfigAtTurnBoundary();
   PermissionControl(context_, json::object());
@@ -121,7 +121,7 @@ void Application::RunTurns(const std::string& input, json content,
   {
     TurnGuard guard(turn_active_);
     if (channel_ || !session_file_.empty()) PublishChannelState(false);
-    agent_.Turn(input, std::move(content), std::move(images), request_id_);
+    agent_.Turn(input, std::move(content), images, request_id_);
     SteeringState().Take();
   }
   if (channel_ || !session_file_.empty()) PublishChannelState(false);
@@ -154,14 +154,8 @@ void Application::Teardown(const char* reason) {
 bool Application::ResumeAtStartup() {
   std::string previous_path = session_file_;
   if (!session_file_.empty()) {
-    if (PathExists(session_file_)) {
-      if (!ResumeInto(agent_, session_file_, session_file_, !channel_)) {
-        return false;
-      }
-    }
-  } else if (context_.options.resume_pick) {
-    std::string path = PickSession();
-    if (!path.empty() && !ResumeInto(agent_, path, session_file_)) {
+    if (PathExists(session_file_) &&
+        !ResumeInto(agent_, session_file_, session_file_, !channel_)) {
       return false;
     }
   } else if (context_.options.resume_latest) {
@@ -169,10 +163,8 @@ bool Application::ResumeAtStartup() {
     if (sessions.empty()) {
       fputs(Note(Tone::kNeutral, "no saved sessions").c_str(), stdout);
       fflush(stdout);
-    } else {
-      if (!ResumeInto(agent_, sessions.front().path, session_file_)) {
-        return false;
-      }
+    } else if (!ResumeInto(agent_, sessions.front().path, session_file_)) {
+      return false;
     }
   }
   AppSession session = Session();
@@ -194,9 +186,8 @@ void Application::SaveSession(bool force) {
 
 void Application::EnsureSessionPath() {
   if (persist_ && session_file_.empty()) {
-    session_file_ = UagentDir(kHistoryDir) + "/" + WorkspaceId(CanonicalCwd()) +
-                    "/" + UtcStamp("%Y%m%dT%H%M%SZ") + "-" + MakeSessionId() +
-                    ".json";
+    session_file_ = HistoryPath(
+        CanonicalCwd(), UtcStamp("%Y%m%dT%H%M%SZ") + "-" + MakeSessionId());
   }
   // Peer sessions address this process by its session file; exporting it
   // here covers the constructor path, resume, and first save alike.
@@ -224,10 +215,6 @@ void Application::RunPrompt(const std::string& input) {
     content = AttachmentContent(input, attachments_, error);
     if (!error.empty()) {
       input_error_ = error;
-      if (!channel_) {
-        printf("%s%s%s\n", RED(), TerminalSafe(error).c_str(), RST());
-        fflush(stdout);
-      }
       Emit(Event{EventId::kError, {{"error", error}}});
       return;
     }
@@ -238,7 +225,7 @@ void Application::RunPrompt(const std::string& input) {
     }
     attachments_.clear();
   }
-  RunTurns(input, std::move(content), std::move(images));
+  RunTurns(input, std::move(content), images);
 }
 
 json Application::InterfaceState() const {
@@ -272,15 +259,18 @@ void Application::ProcessInput(std::string input) {
                {{"request_id", request_id_},
                 {"command", command.spec->name},
                 {"argument", command.argument},
-                {"inspect", command.spec->inspect_result},
+                {"inspect", !command.spec->Has(kNoViewer)},
                 {"output", Trim(reply.output)},
                 {"result", std::move(reply.result)},
                 {"state", InterfaceState()}}});
     return;
   }
   if (input[0] == '/') {
-    Emit(NoticeEvent(PresentationStatus::kFailed,
-                     "unknown command " + input + "; use /help"));
+    const std::string nearest = NearestSlashCommand(input);
+    Emit(NoticeEvent(
+        PresentationStatus::kFailed,
+        "unknown command " + input + "; " +
+            (nearest.empty() ? "use /help" : "did you mean " + nearest + "?")));
     return;
   }
   RunPrompt(input);

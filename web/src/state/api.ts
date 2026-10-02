@@ -97,8 +97,12 @@ export async function readPages(
 
 const receipts = new Map<string, (outcome: Outcome) => void>();
 
+// True when a command from this page waits on it: its caller shows the
+// outcome, so nothing else needs to.
 export function receiveOutcome(outcome: Outcome) {
-  if (!outcome.pending) receipts.get(outcome.request_id)?.(outcome);
+  const waiting = receipts.get(outcome.request_id);
+  if (!outcome.pending) waiting?.(outcome);
+  return !!waiting;
 }
 
 export async function command<K extends CommandKind>(
@@ -115,10 +119,7 @@ export async function command<K extends CommandKind>(
     abort = () => resolve({ request_id, accepted: true, pending: true });
     options.signal?.addEventListener("abort", abort, { once: true });
     receipts.set(request_id, resolve);
-    timeout = setTimeout(
-      () => resolve({ request_id, accepted: true, pending: true }),
-      commandReceiptWaitMs,
-    );
+    timeout = setTimeout(abort, commandReceiptWaitMs);
   });
   try {
     let result = await api<Outcome>(
@@ -149,12 +150,18 @@ export async function command<K extends CommandKind>(
   }
 }
 
+// A command whose answer is its result: the host's own, or a conversation's
+// when `session` names one. A result that has not arrived in time is an
+// error here, so callers handle one outcome.
 export async function manage<K extends CommandKind>(
   kind: K,
   fields: CommandFields = {},
-  signal?: AbortSignal,
+  {
+    session = null,
+    signal,
+  }: { session?: SessionRef | null; signal?: AbortSignal } = {},
 ): Promise<CommandResults[K]> {
-  const result = await command(kind, null, fields, { signal });
+  const result = await command(kind, session, fields, { signal });
   if (result.pending)
     throw new Error(
       "The operation is still pending. Refresh to inspect its result.",

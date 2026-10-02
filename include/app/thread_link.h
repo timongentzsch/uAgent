@@ -21,8 +21,10 @@ class ThreadLink {
            const std::string& asks, const std::string& data,
            const std::string& title) const;
 
-  // A finished turn is an event for the coordinator.
-  void Report(const std::string& reason, const std::string& title) const;
+  // A finished turn is an event for the coordinator, with the turn's answer
+  // so reading it costs no round.
+  void Report(const std::string& reason, const std::string& title,
+              const std::string& answer) const;
 
   // Why a message may not enter the thread, or empty. A coordinator may send
   // kStreak in a row with nobody else speaking here, so the two can never

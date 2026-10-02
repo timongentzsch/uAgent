@@ -2,12 +2,11 @@
 
 #include "include/agent/session_view.h"
 
-#include <fcntl.h>
-#include <sys/stat.h>
 #include <unistd.h>
 
 #include <algorithm>
 #include <charconv>
+#include <cstdint>
 #include <iterator>
 #include <map>
 #include <string>
@@ -406,7 +405,9 @@ void DisplayBlocks(const Conversation& conversation, uint64_t sequence,
                 {"kind", entry.kind},
                 {"text", Utf8Trunc(text, kPreviewChars - 3)},
                 {"truncated", text.size() > kPreviewChars}};
-  json metadata = JsonValue(facts, id.c_str(), json::object());
+  static const json kNone = json::object();
+  const auto recorded = facts.find(id);
+  const json& metadata = recorded != facts.end() ? *recorded : kNone;
   for (const char* key : {"time",
                           "incoming",
                           "activity_id",
@@ -481,8 +482,9 @@ void DisplayBlocks(const Conversation& conversation, uint64_t sequence,
         std::string detail_id = DetailId(response_id, call_id);
         const json* found =
             FindToolFacts(facts, detail_id, call_id, &detail_id);
-        const json detail = found ? *found : json::object();
-        json function = JsonValue(call, "function", json::object());
+        const json& detail = found ? *found : kNone;
+        const json* named = JsonObject(call, "function");
+        const json& function = named ? *named : kNone;
         json row = {{"id", detail_id},
                     {"sequence", sequence},
                     {"kind", "tool_result"},
@@ -514,7 +516,7 @@ void DisplayBlocks(const Conversation& conversation, uint64_t sequence,
     std::string call_id = JsonValue(message, "tool_call_id", "");
     std::string detail_id = JsonValue(metadata, "detail_id", "t-" + call_id);
     const json* found = FindToolFacts(facts, detail_id, call_id, &detail_id);
-    const json detail = found ? *found : json::object();
+    const json& detail = found ? *found : kNone;
     // Retained rows finished by definition: a missing receipt is a gap in
     // history, never live activity (live rows stream separately). Say so
     // explicitly instead of counterfeiting a "running" state.
@@ -530,7 +532,10 @@ void DisplayBlocks(const Conversation& conversation, uint64_t sequence,
       block["duration_ms"] = detail["duration_ms"];
     }
     block["detail_id"] = detail_id;
-    block["change"] = Utf8Trunc(JsonValue(detail, "change", ""), kPreviewChars);
+    block["change"] = JsonValue(detail, "change", "");
+    if (detail.contains("change_path")) {
+      block["change_path"] = detail["change_path"];
+    }
     if (detail.contains("parts")) block["parts"] = detail["parts"];
     // The preview keeps the start of a long result; its end is where a
     // command reports how it went, so rows can show that tail.
@@ -635,6 +640,10 @@ json TranscriptView::Detail(const std::string& id, size_t offset) const {
   const json& facts = conversation.DisplayFacts();
   if (id.starts_with("t-")) {
     json detail = JsonValue(facts, id.c_str(), json::object());
+    // A diff stored whole is the row in full.
+    if (detail.contains("change_path")) {
+      return ReadPrivateArtifact(JsonValue(detail, "change_path", ""), offset);
+    }
     text = JsonValue(detail, "output", "");
     std::string change = JsonValue(detail, "change", "");
     if (!change.empty()) {
@@ -692,19 +701,21 @@ json FindHttpExchange(const json& value, const std::string& id) {
 }
 
 json ReadPrivateArtifact(const std::string& path, size_t offset) {
-  const auto base = CanonicalAccessPath(UagentDir(kArtifactsDir));
   const std::filesystem::path file_path(path);
-  if (path.empty() || CanonicalAccessPath(file_path.parent_path()) != base) {
+  if (path.empty()) return {{"error", "retained body unavailable"}};
+  // Either a retained artifact, or a diff kept with a session's edits.
+  auto base = CanonicalAccessPath(file_path.parent_path());
+  const bool diff =
+      file_path.filename().string().starts_with("diff-") &&
+      base.string().ends_with(".json.edits") &&
+      PathWithin(base, CanonicalAccessPath(UagentDir(kHistoryDir)));
+  if (!diff && base != CanonicalAccessPath(UagentDir(kArtifactsDir))) {
     return {{"error", "retained body unavailable"}};
   }
-  Fd file(open((base / file_path.filename()).c_str(),
-               O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK));
-  struct stat info{};
-  if (!file || fstat(file.Get(), &info) || !S_ISREG(info.st_mode) ||
-      info.st_uid != geteuid() || info.st_size < 0) {
-    return {{"error", "retained body unavailable"}};
-  }
-  size_t size = static_cast<size_t>(info.st_size);
+  size_t size = 0;
+  Fd file =
+      OpenOwnedRegular((base / file_path.filename()).string(), SIZE_MAX, &size);
+  if (!file) return {{"error", "retained body unavailable"}};
   offset = std::min(offset, size);
   constexpr size_t kPage = size_t{16} * 1024;
   // Look ahead so the page boundary can be checked against the next byte.

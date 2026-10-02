@@ -55,7 +55,7 @@ Clear remove it. It is saved with the conversation and copied by forks.
 
 The assembled message is limited to 64 KiB. Tool schemas, approvals,
 sandboxing and host limits are enforced by the runtime and cannot be changed by
-prompt text. `UAGENT_PROMPT_OVERLAY` names an experimental JSON file whose
-named-section `replace` entries and `append` text are applied to the built-in
-base, so a variant can be measured without a rebuild; its digest is recorded in
-request traces.
+prompt text. `benchmarks/eval.py --prompt-overlay` names an experimental JSON
+file whose named-section `replace` entries and `append` text are applied to
+the built-in base, so a variant can be measured without a rebuild; its digest
+is recorded in request traces.

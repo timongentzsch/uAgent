@@ -59,12 +59,6 @@ bool HasHostedTool(const json& hosted_tools, HostedTool tool) {
   return false;
 }
 
-json HostedToolsJson(bool web_search) {
-  json tools = json::array();
-  if (web_search) tools.push_back("web_search");
-  return tools;
-}
-
 void ProviderCapabilities::SetInputModalities(const json& modalities) {
   if (!modalities.is_array() || modalities == input_modalities) return;
   input_modalities = modalities;
@@ -125,7 +119,8 @@ void ProviderCapabilities::Observe(const ChatResult& result) {
 json ProviderCapabilities::DiagnosticJson() const {
   return {{"protocol", ProviderProtocolName(protocol)},
           {"wire_api", WireApiName(wire_api)},
-          {"hosted_tools", HostedToolsJson(hosted_web_search)},
+          {"hosted_tools",
+           hosted_web_search ? json::array({"web_search"}) : json::array()},
           {"parallel_tools", parallel_tools},
           {"stream_usage_option", stream_usage_option},
           {"reasoning_summary", reasoning_summary},

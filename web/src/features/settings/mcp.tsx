@@ -3,6 +3,7 @@ import type { McpServer, Session, State } from "../../shared/types.ts";
 import { Button, Group, LoadError, Row, Switch } from "../../shared/ui.tsx";
 import { StatusLed } from "../../shared/connection-status.tsx";
 import { command } from "../../state/api.ts";
+import { useAction } from "../../shared/use-action.ts";
 import { plural } from "../../shared/quantities.ts";
 
 const SUMMARY: Record<McpServer["state"], string> = {
@@ -27,7 +28,7 @@ export function McpServers({
   const [busy, setBusy] = useState("");
   // The switch shows the requested value while the server starts or stops.
   const [wanted, setWanted] = useState<boolean | null>(null);
-  const [error, setError] = useState<unknown>(null);
+  const { run, error } = useAction();
   if (!session)
     return (
       <Group footer="Servers start with a conversation, so their state is that conversation's.">
@@ -37,15 +38,9 @@ export function McpServers({
   const servers = state?.mcp || [];
   const control = async (name: string, fields: Record<string, unknown>) => {
     setBusy(name);
-    setError(null);
-    try {
-      await command("tools", session, { name, ...fields });
-    } catch (failure) {
-      setError(failure);
-    } finally {
-      setBusy("");
-      setWanted(null);
-    }
+    await run(() => command("tools", session, { name, ...fields }));
+    setBusy("");
+    setWanted(null);
   };
   const project = session.cwd?.split("/").pop() || "project";
   const scopes = [
@@ -59,15 +54,7 @@ export function McpServers({
         const rows = servers.filter((server) => server.scope === scope);
         return (
           <Group key={scope} title={title} footer={file}>
-            {!rows.length && (
-              <Row
-                label={
-                  scope === "global"
-                    ? "No global servers"
-                    : "No project servers"
-                }
-              />
-            )}
+            {!rows.length && <Row label={`No ${scope} servers`} />}
             {rows.map((server) => {
               const expanded = open === server.name;
               const detail = [

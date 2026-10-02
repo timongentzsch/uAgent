@@ -1,23 +1,13 @@
 // Copyright 2026 Timon Gentzsch
 
 #include <algorithm>
-#include <atomic>
-#include <cctype>
-#include <chrono>
 #include <cstdlib>
-#include <fstream>
-#include <future>
-#include <iterator>
-#include <set>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "include/core/debug.h"
+#include "include/core/config_registry.h"
 #include "include/core/env.h"
-#include "include/core/fs.h"
-#include "include/core/limits.h"
-#include "include/core/signals.h"
 #include "include/core/strings.h"
 #include "include/providers.h"
 
@@ -54,13 +44,15 @@ EnvironmentOverrides RouteEnvironment(const SideRoute& route) {
   return {
       {"UAGENT_BASE_URL", route.base_url},
       {"UAGENT_MODEL", route.model},
-      {"UAGENT_MODEL_FEATURES", JsonDump(route.features)},
+      {"UAGENT_INTERNAL_MODEL_FEATURES", JsonDump(route.features)},
       {"UAGENT_REASONING_EFFORT", route.effort},
       {"UAGENT_OPENROUTER_VARIANT", route.variant},
       {"UAGENT_CONTEXT", std::to_string(route.context)},
-      {"UAGENT_PROVIDER_PROTOCOL", ProviderProtocolName(route.protocol)},
-      {"UAGENT_WIRE_API", WireApiName(route.wire_api)},
-      {"UAGENT_HOSTED_TOOLS", route.hosted_web_search ? "web_search" : ""},
+      {"UAGENT_INTERNAL_PROVIDER_PROTOCOL",
+       ProviderProtocolName(route.protocol)},
+      {"UAGENT_INTERNAL_WIRE_API", WireApiName(route.wire_api)},
+      {"UAGENT_INTERNAL_HOSTED_TOOLS",
+       route.hosted_web_search ? "web_search" : ""},
   };
 }
 
@@ -167,16 +159,19 @@ void ActivateRoute(Api& api) {
 }
 
 ProviderSetup ConfigureProvider(Api& api) {
-  api.base_url = StripTrailingSlashes(EnvStr("UAGENT_BASE_URL"));
+  api.base_url = StripTrailingSlashes(SettingText(Cfg("UAGENT_BASE_URL")));
   api.api_key = EnvStr("UAGENT_API_KEY", kPlaceholderApiKey);
-  ModelSelection requested = ParseModelSelection(EnvStr("UAGENT_MODEL"));
+  ModelSelection requested =
+      ParseModelSelection(SettingText(Cfg("UAGENT_MODEL")));
   api.model = requested.base;
-  const std::string configured_effort = EnvStr("UAGENT_REASONING_EFFORT");
+  const std::string configured_effort =
+      SettingText(Cfg("UAGENT_REASONING_EFFORT"));
   const std::string configured_variant = api.config.openrouter_variant;
   api.reasoning_effort = configured_effort;
   api.ctx_window = ContextWindow();
-  std::string protocol_setting = EnvStr("UAGENT_PROVIDER_PROTOCOL");
-  std::string wire_setting = EnvStr("UAGENT_WIRE_API", "chat_completions");
+  std::string protocol_setting = EnvStr("UAGENT_INTERNAL_PROVIDER_PROTOCOL");
+  std::string wire_setting =
+      EnvStr("UAGENT_INTERNAL_WIRE_API", "chat_completions");
   std::optional<WireApi> configured_wire = ParseWireApi(wire_setting);
   WireApi wire_api = configured_wire.value_or(WireApi::kChatCompletions);
   std::optional<ProviderProtocol> configured_protocol;
@@ -186,7 +181,8 @@ ProviderSetup ConfigureProvider(Api& api) {
   ProviderProtocol protocol =
       configured_protocol.value_or(ProviderProtocol::kOpenAi);
   json hosted_tools = json::array();
-  for (std::string tool : SplitPathList(EnvStr("UAGENT_HOSTED_TOOLS"), ',')) {
+  for (std::string tool :
+       SplitPathList(EnvStr("UAGENT_INTERNAL_HOSTED_TOOLS"), ',')) {
     tool = Trim(tool);
     if (!tool.empty()) hosted_tools.push_back(std::move(tool));
   }
@@ -194,7 +190,7 @@ ProviderSetup ConfigureProvider(Api& api) {
       CapabilitiesForRoute(protocol, api.base_url, wire_api,
                            HasHostedTool(hosted_tools, HostedTool::kWebSearch));
   api.capabilities.SetModelFeatures(
-      json::parse(EnvStr("UAGENT_MODEL_FEATURES"), nullptr, false));
+      json::parse(EnvStr("UAGENT_INTERNAL_MODEL_FEATURES"), nullptr, false));
 
   ProviderCatalog catalog = SessionProviderCatalog();
   ProviderSetup setup{
@@ -259,7 +255,7 @@ ProviderSetup ConfigureProvider(Api& api) {
     setup.warning +=
         "ignoring invalid reasoning effort: " + api.reasoning_effort;
     api.reasoning_effort.clear();
-    setenv("UAGENT_REASONING_EFFORT", "", 1);
+    OverrideSetting("UAGENT_REASONING_EFFORT", "");
   }
   return setup;
 }

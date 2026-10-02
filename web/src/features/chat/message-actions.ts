@@ -20,6 +20,10 @@ export interface MessageActions {
   statistics?: (block: Block) => void;
   activity?: (block: Block) => void;
   recall?: (block: PresentedBlock) => void;
+  // Sends a message that failed again.
+  retry?: (block: PresentedBlock) => void;
+  // Continues a stopped turn.
+  resume?: () => void;
   branch?: (block: PresentedBlock, edit: boolean) => void;
   http?: (exchanges: Exchange[]) => void;
 }

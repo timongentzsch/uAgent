@@ -32,43 +32,18 @@ namespace uagent {
 
 namespace {
 
-// A receipt exists to be read before approving, so it shows whole lines and a
-// realistic edit in full. The cap is what keeps a ten-megabyte replace from
-// taking the scrollback with it.
-constexpr size_t kMaxDiffDisplayLines = 400;
-
-// Views borrow `text`, so every caller keeps the buffer alive past the diff.
-std::vector<std::string_view> DiffLines(std::string_view text) {
-  std::vector<std::string_view> lines;
-  for (size_t begin = 0; begin < text.size();) {
-    size_t end = text.find('\n', begin);
-    std::string_view line = text.substr(begin, end - begin);
-    if (!line.empty() && line.back() == '\r') line.remove_suffix(1);
-    lines.push_back(line);
-    if (end == std::string_view::npos) break;
-    begin = end + 1;
-  }
-  return lines;
-}
-
 struct EditDisplay {
   std::string body;
   int64_t added = 0;
   int64_t removed = 0;
-  size_t lines = 0;
-  bool truncated = false;
 };
 
-void AppendDisplayLine(EditDisplay& display, char marker,
-                       std::string_view text) {
-  if (display.lines >= kMaxDiffDisplayLines) {
-    display.truncated = true;
-    return;
-  }
-  display.body += marker;
-  display.body += text;
-  display.body += '\n';
-  ++display.lines;
+// "<Verb> <path> (+added -removed)" over the diff lines.
+std::string DiffReceipt(const char* verb, const std::string& path,
+                        const EditDisplay& display) {
+  return std::string(verb) + " " + DisplayPath(path) + " (+" +
+         std::to_string(display.added) + " -" +
+         std::to_string(display.removed) + ")\n" + display.body;
 }
 
 using LineDiff = CommonLineSpan;
@@ -77,18 +52,10 @@ void AppendLineDiff(EditDisplay& display,
                     const std::vector<std::string_view>& old_lines,
                     const std::vector<std::string_view>& new_lines,
                     const LineDiff& diff) {
-  if (diff.prefix > 0) {
-    AppendDisplayLine(display, ' ', old_lines[diff.prefix - 1]);
-  }
-  for (size_t i = diff.prefix; i < diff.old_end; ++i) {
-    AppendDisplayLine(display, '-', old_lines[i]);
-  }
-  for (size_t i = diff.prefix; i < diff.new_end; ++i) {
-    AppendDisplayLine(display, '+', new_lines[i]);
-  }
-  if (diff.old_end < old_lines.size()) {
-    AppendDisplayLine(display, ' ', old_lines[diff.old_end]);
-  }
+  ForEachDiffLine(old_lines, new_lines, diff,
+                  [&](char marker, std::string_view line) {
+                    (display.body += marker).append(line) += '\n';
+                  });
 }
 
 void AppendEditDisplay(EditDisplay& display, const std::string& data,
@@ -122,7 +89,7 @@ void AppendEditDisplay(EditDisplay& display, const std::string& data,
               '\n'));
   std::string location = "line " + std::to_string(line);
   if (applied > 1) location += " · " + std::to_string(applied) + " matches";
-  AppendDisplayLine(display, '@', location);
+  display.body += "@" + location + "\n";
   AppendLineDiff(display, old_lines, new_lines, diff);
 }
 
@@ -554,6 +521,7 @@ ToolResult ToolEditFile(const std::string& path,
   }
 
   const size_t original_size = data.size();
+  std::string original = data;
   EditRun run;
   if (auto refusal = ApplyEdits(data, path, edits, run)) {
     return std::move(*refusal);
@@ -574,11 +542,9 @@ ToolResult ToolEditFile(const std::string& path,
                   (edits.size() == 1 ? " edit; " : " edits; ") +
                   std::to_string(original_size) + " -> " +
                   std::to_string(data.size()) + " bytes)");
-  result.display = "Edited " + DisplayPath(path) + " (+" +
-                   std::to_string(run.display.added) + " -" +
-                   std::to_string(run.display.removed) + ")\n" +
-                   run.display.body;
-  if (run.display.truncated) result.display += " … diff truncated\n";
+  result.display = DiffReceipt("Edited", path, run.display);
+  result.effect = FileEffect{CanonicalAccessPath(path).string(), true,
+                             std::move(original), HashHex(data)};
   return result;
 }
 
@@ -587,11 +553,6 @@ std::optional<ToolResult> ApplyFileEdits(std::string& data,
                                          const std::vector<FileEdit>& edits) {
   EditRun run;
   return ApplyEdits(data, path, edits, run);
-}
-
-ToolResult ToolEditFile(const std::string& path, const std::string& old_s,
-                        const std::string& new_s, bool replace_all) {
-  return ToolEditFile(path, {{old_s, new_s, replace_all}});
 }
 
 namespace {
@@ -674,11 +635,8 @@ ToolResult ToolDeleteFileWithDisplay(const std::string& path) {
   if (auto invalid = ValidatePathTarget(path, PathTarget::kDeletableFile)) {
     return std::move(*invalid);
   }
-  std::optional<std::string> previous = DiffableContents(path);
-  if (!previous) {
-    // Binary/oversized still deletes, just without a diff receipt.
-    previous.emplace();
-  }
+  FileEffect effect{CanonicalAccessPath(path).string(), true,
+                    DiffableContents(path), ""};
   // The path policy above already rejected a missing or non-regular target, so
   // remove() reporting nothing removed means it vanished in between.
   std::error_code ec;
@@ -690,11 +648,13 @@ ToolResult ToolDeleteFileWithDisplay(const std::string& path) {
                        "path does not exist: " + path);
   }
   ToolResult result = ToolSuccess("deleted " + path);
-  if (previous->empty()) {
+  // Binary/oversized still deletes, just without a diff receipt.
+  if (!effect.before || effect.before->empty()) {
     result.display = "Deleted " + DisplayPath(path) + "\n";
   } else {
-    result.display = DeletedFileDiffDisplay(path, *previous);
+    result.display = DeletedFileDiffDisplay(path, *effect.before);
   }
+  result.effect = std::move(effect);
   return result;
 }
 
@@ -714,7 +674,11 @@ ToolResult ToolWriteFileWithDisplay(const std::string& path,
   }
   ToolResult result =
       ToolAtomicWrite(path, content, kSharedFileMode, true, overwrite);
-  if (!result.Ok() || !previous) return result;
+  if (!result.Ok()) return result;
+  result.effect =
+      FileEffect{CanonicalAccessPath(path).string(), existed,
+                 existed ? previous : std::nullopt, HashHex(content)};
+  if (!previous) return result;
   result.display = WholeFileDiffDisplay(path, *previous, content, existed);
   return result;
 }
@@ -728,15 +692,19 @@ std::string WholeFileDiffDisplay(const std::string& path,
   if (diff.old_end == diff.prefix && diff.new_end == diff.prefix) return "";
 
   EditDisplay display;
+  display.added = static_cast<int64_t>(diff.new_end - diff.prefix);
+  display.removed = static_cast<int64_t>(diff.old_end - diff.prefix);
   AppendLineDiff(display, old_lines, new_lines, diff);
-  std::string out = (existed ? "Replaced " : "Created ") + DisplayPath(path) +
-                    " (+" + std::to_string(diff.new_end - diff.prefix) + " -" +
-                    std::to_string(diff.old_end - diff.prefix) + ")\n" +
-                    display.body;
-  // Symmetric with the delete receipt: a diff cut at the line cap says so,
-  // rather than ending mid-file as if that were the whole change.
-  if (display.truncated) out += " … diff truncated\n";
-  return out;
+  return DiffReceipt(existed ? "Replaced" : "Created", path, display);
+}
+
+std::string WriteDiffPreview(const std::string& path,
+                             const std::string& content) {
+  std::error_code ec;
+  const bool existed = std::filesystem::is_regular_file(path, ec);
+  const std::string diff = WholeFileDiffDisplay(
+      path, DiffableContents(path).value_or(""), content, existed);
+  return diff.empty() ? "no changes" : diff;
 }
 
 std::string DeletedFileDiffDisplay(const std::string& path,
@@ -745,11 +713,9 @@ std::string DeletedFileDiffDisplay(const std::string& path,
   std::vector<std::string_view> new_lines;
   LineDiff diff{0, old_lines.size(), 0};
   EditDisplay display;
+  display.removed = static_cast<int64_t>(old_lines.size());
   AppendLineDiff(display, old_lines, new_lines, diff);
-  std::string out = "Deleted " + DisplayPath(path) + " (+0 -" +
-                    std::to_string(old_lines.size()) + ")\n" + display.body;
-  if (display.truncated) out += " … diff truncated\n";
-  return out;
+  return DiffReceipt("Deleted", path, display);
 }
 
 ToolResult ToolListDir(const std::string& path, int64_t offset, int64_t limit,

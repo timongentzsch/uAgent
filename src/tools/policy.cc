@@ -9,6 +9,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/core/config_registry.h"
 #include "include/core/env.h"
 #include "include/core/strings.h"
 #include "include/tools/tool.h"
@@ -120,8 +121,9 @@ std::optional<ToolArgumentIssue> InvalidObjectValue(const json& schema,
   }
 
   auto found = schema.find("properties");
-  const json properties =
-      found != schema.end() && found->is_object() ? *found : json::object();
+  static const json kNone = json::object();
+  const json& properties =
+      found != schema.end() && found->is_object() ? *found : kNone;
   if (!JsonValue(schema, "additionalProperties", true)) {
     for (const auto& [name, child] : value.items()) {
       (void)child;
@@ -166,7 +168,9 @@ std::optional<ToolArgumentIssue> InvalidSchemaValue(const json& schema,
   if (allowed != schema.end() && allowed->is_array() &&
       std::find(allowed->begin(), allowed->end(), value) == allowed->end()) {
     return ArgumentIssue("schema.enum",
-                         "`" + path + "` is not an allowed value", path);
+                         "`" + path + "` is not an allowed value; use one of " +
+                             JsonDump(*allowed),
+                         path);
   }
 
   if (value.is_number()) {
@@ -320,24 +324,9 @@ std::optional<ToolArgumentIssue> FindToolArgumentIssue(const Tool& tool,
                             /*root=*/true);
 }
 
-std::string StableArgumentError(
-    const Tool& tool, const json& args,
-    std::unordered_map<std::string, std::string>& values) {
-  if (tool.stable_argument.empty()) return "";
-  auto value = args.find(tool.stable_argument);
-  if (value == args.end() || !value->is_string()) return "";
-  std::string key = tool.name + "\n" + tool.stable_argument;
-  auto [found, inserted] = values.emplace(key, value->get<std::string>());
-  if (inserted || found->second == value->get_ref<const std::string&>()) {
-    return "";
-  }
-  return "error: `" + tool.stable_argument + "` must remain `" + found->second +
-         "` for this turn; reuse that artifact";
-}
-
 ToolPolicy ToolPolicyFromEnvironment() {
   ToolPolicy policy;
-  std::string configured = Trim(EnvStr("UAGENT_TOOL_CAPABILITIES"));
+  std::string configured = Trim(SettingText(Cfg("UAGENT_TOOL_CAPABILITIES")));
   if (!configured.empty()) {
     policy.allowed = 0;
     for (const std::string& entry : SplitPathList(configured, ',')) {

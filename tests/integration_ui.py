@@ -17,6 +17,7 @@ from integration_support import (
     session_files,
     timeout_setting,
     tool_call,
+    tool_calls,
     wait_for_echo,
     wait_until_stopped,
     write_mcp_server,
@@ -78,13 +79,18 @@ def test_yolo_toggle_refreshes_approval_state(root, home, *, binary):
 def test_command_help(root, home, *, binary):
     with Server([event({"content": "unused"})]) as server:
         result = run_dialog(
-            root, base_env(home, server.url), "/models\n/wat\n/recap\n/help\n/exit\n", binary=binary
+            root,
+            base_env(home, server.url),
+            "/models\n/wat\n/recap\n/modle\n/help\n/exit\n",
+            binary=binary,
         )
         assert_true(result.returncode == 0, result.stderr)
         # Every quit alias detaches locally instead of reaching the runtime.
         assert_true("use conversation controls" not in result.stdout, result.stdout)
         assert_true("unknown command /wat; use /help" in result.stdout, result.stdout)
         assert_true("unknown command /recap; use /help" in result.stdout, result.stdout)
+        # A near miss names the command it most likely meant.
+        assert_true("unknown command /modle; did you mean /model?" in result.stdout, result.stdout)
         assert_true("commands\n" in result.stdout, result.stdout)
         assert_true("  /attach PATH" in result.stdout, result.stdout)
         assert_true("attach a file to the next turn" in result.stdout, result.stdout)
@@ -207,6 +213,105 @@ def test_non_utf8_locale_draws_only_ascii(root, home, *, binary):
     assert_true(re.search(rb"[\x80-\xff]", output) is None, output[-2000:])
 
 
+def test_plain_mode_writes_labelled_lines_without_cursor_control(root, home, *, binary):
+    # --plain is for screen readers: every row opens with a spoken label and
+    # nothing moves the cursor, erases, animates or leaves ASCII.
+    replies = [
+        tool_call("run", {"command": "printf plain-ran"}),
+        event({"content": "plain-ok"}),
+    ]
+    with Server(replies) as server:
+        code, output = run_pty(
+            root,
+            base_env(home, server.url),
+            [(b"go\n", b"approval needed:"), (b"y\n", b"plain-ok"), (b"/q\n", None)],
+            args=("--plain",),
+            startup_marker=b"",
+            binary=binary,
+        )
+    assert_true(code == 0, output[-2000:])
+    text = re.sub(rb"\x1b\[[0-9;]*m", b"", output)
+    for label in (
+        b"Welcome to uAgent. Try",
+        b"you: go",
+        b"tool: Running",
+        b"Risk: runs commands\r\n",
+        b"result: run",
+        b"uagent:\r\nplain-ok",
+    ):
+        assert_true(label in text, (label, output[-2000:]))
+    assert_true(re.search(rb"\x1b(\[[0-9;?]*[A-Za-ln-z]|\])", output) is None, output[-2000:])
+    assert_true(re.search(rb"[\x80-\xff]", output) is None, output[-2000:])
+
+
+def test_undo_puts_back_what_the_last_turn_changed(root, home, *, binary):
+    # /changes lists the turn's files and /undo restores them whole: an edit
+    # reverts, a created file goes, a deleted one comes back. A file changed
+    # since is kept, and says why.
+    (root / "edited.txt").write_text("one\n")
+    (root / "gone.txt").write_text("keep me\n")
+    (root / "later.txt").write_text("first\n")
+    calls = [
+        ("call-1", "edit_file", {"path": "edited.txt", "edits": [{"old": "one", "new": "two"}]}),
+        ("call-2", "write_file", {"path": "fresh.txt", "content": "new\n"}),
+        ("call-3", "delete_file", {"path": "gone.txt"}),
+        ("call-4", "write_file", {"path": "later.txt", "content": "second\n", "overwrite": True}),
+    ]
+
+    def finish(_, _body):
+        # Someone edits later.txt after the tool wrote it.
+        (root / "later.txt").write_text("user\n")
+        return event({"content": "changed-ok"})
+
+    told = []
+
+    def after(_, body):
+        told.append(json.dumps(body["messages"]))
+        return event({"content": "after-ok"})
+
+    with Server([tool_calls(calls), finish, after]) as server:
+        code, output = run_pty(
+            root,
+            base_env(home, server.url),
+            [
+                (b"go\n", b"changed-ok"),
+                (b"/changes\n", b"not tracked"),
+                (b"/undo\n", b"changed since"),
+                (b"again\n", b"after-ok"),
+                (b"/q\n", None),
+            ],
+            args=("--yolo", "--plain"),
+            startup_marker=b"",
+            binary=binary,
+        )
+    assert_true(code == 0, output[-2000:])
+    assert_true(b"edited.txt (+1 -1)" in output, output[-2000:])
+    assert_true((root / "edited.txt").read_text() == "one\n", output[-2000:])
+    assert_true(not (root / "fresh.txt").exists(), output[-2000:])
+    assert_true((root / "gone.txt").read_text() == "keep me\n", output[-2000:])
+    assert_true((root / "later.txt").read_text() == "user\n", output[-2000:])
+    assert_true(b"kept later.txt: changed since" in output, output[-2000:])
+    # The model hears once, at its next step, which files to re-read.
+    assert_true("user reverted: edited.txt, fresh.txt, gone.txt;" in told[0], told)
+
+
+def test_long_diff_prints_whole_live_and_on_resume(root, home, *, binary):
+    content = "".join(f"line {index:04d} of a long file\n" for index in range(2000))
+    write = tool_call("write_file", {"path": "long.txt", "content": content + "LAST_DIFF_LINE\n"})
+    with Server([write, event({"content": "wrote-ok"})]) as server:
+        # Room for the call's arguments, so the turn does not compact.
+        env = base_env(home, server.url) | {"UAGENT_CONTEXT": "200000"}
+        for args, payload in (
+            (("--yolo", "--plain"), [(b"go\n", b"wrote-ok"), (b"/q\n", None)]),
+            (("-c", "--plain"), [(b"/q\n", None)]),
+        ):
+            code, output = run_pty(root, env, payload, args=args, startup_marker=b"", binary=binary)
+            assert_true(code == 0, output[-2000:])
+            assert_true(b"long.txt (+2001 -0)" in output, output[-2000:])
+            assert_true(b"    +line 1999 of a long file\x1b" in output, output[-2000:])
+            assert_true(b"    +LAST_DIFF_LINE\x1b" in output, output[-2000:])
+
+
 def test_multiline_bracketed_paste(root, home, *, binary):
     def verify(_, body):
         pasted = body["messages"][-1].get("content")
@@ -237,8 +342,8 @@ def test_multiline_bracketed_paste(root, home, *, binary):
         )
         assert_true(code == 0, output)
         assert_true(b"multiline-paste-ok" in output, output)
-        # A 24-column status keeps its never-dropped segments: state and route.
-        assert_true(b"Ready \xc2\xb7 test\x1b[K" in output, output)
+        # A 24-column status keeps state, route and approval mode.
+        assert_true(b"Ready \xc2\xb7 test \xc2\xb7 Ask\x1b[K" in output, output)
         assert_true(b"\x1b[?2004h" in output and b"\x1b[?2004l" in output, output)
         # The echoed turn is banded to the right edge on every row it spans,
         # and the band is always closed again.
@@ -451,9 +556,9 @@ def test_input_redraw_approval_does_not_pollute_history(root, home, *, binary):
             [
                 (b"go\n", b"Allow run?"),
                 (b"y\n", b"approval-done"),
-                # The idle status carries the route in schema form and the
-                # context window beside what is used.
-                (b"", b"Ready \xc2\xb7 test \xc2\xb7 est. ctx"),
+                # The idle status carries the route in schema form, then the
+                # approval mode, and the context window beside what is used.
+                (b"", b"Ready \xc2\xb7 test \xc2\xb7 Ask \xc2\xb7 ", b"est. ctx", None),
                 (b"probe", b"probe"),  # input broker is accepting drafts
                 b"\x7f" * 5,
                 (b"\x1b[A", b"go"),
@@ -1147,6 +1252,56 @@ def test_input_slash_suggestions_and_tab_completion(root, home, *, binary):
         assert_true(not server.get_requests, server.get_requests)
 
 
+def test_input_slash_menu_moves_with_arrows(root, home, *, binary):
+    """Arrows walk the command menu; Tab and Enter take the highlighted row.
+
+    Scattered letters still find a command, and Enter on a partial name only
+    completes it, so a half-typed command never reaches the runtime.
+    """
+    with Server([event({"content": "unused"})]) as server:
+        code, output = run_pty(
+            root,
+            base_env(home, server.url),
+            [
+                (b"/mo", b"> /model  choose"),
+                (b"\x1b[B", b"> /models  search"),
+                (b"\x1b[A", b"> /model  choose"),
+                (b"\x1b[B\r", b"\x1b[49m/models "),
+                (b"\x15/mdls", b"> /models  search"),
+                (b"\t", b"\x1b[49m/models "),
+                b"\x15/q\n",
+            ],
+            binary=binary,
+        )
+        assert_true(code == 0, output)
+        # Neither Enter nor Tab submitted the completed command.
+        assert_true(not server.get_requests, server.get_requests)
+
+
+def test_status_row_names_mode_and_turn_keys(root, home, *, binary):
+    """The idle row names the approval mode; a running turn names its keys."""
+
+    def delayed(_, __):
+        time.sleep(0.7)
+        return event({"content": "status-keys-ok"})
+
+    with Server([delayed]) as server:
+        code, output = run_pty(
+            root,
+            base_env(home, server.url),
+            [
+                (b"work\n", b"Esc stop \xc2\xb7 Ctrl+B background"),
+                (b"", b"status-keys-ok", b"Ready", None),
+                b"/q\n",
+            ],
+            columns=160,
+            startup_marker=b"Ready",
+            binary=binary,
+        )
+        assert_true(code == 0, output)
+        assert_true(re.search(rb"Ready \xc2\xb7 \S+ \xc2\xb7 Ask", output), output)
+
+
 def test_input_at_path_suggestions_and_tab_completion(root, home, *, binary):
     """`@` completes a path a segment at a time, the way a shell does.
 
@@ -1379,7 +1534,8 @@ def test_cli_mcp_config_and_restart(root, home, *, binary):
     try:
         with Server(
             [
-                lambda _, _body: event({"content": "Before restart"}),
+                # A limit set a moment ago already bounds this request.
+                lambda _, body: event({"content": f"Before restart, cap {body.get('max_tokens')}"}),
                 lambda _, body: event(
                     {"content": "history kept" if "Before restart" in json.dumps(body) else "lost"}
                 ),
@@ -1389,7 +1545,8 @@ def test_cli_mcp_config_and_restart(root, home, *, binary):
                 root,
                 base_env(home, server.url),
                 "/mcp\n/mcp off probe\n/mcp on probe\n"
-                "/config user UAGENT_MAX_TOKENS=100\n/config\n"
+                "/config user UAGENT_MCP_TIMEOUT=100\n"
+                "/config user UAGENT_MAX_TOKENS=321\n/config\n"
                 "First turn\n/restart\nSecond turn\n"
                 "/config user reset\n/rename Parity check\n/permissions rules\n/q\n",
                 binary=binary,
@@ -1398,11 +1555,13 @@ def test_cli_mcp_config_and_restart(root, home, *, binary):
         assert_true(result.returncode == 0, result.stderr)
         assert_true(re.search(r"probe .*global .*1 tools", output), output)
         assert_true("disabled" in output, output)
-        assert_true("UAGENT_MAX_TOKENS: needs a restart" in output, output)
+        assert_true("UAGENT_MCP_TIMEOUT: needs a restart" in output, output)
         assert_true("/restart applies it here" in output, output)
-        assert_true(re.search(r"UAGENT_MAX_TOKENS = .*100 .*global-config", output), output)
+        assert_true("UAGENT_MAX_TOKENS: active at the next user turn" in output, output)
+        assert_true("Before restart, cap 321" in output, output)
+        assert_true(re.search(r"UAGENT_MCP_TIMEOUT = .*100 .*user", output), output)
         assert_true("history kept" in output, output)
-        assert_true("UAGENT_MAX_TOKENS" not in (home / ".uagent/.config").read_text(), "reset")
+        assert_true("UAGENT_MCP_TIMEOUT" not in (home / ".uagent/.config").read_text(), "reset")
         assert_true("no remembered actions for this repository" in output, output)
         assert_true(
             any("Parity check" in path.read_text() for path in session_files(home)),

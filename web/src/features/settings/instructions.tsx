@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useRef, useState } from "preact/hooks";
+import { useAction } from "../../shared/use-action.ts";
+import { useResource } from "../../shared/use-resource.ts";
 import type {
   InstructionFile,
   InstructionStack,
@@ -14,7 +16,7 @@ import {
   Placeholder,
   Textarea,
 } from "../../shared/ui.tsx";
-import { ProjectField } from "./management.tsx";
+import { ProjectField } from "../library/management.tsx";
 import "./instructions.css";
 
 const TITLES: Record<string, string> = {
@@ -45,27 +47,25 @@ export default function Instructions({
   const [cwd, setCwd] = useState(session?.cwd || projects[0] || "");
   // Tagged with its project, so another project's files never show, or get
   // saved, under this one.
-  const [loaded, setLoaded] = useState<{
-    cwd: string;
-    stack: InstructionStack;
-  }>();
+  const {
+    value: loaded,
+    error,
+    retry,
+    setValue: setLoaded,
+  } = useResource<{ cwd: string; stack: InstructionStack }>(
+    () =>
+      online
+        ? command("instructions", null, { action: "show", cwd }).then(
+            (value) => {
+              if (value.pending)
+                throw new Error("Reload to see the instructions.");
+              return { cwd, stack: value.result };
+            },
+          )
+        : undefined,
+    [cwd, online, version],
+  );
   const stack = loaded?.cwd === cwd ? loaded.stack : undefined;
-  const [error, setError] = useState<unknown>(null);
-  const [attempt, setAttempt] = useState(0);
-  useEffect(() => {
-    let active = true;
-    setError(null);
-    if (online)
-      command("instructions", null, { action: "show", cwd })
-        .then((value) => {
-          if (value.pending) throw new Error("Reload to see the instructions.");
-          if (active) setLoaded({ cwd, stack: value.result });
-        })
-        .catch((failure) => active && setError(failure));
-    return () => {
-      active = false;
-    };
-  }, [cwd, online, version, attempt]);
   const self = state?.self_directive;
   const card = (file: InstructionFile) => (
     <InstructionCard
@@ -89,7 +89,7 @@ export default function Instructions({
         Changes reach new and restarted sessions.
       </p>
       {error ? (
-        <LoadError error={error} retry={() => setAttempt(attempt + 1)} />
+        <LoadError error={error} retry={retry} />
       ) : (
         <Placeholder label="Loading instructions…" when={!stack}>
           <>
@@ -188,15 +188,12 @@ function InstructionCard({
   const [draft, setDraft] = useState<{ text: string; base: string } | null>(
     null,
   );
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<unknown>(null);
+  const { run, busy, error } = useAction();
   const field = useRef<HTMLTextAreaElement>(null);
   const text = draft?.text ?? file.text;
   const changed = text !== file.text;
   async function save() {
-    setBusy(true);
-    setError(null);
-    try {
+    await run(async () => {
       const value = await command("instructions", null, {
         action: "set",
         cwd,
@@ -209,13 +206,9 @@ function InstructionCard({
         saved(value.result);
         setDraft(null);
       }
-    } catch (failure) {
-      setError(failure);
-    } finally {
-      setBusy(false);
-      // Save leaves with the edit; focus stays in the field, not the page.
-      field.current?.focus();
-    }
+    });
+    // Save leaves with the edit; focus stays in the field, not the page.
+    field.current?.focus();
   }
   const title = TITLES[`${file.audience}/${file.scope}`];
   return (

@@ -49,22 +49,24 @@ constexpr TopicName kTopics[] = {
     {SelfTopic::kRoutes, "routes"},
 };
 
-json DefaultJson(const ConfigDescriptor& descriptor) {
-  return std::visit([](auto value) { return json(value); },
-                    descriptor.default_value);
-}
-
 json DescriptorJson(const ConfigDescriptor& descriptor) {
   json entry = {{"name", descriptor.environment},
                 {"type", ConfigTypeName(descriptor.type)},
-                {"default", DefaultJson(descriptor)},
+                {"default", std::visit([](auto value) { return json(value); },
+                                       descriptor.default_value)},
                 {"takes_effect", ReloadPolicyName(descriptor.reload)},
                 {"sensitivity", SensitivityName(descriptor.sensitivity)},
                 {"category", descriptor.category},
                 {"description", descriptor.description}};
   if (!descriptor.field.empty()) entry["field"] = descriptor.field;
   if (!descriptor.choices.empty()) entry["choices"] = descriptor.choices;
-  if (!descriptor.fallback.empty()) entry["fallback"] = descriptor.fallback;
+  if (!descriptor.fallback.empty()) {
+    entry[FindConfigDescriptor(descriptor.fallback) ? "follows" : "fallback"] =
+        descriptor.fallback;
+  }
+  entry["label"] = descriptor.label;
+  if (!descriptor.purpose.empty()) entry["purpose"] = descriptor.purpose;
+  if (descriptor.terminal) entry["terminal"] = true;
   if (descriptor.type == ConfigType::kInt) {
     if (descriptor.minimum != kConfigAnyMin) {
       entry["minimum"] = descriptor.minimum;
@@ -108,7 +110,8 @@ json CommandJson(const SlashCommandSpec& command) {
           {"usage", std::move(usage)},
           {"description", command.description},
           {"alias", !*command.description},
-          {"client_only", command.client_only}};
+          {"client_only", command.Has(kClientOnly)},
+          {"terminal", command.Has(kTerminal)}};
 }
 
 }  // namespace
@@ -138,21 +141,62 @@ json ConfigSchemaJson() {
   return settings;
 }
 
-json ConfigSettingsJson(const json& sources, const json& active,
-                        std::string_view name) {
+// `text` as the setting's type; null when empty or unparsable.
+json TypedValue(const ConfigDescriptor& descriptor, const std::string& text) {
+  int64_t integer = 0;
+  double number = 0;
+  bool flag = false;
+  switch (descriptor.type) {
+    case ConfigType::kInt:
+      return ParseInt64(text.c_str(), integer)
+                 ? json(std::clamp(integer, descriptor.minimum,
+                                   descriptor.maximum))
+                 : json();
+    case ConfigType::kDouble:
+      return ParseFiniteDouble(text.c_str(), number) ? json(number) : json();
+    case ConfigType::kBool:
+      return ParseBool(text, flag) ? json(flag) : json();
+    case ConfigType::kString:
+      return text.empty() ? json() : json(text);
+  }
+  return json();
+}
+
+json ConfigSettingsJson(const EffectiveConfigSnapshot& configured,
+                        const EnvValues& user, std::string_view name) {
   json settings = json::array();
   for (const ConfigDescriptor& descriptor : ConfigRegistry()) {
     if (!name.empty() && descriptor.environment != name) continue;
     json entry = DescriptorJson(descriptor);
-    entry["source"] =
-        JsonValue(sources, std::string(descriptor.environment).c_str(),
-                  std::string("default"));
-    const std::string field(descriptor.field);
-    if (descriptor.sensitivity == Sensitivity::kPublic && !field.empty() &&
-        active.contains(field)) {
-      entry["active"] = active[field];
+    const std::string key(descriptor.environment);
+    const bool secret = descriptor.sensitivity != Sensitivity::kPublic;
+    const std::string source =
+        JsonValue(configured.sources, key.c_str(), "default");
+    entry["source"] = source;
+    entry["locked"] = source == "environment" || source == "cli";
+    if (auto own = user.find(key); own != user.end() && !own->second.empty()) {
+      entry["set"] = secret ? json(true) : TypedValue(descriptor, own->second);
+    }
+    if (!secret) {
+      auto merged = configured.values.find(key);
+      json effective = merged != configured.values.end()
+                           ? TypedValue(descriptor, merged->second)
+                           : json();
+      entry["effective"] =
+          effective.is_null() ? entry["default"] : std::move(effective);
     }
     settings.push_back(std::move(entry));
+  }
+  // An empty setting that follows another takes that one's value.
+  for (json& entry : settings) {
+    if (!entry.contains("follows") || entry.value("effective", "") != "") {
+      continue;
+    }
+    for (const json& other : settings) {
+      if (other["name"] == entry["follows"] && other.contains("effective")) {
+        entry["effective"] = other["effective"];
+      }
+    }
   }
   return settings;
 }
@@ -166,13 +210,16 @@ json CliSchemaJson() {
   return flags;
 }
 
-json CommandSchemaJson(bool browser) {
-  json commands = json::array();
-  for (const SlashCommandSpec& command : SlashCommandRegistry()) {
-    if (!*command.description || (browser && command.terminal_only)) continue;
-    commands.push_back(CommandJson(command));
-  }
-  return commands;
+const json& CommandSchemaJson() {
+  static const json kCommands = [] {
+    json commands = json::array();
+    for (const SlashCommandSpec& command : SlashCommandRegistry()) {
+      if (!*command.description) continue;
+      commands.push_back(CommandJson(command));
+    }
+    return commands;
+  }();
+  return kCommands;
 }
 
 json DescribeSelf(SelfTopic topic, const std::string& name,
@@ -206,10 +253,11 @@ json DescribeSelf(SelfTopic topic, const std::string& name,
       out["commands"] = CommandSchemaJson();
       break;
     case SelfTopic::kConfig: {
-      json diagnostics = inputs.config_manager.DiagnosticJson(inputs.active);
-      out["settings"] = ConfigSettingsJson(diagnostics["sources"],
-                                           diagnostics["active"], name);
-      out["restart_required"] = diagnostics["restart_required"];
+      out["settings"] =
+          ConfigSettingsJson(inputs.config_manager.Read(),
+                             ReadEnvValues(UagentConfigPath()), name);
+      out["restart_required"] = inputs.config_manager.DiagnosticJson(
+          inputs.active)["restart_required"];
       break;
     }
     case SelfTopic::kRoutes: {

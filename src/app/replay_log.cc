@@ -17,10 +17,9 @@ namespace uagent::session {
 ReplayLog::ReplayLog(size_t byte_limit, size_t event_limit)
     : byte_limit_(byte_limit), event_limit_(event_limit) {}
 
-HostReplay ReplayLog::Publish(const std::string& epoch,
-                              const std::string& session,
-                              const std::string& generation, json value,
-                              bool run_owned) {
+void ReplayLog::Publish(const std::string& epoch, const std::string& session,
+                        const std::string& generation, json value,
+                        bool run_owned) {
   const std::string type = JsonValue(value, "type", "");
   const std::string kind = JsonValue(value, "kind", "");
   HostNotice notice;
@@ -41,12 +40,9 @@ HostReplay ReplayLog::Publish(const std::string& epoch,
   if (kind == "deleted") notices_.erase(session);
   value["epoch"] = epoch;
   value["sequence"] = ++sequence_;
-  value["session_id"] = session;
-  value["generation"] = generation;
-  value["v"] = kProtocol;
-  HostReplay published{sequence_, JsonDump(value)};
-  replay_bytes_ += published.frame.size();
-  replay_.push_back(published);
+  StampFrame(value, session, generation);
+  replay_.push_back({sequence_, JsonDump(value)});
+  replay_bytes_ += replay_.back().frame.size();
   while (replay_bytes_ > byte_limit_ || replay_.size() > event_limit_) {
     replay_bytes_ -= replay_.front().frame.size();
     replay_.pop_front();
@@ -59,20 +55,21 @@ HostReplay ReplayLog::Publish(const std::string& epoch,
       pending.attention_id = std::move(notice.attention_id);
     }
   }
-  return published;
 }
 
-ReplayBatch ReplayLog::Read(uint64_t next, bool valid,
-                            uint64_t watermark) const {
+ReplayBatch ReplayLog::Read(uint64_t next, bool valid, uint64_t watermark,
+                            size_t byte_budget) const {
   ReplayBatch batch;
   batch.cursor = sequence_;
   batch.reset = !valid || next > sequence_ ||
                 (!replay_.empty() && next + 1 < replay_.front().sequence);
   if (batch.reset) return batch;
+  size_t bytes = 0;
   for (const HostReplay& event : replay_) {
-    if (event.sequence > next && event.sequence <= watermark) {
-      batch.events.push_back(event);
-    }
+    if (event.sequence <= next) continue;
+    if (event.sequence > watermark || bytes >= byte_budget) break;
+    batch.events.push_back(event);
+    bytes += event.frame.size();
   }
   return batch;
 }

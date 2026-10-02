@@ -41,6 +41,8 @@ export type Preferences = Pick<
   ComponentProps<typeof Settings>,
   | "theme"
   | "setTheme"
+  | "motion"
+  | "setMotion"
   | "timePrefs"
   | "setTimePrefs"
   | "zoom"
@@ -48,8 +50,7 @@ export type Preferences = Pick<
   | "install"
   | "setInstall"
   | "update"
-  | "drafts"
-  | "uploading"
+  | "updateBlocked"
   | "notificationMode"
   | "setNotificationMode"
   | "notifications"
@@ -307,6 +308,7 @@ export default function Modals({
             selected={selected}
             session={session}
             instructions={() => setModal({ type: "instructions" })}
+            tools={() => setModal({ type: "tools", session_id: selected })}
           />
         </Modal>
       )}

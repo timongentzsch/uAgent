@@ -91,11 +91,7 @@ bool DebugSink::Start(std::string path) {
   }
   Fd fd(open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC,
              kPrivateFileMode));
-  if (!fd) {
-    error_ = strerror(errno);
-    return false;
-  }
-  if (fchmod(fd.Get(), kPrivateFileMode) != 0) {
+  if (!fd || fchmod(fd.Get(), kPrivateFileMode) != 0) {
     error_ = strerror(errno);
     return false;
   }

@@ -54,6 +54,14 @@ std::string StatusMark(std::string_view status) {
   return color + AsciiGlyphs(status == "disabled" ? "○" : "●") + RST();
 }
 
+// Notes the error `result` carries, if any. True when there was one.
+bool NoteError(CommandReply& reply, const json& result) {
+  if (!result.contains("error")) return false;
+  reply.Note(Tone::kError,
+             "error: " + TerminalSafe(JsonValue(result, "error", "")));
+  return true;
+}
+
 }  // namespace
 
 void SaveSessionSettings(AppSession& session) {
@@ -181,9 +189,6 @@ void HandleContext(AppSession& session, CommandReply& reply) {
   reply.Print("%s\n",
               TerminalSafe(JsonDump(reply.result["model_request"], 2)).c_str());
 }
-
-// The startup row is a snapshot; MCP refresh and config reloads change the
-// set mid-session, so this is the live view.
 
 // /context is the deep live-context view. /status answers the everyday
 // questions in one screen and /debug-config explains provenance.
@@ -317,7 +322,9 @@ void HandleDebugConfig(const AppSession& session, const std::string& argument,
           "%s", KeyValueRow(label, TerminalSafe(value), kDetailIndent).c_str());
     };
     row("source", source);
-    if (setting.contains("active")) row("active", JsonDump(setting["active"]));
+    if (setting.contains("effective")) {
+      row("effective", JsonDump(setting["effective"]));
+    }
     row("default", JsonDump(setting["default"]));
     row("takes effect", JsonValue(setting, "takes_effect", std::string()));
   }
@@ -362,17 +369,12 @@ void HandleConfig(AppSession& session, const std::string& argument,
   }
   reply.result = SessionControl(session, request);
   const json& result = reply.result;
-  if (result.contains("error")) {
-    reply.Note(Tone::kError,
-               "error: " + TerminalSafe(JsonValue(result, "error", "")));
-    return;
-  }
+  if (NoteError(reply, result)) return;
   bool restart = false;
   for (const json& effect : JsonValue(result, "effects", json::array())) {
-    const std::string how = JsonValue(effect, "effect", "");
-    restart |= how == "needs a restart";
-    reply.Note(Tone::kNeutral,
-               TerminalSafe(JsonValue(effect, "key", "")) + ": " + how);
+    restart |= JsonValue(effect, "effect", "") == "restart";
+    reply.Note(Tone::kNeutral, TerminalSafe(JsonValue(effect, "key", "")) +
+                                   ": " + JsonValue(effect, "text", ""));
   }
   if (restart) {
     reply.Note(Tone::kWarn,
@@ -384,7 +386,7 @@ void HandleConfig(AppSession& session, const std::string& argument,
     const std::string source = JsonValue(setting, "source", "default");
     if (source == "default") continue;
     ++changed;
-    const json& value = setting["value"];
+    const json value = JsonValue(setting, "effective", json());
     reply.Print("%s = %s%s · %s%s\n",
                 TerminalSafe(JsonValue(setting, "name", "")).c_str(), DIM(),
                 value.is_null()
@@ -423,11 +425,7 @@ void HandlePermissionRules(const std::string& argument, CommandReply& reply) {
     }
   }
   reply.result = listed;
-  if (listed.contains("error")) {
-    reply.Note(Tone::kError,
-               "error: " + TerminalSafe(JsonValue(listed, "error", "")));
-    return;
-  }
+  if (NoteError(reply, listed)) return;
   const json& rules = listed["rules"];
   if (rules.empty()) {
     reply.Note(Tone::kNeutral, "no remembered actions for this repository");
@@ -460,11 +458,7 @@ void HandleMcp(AppSession& session, const std::string& argument,
          {"operation", operation == "retry" ? "mcp_restart" : "mcp_enable"},
          {"name", name},
          {"enabled", operation == "on"}});
-    if (done.contains("error")) {
-      reply.Note(Tone::kError,
-                 "error: " + TerminalSafe(JsonValue(done, "error", "")));
-      return;
-    }
+    if (NoteError(reply, done)) return;
   }
   const json servers = McpStatus(app.runtime.mcp, app.tools);
   reply.result = {{"mcp", servers}};
@@ -511,11 +505,7 @@ void HandleTools(AppSession& session, const std::string& argument,
   }
   reply.result = SessionControl(session, request);
   const json& result = reply.result;
-  if (result.contains("error")) {
-    reply.Note(Tone::kError,
-               "error: " + TerminalSafe(JsonValue(result, "error", "")));
-    return;
-  }
+  if (NoteError(reply, result)) return;
   reply.Note(Tone::kNeutral,
              std::to_string(JsonValue(result, "active", int64_t{0})) + "/" +
                  std::to_string(JsonValue(result, "available", int64_t{0})) +

@@ -1,6 +1,6 @@
 import { storage } from "./shared/storage.ts";
 import { render } from "preact";
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { Check, Copy, Plus, Wrench } from "lucide-preact";
 import {
   Actions,
@@ -8,13 +8,13 @@ import {
   Field,
   IconButton,
   Mark,
+  ConfirmModal,
   Modal,
   Select,
   Skeleton,
   Spinner,
   Group,
   Row,
-  SettingRow,
   Switch,
   Input,
   Textarea,
@@ -30,7 +30,12 @@ import {
 import { Menu, MenuItem } from "./shared/menu.tsx";
 import { SheetButton } from "./shared/sheet.tsx";
 import { ConnectionStatus, StatusLed } from "./shared/connection-status.tsx";
-import { applyTheme, applyZoom, normalizeZoom } from "./shared/layout.ts";
+import {
+  applyMotion,
+  applyTheme,
+  applyZoom,
+  normalizeZoom,
+} from "./shared/layout.ts";
 import { ZoomSlider } from "./shared/zoom-slider.tsx";
 import { readStored, writeStored } from "./state/store.ts";
 import BrowserTouch from "./features/browser/touch.tsx";
@@ -189,10 +194,14 @@ function Showcase() {
   );
   const [enabled, setEnabled] = useState(true);
   const [dialog, setDialog] = useState<
-    "example" | "browser" | "loading" | "image" | null
+    "example" | "confirm" | "browser" | "loading" | "image" | null
   >(null);
 
   useEffect(() => applyTheme(theme), [theme]);
+  useLayoutEffect(
+    () => applyMotion(storage.getItem("uagent-motion") || "system"),
+    [],
+  );
   useEffect(() => {
     writeStored(storage, "uagent-zoom", zoom);
     applyZoom(zoom);
@@ -236,28 +245,21 @@ function Showcase() {
           </div>
           <div class="showcase-card">
             <Group>
-              <SettingRow
-                name="Zoom"
-                htmlFor="zoom"
-                detail="A changed setting offers Reset."
-                overridden={zoom !== 100}
-                reset={() => setZoom(100)}
-              >
-                <ZoomSlider zoom={zoom} change={setZoom} />
-              </SettingRow>
-              <SettingRow
-                name="Locked setting"
-                locked="Set by the environment; change it there."
-                overridden
-                reset={() => {}}
-              >
+              <Row label="Zoom" detail="The value returns to 100% when tapped.">
+                <ZoomSlider
+                  zoom={zoom}
+                  change={setZoom}
+                  reset={() => setZoom(100)}
+                />
+              </Row>
+              <Row label="Locked setting" detail="Locked">
                 <Switch
                   label="Locked setting"
                   checked
                   disabled
                   onChange={() => {}}
                 />
-              </SettingRow>
+              </Row>
             </Group>
           </div>
         </div>
@@ -306,7 +308,11 @@ function Showcase() {
               <IconButton label="Copy example">
                 <Copy />
               </IconButton>
-              <SheetButton label="Example sheet" trigger={<Wrench />}>
+              <SheetButton
+                label="Example sheet"
+                size="icon"
+                trigger={<Wrench />}
+              >
                 <p>Sheet content.</p>
               </SheetButton>
               <Menu label="Example menu">
@@ -496,6 +502,7 @@ function Showcase() {
         </div>
         <div class="showcase-row">
           <Button onClick={() => setDialog("example")}>Open dialog</Button>
+          <Button onClick={() => setDialog("confirm")}>Ask first</Button>
           <Button onClick={() => setDialog("loading")}>
             Open loading dialog
           </Button>
@@ -534,6 +541,15 @@ function Showcase() {
             </Button>
           </Actions>
         </Modal>
+      )}
+      {dialog === "confirm" && (
+        <ConfirmModal
+          title="Forget all"
+          confirm={() => setDialog(null)}
+          close={() => setDialog(null)}
+        >
+          Every remembered action for this repository is forgotten.
+        </ConfirmModal>
       )}
       {dialog === "loading" && (
         <Modal

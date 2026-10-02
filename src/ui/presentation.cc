@@ -18,6 +18,7 @@
 #include "include/agent/tool_presentation.h"
 #include "include/api/citations.h"
 #include "include/core/debug.h"
+#include "include/core/fs.h"
 #include "include/core/strings.h"
 #include "include/core/style.h"
 #include "include/core/term.h"
@@ -26,6 +27,7 @@
 #include "include/ui/interactive.h"
 
 namespace uagent {
+namespace {
 
 bool PrintSearchReceipt(int64_t searches, const json& annotations, bool details,
                         bool line_open) {
@@ -67,8 +69,6 @@ void PrintCitationSources(const json& annotations) {
     printf("%s- <%s>%s\n", DIM(), TerminalSafe(source.url).c_str(), RST());
   }
 }
-
-namespace {
 
 // Shared by the poll and plain tool-result ladders. The notice ladder above
 // maps kWarned instead of kCancelled and stays separate on purpose.
@@ -113,13 +113,86 @@ std::string Indented(std::string_view text, size_t indent) {
   return out;
 }
 
-}  // namespace
-
 const char* DiffLineStyle(std::string_view line) {
   if (line.starts_with('+')) return GREEN();
   if (line.starts_with('-')) return RED();
   return "";
 }
+
+void PrintMessageHeader() {
+  // Assistant header is the binary name in ASCII, identical on live turns
+  // and --resume replay. Never the bare unicode mark: it renders as a
+  // random glyph on dumb PTYs and mismatches the spinner labels. Plain mode
+  // names the speaker as it names every other row.
+  if (g_plain) printf("uagent:\n");
+  if (!g_tty) return;
+  printf("%suagent%s\n", BOLD(), RST());
+}
+
+std::string TurnStatsLine(const json& summary) {
+  const json usage = JsonValue(summary, "usage", json::object());
+  auto n = [&](const char* key) { return JsonValue(usage, key, int64_t{0}); };
+  std::string line = FmtCount(n("input")) + " in";
+  for (auto [key, label] : {std::pair{"cache_read", " cached"},
+                            std::pair{"cache_write", " cache write"}}) {
+    if (n(key)) line += " (+" + FmtCount(n(key)) + label + ")";
+  }
+  line += " · " + FmtCount(n("output")) + " out";
+  if (n("reasoning")) line += " (+" + FmtCount(n("reasoning")) + " reasoning)";
+  const double rate = JsonValue(summary, "tokens_per_second", 0.0);
+  const double first = JsonValue(summary, "ttt_ms", -1.0);
+  auto counted = [](int64_t count, const char* unit) {
+    return count ? FmtCount(count) + unit : "";
+  };
+  return AsciiGlyphs(JoinDot(
+      {JsonValue(summary, "usage_reported", true) ? line : "usage not reported",
+       counted(n("web_searches"), " searches"),
+       JsonValue(usage, "cost_reported", false)
+           ? FmtCost(JsonValue(usage, "cost", 0.0))
+           : "",
+       counted(JsonValue(summary, "tool_calls", int64_t{0}), " tools"),
+       rate > 0 ? FmtCount(static_cast<int64_t>(rate)) + " tok/s" : "",
+       first >= 0 ? "first " + FmtDuration(first / 1000) : "",
+       FmtDuration(JsonValue(summary, "duration_ms", 0.0) / 1000)}));
+}
+
+// The inverse of PresentationJson: a record as the event stream carries it.
+PresentationRecord PresentationFromJson(const json& value) {
+  PresentationRecord record;
+  auto kind = JsonValue(value, "kind", "");
+  record.kind = kind == "tool_call"     ? PresentationKind::kToolCall
+                : kind == "tool_result" ? PresentationKind::kToolResult
+                                        : PresentationKind::kNotice;
+  auto status = JsonValue(value, "status", "");
+  record.status = status == "succeeded"   ? PresentationStatus::kSucceeded
+                  : status == "failed"    ? PresentationStatus::kFailed
+                  : status == "cancelled" ? PresentationStatus::kCancelled
+                  : status == "warned"    ? PresentationStatus::kWarned
+                                          : PresentationStatus::kNeutral;
+  record.title = JsonValue(value, "title", "");
+  record.summary = JsonValue(value, "summary", "");
+  record.detail = JsonValue(value, "detail", "");
+  record.change = JsonValue(value, "change", "");
+  record.change_path = JsonValue(value, "change_path", "");
+  record.multiline = JsonValue(value, "multiline", false);
+  record.id = JsonValue(value, "id", "");
+  record.skill = JsonValue(value, "skill", false);
+  record.poll = JsonValue(value, "poll", false);
+  record.minor = JsonValue(value, "minor", false);
+  record.output = JsonValue(value, "output", "");
+  record.view = JsonValue(value, "view", json(nullptr));
+  record.activity = JsonValue(value, "activity", json::object());
+  if (const json* artifacts = JsonArray(value, "artifacts")) {
+    for (const auto& artifact : *artifacts) {
+      record.artifacts.push_back({JsonValue(artifact, "kind", ""),
+                                  JsonValue(artifact, "path", ""),
+                                  JsonValue(artifact, "bytes", size_t{0})});
+    }
+  }
+  return record;
+}
+
+}  // namespace
 
 std::string ColorizeDiffLines(std::string_view text) {
   std::string output;
@@ -138,14 +211,6 @@ std::string ColorizeDiffLines(std::string_view text) {
     begin = end + (newline ? 1 : 0);
   }
   return output;
-}
-
-void PrintMessageHeader() {
-  if (!g_tty) return;
-  // Assistant header is the binary name in ASCII, identical on live turns
-  // and --resume replay. Never the bare unicode mark: it renders as a
-  // random glyph on dumb PTYs and mismatches the spinner labels.
-  printf("%suagent%s\n", BOLD(), RST());
 }
 
 struct TerminalPresenter::State {
@@ -209,7 +274,7 @@ struct TerminalPresenter::State {
       if (content_started && line_open) markdown.FeedPlain("\n");
       markdown.Control(RST());
       markdown.Control(DIM());
-      markdown.FeedPlain(AsciiGlyphs("· Thinking\n"));
+      markdown.FeedPlain(RowMark(Mark::kNote) + "Thinking\n");
       line_open = false;
       in_reasoning = true;
     }
@@ -238,33 +303,6 @@ struct TerminalPresenter::State {
 
 TerminalPresenter::TerminalPresenter() = default;
 TerminalPresenter::~TerminalPresenter() { Finish(); }
-
-std::string TurnStatsLine(const json& summary) {
-  const json usage = JsonValue(summary, "usage", json::object());
-  auto n = [&](const char* key) { return JsonValue(usage, key, int64_t{0}); };
-  std::string line = FmtCount(n("input")) + " in";
-  for (auto [key, label] : {std::pair{"cache_read", " cached"},
-                            std::pair{"cache_write", " cache write"}}) {
-    if (n(key)) line += " (+" + FmtCount(n(key)) + label + ")";
-  }
-  line += " · " + FmtCount(n("output")) + " out";
-  if (n("reasoning")) line += " (+" + FmtCount(n("reasoning")) + " reasoning)";
-  const double rate = JsonValue(summary, "tokens_per_second", 0.0);
-  const double first = JsonValue(summary, "ttt_ms", -1.0);
-  auto counted = [](int64_t count, const char* unit) {
-    return count ? FmtCount(count) + unit : "";
-  };
-  return AsciiGlyphs(JoinDot(
-      {JsonValue(summary, "usage_reported", true) ? line : "usage not reported",
-       counted(n("web_searches"), " searches"),
-       JsonValue(usage, "cost_reported", false)
-           ? FmtCost(JsonValue(usage, "cost", 0.0))
-           : "",
-       counted(JsonValue(summary, "tool_calls", int64_t{0}), " tools"),
-       rate > 0 ? FmtCount(static_cast<int64_t>(rate)) + " tok/s" : "",
-       first >= 0 ? "first " + FmtDuration(first / 1000) : "",
-       FmtDuration(JsonValue(summary, "duration_ms", 0.0) / 1000)}));
-}
 
 void TerminalPresenter::Consume(const Event& event) noexcept {
   switch (event.id) {
@@ -352,37 +390,7 @@ void TerminalPresenter::Consume(const AppEvent& received) noexcept {
     event.text = text;
     event.render = true;
     if (const json* value = JsonObject(received.data, "presentation")) {
-      PresentationRecord record;
-      auto kind = JsonValue(*value, "kind", "");
-      record.kind = kind == "tool_call"     ? PresentationKind::kToolCall
-                    : kind == "tool_result" ? PresentationKind::kToolResult
-                                            : PresentationKind::kNotice;
-      auto status = JsonValue(*value, "status", "");
-      record.status = status == "succeeded"   ? PresentationStatus::kSucceeded
-                      : status == "failed"    ? PresentationStatus::kFailed
-                      : status == "cancelled" ? PresentationStatus::kCancelled
-                      : status == "warned"    ? PresentationStatus::kWarned
-                                              : PresentationStatus::kNeutral;
-      record.title = JsonValue(*value, "title", "");
-      record.summary = JsonValue(*value, "summary", "");
-      record.detail = JsonValue(*value, "detail", "");
-      record.change = JsonValue(*value, "change", "");
-      record.multiline = JsonValue(*value, "multiline", false);
-      record.id = JsonValue(*value, "id", "");
-      record.skill = JsonValue(*value, "skill", false);
-      record.poll = JsonValue(*value, "poll", false);
-      record.minor = JsonValue(*value, "minor", false);
-      record.output = JsonValue(*value, "output", "");
-      record.view = JsonValue(*value, "view", json(nullptr));
-      record.activity = JsonValue(*value, "activity", json::object());
-      if (const json* artifacts = JsonArray(*value, "artifacts")) {
-        for (const auto& artifact : *artifacts) {
-          record.artifacts.push_back({JsonValue(artifact, "kind", ""),
-                                      JsonValue(artifact, "path", ""),
-                                      JsonValue(artifact, "bytes", size_t{0})});
-        }
-      }
-      event.presentation = std::move(record);
+      event.presentation = PresentationFromJson(*value);
     }
     Consume(event);
     break;
@@ -464,6 +472,7 @@ void TerminalPresenter::Block(const json& block) {
     }
     record.id = JsonValue(block, "call_id", "");
     record.activity = JsonValue(block, "activity", json::object());
+    record.change_path = JsonValue(block, "change_path", "");
     PrintPresentation(record, detailed_);
   }
 }
@@ -562,17 +571,17 @@ void PrintPresentation(const PresentationRecord& record,
     // A skill is a procedure the rest of the turn follows, so it is worth
     // finding in the scrollback later; ◆ already marks that class of event.
     if (record.skill && !record.summary.empty()) {
-      WriteTerminalRecord(std::string(BOLD()) + AsciiGlyphs("◆ skill ") +
+      WriteTerminalRecord(std::string(BOLD()) + RowMark(Mark::kSkill) +
                           TerminalSafe(record.summary) + RST() + "\n");
       return;
     }
     if (record.poll) return;
     // "→ Editing src/a.ts": the view's verb and target, like the web row.
     const json* verb = JsonArray(record.view, "verb");
-    std::string body =
-        AsciiGlyphs("→ ") + (verb && !verb->empty() && (*verb)[0].is_string()
-                                 ? TerminalSafe((*verb)[0].get<std::string>())
-                                 : TerminalSafe(record.title));
+    std::string body = RowMark(Mark::kCall) +
+                       (verb && !verb->empty() && (*verb)[0].is_string()
+                            ? TerminalSafe((*verb)[0].get<std::string>())
+                            : TerminalSafe(record.title));
     if (record.multiline && !record.detail.empty()) {
       body += '\n' + TerminalSafe(record.detail);
     } else if (const std::string target = JsonValue(record.view, "target", "");
@@ -605,17 +614,18 @@ void PrintPresentation(const PresentationRecord& record,
 
   if (record.poll) {
     const char* style = ResultStyle(record.status);
-    WriteTerminalRecord(std::string(style) +
-                        AsciiGlyphs("• " + OutputText(record.summary)) + RST() +
-                        "\n");
+    WriteTerminalRecord(std::string(style) + RowMark(Mark::kStatus) +
+                        AsciiGlyphs(OutputText(record.summary)) + RST() + "\n");
     return;
   }
 
   if (!record.change.empty()) {
-    std::istringstream input(record.change);
+    // A long diff is kept whole: both sides, each line a marker longer.
+    std::istringstream input(ReadFile(record.change_path, 4 * kEditFileBytes)
+                                 .value_or(record.change));
     std::string line;
     if (std::getline(input, line)) {
-      std::string output = std::string(DIM()) + AsciiGlyphs("•") + RST() + " " +
+      std::string output = std::string(DIM()) + RowMark(Mark::kChange) + RST() +
                            BOLD() + TerminalSafe(line) + RST() + "\n";
       while (std::getline(input, line)) {
         const char* style = DiffLineStyle(line);
@@ -630,8 +640,11 @@ void PrintPresentation(const PresentationRecord& record,
   }
 
   const char* style = ResultStyle(record.status);
-  std::string prefix =
-      Indented(AsciiGlyphs("← ") + TerminalSafe(record.title), kRowIndent);
+  std::string prefix = Indented(
+      RowMark(record.status == PresentationStatus::kFailed ? Mark::kFailed
+                                                           : Mark::kResult) +
+          TerminalSafe(record.title),
+      kRowIndent);
   if (detailed && record.output.find('\n') != std::string::npos) {
     WriteTerminalRecord(std::string(style) + prefix + RST() + "\n" +
                         Indented(OutputText(record.output), kDetailIndent) +

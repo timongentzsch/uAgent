@@ -9,6 +9,7 @@ import type {
   Act,
   CommandKind,
   CommandFields,
+  SlashCommand,
 } from "../shared/types.ts";
 import { failure } from "../shared/types.ts";
 import type { JSX } from "preact";
@@ -16,11 +17,17 @@ import { render } from "preact";
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from "preact/hooks";
-import { readStored, writeStored } from "../state/store.ts";
+import {
+  emptyDraft,
+  hasContent,
+  readStored,
+  writeStored,
+} from "../state/store.ts";
 import { api, command, requestId, uploadAttachment } from "../state/api.ts";
 import {
   Modal,
@@ -31,7 +38,7 @@ import {
   preloadDeferred,
   ErrorBoundary,
 } from "../shared/ui.tsx";
-import { Ellipsis, Globe2, Menu, Settings } from "lucide-preact";
+import { Ellipsis, Globe2, ListTree, Menu, Settings } from "lucide-preact";
 import { StatusLed } from "../shared/connection-status.tsx";
 import { ImageViewer, type ViewedImage } from "../shared/attachments.tsx";
 // Prefetch helpers live next to the renderer so marker regexes stay in one
@@ -39,11 +46,26 @@ import { ImageViewer, type ViewedImage } from "../shared/attachments.tsx";
 // the initial bundle and break the CSS size budget.
 const markdownView = () => import("../shared/markdown-view.tsx");
 import { useDismiss } from "../shared/dismiss.ts";
-import { unsent } from "../shared/message-view.ts";
-import Sidebar, { ConversationMenu } from "../features/sidebar/sidebar.tsx";
-import { CoordinatorHelp } from "../features/coordinator/board.tsx";
+import {
+  QUEUED_NEXT,
+  queuedGuidance,
+  recallable,
+  unsent,
+} from "../shared/message-view.ts";
+import Sidebar, {
+  ConversationMenu,
+  restartConversation,
+  sessionOrder,
+  shareTranscript,
+} from "../features/sidebar/sidebar.tsx";
+import { useShortcuts } from "../shared/shortcuts.ts";
+import { nextIndex } from "../shared/listbox-nav.ts";
+import { focusDecision, followDecisionLink } from "../shared/navigation.ts";
+import Board, { CoordinatorHelp } from "../features/coordinator/board.tsx";
+import { threadsOf, waiting as waitingOn } from "../state/attention.ts";
 import { folderName } from "../shared/folder-label.tsx";
 import {
+  applyMotion,
   applyTheme,
   applyZoom,
   lockPageZoom,
@@ -73,6 +95,8 @@ import {
   settingsDialog,
   toolsDialog,
   statisticsDialog,
+  paletteDialog,
+  shortcutsDialog,
 } from "./dialogs.ts";
 
 // Own scroll restoration from the first paint. history restoration only
@@ -83,18 +107,7 @@ import {
 // scrolling from here on.
 if (typeof history !== "undefined") history.scrollRestoration = "manual";
 
-const emptyDraft = (): Draft => ({ text: "", files: [] });
-
 const BROWSER_KEY = "uagent-browser";
-
-// The conversation menu's button, inert, until the session is known.
-function MenuPlaceholder() {
-  return (
-    <IconButton label="Conversation menu" disabled>
-      <Ellipsis />
-    </IconButton>
-  );
-}
 
 // The shell: navigation, header, toasts and dialogs. It never reads a whole
 // snapshot, only what it selects from one (the session's metadata, whether
@@ -108,15 +121,25 @@ function App() {
   useDismiss(page !== "chat", () => setPage("chat"));
   const [drawer, setDrawer] = useState(false);
   const compact = useMedia("(max-width: 900px)");
+  // On a phone a coordinator's board slides in from the right on demand
+  // instead of taking the top of its chat.
+  const phone = useMedia("(max-width: 600px)");
+  const [boardOpen, setBoardOpen] = useState(false);
   // The drawer belongs to the compact layout; a wider window drops it.
   useEffect(() => setDrawer(false), [compact]);
   const [modal, setModal] = useState<AppModal | null>(null);
+  // The command palette (Mod+K) or the shortcuts sheet (?).
+  const [overlay, setOverlay] = useState<"palette" | "shortcuts" | null>(null);
   // Remembered per device, so the header's browser slot is right from the
   // first frame instead of appearing once the host answers.
   const [browserAvailable, setBrowserAvailable] = useState(
     () => storage.getItem(BROWSER_KEY) === "1",
   );
   const [notice, setNotice] = useState("");
+  // The banner shows one line: a new notice replaces an older error.
+  useEffect(() => {
+    if (notice) setError("");
+  }, [notice]);
   // The one image viewer every tile opens.
   const [viewed, setViewed] = useState<ViewedImage | null>(null);
   const [side, setSide] = useState<{
@@ -135,7 +158,8 @@ function App() {
     connection,
     loadErrors,
     catalogue,
-    setCatalogue,
+    listed,
+    upsertSession,
     snapshots,
     selected,
     setSelected,
@@ -146,6 +170,7 @@ function App() {
     unread,
     outgoing,
     setOutgoing,
+    patchOutgoing,
     following,
     setFollowing,
     notifications,
@@ -187,6 +212,9 @@ function App() {
   const [theme, setTheme] = useState(
     () => storage.getItem("uagent-theme") || "system",
   );
+  const [motion, setMotion] = useState(
+    () => storage.getItem("uagent-motion") || "system",
+  );
   const [inspector, setInspector] = useState<InspectorTarget | null>(null);
   const metadata = useSnapshots(snapshots, (all) => all[selected]?.metadata);
   const session =
@@ -200,21 +228,6 @@ function App() {
   // holds this composer.
   const uploading = draft.files.some((file) => file.pending);
   const running = online && !!session?.turn_active;
-  const showMessageHttp = useCallback(
-    (exchanges: NonNullable<Block["http"]>) =>
-      setModal({ type: "raw", session: selected, exchanges }),
-    [selected],
-  );
-  const showMessageStatistics = useCallback(
-    (block: Block) =>
-      setModal({
-        type: "statistics",
-        session_id: selected,
-        block_id: block.occurrence_id || block.response_id || block.id,
-        unit: block.summary ? "Turn" : "Message",
-      }),
-    [selected],
-  );
   // The browser icon shows when this conversation's agent is using it.
   const browsing = useSnapshots(snapshots, (all) => isBrowsing(all[selected]));
   // The update banner holds its reload while a turn waits on a decision.
@@ -222,14 +235,26 @@ function App() {
     snapshots,
     (all) => !!update && Object.values(all).some((item) => item.pending),
   );
+  // Why an update must wait: unsent work (an upload is one) or a decision.
+  const updateBlocked = Object.values(drafts).some(hasContent)
+    ? "Send or copy unsent drafts first."
+    : waiting
+      ? "Wait for the running turn to finish."
+      : "";
+  // One conversation's draft changes; the others keep theirs.
+  function updateDraft(id: string, change: (draft: Draft) => Draft) {
+    setDrafts((current) => ({
+      ...current,
+      [id]: change(current[id] || emptyDraft()),
+    }));
+  }
   function setDraft(value: Draft, id = selected) {
-    setDrafts((current) => ({ ...current, [id]: value }));
+    updateDraft(id, () => value);
   }
   useEffect(() => {
     writeStored(storage, "uagent-zoom", zoom);
     applyZoom(zoom);
   }, [zoom]);
-  // The shared transcript controller restores a returning conversation.
   useEffect(() => {
     // The core renderer chunk is needed for every assistant message, so
     // fetch it immediately at boot (not idle: on mobile the idle callback
@@ -256,10 +281,9 @@ function App() {
     );
     return () => clearTimeout(warm);
   }, []);
-  useEffect(() => {
-    return trackViewport();
-  }, []);
+  useEffect(trackViewport, []);
   useEffect(() => applyTheme(theme), [theme]);
+  useLayoutEffect(() => applyMotion(motion), [motion]);
   // Files dropped anywhere attach to the open conversation; unhandled, the
   // browser would open the file in place of the app. File inputs and
   // dialogs keep their own drops.
@@ -319,12 +343,19 @@ function App() {
       if (
         event.data?.type === "OPEN_SESSION" &&
         /^[a-f0-9]{16,64}$/.test(event.data.id || "")
-      )
+      ) {
         choose(event.data.id);
+        if (event.data.decision !== undefined) focusDecision();
+      }
     };
+    // A notification's link opened this window at a decision.
+    followDecisionLink();
+    addEventListener("hashchange", followDecisionLink);
     navigator.serviceWorker?.addEventListener("message", openSession);
-    return () =>
+    return () => {
       navigator.serviceWorker?.removeEventListener("message", openSession);
+      removeEventListener("hashchange", followDecisionLink);
+    };
   }, []);
   async function create(event: JSX.TargetedSubmitEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -347,16 +378,8 @@ function App() {
       starting.current = true;
       try {
         const created = await command("create", null, { cwd, coordinator });
-        if (created.pending) return;
-        setCatalogue((prior) => ({
-          ...prior,
-          sessions: [
-            created.session,
-            ...prior.sessions.filter(
-              (entry) => entry.id !== created.session.id,
-            ),
-          ],
-        }));
+        if (created.pending) return "";
+        upsertSession(created.session);
         // Live before it is shown, so opening never flashes the saved state;
         // shown even if activating fails, with the failure reported.
         try {
@@ -366,11 +389,12 @@ function App() {
           await choose(created.session.id);
         }
         await load(created.session.id);
+        return created.session.id;
       } finally {
         starting.current = false;
       }
     },
-    [setCatalogue, choose, load],
+    [upsertSession, choose, load],
   );
   // A command with a screen opens it when typed bare; with an argument it
   // runs on the host, as in the terminal.
@@ -397,8 +421,12 @@ function App() {
   // A fork opens as its own conversation; the original stays as it was.
   // Editing (a rewind) also puts the message it forked before back into
   // the composer.
-  async function forkAndOpen(fields: CommandFields, edit = false) {
-    const result = await command("fork", session, fields);
+  async function forkAndOpen(
+    target: Session | undefined,
+    fields: CommandFields = {},
+    edit = false,
+  ) {
+    const result = await command("fork", target, fields);
     if (result.pending) return;
     const { id, prompt, rewound } = result.result;
     if (!rewound) {
@@ -419,14 +447,17 @@ function App() {
     const { name, argument } = parseSlash(catalogue.commands || [], text);
     if (!argument && screens[name]) screens[name]();
     else if (name === "/reset") await startConversation(session!.cwd!);
-    else if (name === "/quit") {
-      await act("close");
-      await load(selected);
+    // In a terminal /quit detaches and the runtime stays; here that is just
+    // leaving the page, so it never closes anything.
+    else if (name === "/quit")
+      throw new Error("Use Close session in the conversation menu.");
+    else if (name === "/restart") {
+      setNotice(await restartConversation(session!));
     } else if (name === "/fork") {
-      await forkAndOpen({ argument });
+      await forkAndOpen(session, { argument });
     } else if (name === "/rewind" && argument) {
       // Bare /rewind runs on the host and lists the message numbers.
-      await forkAndOpen({ argument }, true);
+      await forkAndOpen(session, { argument }, true);
     } else if (name === "/btw") {
       if (!argument) throw new Error("Use /btw QUESTION");
       // The card shows the question; the composer is free again at once.
@@ -446,9 +477,7 @@ function App() {
         },
       );
     } else if (name === "/share") {
-      const result = await act("share");
-      if (!result.pending)
-        setNotice(`Transcript saved to ${result.result.path}`);
+      setNotice(await shareTranscript(session!));
     } else if (name === "/instructions" && !argument) {
       setModal({ type: "instructions" });
     } else if (name === "/http") {
@@ -475,7 +504,7 @@ function App() {
     } else return false;
     return true;
   }
-  async function submit(event: Event, jumpToLatest: () => void) {
+  async function submit(event: Event, jumpToLatest: () => void, queue = false) {
     event.preventDefault();
     const pending = snapshots.get()[selected]?.pending;
     setNotice("");
@@ -517,14 +546,28 @@ function App() {
           parseSlash(catalogue.commands || [], sent.text).name === "/attach" &&
           sent.text.trim().endsWith(" clear")
         )
-          setDrafts((current) => ({ ...current, [id]: emptyDraft() }));
+          updateDraft(id, emptyDraft);
       } catch (error) {
         report(error);
         setBusy(false);
         return;
       }
     }
-    const kind = running && !pending ? "steer" : "submit";
+    await deliver(id, sent, queue, request_id);
+  }
+  // A message goes out as a row of its own until the host confirms it; a
+  // failed one stays there, with Retry and Return to composer. Guidance
+  // joins the running turn, or with `queue` waits for it to end.
+  async function deliver(
+    id: string,
+    sent: Draft,
+    queue = false,
+    request_id = requestId(),
+  ) {
+    setBusy(true);
+    const kind = running && !snapshots.get()[id]?.pending ? "steer" : "submit";
+    const queued =
+      kind === "steer" && (queue ? QUEUED_NEXT : "Guidance queued");
     const visible = !sent.text.startsWith("/") || sent.files.length;
     if (visible)
       setOutgoing((items) => [
@@ -537,7 +580,7 @@ function App() {
           text: sent.text,
           files: sent.files,
           time: new Date().toISOString(),
-          status: kind === "steer" ? "Guidance queued" : "Sending…",
+          status: queued || "Sending…",
         },
       ]);
     setDrafts((current) =>
@@ -547,69 +590,60 @@ function App() {
       const result = await act(kind, {
         request_id,
         text: sent.text,
-        ...(kind === "submit" || kind === "steer"
-          ? {
-              attachment_ids: sent.files.map((item) => ({
-                id: item.id,
-                name: item.name,
-              })),
-            }
-          : {}),
+        ...(queued && queue && { queue }),
+        attachment_ids: sent.files.map((item) => ({
+          id: item.id,
+          name: item.name,
+        })),
       });
-      setOutgoing((items) =>
-        items.map((item) =>
-          item.request_id === request_id
-            ? {
-                ...item,
-                status: result.pending
-                  ? "Awaiting confirmation"
-                  : kind === "steer"
-                    ? "Guidance queued"
-                    : "Sent",
-              }
-            : item,
-        ),
-      );
+      patchOutgoing(request_id, {
+        status: result.pending ? "Awaiting confirmation" : queued || "Sent",
+      });
     } catch (error) {
       const issue = failure(error);
       if (visible)
-        setOutgoing((items) =>
-          items.map((item) =>
-            item.request_id === request_id
-              ? {
-                  ...item,
-                  status: issue.rejected ? "Not sent" : "Not confirmed",
-                  error: issue.message,
-                }
-              : item,
-          ),
-        );
+        patchOutgoing(request_id, {
+          status: issue.rejected ? "Not sent" : "Not confirmed",
+          error: issue.message,
+        });
       else report(issue);
-      if (issue.rejected)
-        setDrafts((current) =>
-          !current[id]?.text && !current[id]?.files?.length
-            ? { ...current, [id]: sent }
-            : current,
-        );
     } finally {
       setBusy(false);
     }
   }
-  // Recall returns queued guidance to the composer while it is still
-  // queued. Delivered guidance belongs to the turn; dropping the row is
-  // then the only correct move. A send that failed returns the same way,
-  // with nothing to withdraw from the host.
   // Every row reads these through one context value, so they must stay the
   // same function; they read the latest state through a ref.
-  const latest = useRef({
+  const current = {
     online,
     selected,
     act,
     report,
     forkAndOpen,
     outgoing,
-  });
-  latest.current = { online, selected, act, report, forkAndOpen, outgoing };
+    session,
+    deliver,
+    busy,
+  };
+  const latest = useRef(current);
+  latest.current = current;
+  // A failed message sends again as a new request; Continue resumes a
+  // stopped turn. Both leave the composer's draft alone.
+  const retrySend = useCallback((block: Block) => {
+    const { online, selected, deliver, busy } = latest.current;
+    if (!online || busy || !block.request_id || !unsent(block)) return;
+    setOutgoing((items) =>
+      items.filter((item) => item.request_id !== block.request_id),
+    );
+    void deliver(selected, {
+      text: block.text || "",
+      files: (block.files || []).filter((file) => typeof file === "object"),
+    });
+  }, []);
+  const resume = useCallback(() => {
+    const { online, selected, deliver, busy } = latest.current;
+    if (online && !busy)
+      void deliver(selected, { text: "continue", files: [] });
+  }, []);
   // From a message's menu: edit it in a fork (fork before it), or keep it
   // and its reply (fork before the next message of yours).
   const branchFrom = useCallback((block: Block, edit: boolean) => {
@@ -624,19 +658,20 @@ function App() {
     );
     const next = after.find((item) => item.kind === "user");
     forkAndOpen(
+      latest.current.session,
       edit ? { message_id: block.id } : next ? { message_id: next.id } : {},
       edit,
     ).catch(report);
   }, []);
-  const openActivity = useCallback(
-    (block: Block) => setInspector({ block }),
-    [],
-  );
+  // Recall returns queued guidance to the composer while it is still
+  // queued. Delivered guidance belongs to the turn; dropping the row is
+  // then the only correct move. A send that failed returns the same way,
+  // with nothing to withdraw from the host.
   const recallGuidance = useCallback(async (block: Block) => {
     const { online, selected, act, report } = latest.current;
     const target = block.request_id;
-    const queued = block.status === "Guidance queued";
-    if (!target || !(queued || unsent(block)) || (queued && !online)) return;
+    if (!target || !recallable(block, online)) return;
+    const queued = queuedGuidance(block);
     const text = block.text || "";
     const id = selected;
     if (queued) {
@@ -651,16 +686,11 @@ function App() {
       }
     }
     setOutgoing((items) => items.filter((item) => item.request_id !== target));
-    if (text) {
-      setDrafts((current) => {
-        const prior = current[id]?.text || "";
-        const next = prior ? `${prior}\n${text}` : text;
-        return {
-          ...current,
-          [id]: { ...(current[id] || emptyDraft()), text: next },
-        };
-      });
-    }
+    if (text)
+      updateDraft(id, (draft) => ({
+        ...draft,
+        text: draft.text ? `${draft.text}\n${text}` : text,
+      }));
   }, []);
   // An annotated copy joins the draft and replaces the draft file it was
   // drawn on; a copy of a sent image is simply attached.
@@ -668,16 +698,10 @@ function App() {
     const id = selected;
     if (!(await upload([file]))) return false;
     if (replaces)
-      setDrafts((current) => {
-        const draft = current[id] || emptyDraft();
-        return {
-          ...current,
-          [id]: {
-            ...draft,
-            files: draft.files.filter((item) => item.id !== replaces),
-          },
-        };
-      });
+      updateDraft(id, (draft) => ({
+        ...draft,
+        files: draft.files.filter((item) => item.id !== replaces),
+      }));
     return true;
   }
   // Resolves true once every file is attached to the draft.
@@ -709,12 +733,9 @@ function App() {
         pending: true,
       };
     });
-    setDrafts((current) => ({
-      ...current,
-      [id]: {
-        ...(current[id] || emptyDraft()),
-        files: [...(current[id]?.files || []), ...pendingFiles],
-      },
+    updateDraft(id, (draft) => ({
+      ...draft,
+      files: [...draft.files, ...pendingFiles],
     }));
     try {
       for (const [index, file] of files.entries()) {
@@ -723,16 +744,13 @@ function App() {
           file,
           pendingFiles[index].name,
         );
-        setDrafts((current) => ({
-          ...current,
-          [id]: {
-            ...(current[id] || emptyDraft()),
-            files: (current[id]?.files || []).map((item) =>
-              item.id === pendingFiles[index].id
-                ? { ...asset, name: pendingFiles[index].name }
-                : item,
-            ),
-          },
+        updateDraft(id, (draft) => ({
+          ...draft,
+          files: draft.files.map((item) =>
+            item.id === pendingFiles[index].id
+              ? { ...asset, name: pendingFiles[index].name }
+              : item,
+          ),
         }));
       }
       return true;
@@ -741,44 +759,36 @@ function App() {
       return false;
     } finally {
       const pendingIds = new Set(pendingFiles.map((item) => item.id));
-      setDrafts((current) => ({
-        ...current,
-        [id]: {
-          ...(current[id] || emptyDraft()),
-          files: (current[id]?.files || []).filter(
-            (item) => !pendingIds.has(item.id),
-          ),
-        },
+      updateDraft(id, (draft) => ({
+        ...draft,
+        files: draft.files.filter((item) => !pendingIds.has(item.id)),
       }));
     }
   }
-  const inspect = useCallback(
-    (id: string) =>
-      setInspector({
-        title: id.startsWith("t-") ? "Tool input/output" : "Full content",
-        raw: { id, session: selected },
-      }),
-    [selected],
-  );
   const messageActions = useMemo(
     () => ({
       report,
       recall: recallGuidance,
+      retry: retrySend,
+      resume,
       branch: branchFrom,
-      inspect,
-      http: showMessageHttp,
-      activity: openActivity,
-      statistics: showMessageStatistics,
+      inspect: (id: string) =>
+        setInspector({
+          title: id.startsWith("t-") ? "Tool input/output" : "Full content",
+          raw: { id, session: selected },
+        }),
+      http: (exchanges: NonNullable<Block["http"]>) =>
+        setModal({ type: "raw", session: selected, exchanges }),
+      activity: (block: Block) => setInspector({ block }),
+      statistics: (block: Block) =>
+        setModal({
+          type: "statistics",
+          session_id: selected,
+          block_id: block.occurrence_id || block.response_id || block.id,
+          unit: block.summary ? "Turn" : "Message",
+        }),
     }),
-    [
-      report,
-      recallGuidance,
-      branchFrom,
-      inspect,
-      showMessageHttp,
-      openActivity,
-      showMessageStatistics,
-    ],
+    [report, recallGuidance, branchFrom, selected],
   );
   async function logout() {
     try {
@@ -807,29 +817,66 @@ function App() {
     setDrawer(false);
     setModal(value);
   }, []);
+  // Forks any conversation from its menu, as /fork does the open one.
+  const fork = useCallback(
+    (item: Session) => latest.current.forkAndOpen(item).catch(report),
+    [report],
+  );
   const conversationMenu = useCallback(
     (item: Session) => (
       <ConversationMenu
         item={item}
         online={online}
-        refresh={refresh}
-        choose={choose}
+        fork={fork}
         loadSnapshot={load}
         report={report}
+        notify={setNotice}
         open={open}
       />
     ),
-    [online, refresh, choose, load, report, open],
+    [online, fork, load, report, open],
   );
-  // The sidebar lists conversations, not scheduled runs or their tasks.
-  const listed = useMemo(() => {
-    const runs = new Set(
-      catalogue.scheduled?.runs?.map((run) => run.session_id),
-    );
-    return catalogue.sessions.filter(
-      (entry) => !entry.task_id && !runs.has(entry.id),
-    );
-  }, [catalogue.sessions, catalogue.scheduled]);
+  // A slash command from the palette runs as if sent from the composer;
+  // one that needs an argument waits there for it.
+  async function runCommand(entry: SlashCommand) {
+    try {
+      if (entry.argument && !entry.argument.startsWith("[")) {
+        if (!session)
+          throw new Error(`Open a conversation to use ${entry.command}`);
+        setDraft({ ...draft, text: `${entry.command} ` });
+        requestAnimationFrame(() => document.getElementById("prompt")?.focus());
+      } else if (!(await localCommand(entry.command))) {
+        if (!session)
+          throw new Error(`Open a conversation to run ${entry.command}`);
+        if (running)
+          throw new Error(
+            "Wait for this turn to finish before running a slash command.",
+          );
+        await act("submit", { request_id: requestId(), text: entry.command });
+      }
+    } catch (failure) {
+      report(failure);
+    }
+  }
+  // Alt+↑/↓: the conversation above or below in the list.
+  const step = (key: "ArrowUp" | "ArrowDown") => {
+    const order = sessionOrder(listed);
+    if (!order.length) return;
+    const at = order.findIndex((item) => item.id === selected);
+    choose(order[nextIndex(at, key, order.length)].id);
+  };
+  const shortcutActions = {
+    palette: () => setOverlay("palette"),
+    shortcuts: () => setOverlay("shortcuts"),
+    previous: () => step("ArrowUp"),
+    next: () => step("ArrowDown"),
+  };
+  // Only for a paired device: the pairing screen has nothing to find.
+  useShortcuts(authenticated ? shortcutActions : {});
+  const openPalette = useCallback(() => {
+    setDrawer(false);
+    setOverlay("palette");
+  }, []);
   const navigate = useCallback((value: typeof page) => {
     setPage(value);
     setDrawer(false);
@@ -870,6 +917,8 @@ function App() {
       settings={settings}
       create={newConversation}
       coordinate={coordinate}
+      palette={openPalette}
+      report={report}
     />
   );
 
@@ -897,31 +946,20 @@ function App() {
           {update && (
             <div role="status" class="update-banner">
               <span>Update available with the latest fixes.</span>
-              {(() => {
-                const blocked = Object.values(drafts).some(
-                  (item) => item.text || item.files.length,
-                )
-                  ? "Send or copy unsent drafts first."
-                  : waiting
-                    ? "Wait for the running turn to finish."
-                    : "";
-                return (
-                  <Button
-                    variant="primary"
-                    disabled={!!blocked}
-                    title={
-                      blocked || "Reloads this view with the latest fixes."
-                    }
-                    onClick={() =>
-                      import("../shared/pwa.ts").then(({ applyUpdate }) =>
-                        applyUpdate(update),
-                      )
-                    }
-                  >
-                    Refresh now
-                  </Button>
-                );
-              })()}
+              <Button
+                variant="primary"
+                disabled={!!updateBlocked}
+                title={
+                  updateBlocked || "Reloads this view with the latest fixes."
+                }
+                onClick={() =>
+                  import("../shared/pwa.ts").then(({ applyUpdate }) =>
+                    applyUpdate(update),
+                  )
+                }
+              >
+                Refresh now
+              </Button>
             </div>
           )}
         </div>
@@ -933,150 +971,240 @@ function App() {
             fallback={<Spinner label="Loading connection form…" surface />}
           />
         ) : (
-          <div class="shell">
-            {!compact ? (
-              <aside class="sidebar" aria-label="Projects and sessions">
-                {sidebar}
-              </aside>
-            ) : (
-              drawer && (
-                <Modal
-                  title="Sessions"
-                  className="sidebar drawer"
-                  close={() => setDrawer(false)}
-                >
+          <>
+            {/* First stop for a keyboard: past the sessions list. The hash
+                routes sessions, so the link moves focus itself. */}
+            <a
+              class="skip-link"
+              href="#conversation"
+              onClick={(event) => {
+                event.preventDefault();
+                document
+                  .getElementById("conversation")
+                  ?.focus({ preventScroll: true });
+              }}
+            >
+              Skip to conversation
+            </a>
+            <div class="shell">
+              {!compact ? (
+                <aside class="sidebar" aria-label="Projects and sessions">
                   {sidebar}
-                </Modal>
-              )
-            )}
-            <main class="conversation">
-              <header class="conversation-head">
-                {compact && (
-                  <IconButton
-                    label="Open sessions"
-                    onClick={() => setDrawer(true)}
+                </aside>
+              ) : (
+                drawer && (
+                  <Modal
+                    title="Sessions"
+                    className="sidebar drawer"
+                    close={() => setDrawer(false)}
                   >
-                    <Menu />
-                  </IconButton>
-                )}
-                <div>
-                  <h1 title={session?.cwd}>
-                    {page === "library" ? (
-                      "Library"
-                    ) : page === "scheduled" ? (
-                      "Scheduled"
-                    ) : session?.kind === "coordinator" ? (
-                      `Coordinator · ${folderName(session.cwd)}`
-                    ) : session ? (
-                      session.title || "Your workspace"
-                    ) : opening ? (
-                      <span class="text-skeleton" aria-hidden="true">
-                        Loading conversation
-                      </span>
-                    ) : (
-                      "Your workspace"
-                    )}
-                  </h1>
-                  {page === "chat" && session?.kind === "coordinator" && (
-                    <CoordinatorHelp
-                      editInstructions={() => open({ type: "instructions" })}
-                    />
-                  )}
-                </div>
-                {browserAvailable && (
-                  <IconButton
-                    label={
-                      browsing ? "Open browser, agent working" : "Open browser"
-                    }
-                    class="browser-toggle"
-                    disabled={booting}
-                    onClick={() => setModal({ type: "browser" })}
-                  >
-                    <Globe2 />
-                    {browsing && <StatusLed state="running" />}
-                  </IconButton>
-                )}
-                {compact && (
-                  <div class="conversation-head-actions">
-                    <IconButton
-                      label="Settings"
-                      onClick={() => open({ type: "settings" })}
-                    >
-                      <Settings />
-                    </IconButton>
-                  </div>
-                )}
-                {page === "chat" &&
-                  (session ? (
-                    conversationMenu(session)
-                  ) : opening ? (
-                    <MenuPlaceholder />
-                  ) : null)}
-              </header>
-              {page !== "chat" && (
-                <Deferred
-                  key={page === "library" ? `library:${libraryKind}` : page}
-                  load={page === "library" ? libraryModule : scheduledModule}
-                  initialKind={libraryKind}
-                  projects={projects}
-                  cwd={session?.cwd || projects[0] || ""}
-                  online={online}
-                  version={managementVersion}
-                  scheduled={catalogue.scheduled}
-                  unread={unread}
-                  choose={choose}
-                  refresh={refresh}
-                  fallback={
-                    <div class="management">
-                      <Spinner
-                        label={
-                          page === "library"
-                            ? "Loading library…"
-                            : "Loading scheduled tasks…"
-                        }
-                        surface
-                      />
-                    </div>
-                  }
-                />
+                    {sidebar}
+                  </Modal>
+                )
               )}
-              <ChatPage
-                store={snapshots}
-                active={page === "chat"}
-                historyKey={
-                  page === "chat" ? `${page}:${selected}` : `page:${page}`
-                }
-                selected={selected}
-                session={session}
-                opening={opening}
-                catalogue={catalogue}
-                online={online}
-                connection={connection}
-                outgoing={outgoing}
-                loadError={loadErrors[selected]}
-                draft={draft}
-                setDraft={setDraft}
-                upload={upload}
-                uploading={uploading}
-                busy={busy}
-                submit={submit}
-                act={act}
-                report={report}
-                following={following}
-                setFollowing={setFollowing}
-                load={load}
-                updateView={updateView}
+              <main class="conversation" id="conversation" tabIndex={-1}>
+                <header class="conversation-head">
+                  {compact && (
+                    <IconButton
+                      label="Open sessions"
+                      onClick={() => setDrawer(true)}
+                    >
+                      <Menu />
+                    </IconButton>
+                  )}
+                  <div>
+                    <h1 title={session?.cwd}>
+                      {page === "library" ? (
+                        "Library"
+                      ) : page === "scheduled" ? (
+                        "Scheduled"
+                      ) : session?.kind === "coordinator" ? (
+                        `Coordinator · ${folderName(session.cwd)}`
+                      ) : session ? (
+                        session.title || "Your workspace"
+                      ) : opening ? (
+                        <span class="text-skeleton" aria-hidden="true">
+                          Loading conversation
+                        </span>
+                      ) : (
+                        "Your workspace"
+                      )}
+                    </h1>
+                    {page === "chat" && session?.kind === "coordinator" && (
+                      <CoordinatorHelp
+                        editInstructions={() => open({ type: "instructions" })}
+                      />
+                    )}
+                  </div>
+                  {browserAvailable && (
+                    <IconButton
+                      label={
+                        browsing
+                          ? "Open browser, agent working"
+                          : "Open browser"
+                      }
+                      class="browser-toggle"
+                      disabled={booting}
+                      onClick={() => setModal({ type: "browser" })}
+                    >
+                      <Globe2 />
+                      {browsing && <StatusLed state="running" />}
+                    </IconButton>
+                  )}
+                  {phone &&
+                    page === "chat" &&
+                    session?.kind === "coordinator" &&
+                    (() => {
+                      const waits = waitingOn(
+                        threadsOf(catalogue.sessions, session.cwd || ""),
+                      ).length;
+                      return (
+                        <IconButton
+                          label={waits ? `Board, ${waits} need you` : "Board"}
+                          aria-haspopup="dialog"
+                          aria-expanded={boardOpen}
+                          onClick={() => setBoardOpen(true)}
+                        >
+                          <ListTree />
+                          {waits > 0 && <StatusLed state="active" />}
+                        </IconButton>
+                      );
+                    })()}
+                  {compact && (
+                    <div class="conversation-head-actions">
+                      <IconButton label="Settings" onClick={settings}>
+                        <Settings />
+                      </IconButton>
+                    </div>
+                  )}
+                  {page === "chat" &&
+                    (session ? (
+                      conversationMenu(session)
+                    ) : opening ? (
+                      // Inert until the session is known.
+                      <IconButton label="Conversation menu" disabled>
+                        <Ellipsis />
+                      </IconButton>
+                    ) : null)}
+                </header>
+                {boardOpen && phone && session?.kind === "coordinator" && (
+                  <Modal
+                    title="Board"
+                    layout="sheet"
+                    className="side-sheet"
+                    close={() => setBoardOpen(false)}
+                  >
+                    <Board
+                      threads={threadsOf(catalogue.sessions, session.cwd || "")}
+                      online={online}
+                      choose={(id) => {
+                        setBoardOpen(false);
+                        void choose(id);
+                      }}
+                    />
+                  </Modal>
+                )}
+                {page !== "chat" && (
+                  <Deferred
+                    key={page === "library" ? `library:${libraryKind}` : page}
+                    load={page === "library" ? libraryModule : scheduledModule}
+                    initialKind={libraryKind}
+                    projects={projects}
+                    cwd={session?.cwd || projects[0] || ""}
+                    online={online}
+                    version={managementVersion}
+                    scheduled={catalogue.scheduled}
+                    unread={unread}
+                    choose={choose}
+                    refresh={refresh}
+                    fallback={
+                      <div class="management">
+                        <Spinner
+                          label={
+                            page === "library"
+                              ? "Loading library…"
+                              : "Loading scheduled tasks…"
+                          }
+                          surface
+                        />
+                      </div>
+                    }
+                  />
+                )}
+                <ChatPage
+                  store={snapshots}
+                  active={page === "chat"}
+                  historyKey={
+                    page === "chat" ? `${page}:${selected}` : `page:${page}`
+                  }
+                  selected={selected}
+                  session={session}
+                  opening={opening}
+                  catalogue={catalogue}
+                  online={online}
+                  connection={connection}
+                  outgoing={outgoing}
+                  loadError={loadErrors[selected]}
+                  draft={draft}
+                  setDraft={setDraft}
+                  upload={upload}
+                  uploading={uploading}
+                  busy={busy}
+                  submit={submit}
+                  act={act}
+                  report={report}
+                  following={following}
+                  setFollowing={setFollowing}
+                  load={load}
+                  updateView={updateView}
+                  choose={choose}
+                  zoom={zoom}
+                  side={side}
+                  closeSide={closeSide}
+                  actions={messageActions}
+                  setModal={setModal}
+                  setInspector={setInspector}
+                  showContext={showContext}
+                />
+              </main>
+            </div>
+          </>
+        )}
+        {overlay && (
+          // Keyed: an action that opens the other one replaces this dialog
+          // instead of closing it under the new one.
+          <Modal
+            key={overlay}
+            title={
+              overlay === "palette" ? "Command palette" : "Keyboard shortcuts"
+            }
+            layout="sheet"
+            size="narrow"
+            close={() => setOverlay(null)}
+          >
+            {overlay === "palette" ? (
+              <Deferred
+                load={paletteDialog}
+                fallback={<Spinner label="Loading…" surface />}
+                sessions={listed}
+                commands={catalogue.commands || []}
                 choose={choose}
-                zoom={zoom}
-                side={side}
-                closeSide={closeSide}
-                actions={messageActions}
-                setModal={setModal}
-                setInspector={setInspector}
-                showContext={showContext}
+                start={(cwd: string) =>
+                  void startConversation(cwd).catch(report)
+                }
+                run={runCommand}
+                settings={(section: string) =>
+                  open({ type: "settings", section })
+                }
+                actions={{ ...shortcutActions, palette: undefined }}
               />
-            </main>
-          </div>
+            ) : (
+              <Deferred
+                load={shortcutsDialog}
+                fallback={<Spinner label="Loading…" surface />}
+              />
+            )}
+          </Modal>
         )}
         <Modals
           store={snapshots}
@@ -1106,6 +1234,8 @@ function App() {
           preferences={{
             theme,
             setTheme,
+            motion,
+            setMotion,
             timePrefs,
             setTimePrefs,
             zoom,
@@ -1113,8 +1243,7 @@ function App() {
             install,
             setInstall,
             update,
-            drafts,
-            uploading,
+            updateBlocked: !!updateBlocked,
             notificationMode,
             setNotificationMode,
             notifications,

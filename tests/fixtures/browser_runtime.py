@@ -50,7 +50,12 @@ while chunk := os.read(3, 4096):
                 ],
             }
         elif command["method"] == "Target.getTargets":
-            result = {"targetInfos": [{"targetId": "tab", "type": "page", "url": "about:blank"}]}
+            result = {
+                "targetInfos": [
+                    {"targetId": "tab", "type": "page", "url": "about:blank"},
+                    {"targetId": "left-open", "type": "page", "url": "https://example.com/"},
+                ]
+            }
         elif command["method"] == "Target.attachToTarget":
             result = {"sessionId": "attached"}
         os.write(4, json.dumps({"id": command["id"], "result": result}).encode() + b"\0")

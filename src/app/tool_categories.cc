@@ -74,6 +74,9 @@ json ToolCategoriesControl(const json& request) {
   if (action == "list") return Result(store);
 
   const std::string category_id = JsonValue(request, "category_id", "");
+  const auto chosen = [&](const json& category) {
+    return JsonValue(category, "id", "") == category_id;
+  };
   if (action == "create") {
     const std::string name = Trim(JsonValue(request, "name", ""));
     if (name.empty() || name.size() > kCategoryNameChars) {
@@ -90,11 +93,8 @@ json ToolCategoriesControl(const json& request) {
         {{"id", id}, {"name", name}, {"created", NowSeconds()}});
   } else if (action == "rename") {
     const std::string name = Trim(JsonValue(request, "name", ""));
-    auto found =
-        std::find_if(store["categories"].begin(), store["categories"].end(),
-                     [&](const json& category) {
-                       return JsonValue(category, "id", "") == category_id;
-                     });
+    auto found = std::find_if(store["categories"].begin(),
+                              store["categories"].end(), chosen);
     if (found == store["categories"].end()) {
       return {{"error", "tool category not found"}};
     }
@@ -105,12 +105,9 @@ json ToolCategoriesControl(const json& request) {
   } else if (action == "delete") {
     auto& categories = store["categories"];
     const size_t before = categories.size();
-    categories.erase(std::remove_if(categories.begin(), categories.end(),
-                                    [&](const json& category) {
-                                      return JsonValue(category, "id", "") ==
-                                             category_id;
-                                    }),
-                     categories.end());
+    categories.erase(
+        std::remove_if(categories.begin(), categories.end(), chosen),
+        categories.end());
     if (categories.size() == before) {
       return {{"error", "tool category not found"}};
     }
@@ -130,11 +127,8 @@ json ToolCategoriesControl(const json& request) {
     if (category_id.empty()) {
       store["assignments"].erase(tool);
     } else {
-      bool found =
-          std::any_of(store["categories"].begin(), store["categories"].end(),
-                      [&](const json& category) {
-                        return JsonValue(category, "id", "") == category_id;
-                      });
+      bool found = std::any_of(store["categories"].begin(),
+                               store["categories"].end(), chosen);
       if (!found) return {{"error", "tool category not found"}};
       store["assignments"][tool] = category_id;
     }

@@ -242,14 +242,6 @@ std::string AudioFormat(const std::string& mime) {
   return "wav";
 }
 
-std::string ImageDetail() {
-  std::string detail = EnvStr("UAGENT_IMAGE_DETAIL");
-  return detail == "low" || detail == "high" || detail == "original" ||
-                 detail == "auto"
-             ? detail
-             : "";
-}
-
 std::string AttachmentMime(const std::string& name) {
   std::string ext =
       AsciiLower(std::filesystem::path(name).extension().string());
@@ -561,23 +553,30 @@ bool RasterizeVector(const std::string& path, const std::string& out,
       "imagemagick) or attach a PNG instead";
   return false;
 }
+// Identity for within-request dedup: same bytes on disk. Size and mtime
+// catch edits; an unreadable mtime disables dedup for the part.
+std::string AttachmentFingerprint(const Attachment& attachment) {
+  if (attachment.path.empty()) return "";
+  std::error_code ec;
+  auto mtime = std::filesystem::last_write_time(attachment.path, ec);
+  if (ec) return "";
+  const int64_t nanos = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                            mtime.time_since_epoch())
+                            .count();
+  return attachment.path + "|" + std::to_string(attachment.bytes) + "|" +
+         std::to_string(nanos);
+}
+
 std::string PreparedImage(const Attachment& attachment, std::string& mime,
                           std::string& error) {
   constexpr size_t kImageBytes = size_t{4} * 1024 * 1024;
   static std::mutex mutex;
   static std::map<std::string, std::pair<std::string, std::string>> cache;
-  std::error_code ec;
-  auto stamp = std::filesystem::last_write_time(attachment.path, ec);
-  if (ec) {
+  const std::string key = AttachmentFingerprint(attachment);
+  if (key.empty()) {
     error = "image is no longer available";
     return "";
   }
-  std::string key =
-      attachment.path + ":" +
-      std::to_string(std::chrono::duration_cast<std::chrono::nanoseconds>(
-                         stamp.time_since_epoch())
-                         .count()) +
-      ":" + std::to_string(attachment.bytes);
   {
     std::lock_guard lock(mutex);
     if (auto found = cache.find(key); found != cache.end()) {
@@ -689,30 +688,21 @@ std::string PreparedImage(const Attachment& attachment, std::string& mime,
 }
 }  // namespace
 
-namespace {
-// Identity for within-request dedup: same bytes on disk. Size and mtime
-// catch edits; an unreadable mtime disables dedup for the part.
-std::string AttachmentFingerprint(const Attachment& attachment) {
-  if (attachment.path.empty()) return "";
-  std::error_code ec;
-  auto mtime = std::filesystem::last_write_time(attachment.path, ec);
-  if (ec) return "";
-  const int64_t nanos = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                            mtime.time_since_epoch())
-                            .count();
-  return attachment.path + "|" + std::to_string(attachment.bytes) + "|" +
-         std::to_string(nanos);
-}
-}  // namespace
-
 bool PrepareAttachments(json& messages,
                         const ProviderCapabilities& capabilities,
                         bool vision_fallback, const std::string& route,
                         std::string& error, json* deliveries) {
   bool changed = false;
-  uintmax_t remaining =
+  const uintmax_t limit =
       static_cast<uintmax_t>(AttachmentLimitMb()) * 1024 * 1024;
+  uintmax_t remaining = limit;
   if (deliveries) *deliveries = json::array();
+  // A part the model cannot be sent as it is.
+  auto hidden = [&](const std::string& type) {
+    return (type == "file" && !capabilities.file_input) ||
+           (type == "image_url" && !capabilities.image_input &&
+            !vision_fallback);
+  };
   // Fingerprints of parts already prepared in this request. Re-reading an
   // unchanged file (the model re-reading an attached screenshot, the same
   // path queued twice in one step) must reference the first copy instead
@@ -725,13 +715,19 @@ bool PrepareAttachments(json& messages,
     if (!message.contains("content") || !message["content"].is_array()) {
       continue;
     }
+    // A message with nothing to prepare keeps its parts where they are.
+    if (std::none_of(message["content"].begin(), message["content"].end(),
+                     [&](const json& part) {
+                       const std::string type = JsonValue(part, "type", "");
+                       return type == "attachment" || hidden(type);
+                     })) {
+      continue;
+    }
     json prepared = json::array();
     for (const json& part : message["content"]) {
       const std::string type = JsonValue(part, "type", "");
       if (type != "attachment") {
-        if ((type == "file" && !capabilities.file_input) ||
-            (type == "image_url" && !capabilities.image_input &&
-             !vision_fallback)) {
+        if (hidden(type)) {
           prepared.push_back({{"type", "text"},
                               {"text",
                                "[attachment not visible to this model; use the "
@@ -787,10 +783,8 @@ bool PrepareAttachments(json& messages,
           std::string mime;
           std::string data = PreparedImage(attachment, mime, detail);
           if (!data.empty()) {
-            json image = {{"url", std::move(data)}};
-            if (!ImageDetail().empty()) image["detail"] = ImageDetail();
-            prepared.push_back(
-                {{"type", "image_url"}, {"image_url", std::move(image)}});
+            prepared.push_back({{"type", "image_url"},
+                                {"image_url", {{"url", std::move(data)}}}});
             delivery = capabilities.image_input ? "Image" : "Via vision model";
           }
         } else if (attachment.mime == "application/pdf" &&
@@ -798,10 +792,8 @@ bool PrepareAttachments(json& messages,
           std::string header;
           if (ReadRegularFile(path, 5, header, detail, true) &&
               header == "%PDF-") {
-            std::string data = Base64File(
-                attachment,
-                static_cast<uintmax_t>(AttachmentLimitMb()) * 1024 * 1024,
-                detail, "data:application/pdf;base64,");
+            std::string data = Base64File(attachment, limit, detail,
+                                          "data:application/pdf;base64,");
             if (detail.empty()) {
               prepared.push_back(
                   {{"type", "file"},
@@ -815,10 +807,7 @@ bool PrepareAttachments(json& messages,
         } else if (IsAudioMime(attachment.mime) && capabilities.audio_input) {
           // OpenRouter takes raw base64 plus a format word, never a data
           // URI, and no audio URLs at all.
-          std::string data = Base64File(
-              attachment,
-              static_cast<uintmax_t>(AttachmentLimitMb()) * 1024 * 1024, detail,
-              "");
+          std::string data = Base64File(attachment, limit, detail, "");
           if (detail.empty()) {
             prepared.push_back({{"type", "input_audio"},
                                 {"input_audio",
@@ -829,10 +818,8 @@ bool PrepareAttachments(json& messages,
         } else if (IsVideoMime(attachment.mime) && capabilities.video_input) {
           // Local files ride as base64 data URLs, mirroring image_url;
           // remote URLs stay provider-specific and are out of scope.
-          std::string data = Base64File(
-              attachment,
-              static_cast<uintmax_t>(AttachmentLimitMb()) * 1024 * 1024, detail,
-              "data:" + attachment.mime + ";base64,");
+          std::string data = Base64File(attachment, limit, detail,
+                                        "data:" + attachment.mime + ";base64,");
           if (detail.empty()) {
             prepared.push_back({{"type", "video_url"},
                                 {"video_url", {{"url", std::move(data)}}}});

@@ -2,8 +2,6 @@
 
 #ifndef UAGENT_INCLUDE_APP_SESSION_HOST_H_
 #define UAGENT_INCLUDE_APP_SESSION_HOST_H_
-// Transport-independent host event ordering and bounded reconnect replay.
-// The HTTP adapter serializes these frames but does not own their sequence.
 
 #include <atomic>
 #include <chrono>
@@ -43,9 +41,6 @@ struct HostSession {
                                                              error, binary;
   // "coordinator", "thread" or empty; a thread names its project `folder`.
   std::string kind, folder;
-  // The `updated` stamp at which the host let go of an idle coordinator;
-  // presence refresh leaves it alone until the file changes. 0 = held.
-  int64_t parked = 0;
   int64_t activated = 0;  // wall-clock ms of the last successful activation
   json state = json::object(), pending = nullptr;
   std::map<std::string, json> active_exchanges;
@@ -108,10 +103,11 @@ class SessionHost {
   SessionHost(std::string epoch, size_t byte_limit, std::string executable = {},
               std::string directory = {}, size_t event_limit = 2048);
 
-  HostReplay Publish(const std::string& session, const std::string& generation,
-                     json value);
+  void Publish(const std::string& session, const std::string& generation,
+               json value);
   uint64_t Cursor() const;
-  ReplayBatch ReadReplay(uint64_t next, bool valid, uint64_t watermark) const;
+  ReplayBatch ReadReplay(uint64_t next, bool valid, uint64_t watermark,
+                         size_t byte_budget) const;
   void WaitForReplay(uint64_t cursor, std::chrono::seconds timeout);
   std::vector<HostNotice> WaitForNotices();
   void Stop();
@@ -122,12 +118,10 @@ class SessionHost {
   bool RefreshCatalogue(bool force = false);
   std::optional<std::chrono::steady_clock::time_point> RescanDue() const;
   void RefreshPresence();
-  // Lets go of coordinators idle for CoordinatorIdle() so their runtimes can
-  // exit; one is adopted again once it saves or is activated.
-  void ParkIdleCoordinators();
-  // Marks running runtimes (all, or those in `cwd`) for a fresh start that
-  // keeps their history: idle ones now, busy ones when their turn ends.
-  json RestartRunning(const std::string& cwd);
+  // Marks running runtimes (all, those in `cwd`, or the one named `only`)
+  // for a fresh start that keeps their history: idle ones now, busy ones
+  // when their turn ends.
+  json RestartRunning(const std::string& cwd, const std::string& only = "");
   json CommandOutcome(const std::string& worker_request,
                       const std::string& client_request) const {
     return outcomes_.CommandOutcome(worker_request, client_request);
@@ -217,6 +211,15 @@ class SessionHost {
                                 std::unique_lock<std::mutex>& lock);
   void Received(HostSession* session, json frame);
   void DeactivateLocked(HostSession& session);
+  // Whether `session` is still the catalogue's entry for its id. Callers
+  // hold mutex_.
+  bool IsCurrentLocked(const HostSession* session) const;
+  // Publishes a lifecycle frame ({"kind", ...}) with the session's metadata.
+  void PublishLifecycle(const HostSession& session, json frame);
+  // Persists a draft's identity, so it outlives the host until its first
+  // save. False when it cannot be written.
+  bool WriteDraft(const HostSession& session, const std::string& title,
+                  int64_t updated) const;
 };
 
 }  // namespace uagent::session

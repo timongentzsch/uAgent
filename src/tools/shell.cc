@@ -11,7 +11,6 @@
 #include <unistd.h>
 
 #include <algorithm>
-#include <array>
 #include <cctype>
 #include <cstdint>
 #include <cstdio>
@@ -22,7 +21,6 @@
 #include <optional>
 #include <string>
 #include <string_view>
-#include <thread>
 #include <utility>
 #include <vector>
 
@@ -76,11 +74,14 @@ std::string ResolveShellExecutable(const std::string& shell) {
   return shell;
 }
 
-int SpawnShellWithFallback(const std::string& shell, std::string& command,
+int SpawnShellWithFallback(const std::string& shell, const std::string& command,
                            const std::vector<std::string>& wrapper,
                            const posix_spawn_file_actions_t& actions,
-                           const posix_spawnattr_t& attributes,
-                           char* const* environment, pid_t& pid) {
+                           PosixSpawnFlags group_flag, char* const* environment,
+                           pid_t& pid) {
+  posix_spawnattr_t attributes;
+  posix_spawnattr_init(&attributes);
+  ConfigureShellSpawn(attributes, group_flag);
   auto spawn = [&](const std::string& executable) {
     std::vector<char*> argv;
     argv.reserve(wrapper.size() + 4);
@@ -89,7 +90,7 @@ int SpawnShellWithFallback(const std::string& shell, std::string& command,
     }
     argv.push_back(const_cast<char*>(executable.c_str()));
     argv.push_back(const_cast<char*>("-c"));
-    argv.push_back(command.data());
+    argv.push_back(const_cast<char*>(command.c_str()));
     argv.push_back(nullptr);
     // The program is the wrapper when there is one; the shell is then just its
     // first argument, and `command` stays unwrapped either way.
@@ -97,19 +98,20 @@ int SpawnShellWithFallback(const std::string& shell, std::string& command,
     return posix_spawnp(&pid, program, &actions, &attributes, argv.data(),
                         environment);
   };
-  if (!wrapper.empty()) return spawn(ResolveShellExecutable(shell));
-  int error = spawn(shell);
+  int error = spawn(wrapper.empty() ? shell : ResolveShellExecutable(shell));
   // `bash` is the documented default, so fall back to the usual absolute
   // paths before giving up on a PATH that does not have it.
-  if (error != 0 && shell == "bash") error = spawn("/bin/bash");
-  if (error != 0 && shell == "bash") error = spawn("/bin/sh");
+  const bool fallback = wrapper.empty() && shell == "bash";
+  if (error != 0 && fallback) error = spawn("/bin/bash");
+  if (error != 0 && fallback) error = spawn("/bin/sh");
+  posix_spawnattr_destroy(&attributes);
   return error;
 }
 
 // Spawn `shell -c command` with stdin at /dev/null, both output streams on the
 // log, default signal dispositions, and its own process group (or session, for
 // a detached terminal). Returns the posix_spawnp errno; `pid` is set on 0.
-int SpawnLoggedShell(const std::string& shell, std::string& command,
+int SpawnLoggedShell(const std::string& shell, const std::string& command,
                      const std::vector<std::string>& wrapper, int log_fd,
                      bool detach, char* const* environment, pid_t& pid) {
   posix_spawn_file_actions_t actions;
@@ -119,22 +121,18 @@ int SpawnLoggedShell(const std::string& shell, std::string& command,
   posix_spawn_file_actions_adddup2(&actions, log_fd, STDOUT_FILENO);
   posix_spawn_file_actions_adddup2(&actions, log_fd, STDERR_FILENO);
   posix_spawn_file_actions_addclose(&actions, log_fd);
-  posix_spawnattr_t attributes;
-  posix_spawnattr_init(&attributes);
   PosixSpawnFlags group_flag = POSIX_SPAWN_SETPGROUP;
 #ifdef POSIX_SPAWN_SETSID
   if (detach) group_flag = POSIX_SPAWN_SETSID;
 #endif
-  ConfigureShellSpawn(attributes, group_flag);
   int error = SpawnShellWithFallback(shell, command, wrapper, actions,
-                                     attributes, environment, pid);
-  posix_spawnattr_destroy(&attributes);
+                                     group_flag, environment, pid);
   posix_spawn_file_actions_destroy(&actions);
   return error;
 }
 
 // master_fd is set only on success; the caller owns it from then on.
-int SpawnPtyShell(const std::string& shell, std::string& command,
+int SpawnPtyShell(const std::string& shell, const std::string& command,
                   const std::vector<std::string>& wrapper,
                   char* const* environment, pid_t& pid, int& master_fd) {
 #if defined(__unix__) || defined(__APPLE__)
@@ -160,16 +158,12 @@ int SpawnPtyShell(const std::string& shell, std::string& command,
   posix_spawn_file_actions_adddup2(&actions, STDIN_FILENO, STDOUT_FILENO);
   posix_spawn_file_actions_adddup2(&actions, STDIN_FILENO, STDERR_FILENO);
   posix_spawn_file_actions_addclose(&actions, master.Get());
-  posix_spawnattr_t attributes;
-  posix_spawnattr_init(&attributes);
   PosixSpawnFlags group_flag = POSIX_SPAWN_SETPGROUP;
 #ifdef POSIX_SPAWN_SETSID
   group_flag = POSIX_SPAWN_SETSID;
 #endif
-  ConfigureShellSpawn(attributes, group_flag);
   int error = SpawnShellWithFallback(shell, command, wrapper, actions,
-                                     attributes, environment, pid);
-  posix_spawnattr_destroy(&attributes);
+                                     group_flag, environment, pid);
   posix_spawn_file_actions_destroy(&actions);
   if (error == 0) master_fd = master.Release();
   return error;
@@ -202,20 +196,21 @@ bool WaitForTerminal(ProcessSupervisor& supervisor,
   }
 }
 
-ToolResult JobLimitError(int64_t max_jobs) {
-  return ToolFailure(
-      ToolErrorCode::kLimitExceeded,
-      "background job limit reached (" + std::to_string(max_jobs) + ")");
+ToolResult JobLimitError() {
+  return ToolFailure(ToolErrorCode::kLimitExceeded,
+                     "background job limit reached (" +
+                         std::to_string(kMaxBackgroundJobs) + ")");
 }
 
 // A child refused for headroom must not read as the pool being full: the
 // parent can still run its own commands, and that is the point.
-ToolResult DelegatedJobLimitError(int64_t max_children, int64_t max_jobs) {
+ToolResult DelegatedJobLimitError() {
   return ToolFailure(ToolErrorCode::kLimitExceeded,
                      "no free background slot for a delegated child (at "
                      "most " +
-                         std::to_string(max_children) +
-                         " concurrent children of " + std::to_string(max_jobs) +
+                         std::to_string(kMaxDelegatedJobs) +
+                         " concurrent children of " +
+                         std::to_string(kMaxBackgroundJobs) +
                          " background slots; the rest stay reserved for this "
                          "agent's own commands). Wait for a child to finish");
 }
@@ -276,7 +271,6 @@ ShellCommandResult StartDetachedShell(ProcessSupervisor& supervisor,
                         std::to_string(existing->pid) +
                         "; verify readiness with activity output")};
   }
-  int64_t max_jobs = MaxBackgroundJobs();
   ScopedTempFile pending(UagentDir(kTerminalLogsDir) + "/pending-" +
                          std::to_string(getpid()) + "-XXXXXX");
   std::string log = pending.Path();
@@ -321,8 +315,8 @@ ShellCommandResult StartDetachedShell(ProcessSupervisor& supervisor,
             .display_label = std::move(spec.activity_label),
             .receipt_path = std::move(spec.receipt_path),
             .source_id = std::move(spec.source_id)};
-  if (!supervisor.TryAdd(std::move(job), max_jobs)) {
-    return fail_and_reap(JobLimitError(max_jobs));
+  if (!supervisor.TryAdd(std::move(job), kMaxBackgroundJobs)) {
+    return fail_and_reap(JobLimitError());
   }
   ToolResult detached =
       ToolSuccess("[detached] pid " + std::to_string(pid) + ", log: " + log +
@@ -353,14 +347,11 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   if (spec.detach) return StartDetachedShell(supervisor, spec, wrapper);
 
   // Everything below is the supervised foreground lifecycle.
-  int64_t max_jobs = MaxBackgroundJobs();
   bool is_subagent = spec.activity_kind == ActivityKind::kSubagent;
-  int64_t max_children = std::max<int64_t>(1, max_jobs - kDelegatedJobHeadroom);
-  std::optional<ActivityReservation> reservation =
-      supervisor.ReserveActivity(max_jobs, is_subagent ? max_children : 0);
+  std::optional<ActivityReservation> reservation = supervisor.ReserveActivity(
+      kMaxBackgroundJobs, is_subagent ? kMaxDelegatedJobs : 0);
   if (!reservation) {
-    return {is_subagent ? DelegatedJobLimitError(max_children, max_jobs)
-                        : JobLimitError(max_jobs)};
+    return {is_subagent ? DelegatedJobLimitError() : JobLimitError()};
   }
   int64_t window =
       spec.immediate ? 0 : context.RemainingSeconds(int64_t{1} << 30);
@@ -373,7 +364,6 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   }
   fchmod(pending.Get(), kPrivateFileMode);
   int64_t interaction_cap = ActivityOutputCap(spec.max_output_chars);
-  std::string bounded_cmd = cmd;
   pid_t pid = -1;
   int master_fd = -1;
   int pipe_fds[2] = {-1, -1};
@@ -389,9 +379,9 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   session->tty = tty;
   ChildEnvironment child_environment(spec.environment, spec.environment_policy);
   int spawn_error =
-      tty ? SpawnPtyShell(shell, bounded_cmd, wrapper, child_environment.Data(),
-                          pid, master_fd)
-          : SpawnLoggedShell(shell, bounded_cmd, wrapper, pipe_fds[1],
+      tty ? SpawnPtyShell(shell, cmd, wrapper, child_environment.Data(), pid,
+                          master_fd)
+          : SpawnLoggedShell(shell, cmd, wrapper, pipe_fds[1],
                              /*detach=*/false, child_environment.Data(), pid);
   pipe_write.Reset();
   Fd master(master_fd);
@@ -438,7 +428,7 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   if (!registered) {
     KillProcess(pid);
     RemoveLog(log);
-    return {JobLimitError(max_jobs)};
+    return {JobLimitError()};
   }
   int64_t activity_id = *registered;
   int output_fd = tty ? master.Release() : pipe_read.Release();
@@ -475,9 +465,7 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   }
 
   if (cancelled) {
-    auto stop_deadline =
-        std::chrono::steady_clock::now() + std::chrono::seconds(2);
-    exited = WaitForTerminal(supervisor, session, stop_deadline);
+    exited = WaitForTerminal(supervisor, session, DeadlineAfter(2));
   }
   // Every path below that does not background the child takes its signal
   // registration back out.
@@ -512,8 +500,16 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   if (exited) {
     BgTrackSignal(pid, false);
     (void)supervisor.RemoveForeground(pid);
-    return finish([](std::string output, int status) {
+    return finish([&cmd](std::string output, int status) {
       output += FmtExit(status, /*show_ok=*/false);
+      // pkill -f and its kin match on the whole command line, and this
+      // command's own shell carries the pattern in its.
+      if (WIFSIGNALED(status) && (cmd.find("pkill -f") != std::string::npos ||
+                                  cmd.find("pgrep -f") != std::string::npos)) {
+        output +=
+            "\n[the pattern matched this command's own shell; match "
+            "the process name instead, e.g. pkill -x NAME]";
+      }
       return ProcessResult(std::move(output), status);
     });
   }
@@ -521,9 +517,7 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
     BgTrackSignal(pid, false);
     (void)supervisor.RemoveForeground(pid);
     SignalShellGroup(pid, SIGKILL);
-    auto stop_deadline =
-        std::chrono::steady_clock::now() + std::chrono::seconds(2);
-    WaitForTerminal(supervisor, session, stop_deadline);
+    WaitForTerminal(supervisor, session, DeadlineAfter(2));
     return finish([](std::string output, int) {
       if (!output.empty() && output.back() != '\n') output += '\n';
       output += "error: command exceeded its execution deadline";
@@ -566,26 +560,6 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   running.parts =
       json::array({LinkPart("activity", activity_id, "Open activity")});
   return {std::move(running), std::nullopt, /*launched=*/true};
-}
-
-ToolResult ToolRunApprovedShell(ProcessSupervisor& supervisor,
-                                const std::string& command,
-                                const ToolContext& context, bool detach,
-                                const std::string& shell, bool tty,
-                                int64_t yield_ms, int64_t max_output_chars,
-                                bool sandbox) {
-  return RunShellCommand(
-             supervisor, context,
-             {.command = command,
-              .shell = shell,
-              .background = detach,
-              .detach = detach,
-              .tty = tty,
-              .sandbox = sandbox,
-              .yield_ms = yield_ms,
-              .max_output_chars = max_output_chars,
-              .environment_policy = ChildEnvironmentPolicy::kApprovedShell})
-      .result;
 }
 
 bool StartsWithShellWord(const std::string& command, const std::string& word) {

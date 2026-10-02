@@ -1,0 +1,57 @@
+/* The palette fills its sheet: the search stays put and the results take
+   the rest of the height and scroll. */
+.palette {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  height: 100%;
+  min-height: 0;
+}
+.palette-results {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.palette-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.palette-detail,
+.palette-empty {
+  color: var(--muted);
+  font-size: var(--font-small);
+  white-space: nowrap;
+}
+.keys {
+  display: inline-flex;
+  gap: var(--space-1);
+  flex-shrink: 0;
+}
+.keys kbd {
+  min-width: 1.6em;
+  padding: 0 var(--space-1);
+  border: 1px solid var(--line);
+  border-radius: var(--space-1);
+  font: inherit;
+  font-size: var(--font-micro);
+  text-align: center;
+  color: var(--muted);
+}
+.shortcut-list {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+}
+.shortcut-list div {
+  display: grid;
+  grid-template-columns: calc(120rem / 14) 1fr;
+  align-items: center;
+  gap: var(--gap);
+}
+.shortcut-list dd {
+  margin: 0;
+}

@@ -5,8 +5,7 @@ import type {
   SessionRef,
   Snapshot,
 } from "../../shared/types.ts";
-import type { RefObject } from "preact";
-import { useCallback, useEffect, useState } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 import { LoadError, Mark, Placeholder } from "../../shared/ui.tsx";
 import HistoryStart from "./history-start.tsx";
 import { MessageRows, prepareHistoryBlocks } from "./message.tsx";
@@ -39,8 +38,6 @@ export function TranscriptPlaceholder({ session }: { session: SessionRef }) {
 }
 
 export default function Chat({
-  scroller,
-  content,
   attachScroller,
   attachContent,
   selected,
@@ -54,8 +51,6 @@ export default function Chat({
   report,
   preserveWhile,
 }: {
-  scroller: RefObject<HTMLDivElement>;
-  content: RefObject<HTMLDivElement>;
   attachScroller: (node: HTMLDivElement | null) => void;
   attachContent: (node: HTMLDivElement | null) => void;
   selected: string;
@@ -69,22 +64,6 @@ export default function Chat({
   preserveWhile: (load: () => Promise<void>) => Promise<void>;
   report: Report;
 }) {
-  // Keep the hook's mirrors current and rebind its node-keyed effects
-  // on every remount; both callbacks are stable, so no ref churn.
-  const attachBox = useCallback(
-    (node: HTMLDivElement | null) => {
-      scroller.current = node;
-      attachScroller(node);
-    },
-    [scroller, attachScroller],
-  );
-  const attachColumn = useCallback(
-    (node: HTMLDivElement | null) => {
-      content.current = node;
-      attachContent(node);
-    },
-    [content, attachContent],
-  );
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [preparedKey, setPreparedKey] = useState("");
   const prepared = !!snapshot && preparedKey === selected;
@@ -119,9 +98,18 @@ export default function Chat({
       aria-busy={
         (!snapshot && !loadError) || (snapshot && !prepared) || undefined
       }
-      ref={attachBox}
+      ref={attachScroller}
     >
-      <div class="transcript-content" ref={attachColumn}>
+      {/* A log a listener can browse, silent as it streams: the status
+          line above the composer announces a turn's start and end. */}
+      <div
+        class="transcript-content"
+        ref={attachContent}
+        role="log"
+        aria-label="Conversation"
+        aria-live="off"
+        aria-busy={(online && !!session.turn_active) || undefined}
+      >
         <HistoryStart
           view={view}
           online={online}
@@ -134,14 +122,11 @@ export default function Chat({
             when this turn saves.
           </p>
         )}
-        {!snapshot &&
-          (loadError ? (
-            <LoadError error={loadError} retry={retry} />
-          ) : (
-            <TranscriptPlaceholder session={session} />
-          ))}
-        {snapshot && loadError && <LoadError error={loadError} retry={retry} />}
-        {snapshot && !prepared && <TranscriptPlaceholder session={session} />}
+        {!!loadError && <LoadError error={loadError} retry={retry} />}
+        {/* A failed first load shows only its error. */}
+        {(snapshot ? !prepared : !loadError) && (
+          <TranscriptPlaceholder session={session} />
+        )}
         {snapshot && prepared && blocks.length === 0 && (
           <div class="empty">
             <Mark className="cursor-mark" />
@@ -154,9 +139,15 @@ export default function Chat({
         {snapshot && prepared && (
           <MessageRows blocks={blocks} online={online} session={session} />
         )}
-        {session.error && <p class="failure">{session.error}</p>}
+        {session.error && (
+          <p class="failure" role="alert">
+            {session.error}
+          </p>
+        )}
         {snapshot?.state?.error && (
-          <p class="failure">{snapshot.state.error}</p>
+          <p class="failure" role="alert">
+            {snapshot.state.error}
+          </p>
         )}
       </div>
     </div>

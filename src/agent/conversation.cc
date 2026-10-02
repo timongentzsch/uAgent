@@ -12,11 +12,9 @@
 #include <vector>
 
 #include "include/agent/protocol.h"
-#include "include/api/wire.h"
 #include "include/core/checked.h"
 #include "include/core/debug.h"
 #include "include/core/json.h"
-#include "include/core/limits.h"
 #include "include/core/strings.h"
 #include "include/core/usage.h"
 #include "include/media/attachments.h"
@@ -24,6 +22,11 @@
 namespace uagent {
 
 namespace {
+
+// What a display fact counts against the metadata budget.
+size_t FactBytes(const std::string& key, const json& value) {
+  return SaturatingAdd(JsonEstimatedBytes(value), key.size());
+}
 
 void NormalizeRole(json& message, MessageKind kind) {
   switch (kind) {
@@ -155,7 +158,6 @@ bool ParseMessageKind(const std::string& name, MessageKind& kind) {
 
 void Conversation::Reset(json baseline, std::vector<MessageKind> kinds) {
   next_display_id_ = 1;
-  tool_displays_ = json::object();
   display_facts_ = json::object();
   fact_bytes_.clear();
   announced_deliveries_ = json::object();
@@ -171,10 +173,9 @@ void Conversation::Reset(json baseline, std::vector<MessageKind> kinds) {
 
 bool Conversation::Restore(json messages, std::vector<MessageKind> kinds,
                            json archive, int64_t dropped_segments,
-                           json tool_displays, const json& display) {
+                           const json& display) {
   if (!messages.is_array() || messages.empty() ||
-      messages.size() != kinds.size() || !archive.is_array() ||
-      !tool_displays.is_object()) {
+      messages.size() != kinds.size() || !archive.is_array()) {
     return false;
   }
   std::vector<uint64_t> restored_ids;
@@ -210,7 +211,6 @@ bool Conversation::Restore(json messages, std::vector<MessageKind> kinds,
   }
   // Validate before adopting: a failed resume must leave the live session
   // intact.
-  tool_displays_ = std::move(tool_displays);
   NormalizeRoles(messages, kinds);
   messages_ = std::move(messages);
   kinds_ = std::move(kinds);
@@ -229,7 +229,7 @@ bool Conversation::Restore(json messages, std::vector<MessageKind> kinds,
   fact_bytes_.clear();
   if (display_facts_.is_object()) {
     for (const auto& [key, value] : display_facts_.items()) {
-      fact_bytes_[key] = SaturatingAdd(JsonEstimatedBytes(value), key.size());
+      fact_bytes_[key] = FactBytes(key, value);
     }
   }
   // Sessions written before announcement receipts existed restore without
@@ -263,42 +263,6 @@ void Conversation::ResetHistory(json baseline, std::vector<MessageKind> kinds) {
   for (size_t index = 0; index < messages_.size(); ++index) {
     display_ids_.push_back(next_display_id_++);
   }
-}
-
-// A receipt is worth keeping only while the call it describes is still in the
-// transcript. Pruning against the live messages covers every way one can
-// leave -- compaction, archiving, an explicit erase -- without hooking each.
-void Conversation::PruneToolDisplays() {
-  json kept = json::object();
-  for (auto message_it = messages_.rbegin();
-       message_it != messages_.rend() && kept.size() < kMaxToolDisplays - 1;
-       ++message_it) {
-    const json& message = *message_it;
-    if (!message.is_object()) continue;
-    auto id = message.find("tool_call_id");
-    if (id == message.end() || !id->is_string()) continue;
-    const std::string& key = id->get_ref<const std::string&>();
-    auto stored = tool_displays_.find(key);
-    if (stored != tool_displays_.end()) kept[key] = *stored;
-  }
-  tool_displays_ = std::move(kept);
-}
-
-void Conversation::RecordToolDisplay(const std::string& call_id,
-                                     std::string display) {
-  if (call_id.empty() || display.empty()) return;
-  // Make space before insertion: the current call's result is appended later.
-  if (tool_displays_.size() >= kMaxToolDisplays &&
-      !tool_displays_.contains(call_id)) {
-    PruneToolDisplays();
-  }
-  tool_displays_[call_id] = std::move(display);
-}
-
-const std::string* Conversation::ToolDisplay(const std::string& call_id) const {
-  auto stored = tool_displays_.find(call_id);
-  if (stored == tool_displays_.end() || !stored->is_string()) return nullptr;
-  return &stored->get_ref<const std::string&>();
 }
 
 json Conversation::DisplayMetadata() const {
@@ -348,15 +312,14 @@ void Conversation::RecordDisplay(const std::string& key, json facts) {
     merged.update(facts);
     facts = std::move(merged);
   }
-  if (JsonEstimatedBytes(facts) > kFactBytes) return;
+  const size_t estimated = JsonEstimatedBytes(facts);
+  if (estimated > kFactBytes) return;
   if (existing != display_facts_.end()) {
-    const size_t prior =
-        SaturatingAdd(JsonEstimatedBytes(*existing), key.size());
-    display_bytes_ -= std::min(display_bytes_, prior);
+    display_bytes_ -= std::min(display_bytes_, FactBytes(key, *existing));
   }
-  const size_t bytes = SaturatingAdd(JsonEstimatedBytes(facts), key.size());
+  const size_t bytes = SaturatingAdd(estimated, key.size());
   display_bytes_ = SaturatingAdd(display_bytes_, bytes);
-  display_facts_[key] = facts;
+  display_facts_[key] = std::move(facts);
   fact_bytes_[key] = bytes;
   // Metadata is independently bounded. Evict the largest fact first: fat
   // tool rows yield the most headroom, while tiny control receipts
@@ -364,18 +327,16 @@ void Conversation::RecordDisplay(const std::string& key, json facts) {
   // key order and re-trigger their notices on every later step. The fact
   // just written never goes: a fresh response would otherwise lose the id
   // that rejoins its live row.
+  const auto stored_bytes = [this](const std::string& name, const json& value) {
+    const auto sized = fact_bytes_.find(name);
+    return sized != fact_bytes_.end() ? sized->second : FactBytes(name, value);
+  };
   while (display_facts_.size() > kFactCount || display_bytes_ > kDisplayBytes) {
     auto victim = display_facts_.end();
     size_t victim_bytes = 0;
     for (auto it = display_facts_.begin(); it != display_facts_.end(); ++it) {
       if (it.key() == key) continue;
-      size_t candidate = 0;
-      if (const auto sized = fact_bytes_.find(it.key());
-          sized != fact_bytes_.end()) {
-        candidate = sized->second;
-      } else {
-        candidate = SaturatingAdd(JsonEstimatedBytes(*it), it.key().size());
-      }
+      const size_t candidate = stored_bytes(it.key(), *it);
       if (victim == display_facts_.end() || candidate > victim_bytes ||
           (candidate == victim_bytes && it.key() < victim.key())) {
         victim = it;
@@ -386,13 +347,7 @@ void Conversation::RecordDisplay(const std::string& key, json facts) {
     if (victim_bytes <= kTinyFactBytes && display_bytes_ <= kDisplayBytes) {
       victim = display_facts_.begin();
       if (victim.key() == key) ++victim;
-      if (const auto sized = fact_bytes_.find(victim.key());
-          sized != fact_bytes_.end()) {
-        victim_bytes = sized->second;
-      } else {
-        victim_bytes =
-            SaturatingAdd(JsonEstimatedBytes(*victim), victim.key().size());
-      }
+      victim_bytes = stored_bytes(victim.key(), *victim);
     }
     display_bytes_ -= std::min(display_bytes_, victim_bytes);
     fact_bytes_.erase(victim.key());
@@ -585,8 +540,6 @@ int64_t Conversation::UserTurns() const {
   return turns;
 }
 
-size_t Conversation::UserVisibleCount() const { return kinds_.size(); }
-
 bool Conversation::HasRecentToolResult(const std::string& name,
                                        const std::string& arguments,
                                        const std::string& result) const {
@@ -599,7 +552,8 @@ bool Conversation::HasRecentToolResult(const std::string& name,
     }
     if (kinds_[current] != MessageKind::kToolResult) continue;
     const json& message = messages_[current];
-    if (JsonValue(message, "content", "") != result) continue;
+    const std::string* content = JsonStringRef(message, "content");
+    if (content ? *content != result : !result.empty()) continue;
     std::string id = JsonValue(message, "tool_call_id", "");
     if (id.empty()) continue;
     for (size_t call_index = current; call_index > 0; --call_index) {
@@ -613,15 +567,10 @@ bool Conversation::HasRecentToolResult(const std::string& name,
 
 ToolTracePruneResult Conversation::PruneOldToolResults(
     size_t protect_chars, size_t minimum_reclaim_chars,
-    const std::vector<std::string>& retained_tools, ToolPruneMode mode,
-    int64_t archive_cap) {
+    const std::vector<std::string>& retained_tools) {
   if (minimum_reclaim_chars == 0) return {};
-  const bool superseded_only = mode == ToolPruneMode::kSupersededReads;
   const std::unordered_set<std::string> retained(retained_tools.begin(),
                                                  retained_tools.end());
-  if (superseded_only && (archive_cap <= 0 || retained.contains("read_path"))) {
-    return {};
-  }
   struct Candidate {
     size_t index;
     std::string replacement;
@@ -630,7 +579,6 @@ ToolTracePruneResult Conversation::PruneOldToolResults(
   size_t protected_chars = 0;
   size_t reclaimable_chars = 0;
   int64_t user_turns = 0;
-  std::unordered_set<std::string> newer_reads;
 
   for (size_t index = messages_.size(); index > 0; --index) {
     size_t current = index - 1;
@@ -638,7 +586,7 @@ ToolTracePruneResult Conversation::PruneOldToolResults(
       ++user_turns;
       continue;
     }
-    if ((!superseded_only && user_turns < kProtectedUserTurns) ||
+    if (user_turns < kProtectedUserTurns ||
         kinds_[current] != MessageKind::kToolResult) {
       continue;
     }
@@ -646,27 +594,11 @@ ToolTracePruneResult Conversation::PruneOldToolResults(
     const std::string* content = JsonStringRef(message, "content");
     if (!content || content->size() < kMinimumPrunableResultChars ||
         content->starts_with(kCompactedToolOutput) ||
-        (!superseded_only &&
-         retained.contains(ToolResultName(messages_, kinds_, current)))) {
+        retained.contains(ToolResultName(messages_, kinds_, current))) {
       continue;
-    }
-    bool superseded = false;
-    if (superseded_only) {
-      const json* range = JsonArray(message, kReadRangeField);
-      // A read without a range (truncated, or not a file read) is pruned by
-      // age only.
-      if (!range || range->size() != 3 || !(*range)[0].is_string() ||
-          !(*range)[1].is_number_integer() ||
-          !(*range)[2].is_number_integer() || (*range)[1].get<int64_t>() < 1 ||
-          (*range)[2] < (*range)[1]) {
-        continue;
-      }
-      superseded = !newer_reads.insert(JsonDump(*range)).second;
     }
     protected_chars = SaturatingAdd(protected_chars, content->size());
-    if (protected_chars <= protect_chars || (superseded_only && !superseded)) {
-      continue;
-    }
+    if (protected_chars <= protect_chars) continue;
     std::string replacement = CompactedResult(*content);
     if (replacement.size() >= content->size()) continue;
     size_t reclaimed = content->size() - replacement.size();
@@ -677,10 +609,6 @@ ToolTracePruneResult Conversation::PruneOldToolResults(
   if (reclaimable_chars < minimum_reclaim_chars) return {};
   ToolTracePruneResult result;
   for (Candidate& candidate : candidates) {
-    if (superseded_only && !ArchiveRange("superseded_read", candidate.index,
-                                         candidate.index + 1, 0, archive_cap)) {
-      continue;
-    }
     ++result.results;
     result.reclaimed_chars +=
         JsonStringRef(messages_[candidate.index], "content")->size() -
@@ -707,22 +635,17 @@ size_t Conversation::PruneAttachments(size_t begin, const std::string& route) {
         }
       }
     }
-    if (references) {
-      if (kinds_[index] == MessageKind::kAttachment) {
-        kinds_[index] =
-            index == begin ? MessageKind::kUser : MessageKind::kInternal;
+    if (!references) {
+      if (index < begin) continue;
+      attachments += content.empty() ? 0 : content.size() - 1;
+      std::string text;
+      for (const json& part : content) {
+        if (JsonValue(part, "type", "") == "text") {
+          text += JsonValue(part, "text", "");
+        }
       }
-      continue;
+      content = text + "\n[attachments omitted after processing]";
     }
-    if (index < begin) continue;
-    attachments += content.empty() ? 0 : content.size() - 1;
-    std::string text;
-    for (const json& part : content) {
-      if (JsonValue(part, "type", "") == "text") {
-        text += JsonValue(part, "text", "");
-      }
-    }
-    content = text + "\n[attachments omitted after processing]";
     // Reclassified in place: the message stays where it is and only stops
     // being an attachment, so this is the one kind write that has no message
     // write beside it. Bounded by the messages_/kinds_ pairing.
@@ -750,12 +673,10 @@ bool Conversation::ArchiveRange(const char* reason, size_t begin, size_t end,
   json saved = json::array();
   json saved_kinds = json::array();
   json saved_ids = json::array();
-  if (begin < end) {
-    for (size_t index = begin; index < end; ++index) {
-      saved.push_back(messages_[index]);
-      saved_kinds.push_back(MessageKindName(kinds_[index]));
-      saved_ids.push_back(display_ids_[index]);
-    }
+  for (size_t index = begin; index < end; ++index) {
+    saved.push_back(messages_[index]);
+    saved_kinds.push_back(MessageKindName(kinds_[index]));
+    saved_ids.push_back(display_ids_[index]);
   }
   if (saved.empty() && metadata.empty()) return false;
   json segment = {{"turn", turn},

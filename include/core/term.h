@@ -31,10 +31,17 @@ extern bool g_attributes;
 // A terminal whose locale cannot decode UTF-8 renders the row scaffolding as
 // mojibake, so the glyphs fall back to ASCII at the point they are written.
 extern bool g_unicode;
-extern volatile sig_atomic_t g_signal_tty;
+// The plain profile, for screen readers and transcripts: append-only rows that
+// open with a spoken label, ASCII glyphs, no cursor control and no animation.
+extern bool g_plain;
+// Off for plain and for reduced motion: the spinner holds a still label.
+extern bool g_motion;
+extern std::atomic<int> g_signal_tty;
 bool ResolveColorEnabled(bool tty);
 bool ResolveAttributesEnabled(bool tty);
 bool ResolveUnicodeEnabled();
+// Narrows what InitializeProcess resolved, once the configuration is known.
+void ApplyTerminalProfile(bool plain, bool reduced_motion);
 // Conversation text is always UTF-8, so width measurement needs a multibyte
 // LC_CTYPE even when the environment names none. False when none exists.
 bool EnsureUtf8Ctype();
@@ -70,12 +77,6 @@ inline const char* ItalOff() { return Attribute("\033[23m"); }
 inline const char* FgDfl() { return Sgr("\033[39m"); }  // default foreground
 // Cursor control, not colour, so no gate: only a terminal's own paths write it.
 inline const char* ClearScreen() { return "\033[H\033[2J"; }
-inline void TerminalRestore() {
-  if (!g_tty) return;
-  fputs(kTerminalRestore, stdout);
-  fputs(kTerminalModeReset, stdout);
-  fflush(stdout);
-}
 inline void TerminalClearToEnd() {
   if (!g_tty) return;
   fputs("\r\033[K", stdout);
@@ -119,16 +120,7 @@ inline const char* SpinnerFrame(size_t tick) {
 // wakes the thread immediately — it runs on the first-streamed-byte path.
 class TerminalSpinner {
  public:
-  explicit TerminalSpinner(bool enabled = true,
-                           std::string label = kWaitingActivity,
-                           std::chrono::steady_clock::time_point started =
-                               std::chrono::steady_clock::now())
-      : started_(started == std::chrono::steady_clock::time_point()
-                     ? std::chrono::steady_clock::now()
-                     : started),
-        label_(std::move(label)) {
-    Start(enabled);
-  }
+  explicit TerminalSpinner(bool enabled = true) { Start(enabled); }
 
   void Start(bool enabled = true) {
     if (active_ || !enabled || !g_tty) return;
@@ -142,15 +134,21 @@ class TerminalSpinner {
         double elapsed = std::chrono::duration<double>(
                              std::chrono::steady_clock::now() - started_)
                              .count();
-        const std::string row =
-            DisplayTrunc(AsciiGlyphs(std::string(SpinnerFrame(frame_)) + " " +
-                                     label_ + " · " + FmtDuration(elapsed)),
-                         TerminalWidth(1));
+        const std::string row = DisplayTrunc(
+            AsciiGlyphs(g_motion ? std::string(SpinnerFrame(frame_)) + " " +
+                                       label_ + " · " + FmtDuration(elapsed)
+                                 : label_ + "…"),
+            TerminalWidth(1));
         printf("\r%s%s%s%s", DIM(), row.c_str(), EraseToEol(), RST());
         fflush(stdout);
         ++frame_;
-        wake_.wait_for(lock, std::chrono::milliseconds(100),
-                       [this] { return done_; });
+        // Without motion only a new label or the stop redraws.
+        if (g_motion) {
+          wake_.wait_for(lock, std::chrono::milliseconds(100),
+                         [this] { return done_; });
+        } else {
+          wake_.wait(lock);
+        }
       }
     });
   }
@@ -191,8 +189,9 @@ class TerminalSpinner {
   bool active_ = false;
   size_t frame_ = 0;
   uint64_t activity_id_ = 0;
-  std::chrono::steady_clock::time_point started_;
-  std::string label_;
+  std::chrono::steady_clock::time_point started_ =
+      std::chrono::steady_clock::now();
+  std::string label_ = kWaitingActivity;
   std::thread thread_;
 };
 

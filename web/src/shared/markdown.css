@@ -8,13 +8,18 @@
 .markdown p:last-child {
   margin-bottom: 0;
 }
-.markdown h1 {
+/* Rendered headings are shifted two levels down (see markdown.ts); their
+   size follows the level the reply wrote. */
+.markdown :is(h1, h2, h3, h4, h5, h6) {
+  font-size: 1em;
+}
+.markdown [data-level="1"] {
   font-size: 1.4em;
 }
-.markdown h2 {
+.markdown [data-level="2"] {
   font-size: 1.2em;
 }
-.markdown h3 {
+.markdown [data-level="3"] {
   font-size: 1.1em;
 }
 .markdown ul,

@@ -5,9 +5,14 @@ Docker browser appliance and frontend development.
 
 ## Quick start
 
-Run `uagent --web`, open the printed URL and enter the single-use pairing code.
+Run `uagent --web` and open the printed `<origin>/#pair=<code>` link, which
+pairs the browser on opening and then drops the code from the address; or open
+the URL and enter the single-use pairing code. A refused code (used, mistyped
+or older than five minutes) says it expired: run `uagent --web` again.
 Another invocation reuses the running server and prints a fresh code. The
-sidebar lists this OS user's conversations grouped by project directory.
+sidebar lists this OS user's conversations grouped by project directory; a
+folder's coordinator is its header, with the threads it started nested under
+it.
 Browsing saved history does not start a model or execute a command.
 
 | Flag | Setting | Default |
@@ -122,7 +127,10 @@ control; **Done** returns you to the chat. Only the paired device that took
 control can finish it. Closing the viewer or losing its connection keeps the
 agent paused. Chrome stops by itself after 15 minutes without browser work,
 unless you control it or the agent is waiting for you, and starts again on the
-next action. **Stop browser** in the status menu releases it at once.
+next action; watching alone does not keep it running. A request whose
+conversation no longer runs is dropped. When a turn ends, only the tab the
+agent was on stays open. **Stop browser** in the status menu releases it at
+once.
 
 **Chrome profile** selects which login the agent and viewer share; **New
 profile** creates another persistent login. Switching requires control and
@@ -216,9 +224,12 @@ activity. See [Architecture](ARCHITECTURE.md) and
 
 Closing a tab, detaching a terminal or restarting the web server leaves the
 runtime running. **Stop** interrupts the current turn. **Close** saves the
-conversation, then stops the runtime and its supervised children. Reopening a
-closed conversation starts a runtime from its saved snapshot; it never repeats
-a previous command.
+conversation, then stops the runtime and its supervised children. A runtime
+with nothing to do for 15 minutes (no turn, no queued message, no running
+command, no terminal attached) stops the same way by itself. Either way the
+next message starts a runtime from the saved snapshot, with the conversation's
+model and permission mode; it never repeats a previous command. Commands
+started with `detach` keep running through both.
 
 On Linux, a systemd-launched web host starts each runtime in its own user scope
 through `systemd-run` (254 or newer), so a service restart does not kill it.
@@ -236,23 +247,72 @@ Browser mutations stay disabled until the server's `ready` watermark and the
 selected snapshot are applied.
 
 Submitted messages show a pending row until the runtime assigns a message ID.
-Reconnect checks receipts and history without resubmitting; explicit rejection
-restores the draft. Session cost follows provider-reported usage and is never
+Reconnect checks receipts and history without resubmitting. A message the host
+refused or never confirmed stays at its row with the reason, **Retry** and
+**Return to composer**; a failed decision reply stays on the decision with
+**Retry**. Neither goes to the page's error banner. While the event stream
+reconnects, the status line shows a “Reconnecting…” pill. Session cost follows provider-reported usage and is never
 invented. The context counter is an estimate of the current request size,
 separate from billing totals.
 
 One status indicator is used in the sidebar and composer: hollow without a live
 runtime, filled when connected, breathing while work runs. A pending decision
 shows a steady indicator and “Needs your input”. A separate dot marks unread
-responses.
+responses. In the sidebar a row that waits on you or failed shows an icon in
+place of the indicator, and a working row keeps the breathing indicator, so
+each row has one mark and no state rests on colour alone.
+
+The agent's questions are answered a page at a time: the steps above the page
+show which are answered and lead back to any already seen, a tap on a single
+choice moves on, and three or more questions end on a review of every answer
+before Submit.
+
+Decisions waiting on you are counted once, across every folder. The count
+heads the sidebar (“2 need you”), which opens every waiting decision with its
+folder and question to answer or open in place, and shows in the tab title
+(“(2) µAgent”) and, where the browser supports it, the installed app's badge.
+Answering here or in the session is the same act; the first answer wins. A
+notification opens `#session=<id>&decision=<id>`, which opens the session and
+focuses its decision.
 
 ## Conversation controls
 
 - The composer combines provider/model, variant and reasoning effort in one
   popup. Changing a selection does not submit a message.
 - `/` commands use the native registry, suggestions and Tab completion. Enter
-  sends; Shift+Enter inserts a newline.
-- Conversation menus provide tools, rename, fork, close, delete and statistics.
+  sends; Shift+Enter inserts a newline. While a turn runs, Enter adds guidance
+  to it and Esc stops it; **Queue next** (Alt+Enter) holds the message until
+  the turn ends and then runs it as its own turn. The permission control turns
+  red in YOLO mode.
+- The composer is one shape in every turn state. Its action row has fixed
+  places: Attach, the model (the only one that stretches), Permissions, and
+  one primary button, which is Send, or Stop while a turn runs and the draft
+  is empty. The status line above it is one line: the phase on the left, and
+  on the right **Queue next** (while a turn runs and there is a draft) or
+  **Continue** (after a stop).
+- An approval opens above the input, which stays in place, read-only, until
+  it is answered; Permissions stays usable. The card shows what it would do
+  (the command, or the change as a diff, scrolling past about six lines), the
+  folder and its risks, with **Deny**, **Allow for session** and **Allow
+  once** in one row. Under **More options**, **Always allow this exact action
+  here** makes Allow once a rule for the repository, listed under *Allowed
+  actions* in Settings → Permissions, and **+ guidance** answers in words
+  instead. Numbered choices are cards.
+- After a turn stopped short (Stop, an error, a step or budget limit) the
+  status line reads **Stopped** with **Continue**, which sends `continue`.
+- A turn that changed files ends with its receipt (files, lines, cost, time).
+  It opens the changed files, each with **Undo**, and **Undo all**; a file
+  changed since is kept and says why. Shell commands' changes are not
+  tracked. Three or more tool calls in a row fold into one row (“Ran 4
+  commands · edited 2 files”) that expands to the calls.
+- Ctrl+K (⌘K on a Mac), or the search button atop the sidebar on a phone,
+  opens the command palette: conversations, folders, slash commands, settings
+  sections and actions, matched by letters in order (a prefix first), each with
+  its shortcut. `?` outside a text field lists every shortcut; Alt+↑ and Alt+↓
+  step through the conversations in sidebar order.
+- Conversation menus provide tools, rename, fork, statistics, export of the
+  transcript, compact, restart, close and delete. Typed `/restart` does the
+  same as the menu; `/quit` detaches a terminal and closes nothing here.
   The Tools view controls the active schema and groups tools into persistent
   custom categories. Stop and close a live runtime before deleting its history;
   project files are unaffected.
@@ -264,13 +324,18 @@ responses.
   and input. Ordinary subagent follow-ups can select another model; persistent
   agents keep their runtime model. Process children show statistics from their
   latest saved checkpoint and label them as such.
-- Settings contain this device's display settings and every registered
-  setting. Each row shows its current value, the default included, and
-  **Reset** while the edited scope changes it; saving the inherited value
-  removes the change. Values set by the environment or command line are
-  shown locked. **Reset all to defaults** (Advanced) resets a scope, and in
-  User defaults this device's display settings too; API keys are kept. A
-  change that needs a restart offers it: running conversations restart once
+- Settings group their sections as General; Agent (Instructions, Tools, MCP
+  servers, Permissions & allowed actions); Models; Host (Devices); and
+  Advanced. General holds this device's display settings. Every other
+  setting is a row with its name and the value that applies: a switch flips
+  in place, anything else opens a sheet with what it is for, the value, why
+  it applies, **Use default** and **Save**. Advanced lists what you changed
+  and what the environment or command line locks; its search finds any other
+  setting. The web edits your defaults; a project's override is shown and is
+  edited in its `.uagent/.config` or with `/config project`. **Reset all to
+  defaults** (Advanced) also resets this device's display settings; API keys
+  are kept. A change that needs a restart offers it: running conversations
+  restart once
   idle and keep their history, and the web host re-execs itself for its own
   settings. The terminal has the same through `/config`, `/restart`, `/mcp`
   and `/permissions rules`. **MCP servers** lists the open conversation's

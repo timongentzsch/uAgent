@@ -9,6 +9,8 @@
 #include <string>
 #include <vector>
 
+#include "include/core/fd.h"
+
 namespace uagent {
 
 enum class FileWaitResult { kChanged, kTimedOut, kInterrupted, kSteering };
@@ -40,6 +42,35 @@ FileWaitResult WaitForAnyFileChange(
     const std::vector<std::string>& paths,
     std::chrono::steady_clock::time_point deadline, int wake_fd = -1,
     const std::map<std::string, FileStamp>& prior = {});
+
+// One kqueue/inotify instance watching paths and readable wake descriptors.
+// Default-constructed it watches nothing and Get() is -1; unsupported
+// platforms never get further.
+class NativeWatch {
+ public:
+  // A file's own changes; a directory's entries coming and going as well; or
+  // only entries arriving in a directory.
+  enum class Events { kFile, kTree, kArrivals };
+
+  // False when the platform cannot watch `path`, leaving the rest in place.
+  bool Watch(const std::string& path, Events events);
+  // Negative descriptors are skipped.
+  bool Wake(int fd);
+  int Get() const { return queue_.Get(); }
+  // Until `deadline`: a wake descriptor that became readable, Get() for a
+  // watched change, or -1 when nothing arrived or the wait failed.
+  int Wait(std::chrono::steady_clock::time_point deadline) const;
+  // Consumes pending notifications without blocking.
+  void Drain() const;
+
+ private:
+  bool Open();
+
+  Fd queue_;
+  // kqueue watches descriptors: each stays open as long as its watch.
+  std::vector<Fd> watched_;
+  std::vector<int> wakes_;
+};
 
 }  // namespace uagent
 

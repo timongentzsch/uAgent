@@ -207,6 +207,17 @@ test.describe("phone browser sheet", () => {
       .poll(async () => (await canvas.boundingBox()).width / view.width)
       .toBeGreaterThan(2);
     expect(masks()).toEqual([]);
+
+    // Zoomed in, one finger pans the view by its travel; Chrome hears nothing.
+    const zoomed = await canvas.boundingBox();
+    const middle = view.x + view.width / 2;
+    await touch(viewport, "pointerdown", 8, middle, y);
+    await touch(viewport, "pointermove", 8, middle + 60, y);
+    await touch(viewport, "pointerup", 8, middle + 60, y);
+    await expect
+      .poll(async () => (await canvas.boundingBox()).x - zoomed.x)
+      .toBeCloseTo(60, 0);
+    expect(masks()).toEqual([]);
     // noVNC's own touch cursor stays hidden behind the modal.
     expect(
       await page.evaluate(() =>
@@ -270,12 +281,14 @@ test("watches an active agent without taking control", async ({
   await expect(dialog.getByRole("button", { name: "Take over" })).toBeVisible();
   for (const name of ["Copy", "Paste"])
     await expect(dialog.getByRole("button", { name })).toBeDisabled();
-  // The app-wide zoom lock holds with the viewer open and after it closes.
+  // The viewer leaves the page's viewport alone, open and after it closes:
+  // the reader may still zoom the page (WCAG 1.4.4).
   const meta = page.locator('meta[name="viewport"]');
-  await expect(meta).toHaveAttribute("content", /user-scalable=no/);
+  const viewport = await meta.getAttribute("content");
+  expect(viewport).not.toMatch(/user-scalable=no|maximum-scale/);
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
-  await expect(meta).toHaveAttribute("content", /user-scalable=no/);
+  await expect(meta).toHaveAttribute("content", viewport);
 });
 
 for (const [label, status, state, primary] of [

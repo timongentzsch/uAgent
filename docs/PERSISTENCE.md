@@ -14,6 +14,7 @@ Paths under `~/.uagent` unless shown otherwise.
 | session event journals | `<session>.json.events.jsonl` |
 | session writer lease | `<session>.json.lock` |
 | web uploads | `<session>.json.assets/*` |
+| undo journal: each turn's changed files as they were before it | `<session>.json.edits/{index.json,<turn>-<hash>}` |
 | debug traces | `sessions/*.jsonl` |
 | captured large outputs and HTTP exchanges | `artifacts/*` |
 | background command logs | `bg/*` |
@@ -26,7 +27,7 @@ Paths under `~/.uagent` unless shown otherwise.
 | scheduled tasks and their worktrees | `scheduled/state.json`, `worktrees/<id>` |
 | session links | `links/*` |
 | web host discovery, devices and push keys | `web/*` |
-| project trust, model preference, permission rules, tool categories | `config/trusted-projects.json`, `config/model-preference.json`, `config/permissions.json`, `config/tool-categories.json` |
+| project trust, model preference, permission rules, tool categories, first-run welcome shown | `config/trusted-projects.json`, `config/model-preference.json`, `config/permissions.json`, `config/tool-categories.json`, `config/welcomed` |
 | configuration | `.config`, and `<workspace>/.uagent/.config` |
 | instructions | `AGENTS.md`, `COORDINATOR.md`, and `<folder>/.uagent/COORDINATOR.md` |
 | scratch scripts | `<workspace>/.uagent/scratch/*.py`, `*.sh` |
@@ -54,8 +55,8 @@ user chose.
   a workspace. The lease is the locked descriptor, not the lock file's
   existence.
 - A successful, untruncated file read stores `_uagent_read_range`
-  (`[path, first_line, last_line]`) in its tool message so superseded-read
-  pruning works after resume. Wire requests omit it.
+  (`[path, first_line, last_line]`) in its tool message. Wire requests omit
+  it.
 
 The event journal (`uagent.session.event.v1`) keeps at most 512 records or
 256 KiB of turn, tool, capability, configuration, presentation and artifact
@@ -109,18 +110,21 @@ retry.
 
 ## Retention
 
-Pruning runs at startup:
+Pruning runs whenever a session's runtime starts:
 
 | Tree | Days / files kept |
 | --- | --- |
 | `history/`, `memory/.processed/` | `UAGENT_HISTORY_DAYS` 30 / 200 |
 | `sessions/` | 14 / 50 |
+| `mail/` | 14 (undelivered mail expires after a day) |
 | `bg/`, `artifacts/` | 7 / 200 |
 | `mcp/` | 7 / 100 |
 | exited detached terminals | 7, removed with their logs |
 
-Delegated children age out with `history/`. Journals whose session is gone are
-removed. Each process log is also bounded in size: 64 MiB for
+Delegated children age out with `history/`. A session's journal, undo data and
+attachments age out with it and never count against the file limit. Journals
+whose session is gone are removed, and so are the socket and lease of a
+runtime that was killed. Each process log is also bounded in size: 64 MiB for
 commands, 16 MiB for an MCP server.
 
 ## Removal

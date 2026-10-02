@@ -7,7 +7,6 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <cstdio>
 #include <string>
 #include <utility>
 
@@ -98,12 +97,7 @@ bool McpSend(McpServer& s, int64_t id, const std::string& method,
   json m = {{"jsonrpc", "2.0"}, {"method", method}};
   if (id >= 0) m["id"] = id;
   if (!params.is_null()) m["params"] = params;
-  if (id >= 0) {
-    if (!m.contains("params") || !m["params"].is_object()) {
-      m["params"] = json::object();
-    }
-    m["params"]["_meta"] = McpRequestMeta();
-  }
+  if (id >= 0) EnsureObject(m, "params")["_meta"] = McpRequestMeta();
   return McpWrite(s, JsonDump(m) + "\n");
 }
 
@@ -195,9 +189,6 @@ McpResponseState McpTryResponse(McpServer& s, int64_t id, json& response) {
 }
 
 json McpAwait(McpServer& s, int64_t id, int64_t timeout_s, bool cancellable) {
-  auto fail = [](std::string message) {
-    return McpErrorReply(std::move(message));
-  };
   auto deadline = DeadlineAfter(timeout_s);
   std::string line;
   while (McpReadLine(s, line, deadline, cancellable)) {
@@ -206,7 +197,7 @@ json McpAwait(McpServer& s, int64_t id, int64_t timeout_s, bool cancellable) {
     if (McpHandleMessage(s, m)) continue;
     if (McpResponseMatches(m, id)) return m;
   }
-  if (!s.alive) return fail("server exited" + McpStderrHint(s.name));
+  if (!s.alive) return McpErrorReply("server exited" + McpStderrHint(s.name));
   bool cancelled = cancellable && AbortRequested();
   if (cancelled) ClearAbort();
   McpSend(s, -1, "notifications/cancelled",
@@ -214,9 +205,9 @@ json McpAwait(McpServer& s, int64_t id, int64_t timeout_s, bool cancellable) {
            {"reason", cancelled ? "user cancelled" : "request timed out"}});
   if (cancelled) {
     RequestAbort();
-    return fail("cancelled");
+    return McpErrorReply("cancelled");
   }
-  return fail("no response after " + std::to_string(timeout_s) + "s");
+  return McpErrorReply("no response after " + std::to_string(timeout_s) + "s");
 }
 
 json McpRpc(McpServer& s, const std::string& method, const json& params,

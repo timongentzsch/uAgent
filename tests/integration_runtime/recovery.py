@@ -37,7 +37,7 @@ def test_first_event_timeout(root, home, *, binary):
 
     with Server([stall, stall, stall]) as server:
         env = base_env(home, server.url)
-        env["UAGENT_FIRST_EVENT_TIMEOUT"] = "1"
+        env["UAGENT_STREAM_TIMEOUT"] = "1"
         started = time.monotonic()
         result = run(root, env, "-p", "probe", binary=binary)
         elapsed = time.monotonic() - started
@@ -226,7 +226,7 @@ def test_absolute_compaction_ceiling(root, home, *, binary):
                 "UAGENT_CONTEXT": "1000000",
                 "UAGENT_MAX_TOKENS": "512",
                 "UAGENT_AUTO_COMPACT_PCT": "0",
-                "UAGENT_AUTO_COMPACT_TOKENS": "2000",
+                "UAGENT_INTERNAL_AUTO_COMPACT_TOKENS": "2000",
             }
         )
         result = run(root, env, "-c", f"--debug={trace}", "-p", "continue", binary=binary)
@@ -278,7 +278,7 @@ def test_activity_progress_polls_do_not_trip_identical_call_guard(root, home, *,
     with Server([route]) as server:
         env = base_env(home, server.url)
         env["UAGENT_AUTO_COMPACT_PCT"] = "0"
-        env["UAGENT_AUTO_COMPACT_TOKENS"] = "0"
+        env["UAGENT_INTERNAL_AUTO_COMPACT_TOKENS"] = "0"
         result = run(root, env, "--yolo", "-p", "monitor", timeout=12, binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip().endswith("progress-polls-ok"), result.stdout)
@@ -384,7 +384,7 @@ def test_activity_poll_in_productive_batches_does_not_form_a_loop(root, home, *,
     with Server([route]) as server:
         env = base_env(home, server.url)
         env["UAGENT_AUTO_COMPACT_PCT"] = "0"
-        env["UAGENT_AUTO_COMPACT_TOKENS"] = "0"
+        env["UAGENT_INTERNAL_AUTO_COMPACT_TOKENS"] = "0"
         result = run(root, env, "--yolo", "-p", "monitor and inspect", timeout=8, binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip().endswith("productive-batches-ok"), result.stdout)

@@ -66,6 +66,16 @@ struct ReadRange {
   int64_t first = 0, last = 0;
 };
 
+// A file the call changed, for the session's undo (EditJournal): its bytes
+// before the call, unset when it did not exist or they were not kept (binary,
+// too large), and a hash of what it holds now, empty once deleted.
+struct FileEffect {
+  std::string path;
+  bool existed = false;
+  std::optional<std::string> before;
+  std::string after_hash;
+};
+
 struct ToolResult {
   CompletionStatus status = CompletionStatus::kSuccess;
   std::string output;
@@ -76,9 +86,12 @@ struct ToolResult {
   // registry cap; a bounded richer result can raise it.
   int64_t result_chars = -1;
   std::string display;  // optional terminal-only receipt
+  // The whole receipt, once the turn loop has cut `display` to its opening.
+  std::string display_path;
   // Display-only view parts shown on the row without expanding it, never
   // model-facing: links to work the call started and files it shared.
   json parts = nullptr;
+  std::optional<FileEffect> effect;
   bool no_change = false;  // activity poll found nothing new
   bool activity_terminal = false;
 
@@ -154,7 +167,6 @@ struct Tool {
   using Header = std::function<json(const json&)>;
 
   std::string name;
-  std::string title;     // short human label, derived from name by default
   std::string category;  // workspace, execute, web, collaborate, memory, mcp
   std::string description;
   json parameters;               // JSON-schema for the args
@@ -184,7 +196,6 @@ struct Tool {
   std::string mandatory_reason;
   std::string provider;             // owner for live registry refresh
   json output_schema;               // optional MCP output contract
-  std::string stable_argument;      // value must stay fixed during one turn
   int64_t timeout_s = -1;           // -1 = global default; 0 = turn limit
   int64_t result_chars = -1;        // -1 = global result cap
   int64_t max_calls_per_turn = -1;  // -1 = global turn budget
@@ -319,12 +330,6 @@ void ClampToolArguments(const Tool& tool, json& args,
 // separate execution copy of its arguments.
 void CanonicalizeToolArguments(const Tool& tool, json& args,
                                std::vector<std::string>* clamped = nullptr);
-
-// A tool's `stable_argument` must keep the same value for a whole turn.
-// `values` carries that per-turn memory for the caller.
-std::string StableArgumentError(
-    const Tool& tool, const json& args,
-    std::unordered_map<std::string, std::string>& values);
 
 json ToolSchema(const Tool& tool);
 

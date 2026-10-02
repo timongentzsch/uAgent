@@ -1,5 +1,6 @@
 // A folder's coordinator opens from its header icon; its board lists the
-// folder's sessions beside the chat, and above it on a phone.
+// folder's sessions beside the chat, and slides in from the right on a
+// phone. Its threads nest under that header in the sidebar.
 import { test, expect } from "./fixtures.js";
 
 const VIEWPORTS = [
@@ -19,11 +20,39 @@ async function openCoordinator(page, session) {
     .getByLabel(/^Coordinator for /)
     .first()
     .click();
+  // Beside the chat, or behind the header's Board button on a phone.
   await expect(
-    page.getByRole("complementary", { name: "Board" }),
+    page
+      .getByRole("complementary", { name: "Board" })
+      .or(page.getByRole("button", { name: /^Board/ })),
   ).toBeVisible();
   return new URL(page.url()).hash.match(/session=([a-f0-9]+)/)[1];
 }
+
+test("on a phone the board slides in from the right", async ({
+  page,
+  session,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openCoordinator(page, session);
+  // Nothing stacks above the chat.
+  await expect(page.locator(".conversation .board")).toHaveCount(0);
+  await page.getByRole("button", { name: /^Board/ }).click();
+  const sheet = page.getByRole("dialog", { name: "Board" });
+  await expect(
+    sheet.getByRole("complementary", { name: "Board" }),
+  ).toBeVisible();
+  // Settled against the right edge, leaving the chat visible to its left.
+  await expect
+    .poll(async () => {
+      const box = await sheet.boundingBox();
+      return Math.round(box.x + box.width);
+    })
+    .toBe(390);
+  expect((await sheet.boundingBox()).x).toBeGreaterThan(30);
+  await page.keyboard.press("Escape");
+  await expect(sheet).toHaveCount(0);
+});
 
 async function shot(page, name) {
   if (process.env.UAGENT_SCREENSHOTS) {
@@ -48,12 +77,13 @@ for (const [name, viewport] of VIEWPORTS) {
         () => document.documentElement.scrollWidth - window.innerWidth,
       ),
     ).toBeLessThanOrEqual(0);
-    await page.getByLabel("What is the coordinator?").click();
-    const help = page.getByRole("dialog", { name: "The folder's coordinator" });
-    await expect(help.getByText("How it differs")).toBeVisible();
-    // The help's rows keep their own height in the sheet: no stretched button.
-    const button = help.getByRole("button", { name: "Edit instructions" });
-    expect((await button.boundingBox()).height).toBeLessThan(60);
+    // What it is, in one line under its title, with its instructions a tap
+    // away even where the words truncate.
+    const subtitle = page.locator(".coordinator-subtitle");
+    await expect(subtitle).toContainText("hands work to threads");
+    const button = subtitle.getByRole("button", { name: "Edit instructions" });
+    await expect(button).toBeInViewport();
+    expect((await subtitle.boundingBox()).height).toBeLessThan(40);
     await shot(page, `help-${browserName}-${name}`);
   });
 
@@ -97,7 +127,13 @@ for (const [name, viewport] of VIEWPORTS) {
           node.classList.contains("turn-summary")
             ? "stats"
             : node.classList.contains("user")
-              ? node.textContent.replace(/^\s*\d+:\d+\s*(AM|PM)?/, "").trim()
+              ? // What shows: the row's spoken name ("You, 10:32") is not.
+                [...node.children]
+                  .filter((child) => !child.classList.contains("sr-only"))
+                  .map((child) => child.textContent)
+                  .join("")
+                  .replace(/^\s*\d+:\d+\s*(AM|PM)?/, "")
+                  .trim()
               : "",
         ),
       );
@@ -148,7 +184,7 @@ for (const [name, viewport] of VIEWPORTS) {
     await expect(waiting.getByText("Allow memory?")).toBeVisible();
     // The transcript keeps at least half the column.
     const box = await waiting.boundingBox();
-    const column = await page.locator(".coordinator-chat").boundingBox();
+    const column = await page.locator("#conversation").boundingBox();
     expect(box.height).toBeLessThanOrEqual(column.height / 2 + 1);
     await shot(page, `escalation-${browserName}-${name}`);
     await waiting.getByRole("button", { name: "Allow once" }).click();
@@ -156,12 +192,11 @@ for (const [name, viewport] of VIEWPORTS) {
   });
 }
 
-test("the coordinator's help opens its instructions", async ({
+test("the coordinator's subtitle opens its instructions", async ({
   page,
   session,
 }) => {
   await openCoordinator(page, session);
-  await page.getByLabel("What is the coordinator?").click();
   await page.getByRole("button", { name: "Edit instructions" }).click();
   const dialog = page.getByRole("dialog", { name: "Instructions" });
   const coordinator = dialog.getByLabel("Yours · coordinator");
@@ -177,7 +212,6 @@ test("the coordinator's help opens its instructions", async ({
 test("instructions read well on a phone", async ({ page, session }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openCoordinator(page, session);
-  await page.getByLabel("What is the coordinator?").click();
   await page.getByRole("button", { name: "Edit instructions" }).click();
   const dialog = page.getByRole("dialog", { name: "Instructions" });
   await expect(dialog.getByLabel("Yours · coordinator")).toBeEnabled();

@@ -106,8 +106,10 @@ void RegisterFileTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
                   "overwrite":{"type":"boolean"}},
                   "required":["path","content"]})json"),
       [](const json& a, const ToolContext&) {
+        static const std::string kNone;
+        const std::string* content = JsonStringRef(a, "content");
         return ToolWriteFileWithDisplay(JsonValue(a, "path", ""),
-                                        JsonValue(a, "content", ""),
+                                        content ? *content : kNone,
                                         JsonValue(a, "overwrite", false));
       }));
   write.mutates = outside_scratch;
@@ -118,19 +120,15 @@ void RegisterFileTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
                 {"target", JsonValue(a, "path", "")}};
   };
   write.summary = [](const json& a) {
+    const std::string* content = JsonStringRef(a, "content");
     return "write " + JsonValue(a, "path", "") + " · " +
-           FmtBytes(static_cast<int64_t>(
-               JsonValue(a, "content", std::string()).size()));
+           FmtBytes(static_cast<int64_t>(content ? content->size() : 0));
   };
   write.approval_preview = [](const json& a) {
-    std::string path = JsonValue(a, "path", "");
-    std::string content = JsonValue(a, "content", "");
-    std::error_code ec;
-    bool existed = std::filesystem::is_regular_file(path, ec);
-    std::optional<std::string> prev = DiffableContents(path);
-    if (!prev) prev.emplace();
-    std::string diff = WholeFileDiffDisplay(path, *prev, content, existed);
-    return diff.empty() ? "no changes" : diff;
+    static const std::string kNone;
+    const std::string* content = JsonStringRef(a, "content");
+    return WriteDiffPreview(JsonValue(a, "path", ""),
+                            content ? *content : kNone);
   };
 
   Tool& edit = path_tool(MakeTool(
@@ -196,8 +194,10 @@ void RegisterFileTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
   };
   Tool& grep = path_tool(MakeTool(
       "grep",
-      "Search regex or literal text. mode: content returns lines; files "
-      "matches paths; matching_files returns paths whose contents match.",
+      "Search file contents by regex (literal=true for fixed text). mode: "
+      "content (default) returns matching lines; matching_files returns the "
+      "files that contain a match; files matches the pattern against file "
+      "paths instead of contents.",
       json::parse(R"json({"type":"object","properties":{
                     "pattern":{"type":"string","minLength":1},"path":{"type":"string"},
                     "glob":{"type":"string"},

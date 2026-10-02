@@ -42,22 +42,16 @@ Every setting below is read from the running binary's registry. `takes effect` i
 | `UAGENT_MODEL` | string | empty | restart-required | model or named route as [provider/]model[:variant][:effort] |
 | `UAGENT_REASONING_EFFORT` | string | empty | restart-required | none, minimal, low, medium, high, xhigh, or max |
 | `UAGENT_PROVIDERS 🔒` | string | empty | restart-required | JSON object of named endpoints, transports, and aliases |
-| `UAGENT_WIRE_API` | string | `chat_completions` | restart-required | chat_completions, responses, or anthropic_messages |
-| `UAGENT_HOSTED_TOOLS` | string | empty | restart-required | comma-separated hosted capabilities; currently web_search |
-| `UAGENT_MODEL_FEATURES` | string | empty | restart-required | JSON model capabilities: reasoning_summary, adaptive_thinking |
-| `UAGENT_PROVIDER_PROTOCOL` | string | empty | restart-required | openai or openrouter (anthropic is an alias of openai) |
 | `UAGENT_OPENROUTER_PROVIDER` | string | empty | next-user-turn | pin OpenRouter to one upstream provider |
 | `UAGENT_OPENROUTER_VARIANT` | string | empty | next-user-turn | nitro, floor, or exacto routing preference |
-| `UAGENT_OPENROUTER_FALLBACKS` | boolean | `1` | next-user-turn | allow OpenRouter to fall back to another provider |
 | `UAGENT_CONTEXT` | integer | `0` | restart-required | context-window tokens; 0 uses the provider profile |
-| `UAGENT_MAX_TOKENS` | integer | `-1` | restart-required | maximum response tokens; -1 omits the optional cap |
+| `UAGENT_MAX_TOKENS` | integer | `-1` | next-user-turn | maximum response tokens; -1 omits the optional cap |
 
 ## request
 
 | Setting | Type | Default | Takes effect | Description |
 | --- | --- | --- | --- | --- |
-| `UAGENT_FIRST_EVENT_TIMEOUT` | integer | `300` | next-user-turn | seconds to wait for the first streamed event |
-| `UAGENT_STREAM_IDLE_TIMEOUT` | integer | `300` | next-user-turn | seconds of stream silence before aborting |
+| `UAGENT_STREAM_TIMEOUT` | integer | `300` | next-user-turn | seconds of stream silence allowed, before the first event or between events |
 | `UAGENT_REQUEST_TIMEOUT` | integer | `600` | next-user-turn | total seconds allowed for one model request |
 
 ## budget
@@ -72,18 +66,14 @@ Every setting below is read from the running binary's registry. `takes effect` i
 | `UAGENT_MAX_TURN_COST` | number | `0.0` | next-user-turn | reported-cost ceiling per turn; 0 disables it |
 | `UAGENT_SESSION_BUDGET` | number | `0.0` | next-user-turn | cumulative reported-cost ceiling; 0 disables it |
 | `UAGENT_TOOL_TIMEOUT` | integer | `30` | next-user-turn | seconds one tool call may run |
-| `UAGENT_TOOL_CONCURRENCY` | integer | `4` | restart-required | parallel foreground tool workers |
-| `UAGENT_AUTO_COMPACT_PCT` | integer | `85` | restart-required | context percentage that triggers compaction |
-| `UAGENT_AUTO_COMPACT_TOKENS` | integer | `0` | restart-required | absolute token trigger for compaction; 0 uses the percentage |
+| `UAGENT_AUTO_COMPACT_PCT` | integer | `85` | next-user-turn | context percentage that triggers compaction |
 
 ## tools
 
 | Setting | Type | Default | Takes effect | Description |
 | --- | --- | --- | --- | --- |
-| `UAGENT_PRUNE_SUPERSEDED_READS` | boolean | `0` | restart-required | experimental step-boundary pruning of superseded reads |
-| `UAGENT_TOOL_RESULT_CHARS` | integer | `8000` | restart-required | characters kept from one tool result |
-| `UAGENT_READ_FILE_LINES` | integer | `1000` | restart-required | default lines returned by read_path |
-| `UAGENT_MAX_BACKGROUND_JOBS` | integer | `8` | restart-required | concurrent detached activities |
+| `UAGENT_TOOL_RESULT_CHARS` | integer | `8000` | next-user-turn | characters kept from one tool result |
+| `UAGENT_READ_FILE_LINES` | integer | `1000` | next-user-turn | default lines returned by read_path |
 | `UAGENT_SANDBOX` | boolean | `1` | restart-required | confine shell commands with the OS sandbox |
 | `UAGENT_SANDBOX_NET` | boolean | `1` | restart-required | let sandboxed commands reach the network |
 | `UAGENT_SANDBOX_WRITE` | string | empty | restart-required | extra writable roots for the sandbox, colon-separated |
@@ -93,30 +83,26 @@ Every setting below is read from the running binary's registry. `takes effect` i
 | Setting | Type | Default | Takes effect | Description |
 | --- | --- | --- | --- | --- |
 | `UAGENT_SUBAGENT_DEPTH` | integer | `2` | restart-required | deepest delegation level allowed |
-| `UAGENT_SUBAGENT_MAX_STEPS` | integer | `100` | restart-required | model rounds per delegated child |
-| `UAGENT_SUBAGENT_MAX_TOOL_CALLS` | integer | `240` | restart-required | tool calls per delegated child |
-| `UAGENT_SUBAGENT_TIMEOUT` | integer | `0` | restart-required | wall-clock ceiling per delegated child; 0 is the turn |
-| `UAGENT_SUBAGENT_MODEL` | string | empty | restart-required | default model route for delegated children |
-| `UAGENT_TOOLSET` | string | empty | restart-required | lean withholds implementation tools from this process |
+| `UAGENT_SUBAGENT_MAX_STEPS` | integer | `100` | next-user-turn | model rounds per delegated child |
+| `UAGENT_SUBAGENT_MAX_TOOL_CALLS` | integer | `240` | next-user-turn | tool calls per delegated child |
+| `UAGENT_SUBAGENT_TIMEOUT` | integer | `0` | next-user-turn | wall-clock ceiling per delegated child; 0 is the turn |
+| `UAGENT_SUBAGENT_MODEL` | string | empty | next-user-turn | default model route for delegated children |
 
 ## coordination
 
 | Setting | Type | Default | Takes effect | Description |
 | --- | --- | --- | --- | --- |
 | `UAGENT_COORDINATOR_MODEL` | string | empty | restart-required | model route of each folder's coordinator; /model inside it overrides this for that folder |
-| `UAGENT_COORDINATOR_MAX_THREADS` | integer | `5` | restart-required | threads one coordinator may run at once |
-| `UAGENT_COORDINATOR_DAILY_SPEND_USD` | number | `20.0` | restart-required | reported cost a coordinator and its threads may spend per day; at it, thread events wait. 0 disables it |
-| `UAGENT_COORDINATOR_ENVIRONMENT` | string | `worktree` | restart-required | where threads run: a fresh git worktree, or the folder itself |
+| `UAGENT_COORDINATOR_MAX_THREADS` | integer | `5` | next-user-turn | threads one coordinator may run at once |
+| `UAGENT_COORDINATOR_DAILY_SPEND_USD` | number | `20.0` | next-user-turn | reported cost a coordinator and its threads may spend per day; at it, thread events wait. 0 disables it |
+| `UAGENT_COORDINATOR_ENVIRONMENT` | string | `worktree` | next-user-turn | where threads run: a fresh git worktree, or the folder itself |
 
 ## search
 
 | Setting | Type | Default | Takes effect | Description |
 | --- | --- | --- | --- | --- |
 | `UAGENT_WEB_SEARCH_BACKEND` | string | `auto` | restart-required | auto, openrouter, or off |
-| `UAGENT_WEB_SEARCH_MODEL` | string | empty | restart-required | model route used for search |
-| `UAGENT_WEB_SEARCH_EFFORT` | string | empty | restart-required | reasoning effort for the search route |
-| `UAGENT_WEB_SEARCH_ENGINE` | string | `auto` | restart-required | auto, native, exa, firecrawl, parallel, perplexity |
-| `UAGENT_WEB_SEARCH_CONTEXT_SIZE` | string | empty | restart-required | low, medium, or high native search context |
+| `UAGENT_WEB_SEARCH_MODEL` | string | empty | next-user-turn | model route used for search |
 
 ## memory
 
@@ -124,8 +110,7 @@ Every setting below is read from the running binary's registry. `takes effect` i
 | --- | --- | --- | --- | --- |
 | `UAGENT_MEMORY` | boolean | `1` | restart-required | enable memory recall and writes |
 | `UAGENT_MEMORY_GENERATE` | boolean | `1` | restart-required | run the background memory extractor |
-| `UAGENT_MEMORY_IDLE_SECONDS` | integer | `21600` | restart-required | idle seconds before background extraction runs |
-| `UAGENT_MEMORY_MODEL` | string | empty | restart-required | model route for background memory extraction |
+| `UAGENT_MEMORY_MODEL` | string | empty | next-user-turn | model route for background memory extraction |
 
 ## skills
 
@@ -139,7 +124,6 @@ Every setting below is read from the running binary's registry. `takes effect` i
 | Setting | Type | Default | Takes effect | Description |
 | --- | --- | --- | --- | --- |
 | `UAGENT_MCP_TIMEOUT` | integer | `60` | restart-required | seconds allowed for one MCP call |
-| `UAGENT_MCP_STARTUP_GRACE` | integer | `2` | restart-required | shared startup seconds for optional MCP servers |
 | `UAGENT_MCP_ROOTS` | string | empty | restart-required | roots advertised to MCP servers |
 
 ## media
@@ -147,33 +131,30 @@ Every setting below is read from the running binary's registry. `takes effect` i
 | Setting | Type | Default | Takes effect | Description |
 | --- | --- | --- | --- | --- |
 | `UAGENT_IMAGE_MODEL` | string | empty | next-user-turn | model route that reads attached images; empty uses the main route when it reads images, else the shared default route |
-| `UAGENT_IMAGE_DETAIL` | string | empty | restart-required | low, high, or original image detail |
-| `UAGENT_PDF_ENGINE` | string | `cloudflare-ai` | restart-required | OpenRouter file-parser engine for documents |
-| `UAGENT_ATTACHMENT_MB` | integer | `10` | restart-required | largest attachment in mebibytes |
+| `UAGENT_PDF_ENGINE` | string | `cloudflare-ai` | next-user-turn | OpenRouter file-parser engine for documents |
+| `UAGENT_ATTACHMENT_MB` | integer | `10` | next-user-turn | largest attachment in mebibytes |
 
 ## retention
 
 | Setting | Type | Default | Takes effect | Description |
 | --- | --- | --- | --- | --- |
-| `UAGENT_HISTORY_DAYS` | integer | `30` | restart-required | days of saved sessions kept |
+| `UAGENT_HISTORY_DAYS` | integer | `30` | next-user-turn | days of saved sessions kept |
 
 ## behaviour
 
 | Setting | Type | Default | Takes effect | Description |
 | --- | --- | --- | --- | --- |
-| `UAGENT_STEERING` | boolean | `1` | restart-required | accept typed steering during a turn |
 | `UAGENT_ADAPT_SYSTEM` | boolean | `0` | restart-required | expose adapt_system so the model may revise its directive |
-| `UAGENT_PROMPT_OVERLAY` | string | empty | restart-required | experiment: JSON file replacing base prompt sections so a variant can be measured without a rebuild; prompt text only |
 | `UAGENT_APPROVAL` | string | `ask` | next-user-turn | ask, auto reviewer, or yolo for ordinary mutations |
 | `UAGENT_PERMISSION_MODEL` | string | `~typesafe/jev-latest` | next-user-turn | OpenRouter Decisions model used by auto permissions |
 | `UAGENT_PERMISSION_URL` | string | `https://openrouter.ai/api/alpha` | next-user-turn | OpenRouter Decisions API base URL |
 | `UAGENT_TITLE_MODEL` | string | `~deepseek/deepseek-flash-latest` | next-user-turn | model route that names new sessions, or off |
 | `UAGENT_TOOL_CAPABILITIES` | string | empty | restart-required | restrict the exposed tool capability set |
-| `UAGENT_SHELL_ENV_ALLOW` | string | empty | restart-required | comma-separated sensitive variables approved shells may inherit |
+| `UAGENT_SHELL_ENV_ALLOW` | string | empty | next-user-turn | comma-separated sensitive variables approved shells may inherit |
 | `UAGENT_TRUST_PROJECT_CONFIG` | boolean | `0` | restart-required | trust this workspace's .mcp.json and config |
 | `UAGENT_CONFIG_FILE` | string | empty | restart-required | replace both config-file locations |
 | `UAGENT_DEBUG_LOG` | string | empty | restart-required | write a sensitive reconstructable JSONL trace |
-| `UAGENT_USAGE_FILE` | string | empty | restart-required | append per-turn usage records to this path |
 | `UAGENT_MARKDOWN` | boolean | `1` | restart-required | render Markdown on a TTY |
-| `UAGENT_HEADLESS_PROGRESS` | boolean | `0` | restart-required | echo progress lines in headless mode |
+| `UAGENT_PLAIN` | boolean | `0` | restart-required | screen-reader terminal: labelled lines, no animation or cursor control |
+| `UAGENT_REDUCED_MOTION` | boolean | `0` | restart-required | show a still status instead of the terminal spinner |
 | `UAGENT_MEMORY_REDACT_KEYWORDS` | string | empty | restart-required | extra keywords redacted from stored memories |

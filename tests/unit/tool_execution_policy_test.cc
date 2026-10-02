@@ -15,6 +15,7 @@
 #include "include/agent/jobs.h"
 #include "include/core/tool_activity.h"
 #include "include/tools/adapt_system.h"
+#include "include/tools/ask.h"
 #include "include/tools/registry.h"
 #include "include/tools/shell.h"
 #include "tests/unit/test_support.h"
@@ -61,8 +62,8 @@ void TestToolExecutionPolicy() {
   UsageAccumulator adapt_usage;
   Agent adapt_agent(
       adapt_api, adapt_tools, adapt_processes, adapt_usage,
-      [](const Tool&, const json&, int64_t) { return false; }, {}, {}, {},
-      &adaptive);
+      [](const Tool&, const json&, int64_t) { return std::string("denied"); },
+      {}, {}, {}, &adaptive);
   Tool adapt = AdaptSystemTool(adaptive, [&adapt_agent](const json& request) {
     return adapt_agent.SelfDirective(request);
   });
@@ -176,13 +177,6 @@ void TestToolExecutionPolicy() {
   CHECK(InvalidToolArgument(tool,
                             {{"nested", {{"value", true}, {"extra", true}}}}) ==
         "unknown argument `nested.extra`");
-  tool.stable_argument = "path";
-  tool.parameters["properties"]["path"] = {{"type", "string"}};
-  std::unordered_map<std::string, std::string> stable_arguments;
-  CHECK(StableArgumentError(tool, {{"path", "one"}}, stable_arguments).empty());
-  CHECK(StableArgumentError(tool, {{"path", "one"}}, stable_arguments).empty());
-  CHECK(StableArgumentError(tool, {{"path", "two"}}, stable_arguments)
-            .find("reuse") != std::string::npos);
   tool.parameters["properties"]["timeout"] = {
       {"type", "string"}, {"description", "provider argument"}};
   CHECK(ToolParameters(tool)["properties"]["timeout"] ==
@@ -454,6 +448,20 @@ void TestToolExecutionPolicy() {
 }
 
 void TestBlockingWaitCalls() {
+  // ask: up to eight questions; a header past the aim of 12 still goes
+  // through, and one too long is refused by name.
+  const auto question = [](const std::string& header) {
+    return json{{"question", "Which?"},
+                {"header", header},
+                {"options", {{{"label", "A"}}, {{"label", "B"}}}}};
+  };
+  CHECK(!AskQuestionsIssue(json::array({question("Give up a sense")})));
+  CHECK(!AskQuestionsIssue(json(8, question("Pick"))));
+  CHECK(AskQuestionsIssue(json(9, question("Pick"))) == "ask 1 to 8 questions");
+  const auto long_header =
+      AskQuestionsIssue(json::array({question(std::string(25, 'x'))}));
+  CHECK(long_header && long_header->find("25 characters") != std::string::npos);
+
   Tool run;
   run.name = "run";
   // run's wait knob is yield_ms, not wait_ms: a waiting poll is not a

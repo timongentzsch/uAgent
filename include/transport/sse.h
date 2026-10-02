@@ -23,7 +23,6 @@ class SseParser {
 
   bool Feed(std::string_view bytes);
   bool Finish();
-  std::vector<SseEvent> TakeEvents();
   // Hands the parser out's storage back, so a hot caller allocates once.
   void TakeEvents(std::vector<SseEvent>& out);
 

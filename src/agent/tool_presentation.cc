@@ -116,6 +116,7 @@ PresentationRecord ToolResultPresentation(const CallTask& task,
   // A change is told entirely by its diff, so the receipt is the whole row.
   if (task.result.Ok() && !task.result.display.empty()) {
     record.change = task.result.display;
+    record.change_path = task.result.display_path;
     if (!task.tool || !task.tool->declared_intent) return record;
   }
 

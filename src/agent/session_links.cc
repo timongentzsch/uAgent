@@ -20,6 +20,14 @@
 #include "include/transport/session.h"
 
 namespace uagent {
+
+bool SocietySession(const std::string& path) {
+  const std::filesystem::path file(path);
+  const std::string name = file.filename().string();
+  return file.extension() == ".json" &&
+         (name == "coordinator.json" || name.starts_with("thread-"));
+}
+
 namespace {
 
 constexpr int kSessionLinkFormat = 1;
@@ -27,7 +35,23 @@ constexpr size_t kSessionLinkMembers = 32;
 constexpr size_t kSessionLinkFiles = 256;
 constexpr size_t kSessionLinkNameChars = 64;
 
-std::string AutoLinkName() { return "auto-" + HashHex(CanonicalCwd()); }
+// A coordinator and its threads work together, so they are linked by where
+// they live, whatever mode each runs in: one history folder holds
+// coordinator.json and its thread-*.json. Nothing to join, nothing to prune.
+std::vector<json> SocietyMembers() {
+  const auto member = SocietySession;
+  const std::filesystem::path own(OwnSessionFile());
+  std::vector<json> out;
+  if (!member(own.string())) return out;
+  std::error_code ec;
+  for (const auto& entry :
+       std::filesystem::directory_iterator(own.parent_path(), ec)) {
+    if (entry.path() == own || !member(entry.path().string())) continue;
+    out.push_back({{"id", entry.path().stem().string()},
+                   {"path", entry.path().string()}});
+  }
+  return out;
+}
 
 std::string LinkPath(const std::string& name) {
   return SessionLinkDir() + "/" + name + ".json";
@@ -108,11 +132,8 @@ std::vector<std::string> LinkFiles() {
 
 std::string MemberTitle(const std::string& id, const std::string& path) {
   if (!path.empty()) {
-    auto loaded = SessionStore::Inspect(path);
-    if (loaded.record && !loaded.record->metadata.title.empty() &&
-        loaded.record->metadata.title != "(untitled)") {
-      return loaded.record->metadata.title;
-    }
+    std::string title = JsonValue(SessionHeader(path), kSessionHeaderTitle, "");
+    if (!title.empty() && title != "(untitled)") return title;
   }
   return id;
 }
@@ -124,22 +145,19 @@ std::string SessionLinkDir() { return UagentDir("links"); }
 bool SharesLink(const std::string& a, const std::string& b) {
   if (a.empty() || b.empty() || a == b) return a == b && !a.empty();
   for (const std::string& name : LinkFiles()) {
-    json link = ReadLink(name);
-    if (!link.is_object()) continue;
-    const json members = JsonValue(link, "members", json::array());
+    const json members = JsonValue(ReadLink(name), "members", json::array());
     if (HasMember(members, a) && HasMember(members, b)) return true;
   }
-  return false;
+  const std::string me = OwnSessionId();
+  return (me == a || me == b) && HasMember(SocietyMembers(), me == a ? b : a);
 }
 
 ToolResult EnsureSessionAutoLink() {
   if (!ApprovalIsYolo()) return ToolSuccess({});
   json me = OwnMember();
   if (!me.is_object()) return ToolSuccess({});
-  const std::string name = AutoLinkName();
-  json link = ReadLink(name);
-  json members = !link.is_object() ? json::array()
-                                   : JsonValue(link, "members", json::array());
+  const std::string name = "auto-" + HashHex(CanonicalCwd());
+  json members = JsonValue(ReadLink(name), "members", json::array());
   const std::string id = JsonValue(me, "id", "");
   if (HasMember(members, id)) return ToolSuccess({});
   if (members.size() >= kSessionLinkMembers) {
@@ -151,53 +169,6 @@ ToolResult EnsureSessionAutoLink() {
   return saved.Ok() ? ToolSuccess({}) : saved;
 }
 
-ToolResult CreateSessionLink(std::string& token) {
-  json me = OwnMember();
-  if (!me.is_object()) {
-    return ToolFailure(ToolErrorCode::kUnavailable,
-                       "no saved session file yet; say something first "
-                       "so the session persists, then link");
-  }
-  token = session::RandomToken(9);
-  if (token.empty() || SafeFileComponent(token) != token) {
-    return ToolFailure(ToolErrorCode::kUnavailable,
-                       "cannot mint a link token right now");
-  }
-  json members = json::array();
-  members.push_back(std::move(me));
-  ToolResult saved = WriteLink(token, members);
-  if (!saved.Ok()) return saved;
-  return ToolSuccess(token);
-}
-
-ToolResult JoinSessionLink(const std::string& token) {
-  if (!ValidLinkName(token)) {
-    return ToolFailure(ToolErrorCode::kInvalidArguments, "bad link token");
-  }
-  json link = ReadLink(token);
-  if (!link.is_object()) {
-    return ToolFailure(ToolErrorCode::kNotFound, "unknown link token");
-  }
-  json me = OwnMember();
-  if (!me.is_object()) {
-    return ToolFailure(ToolErrorCode::kUnavailable,
-                       "no saved session file yet; say something first "
-                       "so the session persists, then link");
-  }
-  json members = JsonValue(link, "members", json::array());
-  const std::string id = JsonValue(me, "id", "");
-  if (!HasMember(members, id)) {
-    if (members.size() >= kSessionLinkMembers) {
-      return ToolFailure(ToolErrorCode::kLimitExceeded,
-                         "link is full (32 sessions)");
-    }
-    members.push_back(std::move(me));
-    ToolResult saved = WriteLink(token, members);
-    if (!saved.Ok()) return saved;
-  }
-  return ToolSuccess(token);
-}
-
 namespace {
 
 // All ids this process shares any link with, including itself.
@@ -206,9 +177,7 @@ std::vector<json> LinkedMembers() {
   std::vector<json> out;
   if (me.empty()) return out;
   for (const std::string& name : LinkFiles()) {
-    json link = ReadLink(name);
-    if (!link.is_object()) continue;
-    const json members = JsonValue(link, "members", json::array());
+    const json members = JsonValue(ReadLink(name), "members", json::array());
     if (!HasMember(members, me)) continue;
     for (const json& member : members) {
       if (!member.is_object()) continue;
@@ -218,23 +187,30 @@ std::vector<json> LinkedMembers() {
       out.push_back(member);
     }
   }
+  for (json& member : SocietyMembers()) {
+    if (!HasMember(out, JsonValue(member, "id", ""))) {
+      out.push_back(std::move(member));
+    }
+  }
   return out;
 }
 
 }  // namespace
 
+// A peer is named by the id every board and list shows, the hash of its
+// file's path; its file's stem is accepted too.
 std::string LinkedSessionPath(const std::string& id) {
   for (const json& member : LinkedMembers()) {
-    if (JsonValue(member, "id", "") == id) {
-      return JsonValue(member, "path", "");
-    }
+    const std::string path = JsonValue(member, "path", "");
+    if (JsonValue(member, "id", "") == id || HashHex(path) == id) return path;
   }
   return "";
 }
 
 std::vector<json> SessionSummaries() {
-  const std::string me = OwnSessionId();
+  const std::string me = HashHex(OwnSessionFile());
   std::vector<json> rows;
+  // A linked session is already a row by the time the workspace ones arrive.
   auto push = [&](std::string id, std::string title, bool linked) {
     if (id.empty() || id == me) return;
     for (const json& row : rows) {
@@ -246,15 +222,17 @@ std::vector<json> SessionSummaries() {
   };
   // Linked first: members may live in other workspaces ListSessions skips.
   for (const json& member : LinkedMembers()) {
-    const std::string id = JsonValue(member, "id", "");
-    push(id, MemberTitle(id, JsonValue(member, "path", "")), true);
+    const std::string path = JsonValue(member, "path", "");
+    push(HashHex(path), MemberTitle(JsonValue(member, "id", ""), path), true);
   }
   // Then linkable workspace sessions.
   for (const SessionInfo& info : ListSessions()) {
     if (!info.error.empty()) continue;
-    std::string stem =
-        std::filesystem::path(info.path).filename().stem().string();
-    push(stem, info.title.empty() ? stem : info.title, SharesLink(me, stem));
+    push(HashHex(info.path),
+         info.title.empty()
+             ? std::filesystem::path(info.path).filename().stem().string()
+             : info.title,
+         false);
   }
   return rows;
 }

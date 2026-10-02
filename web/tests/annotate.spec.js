@@ -86,6 +86,30 @@ test("mouse strokes, undo and a noted pin attach as a replacing copy", async ({
   expect(result.red).toBeGreaterThan(500);
 });
 
+test("a keyboard aims a crosshair and pins where it points", async ({
+  page,
+  session,
+}) => {
+  const { viewer, canvas } = await open(page, session);
+  // Reach the canvas as a keyboard does: Tab from the header's Close.
+  await viewer.getByRole("button", { name: "Close shot.png" }).focus();
+  await page.keyboard.press("Tab");
+  await expect(canvas).toBeFocused();
+  await expect(viewer.locator(".annotator-crosshair")).toBeVisible();
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("Shift+ArrowDown");
+  await page.keyboard.press("Enter");
+  const note = viewer.getByLabel("Note for pin 1");
+  await expect(note).toBeFocused();
+  await note.fill("from the keyboard");
+  await note.press("Enter");
+  await expect(note).toHaveCount(0);
+  await expect(canvas).toBeFocused();
+  await viewer.getByRole("button", { name: "Attach" }).click();
+  await expect(viewer).toHaveCount(0);
+  expect((await marked(page)).red).toBeGreaterThan(100);
+});
+
 test.describe("touch", () => {
   test.use({
     viewport: { width: 390, height: 844 },

@@ -7,13 +7,12 @@ import type {
 import { useEffect, useState } from "preact/hooks";
 import { Plus, Play, Square, ChevronLeft } from "lucide-preact";
 import {
-  Actions,
   Button,
+  ConfirmModal,
   EmptyState,
   Field,
   IconButton,
   Select,
-  Modal,
   LoadError,
   Spinner,
   Input,
@@ -21,9 +20,9 @@ import {
 } from "../../shared/ui.tsx";
 import { Menu, MenuItem } from "../../shared/menu.tsx";
 import { SheetButton } from "../../shared/sheet.tsx";
-import ModelPicker from "../settings/model-picker.tsx";
+import ModelPicker from "../composer/model-picker.tsx";
 import { readStored, writeStored } from "../../state/store.ts";
-import { ProjectField, dateTime, taskActive } from "../settings/management.tsx";
+import { ProjectField, dateTime, taskActive } from "../library/management.tsx";
 import { ListRow } from "../../shared/list-row.tsx";
 import { permissionLabels } from "../../shared/display.ts";
 
@@ -448,7 +447,6 @@ export default function Scheduled({
                   </Field>
                 </div>
                 <SheetButton
-                  buttonClass="quiet"
                   label="Task model"
                   title="Model, variant and effort"
                   trigger={
@@ -548,31 +546,16 @@ export default function Scheduled({
         </div>
       )}
       {confirm && task && (
-        <Modal title={`Delete ${task.name}?`} close={() => setConfirm(false)}>
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              if (busy || !online) return;
-              action("forget");
-            }}
-          >
-            <p>
-              Future runs will stop. Existing conversations and worktrees are
-              kept.
-            </p>
-            {error && <LoadError error={error} />}
-            <Actions>
-              <Button onClick={() => setConfirm(false)}>Cancel</Button>
-              <Button
-                type="submit"
-                variant="destructive"
-                disabled={busy || !online}
-              >
-                Delete
-              </Button>
-            </Actions>
-          </form>
-        </Modal>
+        <ConfirmModal
+          title={`Delete ${task.name}?`}
+          action="Delete"
+          busy={busy}
+          error={error}
+          confirm={() => online && action("forget")}
+          close={() => setConfirm(false)}
+        >
+          Future runs will stop. Existing conversations and worktrees are kept.
+        </ConfirmModal>
       )}
     </div>
   );

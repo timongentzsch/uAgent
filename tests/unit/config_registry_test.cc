@@ -40,26 +40,20 @@ struct BoolGetterCheck {
 // validator would then normalize and whose getter would have to restate the
 // default -- fails here rather than drifting quietly.
 constexpr BoolGetterCheck kBoolGetters[] = {
-    {"UAGENT_STEERING", SteeringEnabled},
     {"UAGENT_SANDBOX", SandboxEnabled},
     {"UAGENT_SANDBOX_NET", SandboxNetworkAllowed},
     {"UAGENT_ADAPT_SYSTEM", AdaptiveSystemEnabled},
     {"UAGENT_MARKDOWN", MarkdownEnabled},
     {"UAGENT_TRUST_PROJECT_CONFIG", TrustProjectConfig},
-    {"UAGENT_HEADLESS_PROGRESS", HeadlessProgressEnabled},
 };
 
 constexpr GetterCheck kIntGetters[] = {
     {"UAGENT_TOOL_RESULT_CHARS", ToolResultCap},
     {"UAGENT_AUTO_COMPACT_PCT", AutoCompactPct},
-    {"UAGENT_AUTO_COMPACT_TOKENS", AutoCompactTokens},
-    {"UAGENT_TOOL_CONCURRENCY", ToolConcurrency},
     {"UAGENT_SUBAGENT_MAX_STEPS", SubagentMaxSteps},
     {"UAGENT_SUBAGENT_MAX_TOOL_CALLS", SubagentMaxToolCalls},
     {"UAGENT_MAX_TOKENS", MaxOutputTokens},
     {"UAGENT_READ_FILE_LINES", ReadFileLines},
-    {"UAGENT_MEMORY_IDLE_SECONDS", MemoryIdleSeconds},
-    {"UAGENT_MAX_BACKGROUND_JOBS", MaxBackgroundJobs},
     {"UAGENT_ATTACHMENT_MB", AttachmentLimitMb},
     {"UAGENT_CONTEXT", ContextWindow},
     {"UAGENT_HISTORY_DAYS", HistoryDays},
@@ -123,12 +117,8 @@ void TestConfigRegistryContract() {
     }
   }
 
-  // A RuntimeConfig-backed setting must name its field, and a reloadable one
-  // must be RuntimeConfig-backed: nothing else is re-read at a turn boundary.
   for (const ConfigDescriptor& descriptor : ConfigRegistry()) {
-    if (descriptor.reload == ReloadPolicy::kNextUserTurn) {
-      CHECK(!descriptor.field.empty());
-    }
+    CHECK(!descriptor.label.empty());
     if (!descriptor.field.empty()) {
       CHECK(RuntimeConfigField(descriptor.environment) == descriptor.field);
     }
@@ -159,9 +149,11 @@ void TestConfigRegistryContract() {
   }
 
   // Bounds are enforced, not merely documented.
-  ScopedEnv concurrency("UAGENT_TOOL_CONCURRENCY", "100000");
-  CHECK(ToolConcurrency() ==
-        FindConfigDescriptor("UAGENT_TOOL_CONCURRENCY")->maximum);
+  {
+    ScopedEnv attachment("UAGENT_ATTACHMENT_MB", "99999999999999999");
+    CHECK(AttachmentLimitMb() ==
+          FindConfigDescriptor("UAGENT_ATTACHMENT_MB")->maximum);
+  }
   ScopedEnv attachment("UAGENT_ATTACHMENT_MB", "0");
   CHECK(AttachmentLimitMb() ==
         FindConfigDescriptor("UAGENT_ATTACHMENT_MB")->minimum);
@@ -302,6 +294,17 @@ void TestSelfDescriptionSchemas() {
   }
 
   CHECK(ReferenceManifest().find(kVersion) != std::string::npos);
+}
+
+// A mistyped command names its nearest neighbour, never a far-off guess.
+void TestNearestSlashCommand() {
+  CHECK(NearestSlashCommand("/modle") == "/model");
+  CHECK(NearestSlashCommand("/modle gpt-5") == "/model");
+  CHECK(NearestSlashCommand("/halp") == "/help");
+  CHECK(NearestSlashCommand("/cst") == "/cost");
+  CHECK(NearestSlashCommand("/xyzzyq").empty());
+  CHECK(NearestSlashCommand("/").empty());
+  CHECK(NearestSlashCommand("/x").empty());
 }
 
 }  // namespace uagent

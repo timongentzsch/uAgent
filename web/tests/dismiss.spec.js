@@ -62,10 +62,16 @@ test.describe("back closes what is open", () => {
     const settings = page.getByRole("dialog", { name: "Settings" });
     await settings
       .locator(".settings-nav")
-      .getByRole("button", { name: "Permissions", exact: true })
+      .getByRole("button", {
+        name: "Permissions & allowed actions",
+        exact: true,
+      })
       .tap();
     await expect(
-      settings.getByRole("heading", { name: "Permissions", exact: true }),
+      settings.getByRole("heading", {
+        name: "Permissions & allowed actions",
+        exact: true,
+      }),
     ).toBeVisible();
     await page.goBack();
     await expect(
@@ -87,9 +93,12 @@ test.describe("back closes what is open", () => {
     const settings = page.getByRole("dialog", { name: "Settings" });
     await settings
       .locator(".settings-nav")
-      .getByRole("button", { name: "Agent", exact: true })
+      .getByRole("button", { name: "Instructions", exact: true })
       .tap();
-    await settings.getByRole("button", { name: /Instructions/ }).tap();
+    await settings
+      .locator(".settings-pane")
+      .getByRole("button", { name: /Instructions/ })
+      .tap();
     const prompt = page.getByRole("dialog", { name: "Instructions" });
     await expect(prompt).toBeVisible();
     // One back closes the swapped-in dialog and reaches the conversation.
@@ -137,6 +146,27 @@ test("dialogs play their exit before they leave", async ({ page, session }) => {
   expect(await page.evaluate(() => window.__left)).toBe(true);
 });
 
+// Every dialog is one primitive, so every one closes on a tap outside it:
+// a centred dialog and the phone drawer as much as a sheet.
+test("a tap on the scrim closes a centred dialog", async ({
+  page,
+  session,
+}) => {
+  await page.goto(`/#session=${session.id}`);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const settings = page.getByRole("dialog", { name: "Settings" });
+  await expect(settings).toBeVisible();
+  // A press that starts inside and ends on the scrim is a drag, not a tap.
+  const box = await settings.boundingBox();
+  await page.mouse.move(box.x + 20, box.y + 20);
+  await page.mouse.down();
+  await page.mouse.move(1, 1);
+  await page.mouse.up();
+  await expect(settings).toBeVisible();
+  await page.mouse.click(1, 1);
+  await expect(settings).toHaveCount(0);
+});
+
 // A menu item that opens a dialog must leave its menu able to reopen: WebKit
 // drops the popover's closing toggle event when a modal dialog opens.
 test("a menu reopens after the dialog it opened closes", async ({
@@ -162,6 +192,15 @@ test.describe("phone drawer", () => {
   test.use({
     reducedMotion: "no-preference",
     viewport: { width: 390, height: 800 },
+  });
+  test("closes on a tap beside it", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto("/");
+    await page.getByLabel("Open sessions").click();
+    const drawer = page.getByRole("dialog", { name: "Sessions" });
+    await expect(drawer).toBeVisible();
+    await page.mouse.click(385, 400);
+    await expect(drawer).toHaveCount(0);
   });
   test("slides in from the left", async ({ page }) => {
     await page.goto("/");

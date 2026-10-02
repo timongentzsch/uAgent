@@ -1,4 +1,4 @@
-import { Button, Field, Placeholder, Select } from "./ui.tsx";
+import { Actions, Button, Field, Placeholder, Select } from "./ui.tsx";
 
 // Loading states that must exist before their feature's code: each draws the
 // feature's own primitives from sample data (see <Placeholder>).
@@ -37,7 +37,7 @@ export function ModelActions({
   busy?: boolean;
 }) {
   return (
-    <div class="dialog-actions">
+    <Actions>
       <Button onClick={close}>Cancel</Button>
       <Button
         variant="primary"
@@ -47,6 +47,6 @@ export function ModelActions({
       >
         Apply
       </Button>
-    </div>
+    </Actions>
   );
 }

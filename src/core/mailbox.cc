@@ -2,7 +2,6 @@
 
 #include "include/core/mailbox.h"
 
-#include <fcntl.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -16,12 +15,6 @@
 #include <string>
 #include <utility>
 #include <vector>
-
-#if defined(__APPLE__)
-#include <sys/event.h>
-#elif defined(__linux__)
-#include <sys/inotify.h>
-#endif
 
 #include "include/core/fs.h"
 #include "include/core/limits.h"
@@ -59,29 +52,27 @@ bool ReadMail(const fs::path& path, Mail& mail) {
   return text && MailFromJson(json::parse(*text, nullptr, false), mail);
 }
 
-// Pending messages with their files, unreadable ones set aside.
-std::vector<std::pair<fs::path, Mail>> ReadPending(const std::string& id) {
+// Pending messages in mailbox `dir` with their files, unreadable ones set
+// aside.
+std::vector<std::pair<fs::path, Mail>> ReadPending(const fs::path& dir) {
   std::vector<std::pair<fs::path, Mail>> pending;
-  const fs::path dir = fs::path(MailboxDir(id)) / "new";
-  for (const fs::path& path : Messages(dir)) {
+  for (const fs::path& path : Messages(dir / "new")) {
     Mail mail;
     if (ReadMail(path, mail)) {
       pending.emplace_back(path, std::move(mail));
       continue;
     }
     std::error_code error;
-    fs::rename(
-        path,
-        fs::path(MailboxDir(id)) / "cur" / (path.filename().string() + ".bad"),
-        error);
+    fs::rename(path, dir / "cur" / (path.filename().string() + ".bad"), error);
   }
   return pending;
 }
 
 // A sender's recent sends, per process: the rate is one sender's to keep.
 bool OverRate(const std::string& from) {
-  static std::mutex mutex;
-  static std::map<std::string, std::deque<int64_t>> sent;
+  // Never destroyed: a thread may still send while the process exits.
+  static auto& mutex = *new std::mutex;
+  static auto& sent = *new std::map<std::string, std::deque<int64_t>>;
   std::lock_guard lock(mutex);
   const int64_t now = NowMillis();
   auto& times = sent[from];
@@ -169,9 +160,8 @@ std::string SendMail(Mail mail) {
            " KiB";
   }
   const std::string dir = MailboxDir(mail.to);
-  if (dir.empty()) return "unknown recipient " + mail.to;
   size_t count = 0;
-  for (auto& [path, pending] : ReadPending(mail.to)) {
+  for (auto& [path, pending] : ReadPending(dir)) {
     if (pending.from == mail.from && pending.type == mail.type &&
         pending.body == mail.body) {
       return "";  // the same message is still waiting
@@ -211,17 +201,17 @@ std::string SendMail(Mail mail) {
 std::vector<Mail> TakeMail(const std::string& id,
                            const std::function<bool(const Mail&)>& accept) {
   std::vector<Mail> taken;
-  if (!ValidId(id)) return taken;
-  const fs::path cur = fs::path(MailboxDir(id)) / "cur";
+  const fs::path dir = MailboxDir(id);
+  if (dir.empty()) return taken;
   const int64_t now = NowMillis();
-  for (auto& [path, mail] : ReadPending(id)) {
+  for (auto& [path, mail] : ReadPending(dir)) {
     std::error_code error;
     if (mail.expires_ms && mail.expires_ms < now) {
       fs::remove(path, error);
       continue;
     }
     if (!accept(mail)) continue;
-    fs::rename(path, cur / path.filename(), error);
+    fs::rename(path, dir / "cur" / path.filename(), error);
     if (!error) taken.push_back(std::move(mail));
   }
   return taken;
@@ -229,14 +219,18 @@ std::vector<Mail> TakeMail(const std::string& id,
 
 std::vector<Mail> PendingMail(const std::string& id) {
   std::vector<Mail> pending;
-  if (!ValidId(id)) return pending;
-  for (auto& [path, mail] : ReadPending(id)) pending.push_back(std::move(mail));
+  const fs::path dir = MailboxDir(id);
+  if (dir.empty()) return pending;
+  for (auto& [path, mail] : ReadPending(dir)) {
+    pending.push_back(std::move(mail));
+  }
   return pending;
 }
 
 void AckMail(const std::string& id, const std::vector<std::string>& ids) {
-  if (!ValidId(id) || ids.empty()) return;
-  for (const fs::path& path : Messages(fs::path(MailboxDir(id)) / "cur")) {
+  const fs::path dir = ids.empty() ? "" : MailboxDir(id);
+  if (dir.empty()) return;
+  for (const fs::path& path : Messages(dir / "cur")) {
     const std::string name = path.stem().string();
     for (const std::string& acked : ids) {
       if (name.ends_with("-" + acked)) {
@@ -249,8 +243,8 @@ void AckMail(const std::string& id, const std::vector<std::string>& ids) {
 }
 
 void RecoverMail(const std::string& id) {
-  if (!ValidId(id)) return;
   const fs::path dir = MailboxDir(id);
+  if (dir.empty()) return;
   for (const fs::path& path : Messages(dir / "cur")) {
     std::error_code error;
     fs::rename(path, dir / "new" / path.filename(), error);
@@ -259,46 +253,11 @@ void RecoverMail(const std::string& id) {
 
 MailboxWatch::MailboxWatch(const std::string& id) {
   const std::string dir = MailboxDir(id);
-  if (dir.empty()) return;
-  const std::string pending = dir + "/new";
-#if defined(__linux__)
-  Fd watcher(inotify_init1(IN_NONBLOCK | IN_CLOEXEC));
-  if (watcher && inotify_add_watch(watcher.Get(), pending.c_str(),
-                                   IN_MOVED_TO | IN_CLOSE_WRITE) >= 0) {
-    fd_ = std::move(watcher);
+  NativeWatch watch;
+  if (!dir.empty() &&
+      watch.Watch(dir + "/new", NativeWatch::Events::kArrivals)) {
+    watch_ = std::move(watch);
   }
-#elif defined(__APPLE__)
-  // The directory's descriptor must outlive the watch; kqueue keeps it.
-  Fd queue(kqueue());
-  int folder = open(pending.c_str(), O_EVTONLY | O_CLOEXEC);
-  if (!queue || folder < 0) {
-    if (folder >= 0) close(folder);
-    return;
-  }
-  fcntl(queue.Get(), F_SETFD, FD_CLOEXEC);
-  struct kevent change;
-  EV_SET(&change, folder, EVFILT_VNODE, EV_ADD | EV_CLEAR, NOTE_WRITE, 0,
-         nullptr);
-  if (kevent(queue.Get(), &change, 1, nullptr, 0, nullptr) == 0) {
-    fd_ = std::move(queue);
-  } else {
-    close(folder);
-  }
-#endif
-}
-
-void MailboxWatch::Drain() const {
-  if (!fd_) return;
-#if defined(__linux__)
-  char buffer[4096];
-  while (read(fd_.Get(), buffer, sizeof buffer) > 0) {
-  }
-#elif defined(__APPLE__)
-  struct kevent event;
-  timespec immediately = {0, 0};
-  while (kevent(fd_.Get(), nullptr, 0, &event, 1, &immediately) > 0) {
-  }
-#endif
 }
 
 }  // namespace uagent

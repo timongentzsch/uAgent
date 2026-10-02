@@ -32,6 +32,7 @@ constexpr KindRow kKinds[] = {
     {"model", SessionCommandKind::kModel, true},
     {"config", SessionCommandKind::kConfig, true},
     {"context", SessionCommandKind::kContext, true},
+    {"revert", SessionCommandKind::kRevert, true},
     {"fork", SessionCommandKind::kFork, true},
     {"share", SessionCommandKind::kShare, true},
     {"side", SessionCommandKind::kSide, true},
@@ -43,13 +44,6 @@ constexpr KindRow kKinds[] = {
     {"activate", SessionCommandKind::kActivate, false},
 };
 
-const KindRow* FindKind(SessionCommandKind kind) {
-  for (const KindRow& row : kKinds) {
-    if (row.kind == kind) return &row;
-  }
-  return nullptr;
-}
-
 }  // namespace
 
 SessionCommandKind ParseSessionCommandKind(std::string_view kind) {
@@ -60,13 +54,14 @@ SessionCommandKind ParseSessionCommandKind(std::string_view kind) {
 }
 
 bool ForwardsToWorker(SessionCommandKind kind) {
-  const KindRow* row = FindKind(kind);
-  return row && row->forwarded;
+  for (const KindRow& row : kKinds) {
+    if (row.kind == kind) return row.forwarded;
+  }
+  return false;
 }
 
 bool ParseSessionCommand(const json& command, const std::string& session_id,
-                         const std::string& generation, SessionCommand& out,
-                         std::string& error) {
+                         const std::string& generation, SessionCommand& out) {
   if (JsonValue(command, "session_id", "") != session_id ||
       JsonValue(command, "generation", "") != generation) {
     return false;
@@ -84,7 +79,6 @@ bool ParseSessionCommand(const json& command, const std::string& session_id,
   parsed.has_attachments = command.contains("attachments");
   parsed.raw = command;
   out = std::move(parsed);
-  error.clear();
   return true;
 }
 

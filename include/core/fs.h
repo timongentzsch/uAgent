@@ -48,6 +48,9 @@ std::string Tilde(const std::string& path);
 // ~/.uagent. Falls back to a per-uid temp directory when the account has no
 // home, never to a project-controlled location.
 std::string GlobalBase();
+// Where session runtimes keep their sockets and leases. AF_UNIX paths are
+// limited to 104 bytes on macOS, independently of HOME.
+std::string RuntimeDir();
 
 // The directory a workspace opts into. Named once: several modules need it,
 // and a reader and a writer disagreeing about it would silently lose data.
@@ -93,8 +96,6 @@ class ScopedTempFile {
  public:
   explicit ScopedTempFile(const std::string& pattern);
   ~ScopedTempFile();
-  ScopedTempFile(ScopedTempFile&& other) noexcept;
-  ScopedTempFile& operator=(ScopedTempFile&& other) noexcept;
   ScopedTempFile(const ScopedTempFile&) = delete;
   ScopedTempFile& operator=(const ScopedTempFile&) = delete;
 
@@ -132,6 +133,11 @@ std::optional<std::string> ReadFile(const std::string& path, size_t cap);
 
 // Private state and web assets must never follow a final symlink or read a
 // device/FIFO. A prefix read is useful for cheap catalogue headers.
+// A regular file this user owns, opened read-only without following a final
+// symlink; empty when it is anything else or larger than `cap` bytes. `size`
+// receives its size.
+Fd OpenOwnedRegular(const std::string& path, size_t cap,
+                    size_t* size = nullptr);
 bool ReadRegularFile(const std::string& path, size_t cap, std::string& out,
                      std::string& error, bool prefix = false);
 

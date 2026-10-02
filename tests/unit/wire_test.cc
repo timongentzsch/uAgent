@@ -279,7 +279,7 @@ void TestWireStreams() {
   CHECK(responses_result.replay["items"].size() == 3);
   CHECK(responses_result
             .usage["server_tool_use_details"]["web_search_requests"] == 1);
-  CHECK(CollectToolCalls(responses_calls, responses_result));
+  CollectToolCalls(responses_calls, responses_result);
   CHECK(responses_result.tool_calls.size() == 1);
   CHECK(responses_result.tool_calls[0].name == "read_path");
   CHECK(responses_result.tool_calls[0].args == R"({"path":"README.md"})");
@@ -311,7 +311,7 @@ void TestWireStreams() {
   CHECK(incomplete_result.incomplete);
   CHECK(incomplete_result.stop_cause == ResponseStopCause::kLength);
   CHECK(incomplete_result.stop_details["reason"] == "max_output_tokens");
-  CHECK(CollectToolCalls(incomplete_calls, incomplete_result));
+  CollectToolCalls(incomplete_calls, incomplete_result);
   CHECK(incomplete_result.tool_calls.size() == 1);
   CHECK(incomplete_result.tool_calls[0].id == "cutoff-call");
 
@@ -402,7 +402,7 @@ void TestWireStreams() {
   CHECK(anthropic_result.replay["content"][2]["content"][0]
                                ["encrypted_content"] == "opaque");
   CHECK(anthropic_result.usage["server_tool_use"]["web_search_requests"] == 1);
-  CHECK(CollectToolCalls(anthropic_calls, anthropic_result));
+  CollectToolCalls(anthropic_calls, anthropic_result);
   CHECK(anthropic_result.tool_calls.size() == 1);
   CHECK(anthropic_result.tool_calls[0].args == R"({"path":"x"})");
 
@@ -417,7 +417,9 @@ void TestWireStreams() {
     std::map<int, ToolCall> calls;
     WireStreamState state;
     std::string text;
-    for (const SseEvent& event : parser.TakeEvents()) {
+    std::vector<SseEvent> events;
+    parser.TakeEvents(events);
+    for (const SseEvent& event : events) {
       text +=
           DecodeWireStreamEvent(api, event.data, result, calls, state).content;
     }
@@ -502,7 +504,7 @@ void TestWireStreamHostedSearch() {
       {"ws_1", "started"}, {"ws_1", "searching"}, {"ws_1", "completed"}};
   CHECK(steps == expected_steps);
   CHECK(result.usage["server_tool_use_details"]["web_search_requests"] == 1);
-  CHECK(CollectToolCalls(calls, result));
+  CollectToolCalls(calls, result);
   CHECK(result.tool_calls.empty());
 
   // A second search is its own lifecycle, not a continuation of the first.
@@ -571,7 +573,7 @@ void TestWireStreamHostedSearch() {
   // One search, counted once, though it is named by both of its blocks.
   CHECK(anthropic_result.usage["server_tool_use"]["web_search_requests"] == 1);
   // The ordinary call still executes; only the hosted one is held back.
-  CHECK(CollectToolCalls(anthropic_calls, anthropic_result));
+  CollectToolCalls(anthropic_calls, anthropic_result);
   CHECK(anthropic_result.tool_calls.size() == 1);
   CHECK(anthropic_result.tool_calls[0].name == "read_path");
   // Both server-tool blocks stay in the replay a pause_turn resends.

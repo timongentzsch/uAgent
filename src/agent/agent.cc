@@ -32,6 +32,7 @@
 #include "include/core/mailbox.h"
 #include "include/core/output_buffer.h"
 #include "include/core/signals.h"
+#include "include/core/steering.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
 #include "include/core/time.h"
@@ -225,8 +226,7 @@ void Agent::PublishMessage(const std::string& request_id) {
                 {"reply_excerpt", reply_excerpt_}};
   if (kind == MessageKind::kAssistant) links["http"] = api_.http_exchanges;
   conversation_.RecordDisplay(conversation_.LastDisplayId(), std::move(links));
-  if (conversation_.KindAt(conversation_.Size() - 1) ==
-      MessageKind::kAssistant) {
+  if (kind == MessageKind::kAssistant) {
     conversation_.AddStatistics({{"incoming", 1}});
     conversation_.RecordDisplay(
         conversation_.LastDisplayId(),
@@ -252,8 +252,7 @@ void Agent::Reset() {
   PublishSideContext();
   turn_search_trace_.Reset();
   session_usage_ = Usage{};
-  api_.session_cost = 0;
-  api_.session_generated_tokens = 0;
+  SyncApiSessionUsage();
   route_usage_.clear();
   logged_msgs_ = 0;
   logged_schemas_.clear();
@@ -283,17 +282,13 @@ std::string Agent::ActiveRoute() const {
                   api_.RequestModel(), api_.reasoning_effort);
 }
 
-void Agent::AddRouteUsage(const Usage& usage) {
-  route_usage_[ActiveRoute()].Merge(usage);
-}
-
 // Every model response is billed the same way: parse the provider's usage
 // block once, then charge it to the session and to the active route.
 Usage Agent::AccountModelUsage(const json& reported) {
   Usage usage;
   usage.Add(reported);
   MergeSessionUsage(usage);
-  AddRouteUsage(usage);
+  route_usage_[ActiveRoute()].Merge(usage);
   return usage;
 }
 
@@ -325,11 +320,7 @@ json Agent::ConfigureTools(const json& request) {
     return {{"error", std::move(error)}};
   }
   if (tool_selection_.Save() != before) {
-    available_schemas_.Reset();
-    schema_bytes_ = static_cast<size_t>(JsonValue(
-        tool_selection_.Catalogue(tools_), "schema_bytes", int64_t{0}));
-    logged_schemas_.clear();
-    RefreshSystemMessage(true);
+    InvalidateToolSchemas(true);
     ++revision_;
   }
   return ToolCatalogue();
@@ -337,11 +328,7 @@ json Agent::ConfigureTools(const json& request) {
 
 void Agent::RestoreToolSelection(const json& settings) {
   tool_selection_.Restore(settings);
-  available_schemas_.Reset();
-  schema_bytes_ = static_cast<size_t>(
-      JsonValue(tool_selection_.Catalogue(tools_), "schema_bytes", int64_t{0}));
-  logged_schemas_.clear();
-  RefreshSystemMessage(true);
+  InvalidateToolSchemas(true);
 }
 json Agent::HttpExchanges() const {
   return JsonValue(
@@ -358,6 +345,21 @@ json Agent::PreviewContext() {
     ++revision_;
   }
   return preview;
+}
+
+json Agent::Revert(int64_t turn, const std::string& path) {
+  json result = edits_.Revert(turn ? turn : edits_.LastTurn(), path);
+  std::string files;
+  for (const json& file : result["restored"]) {
+    if (!files.empty()) files += ", ";
+    files += file.get<std::string>();
+  }
+  // Told once, at the next step, rather than mid-turn.
+  if (!files.empty()) {
+    SteeringState().Queue(
+        "[user reverted: " + files + "; re-read before editing]", "", false);
+  }
+  return result;
 }
 
 bool Agent::Save(const std::string& path, std::string& error) const {
@@ -445,8 +447,7 @@ bool Agent::Load(const std::string& path, const std::string& expected_cwd,
   }
   RefreshBaseline();
   session_usage_ = record.state.usage;
-  api_.session_cost = session_usage_.cost;
-  api_.session_generated_tokens = session_usage_.GeneratedTokens();
+  SyncApiSessionUsage();
   route_usage_ = std::move(record.state.route_usage);
   session_id_ = std::move(record.metadata.session_id);
   if (session_id_.empty()) session_id_ = MakeSessionId();
@@ -575,6 +576,47 @@ json Agent::CompactionMessages() const {
   return messages;
 }
 
+json Agent::CompactionSkillMessages() const {
+  size_t remaining = size_t{32} * 1024;
+  if (api_.ctx_window > 0) {
+    remaining = std::min(
+        remaining,
+        std::max(size_t{4} * 1024, static_cast<size_t>(api_.ctx_window) / 4));
+  }
+  std::vector<const std::string*> newest_first;
+  for (size_t index = conversation_.Size(); index > BaselineSize(); --index) {
+    const MessageKind kind = conversation_.KindAt(index - 1);
+    const std::string* content =
+        JsonStringRef(conversation_.At(index - 1), "content");
+    // What `$skill` pushed, and what the skill tool returned for a body (a
+    // catalogue listing does not open with the skill's name).
+    if (!content || !((kind == MessageKind::kInternal &&
+                       content->starts_with("[explicit skill instructions")) ||
+                      (kind == MessageKind::kToolResult &&
+                       content->starts_with("[skill ")))) {
+      continue;
+    }
+    // A skill opened twice is kept once; one that no longer fits is left out
+    // whole rather than cut mid-procedure.
+    if (content->size() > remaining ||
+        std::ranges::any_of(newest_first, [&](const std::string* kept) {
+          return *kept == *content;
+        })) {
+      continue;
+    }
+    remaining -= content->size();
+    newest_first.push_back(content);
+  }
+  json retained = json::array();
+  for (auto it = newest_first.rbegin(); it != newest_first.rend(); ++it) {
+    retained.push_back(HarnessMessage(
+        (*it)->starts_with("[skill ")
+            ? "[skill instructions kept across compaction]\n" + **it
+            : **it));
+  }
+  return retained;
+}
+
 json Agent::CompactionUserMessages(std::vector<uint64_t>* retained_ids) const {
   // A summary is lossy by definition. Keep recent real user instructions as
   // an independent source of truth, while bounding them to a small fraction
@@ -641,6 +683,7 @@ bool Agent::Compact(bool automatic, Usage* turn_usage) {
   json compact_messages = CompactionMessages();
   std::vector<uint64_t> retained_ids;
   json retained_users = CompactionUserMessages(&retained_ids);
+  json retained_skills = CompactionSkillMessages();
   size_t projected_bytes = JsonEstimatedBytes(compact_messages);
   ChatResult r = Chat("compact", -1, json::array(), &compact_messages);
   Usage compact_usage = AccountModelUsage(r.usage);
@@ -654,6 +697,7 @@ bool Agent::Compact(bool automatic, Usage* turn_usage) {
            r.content}};
   json replacement = BaselineMessages();
   replacement.push_back(runtime_context);
+  for (const auto& skill : retained_skills) replacement.push_back(skill);
   for (const auto& user : retained_users) replacement.push_back(user);
   replacement.push_back(summary);
   const size_t replacement_bytes = JsonEstimatedBytes(replacement);
@@ -679,9 +723,13 @@ bool Agent::Compact(bool automatic, Usage* turn_usage) {
     return false;
   }
   PruneAttachments(BaselineSize());
-  ArchiveAll(automatic ? "auto_compact" : "manual_compact");
+  conversation_.ArchiveAll(automatic ? "auto_compact" : "manual_compact",
+                           BaselineSize(), turn_id_, kSessionArchiveBytes);
   conversation_.ResetHistory(BaselineMessages(), BaselineKinds());
   conversation_.Push(std::move(runtime_context), MessageKind::kRuntimeContext);
+  for (json& skill : retained_skills) {
+    conversation_.Push(std::move(skill), MessageKind::kInternal);
+  }
   size_t retained_count = retained_users.size();
   for (size_t i = 0; i < retained_users.size(); ++i) {
     // Keep the source display id so the archived original and this re-push
@@ -734,22 +782,19 @@ void Agent::DrainSubagentUsage() {
       const int64_t parent_turn = JsonValue(entry, "parent_turn", int64_t{0});
       const json statistics = FlattenNumericStatistics(
           JsonValue(entry, "statistics", json::object()), "side_");
-      if (entry.contains("routes") && entry["routes"].is_object()) {
-        bool first = true;
-        for (const auto& [route, value] : entry["routes"].items()) {
+      bool first = true;
+      if (const json* routes = JsonObject(entry, "routes")) {
+        for (const auto& [route, value] : routes->items()) {
           // Statistics describe the whole child and therefore belong on one
           // record, even when its usage spans several provider routes.
           side_usage_.Add(route, UsageFromJson(value), parent_turn,
                           first ? statistics : json::object());
           first = false;
         }
-        if (first) {
-          side_usage_.Add(JsonValue(entry, "route", "delegated/unknown"), child,
-                          parent_turn, statistics);
-        }
-      } else {
-        std::string route = JsonValue(entry, "route", "delegated/unknown");
-        side_usage_.Add(route, child, parent_turn, statistics);
+      }
+      if (first) {
+        side_usage_.Add(JsonValue(entry, "route", "delegated/unknown"), child,
+                        parent_turn, statistics);
       }
     } else {
       side_usage_.Add(UsageFromJson(entry));
@@ -757,17 +802,9 @@ void Agent::DrainSubagentUsage() {
   }
 }
 
-void Agent::MergeSideUsage(Usage& turn_usage) {
+void Agent::AccountSideUsage(Usage* current_turn) {
   DrainSubagentUsage();
-  ApplySideUsage(side_usage_.TakeAll(), &turn_usage);
-}
-
-void Agent::AccountSideUsage() {
-  DrainSubagentUsage();
-  ApplySideUsage(side_usage_.TakeAll(), nullptr);
-}
-
-void Agent::ApplySideUsage(AccumulatedUsage batch, Usage* current_turn) {
+  const AccumulatedUsage batch = side_usage_.TakeAll();
   Usage total = batch.unassigned;
   for (const auto& [route, route_spent] : batch.routes) {
     route_usage_[route].Merge(route_spent);
@@ -832,10 +869,15 @@ void Agent::UpdateTurnSideUsage(int64_t turn, const Usage& usage,
   }
 }
 
-void Agent::MergeSessionUsage(const Usage& usage) {
-  session_usage_.Merge(usage);
+// The request path judges session budgets from these, not from the usage.
+void Agent::SyncApiSessionUsage() {
   api_.session_cost = session_usage_.cost;
   api_.session_generated_tokens = session_usage_.GeneratedTokens();
+}
+
+void Agent::MergeSessionUsage(const Usage& usage) {
+  session_usage_.Merge(usage);
+  SyncApiSessionUsage();
   Emit(Event{
       EventId::kUsageUpdated,
       {{"usage", UsageJson(session_usage_)}, {"statistics", Statistics()}}});
@@ -1110,73 +1152,60 @@ bool Agent::DrainAttachments() {
     (attachment.source_call_id.empty() ? user : sourced)
         .push_back(std::move(attachment));
   }
-  bool changed = false;
-  if (!user.empty()) changed |= DrainUserAttachments(user);
-  if (!sourced.empty()) {
-    // The message kind stays kAttachment on purpose: the request pipeline
-    // keys its encoded-parts guard and its turn-boundary strip on it, so
-    // re-kinding would feed base64 to the summarizer. Only the attribution
-    // differs, carried as a display fact the view projects as agent-side.
-    std::string error;
-    json content = AttachmentContent(kAttachedOnRequest, sourced, error);
-    if (error.empty()) {
-      conversation_.Push({{"role", "user"}, {"content", std::move(content)}},
-                         MessageKind::kAttachment);
-      json call_ids = json::array();
-      json files = json::array();
-      for (const Attachment& attachment : sourced) {
-        call_ids.push_back(attachment.source_call_id);
-        // The tool's row shows the file, so a client needs its own copy.
-        json kept = keep_tool_file_
-                        ? keep_tool_file_(attachment.path, attachment.name)
-                        : json(nullptr);
-        if (kept.is_object()) {
-          kept["image"] = attachment.image;
-          files.push_back(std::move(kept));
-        }
+  if (!user.empty()) PushAttachments(user);
+  // The message kind stays kAttachment on purpose: the request pipeline keys
+  // its encoded-parts guard and its turn-boundary strip on it, so re-kinding
+  // would feed base64 to the summarizer. Only the attribution differs, carried
+  // as a display fact the view projects as agent-side.
+  if (!sourced.empty() && PushAttachments(sourced)) {
+    json call_ids = json::array();
+    json files = json::array();
+    for (const Attachment& attachment : sourced) {
+      call_ids.push_back(attachment.source_call_id);
+      // The tool's row shows the file, so a client needs its own copy.
+      json kept = keep_tool_file_
+                      ? keep_tool_file_(attachment.path, attachment.name)
+                      : json(nullptr);
+      if (kept.is_object()) {
+        kept["image"] = attachment.image;
+        files.push_back(std::move(kept));
       }
-      json facts = {{"origin", "tool"},
-                    {"source_call_ids", std::move(call_ids)}};
-      if (!files.empty()) facts["files"] = std::move(files);
-      conversation_.RecordDisplay(conversation_.LastDisplayId(),
-                                  std::move(facts));
-    } else {
-      conversation_.Push(HarnessMessage("[attachment failed] " + error),
-                         MessageKind::kInternal);
     }
-    changed = true;
+    json facts = {{"origin", "tool"}, {"source_call_ids", std::move(call_ids)}};
+    if (!files.empty()) facts["files"] = std::move(files);
+    conversation_.RecordDisplay(conversation_.LastDisplayId(),
+                                std::move(facts));
   }
   DebugLog(
       "attachments_added",
       {{"turn", turn_id_}, {"user", user.size()}, {"sourced", sourced.size()}});
-  return changed;
-}
-
-bool Agent::DrainUserAttachments(std::vector<Attachment>& attachments) {
-  std::string error;
-  json content = AttachmentContent(kAttachedOnRequest, attachments, error);
-  if (error.empty()) {
-    conversation_.Push({{"role", "user"}, {"content", std::move(content)}},
-                       MessageKind::kAttachment);
-  } else {
-    conversation_.Push(HarnessMessage("[attachment failed] " + error),
-                       MessageKind::kInternal);
-  }
   return true;
 }
 
-void Agent::ArchiveAll(const char* reason) {
-  conversation_.ArchiveAll(reason, BaselineSize(), turn_id_,
-                           kSessionArchiveBytes);
+bool Agent::PushAttachments(const std::vector<Attachment>& attachments) {
+  std::string error;
+  json content = AttachmentContent(kAttachedOnRequest, attachments, error);
+  if (!error.empty()) {
+    conversation_.Push(HarnessMessage("[attachment failed] " + error),
+                       MessageKind::kInternal);
+    return false;
+  }
+  conversation_.Push({{"role", "user"}, {"content", std::move(content)}},
+                     MessageKind::kAttachment);
+  return true;
 }
 
-void Agent::RebuildToolSchemas() {
+void Agent::InvalidateToolSchemas(bool force_system) {
   available_schemas_.Reset();
-  schemas_ = ToolSchemas(tools_);
   schema_bytes_ = static_cast<size_t>(
       JsonValue(tool_selection_.Catalogue(tools_), "schema_bytes", int64_t{0}));
   logged_schemas_.clear();
-  RefreshSystemMessage();
+  RefreshSystemMessage(force_system);
+}
+
+void Agent::RebuildToolSchemas() {
+  schemas_ = ToolSchemas(tools_);
+  InvalidateToolSchemas(false);
   DebugLog("tool_registry_refreshed",
            {{"tools", tools_.size()}, {"schema_bytes", schema_bytes_}});
 }

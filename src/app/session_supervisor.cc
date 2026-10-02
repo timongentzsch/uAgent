@@ -1,13 +1,10 @@
 // Copyright 2026 Timon Gentzsch
 
 #include <algorithm>
-#include <chrono>
 #include <filesystem>
-#include <map>
 #include <memory>
 #include <string>
 #include <utility>
-#include <vector>
 
 #include "include/agent/session_view.h"
 #include "include/app/library.h"
@@ -62,19 +59,34 @@ std::shared_ptr<HostSession> SessionHost::CreateSession(
   session->draft_title = title;
   session->status = "draft";
   session->updated = NowMillis();
-  auto written =
-      ToolWritePrivateFile(directory_ + "/drafts/" + session->id + ".json",
-                           JsonDump({{"cwd", cwd},
-                                     {"path", path},
-                                     {"id", session->id},
-                                     {"title", title},
-                                     {"updated", session->updated}}));
-  if (!written.Ok()) {
+  if (!WriteDraft(*session, title, session->updated)) {
     error = "cannot persist draft identity";
     return {};
   }
   sessions_[session->id] = session;
   return session;
+}
+
+bool SessionHost::WriteDraft(const HostSession& session,
+                             const std::string& title, int64_t updated) const {
+  return ToolWritePrivateFile(directory_ + "/drafts/" + session.id + ".json",
+                              JsonDump({{"cwd", session.cwd},
+                                        {"path", session.path},
+                                        {"id", session.id},
+                                        {"title", title},
+                                        {"updated", updated}}))
+      .Ok();
+}
+
+bool SessionHost::IsCurrentLocked(const HostSession* session) const {
+  auto owner = sessions_.find(session->id);
+  return owner != sessions_.end() && owner->second.get() == session;
+}
+
+void SessionHost::PublishLifecycle(const HostSession& session, json frame) {
+  frame["metadata"] = Metadata(session);
+  replay_.Publish(epoch_, session.id, session.generation, std::move(frame),
+                  !session.run_id.empty());
 }
 
 Connection SessionHost::OpenRuntime(const HostSession& session, bool create,
@@ -103,16 +115,14 @@ void SessionHost::DeactivateLocked(HostSession& session) {
   }
   session.status = "saved";
   session.error.clear();
-  session.state["activity"] = "Ready";
-  replay_.Publish(epoch_, session.id, "",
-                  {{"kind", "deactivated"}, {"metadata", Metadata(session)}},
-                  !session.run_id.empty());
+  // A saved conversation is read from disk.
+  session.state = {{"activity", "Ready"}};
+  PublishLifecycle(session, {{"kind", "deactivated"}});
 }
 
 void SessionHost::Received(HostSession* session, json frame) {
   std::unique_lock lock(mutex_);
-  auto owner = sessions_.find(session->id);
-  if (owner == sessions_.end() || owner->second.get() != session ||
+  if (!IsCurrentLocked(session) ||
       JsonValue(frame, "session_id", "") != session->id ||
       JsonValue(frame, "generation", "") != session->generation) {
     return;
@@ -125,14 +135,13 @@ void SessionHost::Received(HostSession* session, json frame) {
     session->runtime_sequence = sequence;
   }
   const std::string kind = JsonValue(frame, "kind", "");
+  if (kind == "retiring") {
+    // The runtime has nothing to do and stops once nobody holds it: let go.
+    session->closing = true;
+    session->stop.Wake();
+    return;
+  }
   if (kind == "outcome") {
-    // A runtime closed by another client (a coordinator's close or delete)
-    // is about to exit: its end reads as closed, not interrupted.
-    if (JsonValue(frame, "accepted", false) &&
-        JsonValue(JsonValue(frame, "result", json::object()), "operation",
-                  "") == "close") {
-      session->closing = true;
-    }
     // A fork receipt must not become visible until its new conversation is
     // in the catalogue; clients can inspect it immediately after the receipt.
     if (JsonValue(JsonValue(frame, "result", json::object()), "forked",
@@ -209,7 +218,6 @@ bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
     return false;
   }
   bool create_now = create;
-  session->parked = 0;
   for (int attempt = 0;; ++attempt) {
     if (session->pid > 0 && !session->exited) {
       if (!RecycleStaleWorkerLocked(session, lock)) return true;
@@ -224,8 +232,7 @@ bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
       lock.unlock();
       session->reader.join();
       lock.lock();
-      auto owner = sessions_.find(session->id);
-      if (stopping_ || owner == sessions_.end() || owner->second != session) {
+      if (stopping_ || !IsCurrentLocked(session.get())) {
         session->connecting = false;
         error = "session was closed while joining its prior runtime";
         return false;
@@ -235,8 +242,7 @@ bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
     auto connected = OpenRuntime(*session, create_now, error);
     lock.lock();
     session->connecting = false;
-    auto owner = sessions_.find(session->id);
-    if (stopping_ || owner == sessions_.end() || owner->second != session) {
+    if (stopping_ || !IsCurrentLocked(session.get())) {
       error = "session was closed while connecting";
       return false;
     }
@@ -261,20 +267,20 @@ bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
                    return !stopping_;
                  });
       std::lock_guard state_lock(mutex_);
-      auto current = sessions_.find(session->id);
-      if (current != sessions_.end() && current->second.get() == session) {
+      if (IsCurrentLocked(session)) {
         outcomes_.FailPending(*session);
+        // Only a runtime that ends in the middle of work was interrupted;
+        // one that ends with nothing under way (closed by any client, or
+        // idle) is simply saved.
+        const bool working = session->turn_active || session->command_busy;
         session->turn_active = false;
         session->pending = nullptr;
-        if (session->closing) {
+        if (session->closing || !working) {
           DeactivateLocked(*session);
         } else {
           session->status = "interrupted";
           session->state["activity"] = "Interrupted";
-          replay_.Publish(
-              epoch_, session->id, session->generation,
-              {{"kind", "closed"}, {"metadata", Metadata(*session)}},
-              !session->run_id.empty());
+          PublishLifecycle(*session, {{"kind", "closed"}});
         }
       }
       session->exited = true;
@@ -292,9 +298,7 @@ bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
       continue;
     }
     session->activated = NowMillis();
-    replay_.Publish(epoch_, session->id, session->generation,
-                    {{"kind", "activated"}, {"metadata", Metadata(*session)}},
-                    !session->run_id.empty());
+    PublishLifecycle(*session, {{"kind", "activated"}});
     return true;
   }  // for (attempt): single pass unless a stale worker recycled above
 }
@@ -302,22 +306,25 @@ bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
 bool SessionHost::ApplyRuntimeFrame(HostSession& session, json& frame) {
   const std::string kind = JsonValue(frame, "kind", "");
   if (kind == "state") {
-    json next = JsonValue(frame, "state", json::object());
+    auto sent = frame.find("state");
+    json next = sent != frame.end() ? std::move(*sent) : json::object();
     // A rewound conversation starts a new view epoch: its old blocks are
     // gone, so the checkpoint replaces the view instead of merging into it.
-    json view = JsonValue(next, "view_epoch", uint64_t{0}) ==
-                        JsonValue(session.state, "view_epoch", uint64_t{0})
-                    ? JsonValue(session.state, "view", json::object())
-                    : json::object();
-    const json checkpoint_view = JsonValue(next, "view", json::object());
-    if (checkpoint_view.is_object()) {
-      for (auto it = checkpoint_view.begin(); it != checkpoint_view.end();
+    json view = json::object();
+    if (auto held = session.state.find("view");
+        held != session.state.end() &&
+        JsonValue(next, "view_epoch", uint64_t{0}) ==
+            JsonValue(session.state, "view_epoch", uint64_t{0})) {
+      view = std::move(*held);
+    }
+    if (const json* checkpoint_view = JsonObject(next, "view")) {
+      for (auto it = checkpoint_view->begin(); it != checkpoint_view->end();
            ++it) {
         if (it.key() != "blocks") view[it.key()] = it.value();
       }
-    }
-    if (const json* blocks = JsonArray(checkpoint_view, "blocks")) {
-      for (const json& block : *blocks) MergeDisplayBlock(view, block);
+      if (const json* blocks = JsonArray(*checkpoint_view, "blocks")) {
+        for (const json& block : *blocks) MergeDisplayBlock(view, block);
+      }
     }
     if (!view.contains("blocks")) view["blocks"] = json::array();
     next["view"] = std::move(view);
@@ -398,7 +405,7 @@ bool SessionHost::ApplyRuntimeFrame(HostSession& session, json& frame) {
   json patch;
   ApplySessionEvent(session.state, type, frame["data"], &patch);
   if (type == "tool.result") {
-    const json data = JsonValue(frame, "data", json::object());
+    const json& data = frame["data"];
     const std::string detail = JsonValue(data, "detail_id", "");
     if (!detail.empty()) {
       if (session.active_exchanges.size() >= kMaxActiveExchanges) {
@@ -413,7 +420,7 @@ bool SessionHost::ApplyRuntimeFrame(HostSession& session, json& frame) {
     }
   }
   if (type == "message.changed") {
-    const json block = frame["data"]["block"];
+    const json& block = frame["data"]["block"];
     session.incoming =
         std::max(session.incoming, JsonValue(block, "incoming", uint64_t{0}));
   }

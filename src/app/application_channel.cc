@@ -22,15 +22,11 @@
 #include "src/app/application_internal.h"
 
 namespace uagent {
-int Application::FinishInteractive(int status) {
-  SaveSession();
-  Teardown("eof");
-  TerminalRestore();
-  return status;
-}
-
 int Application::RunChannel() {
-  if (!ResumeAtStartup()) return FinishInteractive(2);
+  if (!ResumeAtStartup()) {
+    Teardown("eof");
+    return 2;
+  }
   persist_ = true;
   agent_.GenerateTitles(true);
   EnsureSessionPath();
@@ -72,9 +68,10 @@ int Application::RunChannel() {
     bool children_finished = false;
     agent_.DrainBackground(&children_finished);
     if (children_finished && input->wake) {
-      SteeringState().Queue(
-          "[subagent finished, not a user message] Its result is above.", "",
-          true);
+      const std::string note =
+          "[subagent finished, not a user message] Its result is above.";
+      agent_.NotFromUser(note);
+      SteeringState().Queue(note, "", true);
     }
     agent_.DeliverMail(channel_->HoldMail());
     agent_.AccountSideUsage();
@@ -99,10 +96,11 @@ int Application::RunChannel() {
   }
   runtime_.processes.SetNotifyFd(-1);
   channel_->SetActivityControl({});
-  return FinishInteractive(0);
+  Teardown("eof");
+  return 0;
 }
 
-json Application::BuildChannelState(bool checkpoint) const {
+void Application::PublishChannelState(bool checkpoint) {
   json state = InterfaceState();
   // Clients keep these from the last checkpoint (session::kCheckpointFields).
   if (checkpoint) {
@@ -143,11 +141,6 @@ json Application::BuildChannelState(bool checkpoint) const {
   state["error"] = input_error_.empty() ? agent_.LastError() : input_error_;
   state["title"] = Utf8Prefix(agent_.FirstUserText(), 256);
   state["stop"] = agent_.LastStop();
-  return state;
-}
-
-void Application::PublishChannelState(bool checkpoint) {
-  json state = BuildChannelState(checkpoint);
   if (channel_) channel_->PublishState(state, checkpoint);
 }
 

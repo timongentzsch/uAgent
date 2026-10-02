@@ -25,8 +25,8 @@ inline constexpr size_t MiB(size_t n) { return n * kMiB; }
 inline constexpr size_t kPreviewChars = 4096;
 inline constexpr size_t kCatalogueHeaderBytes = 4096;
 inline constexpr size_t kTraceSummaryChars = 512;
-// Retained change/diff preview on a tool-result fact: larger than the trace
-// summary because a diff is the whole row, but still bounded.
+// The opening of a change/diff that a tool-result fact and its live event
+// carry. A longer diff is kept whole in a private artifact the row names.
 inline constexpr size_t kChangePreviewChars = size_t{16} * 1024;
 // Decoded-image cache cap and largest dimension kept for vision payloads.
 inline constexpr size_t kImageCacheBytes = size_t{16} * 1024 * 1024;
@@ -47,7 +47,6 @@ inline constexpr int kMaxSkillFileDepth = 4;
 inline constexpr size_t kLibraryNameChars = 100;
 inline constexpr size_t kMaxSessionAssets = 64;
 inline constexpr size_t kMaxAgentRecords = 100;
-inline constexpr size_t kMaxToolDisplays = 128;
 inline constexpr size_t kMaxToolsPerMessage = 32;
 inline constexpr size_t kMaxActiveExchanges = 32;
 inline constexpr size_t kMaxPendingSessionCommands = 32;
@@ -76,6 +75,8 @@ inline constexpr size_t kSharedToolResultChars = 2000;
 inline constexpr size_t kRetainedArtifactPathChars = 4096;
 inline constexpr size_t kKqueueWatchTargets = 64;
 inline constexpr int64_t kModelRequestDeadlineReserveSeconds = 1;
+// Parallel workers for one batch of parallel-safe tool calls.
+inline constexpr int64_t kToolConcurrency = 4;
 
 // Live event pacing. Model callbacks and browser publication use the same
 // usage cadence so one layer cannot silently undo the other's coalescing.
@@ -151,13 +152,16 @@ inline constexpr int64_t kDefaultYieldMs = 10000;
 // enough for the child to echo, short enough not to feel like a wait.
 inline constexpr int64_t kActivityInputSettleMs = 250;
 
+// Concurrent supervised activities in one session.
+inline constexpr int64_t kMaxBackgroundJobs = 8;
 // Background slots held back from delegated children. Subagents, foreground
-// commands and background jobs share the UAGENT_MAX_BACKGROUND_JOBS pool
-// (detached terminals are counted separately), so an unbounded fan-out of
-// children would leave the parent unable to build, test or search -- the very
-// work it needs in order to check what those children produced. The guarantee
-// only bites once the pool exceeds this headroom.
+// commands and background jobs share the kMaxBackgroundJobs pool (detached
+// terminals are counted separately), so an unbounded fan-out of children would
+// leave the parent unable to build, test or search -- the very work it needs
+// in order to check what those children produced.
 inline constexpr int64_t kDelegatedJobHeadroom = 2;
+inline constexpr int64_t kMaxDelegatedJobs =
+    kMaxBackgroundJobs - kDelegatedJobHeadroom;
 
 // Resource ceilings. They bound runaway input and disk use; none is a
 // preference a user should have to tune.
@@ -188,6 +192,8 @@ inline constexpr size_t kMemoryAlwaysBytes = 2048;
 inline constexpr size_t kMemoryBytes = 2048;
 inline constexpr size_t kMaxMemories = 32;
 inline constexpr size_t kMemoryExtractBytes = KiB(32);
+// Idle time before a saved session is offered to background extraction.
+inline constexpr int64_t kMemoryIdleSeconds = int64_t{6} * 60 * 60;
 inline constexpr size_t kSkillBodyBytes = KiB(512);
 inline constexpr size_t kSkillDescriptionBytes = 1024;
 inline constexpr size_t kMaxSkills = 64;
@@ -195,6 +201,9 @@ inline constexpr size_t kProjectDocBytes = KiB(32);
 inline constexpr size_t kMaxPendingAttachments = 8;
 // MCP servers are untrusted; these bound what one may make the agent hold.
 inline constexpr int64_t kMaxMcpServers = 32;
+// Startup window the optional servers share before discovery moves to a turn
+// boundary.
+inline constexpr int64_t kMcpStartupGraceSeconds = 2;
 inline constexpr int64_t kMcpPages = 100;
 inline constexpr size_t kMaxMcpTools = 256;
 inline constexpr size_t kMcpConfigBytes = MiB(1);
@@ -211,8 +220,9 @@ inline constexpr int64_t kBgFiles = 200;
 inline constexpr int64_t kMcpLogDays = 7;
 inline constexpr int64_t kMcpLogFiles = 100;
 inline constexpr int64_t kTerminalDays = 7;
-// Idle minutes before Chrome stops; the next browser action restarts it.
-inline constexpr int64_t kBrowserIdleMinutes = 15;
+// Minutes with nothing to do before a session's runtime or Chrome stops; the
+// next message, mail or browser action starts it again.
+inline constexpr int64_t kIdleMinutes = 15;
 
 }  // namespace uagent
 

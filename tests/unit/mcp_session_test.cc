@@ -249,8 +249,8 @@ void TestWorkspaceScopedSession() {
   AdaptiveSystemState adaptive_system;
   Agent agent(
       api, tools, processes, usage,
-      [](const Tool&, const json&, int64_t) { return false; }, {}, {}, {},
-      &adaptive_system);
+      [](const Tool&, const json&, int64_t) { return std::string("denied"); },
+      {}, {}, {}, &adaptive_system);
   api.capabilities.image_input = false;
   agent.RouteChanged();
   CHECK(!api.capabilities.image_input);
@@ -283,14 +283,15 @@ void TestWorkspaceScopedSession() {
           "Persist this task strategy.");
     CHECK(payload.value("adaptive_system_revision", uint64_t{0}) == 4);
     payload["context_tokens"] = 1'900'000;
-    payload["tool_displays"] = json::array();
+    payload["display"] = json::array();
     CHECK(ToolWritePrivateFile(session.string(),
                                header.dump() + "\n" + payload.dump())
               .Ok());
     CHECK(SessionStore::Inspect(session.string()).status.error ==
           SessionStoreError::kCorrupt);
-    // Earlier format-3 sessions omit both kinds of display metadata.
-    payload.erase("tool_displays");
+    // Earlier format-3 sessions omit display metadata; ones that still carry
+    // the retired tool receipts load with them ignored.
+    payload["tool_displays"] = json::object();
     payload.erase("display");
     payload.erase("context_window");
     CHECK(ToolWritePrivateFile(session.string(),
@@ -326,7 +327,6 @@ void TestWorkspaceScopedSession() {
   // Resume and fork normalize absent presentation metadata to empty objects.
   auto older = SessionStore::Inspect(session.string());
   CHECK(older.record.has_value());
-  CHECK(older.record->state.tool_displays == json::object());
   CHECK(older.record->state.display == json::object());
   CHECK(older.record->state.context_window == 0);
   auto forked = SessionStore::Fork(session.string(), "Legacy fork", true);

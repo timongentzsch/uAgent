@@ -34,9 +34,7 @@ HostSession::~HostSession() {
 
 bool HostSession::Send(json frame) {
   std::lock_guard lock(send_mutex);
-  frame["v"] = kProtocol;
-  frame["session_id"] = id;
-  frame["generation"] = generation;
+  StampFrame(frame, id, generation);
   return socket && WriteFrame(socket.Get(), frame);
 }
 
@@ -51,16 +49,14 @@ SessionHost::SessionHost(std::string epoch, size_t byte_limit,
   scheduled_view_ = ScheduleControl({{"action", "list"}});
 }
 
-HostReplay SessionHost::Publish(const std::string& session,
-                                const std::string& generation, json value) {
+void SessionHost::Publish(const std::string& session,
+                          const std::string& generation, json value) {
   std::lock_guard lock(mutex_);
   auto owner = sessions_.find(session);
   const bool run_owned =
       owner != sessions_.end() && !owner->second->run_id.empty();
-  HostReplay published =
-      replay_.Publish(epoch_, session, generation, std::move(value), run_owned);
+  replay_.Publish(epoch_, session, generation, std::move(value), run_owned);
   changed_.notify_all();
-  return published;
 }
 
 uint64_t SessionHost::Cursor() const {
@@ -69,9 +65,10 @@ uint64_t SessionHost::Cursor() const {
 }
 
 ReplayBatch SessionHost::ReadReplay(uint64_t next, bool valid,
-                                    uint64_t watermark) const {
+                                    uint64_t watermark,
+                                    size_t byte_budget) const {
   std::lock_guard lock(mutex_);
-  return replay_.Read(next, valid, watermark);
+  return replay_.Read(next, valid, watermark, byte_budget);
 }
 
 void SessionHost::WaitForReplay(uint64_t cursor, std::chrono::seconds timeout) {
@@ -161,7 +158,9 @@ bool SessionHost::RefreshCatalogue(bool force) {
       it->second->path = item.path;
     }
     auto& session = *it->second;
-    if (session.closing || session.status == "updating" ||
+    // A connecting session is read unlocked by its runtime's launch; the
+    // next scan brings it up to date.
+    if (session.closing || session.connecting || session.status == "updating" ||
         session.status == "deleting") {
       continue;
     }
@@ -218,40 +217,20 @@ void SessionHost::RefreshPresence() {
   }
   for (const auto& session : candidates) {
     if (!PathExists(SocketPath(session->path))) continue;
-    if (session->parked && session->parked == session->updated) continue;
     std::string error;
     ActivateLocked(session, error, lock, false);
   }
 }
 
-void SessionHost::ParkIdleCoordinators() {
-  std::lock_guard lock(mutex_);
-  const int64_t now = NowMillis();
-  const int64_t idle =
-      std::chrono::duration_cast<std::chrono::milliseconds>(CoordinatorIdle())
-          .count();
-  for (const auto& [id, session] : sessions_) {
-    if (session->kind != kSessionKindCoordinator || session->pid <= 0 ||
-        session->exited || session->closing || session->connecting ||
-        session->turn_active || !session->pending.is_null() ||
-        now - std::max(session->updated, session->activated) < idle) {
-      continue;
-    }
-    // Closing (not closed): the reader stops and the session reads as
-    // saved, while the runtime decides for itself when to exit.
-    session->parked = session->updated;
-    session->closing = true;
-    session->stop.Wake();
-  }
-}
-
-json SessionHost::RestartRunning(const std::string& cwd) {
+json SessionHost::RestartRunning(const std::string& cwd,
+                                 const std::string& only) {
   std::unique_lock lock(mutex_);
   std::vector<std::shared_ptr<HostSession>> idle;
   int64_t deferred = 0;
   for (const auto& [id, session] : sessions_) {
     if (session->pid <= 0 || session->exited || session->closing ||
-        (!cwd.empty() && session->cwd != cwd)) {
+        (!cwd.empty() && session->cwd != cwd) ||
+        (!only.empty() && id != only)) {
       continue;
     }
     session->restart = true;
@@ -286,26 +265,31 @@ bool SessionHost::Contains(const std::string& id) const {
 }
 
 json SessionHost::Metadata(const HostSession& session) const {
-  return {{"id", session.id},
-          {"task_id", session.task_id},
-          {"run_id", session.run_id},
-          {"cwd", session.cwd},
-          {"kind", session.kind},
-          {"folder", session.folder},
-          {"title", session.title},
-          {"generation", session.generation},
-          {"status", session.status},
-          {"presence", session.pid > 0 && !session.exited ? "active" : ""},
-          {"turn_active", session.turn_active},
-          {"guidance", session.guidance},
-          {"incoming", session.incoming},
-          {"activity", JsonValue(session.state, "activity", "Ready")},
-          {"phase", JsonValue(session.state, "phase", "idle")},
-          {"activities", JsonValue(session.state, "activities", json::array())},
-          {"error", session.error},
-          // Waiting on a person: a coordinator's routed decision is not.
-          {"pending", WaitsOnPerson(session.pending)},
-          {"updated", session.updated}};
+  // Waiting on a person: a coordinator's routed decision is not. What it
+  // waits on is named from the decision in memory, for the inbox row.
+  const bool waits = WaitsOnPerson(session.pending);
+  return {
+      {"id", session.id},
+      {"task_id", session.task_id},
+      {"run_id", session.run_id},
+      {"cwd", session.cwd},
+      {"kind", session.kind},
+      {"folder", session.folder},
+      {"title", session.title},
+      {"generation", session.generation},
+      {"status", session.status},
+      {"presence", session.pid > 0 && !session.exited ? "active" : ""},
+      {"turn_active", session.turn_active},
+      {"guidance", session.guidance},
+      {"incoming", session.incoming},
+      {"activity", JsonValue(session.state, "activity", "Ready")},
+      {"phase", JsonValue(session.state, "phase", "idle")},
+      {"activities", JsonValue(session.state, "activities", json::array())},
+      {"error", session.error},
+      {"pending", waits},
+      {"pending_kind", waits ? JsonValue(session.pending, "kind", "") : ""},
+      {"pending_prompt", waits ? JsonValue(session.pending, "prompt", "") : ""},
+      {"updated", session.updated}};
 }
 
 json SessionHost::LiveSnapshot(const HostSession& session) const {

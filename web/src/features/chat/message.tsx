@@ -2,10 +2,11 @@ import "../composer/attachments.css";
 import { TurnFooter } from "./turn-footer.tsx";
 import Markdown, { prepareMarkdown } from "../../shared/markdown-view.tsx";
 import "./message.css";
-import { count } from "../../shared/quantities.ts";
+import { count, plural } from "../../shared/quantities.ts";
 import { Component } from "preact";
 import {
   presentMessages,
+  recallable,
   splitMentionTokens,
   unsent,
 } from "../../shared/message-view.ts";
@@ -16,9 +17,10 @@ import type {
   SessionRef,
   LinkPart,
 } from "../../shared/types.ts";
-import { useContext, useEffect, useMemo, useState } from "preact/hooks";
+import { useContext, useEffect, useId, useMemo, useState } from "preact/hooks";
+import { TimePrefsContext, formatMoment } from "../../shared/time.ts";
 import { MessageActions } from "./message-actions.ts";
-import { Minimize2, X } from "lucide-preact";
+import { Mail, Minimize2, X } from "lucide-preact";
 import {
   Button,
   DisclosureRow,
@@ -57,18 +59,18 @@ function MentionFile({
   id,
   alt,
   files,
-  sessionId,
+  assets,
 }: {
   id: string;
   alt: string;
   files?: (Asset | string)[];
-  sessionId: string;
+  assets: string;
 }) {
   const file = files?.find(
     (item): item is Asset => typeof item === "object" && item.id === id,
   );
   if (!file) return <span class="muted">@{alt} (attachment removed)</span>;
-  const href = `/api/sessions/${sessionId}/assets/${file.id}`;
+  const href = `${assets}${file.id}`;
   return file.image ? (
     <span class="mention-image">
       <ImageTile src={href} name={file.name} />
@@ -78,6 +80,16 @@ function MentionFile({
       @{file.name}
     </a>
   );
+}
+
+// Who wrote a row and when, e.g. "You, 10:32": the row's accessible name
+// and its menu's. Smart and absolute styles only, so it needs no ticking.
+function useRowName(who: string, time?: string) {
+  const prefs = useContext(TimePrefsContext);
+  const date = time ? new Date(time) : null;
+  if (!date || Number.isNaN(date.getTime())) return who;
+  const style = prefs.style === "absolute" ? "absolute" : "smart";
+  return `${who}, ${formatMoment(date, { ...prefs, style })}`;
 }
 
 // Deliveries worth a line: how the model got a file only when it was not
@@ -91,8 +103,17 @@ type MessageProps = {
 };
 
 function MessageView({ block, online, session }: MessageProps) {
-  const { read, inspect, report, statistics, activity, recall, branch, http } =
-    useContext(MessageActions);
+  const {
+    read,
+    inspect,
+    report,
+    statistics,
+    activity,
+    recall,
+    retry: resend,
+    branch,
+    http,
+  } = useContext(MessageActions);
   const [full, setFull] = useState<string | null>(null);
   const [expanding, setExpanding] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -142,6 +163,16 @@ function MessageView({ block, online, session }: MessageProps) {
     session.id,
     retry,
   ]);
+  // A long diff arrives as its opening; the row shows the stored whole.
+  const [change, setChange] = useState<string>();
+  useEffect(() => {
+    if (!online || !block.change_path) return;
+    const abort = new AbortController();
+    load(block.detail_id || `t-${block.call_id}`, false, abort.signal)
+      .then((page) => setChange(page.text))
+      .catch((error) => abort.signal.aborted || setLoadError(error));
+    return () => abort.abort();
+  }, [online, block.change_path, session.id, retry]);
   const output = useMemo(
     () => (expanded ? cleanText(text) : ""),
     [expanded, text],
@@ -164,13 +195,35 @@ function MessageView({ block, online, session }: MessageProps) {
         </p>
       </EventRow>
     );
+  // Another session's or the harness's words: an event with its sender's
+  // label, never the person's bar. The label is the text's own opening
+  // bracket ("[thread event, not a user message] …").
+  if (block.kind === "user" && block.origin === "mail") {
+    const match = /^\[([^\]]+)\]\s*([\s\S]*)$/.exec(text || "");
+    const label = match?.[1] ?? "Message";
+    const body = match?.[2] ?? "";
+    const [first] = body.split("\n", 1);
+    return (
+      <EventRow
+        title={`${label.replace(", not a user message", "")} · ${first}`}
+        time={block.time}
+        icon={<Mail />}
+        messageId={block.key || block.id}
+      >
+        <p>{cleanText(body)}</p>
+      </EventRow>
+    );
+  }
   if (block.summary)
     return (
-      <TurnFooter summary={block.summary} open={() => statistics?.(block)} />
+      <TurnFooter
+        summary={block.summary}
+        session={session}
+        open={() => statistics?.(block)}
+      />
     );
   // Attribution, not authorship: the user's bar and agent rows carry no
-  // label; only other kinds name themselves. The header below is identical on every row — no
-  // per-step variants, so chrome and spacing can never drift apart.
+  // label; only other kinds name themselves.
   // Receipts (memory saves, finished background work) read as tool rows.
   const row = tool || block.kind === "activity";
   const userOwned =
@@ -180,11 +233,28 @@ function MessageView({ block, online, session }: MessageProps) {
     block.kind === "assistant" ||
     (block.kind === "attachment" && block.origin === "tool");
   const actor = userOwned || row || agentRow ? null : block.kind;
+  const running = block.duration_ms == null && isRunningStatus(block.status);
+  const assets = `/api/sessions/${session.id}/assets/`;
+  const nameId = useId();
+  const name = useRowName(
+    userOwned
+      ? "You"
+      : agentRow
+        ? "Assistant"
+        : row
+          ? block.name || "Tool"
+          : block.kind.charAt(0).toUpperCase() + block.kind.slice(1),
+    block.time,
+  );
   return (
     <article
       data-message-id={block.key || block.id}
       className={`message ${row ? "tool" : userOwned ? "user" : "response"}${block.turn_root === block.id ? " turn-start" : ""}`}
+      aria-labelledby={nameId}
     >
+      <h3 class="sr-only" id={nameId}>
+        {name}
+      </h3>
       {!row && (
         <header>
           {actor && <span class="actor">{actor}</span>}
@@ -197,24 +267,21 @@ function MessageView({ block, online, session }: MessageProps) {
             </span>
           )}
           <Time value={block.time} />
-          {recall &&
-            block.request_id &&
-            ((online && block.status === "Guidance queued") ||
-              unsent(block)) && (
-              <IconButton
-                label={
-                  unsent(block)
-                    ? "Return message to composer"
-                    : "Recall guidance to composer"
-                }
-                title="Return to composer"
-                onClick={() => recall(block)}
-              >
-                <X />
-              </IconButton>
-            )}
+          {recall && recallable(block, online) && (
+            <IconButton
+              label={
+                unsent(block)
+                  ? "Return message to composer"
+                  : "Recall guidance to composer"
+              }
+              title="Return to composer"
+              onClick={() => recall(block)}
+            >
+              <X />
+            </IconButton>
+          )}
           <MessageMenu
-            label="Message menu"
+            label={`Actions for ${name}`}
             block={block}
             statistics={statistics}
             http={http}
@@ -222,44 +289,39 @@ function MessageView({ block, online, session }: MessageProps) {
           />
         </header>
       )}
-      {row &&
-        (() => {
-          const running =
-            block.duration_ms == null && isRunningStatus(block.status);
-          return (
-            <>
-              <div class="tool-row-head">
-                <ToolRow
-                  block={block}
-                  running={running}
-                  output={output}
-                  text={text}
-                  expanding={expanding}
-                  loadError={loadError}
-                  retry={() => setRetry(retry + 1)}
-                  online={online}
-                  inspect={inspect}
-                  onToggle={(event) => setExpanded(event.currentTarget.open)}
-                />
-                <MessageMenu
-                  label="Tool menu"
-                  block={block}
-                  statistics={statistics}
-                  http={http}
-                />
-              </div>
-              <ToolInline
-                block={block}
-                text={text}
-                loaded={full !== null}
-                loadFull={() => setWantFull(true)}
-                online={online}
-                assets={`/api/sessions/${session.id}/assets/`}
-                open={activity && ((link) => activity(linkTarget(block, link)))}
-              />
-            </>
-          );
-        })()}
+      {row && (
+        <>
+          <div class="tool-row-head">
+            <ToolRow
+              block={block}
+              running={running}
+              output={output}
+              text={text}
+              expanding={expanding}
+              loadError={loadError}
+              retry={() => setRetry(retry + 1)}
+              online={online}
+              inspect={inspect}
+              onToggle={(event) => setExpanded(event.currentTarget.open)}
+            />
+            <MessageMenu
+              label={`Actions for ${name}`}
+              block={block}
+              statistics={statistics}
+              http={http}
+            />
+          </div>
+          <ToolInline
+            block={change ? { ...block, change } : block}
+            text={text}
+            loaded={full !== null}
+            loadFull={() => setWantFull(true)}
+            online={online}
+            assets={assets}
+            open={activity && ((link) => activity(linkTarget(block, link)))}
+          />
+        </>
+      )}
       {block.reasoning && (
         <DisclosureRow
           className="thinking"
@@ -294,7 +356,7 @@ function MessageView({ block, online, session }: MessageProps) {
               id={part.mention.id}
               alt={part.mention.alt}
               files={block.files}
-              sessionId={session.id}
+              assets={assets}
             />
           ),
         )}
@@ -311,7 +373,7 @@ function MessageView({ block, online, session }: MessageProps) {
       {online && !!block.files?.length && !row && (
         <AttachmentList
           files={block.files.filter((file) => typeof file === "object")}
-          href={(id) => `/api/sessions/${session.id}/assets/${id}`}
+          href={(id) => `${assets}${id}`}
         />
       )}
       {!row && block.truncated && (
@@ -340,7 +402,20 @@ function MessageView({ block, online, session }: MessageProps) {
               : "Show full message"}
         </Button>
       )}
-      {block.error && <p role="status">{block.error}</p>}
+      {(block.error || (resend && unsent(block))) && (
+        <p role="alert" class={unsent(block) ? "failure unsent" : undefined}>
+          {block.error || block.status}
+          {resend && unsent(block) && (
+            <Button
+              size="compact"
+              disabled={!online}
+              onClick={() => resend(block)}
+            >
+              Retry
+            </Button>
+          )}
+        </p>
+      )}
       {(block.unavailable_images || 0) > 0 && (
         <p class="muted">
           {count(block.unavailable_images)} historical image(s) have no retained
@@ -422,74 +497,40 @@ class Message extends Component<MessageProps> {
   }
 }
 
-// The native four group labels, present while a step runs, past after.
-const GROUP_VERBS: Record<string, [string, string]> = {
-  explore: ["Exploring", "Explored"],
-  research: ["Researching", "Researched"],
-  verify: ["Verifying", "Verified"],
-  edit: ["Editing", "Edited"],
-};
-
-const plural = (n: number, one: string, many = `${one}s`) =>
-  n ? `${count(n)} ${n === 1 ? one : many}` : "";
-
-// What a group did, in its own terms: files and searches explored, pages
-// researched, each check with its result, lines edited.
-function groupSummary(intent: string, steps: PresentedBlock[]) {
-  const named = (...names: string[]) =>
-    steps.filter((step) => names.includes(step.name || "")).length;
-  if (intent === "verify")
-    return steps
-      .map((step) => {
-        const target = (step.view?.target || step.name || "").split("\n")[0];
-        const short = target.length > 24 ? `${target.slice(0, 23)}…` : target;
-        return `${short} ${isRunningStatus(step.status) ? "…" : "✓"}`;
-      })
-      .join(", ");
-  if (intent === "edit") {
-    const total = steps.reduce<[number, number]>(
-      (sum, step) => {
-        const [added, removed] = diffCounts(step.change);
-        return [sum[0] + added, sum[1] + removed];
-      },
-      [0, 0],
-    );
-    return [plural(steps.length, "file"), formatStat(total)]
-      .filter(Boolean)
-      .join(" · ");
-  }
-  const counts =
-    intent === "research"
-      ? [
-          plural(named("web_search"), "search", "searches"),
-          plural(steps.length - named("web_search"), "page"),
-        ]
-      : [
-          plural(named("read_path"), "file"),
-          plural(named("grep"), "search", "searches"),
-          plural(steps.length - named("read_path", "grep"), "command"),
-        ];
-  return counts.filter(Boolean).join(", ");
+// What a folded run did: commands run, files edited, and the edits' lines.
+function groupSummary(steps: PresentedBlock[]) {
+  const edits = steps.filter((step) => step.activity?.category === "edit");
+  const commands = steps.length - edits.length;
+  const lines = edits.reduce<[number, number]>(
+    (sum, step) => {
+      const [added, removed] = diffCounts(step.change);
+      return [sum[0] + added, sum[1] + removed];
+    },
+    [0, 0],
+  );
+  const label = [
+    commands && `Ran ${plural(commands, "command")}`,
+    edits.length &&
+      `${commands ? "edited" : "Edited"} ${plural(edits.length, "file")}`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return { label, lines: formatStat(lines) };
 }
 
-// A run of same-intent calls as one row, expanding to the calls themselves.
+// A run of tool calls as one row, expanding to the calls themselves.
 function GroupRow(props: MessageProps) {
   const steps = props.block.children || [];
-  const intent = props.block.activity?.category || "explore";
   const running = steps.some(
     (step) => step.duration_ms == null && isRunningStatus(step.status),
   );
-  const [present, past] = GROUP_VERBS[intent] || GROUP_VERBS.explore;
+  const { label, lines } = groupSummary(steps);
   return (
-    <article
-      data-message-id={props.block.key}
-      data-intent={intent}
-      className="message tool group"
-    >
+    <article data-message-id={props.block.key} className="message tool group">
       <DisclosureRow
         className={`tool-disclosure${running ? " running" : ""}`}
-        label={running ? present : past}
-        status={groupSummary(intent, steps)}
+        label={label}
+        status={running ? "running" : lines || undefined}
       >
         {steps.map((step) => (
           <Message key={step.key || step.id} {...props} block={step} />
@@ -524,7 +565,7 @@ export async function prepareHistoryBlocks(blocks: Block[]) {
 }
 
 // Flat list with stable keys: one row per message, tool call or attachment.
-// presentMessages is memoized per blocks array; per-row shouldComponentUpdate
+// The rows are memoized per blocks array; per-row shouldComponentUpdate
 // skips unchanged rows during streaming.
 // Keys are scoped to the session: stable message IDs are local to a
 // conversation, so a reused instance must never carry expansion,

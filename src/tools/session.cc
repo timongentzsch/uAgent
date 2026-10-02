@@ -31,34 +31,37 @@ ToolResult MessageSession(const std::string& id, const std::string& text,
   if (id.empty() || SafeFileComponent(id) != id) {
     return ToolFailure(ToolErrorCode::kNotFound, "unknown session " + id);
   }
-  if (!SharesLink(me, id)) {
-    return ToolFailure(
-        ToolErrorCode::kPermissionDenied,
-        "session " + id + " is not linked; join its link first (/link)");
+  const std::string peer = LinkedSessionPath(id);
+  if (peer.empty()) {
+    return ToolFailure(ToolErrorCode::kPermissionDenied,
+                       "session " + id +
+                           " is not linked with this one; operation=list "
+                           "shows the sessions that are");
   }
   if (text.empty()) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "message requires text");
+                       "message requires prompt");
   }
   const std::string own = OwnSessionFile();
   const std::string title = JsonValue(SessionHeader(own), "title", "");
   Mail mail;
   mail.from = MailboxIdFor(own);
   mail.sender_path = own;
-  mail.to = MailboxIdFor(LinkedSessionPath(id));
+  mail.to = MailboxIdFor(peer);
   mail.type = kMailNote;
   mail.hops = hops;
-  mail.body = {{"text", "[session " +
-                            (title.empty() || title == me
-                                 ? me
-                                 : OneLine(title) + " (" + me + ")") +
-                            "]\n" + text}};
+  // Named as lists and boards name it, so the reply can address it.
+  const std::string from = HashHex(own);
+  mail.body = {
+      {"text", "[session " +
+                   (title.empty() ? from : OneLine(title) + " (" + from + ")") +
+                   "]\n" + text}};
   const std::string error = SendMail(std::move(mail));
   return error.empty() ? ToolSuccess("sent to session " + id)
                        : ToolFailure(ToolErrorCode::kUnavailable, error);
 }
 
-Tool SessionTool() {
+Tool SessionTool(const std::function<void(const std::string& path)>& start) {
   json parameters = json{
       {"type", "object"},
       {"properties",
@@ -67,10 +70,7 @@ Tool SessionTool() {
           {"enum", json::array({"list", "message"})},
           {"description", "list linked/linkable sessions or message one"}}},
         {"session_id",
-         {{"type", json::array({"string", "array"})},
-          {"items", {{"type", "string"}}},
-          {"description",
-           "peer session id for message; accepts an array for fan-out"}}},
+         {{"type", "string"}, {"description", "peer session id for message"}}},
         {"broadcast",
          {{"type", "boolean"},
           {"description", "message only: fan out to every linked session"}}},
@@ -82,17 +82,16 @@ Tool SessionTool() {
           {"minimum", 0},
           {"maximum", 8},
           {"description",
-           "message only: peer-forward count for loop clamping"}}}}},
-      {"required", json::array({"prompt"})}};
+           "message only: peer-forward count for loop clamping"}}}}}};
   Tool tool = MakeTool(
       "session",
-      "Message another live uagent session linked with this one (yolo "
-      "sessions auto-link per workspace; otherwise /link TOKEN). list shows "
+      "Message another uagent session linked with this one (a "
+      "coordinator's threads and yolo sessions link per folder). list shows "
       "linked, then linkable sessions; message reaches the peer at its next "
       "step, or starts its turn when it is idle; broadcast reaches every "
       "linked session. Unlinked "
       "sessions are refused.",
-      parameters, [](const json& arguments, const ToolContext&) {
+      parameters, [start](const json& arguments, const ToolContext&) {
         (void)EnsureSessionAutoLink();
         std::string operation = JsonValue(arguments, "operation", "list");
         if (operation == "list") {
@@ -106,15 +105,8 @@ Tool SessionTool() {
         }
         std::string prompt = JsonValue(arguments, "prompt", "");
         std::vector<std::string> targets;
-        const json* ids = JsonArray(arguments, "session_id");
-        if (ids != nullptr) {
-          for (const json& entry : *ids) {
-            if (entry.is_string()) targets.push_back(entry.get<std::string>());
-          }
-        } else {
-          std::string single = JsonValue(arguments, "session_id", "");
-          if (!single.empty()) targets.push_back(single);
-        }
+        std::string single = JsonValue(arguments, "session_id", "");
+        if (!single.empty()) targets.push_back(single);
         if (targets.empty() && JsonValue(arguments, "broadcast", false)) {
           for (const json& row : SessionSummaries()) {
             if (JsonValue(row, "linked", false)) {
@@ -135,6 +127,10 @@ Tool SessionTool() {
           combined +=
               one.Ok() ? one.output : ("error " + target + ": " + one.output);
           if (!one.Ok()) return ToolFailure(one.error, combined);
+          if (const std::string path = LinkedSessionPath(target);
+              start && SocietySession(path)) {
+            start(path);
+          }
         }
         return ToolSuccess(combined);
       });
@@ -146,55 +142,6 @@ Tool SessionTool() {
                : json{{"verb", {"Messaging", "Messaged"}}};
   };
   return tool;
-}
-
-std::string SessionText(const json& result) {
-  const json* rows = JsonArray(result, "sessions");
-  if (rows == nullptr) return JsonDump(result, 2) + "\n";
-  std::string text =
-      "sessions (" + FmtCount(static_cast<int64_t>(rows->size())) + ")\n";
-  for (const json& row : *rows) {
-    const std::string id = JsonValue(row, "id", "");
-    std::string title = JsonValue(row, "title", "");
-    if (title.empty()) title = id;
-    text += (JsonValue(row, "linked", false) ? "" : "[unlinked] ") + title;
-    if (title != id) text += " (" + id + ")";
-    text += "\n";
-  }
-  return text;
-}
-
-json SessionSlashPeers() {
-  (void)EnsureSessionAutoLink();
-  return {{"sessions", SessionSummaries()}};
-}
-
-json SessionSlashTell(const std::string& argument) {
-  (void)EnsureSessionAutoLink();
-  std::string args = Trim(argument);
-  size_t space = args.find_first_of(" \t");
-  if (space == std::string::npos) {
-    return {{"error", "usage: /tell ID TEXT"}};
-  }
-  std::string text = Trim(args.substr(space));
-  if (text.empty()) return {{"error", "usage: /tell ID TEXT"}};
-  ToolResult sent = MessageSession(args.substr(0, space), text);
-  return sent.Ok() ? json{{"output", sent.output}}
-                   : json{{"error", sent.output}};
-}
-
-json SessionSlashLink(const std::string& argument) {
-  std::string token = Trim(argument);
-  if (token.empty()) {
-    std::string created;
-    ToolResult made = CreateSessionLink(created);
-    if (!made.Ok()) return {{"error", made.output}};
-    return {{"output", "link token: " + created +
-                           "\nhand it to another session as /link " + created}};
-  }
-  ToolResult joined = JoinSessionLink(token);
-  if (!joined.Ok()) return {{"error", joined.output}};
-  return {{"output", "joined link " + token}};
 }
 
 }  // namespace uagent

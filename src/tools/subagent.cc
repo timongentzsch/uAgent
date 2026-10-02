@@ -283,14 +283,6 @@ SideRoute ResolveSubagentRoute(const Api& api,
       requested.empty() ? NormalizeModelId(SubagentModel()) : requested);
 }
 
-std::string SubagentTargetLabel(const Api& api,
-                                const std::vector<ModelRoute>& routes,
-                                const std::vector<NamedProvider>& providers,
-                                const std::string& requested) {
-  return RouteSelection(ResolveSubagentRoute(api, routes, providers, requested),
-                        providers);
-}
-
 std::string SubagentDiagnosticRoute(
     const SideRoute& route, const std::vector<NamedProvider>& providers) {
   std::string selected = route.selection;
@@ -300,6 +292,230 @@ std::string SubagentDiagnosticRoute(
   std::string host = UrlHost(route.base_url);
   if (!host.empty()) label += " @ " + host;
   return label;
+}
+
+ToolResult RunSubagent(const Api& api, ProcessSupervisor& processes,
+                       const std::vector<ModelRoute>& routes,
+                       const std::vector<NamedProvider>& providers, bool debug,
+                       const json& arguments, const ToolContext& context) {
+  std::string operation = JsonValue(arguments, "operation", "spawn");
+  std::string id = JsonValue(arguments, "agent_id", "");
+  if (operation == "list") {
+    std::vector<json> agents = AgentSummaries(processes);
+    return ToolSuccess(agents.empty() ? "no agents" : JsonDump(agents, 2));
+  }
+  if (operation == "message") {
+    if (arguments.contains("directive")) {
+      return ToolFailure(ToolErrorCode::kInvalidArguments,
+                         "message cannot change directive; use "
+                         "followup");
+    }
+    // A running child reads it at its next step; a finished one
+    // runs again on it.
+    if (RunningAgent(processes, id)) {
+      return MessageAgent(processes, id, JsonValue(arguments, "prompt", ""));
+    }
+    operation = "followup";
+  }
+  if (operation != "spawn" && operation != "followup") {
+    return ToolFailure(ToolErrorCode::kInvalidArguments,
+                       "operation must be spawn, followup, "
+                       "message, or list");
+  }
+  // The child's role, written into its session header by the child.
+  json role = json::object();
+  if (operation == "spawn") {
+    if (!id.empty()) {
+      return ToolFailure(ToolErrorCode::kInvalidArguments,
+                         "agent_id is assigned by spawn");
+    }
+    id = NewAgentId();
+  } else {
+    std::string error;
+    if (!LoadRole(processes, id, role, error)) {
+      return ToolFailure(ToolErrorCode::kNotFound, error);
+    }
+    if (std::optional<int64_t> active = RunningAgent(processes, id)) {
+      return ToolFailure(ToolErrorCode::kInvalidArguments,
+                         "agent " + id + " is already running as activity " +
+                             std::to_string(*active));
+    }
+  }
+  for (const char* field : {"name", "description", "directive"}) {
+    if (arguments.contains(field)) {
+      role[field] = JsonValue(arguments, field, "");
+    }
+  }
+  const std::string name = JsonValue(role, "name", "");
+  if (!name.empty() && !ValidAgentName(name)) {
+    return ToolFailure(ToolErrorCode::kInvalidArguments,
+                       "name must match [a-z0-9-]{1,32}, no "
+                       "leading/trailing '-'");
+  }
+  role["description"] =
+      Utf8Trunc(JsonValue(role, "description", ""), kAgentDescriptionMax);
+  if (JsonValue(role, "directive", "").size() > kAgentDirectiveMax) {
+    return ToolFailure(ToolErrorCode::kInvalidArguments,
+                       "directive is limited to " +
+                           std::to_string(kAgentDirectiveMax) + " bytes");
+  }
+
+  std::string prompt = JsonValue(arguments, "prompt", "");
+  if (prompt.empty()) {
+    return ToolFailure(ToolErrorCode::kInvalidArguments,
+                       "spawn or followup requires prompt");
+  }
+  const std::string directive = JsonValue(role, "directive", "");
+  if (!directive.empty()) {
+    prompt = "[collaborator directive]\n" + directive + "\n\n" + prompt;
+  }
+  const std::string mode =
+      JsonValue(arguments, "mode", JsonValue(role, "mode", "lean"));
+  if (mode != "lean" && mode != "full") {
+    return ToolFailure(ToolErrorCode::kInvalidArguments,
+                       "mode must be lean or full");
+  }
+  const std::string requested = NormalizeModelId(
+      JsonValue(arguments, "model", JsonValue(role, "model", "")));
+  SideRoute route = ResolveSubagentRoute(api, routes, providers, requested);
+  const std::string route_label = SubagentDiagnosticRoute(route, providers);
+  if (route.unresolved && route.selection.find('/') != std::string::npos &&
+      !CanUseRawModel(api, route.selection)) {
+    return ToolFailure(
+        ToolErrorCode::kInvalidArguments,
+        ChildAgentFailureReport(
+            route_label, ChildAgentFailureStage::kRouteResolution,
+            "unknown model route: " + TerminalSafe(route.selection)));
+  }
+  double remaining_budget = 0;
+  int64_t remaining_token_budget = 0;
+  if (std::optional<ToolResult> blocked = ChildAgentBudgetBlock(
+          api, processes, remaining_budget, remaining_token_budget)) {
+    return *blocked;
+  }
+  const std::string child_model = route.model;
+  EnvironmentOverrides environment = ChildAgentEnvironment(std::move(route));
+  // A caller that knows the shape of the subtask may raise or lower the
+  // ceiling for that one child; the schema bounds it, and the session
+  // budgets still apply underneath.
+  const json& limits = ChildLimits(arguments);
+  const int64_t steps = JsonValue(limits, "steps", SubagentMaxSteps());
+  const int64_t tool_calls =
+      JsonValue(limits, "tool_calls", SubagentMaxToolCalls());
+  const bool background = JsonValue(arguments, "background", true);
+  // A caller may deny memory but not grant it: the session decides what
+  // this process may read, and a child cannot widen that.
+  const bool child_memory =
+      api.config.memory_enabled &&
+      JsonValue(limits, "memory", JsonValue(role, "memory", true));
+  role.update(
+      {{"parent", processes.Owner()},
+       {"parent_session", OwnSessionFile()},
+       {"mode", mode},
+       {"model", requested},
+       {"route", route_label},
+       {"label", Utf8Trunc(FirstLine(JsonValue(arguments, "prompt", "")), 160)},
+       {"memory", child_memory}});
+  environment.insert(
+      environment.end(),
+      {{"UAGENT_MAX_STEPS", std::to_string(steps)},
+       {"UAGENT_MAX_TOOL_CALLS", std::to_string(tool_calls)},
+       {"UAGENT_INTERNAL_TOOLSET", mode},
+       {"UAGENT_INTERNAL_PARENT_TURN", std::to_string(context.turn_id)},
+       {"UAGENT_MEMORY", child_memory ? "1" : "0"},
+       {"UAGENT_INTERNAL_SESSION_FILE", AgentPath(id)},
+       {"UAGENT_INTERNAL_DELEGATION", JsonDump(role)}});
+  // Only a background child is polled while it runs. A foreground child
+  // is read once, where progress lines would only pad the answer the
+  // parent quotes.
+  if (background) {
+    environment.emplace_back("UAGENT_INTERNAL_HEADLESS_PROGRESS", "1");
+  }
+  // Tightening is the caller's to do; loosening is not. A requested
+  // budget above what the session has left is clamped, and the clamp is
+  // reported rather than applied behind the caller's back.
+  std::vector<std::string> clamped;
+  double child_budget = JsonValue(limits, "cost", 0.0);
+  if (api.config.session_budget > 0) {
+    if (child_budget <= 0 || child_budget > remaining_budget) {
+      if (child_budget > remaining_budget) {
+        clamped.push_back("limits.cost to " + FmtCost(remaining_budget) +
+                          ", the session's remainder");
+      }
+      child_budget = remaining_budget;
+    }
+  }
+  if (child_budget > 0) {
+    environment.emplace_back("UAGENT_SESSION_BUDGET",
+                             std::to_string(child_budget));
+  }
+  if (api.config.session_token_budget > 0) {
+    environment.emplace_back("UAGENT_SESSION_TOKEN_BUDGET",
+                             std::to_string(remaining_token_budget));
+  }
+  // The per-call budget bounds a command that might run away. A child
+  // the caller chose to wait for is supervised, so it is bounded by
+  // max_seconds when given and by the turn otherwise.
+  ToolContext child_context = context;
+  int64_t max_seconds = JsonValue(limits, "seconds", int64_t{0});
+  int64_t ceiling = SubagentTimeoutSeconds();
+  if (ceiling > 0 && (max_seconds <= 0 || max_seconds > ceiling)) {
+    if (max_seconds > ceiling) {
+      clamped.push_back("limits.seconds to " + std::to_string(ceiling) +
+                        ", this build's ceiling");
+    }
+    max_seconds = ceiling;
+  }
+  if (max_seconds > 0) child_context = context.WithTimeout(max_seconds);
+  ShellCommandResult child = RunShellCommand(
+      processes, child_context,
+      {.command = ChildAgentCommand(debug, prompt, child_model),
+       .background = background,
+       .immediate = background,
+       // Runs uagent itself, which writes ~/.uagent
+       // state a confined child could not. Its own
+       // commands inherit UAGENT_SANDBOX and are
+       // confined one level down.
+       .sandbox = false,
+       .activity_kind = ActivityKind::kSubagent,
+       .activity_label = route_label,
+       .source_id = id,
+       .completion_notes = clamped,
+       .activity_metadata = {{"label", JsonValue(role, "label", "")},
+                             {"name", name},
+                             {"mode", mode},
+                             {"model", route_label}},
+       .environment = std::move(environment)});
+  ToolResult result = std::move(child.result);
+  if (child.wait_status && result.artifact) {
+    // The child ran long enough for its log to outgrow the cap, so the
+    // text here may begin inside the record it ends with.
+    result.output = ChildAgentRecoverEnvelope(std::move(result.output),
+                                              result.artifact->path);
+  }
+  if (result.Ok()) {
+    // A launch receipt is process-supervisor output, not a malformed
+    // child answer. Only a process that actually completed can have a
+    // headless envelope to unwrap; retained completion notes travel with
+    // a background job and are added again to its final result.
+    result.output =
+        child.wait_status
+            ? ChildAgentAnswer(std::move(result.output), clamped)
+            : std::move(result.output) + ChildAgentConstraintNotes(clamped);
+  }
+  if (!result.Ok() && result.status != CompletionStatus::kCancelled) {
+    ChildAgentFailureStage stage = child.wait_status
+                                       ? ChildAgentFailureStage::kExecution
+                                       : ChildAgentFailureStage::kSpawn;
+    result.output = ChildAgentFailureReport(route_label, stage, result.output) +
+                    ChildAgentConstraintNotes(clamped);
+  }
+  if (child.launched) {
+    result.output +=
+        "\n[collaborator " + id + "; resume with subagent operation=followup]";
+    result.parts = json::array({LinkPart("agent", id, "Open agent")});
+  }
+  return result;
 }
 
 }  // namespace
@@ -369,241 +585,14 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
       "Delegate an isolated subtask whose compact result saves parent "
       "rounds; for orthogonal parts, one task per part in one batch. spawn "
       "starts a child, followup resumes it, message guides a running child at "
-      "its next step or runs a finished one again, and activity waits on, "
-      "reads or stops it. Name the "
-      "reusable role and describe it at spawn. Keep background=true while "
-      "you have other work.",
+      "its next step or runs a finished one again; the activity tool waits "
+      "on, reads or stops it. Name the reusable role and describe it at "
+      "spawn. Keep background=true while you have other work.",
       {{"type", "object"}, {"properties", std::move(properties)}},
       [&api, &routes, &providers, debug, &processes](
           const json& arguments, const ToolContext& context) {
-        std::string operation = JsonValue(arguments, "operation", "spawn");
-        std::string id = JsonValue(arguments, "agent_id", "");
-        if (operation == "list") {
-          std::vector<json> agents = AgentSummaries(processes);
-          return ToolSuccess(agents.empty() ? "no agents"
-                                            : JsonDump(agents, 2));
-        }
-        if (operation == "message") {
-          if (arguments.contains("directive")) {
-            return ToolFailure(ToolErrorCode::kInvalidArguments,
-                               "message cannot change directive; use "
-                               "followup");
-          }
-          // A running child reads it at its next step; a finished one
-          // runs again on it.
-          if (RunningAgent(processes, id)) {
-            return MessageAgent(processes, id,
-                                JsonValue(arguments, "prompt", ""));
-          }
-          operation = "followup";
-        }
-        if (operation != "spawn" && operation != "followup") {
-          return ToolFailure(ToolErrorCode::kInvalidArguments,
-                             "operation must be spawn, followup, "
-                             "message, or list");
-        }
-        // The child's role, written into its session header by the child.
-        json role = json::object();
-        if (operation == "spawn") {
-          if (!id.empty()) {
-            return ToolFailure(ToolErrorCode::kInvalidArguments,
-                               "agent_id is assigned by spawn");
-          }
-          id = NewAgentId();
-        } else {
-          std::string error;
-          if (!LoadRole(processes, id, role, error)) {
-            return ToolFailure(ToolErrorCode::kNotFound, error);
-          }
-          if (std::optional<int64_t> active = RunningAgent(processes, id)) {
-            return ToolFailure(ToolErrorCode::kInvalidArguments,
-                               "agent " + id +
-                                   " is already running as activity " +
-                                   std::to_string(*active));
-          }
-        }
-        for (const char* field : {"name", "description", "directive"}) {
-          if (arguments.contains(field)) {
-            role[field] = JsonValue(arguments, field, "");
-          }
-        }
-        const std::string name = JsonValue(role, "name", "");
-        if (!name.empty() && !ValidAgentName(name)) {
-          return ToolFailure(ToolErrorCode::kInvalidArguments,
-                             "name must match [a-z0-9-]{1,32}, no "
-                             "leading/trailing '-'");
-        }
-        role["description"] =
-            Utf8Trunc(JsonValue(role, "description", ""), kAgentDescriptionMax);
-        if (JsonValue(role, "directive", "").size() > kAgentDirectiveMax) {
-          return ToolFailure(ToolErrorCode::kInvalidArguments,
-                             "directive is limited to " +
-                                 std::to_string(kAgentDirectiveMax) + " bytes");
-        }
-
-        std::string prompt = JsonValue(arguments, "prompt", "");
-        if (prompt.empty()) {
-          return ToolFailure(ToolErrorCode::kInvalidArguments,
-                             "spawn or followup requires prompt");
-        }
-        const std::string directive = JsonValue(role, "directive", "");
-        if (!directive.empty()) {
-          prompt = "[collaborator directive]\n" + directive + "\n\n" + prompt;
-        }
-        const std::string mode =
-            JsonValue(arguments, "mode", JsonValue(role, "mode", "lean"));
-        if (mode != "lean" && mode != "full") {
-          return ToolFailure(ToolErrorCode::kInvalidArguments,
-                             "mode must be lean or full");
-        }
-        const std::string requested = NormalizeModelId(
-            JsonValue(arguments, "model", JsonValue(role, "model", "")));
-        SideRoute route =
-            ResolveSubagentRoute(api, routes, providers, requested);
-        const std::string route_label =
-            SubagentDiagnosticRoute(route, providers);
-        if (route.unresolved &&
-            route.selection.find('/') != std::string::npos &&
-            !CanUseRawModel(api, route.selection)) {
-          return ToolFailure(
-              ToolErrorCode::kInvalidArguments,
-              ChildAgentFailureReport(
-                  route_label, ChildAgentFailureStage::kRouteResolution,
-                  "unknown model route: " + TerminalSafe(route.selection)));
-        }
-        double remaining_budget = 0;
-        int64_t remaining_token_budget = 0;
-        if (std::optional<ToolResult> blocked = ChildAgentBudgetBlock(
-                api, processes, remaining_budget, remaining_token_budget)) {
-          return *blocked;
-        }
-        const std::string child_model = route.model;
-        EnvironmentOverrides environment =
-            ChildAgentEnvironment(std::move(route));
-        // A caller that knows the shape of the subtask may raise or lower the
-        // ceiling for that one child; the schema bounds it, and the session
-        // budgets still apply underneath.
-        const json& limits = ChildLimits(arguments);
-        const int64_t steps = JsonValue(limits, "steps", SubagentMaxSteps());
-        const int64_t tool_calls =
-            JsonValue(limits, "tool_calls", SubagentMaxToolCalls());
-        const bool background = JsonValue(arguments, "background", true);
-        // A caller may deny memory but not grant it: the session decides what
-        // this process may read, and a child cannot widen that.
-        const bool child_memory =
-            api.config.memory_enabled &&
-            JsonValue(limits, "memory", JsonValue(role, "memory", true));
-        role.update(
-            {{"parent", processes.Owner()},
-             {"parent_session", OwnSessionFile()},
-             {"mode", mode},
-             {"model", requested},
-             {"route", route_label},
-             {"label",
-              Utf8Trunc(FirstLine(JsonValue(arguments, "prompt", "")), 160)},
-             {"memory", child_memory}});
-        environment.insert(
-            environment.end(),
-            {{"UAGENT_MAX_STEPS", std::to_string(steps)},
-             {"UAGENT_MAX_TOOL_CALLS", std::to_string(tool_calls)},
-             {"UAGENT_TOOLSET", mode},
-             {"UAGENT_INTERNAL_PARENT_TURN", std::to_string(context.turn_id)},
-             {"UAGENT_MEMORY", child_memory ? "1" : "0"},
-             {"UAGENT_INTERNAL_SESSION_FILE", AgentPath(id)},
-             {"UAGENT_INTERNAL_DELEGATION", JsonDump(role)}});
-        // Only a background child is polled while it runs. A foreground child
-        // is read once, where progress lines would only pad the answer the
-        // parent quotes.
-        if (background) {
-          environment.emplace_back("UAGENT_HEADLESS_PROGRESS", "1");
-        }
-        // Tightening is the caller's to do; loosening is not. A requested
-        // budget above what the session has left is clamped, and the clamp is
-        // reported rather than applied behind the caller's back.
-        std::vector<std::string> clamped;
-        double child_budget = JsonValue(limits, "cost", 0.0);
-        if (api.config.session_budget > 0) {
-          if (child_budget <= 0 || child_budget > remaining_budget) {
-            if (child_budget > remaining_budget) {
-              clamped.push_back("limits.cost to " + FmtCost(remaining_budget) +
-                                ", the session's remainder");
-            }
-            child_budget = remaining_budget;
-          }
-        }
-        if (child_budget > 0) {
-          environment.emplace_back("UAGENT_SESSION_BUDGET",
-                                   std::to_string(child_budget));
-        }
-        if (api.config.session_token_budget > 0) {
-          environment.emplace_back("UAGENT_SESSION_TOKEN_BUDGET",
-                                   std::to_string(remaining_token_budget));
-        }
-        // The per-call budget bounds a command that might run away. A child
-        // the caller chose to wait for is supervised, so it is bounded by
-        // max_seconds when given and by the turn otherwise.
-        ToolContext child_context = context;
-        int64_t max_seconds = JsonValue(limits, "seconds", int64_t{0});
-        int64_t ceiling = SubagentTimeoutSeconds();
-        if (ceiling > 0 && (max_seconds <= 0 || max_seconds > ceiling)) {
-          if (max_seconds > ceiling) {
-            clamped.push_back("limits.seconds to " + std::to_string(ceiling) +
-                              ", this build's ceiling");
-          }
-          max_seconds = ceiling;
-        }
-        if (max_seconds > 0) child_context = context.WithTimeout(max_seconds);
-        ShellCommandResult child = RunShellCommand(
-            processes, child_context,
-            {.command = ChildAgentCommand(debug, prompt, child_model),
-             .background = background,
-             .immediate = background,
-             // Runs uagent itself, which writes ~/.uagent
-             // state a confined child could not. Its own
-             // commands inherit UAGENT_SANDBOX and are
-             // confined one level down.
-             .sandbox = false,
-             .activity_kind = ActivityKind::kSubagent,
-             .activity_label = route_label,
-             .source_id = id,
-             .completion_notes = clamped,
-             .activity_metadata = {{"label", JsonValue(role, "label", "")},
-                                   {"name", name},
-                                   {"mode", mode},
-                                   {"model", route_label}},
-             .environment = std::move(environment)});
-        ToolResult result = std::move(child.result);
-        if (child.wait_status && result.artifact) {
-          // The child ran long enough for its log to outgrow the cap, so the
-          // text here may begin inside the record it ends with.
-          result.output = ChildAgentRecoverEnvelope(std::move(result.output),
-                                                    result.artifact->path);
-        }
-        if (result.Ok()) {
-          // A launch receipt is process-supervisor output, not a malformed
-          // child answer. Only a process that actually completed can have a
-          // headless envelope to unwrap; retained completion notes travel with
-          // a background job and are added again to its final result.
-          result.output =
-              child.wait_status
-                  ? ChildAgentAnswer(std::move(result.output), clamped)
-                  : std::move(result.output) +
-                        ChildAgentConstraintNotes(clamped);
-        }
-        if (!result.Ok() && result.status != CompletionStatus::kCancelled) {
-          ChildAgentFailureStage stage =
-              child.wait_status ? ChildAgentFailureStage::kExecution
-                                : ChildAgentFailureStage::kSpawn;
-          result.output =
-              ChildAgentFailureReport(route_label, stage, result.output) +
-              ChildAgentConstraintNotes(clamped);
-        }
-        if (child.launched) {
-          result.output += "\n[collaborator " + id +
-                           "; resume with subagent operation=followup]";
-          result.parts = json::array({LinkPart("agent", id, "Open agent")});
-        }
-        return result;
+        return RunSubagent(api, processes, routes, providers, debug, arguments,
+                           context);
       });
   tool.clamped_arguments = {"limits.steps", "limits.tool_calls",
                             "limits.seconds"};
@@ -618,7 +607,7 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
   tool.retain_output = true;
   tool.available_in_lean = false;
   // Concurrency is enforced by the spawn path (RunShellCommand reserves an
-  // activity slot bounded by MaxBackgroundJobs); this is only a runaway
+  // activity slot bounded by kMaxBackgroundJobs); this is only a runaway
   // ceiling.
   tool.max_calls_per_turn = kSubagentCallsPerTurn;
   auto describe = [&api, &routes, &providers](const json& arguments) {
@@ -627,9 +616,11 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
     std::string prompt = JsonValue(arguments, "prompt", "");
     std::string id = JsonValue(arguments, "agent_id", "");
     if (operation == "message") return "[message " + id + "] " + prompt;
-    std::string label = SubagentTargetLabel(
-        api, routes, providers,
-        NormalizeModelId(JsonValue(arguments, "model", "")));
+    std::string label =
+        RouteSelection(ResolveSubagentRoute(
+                           api, routes, providers,
+                           NormalizeModelId(JsonValue(arguments, "model", ""))),
+                       providers);
     const std::string name = JsonValue(arguments, "name", "");
     if (!name.empty()) label = name + " · " + label;
     if (JsonValue(arguments, "mode", "lean") == "full") label += " · full";

@@ -11,12 +11,10 @@
 
 #include <atomic>
 #include <chrono>
-#include <cstring>
 #include <mutex>
 #include <optional>
 #include <string>
 #include <thread>
-#include <utility>
 
 #include "include/browser/browser.h"
 #include "include/core/fd.h"

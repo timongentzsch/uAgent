@@ -6,11 +6,13 @@
 // every early return, so an error path cannot forget one.
 
 #include <fcntl.h>
+#include <poll.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/un.h>
 #include <unistd.h>
 
+#include <cerrno>
 #include <string>
 #include <utility>
 
@@ -59,6 +61,15 @@ class Fd {
  private:
   int fd_ = -1;
 };
+
+// poll(2), retried when a signal interrupts it.
+inline int PollRetry(pollfd* fds, nfds_t count, int timeout_ms) {
+  int ready;
+  do {
+    ready = poll(fds, count, timeout_ms);
+  } while (ready < 0 && errno == EINTR);
+  return ready;
+}
 
 // Marks `fd` close-on-exec; false when it cannot.
 inline bool CloseOnExec(int fd) {

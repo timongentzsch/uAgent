@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <filesystem>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "include/agent.h"
@@ -98,11 +97,13 @@ bool Agent::DeliverMail(bool hold) {
         conversation_.Push(HarnessMessage(text), MessageKind::kInternal);
         break;
       case MailDelivery::kInterrupt:
+        NotFromUser(text);
         SteeringState().Queue(text, "", true);
         RequestAbort();
         break;
       case MailDelivery::kWake:
       case MailDelivery::kStep:
+        NotFromUser(text);
         SteeringState().Queue(text, "", mail.delivery == MailDelivery::kWake);
         break;
     }

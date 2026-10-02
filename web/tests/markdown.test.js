@@ -111,3 +111,14 @@ test("a long open code block splits above its fence", async () => {
   assert.equal(streamingHead(`${intro}\n${fence}`), intro);
   assert.equal(streamingHead("```\nonly code\n\nmore"), "");
 });
+
+test("headings shift two levels down and keep their source level", async () => {
+  const text = "# One\n\n### Three\n\n##### Five";
+  const html = await renderMarkdown(text);
+  assert.match(html, /<h3 data-level="1">One<\/h3>/);
+  assert.match(html, /<h5 data-level="3">Three<\/h5>/);
+  assert.match(html, /<h6 data-level="5">Five<\/h6>/);
+  // A second render of the same text shifts no further.
+  assert.equal(await renderMarkdown(text), html);
+  assert.equal(concatenate(await renderMarkdownBlocks(text)), html);
+});

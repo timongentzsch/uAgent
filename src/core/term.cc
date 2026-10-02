@@ -4,12 +4,9 @@
 
 #include <algorithm>
 #include <atomic>
-#include <chrono>
 #include <clocale>
-#include <cstdlib>
 #include <mutex>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -43,6 +40,17 @@ bool ResolveUnicodeEnabled() {
            value.find("utf8") != std::string::npos;
   }
   return true;
+}
+
+// Plain drops everything a screen reader would speak as noise; the terminal
+// is then written like a pipe, except that colour still follows NO_COLOR.
+void ApplyTerminalProfile(bool plain, bool reduced_motion) {
+  g_plain = plain;
+  g_motion = !plain && !reduced_motion;
+  if (!plain) return;
+  g_tty = false;
+  g_signal_tty = 0;
+  g_unicode = false;
 }
 
 bool EnsureUtf8Ctype() {
@@ -81,34 +89,21 @@ TerminalActivityState& TerminalActivities() {
   return state;
 }
 
-// The live entry with this id, or nullptr. Callers hold state.mutex.
-TerminalActivityState::Entry* FindActivityLocked(TerminalActivityState& state,
-                                                 uint64_t id) {
-  for (TerminalActivityState::Entry& entry : state.active) {
-    if (entry.id == id) return &entry;
-  }
-  return nullptr;
-}
-
 }  // namespace
 
 uint64_t BeginTerminalActivity(std::string label) {
   TerminalActivityState& state = TerminalActivities();
   std::lock_guard<std::mutex> lock(state.mutex);
-  uint64_t id = ++state.next;
-  TerminalActivityState::Entry entry;
-  entry.id = id;
-  entry.label = std::move(label);
-  state.active.push_back(std::move(entry));
-  return id;
+  state.active.push_back({++state.next, std::move(label)});
+  return state.next;
 }
 
 void UpdateTerminalActivity(uint64_t id, std::string label) {
   TerminalActivityState& state = TerminalActivities();
   std::lock_guard<std::mutex> lock(state.mutex);
-  TerminalActivityState::Entry* entry = FindActivityLocked(state, id);
-  if (!entry) return;
-  entry->label = std::move(label);
+  for (TerminalActivityState::Entry& entry : state.active) {
+    if (entry.id == id) entry.label = label;
+  }
 }
 
 void EndTerminalActivity(uint64_t id) {

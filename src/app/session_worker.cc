@@ -7,9 +7,7 @@
 #include <algorithm>
 #include <atomic>
 #include <condition_variable>
-#include <deque>
 #include <functional>
-#include <map>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -99,12 +97,8 @@ std::string AskAnswers(const json& command, const std::string& text,
 json AttachmentsToJson(const std::vector<Attachment>& attachments) {
   json out = json::array();
   for (const Attachment& attachment : attachments) {
-    out.push_back({{"path", attachment.path},
-                   {"name", attachment.name},
-                   {"mime", attachment.mime},
-                   {"bytes", attachment.bytes},
-                   {"image", attachment.image},
-                   {"id", attachment.asset_id}});
+    out.push_back(AttachmentDisplayJson(attachment));
+    out.back()["path"] = attachment.path;
   }
   return out;
 }
@@ -210,15 +204,13 @@ class WorkerChannel final : public ApplicationChannel {
 
   void Send(json frame) {
     receipts_.Record(frame);
-    frame["v"] = kProtocol;
-    frame["session_id"] = id_;
-    frame["generation"] = generation_;
+    StampFrame(frame, id_, generation_);
     server_.Publish(std::move(frame));
   }
 
   std::optional<ApplicationInput> NextInput() override {
-    // Only an idle coordinator times out: its runtime costs nothing between
-    // uses, and any client or mail starts it again.
+    // A session with nothing to do stops: whatever reaches it next (a
+    // message, mail, a client) starts it again.
     auto idle_since = std::chrono::steady_clock::now();
     for (;;) {
       {
@@ -249,15 +241,24 @@ class WorkerChannel final : public ApplicationChannel {
             (mail_.Get() < 0 && !PendingMail(MailboxIdFor(path_)).empty())) {
           return ApplicationInput{.wake = true};
         }
-        // Idle is measured from the last input or wake; any client still
-        // attached (a terminal, or a host that has not let go) keeps it.
-        const auto now = std::chrono::steady_clock::now();
+        // Idle is measured from the last input or wake.
+        if (std::chrono::steady_clock::now() - idle_since < IdlePeriod() ||
+            Occupied()) {
+          continue;
+        }
+        // The web host only watches and lets go when told; a terminal stays
+        // attached, and holds the session.
+        Send({{"kind", "retiring"}});
+        for (auto wait = kLetGo; wait.count() > 0 && server_.Clients() > 0;
+             wait -= kLetGoPoll) {
+          std::this_thread::sleep_for(kLetGoPoll);
+        }
         std::lock_guard lock(mutex_);
-        if (!input_ && server_.Clients() == 0 &&
-            now - idle_since >= CoordinatorIdle()) {
+        if (!input_ && server_.Clients() == 0) {
           closed_ = true;
           return std::nullopt;
         }
+        idle_since = std::chrono::steady_clock::now();
         continue;
       }
       wake_.Drain();
@@ -359,9 +360,17 @@ class WorkerChannel final : public ApplicationChannel {
     ready_ = true;
     busy_ = input_.has_value();
     if (!busy_ && turn_active_ && link_) {
+      std::string answer;
+      const json blocks = JsonValue(JsonValue(state, "view", json::object()),
+                                    "blocks", json::array());
+      for (auto block = blocks.rbegin(); block != blocks.rend(); ++block) {
+        if (JsonValue(*block, "kind", "") != "assistant") continue;
+        answer = JsonValue(*block, "text", "");
+        break;
+      }
       link_->Report(JsonValue(JsonValue(state, "stop", json::object()),
                               "reason", "completed"),
-                    JsonValue(state_, "title", title_));
+                    JsonValue(state_, "title", title_), answer);
     }
     if (!busy_) {
       // Completion events precede saved display/HTTP metadata. Only the final
@@ -372,19 +381,11 @@ class WorkerChannel final : public ApplicationChannel {
       state_["phase"] = "idle";
       ClearAbort();
       NormalizeAbortWake();
-      auto queued = SteeringState().TakeAutoStartMessages();
-      if (!queued.empty()) {
-        input_ = ApplicationInput{
-            .text = std::move(queued.front().text),
-            .request_id = std::move(queued.front().request_id)};
-        for (const json& item : queued.front().attachments) {
+      if (auto next = SteeringState().TakeNextAutoStart()) {
+        input_ = ApplicationInput{.text = std::move(next->text),
+                                  .request_id = std::move(next->request_id)};
+        for (const json& item : next->attachments) {
           input_->attachments.push_back(AttachmentFromJson(item));
-        }
-        for (size_t i = 1; i < queued.size(); ++i) {
-          SteeringState().Queue(
-              std::move(queued[i].text), std::move(queued[i].request_id),
-              queued[i].auto_start, std::move(queued[i].attachments),
-              std::move(queued[i].images));
         }
         busy_ = turn_active_ = true;
         BeginTurn();
@@ -395,11 +396,7 @@ class WorkerChannel final : public ApplicationChannel {
   }
   void CompleteControl(const std::string& request,
                        const json& result) override {
-    Send({{"kind", "outcome"},
-          {"request_id", request},
-          {"accepted", !result.contains("error")},
-          {"error", JsonValue(result, "error", "")},
-          {"result", result}});
+    SendOutcome(request, JsonValue(result, "error", ""), &result);
   }
   void SetActivityControl(
       const std::function<json(const json&)>& control) override {
@@ -410,16 +407,24 @@ class WorkerChannel final : public ApplicationChannel {
     activity_control_ = control;
   }
 
-  // A session waits for input indefinitely; a coordinator also wakes to
-  // notice it is idle, and a minute later while the spend limit holds its
-  // mail. Without a mailbox watch, mail is looked for once a second.
+  // A session wakes to notice it is idle, and a coordinator a minute later
+  // while the spend limit holds its mail. Without a mailbox watch, mail is
+  // looked for once a second.
   int PollTimeout() {
     if (mail_.Get() < 0) return 1000;
-    if (!coordinator_) return -1;
     if (Paused()) return static_cast<int>(kSpendRecheck.count());
-    return static_cast<int>(std::min<int64_t>(
-        kIdlePoll.count(),
-        std::chrono::milliseconds(CoordinatorIdle()).count() / 4));
+    return static_cast<int>(
+        std::min<int64_t>(kIdlePoll.count(),
+                          std::chrono::milliseconds(IdlePeriod()).count() / 4));
+  }
+
+  // Work that a stopped runtime would lose: an input or guidance not yet
+  // taken, or a command still running that is not detached.
+  bool Occupied() {
+    std::lock_guard lock(mutex_);
+    if (input_ || SteeringState().QueuedCount() > 0) return true;
+    const json* activities = JsonArray(state_, "activities");
+    return activities && std::ranges::any_of(*activities, ActivityRuns);
   }
 
   bool Paused() {
@@ -427,11 +432,9 @@ class WorkerChannel final : public ApplicationChannel {
     return !paused_.empty();
   }
 
-  bool HoldMail() override { return HeldBySpend(); }
-
   // At today's spend limit a coordinator keeps its mail pending and says so
   // in its state. Checked outside the lock: it reads the threads' files.
-  bool HeldBySpend() {
+  bool HoldMail() override {
     const std::string pause =
         coordinator_ ? CoordinatorPause(CanonicalCwd()) : "";
     std::lock_guard lock(mutex_);
@@ -492,14 +495,9 @@ class WorkerChannel final : public ApplicationChannel {
   void QueueDelta(const AppEvent& event) {
     const auto now = std::chrono::steady_clock::now();
     const std::string key = DeltaKey(event);
-    if (JsonValue(event.data, "reset", false)) {
+    if (JsonValue(event.data, "reset", false) ||
+        sent_delta_keys_.insert(key).second) {
       FlushTransientEvents();
-      DeliverEvent(event);
-      return;
-    }
-    if (!sent_delta_keys_.contains(key)) {
-      FlushTransientEvents();
-      sent_delta_keys_.insert(key);
       DeliverEvent(event);
       return;
     }
@@ -644,12 +642,22 @@ class WorkerChannel final : public ApplicationChannel {
   std::chrono::steady_clock::time_point usage_sent_{};
   bool sent_usage_ = false;
   bool transient_stop_ = false;
+  // Answers a command. A result, when there is one, carries its own error.
+  void SendOutcome(const std::string& request, const std::string& error,
+                   const json* result = nullptr) {
+    json frame = {
+        {"kind", "outcome"},
+        {"request_id", request},
+        {"accepted", error.empty() && !(result && result->contains("error"))},
+        {"error", error}};
+    if (result) frame["result"] = *result;
+    Send(std::move(frame));
+  }
+
   bool Command(const json& command) {
     SessionCommand parsed;
     std::string error;
-    if (!ParseSessionCommand(command, id_, generation_, parsed, error)) {
-      return false;
-    }
+    if (!ParseSessionCommand(command, id_, generation_, parsed)) return false;
     const std::string& request = parsed.request_id;
     json previous;
     switch (receipts_.Check(command, request, previous)) {
@@ -673,53 +681,26 @@ class WorkerChannel final : public ApplicationChannel {
       const std::string refused = link_->Admit(
           JsonValue(parsed.raw, "origin", "") == kRouteCoordinator);
       if (!refused.empty()) {
-        Send({{"kind", "outcome"},
-              {"request_id", request},
-              {"accepted", false},
-              {"error", refused}});
+        SendOutcome(request, refused);
         return true;
       }
     }
     switch (kind) {
-      case SessionCommandKind::kClose: {
+      case SessionCommandKind::kClose:
         lock.unlock();
         // A close request must acknowledge before the worker shuts down;
         // otherwise the browser waits for a receipt from a dead socket.
         CompleteControl(request, {{"operation", "close"}});
         Close();
         return true;
-      }
-      case SessionCommandKind::kInterrupt: {
+      case SessionCommandKind::kInterrupt:
         RequestAbort();
         wake_.Wake();
         break;
-      }
-      case SessionCommandKind::kReply: {
-        if (pending_.empty() || parsed.interaction_id != pending_ || reply_) {
-          error = "decision is stale or already answered";
-        } else if (JsonValue(parsed.raw, "origin", "") == "coordinator" &&
-                   JsonValue(decision_, "route", "") != kRouteCoordinator) {
-          // Only a decision routed to the coordinator is its to answer.
-          error = "this decision belongs to the user";
-        } else {
-          const bool ask = JsonValue(decision_, "kind", "") == "ask";
-          std::string answer =
-              ask ? AskAnswers(parsed.raw, parsed.text, error) : parsed.text;
-          if (!error.empty()) break;
-          reply_ = std::move(answer);
-          reply_cancelled_ = parsed.cancelled;
-          // The decision log: who decided a routed decision, and why.
-          const std::string reason = JsonValue(parsed.raw, "reason", "");
-          if (JsonValue(parsed.raw, "origin", "") == kRouteCoordinator) {
-            decided_ = (ask ? "coordinator answered"
-                            : "coordinator decided " + parsed.text) +
-                       (reason.empty() ? "" : ": " + reason);
-          }
-          wake_.Wake();
-        }
+      case SessionCommandKind::kReply:
+        ReplyLocked(parsed, error);
         break;
-      }
-      case SessionCommandKind::kEscalate: {
+      case SessionCommandKind::kEscalate:
         if (pending_.empty() || parsed.interaction_id != pending_ || reply_ ||
             JsonValue(decision_, "route", "") != kRouteCoordinator) {
           error = "decision is stale or not with the coordinator";
@@ -727,37 +708,17 @@ class WorkerChannel final : public ApplicationChannel {
           EscalateLocked(parsed.text);
         }
         break;
-      }
-      case SessionCommandKind::kSteer: {
-        if (!turn_active_ || parsed.text.empty() ||
-            SteeringState().QueuedCount() >= 8) {
-          error = "guidance requires an active turn and space in its queue";
-        } else {
-          // Guidance only: the turn reads it at its next steering check and
-          // passive waits yield on the queued message. Requesting a foreground
-          // abort here would report every steer as an interruption.
-          // Files ride the same queue: the turn composes them into the
-          // steered user message, so steering sees what the composer showed.
-          std::vector<Attachment> attachments;
-          json images = json::array();
-          if (ResolveCommandAttachments(parsed.raw, attachments, images,
-                                        error)) {
-            SteeringState().Queue(
-                std::string(parsed.text), parsed.client_request_id, true,
-                AttachmentsToJson(attachments), std::move(images));
-          }
-        }
+      case SessionCommandKind::kSteer:
+        SteerLocked(parsed, error);
         break;
-      }
-      case SessionCommandKind::kRecall: {
+      case SessionCommandKind::kRecall:
         // Pre-delivery only: the queue owns recallability, the turn owns
         // delivery. No match means the turn already took it.
         if (!SteeringState().Recall(parsed.client_request_id)) {
           error = "already delivered";
         }
         break;
-      }
-      case SessionCommandKind::kRename: {
+      case SessionCommandKind::kRename:
         if (input_ || !ValidSessionTitle(parsed.title)) {
           error = "rename requires a valid title and an empty input queue";
         } else {
@@ -767,37 +728,15 @@ class WorkerChannel final : public ApplicationChannel {
           SendState();
         }
         break;
-      }
-      case SessionCommandKind::kRefresh: {
+      case SessionCommandKind::kRefresh:
         SendState();
         break;
-      }
-      case SessionCommandKind::kSide: {
-        // A model call takes seconds: it runs beside this reader so stop,
-        // interrupt and replies are never queued behind it.
+      case SessionCommandKind::kSide:
         lock.unlock();
-        std::lock_guard control(control_mutex_);
-        if (!activity_control_ || side_busy_) {
-          CompleteControl(request, {{"error", activity_control_
-                                                  ? "a side question is running"
-                                                  : "session not ready"}});
-          return true;
-        }
-        if (side_thread_.joinable()) side_thread_.join();
-        side_busy_ = true;
-        side_cancel_ = false;
-        side_thread_ = std::thread(
-            [this, request, raw = parsed.raw, ask = activity_control_] {
-              // Its own stop flag: the main turn's Escape and the worker's
-              // shutdown abort never reach it, nor does it clear theirs.
-              LocalAbort local(side_cancel_);
-              CompleteControl(request, ask(raw));
-              side_busy_ = false;
-            });
+        StartSideQuestion(request, parsed.raw);
         return true;
-      }
       case SessionCommandKind::kPermissions:
-      case SessionCommandKind::kActivity: {
+      case SessionCommandKind::kActivity:
         if (kind == SessionCommandKind::kPermissions ||
             parsed.operation != "followup") {
           lock.unlock();
@@ -809,81 +748,152 @@ class WorkerChannel final : public ApplicationChannel {
         }
         if (QueueIdleControl(request, parsed.raw, error)) return true;
         break;
-      }
       case SessionCommandKind::kModel:
       case SessionCommandKind::kTools:
       case SessionCommandKind::kConfig:
       case SessionCommandKind::kContext:
+      case SessionCommandKind::kRevert:
       case SessionCommandKind::kFork:
       case SessionCommandKind::kShare:
-      case SessionCommandKind::kSelfDirective: {
+      case SessionCommandKind::kSelfDirective:
         if (QueueIdleControl(request, parsed.raw, error)) return true;
         break;
-      }
-      case SessionCommandKind::kSubmit: {
-        if (turn_active_ && !parsed.text.empty() &&
-            !parsed.text.starts_with("/") && !parsed.has_attachments) {
-          if (SteeringState().QueuedCount() >= 8) {
-            error = "guidance queue is full";
-          } else {
-            SteeringState().Queue(
-                std::string(parsed.text),
-                JsonValue(parsed.raw, "client_request_id", request));
-          }
-          SendState();
-          break;
-        }
-        // Reuse the one-slot queue while a non-turn control finishes. The
-        // application consumes it after publishing that control's checkpoint.
-        if (turn_active_ || input_) {
-          error = "session is busy";
-        } else {
-          ApplicationInput input;
-          input.request_id = parsed.client_request_id;
-          input.text = parsed.text;
-          json images = json::array();
-          if (!ResolveCommandAttachments(parsed.raw, input.attachments, images,
-                                         error)) {
-            Send({{"kind", "outcome"},
-                  {"request_id", request},
-                  {"accepted", false},
-                  {"error", error}});
-            return true;
-          }
-          if (input.text.empty() && input.attachments.empty()) {
-            error = "empty message";
-          }
-          ParsedSlashCommand slash = ParseSlashCommand(input.text);
-          if (slash.spec && slash.spec->client_only) {
-            error = "use conversation controls to navigate, branch, or close";
-          }
-          if (error.empty()) {
-            ClearAbort();
-            busy_ = true;
-            turn_active_ = !input.text.starts_with("/") ||
-                           !SlashCommandPrompt(slash).empty();
-            if (turn_active_) BeginTurn();
-            input_ = std::move(input);
-            input_command_ = request;
-            wake_.Wake();
-            SendState();
-          }
-        }
+      case SessionCommandKind::kSubmit:
+        SubmitLocked(parsed, error);
         break;
-      }
       case SessionCommandKind::kCreate:
       case SessionCommandKind::kDelete:
       case SessionCommandKind::kActivate:
-      case SessionCommandKind::kUnknown: {
+      case SessionCommandKind::kUnknown:
         error = "unsupported command";
         break;
-      }
     }
-    Send({{"kind", "outcome"},
-          {"request_id", request},
-          {"accepted", error.empty()},
-          {"error", error}});
+    SendOutcome(request, error);
     return true;
+  }
+
+  // Answers the pending decision. The caller holds mutex_.
+  void ReplyLocked(const SessionCommand& parsed, std::string& error) {
+    const bool from_coordinator =
+        JsonValue(parsed.raw, "origin", "") == kRouteCoordinator;
+    if (pending_.empty() || parsed.interaction_id != pending_ || reply_) {
+      error = "decision is stale or already answered";
+      return;
+    }
+    if (from_coordinator &&
+        JsonValue(decision_, "route", "") != kRouteCoordinator) {
+      // Only a decision routed to the coordinator is its to answer.
+      error = "this decision belongs to the user";
+      return;
+    }
+    const bool ask = JsonValue(decision_, "kind", "") == "ask";
+    std::string answer =
+        ask ? AskAnswers(parsed.raw, parsed.text, error) : parsed.text;
+    if (!error.empty()) return;
+    reply_ = std::move(answer);
+    reply_cancelled_ = parsed.cancelled;
+    // The decision log: who decided a routed decision, and why.
+    const std::string reason = JsonValue(parsed.raw, "reason", "");
+    if (from_coordinator) {
+      decided_ = (ask ? "coordinator answered"
+                      : "coordinator decided " + parsed.text) +
+                 (reason.empty() ? "" : ": " + reason);
+    }
+    wake_.Wake();
+  }
+
+  // Guidance only: the turn reads it at its next steering check and passive
+  // waits yield on the queued message. Requesting a foreground abort here
+  // would report every steer as an interruption. Files ride the same queue:
+  // the turn composes them into the steered user message, so steering sees
+  // what the composer showed; `queue` holds it for when the turn ends
+  // instead ("Queue next"). The caller holds mutex_.
+  void SteerLocked(const SessionCommand& parsed, std::string& error) {
+    if (!turn_active_ || parsed.text.empty() ||
+        SteeringState().QueuedCount() >= kGuidanceQueueLimit) {
+      error = "guidance requires an active turn and space in its queue";
+      return;
+    }
+    std::vector<Attachment> attachments;
+    json images = json::array();
+    if (ResolveCommandAttachments(parsed.raw, attachments, images, error)) {
+      SteeringState().Queue(
+          {.text = std::string(parsed.text),
+           .request_id = parsed.client_request_id,
+           .attachments = AttachmentsToJson(attachments),
+           .images = std::move(images),
+           .after_turn = JsonValue(parsed.raw, "queue", false)});
+    }
+  }
+
+  // A model call takes seconds: it runs beside the command reader so stop,
+  // interrupt and replies are never queued behind it.
+  void StartSideQuestion(const std::string& request, const json& raw) {
+    std::lock_guard control(control_mutex_);
+    if (!activity_control_ || side_busy_) {
+      CompleteControl(
+          request, {{"error", activity_control_ ? "a side question is running"
+                                                : "session not ready"}});
+      return;
+    }
+    if (side_thread_.joinable()) side_thread_.join();
+    side_busy_ = true;
+    side_cancel_ = false;
+    side_thread_ = std::thread([this, request, raw, ask = activity_control_] {
+      // Its own stop flag: the main turn's Escape and the worker's shutdown
+      // abort never reach it, nor does it clear theirs.
+      LocalAbort local(side_cancel_);
+      CompleteControl(request, ask(raw));
+      side_busy_ = false;
+    });
+  }
+
+  // A message during a turn is guidance; otherwise it takes the one-slot
+  // input queue. The caller holds mutex_.
+  void SubmitLocked(const SessionCommand& parsed, std::string& error) {
+    if (turn_active_ && !parsed.text.empty() && !parsed.text.starts_with("/") &&
+        !parsed.has_attachments) {
+      if (SteeringState().QueuedCount() >= kGuidanceQueueLimit) {
+        error = "guidance queue is full";
+      } else {
+        SteeringState().Queue(
+            std::string(parsed.text),
+            JsonValue(parsed.raw, "client_request_id", parsed.request_id));
+      }
+      SendState();
+      return;
+    }
+    // Reuse the one-slot queue while a non-turn control finishes. The
+    // application consumes it after publishing that control's checkpoint.
+    if (turn_active_ || input_) {
+      error = "session is busy";
+      return;
+    }
+    ApplicationInput input;
+    input.request_id = parsed.client_request_id;
+    input.text = parsed.text;
+    json images = json::array();
+    if (!ResolveCommandAttachments(parsed.raw, input.attachments, images,
+                                   error)) {
+      return;
+    }
+    if (input.text.empty() && input.attachments.empty()) {
+      error = "empty message";
+    }
+    ParsedSlashCommand slash = ParseSlashCommand(input.text);
+    if (slash.spec && slash.spec->Has(kClientOnly)) {
+      error = "use conversation controls to navigate, branch, or close";
+    }
+    if (!error.empty()) return;
+    ClearAbort();
+    busy_ = true;
+    turn_active_ =
+        !input.text.starts_with("/") || !SlashCommandPrompt(slash).empty();
+    if (turn_active_) BeginTurn();
+    input_ = std::move(input);
+    input_command_ = parsed.request_id;
+    wake_.Wake();
+    SendState();
   }
 
   std::string path_, id_, generation_, title_;
@@ -891,7 +901,10 @@ class WorkerChannel final : public ApplicationChannel {
   Pipe wake_;
   MailboxWatch mail_;
   std::mutex mutex_, control_mutex_;
+  static constexpr size_t kGuidanceQueueLimit = 8;
   static constexpr auto kIdlePoll = std::chrono::milliseconds(30000);
+  static constexpr auto kLetGo = std::chrono::milliseconds(2000);
+  static constexpr auto kLetGoPoll = std::chrono::milliseconds(50);
   static constexpr auto kCoordinatorDecision = std::chrono::minutes(5);
   static constexpr auto kSpendRecheck = std::chrono::milliseconds(60000);
   bool closed_ = false, busy_ = true;
@@ -923,19 +936,7 @@ int WorkerMain(int argc, char** argv) {
   unlink(argv[6]);
   json launch = json::parse(bytes, nullptr, false);
   if (!launch.is_object()) return 2;
-  Options options;
-  options.browser_session = JsonValue(launch, "browser_session", false);
-  options.yolo = JsonValue(launch, "yolo", false);
-  options.debug = JsonValue(launch, "debug", false);
-  options.debug_path = JsonValue(launch, "debug_path", "");
-  options.trust_project = JsonValue(launch, "trust_project", false);
-  if (const json* overrides = JsonObject(launch, "overrides")) {
-    for (auto it = overrides->begin(); it != overrides->end(); ++it) {
-      if (it.value().is_string()) {
-        options.overrides[it.key()] = it.value().get<std::string>();
-      }
-    }
-  }
+  Options options = OptionsFromLaunch(launch);
   // The coordinator is known by its path; a thread's link is fixed at launch
   // and afterwards read back from its own header.
   if (argv[3] == CoordinatorPath(argv[2])) {
@@ -954,10 +955,8 @@ int WorkerMain(int argc, char** argv) {
   if (JsonValue(options.session, "kind", "") == kSessionKindThread) {
     options.overrides["UAGENT_APPROVAL"] = "auto";
     options.overrides["UAGENT_SANDBOX"] = "true";
-    const double budget = JsonValue(
-        JsonValue(JsonValue(options.session, "thread", json::object()),
-                  "ceiling", json::object()),
-        "budget_usd", 0.0);
+    const double budget =
+        ThreadBudget(JsonValue(options.session, "thread", json::object()));
     if (budget > 0) {
       options.overrides["UAGENT_SESSION_BUDGET"] = std::to_string(budget);
     }

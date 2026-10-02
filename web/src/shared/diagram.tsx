@@ -81,10 +81,7 @@ export default function Diagram({ source }: { source: string }) {
     document.documentElement.dataset.theme === "dark",
   );
   const [url, setURL] = useState("");
-  const [size, setSize] = useState<{ width: number; height: number }>({
-    width: 0,
-    height: 0,
-  });
+  const [size, setSize] = useState({ width: 0, height: 0 });
   const [error, setError] = useState("");
   const [expanded, setExpanded] = useState(false);
   useEffect(() => {

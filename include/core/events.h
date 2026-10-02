@@ -99,6 +99,8 @@ struct PresentationRecord {
   // told by its diff, but a script that was written and then run also has
   // something to say, so `change` and `detail` can both be set.
   std::string change;
+  // Where a diff longer than the opening `change` carries is kept whole.
+  std::string change_path;
   // Opening a skill changes how the whole turn proceeds, so it is marked in
   // the scrollback rather than reading as one more tool row.
   bool skill = false;
@@ -121,9 +123,9 @@ inline void SetCallLabel(PresentationRecord& record, std::string label) {
   (record.multiline ? record.detail : record.summary) = std::move(label);
 }
 
-// What `UAGENT_HEADLESS_PROGRESS` prefixes every echoed line with. A parent
-// reading a child's stream tells progress from the child's final answer by this
-// marker alone, so both sides have to agree on one spelling of it.
+// What `UAGENT_INTERNAL_HEADLESS_PROGRESS` prefixes every echoed line with. A
+// parent reading a child's stream tells progress from the child's final answer
+// by this marker alone, so both sides have to agree on one spelling of it.
 inline constexpr const char* kHeadlessProgressPrefix = "· ";
 
 // A user-facing notice — one line the person should see. It rides the same
@@ -179,21 +181,23 @@ class ActivityProjection;
 
 // Bounded metadata-only session journal. It never enters model context and is
 // flushed as a private sidecar beside the existing format-3 session snapshot.
+// Locked: events are appended from whichever thread emits them, while the
+// session is saved from the main one.
 class SessionJournal {
  public:
-  void SetEnabled(bool enabled) {
-    enabled_ = enabled;
-    if (!enabled_) Clear();
-  }
+  void SetEnabled(bool enabled);
   void Append(const Event& event, const EventPolicy& policy) noexcept;
   bool Load(const std::string& path, std::string& error);
   bool Flush(const std::string& path, std::string& error) const;
-  void Clear();
-  size_t Size() const { return lines_.size(); }
+  size_t Size() const;
 
  private:
   static constexpr size_t kMaxEvents = 512;
   static constexpr size_t kMaxBytes = size_t{256} * 1024;
+
+  void ClearLocked();
+
+  mutable std::mutex mutex_;
 
   std::deque<std::string> lines_;
   size_t bytes_ = 0;

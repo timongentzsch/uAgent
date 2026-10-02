@@ -29,22 +29,21 @@ enum class SlashCommandId {
   kEffort,
   kHelp,
   kInit,
-  kLink,
   kMemory,
   kSkills,
   kSchedule,
   kModel,
   kModels,
   kCost,
+  kChanges,
+  kUndo,
   kProcesses,
-  kPeers,
   kQuit,
   kReset,
   kClear,
   kReview,
   kSessions,
   kStatus,
-  kTell,
   kTools,
   kMcp,
   kRename,
@@ -59,16 +58,25 @@ enum class SlashCommandId {
   kOpen,
 };
 
+// What a command is beyond its name, as flags a registry row can read aloud.
+enum SlashCommandFlag : unsigned {
+  // Its reply is a receipt, not a result worth opening in a viewer.
+  kNoViewer = 1U << 0,
+  // Conversation navigation a client performs itself; a runtime refuses it.
+  kClientOnly = 1U << 1,
+  // Listed only at a terminal: the web has its own control for it, or it
+  // means nothing in a browser. The host still runs it when typed there.
+  kTerminal = 1U << 2,
+};
+
 struct SlashCommandSpec {
   SlashCommandId id;
   const char* name;
   const char* argument;
   const char* description;
-  bool inspect_result = true;  // Queries may open a result viewer.
-  // Conversation navigation a client performs itself; a runtime refuses it.
-  bool client_only = false;
-  // Only meaningful at a terminal, so the browser does not offer it.
-  bool terminal_only = false;
+  unsigned flags = 0;
+
+  bool Has(SlashCommandFlag flag) const { return (flags & flag) != 0; }
 };
 
 struct ParsedSlashCommand {
@@ -77,6 +85,9 @@ struct ParsedSlashCommand {
 };
 
 ParsedSlashCommand ParseSlashCommand(const std::string& input);
+// The command a mistyped "/word" most likely meant: the nearest name within
+// two edits, else empty.
+std::string NearestSlashCommand(const std::string& input);
 // "/fork [TITLE] [@TURN]": a trailing @N (or a bare number) forks at user
 // turn N, otherwise the whole session. Shared by every client.
 struct ForkArgument {
@@ -112,7 +123,7 @@ using InteractiveReadHandler =
 void SetInteractiveReadHandler(InteractiveReadHandler handler);
 bool InteractiveReadAvailable();
 
-std::string InputPrompt(const char* label = "");
+std::string InputPrompt();
 // One echoed user turn, banded to the right edge. `text` is already display-
 // ready: callers differ in how they sanitize it, and the composer's mapping of
 // newlines to a glyph is what keeps the echo on the rows it drew.
@@ -122,8 +133,6 @@ std::string ReadInteraction(InteractionRequest request, bool* eof);
 // the way every terminal renders a decision. Numbered lists are printed by
 // the command that asks, so only letter-keyed options become hints.
 std::string DecisionPrompt(const std::string& prompt, const json& options);
-std::string ReadChoiceLine(const std::string& prompt, bool& cancelled,
-                           bool& eof);
 std::string ReadChoiceLine(InteractionRequest request, bool& cancelled,
                            bool& eof);
 

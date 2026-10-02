@@ -14,7 +14,6 @@
 #include <deque>
 #include <filesystem>
 #include <mutex>
-#include <optional>
 #include <string>
 #include <thread>
 #include <utility>
@@ -37,9 +36,7 @@ Fd Socket(const std::string& path, bool listen) {
 }
 }  // namespace
 std::string SocketPath(const std::string& path) {
-  // AF_UNIX paths are limited to 104 bytes on macOS, independently of HOME.
-  return "/tmp/uagent-" + std::to_string(geteuid()) + "-" +
-         HashHex(GlobalBase()) + "/" + HashHex(path) + ".sock";
+  return SocketPathForId(HashHex(path));
 }
 
 Connection Connect(const std::string& path) {
@@ -84,6 +81,23 @@ Connection Connect(const std::string& path) {
   result.socket.Reset();
   return result;
 }
+Options OptionsFromLaunch(const json& launch) {
+  Options options;
+  options.browser_session = JsonValue(launch, "browser_session", false);
+  options.yolo = JsonValue(launch, "yolo", false);
+  options.debug = JsonValue(launch, "debug", false);
+  options.debug_path = JsonValue(launch, "debug_path", "");
+  options.trust_project = JsonValue(launch, "trust_project", false);
+  if (const json* overrides = JsonObject(launch, "overrides")) {
+    for (auto it = overrides->begin(); it != overrides->end(); ++it) {
+      if (it.value().is_string()) {
+        options.overrides[it.key()] = it.value().get<std::string>();
+      }
+    }
+  }
+  return options;
+}
+
 Connection Open(const std::string& executable, const std::string& cwd,
                 const std::string& path, const std::string& title,
                 const Options& options, std::string& error) {
@@ -225,7 +239,7 @@ struct Server::State {
         }
         if (state &&
             (snapshot.is_null() || JsonValue(frame, "checkpoint", false))) {
-          snapshot = frame;
+          snapshot = std::move(frame);
           replay_gap = false;
           replay.clear();
           replay_bytes = 0;
@@ -324,7 +338,12 @@ Server::~Server() {
   state_->stopped = true;
   state_->wake.Wake();
   if (state_->thread.joinable()) state_->thread.join();
-  if (state_->listener) unlink(state_->path.c_str());
+  // Removed while the lease is still held, so a clean exit leaves nothing
+  // and nobody can mistake the file for a holder's.
+  if (state_->listener) {
+    unlink(state_->path.c_str());
+    unlink((state_->path + ".lock").c_str());
+  }
 }
 bool Server::Start(const std::string& path, const std::string& generation,
                    std::function<bool(const json&)> command) {
@@ -335,7 +354,9 @@ bool Server::Start(const std::string& path, const std::string& generation,
   state.binary = FileIdentity(ExecutablePath());
   state.command = std::move(command);
   std::string error;
-  if (!state.lease.Acquire(state.path + ".lock", error) || !state.wake.Open()) {
+  // Published, so others can tell a running session from one that is gone.
+  if (!state.lease.Acquire(state.path + ".lock", error, true) ||
+      !state.wake.Open()) {
     return false;
   }
   state.listener = Socket(state.path, true);

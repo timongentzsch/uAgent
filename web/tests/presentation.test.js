@@ -156,11 +156,10 @@ test("change receipts classify git-style lines", () => {
     "-removed",
     "+added",
     "@line 3",
-    " … diff truncated",
   ];
   assert.deepEqual(
     change.map((line, index) => diffLineClass(line, index === 0)),
-    ["diff-head", "diff-ctx", "diff-del", "diff-add", "diff-hunk", "diff-cut"],
+    ["diff-head", "diff-ctx", "diff-del", "diff-add", "diff-hunk"],
   );
   assert.equal(diffLineClass("@@ -1,3 +1,4 @@", false), "diff-hunk");
   assert.equal(diffLineClass("--- a/f", false), "diff-head");
@@ -323,29 +322,6 @@ test("tool rows read as the view's verb and target", () => {
   assert.match(done.subtitle, /^\+2 \u22121 · /);
 });
 
-test("consecutive read-only calls fold into one group row", () => {
-  const explore = { category: "explore" };
-  const rows = presentMessages([
-    { id: "u1", kind: "user", text: "go" },
-    { id: "t1", kind: "tool_result", call_id: "c1", activity: explore },
-    { id: "t2", kind: "tool_result", call_id: "c2", activity: explore },
-    {
-      id: "t3",
-      kind: "tool_result",
-      call_id: "c3",
-      activity: { category: "change" },
-    },
-  ]);
-  assert.deepEqual(
-    rows.map((row) => row.kind),
-    ["user", "group", "tool_result"],
-  );
-  assert.deepEqual(
-    rows[1].children.map((row) => row.id),
-    ["t1", "t2"],
-  );
-});
-
 test("consecutive tools stay flat rows in order", () => {
   const rows = presentMessages([
     { id: "u1", kind: "user", text: "go" },
@@ -367,26 +343,49 @@ test("consecutive tools stay flat rows in order", () => {
   );
 });
 
-test("groups follow the intent and a failed check keeps its own row", () => {
-  const call = (id, category, status = "success") => ({
-    id,
-    kind: "tool_result",
-    call_id: id,
-    status,
-    activity: { category },
-  });
+const call = (id, category, status = "success") => ({
+  id,
+  kind: "tool_result",
+  call_id: id,
+  status,
+  activity: { category },
+});
+
+test("three or more tool calls in a row fold; a failure ends the run", () => {
   const rows = presentMessages([
     call("v1", "verify"),
-    call("v2", "verify"),
+    call("v2", "explore"),
     call("v3", "verify", "failed"),
     call("e1", "edit"),
     call("e2", "edit"),
     call("r1", "run"),
+    { id: "m1", kind: "assistant", text: "done" },
     call("r2", "run"),
   ]);
   assert.deepEqual(
     rows.map((row) => row.children?.map((step) => step.id) || row.id),
-    [["v1", "v2"], "v3", ["e1", "e2"], "r1", "r2"],
+    ["v1", "v2", "v3", ["e1", "e2", "r1"], "m1", "r2"],
   );
-  assert.equal(rows[0].activity.category, "verify");
+  // The group takes its first row's key, so the row keeps its place.
+  assert.equal(rows[3].key, "e1");
+});
+
+test("a streamed row refolds only the last run", () => {
+  const blocks = [
+    call("a1", "run"),
+    call("a2", "run"),
+    call("a3", "run"),
+    { id: "m1", kind: "assistant", text: "next" },
+    call("b1", "edit"),
+    call("b2", "edit"),
+    call("b3", "edit"),
+  ];
+  const before = presentMessages(blocks);
+  const after = presentMessages([...blocks, call("b4", "run")]);
+  assert.equal(after[0], before[0]);
+  assert.notEqual(after[2], before[2]);
+  assert.deepEqual(
+    after[2].children.map((step) => step.id),
+    ["b1", "b2", "b3", "b4"],
+  );
 });

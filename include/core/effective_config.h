@@ -21,7 +21,6 @@ struct EffectiveConfigSnapshot {
   RuntimeConfig config;
   RuntimeConfig::Values values;
   json sources = json::object();
-  std::string fingerprint;
   std::vector<std::pair<std::string, FileStamp>> files;
 };
 

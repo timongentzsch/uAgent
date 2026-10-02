@@ -1,18 +1,20 @@
-import { useEffect, useState } from "preact/hooks";
+import { useEffect } from "preact/hooks";
+import { useResource } from "../../shared/use-resource.ts";
 import type { Act, Pending, Report, Session } from "../../shared/types.ts";
 import { api, command } from "../../state/api.ts";
 import { Button, Deferred, LoadError, Spinner } from "../../shared/ui.tsx";
-import { folderOf } from "../../shared/folder-label.tsx";
+import { waiting } from "../../state/attention.ts";
 import SessionName from "../../shared/session-name.tsx";
+import { folderName } from "../../shared/folder-label.tsx";
 
 const decisionPanel = () => import("../chat/decision.tsx");
 
-// Decisions the folder's threads are waiting on, above the coordinator's
-// composer: the one thing a user of the coordinator must never miss. Each is
-// the thread's own pending decision, answered in the thread, so answering
-// here or in the thread is the same act and the first answer wins. A pause
-// at the spend limit shows here too, for the same reason.
-export default function Escalations({
+// Decisions sessions are waiting on: a folder's threads above its
+// coordinator's composer, or every folder's in the sidebar's inbox. Each is
+// the session's own pending decision, answered in the session, so answering
+// here or there is the same act and the first answer wins. A pause at the
+// spend limit shows here too, for the same reason.
+export default function WaitingList({
   sessions,
   folder,
   paused,
@@ -21,17 +23,17 @@ export default function Escalations({
   report,
 }: {
   sessions: Session[];
-  folder: string;
+  // One folder's threads; every session when absent.
+  folder?: string;
   paused?: string;
   online: boolean;
   choose: (id: string) => void;
   report: Report;
 }) {
-  const waiting = sessions.filter(
-    (item) =>
-      item.pending && item.kind !== "coordinator" && folderOf(item) === folder,
+  const decisions = waiting(sessions, folder).filter(
+    (item) => folder === undefined || item.kind !== "coordinator",
   );
-  if (!waiting.length && !paused) return null;
+  if (!decisions.length && !paused) return null;
   return (
     <section class="escalations" aria-label="Decisions waiting on you">
       {paused && (
@@ -39,10 +41,11 @@ export default function Escalations({
           {paused}
         </p>
       )}
-      {waiting.map((item) => (
+      {decisions.map((item) => (
         <Escalation
           key={item.id}
           item={item}
+          where={folder === undefined}
           online={online}
           choose={choose}
           report={report}
@@ -52,35 +55,38 @@ export default function Escalations({
   );
 }
 
+// The decision a session waits on: undefined while it loads, null once the
+// session no longer waits.
+export function usePendingDecision(item: Session) {
+  const resource = useResource(
+    () =>
+      api<{ pending?: Pending | null }>(`/api/sessions/${item.id}`).then(
+        (snapshot) => snapshot.pending || null,
+      ),
+    [item.id, item.generation, item.updated],
+  );
+  // A new session or worker never shows the last one's decision. A mere
+  // update refetches in place, so an answer being typed survives it; the
+  // host refuses a reply to an interaction the session has moved past.
+  useEffect(() => resource.setValue(undefined), [item.id, item.generation]);
+  return resource;
+}
+
 function Escalation({
   item,
+  where,
   online,
   choose,
   report,
 }: {
   item: Session;
+  // Name the folder and the question: the list spans folders.
+  where: boolean;
   online: boolean;
   choose: (id: string) => void;
   report: Report;
 }) {
-  // Undefined while it loads; null once the thread no longer waits.
-  const [pending, setPending] = useState<Pending | null>();
-  const [error, setError] = useState<unknown>(null);
-  const [attempt, setAttempt] = useState(0);
-  // A new thread or worker never shows the last one's decision. A mere
-  // update refetches in place, so an answer being typed survives it; the
-  // host refuses a reply to an interaction the thread has moved past.
-  useEffect(() => setPending(undefined), [item.id, item.generation]);
-  useEffect(() => {
-    let active = true;
-    setError(null);
-    api<{ pending?: Pending | null }>(`/api/sessions/${item.id}`)
-      .then((snapshot) => active && setPending(snapshot.pending || null))
-      .catch((failure) => active && setError(failure));
-    return () => {
-      active = false;
-    };
-  }, [item.id, item.generation, item.updated, attempt]);
+  const { value: pending, error, retry } = usePendingDecision(item);
   if (pending === null) return null;
   const act: Act = (kind, fields) => command(kind, item, fields);
   const loading = <Spinner label="Loading decision…" surface />;
@@ -92,9 +98,16 @@ function Escalation({
         onClick={() => choose(item.id)}
       >
         <SessionName item={item} />
+        {where && (
+          <span class="escalation-where">
+            {" "}
+            · {folderName(item.folder || item.cwd)}
+            {item.pending_prompt && ` · ${item.pending_prompt}`}
+          </span>
+        )}
       </Button>
       {error ? (
-        <LoadError error={error} retry={() => setAttempt(attempt + 1)} />
+        <LoadError error={error} retry={retry} />
       ) : pending ? (
         <Deferred
           load={decisionPanel}

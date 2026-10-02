@@ -18,7 +18,6 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
-#include <functional>
 #include <istream>
 #include <queue>
 #include <string>
@@ -30,6 +29,7 @@
 #include "include/core/checked.h"
 #include "include/core/env.h"
 #include "include/core/fd.h"
+#include "include/core/lease.h"
 #include "include/core/limits.h"
 #include "include/core/platform.h"
 #include "include/core/strings.h"
@@ -73,6 +73,11 @@ std::string GlobalBase() {
                       : home + "/.uagent";
 }
 
+std::string RuntimeDir() {
+  return "/tmp/uagent-" + std::to_string(geteuid()) + "-" +
+         HashHex(GlobalBase());
+}
+
 // The directory a workspace opts into. Named once: several modules need it,
 // and a reader and a writer disagreeing about it would silently lose data.
 std::filesystem::path ProjectBase(const std::filesystem::path& cwd) {
@@ -100,22 +105,6 @@ ScopedTempFile::ScopedTempFile(const std::string& pattern)
 ScopedTempFile::~ScopedTempFile() {
   fd_.Reset();
   if (!keep_ && !path_.empty()) unlink(path_.c_str());
-}
-
-ScopedTempFile::ScopedTempFile(ScopedTempFile&& other) noexcept
-    : path_(std::move(other.path_)),
-      fd_(std::move(other.fd_)),
-      keep_(std::exchange(other.keep_, true)) {}
-
-ScopedTempFile& ScopedTempFile::operator=(ScopedTempFile&& other) noexcept {
-  if (this != &other) {
-    fd_.Reset();
-    if (!keep_ && !path_.empty()) unlink(path_.c_str());
-    fd_ = std::move(other.fd_);
-    path_ = std::move(other.path_);
-    keep_ = std::exchange(other.keep_, true);
-  }
-  return *this;
 }
 
 void ScopedTempFile::Close() { fd_.Reset(); }
@@ -164,6 +153,18 @@ std::optional<std::string> ReadFile(const std::string& path, size_t cap) {
   std::string out;
   ReadBounded(input, cap, out);
   return out;
+}
+
+Fd OpenOwnedRegular(const std::string& path, size_t cap, size_t* size) {
+  Fd fd(open(path.c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK));
+  struct stat info{};
+  if (!fd || fstat(fd.Get(), &info) != 0 || !S_ISREG(info.st_mode) ||
+      info.st_uid != geteuid() || info.st_size < 0 ||
+      static_cast<uintmax_t>(info.st_size) > cap) {
+    return {};
+  }
+  if (size) *size = static_cast<size_t>(info.st_size);
+  return fd;
 }
 
 bool ReadRegularFile(const std::string& path, size_t cap, std::string& out,
@@ -286,7 +287,12 @@ void PruneArtifactTree(const std::string& dir, int64_t max_age_days,
         fs::remove(artifact.path, remove_error);
         return;
       }
-      bool session_sidecar = artifact.path.string().ends_with(".events.jsonl");
+      // A session's journal, undo blobs and attachments age out, but never
+      // count against the sessions themselves.
+      const std::string path = artifact.path.string();
+      bool session_sidecar = path.ends_with(".events.jsonl") ||
+                             path.find(".json.edits/") != std::string::npos ||
+                             path.find(".json.assets/") != std::string::npos;
       if (max_files > 0 && !session_sidecar) {
         kept.push(std::move(artifact));
         if (kept.size() > static_cast<size_t>(max_files)) {
@@ -325,10 +331,22 @@ void MaintainArtifacts() {
   PruneArtifactTree(GlobalBase() + "/" + kMemoryDir + "/.processed",
                     HistoryDays(), kHistoryFiles);
   PruneArtifactTree(UagentDir(kSessionsDir), kDebugDays, kDebugFiles);
-  PruneArtifactTree(UagentDir("mail"), kDebugDays, kDebugFiles);
+  // Mail by age only: a count would drop mail still waiting to be read.
+  PruneArtifactTree(UagentDir("mail"), kDebugDays, 0);
   PruneArtifactTree(UagentDir(kBgDir), kBgDays, kBgFiles);
   PruneArtifactTree(UagentDir(kArtifactsDir), kBgDays, kBgFiles);
   PruneArtifactTree(UagentDir(kMcpDir), kMcpLogDays, kMcpLogFiles);
+  // What a runtime that was killed left behind: its lease and its socket.
+  std::error_code error;
+  for (const auto& entry :
+       std::filesystem::directory_iterator(RuntimeDir(), error)) {
+    const std::string lease = entry.path().string();
+    if (!lease.ends_with(".sock.lock") || !FileLease::OwnerGone(lease)) {
+      continue;
+    }
+    unlink(lease.substr(0, lease.size() - 5).c_str());
+    unlink(lease.c_str());
+  }
 }
 
 std::string MakeSessionId() {

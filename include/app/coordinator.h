@@ -13,6 +13,9 @@ namespace uagent {
 // The session id of a folder's coordinator, as clients and threads name it.
 std::string CoordinatorId(const std::string& folder);
 
+// A thread's spending ceiling in USD; 0 when it has none.
+double ThreadBudget(const json& thread);
+
 // Every session the coordinator of `folder` manages: those opened in the
 // folder and the threads it launched elsewhere (worktrees), newest first.
 std::vector<SessionInfo> FolderSessions(const std::string& folder);

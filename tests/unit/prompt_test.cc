@@ -22,15 +22,16 @@ struct Harness {
   std::vector<Tool> tools;
   ProcessSupervisor processes;
   UsageAccumulator usage;
-  Agent agent{api,
-              tools,
-              processes,
-              usage,
-              [](const Tool&, const json&, int64_t) { return false; },
-              {},
-              {},
-              {},
-              &state};
+  Agent agent{
+      api,
+      tools,
+      processes,
+      usage,
+      [](const Tool&, const json&, int64_t) { return std::string("denied"); },
+      {},
+      {},
+      {},
+      &state};
   json Set(const std::string& mode, const std::string& text) {
     return agent.SelfDirective({{"action", "set"},
                                 {"mode", mode},

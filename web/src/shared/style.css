@@ -35,7 +35,7 @@
   /* The type ramp below body text: secondary lines, then badges and
      timestamps. Nothing smaller, so no text drops under 10px. */
   --font-small: 0.85rem;
-  --font-micro: 0.75rem;
+  --font-micro: 0.8125rem;
   /* Motion: the only durations and easings in the app. Reduced motion
      zeroes the durations below, which turns every transition off. */
   --motion-fast: 120ms;
@@ -77,7 +77,14 @@
   --placeholder: #414141;
   --text: #f5f5f5;
   --muted: #a3a3a3;
+  /* Decorative dividers only; a control's edge uses --field-border. */
   --line: #404040;
+  /* A control's boundary: at least 3:1 on --raised, --surface and --bg. */
+  --field-border: #8a8a8a;
+  /* The same three under prefers-contrast: more. */
+  --muted-more: #c4c4c4;
+  --line-more: #8a8a8a;
+  --field-border-more: #bdbdbd;
   --accent: #fff;
   --live: #22a35a;
   --added: #3fb950;
@@ -101,15 +108,19 @@
   --hover: #e2e2e2;
   --placeholder: #ccc;
   --text: #111;
-  --muted: #666;
+  --muted: #555;
   --line: #ccc;
+  --field-border: #767676;
+  --muted-more: #3d3d3d;
+  --line-more: #767676;
+  --field-border-more: #3d3d3d;
   --accent: #000;
   --accent-hover: #262626;
   --accent-active: #404040;
   --live: #1a7f37;
-  --added: #1a7f37;
+  --added: #116329;
   --added-bg: rgba(26, 127, 55, 0.1);
-  --removed: #d1242f;
+  --removed: #b31d28;
   --removed-bg: rgba(209, 36, 47, 0.1);
   --on-accent: #fff;
   --knob: #fff;
@@ -168,15 +179,18 @@ textarea {
 }
 button,
 .file-button,
-.button-link {
-  border: 1px solid transparent;
-  background: var(--raised);
-}
+.button-link,
 input,
 select,
 textarea {
   border: 1px solid transparent;
   background: var(--raised);
+}
+/* A field's edge is the only thing marking it on its own surface. */
+input,
+select,
+textarea {
+  border-color: var(--field-border);
 }
 input[type="checkbox"],
 input[type="radio"] {
@@ -206,7 +220,7 @@ input[type="radio"] {
   height: calc(24rem / 14);
   min-height: calc(24rem / 14);
   margin: 0;
-  border: 1px solid var(--line);
+  border: 1px solid var(--field-border);
   border-radius: 999px;
   background: var(--raised);
   cursor: pointer;
@@ -397,10 +411,6 @@ label,
   justify-content: space-between;
   gap: var(--pad);
 }
-.field-label output {
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
 .field-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -478,9 +488,6 @@ pre code {
 .diff-hunk {
   color: var(--muted);
 }
-.diff-cut {
-  color: var(--muted);
-}
 .diff-ctx {
   color: var(--muted);
 }
@@ -504,6 +511,24 @@ pre code {
   overflow: hidden;
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
+}
+/* Hidden until a keyboard reaches it, then drawn over the top corner. */
+.skip-link:not(:focus) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+.skip-link:focus {
+  position: absolute;
+  z-index: 20;
+  top: calc(var(--safe-top) + var(--space-4));
+  left: calc(var(--safe-left) + var(--space-4));
+  padding: var(--space-2) var(--space-4);
+  background: var(--accent);
+  color: var(--on-accent);
 }
 /* Error, notice and update banners stack over the top of the app, inside
    the safe area, so showing or dismissing one never moves the layout. */
@@ -704,6 +729,61 @@ dialog.sidebar:not([open]) {
   color: var(--muted);
   margin-right: var(--space-2);
 }
+/* A coordinator's threads hang under its folder header. */
+.sidebar .threads {
+  margin-left: var(--space-4);
+  border-left: 1px solid var(--line);
+}
+.session small .session-state {
+  width: 1em;
+  height: 1em;
+  margin-right: var(--space-2);
+  vertical-align: -0.15em;
+}
+/* One indicator to a row: the shape stands in for the LED. */
+.session small .session-state + .activity-status > .status-led {
+  display: none;
+}
+.session-state.waiting {
+  color: var(--accent);
+}
+.session-state.failed {
+  color: var(--removed);
+}
+/* Every folder's waiting decisions, above the list. */
+.needs-you > button {
+  width: 100%;
+  justify-content: flex-start;
+  gap: var(--gap);
+  font-size: var(--font-small);
+  font-weight: 600;
+  color: var(--accent);
+}
+.escalation-where {
+  color: var(--muted);
+}
+/* One line: the words truncate, the link to its instructions stays. */
+.coordinator-subtitle {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--font-small);
+}
+.coordinator-subtitle span {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.coordinator-subtitle button {
+  flex-shrink: 0;
+  font-size: inherit;
+  min-height: 0;
+  padding: 0;
+  text-decoration: underline;
+}
 .coordinator-layout {
   flex: 1;
   min-height: 0;
@@ -732,27 +812,6 @@ dialog.sidebar:not([open]) {
   color: var(--muted);
   padding: var(--space-2) var(--space-3);
 }
-/* The title keeps the row; the help button sits right after it. */
-.conversation-head > div:first-of-type:has(.coordinator-help-anchor) {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-.coordinator-help-body {
-  display: grid;
-  align-content: start;
-  gap: var(--space-3);
-}
-.coordinator-help h3 {
-  font-size: var(--font-small);
-  font-weight: 600;
-}
-.coordinator-help-body {
-  font-size: var(--font-small);
-}
-.coordinator-help p {
-  color: var(--muted);
-}
 .board-note {
   color: var(--muted);
   font-size: var(--font-small);
@@ -761,37 +820,33 @@ dialog.sidebar:not([open]) {
 .board-count {
   font-variant-numeric: tabular-nums;
 }
-.board-row {
-  width: 100%;
+/* A list entry (see ListRow): its title over a muted line. */
+.list-row {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
   gap: var(--space-1);
-  text-align: left;
   min-width: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+}
+.list-row small {
+  color: var(--muted);
+}
+.board-row {
+  width: 100%;
 }
 .board-row > span,
 .board-row small {
-  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.board-row small {
-  color: var(--muted);
-}
-/* On a phone the board is a short strip above the chat. */
-@media (max-width: 600px) {
-  .coordinator-layout {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr);
-  }
-  .board {
-    order: -1;
-    max-height: 30vh;
-    border-left: 0;
-    border-bottom: 1px solid var(--line);
-  }
+/* In its phone sheet the board is the sheet's content, not a column. */
+.side-sheet .board {
+  border-left: 0;
+  background: none;
+  padding: 0;
 }
 .folder-label > span {
   overflow: hidden;
@@ -813,24 +868,16 @@ dialog.sidebar:not([open]) {
 }
 .session {
   flex: 1;
-  min-width: 0;
-  text-align: left;
-  border: 0;
-  background: none;
   padding: var(--space-3) var(--space-4);
 }
 .session > span {
-  display: block;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   font-size: var(--font-small);
 }
 .session small {
-  display: block;
   font-size: var(--font-micro);
-  color: var(--muted);
-  margin-top: var(--space-1);
   /* Single line, always: activity labels stream in while a turn runs
      and a wrap would change the row height (sidebar ticking). The
      time keeps its title tooltip; overflow ellipsizes like the title. */
@@ -858,9 +905,11 @@ dialog.sidebar:not([open]) {
 .status-led.running {
   animation: led-breathe var(--motion-pulse) var(--ease-standard) infinite;
 }
+/* Failure is a square, not only a colour. */
 .status-led.failed {
   background: var(--removed);
   border-color: var(--removed);
+  border-radius: 0;
 }
 /* A corner dot on an icon button, e.g. the agent using the browser. */
 .browser-toggle {
@@ -935,6 +984,10 @@ dialog.sidebar:not([open]) {
   scrollbar-gutter: stable;
   padding: var(--gap) var(--column-inset);
   overscroll-behavior: contain;
+  /* The composer sits below, not over, the transcript; only its floating
+     Jump to latest overlaps the last row. A row reached by keyboard stops
+     clear of it. */
+  scroll-padding-block: var(--gap) calc(var(--control) + var(--space-6));
 }
 /* Single spacing mechanism for the whole column: uniform gap, zero
    child margins. Flex gaps never collapse, so doubles are impossible. */
@@ -997,7 +1050,7 @@ dialog.sidebar:not([open]) {
 }
 .composer > form {
   gap: 0;
-  border: 1px solid transparent;
+  border: 1px solid var(--field-border);
   background: var(--raised);
 }
 .text-control {
@@ -1043,16 +1096,41 @@ dialog.sidebar:not([open]) {
   border: 0;
   background: transparent;
 }
+/* Fixed slots in every turn state: Attach, Model (the one flexible item),
+   Permissions, then the primary circle. Nothing is inserted or removed, so
+   nothing beside a thumb moves when a turn starts, stops or waits. */
 .composer-actions {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-1) var(--space-2) var(--space-2);
   min-width: 0;
 }
-.composer-actions > .primary {
-  margin-left: auto;
+/* A pending decision holds the input; Permissions can still settle it. */
+.composer-actions[data-held] > :not(.permission-control) {
+  opacity: 0.5;
+  pointer-events: none;
+}
+/* Send and Stop are one control: the icons sit on top of each other and
+   cross-fade, so the button itself never changes. */
+.composer-primary {
+  position: relative;
+}
+.composer-primary > .lucide {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  transition: opacity var(--motion-fast) var(--ease-out);
+}
+.composer-primary > .stop-icon {
+  fill: currentColor;
+  width: calc(12rem / 14);
+  height: calc(12rem / 14);
+}
+.composer-primary[data-mode="stop"] > .send-icon,
+.composer-primary[data-mode="send"] > .stop-icon {
+  opacity: 0;
 }
 .model-control {
   flex: 1;
@@ -1080,6 +1158,12 @@ dialog.sidebar:not([open]) {
 .permission-control > button {
   font-size: var(--font-small);
   padding-inline: var(--space-3);
+}
+/* YOLO runs every tool unasked: the control says so in red, in the same
+   box as any other mode. */
+.permission-control.yolo > button {
+  border-color: var(--removed);
+  color: var(--removed);
 }
 .file-button {
   position: relative;
@@ -1135,18 +1219,61 @@ dialog.sidebar:not([open]) {
     scale: 0.97;
   }
 }
+/* One fixed-height line above the input: the phase left, one action slot
+   right (Queue next while a turn runs, Continue after a stop). */
 .status-line {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--gap);
   min-width: 0;
-  padding-bottom: var(--space-2);
+  height: calc(28rem / 14);
+  margin-bottom: var(--space-1);
 }
 /* One line at any width: a long state ("Waiting for approval…") truncates. */
 .status-line > :first-child {
   flex: 0 1 auto;
   min-width: 0;
+}
+.status-line > .activity-toggle {
+  min-height: 0;
+}
+.status-action {
+  display: flex;
+  flex: none;
+  align-items: center;
+}
+/* The slot's action appears and leaves by opacity alone. */
+.status-action > button {
+  position: relative;
+  min-height: calc(24rem / 14);
+  padding-block: 0;
+  font-size: var(--font-micro);
+  transition:
+    opacity var(--motion-fast) var(--ease-out),
+    visibility var(--motion-fast) allow-discrete;
+}
+@starting-style {
+  .status-action > button {
+    opacity: 0;
+  }
+}
+.status-action > button[data-shown="false"] {
+  opacity: 0;
+  visibility: hidden;
+}
+.status-action kbd {
+  margin-left: var(--space-2);
+  color: var(--muted);
+  font: inherit;
+}
+@media (pointer: coarse) {
+  /* A 40px touch on a 24px line, mostly above it, clear of the input. */
+  .status-action > button::after {
+    content: "";
+    position: absolute;
+    inset: calc(-12rem / 14) 0 calc(-4rem / 14);
+  }
 }
 .activity-toggle {
   display: flex;
@@ -1164,6 +1291,13 @@ dialog.sidebar:not([open]) {
   gap: 0.4em;
   min-width: 0;
   max-width: 100%;
+}
+/* Not connected: a pill, so the state reads apart from a turn's phase. */
+.connection-pill {
+  padding: 0 var(--space-4);
+  border-radius: 999px;
+  background: var(--raised);
+  color: var(--text);
 }
 .activity-caption {
   min-width: 0;
@@ -1275,21 +1409,61 @@ details[open]:not(.disclosure-row) > summary::before {
 .decision {
   display: flex;
   flex-direction: column;
-  gap: var(--gap);
+  gap: var(--space-3);
   border: 1px solid var(--accent);
-  padding: var(--space-6);
+  padding: var(--space-4) var(--space-6);
   max-height: min(
     calc(var(--viewport-height) * 0.65),
     calc(var(--viewport-height) - calc(100rem / 14))
   );
+  /* The one surface that enters: a short fade and a 4px rise. */
+  transition:
+    opacity 160ms var(--ease-out),
+    translate 160ms var(--ease-out);
+}
+@starting-style {
+  .decision {
+    opacity: 0;
+    translate: 0 calc(4rem / 14);
+  }
+}
+/* Above the composer's status line, which stays put below it. */
+.composer > .decision {
+  margin-bottom: var(--space-2);
 }
 .decision-preview {
   min-height: 0;
   overflow: auto;
   font-size: var(--font-small);
 }
-.decision-preview pre {
-  margin-top: var(--space-3);
+/* The command or diff takes the height the card has left and scrolls there. */
+.decision-preview :is(pre, .diff) {
+  margin-top: 0;
+}
+/* The title, then the tool it is about, on one line. */
+.decision-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-4);
+  min-width: 0;
+  flex-shrink: 0;
+}
+.decision-head > [role="alert"] {
+  flex: none;
+}
+.decision-tool {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-small);
+}
+.decision-where {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  margin-top: var(--space-2);
 }
 .decision form {
   display: flex;
@@ -1305,8 +1479,89 @@ details[open]:not(.disclosure-row) > summary::before {
   min-width: calc(100rem / 14);
   font-size: var(--font-small);
 }
-.decision h2 {
-  flex-shrink: 0;
+/* An approval's headline: the command or change, where, and what it risks. */
+.decision-command {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.decision-folder {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin: 0;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.risk-chips {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.risk-chip {
+  padding: 0 var(--space-3);
+  border: 1px solid var(--line-more);
+  font-size: var(--font-micro);
+}
+.risk-chip:is([data-risk="runs"], [data-risk="outside"]) {
+  border-color: var(--removed);
+  color: var(--removed);
+}
+.decision .decision-card {
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-2);
+}
+/* Deny · Allow for session · Allow once: one row of equal buttons. */
+.decision-answers {
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  gap: var(--space-2);
+}
+.decision-answers > button {
+  min-width: 0;
+  padding-inline: var(--space-2);
+  font-size: var(--font-small);
+}
+.decision-more > summary {
+  width: fit-content;
+  color: var(--muted);
+  font-size: var(--font-micro);
+  cursor: pointer;
+}
+.decision-more-body {
+  display: grid;
+  gap: var(--space-3);
+  padding-top: var(--space-3);
+  font-size: var(--font-small);
+}
+.decision-more-body > .dialog-actions {
+  justify-content: flex-start;
+}
+.decision-guidance {
+  display: flex;
+  align-items: end;
+  gap: var(--gap);
+}
+.decision-guidance > label {
+  flex: 1;
+  min-width: 0;
+}
+.decision-always {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.decision-options {
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  border: 0;
 }
 /* A coordinator's threads waiting on the user, above its composer; the
    transcript keeps at least half the column. */
@@ -1333,6 +1588,7 @@ details[open]:not(.disclosure-row) > summary::before {
 .escalation-thread {
   justify-self: start;
   max-width: 100%;
+  text-align: left;
   font-size: var(--font-small);
   color: var(--muted);
 }
@@ -1400,7 +1656,7 @@ details[open]:not(.disclosure-row) > summary::before {
   flex-wrap: wrap;
 }
 .segmented,
-.raw-tabs,
+.tabs,
 .document-toolbar,
 .weekdays {
   display: flex;
@@ -1410,7 +1666,7 @@ details[open]:not(.disclosure-row) > summary::before {
 }
 /* Pressed buttons are drawn by button[aria-pressed]; a tab list's
    selected tab matches them. */
-.raw-tabs [aria-selected="true"] {
+.tabs [aria-selected="true"] {
   background: var(--accent);
   color: var(--on-accent);
 }
@@ -1435,10 +1691,6 @@ dialog {
   );
   max-height: max(0px, calc(var(--content-height) - 2 * var(--dialog-gutter)));
   overflow: hidden;
-}
-dialog[open] {
-  display: flex;
-  flex-direction: column;
 }
 dialog[data-size="medium"] {
   --dialog-width: calc(700rem / 14);
@@ -1485,6 +1737,27 @@ dialog[data-layout="sheet"] {
     max-height: none;
     padding-bottom: var(--safe-bottom);
     border-width: 0;
+  }
+}
+/* A side sheet keeps its right edge on a phone too, most of the width, the
+   mirror of the sessions drawer: it holds a list to glance at and leave. */
+@media (max-width: 600px) {
+  dialog[data-layout="sheet"].side-sheet {
+    --dialog-width: min(calc(340rem / 14), calc(var(--content-width) * 0.86));
+    left: calc(
+      var(--viewport-left) + var(--safe-left) + var(--content-width) -
+        var(--dialog-width)
+    );
+    width: var(--dialog-width);
+    border-width: 0 0 0 1px;
+  }
+  dialog[data-layout="sheet"].side-sheet[open][data-leaving] {
+    translate: 100% 0;
+  }
+  @starting-style {
+    dialog[data-layout="sheet"].side-sheet[open] {
+      translate: 100% 0;
+    }
   }
 }
 /* A narrow sheet holds a few actions or one control (SheetButton): it keeps
@@ -1771,9 +2044,6 @@ dialog section {
     max-height: calc(var(--viewport-height) - calc(100rem / 14));
     padding: var(--space-4);
   }
-  .decision-preview pre {
-    max-height: calc(var(--viewport-height) * 0.22);
-  }
   .activity-list {
     max-height: calc(var(--viewport-height) * 0.18);
   }
@@ -1783,6 +2053,8 @@ dialog section {
    below on a phone) and the drawer from the left. `data-leaving` is set by
    Modal while it animates out (see shared/motion.ts). */
 dialog[open] {
+  display: flex;
+  flex-direction: column;
   transition:
     opacity var(--motion-base) var(--ease-out),
     translate var(--motion-slow) var(--ease-out);
@@ -1834,22 +2106,77 @@ dialog.sidebar.drawer[open][data-leaving] {
     }
   }
 }
-@media (prefers-reduced-motion: reduce) {
-  :root {
-    --motion-fast: 0ms;
-    --motion-base: 0ms;
-    --motion-slow: 0ms;
-  }
-  *,
-  *::before,
-  *::after {
+/* Animations off: the device asks for less motion, or Settings does
+   (applyMotion sets the attribute for both). */
+:root[data-motion="off"] {
+  --motion-fast: 0ms;
+  --motion-base: 0ms;
+  --motion-slow: 0ms;
+  &,
+  & *,
+  & *::before,
+  & *::after {
     scroll-behavior: auto !important;
     animation: none !important;
     transition: none !important;
   }
   /* The one motion that carries meaning: work is still under way. */
-  .spinner {
+  & .spinner {
     animation: spin 2.4s linear infinite !important;
+  }
+}
+/* More contrast asked for: dividers, field edges and secondary text move
+   to each palette's stronger values. The selectors mirror the palettes'
+   so the inverted user message keeps its own. */
+@media (prefers-contrast: more) {
+  :root,
+  [data-theme="light"] .message.user,
+  [data-theme="dark"] .message.user :is(dialog, .menu-panel),
+  :root[data-theme="light"],
+  [data-theme="dark"] .message.user,
+  [data-theme="light"] .message.user :is(dialog, .menu-panel) {
+    --muted: var(--muted-more);
+    --line: var(--line-more);
+    --field-border: var(--field-border-more);
+  }
+}
+/* Windows High Contrast and other forced palettes: the browser repaints
+   backgrounds, so anything that says something through a fill keeps its
+   own system colours. */
+@media (forced-colors: active) {
+  .switch input[role="switch"]::before {
+    forced-color-adjust: none;
+    background: ButtonText;
+  }
+  .switch input[role="switch"]:checked::before {
+    background: Highlight;
+  }
+  .primary,
+  button[aria-pressed="true"],
+  [aria-current]:is(button, a) {
+    forced-color-adjust: none;
+    background: Highlight;
+    color: HighlightText;
+    border-color: Highlight;
+  }
+  /* The lights differ by fill and shape, not by colour alone. */
+  .status-led {
+    forced-color-adjust: none;
+    background: transparent;
+    border-color: CanvasText;
+  }
+  .status-led.active {
+    background: CanvasText;
+    border-color: CanvasText;
+  }
+  .status-led.running {
+    background: Highlight;
+    border-color: Highlight;
+  }
+  .status-led.failed {
+    background: CanvasText;
+    border-color: CanvasText;
+    border-radius: 0;
   }
 }
 
@@ -2042,49 +2369,25 @@ dialog > header .icon-button {
 .empty-state p {
   margin: 0;
 }
-/* A setting row: its name may read as code, and its field keeps a usable
-   width beside the text. */
-.setting-row {
-  align-items: flex-start;
+/* A setting's value in its row: muted while it is the default. */
+.setting-summary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
 }
-.setting-row code {
-  font-size: 0.9em;
+.setting-summary[data-default] {
+  color: var(--muted);
 }
-.setting-saved {
-  width: 1em;
-  height: 1em;
-  margin-inline-start: var(--space-3);
-  vertical-align: -0.125em;
-  color: var(--live);
-  transition: opacity var(--motion-fast) var(--ease-out);
+.setting-sheet {
+  display: grid;
+  gap: var(--space-4);
 }
-@starting-style {
-  .setting-saved {
-    opacity: 0;
-  }
+.setting-sheet p {
+  margin: 0;
 }
-.setting-value > .text-control:not(.value-select) {
-  width: calc(160rem / 14);
-}
-/* On a phone a field or slider takes its own full-width line; a choice
-   stays beside its label like any row value. */
-@media (max-width: 600px) {
-  .setting-row:has(
-    .setting-value > :is(.text-control:not(.value-select), [type="range"])
-  ) {
-    flex-wrap: wrap;
-  }
-  .setting-row:has(
-      .setting-value > :is(.text-control:not(.value-select), [type="range"])
-    )
-    > .row-value {
-    max-width: none;
-    width: 100%;
-  }
-  .setting-value > :is(.text-control:not(.value-select), [type="range"]) {
-    flex: 1;
-    width: auto;
-  }
+.setting-sheet output {
+  overflow-wrap: anywhere;
 }
 .zoom-value {
   min-width: 4ch;

@@ -25,7 +25,7 @@ export function useLibrary(
       value?.error ? { ...value, error: undefined } : value,
     );
     if (cwd && online)
-      manage(kind, { cwd, action: "list" }, controller.signal)
+      manage(kind, { cwd, action: "list" }, { signal: controller.signal })
         .then((value) => {
           if (generation.current === current) setResult({ key, data: value });
         })

@@ -13,7 +13,12 @@ export const BROWSER_GESTURE = Object.freeze({
 });
 
 // X11 wheel buttons as RFB mask bits: 4 up, 5 down, 6 left, 7 right.
-const WHEEL = { up: 1 << 3, down: 1 << 4, left: 1 << 5, right: 1 << 6 };
+export const WHEEL = {
+  up: 1 << 3,
+  down: 1 << 4,
+  left: 1 << 5,
+  right: 1 << 6,
+};
 
 // Turns accumulated finger travel into whole wheel notches, natural-scroll
 // style (the content follows the finger), and returns the unspent travel.

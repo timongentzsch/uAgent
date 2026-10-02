@@ -24,7 +24,7 @@ import {
   useRef,
   useState,
 } from "preact/hooks";
-import { ArrowDownToLine, Square, ChevronLeft } from "lucide-preact";
+import { ChevronLeft } from "lucide-preact";
 import { JumpToLatest } from "../../shared/jump-to-latest.tsx";
 import { command, readPages, manage } from "../../state/api.ts";
 import { useTranscriptHistory } from "../../state/use-transcript-history.ts";
@@ -35,14 +35,18 @@ import {
   Deferred,
   EmptyState,
   Field,
-  IconButton,
   LoadError,
   Modal,
   SectionTitle,
   Skeleton,
   Spinner,
 } from "../../shared/ui.tsx";
-import { active, ActivityStatus, withAgents } from "./activity-status.tsx";
+import {
+  active,
+  ActivityControls,
+  ActivityStatus,
+  withAgents,
+} from "./activity-status.tsx";
 import Markdown from "../../shared/markdown-view.tsx";
 import { MessageRows, prepareHistoryBlocks } from "./message.tsx";
 import { MessageActions } from "./message-actions.ts";
@@ -61,10 +65,10 @@ type Page = {
 };
 
 const statisticsDialog = () =>
-  import("../settings/statistics.tsx").then((module) => ({
+  import("./statistics.tsx").then((module) => ({
     default: module.StatisticsContent,
   }));
-const rawDialog = () => import("../settings/raw.tsx");
+const rawDialog = () => import("./raw.tsx");
 // A stable empty list: the history hook compares the newest block each render.
 const noBlocks: readonly { id: string }[] = [];
 
@@ -98,7 +102,7 @@ async function fetchActivityDetail(
         cwd,
         key: item.memory.key,
       },
-      signal,
+      { signal },
     );
     if (!result.item || result.item.error)
       throw new Error(result.item?.error || "Memory is no longer available.");
@@ -164,7 +168,6 @@ export default function Inspector({
   const [page, setPage] = useState<Page | null>(null);
   // An inner page is a layer of its own: back returns to the activity.
   useDismiss(page !== null, () => setPage(null));
-  const [busy, setBusy] = useState(false);
   const inspection = useRef(0);
   const inspectionRequest = useRef<AbortController>();
   // Progress ticks can outpace a refresh: one runs at a time and the latest
@@ -178,17 +181,6 @@ export default function Inspector({
       inspectionRequest.current?.abort();
     },
     [],
-  );
-
-  // Bound loader shared with nested viewers (which own their UI state).
-  const loadDetail = useCallback(
-    (
-      item: ActivityDetail,
-      before?: number,
-      prior?: ActivityDetail | null,
-      signal?: AbortSignal,
-    ) => fetchActivityDetail(session, cwd, item, before, prior, signal),
-    [session, cwd],
   );
 
   async function inspect(
@@ -216,7 +208,9 @@ export default function Inspector({
       setError(null);
     }
     try {
-      const next = await loadDetail(
+      const next = await fetchActivityDetail(
+        session,
+        cwd,
         item,
         before,
         before ? detail : undefined,
@@ -289,12 +283,7 @@ export default function Inspector({
     .join("|");
   useEffect(() => {
     if (!detail || loading || detail.olderWindow) return;
-    const item = rows.find((item) =>
-      detail.agent_id
-        ? item.agent_id === detail.agent_id
-        : item.id === detail.id,
-    );
-    inspect(item || detail, undefined, true).catch(report);
+    inspect(current || detail, undefined, true).catch(report);
   }, [rowsVersion, detail?.id, detail?.agent_id, detail?.olderWindow, loading]);
 
   const current =
@@ -314,22 +303,6 @@ export default function Inspector({
         ? detail?.name || "Subagent"
         : "Activity");
 
-  async function act(operation: "stop" | "background") {
-    if (!current) return;
-    setBusy(true);
-    try {
-      await command("activity", session, {
-        operation,
-        activity_id: current.id || 0,
-        agent_id: current.agent_id || "",
-        text: "",
-      });
-    } catch (failure) {
-      report(failure);
-    } finally {
-      setBusy(false);
-    }
-  }
   const live = !!current && !page && active(current);
 
   return (
@@ -340,24 +313,13 @@ export default function Inspector({
       close={close}
       actions={
         live && (
-          <>
-            {current.kind !== "agent" && current.detached === false && (
-              <IconButton
-                label="Move to background"
-                disabled={!online || busy}
-                onClick={() => act("background")}
-              >
-                <ArrowDownToLine />
-              </IconButton>
-            )}
-            <IconButton
-              label={`Stop ${title}`}
-              disabled={!online || busy || current.status === "stopping"}
-              onClick={() => act("stop")}
-            >
-              <Square />
-            </IconButton>
-          </>
+          <ActivityControls
+            item={current}
+            name={title}
+            session={session}
+            online={online}
+            report={report}
+          />
         )
       }
     >
@@ -423,7 +385,7 @@ export default function Inspector({
             setDetail(next);
           }}
           page={setPage}
-          loadDetail={loadDetail}
+          cwd={cwd}
           hidden={!!page}
         />
       ) : (
@@ -445,7 +407,7 @@ function DetailBody({
   report,
   navigate,
   page,
-  loadDetail,
+  cwd,
   hidden,
 }: {
   // Hidden, not unmounted, while a page is shown: the draft and thread
@@ -462,12 +424,7 @@ function DetailBody({
   report: Report;
   navigate: (detail: ActivityDetail) => void;
   page: (page: Page) => void;
-  loadDetail: (
-    item: ActivityDetail,
-    before?: number,
-    prior?: ActivityDetail | null,
-    signal?: AbortSignal,
-  ) => Promise<ActivityDetail>;
+  cwd: string;
 }) {
   const isAgent = !!detail.agent_id && !detail.memory;
   const isLive = active(current);
@@ -560,7 +517,9 @@ function DetailBody({
     async (block: Block) => {
       const { signal } = lifetime.current;
       try {
-        const full = await loadDetail(
+        const full = await fetchActivityDetail(
+          session,
+          cwd,
           {
             activity_id: block.activity_id,
             agent_id: block.agent_id,
@@ -580,7 +539,7 @@ function DetailBody({
         if (!signal.aborted) report(failure);
       }
     },
-    [detail, loadDetail, navigate, report],
+    [detail, session, cwd, navigate, report],
   );
   const threadActions = useMemo(
     () => ({

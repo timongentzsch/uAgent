@@ -46,13 +46,9 @@ FileWaitResult CurrentInterrupt() {
 }
 
 FileWaitResult WaitFallback(std::chrono::steady_clock::time_point deadline) {
-  int timeout_ms = std::min(100, PollTimeoutMs(deadline));
   pollfd events[2] = {{AbortWakeFd(), POLLIN, 0},
                       {SteeringWakeFd(), POLLIN, 0}};
-  int ready;
-  do {
-    ready = poll(events, 2, timeout_ms);
-  } while (ready < 0 && errno == EINTR);
+  PollRetry(events, 2, std::min(100, PollTimeoutMs(deadline)));
   if ((events[0].revents & POLLIN) && AbortRequested()) {
     return FileWaitResult::kInterrupted;
   }
@@ -68,12 +64,9 @@ FileWaitResult WaitFallback(std::chrono::steady_clock::time_point deadline) {
 FileWaitResult WaitHostFallback(std::chrono::steady_clock::time_point deadline,
                                 int wake_fd) {
   pollfd wake{wake_fd, POLLIN, 0};
-  const int timeout_ms = std::min(5000, PollTimeoutMs(deadline));
-  int ready;
-  do {
-    ready =
-        poll(wake_fd >= 0 ? &wake : nullptr, wake_fd >= 0 ? 1 : 0, timeout_ms);
-  } while (ready < 0 && errno == EINTR);
+  const int ready =
+      PollRetry(wake_fd >= 0 ? &wake : nullptr, wake_fd >= 0 ? 1 : 0,
+                std::min(5000, PollTimeoutMs(deadline)));
   if (ready > 0 && (wake.revents & POLLIN)) {
     return FileWaitResult::kInterrupted;
   }
@@ -98,86 +91,119 @@ std::vector<std::string> WatchTargets(const std::vector<std::string>& paths) {
 }
 
 #if defined(__APPLE__)
-FileWaitResult WaitNative(const std::string& path, const FileStamp& observed,
-                          std::chrono::steady_clock::time_point deadline) {
-  Fd file(open(path.c_str(), O_EVTONLY | O_CLOEXEC));
-  if (!file) return WaitFallback(deadline);
-  Fd kqueue_fd(kqueue());
-  if (!kqueue_fd) return WaitFallback(deadline);
-  fcntl(kqueue_fd.Get(), F_SETFD, FD_CLOEXEC);
-
-  struct kevent changes[3];
-  EV_SET(&changes[0], file.Get(), EVFILT_VNODE, EV_ADD | EV_CLEAR,
-         NOTE_WRITE | NOTE_DELETE | NOTE_RENAME | NOTE_ATTRIB, 0, nullptr);
-  EV_SET(&changes[1], AbortWakeFd(), EVFILT_READ, EV_ADD | EV_CLEAR, 0, 0,
-         nullptr);
-  EV_SET(&changes[2], SteeringWakeFd(), EVFILT_READ, EV_ADD | EV_CLEAR, 0, 0,
-         nullptr);
-  // Register before sampling the stamp, as inotify already does on Linux;
-  // otherwise a write between check and registration is never reported.
-  timespec immediately = {0, 0};
-  int registered;
-  do {
-    registered = kevent(kqueue_fd.Get(), changes, 3, nullptr, 0, &immediately);
-  } while (registered < 0 && errno == EINTR);
-  if (registered < 0) return WaitFallback(deadline);
-  if (SnapshotFile(path) != observed) return FileWaitResult::kChanged;
-  int timeout_ms = PollTimeoutMs(deadline);
-  timespec timeout = {timeout_ms / 1000, (timeout_ms % 1000) * 1000000L};
-  struct kevent event{};
+int KeventRetry(int queue, const struct kevent* changes, int count,
+                struct kevent* event, const timespec* timeout) {
   int ready;
   do {
-    ready = kevent(kqueue_fd.Get(), nullptr, 0, &event, 1, &timeout);
+    ready = kevent(queue, changes, count, event, event ? 1 : 0, timeout);
   } while (ready < 0 && errno == EINTR);
-  if (ready <= 0) return CurrentInterrupt();
-  if (event.flags & EV_ERROR) return WaitFallback(deadline);
-  if (event.ident == static_cast<uintptr_t>(AbortWakeFd())) {
-    if (AbortRequested()) return FileWaitResult::kInterrupted;
-    NormalizeAbortWake();
-    return FileWaitResult::kChanged;
-  }
-  if (event.ident == static_cast<uintptr_t>(SteeringWakeFd())) {
-    return SteeringYieldRequested() ? FileWaitResult::kSteering
-                                    : FileWaitResult::kChanged;
-  }
-  return FileWaitResult::kChanged;
-}
-#elif defined(__linux__)
-FileWaitResult WaitNative(const std::string& path, const FileStamp& observed,
-                          std::chrono::steady_clock::time_point deadline) {
-  Fd watcher(inotify_init1(IN_NONBLOCK | IN_CLOEXEC));
-  if (!watcher) return WaitFallback(deadline);
-  int watch = inotify_add_watch(
-      watcher.Get(), path.c_str(),
-      IN_MODIFY | IN_CLOSE_WRITE | IN_DELETE_SELF | IN_MOVE_SELF | IN_ATTRIB);
-  if (watch < 0) return WaitFallback(deadline);
-  pollfd events[3] = {{watcher.Get(), POLLIN, 0},
-                      {AbortWakeFd(), POLLIN, 0},
-                      {SteeringWakeFd(), POLLIN, 0}};
-  if (SnapshotFile(path) != observed) {
-    inotify_rm_watch(watcher.Get(), watch);
-    return FileWaitResult::kChanged;
-  }
-  int ready;
-  do {
-    ready = poll(events, 3, PollTimeoutMs(deadline));
-  } while (ready < 0 && errno == EINTR);
-  inotify_rm_watch(watcher.Get(), watch);
-  if (ready <= 0) return CurrentInterrupt();
-  if (events[1].revents & POLLIN) {
-    if (AbortRequested()) return FileWaitResult::kInterrupted;
-    NormalizeAbortWake();
-    return FileWaitResult::kChanged;
-  }
-  if (events[2].revents & POLLIN) {
-    return SteeringYieldRequested() ? FileWaitResult::kSteering
-                                    : FileWaitResult::kChanged;
-  }
-  return FileWaitResult::kChanged;
+  return ready;
 }
 #endif
 
 }  // namespace
+
+bool NativeWatch::Open() {
+  if (queue_) return true;
+#if defined(__APPLE__)
+  queue_.Reset(kqueue());
+  if (queue_) fcntl(queue_.Get(), F_SETFD, FD_CLOEXEC);
+#elif defined(__linux__)
+  queue_.Reset(inotify_init1(IN_NONBLOCK | IN_CLOEXEC));
+#endif
+  return static_cast<bool>(queue_);
+}
+
+bool NativeWatch::Watch(const std::string& path, Events events) {
+  if (!Open()) return false;
+#if defined(__APPLE__)
+  Fd file(open(path.c_str(), O_EVTONLY | O_CLOEXEC));
+  if (!file) return false;
+  const uint32_t notes = events == Events::kArrivals
+                             ? NOTE_WRITE
+                             : NOTE_WRITE | NOTE_DELETE | NOTE_RENAME |
+                                   NOTE_ATTRIB |
+                                   (events == Events::kTree ? NOTE_EXTEND : 0);
+  struct kevent change;
+  EV_SET(&change, file.Get(), EVFILT_VNODE, EV_ADD | EV_CLEAR, notes, 0,
+         nullptr);
+  if (KeventRetry(queue_.Get(), &change, 1, nullptr, nullptr) < 0) {
+    return false;
+  }
+  watched_.push_back(std::move(file));
+  return true;
+#elif defined(__linux__)
+  uint32_t mask = IN_MOVED_TO | IN_CLOSE_WRITE;
+  if (events != Events::kArrivals) {
+    mask =
+        IN_MODIFY | IN_CLOSE_WRITE | IN_DELETE_SELF | IN_MOVE_SELF | IN_ATTRIB;
+  }
+  if (events == Events::kTree) {
+    mask |= IN_CREATE | IN_DELETE | IN_MOVED_FROM | IN_MOVED_TO;
+  }
+  return inotify_add_watch(queue_.Get(), path.c_str(), mask) >= 0;
+#else
+  return false;
+#endif
+}
+
+bool NativeWatch::Wake(int fd) {
+  if (fd < 0) return true;
+  if (!Open()) return false;
+#if defined(__APPLE__)
+  struct kevent change;
+  EV_SET(&change, fd, EVFILT_READ, EV_ADD | EV_CLEAR, 0, 0, nullptr);
+  if (KeventRetry(queue_.Get(), &change, 1, nullptr, nullptr) < 0) {
+    return false;
+  }
+#endif
+  wakes_.push_back(fd);
+  return true;
+}
+
+int NativeWatch::Wait(std::chrono::steady_clock::time_point deadline) const {
+  if (!queue_) return -1;
+#if defined(__APPLE__)
+  const int timeout_ms = PollTimeoutMs(deadline);
+  const timespec timeout = {timeout_ms / 1000, (timeout_ms % 1000) * 1000000L};
+  struct kevent event{};
+  if (KeventRetry(queue_.Get(), nullptr, 0, &event, &timeout) <= 0) return -1;
+  for (int wake : wakes_) {
+    if (!(event.flags & EV_ERROR) &&
+        event.ident == static_cast<uintptr_t>(wake)) {
+      return wake;
+    }
+  }
+  return queue_.Get();
+#elif defined(__linux__)
+  std::vector<pollfd> events = {{queue_.Get(), POLLIN, 0}};
+  for (int wake : wakes_) events.push_back({wake, POLLIN, 0});
+  if (PollRetry(events.data(), static_cast<nfds_t>(events.size()),
+                PollTimeoutMs(deadline)) <= 0) {
+    return -1;
+  }
+  for (size_t i = 1; i < events.size(); ++i) {
+    if (events[i].revents & POLLIN) return events[i].fd;
+  }
+  return queue_.Get();
+#else
+  return -1;
+#endif
+}
+
+void NativeWatch::Drain() const {
+  if (!queue_) return;
+#if defined(__APPLE__)
+  struct kevent event;
+  const timespec immediately = {0, 0};
+  while (kevent(queue_.Get(), nullptr, 0, &event, 1, &immediately) > 0) {
+  }
+#elif defined(__linux__)
+  char buffer[4096];
+  while (read(queue_.Get(), buffer, sizeof buffer) > 0) {
+  }
+#endif
+}
 
 FileWaitResult WaitForAnyFileChange(
     const std::vector<std::string>& paths,
@@ -196,88 +222,34 @@ FileWaitResult WaitForAnyFileChange(
   const std::vector<std::string> targets = WatchTargets(paths);
   // Preserve enough descriptors for the HTTP/runtime paths under conservative
   // process limits. The fallback still observes the host wake and rechecks.
-  if (targets.empty()
 #if defined(__APPLE__)
-      || targets.size() > kKqueueWatchTargets
+  constexpr bool kEveryTarget = true;
+  if (targets.size() > kKqueueWatchTargets) {
+    return WaitHostFallback(deadline, wake_fd);
+  }
+#else
+  constexpr bool kEveryTarget = false;
 #endif
-  ) {
-    return WaitHostFallback(deadline, wake_fd);
-  }
-#if defined(__APPLE__)
-  Fd queue(kqueue());
-  if (!queue) return WaitHostFallback(deadline, wake_fd);
-  fcntl(queue.Get(), F_SETFD, FD_CLOEXEC);
-  std::vector<Fd> files;
-  std::vector<struct kevent> changes;
-  bool complete = true;
-  for (const std::string& target : targets) {
-    Fd file(open(target.c_str(), O_EVTONLY | O_CLOEXEC));
-    if (!file) {
-      complete = false;
-      break;
-    }
-    struct kevent change;
-    EV_SET(&change, file.Get(), EVFILT_VNODE, EV_ADD | EV_CLEAR,
-           NOTE_WRITE | NOTE_DELETE | NOTE_RENAME | NOTE_ATTRIB | NOTE_EXTEND,
-           0, nullptr);
-    changes.push_back(change);
-    files.push_back(std::move(file));
-  }
-  if (wake_fd >= 0) {
-    struct kevent change;
-    EV_SET(&change, wake_fd, EVFILT_READ, EV_ADD | EV_CLEAR, 0, 0, nullptr);
-    changes.push_back(change);
-  }
-  if (!complete || changes.empty() ||
-      kevent(queue.Get(), changes.data(), static_cast<int>(changes.size()),
-             nullptr, 0, nullptr) < 0) {
-    files.clear();
-    queue.Reset();
-    return WaitHostFallback(deadline, wake_fd);
-  }
-  for (size_t i = 0; i < paths.size(); ++i) {
-    if (SnapshotFile(paths[i]) != observed[i]) return FileWaitResult::kChanged;
-  }
-  int timeout_ms = PollTimeoutMs(deadline);
-  timespec timeout = {timeout_ms / 1000, (timeout_ms % 1000) * 1000000L};
-  struct kevent event{};
-  int ready;
-  do {
-    ready = kevent(queue.Get(), nullptr, 0, &event, 1, &timeout);
-  } while (ready < 0 && errno == EINTR);
-  if (ready <= 0) return FileWaitResult::kTimedOut;
-  return event.ident == static_cast<uintptr_t>(wake_fd)
-             ? FileWaitResult::kInterrupted
-             : FileWaitResult::kChanged;
-#elif defined(__linux__)
-  Fd watcher(inotify_init1(IN_NONBLOCK | IN_CLOEXEC));
-  if (!watcher) return WaitHostFallback(deadline, wake_fd);
+  NativeWatch watch;
   size_t watched = 0;
   for (const std::string& target : targets) {
-    if (inotify_add_watch(watcher.Get(), target.c_str(),
-                          IN_MODIFY | IN_CLOSE_WRITE | IN_CREATE | IN_DELETE |
-                              IN_MOVED_FROM | IN_MOVED_TO | IN_DELETE_SELF |
-                              IN_MOVE_SELF | IN_ATTRIB) >= 0) {
+    if (watch.Watch(target, NativeWatch::Events::kTree)) {
       ++watched;
+    } else if (kEveryTarget) {
+      break;
     }
   }
-  if (!watched) return WaitHostFallback(deadline, wake_fd);
+  if (!watched || (kEveryTarget && watched != targets.size()) ||
+      !watch.Wake(wake_fd)) {
+    return WaitHostFallback(deadline, wake_fd);
+  }
   for (size_t i = 0; i < paths.size(); ++i) {
     if (SnapshotFile(paths[i]) != observed[i]) return FileWaitResult::kChanged;
   }
-  pollfd events[2] = {{watcher.Get(), POLLIN, 0}, {wake_fd, POLLIN, 0}};
-  nfds_t count = wake_fd >= 0 ? 2 : 1;
-  int ready;
-  do {
-    ready = poll(events, count, PollTimeoutMs(deadline));
-  } while (ready < 0 && errno == EINTR);
-  if (ready <= 0) return FileWaitResult::kTimedOut;
-  return wake_fd >= 0 && (events[1].revents & POLLIN)
-             ? FileWaitResult::kInterrupted
-             : FileWaitResult::kChanged;
-#else
-  return WaitHostFallback(deadline, wake_fd);
-#endif
+  const int ready = watch.Wait(deadline);
+  if (ready < 0) return FileWaitResult::kTimedOut;
+  return ready == wake_fd ? FileWaitResult::kInterrupted
+                          : FileWaitResult::kChanged;
 }
 
 FileStamp SnapshotFile(const std::string& path) {
@@ -306,11 +278,26 @@ FileWaitResult WaitForFileChange(
     return FileWaitResult::kTimedOut;
   }
   if (path.empty()) return WaitFallback(deadline);
-#if defined(__APPLE__) || defined(__linux__)
-  return WaitNative(path, observed, deadline);
-#else
-  return WaitFallback(deadline);
-#endif
+  // Watch before sampling the stamp: a write between the check and the watch
+  // would otherwise never be reported.
+  NativeWatch watch;
+  if (!watch.Watch(path, NativeWatch::Events::kFile) ||
+      !watch.Wake(AbortWakeFd()) || !watch.Wake(SteeringWakeFd())) {
+    return WaitFallback(deadline);
+  }
+  if (SnapshotFile(path) != observed) return FileWaitResult::kChanged;
+  const int ready = watch.Wait(deadline);
+  if (ready < 0) return CurrentInterrupt();
+  if (ready == AbortWakeFd()) {
+    if (AbortRequested()) return FileWaitResult::kInterrupted;
+    NormalizeAbortWake();
+    return FileWaitResult::kChanged;
+  }
+  if (ready == SteeringWakeFd()) {
+    return SteeringYieldRequested() ? FileWaitResult::kSteering
+                                    : FileWaitResult::kChanged;
+  }
+  return FileWaitResult::kChanged;
 }
 
 }  // namespace uagent

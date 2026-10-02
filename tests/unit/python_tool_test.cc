@@ -3,8 +3,10 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iterator>
 #include <string>
 #include <system_error>
@@ -13,6 +15,7 @@
 #include "include/core/fs.h"
 #include "include/tools/files.h"
 #include "include/tools/registry.h"
+#include "include/tools/session.h"
 #include "include/tools/shell.h"
 #include "tests/unit/test_support.h"
 
@@ -128,6 +131,18 @@ void TestPythonTool() {
   const Tool* scratch_tool = FindTool(python_tools, "scratch");
   CHECK(scratch_tool && scratch_tool->approval_preview({{"path", "priv.sh"}}) ==
                             "sudo printf before\n");
+
+  // Every parameter has one plain type: a union ("string or null") breaks
+  // the tool-call conversion some providers do for a model.
+  std::function<bool(const json&)> plain = [&](const json& schema) {
+    if (schema.is_object() && schema.contains("type") &&
+        schema["type"].is_array()) {
+      return false;
+    }
+    return !schema.is_structured() || std::ranges::all_of(schema, plain);
+  };
+  for (const Tool& tool : python_tools) CHECK(plain(tool.parameters));
+  CHECK(plain(SessionTool().parameters));
 
   CHECK(
       ToolRunScratch(supervisor, root, "other.rb").output.find(".py or .sh") !=

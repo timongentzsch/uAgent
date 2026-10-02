@@ -78,13 +78,14 @@ void TestGrepTool() {
   CHECK(paths.Ok());
   CHECK(paths.output.find("one.cpp") != std::string::npos);
   CHECK(paths.output.find("needle one") == std::string::npos);
-  setenv("UAGENT_MAX_BACKGROUND_JOBS", "1", 1);
-  CHECK(supervisor.TryAdd({.pid = 999991, .cmd = "busy"}, 1));
+  for (pid_t pid = 999981; pid < 999981 + kMaxBackgroundJobs; ++pid) {
+    CHECK(supervisor.TryAdd({.pid = pid, .cmd = "busy"}, kMaxBackgroundJobs));
+  }
   ToolResult limited = ToolGrep(supervisor, "needle", root.string(), "");
   CHECK(limited.error == ToolErrorCode::kLimitExceeded);
   CHECK(limited.output.find("background job limit") != std::string::npos);
-  CHECK(supervisor.TakeAllForShutdown().size() == 1);
-  unsetenv("UAGENT_MAX_BACKGROUND_JOBS");
+  CHECK(supervisor.TakeAllForShutdown().size() ==
+        static_cast<size_t>(kMaxBackgroundJobs));
 
   ToolContext activity_context{std::chrono::steady_clock::now() +
                                std::chrono::seconds(5)};
@@ -212,7 +213,6 @@ void TestGrepTool() {
     CHECK(memory->parameters["required"] == json::array({"action"}));
   }
   CHECK(python && python->timeout_s == 0);
-  CHECK(python && python->stable_argument == "path");
   CHECK(FindTool(lean_tools, "wait_background") == nullptr);
   const Tool* activity = FindTool(lean_tools, "activity");
   CHECK(activity != nullptr);

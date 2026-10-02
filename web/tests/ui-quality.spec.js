@@ -84,7 +84,7 @@ for (const width of [390, 1280]) {
     const dataRequested = new Promise((resolve) => (reachedData = resolve));
     let holdData = false;
     await page.route(
-      `**/${manifest["src/features/settings/statistics.tsx"].file}`,
+      `**/${manifest["src/features/chat/statistics.tsx"].file}`,
       async (route) => {
         await code;
         await route.continue();
@@ -110,8 +110,7 @@ for (const width of [390, 1280]) {
     try {
       await page.goto(`/#session=${session.id}`);
       const trigger = page.getByRole("button", {
-        name: "Turn statistics",
-        exact: true,
+        name: /^Turn statistics: /,
       });
       await expect(trigger).toBeVisible();
       holdData = true;
@@ -316,7 +315,7 @@ test.describe("touch interaction", () => {
     session,
   }, testInfo) => {
     await page.goto(`/#session=${session.id}`);
-    const input = page.getByRole("textbox", { name: "Message or guidance" });
+    const input = page.getByRole("combobox", { name: "Message or guidance" });
     for (const zoom of [50, 75, 100, 150]) {
       await page.getByRole("button", { name: "Settings", exact: true }).click();
       const settings = page.getByRole("dialog", {
@@ -390,20 +389,26 @@ test.describe("touch interaction", () => {
     );
     expect(await fields.count()).toBeGreaterThan(0);
     for (const field of await fields.all()) {
-      const measured = await field.evaluate((node) => {
-        const style = getComputedStyle(node);
-        const wrapper = node.parentElement;
-        const box = node.getBoundingClientRect();
-        const parent = wrapper.getBoundingClientRect();
-        return {
-          font: parseFloat(style.fontSize),
-          painted:
-            parseFloat(style.fontSize) * new DOMMatrix(style.transform).a,
-          intended: parseFloat(getComputedStyle(wrapper).fontSize),
-          widthError: Math.abs(box.width - parent.width),
-          heightError: Math.abs(box.height - parent.height),
-        };
-      });
+      const measure = () =>
+        field.evaluate((node) => {
+          const style = getComputedStyle(node);
+          const wrapper = node.parentElement;
+          const box = node.getBoundingClientRect();
+          const parent = wrapper.getBoundingClientRect();
+          return {
+            font: parseFloat(style.fontSize),
+            painted:
+              parseFloat(style.fontSize) * new DOMMatrix(style.transform).a,
+            intended: parseFloat(getComputedStyle(wrapper).fontSize),
+            widthError: Math.abs(box.width - parent.width),
+            heightError: Math.abs(box.height - parent.height),
+          };
+        });
+      // A field in a surface that just opened takes its box a frame later.
+      await expect
+        .poll(async () => (await measure()).heightError)
+        .toBeLessThan(1);
+      const measured = await measure();
       expect(measured.font).toBeGreaterThanOrEqual(16);
       expect(measured.painted).toBeCloseTo(measured.intended, 2);
       if (zoom <= 75) expect(measured.painted).toBeLessThan(16);
@@ -434,15 +439,14 @@ test.describe("touch interaction", () => {
       if (await back.isVisible()) await back.click();
       await settings
         .locator(".settings-nav")
-        .getByRole("button", { name: "Permissions", exact: true })
+        .getByRole("button", {
+          name: "Permissions & allowed actions",
+          exact: true,
+        })
         .click();
       await expect(
-        settings.getByRole("combobox", {
-          name: "UAGENT_APPROVAL",
-          exact: true,
-        }),
+        settings.getByRole("button", { name: /^Approval mode/ }),
       ).toBeVisible();
-      await scaledFields(settings, zoom);
       if (await back.isVisible()) await back.click();
       await settings
         .locator(".settings-nav")
@@ -452,14 +456,16 @@ test.describe("touch interaction", () => {
         name: "Find a setting",
       });
       await search.fill("timeout");
-      await expect(
-        settings.locator('.setting-row input[type="number"]').first(),
-      ).toBeVisible();
       await scaledFields(settings, zoom);
+      // A setting's own field lives in its sheet.
+      await settings.getByRole("button", { name: /^Tool timeout/ }).click();
+      const sheet = page.getByRole("dialog", { name: "Tool timeout" });
+      await expect(sheet.getByRole("spinbutton")).toBeVisible();
+      await scaledFields(sheet, zoom);
+      await page.keyboard.press("Escape");
+      await expect(sheet).toHaveCount(0);
       await search.fill("memory");
-      await expect(
-        settings.locator('.setting-row [role="switch"]').first(),
-      ).toBeVisible();
+      await expect(settings.locator('[role="switch"]').first()).toBeVisible();
       await scaledFields(settings, zoom);
       await settings.getByRole("button", { name: "Close settings" }).click();
       await page.getByRole("button", { name: "Model and effort" }).click();

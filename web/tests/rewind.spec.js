@@ -42,7 +42,7 @@ test("edit from a message continues in a fork with the message to edit", async (
   const second = page
     .locator(".message.user")
     .filter({ hasText: "Second request to edit" });
-  await second.getByRole("button", { name: "Message menu" }).click();
+  await second.getByRole("button", { name: /^Actions for / }).click();
   await page.getByRole("menuitem", { name: "Edit from here" }).click();
 
   await expect(page.getByLabel("Message or guidance")).toHaveValue(

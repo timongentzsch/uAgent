@@ -21,21 +21,16 @@
 
 namespace uagent {
 json ManagementControl(const json& request) {
-  if (JsonValue(request, "kind", "") == "models") {
+  const std::string kind = JsonValue(request, "kind", "");
+  if (kind == "models") {
     Api api(RuntimeConfig::FromEnvironment());
     auto provider = ConfigureProvider(api);
     return ModelCatalogue(api, provider.routes, provider.providers);
   }
-  if (JsonValue(request, "kind", "") == "schedule") {
-    return ScheduleControl(request);
-  }
-  if (JsonValue(request, "kind", "") == "permission_rules") {
-    return PermissionRulesControl(request);
-  }
-  if (JsonValue(request, "kind", "") == "tool_categories") {
-    return ToolCategoriesControl(request);
-  }
-  if (JsonValue(request, "kind", "") == "instructions") {
+  if (kind == "schedule") return ScheduleControl(request);
+  if (kind == "permission_rules") return PermissionRulesControl(request);
+  if (kind == "tool_categories") return ToolCategoriesControl(request);
+  if (kind == "instructions") {
     // A person edits these directly; an agent asks through uagent.
     const std::string cwd = CanonicalCwd();
     if (JsonValue(request, "action", "show") == "set") {
@@ -48,8 +43,8 @@ json ManagementControl(const json& request) {
                  "or project"}};
       }
       std::optional<std::string> base;
-      if (request.contains("base") && request["base"].is_string()) {
-        base = request["base"].get<std::string>();
+      if (const std::string* text = JsonStringRef(request, "base")) {
+        base = *text;
       }
       const std::string error = WriteInstructionFile(
           coordinator, project, cwd, JsonValue(request, "text", ""), base);

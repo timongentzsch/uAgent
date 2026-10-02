@@ -57,11 +57,9 @@ void TestSessionCommandKinds() {
   };
   for (const auto& [kind, want] : cases) {
     session::SessionCommand parsed;
-    std::string error = "dirty";
     REQUIRE(session::ParseSessionCommand(CommandEnvelope(kind), kSession,
-                                         kGeneration, parsed, error));
+                                         kGeneration, parsed));
     CHECK(parsed.kind == want);
-    CHECK(error.empty());
     CHECK(parsed.request_id == kRequest);
   }
   // Missing or unrecognized kinds flow through as kUnknown so the caller
@@ -72,9 +70,8 @@ void TestSessionCommandKinds() {
                                    {"request_id", kRequest}},
                               CommandEnvelope("teleport")}) {
     session::SessionCommand parsed;
-    std::string error;
-    REQUIRE(session::ParseSessionCommand(command, kSession, kGeneration, parsed,
-                                         error));
+    REQUIRE(
+        session::ParseSessionCommand(command, kSession, kGeneration, parsed));
     CHECK(parsed.kind == session::SessionCommandKind::kUnknown);
   }
 }
@@ -89,9 +86,7 @@ void TestSessionCommandFields() {
   command["cancelled"] = true;
   command["attachments"] = json::array();
   session::SessionCommand parsed;
-  std::string error;
-  REQUIRE(session::ParseSessionCommand(command, kSession, kGeneration, parsed,
-                                       error));
+  REQUIRE(session::ParseSessionCommand(command, kSession, kGeneration, parsed));
   CHECK(parsed.text == "hello");
   CHECK(parsed.client_request_id == "client-1");
   CHECK(parsed.interaction_id == "interaction-1");
@@ -103,7 +98,7 @@ void TestSessionCommandFields() {
   // the submit fast path depends on it.
   session::SessionCommand bare;
   REQUIRE(session::ParseSessionCommand(CommandEnvelope("submit"), kSession,
-                                       kGeneration, bare, error));
+                                       kGeneration, bare));
   CHECK(bare.text.empty());
   CHECK(!bare.cancelled);
   CHECK(!bare.has_attachments);
@@ -111,21 +106,46 @@ void TestSessionCommandFields() {
 
 void TestSessionCommandRejects() {
   session::SessionCommand parsed;
-  std::string error;
   json wrong_session = CommandEnvelope("submit");
   wrong_session["session_id"] = "other";
   CHECK(!session::ParseSessionCommand(wrong_session, kSession, kGeneration,
-                                      parsed, error));
+                                      parsed));
   json wrong_generation = CommandEnvelope("submit");
   wrong_generation["generation"] = "other";
   CHECK(!session::ParseSessionCommand(wrong_generation, kSession, kGeneration,
-                                      parsed, error));
+                                      parsed));
   for (const std::string bad : {"", "short", "0123456789ABCDEF", "xyz-!@#"}) {
     json command = CommandEnvelope("submit");
     command["request_id"] = bad;
-    CHECK(!session::ParseSessionCommand(command, kSession, kGeneration, parsed,
-                                        error));
+    CHECK(
+        !session::ParseSessionCommand(command, kSession, kGeneration, parsed));
   }
+}
+
+// A reader catching up takes the backlog a batch at a time: Read stops at
+// its byte budget and the next call continues from where the reader got to.
+void TestReplayLogReadsInBatches() {
+  session::ReplayLog log(MiB(1), 1024);
+  for (int index = 0; index < 10; ++index) {
+    log.Publish("e", "s", "g",
+                {{"kind", "note"}, {"pad", std::string(90, 'x')}}, false);
+  }
+  session::ReplayBatch first = log.Read(0, true, log.Cursor(), 250);
+  CHECK(!first.reset);
+  CHECK(first.events.size() > 1 && first.events.size() < 10);
+  CHECK(first.events.front().sequence == 1);
+  uint64_t next = first.events.back().sequence;
+  size_t seen = first.events.size();
+  while (next < log.Cursor()) {
+    session::ReplayBatch more = log.Read(next, true, log.Cursor(), 250);
+    REQUIRE(!more.events.empty());
+    CHECK(more.events.front().sequence == next + 1);
+    next = more.events.back().sequence;
+    seen += more.events.size();
+  }
+  CHECK(seen == 10);
+  // A watermark holds back what was published after the reader connected.
+  CHECK(log.Read(0, true, 3, 1 << 20).events.size() == 3);
 }
 
 void TestReceiptLog() {
@@ -193,7 +213,7 @@ void TestHostCommandKinds() {
             ? 1
             : 0;
   }
-  CHECK(forwarded == 18);
+  CHECK(forwarded == 19);
   for (auto local : {session::SessionCommandKind::kClose,
                      session::SessionCommandKind::kCreate,
                      session::SessionCommandKind::kDelete,
@@ -230,7 +250,7 @@ void TestCommandReplies() {
   context.agent = std::make_unique<Agent>(
       context.runtime.api, context.tools, context.runtime.processes,
       context.runtime.side_usage,
-      [](const Tool&, const json&, int64_t) { return false; });
+      [](const Tool&, const json&, int64_t) { return std::string("denied"); });
   std::vector<Attachment> attachments;
   std::string path;
   uint64_t revision = 0;
@@ -335,7 +355,7 @@ void TestSessionPersistence() {
   context.agent = std::make_unique<Agent>(
       context.runtime.api, context.tools, context.runtime.processes,
       context.runtime.side_usage,
-      [](const Tool&, const json&, int64_t) { return false; });
+      [](const Tool&, const json&, int64_t) { return std::string("denied"); });
   const std::vector<json> requests = {
       {{"kind", "tools"}},
       {{"kind", "permissions"}},

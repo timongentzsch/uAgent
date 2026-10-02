@@ -3,14 +3,12 @@
 #include <algorithm>
 #include <chrono>
 #include <filesystem>
-#include <map>
-#include <memory>
 #include <string>
 #include <utility>
-#include <vector>
 
 #include "include/agent/session_role.h"
 #include "include/agent/session_view.h"
+#include "include/app/launch.h"
 #include "include/app/library.h"
 #include "include/app/schedule.h"
 #include "include/app/session.h"
@@ -45,8 +43,7 @@ SessionCommandResult SessionHost::ExecuteCommand(
     const bool coordinator = JsonValue(command, "coordinator", false);
     auto path = coordinator
                     ? CoordinatorPath(cwd.string())
-                    : UagentDir(kHistoryDir) + "/" + WorkspaceId(cwd.string()) +
-                          "/web-" + RandomToken(16) + ".json";
+                    : HistoryPath(cwd.string(), "web-" + RandomToken(16));
     if (auto known = sessions_.find(HashHex(path)); known != sessions_.end()) {
       result.outcome["session"] = Metadata(*known->second);
       return result;
@@ -121,14 +118,9 @@ SessionCommandResult SessionHost::ExecuteCommand(
     } else if (PathExists(session->path)) {
       stored = SessionStore::Rename(session->path, title);
     } else {
-      const int64_t updated = NowMillis();
-      auto written =
-          ToolWritePrivateFile(draft_path, JsonDump({{"id", session->id},
-                                                     {"path", session->path},
-                                                     {"cwd", session->cwd},
-                                                     {"title", title},
-                                                     {"updated", updated}}));
-      if (!written.Ok()) result.error = "cannot save conversation title";
+      if (!WriteDraft(*session, title, NowMillis())) {
+        result.error = "cannot save conversation title";
+      }
     }
     if (!stored.Ok()) result.error = stored.message;
     asset_lock.unlock();
@@ -144,15 +136,18 @@ SessionCommandResult SessionHost::ExecuteCommand(
     } else if (result.error.empty()) {
       session->title = title;
       session->draft_title = title;
-      session->updated =
-          std::chrono::duration_cast<std::chrono::milliseconds>(
-              std::chrono::system_clock::now().time_since_epoch())
-              .count();
-      replay_.Publish(epoch_, session->id, "",
-                      {{"kind", "metadata"}, {"metadata", Metadata(*session)}},
-                      !session->run_id.empty());
+      session->updated = NowMillis();
+      PublishMetadata(session->id, *session);
     }
     return result;
+  }
+  // A message to a saved session starts it: its runtime stopped for having
+  // nothing to do, and the message is as welcome as it was before.
+  if (kind == SessionCommandKind::kSubmit && session->pid <= 0 &&
+      JsonValue(command, "generation", "") == session->generation) {
+    if (!ActivateLocked(session, result.error, lock, true)) return result;
+    command["generation"] = session->generation;
+    result.wake = true;
   }
   if (kind == SessionCommandKind::kDelete) {
     result.error = "stop and close this conversation before deleting it";
@@ -180,7 +175,7 @@ SessionCommandResult SessionHost::ExecuteCommand(
       lock.unlock();
       session->Send({{"kind", "close"}, {"request_id", request_id}});
       lock.lock();
-      changed_.wait_for(lock, std::chrono::seconds(5),
+      changed_.wait_for(lock, kWorkerShutdownTimeout,
                         [&] { return session->exited.load(); });
     }
   } else if (session->pid <= 0 || session->exited) {
@@ -198,8 +193,7 @@ SessionCommandResult SessionHost::ExecuteCommand(
           session->path, *ids, command,
           [&] {
             std::lock_guard guard(mutex_);
-            if (!sessions_.contains(session->id) ||
-                sessions_.at(session->id) != session || session->exited ||
+            if (!IsCurrentLocked(session.get()) || session->exited ||
                 session->status == "deleting") {
               return std::string(
                   "session changed while claiming attachments; refresh");

@@ -33,6 +33,7 @@ namespace uagent {
   X(TestMarkdownMath)                            \
   X(TestCapsAndEscaping)                         \
   X(TestFileTools)                               \
+  X(TestEditJournal)                             \
   X(TestMathTransliteration)                     \
   X(TestActivityProjection)                      \
   X(TestReasoningPartReconciliation)             \
@@ -63,6 +64,7 @@ namespace uagent {
   X(TestSessionCommandFields)                    \
   X(TestSessionCommandRejects)                   \
   X(TestReceiptLog)                              \
+  X(TestReplayLogReadsInBatches)                 \
   X(TestReceiptLogBackpressure)                  \
   X(TestHostCommandKinds)                        \
   X(TestToolCopiesKeepRoomForUserFiles)          \
@@ -73,6 +75,7 @@ namespace uagent {
   X(TestSandboxProbe)                            \
   X(TestStrictBooleanSettings)                   \
   X(TestSelfDescriptionSchemas)                  \
+  X(TestNearestSlashCommand)                     \
   X(TestSelfDirective)                           \
   X(TestInstructionFiles)                        \
   X(TestPromptRequestParity)                     \

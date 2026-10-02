@@ -1,9 +1,9 @@
 {
-  "commands": 44,
-  "flags": 24,
+  "commands": 42,
+  "flags": 25,
   "prompt_digest": "cafb7e11ed10291b",
-  "schema_digest": "dcb100fd415bd3d8",
-  "settings": 86,
-  "tools_digest": "11a60c4a6a8aabff",
+  "schema_digest": "2b8d086906ff68f2",
+  "settings": 67,
+  "tools_digest": "7a253ca1030aeea8",
   "version": "1.2.0"
 }

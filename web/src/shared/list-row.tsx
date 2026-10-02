@@ -8,16 +8,16 @@ export function ListRow({
   title,
   meta,
   unread,
+  class: className = "",
   children,
   ...props
 }: Omit<JSX.ButtonHTMLAttributes<HTMLButtonElement>, "title"> & {
   title: ComponentChildren;
   meta?: ComponentChildren;
   unread?: string | false;
-  variant?: "quiet";
 }) {
   return (
-    <Button {...props}>
+    <Button {...props} class={`list-row ${className}`}>
       <span>
         {title}
         {unread && <span class="unread-dot" role="img" aria-label={unread} />}

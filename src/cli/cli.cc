@@ -9,10 +9,11 @@
 #include <atomic>
 #include <cctype>
 #include <cstdio>
-#include <cstring>
 #include <iostream>
 #include <string>
+#include <string_view>
 #include <utility>
+#include <vector>
 
 #include "include/core/events.h"
 #include "include/core/limits.h"
@@ -59,28 +60,30 @@ class ScopedCookedInput {
 constexpr SlashCommandSpec kSlashCommands[] = {
     {SlashCommandId::kAgents, "/agents",
      "[ID [output|stop|message TEXT|followup TEXT]]",
-     "inspect, guide or resume delegated agents"},
+     "inspect, guide or resume delegated agents", kTerminal},
     {SlashCommandId::kAttach, "/attach", "PATH|clear",
-     "attach a file to the next turn", false},
+     "attach a file to the next turn", kNoViewer | kTerminal},
     {SlashCommandId::kCompact, "/compact", "",
-     "summarize conversation to prevent hitting the context limit", false},
+     "summarize conversation to prevent hitting the context limit", kNoViewer},
     {SlashCommandId::kContext, "/context", "", "show current model request"},
     {SlashCommandId::kConfig, "/config",
      "[user|project KEY=VALUE|unset KEY|reset]",
      "show changed settings, change one, or reset a scope"},
     {SlashCommandId::kFork, "/fork", "[TITLE] [@TURN]",
-     "branch this conversation, optionally at user turn N", false, true},
+     "branch this conversation, optionally at user turn N",
+     kNoViewer | kClientOnly},
     {SlashCommandId::kRewind, "/rewind", "[N]",
-     "fork before your message N to edit it; bare, list the numbers", false},
+     "fork before your message N to edit it; bare, list the numbers",
+     kNoViewer},
     {SlashCommandId::kShare, "/share", "", "export transcript as markdown",
-     false, true},
+     kNoViewer | kClientOnly},
     {SlashCommandId::kPermissions, "/permissions",
      "[default|ask|auto|yolo|rules|forget N|forget all]",
      "show or change permission mode, or this repository's remembered "
      "actions",
-     false},
+     kNoViewer},
     {SlashCommandId::kRename, "/rename", "TITLE", "rename this conversation",
-     false},
+     kNoViewer},
     {SlashCommandId::kInstructions, "/instructions",
      "[edit sessions|coordinator user|project | clear]",
      "show or edit instructions; clear this conversation's self-directive"},
@@ -88,16 +91,21 @@ constexpr SlashCommandSpec kSlashCommands[] = {
      "inspect captured HTTP attempts (latest by default)"},
     {SlashCommandId::kDiff, "/diff", "",
      "show git diff (including untracked files)"},
-    {SlashCommandId::kCost, "/cost", "", "show tokens and spend by route"},
+    {SlashCommandId::kCost, "/cost", "", "show tokens and spend by route",
+     kTerminal},
+    {SlashCommandId::kChanges, "/changes", "",
+     "list the files the last turn changed", kTerminal},
+    {SlashCommandId::kUndo, "/undo", "[FILE]",
+     "put back the files the last turn changed, or one of them",
+     kNoViewer | kTerminal},
     {SlashCommandId::kDebugConfig, "/debug-config", "[SETTING]",
-     "show configuration layers, sources and restart-required fields"},
+     "show configuration layers, sources and restart-required fields",
+     kTerminal},
     {SlashCommandId::kEffort, "/effort", "LEVEL",
-     "choose how much reasoning effort to use", false},
-    {SlashCommandId::kHelp, "/help", "", "show this help"},
+     "choose how much reasoning effort to use", kNoViewer | kTerminal},
+    {SlashCommandId::kHelp, "/help", "", "show this help", kTerminal},
     {SlashCommandId::kInit, "/init", "",
      "create an AGENTS.md file with instructions for \u00b5Agent"},
-    {SlashCommandId::kLink, "/link", "[TOKEN]",
-     "create a session link or join one with its token"},
     {SlashCommandId::kMemory, "/memory",
      "[list|get KEY|set KEY @FILE|forget KEY|rename KEY TARGET|copy KEY "
      "TARGET]",
@@ -108,49 +116,56 @@ constexpr SlashCommandSpec kSlashCommands[] = {
     {SlashCommandId::kSchedule, "/schedule", "[list|JSON]",
      "manage scheduled tasks and runs"},
     {SlashCommandId::kModel, "/model", "NAME", "choose what model to use",
-     false},
+     kNoViewer | kTerminal},
     {SlashCommandId::kModels, "/models", "[QUERY]",
-     "search and select across providers"},
+     "search and select across providers", kTerminal},
     {SlashCommandId::kProcesses, "/ps", "[ID [output|stop]]",
-     "inspect or stop background work"},
-    {SlashCommandId::kPeers, "/peers", "", "list linked and linkable sessions"},
-    {SlashCommandId::kQuit, "/quit", "", "exit uagent", false, true},
-    {SlashCommandId::kReset, "/reset", "", "start a new chat", false, true},
-    {SlashCommandId::kReset, "/new", "", "start a new chat", false, true},
-    {SlashCommandId::kClear, "/clear", "", "clear the screen", false, true,
-     true},
+     "inspect or stop background work", kTerminal},
+    {SlashCommandId::kQuit, "/quit", "", "exit uagent",
+     kNoViewer | kClientOnly | kTerminal},
+    {SlashCommandId::kReset, "/reset", "", "start a new chat",
+     kNoViewer | kClientOnly},
+    {SlashCommandId::kReset, "/new", "", "", kNoViewer | kClientOnly},
+    {SlashCommandId::kClear, "/clear", "", "clear the screen",
+     kNoViewer | kClientOnly | kTerminal},
     {SlashCommandId::kReview, "/review", "[TARGET]",
      "review my current changes and find issues"},
     {SlashCommandId::kSessions, "/sessions", "[PREFIX]",
-     "resume a saved chat, optionally matching PREFIX", true, true},
+     "resume a saved chat, optionally matching PREFIX",
+     kClientOnly | kTerminal},
     {SlashCommandId::kStatus, "/status", "",
      "show current session configuration and token usage"},
-    {SlashCommandId::kTell, "/tell", "ID TEXT", "message a linked session"},
     {SlashCommandId::kTools, "/tools", "[on|off NAME|profile NAME|reset]",
      "inspect or choose tools for this conversation"},
     {SlashCommandId::kMcp, "/mcp", "[retry|on|off NAME]",
      "show MCP servers; retry one or switch it on or off"},
     {SlashCommandId::kRestart, "/restart", "",
-     "restart this conversation to apply settings that need it", false, true,
-     true},
+     "restart this conversation to apply settings that need it",
+     kNoViewer | kClientOnly | kTerminal},
     {SlashCommandId::kVariant, "/variant", "MODE",
-     "set OpenRouter provider routing", false},
+     "set OpenRouter provider routing", kNoViewer | kTerminal},
     {SlashCommandId::kBtw, "/btw", "QUESTION",
-     "ask a side question without adding it to the conversation", false, true},
+     "ask a side question without adding it to the conversation",
+     kNoViewer | kClientOnly},
     {SlashCommandId::kVerbose, "/verbose", "",
-     "toggle full reasoning and expanded tool output", false, true, true},
-    {SlashCommandId::kYolo, "/yolo", "", "toggle automatic approval", false},
+     "toggle full reasoning and expanded tool output",
+     kNoViewer | kClientOnly | kTerminal},
+    {SlashCommandId::kYolo, "/yolo", "", "toggle automatic approval",
+     kNoViewer | kTerminal},
     {SlashCommandId::kCoord, "/coord", "", "open this folder's coordinator",
-     false, true, true},
+     kNoViewer | kClientOnly | kTerminal},
     {SlashCommandId::kBoard, "/board", "",
-     "list this folder's sessions and threads", false, true, true},
+     "list this folder's sessions and threads",
+     kNoViewer | kClientOnly | kTerminal},
     {SlashCommandId::kOpen, "/open", "ID", "switch to a session from /board",
-     false, true, true},
-    {SlashCommandId::kHelp, "/commands", "", ""},
-    {SlashCommandId::kQuit, "/exit", "", "", false, true},
-    {SlashCommandId::kQuit, "/q", "", "", false, true},
+     kNoViewer | kClientOnly | kTerminal},
+    {SlashCommandId::kHelp, "/commands", "", "", kTerminal},
+    {SlashCommandId::kQuit, "/exit", "", "",
+     kNoViewer | kClientOnly | kTerminal},
+    {SlashCommandId::kQuit, "/q", "", "", kNoViewer | kClientOnly | kTerminal},
     {SlashCommandId::kContext, "/ctx", "", ""},
-    {SlashCommandId::kSessions, "/resume", "[PREFIX]", "", true, true},
+    {SlashCommandId::kSessions, "/resume", "[PREFIX]", "",
+     kClientOnly | kTerminal},
 };
 
 std::span<const SlashCommandSpec> SlashCommandRegistry() {
@@ -192,6 +207,34 @@ ParsedSlashCommand ParseSlashCommand(const std::string& input) {
   return {};
 }
 
+std::string NearestSlashCommand(const std::string& input) {
+  const std::string word = input.substr(0, input.find(' '));
+  std::string nearest;
+  // More than two edits, or more than half the letters, is another word.
+  size_t best = 3;
+  for (const SlashCommandSpec& command : kSlashCommands) {
+    // Levenshtein over one rolling row; the names are a few bytes long.
+    const std::string_view name = command.name;
+    std::vector<size_t> row(name.size() + 1);
+    for (size_t j = 0; j <= name.size(); ++j) row[j] = j;
+    for (size_t i = 1; i <= word.size(); ++i) {
+      size_t diagonal = row[0];
+      row[0] = i;
+      for (size_t j = 1; j <= name.size(); ++j) {
+        const size_t above = row[j];
+        row[j] = std::min({above + 1, row[j - 1] + 1,
+                           diagonal + (word[i - 1] != name[j - 1])});
+        diagonal = above;
+      }
+    }
+    if (row.back() < best && 2 * row.back() + 1 <= word.size()) {
+      best = row.back();
+      nearest = name;
+    }
+  }
+  return nearest;
+}
+
 ForkArgument ParseForkArgument(const std::string& argument) {
   const std::string rest = Trim(argument);
   auto number = [](const std::string& text) {
@@ -216,9 +259,9 @@ void SetInteractiveReadHandler(InteractiveReadHandler handler) {
 
 bool InteractiveReadAvailable() { return static_cast<bool>(ReadHandler()); }
 
-std::string InputPrompt(const char* label) {
-  return std::string(BOLD()) +
-         (label && *label ? std::string(label) + "> " : "> ") + RST();
+// Plain mode names the speaker, as it names every other row.
+std::string InputPrompt() {
+  return std::string(BOLD()) + (g_plain ? "you: " : "> ") + RST();
 }
 
 std::string UserEchoRow(const std::string& prompt, const std::string& text) {
@@ -300,11 +343,6 @@ std::string ReadInteraction(InteractionRequest request, bool* eof) {
               {"eof", *eof},
               {"answer", answer}}});
   return answer;
-}
-
-std::string ReadChoiceLine(const std::string& prompt, bool& cancelled,
-                           bool& eof) {
-  return ReadChoiceLine({.kind = "choice", .prompt = prompt}, cancelled, eof);
 }
 
 std::string ReadChoiceLine(InteractionRequest request, bool& cancelled,

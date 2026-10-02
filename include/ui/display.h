@@ -8,6 +8,7 @@
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
+#include <iterator>
 #include <string>
 #include <utility>
 #include <vector>
@@ -74,21 +75,23 @@ inline std::string StatusBar(const Usage& usage, const StatusView& view) {
     if (!text.empty()) segments.push_back({priority, std::move(text)});
   };
 
+  // Where requests go, what they may do unasked, how much room is left and
+  // what it has cost lead the row and are the last to go.
   add(0, view.activity);
   add(0, view.model);
-  add(1, ContextSummary(view.context_used, view.context_window));
-  add(3, ContextLeftSummary(view.context_used, view.context_window));
-  if (usage.input || usage.output) add(4, TokenSummary(usage));
-  add(5, CacheSummary(usage));
+  add(1, view.approval == "yolo"   ? "YOLO"
+         : view.approval == "auto" ? "Auto"
+                                   : "Ask");
+  add(1, ContextLeftSummary(view.context_used, view.context_window));
   if (usage.cost > 0) add(2, FmtCost(usage.cost));
+  add(3, ContextSummary(view.context_used, view.context_window));
   if (view.background) {
     add(3, "bg:" + FmtCount(static_cast<int64_t>(view.background)));
   }
+  if (usage.input || usage.output) add(4, TokenSummary(usage));
+  add(5, CacheSummary(usage));
   if (view.verbose) add(6, "verbose");
   add(7, "/help for shortcuts");
-  add(2, view.approval == "yolo"   ? "YOLO"
-         : view.approval == "auto" ? "Auto"
-                                   : "Ask");
 
   auto join = [&segments] {
     std::string line;
@@ -100,15 +103,15 @@ inline std::string StatusBar(const Usage& usage, const StatusView& view) {
   };
   std::string line = join();
   if (!g_tty) return line;
-  // Drop the least valuable segment until the row fits; StatusBarLine still
-  // performs the final UTF-8-safe clipping.
+  // Drop the least valuable segment until the row fits, the rightmost of a
+  // tie first; StatusBarLine still performs the final UTF-8-safe clipping.
   while (DisplayWidth(line) > TerminalWidth(1) && segments.size() > 1) {
-    auto victim = std::max_element(segments.begin(), segments.end(),
+    auto victim = std::max_element(segments.rbegin(), segments.rend(),
                                    [](const Segment& a, const Segment& b) {
                                      return a.priority < b.priority;
                                    });
     if (victim->priority == 0) break;
-    segments.erase(victim);
+    segments.erase(std::next(victim).base());
     line = join();
   }
   return line;
@@ -169,25 +172,23 @@ inline std::string ActivityBar(const ActivityView& view) {
     return count ? label + FmtCount(static_cast<int64_t>(count)) : "";
   };
   std::string suffix =
-      " · " +
-      JoinDot({view.model, seconds,
-               ContextSummary(view.context_used, view.context_window),
-               counted("agents:", view.subagents),
-               counted("bg:", view.background),
-               view.foreground == 0 ? ""
-               : view.foreground == 1
-                   ? "Ctrl+B background"
-                   : "Ctrl+B background " +
-                         FmtCount(static_cast<int64_t>(view.foreground)) +
-                         " commands",
-               counted("steer:", view.queued)});
+      " · " + JoinDot({view.model, seconds,
+                       ContextSummary(view.context_used, view.context_window),
+                       counted("agents:", view.subagents),
+                       counted("bg:", view.background),
+                       counted("steer:", view.queued)});
+  // The keys that act on a running turn: the lowest priority, so the hint is
+  // the first thing a narrow terminal gives up.
+  std::string hint = " · Esc stop · Ctrl+B background";
+  if (view.foreground > 1) {
+    hint += " " + FmtCount(static_cast<int64_t>(view.foreground)) + " commands";
+  }
   size_t width = TerminalWidth(1);
-  if (SteeringEnabled()) {
-    std::string hint = " · Esc to interrupt";
-    size_t desired = std::min<size_t>(DisplayWidth(state), 64);
-    size_t with_hint = DisplayWidth(prefix) + DisplayWidth(suffix) +
-                       DisplayWidth(hint) + desired;
-    if (with_hint <= width) suffix += hint;
+  size_t desired = std::min<size_t>(DisplayWidth(state), 64);
+  if (DisplayWidth(prefix) + DisplayWidth(suffix) + DisplayWidth(hint) +
+          desired <=
+      width) {
+    suffix += hint;
   }
   size_t reserved = DisplayWidth(prefix) + DisplayWidth(suffix);
   size_t activity_width = width > reserved ? width - reserved : 0;

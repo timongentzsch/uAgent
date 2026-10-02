@@ -2,8 +2,6 @@
 
 #include "include/core/skills.h"
 
-#include <unistd.h>
-
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
@@ -11,7 +9,7 @@
 #include <utility>
 #include <vector>
 
-#include "include/core/env.h"
+#include "include/core/config_registry.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
 #include "include/core/signals.h"
@@ -49,18 +47,6 @@ void ParseSkillFrontMatter(std::istream& input, std::string* description,
 std::filesystem::path InstalledSkillsPath() {
   namespace fs = std::filesystem;
   fs::path executable = ExecutablePath();
-  if (executable.empty()) return {};
-  if (!executable.has_parent_path()) {
-    for (const std::string& entry : SplitPathList(EnvStr("PATH"))) {
-      fs::path candidate = fs::path(entry) / executable;
-      std::error_code ec;
-      if (fs::is_regular_file(candidate, ec) &&
-          access(candidate.c_str(), X_OK) == 0) {
-        executable = std::move(candidate);
-        break;
-      }
-    }
-  }
   if (!executable.has_parent_path()) return {};
   std::error_code ec;
   fs::path resolved = fs::canonical(executable, ec);
@@ -73,7 +59,7 @@ std::vector<std::filesystem::path> SkillSearchPath(
     const std::filesystem::path& cwd) {
   namespace fs = std::filesystem;
   std::vector<fs::path> path;
-  std::string custom = EnvStr("UAGENT_SKILL_PATH");
+  std::string custom = SettingText(Cfg("UAGENT_SKILL_PATH"));
   if (!custom.empty()) {
     for (const std::string& entry : SplitPathList(custom)) {
       if (!Trim(entry).empty()) path.emplace_back(Trim(entry));
@@ -114,7 +100,7 @@ std::vector<std::filesystem::path> SkillSearchPath(
 
 bool SkillExcluded(const std::string& name) {
   for (const std::string& entry :
-       SplitPathList(EnvStr("UAGENT_SKILL_EXCLUDE"), ',')) {
+       SplitPathList(SettingText(Cfg("UAGENT_SKILL_EXCLUDE")), ',')) {
     if (Trim(entry) == name) return true;
   }
   return false;

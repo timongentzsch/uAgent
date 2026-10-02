@@ -1,10 +1,4 @@
-import {
-  DialogHeader,
-  Group,
-  Input,
-  Placeholder,
-  SettingRow,
-} from "../../shared/ui.tsx";
+import { DialogHeader, Group, Placeholder, Row } from "../../shared/ui.tsx";
 import "./settings.css";
 import { SettingsNav } from "./settings-nav.tsx";
 import { useMedia } from "../../shared/layout.ts";
@@ -44,18 +38,11 @@ export function SettingRowsLoading() {
 function SettingRows() {
   return (
     <Group>
-      {["UAGENT_MODEL", "UAGENT_REASONING_EFFORT", "UAGENT_BASE_URL"].map(
-        (name) => (
-          <SettingRow
-            key={name}
-            name={name}
-            detail="What this setting changes and where it applies"
-            reset={noop}
-          >
-            <Input aria-label={name} />
-          </SettingRow>
-        ),
-      )}
+      {["Conversation model", "Reasoning effort", "API address"].map((name) => (
+        <Row key={name} label={name}>
+          <span class="setting-summary">Not set</span>
+        </Row>
+      ))}
     </Group>
   );
 }

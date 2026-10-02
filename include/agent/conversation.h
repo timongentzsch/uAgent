@@ -31,8 +31,6 @@ struct ToolTracePruneResult {
   size_t reclaimed_chars = 0;
 };
 
-enum class ToolPruneMode { kOldResults, kSupersededReads };
-
 // A message the person wrote (a prompt or guidance, with or without files),
 // not files attached on request mid-turn, which share its role and kind.
 bool IsUserMessage(const json& message, MessageKind kind);
@@ -46,9 +44,6 @@ class Conversation {
   // since it was archived: a save never re-dumps the archive.
   std::string ArchiveText() const;
   const std::vector<MessageKind>& Kinds() const { return kinds_; }
-  // Rendered tool receipts, keyed by call id. The model never sees these; they
-  // exist so a resumed transcript can redraw a diff instead of a grey line.
-  const json& ToolDisplays() const { return tool_displays_; }
   json DisplayMetadata() const;
   const json& Statistics() const { return statistics_; }
   void AddStatistics(const json& delta);
@@ -78,15 +73,9 @@ class Conversation {
 
   void Reset(json baseline, std::vector<MessageKind> kinds);
   bool Restore(json messages, std::vector<MessageKind> kinds, json archive,
-               int64_t dropped_segments, json tool_displays = json::object(),
-               const json& display = json::object());
+               int64_t dropped_segments, const json& display = json::object());
   void ResetHistory(json baseline, std::vector<MessageKind> kinds);
   void RefreshBaseline(json system);
-
-  // Keeps the receipt only while its call is still in the transcript, so a
-  // compacted turn takes its diffs with it.
-  void RecordToolDisplay(const std::string& call_id, std::string display);
-  const std::string* ToolDisplay(const std::string& call_id) const;
 
   void Push(json message, MessageKind kind);
   // Same as Push, but the message keeps a pre-existing display id (the
@@ -109,14 +98,12 @@ class Conversation {
   std::string LastText(MessageKind kind) const;
   std::string FirstUserText() const;
   int64_t UserTurns() const;
-  size_t UserVisibleCount() const;
   bool HasRecentToolResult(const std::string& name,
                            const std::string& arguments,
                            const std::string& result) const;
   ToolTracePruneResult PruneOldToolResults(
       size_t protect_chars, size_t minimum_reclaim_chars,
-      const std::vector<std::string>& retained_tools,
-      ToolPruneMode mode = ToolPruneMode::kOldResults, int64_t archive_cap = 0);
+      const std::vector<std::string>& retained_tools);
 
   size_t PruneAttachments(size_t begin, const std::string& route = "");
   void ArchiveTurn(size_t turn_start, int64_t turn, int64_t archive_cap,
@@ -130,8 +117,6 @@ class Conversation {
  private:
   bool AddArchiveSegment(json segment, int64_t archive_cap);
 
-  void PruneToolDisplays();
-
   // Parallel by index and the same length, always. Every mutator below writes
   // both, Restore rejects a mismatched pair off disk, and the read paths index
   // kinds_ with a bound taken from messages_ -- so a new mutator that touches
@@ -141,7 +126,6 @@ class Conversation {
   // json array per model request.
   json messages_ = json::array();
   std::vector<MessageKind> kinds_;
-  json tool_displays_ = json::object();
   std::vector<uint64_t> display_ids_;
   json display_facts_ = json::object();
   // Serialized sizes of display_facts_ entries, kept in lockstep so fact

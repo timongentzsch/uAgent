@@ -119,7 +119,6 @@ struct ResponsesStreamState {
 
 struct AnthropicBlockState {
   json block = json::object();
-  std::string input_json;
 };
 
 struct AnthropicStreamState {

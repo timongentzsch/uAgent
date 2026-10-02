@@ -78,7 +78,7 @@
   min-height: 0;
   padding: 0;
   overflow: hidden;
-  border: 1px solid var(--line);
+  border: 1px solid var(--field-border);
   background: var(--surface);
   cursor: zoom-in;
 }
@@ -95,7 +95,7 @@
   width: min(calc(220rem / 14), 100%);
   height: calc(72rem / 14);
   padding: 0 var(--space-4);
-  border: 1px solid var(--line);
+  border: 1px solid var(--field-border);
   background: var(--raised);
   color: inherit;
   text-decoration: none;
@@ -164,4 +164,10 @@ dialog.image-view[data-layout="panel"] {
 }
 .mention-chip {
   vertical-align: baseline;
+}
+/* Files staged on the host from a terminal, with the way to drop them. */
+.host-files {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
 }

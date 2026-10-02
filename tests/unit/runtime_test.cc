@@ -40,7 +40,9 @@ void TestEarlyTurnInterruption() {
     ProcessSupervisor processes;
     UsageAccumulator usage;
     Agent agent(api, tools, processes, usage,
-                [](const Tool&, const json&, int64_t) { return false; });
+                [](const Tool&, const json&, int64_t) {
+                  return std::string("denied");
+                });
     Observability observable;
     auto* previous = ActiveObservability();
     int notices = 0, responses = 0;
@@ -192,9 +194,6 @@ void TestRuntimeOwnershipHelpers() {
       {"UAGENT_SUBAGENT_MODEL", "fast/model"},
       {"UAGENT_WEB_SEARCH_MODEL", "vendor/search"},
       {"UAGENT_WEB_SEARCH_BACKEND", "off"},
-      {"UAGENT_WEB_SEARCH_EFFORT", "low"},
-      {"UAGENT_WEB_SEARCH_ENGINE", "invalid"},
-      {"UAGENT_WEB_SEARCH_CONTEXT_SIZE", "huge"},
       {"UAGENT_MCP_ROOTS", "/tmp/one:/tmp/two"},
       {"UAGENT_OPENROUTER_VARIANT", "floor"},
   };
@@ -210,9 +209,6 @@ void TestRuntimeOwnershipHelpers() {
   CHECK(SubagentModel() == "fast/model");
   CHECK(config.web_search_model == "vendor/search");
   CHECK(config.web_search_backend == "off");
-  CHECK(config.web_search_effort == "low");
-  CHECK(config.web_search_engine == "auto");
-  CHECK(config.web_search_context_size.empty());
   CHECK(config.mcp_roots == "/tmp/one:/tmp/two");
   CHECK(config.openrouter_variant == "floor");
   json diagnostics = config.DiagnosticJson();
@@ -236,13 +232,11 @@ void TestRuntimeOwnershipHelpers() {
   CHECK(defaults.max_turn_cost == 0);
   CHECK(AutoCompactTokens() == 0);
   CHECK(defaults.max_turn_seconds == 0);
-  CHECK(defaults.first_event_timeout_s == 300);
-  CHECK(defaults.stream_idle_timeout_s == 300);
+  CHECK(defaults.stream_timeout_s == 300);
   CHECK(defaults.request_timeout_s == 600);
 
   RuntimeConfig routed;
   routed.openrouter_provider = "streamlake";
-  routed.openrouter_fallbacks = true;
   Api api(routed);
   api.base_url = "https://openrouter.ai/api/v1";
   api.capabilities =
@@ -252,7 +246,7 @@ void TestRuntimeOwnershipHelpers() {
       api.BuildRequestBody(json::array(), json::array(), "stable-session");
   CHECK(body.value("session_id", "") == "stable-session");
   CHECK(body["provider"]["order"][0] == "streamlake");
-  CHECK(body["provider"].value("allow_fallbacks", false));
+  CHECK(!body["provider"].value("allow_fallbacks", true));
   CHECK(!body.contains("stream_options"));
   api.config.openrouter_variant = "nitro";
   body = api.BuildRequestBody(json::array(), json::array(), "stable-session");
@@ -269,6 +263,12 @@ void TestRuntimeOwnershipHelpers() {
   body = api.BuildRequestBody(json::array(), json::array(), "stable-session");
   CHECK(body["reasoning"].value("effort", "") == "low");
   CHECK(!body.contains("reasoning_effort"));
+  // Anthropic models behind OpenRouter cache only when asked to.
+  CHECK(!body.contains("cache_control"));
+  api.model = "anthropic/claude-test";
+  body = api.BuildRequestBody(json::array(), json::array(), "stable-session");
+  CHECK(body["cache_control"].value("type", "") == "ephemeral");
+  api.model = "test:free";
   api.base_url = "http://127.0.0.1:8080/v1";
   api.capabilities =
       CapabilitiesForRoute(ProviderProtocol::kOpenAi, api.base_url);
@@ -487,6 +487,30 @@ void TestPermissionAndToolCategoryPolicy() {
   const std::string second =
       PermissionKey(tool, {{"path", "second"}}, approval_class);
   CHECK(first != second);
+
+  // Risks name what approving risks, most serious first: a file write
+  // inside the folder only makes changes; one outside says so.
+  auto risk_ids = [](const json& risks) {
+    std::string ids;
+    for (const json& risk : risks) ids += JsonValue(risk, "id", "") + ",";
+    return ids;
+  };
+  tool.capabilities = Capability(ToolCapability::kMutate);
+  CHECK(risk_ids(ApprovalRisks(tool, {{"path", "a.txt"}}, CanonicalCwd())) ==
+        "writes,");
+  CHECK(risk_ids(ApprovalRisks(tool, {{"path", "/etc/hosts"}},
+                               CanonicalCwd())) == "writes,outside,");
+  Tool command = tool;
+  command.capabilities = Capability(ToolCapability::kExecute) |
+                         Capability(ToolCapability::kMutate);
+  CHECK(risk_ids(ApprovalRisks(command, {{"command", "ls"}}, CanonicalCwd())) ==
+        "runs,");
+  Tool fetch = tool;
+  fetch.mutating = false;
+  fetch.capabilities = Capability(ToolCapability::kInspect) |
+                       Capability(ToolCapability::kExternal);
+  CHECK(risk_ids(ApprovalRisks(fetch, {{"url", "https://x"}},
+                               CanonicalCwd())) == "network,");
   std::string error;
   CHECK(RememberRepositoryPermission(CanonicalCwd(), first, tool.name,
                                      "write first", error));
@@ -582,8 +606,9 @@ void TestEffectiveImageModel() {
   std::vector<Tool> tools;
   ProcessSupervisor processes;
   UsageAccumulator usage;
-  Agent agent(api, tools, processes, usage,
-              [](const Tool&, const json&, int64_t) { return false; });
+  Agent agent(
+      api, tools, processes, usage,
+      [](const Tool&, const json&, int64_t) { return std::string("denied"); });
   api.config.image_model = "custom/vision";
   api.capabilities.image_input = false;
   CHECK(agent.EffectiveImageModel() == "custom/vision");
@@ -601,6 +626,7 @@ void TestAgentConfigAllowlist() {
   CHECK(AgentConfigKey("OPENROUTER_MODEL"));
   CHECK(AgentConfigKey("OPENROUTER_EFFORT"));
   CHECK(!AgentConfigKey("OPENAI_API_KEY"));
+  CHECK(!AgentConfigKey("UAGENT_INTERNAL_DEPTH"));
 
   fs::path root =
       fs::temp_directory_path() /
@@ -635,7 +661,7 @@ void TestChildEnvironmentPolicy() {
   ScopedEnv scoped_access("SERVICE_ACCESS_KEY", "secret");
   ScopedEnv scoped_private("SIGNING_PRIVATE_KEY", "secret");
   ScopedEnv scoped_cookie("SESSION_COOKIE", "secret");
-  ScopedEnv scoped_usage("UAGENT_USAGE_FILE", "/tmp/ledger");
+  ScopedEnv scoped_usage("UAGENT_INTERNAL_USAGE_FILE", "/tmp/ledger");
   ScopedEnv scoped_providers("UAGENT_PROVIDERS", "private-provider-config");
   ScopedEnv scoped_safe("UAGENT_CHILD_ENV_SAFE", "visible");
   ScopedEnv scoped_allow("UAGENT_SHELL_ENV_ALLOW",
@@ -648,7 +674,7 @@ void TestChildEnvironmentPolicy() {
   CHECK(!shell.Contains("SERVICE_ACCESS_KEY"));
   CHECK(!shell.Contains("SIGNING_PRIVATE_KEY"));
   CHECK(!shell.Contains("SESSION_COOKIE"));
-  CHECK(!shell.Contains("UAGENT_USAGE_FILE"));
+  CHECK(!shell.Contains("UAGENT_INTERNAL_USAGE_FILE"));
   CHECK(!shell.Contains("UAGENT_PROVIDERS"));
   CHECK(shell.Contains("UAGENT_CHILD_ENV_SAFE"));
 
@@ -659,13 +685,13 @@ void TestChildEnvironmentPolicy() {
   CHECK(!approved.Contains("SERVICE_ACCESS_KEY"));
   CHECK(!approved.Contains("SIGNING_PRIVATE_KEY"));
   CHECK(!approved.Contains("SESSION_COOKIE"));
-  CHECK(!approved.Contains("UAGENT_USAGE_FILE"));
+  CHECK(!approved.Contains("UAGENT_INTERNAL_USAGE_FILE"));
   CHECK(!approved.Contains("UAGENT_PROVIDERS"));
 
-  ChildEnvironment delegated(
-      {{"UAGENT_API_KEY", "explicit"}, {"UAGENT_USAGE_FILE", "/tmp/child"}});
+  ChildEnvironment delegated({{"UAGENT_API_KEY", "explicit"},
+                              {"UAGENT_INTERNAL_USAGE_FILE", "/tmp/child"}});
   CHECK(delegated.Contains("UAGENT_API_KEY"));
-  CHECK(delegated.Contains("UAGENT_USAGE_FILE"));
+  CHECK(delegated.Contains("UAGENT_INTERNAL_USAGE_FILE"));
 
   SideRoute route;
   route.base_url = "https://child.example/v1";
@@ -689,9 +715,9 @@ void TestChildEnvironmentPolicy() {
   CHECK(child_value("UAGENT_MODEL") == "child-model");
   CHECK(child_value("UAGENT_CONTEXT") == "32768");
   CHECK(child_value("UAGENT_REASONING_EFFORT") == "high");
-  CHECK(child_value("UAGENT_PROVIDER_PROTOCOL") == "openrouter");
-  CHECK(child_value("UAGENT_WIRE_API") == "responses");
-  CHECK(child_value("UAGENT_HOSTED_TOOLS") == "web_search");
+  CHECK(child_value("UAGENT_INTERNAL_PROVIDER_PROTOCOL") == "openrouter");
+  CHECK(child_value("UAGENT_INTERNAL_WIRE_API") == "responses");
+  CHECK(child_value("UAGENT_INTERNAL_HOSTED_TOOLS") == "web_search");
   CHECK(child_value("UAGENT_OPENROUTER_VARIANT") == "nitro");
   ChildEnvironment child(child_overrides);
   CHECK(!child.Contains("UAGENT_PROVIDERS"));
@@ -788,11 +814,12 @@ void TestNamedProviders() {
   ScopedEnv scoped_effort("UAGENT_REASONING_EFFORT",
                           std::getenv("UAGENT_REASONING_EFFORT"));
   ScopedEnv scoped_context("UAGENT_CONTEXT", std::getenv("UAGENT_CONTEXT"));
-  ScopedEnv scoped_protocol("UAGENT_PROVIDER_PROTOCOL",
-                            std::getenv("UAGENT_PROVIDER_PROTOCOL"));
-  ScopedEnv scoped_wire("UAGENT_WIRE_API", std::getenv("UAGENT_WIRE_API"));
-  ScopedEnv scoped_hosted("UAGENT_HOSTED_TOOLS",
-                          std::getenv("UAGENT_HOSTED_TOOLS"));
+  ScopedEnv scoped_protocol("UAGENT_INTERNAL_PROVIDER_PROTOCOL",
+                            std::getenv("UAGENT_INTERNAL_PROVIDER_PROTOCOL"));
+  ScopedEnv scoped_wire("UAGENT_INTERNAL_WIRE_API",
+                        std::getenv("UAGENT_INTERNAL_WIRE_API"));
+  ScopedEnv scoped_hosted("UAGENT_INTERNAL_HOSTED_TOOLS",
+                          std::getenv("UAGENT_INTERNAL_HOSTED_TOOLS"));
   ScopedEnv scoped_providers("UAGENT_PROVIDERS",
                              std::getenv("UAGENT_PROVIDERS"));
   ScopedEnv scoped_openrouter("OPENROUTER_API_KEY",
@@ -839,8 +866,8 @@ void TestNamedProviders() {
   // routes. Suffixes configure policy and never leak into the provider model
   // identifier.
   setenv("UAGENT_MODEL", "codex-local/gpt-5.6-luna:nitro:low", 1);
-  setenv("UAGENT_WIRE_API", "invalid-direct-wire", 1);
-  setenv("UAGENT_PROVIDER_PROTOCOL", "invalid-direct-protocol", 1);
+  setenv("UAGENT_INTERNAL_WIRE_API", "invalid-direct-wire", 1);
+  setenv("UAGENT_INTERNAL_PROVIDER_PROTOCOL", "invalid-direct-protocol", 1);
   unsetenv("UAGENT_BASE_URL");
   unsetenv("UAGENT_REASONING_EFFORT");
   RuntimeConfig startup_config;
@@ -992,8 +1019,8 @@ void TestNamedProviders() {
 
   setenv("UAGENT_BASE_URL", "https://direct.test/v1", 1);
   setenv("UAGENT_MODEL", "direct-model", 1);
-  setenv("UAGENT_WIRE_API", "invalid-direct-wire", 1);
-  setenv("UAGENT_PROVIDER_PROTOCOL", "invalid-direct-protocol", 1);
+  setenv("UAGENT_INTERNAL_WIRE_API", "invalid-direct-wire", 1);
+  setenv("UAGENT_INTERNAL_PROVIDER_PROTOCOL", "invalid-direct-protocol", 1);
   Api invalid_direct(RuntimeConfig{});
   ProviderSetup invalid_setup = ConfigureProvider(invalid_direct);
   CHECK(invalid_direct.base_url.empty());
@@ -1008,10 +1035,12 @@ void TestEffectiveConfigReload() {
   ScopedEnv scoped_model("UAGENT_MODEL");
   ScopedEnv scoped_route_key("OPENROUTER_API_KEY");
   ScopedEnv scoped_review_url("UAGENT_PERMISSION_URL");
+  ScopedEnv scoped_toolset("UAGENT_INTERNAL_TOOLSET");
   std::string path = UagentConfigPath();
   CHECK(ToolWriteFile(
             path,
             "UAGENT_MAX_STEPS=4\n"
+            "UAGENT_INTERNAL_TOOLSET=lean\n"
             "UAGENT_MAX_TOOL_CALLS=2\n"
             "UAGENT_MAX_TURN_TOKENS=100\n"
             "UAGENT_SESSION_TOKEN_BUDGET=200\n"
@@ -1037,9 +1066,11 @@ void TestEffectiveConfigReload() {
   json diagnostic = manager.DiagnosticJson(active);
   CHECK(diagnostic["sources"]["UAGENT_MAX_STEPS"] == "environment");
   CHECK(diagnostic["sources"]["UAGENT_SESSION_BUDGET"] == "cli");
-  CHECK(diagnostic["provenance"]["max_steps"] == "environment");
-  CHECK(diagnostic["provenance"]["max_tool_calls"] == "global-config");
-  CHECK(diagnostic["provenance"]["request_timeout_s"] == "default");
+  // A parent's handoff to its child is not a setting a file may carry.
+  CHECK(!diagnostic["sources"].contains("UAGENT_INTERNAL_TOOLSET"));
+  CHECK(!LeanToolset());
+  CHECK(diagnostic["sources"]["UAGENT_MAX_TOOL_CALLS"] == "user");
+  CHECK(!diagnostic["sources"].contains("UAGENT_REQUEST_TIMEOUT"));
   std::string shown = JsonDump(diagnostic);
   CHECK(shown.find("private-route-key") == std::string::npos);
   CHECK(shown.find("user:pass") == std::string::npos);
@@ -1049,6 +1080,7 @@ void TestEffectiveConfigReload() {
                       "UAGENT_MAX_TURN_TOKENS=150\n"
                       "UAGENT_SESSION_TOKEN_BUDGET=250\n"
                       "UAGENT_MCP_TIMEOUT=10\n"
+                      "UAGENT_TOOL_RESULT_CHARS=1234\n"
                       "UAGENT_MODEL=next-model\n"
                       "OPENROUTER_API_KEY=changed-secret\n")
             .output.starts_with("wrote "));
@@ -1070,6 +1102,20 @@ void TestEffectiveConfigReload() {
   CHECK(
       JsonDump(manager.DiagnosticJson(reload->active)).find("changed-secret") ==
       std::string::npos);
+  // A setting read on use applies with the reload: environ is untouched and
+  // a child started afterwards is told the new value.
+  CHECK(std::find(reload->applied.begin(), reload->applied.end(),
+                  "UAGENT_TOOL_RESULT_CHARS") != reload->applied.end());
+  CHECK(ToolResultCap() == 1234);
+  CHECK(getenv("UAGENT_TOOL_RESULT_CHARS") == nullptr);
+  ChildEnvironment child({}, ChildEnvironmentPolicy::kIndependentAgent);
+  bool told = false;
+  for (char** entry = child.Data(); entry && *entry; ++entry) {
+    told |= std::string_view(*entry) == "UAGENT_TOOL_RESULT_CHARS=1234";
+  }
+  CHECK(told);
+  OverrideSetting("UAGENT_TOOL_RESULT_CHARS", "99");
+  CHECK(ToolResultCap() == 99);
 }
 
 }  // namespace uagent

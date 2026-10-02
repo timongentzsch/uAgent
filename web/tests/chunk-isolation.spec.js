@@ -61,23 +61,25 @@ test("transcript renders while dialog chunks are held", async ({
   await prompt.press("Enter");
   // Dialog chunks (statistics included) are still held: the tool rows
   // and the turn footer button must render anyway.
-  // Both read-only calls fold into one Explored row.
-  await expect(page.locator(".transcript .tool-disclosure")).toHaveCount(1, {
+  // Two calls stay rows of their own; three or more would fold.
+  await expect(page.locator(".transcript .tool-disclosure")).toHaveCount(2, {
     timeout: 60000,
   });
-  await expect(page.locator(".transcript .group")).toContainText("Explored");
   await expect(
-    page.getByRole("button", { name: "Turn statistics" }).first(),
+    page.getByRole("button", { name: /^Turn statistics: / }).first(),
   ).toBeVisible({ timeout: 30000 });
   // Its styles ship with the transcript (message.css), not the lazy
   // statistics chunk: already laid out before the dialog ever opens.
   await expect(
-    page.getByRole("button", { name: "Turn statistics" }).first(),
+    page.getByRole("button", { name: /^Turn statistics: / }).first(),
   ).toHaveCSS("display", "flex");
 
   // Releasing the statistics chunk must light up the dialog on demand.
   await release("statistics");
-  await page.getByRole("button", { name: "Turn statistics" }).first().click();
+  await page
+    .getByRole("button", { name: /^Turn statistics: / })
+    .first()
+    .click();
   await expect(page.locator("dialog dl.stats").first()).toBeVisible({
     timeout: 15000,
   });

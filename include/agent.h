@@ -21,6 +21,7 @@
 
 #include "include/agent/adaptive_system.h"
 #include "include/agent/conversation.h"
+#include "include/agent/edit_journal.h"
 #include "include/agent/process.h"
 #include "include/agent/trace.h"
 #include "include/api.h"
@@ -35,14 +36,18 @@
 namespace uagent {
 
 struct BackgroundCompletion;
+struct CallTask;
 enum class TurnStopReason;
+enum class Fault;
 
 class Agent {
  public:
-  // Asks the user to approve a mutating call; wired up by the host. Approving a
-  // task authorizes its separate headless child for that scoped brief.
+  // Asks the user to approve a mutating call; wired up by the host. Returns
+  // why it was refused, empty when it may run, so the model learns who said
+  // no. Approving a task authorizes its separate headless child for that
+  // scoped brief.
   using Approver =
-      std::function<bool(const Tool&, const json& args, int64_t turn)>;
+      std::function<std::string(const Tool&, const json& args, int64_t turn)>;
   using ToolRefresher =
       std::function<bool(std::chrono::steady_clock::time_point)>;
 
@@ -78,7 +83,7 @@ class Agent {
   // final assistant prose — the whole result of a headless (-p) run
   std::string LastText() const { return conversation_.LastAssistantText(); }
 
-  size_t MessageCount() const { return conversation_.UserVisibleCount(); }
+  size_t MessageCount() const { return conversation_.Size(); }
 
   void RouteChanged();
 
@@ -168,12 +173,11 @@ class Agent {
   // without this their cost is missing from the footer and the status bar.
   void DrainSubagentUsage();
 
-  void MergeSideUsage(Usage& turn_usage);
-
-  // Account side work that completed outside an active parent turn. Tagged
-  // delegated work updates its originating turn; untagged side work remains
-  // visible in the session total without being assigned to the wrong turn.
-  void AccountSideUsage();
+  // Account finished side work. What the current turn spawned merges into
+  // `turn` when given; other tagged delegated work updates its originating
+  // turn; untagged side work remains visible in the session total without
+  // being assigned to the wrong turn.
+  void AccountSideUsage(Usage* turn = nullptr);
 
   void MergeSessionUsage(const Usage& usage);
 
@@ -191,21 +195,37 @@ class Agent {
   // interrupt stops the running turn after queueing its text. With `hold`,
   // wake messages stay pending. True when anything was taken.
   bool DeliverMail(bool hold = false);
+  // Text about to arrive as input that another session or the harness wrote:
+  // its row is shown as an event, not as the person's message.
+  void NotFromUser(const std::string& text) { not_user_.push_back(text); }
+
+  // The session's undo (EditJournal), kept in `directory`; unset, nothing is
+  // journaled, as for a subagent.
+  void OpenEditJournal(std::string directory) {
+    edits_.Open(std::move(directory));
+  }
+  // The files `turn` changed (0: the latest turn that changed any).
+  json ChangedFiles(int64_t turn) {
+    return edits_.Files(turn ? turn : edits_.LastTurn());
+  }
+  // Puts them back (all, or only `path`); the model hears which at its next
+  // step, so it re-reads before editing them again.
+  json Revert(int64_t turn, const std::string& path);
 
   // Files the model attached ride in on a user message. Canonical tool results
   // are text-only, so image/file parts cannot travel with them.
   bool DrainAttachments();
-  // User-uploaded half of DrainAttachments; sourced files keep their
-  // kAttachment kind for the request pipeline and carry an origin fact
-  // so the view attributes them to the agent instead.
-  bool DrainUserAttachments(std::vector<Attachment>& attachments);
+  // One attachment message for `attachments`, or a note saying why they
+  // could not be attached; true when they were.
+  bool PushAttachments(const std::vector<Attachment>& attachments);
   // Starts the side call that names this session; DrainBackground applies
   // its answer unless the user renamed the session meanwhile.
   void StartTitle(const std::string& user_input);
 
   // one user turn: stream, run tools, repeat until prose; prints as it goes
   void Turn(const std::string& user_input, json user_content = nullptr,
-            json images = json::array(), const std::string& request_id = "");
+            const json& images = json::array(),
+            const std::string& request_id = "");
 
  private:
   struct TurnExecution;
@@ -238,7 +258,6 @@ class Agent {
   std::string ApplyImageAnalysisFallback(json& messages, bool analyze = true,
                                          json* deliveries = nullptr);
 
-  void AddRouteUsage(const Usage& usage);
   Usage AccountModelUsage(const json& reported);
 
   void FailTurn(TurnExecution& state, std::string message);
@@ -252,25 +271,28 @@ class Agent {
       ChatResult& response, TurnExecution& state,
       std::unordered_map<std::string, int64_t>& tool_counts);
   bool ToolCallsWithinLimits(const std::vector<ToolCall>& calls,
-                             TurnExecution& state, int64_t max_tool_calls,
-                             std::string& last_call, int64_t& repeated_calls);
+                             TurnExecution& state, StepState& loop);
   void FinishTurn(TurnExecution& state, int64_t step);
-  void ApplySideUsage(AccumulatedUsage batch, Usage* current_turn);
   void UpdateTurnSideUsage(int64_t turn, const Usage& usage,
                            const json& statistics);
 
   // One step of the turn, in the order the loop runs them. Each phase reports
   // what the loop should do next.
   void PushSkillContext(std::string skill);
+  void PushUserInput(json content, bool attachment, const json& images,
+                     const std::string& request_id);
+  void PushStepNote(StepState& loop, const std::string& note);
   StepFlow InterruptTurn(TurnExecution& state);
   bool ApplyQueuedSteering(StepState& loop);
   StepFlow PrepareStep(TurnExecution& state, StepState& loop);
   StepFlow HandleFailedResponse(ChatResult& response, TurnExecution& state,
                                 StepState& loop, const json& schemas,
                                 bool attachment);
-  StepFlow HandleUnparsedToolMarkup(TurnExecution& state, StepState& loop);
-  StepFlow HandleEmptyResponse(const ChatResult& response, TurnExecution& state,
-                               StepState& loop);
+  // Counts one more of a model's faults; false once that ends the turn.
+  // `advise` tells the model what its rule says at this strike.
+  bool Strike(Fault fault, TurnExecution& state, StepState& loop,
+              const std::string& about = "", bool advise = true);
+  void Advise(Fault fault, StepState& loop, const std::string& about = "");
   StepFlow HandleResponseStop(ChatResult& response, size_t tool_call_count,
                               TurnExecution& state, StepState& loop);
   void RecordToolRoundRepetition(const std::vector<ToolCall>& calls,
@@ -286,14 +308,22 @@ class Agent {
   StepFlow ExecuteToolCalls(const std::vector<ToolCall>& calls,
                             TurnExecution& state, StepState& loop);
 
-  void ArchiveAll(const char* reason);
-
   ChatResult Chat(const char* purpose, int64_t step, const json& schemas,
                   const json* request_messages = nullptr);
+  void AnnounceDeliveries(const json& deliveries);
+  void DebugModelRequest(int64_t request, int64_t step, const char* purpose,
+                         const json& schemas, size_t schema_bytes,
+                         const json& messages, size_t message_bytes,
+                         const json* request_messages, bool projected);
+  void DebugModelResponse(int64_t request, int64_t step, const char* purpose,
+                          const ChatResult& result);
   // Leaves projected null when the source already needs no preparation.
   std::string PrepareRequestMessages(const json& source, json& projected,
                                      bool analyze, json* deliveries = nullptr);
   json CompactionMessages() const;
+  // Skill instructions this conversation loaded, newest first within a
+  // bound: a summary cannot stand in for a procedure being followed.
+  json CompactionSkillMessages() const;
   // Retained recent user instructions for the post-compaction context.
   // Optionally fills retained_ids with the source display id per message
   // (same order), so the re-push can keep its identity instead of minting
@@ -315,8 +345,7 @@ class Agent {
     kFailed,
   };
 
-  MidturnCompact MaybeCompactDuringTurn(const json& available_schemas,
-                                        Usage& usage, size_t& turn_start);
+  MidturnCompact MaybeCompactDuringTurn(Usage& usage, size_t& turn_start);
 
   // Encoded attachment bytes are never durable conversation state, including
   // on provider errors and interruption. Keep only a textual record.
@@ -327,7 +356,7 @@ class Agent {
   // Keep completed tool messages in active context until normal compaction,
   // while also archiving them for the user-facing /trace command.
   void ArchiveTurnTrace(size_t turn_start);
-  void PruneOldToolResults(ToolPruneMode mode = ToolPruneMode::kOldResults);
+  void PruneOldToolResults();
 
   // A rejected capability -> drop it and retry. Ordered most-specific first:
   // the native-tools probe matches any "tool", so it must stay last or it would
@@ -370,15 +399,17 @@ class Agent {
   void PushToolResultMessage(const ToolCall& call, json message);
 
   // returns true if the user interrupted the batch
-  bool RunCalls(const std::vector<ToolCall>& calls, int64_t& tool_count,
-                std::unordered_map<std::string, int64_t>& tool_counts,
-                std::unordered_map<std::string, std::string>& stable_arguments,
-                int64_t step, std::chrono::steady_clock::time_point deadline,
-                int64_t& consecutive_failed_tools,
-                std::vector<ToolRejection>& rejections,
+  void PrepareCall(const ToolCall& call, CallTask& task, TurnExecution& state,
+                   StepState& loop);
+  bool RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
+                StepState& loop, std::vector<ToolRejection>& rejections,
                 std::vector<ActivityPollResult>& activity_polls);
 
   void RebuildToolSchemas();
+  // After the tool set or its selection changed: the offered schemas, their
+  // size and the logged copy are stale.
+  void InvalidateToolSchemas(bool force_system);
+  void SyncApiSessionUsage();
   std::vector<std::string> ExplicitSkillContext(
       const std::string& user_input) const;
 
@@ -417,7 +448,9 @@ class Agent {
   // Mail taken but not yet in a saved snapshot, acknowledged by Save, and the
   // ids of the latest delivered, so one delivered again is recognised.
   mutable std::vector<std::string> unacked_mail_;
+  std::vector<std::string> not_user_;
   json delivered_mail_ = json::array();
+  EditJournal edits_;
   uint64_t view_epoch_ = 0;
   std::function<std::string()> runtime_context_;
   int64_t total_user_turns_ = 0;
@@ -431,6 +464,8 @@ class Agent {
   std::chrono::steady_clock::time_point active_deadline_ =
       std::chrono::steady_clock::time_point::max();
   std::string last_error_;
+  // The attachment warning last shown, so a turn says it once, not per step.
+  std::string attachment_warning_;
   json last_stop_;
   json turn_side_statistics_ = json::object();
   KeepFile keep_tool_file_;

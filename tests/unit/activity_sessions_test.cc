@@ -4,6 +4,7 @@
 #include <poll.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cerrno>
@@ -157,13 +158,30 @@ void TestSignalAndFileWatch() {
           queued[1].text == "second");
     CHECK(SteeringState().QueuedCount() == 0);
 
+    // The next auto-start message is taken alone; the rest keep their order
+    // and payloads, deferred ones included.
     SteeringState().Queue("deferred", "", false);
-    SteeringState().Queue("auto");
-    std::vector<Steering::Message> automatic =
-        SteeringState().TakeAutoStartMessages();
-    CHECK(automatic.size() == 1 && automatic[0].text == "auto");
-    CHECK(SteeringState().QueuedCount() == 1);
-    CHECK(SteeringState().TakeMessages()[0].text == "deferred");
+    SteeringState().Queue("auto", "first-id");
+    SteeringState().Queue("later", "second-id", true, json::array({"a"}));
+    std::optional<Steering::Message> next = SteeringState().TakeNextAutoStart();
+    CHECK(next && next->text == "auto" && next->request_id == "first-id");
+    std::vector<Steering::Message> rest = SteeringState().TakeMessages();
+    CHECK(rest.size() == 2 && rest[0].text == "deferred" &&
+          rest[1].text == "later" && rest[1].request_id == "second-id" &&
+          rest[1].attachments.size() == 1);
+    CHECK(!SteeringState().TakeNextAutoStart());
+
+    // "Queue next" waits out the running turn: the turn's steps take only
+    // the steer beside it and nothing yields to it; the turn's end starts it.
+    SteeringState().Queue(
+        {.text = "next", .request_id = "", .after_turn = true});
+    SteeringState().Queue("steer");
+    CHECK(SteeringState().SteerCount() == 1 && SteeringYieldRequested());
+    std::vector<Steering::Message> now = SteeringState().TakeMessages();
+    CHECK(now.size() == 1 && now[0].text == "steer");
+    CHECK(SteeringState().QueuedCount() == 1 && !SteeringYieldRequested());
+    next = SteeringState().TakeNextAutoStart();
+    CHECK(next && next->text == "next");
     close(watched_fd);
     unlink(watched_path);
   }
@@ -300,7 +318,8 @@ void TestActivityBufferAndAdmission() {
   CHECK(views[0].source_id == "agent-1a2b3c4d");
   CHECK(views[0].label == "haiku");
   CHECK(views[0].tail == "writing");
-  CHECK(delegating.Count(ActivityKind::kSubagent) == 1);
+  CHECK(std::ranges::count(delegating.Snapshot(), ActivityKind::kSubagent,
+                           &BgJob::kind) == 1);
   CHECK(delegating.Count() == 2);
   // Looking is not draining: the tool that joins the child still needs every
   // byte the transcript holds.
@@ -868,8 +887,9 @@ void TestActivityWaitAndDelivery() {
             .result.Ok());
   std::vector<BgJob> memory_jobs = memory_activity.Snapshot();
   CHECK(memory_jobs.size() == 1);
-  CHECK(ToolActivityList(memory_activity).output.find("[memory] activity") !=
-        std::string::npos);
+  CHECK(
+      ToolActivityOutput(memory_activity, 0).output.find("[memory] activity") !=
+      std::string::npos);
   // A wait consumes the completion it observes, so extraction must stay out of
   // reach: the harness drains it into the memory audit instead. It is still
   // listed, just not waitable.
@@ -881,7 +901,7 @@ void TestActivityWaitAndDelivery() {
     CHECK(!named.Ok());
     CHECK(named.output.find("not waitable") != std::string::npos);
   }
-  CHECK(ToolActivityList(memory_activity)
+  CHECK(ToolActivityOutput(memory_activity, 0)
             .output.find("extracting from source-123") != std::string::npos);
   if (!memory_jobs.empty()) {
     WaitForActivityDrain(memory_activity, memory_jobs[0]);
@@ -1045,13 +1065,13 @@ void TestDetachedActivityOwnership() {
   // build, test or search it needs to check their work. Children stop short of
   // the ceiling; the parent's own command still gets a slot.
   {
-    ScopedEnv pool("UAGENT_MAX_BACKGROUND_JOBS", "4");
-
     // The parent's own busy jobs must never refuse delegation: a child
     // competes against other children, not against its parent.
     ProcessSupervisor parent_busy;
-    CHECK(parent_busy.TryAdd({.pid = 999801, .cmd = "own-a"}, 4));
-    CHECK(parent_busy.TryAdd({.pid = 999802, .cmd = "own-b"}, 4));
+    CHECK(parent_busy.TryAdd({.pid = 999801, .cmd = "own-a"},
+                             kMaxBackgroundJobs));
+    CHECK(parent_busy.TryAdd({.pid = 999802, .cmd = "own-b"},
+                             kMaxBackgroundJobs));
     ShellCommandResult admitted =
         RunShellCommand(parent_busy, context,
                         {.command = "printf child-admitted",
@@ -1062,18 +1082,19 @@ void TestDetachedActivityOwnership() {
 
     // Children stop short of the ceiling so the parent keeps slots of its own.
     ProcessSupervisor children_busy;
-    CHECK(children_busy.TryAdd(
-        {.pid = 999803, .cmd = "child-a", .kind = ActivityKind::kSubagent}, 4));
-    CHECK(children_busy.TryAdd(
-        {.pid = 999804, .cmd = "child-b", .kind = ActivityKind::kSubagent}, 4));
+    for (pid_t pid = 999803; pid < 999803 + kMaxDelegatedJobs; ++pid) {
+      CHECK(children_busy.TryAdd(
+          {.pid = pid, .cmd = "child", .kind = ActivityKind::kSubagent},
+          kMaxBackgroundJobs));
+    }
     ShellCommandResult refused =
         RunShellCommand(children_busy, context,
-                        {.command = "echo third-child",
+                        {.command = "echo one-child-too-many",
                          .immediate = true,
                          .activity_kind = ActivityKind::kSubagent});
     CHECK(!refused.result.Ok());
     CHECK(!refused.launched);
-    CHECK(refused.result.output.find("at most 2 concurrent children") !=
+    CHECK(refused.result.output.find("at most 6 concurrent children") !=
           std::string::npos);
 
     ShellCommandResult own =
@@ -1084,46 +1105,26 @@ void TestDetachedActivityOwnership() {
 
     // Detached terminals outlive the session, so the pool bounds them too.
     ProcessSupervisor detached_pool;
-    for (pid_t pid = 999811; pid < 999815; ++pid) {
+    for (pid_t pid = 999811; pid < 999811 + kMaxBackgroundJobs; ++pid) {
       CHECK(detached_pool.TryAdd(
-          {.pid = pid, .cmd = "held", .kind = ActivityKind::kDetached}, 4));
+          {.pid = pid, .cmd = "held", .kind = ActivityKind::kDetached},
+          kMaxBackgroundJobs));
     }
     CHECK(!detached_pool.TryAdd(
-        {.pid = 999815, .cmd = "overflow", .kind = ActivityKind::kDetached},
-        4));
+        {.pid = 999831, .cmd = "overflow", .kind = ActivityKind::kDetached},
+        kMaxBackgroundJobs));
     ShellCommandResult refused_detach = RunShellCommand(
         detached_pool, context,
         {.command = "sleep 21", .detach = true, .immediate = true});
     CHECK(!refused_detach.result.Ok());
-    CHECK(refused_detach.result.output.find("background job limit reached") !=
-          std::string::npos);
+    CHECK(refused_detach.result.output.find(
+              "background job limit reached (8)") != std::string::npos);
     CHECK(!FindRunningDetachedActivity("sleep 21").has_value());
     // The record is written before the pool decides, so the refusal has to
     // take it back out: a stale record aims a later stop at whatever inherits
     // the reaped pid.
     CHECK(DetachedRecords().empty());
     (void)detached_pool.TakeAllForShutdown();
-  }
-
-  // A pool too small to hold the headroom still admits a child: delegation
-  // stays possible, and the parent waits rather than the reverse.
-  {
-    ScopedEnv tiny("UAGENT_MAX_BACKGROUND_JOBS", "1");
-    ProcessSupervisor single;
-    ShellCommandResult child =
-        RunShellCommand(single, context,
-                        {.command = "printf tiny-pool",
-                         .activity_kind = ActivityKind::kSubagent});
-    CHECK(child.result.Ok());
-    CHECK(child.result.output.find("tiny-pool") != std::string::npos);
-    CHECK(single.TryAdd(
-        {.pid = 999821, .cmd = "holder", .kind = ActivityKind::kSubagent}, 1));
-    ShellCommandResult blocked =
-        RunShellCommand(single, context, {.command = "printf blocked"});
-    CHECK(!blocked.result.Ok());
-    CHECK(blocked.result.output.find("background job limit reached (1)") !=
-          std::string::npos);
-    (void)single.TakeAllForShutdown();
   }
 }
 
@@ -1313,15 +1314,17 @@ void TestSessionLinks() {
   }
   ScopedEnv self("UAGENT_INTERNAL_SESSION_PATH", fa.string());
   CHECK(!SharesLink("aaa", "bbb"));
-  std::string token;
-  CHECK(CreateSessionLink(token).Ok());
-  CHECK(!token.empty());
+  // Only yolo sessions join the workspace link.
+  const ApprovalMode before = CurrentApprovalMode();
+  SetApprovalMode(ApprovalMode::kAsk);
+  CHECK(EnsureSessionAutoLink().Ok());
+  SetApprovalMode(ApprovalMode::kYolo);
+  CHECK(EnsureSessionAutoLink().Ok());
   CHECK(SharesLink("aaa", "aaa"));
   CHECK(!SharesLink("aaa", "bbb"));
   {
     ScopedEnv peer("UAGENT_INTERNAL_SESSION_PATH", fb.string());
-    CHECK(JoinSessionLink(token).Ok());
-    CHECK(JoinSessionLink("no-such-token").error == ToolErrorCode::kNotFound);
+    CHECK(EnsureSessionAutoLink().Ok());
     // Gated delivery: linked peers pass, strangers are rejected, and a
     // message that looks like a loop is refused, not queued.
     CHECK(MessageSession("aaa", "hello a").Ok());
@@ -1329,7 +1332,22 @@ void TestSessionLinks() {
           ToolErrorCode::kPermissionDenied);
     CHECK(!MessageSession("aaa", "loop", kMailMaxHops).Ok());
   }
+  SetApprovalMode(before);
   CHECK(SharesLink("aaa", "bbb"));
+  // A coordinator's threads are linked by living in one history folder: no
+  // yolo, no joining, and nobody else in that folder is.
+  const fs::path ta = workspace.workspace / "thread-a.json";
+  const fs::path tb = workspace.workspace / "thread-b.json";
+  for (const fs::path& thread : {ta, tb}) std::ofstream(thread) << "{}\n";
+  {
+    ScopedEnv own("UAGENT_INTERNAL_SESSION_PATH", ta.string());
+    CHECK(CurrentApprovalMode() != ApprovalMode::kYolo);
+    CHECK(SharesLink("thread-a", "thread-b"));
+    CHECK(!SharesLink("thread-a", "aaa"));
+    CHECK(LinkedSessionPath(HashHex(tb.string())) == tb.string());
+  }
+  // Listing needs no prompt.
+  CHECK(!FindToolArgumentIssue(SessionTool(), {{"operation", "list"}}));
   std::vector<Mail> taken =
       TakeMail(MailboxIdFor(fa.string()), [](const Mail&) { return true; });
   CHECK(taken.size() == 1);
@@ -1339,7 +1357,7 @@ void TestSessionLinks() {
   // Summaries show the linked peer.
   bool saw_bbb = false;
   for (const json& row : SessionSummaries()) {
-    if (JsonValue(row, "id", "") == "bbb") {
+    if (JsonValue(row, "id", "") == HashHex(fb.string())) {
       saw_bbb = JsonValue(row, "linked", false);
     }
   }

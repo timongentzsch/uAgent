@@ -144,8 +144,7 @@ std::string PromptMarkdown() {
       "opt-in self-directive can change it for one conversation. Memory stays "
       "outside the system message. Use `/instructions` or "
       "`--show-system-prompt --json` to inspect the effective text and its "
-      "sources. `UAGENT_PROMPT_OVERLAY` edits named sections for "
-      "experiments.\n\n";
+      "sources.\n\n";
   out += "## Base (" +
          std::to_string(JsonValue(surface, "base_chars", int64_t{0})) +
          " chars)\n\n```text\n" + JsonValue(surface, "base", std::string()) +

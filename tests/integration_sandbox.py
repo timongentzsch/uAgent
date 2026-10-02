@@ -456,7 +456,7 @@ def test_sandbox_escape_hatch_needs_a_person(root, home, *, binary):
         binary=binary,
     )
     assert_true(not outside.exists(), "an unconfined command ran with nobody to approve it")
-    assert_true("denied" in output.lower(), f"the hatch was not denied: {output}")
+    assert_true("needs a person's approval" in output, f"the hatch was not denied: {output}")
 
 
 def test_sandbox_escape_hatch_runs_unconfined_when_approved(root, home, *, binary):

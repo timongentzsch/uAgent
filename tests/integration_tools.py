@@ -178,6 +178,28 @@ def test_a_loaded_skill_survives_compaction(root, home, *, binary):
         assert_true(len(server.requests) == 5, len(server.requests))
 
 
+def test_an_attachment_over_the_budget_is_warned_about_once(root, home, *, binary):
+    workspace = root / "budget-workspace"
+    workspace.mkdir()
+    for name in ("one.pdf", "two.pdf"):
+        (workspace / name).write_bytes(b"%PDF-1.4\n" + b"\x00" * (700 * 1024))
+    steps = [
+        tool_call("read_path", {"path": "one.pdf"}, call_id="one"),
+        tool_call("read_path", {"path": "two.pdf"}, call_id="two"),
+        tool_call("run", {"command": "true"}, call_id="third"),
+        tool_call("run", {"command": "true"}, call_id="fourth"),
+        event({"content": "budget-ok"}),
+    ]
+    with Server(steps) as server:
+        env = base_env(home, server.url)
+        env["UAGENT_ATTACHMENT_MB"] = "1"
+        result = run_dialog(workspace, env, "look\n/q\n", "--yolo", timeout=40, binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true("budget-ok" in result.stdout, result.stdout)
+        said = result.stdout.count("request attachment budget exceeded")
+        assert_true(said == 1, (said, result.stdout[-1500:]))
+
+
 def test_full_run_and_python_terminal_trace(root, home, *, binary):
     shell_command = "printf 'shell-one\\n'\nprintf 'shell-two\\n'"
     python_code = "print('python-one')\nprint('python-two')"

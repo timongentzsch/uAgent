@@ -235,7 +235,8 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
     if (!request_messages && !deliveries.empty()) {
       AnnounceDeliveries(deliveries);
     }
-    if (!preparation_error.empty()) {
+    if (preparation_error != attachment_warning_ &&
+        !(attachment_warning_ = preparation_error).empty()) {
       Emit(NoticeEvent(PresentationStatus::kWarned, preparation_error));
     }
   }

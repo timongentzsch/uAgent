@@ -458,6 +458,8 @@ class Agent {
   std::chrono::steady_clock::time_point active_deadline_ =
       std::chrono::steady_clock::time_point::max();
   std::string last_error_;
+  // The attachment warning last shown, so a turn says it once, not per step.
+  std::string attachment_warning_;
   json last_stop_;
   json turn_side_statistics_ = json::object();
   KeepFile keep_tool_file_;

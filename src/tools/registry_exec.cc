@@ -6,37 +6,15 @@
 #include <utility>
 #include <vector>
 
-#include "include/agent/path_policy.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/limits.h"
 #include "include/core/strings.h"
-#include "include/tools/files.h"
 #include "include/tools/shell.h"
 #include "src/tools/registry_internal.h"
 
 namespace uagent {
-
-namespace {
-// The picture a command rendered arrives with its result, not a read_path
-// round later. Only where that read needs no person: anything else stays
-// read_path's to ask for.
-ToolResult Attached(ToolResult result, const json& a,
-                    const ToolContext& context) {
-  const std::string attach = JsonValue(a, "attach", "");
-  if (!result.Ok() || attach.empty()) return result;
-  if (!ApprovalIsYolo() &&
-      (PathApprovalRequired(attach, CanonicalCwd()) ||
-       PathApprovalClass(attach, PathAccess::kRead) != ApprovalClass::kNone)) {
-    result.output +=
-        "\n[not attached: " + attach + " needs approval; use read_path]";
-    return result;
-  }
-  result.output += "\n" + ToolReadFile(attach, 1, 0, context.call_id).output;
-  return result;
-}
-}  // namespace
 
 void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
                        const std::filesystem::path& workspace) {
@@ -46,11 +24,12 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
                 "update yield_ms in the run schema");
   Tool& run = AddTool(
       tools,
-      MakeTool("run",
-               "Execute a command in cwd; omit cd. tty=true enables "
-               "interactive stdin; detach persists a terminal beyond this "
-               "session.",
-               json::parse(R"json({"type":"object","properties":{
+      MakeTool(
+          "run",
+          "Execute a command in cwd; omit cd. tty=true enables "
+          "interactive stdin; detach persists a terminal beyond this "
+          "session.",
+          json::parse(R"json({"type":"object","properties":{
                     "command":{"type":"string"},
                     "shell":{"type":"string","description":"default bash"},
                     "tty":{"type":"boolean","description":"retain an interactive PTY"},
@@ -61,25 +40,23 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
                     "detach":{"type":"boolean",
                       "description":"persist terminal and log"}},
                     "required":["command"]})json"),
-               [&supervisor](const json& a, const ToolContext& context) {
-                 const bool detach = JsonValue(a, "detach", false);
-                 return Attached(
-                     RunShellCommand(
-                         supervisor, context,
-                         {.command = JsonValue(a, "command", ""),
-                          .shell = JsonValue(a, "shell", "bash"),
-                          .background = detach,
-                          .detach = detach,
-                          .tty = JsonValue(a, "tty", false),
-                          .sandbox = JsonValue(a, "sandbox", true),
-                          .yield_ms = JsonValue(a, "yield_ms", kDefaultYieldMs),
-                          .max_output_chars =
-                              JsonValue(a, "max_output_chars", int64_t{0}),
-                          .environment_policy =
-                              ChildEnvironmentPolicy::kApprovedShell})
-                         .result,
-                     a, context);
-               }));
+          [&supervisor](const json& a, const ToolContext& context) {
+            const bool detach = JsonValue(a, "detach", false);
+            return RunShellCommand(
+                       supervisor, context,
+                       {.command = JsonValue(a, "command", ""),
+                        .shell = JsonValue(a, "shell", "bash"),
+                        .background = detach,
+                        .detach = detach,
+                        .tty = JsonValue(a, "tty", false),
+                        .sandbox = JsonValue(a, "sandbox", true),
+                        .yield_ms = JsonValue(a, "yield_ms", kDefaultYieldMs),
+                        .max_output_chars =
+                            JsonValue(a, "max_output_chars", int64_t{0}),
+                        .environment_policy =
+                            ChildEnvironmentPolicy::kApprovedShell})
+                .result;
+          }));
   // The hatch exists only where there is something to escape. Advertising it
   // unconditionally would spend schema tokens on an argument that does nothing,
   // and invite the model to reach for it on a host that never confined
@@ -131,11 +108,6 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
       {"enum", CommandIntents()},
       {"description", "what it is for; display grouping only"}};
   run.parameters["properties"]["intent"] = intent_schema;
-  const json attach_schema = {
-      {"type", "string"},
-      {"minLength", 1},
-      {"description", "image the command writes; shown with the result"}};
-  run.parameters["properties"]["attach"] = attach_schema;
   run.present = [](const json& a) {
     json parts = json::array({CommandPart(JsonValue(a, "command", ""))});
     for (json& part : GenericInputParts(a, {"command"})) {
@@ -169,15 +141,12 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
                     "required":["path"]})json"),
             [&supervisor, workspace](const json& a,
                                      const ToolContext& context) {
-              return Attached(
-                  ToolRunScratch(supervisor, workspace,
-                                 JsonValue(a, "path", ""),
-                                 JsonValue(a, "args", json(nullptr)), context),
-                  a, context);
+              return ToolRunScratch(
+                  supervisor, workspace, JsonValue(a, "path", ""),
+                  JsonValue(a, "args", json(nullptr)), context);
             }));
     python.declared_intent = true;
     python.parameters["properties"]["intent"] = intent_schema;
-    python.parameters["properties"]["attach"] = attach_schema;
     python.mutating = true;
     python.capabilities = Capability(ToolCapability::kExecute) |
                           Capability(ToolCapability::kMutate);

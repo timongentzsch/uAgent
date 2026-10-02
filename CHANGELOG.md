@@ -46,9 +46,6 @@ names one loads as before and the line has no effect.
 
 ### Added
 
-- `scratch` takes `attach`: the workspace path of an image its script
-  writes, which reaches the model with the result instead of a `read_path`
-  call a round later.
 - Web: the conversation menu exports the transcript, compacts and restarts
   the conversation; typed `/restart` does the same.
 - `uagent --plain` (or `UAGENT_PLAIN=1`) for screen readers: append-only
@@ -159,8 +156,7 @@ names one loads as before and the line has no effect.
   before it can end one.
 - `scratch` runs any script in its folder: a turn is no longer held to the
   first one it ran.
-- `run` takes `attach` like `scratch`, and a rejected enum value names the
-  allowed ones.
+- A rejected enum value names the allowed ones.
 - A file diff is shown whole in the web and the terminal; past its opening it
   is read from a file kept with the session's artifacts.
 - The `session` tool lists sessions without a prompt.

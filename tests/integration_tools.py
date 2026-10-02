@@ -178,45 +178,6 @@ def test_a_loaded_skill_survives_compaction(root, home, *, binary):
         assert_true(len(server.requests) == 5, len(server.requests))
 
 
-def test_scratch_attaches_the_image_its_script_wrote(root, home, *, binary):
-    """One round renders and shows: no read_path call in between."""
-    workspace = root / "render-workspace"
-    scratch = workspace / ".uagent" / "scratch"
-    scratch.mkdir(parents=True)
-    (workspace / "source.png").write_bytes(SMALL_PNG)
-    (scratch / "render.sh").write_text("cp source.png shot.png\nprintf rendered\n")
-    seen = {}
-
-    def route(_, body):
-        messages = body["messages"]
-        parts = [p for m in messages if isinstance(m.get("content"), list) for p in m["content"]]
-        results = tool_results(messages)
-        if len(results) == 2:
-            seen["result"] = results[0]
-            seen["run"] = results[1]
-            return event({"content": "render-ok"})
-        if any(p.get("type") == "image_url" for p in parts):
-            # run takes the same argument.
-            return tool_call("run", {"command": "true", "attach": "shot.png"})
-        return tool_call("scratch", {"path": "render.sh", "attach": "shot.png"})
-
-    with Server([route]) as server:
-        result = run(
-            workspace,
-            base_env(home, server.url),
-            "--yolo",
-            "-p",
-            "render",
-            timeout=40,
-            binary=binary,
-        )
-        assert_true(result.returncode == 0, result.stderr)
-        assert_true(result.stdout.strip() == "render-ok", result.stdout)
-        assert_true(len(server.requests) == 3, len(server.requests))
-        assert_true("rendered" in seen["result"] and "attached shot.png" in seen["result"], seen)
-        assert_true("attached shot.png" in seen["run"], seen)
-
-
 def test_full_run_and_python_terminal_trace(root, home, *, binary):
     shell_command = "printf 'shell-one\\n'\nprintf 'shell-two\\n'"
     python_code = "print('python-one')\nprint('python-two')"

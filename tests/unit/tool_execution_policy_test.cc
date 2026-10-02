@@ -62,8 +62,8 @@ void TestToolExecutionPolicy() {
   UsageAccumulator adapt_usage;
   Agent adapt_agent(
       adapt_api, adapt_tools, adapt_processes, adapt_usage,
-      [](const Tool&, const json&, int64_t) { return false; }, {}, {}, {},
-      &adaptive);
+      [](const Tool&, const json&, int64_t) { return std::string("denied"); },
+      {}, {}, {}, &adaptive);
   Tool adapt = AdaptSystemTool(adaptive, [&adapt_agent](const json& request) {
     return adapt_agent.SelfDirective(request);
   });

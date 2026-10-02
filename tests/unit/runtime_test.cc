@@ -40,7 +40,9 @@ void TestEarlyTurnInterruption() {
     ProcessSupervisor processes;
     UsageAccumulator usage;
     Agent agent(api, tools, processes, usage,
-                [](const Tool&, const json&, int64_t) { return false; });
+                [](const Tool&, const json&, int64_t) {
+                  return std::string("denied");
+                });
     Observability observable;
     auto* previous = ActiveObservability();
     int notices = 0, responses = 0;
@@ -604,8 +606,9 @@ void TestEffectiveImageModel() {
   std::vector<Tool> tools;
   ProcessSupervisor processes;
   UsageAccumulator usage;
-  Agent agent(api, tools, processes, usage,
-              [](const Tool&, const json&, int64_t) { return false; });
+  Agent agent(
+      api, tools, processes, usage,
+      [](const Tool&, const json&, int64_t) { return std::string("denied"); });
   api.config.image_model = "custom/vision";
   api.capabilities.image_input = false;
   CHECK(agent.EffectiveImageModel() == "custom/vision");

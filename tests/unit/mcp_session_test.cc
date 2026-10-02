@@ -249,8 +249,8 @@ void TestWorkspaceScopedSession() {
   AdaptiveSystemState adaptive_system;
   Agent agent(
       api, tools, processes, usage,
-      [](const Tool&, const json&, int64_t) { return false; }, {}, {}, {},
-      &adaptive_system);
+      [](const Tool&, const json&, int64_t) { return std::string("denied"); },
+      {}, {}, {}, &adaptive_system);
   api.capabilities.image_input = false;
   agent.RouteChanged();
   CHECK(!api.capabilities.image_input);

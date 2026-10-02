@@ -250,7 +250,7 @@ void TestCommandReplies() {
   context.agent = std::make_unique<Agent>(
       context.runtime.api, context.tools, context.runtime.processes,
       context.runtime.side_usage,
-      [](const Tool&, const json&, int64_t) { return false; });
+      [](const Tool&, const json&, int64_t) { return std::string("denied"); });
   std::vector<Attachment> attachments;
   std::string path;
   uint64_t revision = 0;
@@ -355,7 +355,7 @@ void TestSessionPersistence() {
   context.agent = std::make_unique<Agent>(
       context.runtime.api, context.tools, context.runtime.processes,
       context.runtime.side_usage,
-      [](const Tool&, const json&, int64_t) { return false; });
+      [](const Tool&, const json&, int64_t) { return std::string("denied"); });
   const std::vector<json> requests = {
       {{"kind", "tools"}},
       {{"kind", "permissions"}},

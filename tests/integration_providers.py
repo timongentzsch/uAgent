@@ -137,7 +137,10 @@ def test_auto_permission_reviewer_failure_denies_headless(root, home, *, binary)
     target = root / "must-not-exist.txt"
 
     def finish(_, body):
-        assert_true("user denied this action" in tool_results(body["messages"])[-1], body)
+        # The model hears who refused, and that it was not the user.
+        refused = tool_results(body["messages"])[-1]
+        assert_true("automatic permission review" in refused, refused)
+        assert_true("user denied" not in refused, refused)
         return event({"content": "review-failed-closed"})
 
     with Server(

@@ -405,6 +405,8 @@ Agent::Approver MakeApprover(AppContext* app) {
     bool automatic =
         !mandatory && (ApprovalIsYolo() || session_rule || repository_rule);
     bool granted = true;
+    // Who refused, for the model: a person is the default.
+    std::string refusal = "user denied this action";
     json review = json::object();
     std::string request_id =
         "approval-" + std::to_string(sequence.fetch_add(1) + 1);
@@ -426,6 +428,10 @@ Agent::Approver MakeApprover(AppContext* app) {
       if (!ask || !InteractiveApprovalAvailable()) {
         automatic = true;
         granted = allow;
+        refusal = ask ? "the automatic permission review could not decide "
+                        "this action and nobody is here to ask"
+                      : "the automatic permission review refused this action";
+        if (!decision.error.empty()) refusal += " (" + decision.error + ")";
       }
       DebugLog("permission_review", {{"tool", tool.name}, {"result", review}});
     }
@@ -451,6 +457,8 @@ Agent::Approver MakeApprover(AppContext* app) {
           .prompt = "Allow " + TerminalSafe(tool.name) + "?"};
       if (mandatory && !InteractiveApprovalAvailable()) {
         granted = false;
+        refusal = "this action needs a person's approval (" + reason +
+                  ") and nobody is here to give it";
       } else if (mandatory) {
         request.options = json::array({{{"value", "y"}, {"label", "Allow"}},
                                        {{"value", "n"}, {"label", "Deny"}}});
@@ -500,7 +508,7 @@ Agent::Approver MakeApprover(AppContext* app) {
                 {"review", review},
                 {"mandatory_human", mandatory},
                 {"granted", granted}}});
-    return granted;
+    return granted ? std::string() : refusal;
   };
 }
 

@@ -238,15 +238,16 @@ void Agent::PrepareCall(const ToolCall& call, CallTask& task,
   }
   Emit(std::move(call_event));
   if (valid) {
-    if (required == ApprovalClass::kNone ||
-        approve_(*tool, arguments, turn_id_)) {
+    const std::string refused = required == ApprovalClass::kNone
+                                    ? ""
+                                    : approve_(*tool, arguments, turn_id_);
+    if (refused.empty()) {
       task.execute = true;
       ++tool_count;
       ++tool_counts[call.name];
     } else {
       reject(task, ToolErrorCode::kPermissionDenied,
-             "user denied this action; ask for guidance or try a different "
-             "approach",
+             refused + "; ask for guidance or try a different approach",
              "denied");
     }
   }

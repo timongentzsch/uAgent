@@ -42,10 +42,12 @@ enum class Fault;
 
 class Agent {
  public:
-  // Asks the user to approve a mutating call; wired up by the host. Approving a
-  // task authorizes its separate headless child for that scoped brief.
+  // Asks the user to approve a mutating call; wired up by the host. Returns
+  // why it was refused, empty when it may run, so the model learns who said
+  // no. Approving a task authorizes its separate headless child for that
+  // scoped brief.
   using Approver =
-      std::function<bool(const Tool&, const json& args, int64_t turn)>;
+      std::function<std::string(const Tool&, const json& args, int64_t turn)>;
   using ToolRefresher =
       std::function<bool(std::chrono::steady_clock::time_point)>;
 

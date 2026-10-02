@@ -127,7 +127,10 @@ control; **Done** returns you to the chat. Only the paired device that took
 control can finish it. Closing the viewer or losing its connection keeps the
 agent paused. Chrome stops by itself after 15 minutes without browser work,
 unless you control it or the agent is waiting for you, and starts again on the
-next action. **Stop browser** in the status menu releases it at once.
+next action; watching alone does not keep it running. A request whose
+conversation no longer runs is dropped. When a turn ends, only the tab the
+agent was on stays open. **Stop browser** in the status menu releases it at
+once.
 
 **Chrome profile** selects which login the agent and viewer share; **New
 profile** creates another persistent login. Switching requires control and
@@ -221,9 +224,12 @@ activity. See [Architecture](ARCHITECTURE.md) and
 
 Closing a tab, detaching a terminal or restarting the web server leaves the
 runtime running. **Stop** interrupts the current turn. **Close** saves the
-conversation, then stops the runtime and its supervised children. Reopening a
-closed conversation starts a runtime from its saved snapshot; it never repeats
-a previous command.
+conversation, then stops the runtime and its supervised children. A runtime
+with nothing to do for 15 minutes (no turn, no queued message, no running
+command, no terminal attached) stops the same way by itself. Either way the
+next message starts a runtime from the saved snapshot, with the conversation's
+model and permission mode; it never repeats a previous command. Commands
+started with `detach` keep running through both.
 
 On Linux, a systemd-launched web host starts each runtime in its own user scope
 through `systemd-run` (254 or newer), so a service restart does not kill it.

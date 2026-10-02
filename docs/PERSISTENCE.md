@@ -110,18 +110,21 @@ retry.
 
 ## Retention
 
-Pruning runs at startup:
+Pruning runs whenever a session's runtime starts:
 
 | Tree | Days / files kept |
 | --- | --- |
 | `history/`, `memory/.processed/` | `UAGENT_HISTORY_DAYS` 30 / 200 |
 | `sessions/` | 14 / 50 |
+| `mail/` | 14 (undelivered mail expires after a day) |
 | `bg/`, `artifacts/` | 7 / 200 |
 | `mcp/` | 7 / 100 |
 | exited detached terminals | 7, removed with their logs |
 
-Delegated children age out with `history/`. Journals whose session is gone are
-removed. Each process log is also bounded in size: 64 MiB for
+Delegated children age out with `history/`. A session's journal, undo data and
+attachments age out with it and never count against the file limit. Journals
+whose session is gone are removed, and so are the socket and lease of a
+runtime that was killed. Each process log is also bounded in size: 64 MiB for
 commands, 16 MiB for an MCP server.
 
 ## Removal

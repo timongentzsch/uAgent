@@ -102,6 +102,13 @@ names one loads as before and the line has no effect.
 
 ### Changed
 
+- A session's runtime stops after 15 minutes with nothing to do (no turn, no
+  queued message, no running command, no terminal attached), and with it its
+  MCP servers. The next message starts it again with its model and permission
+  mode: in the web the composer stays, with no Resume step, and the `session`
+  tool starts a coordinator or thread its message found stopped. Coordinators
+  follow the same rule (15 minutes, was 10). A runtime that ends with nothing
+  under way reads as saved, not interrupted.
 - `ask` takes up to 8 questions (was 4) and headers up to 24 characters
   (12 stays the aim); one that is too long is refused by name. In the web the
   questions are answered a page at a time, with a review before Submit when
@@ -160,6 +167,13 @@ names one loads as before and the line has no effect.
 - `scratch` runs any script in its folder: a turn is no longer held to the
   first one it ran.
 - A rejected enum value names the allowed ones.
+- Browser: when a turn ends only the tab the agent was on stays open; watching
+  no longer keeps an idle Chrome running; a human request whose conversation
+  no longer runs is dropped; Chrome skips component and on-device model
+  downloads and bounds its page cache.
+- Browser: the agent's current tab was forgotten at every Chrome start, so
+  the status showed no page and a popup was not followed until a tab was
+  selected by hand.
 - A coordinator and its threads are linked by where their sessions are kept,
   whatever mode they run in and before any of them has used the tool, so
   threads can message each other and their coordinator with the `session`

@@ -14,6 +14,8 @@ import type { TimePrefs } from "../../shared/time.ts";
 export interface SettingsProps {
   theme: string;
   setTheme: Dispatch<StateUpdater<string>>;
+  motion: string;
+  setMotion: Dispatch<StateUpdater<string>>;
   timePrefs: TimePrefs;
   setTimePrefs: Dispatch<StateUpdater<TimePrefs>>;
   zoom: number;

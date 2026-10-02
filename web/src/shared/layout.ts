@@ -207,6 +207,20 @@ export function useMedia(query: string) {
   return matches;
 }
 
+// Animations play unless this device asks for less motion or Settings
+// turns them off.
+export function applyMotion(motion: string) {
+  const media = matchMedia("(prefers-reduced-motion: reduce)");
+  const apply = () => {
+    document.documentElement.dataset.motion =
+      motion === "off" || media.matches ? "off" : "on";
+  };
+  apply();
+  storage.setItem("uagent-motion", motion);
+  media.addEventListener("change", apply);
+  return () => media.removeEventListener("change", apply);
+}
+
 export function applyTheme(theme: string) {
   const media = matchMedia("(prefers-color-scheme: dark)");
   const apply = () => {

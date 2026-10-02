@@ -41,6 +41,8 @@ export type Preferences = Pick<
   ComponentProps<typeof Settings>,
   | "theme"
   | "setTheme"
+  | "motion"
+  | "setMotion"
   | "timePrefs"
   | "setTimePrefs"
   | "zoom"

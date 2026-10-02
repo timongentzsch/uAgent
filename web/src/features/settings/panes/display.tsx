@@ -4,7 +4,7 @@ import { defaultTimePrefs, type TimePrefs } from "../../../shared/time.ts";
 import { useSettings, type SettingsProps } from "../context.ts";
 
 // This device's display settings and their defaults, stored in the browser.
-const DEFAULTS = { theme: "system", zoom: 100 } as const;
+const DEFAULTS = { theme: "system", motion: "system", zoom: 100 } as const;
 const TIMESTAMPS: Record<TimePrefs["style"], string> = {
   smart: "Time today, the date when older.",
   relative: "How long ago, e.g. 5 min ago.",
@@ -13,24 +13,40 @@ const TIMESTAMPS: Record<TimePrefs["style"], string> = {
 
 // How many differ from their defaults, and putting them all back: Advanced's
 // "Reset all" counts and resets them with the host's settings.
-export const displayChanged = ({ theme, zoom, timePrefs }: SettingsProps) =>
+export const displayChanged = ({
+  theme,
+  motion,
+  zoom,
+  timePrefs,
+}: SettingsProps) =>
   Number(theme !== DEFAULTS.theme) +
+  Number(motion !== DEFAULTS.motion) +
   Number(zoom !== DEFAULTS.zoom) +
   Number(timePrefs.clock !== defaultTimePrefs.clock) +
   Number(timePrefs.style !== defaultTimePrefs.style);
 export function resetDisplay({
   setTheme,
+  setMotion,
   setZoom,
   setTimePrefs,
 }: SettingsProps) {
   setTheme(DEFAULTS.theme);
+  setMotion(DEFAULTS.motion);
   setZoom(DEFAULTS.zoom);
   setTimePrefs(defaultTimePrefs);
 }
 
 export function DisplayPane() {
-  const { theme, setTheme, timePrefs, setTimePrefs, zoom, setZoom } =
-    useSettings();
+  const {
+    theme,
+    setTheme,
+    motion,
+    setMotion,
+    timePrefs,
+    setTimePrefs,
+    zoom,
+    setZoom,
+  } = useSettings();
   // One row per choice: its name, its options, and where it is kept.
   const choice = (
     label: string,
@@ -64,6 +80,15 @@ export function DisplayPane() {
           ["light", "Light"],
         ],
         setTheme,
+      )}
+      {choice(
+        "Animations",
+        motion,
+        [
+          ["system", "System"],
+          ["off", "Off"],
+        ],
+        setMotion,
       )}
       {choice(
         "Clock",

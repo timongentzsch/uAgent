@@ -94,6 +94,9 @@ names one loads as before and the line has no effect.
   on a decision. Its buttons hold their places: the primary is Send, or Stop
   while a turn runs with nothing to send. A decision opens above the input,
   which waits read-only until it is answered.
+- Web: Settings, Display has **Animations**: Off stops every animation and
+  transition on this device (a working spinner still turns); System follows
+  the device's reduced-motion setting.
 - Web: a turn that changed files ends with its receipt (files, lines, cost,
   time), which opens the files with **Undo** each and **Undo all**.
 

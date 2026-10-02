@@ -1,6 +1,6 @@
 import { storage } from "./shared/storage.ts";
 import { render } from "preact";
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { Check, Copy, Plus, Wrench } from "lucide-preact";
 import {
   Actions,
@@ -30,7 +30,12 @@ import {
 import { Menu, MenuItem } from "./shared/menu.tsx";
 import { SheetButton } from "./shared/sheet.tsx";
 import { ConnectionStatus, StatusLed } from "./shared/connection-status.tsx";
-import { applyTheme, applyZoom, normalizeZoom } from "./shared/layout.ts";
+import {
+  applyMotion,
+  applyTheme,
+  applyZoom,
+  normalizeZoom,
+} from "./shared/layout.ts";
 import { ZoomSlider } from "./shared/zoom-slider.tsx";
 import { readStored, writeStored } from "./state/store.ts";
 import BrowserTouch from "./features/browser/touch.tsx";
@@ -193,6 +198,10 @@ function Showcase() {
   >(null);
 
   useEffect(() => applyTheme(theme), [theme]);
+  useLayoutEffect(
+    () => applyMotion(storage.getItem("uagent-motion") || "system"),
+    [],
+  );
   useEffect(() => {
     writeStored(storage, "uagent-zoom", zoom);
     applyZoom(zoom);

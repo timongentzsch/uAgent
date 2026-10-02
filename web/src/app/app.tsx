@@ -17,6 +17,7 @@ import { render } from "preact";
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -64,6 +65,7 @@ import Board, { CoordinatorHelp } from "../features/coordinator/board.tsx";
 import { threadsOf, waiting as waitingOn } from "../state/attention.ts";
 import { folderName } from "../shared/folder-label.tsx";
 import {
+  applyMotion,
   applyTheme,
   applyZoom,
   lockPageZoom,
@@ -210,6 +212,9 @@ function App() {
   const [theme, setTheme] = useState(
     () => storage.getItem("uagent-theme") || "system",
   );
+  const [motion, setMotion] = useState(
+    () => storage.getItem("uagent-motion") || "system",
+  );
   const [inspector, setInspector] = useState<InspectorTarget | null>(null);
   const metadata = useSnapshots(snapshots, (all) => all[selected]?.metadata);
   const session =
@@ -278,6 +283,7 @@ function App() {
   }, []);
   useEffect(trackViewport, []);
   useEffect(() => applyTheme(theme), [theme]);
+  useLayoutEffect(() => applyMotion(motion), [motion]);
   // Files dropped anywhere attach to the open conversation; unhandled, the
   // browser would open the file in place of the app. File inputs and
   // dialogs keep their own drops.
@@ -1228,6 +1234,8 @@ function App() {
           preferences={{
             theme,
             setTheme,
+            motion,
+            setMotion,
             timePrefs,
             setTimePrefs,
             zoom,

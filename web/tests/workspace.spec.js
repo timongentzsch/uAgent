@@ -138,6 +138,11 @@ test("appearance and configuration remain usable at large scales", async ({
   await page.getByLabel("Appearance").selectOption("light");
   await page.emulateMedia({ colorScheme: "dark" });
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  // Animations follow the device until Settings turns them off.
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await expect(page.locator("html")).toHaveAttribute("data-motion", "on");
+  await page.getByLabel("Animations").selectOption("off");
+  await expect(page.locator("html")).toHaveAttribute("data-motion", "off");
   await page
     .getByRole("button", { name: "Close settings", exact: true })
     .click();

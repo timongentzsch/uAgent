@@ -59,6 +59,8 @@ void EditJournal::Open(std::string directory) {
   }
   std::error_code ec;
   for (const auto& blob : std::filesystem::directory_iterator(directory_, ec)) {
+    // A stored diff lives here too, outside the undo budget.
+    if (blob.path().filename().string().starts_with("diff-")) continue;
     std::error_code size_error;
     stored_bytes_ += blob.file_size(size_error);
   }

@@ -701,9 +701,15 @@ json FindHttpExchange(const json& value, const std::string& id) {
 }
 
 json ReadPrivateArtifact(const std::string& path, size_t offset) {
-  const auto base = CanonicalAccessPath(UagentDir(kArtifactsDir));
   const std::filesystem::path file_path(path);
-  if (path.empty() || CanonicalAccessPath(file_path.parent_path()) != base) {
+  if (path.empty()) return {{"error", "retained body unavailable"}};
+  // Either a retained artifact, or a diff kept with a session's edits.
+  auto base = CanonicalAccessPath(file_path.parent_path());
+  const bool diff =
+      file_path.filename().string().starts_with("diff-") &&
+      base.string().ends_with(".json.edits") &&
+      PathWithin(base, CanonicalAccessPath(UagentDir(kHistoryDir)));
+  if (!diff && base != CanonicalAccessPath(UagentDir(kArtifactsDir))) {
     return {{"error", "retained body unavailable"}};
   }
   size_t size = 0;

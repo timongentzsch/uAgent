@@ -341,11 +341,18 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
   std::vector<json> activities;
   activities.reserve(tasks.size());
   for (CallTask& task : tasks) {
-    // A fact and a frame are bounded, so a long diff is stored whole beside
-    // the retained exchanges and the row carries its opening.
+    // A fact and a frame are bounded, so a long diff is stored whole and the
+    // row carries its opening. It is kept with the session's edits, where it
+    // lasts as long as the conversation; a run without a session file keeps
+    // it with the retained exchanges.
     if (std::string& diff = task.result.display;
         diff.size() > kChangePreviewChars) {
-      ScopedTempFile file(UagentDir(kArtifactsDir) + "/exchange-XXXXXX");
+      if (!edits_.Directory().empty()) {
+        CreatePrivateDirectories(edits_.Directory());
+      }
+      ScopedTempFile file(edits_.Directory().empty()
+                              ? UagentDir(kArtifactsDir) + "/exchange-XXXXXX"
+                              : edits_.Directory() + "/diff-XXXXXX");
       if (file && WriteFully(file.Get(), diff)) {
         task.result.display_path = file.Release();
       }

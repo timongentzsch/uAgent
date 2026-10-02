@@ -158,7 +158,7 @@ names one loads as before and the line has no effect.
   first one it ran.
 - A rejected enum value names the allowed ones.
 - A file diff is shown whole in the web and the terminal; past its opening it
-  is read from a file kept with the session's artifacts.
+  is read from a file kept with the session, for as long as the conversation.
 - The `session` tool lists sessions without a prompt.
 - A stream error sent as a bare string keeps its text and is classified on
   the Responses and Anthropic dialects too.

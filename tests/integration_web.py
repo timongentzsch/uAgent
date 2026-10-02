@@ -1071,6 +1071,9 @@ def test_web_long_diff_is_stored_whole_and_served_by_detail(root, home, *, binar
             row = next(
                 block for block in value["state"]["view"]["blocks"] if block.get("change_path")
             )
+            # It is kept with the session's edits, so it lasts as long as the
+            # conversation and leaves with it.
+            assert_true(".json.edits/diff-" in row["change_path"], row["change_path"])
             # The row carries the diff's opening, within a fact and a frame.
             assert_true(row["change"].startswith("Created long.txt (+2001 -0)\n"), row)
             assert_true(len(row["change"]) <= 16 * 1024 and "…" not in row["change"], row)

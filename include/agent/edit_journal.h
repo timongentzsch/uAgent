@@ -23,6 +23,8 @@ class EditJournal {
  public:
   // Journals nothing until a directory is set; loads what it holds.
   void Open(std::string directory);
+  // Where a session keeps what belongs to its edits; empty until opened.
+  const std::string& Directory() const { return directory_; }
   void Record(int64_t turn, const FileEffect& effect);
   // [{path, added, removed, undoable}] for a turn summary, capped, and saves
   // the index. Empty for a turn that changed no file.

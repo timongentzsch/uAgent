@@ -43,8 +43,9 @@ json ManagementControl(const json& request) {
                  "or project"}};
       }
       std::optional<std::string> base;
-      if (const std::string* text = JsonStringRef(request, "base"))
+      if (const std::string* text = JsonStringRef(request, "base")) {
         base = *text;
+      }
       const std::string error = WriteInstructionFile(
           coordinator, project, cwd, JsonValue(request, "text", ""), base);
       if (!error.empty()) return {{"error", error}};

@@ -61,7 +61,7 @@ ToolResult MessageSession(const std::string& id, const std::string& text,
                        : ToolFailure(ToolErrorCode::kUnavailable, error);
 }
 
-Tool SessionTool(std::function<void(const std::string& path)> start) {
+Tool SessionTool(const std::function<void(const std::string& path)>& start) {
   json parameters = json{
       {"type", "object"},
       {"properties",

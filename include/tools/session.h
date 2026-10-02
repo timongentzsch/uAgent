@@ -28,7 +28,8 @@ ToolResult MessageSession(const std::string& id, const std::string& text,
 // Text-only peer messaging for every toolset, lean included. `start` starts
 // the runtime of a coordinator or thread that a message found stopped; any
 // other session reads its mail when it is next opened.
-Tool SessionTool(std::function<void(const std::string& path)> start = {});
+Tool SessionTool(
+    const std::function<void(const std::string& path)>& start = {});
 
 }  // namespace uagent
 

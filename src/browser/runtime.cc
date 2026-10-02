@@ -390,6 +390,9 @@ bool Runtime::Start(std::string& error, bool profile_setup) {
   }
   // Manual profile setup uses ordinary Chrome, without a debugging endpoint.
   // Both modes own the same profile exclusively and restore its saved tabs.
+  const std::string no_downloads =
+      "--disable-features=OptimizationGuideModelDownloading,"
+      "OptimizationHintsFetching";
   std::vector<std::string> chrome = {
       "google-chrome-stable", "--user-data-dir=" + profile, "--no-first-run",
       "--no-default-browser-check",
@@ -401,10 +404,7 @@ bool Runtime::Start(std::string& error, bool profile_setup) {
       "--password-store=basic", "--restore-last-session",
       // Keep the profile small: no downloaded components or on-device
       // models (most of a 258 MB profile), and a bounded page cache.
-      "--disable-component-update",
-      "--disable-features=OptimizationGuideModelDownloading,"
-      "OptimizationHintsFetching",
-      "--disk-cache-size=67108864"};
+      "--disable-component-update", no_downloads, "--disk-cache-size=67108864"};
   if (profile_setup) {
     chrome_pid_ = Launch(chrome);
     if (chrome_pid_ < 0) {

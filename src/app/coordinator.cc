@@ -350,6 +350,7 @@ ToolResult Spawn(const std::string& folder, const json& a) {
   const std::vector<SessionInfo> threads = OwnThreads(folder);
   // Each probe opens the thread's socket: one per thread serves both checks.
   std::vector<bool> busy;
+  busy.reserve(threads.size());
   for (const SessionInfo& info : threads) busy.push_back(Working(info));
   const int64_t working = std::ranges::count(busy, true);
   if (working >= cap) {

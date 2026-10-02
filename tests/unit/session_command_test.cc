@@ -125,7 +125,7 @@ void TestSessionCommandRejects() {
 // A reader catching up takes the backlog a batch at a time: Read stops at
 // its byte budget and the next call continues from where the reader got to.
 void TestReplayLogReadsInBatches() {
-  session::ReplayLog log(1024 * 1024, 1024);
+  session::ReplayLog log(MiB(1), 1024);
   for (int index = 0; index < 10; ++index) {
     log.Publish("e", "s", "g",
                 {{"kind", "note"}, {"pad", std::string(90, 'x')}}, false);

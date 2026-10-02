@@ -281,7 +281,7 @@ class Agent {
   void PushSkillContext(std::string skill);
   void PushUserInput(json content, bool attachment, const json& images,
                      const std::string& request_id);
-  void PushStepNote(StepState& loop, std::string note);
+  void PushStepNote(StepState& loop, const std::string& note);
   StepFlow InterruptTurn(TurnExecution& state);
   bool ApplyQueuedSteering(StepState& loop);
   StepFlow PrepareStep(TurnExecution& state, StepState& loop);

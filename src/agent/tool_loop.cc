@@ -126,12 +126,12 @@ void Agent::PrepareCall(const ToolCall& call, CallTask& task,
   int64_t& tool_count = state.metrics.tool_count;
   auto& tool_counts = loop.tool_counts;
   const int64_t step = loop.step;
-  auto reject = [](CallTask& task, ToolErrorCode code, std::string message,
+  auto reject = [](CallTask& failed, ToolErrorCode code, std::string message,
                    const char* status,
                    std::optional<ToolArgumentIssue> issue = std::nullopt) {
-    task.result = ToolFailure(code, std::move(message));
-    task.trace_status = status;
-    task.issue = std::move(issue);
+    failed.result = ToolFailure(code, std::move(message));
+    failed.trace_status = status;
+    failed.issue = std::move(issue);
   };
   auto issue_message = [](const ToolArgumentIssue& issue) {
     return issue.message.starts_with("error:") ? issue.message

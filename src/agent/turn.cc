@@ -102,7 +102,7 @@ void Agent::PushUserInput(json content, bool attachment, const json& images,
 }
 
 // A harness note for this step only; several in one step go out as one.
-void Agent::PushStepNote(StepState& loop, std::string note) {
+void Agent::PushStepNote(StepState& loop, const std::string& note) {
   if (!loop.note.empty()) loop.note += "\n\n";
   loop.note += note;
 }
@@ -346,8 +346,9 @@ void Agent::Turn(const std::string& user_input, json user_content,
                          MessageKind::kInternal);
     }
     ChatResult response = Chat("turn", loop.step, schemas);
-    if (noted)
+    if (noted) {
       conversation_.Erase(conversation_.Size() - 1, conversation_.Size());
+    }
     flow = HandleFailedResponse(response, state, loop, schemas, attachment);
     if (flow == StepFlow::kEndTurn) break;
     if (flow == StepFlow::kNextStep) continue;

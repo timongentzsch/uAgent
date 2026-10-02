@@ -48,6 +48,9 @@ std::string Tilde(const std::string& path);
 // ~/.uagent. Falls back to a per-uid temp directory when the account has no
 // home, never to a project-controlled location.
 std::string GlobalBase();
+// Where session runtimes keep their sockets and leases. AF_UNIX paths are
+// limited to 104 bytes on macOS, independently of HOME.
+std::string RuntimeDir();
 
 // The directory a workspace opts into. Named once: several modules need it,
 // and a reader and a writer disagreeing about it would silently lose data.

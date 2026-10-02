@@ -21,6 +21,7 @@
 #include "include/core/activity.h"
 #include "include/core/config.h"
 #include "include/core/fs.h"
+#include "include/core/lease.h"
 #include "include/core/limits.h"
 #include "tests/unit/test_support.h"
 
@@ -404,6 +405,21 @@ void TestObservabilityEvents() {
   PruneSessionJournalOrphans(history.string());
   CHECK(std::filesystem::exists(kept));
   CHECK(!std::filesystem::exists(orphan));
+
+  // A killed runtime's lease and socket go; a running one's stay.
+  CreatePrivateDirectories(RuntimeDir());
+  const std::string dead = RuntimeDir() + "/dead.sock";
+  const std::string live = RuntimeDir() + "/live.sock";
+  for (const std::string& file : {dead, dead + ".lock", live}) {
+    std::ofstream(file) << "";
+  }
+  FileLease running;
+  CHECK(running.Acquire(live + ".lock", error, true));
+  MaintainArtifacts();
+  CHECK(!std::filesystem::exists(dead));
+  CHECK(!std::filesystem::exists(dead + ".lock"));
+  CHECK(std::filesystem::exists(live));
+  CHECK(std::filesystem::exists(live + ".lock"));
 }
 
 }  // namespace uagent

@@ -2,8 +2,6 @@
 #ifndef UAGENT_INCLUDE_TRANSPORT_SESSION_H_
 #define UAGENT_INCLUDE_TRANSPORT_SESSION_H_
 
-#include <unistd.h>
-
 #include <algorithm>
 #include <chrono>
 #include <functional>
@@ -15,7 +13,6 @@
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/limits.h"
-#include "include/core/strings.h"
 
 namespace uagent::session {
 inline constexpr int kProtocol = 2;
@@ -37,11 +34,9 @@ inline constexpr int kSocketBacklog = 16;
 inline constexpr auto kConnectTimeout = std::chrono::seconds(2);
 inline constexpr auto kConnectPollInterval = std::chrono::milliseconds(100);
 inline constexpr auto kWorkerShutdownTimeout = std::chrono::seconds(5);
-// A session's socket, by its id (the hash of its file's path). AF_UNIX paths
-// are limited to 104 bytes on macOS, independently of HOME.
+// A session's socket, by its id (the hash of its file's path).
 inline std::string SocketPathForId(const std::string& id) {
-  return "/tmp/uagent-" + std::to_string(geteuid()) + "-" +
-         HashHex(GlobalBase()) + "/" + id + ".sock";
+  return RuntimeDir() + "/" + id + ".sock";
 }
 // Whether an activity row is work its session still waits on. A detached
 // process (a server left running) outlives its session by design, so it

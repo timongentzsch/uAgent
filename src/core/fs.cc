@@ -29,6 +29,7 @@
 #include "include/core/checked.h"
 #include "include/core/env.h"
 #include "include/core/fd.h"
+#include "include/core/lease.h"
 #include "include/core/limits.h"
 #include "include/core/platform.h"
 #include "include/core/strings.h"
@@ -70,6 +71,11 @@ std::string GlobalBase() {
   std::string home = UserHome();
   return home.empty() ? "/tmp/uagent-" + std::to_string(getuid()) + "/.uagent"
                       : home + "/.uagent";
+}
+
+std::string RuntimeDir() {
+  return "/tmp/uagent-" + std::to_string(geteuid()) + "-" +
+         HashHex(GlobalBase());
 }
 
 // The directory a workspace opts into. Named once: several modules need it,
@@ -281,11 +287,12 @@ void PruneArtifactTree(const std::string& dir, int64_t max_age_days,
         fs::remove(artifact.path, remove_error);
         return;
       }
-      // A session's journal and undo blobs age out, but never count against
-      // the sessions themselves.
+      // A session's journal, undo blobs and attachments age out, but never
+      // count against the sessions themselves.
       const std::string path = artifact.path.string();
       bool session_sidecar = path.ends_with(".events.jsonl") ||
-                             path.find(".json.edits/") != std::string::npos;
+                             path.find(".json.edits/") != std::string::npos ||
+                             path.find(".json.assets/") != std::string::npos;
       if (max_files > 0 && !session_sidecar) {
         kept.push(std::move(artifact));
         if (kept.size() > static_cast<size_t>(max_files)) {
@@ -324,10 +331,22 @@ void MaintainArtifacts() {
   PruneArtifactTree(GlobalBase() + "/" + kMemoryDir + "/.processed",
                     HistoryDays(), kHistoryFiles);
   PruneArtifactTree(UagentDir(kSessionsDir), kDebugDays, kDebugFiles);
-  PruneArtifactTree(UagentDir("mail"), kDebugDays, kDebugFiles);
+  // Mail by age only: a count would drop mail still waiting to be read.
+  PruneArtifactTree(UagentDir("mail"), kDebugDays, 0);
   PruneArtifactTree(UagentDir(kBgDir), kBgDays, kBgFiles);
   PruneArtifactTree(UagentDir(kArtifactsDir), kBgDays, kBgFiles);
   PruneArtifactTree(UagentDir(kMcpDir), kMcpLogDays, kMcpLogFiles);
+  // What a runtime that was killed left behind: its lease and its socket.
+  std::error_code error;
+  for (const auto& entry :
+       std::filesystem::directory_iterator(RuntimeDir(), error)) {
+    const std::string lease = entry.path().string();
+    if (!lease.ends_with(".sock.lock") || FileLease::HasLiveOwner(lease)) {
+      continue;
+    }
+    unlink(lease.substr(0, lease.size() - 5).c_str());
+    unlink(lease.c_str());
+  }
 }
 
 std::string MakeSessionId() {

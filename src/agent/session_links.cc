@@ -20,6 +20,14 @@
 #include "include/transport/session.h"
 
 namespace uagent {
+
+bool SocietySession(const std::string& path) {
+  const std::filesystem::path file(path);
+  const std::string name = file.filename().string();
+  return file.extension() == ".json" &&
+         (name == "coordinator.json" || name.starts_with("thread-"));
+}
+
 namespace {
 
 constexpr int kSessionLinkFormat = 1;
@@ -31,18 +39,14 @@ constexpr size_t kSessionLinkNameChars = 64;
 // they live, whatever mode each runs in: one history folder holds
 // coordinator.json and its thread-*.json. Nothing to join, nothing to prune.
 std::vector<json> SocietyMembers() {
-  const auto member = [](const std::filesystem::path& file) {
-    const std::string name = file.filename().string();
-    return file.extension() == ".json" &&
-           (name == "coordinator.json" || name.starts_with("thread-"));
-  };
+  const auto member = SocietySession;
   const std::filesystem::path own(OwnSessionFile());
   std::vector<json> out;
-  if (!member(own)) return out;
+  if (!member(own.string())) return out;
   std::error_code ec;
   for (const auto& entry :
        std::filesystem::directory_iterator(own.parent_path(), ec)) {
-    if (entry.path() == own || !member(entry.path())) continue;
+    if (entry.path() == own || !member(entry.path().string())) continue;
     out.push_back({{"id", entry.path().stem().string()},
                    {"path", entry.path().string()}});
   }

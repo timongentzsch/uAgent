@@ -1481,10 +1481,10 @@ def test_session_runtime_crash_isolation(root, home, *, binary):
                 if row.split()[1] == str(process.pid) and str(root / "workspace-0") in row
             )
             os.kill(victim, signal.SIGKILL)
-            client.until(sessions[0], lambda value: value["metadata"]["status"] == "interrupted")
+            # It had nothing under way, so nothing was interrupted: it is saved.
+            client.until(sessions[0], lambda value: value["metadata"]["status"] == "saved")
             client.command("submit", sessions[1], text="Continue independently")
             client.until(sessions[1], lambda value: "Unaffected worker" in json.dumps(value))
-            client.command("close", sessions[0])
             resumed = client.command("activate", sessions[0])["session"]
             assert_true(resumed["generation"] != sessions[0]["generation"], resumed)
             client.until(resumed, lambda value: value["metadata"]["status"] == "idle")
@@ -2568,7 +2568,7 @@ def test_idle_coordinator_is_let_go_and_exits(root, home, *, binary):
     project.mkdir()
     with Server([event({"content": "ok"})]) as provider:
         with web_host(
-            binary, root, home, provider.url, extra_env={"UAGENT_INTERNAL_COORDINATOR_IDLE_S": "2"}
+            binary, root, home, provider.url, extra_env={"UAGENT_INTERNAL_IDLE_S": "2"}
         ) as (web, code, _, _env):
             web.pair(code)
             session = web.command("create", cwd=str(project), coordinator=True)["session"]
@@ -2584,6 +2584,34 @@ def test_idle_coordinator_is_let_go_and_exits(root, home, *, binary):
             assert_true(again["id"] == session["id"], again)
             web.command("activate", again)
             wait_until(sockets, "coordinator did not start again", timeout=10)
+
+
+def test_idle_session_stops_and_a_message_starts_it_again(root, home, *, binary):
+    from session_support import runtime_directory
+
+    project = root / "idle-session"
+    project.mkdir()
+    with Server([event({"content": "first-ok"}), event({"content": "second-ok"})]) as provider:
+        with web_host(
+            binary, root, home, provider.url, extra_env={"UAGENT_INTERNAL_IDLE_S": "2"}
+        ) as (web, code, _, _env):
+            web.pair(code)
+            session = web.create(project)
+            web.command("permissions", session, mode="yolo")
+            web.command("submit", session, text="one")
+            web.until(session, lambda value: "first-ok" in json.dumps(value))
+
+            def sockets():
+                return list(runtime_directory(home).glob("*.sock"))
+
+            wait_until(lambda: not sockets(), "idle session kept running", timeout=30)
+            saved = web.until(session, lambda value: value["metadata"]["status"] == "saved")
+            assert_true("first-ok" in json.dumps(saved), saved)
+            # No resume step: the message itself starts the runtime.
+            web.command("submit", saved["metadata"], text="two")
+            again = web.until(session, lambda value: "second-ok" in json.dumps(value))
+            # The same session: its settings came back with it.
+            assert_true(again["state"]["permissions"]["mode"] == "yolo", again["state"])
 
 
 def test_coordinator_edit_from_here_rewinds_in_place(root, home, *, binary):

@@ -39,7 +39,6 @@ constexpr size_t kDetailBytes = size_t{16} * 1024;
 constexpr size_t kReportBytes = size_t{8} * 1024;
 constexpr size_t kMessageBytes = size_t{8} * 1024;
 constexpr size_t kDiffBytes = size_t{16} * 1024;
-constexpr auto kCloseTimeout = std::chrono::seconds(5);
 
 // "saved" without a runtime; else what its runtime's snapshot says: waiting
 // on a person, working a turn, or idle. A decision still with the coordinator
@@ -463,7 +462,7 @@ std::string CloseRuntime(const SessionInfo& info) {
   session::ReadFrames(
       connection.socket.Get(), -1, session::kFrameBytes,
       [](const json&) { return true; },
-      std::chrono::steady_clock::now() + kCloseTimeout);
+      std::chrono::steady_clock::now() + session::kWorkerShutdownTimeout);
   return session::Connect(info.path).socket ? "the session did not exit in time"
                                             : "";
 }

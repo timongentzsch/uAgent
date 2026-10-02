@@ -141,6 +141,14 @@ SessionCommandResult SessionHost::ExecuteCommand(
     }
     return result;
   }
+  // A message to a saved session starts it: its runtime stopped for having
+  // nothing to do, and the message is as welcome as it was before.
+  if (kind == SessionCommandKind::kSubmit && session->pid <= 0 &&
+      JsonValue(command, "generation", "") == session->generation) {
+    if (!ActivateLocked(session, result.error, lock, true)) return result;
+    command["generation"] = session->generation;
+    result.wake = true;
+  }
   if (kind == SessionCommandKind::kDelete) {
     result.error = "stop and close this conversation before deleting it";
   } else if (kind == SessionCommandKind::kActivate) {
@@ -167,7 +175,7 @@ SessionCommandResult SessionHost::ExecuteCommand(
       lock.unlock();
       session->Send({{"kind", "close"}, {"request_id", request_id}});
       lock.lock();
-      changed_.wait_for(lock, std::chrono::seconds(5),
+      changed_.wait_for(lock, kWorkerShutdownTimeout,
                         [&] { return session->exited.load(); });
     }
   } else if (session->pid <= 0 || session->exited) {

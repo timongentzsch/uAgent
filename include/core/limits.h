@@ -220,8 +220,9 @@ inline constexpr int64_t kBgFiles = 200;
 inline constexpr int64_t kMcpLogDays = 7;
 inline constexpr int64_t kMcpLogFiles = 100;
 inline constexpr int64_t kTerminalDays = 7;
-// Idle minutes before Chrome stops; the next browser action restarts it.
-inline constexpr int64_t kBrowserIdleMinutes = 15;
+// Minutes with nothing to do before a session's runtime or Chrome stops; the
+// next message, mail or browser action starts it again.
+inline constexpr int64_t kIdleMinutes = 15;
 
 }  // namespace uagent
 

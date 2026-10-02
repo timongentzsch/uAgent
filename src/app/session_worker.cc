@@ -209,8 +209,8 @@ class WorkerChannel final : public ApplicationChannel {
   }
 
   std::optional<ApplicationInput> NextInput() override {
-    // Only an idle coordinator times out: its runtime costs nothing between
-    // uses, and any client or mail starts it again.
+    // A session with nothing to do stops: whatever reaches it next (a
+    // message, mail, a client) starts it again.
     auto idle_since = std::chrono::steady_clock::now();
     for (;;) {
       {
@@ -241,15 +241,24 @@ class WorkerChannel final : public ApplicationChannel {
             (mail_.Get() < 0 && !PendingMail(MailboxIdFor(path_)).empty())) {
           return ApplicationInput{.wake = true};
         }
-        // Idle is measured from the last input or wake; any client still
-        // attached (a terminal, or a host that has not let go) keeps it.
-        const auto now = std::chrono::steady_clock::now();
+        // Idle is measured from the last input or wake.
+        if (std::chrono::steady_clock::now() - idle_since < IdlePeriod() ||
+            Occupied()) {
+          continue;
+        }
+        // The web host only watches and lets go when told; a terminal stays
+        // attached, and holds the session.
+        Send({{"kind", "retiring"}});
+        for (auto wait = kLetGo; wait.count() > 0 && server_.Clients() > 0;
+             wait -= kLetGoPoll) {
+          std::this_thread::sleep_for(kLetGoPoll);
+        }
         std::lock_guard lock(mutex_);
-        if (!input_ && server_.Clients() == 0 &&
-            now - idle_since >= CoordinatorIdle()) {
+        if (!input_ && server_.Clients() == 0) {
           closed_ = true;
           return std::nullopt;
         }
+        idle_since = std::chrono::steady_clock::now();
         continue;
       }
       wake_.Drain();
@@ -398,16 +407,24 @@ class WorkerChannel final : public ApplicationChannel {
     activity_control_ = control;
   }
 
-  // A session waits for input indefinitely; a coordinator also wakes to
-  // notice it is idle, and a minute later while the spend limit holds its
-  // mail. Without a mailbox watch, mail is looked for once a second.
+  // A session wakes to notice it is idle, and a coordinator a minute later
+  // while the spend limit holds its mail. Without a mailbox watch, mail is
+  // looked for once a second.
   int PollTimeout() {
     if (mail_.Get() < 0) return 1000;
-    if (!coordinator_) return -1;
     if (Paused()) return static_cast<int>(kSpendRecheck.count());
-    return static_cast<int>(std::min<int64_t>(
-        kIdlePoll.count(),
-        std::chrono::milliseconds(CoordinatorIdle()).count() / 4));
+    return static_cast<int>(
+        std::min<int64_t>(kIdlePoll.count(),
+                          std::chrono::milliseconds(IdlePeriod()).count() / 4));
+  }
+
+  // Work that a stopped runtime would lose: an input or guidance not yet
+  // taken, or a command still running that is not detached.
+  bool Occupied() {
+    std::lock_guard lock(mutex_);
+    if (input_ || SteeringState().QueuedCount() > 0) return true;
+    const json* activities = JsonArray(state_, "activities");
+    return activities && std::ranges::any_of(*activities, ActivityRuns);
   }
 
   bool Paused() {
@@ -886,6 +903,8 @@ class WorkerChannel final : public ApplicationChannel {
   std::mutex mutex_, control_mutex_;
   static constexpr size_t kGuidanceQueueLimit = 8;
   static constexpr auto kIdlePoll = std::chrono::milliseconds(30000);
+  static constexpr auto kLetGo = std::chrono::milliseconds(2000);
+  static constexpr auto kLetGoPoll = std::chrono::milliseconds(50);
   static constexpr auto kCoordinatorDecision = std::chrono::minutes(5);
   static constexpr auto kSpendRecheck = std::chrono::milliseconds(60000);
   bool closed_ = false, busy_ = true;

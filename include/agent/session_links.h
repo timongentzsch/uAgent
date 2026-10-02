@@ -20,6 +20,8 @@ std::string SessionLinkDir();
 // True when both ids are named in one link file. The only gate between
 // sessions; everything else is addressing.
 bool SharesLink(const std::string& a, const std::string& b);
+// Whether a session file is a coordinator's or one of its threads'.
+bool SocietySession(const std::string& path);
 
 // Join the workspace auto-link. No-op without yolo or without a session
 // file, so toggling /yolo mid-session takes effect on the next tool call. A

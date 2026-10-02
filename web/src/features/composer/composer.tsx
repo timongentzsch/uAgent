@@ -356,272 +356,256 @@ export default function Composer({
           )}
         </div>
       </div>
-      {!session.generation ? (
-        <Button
-          variant="primary"
-          disabled={!online}
-          onClick={() => command("activate", session).catch(report)}
-        >
-          Resume in this host directory
-        </Button>
-      ) : (
-        <form onSubmit={send}>
-          {suggestions.list}
-          {mentionOpen && (
-            <SuggestionList
-              id="mention-suggestions"
-              label="Attached files"
-              prefix="mention"
-              items={mentionCandidates}
-              index={mentionIndex}
-              pick={(item) => insertMention(item.id)}
-              keyOf={(item) => item.id}
+      <form onSubmit={send}>
+        {suggestions.list}
+        {mentionOpen && (
+          <SuggestionList
+            id="mention-suggestions"
+            label="Attached files"
+            prefix="mention"
+            items={mentionCandidates}
+            index={mentionIndex}
+            pick={(item) => insertMention(item.id)}
+            keyOf={(item) => item.id}
+          >
+            {(item) => (
+              <>
+                <strong>@{item.name}</strong>
+                <span>{bytes(item.bytes)}</span>
+              </>
+            )}
+          </SuggestionList>
+        )}
+        <label class="sr-only" for="prompt">
+          Message or guidance
+        </label>
+        <span class="sr-only" role="status">
+          {suggestionCount > 0 && plural(suggestionCount, "suggestion")}
+        </span>
+        <MessageInput
+          submit={send}
+          resizeKey={zoom}
+          {...suggestions.attributes}
+          {...(mentionOpen && {
+            "aria-expanded": true,
+            "aria-controls": "mention-suggestions",
+            "aria-activedescendant":
+              mentionIndex >= 0 ? `mention-${mentionIndex}` : undefined,
+          })}
+          id="prompt"
+          inputRef={input}
+          rows={1}
+          readOnly={!!pending}
+          placeholder={
+            pending
+              ? "Decide above to continue"
+              : running
+                ? "Add guidance… (Esc to stop)"
+                : "Ask µAgent…"
+          }
+          value={draft.text}
+          onInput={(event) => {
+            setDraft({ ...draft, text: event.currentTarget.value });
+            setCaret(event.currentTarget.selectionStart ?? 0);
+            setMentionIndex(-1);
+            setMentionClosed(false);
+          }}
+          onKeyUp={(event) => setCaret(event.currentTarget.selectionStart ?? 0)}
+          onClick={(event) => setCaret(event.currentTarget.selectionStart ?? 0)}
+          onPaste={(event) => {
+            const files = [...(event.clipboardData?.files || [])];
+            // Spreadsheets and web pages put a rendered image beside the
+            // text; the text is what was copied.
+            if (files.length && !event.clipboardData?.getData("text/plain")) {
+              event.preventDefault();
+              upload(files);
+            }
+          }}
+          onKeyDown={(event) => {
+            if (mentionOpen && mentionKeyDown(event)) return;
+            // Alt+Enter holds the message until the turn ends.
+            if (queueing && event.key === "Enter" && event.altKey) {
+              event.preventDefault();
+              if (!event.repeat) send(event, true);
+              return;
+            }
+            if (suggestions.keyDown(event) || !plainKey(event)) return;
+            if (event.key === "Escape" && running) {
+              event.preventDefault();
+              act("interrupt").catch(report);
+            } else recallKeyDown(event);
+          }}
+        />
+        {!!state?.attachments && (
+          <small class="muted host-files">
+            {state.attachments} file(s) attached on the host
+            <Button
+              variant="quiet"
+              size="compact"
+              disabled={!online}
+              onClick={() =>
+                act("submit", { text: "/attach clear" }).catch(report)
+              }
             >
-              {(item) => (
-                <>
-                  <strong>@{item.name}</strong>
-                  <span>{bytes(item.bytes)}</span>
-                </>
-              )}
-            </SuggestionList>
-          )}
-          <label class="sr-only" for="prompt">
-            Message or guidance
-          </label>
-          <span class="sr-only" role="status">
-            {suggestionCount > 0 && plural(suggestionCount, "suggestion")}
-          </span>
-          <MessageInput
-            submit={send}
-            resizeKey={zoom}
-            {...suggestions.attributes}
-            {...(mentionOpen && {
-              "aria-expanded": true,
-              "aria-controls": "mention-suggestions",
-              "aria-activedescendant":
-                mentionIndex >= 0 ? `mention-${mentionIndex}` : undefined,
-            })}
-            id="prompt"
-            inputRef={input}
-            rows={1}
-            readOnly={!!pending}
-            placeholder={
-              pending
-                ? "Decide above to continue"
-                : running
-                  ? "Add guidance… (Esc to stop)"
-                  : "Ask µAgent…"
-            }
-            value={draft.text}
-            onInput={(event) => {
-              setDraft({ ...draft, text: event.currentTarget.value });
-              setCaret(event.currentTarget.selectionStart ?? 0);
-              setMentionIndex(-1);
-              setMentionClosed(false);
-            }}
-            onKeyUp={(event) =>
-              setCaret(event.currentTarget.selectionStart ?? 0)
-            }
-            onClick={(event) =>
-              setCaret(event.currentTarget.selectionStart ?? 0)
-            }
-            onPaste={(event) => {
-              const files = [...(event.clipboardData?.files || [])];
-              // Spreadsheets and web pages put a rendered image beside the
-              // text; the text is what was copied.
-              if (files.length && !event.clipboardData?.getData("text/plain")) {
-                event.preventDefault();
-                upload(files);
-              }
-            }}
-            onKeyDown={(event) => {
-              if (mentionOpen && mentionKeyDown(event)) return;
-              // Alt+Enter holds the message until the turn ends.
-              if (queueing && event.key === "Enter" && event.altKey) {
-                event.preventDefault();
-                if (!event.repeat) send(event, true);
-                return;
-              }
-              if (suggestions.keyDown(event) || !plainKey(event)) return;
-              if (event.key === "Escape" && running) {
-                event.preventDefault();
-                act("interrupt").catch(report);
-              } else recallKeyDown(event);
-            }}
-          />
-          {!!state?.attachments && (
-            <small class="muted host-files">
-              {state.attachments} file(s) attached on the host
-              <Button
-                variant="quiet"
-                size="compact"
-                disabled={!online}
-                onClick={() =>
-                  act("submit", { text: "/attach clear" }).catch(report)
-                }
+              Remove
+            </Button>
+          </small>
+        )}
+        {draft.files.length > 0 && (
+          <div class="attachments">
+            {draft.files.map((asset) => (
+              <div
+                class="file-chip"
+                key={asset.id}
+                aria-busy={asset.pending || undefined}
               >
-                Remove
-              </Button>
-            </small>
-          )}
-          {draft.files.length > 0 && (
-            <div class="attachments">
-              {draft.files.map((asset) => (
-                <div
-                  class="file-chip"
-                  key={asset.id}
-                  aria-busy={asset.pending || undefined}
-                >
-                  {asset.image && !asset.pending ? (
-                    <ImageTile
-                      draftId={asset.id}
-                      name={asset.name}
-                      src={`/api/sessions/${session.id}/assets/${asset.id}`}
+                {asset.image && !asset.pending ? (
+                  <ImageTile
+                    draftId={asset.id}
+                    name={asset.name}
+                    src={`/api/sessions/${session.id}/assets/${asset.id}`}
+                  />
+                ) : (
+                  <Paperclip />
+                )}
+                <span title={asset.name}>
+                  {renaming === asset.id && !asset.pending ? (
+                    <Input
+                      aria-label={`Rename ${asset.name}`}
+                      defaultValue={asset.name}
+                      autoFocus
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter")
+                          commitRename(asset.id, event.currentTarget.value);
+                        else if (event.key === "Escape") {
+                          // Reset before closing: the unmount blur
+                          // would otherwise commit the edit.
+                          event.currentTarget.value = asset.name;
+                          setRenaming(null);
+                        }
+                      }}
+                      onBlur={(event) =>
+                        commitRename(asset.id, event.currentTarget.value)
+                      }
                     />
                   ) : (
-                    <Paperclip />
-                  )}
-                  <span title={asset.name}>
-                    {renaming === asset.id && !asset.pending ? (
-                      <Input
-                        aria-label={`Rename ${asset.name}`}
-                        defaultValue={asset.name}
-                        autoFocus
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter")
-                            commitRename(asset.id, event.currentTarget.value);
-                          else if (event.key === "Escape") {
-                            // Reset before closing: the unmount blur
-                            // would otherwise commit the edit.
-                            event.currentTarget.value = asset.name;
-                            setRenaming(null);
-                          }
-                        }}
-                        onBlur={(event) =>
-                          commitRename(asset.id, event.currentTarget.value)
-                        }
-                      />
-                    ) : (
-                      <Button
-                        class="chip-name"
-                        title={`Rename ${asset.name}`}
-                        aria-label={`Rename ${asset.name}`}
-                        disabled={asset.pending}
-                        onClick={() => setRenaming(asset.id)}
-                      >
-                        {asset.name}
-                      </Button>
-                    )}
-                    <small>
-                      {asset.pending ? "Uploading…" : bytes(asset.bytes)}
-                    </small>
-                  </span>
-                  {!asset.pending && (
-                    <IconButton
-                      label={`Remove ${asset.name}`}
-                      onClick={() =>
-                        setDraft({
-                          ...draft,
-                          files: draft.files.filter(
-                            (item) => item.id !== asset.id,
-                          ),
-                        })
-                      }
+                    <Button
+                      class="chip-name"
+                      title={`Rename ${asset.name}`}
+                      aria-label={`Rename ${asset.name}`}
+                      disabled={asset.pending}
+                      onClick={() => setRenaming(asset.id)}
                     >
-                      <X />
-                    </IconButton>
+                      {asset.name}
+                    </Button>
                   )}
-                </div>
-              ))}
-            </div>
-          )}
-          {/* Fixed slots: Attach, Model (the only one that flexes),
-              Permissions, then the primary. A pending decision dims all but
-              Permissions, which can still settle it for the conversation. */}
-          <div class="composer-actions" data-held={!!pending || undefined}>
-            <label class="file-button icon-button" title="Attach files">
-              <Paperclip />
-              <Input
-                type="file"
-                aria-label="Attach files"
-                multiple
-                disabled={!online || uploading || !!pending}
-                onChange={(event) => {
-                  upload([...(event.currentTarget.files || [])]);
-                  event.currentTarget.value = "";
-                }}
-              />
-            </label>
-            <ModelControl
-              key={session.id}
-              session={session}
-              state={state}
-              online={online}
-              running={running || !!pending}
-            />
-            <SheetButton
-              label="Permissions"
-              title={`${effectiveLabel}${permission?.mode === "default" ? " · using default permissions" : " · conversation override"}`}
-              // YOLO runs everything unasked: it says so loudly.
-              className={`permission-control${effective === "yolo" ? " yolo" : ""}`}
-              disabled={!online}
-              trigger={
-                <>
-                  <Shield />
-                  <span>
-                    <DataText>{effectiveLabel}</DataText>
-                  </span>
-                </>
-              }
-            >
-              {(close) => (
-                <Field label="Conversation permissions">
-                  <Select
-                    aria-label="Permissions"
-                    value={permission?.mode || "default"}
-                    onChange={(event) =>
-                      command("permissions", session, {
-                        mode: event.currentTarget.value,
+                  <small>
+                    {asset.pending ? "Uploading…" : bytes(asset.bytes)}
+                  </small>
+                </span>
+                {!asset.pending && (
+                  <IconButton
+                    label={`Remove ${asset.name}`}
+                    onClick={() =>
+                      setDraft({
+                        ...draft,
+                        files: draft.files.filter(
+                          (item) => item.id !== asset.id,
+                        ),
                       })
-                        .then(close)
-                        .catch(report)
                     }
                   >
-                    <option value="default">
-                      Default · {permissionLabel(permission?.default)}
-                    </option>
-                    {Object.entries(permissionLabels).map(([value, label]) => (
-                      <option value={value}>{label}</option>
-                    ))}
-                  </Select>
-                </Field>
-              )}
-            </SheetButton>
-            <IconButton
-              class="composer-primary"
-              data-mode={stopping ? "stop" : "send"}
-              type={stopping ? "button" : "submit"}
-              variant="primary"
-              label={stopping ? "Stop" : running ? "Send guidance" : "Send"}
-              title={
-                stopping ? "Stop (Esc)" : running ? "Send guidance" : "Send"
-              }
-              disabled={stopping ? !online || !!pending : unsendable}
-              onClick={
-                stopping
-                  ? () => {
-                      if (performance.now() - lastSent.current < 500) return;
-                      act("interrupt").catch(report);
-                    }
-                  : undefined
-              }
-            >
-              <ArrowUp class="send-icon" aria-hidden="true" />
-              <Square class="stop-icon" aria-hidden="true" />
-            </IconButton>
+                    <X />
+                  </IconButton>
+                )}
+              </div>
+            ))}
           </div>
-        </form>
-      )}
+        )}
+        {/* Fixed slots: Attach, Model (the only one that flexes),
+              Permissions, then the primary. A pending decision dims all but
+              Permissions, which can still settle it for the conversation. */}
+        <div class="composer-actions" data-held={!!pending || undefined}>
+          <label class="file-button icon-button" title="Attach files">
+            <Paperclip />
+            <Input
+              type="file"
+              aria-label="Attach files"
+              multiple
+              disabled={!online || uploading || !!pending}
+              onChange={(event) => {
+                upload([...(event.currentTarget.files || [])]);
+                event.currentTarget.value = "";
+              }}
+            />
+          </label>
+          <ModelControl
+            key={session.id}
+            session={session}
+            state={state}
+            online={online}
+            running={running || !!pending}
+          />
+          <SheetButton
+            label="Permissions"
+            title={`${effectiveLabel}${permission?.mode === "default" ? " · using default permissions" : " · conversation override"}`}
+            // YOLO runs everything unasked: it says so loudly.
+            className={`permission-control${effective === "yolo" ? " yolo" : ""}`}
+            disabled={!online}
+            trigger={
+              <>
+                <Shield />
+                <span>
+                  <DataText>{effectiveLabel}</DataText>
+                </span>
+              </>
+            }
+          >
+            {(close) => (
+              <Field label="Conversation permissions">
+                <Select
+                  aria-label="Permissions"
+                  value={permission?.mode || "default"}
+                  onChange={(event) =>
+                    command("permissions", session, {
+                      mode: event.currentTarget.value,
+                    })
+                      .then(close)
+                      .catch(report)
+                  }
+                >
+                  <option value="default">
+                    Default · {permissionLabel(permission?.default)}
+                  </option>
+                  {Object.entries(permissionLabels).map(([value, label]) => (
+                    <option value={value}>{label}</option>
+                  ))}
+                </Select>
+              </Field>
+            )}
+          </SheetButton>
+          <IconButton
+            class="composer-primary"
+            data-mode={stopping ? "stop" : "send"}
+            type={stopping ? "button" : "submit"}
+            variant="primary"
+            label={stopping ? "Stop" : running ? "Send guidance" : "Send"}
+            title={stopping ? "Stop (Esc)" : running ? "Send guidance" : "Send"}
+            disabled={stopping ? !online || !!pending : unsendable}
+            onClick={
+              stopping
+                ? () => {
+                    if (performance.now() - lastSent.current < 500) return;
+                    act("interrupt").catch(report);
+                  }
+                : undefined
+            }
+          >
+            <ArrowUp class="send-icon" aria-hidden="true" />
+            <Square class="stop-icon" aria-hidden="true" />
+          </IconButton>
+        </div>
+      </form>
       <div class="composer-metrics">
         <ActivityButton
           agents={state?.agents || []}

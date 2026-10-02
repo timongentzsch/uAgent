@@ -75,6 +75,8 @@ DOCUMENTED_INTERNAL = frozenset(
         "interrupt",
         "refresh",
         "reply",
+        # A runtime with nothing to do asks its watchers to let go.
+        "retiring",
         "share",
         "side",
         # A thread's finished turn, sent to its coordinator's runtime.

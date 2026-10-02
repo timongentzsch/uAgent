@@ -323,7 +323,12 @@ std::vector<Tool> BuildTools(AppContext& context,
   }
   // Peer sessions are text-only and isolation-gated by links, so the session
   // tool is safe in every toolset, lean included.
-  tools.push_back(SessionTool());
+  tools.push_back(SessionTool([](const std::string& path) {
+    std::string error;
+    session::Open(ExecutablePath(),
+                  JsonValue(SessionHeader(path), kSessionHeaderCwd, ""), path,
+                  "", Options{}, error);
+  }));
   if (context.options.Coordinator()) {
     AddCoordinatorTools(tools, CanonicalCwd());
   }

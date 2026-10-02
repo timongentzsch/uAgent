@@ -209,6 +209,16 @@ def test_coordinator_delegates_a_thread_and_hears_back(root, home, *, binary):
 def test_threads_of_one_coordinator_message_each_other(root, home, *, binary):
     """Two threads find each other by the ids the board shows, talk directly and
     wake on each other's mail; the coordinator hears each answer in its event."""
+    society(root, home, binary, stopped=False)
+
+
+def test_a_message_starts_a_thread_that_stopped_for_being_idle(root, home, *, binary):
+    society(root, home, binary, stopped=True)
+
+
+def society(root, home, binary, *, stopped):
+    from session_support import runtime_directory
+
     heard = threading.Event()
     seen = {"events": []}
 
@@ -244,6 +254,13 @@ def test_threads_of_one_coordinator_message_each_other(root, home, *, binary):
         if any(result.startswith("sent to session") for result in results):
             return event({"content": "alpha-waiting"})
         if beta:
+            if stopped:
+                # Everyone but this thread, which is mid-turn, has gone idle.
+                wait_until(
+                    lambda: len(list(runtime_directory(home).glob("*.sock"))) <= 1,
+                    "the idle thread kept running",
+                    timeout=20,
+                )
             return message(beta, "ping-from-alpha")
         return tool_call("session", {"operation": "list"})
 
@@ -276,10 +293,13 @@ def test_threads_of_one_coordinator_message_each_other(root, home, *, binary):
         return event({"content": "spawned-ok"})
 
     with Server([route]) as server:
-        result = run(root, base_env(home, server.url), "coord", "-p", "delegate", binary=binary)
+        env = base_env(home, server.url)
+        if stopped:
+            env["UAGENT_INTERNAL_IDLE_S"] = "1"
+        result = run(root, env, "coord", "-p", "delegate", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(
-            heard.wait(budget(20)),
+            heard.wait(budget(40)),
             [str(body["messages"][-1].get("content"))[:240] for _, body in server.requests],
         )
         sent = [

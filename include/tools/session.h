@@ -10,6 +10,7 @@
 // names them both. Sessions under yolo, and a coordinator's threads, join
 // their folder's link by themselves.
 
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -24,8 +25,10 @@ namespace uagent {
 ToolResult MessageSession(const std::string& id, const std::string& text,
                           int hops = 0);
 
-// Text-only peer messaging for every toolset, lean included.
-Tool SessionTool();
+// Text-only peer messaging for every toolset, lean included. `start` starts
+// the runtime of a coordinator or thread that a message found stopped; any
+// other session reads its mail when it is next opened.
+Tool SessionTool(std::function<void(const std::string& path)> start = {});
 
 }  // namespace uagent
 

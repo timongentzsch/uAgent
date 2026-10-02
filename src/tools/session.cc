@@ -61,7 +61,7 @@ ToolResult MessageSession(const std::string& id, const std::string& text,
                        : ToolFailure(ToolErrorCode::kUnavailable, error);
 }
 
-Tool SessionTool() {
+Tool SessionTool(std::function<void(const std::string& path)> start) {
   json parameters = json{
       {"type", "object"},
       {"properties",
@@ -85,13 +85,13 @@ Tool SessionTool() {
            "message only: peer-forward count for loop clamping"}}}}}};
   Tool tool = MakeTool(
       "session",
-      "Message another live uagent session linked with this one (a "
+      "Message another uagent session linked with this one (a "
       "coordinator's threads and yolo sessions link per folder). list shows "
       "linked, then linkable sessions; message reaches the peer at its next "
       "step, or starts its turn when it is idle; broadcast reaches every "
       "linked session. Unlinked "
       "sessions are refused.",
-      parameters, [](const json& arguments, const ToolContext&) {
+      parameters, [start](const json& arguments, const ToolContext&) {
         (void)EnsureSessionAutoLink();
         std::string operation = JsonValue(arguments, "operation", "list");
         if (operation == "list") {
@@ -127,6 +127,10 @@ Tool SessionTool() {
           combined +=
               one.Ok() ? one.output : ("error " + target + ": " + one.output);
           if (!one.Ok()) return ToolFailure(one.error, combined);
+          if (const std::string path = LinkedSessionPath(target);
+              start && SocietySession(path)) {
+            start(path);
+          }
         }
         return ToolSuccess(combined);
       });

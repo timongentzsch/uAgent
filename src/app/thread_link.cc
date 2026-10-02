@@ -38,10 +38,9 @@ void Notify(const std::string& folder, const std::string& thread_path,
       unreachable();
       return;
     }
-    const std::string coordinator = CoordinatorPath(folder);
-    if (Connect(coordinator).socket) return;
     std::string error;
-    if (!Open(ExecutablePath(), folder, coordinator, "", Options{}, error)
+    if (!Open(ExecutablePath(), folder, CoordinatorPath(folder), "", Options{},
+              error)
              .socket) {
       DebugLog("coordinator_start_failed", {{"error", error}});
       unreachable();

@@ -1702,12 +1702,7 @@ test.describe("mobile navigation and commands", () => {
       .getByLabel("Conversation menu", { exact: true })
       .tap();
     await page.getByRole("menuitem", { name: "Close session" }).tap();
-    await expect(
-      page.getByRole("button", { name: "Resume in this host directory" }),
-    ).toBeVisible();
-    await page
-      .getByRole("button", { name: "Resume in this host directory" })
-      .tap();
+    // A closed session keeps its composer: the next message starts it again.
     await expect(prompt).toBeVisible();
     await prompt.fill("/att");
   });

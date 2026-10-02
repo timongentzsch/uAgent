@@ -140,21 +140,9 @@ ScheduleTick SessionHost::TickSchedules() {
     } else if (prior == "waiting") {
       updates.push_back({session->run_id, "running", ""});
     }
-    // Work the run still waits on. A detached process (a server the task
-    // started to leave running) outlives its session by design, so it never
-    // holds the run open.
-    bool background = false;
-    if (const json* activities = JsonArray(session->state, "activities")) {
-      for (const json& activity : *activities) {
-        const std::string state =
-            JsonValue(activity, "status", JsonValue(activity, "state", ""));
-        if (!JsonValue(activity, "detached", false) &&
-            (state == "running" || state == "starting" || state == "stopping" ||
-             state == "finishing")) {
-          background = true;
-        }
-      }
-    }
+    const json* activities = JsonArray(session->state, "activities");
+    const bool background =
+        activities && std::ranges::any_of(*activities, ActivityRuns);
     if (session->exited || !session->error.empty() ||
         (!session->run_result.empty() &&
          (session->run_checkpoint ||

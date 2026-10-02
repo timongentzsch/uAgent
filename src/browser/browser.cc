@@ -224,7 +224,7 @@ int ServiceMain(int owner_fd) {
     if (wait[0].revents) break;
     // A request in progress is work; skip the check rather than wait on it.
     if (mutex->try_lock()) {
-      runtime->StopIfIdle(std::chrono::minutes(kBrowserIdleMinutes));
+      runtime->StopIfIdle(std::chrono::minutes(kIdleMinutes));
       mutex->unlock();
     }
     if (!(wait[1].revents & POLLIN)) continue;

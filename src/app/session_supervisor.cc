@@ -115,7 +115,8 @@ void SessionHost::DeactivateLocked(HostSession& session) {
   }
   session.status = "saved";
   session.error.clear();
-  session.state["activity"] = "Ready";
+  // A saved conversation is read from disk.
+  session.state = {{"activity", "Ready"}};
   PublishLifecycle(session, {{"kind", "deactivated"}});
 }
 
@@ -134,14 +135,13 @@ void SessionHost::Received(HostSession* session, json frame) {
     session->runtime_sequence = sequence;
   }
   const std::string kind = JsonValue(frame, "kind", "");
+  if (kind == "retiring") {
+    // The runtime has nothing to do and stops once nobody holds it: let go.
+    session->closing = true;
+    session->stop.Wake();
+    return;
+  }
   if (kind == "outcome") {
-    // A runtime closed by another client (a coordinator's close or delete)
-    // is about to exit: its end reads as closed, not interrupted.
-    if (JsonValue(frame, "accepted", false) &&
-        JsonValue(JsonValue(frame, "result", json::object()), "operation",
-                  "") == "close") {
-      session->closing = true;
-    }
     // A fork receipt must not become visible until its new conversation is
     // in the catalogue; clients can inspect it immediately after the receipt.
     if (JsonValue(JsonValue(frame, "result", json::object()), "forked",
@@ -218,7 +218,6 @@ bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
     return false;
   }
   bool create_now = create;
-  session->parked = 0;
   for (int attempt = 0;; ++attempt) {
     if (session->pid > 0 && !session->exited) {
       if (!RecycleStaleWorkerLocked(session, lock)) return true;
@@ -270,9 +269,13 @@ bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
       std::lock_guard state_lock(mutex_);
       if (IsCurrentLocked(session)) {
         outcomes_.FailPending(*session);
+        // Only a runtime that ends in the middle of work was interrupted;
+        // one that ends with nothing under way (closed by any client, or
+        // idle) is simply saved.
+        const bool working = session->turn_active || session->command_busy;
         session->turn_active = false;
         session->pending = nullptr;
-        if (session->closing) {
+        if (session->closing || !working) {
           DeactivateLocked(*session);
         } else {
           session->status = "interrupted";

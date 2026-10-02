@@ -168,7 +168,9 @@ std::optional<ToolArgumentIssue> InvalidSchemaValue(const json& schema,
   if (allowed != schema.end() && allowed->is_array() &&
       std::find(allowed->begin(), allowed->end(), value) == allowed->end()) {
     return ArgumentIssue("schema.enum",
-                         "`" + path + "` is not an allowed value", path);
+                         "`" + path + "` is not an allowed value; use one of " +
+                             JsonDump(*allowed),
+                         path);
   }
 
   if (value.is_number()) {

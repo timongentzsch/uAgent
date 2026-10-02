@@ -18,6 +18,26 @@
 
 namespace uagent {
 
+namespace {
+// The picture a command rendered arrives with its result, not a read_path
+// round later. Only where that read needs no person: anything else stays
+// read_path's to ask for.
+ToolResult Attached(ToolResult result, const json& a,
+                    const ToolContext& context) {
+  const std::string attach = JsonValue(a, "attach", "");
+  if (!result.Ok() || attach.empty()) return result;
+  if (!ApprovalIsYolo() &&
+      (PathApprovalRequired(attach, CanonicalCwd()) ||
+       PathApprovalClass(attach, PathAccess::kRead) != ApprovalClass::kNone)) {
+    result.output +=
+        "\n[not attached: " + attach + " needs approval; use read_path]";
+    return result;
+  }
+  result.output += "\n" + ToolReadFile(attach, 1, 0, context.call_id).output;
+  return result;
+}
+}  // namespace
+
 void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
                        const std::filesystem::path& workspace) {
   // The schema below is a raw JSON literal, so its yield bounds cannot be
@@ -26,12 +46,11 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
                 "update yield_ms in the run schema");
   Tool& run = AddTool(
       tools,
-      MakeTool(
-          "run",
-          "Execute a command in cwd; omit cd. tty=true enables "
-          "interactive stdin; detach persists a terminal beyond this "
-          "session.",
-          json::parse(R"json({"type":"object","properties":{
+      MakeTool("run",
+               "Execute a command in cwd; omit cd. tty=true enables "
+               "interactive stdin; detach persists a terminal beyond this "
+               "session.",
+               json::parse(R"json({"type":"object","properties":{
                     "command":{"type":"string"},
                     "shell":{"type":"string","description":"default bash"},
                     "tty":{"type":"boolean","description":"retain an interactive PTY"},
@@ -42,23 +61,25 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
                     "detach":{"type":"boolean",
                       "description":"persist terminal and log"}},
                     "required":["command"]})json"),
-          [&supervisor](const json& a, const ToolContext& context) {
-            const bool detach = JsonValue(a, "detach", false);
-            return RunShellCommand(
-                       supervisor, context,
-                       {.command = JsonValue(a, "command", ""),
-                        .shell = JsonValue(a, "shell", "bash"),
-                        .background = detach,
-                        .detach = detach,
-                        .tty = JsonValue(a, "tty", false),
-                        .sandbox = JsonValue(a, "sandbox", true),
-                        .yield_ms = JsonValue(a, "yield_ms", kDefaultYieldMs),
-                        .max_output_chars =
-                            JsonValue(a, "max_output_chars", int64_t{0}),
-                        .environment_policy =
-                            ChildEnvironmentPolicy::kApprovedShell})
-                .result;
-          }));
+               [&supervisor](const json& a, const ToolContext& context) {
+                 const bool detach = JsonValue(a, "detach", false);
+                 return Attached(
+                     RunShellCommand(
+                         supervisor, context,
+                         {.command = JsonValue(a, "command", ""),
+                          .shell = JsonValue(a, "shell", "bash"),
+                          .background = detach,
+                          .detach = detach,
+                          .tty = JsonValue(a, "tty", false),
+                          .sandbox = JsonValue(a, "sandbox", true),
+                          .yield_ms = JsonValue(a, "yield_ms", kDefaultYieldMs),
+                          .max_output_chars =
+                              JsonValue(a, "max_output_chars", int64_t{0}),
+                          .environment_policy =
+                              ChildEnvironmentPolicy::kApprovedShell})
+                         .result,
+                     a, context);
+               }));
   // The hatch exists only where there is something to escape. Advertising it
   // unconditionally would spend schema tokens on an argument that does nothing,
   // and invite the model to reach for it on a host that never confined
@@ -110,6 +131,11 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
       {"enum", CommandIntents()},
       {"description", "what it is for; display grouping only"}};
   run.parameters["properties"]["intent"] = intent_schema;
+  const json attach_schema = {
+      {"type", "string"},
+      {"minLength", 1},
+      {"description", "image the command writes; shown with the result"}};
+  run.parameters["properties"]["attach"] = attach_schema;
   run.present = [](const json& a) {
     json parts = json::array({CommandPart(JsonValue(a, "command", ""))});
     for (json& part : GenericInputParts(a, {"command"})) {
@@ -133,40 +159,25 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
             "project code: a .py with a PEP 723 `# /// script` header runs "
             "under isolated uv, a .sh under sh. Write and fix it with the file "
             "tools, then rerun it with new args instead of resending a long "
-            "pipeline through run. attach names an image it wrote, to see it "
-            "with the result.",
+            "pipeline through run.",
             json::parse(
                 R"json({"type":"object","additionalProperties":false,"properties":{
                     "path":{"type":"string","minLength":1,
                       "description":"the script's path relative to .uagent/scratch"},
                     "args":{"type":"array","items":{"type":"string","maxLength":4096},"maxItems":32,
-                      "description":"argv for this run, read from sys.argv or $@"},
-                    "attach":{"type":"string","minLength":1,
-                      "description":"workspace path of an image the script writes"}},
+                      "description":"argv for this run, read from sys.argv or $@"}},
                     "required":["path"]})json"),
             [&supervisor, workspace](const json& a,
                                      const ToolContext& context) {
-              ToolResult result = ToolRunScratch(
-                  supervisor, workspace, JsonValue(a, "path", ""),
-                  JsonValue(a, "args", json(nullptr)), context);
-              // The picture a script rendered arrives with its result, not
-              // a read_path round later. Only from where a read needs no
-              // approval: anything else stays read_path's to ask for.
-              const std::string attach = JsonValue(a, "attach", "");
-              if (!result.Ok() || attach.empty()) return result;
-              if (PathApprovalRequired(attach, CanonicalCwd()) ||
-                  PathApprovalClass(attach, PathAccess::kRead) !=
-                      ApprovalClass::kNone) {
-                result.output += "\n[not attached: " + attach +
-                                 " is outside the workspace; use read_path]";
-                return result;
-              }
-              ToolResult attached = ToolReadFile(attach, 1, 0, context.call_id);
-              result.output += "\n" + attached.output;
-              return result;
+              return Attached(
+                  ToolRunScratch(supervisor, workspace,
+                                 JsonValue(a, "path", ""),
+                                 JsonValue(a, "args", json(nullptr)), context),
+                  a, context);
             }));
     python.declared_intent = true;
     python.parameters["properties"]["intent"] = intent_schema;
+    python.parameters["properties"]["attach"] = attach_schema;
     python.mutating = true;
     python.capabilities = Capability(ToolCapability::kExecute) |
                           Capability(ToolCapability::kMutate);

@@ -157,6 +157,10 @@ names one loads as before and the line has no effect.
 - `scratch` runs any script in its folder: a turn is no longer held to the
   first one it ran.
 - A rejected enum value names the allowed ones.
+- A coordinator and its threads are linked through their folder whatever mode
+  they run in, so threads can message each other and their coordinator with
+  the `session` tool. The tool names a session by the id boards and lists
+  show, and a refused message points at `list`.
 - A file diff is shown whole in the web and the terminal; past its opening it
   is read from a file kept with the session, for as long as the conversation.
 - The `session` tool lists sessions without a prompt.

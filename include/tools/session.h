@@ -7,7 +7,8 @@
 // through one file mailbox, which also carries a parent's guidance to its
 // delegated children. Isolation
 // is the default: two sessions read each other's mail only while a link file
-// names them both. Sessions started under yolo auto-join the workspace link.
+// names them both. Sessions under yolo, and a coordinator's threads, join
+// their folder's link by themselves.
 
 #include <string>
 #include <vector>

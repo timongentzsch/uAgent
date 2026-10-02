@@ -1334,6 +1334,23 @@ void TestSessionLinks() {
   }
   SetApprovalMode(before);
   CHECK(SharesLink("aaa", "bbb"));
+  // A coordinator's threads link through its folder without yolo, wherever
+  // each of them runs.
+  const fs::path ta = workspace.workspace / "thread-a.json";
+  const fs::path tb = workspace.workspace / "thread-b.json";
+  for (const fs::path& thread : {ta, tb}) {
+    std::ofstream(thread)
+        << R"({"cwd":"/elsewhere","model":"m","session_id":"s","turns":0,)"
+        << R"("title":"t","kind":"thread","thread":{"folder":"/society"}})"
+        << "\n";
+  }
+  CHECK(CurrentApprovalMode() != ApprovalMode::kYolo);
+  for (const fs::path& thread : {ta, tb}) {
+    ScopedEnv own("UAGENT_INTERNAL_SESSION_PATH", thread.string());
+    CHECK(EnsureSessionAutoLink().Ok());
+  }
+  CHECK(SharesLink("thread-a", "thread-b"));
+  CHECK(!SharesLink("thread-a", "aaa"));
   // Listing needs no prompt.
   CHECK(!FindToolArgumentIssue(SessionTool(), {{"operation", "list"}}));
   std::vector<Mail> taken =
@@ -1345,7 +1362,7 @@ void TestSessionLinks() {
   // Summaries show the linked peer.
   bool saw_bbb = false;
   for (const json& row : SessionSummaries()) {
-    if (JsonValue(row, "id", "") == "bbb") {
+    if (JsonValue(row, "id", "") == HashHex(fb.string())) {
       saw_bbb = JsonValue(row, "linked", false);
     }
   }

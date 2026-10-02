@@ -27,7 +27,16 @@ constexpr size_t kSessionLinkMembers = 32;
 constexpr size_t kSessionLinkFiles = 256;
 constexpr size_t kSessionLinkNameChars = 64;
 
-std::string AutoLinkName() { return "auto-" + HashHex(CanonicalCwd()); }
+// The folder whose coordinator and threads this session works with, or
+// empty: a thread belongs to its coordinator's folder wherever it runs (a
+// worktree is elsewhere), a coordinator to its own.
+std::string SocietyFolder() {
+  const std::string own = OwnSessionFile();
+  if (own == CoordinatorPath(CanonicalCwd())) return CanonicalCwd();
+  return JsonValue(
+      JsonValue(SessionHeader(own), kSessionHeaderThread, json::object()),
+      "folder", "");
+}
 
 std::string LinkPath(const std::string& name) {
   return SessionLinkDir() + "/" + name + ".json";
@@ -128,10 +137,14 @@ bool SharesLink(const std::string& a, const std::string& b) {
 }
 
 ToolResult EnsureSessionAutoLink() {
-  if (!ApprovalIsYolo()) return ToolSuccess({});
+  // A coordinator and its threads work together, so they are linked whatever
+  // mode they run in; other sessions link only under yolo.
+  const std::string folder = SocietyFolder();
+  if (folder.empty() && !ApprovalIsYolo()) return ToolSuccess({});
   json me = OwnMember();
   if (!me.is_object()) return ToolSuccess({});
-  const std::string name = AutoLinkName();
+  const std::string name =
+      "auto-" + HashHex(folder.empty() ? CanonicalCwd() : folder);
   json members = JsonValue(ReadLink(name), "members", json::array());
   const std::string id = JsonValue(me, "id", "");
   if (HasMember(members, id)) return ToolSuccess({});
@@ -167,17 +180,18 @@ std::vector<json> LinkedMembers() {
 
 }  // namespace
 
+// A peer is named by the id every board and list shows, the hash of its
+// file's path; its file's stem is accepted too.
 std::string LinkedSessionPath(const std::string& id) {
   for (const json& member : LinkedMembers()) {
-    if (JsonValue(member, "id", "") == id) {
-      return JsonValue(member, "path", "");
-    }
+    const std::string path = JsonValue(member, "path", "");
+    if (JsonValue(member, "id", "") == id || HashHex(path) == id) return path;
   }
   return "";
 }
 
 std::vector<json> SessionSummaries() {
-  const std::string me = OwnSessionId();
+  const std::string me = HashHex(OwnSessionFile());
   std::vector<json> rows;
   // A linked session is already a row by the time the workspace ones arrive.
   auto push = [&](std::string id, std::string title, bool linked) {
@@ -191,15 +205,17 @@ std::vector<json> SessionSummaries() {
   };
   // Linked first: members may live in other workspaces ListSessions skips.
   for (const json& member : LinkedMembers()) {
-    const std::string id = JsonValue(member, "id", "");
-    push(id, MemberTitle(id, JsonValue(member, "path", "")), true);
+    const std::string path = JsonValue(member, "path", "");
+    push(HashHex(path), MemberTitle(JsonValue(member, "id", ""), path), true);
   }
   // Then linkable workspace sessions.
   for (const SessionInfo& info : ListSessions()) {
     if (!info.error.empty()) continue;
-    std::string stem =
-        std::filesystem::path(info.path).filename().stem().string();
-    push(stem, info.title.empty() ? stem : info.title, false);
+    push(HashHex(info.path),
+         info.title.empty()
+             ? std::filesystem::path(info.path).filename().stem().string()
+             : info.title,
+         false);
   }
   return rows;
 }

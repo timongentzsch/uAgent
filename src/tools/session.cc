@@ -31,9 +31,12 @@ ToolResult MessageSession(const std::string& id, const std::string& text,
   if (id.empty() || SafeFileComponent(id) != id) {
     return ToolFailure(ToolErrorCode::kNotFound, "unknown session " + id);
   }
-  if (!SharesLink(me, id)) {
+  const std::string peer = LinkedSessionPath(id);
+  if (peer.empty()) {
     return ToolFailure(ToolErrorCode::kPermissionDenied,
-                       "session " + id + " is not linked with this one");
+                       "session " + id +
+                           " is not linked with this one; operation=list "
+                           "shows the sessions that are");
   }
   if (text.empty()) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
@@ -44,14 +47,15 @@ ToolResult MessageSession(const std::string& id, const std::string& text,
   Mail mail;
   mail.from = MailboxIdFor(own);
   mail.sender_path = own;
-  mail.to = MailboxIdFor(LinkedSessionPath(id));
+  mail.to = MailboxIdFor(peer);
   mail.type = kMailNote;
   mail.hops = hops;
-  mail.body = {{"text", "[session " +
-                            (title.empty() || title == me
-                                 ? me
-                                 : OneLine(title) + " (" + me + ")") +
-                            "]\n" + text}};
+  // Named as lists and boards name it, so the reply can address it.
+  const std::string from = HashHex(own);
+  mail.body = {
+      {"text", "[session " +
+                   (title.empty() ? from : OneLine(title) + " (" + from + ")") +
+                   "]\n" + text}};
   const std::string error = SendMail(std::move(mail));
   return error.empty() ? ToolSuccess("sent to session " + id)
                        : ToolFailure(ToolErrorCode::kUnavailable, error);
@@ -81,8 +85,8 @@ Tool SessionTool() {
            "message only: peer-forward count for loop clamping"}}}}}};
   Tool tool = MakeTool(
       "session",
-      "Message another live uagent session linked with this one (yolo "
-      "sessions auto-link per workspace). list shows "
+      "Message another live uagent session linked with this one (a "
+      "coordinator's threads and yolo sessions link per folder). list shows "
       "linked, then linkable sessions; message reaches the peer at its next "
       "step, or starts its turn when it is idle; broadcast reaches every "
       "linked session. Unlinked "

@@ -341,7 +341,7 @@ void MaintainArtifacts() {
   for (const auto& entry :
        std::filesystem::directory_iterator(RuntimeDir(), error)) {
     const std::string lease = entry.path().string();
-    if (!lease.ends_with(".sock.lock") || FileLease::HasLiveOwner(lease)) {
+    if (!lease.ends_with(".sock.lock") || !FileLease::OwnerGone(lease)) {
       continue;
     }
     unlink(lease.substr(0, lease.size() - 5).c_str());

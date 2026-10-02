@@ -406,13 +406,17 @@ void TestObservabilityEvents() {
   CHECK(std::filesystem::exists(kept));
   CHECK(!std::filesystem::exists(orphan));
 
-  // A killed runtime's lease and socket go; a running one's stay.
+  // A killed runtime's lease and socket go; a running one's stay, and so
+  // does one whose lease names nobody (a runtime from before leases did).
   CreatePrivateDirectories(RuntimeDir());
   const std::string dead = RuntimeDir() + "/dead.sock";
   const std::string live = RuntimeDir() + "/live.sock";
-  for (const std::string& file : {dead, dead + ".lock", live}) {
+  const std::string unnamed = RuntimeDir() + "/unnamed.sock";
+  for (const std::string& file : {dead, live, unnamed, unnamed + ".lock"}) {
     std::ofstream(file) << "";
   }
+  std::ofstream(dead + ".lock") << "2147483646 gone";
+  chmod((dead + ".lock").c_str(), 0600);
   FileLease running;
   CHECK(running.Acquire(live + ".lock", error, true));
   MaintainArtifacts();
@@ -420,6 +424,7 @@ void TestObservabilityEvents() {
   CHECK(!std::filesystem::exists(dead + ".lock"));
   CHECK(std::filesystem::exists(live));
   CHECK(std::filesystem::exists(live + ".lock"));
+  CHECK(std::filesystem::exists(unnamed));
 }
 
 }  // namespace uagent

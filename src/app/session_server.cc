@@ -338,7 +338,12 @@ Server::~Server() {
   state_->stopped = true;
   state_->wake.Wake();
   if (state_->thread.joinable()) state_->thread.join();
-  if (state_->listener) unlink(state_->path.c_str());
+  // Removed while the lease is still held, so a clean exit leaves nothing
+  // and nobody can mistake the file for a holder's.
+  if (state_->listener) {
+    unlink(state_->path.c_str());
+    unlink((state_->path + ".lock").c_str());
+  }
 }
 bool Server::Start(const std::string& path, const std::string& generation,
                    std::function<bool(const json&)> command) {

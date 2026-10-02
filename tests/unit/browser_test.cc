@@ -119,6 +119,8 @@ void TestBrowserHandoverRecovery() {
                           true));
     orphaned.StopIfIdle(std::chrono::minutes(kIdleMinutes));
     CHECK(orphaned.Execute({{"op", "status"}}).value("mode", "") == "human");
+    // A runtime that exits removes its lease.
+    std::filesystem::remove(session::SocketPathForId(kSession) + ".lock");
   }
   orphaned.StopIfIdle(std::chrono::minutes(kIdleMinutes));
   CHECK(orphaned.Execute({{"op", "status"}}).value("mode", "") == "idle");

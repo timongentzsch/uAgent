@@ -262,6 +262,16 @@ def society(root, home, binary, *, stopped):
                     timeout=20,
                 )
             return message(beta, "ping-from-alpha")
+        # Its peer is spawned beside it and may not be saved yet; asking the
+        # same question over and over would end the turn as a repeated call.
+        wait_until(
+            lambda: any(
+                '"Beta"' in file.read_text(encoding="utf-8").split("\n", 1)[0]
+                for file in (home / ".uagent" / "history").glob("*/thread-*.json")
+            ),
+            "the second thread was never saved",
+            timeout=20,
+        )
         return tool_call("session", {"operation": "list"})
 
     def beta(body, text):

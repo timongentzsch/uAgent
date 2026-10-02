@@ -125,7 +125,6 @@ void Agent::PrepareCall(const ToolCall& call, CallTask& task,
                         TurnExecution& state, StepState& loop) {
   int64_t& tool_count = state.metrics.tool_count;
   auto& tool_counts = loop.tool_counts;
-  auto& stable_arguments = loop.recovery.stable_arguments;
   const int64_t step = loop.step;
   auto reject = [](CallTask& task, ToolErrorCode code, std::string message,
                    const char* status,
@@ -181,17 +180,6 @@ void Agent::PrepareCall(const ToolCall& call, CallTask& task,
     }
   } else {
     valid = true;
-  }
-  if (valid) {
-    std::string stable =
-        StableArgumentError(*tool, arguments, stable_arguments);
-    if (!stable.empty()) {
-      ToolArgumentIssue issue =
-          ArgumentIssue("arguments.unstable", stable, tool->stable_argument);
-      reject(task, ToolErrorCode::kInvalidArguments, std::move(stable),
-             "unstable_argument", issue);
-      valid = false;
-    }
   }
   if (valid && tool->max_calls_per_turn >= 0 &&
       tool_counts[call.name] >= tool->max_calls_per_turn) {
@@ -398,13 +386,6 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
     model_chars = SaturatingAdd(model_chars, model_results[index].size());
     AppendToolResult(call, model_results[index], task.result, task.duration_ms);
     if (task.result.effect) edits_.Record(turn_id_, *task.result.effect);
-  }
-  // A value that failed binds nothing: the model may correct it.
-  for (const CallTask& task : tasks) {
-    if (task.result.Ok() && task.tool) {
-      StableArgumentError(*task.tool, task.args, loop.recovery.stable_arguments,
-                          /*bind=*/true);
-    }
   }
   bool any_succeeded =
       std::any_of(tasks.begin(), tasks.end(),

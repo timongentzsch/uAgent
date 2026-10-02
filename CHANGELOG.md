@@ -157,8 +157,10 @@ names one loads as before and the line has no effect.
   instead of ending the turn, and every other model fault (an empty or cut-off
   response, tool markup in prose, a call without a name) is told to the model
   before it can end one.
-- `scratch` holds a turn to its script only once that script has run: a
-  rejected path no longer blocks the corrected one.
+- `scratch` runs any script in its folder: a turn is no longer held to the
+  first one it ran.
+- `run` takes `attach` like `scratch`, and a rejected enum value names the
+  allowed ones.
 - A file diff is shown whole in the web and the terminal; past its opening it
   is read from a file kept with the session's artifacts.
 - The `session` tool lists sessions without a prompt.

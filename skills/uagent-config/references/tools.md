@@ -5,11 +5,11 @@
 
 Descriptions are what the model reads, including the batching and budget suffixes the registry appends. `bytes` is what one schema costs in every request that advertises it, and `when` says which sessions pay it. `schema` digests the complete JSON parameters, so an argument or its description cannot change without changing this table. Conditionally registered tools are rendered from empty dependencies: the route- and skill-catalogue text a live session splices in, and MCP tools, appear in `/context` instead.
 
-Advertised schema text totals 13742 bytes, of which 4950 bytes are sent by every session.
+Advertised schema text totals 13818 bytes, of which 5026 bytes are sent by every session.
 
 | Tool | Bytes | Arguments | Lean | Batchable | When | Schema | Description |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `read_path` | 449 | `limit?, offset?, path` | yes | yes | always | `8a70f441765b` | Read text/ranges, list directories, or add images/documents to model context. Omit ranges for media. Use grep for unknown paths or symbols. Reread only after changes when current text matters. |
+| `read_path` | 525 | `limit?, offset?, path` | yes | yes | always | `8a70f441765b` | Read text/ranges, list directories, or add images/documents to model context. Omit ranges for media; an image a command just wrote is seen sooner through that command's attach. Use grep for unknown paths or symbols. Reread only after changes when current text matters. |
 | `write_file` | 281 | `content, overwrite?, path` | no | no | always | `db5aae6c2ed5` | Create a file. Use edit_file for existing files; overwrite=true explicitly permits whole-file replacement. |
 | `edit_file` | 479 | `edits, path` | no | no | always | `71d8041d1e31` | Apply exact search/replacements to an existing file, batched and atomic in order. |
 | `delete_file` | 171 | `path` | no | no | always | `248d9b4cfbdb` | Delete a regular file and show its removed content as a red diff. |

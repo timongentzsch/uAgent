@@ -67,7 +67,8 @@ void RegisterFileTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
   Tool& read = path_tool(MakeTool(
       "read_path",
       "Read text/ranges, list directories, or add images/documents to model "
-      "context. Omit ranges for media. Use grep for unknown "
+      "context. Omit ranges for media; an image a command just wrote is seen "
+      "sooner through that command's attach. Use grep for unknown "
       "paths or symbols. Reread only after changes when current text matters.",
       json::parse(R"json({"type":"object","properties":{
                     "path":{"type":"string"},

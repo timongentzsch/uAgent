@@ -213,7 +213,6 @@ void TestGrepTool() {
     CHECK(memory->parameters["required"] == json::array({"action"}));
   }
   CHECK(python && python->timeout_s == 0);
-  CHECK(python && python->stable_argument == "path");
   CHECK(FindTool(lean_tools, "wait_background") == nullptr);
   const Tool* activity = FindTool(lean_tools, "activity");
   CHECK(activity != nullptr);

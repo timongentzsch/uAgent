@@ -239,7 +239,6 @@ struct Agent::StepState {
   // How this line of responses has been going: repetitions, failures and the
   // advisories already sent about them.
   struct Recovery {
-    std::unordered_map<std::string, std::string> stable_arguments;
     std::unordered_map<std::string, int64_t> rejection_rounds;
     std::string last_call;
     std::string last_single_tool;

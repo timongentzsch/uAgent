@@ -201,7 +201,6 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
       return Utf8Trunc(ReadFile(*script, kPreviewChars + 1).value_or(""),
                        kPreviewChars);
     };
-    python.stable_argument = "path";
     python.timeout_s = 0;  // bounded by the turn; no model-driven polling
   }
 }

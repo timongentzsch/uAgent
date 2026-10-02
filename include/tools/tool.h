@@ -196,7 +196,6 @@ struct Tool {
   std::string mandatory_reason;
   std::string provider;             // owner for live registry refresh
   json output_schema;               // optional MCP output contract
-  std::string stable_argument;      // value must stay fixed during one turn
   int64_t timeout_s = -1;           // -1 = global default; 0 = turn limit
   int64_t result_chars = -1;        // -1 = global result cap
   int64_t max_calls_per_turn = -1;  // -1 = global turn budget
@@ -331,12 +330,6 @@ void ClampToolArguments(const Tool& tool, json& args,
 // separate execution copy of its arguments.
 void CanonicalizeToolArguments(const Tool& tool, json& args,
                                std::vector<std::string>* clamped = nullptr);
-
-// A tool's `stable_argument` must keep the value its first successful call of
-// the turn had (`bind` records it); `values` carries that per-turn memory.
-std::string StableArgumentError(
-    const Tool& tool, const json& args,
-    std::unordered_map<std::string, std::string>& values, bool bind = false);
 
 json ToolSchema(const Tool& tool);
 

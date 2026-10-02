@@ -36,9 +36,7 @@ Fd Socket(const std::string& path, bool listen) {
 }
 }  // namespace
 std::string SocketPath(const std::string& path) {
-  // AF_UNIX paths are limited to 104 bytes on macOS, independently of HOME.
-  return "/tmp/uagent-" + std::to_string(geteuid()) + "-" +
-         HashHex(GlobalBase()) + "/" + HashHex(path) + ".sock";
+  return SocketPathForId(HashHex(path));
 }
 
 Connection Connect(const std::string& path) {

@@ -32,10 +32,12 @@ class Runtime {
   json Call(const std::string& method, const json& parameters = json::object(),
             const std::string& session = {});
   bool SelectPage(std::string& error);
-  bool AttachPage(const std::string& target, std::string& error);
+  bool AttachPage(std::string target, std::string& error);
   bool Agent(const json& command, std::string& error);
   json Status(bool include_page = true);
+  json Targets();
   json PageTargets();
+  bool ClearHandover();
   json Probe();
   json Observe();
   bool SaveHandover() const;

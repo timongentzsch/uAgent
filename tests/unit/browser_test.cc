@@ -98,6 +98,18 @@ void TestBrowserHandoverRecovery() {
                                    {"interaction_id", kInteraction}});
   CHECK(released.value("mode", "") == "idle");
   CHECK(!std::filesystem::exists(directory / "handover.json"));
+  // A handover whose conversation no longer runs is dropped by the idle
+  // check: nobody is left to hand the browser back to.
+  {
+    std::ofstream saved(directory / "handover.json");
+    saved << JsonDump(
+        {{"session_id", kSession}, {"interaction_id", kInteraction}});
+  }
+  browser::Runtime orphaned;
+  CHECK(orphaned.Execute({{"op", "status"}}).value("mode", "") == "human");
+  orphaned.StopIfIdle(std::chrono::minutes(kIdleMinutes));
+  CHECK(orphaned.Execute({{"op", "status"}}).value("mode", "") == "idle");
+  CHECK(!std::filesystem::exists(directory / "handover.json"));
 }
 
 void TestBrowserProfiles() {
@@ -298,6 +310,19 @@ void TestBrowserHandBackOnClose() {
   CHECK(runtime.Execute({{"op", "status"}}).value("mode", "") == "agent");
   CHECK(!runtime.Execute({{"op", "tabs"}, {"session_id", kSession}})
              .contains("error"));
+  // The end of a turn leaves only its current tab open.
+  CHECK(!runtime.Execute({{"op", "release"}, {"session_id", kSession}})
+             .contains("error"));
+  std::vector<std::string> closed_tabs;
+  std::ifstream cdp(fs::canonical(workspace.root) / "browser" / "profile" /
+                    "cdp.jsonl");
+  for (std::string line; std::getline(cdp, line);) {
+    const json command = json::parse(line);
+    if (command.value("method", "") == "Target.closeTarget") {
+      closed_tabs.push_back(command["params"].value("targetId", ""));
+    }
+  }
+  CHECK(closed_tabs == std::vector<std::string>({"left-open"}));
   CHECK(runtime.Execute({{"op", "takeover"}, {"device", kDevice}})
             .value("running", false));
   runtime.StopIfIdle(std::chrono::minutes(0));

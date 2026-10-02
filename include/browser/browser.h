@@ -14,6 +14,8 @@ namespace uagent::browser {
 
 // Profile flushes get a bounded grace period before a child is killed.
 inline constexpr int kChildShutdownGraceMs = 5000;
+// Tabs the agent is shown; more than these it cannot tell apart anyway.
+inline constexpr size_t kListedTabs = 16;
 // Chrome and Xvnc may each consume their grace; allow another for cleanup.
 inline constexpr int kServiceShutdownGraceMs = 3 * kChildShutdownGraceMs;
 

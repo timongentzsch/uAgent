@@ -21,6 +21,7 @@
 #include "include/browser/browser.h"
 #include "include/core/fd.h"
 #include "include/core/fs.h"
+#include "include/core/lease.h"
 #include "include/core/platform.h"
 #include "include/tools/files.h"
 #include "include/transport/session.h"
@@ -102,21 +103,28 @@ pid_t Launch(const std::vector<std::string>& arguments,
     argv.push_back(const_cast<char*>(argument.c_str()));
   }
   argv.push_back(nullptr);
+  // Its own process group: Chrome's renderers and helpers stop with it.
+  posix_spawnattr_t group;
+  posix_spawnattr_init(&group);
+  posix_spawnattr_setflags(&group, POSIX_SPAWN_SETPGROUP);
+  posix_spawnattr_setpgroup(&group, 0);
   pid_t pid = -1;
-  return posix_spawnp(&pid, argv[0], actions, nullptr, argv.data(),
-                      ProcessEnvironment()) == 0
-             ? pid
-             : -1;
+  const int status = posix_spawnp(&pid, argv[0], actions, &group, argv.data(),
+                                  ProcessEnvironment());
+  posix_spawnattr_destroy(&group);
+  return status == 0 ? pid : -1;
 }
 
 void Terminate(pid_t& pid) {
   if (pid <= 0) return;
-  kill(pid, SIGTERM);
+  kill(-pid, SIGTERM);
   if (!ReapPidFor(pid, nullptr,
                   std::chrono::milliseconds(kChildShutdownGraceMs))) {
-    kill(pid, SIGKILL);
+    kill(-pid, SIGKILL);
     waitpid(pid, nullptr, 0);
   }
+  // Whatever the leader left behind.
+  kill(-pid, SIGKILL);
   pid = -1;
 }
 
@@ -164,11 +172,38 @@ Runtime::~Runtime() { Stop(); }
 void Runtime::Shutdown() { Stop(); }
 
 void Runtime::StopIfIdle(std::chrono::minutes limit) {
+  // A handover whose conversation no longer runs has nobody to hand back to.
+  if (!interaction_.empty() &&
+      !FileLease::HasLiveOwner(session::SocketPathForId(agent_session_) +
+                               ".lock")) {
+    ClearHandover();
+  }
   if (chrome_pid_ <= 0 || mode_ == "human" || !interaction_.empty() ||
-      !viewer_.empty() || std::chrono::steady_clock::now() - used_ < limit) {
+      std::chrono::steady_clock::now() - used_ < limit) {
     return;
   }
   Stop(true);
+}
+
+bool Runtime::ClearHandover() {
+  std::string previous_interaction = std::exchange(interaction_, "");
+  std::string previous_session = std::exchange(agent_session_, "");
+  const std::string previous_mode =
+      std::exchange(mode_, viewer_.empty() ? "idle" : "human");
+  observation_.clear();
+  if (SaveHandover()) return true;
+  interaction_ = std::move(previous_interaction);
+  agent_session_ = std::move(previous_session);
+  mode_ = previous_mode;
+  return false;
+}
+
+// Chrome's targets, or none when it does not answer.
+json Runtime::Targets() {
+  const json response = Call("Target.getTargets");
+  const json* result = JsonObject(response, "result");
+  const json* infos = result ? JsonArray(*result, "targetInfos") : nullptr;
+  return infos ? *infos : json::array();
 }
 
 Runtime::Runtime() {
@@ -363,7 +398,13 @@ bool Runtime::Start(std::string& error, bool profile_setup) {
       // that would exactly fill the screen by one pixel (1279x799), leaving
       // a black line; one pixel past the edge is kept as asked.
       "--window-position=0,0", "--window-size=1281,801", "--ozone-platform=x11",
-      "--password-store=basic", "--restore-last-session"};
+      "--password-store=basic", "--restore-last-session",
+      // Keep the profile small: no downloaded components or on-device
+      // models (most of a 258 MB profile), and a bounded page cache.
+      "--disable-component-update",
+      "--disable-features=OptimizationGuideModelDownloading,"
+      "OptimizationHintsFetching",
+      "--disk-cache-size=67108864"};
   if (profile_setup) {
     chrome_pid_ = Launch(chrome);
     if (chrome_pid_ < 0) {
@@ -486,15 +527,10 @@ json Runtime::Call(const std::string& method, const json& parameters,
 }
 
 bool Runtime::SelectPage(std::string& error) {
-  json targets = Call("Target.getTargets");
-  if (const json* result = JsonObject(targets, "result")) {
-    if (const json* infos = JsonArray(*result, "targetInfos")) {
-      for (const auto& item : *infos) {
-        if (JsonValue(item, "type", "") == "page") {
-          target_ = JsonValue(item, "targetId", "");
-          break;
-        }
-      }
+  for (const json& item : Targets()) {
+    if (JsonValue(item, "type", "") == "page") {
+      target_ = JsonValue(item, "targetId", "");
+      break;
     }
   }
   if (target_.empty()) {
@@ -510,7 +546,8 @@ bool Runtime::SelectPage(std::string& error) {
   return AttachPage(target_, error);
 }
 
-bool Runtime::AttachPage(const std::string& target, std::string& error) {
+// `target` by value: SelectPage passes target_ itself, which is replaced here.
+bool Runtime::AttachPage(std::string target, std::string& error) {
   json attached =
       Call("Target.attachToTarget", {{"targetId", target}, {"flatten", true}});
   std::string attached_session;
@@ -568,17 +605,12 @@ json Runtime::Status(bool include_page) {
                  {"display", display_}};
   if (!profile_error_.empty()) result["error"] = profile_error_;
   if (running && include_page && !profile_setup_) {
-    json targets = Call("Target.getTargets");
-    if (const json* response = JsonObject(targets, "result")) {
-      if (const json* infos = JsonArray(*response, "targetInfos")) {
-        for (const auto& info : *infos) {
-          if (JsonValue(info, "targetId", "") == target_) {
-            std::string url = JsonValue(info, "url", "");
-            result["url"] = url.substr(0, url.find_first_of("?#"));
-            result["title"] = JsonValue(info, "title", "");
-            break;
-          }
-        }
+    for (const json& info : Targets()) {
+      if (JsonValue(info, "targetId", "") == target_) {
+        std::string url = JsonValue(info, "url", "");
+        result["url"] = url.substr(0, url.find_first_of("?#"));
+        result["title"] = JsonValue(info, "title", "");
+        break;
       }
     }
   }
@@ -658,7 +690,10 @@ json Runtime::Execute(const json& command) {
   const std::string op = JsonValue(command, "op", "");
   if (op == "ping") return {{"ok", true}};
   if (op == "status") return Status();
-  if (op != "agent_status") used_ = std::chrono::steady_clock::now();
+  // Watching is not use: only actions keep an idle Chrome running.
+  if (op != "agent_status" && op != "viewer") {
+    used_ = std::chrono::steady_clock::now();
+  }
   if (op == "create_profile" || op == "select_profile") {
     if (!profile_error_.empty()) return {{"error", profile_error_}};
     std::string device = JsonValue(command, "device", "");
@@ -810,6 +845,16 @@ json Runtime::Execute(const json& command) {
       return {{"error", "browser lease belongs to another conversation"}};
     }
     if (mode_ == "human") return {{"error", "human controls the browser"}};
+    // The turn is over: only its current tab stays, so tabs do not pile up
+    // over the profile's life and come back at every start.
+    if (Alive(chrome_pid_) && !target_.empty()) {
+      for (const json& info : Targets()) {
+        const std::string id = JsonValue(info, "targetId", "");
+        if (JsonValue(info, "type", "") == "page" && id != target_) {
+          Call("Target.closeTarget", {{"targetId", id}});
+        }
+      }
+    }
     agent_session_.clear();
     mode_ = "idle";
     observation_.clear();
@@ -821,18 +866,7 @@ json Runtime::Execute(const json& command) {
         interaction_.empty()) {
       return {{"error", "browser handover changed"}};
     }
-    std::string previous_interaction = interaction_;
-    std::string previous_session = agent_session_;
-    interaction_.clear();
-    agent_session_.clear();
-    observation_.clear();
-    mode_ = viewer_.empty() ? "idle" : "human";
-    if (!SaveHandover()) {
-      interaction_ = std::move(previous_interaction);
-      agent_session_ = std::move(previous_session);
-      mode_ = "human";
-      return {{"error", "cannot clear browser handover"}};
-    }
+    if (!ClearHandover()) return {{"error", "cannot clear browser handover"}};
     return Status();
   }
   if (op == "request_human" && mode_ == "human" && interaction_.empty()) {
@@ -1037,7 +1071,7 @@ json Runtime::PageTargets() {
   const json* result = JsonObject(targets, "result");
   const json* infos = result ? JsonArray(*result, "targetInfos") : nullptr;
   for (const auto& info : infos ? *infos : json::array()) {
-    if (pages.size() >= 16) break;
+    if (pages.size() >= kListedTabs) break;
     std::string url = JsonValue(info, "url", "");
     if (JsonValue(info, "type", "") != "page" ||
         !(url.starts_with("https://") || url.starts_with("http://") ||

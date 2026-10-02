@@ -170,8 +170,6 @@ names one loads as before and the line has no effect.
   read it.
 - Web: a message from another session or a thread event is shown as an event
   row with its sender, not as a message of yours.
-- `run` and `scratch` show the model a picture the command wrote and named in
-  its output, where reading it needs no approval: no `read_path` round.
 - A file diff is shown whole in the web and the terminal; past its opening it
   is read from a file kept with the session, for as long as the conversation.
 - The `session` tool lists sessions without a prompt.

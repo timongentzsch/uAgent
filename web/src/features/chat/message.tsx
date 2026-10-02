@@ -20,7 +20,7 @@ import type {
 import { useContext, useEffect, useId, useMemo, useState } from "preact/hooks";
 import { TimePrefsContext, formatMoment } from "../../shared/time.ts";
 import { MessageActions } from "./message-actions.ts";
-import { Minimize2, X } from "lucide-preact";
+import { Mail, Minimize2, X } from "lucide-preact";
 import {
   Button,
   DisclosureRow,
@@ -195,6 +195,25 @@ function MessageView({ block, online, session }: MessageProps) {
         </p>
       </EventRow>
     );
+  // Another session's or the harness's words: an event with its sender's
+  // label, never the person's bar. The label is the text's own opening
+  // bracket ("[thread event, not a user message] …").
+  if (block.kind === "user" && block.origin === "mail") {
+    const match = /^\[([^\]]+)\]\s*([\s\S]*)$/.exec(text || "");
+    const label = match?.[1] ?? "Message";
+    const body = match?.[2] ?? "";
+    const [first] = body.split("\n", 1);
+    return (
+      <EventRow
+        title={`${label.replace(", not a user message", "")} · ${first}`}
+        time={block.time}
+        icon={<Mail />}
+        messageId={block.key || block.id}
+      >
+        <p>{cleanText(body)}</p>
+      </EventRow>
+    );
+  }
   if (block.summary)
     return (
       <TurnFooter

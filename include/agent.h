@@ -195,6 +195,9 @@ class Agent {
   // interrupt stops the running turn after queueing its text. With `hold`,
   // wake messages stay pending. True when anything was taken.
   bool DeliverMail(bool hold = false);
+  // Text about to arrive as input that another session or the harness wrote:
+  // its row is shown as an event, not as the person's message.
+  void NotFromUser(const std::string& text) { not_user_.push_back(text); }
 
   // The session's undo (EditJournal), kept in `directory`; unset, nothing is
   // journaled, as for a subagent.
@@ -445,6 +448,7 @@ class Agent {
   // Mail taken but not yet in a saved snapshot, acknowledged by Save, and the
   // ids of the latest delivered, so one delivered again is recognised.
   mutable std::vector<std::string> unacked_mail_;
+  std::vector<std::string> not_user_;
   json delivered_mail_ = json::array();
   EditJournal edits_;
   uint64_t view_epoch_ = 0;

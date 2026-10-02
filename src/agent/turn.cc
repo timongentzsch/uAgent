@@ -91,6 +91,13 @@ void Agent::PushUserInput(json content, bool attachment, const json& images,
     conversation_.RecordDisplay(conversation_.LastDisplayId(),
                                 {{"files", images}});
   }
+  if (const auto mail = std::ranges::find(
+          not_user_, conversation_.LastText(MessageKind::kUser));
+      mail != not_user_.end()) {
+    not_user_.erase(mail);
+    conversation_.RecordDisplay(conversation_.LastDisplayId(),
+                                {{"origin", "mail"}});
+  }
   PublishMessage(request_id);
 }
 

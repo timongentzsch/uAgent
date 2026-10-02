@@ -157,10 +157,18 @@ names one loads as before and the line has no effect.
 - `scratch` runs any script in its folder: a turn is no longer held to the
   first one it ran.
 - A rejected enum value names the allowed ones.
-- A coordinator and its threads are linked through their folder whatever mode
-  they run in, so threads can message each other and their coordinator with
-  the `session` tool. The tool names a session by the id boards and lists
+- A coordinator and its threads are linked by where their sessions are kept,
+  whatever mode they run in and before any of them has used the tool, so
+  threads can message each other and their coordinator with the `session`
+  tool. The tool names a session by the id boards and lists
   show, and a refused message points at `list`.
+- A thread's finished turn reaches its coordinator with the answer in it (the
+  first 1,500 characters), so the coordinator no longer calls `history` to
+  read it.
+- Web: a message from another session or a thread event is shown as an event
+  row with its sender, not as a message of yours.
+- `run` and `scratch` show the model a picture the command wrote and named in
+  its output, where reading it needs no approval: no `read_path` round.
 - A file diff is shown whole in the web and the terminal; past its opening it
   is read from a file kept with the session, for as long as the conversation.
 - The `session` tool lists sessions without a prompt.

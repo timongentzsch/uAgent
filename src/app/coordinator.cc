@@ -13,7 +13,6 @@
 #include <vector>
 
 #include "include/agent/conversation.h"
-#include "include/agent/session_links.h"
 #include "include/agent/session_role.h"
 #include "include/agent/session_view.h"
 #include "include/app/launch.h"
@@ -341,10 +340,6 @@ std::string Brief(const json& brief) {
 }
 
 ToolResult Spawn(const std::string& folder, const json& a) {
-  // Its threads can reach the coordinator as they reach each other.
-  (void)EnsureSessionAutoLink();
-  // Its threads can reach the coordinator as they reach each other.
-  (void)EnsureSessionAutoLink();
   const std::string title = Utf8Prefix(JsonValue(a, "title", ""), 120);
   const std::string objective = JsonValue(a, "objective", "");
   if (title.empty() || objective.empty()) {

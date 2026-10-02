@@ -1,20 +1,59 @@
 // Copyright 2026 Timon Gentzsch
 
 #include <cstdint>
+#include <filesystem>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "include/agent/path_policy.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/limits.h"
 #include "include/core/strings.h"
+#include "include/media/attachments.h"
+#include "include/tools/files.h"
 #include "include/tools/shell.h"
 #include "src/tools/registry_internal.h"
 
 namespace uagent {
+namespace {
+
+using FileClock = std::filesystem::file_time_type::clock;
+
+// A picture the command wrote and named in its output arrives with the
+// result, not a read_path round later. Only where that read needs no person:
+// anything else stays read_path's to ask for.
+ToolResult WithWrittenImage(ToolResult result, const ToolContext& context,
+                            FileClock::time_point started) {
+  if (!result.Ok()) return result;
+  std::istringstream words(result.output);
+  std::string image;
+  for (std::string word; words >> word;) {
+    const size_t first = word.find_first_not_of("'\"(`");
+    const size_t last = word.find_last_not_of("'\")`.,;:");
+    if (first == std::string::npos) continue;
+    word = word.substr(first, last - first + 1);
+    std::error_code error;
+    if (AttachmentMime(word).starts_with("image/") &&
+        std::filesystem::last_write_time(word, error) >= started && !error) {
+      image = std::move(word);
+    }
+  }
+  if (image.empty() ||
+      (!ApprovalIsYolo() &&
+       (PathApprovalRequired(image, CanonicalCwd()) ||
+        PathApprovalClass(image, PathAccess::kRead) != ApprovalClass::kNone))) {
+    return result;
+  }
+  result.output += "\n" + ToolReadFile(image, 1, 0, context.call_id).output;
+  return result;
+}
+
+}  // namespace
 
 void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
                        const std::filesystem::path& workspace) {
@@ -24,12 +63,11 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
                 "update yield_ms in the run schema");
   Tool& run = AddTool(
       tools,
-      MakeTool(
-          "run",
-          "Execute a command in cwd; omit cd. tty=true enables "
-          "interactive stdin; detach persists a terminal beyond this "
-          "session.",
-          json::parse(R"json({"type":"object","properties":{
+      MakeTool("run",
+               "Execute a command in cwd; omit cd. tty=true enables "
+               "interactive stdin; detach persists a terminal beyond this "
+               "session.",
+               json::parse(R"json({"type":"object","properties":{
                     "command":{"type":"string"},
                     "shell":{"type":"string","description":"default bash"},
                     "tty":{"type":"boolean","description":"retain an interactive PTY"},
@@ -40,23 +78,26 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
                     "detach":{"type":"boolean",
                       "description":"persist terminal and log"}},
                     "required":["command"]})json"),
-          [&supervisor](const json& a, const ToolContext& context) {
-            const bool detach = JsonValue(a, "detach", false);
-            return RunShellCommand(
-                       supervisor, context,
-                       {.command = JsonValue(a, "command", ""),
-                        .shell = JsonValue(a, "shell", "bash"),
-                        .background = detach,
-                        .detach = detach,
-                        .tty = JsonValue(a, "tty", false),
-                        .sandbox = JsonValue(a, "sandbox", true),
-                        .yield_ms = JsonValue(a, "yield_ms", kDefaultYieldMs),
-                        .max_output_chars =
-                            JsonValue(a, "max_output_chars", int64_t{0}),
-                        .environment_policy =
-                            ChildEnvironmentPolicy::kApprovedShell})
-                .result;
-          }));
+               [&supervisor](const json& a, const ToolContext& context) {
+                 const bool detach = JsonValue(a, "detach", false);
+                 const auto started = FileClock::now();
+                 return WithWrittenImage(
+                     RunShellCommand(
+                         supervisor, context,
+                         {.command = JsonValue(a, "command", ""),
+                          .shell = JsonValue(a, "shell", "bash"),
+                          .background = detach,
+                          .detach = detach,
+                          .tty = JsonValue(a, "tty", false),
+                          .sandbox = JsonValue(a, "sandbox", true),
+                          .yield_ms = JsonValue(a, "yield_ms", kDefaultYieldMs),
+                          .max_output_chars =
+                              JsonValue(a, "max_output_chars", int64_t{0}),
+                          .environment_policy =
+                              ChildEnvironmentPolicy::kApprovedShell})
+                         .result,
+                     context, started);
+               }));
   // The hatch exists only where there is something to escape. Advertising it
   // unconditionally would spend schema tokens on an argument that does nothing,
   // and invite the model to reach for it on a host that never confined
@@ -141,9 +182,12 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
                     "required":["path"]})json"),
             [&supervisor, workspace](const json& a,
                                      const ToolContext& context) {
-              return ToolRunScratch(
-                  supervisor, workspace, JsonValue(a, "path", ""),
-                  JsonValue(a, "args", json(nullptr)), context);
+              const auto started = FileClock::now();
+              return WithWrittenImage(
+                  ToolRunScratch(supervisor, workspace,
+                                 JsonValue(a, "path", ""),
+                                 JsonValue(a, "args", json(nullptr)), context),
+                  context, started);
             }));
     python.declared_intent = true;
     python.parameters["properties"]["intent"] = intent_schema;

@@ -206,6 +206,97 @@ def test_coordinator_delegates_a_thread_and_hears_back(root, home, *, binary):
         assert_true("history" not in function_names(thread_requests[0]), thread_requests[0])
 
 
+def test_threads_of_one_coordinator_message_each_other(root, home, *, binary):
+    """Two threads find each other by the ids the board shows, talk directly and
+    wake on each other's mail; the coordinator hears each answer in its event."""
+    heard = threading.Event()
+    seen = {"events": []}
+
+    def spawn(index, name):
+        return {
+            "index": index,
+            "id": f"spawn-{name}",
+            "function": {
+                "name": "thread",
+                "arguments": json.dumps(
+                    {
+                        "action": "spawn",
+                        "title": name.capitalize(),
+                        "objective": f"{name}-task",
+                        "environment": "local",
+                    }
+                ),
+            },
+        }
+
+    def message(peer, text):
+        return tool_call("session", {"operation": "message", "session_id": peer, "prompt": text})
+
+    def alpha(body, text):
+        results = tool_results(body["messages"])
+        if "pong-from-beta" in text:
+            heard.set()
+            return event({"content": "alpha-done"})
+        peers = [json.loads(result) for result in results if result.lstrip().startswith("[")]
+        beta = next(
+            (row["id"] for row in (peers[-1] if peers else []) if row["title"] == "Beta"), ""
+        )
+        if any(result.startswith("sent to session") for result in results):
+            return event({"content": "alpha-waiting"})
+        if beta:
+            return message(beta, "ping-from-alpha")
+        return tool_call("session", {"operation": "list"})
+
+    def beta(body, text):
+        results = tool_results(body["messages"])
+        if "ping-from-alpha" not in text:
+            return event({"content": "beta-idle"})
+        if any(result.startswith("sent to session") for result in results):
+            return event({"content": "beta-done"})
+        # The sender signed with the id a reply is addressed to.
+        sender = text.split("[session Alpha (", 1)[1].split(")", 1)[0]
+        return message(sender, "pong-from-beta")
+
+    def route(_, body):
+        text = json.dumps(body["messages"])
+        if "Objective: alpha-task" in text:
+            return alpha(body, text)
+        # Mail may reach a thread before its own brief does.
+        if "Objective: beta-task" in text or "ping-from-alpha" in text:
+            return beta(body, text)
+        if "[thread event" in text:
+            seen["events"] += [
+                str(m.get("content"))
+                for m in body["messages"]
+                if "[thread event" in str(m.get("content"))
+            ]
+            return event({"content": "noted-event"})
+        if not tool_results(body["messages"]):
+            return event({"tool_calls": [spawn(0, "alpha"), spawn(1, "beta")]}, finish="tool_calls")
+        return event({"content": "spawned-ok"})
+
+    with Server([route]) as server:
+        result = run(root, base_env(home, server.url), "coord", "-p", "delegate", binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(
+            heard.wait(budget(20)),
+            [str(body["messages"][-1].get("content"))[:240] for _, body in server.requests],
+        )
+        sent = [
+            result
+            for _, body in server.requests
+            for result in tool_results(body["messages"])
+            if result.startswith(("sent to session", "error"))
+        ]
+        assert_true(sent and all(r.startswith("sent to session") for r in sent), sent)
+        # A thread's answer travels with its event: no history call to read it.
+        wait_until(lambda: seen["events"], "the coordinator heard no thread event", timeout=10)
+        assert_true("Its answer" in str(seen["events"][0]), seen["events"][0])
+        # And its row is recorded as mail, so no client shows it as the person's.
+        saved = next((home / ".uagent" / "history").glob("*/coordinator.json")).read_text()
+        assert_true('"origin":"mail"' in saved.replace(" ", ""), saved[-600:])
+
+
 def test_coordinator_refuses_spawns_past_its_spend_limit(root, home, *, binary):
     from integration_support import fnv1a64
 

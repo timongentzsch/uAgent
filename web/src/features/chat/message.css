@@ -315,6 +315,10 @@
   border-left: 1px solid var(--line);
   overflow-wrap: anywhere;
 }
+/* A message from another session keeps its lines. */
+.event-body > p {
+  white-space: pre-wrap;
+}
 .event-body .markdown {
   color: var(--text);
 }

@@ -27,15 +27,26 @@ constexpr size_t kSessionLinkMembers = 32;
 constexpr size_t kSessionLinkFiles = 256;
 constexpr size_t kSessionLinkNameChars = 64;
 
-// The folder whose coordinator and threads this session works with, or
-// empty: a thread belongs to its coordinator's folder wherever it runs (a
-// worktree is elsewhere), a coordinator to its own.
-std::string SocietyFolder() {
-  const std::string own = OwnSessionFile();
-  if (own == CoordinatorPath(CanonicalCwd())) return CanonicalCwd();
-  return JsonValue(
-      JsonValue(SessionHeader(own), kSessionHeaderThread, json::object()),
-      "folder", "");
+// A coordinator and its threads work together, so they are linked by where
+// they live, whatever mode each runs in: one history folder holds
+// coordinator.json and its thread-*.json. Nothing to join, nothing to prune.
+std::vector<json> SocietyMembers() {
+  const auto member = [](const std::filesystem::path& file) {
+    const std::string name = file.filename().string();
+    return file.extension() == ".json" &&
+           (name == "coordinator.json" || name.starts_with("thread-"));
+  };
+  const std::filesystem::path own(OwnSessionFile());
+  std::vector<json> out;
+  if (!member(own)) return out;
+  std::error_code ec;
+  for (const auto& entry :
+       std::filesystem::directory_iterator(own.parent_path(), ec)) {
+    if (entry.path() == own || !member(entry.path())) continue;
+    out.push_back({{"id", entry.path().stem().string()},
+                   {"path", entry.path().string()}});
+  }
+  return out;
 }
 
 std::string LinkPath(const std::string& name) {
@@ -133,18 +144,15 @@ bool SharesLink(const std::string& a, const std::string& b) {
     const json members = JsonValue(ReadLink(name), "members", json::array());
     if (HasMember(members, a) && HasMember(members, b)) return true;
   }
-  return false;
+  const std::string me = OwnSessionId();
+  return (me == a || me == b) && HasMember(SocietyMembers(), me == a ? b : a);
 }
 
 ToolResult EnsureSessionAutoLink() {
-  // A coordinator and its threads work together, so they are linked whatever
-  // mode they run in; other sessions link only under yolo.
-  const std::string folder = SocietyFolder();
-  if (folder.empty() && !ApprovalIsYolo()) return ToolSuccess({});
+  if (!ApprovalIsYolo()) return ToolSuccess({});
   json me = OwnMember();
   if (!me.is_object()) return ToolSuccess({});
-  const std::string name =
-      "auto-" + HashHex(folder.empty() ? CanonicalCwd() : folder);
+  const std::string name = "auto-" + HashHex(CanonicalCwd());
   json members = JsonValue(ReadLink(name), "members", json::array());
   const std::string id = JsonValue(me, "id", "");
   if (HasMember(members, id)) return ToolSuccess({});
@@ -173,6 +181,11 @@ std::vector<json> LinkedMembers() {
       if (id.empty() || id == me) continue;
       if (HasMember(out, id)) continue;
       out.push_back(member);
+    }
+  }
+  for (json& member : SocietyMembers()) {
+    if (!HasMember(out, JsonValue(member, "id", ""))) {
+      out.push_back(std::move(member));
     }
   }
   return out;

@@ -178,6 +178,42 @@ def test_a_loaded_skill_survives_compaction(root, home, *, binary):
         assert_true(len(server.requests) == 5, len(server.requests))
 
 
+def test_a_command_shows_the_image_it_wrote_and_named(root, home, *, binary):
+    """One round renders and shows: no read_path call in between. A picture
+    that was merely listed is not sent."""
+    workspace = root / "render-workspace"
+    workspace.mkdir()
+    (workspace / "old.png").write_bytes(SMALL_PNG)
+    seen = {"images": []}
+
+    def route(_, body):
+        messages = body["messages"]
+        parts = [p for m in messages if isinstance(m.get("content"), list) for p in m["content"]]
+        seen["images"].append(sum(p.get("type") == "image_url" for p in parts))
+        results = tool_results(messages)
+        if len(results) == 2:
+            seen["results"] = results
+            return event({"content": "render-ok"})
+        if results:
+            return tool_call("run", {"command": "cp old.png shot.png && echo 'saved to shot.png.'"})
+        return tool_call("run", {"command": "ls old.png"})
+
+    with Server([route]) as server:
+        result = run(
+            workspace,
+            base_env(home, server.url),
+            "--yolo",
+            "-p",
+            "render",
+            timeout=40,
+            binary=binary,
+        )
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "render-ok", result.stdout)
+        assert_true(seen["images"] == [0, 0, 1], seen)
+        assert_true("shot.png" in seen["results"][1].split("saved to shot.png.")[1], seen)
+
+
 def test_an_attachment_over_the_budget_is_warned_about_once(root, home, *, binary):
     workspace = root / "budget-workspace"
     workspace.mkdir()

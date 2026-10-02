@@ -68,9 +68,10 @@ int Application::RunChannel() {
     bool children_finished = false;
     agent_.DrainBackground(&children_finished);
     if (children_finished && input->wake) {
-      SteeringState().Queue(
-          "[subagent finished, not a user message] Its result is above.", "",
-          true);
+      const std::string note =
+          "[subagent finished, not a user message] Its result is above.";
+      agent_.NotFromUser(note);
+      SteeringState().Queue(note, "", true);
     }
     agent_.DeliverMail(channel_->HoldMail());
     agent_.AccountSideUsage();

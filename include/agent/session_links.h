@@ -21,9 +21,10 @@ std::string SessionLinkDir();
 // sessions; everything else is addressing.
 bool SharesLink(const std::string& a, const std::string& b);
 
-// Join the workspace auto-link. No-op without a session file, and for a
-// session that is neither under yolo nor a coordinator's thread, so toggling
-// /yolo mid-session takes effect on the next tool call.
+// Join the workspace auto-link. No-op without yolo or without a session
+// file, so toggling /yolo mid-session takes effect on the next tool call. A
+// coordinator and its threads need no link file: they are linked by sharing
+// one history folder.
 ToolResult EnsureSessionAutoLink();
 
 // The session file of a session linked with this one, or empty.

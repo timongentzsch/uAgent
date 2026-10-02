@@ -1334,23 +1334,18 @@ void TestSessionLinks() {
   }
   SetApprovalMode(before);
   CHECK(SharesLink("aaa", "bbb"));
-  // A coordinator's threads link through its folder without yolo, wherever
-  // each of them runs.
+  // A coordinator's threads are linked by living in one history folder: no
+  // yolo, no joining, and nobody else in that folder is.
   const fs::path ta = workspace.workspace / "thread-a.json";
   const fs::path tb = workspace.workspace / "thread-b.json";
-  for (const fs::path& thread : {ta, tb}) {
-    std::ofstream(thread)
-        << R"({"cwd":"/elsewhere","model":"m","session_id":"s","turns":0,)"
-        << R"("title":"t","kind":"thread","thread":{"folder":"/society"}})"
-        << "\n";
+  for (const fs::path& thread : {ta, tb}) std::ofstream(thread) << "{}\n";
+  {
+    ScopedEnv own("UAGENT_INTERNAL_SESSION_PATH", ta.string());
+    CHECK(CurrentApprovalMode() != ApprovalMode::kYolo);
+    CHECK(SharesLink("thread-a", "thread-b"));
+    CHECK(!SharesLink("thread-a", "aaa"));
+    CHECK(LinkedSessionPath(HashHex(tb.string())) == tb.string());
   }
-  CHECK(CurrentApprovalMode() != ApprovalMode::kYolo);
-  for (const fs::path& thread : {ta, tb}) {
-    ScopedEnv own("UAGENT_INTERNAL_SESSION_PATH", thread.string());
-    CHECK(EnsureSessionAutoLink().Ok());
-  }
-  CHECK(SharesLink("thread-a", "thread-b"));
-  CHECK(!SharesLink("thread-a", "aaa"));
   // Listing needs no prompt.
   CHECK(!FindToolArgumentIssue(SessionTool(), {{"operation", "list"}}));
   std::vector<Mail> taken =

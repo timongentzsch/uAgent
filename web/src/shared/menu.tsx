@@ -165,9 +165,10 @@ export function Menu({
 export function MenuItem(props: JSX.ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
     <Button
+      // A choice among several says so with its own role.
+      role="menuitem"
       {...props}
       variant="quiet"
-      role="menuitem"
       // Arrows and letters move focus between items; Tab leaves the menu.
       tabIndex={-1}
     />

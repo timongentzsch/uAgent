@@ -53,7 +53,7 @@ names one loads as before and the line has no effect.
   `full`), for the terminal and the web. `minimal` shows the answer and one
   "Worked · N steps" row per turn, with failures and prompts still on rows of
   their own; `full` shows thinking, every call, its arguments and its output.
-  `/verbosity LEVEL` or the switch above a web conversation changes it
+  `/verbosity LEVEL` or Detail in a web conversation's menu changes it
   everywhere and restyles what is already shown; `--verbosity` and Settings →
   Display set it for one terminal or one browser. The model never sees it.
 - Web: tool calls fold into the same groups the terminal shows ("Explored ·

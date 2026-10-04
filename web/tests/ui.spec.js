@@ -1738,6 +1738,26 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
   await expect(
     page.getByRole("heading", { name: "Verified response" }),
   ).toBeVisible();
+  // The conversation menu sets the level, and what is shown restyles: every
+  // call at full, the whole turn's work in one row at minimal.
+  const detail = async (level) => {
+    await page
+      .locator(".conversation-head")
+      .getByLabel("Conversation menu", { exact: true })
+      .click();
+    await page.getByRole("menuitemradio", { name: `Detail: ${level}` }).click();
+  };
+  await detail("Full");
+  await expect(page.locator(".transcript .group")).toHaveCount(0);
+  await expect(page.locator(".transcript .tool-disclosure")).toHaveCount(2);
+  await detail("Minimal");
+  await expect(page.locator(".transcript .group")).toHaveText(
+    /Worked · 2 steps/,
+  );
+  await detail("Default");
+  await expect(page.locator(".transcript .group")).toHaveText(
+    /Explored · 2 calls/,
+  );
   // Tables keep their layout and scroll instead of squeezing a column.
   const table = page.locator(".message .table-scroll > table");
   await expect(table).toHaveCount(1);

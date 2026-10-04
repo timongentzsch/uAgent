@@ -164,7 +164,7 @@ the terminal and the web alike and never by the model:
 | `default` | the groups above, other calls a row each | on request | closed (web), hidden (terminal) | hidden |
 | `full` | every call its own row | shown | shown | shown |
 
-`/verbosity LEVEL` (or the switch above a web conversation) changes it for
+`/verbosity LEVEL` (or Detail in a web conversation's menu) changes it for
 every terminal and browser, and what is already on screen is shown again at
 the new level: browsers restyle at once, a terminal clears and replays the
 conversation (a terminal attached elsewhere follows at its next turn; plain

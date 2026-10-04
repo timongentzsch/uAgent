@@ -84,7 +84,6 @@ import {
   type TimePrefs,
 } from "../shared/time.ts";
 import { DetailContext, detail as detailOf } from "../shared/verbosity.ts";
-import { DetailSwitch } from "../features/chat/detail-switch.tsx";
 import type { InspectorTarget } from "../features/chat/inspector.tsx";
 import { maxDraftFiles, maxUploadBytes } from "../shared/limits.ts";
 import ChatPage, { isBrowsing, transcriptBlocks } from "./chat-page.tsx";
@@ -852,8 +851,9 @@ function App() {
     (item: Session) => latest.current.forkAndOpen(item).catch(report),
     [report],
   );
+  // The open conversation's menu also holds the level its transcript shows.
   const conversationMenu = useCallback(
-    (item: Session) => (
+    (item: Session, withDetail = false) => (
       <ConversationMenu
         item={item}
         online={online}
@@ -862,9 +862,29 @@ function App() {
         report={report}
         notify={setNotice}
         open={open}
+        detail={
+          withDetail
+            ? {
+                levels,
+                level: detail.level,
+                disabled: !online && !levels.includes(deviceDetail),
+                change: changeDetail,
+              }
+            : undefined
+        }
       />
     ),
-    [online, fork, load, report, open],
+    // levels and changeDetail follow the catalogue and this device's level.
+    [
+      online,
+      fork,
+      load,
+      report,
+      open,
+      detail,
+      deviceDetail,
+      catalogue.verbosity,
+    ],
   );
   // A slash command from the palette runs as if sent from the composer;
   // one that needs an argument waits there for it.
@@ -1069,14 +1089,6 @@ function App() {
                         />
                       )}
                     </div>
-                    {page === "chat" && !phone && levels.length > 0 && (
-                      <DetailSwitch
-                        levels={levels}
-                        level={detail.level}
-                        disabled={!online && !levels.includes(deviceDetail)}
-                        change={changeDetail}
-                      />
-                    )}
                     {browserAvailable && (
                       <IconButton
                         label={
@@ -1120,7 +1132,7 @@ function App() {
                     )}
                     {page === "chat" &&
                       (session ? (
-                        conversationMenu(session)
+                        conversationMenu(session, true)
                       ) : opening ? (
                         // Inert until the session is known.
                         <IconButton label="Conversation menu" disabled>

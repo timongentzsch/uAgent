@@ -1,6 +1,11 @@
 import { observeResize, observeViewport, viewportBounds } from "./layout.ts";
 import { settled } from "./motion.ts";
-import { createContext, type ComponentChildren, type JSX } from "preact";
+import {
+  createContext,
+  type ComponentChildren,
+  type JSX,
+  type Ref,
+} from "preact";
 import {
   useContext,
   useId,
@@ -15,7 +20,12 @@ import { Button, IconButton } from "./ui.tsx";
 const navigation = ["ArrowDown", "ArrowUp", "Home", "End"];
 // Which nested view the panel shows (a MenuSub's id, "" for the items
 // themselves), and how to change it. A view's own items see "".
-const View = createContext({ view: "", show: (_view: string) => {} });
+const View = createContext({
+  view: "",
+  show: (_view: string) => {},
+  // The menu's name, for the row that leads back to it.
+  menu: "",
+});
 const enabledItems = (panel: Element) => [
   ...panel.querySelectorAll<HTMLButtonElement>("button:not(:disabled)"),
 ];
@@ -183,7 +193,9 @@ export function Menu({
             if (pressed && !pressed.hasAttribute("data-menu-stay")) close();
           }}
         >
-          <View.Provider value={{ view, show }}>{children}</View.Provider>
+          <View.Provider value={{ view, show, menu: label }}>
+            {children}
+          </View.Provider>
         </div>
       )}
     </div>
@@ -203,24 +215,25 @@ export function MenuSub({
   value?: string;
   children: ComponentChildren;
 }) {
-  const { view, show } = useContext(View);
+  const { view, show, menu } = useContext(View);
   const id = useId();
   const open = view === id;
-  // Focus follows into the view (past the row that leads back), and back
-  // to this row when the view closes.
+  // Focus follows into the view, to its first choice (the row that leads
+  // back when none can be taken), and back to this row when it closes.
+  const row = useRef<HTMLButtonElement>(null);
   const opened = useRef(false);
   useLayoutEffect(() => {
-    const row = document.querySelector<HTMLElement>(`[data-menu-view="${id}"]`);
-    const first = row?.parentElement?.querySelector<HTMLElement>(
-      "button:not([data-menu-stay]):not(:disabled)",
+    const first = row.current?.parentElement?.querySelector<HTMLElement>(
+      "[role=group] button:not(:disabled)",
     );
-    if (open) first?.focus({ preventScroll: true });
-    else if (opened.current) row?.focus({ preventScroll: true });
+    if (open) (first ?? row.current)?.focus({ preventScroll: true });
+    else if (opened.current) row.current?.focus({ preventScroll: true });
     opened.current = open;
   }, [open]);
   if (!open)
     return (
       <MenuItem
+        buttonRef={row}
         data-menu-stay
         data-menu-view={id}
         aria-haspopup="menu"
@@ -232,17 +245,28 @@ export function MenuSub({
       </MenuItem>
     );
   return (
-    <View.Provider value={{ view: "", show }}>
-      <MenuItem data-menu-stay data-menu-view={id} onClick={() => show("")}>
+    <View.Provider value={{ view: "", show, menu }}>
+      <MenuItem
+        buttonRef={row}
+        data-menu-stay
+        aria-label={`Back to ${menu}`}
+        onClick={() => show("")}
+      >
         <ChevronLeft />
         {label}
       </MenuItem>
-      {children}
+      <div role="group" aria-label={label}>
+        {children}
+      </div>
     </View.Provider>
   );
 }
 
-export function MenuItem(props: JSX.ButtonHTMLAttributes<HTMLButtonElement>) {
+export function MenuItem(
+  props: JSX.ButtonHTMLAttributes<HTMLButtonElement> & {
+    buttonRef?: Ref<HTMLButtonElement>;
+  },
+) {
   // While a view is open the menu's own items make way for it.
   if (useContext(View).view) return null;
   return (

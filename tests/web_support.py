@@ -6,7 +6,6 @@ import json
 import signal
 import socket
 import subprocess
-import time
 
 from integration_support import base_env, budget, wait_until
 from session_support import stop_sessions
@@ -109,9 +108,22 @@ def web_host(binary, root, home, provider, port=None, extra_env=None):
                 stdout=output,
                 stderr=output,
             )
-            while process.poll() is None and not discovery.exists():
-                time.sleep(0.01)
-            if port or attempt == 2 or "web port is unavailable" not in log.read_text():
+            try:
+                wait_until(
+                    lambda process=process: process.poll() is not None or discovery.exists(),
+                    lambda: log.read_text(),
+                    timeout=10,
+                )
+            except AssertionError:
+                process.kill()
+                raise
+            # Only a host that ended on a taken port is tried again.
+            if (
+                port
+                or attempt == 2
+                or process.poll() is None
+                or "web port is unavailable" not in log.read_text()
+            ):
                 break
         port = chosen
         try:

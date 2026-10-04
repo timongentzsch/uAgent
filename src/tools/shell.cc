@@ -462,8 +462,7 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
     }
     if (AbortRequested()) {
       cancelled = true;
-      SignalShellGroup(pid, SIGTERM);
-      supervisor.Wake();
+      break;
     }
     supervisor.WaitForChange(generation, deadline);
   }

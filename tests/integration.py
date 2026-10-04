@@ -5,6 +5,7 @@ import os
 import pathlib
 import pkgutil
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -147,10 +148,18 @@ def run_shards(arguments, names):
                 failed += 1
                 print(f"runner {index + 1} of {jobs} failed (exit {status})", flush=True)
     finally:
-        for runner, output in runners:
-            if runner.poll() is None:
+        # Interrupted: each runner is asked to stop, so it closes its hosts
+        # and removes its suite, and killed only if it does not.
+        live = [runner for runner, _ in runners if runner.poll() is None]
+        for runner in live:
+            runner.send_signal(signal.SIGINT)
+        for runner in live:
+            try:
+                runner.wait(timeout=15)
+            except subprocess.TimeoutExpired:
                 runner.kill()
                 runner.wait()
+        for _, output in runners:
             output.close()
     if failed:
         raise SystemExit(f"{failed} of {jobs} runners failed")

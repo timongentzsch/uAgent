@@ -313,6 +313,9 @@ function Showcase() {
                   <MenuItem>One</MenuItem>
                   <MenuItem>Two</MenuItem>
                 </MenuSub>
+                <MenuSub label="Empty view">
+                  <MenuItem disabled>Not now</MenuItem>
+                </MenuSub>
               </Menu>
             </div>
           </div>

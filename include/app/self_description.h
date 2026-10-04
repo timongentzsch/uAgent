@@ -20,7 +20,6 @@ class Api;
 class ConfigManager;
 struct RuntimeConfig;
 struct EffectiveConfigSnapshot;
-class ConfigManager;
 struct Tool;
 
 enum class SelfTopic {

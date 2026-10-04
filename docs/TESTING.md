@@ -73,8 +73,9 @@ npm run test:browser     # Playwright against a native host
 npm run test:spec -- tests/ui.spec.js   # one spec: Chromium, no retry, stops at a failure
 ```
 
-Browser tests start `tests/web_host.py` with `UAGENT_TEST_BINARY` (default
-`../build/debug/uagent`). Locally that host serves the bundle in `web/dist`
+Browser tests start `tests/web_host.py` with `UAGENT_TEST_BINARY`; without
+it, `../build/debug/uagent` locally and `../build/release/uagent` in CI and
+for `performance.spec.js`, whose timings are a release build's. Locally that host serves the bundle in `web/dist`
 from disk, so a web edit needs `npm run build` and no rebuild of the binary;
 in CI it serves the bundle embedded in the binary, as a release does. Each
 test owns its host, temporary HOME and project, mock provider, pairing cookie

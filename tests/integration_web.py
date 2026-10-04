@@ -15,6 +15,7 @@ from integration_support import (
     assert_true,
     budget,
     event,
+    live_process_states,
     run,
     session_files,
     timeout_setting,
@@ -2730,6 +2731,30 @@ def test_idle_session_stops_and_a_message_starts_it_again(root, home, *, binary)
             again = web.until(session, lambda value: "second-ok" in json.dumps(value))
             # The same session: its settings came back with it.
             assert_true(again["state"]["permissions"]["mode"] == "yolo", again["state"])
+
+
+def test_web_interrupt_stops_a_command_that_ignores_being_asked(root, home, *, binary):
+    """Stop asks a running command to end, then ends it: the turn does not
+    wait out a command that ignores the request."""
+    project = root / "interrupt-project"
+    project.mkdir()
+    started = project / "started"
+    command = f"trap '' TERM; echo $$ > {started}; sleep 30 & wait"
+    with Server(
+        [tool_call("run", {"command": command, "yield_ms": 0}), event({"content": "after"})]
+    ) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+            client.pair(code)
+            session = client.create(project)
+            client.command("permissions", session, mode="yolo")
+            client.command("submit", session, text="go")
+            wait_until(started.exists, "the command never started", timeout=10)
+            shell = int(started.read_text())
+            asked = time.monotonic()
+            client.command("interrupt", client.snapshot(session)["metadata"])
+            client.until(session, lambda value: not value["metadata"]["turn_active"])
+            assert_true(time.monotonic() - asked < budget(8), "the interrupt waited on the command")
+            assert_true(not live_process_states([shell]), "the command outlived its interrupt")
 
 
 def test_stopped_session_starts_for_several_commands_and_says_why_it_cannot(root, home, *, binary):

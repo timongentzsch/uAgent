@@ -242,11 +242,17 @@ std::string StartMemoryExtractor(ProcessSupervisor& processes, const Api& api,
 void SettleMemoryClaim(bool extracted) {
   const std::string marker = EnvStr("UAGENT_INTERNAL_MEMORY_CLAIM");
   if (marker.empty()) return;
-  std::error_code ignored;
+  std::error_code failed;
+  std::string error;
   if (!extracted) {
-    std::filesystem::remove(marker, ignored);
+    std::filesystem::remove(marker, failed);
+    error = failed ? failed.message() : "";
   } else {
-    std::ofstream(marker, std::ios::trunc) << "done\n";
+    AtomicWriteFile(marker, "done\n", kPrivateFileMode,
+                    /*preserve_mode=*/false, error);
+  }
+  if (!error.empty()) {
+    fprintf(stderr, "cannot settle memory claim: %s\n", error.c_str());
   }
 }
 

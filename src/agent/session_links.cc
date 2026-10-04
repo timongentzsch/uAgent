@@ -115,6 +115,22 @@ bool HasMember(const json& members, const std::string& id) {
   return false;
 }
 
+// Who a link joins. The automatic link is for a person's own sessions: a
+// delegated child an older version put there is not counted, so it reaches no
+// session its parent did not give it.
+json LinkMembers(const std::string& name) {
+  json members = JsonValue(ReadLink(name), "members", json::array());
+  if (!name.starts_with("auto-")) return members;
+  json own = json::array();
+  for (json& member : members) {
+    if (!SessionHeader(JsonValue(member, "path", ""))
+             .contains(kSessionHeaderDelegation)) {
+      own.push_back(std::move(member));
+    }
+  }
+  return own;
+}
+
 std::vector<std::string> LinkFiles() {
   std::vector<std::string> names;
   std::error_code error;
@@ -145,7 +161,7 @@ std::string SessionLinkDir() { return UagentDir("links"); }
 bool SharesLink(const std::string& a, const std::string& b) {
   if (a.empty() || b.empty() || a == b) return a == b && !a.empty();
   for (const std::string& name : LinkFiles()) {
-    const json members = JsonValue(ReadLink(name), "members", json::array());
+    const json members = LinkMembers(name);
     if (HasMember(members, a) && HasMember(members, b)) return true;
   }
   const std::string me = OwnSessionId();
@@ -156,23 +172,13 @@ ToolResult EnsureSessionAutoLink() {
   // A person's own yolo sessions find each other. A delegated child is in
   // yolo only because nobody is there to ask: it reaches no session its
   // parent did not give it.
-  if (!ApprovalIsYolo()) return ToolSuccess({});
+  if (!ApprovalIsYolo() || AgentDepth() > 0) return ToolSuccess({});
   json me = OwnMember();
   if (!me.is_object()) return ToolSuccess({});
   const std::string name = "auto-" + HashHex(CanonicalCwd());
   json members = JsonValue(ReadLink(name), "members", json::array());
   const std::string id = JsonValue(me, "id", "");
-  const bool member = HasMember(members, id);
-  if (AgentDepth() > 0) {
-    // One that an older version joined leaves.
-    if (!member) return ToolSuccess({});
-    json others = json::array();
-    for (json& other : members) {
-      if (JsonValue(other, "id", "") != id) others.push_back(std::move(other));
-    }
-    return WriteLink(name, others);
-  }
-  if (member) return ToolSuccess({});
+  if (HasMember(members, id)) return ToolSuccess({});
   if (members.size() >= kSessionLinkMembers) {
     return ToolFailure(ToolErrorCode::kLimitExceeded,
                        "auto-link is full (32 sessions)");
@@ -190,7 +196,7 @@ std::vector<json> LinkedMembers() {
   std::vector<json> out;
   if (me.empty()) return out;
   for (const std::string& name : LinkFiles()) {
-    const json members = JsonValue(ReadLink(name), "members", json::array());
+    const json members = LinkMembers(name);
     if (!HasMember(members, me)) continue;
     for (const json& member : members) {
       if (!member.is_object()) continue;

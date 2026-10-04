@@ -341,6 +341,10 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   if (spec.yield_ms > 0) {
     spec.yield_ms = std::clamp(spec.yield_ms, kMinYieldMs, kMaxYieldMs);
   }
+  if (spec.detach && !spec.argv.empty()) {
+    return {ToolFailure(ToolErrorCode::kInvalidArguments,
+                        "a detached command runs through a shell")};
+  }
   if (shell.empty() || shell.find('\0') != std::string::npos) {
     return {ToolFailure(ToolErrorCode::kInvalidArguments,
                         "shell must be a non-empty executable name or path")};

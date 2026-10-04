@@ -1335,6 +1335,17 @@ void TestSessionLinks() {
   }
   SetApprovalMode(before);
   CHECK(SharesLink("aaa", "bbb"));
+  // A delegated child an older version let join does not count as a member.
+  {
+    std::ofstream(fb)
+        << json{{"cwd", ""},  {"model", ""}, {"session_id", ""},
+                {"turns", 0}, {"title", ""}, {"delegation", json::object()}}
+        << "\n";
+  }
+  CHECK(!SharesLink("aaa", "bbb"));
+  {
+    std::ofstream(fb) << "{}\n";
+  }
   // A coordinator's threads are linked by living in one history folder: no
   // yolo, no joining, and nobody else in that folder is.
   const fs::path ta = workspace.workspace / "thread-a.json";

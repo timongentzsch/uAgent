@@ -2771,10 +2771,8 @@ def test_a_subagent_gets_no_tool_its_parent_switched_off(root, home, *, binary):
                 )
                 assert_true("write_file" not in offered["parent"], offered["parent"])
                 # The child's full toolset, less what its parent may not call.
-                assert_true(
-                    "write_file" not in offered.pop("child") and "read_path" in offered["parent"],
-                    offered,
-                )
+                child = offered.pop("child")
+                assert_true("write_file" not in child and "read_path" in child, child)
                 return done["state"]["activities"][0]["agent_id"]
 
             child = ceiling_kept()

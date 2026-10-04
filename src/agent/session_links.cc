@@ -117,14 +117,17 @@ bool HasMember(const json& members, const std::string& id) {
 
 // Who a link joins. The automatic link is for a person's own sessions: a
 // delegated child an older version put there is not counted, so it reaches no
-// session its parent did not give it.
+// session its parent did not give it. Nor is a session whose saved header
+// cannot be read, which could be one.
 json LinkMembers(const std::string& name) {
   json members = JsonValue(ReadLink(name), "members", json::array());
   if (!name.starts_with("auto-")) return members;
   json own = json::array();
   for (json& member : members) {
-    if (!SessionHeader(JsonValue(member, "path", ""))
-             .contains(kSessionHeaderDelegation)) {
+    const std::string path = JsonValue(member, "path", "");
+    const json header = SessionHeader(path);
+    if (!PathExists(path) ||
+        (!header.empty() && !header.contains(kSessionHeaderDelegation))) {
       own.push_back(std::move(member));
     }
   }
@@ -176,7 +179,8 @@ ToolResult EnsureSessionAutoLink() {
   json me = OwnMember();
   if (!me.is_object()) return ToolSuccess({});
   const std::string name = "auto-" + HashHex(CanonicalCwd());
-  json members = JsonValue(ReadLink(name), "members", json::array());
+  // Only those who count: the rest take no place and are not saved again.
+  json members = LinkMembers(name);
   const std::string id = JsonValue(me, "id", "");
   if (HasMember(members, id)) return ToolSuccess({});
   if (members.size() >= kSessionLinkMembers) {

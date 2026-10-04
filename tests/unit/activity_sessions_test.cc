@@ -1307,12 +1307,16 @@ void TestSessionLinks() {
   // the fixtures are real files.
   const fs::path fa = workspace.workspace / "aaa.json";
   const fs::path fb = workspace.workspace / "bbb.json";
-  {
-    std::ofstream(fa) << "{}\n";
-  }
-  {
-    std::ofstream(fb) << "{}\n";
-  }
+  json header = {{"cwd", ""},
+                 {"model", ""},
+                 {"session_id", ""},
+                 {"turns", 0},
+                 {"title", ""}};
+  auto save = [&](const fs::path& file) {
+    std::ofstream(file) << header << "\n";
+  };
+  save(fa);
+  save(fb);
   ScopedEnv self("UAGENT_INTERNAL_SESSION_PATH", fa.string());
   CHECK(!SharesLink("aaa", "bbb"));
   // Only yolo sessions join the workspace link.
@@ -1335,17 +1339,18 @@ void TestSessionLinks() {
   }
   SetApprovalMode(before);
   CHECK(SharesLink("aaa", "bbb"));
-  // A delegated child an older version let join does not count as a member.
-  {
-    std::ofstream(fb)
-        << json{{"cwd", ""},  {"model", ""}, {"session_id", ""},
-                {"turns", 0}, {"title", ""}, {"delegation", json::object()}}
-        << "\n";
-  }
+  // A delegated child an older version let join does not count as a member,
+  // nor does a session whose header cannot be read.
+  header["delegation"] = json::object();
+  save(fb);
   CHECK(!SharesLink("aaa", "bbb"));
   {
     std::ofstream(fb) << "{}\n";
   }
+  CHECK(!SharesLink("aaa", "bbb"));
+  header.erase("delegation");
+  save(fb);
+  CHECK(SharesLink("aaa", "bbb"));
   // A coordinator's threads are linked by living in one history folder: no
   // yolo, no joining, and nobody else in that folder is.
   const fs::path ta = workspace.workspace / "thread-a.json";

@@ -48,7 +48,8 @@ void TestSettingsStore() {
   Put(user,
       "UAGENT_BASE_URL=http://one/v1/\nMY_KEY=secret\n"
       "UAGENT_INTERNAL_DEPTH=3\n");
-  Put(preference, R"({"selection":"m1","base_url":"http://one/v1"})");
+  Put(preference,
+      R"({"format":1,"selection":"m1","base_url":"http://one/v1"})");
   Put(project, "UAGENT_MAX_STEPS=7\n");
   SavedSettings saved = ReadSettings(folder);
   CHECK(saved.all == (SettingValues{{"MY_KEY", "secret"},
@@ -113,12 +114,36 @@ void TestSettingsStore() {
   CHECK(ReadSettings(flagged.string(), /*trusted=*/true)
             .project.at("UAGENT_MAX_STEPS") == "3");
 
-  // A document that cannot be read is reported and never saved over.
-  Put(SettingsPath(), "{\"format\": 1, \"all\": [");
-  CHECK(!ReadSettings(folder).error.empty());
-  CHECK(!Set("", "UAGENT_MODEL", "m4").empty());
-  CHECK(ReadFile(SettingsPath(), 1024).value_or("") ==
-        "{\"format\": 1, \"all\": [");
+  // The remembered model is taken over without a config file too.
+  {
+    TestWorkspace fresh("settings-store-preference");
+    Put(fresh.home / ".uagent/config/model-preference.json",
+        R"({"format":1,"selection":"alone","route":true})");
+    CHECK(ReadSettings("").all.at("UAGENT_MODEL") == "alone");
+  }
+  // A file that cannot be taken over is reported, stays, and nothing is
+  // saved until it can be: a save would pass for the import done.
+  {
+    TestWorkspace big("settings-store-too-big");
+    Put(big.home / ".uagent/.config",
+        "BIG=" + std::string(5 * 1024 * 1024, 'x') + "\n");
+    CHECK(!ReadSettings("").error.empty());
+    CHECK(!Set("", "UAGENT_MODEL", "m").empty());
+    CHECK(PathExists((big.home / ".uagent/.config").string()));
+    CHECK(!PathExists(SettingsPath()));
+  }
+
+  // A document that cannot be read is reported and never saved over, with
+  // or without a file waiting to be taken over.
+  for (const char* broken : {"{\"format\": 1, \"all\": [", "null"}) {
+    Put(SettingsPath(), broken);
+    Put(user, "UAGENT_MODEL=waiting\n");
+    fs::remove(user.string() + ".imported");
+    CHECK(!ReadSettings(folder).error.empty());
+    CHECK(!Set("", "UAGENT_MODEL", "m4").empty());
+    CHECK(ReadFile(SettingsPath(), 1024).value_or("") == broken);
+    CHECK(PathExists(user.string()));
+  }
 }
 
 }  // namespace uagent

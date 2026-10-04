@@ -29,7 +29,10 @@ struct EffectiveConfigSnapshot {
   // answer to "where is this set, and what does it override". `values` is
   // their merge, lowest first: user, project, environment, cli, conversation.
   std::map<std::string, RuntimeConfig::Values> layers;
-  std::vector<std::pair<std::string, FileStamp>> files;
+  // The saved settings' stamp when they were read, and why they are not all
+  // here if they are not.
+  FileStamp stamp;
+  std::string error;
 
   // What `key` would be without the conversation's own choice: the value a
   // conversation's control offers as its default. Empty when no scope sets it.
@@ -50,7 +53,10 @@ class ConfigManager {
   static ConfigManager Capture(bool trust_project, RuntimeConfig::Values cli);
   // Inspect resolved values without exporting them as process overrides.
   EffectiveConfigSnapshot Read() const;
-  bool ProjectTrusted() const { return trust_project_; }
+  // The project whose saved settings apply.
+  const std::string& Folder() const { return folder_; }
+  // Why the saved settings were not all read, as of the last read.
+  const std::string& Problem() const { return current_.error; }
   // What one conversation chose for itself, above every other scope. Only
   // settings whose descriptor allows the conversation scope belong here; an
   // empty value takes the choice back. Safe beside Read() on another thread.
@@ -64,7 +70,6 @@ class ConfigManager {
  private:
   ConfigManager(RuntimeConfig::Values process, bool trust_project,
                 RuntimeConfig::Values cli);
-  bool FilesChanged() const;
 
   RuntimeConfig::Values process_;
   bool trust_project_ = false;
@@ -72,9 +77,7 @@ class ConfigManager {
   RuntimeConfig::Values conversation_;
   std::unique_ptr<std::mutex> conversation_mutex_ =
       std::make_unique<std::mutex>();
-  std::string custom_path_;
-  std::string global_path_;
-  std::string project_path_;
+  std::string folder_;
   EffectiveConfigSnapshot current_;
   std::vector<std::string> deferred_;
   bool initialized_ = false;

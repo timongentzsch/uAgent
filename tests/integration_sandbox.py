@@ -24,6 +24,7 @@ from integration_support import (
     run,
     run_dialog,
     run_pty,
+    settings_path,
     tool_call,
 )
 
@@ -308,21 +309,21 @@ def test_sandbox_confines_writes_to_the_workspace(root, home, *, binary):
 
 
 def test_sandbox_protects_agent_state(root, home, *, binary):
-    """A shell command cannot reach the config or the trust store.
+    """A shell command cannot reach the saved settings or the trust store.
 
     The unsandboxed control is the point of the case: without it a passing
     assertion could just mean the command was malformed.
     """
     if not sandbox_enforced(root, home, binary=binary):
         return
-    target = home / ".uagent" / ".config"
+    target = settings_path(home)
     target.parent.mkdir(parents=True, exist_ok=True)
-    command = f"echo UAGENT_YOLO=1 >> {target}"
+    command = f"echo x >> {target}"
     run_once(root, sandbox_env(home, ""), command, binary=binary)
-    assert_true(not target.exists(), "sandboxed command wrote the config")
+    assert_true(not target.exists(), "sandboxed command wrote the saved settings")
 
     run_once(root, sandbox_env(home, "", UAGENT_SANDBOX="0"), command, binary=binary)
-    assert_true(target.exists(), "control run could not write the config either")
+    assert_true(target.exists(), "control run could not write the saved settings either")
 
 
 def test_sandbox_reads_stay_open(root, home, *, binary):

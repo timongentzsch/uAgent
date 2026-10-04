@@ -122,15 +122,13 @@ Tool UagentTool(SelfDescriptionProvider describe,
         }
         const ConfigProposal& approved = *taken;
         std::string error;
-        std::string notice;
-        if (!CommitConfigProposal(approved, error, &notice)) {
+        if (!CommitConfigProposal(approved, error)) {
           return ToolFailure(ToolErrorCode::kProcessFailed, error);
         }
-        std::string report = "wrote " + approved.target;
+        std::string report = "saved for " + approved.target;
         for (const ConfigChangeEffect& effect : approved.effects) {
           report += "\n" + effect.key + ": " + ConfigEffectName(effect.effect);
         }
-        if (!notice.empty()) report += "\nnote: " + notice;
         return ToolSuccess(report);
       });
   const auto writes = [](const json& arguments) {

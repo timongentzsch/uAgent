@@ -70,11 +70,6 @@ json ModelCatalogue(Api& api, const std::vector<ModelRoute>& routes,
                     const std::vector<NamedProvider>& providers,
                     const std::string& query = "all");
 
-struct ModelPreference {
-  std::string selection, base_url;
-  bool route = false;
-};
-
 using ProviderUrlMatcher = bool (*)(std::string);
 struct ProviderTemplate {
   const char* name;
@@ -143,10 +138,6 @@ const ProviderTemplate* FindProviderTemplateForUrl(const std::string& url);
 // The built-in default template (OpenRouter) for unattributed endpoints.
 const ProviderTemplate& DefaultProviderTemplate();
 bool ApplyProviderTemplate(Api& api, const ProviderTemplate& provider);
-// The model a /model once remembered for every later run, from before a
-// conversation's model was a setting. Reading it removes its file: whoever
-// takes it saves it as UAGENT_MODEL.
-ModelPreference TakeModelPreference();
 bool ValidEffort(const std::string& effort);
 bool SupportsReasoningEffort(const Api& api, std::string_view effort);
 ProviderCatalog LoadProviderCatalog();

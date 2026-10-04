@@ -252,8 +252,7 @@ std::vector<Tool> BuildTools(AppContext& context,
       (context.tool_policy.allowed & Capability(ToolCapability::kMutate))) {
     prepare = [app = &context](ConfigProposalScope scope,
                                const std::vector<ConfigChange>& changes) {
-      return PrepareConfigProposal(scope, changes, app->config_manager,
-                                   app->config_manager.ProjectTrusted());
+      return PrepareConfigProposal(scope, changes, app->config_manager);
     };
   }
   tools.push_back(UagentTool(
@@ -677,25 +676,8 @@ BootstrapResult Bootstrap(Options options, const char* executable,
 
   ConfigManager config_manager =
       ConfigManager::Capture(trusted, options.overrides);
-  // A model remembered by an older /model becomes the saved setting, once.
-  if (const ModelPreference remembered = TakeModelPreference();
-      !remembered.selection.empty()) {
-    const auto held = config_manager.Read();
-    const auto base = held.values.find("UAGENT_BASE_URL");
-    // A bare model name belongs to the endpoint it was chosen on.
-    const bool applies =
-        remembered.route || base == held.values.end() ||
-        StripTrailingSlashes(base->second) == remembered.base_url;
-    if (applies && !held.values.contains("UAGENT_MODEL")) {
-      ConfigurationControl(
-          {{"operation", "apply"},
-           {"scope", "user"},
-           {"changes", json::array({{{"key", "UAGENT_MODEL"},
-                                     {"value", remembered.selection}}})}},
-          config_manager, false);
-    }
-  }
   RuntimeConfig config = config_manager.Initialize();
+  PrintWarning(config_manager.Problem());
   // Route resolution reads UAGENT_MODEL; a coordinator starts on its own
   // model. A /model saved in its session still wins on resume.
   if (options.Coordinator() && !options.overrides.contains("UAGENT_MODEL")) {

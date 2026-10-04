@@ -661,15 +661,21 @@ void TestScopedBaseAndMemory() {
             .output.starts_with("forgot "));
   fs::current_path(workspace);
 
-  // A trusted project config wins key by key; the global file fills the rest.
+  // What an earlier version kept in text files is taken over on the first
+  // read: the user's file always, a project's only once it is trusted.
   CHECK(ToolWriteFile(".uagent/.config", "UAGENT_MODEL=project/model\n")
             .output.starts_with("wrote "));
   CHECK(ToolWriteFile((home / ".uagent/.config").string(),
                       "UAGENT_MODEL=global/model\nUAGENT_API_KEY=global-key\n")
             .output.starts_with("wrote "));
-  const char* prior_config = getenv("UAGENT_CONFIG_FILE");
-  std::string prior_config_value = prior_config ? prior_config : "";
-  unsetenv("UAGENT_CONFIG_FILE");
+  unsetenv("UAGENT_MODEL");
+  unsetenv("UAGENT_API_KEY");
+  ConfigManager untrusted = ConfigManager::Capture(/*trust_project=*/false, {});
+  (void)untrusted.Initialize();
+  CHECK(EnvStr("UAGENT_MODEL") == "global/model");
+
+  // A project's setting wins key by key; what is saved for all fills the
+  // rest.
   unsetenv("UAGENT_MODEL");
   unsetenv("UAGENT_API_KEY");
   ConfigManager trusted = ConfigManager::Capture(/*trust_project=*/true, {});
@@ -677,16 +683,8 @@ void TestScopedBaseAndMemory() {
   CHECK(EnvStr("UAGENT_MODEL") == "project/model");
   CHECK(EnvStr("UAGENT_API_KEY") == "global-key");
 
-  // Untrusted, the project file is skipped entirely.
   unsetenv("UAGENT_MODEL");
   unsetenv("UAGENT_API_KEY");
-  ConfigManager untrusted = ConfigManager::Capture(/*trust_project=*/false, {});
-  (void)untrusted.Initialize();
-  CHECK(EnvStr("UAGENT_MODEL") == "global/model");
-
-  unsetenv("UAGENT_MODEL");
-  unsetenv("UAGENT_API_KEY");
-  if (prior_config) setenv("UAGENT_CONFIG_FILE", prior_config_value.c_str(), 1);
 }
 
 }  // namespace uagent

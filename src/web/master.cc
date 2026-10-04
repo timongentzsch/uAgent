@@ -40,6 +40,7 @@
 #include "include/core/lease.h"
 #include "include/core/limits.h"
 #include "include/core/platform.h"
+#include "include/core/settings_store.h"
 #include "include/core/signals.h"
 #include "include/core/time.h"
 #include "include/core/verbosity.h"
@@ -443,9 +444,9 @@ class Master {
     std::thread stopping([&] {
       for (;;) {
         std::vector<std::string> paths = host_.PresencePaths();
-        // The level is display state every browser shares: whoever writes
-        // the user's config (here, a terminal, an editor) reaches them all.
-        paths.push_back(UagentConfigPath());
+        // The level is display state every browser shares: whoever saves
+        // it (here, a terminal) reaches them all.
+        paths.push_back(SettingsPath());
         // Wakes for a catalogue scan the throttle deferred.
         auto deadline = Clock::now() + std::chrono::hours(24);
         if (auto rescan = host_.RescanDue()) {
@@ -864,7 +865,7 @@ void Master::Command(const Request& request, Response& response) {
   } else if (kind == "config" && JsonValue(command, "session_id", "").empty()) {
     lock.unlock();
     auto manager = ConfigManager::Capture(false, {});
-    auto result = ConfigurationControl(command, manager, false);
+    auto result = ConfigurationControl(command, manager);
     PublishVerbosity();
     lock.lock();
     outcome["result"] = result;

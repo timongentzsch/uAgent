@@ -54,8 +54,7 @@ std::string SaveSelectedModel(AppSession& session, const std::string& selected,
          {"scope", "user"},
          {"changes",
           json::array({{{"key", "UAGENT_MODEL"}, {"value", route}}})}},
-        session.context.config_manager,
-        session.context.config_manager.ProjectTrusted());
+        session.context.config_manager);
     const std::string error = JsonValue(saved, "error", "");
     reply.Note(error.empty() ? Tone::kNeutral : Tone::kWarn,
                error.empty()

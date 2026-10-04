@@ -18,6 +18,7 @@ from integration_support import (
     function_names,
     live_process_states,
     run,
+    save_settings,
     session_files,
     timeout_setting,
     tool_call,
@@ -2118,10 +2119,9 @@ def test_web_verbosity_is_one_level_pushed_to_every_browser(root, home, *, binar
                 changes=[{"key": "UAGENT_VERBOSITY", "value": "minimal"}],
             )
             wait_until(lambda: pushed == ["minimal"], f"change was not pushed: {pushed}")
-            # A terminal or an editor writes the same file: browsers follow.
-            config = home / ".uagent/.config"
-            config.write_text(config.read_text().replace("minimal", "full"))
-            wait_until(lambda: pushed == ["minimal", "full"], f"file change not pushed: {pushed}")
+            # A terminal saves to the same place: browsers follow.
+            save_settings(home, UAGENT_VERBOSITY="full")
+            wait_until(lambda: pushed == ["minimal", "full"], f"change not pushed: {pushed}")
             assert_true(
                 client.json("/api/sessions")[1]["verbosity"]["level"] == "full", "stale level"
             )

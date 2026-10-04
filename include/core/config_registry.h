@@ -61,13 +61,12 @@ inline constexpr ConfigScopeName kConfigScopes[] = {
     {"cli", "Command line", 0},
     {"conversation", "This conversation", kScopeConversation},
 };
-// The name people read for a source; a file named by UAGENT_CONFIG_FILE
-// stands where the user's would, and anything else is the default.
+// The name people read for a source; anything else is the default.
 constexpr std::string_view ConfigScopeLabel(std::string_view source) {
   for (const ConfigScopeName& scope : kConfigScopes) {
     if (scope.source == source) return scope.label;
   }
-  return source == "file" ? "Config file" : "Default";
+  return "Default";
 }
 
 using ConfigDefault = std::variant<int64_t, double, bool, std::string_view>;
@@ -625,11 +624,6 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                       ReloadPolicy::kRestartRequired, "behaviour",
                       "trust this workspace's .mcp.json and config"),
         "Trust project config")),
-    registry::Terminal(registry::Named(
-        registry::Str("UAGENT_CONFIG_FILE", {}, "",
-                      ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
-                      "behaviour", "replace both config-file locations"),
-        "Config file")),
     registry::Terminal(registry::Named(
         registry::Str("UAGENT_DEBUG_LOG", {}, "",
                       ReloadPolicy::kRestartRequired, Sensitivity::kPublic,

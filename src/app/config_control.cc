@@ -10,10 +10,10 @@
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
+#include "include/core/settings_store.h"
 
 namespace uagent {
-json ConfigurationControl(const json& request, const ConfigManager& manager,
-                          bool project_trusted) {
+json ConfigurationControl(const json& request, const ConfigManager& manager) {
   std::string operation = JsonValue(request, "operation", "get");
   json effects = json::array();
   if (operation == "apply" || operation == "reset") {
@@ -29,11 +29,9 @@ json ConfigurationControl(const json& request, const ConfigManager& manager,
       }
     } else {
       // Secrets stay: a reset must not leave the agent without its keys.
-      const EnvValues own = scope == ConfigProposalScope::kUser
-                                ? ReadEnvValues(UagentConfigPath())
-                            : project_trusted
-                                ? ReadEnvValues(ProjectConfigFilePath())
-                                : EnvValues{};
+      const SavedSettings saved = ReadSettings(manager.Folder());
+      const SettingValues& own =
+          scope == ConfigProposalScope::kUser ? saved.all : saved.project;
       for (const auto& [key, value] : own) {
         const ConfigDescriptor* descriptor = FindConfigDescriptor(key);
         if (descriptor && descriptor->sensitivity == Sensitivity::kPublic &&
@@ -44,7 +42,7 @@ json ConfigurationControl(const json& request, const ConfigManager& manager,
     }
     if (!changes.empty()) {
       auto proposal =
-          PrepareConfigProposal(scope, changes, manager, project_trusted, true);
+          PrepareConfigProposal(scope, changes, manager, /*direct_user=*/true);
       if (!proposal.ok) return {{"error", proposal.error}};
       if (!CommitConfigProposal(proposal, error)) return {{"error", error}};
       for (const auto& effect : proposal.effects) {

@@ -21,6 +21,7 @@ from integration_support import (
     run,
     run_dialog,
     run_pty,
+    saved_settings,
     session_files,
     signal_process_group,
     tool_call,
@@ -900,7 +901,7 @@ def test_composite_configuration_requires_exact_human_approval(root, home, *, bi
 
     def finish(_, body):
         result = tool_results(body["messages"])[-1]
-        assert_true("wrote" in result and "needs a restart" in result, result)
+        assert_true("saved for" in result and "needs a restart" in result, result)
         return event({"content": "composite-config-ok"})
 
     with Server([request_change, finish]) as server:
@@ -924,17 +925,14 @@ def test_composite_configuration_requires_exact_human_approval(root, home, *, bi
         assert_true(b'\x1b[32m+   "codex-local": {' in output, output)
         # The diff belongs to the approval prompt alone, never the call label.
         assert_true(output.count(b'+   "codex-local": {') == 1, output)
-        written = config.read_text()
-        assert_true(proposed in written, written)
-        assert_true("# keep me" in written, written)
+        saved = saved_settings(home)
+        assert_true(saved["UAGENT_PROVIDERS"] == proposed, saved)
+        # What a value refers to stays beside it.
+        assert_true(saved["LOCAL_PROXY_API_KEY"] == "adjacent-integration-secret", saved)
 
 
 def test_composite_configuration_rejects_literal_credentials(root, home, *, binary):
     """A literal credential is rejected without a prompt or terminal leak."""
-    config = home / ".uagent" / ".config"
-    config.parent.mkdir(parents=True, exist_ok=True)
-    original = "# unchanged\n"
-    config.write_text(original)
     literal = "literal-provider-secret"
     proposed = json.dumps(
         {
@@ -977,11 +975,11 @@ def test_composite_configuration_rejects_literal_credentials(root, home, *, bina
         assert_true(status == 0, output)
         assert_true(b"Allow uagent?" not in output, output)
         assert_true(literal.encode() not in output, output)
-        assert_true(config.read_text() == original, config.read_text())
+        assert_true(not saved_settings(home), saved_settings(home))
 
 
 def test_self_configuration_requires_a_person(root, home, *, binary):
-    """With nobody to ask, the tool is not offered and the file is untouched.
+    """With nobody to ask, the tool is not offered and nothing saved changes.
 
     The approver denies a mandatory-human call whenever no interactive
     terminal is attached, so advertising the schema to a piped run would spend
@@ -991,16 +989,15 @@ def test_self_configuration_requires_a_person(root, home, *, binary):
     """
     config = home / ".uagent" / ".config"
     config.parent.mkdir(parents=True, exist_ok=True)
-    original = "# keep me\nUAGENT_MAX_TOOL_CALLS=40\n"
-    config.write_text(original)
+    config.write_text("UAGENT_MAX_TOOL_CALLS=40\n")
 
     def refuse(_, body):
         names = function_names(body)
         assert_true("uagent" in names, names)
         tool = next(t["function"] for t in body["tools"] if t["function"]["name"] == "uagent")
         assert_true(tool["parameters"]["properties"]["action"]["enum"] == ["inspect"], tool)
-        # The escape hatch is closed too: writing the file directly stays a
-        # mandatory-human mutation.
+        # The escape hatch is closed too: writing the saved settings directly
+        # stays a mandatory-human mutation.
         assert_true("write_file" in names, names)
         return event({"content": "configure-absent"})
 
@@ -1010,14 +1007,15 @@ def test_self_configuration_requires_a_person(root, home, *, binary):
         )
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip().endswith("configure-absent"), result.stdout)
-        assert_true(config.read_text() == original, config.read_text())
+        assert_true(saved_settings(home) == {"UAGENT_MAX_TOOL_CALLS": "40"}, saved_settings(home))
 
 
 def test_self_configuration_commits_after_approval(root, home, *, binary):
-    """An approved change preserves comments and reports when it takes effect."""
+    """An approved change is saved beside what was there and reports when it
+    takes effect."""
     config = home / ".uagent" / ".config"
     config.parent.mkdir(parents=True, exist_ok=True)
-    config.write_text("# keep me\nUAGENT_MAX_TOOL_CALLS=40\nUNKNOWN_KEY=kept\n")
+    config.write_text("UAGENT_MAX_TOOL_CALLS=40\nUNKNOWN_KEY=kept\n")
 
     def request_change(_, __):
         return tool_call(
@@ -1031,7 +1029,7 @@ def test_self_configuration_commits_after_approval(root, home, *, binary):
 
     def finish(_, body):
         result = tool_results(body["messages"])[-1]
-        assert_true("wrote" in result, result)
+        assert_true("saved for all conversations" in result, result)
         assert_true("active at the next user turn" in result, result)
         return event({"content": "configure-ok"})
 
@@ -1053,11 +1051,10 @@ def test_self_configuration_commits_after_approval(root, home, *, binary):
         )
         assert_true(status == 0, output)
         assert_true(b"configure-ok" in output, output)
-        assert_true(b"wrote " in output, output)
-        written = config.read_text()
-        assert_true("UAGENT_MAX_TOOL_CALLS=120" in written, written)
-        assert_true("# keep me" in written, written)
-        assert_true("UNKNOWN_KEY=kept" in written, written)
+        assert_true(
+            saved_settings(home) == {"UAGENT_MAX_TOOL_CALLS": "120", "UNKNOWN_KEY": "kept"},
+            saved_settings(home),
+        )
 
 
 def test_approval_remembers_exact_action_and_forwards_a_refusal(root, home, *, binary):

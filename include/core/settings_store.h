@@ -9,14 +9,14 @@
 // $NAME, kept and never shown.
 
 #include <functional>
-#include <map>
 #include <string>
 
+#include "include/core/config.h"
 #include "include/core/file_watch.h"
 
 namespace uagent {
 
-using SettingValues = std::map<std::string, std::string>;
+using SettingValues = EnvValues;
 
 inline constexpr char kSettingsFile[] = "settings.json";
 
@@ -28,8 +28,9 @@ struct SavedSettings {
   SettingValues project;
   // The document's stamp when it was read, for a later "did it change".
   FileStamp stamp;
-  // Why nothing was read from a document that is there. It is left as it
-  // is: nothing saves over it.
+  // Why the saved settings are not all here: the document cannot be read, or
+  // an earlier version's file could not be taken over. Nothing is saved over
+  // either until it is put right.
   std::string error;
 };
 

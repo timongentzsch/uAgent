@@ -559,7 +559,7 @@ class Terminal {
               {{"operation", "apply"},
                {"changes", json::array({{{"key", kVerbositySetting},
                                          {"value", argument}}})}},
-              ConfigManager::Capture(false, {}), false);
+              ConfigManager::Capture(false, {}));
           if (const std::string error = JsonValue(saved, "error", "");
               !error.empty()) {
             WriteTerminalRecord(Note(Tone::kError, TerminalSafe(error)));

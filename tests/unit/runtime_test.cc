@@ -27,6 +27,7 @@
 #include "include/core/events.h"
 #include "include/core/fs.h"
 #include "include/core/runtime_config.h"
+#include "include/core/settings_store.h"
 #include "include/core/signals.h"
 #include "include/core/steering.h"
 #include "include/providers.h"
@@ -636,7 +637,6 @@ void TestAgentConfigAllowlist() {
             .output.starts_with("wrote "));
 
   ScopedEnv scoped_home("HOME", root.c_str());
-  ScopedEnv scoped_config("UAGENT_CONFIG_FILE");
   ScopedEnv scoped_key("OPENROUTER_API_KEY");
   ScopedEnv scoped_model("OPENROUTER_MODEL");
   ScopedEnv scoped_effort("OPENROUTER_EFFORT");
@@ -1022,7 +1022,7 @@ void TestEffectiveConfigReload() {
             "route_secret=private-route-key\n"
             "OPENROUTER_API_KEY=$route_secret\n")
             .output.starts_with("wrote "));
-  // The CLI layer outranks the environment and both config files.
+  // The CLI layer outranks the environment and what is saved.
   ConfigManager manager = ConfigManager::Capture(
       /*trust_project=*/false,
       {{"UAGENT_SESSION_BUDGET", "3.5"}, {"UAGENT_MEMORY", "0"}});
@@ -1046,15 +1046,16 @@ void TestEffectiveConfigReload() {
   CHECK(shown.find("private-route-key") == std::string::npos);
   CHECK(shown.find("user:pass") == std::string::npos);
 
-  CHECK(ToolWriteFile(path,
-                      "UAGENT_MAX_TOOL_CALLS=7\n"
-                      "UAGENT_MAX_TURN_TOKENS=150\n"
-                      "UAGENT_SESSION_TOKEN_BUDGET=250\n"
-                      "UAGENT_MCP_TIMEOUT=10\n"
-                      "UAGENT_TOOL_RESULT_CHARS=1234\n"
-                      "UAGENT_MODEL=next-model\n"
-                      "OPENROUTER_API_KEY=changed-secret\n")
-            .output.starts_with("wrote "));
+  CHECK(ChangeSettings("", [](SettingValues& all) {
+          all["UAGENT_MAX_TOOL_CALLS"] = "7";
+          all["UAGENT_MAX_TURN_TOKENS"] = "150";
+          all["UAGENT_SESSION_TOKEN_BUDGET"] = "250";
+          all["UAGENT_MCP_TIMEOUT"] = "10";
+          all["UAGENT_TOOL_RESULT_CHARS"] = "1234";
+          all["UAGENT_MODEL"] = "next-model";
+          all["OPENROUTER_API_KEY"] = "changed-secret";
+          return std::string();
+        }).empty());
   std::optional<ConfigReload> reload = manager.Reload(active);
   REQUIRE(reload.has_value());
   CHECK(reload->active.max_steps == 9);

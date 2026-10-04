@@ -14,6 +14,7 @@ from integration_support import (
     run,
     run_dialog,
     run_pty,
+    saved_settings,
     session_files,
     timeout_setting,
     tool_call,
@@ -1456,7 +1457,7 @@ def test_cli_permissions_config_http_and_fork(root, home, *, binary):
             "fork modified source",
         )
         assert_true(
-            "UAGENT_MAX_STEPS=23" in (home / ".uagent/.config").read_text(),
+            saved_settings(home).get("UAGENT_MAX_STEPS") == "23",
             "CLI config not persisted",
         )
 
@@ -1560,7 +1561,7 @@ def test_cli_mcp_config_and_restart(root, home, *, binary):
         assert_true("Before restart, cap 321" in output, output)
         assert_true(re.search(r"UAGENT_MCP_TIMEOUT = .*100 .*All conversations", output), output)
         assert_true("history kept" in output, output)
-        assert_true("UAGENT_MCP_TIMEOUT" not in (home / ".uagent/.config").read_text(), "reset")
+        assert_true("UAGENT_MCP_TIMEOUT" not in saved_settings(home), "reset")
         assert_true("no remembered actions for this repository" in output, output)
         assert_true(
             any("Parity check" in path.read_text() for path in session_files(home)),

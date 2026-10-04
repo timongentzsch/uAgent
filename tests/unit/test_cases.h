@@ -48,10 +48,9 @@ namespace uagent {
   X(TestTerminalInputDecoder)                    \
   X(TestSseChunkPartitions)                      \
   X(TestChatCompletionAnnotationDeduplication)   \
-  X(TestConfigDocumentPreservesFile)             \
   X(TestSettingsStore)                           \
   X(TestConfigProposalAndCommit)                 \
-  X(TestProjectConfigTrustRestamp)               \
+  X(TestProjectSettingsAreSavedByFolder)         \
   X(TestConfigurationResetKeepsSecrets)          \
   X(TestConfigRegistryContract)                  \
   X(TestRuntimeConfigCoherence)                  \

@@ -4,7 +4,9 @@
 
 #include <cstdio>
 #include <filesystem>
+#include <set>
 #include <string>
+#include <utility>
 
 #include "include/core/config.h"
 #include "include/core/fs.h"
@@ -52,112 +54,149 @@ SettingValues ScopeValues(const json& scope) {
   return values;
 }
 
-// A text config file's lines as a scope.
-json LegacyValues(const std::string& path) {
-  json values = json::object();
-  for (const auto& [key, value] : ReadEnvValues(path)) {
-    if (!key.starts_with("UAGENT_INTERNAL_")) values[key] = value;
-  }
-  return values;
+std::string Invalid() {
+  return "the saved settings cannot be read; fix or remove " + SettingsPath();
 }
 
-json ReadDocument() {
-  return json::parse(ReadFile(SettingsPath(), kSettingsBytes).value_or(""),
-                     nullptr, false);
+// A text config file's lines as a scope, read once and whole: what is
+// compared with what was approved is what is saved.
+bool LegacyValues(const std::string& path, json& values, std::string& error) {
+  std::string text;
+  if (!ReadRegularFile(path, kSettingsBytes, text, error)) {
+    error = "cannot take over " + path + ": " + error;
+    return false;
+  }
+  values = json::object();
+  for (const auto& [key, value] : ParseEnvValues(text)) {
+    if (!key.starts_with("UAGENT_INTERNAL_")) values[key] = value;
+  }
+  return true;
+}
+
+// The document and its stamp, read until both describe one version.
+json ReadDocument(FileStamp& stamp) {
+  json document;
+  for (int attempt = 0; attempt < 3; ++attempt) {
+    stamp = SnapshotFile(SettingsPath());
+    document = json::parse(
+        ReadFile(SettingsPath(), kSettingsBytes).value_or(""), nullptr, false);
+    if (SnapshotFile(SettingsPath()) == stamp) return document;
+  }
+  stamp.size = -2;  // never equal to a real one: the next check reads again
+  return document;
+}
+
+std::string PreferencePath() {
+  return UagentDir(kConfigDir) + "/model-preference.json";
 }
 
 // What earlier versions kept in text files, still to be taken over. Each is
-// taken once: the user's file when there is no document yet, a project's
-// when the document has no entry for its folder (an entry is kept even when
-// it overrides nothing, so a file that could not be archived is not taken
+// taken once: the user's when there is no document yet, a project's when the
+// document has no entry for its folder (an entry is kept even when it
+// overrides nothing, so a file that could not be archived is not taken
 // twice).
 struct Legacy {
-  std::string user;     // ~/.uagent/.config to import
-  std::string project;  // <folder>/.uagent/.config to import
-  std::string archive;  // imported, but its archiving was interrupted
+  bool user = false;     // ~/.uagent/.config and the remembered model
+  json project;          // <folder>/.uagent/.config, as read
+  bool archive = false;  // the user's file was imported but not yet archived
+  std::string error;
 
   bool Any() const {
-    return !user.empty() || !project.empty() || !archive.empty();
+    return user || archive || !project.is_null() || !error.empty();
   }
 };
+
+std::string ProjectFile(const std::string& folder) {
+  return folder + "/.uagent/.config";
+}
 
 Legacy FindLegacy(const json& document, const std::string& folder,
                   bool trusted) {
   Legacy legacy;
   std::error_code ec;
   const std::string user = UagentConfigPath();
-  if (std::filesystem::is_regular_file(user, ec)) {
-    if (!PathExists(SettingsPath())) {
-      legacy.user = user;
-    } else if (!PathExists(user + kImported)) {
-      legacy.archive = user;
-    }
+  const bool user_file = std::filesystem::is_regular_file(user, ec);
+  if (!PathExists(SettingsPath())) {
+    legacy.user = user_file || PathExists(PreferencePath());
+  } else {
+    legacy.archive = user_file && !PathExists(user + kImported);
   }
-  const std::string project = folder + "/.uagent/.config";
   const json* projects = JsonObject(document, "projects");
   if (folder.empty() || (projects && projects->contains(folder)) ||
-      !std::filesystem::is_regular_file(project, ec)) {
+      !std::filesystem::is_regular_file(ProjectFile(folder), ec)) {
     return legacy;
   }
+  json values;
+  if (!LegacyValues(ProjectFile(folder), values, legacy.error)) return legacy;
   // A project's file counted only once its content was approved, or when the
   // caller trusts the folder outright; the same holds for taking it over.
   const json approved = JsonValue(ReadTrustStore(), folder.c_str(), json());
-  if (trusted ||
-      (JsonValue(approved, "format", 0) == 3 &&
-       JsonValue(approved, "config", json()) == LegacyValues(project))) {
-    legacy.project = project;
+  if (trusted || (JsonValue(approved, "format", 0) == 3 &&
+                  JsonValue(approved, "config", json()) == values)) {
+    legacy.project = std::move(values);
   }
   return legacy;
 }
 
 void Archive(const std::string& path) {
   std::error_code ignored;
-  if (!path.empty()) std::filesystem::rename(path, path + kImported, ignored);
+  std::filesystem::rename(path, path + kImported, ignored);
+}
+
+// The model an older /model remembered for every later run. A bare model
+// name belongs to the endpoint it was chosen on, and whatever sets a model
+// already decides.
+void ImportModelPreference(json& all) {
+  const json remembered = json::parse(
+      ReadFile(PreferencePath(), kSettingsBytes).value_or(""), nullptr, false);
+  const std::string selection = JsonValue(remembered, "selection", "");
+  if (JsonValue(remembered, "format", 0) != 1 || selection.empty() ||
+      selection.find_first_of("\r\n") != std::string::npos) {
+    return;
+  }
+  const EnvValues values = ScopeValues(all);
+  auto resolved = [&](const char* key) {
+    std::set<std::string> resolving;
+    return ResolveEnvValue(key, values, resolving);
+  };
+  const std::string base = resolved("UAGENT_BASE_URL");
+  if (resolved("UAGENT_MODEL").empty() &&
+      (JsonValue(remembered, "route", false) || base.empty() ||
+       StripTrailingSlashes(base) ==
+           StripTrailingSlashes(JsonValue(remembered, "base_url", "")))) {
+    all["UAGENT_MODEL"] = selection;
+  }
 }
 
 // The document is saved before a file is archived, so an interruption leaves
 // the file to be archived later, and never a value changed since to be
-// overwritten.
-void Import(const std::string& folder, bool trusted) {
+// overwritten. Returns why nothing could be taken over: the files then stay,
+// and nothing is saved until they can be.
+std::string Import(const std::string& folder, bool trusted) {
   std::string error;
-  PrivateJsonStore store(kSettingsFile, nullptr, kSettingsBytes, error);
-  if (!store.Ready()) return;
+  PrivateJsonStore store(kSettingsFile, EmptyDocument(), kSettingsBytes, error);
+  if (!store.Ready()) return error;
   json& document = store.Data();
-  const bool created = document.is_null();
-  if (created) document = EmptyDocument();
-  if (!Valid(document)) return;
+  if (!Valid(document)) return Invalid();
   // Under the lock: another process may have imported since.
-  const Legacy legacy = FindLegacy(document, folder, trusted);
-  const std::string preference =
-      UagentDir(kConfigDir) + "/model-preference.json";
-  if (!legacy.user.empty()) {
-    json& all = document["all"];
-    all = LegacyValues(legacy.user);
-    // The model an older /model remembered for every later run. A bare model
-    // name belongs to the endpoint it was chosen on.
-    const json remembered = json::parse(
-        ReadFile(preference, kSettingsBytes).value_or(""), nullptr, false);
-    const std::string selection = JsonValue(remembered, "selection", "");
-    const std::string base = JsonValue(all, "UAGENT_BASE_URL", "");
-    if (!selection.empty() && !all.contains("UAGENT_MODEL") &&
-        (JsonValue(remembered, "route", false) || base.empty() ||
-         StripTrailingSlashes(base) ==
-             StripTrailingSlashes(JsonValue(remembered, "base_url", "")))) {
-      all["UAGENT_MODEL"] = selection;
+  Legacy legacy = FindLegacy(document, folder, trusted);
+  if (!legacy.error.empty()) return legacy.error;
+  const std::string user = UagentConfigPath();
+  std::error_code ec;
+  if (legacy.user) {
+    if (std::filesystem::is_regular_file(user, ec) &&
+        !LegacyValues(user, document["all"], error)) {
+      return error;
     }
+    ImportModelPreference(document["all"]);
   }
-  if (!legacy.project.empty()) {
-    document["projects"][folder] = LegacyValues(legacy.project);
-  }
-  if ((created || !legacy.project.empty()) && !store.Save(error)) return;
-  if (!legacy.user.empty()) std::remove(preference.c_str());
-  Archive(legacy.user);
-  Archive(legacy.archive);
-  Archive(legacy.project);
-}
-
-std::string Invalid() {
-  return "the saved settings cannot be read; fix or remove " + SettingsPath();
+  const bool project = !legacy.project.is_null();
+  if (project) document["projects"][folder] = std::move(legacy.project);
+  if ((legacy.user || project) && !store.Save(error)) return error;
+  if (legacy.user) std::remove(PreferencePath().c_str());
+  if (legacy.user || legacy.archive) Archive(user);
+  if (project) Archive(ProjectFile(folder));
+  return {};
 }
 
 }  // namespace
@@ -167,15 +206,16 @@ std::string SettingsPath() {
 }
 
 SavedSettings ReadSettings(const std::string& folder, bool trusted) {
-  json document = ReadDocument();
-  if (FindLegacy(document, folder, trusted).Any()) {
-    Import(folder, trusted);
-    document = ReadDocument();
-  }
   SavedSettings saved;
-  saved.stamp = SnapshotFile(SettingsPath());
+  json document = ReadDocument(saved.stamp);
+  if (FindLegacy(document, folder, trusted).Any()) {
+    saved.error = Import(folder, trusted);
+    document = ReadDocument(saved.stamp);
+  }
   if (!Valid(document)) {
-    if (PathExists(SettingsPath())) saved.error = Invalid();
+    if (saved.error.empty() && PathExists(SettingsPath())) {
+      saved.error = Invalid();
+    }
     return saved;
   }
   saved.all = ScopeValues(document["all"]);
@@ -188,9 +228,10 @@ SavedSettings ReadSettings(const std::string& folder, bool trusted) {
 std::string ChangeSettings(
     const std::string& folder,
     const std::function<std::string(SettingValues& scope)>& change) {
-  // First, so that a document this creates does not pass for an import done.
-  (void)ReadSettings(folder);
-  std::string error;
+  // First, so that a document this creates does not pass for an import done;
+  // while one is still owed, nothing is saved.
+  std::string error = ReadSettings(folder).error;
+  if (!error.empty()) return error;
   PrivateJsonStore store(kSettingsFile, EmptyDocument(), kSettingsBytes, error);
   if (!store.Ready()) return error;
   json& document = store.Data();

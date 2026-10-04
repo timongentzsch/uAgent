@@ -185,8 +185,7 @@ json SessionControl(AppSession& session, const json& request) {
       }
     }
     json reply = ConfigurationControl(
-        effects.empty() ? request : json{{"operation", "get"}}, manager,
-        manager.ProjectTrusted());
+        effects.empty() ? request : json{{"operation", "get"}}, manager);
     if (!effects.empty()) reply["effects"] = std::move(effects);
     return reply;
   }

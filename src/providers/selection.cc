@@ -67,22 +67,6 @@ std::string ComposeSelection(const std::string& scope, const std::string& model,
   return selection;
 }
 
-ModelPreference TakeModelPreference() {
-  const std::string path = UagentDir(kConfigDir) + "/model-preference.json";
-  std::ifstream input(path);
-  if (!input) return {};
-  const json saved = json::parse(input, nullptr, false);
-  unlink(path.c_str());
-  if (!saved.is_object() || JsonValue(saved, "format", 0) != 1) return {};
-  ModelPreference preference{
-      JsonValue(saved, "selection", ""),
-      StripTrailingSlashes(JsonValue(saved, "base_url", "")),
-      JsonValue(saved, "route", false)};
-  return preference.selection.find_first_of("\r\n") == std::string::npos
-             ? preference
-             : ModelPreference{};
-}
-
 ModelSelection ParseModelSelection(const std::string& selection) {
   ModelSelection parsed;
   parsed.base = Trim(selection);

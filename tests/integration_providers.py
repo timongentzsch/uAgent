@@ -9,6 +9,8 @@ from integration_support import (
     provider_env,
     run,
     run_dialog,
+    saved_settings,
+    settings_path,
     tool_call,
     tool_results,
     two_route_providers,
@@ -544,7 +546,6 @@ def test_model_choice_is_the_conversations_until_saved_for_all(root, home, *, bi
     second = Server([chosen] * 2)
     providers = two_route_providers(first.url, second.url)
     providers["second"]["context"] = 8192
-    config = home / ".uagent" / ".config"
     legacy = home / ".uagent" / "config" / "model-preference.json"
     try:
         choose_env = provider_env(home, first.url, providers, "first/main")
@@ -554,7 +555,7 @@ def test_model_choice_is_the_conversations_until_saved_for_all(root, home, *, bi
         # nowhere else.
         assert_true("UAGENT_MODEL = second/model-b:medium" in picked.stdout, picked.stdout)
         assert_true("conversation" in picked.stdout, picked.stdout)
-        assert_true(not legacy.exists() and not config.exists(), "choice left the conversation")
+        assert_true(not legacy.exists() and not saved_settings(home), "choice left the conversation")
 
         fresh_env = provider_env(home, first.url, providers)
         # A fresh run knows nothing of it: with no model configured it says so.
@@ -568,7 +569,7 @@ def test_model_choice_is_the_conversations_until_saved_for_all(root, home, *, bi
         # Saved for all conversations only when asked.
         kept = run_dialog(root, choose_env, "/model second/fast --default\n/q\n", binary=binary)
         assert_true("also the model of new conversations" in kept.stdout, kept.stdout)
-        assert_true("UAGENT_MODEL=second/model-b:medium" in config.read_text(), config.read_text())
+        assert_true(saved_settings(home) == {"UAGENT_MODEL": "second/model-b:medium"}, saved_settings(home))
         started = run(root, fresh_env, "-p", "probe", binary=binary)
         assert_true(started.stdout.strip() == "chosen-model-ok", started.stdout + started.stderr)
 
@@ -578,8 +579,9 @@ def test_model_choice_is_the_conversations_until_saved_for_all(root, home, *, bi
         overridden = run(root, override_env, "-p", "probe", binary=binary)
         assert_true(overridden.stdout.strip() == "configured-model-ok", overridden.stdout)
 
-        # A model an older /model remembered becomes that setting, once.
-        config.unlink()
+        # A model an older /model remembered becomes that setting, on the
+        # first start with nothing saved yet.
+        settings_path(home).unlink()
         legacy.parent.mkdir(parents=True, exist_ok=True)
         legacy.write_text(
             json.dumps({"format": 1, "selection": "second/fast", "base_url": "", "route": True})
@@ -587,7 +589,7 @@ def test_model_choice_is_the_conversations_until_saved_for_all(root, home, *, bi
         migrated = run(root, fresh_env, "-p", "probe", binary=binary)
         assert_true(migrated.stdout.strip() == "chosen-model-ok", migrated.stdout + migrated.stderr)
         assert_true(not legacy.exists(), "remembered model was not taken")
-        assert_true("UAGENT_MODEL=second/fast" in config.read_text(), config.read_text())
+        assert_true(saved_settings(home) == {"UAGENT_MODEL": "second/fast"}, saved_settings(home))
     finally:
         first.close()
         second.close()
@@ -1115,7 +1117,7 @@ def test_effort_is_part_of_the_conversations_model_choice(root, home, *, binary)
         # Nothing outside the conversation remembers it.
         assert_true(
             not (home / ".uagent" / "config" / "model-preference.json").exists()
-            and not (home / ".uagent" / ".config").exists(),
+            and not saved_settings(home),
             "effort left the conversation",
         )
 

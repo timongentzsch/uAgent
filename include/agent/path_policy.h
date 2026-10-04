@@ -16,6 +16,7 @@
 #include "include/core/fs.h"
 #include "include/core/project.h"
 #include "include/core/sandbox.h"
+#include "include/core/settings_store.h"
 #include "include/tools/tool.h"
 
 namespace uagent {
@@ -53,7 +54,7 @@ inline bool SelfConfigurationPath(const std::string& path) {
   }
   if (matches(UagentConfigPath()) || matches(ProjectConfigFilePath()) ||
       matches(TrustStorePath()) ||
-      matches(SettingText(Cfg("UAGENT_CONFIG_FILE"))) ||
+      matches(SettingsPath()) || matches(SettingsPath() + ".lock") ||
       matches(UagentDir(kConfigDir) + "/" + kPermissionStoreFile)) {
     return true;
   }

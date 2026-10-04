@@ -328,10 +328,10 @@ SandboxStatus BuildStatus() {
   if (!EnvStr("UAGENT_INTERNAL_SANDBOX_UNAVAILABLE").empty()) {
     status.level = SandboxLevel::kUnavailable;
   }
-  // A value in the environment here is a value somebody wrote down: the
-  // configuration layer exports what a file, the environment or a flag
-  // supplied, and never the registry defaults. That is the whole of the
-  // provenance the two unenforceable tiers need.
+  // A value here is a value somebody wrote down: the settings hold what was
+  // saved, the environment or a flag supplied, and never the registry
+  // defaults. That is the whole of the provenance the two unenforceable
+  // tiers need.
   const bool requested = !SettingText(Cfg("UAGENT_SANDBOX")).empty();
   if (status.level == SandboxLevel::kUnavailable) {
     status.mode = requested ? SandboxMode::kRefused : SandboxMode::kDegraded;

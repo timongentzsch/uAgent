@@ -25,6 +25,7 @@
 #include <vector>
 
 #include "include/browser/runtime.h"
+#include "include/core/config_registry.h"
 #include "include/core/fd.h"
 #include "include/core/limits.h"
 #include "include/core/platform.h"
@@ -87,8 +88,7 @@ void SetDataDirectory(std::string path) {
 
 std::string DataDirectory() {
   if (!HostDataDirectory().empty()) return HostDataDirectory();
-  const char* configured = getenv("UAGENT_BROWSER_DATA");
-  return configured && *configured ? configured : "";
+  return SettingText(Cfg("UAGENT_BROWSER_DATA"));
 }
 std::string SocketPath() {
   auto base = DataDirectory();

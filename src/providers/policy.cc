@@ -160,7 +160,8 @@ void ActivateRoute(Api& api) {
 
 ProviderSetup ConfigureProvider(Api& api) {
   api.base_url = StripTrailingSlashes(SettingText(Cfg("UAGENT_BASE_URL")));
-  api.api_key = EnvStr("UAGENT_API_KEY", kPlaceholderApiKey);
+  api.api_key = SettingText(Cfg("UAGENT_API_KEY"));
+  if (api.api_key.empty()) api.api_key = kPlaceholderApiKey;
   ModelSelection requested =
       ParseModelSelection(SettingText(Cfg("UAGENT_MODEL")));
   api.model = requested.base;

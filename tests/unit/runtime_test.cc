@@ -642,9 +642,9 @@ void TestAgentConfigAllowlist() {
   ScopedEnv scoped_effort("OPENROUTER_EFFORT");
   ConfigManager loaded = ConfigManager::Capture(/*trust_project=*/false, {});
   (void)loaded.Initialize();
-  CHECK(EnvStr("OPENROUTER_API_KEY") == "test-key");
-  CHECK(EnvStr("OPENROUTER_MODEL") == "vendor/model");
-  CHECK(EnvStr("OPENROUTER_EFFORT") == "high");
+  CHECK(SettingText("OPENROUTER_API_KEY") == "test-key");
+  CHECK(SettingText("OPENROUTER_MODEL") == "vendor/model");
+  CHECK(SettingText("OPENROUTER_EFFORT") == "high");
 
   std::error_code ec;
   fs::remove_all(root, ec);
@@ -1086,6 +1086,14 @@ void TestEffectiveConfigReload() {
     told |= std::string_view(*entry) == "UAGENT_TOOL_RESULT_CHARS=1234";
   }
   CHECK(told);
+  // Put back to its default, it is at its default: nothing saved was ever
+  // left in the environment to come back from.
+  CHECK(ChangeSettings("", [](SettingValues& all) {
+          all.erase("UAGENT_TOOL_RESULT_CHARS");
+          return std::string();
+        }).empty());
+  CHECK(manager.Reload(reload->active).has_value());
+  CHECK(ToolResultCap() != 1234);
   OverrideSetting("UAGENT_TOOL_RESULT_CHARS", "99");
   CHECK(ToolResultCap() == 99);
 }

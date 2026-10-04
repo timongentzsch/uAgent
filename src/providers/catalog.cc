@@ -58,7 +58,7 @@ const ProviderTemplate& DefaultProviderTemplate() {
 }
 
 bool ApplyProviderTemplate(Api& api, const ProviderTemplate& provider) {
-  std::string api_key = EnvStr(provider.api_key_env);
+  std::string api_key = SettingText(provider.api_key_env);
   if (api_key.empty()) return false;
   api.base_url = provider.base_url;
   api.api_key = std::move(api_key);
@@ -66,10 +66,11 @@ bool ApplyProviderTemplate(Api& api, const ProviderTemplate& provider) {
       CapabilitiesForRoute(provider.protocol, api.base_url, provider.wire_api,
                            provider.hosted_web_search);
   if (api.model.empty()) {
-    api.model = EnvStr(provider.model_env, provider.default_model);
+    api.model = SettingText(provider.model_env);
+    if (api.model.empty()) api.model = provider.default_model;
   }
-  if (!getenv("UAGENT_REASONING_EFFORT")) {
-    api.reasoning_effort = EnvStr(provider.effort_env);
+  if (SettingText(Cfg("UAGENT_REASONING_EFFORT")).empty()) {
+    api.reasoning_effort = SettingText(provider.effort_env);
   }
   return true;
 }
@@ -160,7 +161,7 @@ const NamedProvider* FindNamedProvider(
 
 void AddAvailableProviderTemplates(ProviderCatalog& catalog) {
   for (const ProviderTemplate& provider : kProviderTemplates) {
-    std::string api_key = EnvStr(provider.api_key_env);
+    std::string api_key = SettingText(provider.api_key_env);
     if (api_key.empty() ||
         FindNamedProvider(catalog.providers, provider.name)) {
       continue;

@@ -12,6 +12,7 @@
 #include "include/agent/session_store.h"
 #include "include/app/runtime.h"
 #include "include/core/config.h"
+#include "include/core/config_registry.h"
 #include "include/core/effective_config.h"
 #include "include/core/env.h"
 #include "include/core/project.h"
@@ -663,7 +664,7 @@ void TestScopedBaseAndMemory() {
   unsetenv("UAGENT_API_KEY");
   ConfigManager untrusted = ConfigManager::Capture(/*trust_project=*/false, {});
   (void)untrusted.Initialize();
-  CHECK(EnvStr("UAGENT_MODEL") == "global/model");
+  CHECK(SettingText(Cfg("UAGENT_MODEL")) == "global/model");
 
   // A project's setting wins key by key; what is saved for all fills the
   // rest.
@@ -671,8 +672,10 @@ void TestScopedBaseAndMemory() {
   unsetenv("UAGENT_API_KEY");
   ConfigManager trusted = ConfigManager::Capture(/*trust_project=*/true, {});
   (void)trusted.Initialize();
-  CHECK(EnvStr("UAGENT_MODEL") == "project/model");
-  CHECK(EnvStr("UAGENT_API_KEY") == "global-key");
+  CHECK(SettingText(Cfg("UAGENT_MODEL")) == "project/model");
+  CHECK(SettingText(Cfg("UAGENT_API_KEY")) == "global-key");
+  // What is saved is read from the settings, never put in the environment.
+  CHECK(getenv("UAGENT_MODEL") == nullptr);
 
   unsetenv("UAGENT_MODEL");
   unsetenv("UAGENT_API_KEY");

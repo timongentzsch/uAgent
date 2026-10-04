@@ -23,7 +23,8 @@ namespace uagent {
 namespace {
 
 std::string DefaultSearchModel() {
-  return EnvStr("OPENROUTER_MODEL", kDefaultModelRoute);
+  const std::string model = SettingText("OPENROUTER_MODEL");
+  return model.empty() ? std::string(kDefaultModelRoute) : model;
 }
 
 ToolResult SearchError(int64_t http_status, const std::string& detail) {

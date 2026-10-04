@@ -714,6 +714,10 @@ void OverrideSetting(std::string_view environment, std::string value);
 void ClearSettings();
 SettingValues CurrentSettings();
 std::string SettingText(const ConfigDescriptor& descriptor);
+// The same by name, for the few names that are no registered setting (a
+// provider's own variables). What is saved is not in the environment: it is
+// read here.
+std::string SettingText(const std::string& name);
 
 int64_t LongSetting(const ConfigDescriptor& descriptor);
 bool BoolSetting(const ConfigDescriptor& descriptor);

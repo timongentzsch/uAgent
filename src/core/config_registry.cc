@@ -64,16 +64,22 @@ SettingValues CurrentSettings() {
   return current;
 }
 
-std::string SettingText(const ConfigDescriptor& descriptor) {
+std::string SettingText(const std::string& name) {
   {
     SettingStore& store = Settings();
     std::lock_guard lock(store.mutex);
     for (const SettingValues* layer : {&store.overrides, &store.published}) {
-      auto found = layer->find(std::string(descriptor.environment));
+      auto found = layer->find(name);
       if (found != layer->end()) return found->second;
     }
   }
-  return EnvStr(descriptor.EnvName());
+  // Before anything is published (a tool run on its own, a test) the
+  // environment is all there is.
+  return EnvStr(name.c_str());
+}
+
+std::string SettingText(const ConfigDescriptor& descriptor) {
+  return SettingText(std::string(descriptor.environment));
 }
 
 int64_t LongSetting(const ConfigDescriptor& descriptor) {

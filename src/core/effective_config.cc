@@ -129,9 +129,6 @@ RuntimeConfig::Values ConfigManager::Conversation() const {
 
 RuntimeConfig ConfigManager::Initialize() {
   current_ = Read();
-  for (const auto& [key, value] : current_.values) {
-    setenv(key.c_str(), value.c_str(), cli_.contains(key) ? 1 : 0);
-  }
   PublishSettings(current_.values);
   initialized_ = true;
   return current_.config;

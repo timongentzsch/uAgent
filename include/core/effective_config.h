@@ -48,14 +48,14 @@ struct ConfigReload {
 class ConfigManager {
  public:
   // `cli` holds UAGENT_* values named on the command line. They sit above the
-  // environment layer and are re-applied with overwrite, so a flag beats an
-  // inherited variable however the session was launched.
+  // environment layer, so a flag beats an inherited variable however the
+  // session was launched.
   // `folder` is the project whose saved settings apply: this process's own
   // unless one is named (the web host has none of its own, so it names the
   // one a request is about, or none).
   static ConfigManager Capture(bool trust_project, RuntimeConfig::Values cli,
                                std::optional<std::string> folder = {});
-  // Inspect resolved values without exporting them as process overrides.
+  // The resolved values as they are now, publishing nothing.
   EffectiveConfigSnapshot Read() const;
   // The project whose saved settings apply.
   const std::string& Folder() const { return folder_; }

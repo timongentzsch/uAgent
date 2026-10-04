@@ -2741,28 +2741,48 @@ def test_a_subagent_gets_no_tool_its_parent_switched_off(root, home, *, binary):
 
     def route(_, body):
         users = [str(m.get("content", "")) for m in body["messages"] if m.get("role") == "user"]
-        if any("child-task" in text for text in users):
+        if "go" not in users:
             offered["child"] = function_names(body)
             return event({"content": "child-done"})
         if any(m.get("role") == "tool" for m in body["messages"]):
             return event({"content": "parent-done"})
         offered["parent"] = function_names(body)
-        return tool_call("subagent", {"prompt": "child-task", "mode": "full", "background": False})
+        return tool_call("subagent", {"prompt": "child-task", "mode": "full", "background": True})
 
-    with Server([route] * 4) as provider:
+    with Server([route] * 8) as provider:
         with web_host(binary, root, home, provider.url) as (client, code, _, _):
             client.pair(code)
             session = client.create(project)
             client.command("permissions", session, mode="yolo")
             client.command("tools", session, operation="set", name="write_file", active=False)
             client.command("submit", session, text="go")
-            client.until(session, lambda value: "parent-done" in json.dumps(value))
-    assert_true("write_file" not in offered["parent"], offered["parent"])
-    # The child's full toolset, less what its parent may not call.
-    assert_true(
-        "write_file" not in offered["child"] and "read_path" in offered["child"],
-        offered["child"],
-    )
+
+            def ceiling_kept():
+                done = client.until(
+                    session,
+                    # Idle again once the parent has taken up the result.
+                    lambda value: "child" in offered
+                    and value["metadata"]["status"] == "idle"
+                    and all(row["status"] == "completed" for row in value["state"]["activities"])
+                    and any(
+                        "[subagent finished" in json.dumps(body["messages"])
+                        for _, body in provider.requests
+                    ),
+                )
+                assert_true("write_file" not in offered["parent"], offered["parent"])
+                # The child's full toolset, less what its parent may not call.
+                assert_true(
+                    "write_file" not in offered.pop("child") and "read_path" in offered["parent"],
+                    offered,
+                )
+                return done["state"]["activities"][0]["agent_id"]
+
+            child = ceiling_kept()
+            # A person's follow-up to it is no decision about tools either.
+            client.command(
+                "activity", session, operation="followup", agent_id=child, text="child-task more"
+            )
+            ceiling_kept()
 
 
 def test_web_interrupt_stops_a_command_that_ignores_being_asked(root, home, *, binary):

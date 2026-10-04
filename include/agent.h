@@ -139,6 +139,9 @@ class Agent {
   json SessionSettings() const;
   void SessionSettings(const json& settings);
   json ToolCatalogue() const;
+  // The tools this conversation has switched on, by name: the most a child
+  // it delegates to may be given.
+  std::vector<std::string> EnabledTools() const;
   json ConfigureTools(const json& request);
   json ToolSelectionSettings() const { return tool_selection_.Save(); }
   void RestoreToolSelection(const json& settings);

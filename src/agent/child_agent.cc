@@ -191,31 +191,19 @@ EnvironmentOverrides ChildAgentEnvironment(SideRoute route) {
   environment.emplace_back("UAGENT_API_KEY", std::move(route.api_key));
   environment.emplace_back("UAGENT_INTERNAL_USAGE_FILE", UsageLedger());
   // A child is never less confined than the session that delegates to it:
-  // it gets the sandbox this process is actually running under (fixed at
-  // start), not what the configuration says now, which a reload may have
-  // loosened ahead of a restart.
-  const SandboxStatus& sandbox = SandboxRuntime();
-  std::string roots;
-  for (const std::string& root : sandbox.policy.writable_roots) {
-    roots += (roots.empty() ? "" : ":") + root;
-  }
-  environment.insert(
-      environment.end(),
-      {{"UAGENT_SANDBOX", sandbox.mode == SandboxMode::kOff ? "0" : "1"},
-       {"UAGENT_SANDBOX_NET", sandbox.policy.allow_network ? "1" : "0"},
-       {"UAGENT_SANDBOX_WRITE", roots},
-       // The child itself starts outside the sandbox, through a shell: no
-       // startup file a confined command could have written is run there.
-       {"BASH_ENV", ""},
-       {"ENV", ""}});
+  // it runs under the sandbox this process actually has (fixed at start), not
+  // one it composes from a configuration that may have been loosened since.
+  environment.emplace_back("UAGENT_INTERNAL_SANDBOX", SandboxInheritance());
   return environment;
 }
 
-std::string ChildAgentCommand(bool debug, const std::string& prompt,
-                              const std::string& model) {
-  return ShellQuote(ExecutablePath()) + " --yolo --json" +
-         (debug ? " --debug" : "") + " --model " + ShellQuote(model) + " -p " +
-         ShellQuote(prompt);
+std::vector<std::string> ChildAgentCommand(bool debug,
+                                           const std::string& prompt,
+                                           const std::string& model) {
+  std::vector<std::string> argv = {ExecutablePath(), "--yolo", "--json"};
+  if (debug) argv.emplace_back("--debug");
+  argv.insert(argv.end(), {"--model", model, "-p", prompt});
+  return argv;
 }
 
 // The child prints its envelope as one line. Progress lines precede it, the

@@ -213,7 +213,11 @@ json SessionControl(AppSession& session, const json& request) {
                       {"prompt", JsonValue(request, "text", "")}};
     const std::string model = JsonValue(request, "model", "");
     if (!model.empty()) arguments["model"] = model;
-    ToolResult result = tool.run(arguments, ToolContext{});
+    // A follow-up is not a decision about tools: the child keeps the ceiling
+    // of the conversation it belongs to.
+    ToolContext context;
+    context.enabled_tools = session.ActiveAgent().EnabledTools();
+    ToolResult result = tool.run(arguments, context);
     return result.Ok() ? json{{"output", result.output}}
                        : json{{"error", result.output}};
   }

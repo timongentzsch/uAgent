@@ -156,13 +156,23 @@ ToolResult EnsureSessionAutoLink() {
   // A person's own yolo sessions find each other. A delegated child is in
   // yolo only because nobody is there to ask: it reaches no session its
   // parent did not give it.
-  if (!ApprovalIsYolo() || AgentDepth() > 0) return ToolSuccess({});
+  if (!ApprovalIsYolo()) return ToolSuccess({});
   json me = OwnMember();
   if (!me.is_object()) return ToolSuccess({});
   const std::string name = "auto-" + HashHex(CanonicalCwd());
   json members = JsonValue(ReadLink(name), "members", json::array());
   const std::string id = JsonValue(me, "id", "");
-  if (HasMember(members, id)) return ToolSuccess({});
+  const bool member = HasMember(members, id);
+  if (AgentDepth() > 0) {
+    // One that an older version joined leaves.
+    if (!member) return ToolSuccess({});
+    json others = json::array();
+    for (json& other : members) {
+      if (JsonValue(other, "id", "") != id) others.push_back(std::move(other));
+    }
+    return WriteLink(name, others);
+  }
+  if (member) return ToolSuccess({});
   if (members.size() >= kSessionLinkMembers) {
     return ToolFailure(ToolErrorCode::kLimitExceeded,
                        "auto-link is full (32 sessions)");

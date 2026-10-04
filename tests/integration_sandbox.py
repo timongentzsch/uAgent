@@ -136,9 +136,11 @@ def test_a_subagent_is_no_less_confined_than_its_parent(root, home, *, binary):
     sandbox of the session that delegated to it."""
     if not sandbox_enforced(root, home, binary=binary):
         return
-    ws = workspace(root)
-    for sandbox in ("1", "0"):
-        outside, inside = root / f"child-{sandbox}.txt", ws / f"child-{sandbox}.txt"
+    # The second folder's name reads, in a colon-separated list, as itself
+    # and its parent: a child handed its parent's roots that way gains one.
+    for sandbox, ws in (("1", workspace(root)), ("0", workspace(root)), ("1", root / "ws:..")):
+        ws.mkdir(exist_ok=True)
+        outside, inside = root / f"{ws.name}-{sandbox}.txt", ws / f"child-{sandbox}.txt"
         with delegating_server(outside, inside) as server:
             env = sandbox_env(home, server.url, UAGENT_SANDBOX=sandbox)
             result = run(ws, env, "--yolo", "-p", "go", timeout=60, binary=binary)
@@ -154,8 +156,8 @@ def test_a_subagent_is_no_less_confined_than_its_parent(root, home, *, binary):
 
 
 def test_a_subagent_keeps_the_sandbox_its_parent_runs_under(root, home, *, binary):
-    """Not the one configured now, and not what a shell startup file says:
-    the parent's sandbox is fixed at its start, and so is its child's."""
+    """Not the one configured now, and no shell startup file has a say: the
+    parent's sandbox is fixed at its start, and so is its child's."""
     if not sandbox_enforced(root, home, binary=binary):
         return
     ws = workspace(root)
@@ -163,8 +165,8 @@ def test_a_subagent_keeps_the_sandbox_its_parent_runs_under(root, home, *, binar
     config.parent.mkdir(parents=True, exist_ok=True)
     config.write_text("UAGENT_SANDBOX=1\n")
     outside, inside, hooked = root / "later.txt", ws / "later.txt", root / "hooked.txt"
-    # A startup file a confined command could have written: the child is
-    # launched through a shell, outside the sandbox.
+    # A startup file a confined command could have written: the child starts
+    # outside the sandbox, so it is started through no shell.
     hook = ws / "hook.sh"
     hook.write_text(f"export UAGENT_SANDBOX=0\ntouch {hooked}\n")
 

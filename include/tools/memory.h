@@ -35,6 +35,9 @@ MemoryIndex LoadAlwaysOnMemory(const std::filesystem::path& cwd,
 std::string StartMemoryExtractor(ProcessSupervisor& processes, const Api& api,
                                  const std::filesystem::path& cwd,
                                  const std::string& current_session);
+// Called by that child as it ends: the session it read is marked done, or
+// released to be tried again.
+void SettleMemoryClaim(bool extracted);
 bool BuildMemoryExtractionPrompt(const std::string& source,
                                  const std::filesystem::path& cwd,
                                  std::string& prompt, std::string& error);

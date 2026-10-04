@@ -427,10 +427,13 @@ ToolResult RunSubagent(const Api& api, ProcessSupervisor& processes,
        {"UAGENT_INTERNAL_DELEGATION", JsonDump(role)}});
   // A tool this session has switched off is not handed to its child either:
   // the child's toolset is cut down to what the session itself may call.
-  if (!context.enabled_tools.empty()) {
-    environment.emplace_back("UAGENT_INTERNAL_TOOL_ALLOWLIST",
-                             JsonDump(json(context.enabled_tools)));
+  if (context.enabled_tools.empty()) {
+    return ToolFailure(ToolErrorCode::kUnavailable,
+                       "every tool is switched off in this conversation, so a "
+                       "child would have none");
   }
+  environment.emplace_back("UAGENT_INTERNAL_TOOL_ALLOWLIST",
+                           JsonDump(json(context.enabled_tools)));
   // Only a background child is polled while it runs. A foreground child
   // is read once, where progress lines would only pad the answer the
   // parent quotes.
@@ -475,13 +478,12 @@ ToolResult RunSubagent(const Api& api, ProcessSupervisor& processes,
   if (max_seconds > 0) child_context = context.WithTimeout(max_seconds);
   ShellCommandResult child = RunShellCommand(
       processes, child_context,
-      {.command = ChildAgentCommand(debug, prompt, child_model),
+      {.command = "uagent subagent",
+       .argv = ChildAgentCommand(debug, prompt, child_model),
        .background = background,
        .immediate = background,
-       // Runs uagent itself, which writes ~/.uagent
-       // state a confined child could not. Its own
-       // commands inherit UAGENT_SANDBOX and are
-       // confined one level down.
+       // Runs uagent itself, which writes ~/.uagent state a confined child
+       // could not. Its own commands run under this session's sandbox.
        .sandbox = false,
        .activity_kind = ActivityKind::kSubagent,
        .activity_label = route_label,

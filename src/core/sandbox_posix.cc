@@ -286,8 +286,41 @@ SandboxInputs CollectInputs() {
   return inputs;
 }
 
+// A delegated child runs under the policy of the session that started it,
+// whole: composing its own from the configuration could add a root, lose an
+// exclusion, or turn a refusal into a policy that runs commands. Anything
+// unreadable refuses.
+SandboxStatus InheritedStatus(const std::string& text) {
+  SandboxStatus status;
+  const json from = json::parse(text, nullptr, false);
+  const int mode = JsonValue(from, "mode", -1);
+  status.mode = SandboxMode::kRefused;
+  status.reason =
+      "the sandbox policy this session was started with is "
+      "unreadable";
+  if (mode < 0 || mode > static_cast<int>(SandboxMode::kRefused)) return status;
+  status.mode = static_cast<SandboxMode>(mode);
+  status.level = SandboxSupported();
+  status.reason = JsonValue(from, "reason", "");
+  status.policy.allow_network = JsonValue(from, "network", false);
+  auto paths = [&](const char* key) {
+    std::vector<std::string> out;
+    for (const json& path : JsonValue(from, key, json::array())) {
+      if (path.is_string()) out.push_back(path.get<std::string>());
+    }
+    return out;
+  };
+  status.policy.writable_roots = paths("roots");
+  status.policy.denied_writes = paths("denied");
+  return status;
+}
+
 SandboxStatus BuildStatus() {
   SandboxStatus status;
+  if (const std::string inherited = EnvStr("UAGENT_INTERNAL_SANDBOX");
+      !inherited.empty()) {
+    return InheritedStatus(inherited);
+  }
   if (!SandboxEnabled()) return status;
   status.level = SandboxSupported();
   // Test-only, and only ever stricter: it can make an enforceable host look
@@ -345,6 +378,15 @@ const char* MechanismName() {
 const SandboxStatus& SandboxRuntime() {
   static const SandboxStatus kStatus = BuildStatus();
   return kStatus;
+}
+
+std::string SandboxInheritance() {
+  const SandboxStatus& status = SandboxRuntime();
+  return JsonDump({{"mode", static_cast<int>(status.mode)},
+                   {"reason", status.reason},
+                   {"network", status.policy.allow_network},
+                   {"roots", status.policy.writable_roots},
+                   {"denied", status.policy.denied_writes}});
 }
 
 json SandboxDiagnosticJson() {

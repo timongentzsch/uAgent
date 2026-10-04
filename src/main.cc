@@ -37,6 +37,7 @@ extern char** environ;
 #include "include/core/strings.h"
 #include "include/core/term.h"
 #include "include/core/usage.h"
+#include "include/tools/memory.h"
 #ifdef UAGENT_WEB
 #include "include/web/protocol.h"
 #endif
@@ -286,6 +287,7 @@ int Main(int argc, char** argv) {
   int code = boot.Ok()
                  ? RunApplication(*boot.context)
                  : Fail(json_stream, json_envelope, boot.error, boot.exit_code);
+  SettleMemoryClaim(code == 0);
   // Direct owners stop in deterministic reverse order: application/runtime,
   // then observational sinks, then process-level signal state at exit.
   boot.context.reset();

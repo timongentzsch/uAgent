@@ -424,7 +424,7 @@ def test_a_thread_is_never_above_auto(root, home, *, binary):
     it above that, in this run or the next."""
     from integration_support import fnv1a64
 
-    write_session(
+    thread = write_session(
         home,
         "thread",
         [{"role": "system", "content": "sys"}, {"role": "user", "content": "go"}],
@@ -455,11 +455,13 @@ def test_a_thread_is_never_above_auto(root, home, *, binary):
         assert_true('"effective": "ask"' in tighter.stdout, tighter.stdout)
         # Its limits are its runtime's to apply: continued headlessly it
         # would have none, so that is refused, and its role is not lost.
-        headless = run(root, env, "-c", "--yolo", "-p", "continue", binary=binary)
-        assert_true(
-            headless.returncode != 0 and "coordinator's thread" in headless.stderr,
-            (headless.stdout, headless.stderr),
-        )
+        named = {**env, "UAGENT_INTERNAL_SESSION_FILE": str(thread)}
+        for how in (run(root, env, "-c", "--yolo", "-p", "continue", binary=binary),
+                    run(root, named, "--yolo", "-p", "continue", binary=binary)):
+            assert_true(
+                how.returncode != 0 and "coordinator's thread" in how.stderr,
+                (how.stdout, how.stderr),
+            )
         assert_true(not server.requests, "a thread ran without its limits")
         again = run_dialog(root, env, "/permissions\n/q\n", "-c", binary=binary)
         assert_true('"limit": "auto"' in again.stdout, again.stdout)

@@ -114,7 +114,7 @@ struct ToolContext {
   std::string call_id;
   int64_t turn_id = 0;
   // The tools the calling session has enabled, by name: what it may hand on
-  // to a child. Empty when the caller is not a model's turn.
+  // to a child.
   std::vector<std::string> enabled_tools;
 
   bool Expired() const;

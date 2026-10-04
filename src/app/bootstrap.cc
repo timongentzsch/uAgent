@@ -769,16 +769,6 @@ BootstrapResult Bootstrap(Options options, const char* executable,
                    "/models returned nothing usable");
   }
   ActivateRoute(api);
-  context->tool_policy = ToolPolicyFromEnvironment();
-  if (context->options.Coordinator()) {
-    context->tool_policy.tool_allowlist.assign(std::begin(kCoordinatorTools),
-                                               std::end(kCoordinatorTools));
-  }
-  PrintWarning(context->tool_policy.error);
-  std::string tool_error;
-  context->tools =
-      BuildTools(*context, workspace, trusted_snapshot, skills, tool_error);
-  if (!tool_error.empty()) return Failure(tool_error);
   // A flag for a conversation's setting sets it for that conversation, and
   // is kept with it: a run started with a model and a mode (a scheduled
   // task's) still has them when its runtime starts again without the flag.
@@ -794,7 +784,18 @@ BootstrapResult Bootstrap(Options options, const char* executable,
     context->config_manager.ChooseForConversation("UAGENT_APPROVAL", "yolo");
   }
   // The mode in effect, resolved where it always is: scopes, then the role.
+  // Before the tools, whose servers are started with it.
   PermissionControl(*context, json::object());
+  context->tool_policy = ToolPolicyFromEnvironment();
+  if (context->options.Coordinator()) {
+    context->tool_policy.tool_allowlist.assign(std::begin(kCoordinatorTools),
+                                               std::end(kCoordinatorTools));
+  }
+  PrintWarning(context->tool_policy.error);
+  std::string tool_error;
+  context->tools =
+      BuildTools(*context, workspace, trusted_snapshot, skills, tool_error);
+  if (!tool_error.empty()) return Failure(tool_error);
   AppContext* app = context.get();
   context->agent = std::make_unique<Agent>(
       api, context->tools, context->runtime.processes,

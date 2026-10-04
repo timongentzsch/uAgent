@@ -142,6 +142,10 @@ struct SandboxStatus {
 // spawn asks; none of the answers can change while the process runs.
 const SandboxStatus& SandboxRuntime();
 
+// That status as the value of UAGENT_INTERNAL_SANDBOX, which makes a child
+// agent run under exactly it.
+std::string SandboxInheritance();
+
 // One object describing how this session confines its commands: mode,
 // mechanism, the writable roots, and anything asked for that was not granted.
 // Shared by session_ready, /status and /context so all three cannot drift.

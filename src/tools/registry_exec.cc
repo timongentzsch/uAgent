@@ -10,6 +10,7 @@
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/limits.h"
+#include "include/core/sandbox.h"
 #include "include/core/strings.h"
 #include "include/tools/shell.h"
 #include "src/tools/registry_internal.h"
@@ -61,7 +62,7 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
   // unconditionally would spend schema tokens on an argument that does nothing,
   // and invite the model to reach for it on a host that never confined
   // anything. `scratch` and `grep` get none: neither has a use for one.
-  if (SandboxEnabled()) {
+  if (SandboxRuntime().mode != SandboxMode::kOff) {
     run.parameters["properties"]["sandbox"] =
         json{{"type", "boolean"},
              {"description",

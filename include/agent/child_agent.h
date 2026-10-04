@@ -42,8 +42,11 @@ EnvironmentOverrides ChildAgentEnvironment(SideRoute route);
 // toolset grants it. It reports in the headless JSON envelope, so the parent
 // reads an answer and a stop reason rather than guessing from prose.
 // The resolved model is explicit so restoring a journal cannot replace it.
-std::string ChildAgentCommand(bool debug, const std::string& prompt,
-                              const std::string& model);
+// An argv, run directly: the child starts outside the sandbox, where a shell
+// would run whatever startup hook or PATH entry a confined command left it.
+std::vector<std::string> ChildAgentCommand(bool debug,
+                                           const std::string& prompt,
+                                           const std::string& model);
 
 // The child's answer, followed by what the caller has to know to decide: any
 // ceiling that was clamped on the way in, and the limit that ended the child

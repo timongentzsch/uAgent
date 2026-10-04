@@ -7,32 +7,22 @@ Every setting below is read from the running binary's registry. `takes effect` i
 
 ## Contents
 
-- web
-- route
-- request
-- budget
-- tools
-- delegation
-- coordination
-- search
-- memory
-- skills
-- mcp
-- media
-- retention
-- behaviour
+- Models and connection
+- Behaviour
+- Limits
+- Requests
+- Tools
+- Subagents
+- Coordinator
+- Web search
+- Memory
+- Skills
+- MCP
+- Media
+- History
+- Web host
 
-## web
-
-| Setting | Type | Default | Takes effect | Description |
-| --- | --- | --- | --- | --- |
-| `UAGENT_WEB_BIND` | string | `127.0.0.1` | restart-required | web listener address: loopback by default, all interfaces only when explicitly configured |
-| `UAGENT_BROWSER_DATA` | string | empty | restart-required | private browser profile and service directory; empty disables the browser appliance |
-| `UAGENT_WEB_PORT` | integer | `8080` | restart-required | global web master's loopback port |
-| `UAGENT_WEB_ORIGIN` | string | empty | restart-required | exact browser origin via an explicitly configured HTTPS or tailnet proxy |
-| `UAGENT_WEB_PUSH_CONTACT` | string | empty | restart-required | VAPID mailto or HTTPS contact; empty disables optional native Web Push |
-
-## route
+## Models and connection
 
 | Setting | Type | Default | Takes effect | Description |
 | --- | --- | --- | --- | --- |
@@ -47,100 +37,7 @@ Every setting below is read from the running binary's registry. `takes effect` i
 | `UAGENT_CONTEXT` | integer | `0` | restart-required | context-window tokens; 0 uses the provider profile |
 | `UAGENT_MAX_TOKENS` | integer | `-1` | next-user-turn | maximum response tokens; -1 omits the optional cap |
 
-## request
-
-| Setting | Type | Default | Takes effect | Description |
-| --- | --- | --- | --- | --- |
-| `UAGENT_STREAM_TIMEOUT` | integer | `300` | next-user-turn | seconds of stream silence allowed, before the first event or between events |
-| `UAGENT_REQUEST_TIMEOUT` | integer | `600` | next-user-turn | total seconds allowed for one model request |
-
-## budget
-
-| Setting | Type | Default | Takes effect | Description |
-| --- | --- | --- | --- | --- |
-| `UAGENT_MAX_STEPS` | integer | `0` | next-user-turn | model rounds per turn; 0 disables the limit |
-| `UAGENT_MAX_TOOL_CALLS` | integer | `0` | next-user-turn | tool calls per turn; 0 disables the limit |
-| `UAGENT_MAX_TURN_SECONDS` | integer | `0` | next-user-turn | wall-clock seconds per turn; 0 disables the deadline |
-| `UAGENT_MAX_TURN_TOKENS` | integer | `0` | next-user-turn | generated-token ceiling per turn; 0 disables it |
-| `UAGENT_SESSION_TOKEN_BUDGET` | integer | `0` | next-user-turn | cumulative generated-token ceiling; 0 disables it |
-| `UAGENT_MAX_TURN_COST` | number | `0.0` | next-user-turn | reported-cost ceiling per turn; 0 disables it |
-| `UAGENT_SESSION_BUDGET` | number | `0.0` | next-user-turn | cumulative reported-cost ceiling; 0 disables it |
-| `UAGENT_TOOL_TIMEOUT` | integer | `30` | next-user-turn | seconds one tool call may run |
-| `UAGENT_AUTO_COMPACT_PCT` | integer | `85` | next-user-turn | context percentage that triggers compaction |
-
-## tools
-
-| Setting | Type | Default | Takes effect | Description |
-| --- | --- | --- | --- | --- |
-| `UAGENT_TOOL_RESULT_CHARS` | integer | `8000` | next-user-turn | characters kept from one tool result |
-| `UAGENT_READ_FILE_LINES` | integer | `1000` | next-user-turn | default lines returned by read_path |
-| `UAGENT_SANDBOX` | boolean | `1` | restart-required | confine shell commands with the OS sandbox |
-| `UAGENT_SANDBOX_NET` | boolean | `1` | restart-required | let sandboxed commands reach the network |
-| `UAGENT_SANDBOX_WRITE` | string | empty | restart-required | extra writable roots for the sandbox, colon-separated |
-
-## delegation
-
-| Setting | Type | Default | Takes effect | Description |
-| --- | --- | --- | --- | --- |
-| `UAGENT_SUBAGENT_DEPTH` | integer | `2` | restart-required | deepest delegation level allowed |
-| `UAGENT_SUBAGENT_MAX_STEPS` | integer | `100` | next-user-turn | model rounds per delegated child |
-| `UAGENT_SUBAGENT_MAX_TOOL_CALLS` | integer | `240` | next-user-turn | tool calls per delegated child |
-| `UAGENT_SUBAGENT_TIMEOUT` | integer | `0` | next-user-turn | wall-clock ceiling per delegated child; 0 is the turn |
-| `UAGENT_SUBAGENT_MODEL` | string | empty | next-user-turn | default model route for delegated children |
-
-## coordination
-
-| Setting | Type | Default | Takes effect | Description |
-| --- | --- | --- | --- | --- |
-| `UAGENT_COORDINATOR_MODEL` | string | empty | restart-required | model route of each folder's coordinator; /model inside it overrides this for that folder |
-| `UAGENT_COORDINATOR_MAX_THREADS` | integer | `5` | next-user-turn | threads one coordinator may run at once |
-| `UAGENT_COORDINATOR_DAILY_SPEND_USD` | number | `20.0` | next-user-turn | reported cost a coordinator and its threads may spend per day; at it, thread events wait. 0 disables it |
-| `UAGENT_COORDINATOR_ENVIRONMENT` | string | `worktree` | next-user-turn | where threads run: a fresh git worktree, or the folder itself |
-
-## search
-
-| Setting | Type | Default | Takes effect | Description |
-| --- | --- | --- | --- | --- |
-| `UAGENT_WEB_SEARCH_BACKEND` | string | `auto` | restart-required | auto, openrouter, or off |
-| `UAGENT_WEB_SEARCH_MODEL` | string | empty | next-user-turn | model route used for search |
-
-## memory
-
-| Setting | Type | Default | Takes effect | Description |
-| --- | --- | --- | --- | --- |
-| `UAGENT_MEMORY` | boolean | `1` | restart-required | enable memory recall and writes |
-| `UAGENT_MEMORY_GENERATE` | boolean | `1` | restart-required | run the background memory extractor |
-| `UAGENT_MEMORY_MODEL` | string | empty | next-user-turn | model route for background memory extraction |
-
-## skills
-
-| Setting | Type | Default | Takes effect | Description |
-| --- | --- | --- | --- | --- |
-| `UAGENT_SKILL_PATH` | string | empty | restart-required | replace the entire skill search path |
-| `UAGENT_SKILL_EXCLUDE` | string | empty | restart-required | comma-separated skill names to withhold |
-
-## mcp
-
-| Setting | Type | Default | Takes effect | Description |
-| --- | --- | --- | --- | --- |
-| `UAGENT_MCP_TIMEOUT` | integer | `60` | restart-required | seconds allowed for one MCP call |
-| `UAGENT_MCP_ROOTS` | string | empty | restart-required | roots advertised to MCP servers |
-
-## media
-
-| Setting | Type | Default | Takes effect | Description |
-| --- | --- | --- | --- | --- |
-| `UAGENT_IMAGE_MODEL` | string | empty | next-user-turn | model route that reads attached images; empty uses the main route when it reads images, else the shared default route |
-| `UAGENT_PDF_ENGINE` | string | `cloudflare-ai` | next-user-turn | OpenRouter file-parser engine for documents |
-| `UAGENT_ATTACHMENT_MB` | integer | `10` | next-user-turn | largest attachment in mebibytes |
-
-## retention
-
-| Setting | Type | Default | Takes effect | Description |
-| --- | --- | --- | --- | --- |
-| `UAGENT_HISTORY_DAYS` | integer | `30` | next-user-turn | days of saved sessions kept |
-
-## behaviour
+## Behaviour
 
 | Setting | Type | Default | Takes effect | Description |
 | --- | --- | --- | --- | --- |
@@ -158,3 +55,106 @@ Every setting below is read from the running binary's registry. `takes effect` i
 | `UAGENT_REDUCED_MOTION` | boolean | `0` | restart-required | show a still status instead of the terminal spinner |
 | `UAGENT_VERBOSITY` | string | `default` | next-user-turn | how much of the agent's work is shown: minimal, default or full; display only |
 | `UAGENT_MEMORY_REDACT_KEYWORDS` | string | empty | restart-required | extra keywords redacted from stored memories |
+
+## Limits
+
+| Setting | Type | Default | Takes effect | Description |
+| --- | --- | --- | --- | --- |
+| `UAGENT_MAX_STEPS` | integer | `0` | next-user-turn | model rounds per turn; 0 disables the limit |
+| `UAGENT_MAX_TOOL_CALLS` | integer | `0` | next-user-turn | tool calls per turn; 0 disables the limit |
+| `UAGENT_MAX_TURN_SECONDS` | integer | `0` | next-user-turn | wall-clock seconds per turn; 0 disables the deadline |
+| `UAGENT_MAX_TURN_TOKENS` | integer | `0` | next-user-turn | generated-token ceiling per turn; 0 disables it |
+| `UAGENT_SESSION_TOKEN_BUDGET` | integer | `0` | next-user-turn | cumulative generated-token ceiling; 0 disables it |
+| `UAGENT_MAX_TURN_COST` | number | `0.0` | next-user-turn | reported-cost ceiling per turn; 0 disables it |
+| `UAGENT_SESSION_BUDGET` | number | `0.0` | next-user-turn | cumulative reported-cost ceiling; 0 disables it |
+| `UAGENT_TOOL_TIMEOUT` | integer | `30` | next-user-turn | seconds one tool call may run |
+| `UAGENT_AUTO_COMPACT_PCT` | integer | `85` | next-user-turn | context percentage that triggers compaction |
+
+## Requests
+
+| Setting | Type | Default | Takes effect | Description |
+| --- | --- | --- | --- | --- |
+| `UAGENT_STREAM_TIMEOUT` | integer | `300` | next-user-turn | seconds of stream silence allowed, before the first event or between events |
+| `UAGENT_REQUEST_TIMEOUT` | integer | `600` | next-user-turn | total seconds allowed for one model request |
+
+## Tools
+
+| Setting | Type | Default | Takes effect | Description |
+| --- | --- | --- | --- | --- |
+| `UAGENT_TOOL_RESULT_CHARS` | integer | `8000` | next-user-turn | characters kept from one tool result |
+| `UAGENT_READ_FILE_LINES` | integer | `1000` | next-user-turn | default lines returned by read_path |
+| `UAGENT_SANDBOX` | boolean | `1` | restart-required | confine shell commands with the OS sandbox |
+| `UAGENT_SANDBOX_NET` | boolean | `1` | restart-required | let sandboxed commands reach the network |
+| `UAGENT_SANDBOX_WRITE` | string | empty | restart-required | extra writable roots for the sandbox, colon-separated |
+
+## Subagents
+
+| Setting | Type | Default | Takes effect | Description |
+| --- | --- | --- | --- | --- |
+| `UAGENT_SUBAGENT_DEPTH` | integer | `2` | restart-required | deepest delegation level allowed |
+| `UAGENT_SUBAGENT_MAX_STEPS` | integer | `100` | next-user-turn | model rounds per delegated child |
+| `UAGENT_SUBAGENT_MAX_TOOL_CALLS` | integer | `240` | next-user-turn | tool calls per delegated child |
+| `UAGENT_SUBAGENT_TIMEOUT` | integer | `0` | next-user-turn | wall-clock ceiling per delegated child; 0 is the turn |
+| `UAGENT_SUBAGENT_MODEL` | string | empty | next-user-turn | default model route for delegated children |
+
+## Coordinator
+
+| Setting | Type | Default | Takes effect | Description |
+| --- | --- | --- | --- | --- |
+| `UAGENT_COORDINATOR_MODEL` | string | empty | restart-required | model route of each folder's coordinator; /model inside it overrides this for that folder |
+| `UAGENT_COORDINATOR_MAX_THREADS` | integer | `5` | next-user-turn | threads one coordinator may run at once |
+| `UAGENT_COORDINATOR_DAILY_SPEND_USD` | number | `20.0` | next-user-turn | reported cost a coordinator and its threads may spend per day; at it, thread events wait. 0 disables it |
+| `UAGENT_COORDINATOR_ENVIRONMENT` | string | `worktree` | next-user-turn | where threads run: a fresh git worktree, or the folder itself |
+
+## Web search
+
+| Setting | Type | Default | Takes effect | Description |
+| --- | --- | --- | --- | --- |
+| `UAGENT_WEB_SEARCH_BACKEND` | string | `auto` | restart-required | auto, openrouter, or off |
+| `UAGENT_WEB_SEARCH_MODEL` | string | empty | next-user-turn | model route used for search |
+
+## Memory
+
+| Setting | Type | Default | Takes effect | Description |
+| --- | --- | --- | --- | --- |
+| `UAGENT_MEMORY` | boolean | `1` | restart-required | enable memory recall and writes |
+| `UAGENT_MEMORY_GENERATE` | boolean | `1` | restart-required | run the background memory extractor |
+| `UAGENT_MEMORY_MODEL` | string | empty | next-user-turn | model route for background memory extraction |
+
+## Skills
+
+| Setting | Type | Default | Takes effect | Description |
+| --- | --- | --- | --- | --- |
+| `UAGENT_SKILL_PATH` | string | empty | restart-required | replace the entire skill search path |
+| `UAGENT_SKILL_EXCLUDE` | string | empty | restart-required | comma-separated skill names to withhold |
+
+## MCP
+
+| Setting | Type | Default | Takes effect | Description |
+| --- | --- | --- | --- | --- |
+| `UAGENT_MCP_TIMEOUT` | integer | `60` | restart-required | seconds allowed for one MCP call |
+| `UAGENT_MCP_ROOTS` | string | empty | restart-required | roots advertised to MCP servers |
+
+## Media
+
+| Setting | Type | Default | Takes effect | Description |
+| --- | --- | --- | --- | --- |
+| `UAGENT_IMAGE_MODEL` | string | empty | next-user-turn | model route that reads attached images; empty uses the main route when it reads images, else the shared default route |
+| `UAGENT_PDF_ENGINE` | string | `cloudflare-ai` | next-user-turn | OpenRouter file-parser engine for documents |
+| `UAGENT_ATTACHMENT_MB` | integer | `10` | next-user-turn | largest attachment in mebibytes |
+
+## History
+
+| Setting | Type | Default | Takes effect | Description |
+| --- | --- | --- | --- | --- |
+| `UAGENT_HISTORY_DAYS` | integer | `30` | next-user-turn | days of saved sessions kept |
+
+## Web host
+
+| Setting | Type | Default | Takes effect | Description |
+| --- | --- | --- | --- | --- |
+| `UAGENT_WEB_BIND` | string | `127.0.0.1` | restart-required | web listener address: loopback by default, all interfaces only when explicitly configured |
+| `UAGENT_BROWSER_DATA` | string | empty | restart-required | private browser profile and service directory; empty disables the browser appliance |
+| `UAGENT_WEB_PORT` | integer | `8080` | restart-required | global web master's loopback port |
+| `UAGENT_WEB_ORIGIN` | string | empty | restart-required | exact browser origin via an explicitly configured HTTPS or tailnet proxy |
+| `UAGENT_WEB_PUSH_CONTACT` | string | empty | restart-required | VAPID mailto or HTTPS contact; empty disables optional native Web Push |

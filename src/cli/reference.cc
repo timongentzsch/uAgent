@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "include/app/self_description.h"
+#include "include/core/config_registry.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/limits.h"
@@ -88,14 +89,6 @@ std::string CommandsMarkdown() {
 
 std::string ConfigMarkdown() {
   json settings = ConfigSchemaJson();
-  std::vector<std::string> categories;
-  for (const json& setting : settings) {
-    std::string category = JsonValue(setting, "category", std::string());
-    if (std::find(categories.begin(), categories.end(), category) ==
-        categories.end()) {
-      categories.push_back(category);
-    }
-  }
   std::string out = "# Configuration\n\n";
   out += kGenerated;
   out +=
@@ -108,11 +101,12 @@ std::string ConfigMarkdown() {
   // reader previewing the head of it would otherwise see only the first few
   // categories and conclude the rest are missing.
   out += "\n## Contents\n\n";
-  for (const std::string& category : categories) {
-    out += "- " + category + "\n";
+  for (const ConfigCategory& category : kConfigCategories) {
+    out += "- " + std::string(category.label) + "\n";
   }
-  for (const std::string& category : categories) {
-    out += "\n## " + category + "\n\n";
+  for (const ConfigCategory& group : kConfigCategories) {
+    const std::string category(group.id);
+    out += "\n## " + std::string(group.label) + "\n\n";
     out +=
         "| Setting | Type | Default | Takes effect | Description |\n"
         "| --- | --- | --- | --- | --- |\n";

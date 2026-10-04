@@ -249,7 +249,7 @@ int Main(int argc, char** argv) {
       }
     }
     auto settings =
-        ConfigManager::Capture(false, parsed.options.overrides).Read();
+        ConfigManager::Capture(false, parsed.options.overrides, "").Read();
     auto setting = [&](const char* key, const char* fallback = "") {
       auto found = settings.values.find(key);
       return found == settings.values.end() ? std::string(fallback)

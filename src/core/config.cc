@@ -40,12 +40,6 @@ EnvValues ParseEnvValues(const std::string& text) {
   return ParseEnvValues(input);
 }
 
-EnvValues ReadEnvValues(const std::string& path) {
-  std::ifstream f(path);
-  if (!f) return {};
-  return ParseEnvValues(f);
-}
-
 std::string ResolveEnvValue(const std::string& key, const EnvValues& values,
                             std::set<std::string>& resolving,
                             bool process_fallback) {
@@ -148,6 +142,12 @@ bool WriteTrustRecord(const std::string& root, json record,
                          error);
   if (!store.Ready()) return false;
   if (!store.Data().is_object()) store.Data() = json::object();
+  // What an earlier version approved as the project's config stays with the
+  // record until the settings import has taken it over.
+  if (const json* approved = JsonObject(store.Data(), root.c_str());
+      approved && approved->contains("config") && !record.contains("config")) {
+    record["config"] = (*approved)["config"];
+  }
   store.Data()[root] = std::move(record);
   return store.Save(error);
 }

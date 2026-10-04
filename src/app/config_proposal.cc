@@ -5,6 +5,7 @@
 #include <cctype>
 #include <map>
 #include <optional>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -364,11 +365,19 @@ ConfigProposal PrepareConfigProposal(ConfigProposalScope scope,
 
 std::string CheckSavedSettings(json& document) {
   auto check = [](json& scope, unsigned wanted) {
+    EnvValues values;
+    for (const auto& [name, held] : scope.items()) {
+      if (held.is_string()) values[name] = held.get<std::string>();
+    }
     for (auto& [name, held] : scope.items()) {
       const ConfigDescriptor* descriptor = FindConfigDescriptor(name);
       // Any other name is what a value refers to as $NAME.
       if (!descriptor || !held.is_string()) continue;
-      std::string value = held.get<std::string>(), error;
+      // What a reference resolves to is what is checked; as written is what
+      // is kept.
+      std::set<std::string> resolving;
+      const std::string raw = held.get<std::string>();
+      std::string value = ResolveEnvValue(name, values, resolving), error;
       if ((descriptor->scopes & wanted) == 0) {
         return name + " cannot be set at this scope";
       }
@@ -377,7 +386,7 @@ std::string CheckSavedSettings(json& document) {
           !ValidateValue(*descriptor, value, error)) {
         return error;
       }
-      held = value;
+      if (raw.find('$') == std::string::npos) held = value;
     }
     return std::string();
   };

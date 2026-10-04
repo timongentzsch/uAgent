@@ -138,10 +138,17 @@ RuntimeConfig ConfigManager::Initialize() {
 }
 
 std::optional<ConfigReload> ConfigManager::Reload(const RuntimeConfig& active) {
-  if (initialized_ && SnapshotFile(SettingsPath()) == current_.stamp) {
+  // A read that failed is tried again; one that still fails changes nothing:
+  // empty layers would otherwise pass for everything having been reset.
+  if (initialized_ && current_.error.empty() &&
+      SnapshotFile(SettingsPath()) == current_.stamp) {
     return std::nullopt;
   }
   EffectiveConfigSnapshot next = Read();
+  if (initialized_ && !next.error.empty()) {
+    current_.error = next.error;
+    return std::nullopt;
+  }
   if (next.values == current_.values) {
     current_ = std::move(next);
     return std::nullopt;

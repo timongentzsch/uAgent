@@ -24,8 +24,6 @@ EnvValues ParseEnvValues(std::istream& input);
 
 EnvValues ParseEnvValues(const std::string& text);
 
-EnvValues ReadEnvValues(const std::string& path);
-
 std::string ResolveEnvValue(const std::string& key, const EnvValues& values,
                             std::set<std::string>& resolving,
                             bool process_fallback = true);

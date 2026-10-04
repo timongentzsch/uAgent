@@ -13,6 +13,7 @@
 #include "include/core/fs.h"
 #include "include/core/lease.h"
 #include "include/core/limits.h"
+#include "include/core/settings_store.h"
 #include "include/core/skills.h"
 #include "include/core/strings.h"
 #include "include/tools/memory.h"
@@ -106,25 +107,25 @@ json SkillControl(const json& request, const std::filesystem::path& cwd) {
     if (!AcquireLibraryWriteLease(lease, error)) {
       return {{"error", error}};
     }
-    auto manager = ConfigManager::Capture(false, {});
-    auto settings = manager.Read();
-    std::vector<std::string> names =
-        SplitPathList(settings.values["UAGENT_SKILL_EXCLUDE"], ',');
-    std::erase_if(names, [&](const std::string& name) {
-      return Trim(name) == found->name || Trim(name).empty();
+    // Read, changed and saved in one step: no other change to the list is
+    // lost in between.
+    const std::string failed = ChangeSettings("", [&](SettingValues& all) {
+      std::vector<std::string> names =
+          SplitPathList(all["UAGENT_SKILL_EXCLUDE"], ',');
+      std::erase_if(names, [&](const std::string& name) {
+        return Trim(name) == found->name || Trim(name).empty();
+      });
+      if (action == "disable") names.push_back(found->name);
+      std::string value;
+      for (const auto& name : names) {
+        if (!value.empty()) value += ',';
+        value += Trim(name);
+      }
+      all.erase("UAGENT_SKILL_EXCLUDE");
+      if (!value.empty()) all["UAGENT_SKILL_EXCLUDE"] = value;
+      return std::string();
     });
-    if (action == "disable") names.push_back(found->name);
-    std::string value;
-    for (const auto& name : names) {
-      if (!value.empty()) value += ',';
-      value += Trim(name);
-    }
-    auto result = ConfigurationControl(
-        {{"operation", "apply"},
-         {"scope", "user"},
-         {"changes",
-          json::array({{{"key", "UAGENT_SKILL_EXCLUDE"}, {"value", value}}})}},
-        manager);
+    json result = failed.empty() ? json::object() : json{{"error", failed}};
     if (!result.contains("error")) LibraryChanged();
     return result;
   }

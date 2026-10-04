@@ -146,13 +146,18 @@ void Archive(const std::string& path) {
 // The model an older /model remembered for every later run. A bare model
 // name belongs to the endpoint it was chosen on, and whatever sets a model
 // already decides.
-void ImportModelPreference(json& all) {
-  const json remembered = json::parse(
-      ReadFile(PreferencePath(), kSettingsBytes).value_or(""), nullptr, false);
+bool ImportModelPreference(json& all, std::string& error) {
+  if (!PathExists(PreferencePath())) return true;
+  std::string text;
+  if (!ReadRegularFile(PreferencePath(), kSettingsBytes, text, error)) {
+    error = "cannot take over " + PreferencePath() + ": " + error;
+    return false;
+  }
+  const json remembered = json::parse(text, nullptr, false);
   const std::string selection = JsonValue(remembered, "selection", "");
   if (JsonValue(remembered, "format", 0) != 1 || selection.empty() ||
       selection.find_first_of("\r\n") != std::string::npos) {
-    return;
+    return true;
   }
   const EnvValues values = ScopeValues(all);
   auto resolved = [&](const char* key) {
@@ -166,6 +171,7 @@ void ImportModelPreference(json& all) {
            StripTrailingSlashes(JsonValue(remembered, "base_url", "")))) {
     all["UAGENT_MODEL"] = selection;
   }
+  return true;
 }
 
 // The document is saved before a file is archived, so an interruption leaves
@@ -188,7 +194,7 @@ std::string Import(const std::string& folder, bool trusted) {
         !LegacyValues(user, document["all"], error)) {
       return error;
     }
-    ImportModelPreference(document["all"]);
+    if (!ImportModelPreference(document["all"], error)) return error;
   }
   const bool project = !legacy.project.is_null();
   if (project) document["projects"][folder] = std::move(legacy.project);

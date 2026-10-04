@@ -61,6 +61,29 @@ inline constexpr ConfigScopeName kConfigScopes[] = {
     {"cli", "Command line", 0},
     {"conversation", "This conversation", kScopeConversation},
 };
+// The groups settings are listed in, in the order and under the names people
+// read: the settings screen and the generated reference both follow it.
+struct ConfigCategory {
+  std::string_view id;
+  std::string_view label;
+};
+inline constexpr ConfigCategory kConfigCategories[] = {
+    {"route", "Models and connection"},
+    {"behaviour", "Behaviour"},
+    {"budget", "Limits"},
+    {"request", "Requests"},
+    {"tools", "Tools"},
+    {"delegation", "Subagents"},
+    {"coordination", "Coordinator"},
+    {"search", "Web search"},
+    {"memory", "Memory"},
+    {"skills", "Skills"},
+    {"mcp", "MCP"},
+    {"media", "Media"},
+    {"retention", "History"},
+    {"web", "Web host"},
+};
+
 // The name people read for a source; anything else is the default.
 constexpr std::string_view ConfigScopeLabel(std::string_view source) {
   for (const ConfigScopeName& scope : kConfigScopes) {

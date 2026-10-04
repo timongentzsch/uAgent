@@ -276,6 +276,24 @@ void TestProjectSettingsAreSavedByFolder() {
   CHECK(saved.project.at("UAGENT_MAX_TOOL_CALLS") == "120");
   CHECK(manager.Read().sources["UAGENT_MAX_TOOL_CALLS"] == "project");
   CHECK(!PathExists((test.workspace / ".uagent").string()));
+  // A value may refer to a name saved beside it, and each project has its
+  // own.
+  CHECK(ChangeSettings(test.workspace.string(), [](SettingValues& project) {
+          project["TOKEN"] = "project-token";
+          project["UAGENT_API_KEY"] = "$TOKEN";
+          return std::string();
+        }).empty());
+  const auto resolved = manager.Read();
+  CHECK(resolved.values.at("UAGENT_API_KEY") == "project-token");
+  CHECK(!resolved.values.contains("TOKEN"));
+  // Such a document goes out and comes back as written.
+  json exported = {{"format", 1},
+                   {"all", {{"LIMIT", "7"}, {"UAGENT_MAX_STEPS", "$LIMIT"}}},
+                   {"projects", json::object()}};
+  CHECK(CheckSavedSettings(exported).empty());
+  CHECK(exported["all"]["UAGENT_MAX_STEPS"] == "$LIMIT");
+  exported["all"]["LIMIT"] = "many";
+  CHECK(!CheckSavedSettings(exported).empty());
   // Another folder is not affected.
   CHECK(ReadSettings(test.root.string()).project.empty());
   // Where no folder is named (the web host's own view) there is no project

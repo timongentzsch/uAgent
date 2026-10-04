@@ -1558,7 +1558,7 @@ def test_cli_mcp_config_and_restart(root, home, *, binary):
         assert_true("/restart applies it here" in output, output)
         assert_true("UAGENT_MAX_TOKENS: active at the next user turn" in output, output)
         assert_true("Before restart, cap 321" in output, output)
-        assert_true(re.search(r"UAGENT_MCP_TIMEOUT = .*100 .*user", output), output)
+        assert_true(re.search(r"UAGENT_MCP_TIMEOUT = .*100 .*All conversations", output), output)
         assert_true("history kept" in output, output)
         assert_true("UAGENT_MCP_TIMEOUT" not in (home / ".uagent/.config").read_text(), "reset")
         assert_true("no remembered actions for this repository" in output, output)

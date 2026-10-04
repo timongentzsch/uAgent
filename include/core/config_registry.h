@@ -61,6 +61,14 @@ inline constexpr ConfigScopeName kConfigScopes[] = {
     {"cli", "Command line", 0},
     {"conversation", "This conversation", kScopeConversation},
 };
+// The name people read for a source; a file named by UAGENT_CONFIG_FILE
+// stands where the user's would, and anything else is the default.
+constexpr std::string_view ConfigScopeLabel(std::string_view source) {
+  for (const ConfigScopeName& scope : kConfigScopes) {
+    if (scope.source == source) return scope.label;
+  }
+  return source == "file" ? "Config file" : "Default";
+}
 
 using ConfigDefault = std::variant<int64_t, double, bool, std::string_view>;
 

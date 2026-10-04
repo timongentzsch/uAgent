@@ -391,13 +391,13 @@ void HandleConfig(AppSession& session, const std::string& argument,
                     : TerminalSafe(value.is_string() ? value.get<std::string>()
                                                      : JsonDump(value))
                           .c_str(),
-                source.c_str(), RST());
+                std::string(ConfigScopeLabel(source)).c_str(), RST());
   }
   if (!changed) {
     reply.Note(Tone::kNeutral, "every setting is at its default");
   }
   reply.Note(Tone::kNeutral,
-             "/config user|project KEY=VALUE, unset KEY, or reset "
+             "/config user|project|conversation KEY=VALUE, unset KEY, or reset "
              "(keeps secrets)");
 }
 

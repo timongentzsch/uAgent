@@ -59,6 +59,40 @@ json PermissionControl(AppContext& context, const json& request) {
   return result;
 }
 
+// Chooses `key` for this conversation, or takes the choice back when `value`
+// is empty; the setting must allow that scope. Returns why not, or nothing.
+static std::string ChooseForConversation(AppSession& session,
+                                         const std::string& key,
+                                         const std::string& value) {
+  const ConfigDescriptor* descriptor = FindConfigDescriptor(key);
+  if (!descriptor || !(descriptor->scopes & kScopeConversation)) {
+    return key + " cannot be set for one conversation";
+  }
+  if (key == "UAGENT_APPROVAL") {
+    return JsonValue(
+        PermissionControl(session.context,
+                          {{"mode", value.empty() ? "default" : value}}),
+        "error", "");
+  }
+  ConfigManager& manager = session.context.config_manager;
+  // The model: back on the configured one, or on the one named.
+  const std::string wanted =
+      value.empty() ? manager.Read().Inherited(key) : value;
+  if (value.empty()) manager.ChooseForConversation(key, "");
+  if (wanted.empty()) return "";  // nothing configured: the route stays
+  const std::string selected =
+      SelectModel(session.ApiClient(), session.context.provider.routes,
+                  session.context.provider.providers, wanted);
+  if (selected.empty()) return "unknown model " + wanted;
+  if (value.empty()) {
+    ActivateRoute(session.ApiClient());
+    session.ActiveAgent().RouteChanged();
+  } else {
+    SaveSelectedModel(session, selected, false);
+  }
+  return "";
+}
+
 json SessionControl(AppSession& session, const json& request) {
   std::string kind = JsonValue(request, "kind", "");
   if (kind == "self_directive") {
@@ -114,9 +148,31 @@ json SessionControl(AppSession& session, const json& request) {
                               JsonValue(request, "message_id", ""));
   }
   if (kind == "config") {
-    return ConfigurationControl(
-        request, session.context.config_manager,
-        session.context.config_manager.ProjectTrusted());
+    ConfigManager& manager = session.context.config_manager;
+    json effects = json::array();
+    // The conversation's scope is kept with it, not in a file: the choice
+    // is made here and takes effect at once.
+    if (JsonValue(request, "scope", "") == "conversation" &&
+        JsonValue(request, "operation", "") == "apply") {
+      std::vector<ConfigChange> changes;
+      std::string error;
+      if (!ParseConfigChanges(request, changes, error)) {
+        return {{"error", error}};
+      }
+      for (const ConfigChange& change : changes) {
+        error = ChooseForConversation(session, change.key,
+                                      change.unset ? "" : change.value);
+        if (!error.empty()) return {{"error", error}};
+        effects.push_back({{"key", change.key},
+                           {"effect", "next_turn"},
+                           {"text", "applies from your next message"}});
+      }
+    }
+    json reply = ConfigurationControl(
+        effects.empty() ? request : json{{"operation", "get"}}, manager,
+        manager.ProjectTrusted());
+    if (!effects.empty()) reply["effects"] = std::move(effects);
+    return reply;
   }
   if (kind == "revert") {
     return session.ActiveAgent().Revert(JsonValue(request, "turn", int64_t{0}),

@@ -9,7 +9,7 @@
 | `/attach PATH|clear` | attach a file to the next turn |
 | `/compact` | summarize conversation to prevent hitting the context limit |
 | `/context` | show current model request |
-| `/config [user|project KEY=VALUE|unset KEY|reset]` | show changed settings, change one, or reset a scope |
+| `/config [user|project|conversation KEY=VALUE|unset KEY|reset]` | show changed settings, change one, or reset a scope |
 | `/fork [TITLE] [@TURN]` | branch this conversation, optionally at user turn N |
 | `/rewind [N]` | fork before your message N to edit it; bare, list the numbers |
 | `/share` | export transcript as markdown |

@@ -67,7 +67,7 @@ constexpr SlashCommandSpec kSlashCommands[] = {
      "summarize conversation to prevent hitting the context limit", kNoViewer},
     {SlashCommandId::kContext, "/context", "", "show current model request"},
     {SlashCommandId::kConfig, "/config",
-     "[user|project KEY=VALUE|unset KEY|reset]",
+     "[user|project|conversation KEY=VALUE|unset KEY|reset]",
      "show changed settings, change one, or reset a scope"},
     {SlashCommandId::kFork, "/fork", "[TITLE] [@TURN]",
      "branch this conversation, optionally at user turn N",

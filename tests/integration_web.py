@@ -2173,6 +2173,45 @@ def test_web_http_context_configuration_permissions_and_fork(root, home, *, bina
                 == {"mode": "ask", "effective": "ask", "default": "yolo"},
                 "conversation mode",
             )
+
+            # One path for every scope: the same command chooses for the
+            # conversation, and unsetting takes the choice back.
+            def choose(**change):
+                return client.command(
+                    "config",
+                    session,
+                    operation="apply",
+                    scope="conversation",
+                    changes=[{"key": "UAGENT_APPROVAL", **change}],
+                )["result"]
+
+            choose(value="auto")
+            assert_true(
+                client.snapshot(session)["state"]["permissions"]
+                == {"mode": "auto", "effective": "auto", "default": "yolo"},
+                "chosen through config",
+            )
+            choose(unset=True)
+            assert_true(
+                client.snapshot(session)["state"]["permissions"]
+                == {"mode": "default", "effective": "yolo", "default": "yolo"},
+                "choice taken back",
+            )
+            status, refused, _ = client.json(
+                "/api/command",
+                {
+                    "v": 2,
+                    "kind": "config",
+                    "request_id": "e" * 32,
+                    "session_id": session["id"],
+                    "generation": "",
+                    "operation": "apply",
+                    "scope": "conversation",
+                    "changes": [{"key": "UAGENT_MAX_STEPS", "value": "9"}],
+                },
+            )
+            assert_true("cannot be set for one conversation" in json.dumps(refused), refused)
+            client.command("permissions", session, mode="ask")
             preview = client.command("context", session)["result"]["exchanges"][0]
             assert_true(preview["preview"] and not provider.requests, preview)
 

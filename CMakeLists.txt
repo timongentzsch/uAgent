@@ -114,6 +114,7 @@ add_library(
   src/core/project.cc
   src/core/sandbox.cc
   src/core/sandbox_posix.cc
+  src/core/settings_store.cc
   src/core/signals.cc
   src/core/skills.cc
   src/core/steering.cc
@@ -370,6 +371,7 @@ if(BUILD_TESTING)
     tests/unit/sandbox_test.cc
     tests/unit/session_command_test.cc
     tests/unit/session_server_test.cc
+    tests/unit/settings_store_test.cc
     tests/unit/skills_test.cc
     tests/unit/stream_test.cc
     tests/unit/test_main.cc

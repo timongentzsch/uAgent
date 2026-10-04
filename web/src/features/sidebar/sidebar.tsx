@@ -85,7 +85,8 @@ export function ConversationMenu({
   // Says what an action did, where the conversation shows its notices.
   notify: (text: string) => void;
   open: (modal: AppModal) => void;
-  // How much of the agent's work the transcript shows, and changing it.
+  // How much of the agent's work every transcript shows, and changing it:
+  // one level for all conversations, offered where a transcript is read.
   detail?: {
     levels: string[];
     level: string;
@@ -143,7 +144,7 @@ export function ConversationMenu({
           disabled={detail.disabled}
           onClick={() => detail.change(level)}
         >
-          Detail: {levelLabel(level)}
+          Detail, all conversations: {levelLabel(level)}
           {level === detail.level && <Check />}
         </MenuItem>
       ))}

@@ -168,8 +168,8 @@ the terminal and the web alike and never by the model:
 every terminal and browser, and what is already on screen is shown again at
 the new level: browsers restyle at once, a terminal clears and replays the
 conversation (a terminal attached elsewhere follows at its next turn; plain
-and piped output changes from the next row on). `--verbosity LEVEL` sets one
-terminal only, and Settings → Display has the same for one browser.
+and piped output changes from the next row on). It is one level for all
+conversations; `--verbosity LEVEL` pins one terminal for one run.
 
 ## How a call reads
 

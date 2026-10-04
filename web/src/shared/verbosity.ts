@@ -10,17 +10,16 @@ const FALLBACK: DetailPolicy = {
   minor: false,
 };
 
-// The level in effect here and what it shows: this device's choice when it
-// made one the host knows, else the global setting.
+// The level in effect and what it shows.
 export interface Detail {
   level: string;
   policy: DetailPolicy;
 }
 export const defaultDetail: Detail = { level: "default", policy: FALLBACK };
-export function detail(verbosity?: Verbosity, override = ""): Detail {
-  const levels = verbosity?.levels || {};
-  const level = levels[override] ? override : verbosity?.level || "default";
-  return levels[level] ? { level, policy: levels[level] } : defaultDetail;
+export function detail(verbosity?: Verbosity): Detail {
+  const level = verbosity?.level || "default";
+  const policy = verbosity?.levels[level];
+  return policy ? { level, policy } : defaultDetail;
 }
 
 // A level's name as a control shows it.

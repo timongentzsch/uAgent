@@ -54,8 +54,8 @@ names one loads as before and the line has no effect.
   "Worked · N steps" row per turn, with failures and prompts still on rows of
   their own; `full` shows thinking, every call, its arguments and its output.
   `/verbosity LEVEL` or Detail in a web conversation's menu changes it
-  everywhere and restyles what is already shown; `--verbosity` and Settings →
-  Display set it for one terminal or one browser. The model never sees it.
+  everywhere and restyles what is already shown; `--verbosity` pins one
+  terminal for one run. The model never sees it.
 - Web: tool calls fold into the same groups the terminal shows ("Explored ·
   4 calls") instead of any three calls in a row.
 - Web: the conversation menu exports the transcript, compacts and restarts

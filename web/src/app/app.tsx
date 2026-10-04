@@ -217,27 +217,15 @@ function App() {
   const [motion, setMotion] = useState(
     () => storage.getItem("uagent-motion") || "system",
   );
-  // How much of the agent's work shows: the global level, unless this
-  // device chose its own. Only rendering reads it, so a change restyles
+  // How much of the agent's work shows: one level for every conversation,
+  // browser and terminal. Only rendering reads it, so a change restyles
   // every conversation where it stands.
-  const [deviceDetail, setDeviceDetail] = useState(() =>
-    readStored(storage, "uagent-verbosity", ""),
-  );
-  useEffect(
-    () => writeStored(storage, "uagent-verbosity", deviceDetail),
-    [deviceDetail],
-  );
   const detail = useMemo(
-    () => detailOf(catalogue.verbosity, deviceDetail),
-    [catalogue.verbosity, deviceDetail],
+    () => detailOf(catalogue.verbosity),
+    [catalogue.verbosity],
   );
   const levels = Object.keys(catalogue.verbosity?.levels || {});
-  // The switch and /verbosity change what is shown: this device's level
-  // when it has one, else the global setting.
-  const changeDetail = (level: string) =>
-    levels.includes(deviceDetail)
-      ? setDeviceDetail(level)
-      : setVerbosity(level).catch(report);
+  const changeDetail = (level: string) => setVerbosity(level).catch(report);
   const [inspector, setInspector] = useState<InspectorTarget | null>(null);
   const metadata = useSnapshots(snapshots, (all) => all[selected]?.metadata);
   const session =
@@ -424,7 +412,7 @@ function App() {
   const screens: Record<string, () => void> = {
     "/context": showContext,
     "/config": () => open({ type: "settings" }),
-    "/verbosity": () => open({ type: "settings", section: "general" }),
+    "/verbosity": () => open({ type: "settings", section: "advanced" }),
     "/permissions": () => open({ type: "settings", section: "permissions" }),
     "/mcp": () => open({ type: "settings", section: "mcp" }),
     "/tools": () => setModal({ type: "tools", session_id: selected }),
@@ -867,24 +855,15 @@ function App() {
             ? {
                 levels,
                 level: detail.level,
-                disabled: !online && !levels.includes(deviceDetail),
+                disabled: !online,
                 change: changeDetail,
               }
             : undefined
         }
       />
     ),
-    // levels and changeDetail follow the catalogue and this device's level.
-    [
-      online,
-      fork,
-      load,
-      report,
-      open,
-      detail,
-      deviceDetail,
-      catalogue.verbosity,
-    ],
+    // levels and changeDetail follow the catalogue.
+    [online, fork, load, report, open, detail, catalogue.verbosity],
   );
   // A slash command from the palette runs as if sent from the composer;
   // one that needs an argument waits there for it.
@@ -1298,8 +1277,6 @@ function App() {
               setTimePrefs,
               zoom,
               setZoom,
-              deviceDetail,
-              setDeviceDetail,
               install,
               setInstall,
               update,

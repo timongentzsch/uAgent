@@ -1745,7 +1745,11 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
       .locator(".conversation-head")
       .getByLabel("Conversation menu", { exact: true })
       .click();
-    await page.getByRole("menuitemradio", { name: `Detail: ${level}` }).click();
+    await page
+      .getByRole("menuitemradio", {
+        name: `Detail, all conversations: ${level}`,
+      })
+      .click();
   };
   await detail("Full");
   await expect(page.locator(".transcript .group")).toHaveCount(0);

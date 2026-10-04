@@ -20,9 +20,6 @@ export interface SettingsProps {
   setTimePrefs: Dispatch<StateUpdater<TimePrefs>>;
   zoom: number;
   setZoom: Dispatch<StateUpdater<number>>;
-  // This device's verbosity level; empty follows the global setting.
-  deviceDetail: string;
-  setDeviceDetail: Dispatch<StateUpdater<string>>;
   installed: boolean;
   install: InstallPrompt | null;
   setInstall: Dispatch<StateUpdater<InstallPrompt | null>>;

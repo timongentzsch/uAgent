@@ -47,8 +47,6 @@ export type Preferences = Pick<
   | "setTimePrefs"
   | "zoom"
   | "setZoom"
-  | "deviceDetail"
-  | "setDeviceDetail"
   | "install"
   | "setInstall"
   | "update"

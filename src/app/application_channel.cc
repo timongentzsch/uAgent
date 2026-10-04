@@ -6,6 +6,7 @@
 
 #include "include/agent/child_agent.h"
 #include "include/cli.h"
+#include "include/core/config_registry.h"
 #include "include/core/debug.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"

@@ -13,6 +13,7 @@
 #include "include/app/permissions.h"
 #include "include/app/self_description.h"
 #include "include/cli.h"
+#include "include/core/config_registry.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/project.h"

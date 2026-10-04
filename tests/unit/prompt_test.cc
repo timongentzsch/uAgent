@@ -10,6 +10,7 @@
 
 #include "include/agent.h"
 #include "include/core/project.h"
+#include "include/core/runtime_config.h"
 #include "include/tools/adapt_system.h"
 #include "tests/unit/test_support.h"
 

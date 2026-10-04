@@ -18,6 +18,7 @@
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/limits.h"
+#include "include/core/runtime_config.h"
 #include "include/core/time.h"
 #include "include/mcp/config.h"
 #include "include/mcp/discover.h"

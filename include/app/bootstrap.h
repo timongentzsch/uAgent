@@ -20,6 +20,7 @@
 #include "include/core/events.h"
 #include "include/core/fd.h"
 #include "include/core/json.h"
+#include "include/core/runtime_config.h"
 #include "include/core/usage.h"
 #include "include/media/attachments.h"
 #include "include/providers.h"

@@ -9,6 +9,7 @@
 
 #include "include/api.h"
 #include "include/api/wire.h"
+#include "include/core/env.h"
 #include "include/core/strings.h"
 
 namespace uagent {

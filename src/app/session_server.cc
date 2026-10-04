@@ -26,6 +26,7 @@
 #include "include/core/fs.h"
 #include "include/core/lease.h"
 #include "include/core/platform.h"
+#include "include/core/signals.h"
 
 namespace uagent::session {
 namespace {

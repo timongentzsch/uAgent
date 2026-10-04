@@ -18,9 +18,11 @@
 #include "include/app/asset_store.h"
 #include "include/app/commands.h"
 #include "include/app/session_host.h"
+#include "include/core/env.h"
 #include "include/core/events.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
+#include "include/core/runtime_config.h"
 #include "tests/unit/terminal_test_support.h"
 #include "tests/unit/test_support.h"
 

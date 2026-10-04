@@ -30,6 +30,7 @@
 #include "include/core/library.h"
 #include "include/core/limits.h"
 #include "include/core/project.h"
+#include "include/core/runtime_config.h"
 #include "include/core/strings.h"
 #include "include/tools/files.h"
 

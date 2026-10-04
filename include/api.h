@@ -16,6 +16,7 @@
 #include "include/api/types.h"
 #include "include/api/wire.h"
 #include "include/core/env.h"
+#include "include/core/runtime_config.h"
 
 using CURL = void;
 using CURLM = void;

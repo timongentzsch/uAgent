@@ -13,6 +13,7 @@
 
 #include "include/agent.h"
 #include "include/agent/jobs.h"
+#include "include/core/runtime_config.h"
 #include "include/core/tool_activity.h"
 #include "include/tools/adapt_system.h"
 #include "include/tools/ask.h"

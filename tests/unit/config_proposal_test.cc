@@ -14,6 +14,7 @@
 #include "include/core/effective_config.h"
 #include "include/core/env.h"
 #include "include/core/project.h"
+#include "include/core/runtime_config.h"
 #include "include/providers.h"
 #include "tests/unit/test_support.h"
 

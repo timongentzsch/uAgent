@@ -14,6 +14,8 @@
 
 namespace uagent {
 
+struct RuntimeConfig;
+
 std::string PermissionKey(const Tool& tool, const json& arguments,
                           ApprovalClass required);
 

@@ -13,6 +13,7 @@
 #include "include/app/session_host.h"
 #include "include/core/capture.h"
 #include "include/core/fs.h"
+#include "include/core/signals.h"
 #include "include/core/strings.h"
 #include "include/core/time.h"
 #include "include/core/usage.h"

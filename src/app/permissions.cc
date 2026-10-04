@@ -11,6 +11,7 @@
 #include "include/core/debug.h"
 #include "include/core/fs.h"
 #include "include/core/private_store.h"
+#include "include/core/runtime_config.h"
 #include "include/core/strings.h"
 #include "include/core/time.h"
 

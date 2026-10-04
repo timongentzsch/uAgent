@@ -13,6 +13,7 @@
 #include "include/api.h"
 #include "include/core/checked.h"
 #include "include/core/debug.h"
+#include "include/core/env.h"
 #include "include/core/events.h"
 #include "include/core/json.h"
 #include "include/core/limits.h"

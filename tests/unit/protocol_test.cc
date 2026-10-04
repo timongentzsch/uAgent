@@ -17,6 +17,8 @@
 #include "include/app/options.h"
 #include "include/app/runtime.h"
 #include "include/cli.h"
+#include "include/core/env.h"
+#include "include/core/runtime_config.h"
 #include "include/md.h"
 #include "include/providers.h"
 #include "include/tools/adapt_system.h"

@@ -17,6 +17,7 @@
 #include "include/app/self_description.h"
 #include "include/cli.h"
 #include "include/core/env.h"
+#include "include/core/runtime_config.h"
 #include "include/core/strings.h"
 #include "tests/unit/test_support.h"
 

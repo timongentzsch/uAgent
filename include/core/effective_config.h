@@ -17,6 +17,7 @@
 #include "include/core/env.h"
 #include "include/core/file_watch.h"
 #include "include/core/json.h"
+#include "include/core/runtime_config.h"
 
 namespace uagent {
 

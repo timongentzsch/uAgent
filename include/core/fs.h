@@ -29,7 +29,6 @@
 #include <vector>
 
 #include "include/core/checked.h"
-#include "include/core/env.h"
 #include "include/core/fd.h"
 #include "include/core/limits.h"
 #include "include/core/platform.h"

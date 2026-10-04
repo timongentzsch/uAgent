@@ -10,6 +10,7 @@
 #include "include/app/config_proposal.h"
 #include "include/core/debug.h"
 #include "include/core/events.h"
+#include "include/core/runtime_config.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
 #include "include/core/style.h"

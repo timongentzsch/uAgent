@@ -26,6 +26,7 @@
 #include "include/app/session_host.h"
 #include "include/core/capture.h"
 #include "include/core/config.h"
+#include "include/core/env.h"
 #include "include/core/file_watch.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"

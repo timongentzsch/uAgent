@@ -10,6 +10,7 @@
 #include "include/agent/path_policy.h"
 #include "include/app/options.h"
 #include "include/core/config.h"
+#include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/lease.h"
 #include "include/core/limits.h"

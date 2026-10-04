@@ -14,6 +14,7 @@
 #include "include/core/config.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
+#include "include/core/runtime_config.h"
 #include "include/core/strings.h"
 
 extern char** environ;

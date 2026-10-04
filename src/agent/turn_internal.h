@@ -13,6 +13,7 @@
 #include "include/agent.h"
 #include "include/core/env.h"
 #include "include/core/limits.h"
+#include "include/core/runtime_config.h"
 #include "include/core/usage.h"
 
 namespace uagent {

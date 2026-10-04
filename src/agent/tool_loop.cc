@@ -16,6 +16,7 @@
 #include "include/agent/session_view.h"
 #include "include/agent/tool_presentation.h"
 #include "include/core/activity.h"
+#include "include/core/env.h"
 #include "include/core/events.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"

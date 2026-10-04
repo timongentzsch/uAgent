@@ -10,6 +10,7 @@
 #include "include/api/retry.h"
 #include "include/api/stream.h"
 #include "include/core/limits.h"
+#include "include/core/runtime_config.h"
 #include "include/tools/web_fetch.h"
 #include "include/tools/web_search.h"
 #include "include/ui/display.h"

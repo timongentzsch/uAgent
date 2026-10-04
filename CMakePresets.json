@@ -73,31 +73,38 @@
   "buildPresets": [
     {
       "name": "debug",
-      "configurePreset": "debug"
+      "configurePreset": "debug",
+      "jobs": 8
     },
     {
       "name": "release",
-      "configurePreset": "release"
+      "configurePreset": "release",
+      "jobs": 8
     },
     {
       "name": "sanitize",
-      "configurePreset": "sanitize"
+      "configurePreset": "sanitize",
+      "jobs": 8
     },
     {
       "name": "tidy",
-      "configurePreset": "tidy"
+      "configurePreset": "tidy",
+      "jobs": 8
     },
     {
       "name": "tsan",
-      "configurePreset": "tsan"
+      "configurePreset": "tsan",
+      "jobs": 8
     },
     {
       "name": "coverage",
-      "configurePreset": "coverage"
+      "configurePreset": "coverage",
+      "jobs": 8
     },
     {
       "name": "fuzz",
-      "configurePreset": "fuzz"
+      "configurePreset": "fuzz",
+      "jobs": 8
     }
   ],
   "testPresets": [

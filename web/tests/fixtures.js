@@ -15,7 +15,7 @@ export const withoutServiceWorker = (page) =>
 
 // The UI showcase is a development page: the Vite dev server serves it
 // (see playwright.config.js), not the native host.
-export const SHOWCASE_URL = "http://127.0.0.1:5174/ui.html";
+export { showcaseUrl as SHOWCASE_URL } from "./showcase-url.js";
 
 // No test may end with an uncaught page error.
 const failOnPageErrors = async ({ page }, use) => {
@@ -36,7 +36,7 @@ export const test = base.extend({
     const child = spawn("python3", [
       "../tests/web_host.py",
       "--binary",
-      process.env.UAGENT_TEST_BINARY || "../build/release/uagent",
+      process.env.UAGENT_TEST_BINARY || "../build/debug/uagent",
       "--port",
       "0",
       "--fixture",

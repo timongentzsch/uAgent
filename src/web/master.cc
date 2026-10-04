@@ -377,6 +377,29 @@ class Master {
                 });
     server_.Get(R"(/.*)", [](const Request& request, Response& response) {
       std::string path = request.path == "/" ? "/index.html" : request.path;
+      // Browser tests serve the bundle they just built, so a web edit needs
+      // no rebuild of this binary. Never set outside a test run.
+      if (const char* dist = getenv("UAGENT_INTERNAL_WEB_DIST");
+          dist && path.find("..") == std::string::npos) {
+        static constexpr std::pair<std::string_view, const char*> kMime[] = {
+            {".html", "text/html; charset=utf-8"},
+            {".js", "text/javascript; charset=utf-8"},
+            {".css", "text/css; charset=utf-8"},
+            {".webmanifest", "application/manifest+json"},
+            {".png", "image/png"},
+            {".woff2", "font/woff2"},
+            {".woff", "font/woff"},
+            {".ttf", "font/ttf"}};
+        if (auto body = ReadFile(dist + path, kResponseBytes)) {
+          const char* mime = "application/octet-stream";
+          for (const auto& [extension, type] : kMime) {
+            if (path.ends_with(extension)) mime = type;
+          }
+          response.set_header("Cache-Control", "no-cache");
+          response.set_content(std::move(*body), mime);
+          return;
+        }
+      }
       for (const Asset& asset : Assets()) {
         if (asset.path != path) {
           continue;

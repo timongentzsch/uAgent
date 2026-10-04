@@ -43,6 +43,22 @@ python3 tests/integration.py build/debug/uagent -k compaction
 Integration cases are discovered in source order, so a new top-level `test_`
 function registers itself. Each case has its own deadline;
 `UAGENT_TEST_TIMEOUT_SCALE` multiplies them on slow or instrumented builds.
+`-j N` runs the selection in N processes: every case has a home and ports of
+its own, so the whole suite takes about 20 s at `-j 8` against two minutes
+in one.
+
+### The short loop
+
+Build the debug tree while iterating: the release tree links with LTO, about
+20 s after any edit.
+
+| After | Run | About |
+| --- | --- | --- |
+| a C++ edit | `cmake --build --preset debug`, then `build/debug/uagent_tests -k Area` and `python3 tests/integration.py build/debug/uagent -k name` | seconds |
+| before a commit | `python3 tests/integration.py build/debug/uagent -j 8` and `build/debug/uagent_tests`, or `ctest --preset debug` | 20–40 s |
+| a web edit | `npm test` and `npm run typecheck` | 2 s |
+| a web edit seen in a browser | `npm run build`, then `npm run test:spec -- tests/NAME.spec.js` | 10 s + the spec |
+| before pushing web work | `npm run test:browser` (both browsers) | minutes |
 
 The SSE and input-decoder fuzzers build with the `fuzz` preset. CI runs a short
 smoke pass from `tests/fuzz/corpus`; a weekly workflow runs longer.
@@ -54,15 +70,20 @@ Run from `web/`:
 ```sh
 npm test                 # Node unit tests
 npm run test:browser     # Playwright against a native host
+npm run test:spec -- tests/ui.spec.js   # one spec: Chromium, no retry, stops at a failure
 ```
 
 Browser tests start `tests/web_host.py` with `UAGENT_TEST_BINARY` (default
-`../build/release/uagent`). Each test owns its host, temporary HOME and
-project, mock provider, pairing cookie and output directory, and waits on
-visible state or an API condition rather than a fixed delay. Chromium runs
+`../build/debug/uagent`). Locally that host serves the bundle in `web/dist`
+from disk, so a web edit needs `npm run build` and no rebuild of the binary;
+in CI it serves the bundle embedded in the binary, as a release does. Each
+test owns its host, temporary HOME and project, mock provider, pairing cookie
+and output directory, and waits on visible state or an API condition rather
+than a fixed delay. The showcase's dev server takes a port derived from the
+checkout's path, so runs in two checkouts never share one. Chromium runs
 every spec; WebKit runs the layout, browser and scroll specs. Playwright
-retries a failed test once locally and twice in CI (`CI ? 2 : 1`), uses two
-workers in CI, and keeps traces and screenshots of failures.
+retries a failed test once locally and twice in CI (`CI ? 2 : 1`), uses four
+workers locally and two in CI, and keeps traces and screenshots of failures.
 
 ## Behavioral evaluation
 

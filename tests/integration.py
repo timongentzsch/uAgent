@@ -5,6 +5,7 @@ import os
 import pathlib
 import pkgutil
 import shutil
+import subprocess
 import sys
 import tempfile
 import time
@@ -65,6 +66,9 @@ def parse_args():
         "-k", "--match", action="append", default=[], help="substring filter; repeatable"
     )
     parser.add_argument("--list", action="store_true", help="print the selection and exit")
+    parser.add_argument(
+        "-j", "--jobs", type=int, default=1, help="run the selection in this many processes"
+    )
     return parser.parse_args()
 
 
@@ -94,6 +98,9 @@ def remove_suite(root):
     homes = list(root.glob("*.home"))
     deadline = time.monotonic() + budget(5)
     quiet_since = time.monotonic()
+    # A suite in which no runtime ever started has none to wait for.
+    if not any(runtime_directory(home).exists() for home in homes):
+        deadline = quiet_since
     while time.monotonic() < deadline and time.monotonic() - quiet_since < 1:
         live = [home for home in homes if any(runtime_directory(home).glob("*.sock"))]
         for home in live:
@@ -111,6 +118,30 @@ def remove_suite(root):
             time.sleep(0.5)
 
 
+def run_shards(arguments, names):
+    """The selection dealt round-robin to `jobs` runners of this script, each
+    with a suite directory of its own; a case is already isolated by its
+    home and its ports. Their output is shown as each runner finishes."""
+    jobs = min(arguments.jobs, len(names))
+    runners = [
+        subprocess.Popen(
+            [sys.executable, __file__, str(arguments.binary)]
+            + [part for name in names[index::jobs] for part in ("--test", name)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+        for index in range(jobs)
+    ]
+    failed = 0
+    for runner in runners:
+        sys.stdout.write(runner.communicate()[0])
+        failed += runner.returncode != 0
+    if failed:
+        raise SystemExit(f"{failed} of {jobs} runners failed")
+    print(f"all {len(names)} integration tests passed in {jobs} runners")
+
+
 def main():
     arguments = parse_args()
     names = select(arguments)
@@ -120,6 +151,8 @@ def main():
         return
     if not names:
         raise SystemExit(f"no integration tests selected (group={arguments.group})")
+    if arguments.jobs > 1 and len(names) > 1:
+        return run_shards(arguments, names)
     label = arguments.group if not (arguments.test or arguments.match) else "selected"
     temp = tempfile.mkdtemp(prefix="uagent-integration-")
     try:

@@ -223,7 +223,7 @@ def test_scheduled_run_completes_beside_a_detached_server(root, home, *, binary)
     def respond(_index, body):
         if any(message.get("role") == "tool" for message in body["messages"]):
             return event({"content": "Server left running"})
-        return tool_call("run", {"command": "sleep 60", "detach": True}, call_id="serve")
+        return tool_call("run", {"command": "sleep 5", "detach": True}, call_id="serve")
 
     with Server([respond]) as provider:
         with web_host(binary, root, home, provider.url) as (client, code, _, env):

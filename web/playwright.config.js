@@ -4,11 +4,13 @@ import { defineConfig, devices } from "@playwright/test";
 // pair that emits one warning per worker.
 delete process.env.NO_COLOR;
 process.env.FORCE_COLOR = "0";
+import { showcaseUrl } from "./tests/showcase-url.js";
 export default defineConfig({
   testDir: "./tests",
   forbidOnly: !!process.env.CI,
   testMatch: "**/*.spec.js",
-  workers: process.env.CI ? 2 : 1,
+  // Each test has a host and ports of its own, so they run side by side.
+  workers: process.env.CI ? 2 : 4,
   fullyParallel: true,
   timeout: 30000,
   // Sub-frame browser timing (restore vs. paint vs. async row hydration)
@@ -24,8 +26,8 @@ export default defineConfig({
   },
   // The UI showcase (ui.html) is not part of the product build.
   webServer: {
-    command: "npx vite --port 5174 --strictPort --host 127.0.0.1",
-    url: "http://127.0.0.1:5174/ui.html",
+    command: `npx vite --port ${new URL(showcaseUrl).port} --strictPort --host 127.0.0.1`,
+    url: showcaseUrl,
     reuseExistingServer: !process.env.CI,
   },
   projects: [

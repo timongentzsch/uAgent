@@ -11,7 +11,10 @@ from integration_support import (
     assert_true,
     base_env,
     budget,
+    detached_pid,
     event,
+    live_process_states,
+    signal_process_group,
     tool_call,
     wait_until,
 )
@@ -220,10 +223,13 @@ def test_scheduled_run_native_session_and_restart(root, home, *, binary):
 def test_scheduled_run_completes_beside_a_detached_server(root, home, *, binary):
     """A server the task leaves running must not hold its run open."""
 
+    server = {}
+
     def respond(_index, body):
         if any(message.get("role") == "tool" for message in body["messages"]):
+            server["pid"] = detached_pid(body)
             return event({"content": "Server left running"})
-        return tool_call("run", {"command": "sleep 5", "detach": True}, call_id="serve")
+        return tool_call("run", {"command": "sleep 60", "detach": True}, call_id="serve")
 
     with Server([respond]) as provider:
         with web_host(binary, root, home, provider.url) as (client, code, _, env):
@@ -245,7 +251,12 @@ def test_scheduled_run_completes_beside_a_detached_server(root, home, *, binary)
                 runs = client.command("schedule", action="list")["result"]["runs"]
                 return any(r["id"] == run["id"] and r["status"] == "completed" for r in runs)
 
-            wait_until(completed, lambda: client.command("schedule", action="list"), timeout=20)
+            try:
+                wait_until(completed, lambda: client.command("schedule", action="list"), timeout=20)
+                # The run completed beside its server, not after it.
+                assert_true(live_process_states([server["pid"]]), "the server was stopped")
+            finally:
+                signal_process_group(server.get("pid"), signal.SIGKILL)
 
 
 def test_scheduled_runtime_survives_web_restart(root, home, *, binary):

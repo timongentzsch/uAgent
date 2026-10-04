@@ -332,12 +332,14 @@ void TestArrivalsSurviveFactEviction() {
   const uint64_t id = conversation.DisplayIds().back();
   const std::string arrived = conversation.Arrival(id);
   CHECK(!arrived.empty());
-  // Just past the fact count that starts eviction: each record beyond it
-  // scans every kept fact for its victim.
-  for (int index = 0; index < 4200; ++index) {
+  // Until eviction takes the message's own fact, and no further: each
+  // record past the fact count scans every kept fact for its victim.
+  const std::string fact = "m-" + std::to_string(id);
+  for (int index = 0;
+       index < 5000 && conversation.DisplayFacts().contains(fact); ++index) {
     conversation.RecordDisplay("x-" + std::to_string(index), {{"n", index}});
   }
-  CHECK(!conversation.DisplayFacts().contains("m-" + std::to_string(id)));
+  CHECK(!conversation.DisplayFacts().contains(fact));
   CHECK(conversation.Arrival(id) == arrived);
   Conversation restored;
   CHECK(restored.Restore(conversation.Messages(), conversation.Kinds(),

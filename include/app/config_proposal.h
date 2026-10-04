@@ -17,12 +17,10 @@
 #include <vector>
 
 #include "include/core/json.h"
-#include "include/core/runtime_config.h"
 
 namespace uagent {
 
 class ConfigManager;
-struct RuntimeConfig;
 
 enum class ConfigProposalScope { kUser, kProject };
 

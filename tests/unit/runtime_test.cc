@@ -21,6 +21,7 @@
 #include "include/app/tool_categories.h"
 #include "include/core/child_env.h"
 #include "include/core/config.h"
+#include "include/core/config_registry.h"
 #include "include/core/effective_config.h"
 #include "include/core/env.h"
 #include "include/core/events.h"

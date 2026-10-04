@@ -11,8 +11,6 @@
 #include <string_view>
 #include <vector>
 
-#include "include/core/config.h"
-#include "include/core/effective_config.h"
 #include "include/core/json.h"
 
 namespace uagent {
@@ -21,6 +19,8 @@ class Agent;
 class Api;
 class ConfigManager;
 struct RuntimeConfig;
+struct EffectiveConfigSnapshot;
+class ConfigManager;
 struct Tool;
 
 enum class SelfTopic {

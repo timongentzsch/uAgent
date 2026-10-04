@@ -11,6 +11,7 @@
 #include "include/app/commands.h"
 #include "include/app/config_proposal.h"
 #include "include/app/launch.h"
+#include "include/core/config_registry.h"
 #include "include/core/env.h"
 #include "include/core/events.h"
 #include "include/core/fs.h"

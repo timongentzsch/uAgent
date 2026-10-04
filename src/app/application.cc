@@ -17,6 +17,7 @@
 #include "include/core/events.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
+#include "include/core/signals.h"
 #include "include/core/steering.h"
 #include "include/core/strings.h"
 #include "include/core/style.h"

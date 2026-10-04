@@ -6,6 +6,7 @@ import json
 import signal
 import socket
 import subprocess
+import time
 
 from integration_support import base_env, budget, wait_until
 from session_support import stop_sessions
@@ -88,7 +89,6 @@ class WebClient:
 
 @contextlib.contextmanager
 def web_host(binary, root, home, provider, port=None, extra_env=None):
-    port = port or available_port()
     env = base_env(home, provider)
     for key, value in (extra_env or {}).items():
         if value is None:
@@ -96,16 +96,25 @@ def web_host(binary, root, home, provider, port=None, extra_env=None):
         else:
             env[key] = value
     log = root / "web-host.log"
+    discovery = home / ".uagent/web/discovery.json"
     with log.open("w+") as output:
-        process = subprocess.Popen(
-            [str(binary), "--web", "--web-port", str(port)],
-            cwd=root,
-            env=env,
-            stdout=output,
-            stderr=output,
-        )
+        # A port chosen here can be taken before the host binds it (other
+        # tests run beside this one), so the host is given another.
+        for attempt in range(3):
+            chosen = port or available_port()
+            process = subprocess.Popen(
+                [str(binary), "--web", "--web-port", str(chosen)],
+                cwd=root,
+                env=env,
+                stdout=output,
+                stderr=output,
+            )
+            while process.poll() is None and not discovery.exists():
+                time.sleep(0.01)
+            if port or attempt == 2 or "web port is unavailable" not in log.read_text():
+                break
+        port = chosen
         try:
-            discovery = home / ".uagent/web/discovery.json"
 
             def started():
                 if process.poll() is not None:

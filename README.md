@@ -142,7 +142,7 @@ Common slash commands:
 
 ```sh
 cmake --preset debug
-cmake --build --preset debug
+cmake --build --preset debug --parallel
 ctest --preset debug --output-on-failure
 uv run --frozen ruff check .github tests benchmarks skills
 ```

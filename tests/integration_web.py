@@ -2079,6 +2079,10 @@ def test_web_verbosity_is_one_level_pushed_to_every_browser(root, home, *, binar
             # The level and what each level shows come from the host: the
             # browser holds no rule of its own.
             assert_true(listing["verbosity"]["level"] == "default", listing["verbosity"])
+            assert_true(
+                listing["verbosity"]["order"] == ["minimal", "default", "full"],
+                listing["verbosity"],
+            )
             levels = listing["verbosity"]["levels"]
             assert_true(
                 [levels[name]["work"] for name in ("minimal", "default", "full")]

@@ -69,7 +69,10 @@ def parse_args():
     parser.add_argument(
         "-j", "--jobs", type=int, default=1, help="run the selection in this many processes"
     )
-    return parser.parse_args()
+    arguments = parser.parse_args()
+    if arguments.jobs < 1:
+        parser.error("--jobs must be at least 1")
+    return arguments
 
 
 def select(arguments):
@@ -121,22 +124,34 @@ def remove_suite(root):
 def run_shards(arguments, names):
     """The selection dealt round-robin to `jobs` runners of this script, each
     with a suite directory of its own; a case is already isolated by its
-    home and its ports. Their output is shown as each runner finishes."""
+    home and its ports. A runner writes to a file, so none waits on another
+    for its output to be read; each is shown, with how it ended, when all
+    are done."""
     jobs = min(arguments.jobs, len(names))
-    runners = [
-        subprocess.Popen(
-            [sys.executable, __file__, str(arguments.binary)]
-            + [part for name in names[index::jobs] for part in ("--test", name)],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-        )
-        for index in range(jobs)
-    ]
-    failed = 0
-    for runner in runners:
-        sys.stdout.write(runner.communicate()[0])
-        failed += runner.returncode != 0
+    runners = []
+    try:
+        for index in range(jobs):
+            output = tempfile.TemporaryFile(mode="w+")
+            command = [sys.executable, __file__, str(arguments.binary)]
+            for name in names[index::jobs]:
+                command += ["--test", name]
+            runners.append(
+                (subprocess.Popen(command, stdout=output, stderr=subprocess.STDOUT), output)
+            )
+        failed = 0
+        for index, (runner, output) in enumerate(runners):
+            status = runner.wait()
+            output.seek(0)
+            sys.stdout.write(output.read())
+            if status:
+                failed += 1
+                print(f"runner {index + 1} of {jobs} failed (exit {status})", flush=True)
+    finally:
+        for runner, output in runners:
+            if runner.poll() is None:
+                runner.kill()
+                runner.wait()
+            output.close()
     if failed:
         raise SystemExit(f"{failed} of {jobs} runners failed")
     print(f"all {len(names)} integration tests passed in {jobs} runners")

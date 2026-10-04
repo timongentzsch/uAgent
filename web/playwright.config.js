@@ -28,7 +28,8 @@ export default defineConfig({
   webServer: {
     command: `npx vite --port ${new URL(showcaseUrl).port} --strictPort --host 127.0.0.1`,
     url: showcaseUrl,
-    reuseExistingServer: !process.env.CI,
+    // A server already on the port may be another checkout's: fail, not reuse.
+    reuseExistingServer: false,
   },
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },

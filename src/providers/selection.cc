@@ -12,6 +12,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/core/config_registry.h"
 #include "include/core/debug.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"

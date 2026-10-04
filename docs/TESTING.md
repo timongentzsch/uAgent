@@ -10,7 +10,7 @@ The default suite needs no API key or network:
 
 ```sh
 cmake --preset debug
-cmake --build --preset debug
+cmake --build --preset debug --parallel
 ctest --preset debug --output-on-failure
 ```
 
@@ -54,7 +54,7 @@ Build the debug tree while iterating: the release tree links with LTO, about
 
 | After | Run | About |
 | --- | --- | --- |
-| a C++ edit | `cmake --build --preset debug`, then `build/debug/uagent_tests -k Area` and `python3 tests/integration.py build/debug/uagent -k name` | seconds |
+| a C++ edit | `cmake --build --preset debug --parallel`, then `build/debug/uagent_tests -k Area` and `python3 tests/integration.py build/debug/uagent -k name` | seconds |
 | before a commit | `python3 tests/integration.py build/debug/uagent -j 8` and `build/debug/uagent_tests`, or `ctest --preset debug` | 20–40 s |
 | a web edit | `npm test` and `npm run typecheck` | 2 s |
 | a web edit seen in a browser | `npm run build`, then `npm run test:spec -- tests/NAME.spec.js` | 10 s + the spec |
@@ -80,7 +80,8 @@ in CI it serves the bundle embedded in the binary, as a release does. Each
 test owns its host, temporary HOME and project, mock provider, pairing cookie
 and output directory, and waits on visible state or an API condition rather
 than a fixed delay. The showcase's dev server takes a port derived from the
-checkout's path, so runs in two checkouts never share one. Chromium runs
+checkout's path and is never reused if one already listens there, so a run
+cannot test another checkout's tree. Chromium runs
 every spec; WebKit runs the layout, browser and scroll specs. Playwright
 retries a failed test once locally and twice in CI (`CI ? 2 : 1`), uses four
 workers locally and two in CI, and keeps traces and screenshots of failures.

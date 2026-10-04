@@ -48,10 +48,13 @@ inline const DetailPolicy& DetailFor(std::string_view level) {
   return kDetailPolicies[1];
 }
 
-// The table as the web receives it, keyed by level.
+// The table as the web receives it: each level by name, and the names from
+// least detail to most, which an object's keys do not keep.
 inline json DetailPoliciesJson() {
   json levels = json::object();
+  json order = json::array();
   for (const DetailPolicy& policy : kDetailPolicies) {
+    order.push_back(policy.level);
     levels[std::string(policy.level)] = {
         {"work", policy.work == WorkRows::kTurn     ? "turn"
                  : policy.work == WorkRows::kGroups ? "groups"
@@ -62,7 +65,7 @@ inline json DetailPoliciesJson() {
         {"open", policy.open},
         {"minor", policy.minor}};
   }
-  return levels;
+  return {{"levels", std::move(levels)}, {"order", std::move(order)}};
 }
 
 }  // namespace uagent

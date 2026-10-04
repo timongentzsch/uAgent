@@ -8,6 +8,7 @@
 
 #include "include/agent/session_store.h"
 #include "include/app/config_proposal.h"
+#include "include/core/config_registry.h"
 #include "include/core/debug.h"
 #include "include/core/events.h"
 #include "include/core/runtime_config.h"

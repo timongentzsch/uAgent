@@ -18,6 +18,7 @@
 #include "include/api/retry.h"
 #include "include/api/stream.h"
 #include "include/api/wire.h"
+#include "include/core/config_registry.h"
 #include "include/core/debug.h"
 #include "include/core/events.h"
 #include "include/core/json.h"

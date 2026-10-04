@@ -268,7 +268,14 @@ def test_scheduled_runtime_survives_web_restart(root, home, *, binary):
         return event({"content": "Finished across web restart"})
 
     with Server([response]) as provider:
-        with web_host(binary, root, home, provider.url) as (client, code, host, env):
+        # The task asks, under a default that would not.
+        loose = {"UAGENT_APPROVAL": "yolo"}
+        with web_host(binary, root, home, provider.url, extra_env=loose) as (
+            client,
+            code,
+            host,
+            env,
+        ):
             client.pair(code)
             task = client.command(
                 "schedule",
@@ -279,7 +286,7 @@ def test_scheduled_runtime_survives_web_restart(root, home, *, binary):
                     prompt="Review",
                     cwd=str(root),
                     environment="local",
-                    permissions="yolo",
+                    permissions="ask",
                     schedule=dict(type="interval", seconds=3600),
                 ),
             )["result"]["item"]
@@ -293,7 +300,12 @@ def test_scheduled_runtime_survives_web_restart(root, home, *, binary):
                 before = client.snapshot(dict(id=run["session_id"]))
                 host.send_signal(signal.SIGTERM)
                 host.wait(timeout=budget(10))
-                with web_host(binary, root, home, provider.url) as (resumed, code, _, _):
+                with web_host(binary, root, home, provider.url, extra_env=loose) as (
+                    resumed,
+                    code,
+                    _,
+                    _,
+                ):
                     resumed.pair(code)
                     current = resumed.until(
                         dict(id=run["session_id"]),
@@ -312,6 +324,22 @@ def test_scheduled_runtime_survives_web_restart(root, home, *, binary):
                         timeout=15,
                     )
                     assert len(provider.requests) == 1, "restart repeated scheduled work"
+                    # The run's mode is kept with its conversation: a runtime
+                    # started by a host that no longer knows the task asks too.
+                    session = dict(id=run["session_id"])
+                    live = resumed.snapshot(session)["metadata"]
+                    if live["generation"]:
+                        resumed.command("close", live)
+                    saved = resumed.until(
+                        session, lambda value: value["metadata"]["status"] == "saved"
+                    )
+                    again = resumed.command("activate", saved["metadata"])["session"]
+                    state = resumed.until(again, lambda value: value["state"].get("permissions"))
+                    assert_true(
+                        state["state"]["permissions"]
+                        == {"mode": "ask", "effective": "ask", "default": "yolo"},
+                        state["state"]["permissions"],
+                    )
             finally:
                 release.set()
 

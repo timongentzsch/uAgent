@@ -87,21 +87,62 @@ def sandbox_enforced(root, home, *, binary):
     return not escaped
 
 
-def test_yolo_disables_the_sandbox_from_cli_and_config(root, home, *, binary):
-    """Both startup forms of yolo run the default shell path unconfined."""
+def test_yolo_keeps_the_sandbox_and_only_its_setting_lifts_it(root, home, *, binary):
+    """Yolo means nobody is asked, in either startup form; confinement is the
+    sandbox setting's alone."""
     if not sandbox_enforced(root, home, binary=binary):
         return
-    for source in ("cli", "config"):
-        outside = root / f"yolo-{source}.txt"
+    for source, sandbox in (("cli", "1"), ("config", "1"), ("cli", "0")):
+        outside = root / f"yolo-{source}-{sandbox}.txt"
         command = f"echo x > {outside}"
         with Server([tool_call("run", {"command": command}), event({"content": "ok"})]) as server:
             env = sandbox_env(home, server.url)
+            env["UAGENT_SANDBOX"] = sandbox
             flags = ("--yolo",) if source == "cli" else ()
             if source == "config":
                 env["UAGENT_APPROVAL"] = "yolo"
             result = run(workspace(root), env, *flags, "-p", "go", timeout=30, binary=binary)
         assert_true(result.returncode == 0, (result.stdout, result.stderr))
-        assert_true(outside.exists(), f"{source} yolo still used the sandbox")
+        assert_true(
+            outside.exists() == (sandbox == "0"),
+            f"{source} yolo with UAGENT_SANDBOX={sandbox}: {result.stdout}",
+        )
+
+
+def test_a_subagent_is_no_less_confined_than_its_parent(root, home, *, binary):
+    """A delegated child approves its own calls, and runs them under the
+    sandbox of the session that delegated to it."""
+    if not sandbox_enforced(root, home, binary=binary):
+        return
+
+    def serve(outside):
+        def route(_, body):
+            users = [str(m.get("content", "")) for m in body["messages"] if m.get("role") == "user"]
+            answered = any(m.get("role") == "tool" for m in body["messages"])
+            if any("child-task" in text for text in users):
+                if answered:
+                    return event({"content": "child-done"})
+                return tool_call("run", {"command": f"echo x > {outside}"})
+            if answered:
+                return event({"content": "parent-done"})
+            return tool_call(
+                "subagent", {"prompt": "child-task", "mode": "full", "background": False}
+            )
+
+        return Server([route] * 4)
+
+    for sandbox in ("1", "0"):
+        outside = root / f"child-{sandbox}.txt"
+        with serve(outside) as server:
+            env = sandbox_env(home, server.url, UAGENT_SANDBOX=sandbox)
+            result = run(workspace(root), env, "--yolo", "-p", "go", timeout=60, binary=binary)
+        assert_true(result.returncode == 0, (result.stdout, result.stderr))
+        assert_true("parent-done" in result.stdout, result.stdout)
+        # The same child, unconfined only when its parent is.
+        assert_true(
+            outside.exists() == (sandbox == "0"),
+            f"child of a parent with UAGENT_SANDBOX={sandbox}: {result.stdout}",
+        )
 
 
 def test_sudo_uses_shared_approval_and_sandbox_policy(root, home, *, binary):
@@ -117,7 +158,7 @@ def test_sudo_uses_shared_approval_and_sandbox_policy(root, home, *, binary):
         for mode in ("yolo", "confined", "approved", "denied"):
             if mode == "approved" and tool == "scratch":
                 continue  # scratch has no per-command escape hatch
-            if mode in ("confined", "approved") and not enforced:
+            if mode in ("yolo", "confined", "approved") and not enforced:
                 continue
             outside = root / f"{tool}-{mode}.txt"
             command = "sudo sh -c " + shlex.quote(f"echo written > {shlex.quote(str(outside))}")
@@ -164,11 +205,12 @@ def test_sudo_uses_shared_approval_and_sandbox_policy(root, home, *, binary):
             output = "\n".join(seen)
             assert_true("privileged commands are unavailable" not in output, output)
             assert_true(("SUDO_FIXTURE" in output) == (mode != "denied"), (tool, mode, output))
-            assert_true(outside.exists() == (mode in ("yolo", "approved")), (tool, mode, output))
+            # Yolo spares the question, not the confinement.
+            assert_true(outside.exists() == (mode == "approved"), (tool, mode, output))
 
 
-def test_yolo_toggle_changes_sandboxing_for_the_next_command(root, home, *, binary):
-    """Interactive /yolo disables confinement and restores it when toggled off."""
+def test_yolo_toggle_leaves_sandboxing_alone(root, home, *, binary):
+    """Interactive /yolo stops the questions; commands stay confined either way."""
     if not sandbox_enforced(root, home, binary=binary):
         return
     unconfined = root / "toggle-yolo.txt"
@@ -201,10 +243,10 @@ def test_yolo_toggle_changes_sandboxing_for_the_next_command(root, home, *, bina
             binary=binary,
         )
     assert_true(result.returncode == 0, (result.stdout, result.stderr))
-    assert_true(unconfined.exists(), f"/yolo did not disable confinement: {result.stdout}")
+    assert_true("unconfined-ok" in result.stdout, result.stdout)
     assert_true(
-        not confined.exists(),
-        f"toggling /yolo off did not restore confinement: {result.stdout}",
+        not unconfined.exists() and not confined.exists(),
+        f"a command escaped the sandbox: {result.stdout}",
     )
 
 
@@ -343,7 +385,10 @@ def test_sandbox_hides_the_browser_profile(root, home, *, binary):
         env = sandbox_env(home, "", UAGENT_BROWSER_DATA=str(profile))
         reached = browser_reach(root, env, profile, binary=binary)
         assert_true(reached == expected, f"confined: reached {sorted(reached)}")
-        for case in ("off", "approve", "yolo"):
+        # Yolo asks nobody and confines as before.
+        reached = browser_reach(root, env, profile, binary=binary, yolo=True)
+        assert_true(reached == expected, f"yolo: reached {sorted(reached)}")
+        for case in ("off", "approve"):
             case_env = dict(env, UAGENT_SANDBOX="0") if case == "off" else env
             options = {} if case == "off" else {case: True}
             reached = browser_reach(root, case_env, profile, binary=binary, **options)

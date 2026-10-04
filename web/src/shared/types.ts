@@ -309,6 +309,8 @@ export interface Permissions {
   mode: string;
   default: string;
   effective?: string;
+  // The mode no choice here can exceed, where the conversation has one.
+  limit?: string;
 }
 export interface PermissionRule {
   key: string;
@@ -868,7 +870,8 @@ export interface ScheduledTask {
   prompt: string;
   cwd: string;
   model: string;
-  permissions: "prompt" | "auto" | "yolo";
+  // An approval mode; "prompt" is how "ask" was saved before.
+  permissions: "ask" | "auto" | "yolo" | "prompt";
   environment: "local" | "worktree";
   schedule: ScheduleRule;
   enabled: boolean;

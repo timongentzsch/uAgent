@@ -14,6 +14,7 @@
 
 #include "include/app/control.h"
 #include "include/app/launch.h"
+#include "include/core/config_registry.h"
 #include "include/core/fs.h"
 #include "include/core/lease.h"
 #include "include/core/limits.h"
@@ -307,12 +308,15 @@ json ScheduleControl(const json& request) {
       const std::string name = Trim(JsonValue(task, "name", ""));
       const std::string prompt = Trim(JsonValue(task, "prompt", ""));
       const auto environment = JsonValue(task, "environment", "worktree");
-      const auto permissions = JsonValue(task, "permissions", "prompt");
+      // The approval modes, by their own names; a task saved as "prompt"
+      // asks.
+      std::string permissions = JsonValue(task, "permissions", "ask");
+      if (permissions == "prompt") permissions = "ask";
+      task["permissions"] = permissions;
       if (name.empty() || name.size() > kScheduleNameChars || prompt.empty() ||
           prompt.size() > kSchedulePromptChars ||
           (environment != "local" && environment != "worktree") ||
-          (permissions != "prompt" && permissions != "auto" &&
-           permissions != "yolo")) {
+          !Cfg("UAGENT_APPROVAL").Accepts(permissions)) {
         return {{"error",
                  "provide a name, instructions, execution environment and "
                  "permissions"}};

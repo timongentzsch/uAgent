@@ -423,6 +423,11 @@ ToolResult RunSubagent(const Api& api, ProcessSupervisor& processes,
        {"UAGENT_INTERNAL_TOOLSET", mode},
        {"UAGENT_INTERNAL_PARENT_TURN", std::to_string(context.turn_id)},
        {"UAGENT_MEMORY", child_memory ? "1" : "0"},
+       // Never less confined than the session that delegates to it: its
+       // commands run under this session's sandbox, whatever its own config.
+       {"UAGENT_SANDBOX", SandboxEnabled() ? "1" : "0"},
+       {"UAGENT_SANDBOX_NET", SandboxNetworkAllowed() ? "1" : "0"},
+       {"UAGENT_SANDBOX_WRITE", SandboxWriteRoots()},
        {"UAGENT_INTERNAL_SESSION_FILE", AgentPath(id)},
        {"UAGENT_INTERNAL_DELEGATION", JsonDump(role)}});
   // Only a background child is polled while it runs. A foreground child
@@ -677,7 +682,7 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
     const bool full = JsonValue(arguments, "mode", "lean") == "full";
     preview +=
         "\n\u00b7 the child approves its own tool calls; it writes files and "
-        "runs commands unattended";
+        "runs commands unattended, under this session's sandbox";
     preview += std::string("\n\u00b7 toolset ") +
                (full ? "full: reading, editing and running, plus its own "
                        "children"

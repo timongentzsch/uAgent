@@ -226,10 +226,9 @@ ToolResult DelegatedJobLimitError() {
 // the one outcome the sandbox exists to rule out, arriving without a word.
 std::string SandboxWrapperFor(const ShellCommand& spec,
                               std::vector<std::string>* wrapper) {
-  // Yolo is an explicit session-wide choice to run without approval or OS
-  // confinement. Read it per spawn so /yolo takes effect immediately and
-  // toggling it off restores the configured sandbox for the next command.
-  if (!spec.sandbox || ApprovalIsYolo()) return {};
+  // The sandbox follows its own setting in every approval mode: yolo means
+  // nobody is asked, not that nothing is confined.
+  if (!spec.sandbox) return {};
   const SandboxStatus& status = SandboxRuntime();
   if (status.mode == SandboxMode::kRefused) {
     return "error: UAGENT_SANDBOX is on but cannot be enforced: " +

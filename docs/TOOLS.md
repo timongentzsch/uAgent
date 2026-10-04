@@ -60,8 +60,13 @@ follow the permission mode (`/permissions`, `UAGENT_APPROVAL`):
   interactive client is attached; network, authentication and parse failures
   are treated the same way. Reviewer usage counts toward the turn and
   session.
-- **YOLO** (`--yolo`, `/yolo`) approves ordinary mutations and turns the
-  command sandbox off.
+- **YOLO** (`--yolo`, `/yolo`) approves ordinary mutations. It does not
+  turn the command sandbox off: that is its own setting (`UAGENT_SANDBOX`),
+  the same in every mode.
+
+A coordinator's thread reviews (Auto) unless it is told to ask, and cannot be
+put above that. A subagent approves its own calls and runs them under the
+sandbox of the conversation that delegated to it.
 
 Some actions always need a person: reading or writing µAgent's config files,
 `.mcp.json` or `permissions.json`, writing the project trust store, your

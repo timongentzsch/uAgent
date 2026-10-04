@@ -4,6 +4,20 @@
 
 ### Upgrade notes
 
+- **Yolo no longer turns the command sandbox off.** It means nobody is
+  asked; confinement is `UAGENT_SANDBOX`, the same in every approval mode. A
+  setup that relied on `--yolo` or `UAGENT_APPROVAL=yolo` to run commands
+  unconfined now needs `UAGENT_SANDBOX=0` as well, and `run(sandbox=false)`
+  still asks a person under yolo.
+- A subagent runs its commands under the sandbox of the conversation that
+  delegated to it. It was launched in yolo, which lifted the sandbox whatever
+  its parent's mode. The delegation's approval now says so.
+- A coordinator's thread cannot be put in yolo: `/permissions yolo` there is
+  refused, and a saved or flagged yolo reads as Auto.
+- A scheduled task's permission is an approval mode by its own name: `ask`
+  where it was `prompt` (a saved `prompt` still asks). A run keeps its
+  task's mode when its runtime starts again, where it fell back to the
+  default after a host restart.
 Settings that left the registry are no longer read. A config file that still
 names one loads as before and the line has no effect.
 

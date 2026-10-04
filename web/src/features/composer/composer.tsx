@@ -580,9 +580,20 @@ export default function Composer({
                   <option value="default">
                     Default ({permissionLabel(permission?.default)})
                   </option>
-                  {Object.entries(permissionLabels).map(([value, label]) => (
-                    <option value={value}>{label}</option>
-                  ))}
+                  {Object.entries(permissionLabels)
+                    // A thread is held to its limit: nothing above it is
+                    // offered.
+                    .filter(
+                      (_, index, modes) =>
+                        !permission?.limit ||
+                        index <=
+                          modes.findIndex(
+                            ([value]) => value === permission.limit,
+                          ),
+                    )
+                    .map(([value, label]) => (
+                      <option value={value}>{label}</option>
+                    ))}
                 </Select>
               </Field>
             )}

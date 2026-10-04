@@ -183,8 +183,8 @@ browser profile separately:
 
 - With the sandbox on, agent commands cannot read the browser data directory
   (saved logins, cookies) or connect to its sockets, and the file tools refuse
-  it; yolo, `run(sandbox=false)` and a disabled sandbox lift that, as they
-  lift the sandbox. See [SECURITY.md](../SECURITY.md#sandboxing). Keep it
+  it; `run(sandbox=false)` and a disabled sandbox lift that, as they lift
+  the sandbox; yolo does not. See [SECURITY.md](../SECURITY.md#sandboxing). Keep it
   outside the sandbox's writable roots, e.g. `~/.uagent/browser`.
 - Screenshots draw every password field as dots, including one a site's
   reveal toggle switched to text; autofill still works. Fields in cross-site

@@ -13,6 +13,7 @@
 #include "include/agent/session_view.h"
 #include "include/app/control.h"
 #include "include/app/self_description.h"
+#include "include/core/config_registry.h"
 #include "include/core/env.h"
 #include "include/core/events.h"
 #include "include/core/fs.h"
@@ -69,7 +70,12 @@ void LoadSessionJournal(AppSession& session, const std::string& previous_path) {
   ConfigManager& manager = session.context.config_manager;
   const RuntimeConfig::Values flagged = manager.Conversation();
   for (const auto& [key, value] : chosen.items()) {
-    if (value.is_string() && !flagged.contains(key)) {
+    // Only what a conversation may choose, spelled as the setting allows:
+    // the file is the session's, and is not taken on trust.
+    const ConfigDescriptor* setting = FindConfigDescriptor(key);
+    if (value.is_string() && !flagged.contains(key) && setting &&
+        (setting->scopes & kScopeConversation) &&
+        setting->Accepts(value.get<std::string>())) {
       manager.ChooseForConversation(key, value.get<std::string>());
     }
   }

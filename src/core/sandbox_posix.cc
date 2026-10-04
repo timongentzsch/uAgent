@@ -348,11 +348,6 @@ const SandboxStatus& SandboxRuntime() {
 }
 
 json SandboxDiagnosticJson() {
-  if (ApprovalIsYolo()) {
-    return {{"mode", "off"},
-            {"reason", "yolo approval mode"},
-            {"summary", "off (yolo)"}};
-  }
   const SandboxStatus& status = SandboxRuntime();
   switch (status.mode) {
     case SandboxMode::kOff:

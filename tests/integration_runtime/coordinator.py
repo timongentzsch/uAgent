@@ -11,6 +11,7 @@ from integration_support import (
     event,
     function_names,
     run,
+    run_dialog,
     run_pty,
     session_files,
     tool_call,
@@ -416,6 +417,42 @@ def test_restarted_threads_keep_their_ceiling_and_user_sessions_stay_asleep(root
             ),
             [json.dumps(b)[-200:] for _, b in server.requests],
         )
+
+
+def test_a_thread_is_never_above_auto(root, home, *, binary):
+    """A thread reviews unless told to ask: no command, flag or default puts
+    it above that, in this run or the next."""
+    from integration_support import fnv1a64
+
+    write_session(
+        home,
+        "thread",
+        [{"role": "system", "content": "sys"}, {"role": "user", "content": "go"}],
+        cwd=root,
+        kind="thread",
+        thread={
+            "coordinator_id": fnv1a64(str(home / "coordinator.json")),
+            "folder": str(root.resolve()),
+        },
+    )
+    with Server([event({"content": "unused"})]) as server:
+        env = base_env(home, server.url)
+        env["UAGENT_APPROVAL"] = "yolo"
+        for flags in ((), ("--yolo",)):
+            result = run_dialog(
+                root, env, "/permissions yolo\n/permissions\n/q\n", "-c", *flags, binary=binary
+            )
+            assert_true(result.returncode == 0, result.stderr)
+            assert_true("cannot be above auto" in result.stdout, result.stdout)
+            assert_true(
+                '"effective": "auto"' in result.stdout
+                and '"limit": "auto"' in result.stdout
+                and '"effective": "yolo"' not in result.stdout,
+                result.stdout,
+            )
+        # It can still be told to ask.
+        tighter = run_dialog(root, env, "/permissions ask\n/q\n", "-c", binary=binary)
+        assert_true('"effective": "ask"' in tighter.stdout, tighter.stdout)
 
 
 def test_coordinator_messages_a_thread_at_most_three_times_in_a_row(root, home, *, binary):

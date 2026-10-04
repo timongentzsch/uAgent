@@ -536,7 +536,6 @@ Agent::ToolRefresher MakeToolRefresher(AppContext* app) {
 // Two things a session must not discover only when a command fails: that the
 // sandbox it asked for is not running, and that a root it listed was dropped.
 void ReportSandbox() {
-  if (ApprovalIsYolo()) return;
   const SandboxStatus& status = SandboxRuntime();
   if (status.mode == SandboxMode::kDegraded) {
     Emit(Event{EventId::kCapabilityChanged,
@@ -785,14 +784,19 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   context->tools =
       BuildTools(*context, workspace, trusted_snapshot, skills, tool_error);
   if (!tool_error.empty()) return Failure(tool_error);
-  // A flag for a conversation's setting sets it for that conversation.
+  // A flag for a conversation's setting sets it for that conversation, and
+  // is kept with it: a run started with a model and a mode (a scheduled
+  // task's) still has them when its runtime starts again without the flag.
+  for (const ConfigDescriptor& setting : ConfigRegistry()) {
+    const auto flag =
+        context->options.overrides.find(std::string(setting.environment));
+    if ((setting.scopes & kScopeConversation) &&
+        flag != context->options.overrides.end()) {
+      context->config_manager.ChooseForConversation(flag->first, flag->second);
+    }
+  }
   if (context->options.yolo) {
     context->config_manager.ChooseForConversation("UAGENT_APPROVAL", "yolo");
-  }
-  if (auto model = context->options.overrides.find("UAGENT_MODEL");
-      model != context->options.overrides.end()) {
-    context->config_manager.ChooseForConversation("UAGENT_MODEL",
-                                                  model->second);
   }
   AppContext* app = context.get();
   context->agent = std::make_unique<Agent>(

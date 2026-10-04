@@ -9,8 +9,10 @@ account for untrusted code.
 
 ## Trust boundaries
 
-- Settings come from process `UAGENT_*` and `OPENROUTER_*` variables, a
-  trusted project `.uagent/.config` and `~/.uagent/.config`, in that order.
+- Settings come, the earlier winning, from what one conversation chose for
+  itself (its model and approval mode only), command-line flags, process
+  `UAGENT_*` and `OPENROUTER_*` variables, a trusted project
+  `.uagent/.config` and `~/.uagent/.config`.
   Config and artifact files are forced private. Project `.env` files are
   ignored.
 - User `~/.mcp.json` is trusted executable configuration. Project `.mcp.json`
@@ -101,8 +103,8 @@ context.
 
 With the sandbox on, commands cannot read the browser data directory
 (`UAGENT_BROWSER_DATA`) or connect to its sockets, and the file tools refuse
-it; yolo, `run(sandbox=false)` and a disabled sandbox lift that, as they lift
-the sandbox itself. Linux uses Landlock (sockets from Linux 7.1, ABI 9), macOS
+it; `run(sandbox=false)` and a disabled sandbox lift that, as they lift the
+sandbox itself. Yolo does not: it stops the questions, not the confinement. Linux uses Landlock (sockets from Linux 7.1, ABI 9), macOS
 Seatbelt. Keep the directory outside the sandbox's writable roots, e.g.
 `~/.uagent/browser`. See [the web guide](docs/WEB.md#isolation).
 
@@ -126,7 +128,9 @@ A session can run unconfined in two ways, both reported:
 
 - `run(sandbox=false)` always asks a person. `--yolo`, a remembered grant and
   headless or delegated runs answer no, so a delegated child cannot unconfine
-  itself.
+  itself. A child approves its own calls (approving the delegation is the
+  gate) and runs them under the sandbox of the session that delegated to it,
+  whatever its own configuration says.
 - On a Linux kernel without Landlock, the sandbox degrades: a startup warning,
   a `capability.changed` event, `sandbox.mode=degraded`, and commands run
   unconfined. A session that requested the sandbox explicitly, in the

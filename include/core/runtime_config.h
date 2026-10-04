@@ -71,6 +71,8 @@ struct RuntimeConfig : TurnBudgets {
   bool memory_generate{};
 
   RuntimeConfig();
+  // From what is in effect now: the published settings, or the environment
+  // where nothing is published yet.
   static RuntimeConfig FromEnvironment();
   static RuntimeConfig FromValues(const Values& values);
   std::vector<std::string> ApplyTurnReload(const RuntimeConfig& next);

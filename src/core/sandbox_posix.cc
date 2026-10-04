@@ -456,12 +456,19 @@ std::vector<std::string> SandboxWrapperArgv(const SandboxStatus& status) {
 }
 
 std::vector<std::string> HiddenPaths() {
-  const std::string browser = SettingText(Cfg("UAGENT_BROWSER_DATA"));
-  if (browser.empty() || browser.front() != '/') return {};
-  std::string canonical = CanonicalAccessPath(browser).string();
-  struct stat info{};
-  if (lstat(canonical.c_str(), &info) != 0) return {};
-  return {std::move(canonical)};
+  // The browser's profile, and the web host's own state: its paired devices'
+  // tokens would let a command act as the person at a browser.
+  std::vector<std::string> hidden;
+  for (const std::string& path :
+       {SettingText(Cfg("UAGENT_BROWSER_DATA")), GlobalBase() + "/web"}) {
+    if (path.empty() || path.front() != '/') continue;
+    std::string canonical = CanonicalAccessPath(path).string();
+    struct stat info{};
+    if (lstat(canonical.c_str(), &info) == 0) {
+      hidden.push_back(std::move(canonical));
+    }
+  }
+  return hidden;
 }
 
 int SandboxChildMain(int argc, char** argv) {

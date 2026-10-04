@@ -10,6 +10,7 @@ neither the workspace nor under any other default root, so a write to one is
 denied on both platforms.
 """
 
+import json
 import os
 import pathlib
 import shlex
@@ -324,6 +325,79 @@ def test_sandbox_protects_agent_state(root, home, *, binary):
 
     run_once(root, sandbox_env(home, "", UAGENT_SANDBOX="0"), command, binary=binary)
     assert_true(target.exists(), "control run could not write the saved settings either")
+
+
+def test_sandbox_hides_the_web_hosts_devices(root, home, *, binary):
+    """A paired device's token would let a command act as the person at a
+    browser: commands cannot read the web host's state, and the file tools
+    refuse it. The unsandboxed control shows the command itself works."""
+    if not sandbox_enforced(root, home, binary=binary):
+        return
+    devices = home / ".uagent" / "web" / "devices.json"
+    devices.parent.mkdir(parents=True, exist_ok=True)
+    devices.write_text("device-token-marker\n")
+    command = f"cat {devices}"
+    assert_true(
+        "device-token-marker"
+        not in tool_output(root, sandbox_env(home, ""), command, binary=binary),
+        "a sandboxed command read the paired devices",
+    )
+    assert_true(
+        "device-token-marker"
+        in tool_output(root, sandbox_env(home, "", UAGENT_SANDBOX="0"), command, binary=binary),
+        "control run could not read the file either",
+    )
+
+
+def test_a_link_made_in_the_same_batch_does_not_reach_the_saved_settings(root, home, *, binary):
+    """A call is approved for what it reaches when the batch is prepared. A
+    call before it can make its path a link to the saved settings: what it
+    needs is decided again when it runs, and it is refused."""
+    ws = workspace(root)
+    target = settings_path(home)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    seen = []
+
+    def route(_, body):
+        results = [str(m.get("content", "")) for m in body["messages"] if m.get("role") == "tool"]
+        if results:
+            seen.extend(results)
+            return event({"content": "done"})
+        return event(
+            {
+                "tool_calls": [
+                    {
+                        "index": 0,
+                        "id": "link",
+                        "function": {
+                            "name": "run",
+                            "arguments": json.dumps(
+                                {"command": f"ln -s {target.parent} {ws}/alias"}
+                            ),
+                        },
+                    },
+                    {
+                        "index": 1,
+                        "id": "write",
+                        "function": {
+                            "name": "write_file",
+                            "arguments": json.dumps(
+                                {"path": "alias/settings.json", "content": "{}"}
+                            ),
+                        },
+                    },
+                ]
+            },
+            finish="tool_calls",
+        )
+
+    with Server([route] * 2) as server:
+        env = sandbox_env(home, server.url, UAGENT_SANDBOX="0")
+        result = run(ws, env, "--yolo", "-p", "go", timeout=30, binary=binary)
+    assert_true(result.returncode == 0, (result.stdout, result.stderr))
+    assert_true((ws / "alias").is_symlink(), f"the link was never made: {seen}")
+    assert_true(not target.exists(), "a file tool wrote the saved settings through a link")
+    assert_true(any("changed after it was approved" in text for text in seen), seen)
 
 
 def test_sandbox_reads_stay_open(root, home, *, binary):

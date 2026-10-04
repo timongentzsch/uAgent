@@ -11,6 +11,7 @@
 #include <string>
 #include <utility>
 
+#include "include/core/config_registry.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
@@ -90,10 +91,11 @@ std::string ResolveEnvValue(const std::string& key, const EnvValues& values,
 }
 
 std::string ExpandProcessEnv(const std::string& value) {
-  EnvValues none;
-  none["__uagent_value"] = value;
+  // A saved setting may be referred to like a variable: it is no longer one.
+  EnvValues settings = CurrentSettings();
+  settings["__uagent_value"] = value;
   std::set<std::string> resolving;
-  return ResolveEnvValue("__uagent_value", none, resolving);
+  return ResolveEnvValue("__uagent_value", settings, resolving);
 }
 
 bool AgentConfigKey(const std::string& key) {

@@ -199,9 +199,11 @@ export function SettingField({
           <IconButton
             label={`Reset ${setting.label}`}
             disabled={disabled}
-            onClick={() => {
-              setDraft("");
-              void settle("");
+            onClick={async () => {
+              if (await set("")) {
+                setDraft("");
+                setEdited(false);
+              }
             }}
           >
             <RotateCcw />

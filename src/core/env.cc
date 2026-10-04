@@ -258,7 +258,9 @@ bool ValidOpenRouterVariant(std::string_view variant) {
 RuntimeConfig RuntimeConfig::FromEnvironment() {
   Values values;
   ForEachBinding([&](const auto& option) {
-    if (const char* value = getenv(option.Env())) values[option.Env()] = value;
+    // What is saved is not in the environment: both are read here.
+    const std::string value = SettingText(std::string(option.Env()));
+    if (!value.empty()) values[option.Env()] = value;
   });
   return FromValues(values);
 }

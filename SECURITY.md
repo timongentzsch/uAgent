@@ -38,6 +38,9 @@ account for untrusted code.
   Reads outside the workspace also prompt. Auto mode sends the current request
   and a bounded action preview to the configured OpenRouter Decisions model;
   it denies unattended calls when review fails or asks.
+- What a tool call needs approved is decided when its batch is prepared and
+  again when it runs: a call whose path an earlier call of the same batch
+  turned into a link to something only a person may touch is refused.
 - Some operations always require a person, even under YOLO, auto mode or a
   remembered rule, and are denied when no interactive client can answer, as
   in a delegated child: writing µAgent's configuration (the saved settings,
@@ -104,8 +107,9 @@ profile: a confined `cat ~/.uagent/config/settings.json` still pulls the file
 into model context.
 
 With the sandbox on, commands cannot read the browser data directory
-(`UAGENT_BROWSER_DATA`) or connect to its sockets, and the file tools refuse
-it; `run(sandbox=false)` and a disabled sandbox lift that, as they lift the
+(`UAGENT_BROWSER_DATA`) or the web host's state (`~/.uagent/web`, which holds
+the paired devices' tokens) or connect to their sockets, and the file tools
+refuse both; `run(sandbox=false)` and a disabled sandbox lift that, as they lift the
 sandbox itself. Yolo does not: it stops the questions, not the confinement. Linux uses Landlock (sockets from Linux 7.1, ABI 9), macOS
 Seatbelt. Keep the directory outside the sandbox's writable roots, e.g.
 `~/.uagent/browser`. See [the web guide](docs/WEB.md#isolation).

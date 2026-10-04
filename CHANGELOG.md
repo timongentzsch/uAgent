@@ -104,7 +104,8 @@ names one loads as before and the line has no effect.
 
 - A session's runtime stops after 15 minutes with nothing to do (no turn, no
   queued message, no running command, no terminal attached), and with it its
-  MCP servers. The next message starts it again with its model and permission
+  MCP servers. The next message, or a setting changed on the conversation
+  (model, permissions, tools), starts it again with its model and permission
   mode: in the web the composer stays, with no Resume step, and the `session`
   tool starts a coordinator or thread its message found stopped. Coordinators
   follow the same rule (15 minutes, was 10). A runtime that ends with nothing

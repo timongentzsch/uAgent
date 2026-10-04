@@ -141,9 +141,9 @@ SessionCommandResult SessionHost::ExecuteCommand(
     }
     return result;
   }
-  // A message to a saved session starts it: its runtime stopped for having
-  // nothing to do, and the message is as welcome as it was before.
-  if (kind == SessionCommandKind::kSubmit && session->pid <= 0 &&
+  // A command for a saved session's runtime starts it: the runtime stopped
+  // for having nothing to do, and the command is as welcome as it was before.
+  if (ForwardsToWorker(kind) && session->pid <= 0 &&
       JsonValue(command, "generation", "") == session->generation) {
     if (!ActivateLocked(session, result.error, lock, true)) return result;
     command["generation"] = session->generation;

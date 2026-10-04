@@ -227,7 +227,8 @@ runtime running. **Stop** interrupts the current turn. **Close** saves the
 conversation, then stops the runtime and its supervised children. A runtime
 with nothing to do for 15 minutes (no turn, no queued message, no running
 command, no terminal attached) stops the same way by itself. Either way the
-next message starts a runtime from the saved snapshot, with the conversation's
+next message, or a setting changed on the conversation (its model, permission
+mode, tools), starts a runtime from the saved snapshot, with the conversation's
 model and permission mode; it never repeats a previous command. Commands
 started with `detach` keep running through both.
 

@@ -2607,8 +2607,11 @@ def test_idle_session_stops_and_a_message_starts_it_again(root, home, *, binary)
             wait_until(lambda: not sockets(), "idle session kept running", timeout=30)
             saved = web.until(session, lambda value: value["metadata"]["status"] == "saved")
             assert_true("first-ok" in json.dumps(saved), saved)
-            # No resume step: the message itself starts the runtime.
-            web.command("submit", saved["metadata"], text="two")
+            # No resume step: a command for the runtime starts it, a setting
+            # as much as a message.
+            web.command("model", saved["metadata"], operation="catalog")
+            started = web.until(session, lambda value: value["metadata"]["generation"])
+            web.command("submit", started["metadata"], text="two")
             again = web.until(session, lambda value: "second-ok" in json.dumps(value))
             # The same session: its settings came back with it.
             assert_true(again["state"]["permissions"]["mode"] == "yolo", again["state"])

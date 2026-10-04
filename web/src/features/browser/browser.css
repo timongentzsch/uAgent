@@ -62,7 +62,6 @@ dialog.browser-view[data-layout="sheet"] {
   margin: 0;
   padding: var(--space-4) var(--pad);
   max-width: none;
-  border-radius: var(--space-4);
   background: rgb(0 0 0 / 0.78);
   color: var(--browser-ink);
   font-size: var(--font-small);

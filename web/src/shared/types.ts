@@ -452,6 +452,8 @@ export interface DetailPolicy {
 export interface Verbosity {
   level: string;
   levels: Record<string, DetailPolicy>;
+  // The level names from least detail to most.
+  order: string[];
 }
 export interface Catalogue {
   commands?: SlashCommand[];

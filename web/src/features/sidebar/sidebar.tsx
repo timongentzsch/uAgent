@@ -38,7 +38,7 @@ import FolderLabel, {
   folderOf,
 } from "../../shared/folder-label.tsx";
 import SessionName from "../../shared/session-name.tsx";
-import { Menu, MenuItem } from "../../shared/menu.tsx";
+import { Menu, MenuItem, MenuSub } from "../../shared/menu.tsx";
 import { levelLabel } from "../../shared/verbosity.ts";
 import { ActivityStatus, active } from "../chat/activity-status.tsx";
 import { ListRow } from "../../shared/list-row.tsx";
@@ -136,18 +136,23 @@ export function ConversationMenu({
       >
         Export transcript
       </MenuItem>
-      {detail?.levels.map((level) => (
-        <MenuItem
-          key={level}
-          role="menuitemradio"
-          aria-checked={level === detail.level}
-          disabled={detail.disabled}
-          onClick={() => detail.change(level)}
-        >
-          Detail, all conversations: {levelLabel(level)}
-          {level === detail.level && <Check />}
-        </MenuItem>
-      ))}
+      {detail && detail.levels.length > 0 && (
+        <MenuSub label="Detail" value={levelLabel(detail.level)}>
+          {detail.levels.map((level) => (
+            <MenuItem
+              key={level}
+              role="menuitemradio"
+              aria-checked={level === detail.level}
+              disabled={detail.disabled}
+              onClick={() => detail.change(level)}
+            >
+              {levelLabel(level)}
+              {level === detail.level && <Check />}
+            </MenuItem>
+          ))}
+          <p class="menu-note">For all conversations.</p>
+        </MenuSub>
+      )}
       {item.generation && (
         <MenuItem
           disabled={!online || item.turn_active}

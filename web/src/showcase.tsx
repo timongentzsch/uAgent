@@ -26,7 +26,7 @@ import {
   Time,
   CodeCopy,
 } from "./shared/ui.tsx";
-import { Menu, MenuItem } from "./shared/menu.tsx";
+import { Menu, MenuItem, MenuSub } from "./shared/menu.tsx";
 import { SheetButton } from "./shared/sheet.tsx";
 import { ConnectionStatus, StatusLed } from "./shared/connection-status.tsx";
 import { applyMotion, applyTheme, applyZoom } from "./shared/layout.ts";
@@ -309,6 +309,10 @@ function Showcase() {
                 <MenuItem>First action</MenuItem>
                 <MenuItem>Second action</MenuItem>
                 <MenuItem disabled>Unavailable</MenuItem>
+                <MenuSub label="Nested view" value="One">
+                  <MenuItem>One</MenuItem>
+                  <MenuItem>Two</MenuItem>
+                </MenuSub>
               </Menu>
             </div>
           </div>

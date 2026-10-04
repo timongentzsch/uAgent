@@ -1,12 +1,21 @@
 import { observeResize, observeViewport, viewportBounds } from "./layout.ts";
 import { settled } from "./motion.ts";
-import type { ComponentChildren, JSX } from "preact";
-import { useId, useLayoutEffect, useRef, useState } from "preact/hooks";
-import { Ellipsis } from "lucide-preact";
+import { createContext, type ComponentChildren, type JSX } from "preact";
+import {
+  useContext,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "preact/hooks";
+import { ChevronLeft, ChevronRight, Ellipsis } from "lucide-preact";
 import { nextIndex, typeAhead } from "./listbox-nav.ts";
 import { Button, IconButton } from "./ui.tsx";
 
 const navigation = ["ArrowDown", "ArrowUp", "Home", "End"];
+// Which nested view the panel shows (a MenuSub's id, "" for the items
+// themselves), and how to change it. A view's own items see "".
+const View = createContext({ view: "", show: (_view: string) => {} });
 const enabledItems = (panel: Element) => [
   ...panel.querySelectorAll<HTMLButtonElement>("button:not(:disabled)"),
 ];
@@ -23,6 +32,7 @@ export function Menu({
   children: ComponentChildren;
 }) {
   const [open, setOpen] = useState(false);
+  const [view, show] = useState("");
   // Which item takes focus on opening: ArrowUp on the button opens at the
   // last, everything else at the first.
   const start = useRef<"first" | "last">("first");
@@ -33,7 +43,11 @@ export function Menu({
   // once that has finished. Our own close unmounts without waiting for the
   // toggle event: WebKit drops it when a menu item opens a modal dialog,
   // which left the menu unable to reopen. Light dismiss uses the event.
-  const unmount = () => void settled(panel.current).then(() => setOpen(false));
+  const unmount = () =>
+    void settled(panel.current).then(() => {
+      setOpen(false);
+      show("");
+    });
   const close = () => {
     panel.current?.hidePopover();
     anchor.current?.focus({ preventScroll: true });
@@ -116,6 +130,21 @@ export function Menu({
           aria-label={label}
           class="menu-panel"
           onKeyDown={(event) => {
+            const row = (document.activeElement as HTMLElement | null)?.dataset
+              .menuView;
+            // Escape and ArrowLeft leave a view before they leave the menu;
+            // ArrowRight enters the view its row opens.
+            if (view && (event.key === "Escape" || event.key === "ArrowLeft")) {
+              event.preventDefault();
+              event.stopPropagation();
+              show("");
+              return;
+            }
+            if (event.key === "ArrowRight" && row) {
+              event.preventDefault();
+              show(row);
+              return;
+            }
             if (event.key === "Escape") {
               event.preventDefault();
               event.stopPropagation();
@@ -148,21 +177,74 @@ export function Menu({
             items[match].focus();
           }}
           onClick={(event) => {
-            if (
-              event.target instanceof Element &&
-              event.target.closest("button")
-            )
-              close();
+            // A row that opens or leaves a view keeps the menu open.
+            const pressed =
+              event.target instanceof Element && event.target.closest("button");
+            if (pressed && !pressed.hasAttribute("data-menu-stay")) close();
           }}
         >
-          {children}
+          <View.Provider value={{ view, show }}>{children}</View.Provider>
         </div>
       )}
     </div>
   );
 }
 
+// A row that opens a nested view in place: its items replace the menu's,
+// under a row that leads back. In place rather than beside the menu, so it
+// works where there is no room for a second panel.
+export function MenuSub({
+  label,
+  value,
+  children,
+}: {
+  label: string;
+  // What is chosen inside, shown on the row.
+  value?: string;
+  children: ComponentChildren;
+}) {
+  const { view, show } = useContext(View);
+  const id = useId();
+  const open = view === id;
+  // Focus follows into the view (past the row that leads back), and back
+  // to this row when the view closes.
+  const opened = useRef(false);
+  useLayoutEffect(() => {
+    const row = document.querySelector<HTMLElement>(`[data-menu-view="${id}"]`);
+    const first = row?.parentElement?.querySelector<HTMLElement>(
+      "button:not([data-menu-stay]):not(:disabled)",
+    );
+    if (open) first?.focus({ preventScroll: true });
+    else if (opened.current) row?.focus({ preventScroll: true });
+    opened.current = open;
+  }, [open]);
+  if (!open)
+    return (
+      <MenuItem
+        data-menu-stay
+        data-menu-view={id}
+        aria-haspopup="menu"
+        onClick={() => show(id)}
+      >
+        {label}
+        <span class="menu-value">{value}</span>
+        <ChevronRight />
+      </MenuItem>
+    );
+  return (
+    <View.Provider value={{ view: "", show }}>
+      <MenuItem data-menu-stay data-menu-view={id} onClick={() => show("")}>
+        <ChevronLeft />
+        {label}
+      </MenuItem>
+      {children}
+    </View.Provider>
+  );
+}
+
 export function MenuItem(props: JSX.ButtonHTMLAttributes<HTMLButtonElement>) {
+  // While a view is open the menu's own items make way for it.
+  if (useContext(View).view) return null;
   return (
     <Button
       // A choice among several says so with its own role.

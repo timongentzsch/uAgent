@@ -82,7 +82,18 @@ showcaseTest("a menu opens, moves and closes by keyboard", async ({ page }) => {
   const item = (name) => menu.getByRole("menuitem", { name });
   // Up opens at the last available item, Down at the first.
   await page.keyboard.press("ArrowUp");
-  await expect(item("Second action")).toBeFocused();
+  await expect(item("Nested view")).toBeFocused();
+  // Right opens the row's view in place and moves into it; Left and Escape
+  // lead back to the row, and only then does Escape close the menu.
+  await page.keyboard.press("ArrowRight");
+  await expect(item("One")).toBeFocused();
+  await expect(item("First action")).toHaveCount(0);
+  await page.keyboard.press("ArrowLeft");
+  await expect(item("Nested view")).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(item("One")).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(item("Nested view")).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(trigger).toBeFocused();
   await page.keyboard.press("ArrowDown");

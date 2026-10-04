@@ -207,7 +207,7 @@ function App() {
     () => detailOf(catalogue.verbosity),
     [catalogue.verbosity],
   );
-  const levels = Object.keys(catalogue.verbosity?.levels || {});
+  const levels = catalogue.verbosity?.order || [];
   const changeDetail = (level: string) => setVerbosity(level).catch(report);
   const [inspector, setInspector] = useState<InspectorTarget | null>(null);
   const metadata = useSnapshots(snapshots, (all) => all[selected]?.metadata);

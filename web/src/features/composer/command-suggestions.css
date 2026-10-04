@@ -9,9 +9,8 @@
   max-height: min(calc(220rem / 14), calc(var(--viewport-height) * 0.4));
   overflow-y: auto;
   overscroll-behavior: contain;
-  border: 1px solid var(--line);
+  border: 1px solid var(--field-border);
   background: var(--surface);
-  box-shadow: var(--shadow-float);
 }
 .suggestions button {
   display: flex;

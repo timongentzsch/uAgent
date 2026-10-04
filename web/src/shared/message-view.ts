@@ -53,10 +53,12 @@ export function presentMessages(
   for (const block of blocks) {
     if (block.kind === "assistant" && block.response_id)
       responses.set(block.response_id, block);
+    // Thinking is content only at a level that shows it: a reply holding
+    // nothing else would otherwise be an empty row with its margins.
     if (
       block.kind === "assistant" &&
       !block.text &&
-      !block.reasoning &&
+      !(block.reasoning && policy.reasoning !== "hidden") &&
       !block.files?.length &&
       !block.deliveries?.length &&
       !block.error &&

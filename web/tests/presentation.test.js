@@ -458,6 +458,23 @@ test("minimal folds a turn's work into one row before its answer", () => {
   );
 });
 
+test("a reply that is only thinking is a row where thinking shows", () => {
+  const turn = [
+    { id: "u1", kind: "user", text: "go" },
+    { id: "m1", kind: "assistant", text: "", reasoning: "hm" },
+    call("x1", "explore"),
+    { id: "m2", kind: "assistant", text: "Done." },
+  ];
+  // Hidden thinking leaves nothing to show, so no empty row is kept.
+  assert.deepEqual(shape(presentMessages(turn, MINIMAL)), ["u1", ["x1"], "m2"]);
+  assert.deepEqual(shape(presentMessages(turn, DEFAULT)), [
+    "u1",
+    "m1",
+    "x1",
+    "m2",
+  ]);
+});
+
 test("full folds nothing and keeps routine rows", () => {
   const blocks = [
     grouped("x1", "explore", "x1", "Explored · 2 calls"),

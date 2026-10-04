@@ -90,6 +90,8 @@ inline constexpr std::string_view kWebSearchBackends[] = {"auto", "openrouter",
                                                           "off"};
 inline constexpr std::string_view kApprovalModes[] = {"ask", "auto", "yolo"};
 inline constexpr std::string_view kThreadEnvironments[] = {"worktree", "local"};
+inline constexpr std::string_view kVerbosityLevels[] = {"minimal", "default",
+                                                        "full"};
 
 // Default model route when nothing is configured: DeepSeek flash through
 // OpenRouter auto-routing. One constant so the provider template and side-model
@@ -618,6 +620,15 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                       ReloadPolicy::kRestartRequired, "behaviour",
                       "show a still status instead of the terminal spinner"),
         "Reduced motion")),
+    registry::Named(
+        registry::Choice(
+            registry::Str("UAGENT_VERBOSITY", {}, "default",
+                          ReloadPolicy::kNextUserTurn, Sensitivity::kPublic,
+                          "behaviour",
+                          "how much of the agent's work is shown: minimal, "
+                          "default or full; display only"),
+            kVerbosityLevels),
+        "Detail shown"),
     registry::Named(
         registry::Str("UAGENT_MEMORY_REDACT_KEYWORDS", {}, "",
                       ReloadPolicy::kRestartRequired, Sensitivity::kPublic,

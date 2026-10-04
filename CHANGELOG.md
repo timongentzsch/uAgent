@@ -7,6 +7,9 @@
 Settings that left the registry are no longer read. A config file that still
 names one loads as before and the line has no effect.
 
+- Removed: `/verbose`. `/verbosity full` shows what it did, `/verbosity
+  default` puts it back; unlike `/verbose` the level is saved and shared (see
+  Added). `--verbosity full` sets it for one terminal without saving.
 - Removed: `UAGENT_STEERING` (it gated nothing) and
   `UAGENT_OPENROUTER_FALLBACKS`. A provider pinned with
   `UAGENT_OPENROUTER_PROVIDER` no longer falls back to another.
@@ -46,6 +49,15 @@ names one loads as before and the line has no effect.
 
 ### Added
 
+- Verbosity: one display setting, `UAGENT_VERBOSITY` (`minimal`, `default`,
+  `full`), for the terminal and the web. `minimal` shows the answer and one
+  "Worked · N steps" row per turn, with failures and prompts still on rows of
+  their own; `full` shows thinking, every call, its arguments and its output.
+  `/verbosity LEVEL` or the switch above a web conversation changes it
+  everywhere and restyles what is already shown; `--verbosity` and Settings →
+  Display set it for one terminal or one browser. The model never sees it.
+- Web: tool calls fold into the same groups the terminal shows ("Explored ·
+  4 calls") instead of any three calls in a row.
 - Web: the conversation menu exports the transcript, compacts and restarts
   the conversation; typed `/restart` does the same.
 - `uagent --plain` (or `UAGENT_PLAIN=1`) for screen readers: append-only

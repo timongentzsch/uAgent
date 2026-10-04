@@ -42,6 +42,7 @@
 #include "include/core/platform.h"
 #include "include/core/signals.h"
 #include "include/core/time.h"
+#include "include/core/verbosity.h"
 #include "include/tools/files.h"
 #include "include/web/assets.h"
 #include "include/web/browser_viewer.h"
@@ -257,6 +258,9 @@ class Master {
                              {"cursor", std::move(catalogue["cursor"])},
                              {"sessions", std::move(catalogue["sessions"])},
                              {"commands", CommandSchemaJson()},
+                             {"verbosity",
+                              {{"level", ConfiguredVerbosity()},
+                               {"levels", DetailPoliciesJson()}}},
                              {"capabilities", push_->Capabilities(device)},
                              {"devices", PublicDevices()},
                              {"scheduled", std::move(catalogue["scheduled"])},
@@ -423,6 +427,9 @@ class Master {
     std::thread stopping([&] {
       for (;;) {
         std::vector<std::string> paths = host_.PresencePaths();
+        // The level is display state every browser shares: whoever writes
+        // the user's config (here, a terminal, an editor) reaches them all.
+        paths.push_back(UagentConfigPath());
         // Wakes for a catalogue scan the throttle deferred.
         auto deadline = Clock::now() + std::chrono::hours(24);
         if (auto rescan = host_.RescanDue()) {
@@ -434,6 +441,7 @@ class Master {
           if (reexec_) std::this_thread::sleep_for(kRestartReply);
           break;
         }
+        PublishVerbosity();
         // Sessions a coordinator creates or deletes reach every client.
         host_.RefreshCatalogue();
         bool observed;
@@ -503,6 +511,23 @@ class Master {
       return &local_;
     }
     return nullptr;
+  }
+  // The configured level, by a name the policy table knows.
+  static std::string ConfiguredVerbosity() {
+    const auto values = ConfigManager::Capture(false, {}).Read().values;
+    const auto found = values.find(std::string(kVerbositySetting));
+    return std::string(
+        DetailFor(found == values.end() ? "" : found->second).level);
+  }
+  // Tells every browser the level when it is no longer the one they have.
+  void PublishVerbosity() {
+    const std::string level = ConfiguredVerbosity();
+    {
+      std::lock_guard lock(verbosity_mutex_);
+      if (level == verbosity_) return;
+      verbosity_ = level;
+    }
+    host_.Publish("", "", {{"kind", "verbosity.changed"}, {"level", level}});
   }
   std::string Pair() {
     pair_ = RandomToken(12);
@@ -640,6 +665,8 @@ class Master {
   int auth_attempts_ = 0;
   httplib::Server server_;
   std::mutex mutex_;
+  std::mutex verbosity_mutex_;
+  std::string verbosity_ = ConfiguredVerbosity();
   Pipe host_wake_;
   std::vector<Device> devices_;
   size_t sse_count_ = 0;
@@ -822,6 +849,7 @@ void Master::Command(const Request& request, Response& response) {
     lock.unlock();
     auto manager = ConfigManager::Capture(false, {});
     auto result = ConfigurationControl(command, manager, false);
+    PublishVerbosity();
     lock.lock();
     outcome["result"] = result;
     error = JsonValue(result, "error", "");

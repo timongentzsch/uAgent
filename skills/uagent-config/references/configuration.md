@@ -157,4 +157,5 @@ Every setting below is read from the running binary's registry. `takes effect` i
 | `UAGENT_MARKDOWN` | boolean | `1` | restart-required | render Markdown on a TTY |
 | `UAGENT_PLAIN` | boolean | `0` | restart-required | screen-reader terminal: labelled lines, no animation or cursor control |
 | `UAGENT_REDUCED_MOTION` | boolean | `0` | restart-required | show a still status instead of the terminal spinner |
+| `UAGENT_VERBOSITY` | string | `default` | next-user-turn | how much of the agent's work is shown: minimal, default or full; display only |
 | `UAGENT_MEMORY_REDACT_KEYWORDS` | string | empty | restart-required | extra keywords redacted from stored memories |

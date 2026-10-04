@@ -1,5 +1,7 @@
 import { isFailedStatus, isRunningStatus } from "./display.ts";
-import type { Block, PresentedBlock } from "./types.ts";
+import { plural } from "./quantities.ts";
+import type { Block, DetailPolicy, PresentedBlock } from "./types.ts";
+import { defaultDetail } from "./verbosity.ts";
 
 // A block the host did not change keeps its row object, so a streamed
 // frame presents only the rows it touched and the rest compare by identity.
@@ -41,7 +43,11 @@ export const recallable = (
 // message and one per tool call, so a block is a row. Empty assistant
 // placeholders (a response before its first delta) are dropped: the status
 // line covers the live state. A tool row keeps the model call that made it.
-export function presentMessages(blocks: Block[]): PresentedBlock[] {
+// The verbosity level's policy then says how tool work folds.
+export function presentMessages(
+  blocks: Block[],
+  policy: DetailPolicy = defaultDetail.policy,
+): PresentedBlock[] {
   const rows: PresentedBlock[] = [];
   const responses = new Map<string, Block>();
   for (const block of blocks) {
@@ -58,8 +64,8 @@ export function presentMessages(blocks: Block[]): PresentedBlock[] {
       !block.truncated
     )
       continue;
-    // Routine memory outcomes are for the terminal's /verbose view only.
-    if (block.memory?.minor) continue;
+    // Routine memory outcomes show only at a level that asks for them.
+    if (block.memory?.minor && !policy.minor) continue;
     rows.push(
       present(
         block,
@@ -69,7 +75,12 @@ export function presentMessages(blocks: Block[]): PresentedBlock[] {
       ),
     );
   }
-  return foldGroups(attachToolFiles(rows));
+  const kept = attachToolFiles(rows);
+  return policy.work === "turn"
+    ? foldTurns(kept)
+    : policy.work === "groups"
+      ? foldGroups(kept)
+      : kept;
 }
 
 // Files a tool added to context (a browser screenshot, a read image) belong
@@ -102,48 +113,98 @@ function attachToolFiles(rows: PresentedBlock[]): PresentedBlock[] {
   return kept;
 }
 
-// A run of this many tool calls or more folds into one row.
-const FOLD = 3;
-// Each fold by its first row: a run whose rows are unchanged keeps its
-// group, so as rows stream only the last run is refolded (and re-rendered).
+// Each fold by its first row: a fold whose rows are unchanged keeps its
+// group, so as rows stream only the last one is refolded (and re-rendered).
 const folds = new WeakMap<PresentedBlock, PresentedBlock>();
 
-// Consecutive tool calls fold into one row ("Ran 4 commands · edited 2
-// files"), as Codex and opencode do. A failure or a call with something to
-// show (a file, a link) keeps its own row and ends the run. The group takes
-// its first row's key, so the transcript keeps its place when a run folds.
+// Rows as one row that opens to them. It takes its first row's key, so the
+// transcript keeps its place when rows fold.
+function fold(children: PresentedBlock[], label: string): PresentedBlock {
+  const first = children[0];
+  const prior = folds.get(first);
+  if (
+    prior?.label === label &&
+    prior.children?.length === children.length &&
+    prior.children.every((row, index) => row === children[index])
+  )
+    return prior;
+  const key = first.key || first.id;
+  const group = { id: `group-${key}`, key, kind: "group", label, children };
+  folds.set(first, group);
+  return group;
+}
+
+// The host names the calls that read as one ("Explored · 4 calls"): adjacent
+// rows of one group fold under its label, and every other call keeps its row.
 function foldGroups(rows: PresentedBlock[]): PresentedBlock[] {
   const folded: PresentedBlock[] = [];
-  let run: PresentedBlock[] = [];
+  for (let begin = 0; begin < rows.length;) {
+    const group = rows[begin].activity?.group;
+    let end = begin + 1;
+    while (group && rows[end]?.activity?.group?.id === group.id) end++;
+    folded.push(
+      end - begin > 1
+        ? fold(rows.slice(begin, end), group!.label)
+        : rows[begin],
+    );
+    begin = end;
+  }
+  return folded;
+}
+
+// What a turn's folded work did: "Worked · 14 steps · edited 2 files".
+function workLabel(steps: PresentedBlock[]) {
+  const calls = steps.filter((step) => step.kind !== "assistant");
+  const edited = new Set(
+    calls
+      .filter((step) => step.activity?.category === "edit")
+      .map((step) => step.view?.target || step.id),
+  ).size;
+  return [
+    `Worked · ${plural(calls.length, "step")}`,
+    edited && `edited ${plural(edited, "file")}`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+// A turn runs from a message of yours to its footer. Its last reply is the
+// answer; the calls and interim replies before it fold into one row where
+// the first of them stood. What needs you stays a row of its own: a failed
+// or cancelled call, an error.
+function foldTurns(rows: PresentedBlock[]): PresentedBlock[] {
+  const folded: PresentedBlock[] = [];
+  let turn: PresentedBlock[] = [];
   const flush = () => {
-    const first = run[0];
-    if (run.length < FOLD) folded.push(...run);
-    else {
-      const prior = folds.get(first);
-      const same =
-        prior?.children?.length === run.length &&
-        prior.children.every((row, index) => row === run[index]);
-      const key = first.key || first.id;
-      const group = same
-        ? prior
-        : { id: `group-${key}`, key, kind: "group", children: run };
-      folds.set(first, group);
-      folded.push(group);
+    const answer = turn.findLast((row) => row.kind === "assistant" && row.text);
+    const steps: PresentedBlock[] = [];
+    let at = -1;
+    for (const row of turn) {
+      const work =
+        row !== answer &&
+        !row.error &&
+        !isFailedStatus(row.status) &&
+        !/cancel/i.test(row.status || "") &&
+        (row.kind === "tool_result" ||
+          row.kind === "activity" ||
+          row.kind === "assistant" ||
+          (row.kind === "attachment" && row.origin === "tool"));
+      if (work) {
+        if (at < 0) at = folded.push(row) - 1;
+        steps.push(row);
+      } else folded.push(row);
     }
-    run = [];
+    if (steps.length) folded[at] = fold(steps, workLabel(steps));
+    turn = [];
   };
   for (const row of rows) {
-    const joins =
-      row.kind === "tool_result" &&
-      !row.parts?.length &&
-      !row.files?.length &&
-      !isFailedStatus(row.status) &&
-      !/cancel/i.test(row.status || "");
-    if (joins) run.push(row);
-    else {
+    const yours =
+      row.kind === "user" ||
+      (row.kind === "attachment" && row.origin !== "tool");
+    if (yours || row.summary) {
       flush();
       folded.push(row);
-    }
+    } else turn.push(row);
   }
   flush();
   return folded;

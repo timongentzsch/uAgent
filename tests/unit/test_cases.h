@@ -20,6 +20,7 @@ namespace uagent {
   X(TestForeignToolMarkup)                       \
   X(TestToolResults)                             \
   X(TestToolViews)                               \
+  X(TestVerbosityLevels)                         \
   X(TestModelHints)                              \
   X(TestRegistries)                              \
   X(TestCommandAndDisplayRegistries)             \

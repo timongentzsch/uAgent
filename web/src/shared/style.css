@@ -974,6 +974,12 @@ dialog.sidebar:not([open]) {
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+/* The detail switch keeps its three levels on one line beside the title. */
+.conversation-head .detail-switch {
+  flex-shrink: 0;
+  flex-wrap: nowrap;
+  gap: var(--space-1);
+}
 .transcript {
   /* The transcript hook owns scrolling: it pins the bottom and keeps the
      paragraph being read in place. Native anchoring would fight both. */

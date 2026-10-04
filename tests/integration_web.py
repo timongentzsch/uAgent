@@ -2069,6 +2069,59 @@ def test_web_child_controls_and_conversation_ownership(root, home, *, binary):
             assert_true("Child follow-up result" in json.dumps(detail["conversation"]), detail)
 
 
+def test_web_verbosity_is_one_level_pushed_to_every_browser(root, home, *, binary):
+    import http.client
+
+    with Server([event({"content": "unused"})]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+            client.pair(code)
+            listing = client.json("/api/sessions")[1]
+            # The level and what each level shows come from the host: the
+            # browser holds no rule of its own.
+            assert_true(listing["verbosity"]["level"] == "default", listing["verbosity"])
+            levels = listing["verbosity"]["levels"]
+            assert_true(
+                [levels[name]["work"] for name in ("minimal", "default", "full")]
+                == ["turn", "groups", "calls"]
+                and levels["full"]["open"]
+                and not levels["default"]["open"],
+                levels,
+            )
+            connection = http.client.HTTPConnection("127.0.0.1", client.port, timeout=15)
+            connection.request(
+                "GET",
+                f"/api/events?cursor={listing['epoch']}:{listing['cursor']}",
+                headers={"Cookie": client.cookie},
+            )
+            response = connection.getresponse()
+            assert_true(response.status == 200, response.status)
+            pushed = []
+
+            def read_events():
+                while line := response.readline():
+                    if line.startswith(b"data: "):
+                        frame = json.loads(line[6:])
+                        if frame.get("kind") == "verbosity.changed":
+                            pushed.append(frame["level"])
+
+            threading.Thread(target=read_events, daemon=True).start()
+            client.command(
+                "config",
+                operation="apply",
+                scope="user",
+                changes=[{"key": "UAGENT_VERBOSITY", "value": "minimal"}],
+            )
+            wait_until(lambda: pushed == ["minimal"], f"change was not pushed: {pushed}")
+            # A terminal or an editor writes the same file: browsers follow.
+            config = home / ".uagent/.config"
+            config.write_text(config.read_text().replace("minimal", "full"))
+            wait_until(lambda: pushed == ["minimal", "full"], f"file change not pushed: {pushed}")
+            assert_true(
+                client.json("/api/sessions")[1]["verbosity"]["level"] == "full", "stale level"
+            )
+            # The reader ends with the host; closing here would wait on it.
+
+
 def test_web_http_context_configuration_permissions_and_fork(root, home, *, binary):
     project = root / "context-fork"
     project.mkdir()

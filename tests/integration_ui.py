@@ -135,12 +135,12 @@ def test_reasoning_modes_render_consistently(root, home, *, binary):
             root,
             env,
             [
-                (b"/verbose\n", b"verbose on"),
                 # Quit once the turn has settled, however slow the build.
                 (b"go\n", b"Final answer", b"Ready", None),
                 b"/q\n",
             ],
             timeout=10,
+            args=("--verbosity", "full"),
             binary=binary,
         )
         assert_true(code == 0, verbose)
@@ -199,8 +199,8 @@ def test_non_utf8_locale_draws_only_ascii(root, home, *, binary):
             root,
             env,
             [
-                (b"/verbose\n", b"verbose on"),
-                (b"/verbose\n", b"verbose off"),
+                (b"/verbosity full\n", b"verbosity full"),
+                (b"/verbosity default\n", b"verbosity default"),
                 (b"go\n", b"ascii-ok", b"Ready", None),
                 (b"/cost\n", b"total"),
                 b"/q\n",
@@ -607,9 +607,8 @@ def test_tool_output_drops_its_own_colours(root, home, *, binary):
             code, output = run_pty(
                 root,
                 base_env(home, server.url),
-                [(b"/verbose\n", b"verbose on")] * verbose
-                + [(b"go\n", b"colour-ok", b"Ready", None), b"/q\n"],
-                args=("--yolo",),
+                [(b"go\n", b"colour-ok", b"Ready", None), b"/q\n"],
+                args=("--yolo", *(("--verbosity", "full") * verbose)),
                 binary=binary,
             )
             assert_true(code == 0, output[-2000:])

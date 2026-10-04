@@ -118,7 +118,7 @@ Common slash commands:
 | `/sessions`, `/new`, `/rename`, `/fork`, `/rewind`, `/compact`, `/share` | Manage sessions and context |
 | `/memory`, `/skills`, `/schedule`, `/instructions`, `/config`, `/restart` | Manage memory, skills, scheduled tasks, instructions and settings; restart to apply one |
 | `/btw QUESTION` | Ask a side question about the conversation; the answer is not added to it |
-| `/verbose`, `/clear`, `/help`, `/quit` | Toggle full output, clear the screen, list all commands, detach |
+| `/verbosity LEVEL`, `/clear`, `/help`, `/quit` | Show minimal, default or full detail everywhere; clear the screen, list all commands, detach |
 
 `/help` lists every command with its arguments.
 

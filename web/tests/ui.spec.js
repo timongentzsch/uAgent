@@ -1729,9 +1729,12 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
   const prompt = page.getByLabel("Message or guidance");
   await prompt.fill("Exploration probe");
   await prompt.press("Enter");
-  // Two calls stay rows of their own; only three or more fold.
-  await expect(page.locator(".transcript .tool-disclosure")).toHaveCount(2);
-  await expect(page.locator(".transcript .group")).toHaveCount(0);
+  // The host grouped the two reads: one row under its label, as a terminal
+  // shows them.
+  await expect(page.locator(".transcript .tool-disclosure")).toHaveCount(1);
+  await expect(page.locator(".transcript .group")).toHaveText(
+    /Explored · 2 calls/,
+  );
   await expect(
     page.getByRole("heading", { name: "Verified response" }),
   ).toBeVisible();
@@ -1787,9 +1790,9 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
     page.getByRole("button", { name: "Jump to latest" }),
   ).toBeVisible();
   await page.reload();
-  await expect(page.locator(".transcript > * .tool-disclosure")).toHaveCount(3);
-  // Retained history replays through the live pipeline: one row per call,
-  // none stuck on Running.
+  await expect(page.locator(".transcript > * .tool-disclosure")).toHaveCount(2);
+  // Retained history replays through the live pipeline: the same group and
+  // the receipt, none stuck on Running.
   await expect(
     page.locator(".transcript .tool-disclosure", { hasText: "Running" }),
   ).toHaveCount(0);

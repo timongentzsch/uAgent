@@ -2,7 +2,7 @@ import "../composer/attachments.css";
 import { TurnFooter } from "./turn-footer.tsx";
 import Markdown, { prepareMarkdown } from "../../shared/markdown-view.tsx";
 import "./message.css";
-import { count, plural } from "../../shared/quantities.ts";
+import { count } from "../../shared/quantities.ts";
 import { Component } from "preact";
 import {
   presentMessages,
@@ -37,6 +37,7 @@ import { useBlockReader } from "../../state/block-reader.ts";
 import { duration } from "../../shared/duration.ts";
 import { ToolInline, ToolRow } from "./tool-row.tsx";
 import { isRunningStatus, statusLine } from "../../shared/display.ts";
+import { DetailContext } from "../../shared/verbosity.ts";
 
 // The inspector opens a block's own work; a link part names it.
 function linkTarget(block: Block, link: LinkPart): Block {
@@ -114,10 +115,13 @@ function MessageView({ block, online, session }: MessageProps) {
     branch,
     http,
   } = useContext(MessageActions);
+  const { policy } = useContext(DetailContext);
   const [full, setFull] = useState<string | null>(null);
   const [expanding, setExpanding] = useState(false);
-  const [expanded, setExpanded] = useState(false);
-  // A command's output box can ask for the full text without expanding.
+  // A level that shows output opens the row on the preview it holds.
+  const [expanded, setExpanded] = useState(policy.open);
+  // The full text loads when asked for: by opening the row, or from a row
+  // or output box that is already open.
   const [wantFull, setWantFull] = useState(false);
   const [loadError, setLoadError] = useState<unknown>(null);
   const [retry, setRetry] = useState(0);
@@ -128,7 +132,7 @@ function MessageView({ block, online, session }: MessageProps) {
     if (
       !online ||
       (!tool && block.kind !== "activity") ||
-      !(expanded || wantFull) ||
+      !wantFull ||
       !block.truncated ||
       full !== null
     )
@@ -155,7 +159,6 @@ function MessageView({ block, online, session }: MessageProps) {
   }, [
     online,
     tool,
-    expanded,
     wantFull,
     block.truncated,
     block.detail_id,
@@ -302,7 +305,16 @@ function MessageView({ block, online, session }: MessageProps) {
               retry={() => setRetry(retry + 1)}
               online={online}
               inspect={inspect}
-              onToggle={(event) => setExpanded(event.currentTarget.open)}
+              open={policy.open}
+              loadFull={
+                block.truncated && full === null
+                  ? () => setWantFull(true)
+                  : undefined
+              }
+              onToggle={(event) => {
+                setExpanded(event.currentTarget.open);
+                if (event.currentTarget.open) setWantFull(true);
+              }}
             />
             <MessageMenu
               label={`Actions for ${name}`}
@@ -322,10 +334,11 @@ function MessageView({ block, online, session }: MessageProps) {
           />
         </>
       )}
-      {block.reasoning && (
+      {block.reasoning && policy.reasoning !== "hidden" && (
         <DisclosureRow
           className="thinking"
           label="Thinking"
+          open={policy.reasoning === "open"}
           status={block.streaming ? "streaming" : undefined}
         >
           {/* Reasoning stays plain while streaming: a never-opened
@@ -497,39 +510,27 @@ class Message extends Component<MessageProps> {
   }
 }
 
-// What a folded run did: commands run, files edited, and the edits' lines.
-function groupSummary(steps: PresentedBlock[]) {
-  const edits = steps.filter((step) => step.activity?.category === "edit");
-  const commands = steps.length - edits.length;
-  const lines = edits.reduce<[number, number]>(
-    (sum, step) => {
-      const [added, removed] = diffCounts(step.change);
-      return [sum[0] + added, sum[1] + removed];
-    },
-    [0, 0],
-  );
-  const label = [
-    commands && `Ran ${plural(commands, "command")}`,
-    edits.length &&
-      `${commands ? "edited" : "Edited"} ${plural(edits.length, "file")}`,
-  ]
-    .filter(Boolean)
-    .join(" · ");
-  return { label, lines: formatStat(lines) };
-}
-
-// A run of tool calls as one row, expanding to the calls themselves.
+// Folded rows as one row, expanding to the rows themselves: the label says
+// what they did, the status what their edits changed.
 function GroupRow(props: MessageProps) {
   const steps = props.block.children || [];
   const running = steps.some(
     (step) => step.duration_ms == null && isRunningStatus(step.status),
   );
-  const { label, lines } = groupSummary(steps);
+  const lines = formatStat(
+    steps.reduce<[number, number]>(
+      (sum, step) => {
+        const [added, removed] = diffCounts(step.change);
+        return [sum[0] + added, sum[1] + removed];
+      },
+      [0, 0],
+    ),
+  );
   return (
     <article data-message-id={props.block.key} className="message tool group">
       <DisclosureRow
         className={`tool-disclosure${running ? " running" : ""}`}
-        label={label}
+        label={props.block.label || ""}
         status={running ? "running" : lines || undefined}
       >
         {steps.map((step) => (
@@ -570,9 +571,12 @@ export async function prepareHistoryBlocks(blocks: Block[]) {
 // Keys are scoped to the session: stable message IDs are local to a
 // conversation, so a reused instance must never carry expansion,
 // disclosure or markdown state from another conversation for the same ID.
+// The verbosity level is part of the key too: a new level restyles every row
+// from its own start, and until then a row stays as the person left it.
 export function MessageRows({ blocks, ...props }: MessageRowsProps) {
-  const rows = useMemo(() => presentMessages(blocks), [blocks]);
-  const scope = props.session?.id ? `${props.session.id}:` : "";
+  const { level, policy } = useContext(DetailContext);
+  const rows = useMemo(() => presentMessages(blocks, policy), [blocks, policy]);
+  const scope = `${props.session?.id || ""}:${level}:`;
   return (
     <>
       {rows.map((row) => (

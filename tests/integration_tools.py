@@ -215,7 +215,9 @@ def test_full_run_and_python_terminal_trace(root, home, *, binary):
         ]
     ) as server:
         env = base_env(home, server.url)
-        result = run_dialog(root, env, "/verbose\ntrace\n/q\n", "--yolo", timeout=20, binary=binary)
+        result = run_dialog(
+            root, env, "trace\n/q\n", "--yolo", "--verbosity", "full", timeout=20, binary=binary
+        )
         assert_true(result.returncode == 0, result.stderr)
         for expected in (
             "printf 'shell-one",
@@ -410,13 +412,13 @@ def test_skill_tool_offers_and_opens(root, home, *, binary):
         code, output = run_pty(
             workspace,
             base_env(home, server.url),
-            # Verbose output shows the opened skill body in the tool result.
+            # Full output shows the opened skill body in the tool result.
             [
-                (b"/verbose\n", b"verbose on"),
                 (b"reply\n", b"skill-ok", b"Ready", None),
                 b"\x04",
             ],
             columns=24,
+            args=("--verbosity", "full"),
             binary=binary,
         )
         assert_true(code == 0, output)

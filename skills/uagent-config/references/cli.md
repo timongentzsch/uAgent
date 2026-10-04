@@ -18,6 +18,7 @@
 | `--token-budget` | `TOKENS` | cap generated tokens across the session between model calls |
 | `--plain` | — | screen-reader output: labelled lines, no animation |
 | `--no-memory` | — | disable memory recall and writes for this session |
+| `--verbosity` | `LEVEL` | detail shown in this terminal: minimal, default or full |
 | `--model` | `SELECTION` | conversation model as [provider/]model[:variant][:effort] |
 | `--image-model` | `SELECTION` | read attached images with this model route |
 | `--subagent-model` | `SELECTION` | default model route for delegated subagents |

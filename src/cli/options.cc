@@ -8,6 +8,7 @@
 #include <string_view>
 #include <utility>
 
+#include "include/core/config_registry.h"
 #include "include/core/strings.h"
 
 namespace uagent {
@@ -49,6 +50,8 @@ constexpr FlagSpec kFlags[] = {
      .key = "UAGENT_MEMORY",
      .help = "disable memory recall and writes for this session",
      .preset = "0"},
+    {"--verbosity", FlagKind::kConfig, nullptr, "UAGENT_VERBOSITY", "LEVEL",
+     "detail shown in this terminal: minimal, default or full"},
     {"--model", FlagKind::kConfig, nullptr, "UAGENT_MODEL", "SELECTION",
      "conversation model as [provider/]model[:variant][:effort]"},
     {"--image-model", FlagKind::kConfig, nullptr, "UAGENT_IMAGE_MODEL",
@@ -138,6 +141,15 @@ ParsedOptions ParseOptions(int argc, char* const argv[]) {
       case FlagKind::kConfig:
         if (Trim(value).empty()) {
           parsed.error = argument + " requires a value";
+          return parsed;
+        }
+        if (const ConfigDescriptor* descriptor =
+                FindConfigDescriptor(spec->key);
+            descriptor && !descriptor->Accepts(Trim(value))) {
+          parsed.error = argument + " expects one of:";
+          for (std::string_view choice : descriptor->choices) {
+            parsed.error += " " + std::string(choice);
+          }
           return parsed;
         }
         parsed.options.overrides[spec->key] = Trim(value);

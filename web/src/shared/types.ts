@@ -199,6 +199,8 @@ export interface Block {
 }
 export interface PresentedBlock extends Block {
   children?: PresentedBlock[];
+  // A folded row's own line: the host's group label, or a turn's work.
+  label?: string;
   key?: string;
   source?: Block;
   result_loaded?: boolean;
@@ -437,8 +439,23 @@ export interface SlashCommand {
   // here it still runs, and its aliases still resolve.
   terminal?: boolean;
 }
+// What one verbosity level shows, as the host's table states it (see
+// DetailPolicy in verbosity.h): how tool work is laid out, and what is shown
+// without asking.
+export interface DetailPolicy {
+  work: "turn" | "groups" | "calls";
+  // Thinking: absent, a closed row, or shown.
+  reasoning: "hidden" | "closed" | "open";
+  open: boolean;
+  minor: boolean;
+}
+export interface Verbosity {
+  level: string;
+  levels: Record<string, DetailPolicy>;
+}
 export interface Catalogue {
   commands?: SlashCommand[];
+  verbosity?: Verbosity;
   scheduled?: ScheduledState;
   epoch?: string;
   cursor?: number;
@@ -551,6 +568,7 @@ export type HostEvent = HostEnvelope &
           | "management.changed"
           | "scheduled.changed";
       }
+    | { kind: "verbosity.changed"; level: string }
   );
 export interface BodyPage {
   text: string;

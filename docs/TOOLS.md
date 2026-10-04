@@ -153,8 +153,23 @@ as `run`. Intent labels and groups calls and never changes permissions.
 
 Adjacent successful calls of one intent fold into one row: Explored,
 Researched, Verified or Edited, in the web UI and as a compact terminal
-summary. A failure or an approval prompt keeps its own row. `/verbose` shows
-full detail in the terminal.
+summary. A failure or an approval prompt keeps its own row.
+
+How much of this is shown is one display setting, `UAGENT_VERBOSITY`, read by
+the terminal and the web alike and never by the model:
+
+| Level | Tool work | Arguments and output | Thinking | Routine notices |
+| --- | --- | --- | --- | --- |
+| `minimal` | one "Worked · N steps" row per turn | inside that row | hidden | hidden |
+| `default` | the groups above, other calls a row each | on request | closed (web), hidden (terminal) | hidden |
+| `full` | every call its own row | shown | shown | shown |
+
+`/verbosity LEVEL` (or the switch above a web conversation) changes it for
+every terminal and browser, and what is already on screen is shown again at
+the new level: browsers restyle at once, a terminal clears and replays the
+conversation (a terminal attached elsewhere follows at its next turn; plain
+and piped output changes from the next row on). `--verbosity LEVEL` sets one
+terminal only, and Settings → Display has the same for one browser.
 
 ## How a call reads
 

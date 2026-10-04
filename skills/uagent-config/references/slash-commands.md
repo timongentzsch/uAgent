@@ -42,7 +42,7 @@
 | `/restart` | restart this conversation to apply settings that need it |
 | `/variant MODE` | set OpenRouter provider routing |
 | `/btw QUESTION` | ask a side question without adding it to the conversation |
-| `/verbose` | toggle full reasoning and expanded tool output |
+| `/verbosity [minimal|default|full]` | set how much of the agent's work is shown, everywhere |
 | `/yolo` | toggle automatic approval |
 | `/coord` | open this folder's coordinator |
 | `/board` | list this folder's sessions and threads |

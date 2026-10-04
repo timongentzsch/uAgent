@@ -64,7 +64,12 @@ def test_streamed_search_citations(root, home, *, binary):
         ]
     ) as server:
         result = run_dialog(
-            root, base_env(home, server.url), "/verbose\nprobe\nagain\n/q\n", binary=binary
+            root,
+            base_env(home, server.url),
+            "probe\nagain\n/q\n",
+            "--verbosity",
+            "full",
+            binary=binary,
         )
         assert_true(result.returncode == 0, result.stderr)
         assert_true("grounded\n  ← web_search" in result.stdout, result.stdout)

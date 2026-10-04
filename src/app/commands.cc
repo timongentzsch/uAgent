@@ -102,7 +102,7 @@ CommandReply RunSlashCommand(AppSession& session,
     case SlashCommandId::kRestart:
     case SlashCommandId::kSessions:
     case SlashCommandId::kFork:
-    case SlashCommandId::kVerbose:
+    case SlashCommandId::kVerbosity:
     case SlashCommandId::kBtw:
     case SlashCommandId::kCoord:
     case SlashCommandId::kBoard:

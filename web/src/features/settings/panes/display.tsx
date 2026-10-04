@@ -2,9 +2,15 @@ import { Group, Row, ValueSelect } from "../../../shared/ui.tsx";
 import { ZoomSlider } from "../../../shared/zoom-slider.tsx";
 import { defaultTimePrefs, type TimePrefs } from "../../../shared/time.ts";
 import { useSettings, type SettingsProps } from "../context.ts";
+import { levelLabel } from "../../../shared/verbosity.ts";
 
 // This device's display settings and their defaults, stored in the browser.
-const DEFAULTS = { theme: "system", motion: "system", zoom: 100 } as const;
+const DEFAULTS = {
+  theme: "system",
+  motion: "system",
+  zoom: 100,
+  detail: "",
+} as const;
 const TIMESTAMPS: Record<TimePrefs["style"], string> = {
   smart: "Time today, the date when older.",
   relative: "How long ago, e.g. 5 min ago.",
@@ -17,8 +23,10 @@ export const displayChanged = ({
   theme,
   motion,
   zoom,
+  deviceDetail,
   timePrefs,
 }: SettingsProps) =>
+  Number(deviceDetail !== DEFAULTS.detail) +
   Number(theme !== DEFAULTS.theme) +
   Number(motion !== DEFAULTS.motion) +
   Number(zoom !== DEFAULTS.zoom) +
@@ -28,8 +36,10 @@ export function resetDisplay({
   setTheme,
   setMotion,
   setZoom,
+  setDeviceDetail,
   setTimePrefs,
 }: SettingsProps) {
+  setDeviceDetail(DEFAULTS.detail);
   setTheme(DEFAULTS.theme);
   setMotion(DEFAULTS.motion);
   setZoom(DEFAULTS.zoom);
@@ -46,7 +56,11 @@ export function DisplayPane() {
     setTimePrefs,
     zoom,
     setZoom,
+    deviceDetail,
+    setDeviceDetail,
+    catalogue,
   } = useSettings();
+  const levels = Object.keys(catalogue.verbosity?.levels || {});
   // One row per choice: its name, its options, and where it is kept.
   const choice = (
     label: string,
@@ -113,6 +127,20 @@ export function DisplayPane() {
           setTimePrefs({ ...timePrefs, style: style as TimePrefs["style"] }),
         TIMESTAMPS[timePrefs.style],
       )}
+      {levels.length > 0 &&
+        choice(
+          "Detail on this device",
+          levels.includes(deviceDetail) ? deviceDetail : DEFAULTS.detail,
+          [
+            [DEFAULTS.detail, "Follow global"],
+            ...levels.map((level): [string, string] => [
+              level,
+              levelLabel(level),
+            ]),
+          ],
+          setDeviceDetail,
+          "How much of the agent's work a conversation shows here.",
+        )}
       <Row
         label="Zoom"
         detail="Scales the entire interface, conversation included — like browser zoom."

@@ -1,4 +1,3 @@
-import { storage } from "./shared/storage.ts";
 import { render } from "preact";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { Check, Copy, Plus, Wrench } from "lucide-preact";
@@ -30,14 +29,9 @@ import {
 import { Menu, MenuItem } from "./shared/menu.tsx";
 import { SheetButton } from "./shared/sheet.tsx";
 import { ConnectionStatus, StatusLed } from "./shared/connection-status.tsx";
-import {
-  applyMotion,
-  applyTheme,
-  applyZoom,
-  normalizeZoom,
-} from "./shared/layout.ts";
+import { applyMotion, applyTheme, applyZoom } from "./shared/layout.ts";
 import { ZoomSlider } from "./shared/zoom-slider.tsx";
-import { readStored, writeStored } from "./state/store.ts";
+import { devicePrefs } from "./shared/device-prefs.ts";
 import BrowserTouch from "./features/browser/touch.tsx";
 import { BrowserFrame, BrowserTools } from "./features/browser/frame.tsx";
 import { ImageViewerDialog } from "./shared/attachments.tsx";
@@ -186,24 +180,20 @@ function DelayedContent() {
 }
 
 function Showcase() {
-  const [theme, setTheme] = useState(
-    () => storage.getItem("uagent-theme") || "system",
-  );
-  const [zoom, setZoom] = useState(() =>
-    normalizeZoom(readStored<number>(storage, "uagent-zoom", 100)),
-  );
+  const [theme, setTheme] = useState(devicePrefs.theme.read);
+  const [zoom, setZoom] = useState(devicePrefs.zoom.read);
   const [enabled, setEnabled] = useState(true);
   const [dialog, setDialog] = useState<
     "example" | "confirm" | "browser" | "loading" | "image" | null
   >(null);
 
-  useEffect(() => applyTheme(theme), [theme]);
-  useLayoutEffect(
-    () => applyMotion(storage.getItem("uagent-motion") || "system"),
-    [],
-  );
   useEffect(() => {
-    writeStored(storage, "uagent-zoom", zoom);
+    devicePrefs.theme.write(theme);
+    return applyTheme(theme);
+  }, [theme]);
+  useLayoutEffect(() => applyMotion(devicePrefs.motion.read()), []);
+  useEffect(() => {
+    devicePrefs.zoom.write(zoom);
     applyZoom(zoom);
   }, [zoom]);
 

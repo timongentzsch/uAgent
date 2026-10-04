@@ -6,7 +6,7 @@ import type {
 } from "../../shared/types.ts";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { command } from "../../state/api.ts";
-import { Field, Select, LoadError } from "../../shared/ui.tsx";
+import { Field, Select, LoadError, Row, Switch } from "../../shared/ui.tsx";
 import { ModelLoading, ModelActions } from "../../shared/loading.tsx";
 
 export default function ModelPicker({
@@ -30,6 +30,8 @@ export default function ModelPicker({
   const [model, setModel] = useState("");
   const [effort, setEffort] = useState(state?.effort || "default");
   const [variant, setVariant] = useState(state?.variant || "default");
+  // The choice is this conversation's; saving it for all is asked for.
+  const [forAll, setForAll] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const generation = useRef(0);
@@ -167,6 +169,19 @@ export default function ModelPicker({
               </Field>
             )}
           </div>
+          {!save && (
+            <Row
+              label="Also use for new conversations"
+              detail="Otherwise only this conversation changes."
+            >
+              <Switch
+                label="Also use for new conversations"
+                checked={forAll}
+                disabled={busy}
+                onChange={setForAll}
+              />
+            </Row>
+          )}
           {error && <LoadError error={error} />}
         </>
       )}
@@ -196,6 +211,7 @@ export default function ModelPicker({
               model,
               effort,
               variant,
+              default: forAll,
             });
             if (result.pending)
               throw new Error(

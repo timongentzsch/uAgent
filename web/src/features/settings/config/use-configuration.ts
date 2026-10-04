@@ -7,11 +7,17 @@ import type {
 import { useAction } from "../../../shared/use-action.ts";
 import { useResource } from "../../../shared/use-resource.ts";
 import { manage } from "../../../state/api.ts";
+import type { SavedScope } from "./facts.ts";
 
-// The host's settings and the two ways to change them. A conversation
-// answers for its own folder when it is idle; otherwise the host does.
-export function useConfiguration(session?: Session) {
-  const target = session?.generation && !session.turn_active ? session : null;
+// The settings and the two ways to change them at `scope`. The open
+// conversation's runtime answers for its folder and itself (a stopped one
+// starts for it); during its turn, or with none open, the host answers and
+// knows only what is saved for all conversations.
+export function useConfiguration(
+  session?: Session,
+  scope: SavedScope = "user",
+) {
+  const target = session && !session.turn_active ? session : null;
   const config = useResource<Configuration>(
     () => manage("config", { operation: "get" }, { session: target }),
     [target?.id],
@@ -24,7 +30,7 @@ export function useConfiguration(session?: Session) {
     action.run(async () => {
       const result = await manage(
         "config",
-        { scope: "user", ...fields },
+        { scope, ...fields },
         { session: target },
       );
       config.setValue(result);
@@ -37,8 +43,10 @@ export function useConfiguration(session?: Session) {
     });
   return {
     settings: (config.value?.settings || []).filter(
-      (setting) => !setting.terminal,
+      (setting) => !setting.terminal && setting.scopes.includes(scope),
     ),
+    // A project's settings are its conversation's runtime's to answer.
+    answered: scope === "user" || !!target,
     loaded: !!config.value,
     error: config.error ?? action.error,
     retry: config.error != null ? config.retry : undefined,

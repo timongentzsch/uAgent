@@ -38,8 +38,6 @@ export interface SettingsProps {
   session?: Session;
   logout: () => Promise<void>;
   instructions: () => void;
-  // The open conversation's tools, in their own sheet.
-  tools: () => void;
   initialSection?: string;
 }
 

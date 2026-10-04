@@ -51,8 +51,13 @@ dialog.settings-view {
   }
 }
 .settings-pane-title {
-  margin: 0 0 var(--pad);
+  margin: 0 0 var(--space-4);
   font-size: 1.2rem;
+}
+/* What the section's scope affects and where it is saved. */
+.settings-scope {
+  margin: 0 0 var(--pad);
+  color: var(--muted);
 }
 /* Content inside a group that is not a row (a slider, an error). */
 .group-block {

@@ -324,7 +324,7 @@ test.describe("touch interaction", () => {
       });
       await settings
         .locator(".settings-nav")
-        .getByRole("button", { name: "General", exact: true })
+        .getByRole("button", { name: "Display", exact: true })
         .click();
       await settings.getByLabel("Zoom", { exact: true }).fill(String(zoom));
       await settings.getByRole("button", { name: "Close settings" }).click();
@@ -431,7 +431,7 @@ test.describe("touch interaction", () => {
       });
       await settings
         .locator(".settings-nav")
-        .getByRole("button", { name: "General", exact: true })
+        .getByRole("button", { name: "Display", exact: true })
         .click();
       await settings.getByLabel("Zoom", { exact: true }).fill(String(zoom));
       // A phone shows one section at a time: back to the list first.
@@ -440,7 +440,7 @@ test.describe("touch interaction", () => {
       await settings
         .locator(".settings-nav")
         .getByRole("button", {
-          name: "Permissions & allowed actions",
+          name: "Permissions",
           exact: true,
         })
         .click();

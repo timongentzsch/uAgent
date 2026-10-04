@@ -63,13 +63,13 @@ test.describe("back closes what is open", () => {
     await settings
       .locator(".settings-nav")
       .getByRole("button", {
-        name: "Permissions & allowed actions",
+        name: "Permissions",
         exact: true,
       })
       .tap();
     await expect(
       settings.getByRole("heading", {
-        name: "Permissions & allowed actions",
+        name: "Permissions",
         exact: true,
       }),
     ).toBeVisible();
@@ -93,7 +93,7 @@ test.describe("back closes what is open", () => {
     const settings = page.getByRole("dialog", { name: "Settings" });
     await settings
       .locator(".settings-nav")
-      .getByRole("button", { name: "Instructions", exact: true })
+      .getByRole("button", { name: "General", exact: true })
       .tap();
     await settings
       .locator(".settings-pane")

@@ -746,6 +746,8 @@ export interface CommandFields {
   model?: string;
   effort?: string;
   variant?: string;
+  // Model select: also save the choice for all conversations.
+  default?: boolean;
   mode?: string;
   profile?: string;
   active?: boolean;

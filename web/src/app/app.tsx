@@ -22,12 +22,7 @@ import {
   useRef,
   useState,
 } from "preact/hooks";
-import {
-  emptyDraft,
-  hasContent,
-  readStored,
-  writeStored,
-} from "../state/store.ts";
+import { emptyDraft, hasContent } from "../state/store.ts";
 import { api, command, requestId, uploadAttachment } from "../state/api.ts";
 import {
   Modal,
@@ -69,7 +64,6 @@ import {
   applyTheme,
   applyZoom,
   lockPageZoom,
-  normalizeZoom,
   useMedia,
   trackViewport,
 } from "../shared/layout.ts";
@@ -78,11 +72,8 @@ import { useHost } from "../state/use-host.ts";
 import { useSnapshots } from "../state/snapshot-store.ts";
 import { parseSlash } from "../features/composer/slash.ts";
 import { dedupeName } from "../features/composer/mention.ts";
-import {
-  TimePrefsContext,
-  normalizeTimePrefs,
-  type TimePrefs,
-} from "../shared/time.ts";
+import { TimePrefsContext, type TimePrefs } from "../shared/time.ts";
+import { devicePrefs } from "../shared/device-prefs.ts";
 import { DetailContext, detail as detailOf } from "../shared/verbosity.ts";
 import type { InspectorTarget } from "../features/chat/inspector.tsx";
 import { maxDraftFiles, maxUploadBytes } from "../shared/limits.ts";
@@ -201,22 +192,14 @@ function App() {
   }, [authenticated, online]);
   const [folder, setFolder] = useState("");
   const [busy, setBusy] = useState(false);
-  const [zoom, setZoom] = useState(() =>
-    normalizeZoom(readStored<number>(storage, "uagent-zoom", 100)),
-  );
+  const [zoom, setZoom] = useState(() => devicePrefs.zoom.read());
   const [install, setInstall] = useState<InstallPrompt | null>(null);
   const [update, setUpdate] = useState<ServiceWorker | null>(null);
   const [notificationMode, setNotificationMode] = useState(false);
-  const [timePrefs, setTimePrefs] = useState<TimePrefs>(() =>
-    normalizeTimePrefs(readStored(storage, "uagent-time", {})),
-  );
-  useEffect(() => writeStored(storage, "uagent-time", timePrefs), [timePrefs]);
-  const [theme, setTheme] = useState(
-    () => storage.getItem("uagent-theme") || "system",
-  );
-  const [motion, setMotion] = useState(
-    () => storage.getItem("uagent-motion") || "system",
-  );
+  const [timePrefs, setTimePrefs] = useState<TimePrefs>(devicePrefs.time.read);
+  useEffect(() => devicePrefs.time.write(timePrefs), [timePrefs]);
+  const [theme, setTheme] = useState(devicePrefs.theme.read);
+  const [motion, setMotion] = useState(devicePrefs.motion.read);
   // How much of the agent's work shows: one level for every conversation,
   // browser and terminal. Only rendering reads it, so a change restyles
   // every conversation where it stands.
@@ -263,7 +246,7 @@ function App() {
     updateDraft(id, () => value);
   }
   useEffect(() => {
-    writeStored(storage, "uagent-zoom", zoom);
+    devicePrefs.zoom.write(zoom);
     applyZoom(zoom);
   }, [zoom]);
   useEffect(() => {
@@ -293,8 +276,14 @@ function App() {
     return () => clearTimeout(warm);
   }, []);
   useEffect(trackViewport, []);
-  useEffect(() => applyTheme(theme), [theme]);
-  useLayoutEffect(() => applyMotion(motion), [motion]);
+  useEffect(() => {
+    devicePrefs.theme.write(theme);
+    return applyTheme(theme);
+  }, [theme]);
+  useLayoutEffect(() => {
+    devicePrefs.motion.write(motion);
+    return applyMotion(motion);
+  }, [motion]);
   // Files dropped anywhere attach to the open conversation; unhandled, the
   // browser would open the file in place of the app. File inputs and
   // dialogs keep their own drops.
@@ -412,7 +401,7 @@ function App() {
   const screens: Record<string, () => void> = {
     "/context": showContext,
     "/config": () => open({ type: "settings" }),
-    "/verbosity": () => open({ type: "settings", section: "advanced" }),
+    "/verbosity": () => open({ type: "settings", section: "general" }),
     "/permissions": () => open({ type: "settings", section: "permissions" }),
     "/mcp": () => open({ type: "settings", section: "mcp" }),
     "/tools": () => setModal({ type: "tools", session_id: selected }),

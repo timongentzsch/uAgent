@@ -1,6 +1,6 @@
 import {
-  FileText,
-  Hammer,
+  Folder,
+  Monitor,
   Plug,
   ShieldCheck,
   SlidersHorizontal,
@@ -10,60 +10,76 @@ import {
 } from "lucide-preact";
 import { Group, Row } from "../../shared/ui.tsx";
 
+// Each section belongs to one scope: what its settings affect.
 export const SECTIONS = [
-  ["general", "General", SlidersHorizontal],
-  ["agent", "Instructions", FileText],
-  ["tools", "Tools", Hammer],
-  ["mcp", "MCP servers", Plug],
-  ["permissions", "Permissions & allowed actions", ShieldCheck],
-  ["models", "Models", Sparkles],
-  ["devices", "Devices", Smartphone],
-  ["advanced", "Advanced", Wrench],
+  ["general", "General", SlidersHorizontal, "user"],
+  ["models", "Models", Sparkles, "user"],
+  ["permissions", "Permissions", ShieldCheck, "user"],
+  ["mcp", "MCP servers", Plug, "user"],
+  ["advanced", "Advanced", Wrench, "user"],
+  ["project", "This project", Folder, "project"],
+  ["display", "Display", Monitor, "browser"],
+  ["devices", "Devices", Smartphone, "host"],
 ] as const;
 export type Section = (typeof SECTIONS)[number][0];
-// The list reads in groups: everyday, what the agent reads and may do, which
-// models, the host and its devices, escape hatches.
-const NAV: [string | undefined, Section[]][] = [
-  [undefined, ["general"]],
-  ["Agent", ["agent", "tools", "mcp", "permissions"]],
-  [undefined, ["models"]],
-  ["Host", ["devices"]],
-  [undefined, ["advanced"]],
-];
+export type Scope = (typeof SECTIONS)[number][3];
+// A scope as the list names it, and what it affects and where it is saved,
+// said once over every section of it.
+export const SCOPES: Record<Scope, [string, (folder?: string) => string]> = {
+  user: [
+    "All conversations",
+    () =>
+      "Every conversation, browser and terminal on this host. Saved in ~/.uagent/.config.",
+  ],
+  project: [
+    "This project",
+    (folder) =>
+      `Overrides All conversations for conversations in this folder. Saved in ${folder}/.uagent/.config.`,
+  ],
+  browser: [
+    "This browser",
+    () =>
+      "Saved in this browser only. Other browsers and the terminal are not affected.",
+  ],
+  host: ["Host", () => "This host and the browsers paired with it."],
+};
 
 // Settings and its loading state draw the same list, so it never changes
-// while the code arrives.
+// while the code arrives. A project is listed while a conversation is open.
 export function SettingsNav({
   current,
   select,
+  project,
 }: {
   current?: Section;
   select: (id: Section) => void;
+  // The open conversation's folder, by its last name.
+  project?: string;
 }) {
   return (
     <nav class="settings-nav" aria-label="Settings sections">
-      {NAV.map(([title, group], index) => (
-        <Group key={index} title={title}>
-          {group.map((id) => {
-            const [, label, Icon] = SECTIONS.find(
-              ([section]) => section === id,
-            )!;
-            return (
-              <Row
-                key={id}
-                label={
-                  <span class="settings-nav-label">
-                    <Icon />
-                    {label}
-                  </span>
-                }
-                current={id === current}
-                onClick={() => select(id)}
-              />
-            );
-          })}
-        </Group>
-      ))}
+      {(Object.keys(SCOPES) as Scope[]).map(
+        (scope) =>
+          (scope !== "project" || project) && (
+            <Group key={scope} title={SCOPES[scope][0]}>
+              {SECTIONS.filter((section) => section[3] === scope).map(
+                ([id, label, Icon]) => (
+                  <Row
+                    key={id}
+                    label={
+                      <span class="settings-nav-label">
+                        <Icon />
+                        {id === "project" ? project : label}
+                      </span>
+                    }
+                    current={id === current}
+                    onClick={() => select(id)}
+                  />
+                ),
+              )}
+            </Group>
+          ),
+      )}
     </nav>
   );
 }

@@ -9,6 +9,7 @@ import {
   Row,
 } from "../../shared/ui.tsx";
 import { SettingRowsLoading } from "./loading.tsx";
+import { note, type SavedScope } from "./config/facts.ts";
 import { RestartNotice } from "./config/restart-notice.tsx";
 import { SettingItem } from "./config/setting-item.tsx";
 import { SettingSheet } from "./config/setting-sheet.tsx";
@@ -16,12 +17,35 @@ import { useConfiguration } from "./config/use-configuration.ts";
 
 type Sections = [string, (setting: ConfigSetting) => boolean][];
 
-// The host's settings as rows. A section (`filter`) lists its own; without
-// one this is Advanced: what you changed, what is locked, and a search over
-// the rest.
+// What each list without a section says: all conversations' is Advanced
+// (what you changed, what is locked, a search over the rest); a project's is
+// its overrides and a search to add one.
+const WHOLE = {
+  user: {
+    find: "Find a setting",
+    held: "Changed",
+    rest: "Everything else is at its default. Search to change one.",
+    reset: "Reset all to defaults",
+    none: "Everything is at its default",
+    action: "Reset all",
+  },
+  project: {
+    find: "Override a setting for this project",
+    held: "Overrides",
+    rest: "Everything else is the same as all conversations. Search to override one.",
+    reset: "Remove all overrides",
+    none: "This project overrides nothing",
+    action: "Remove all",
+  },
+} as const;
+
+// The settings saved at `scope` as rows. A section (`filter`) lists its
+// own; without one the list is whole: what that scope holds, and a search
+// over the rest.
 export default function Configuration({
   session,
   online,
+  scope = "user",
   filter,
   sections,
   sessions = [],
@@ -29,13 +53,15 @@ export default function Configuration({
 }: {
   session?: Session;
   online: boolean;
+  scope?: SavedScope;
   filter?: (setting: ConfigSetting) => boolean;
   sections?: Sections;
   sessions?: Session[];
-  // This device's own display settings, reset with the host's.
+  // This browser's own display settings, reset with all conversations'.
   display?: { changed: number; reset: () => void };
 }) {
-  const config = useConfiguration(session);
+  const config = useConfiguration(session, scope);
+  const whole = WHOLE[scope];
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState("");
   const [confirm, setConfirm] = useState(false);
@@ -43,7 +69,7 @@ export default function Configuration({
     config.settings.find((setting) => setting.name === name);
   const changed = config.settings.filter(
     (setting) =>
-      setting.set?.user !== undefined && setting.sensitivity === "public",
+      setting.set?.[scope] !== undefined && setting.sensitivity === "public",
   );
   const needle = query.trim().toLowerCase();
   const groups: Sections = filter
@@ -51,8 +77,8 @@ export default function Configuration({
     : needle
       ? [["Results", () => true]]
       : [
-          ["Changed", (setting) => setting.set?.user !== undefined],
-          ["Locked", (setting) => setting.locked],
+          [whole.held, (setting) => setting.set?.[scope] !== undefined],
+          ["Locked", (setting) => scope === "user" && setting.locked],
         ];
   const listed = config.settings.filter(
     (setting) =>
@@ -74,14 +100,20 @@ export default function Configuration({
   const disabled = config.busy || !online;
   const edited = editing ? find(editing) : undefined;
   const resets = changed.length + (display?.changed || 0);
+  if (!config.answered)
+    return (
+      <Group footer="The conversation's runtime answers for its project, and is busy with its turn.">
+        <Row label="Available when the running turn ends" />
+      </Group>
+    );
   return (
     <section class="configuration">
       {!filter && (
         <div class="group-block">
           <Input
             type="search"
-            aria-label="Find a setting"
-            placeholder="Find a setting"
+            aria-label={whole.find}
+            placeholder={whole.find}
             value={query}
             onInput={(event) => setQuery(event.currentTarget.value)}
           />
@@ -98,8 +130,8 @@ export default function Configuration({
       {config.shadowed.length > 0 && (
         <p class="group-footer" role="status">
           {config.shadowed.map((key) => find(key)?.label || key).join(", ")}:
-          saved, but a value set in the environment, on the command line or by
-          this project keeps winning.
+          saved, but a value set in the environment, on the command line, by
+          this project or in this conversation keeps winning.
         </p>
       )}
       {config.error != null && !edited ? (
@@ -115,6 +147,13 @@ export default function Configuration({
                 <SettingItem
                   key={setting.name}
                   setting={setting}
+                  scope={scope}
+                  note={note(
+                    setting,
+                    scope,
+                    find,
+                    config.restart.includes(setting.name),
+                  )}
                   disabled={disabled}
                   open={() => setEditing(setting.name)}
                   toggle={(on) =>
@@ -132,18 +171,12 @@ export default function Configuration({
       {!filter && config.loaded && (
         <>
           <p class="group-footer">
-            {needle
-              ? !listed.length && "No setting matches."
-              : "Everything else is at its default. Search to change one."}
+            {needle ? !listed.length && "No setting matches." : whole.rest}
           </p>
           <Group>
             <Row
-              label="Reset all to defaults"
-              detail={
-                resets
-                  ? plural(resets, "changed setting")
-                  : "Everything is at its default"
-              }
+              label={whole.reset}
+              detail={resets ? plural(resets, "changed setting") : whole.none}
               destructive
               disabled={!resets || disabled}
               onClick={() => setConfirm(true)}
@@ -155,6 +188,7 @@ export default function Configuration({
         <SettingSheet
           key={edited.name}
           setting={edited}
+          scope={scope}
           find={find}
           busy={disabled}
           error={config.error}
@@ -164,8 +198,8 @@ export default function Configuration({
       )}
       {confirm && (
         <ConfirmModal
-          title="Reset all to defaults"
-          action="Reset all"
+          title={whole.reset}
+          action={whole.action}
           busy={config.busy}
           error={config.error}
           close={() => setConfirm(false)}
@@ -176,8 +210,10 @@ export default function Configuration({
             }
           }}
         >
-          Every changed setting and this device's display settings return to
-          their defaults. API keys and other secrets are kept.
+          {scope === "user"
+            ? "Every setting changed for all conversations and this browser's display settings return to their defaults."
+            : "Every setting this project overrides is the same as all conversations again."}{" "}
+          API keys and other secrets are kept.
         </ConfirmModal>
       )}
     </section>

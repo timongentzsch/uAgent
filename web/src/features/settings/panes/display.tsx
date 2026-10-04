@@ -1,10 +1,15 @@
 import { Group, Row, ValueSelect } from "../../../shared/ui.tsx";
 import { ZoomSlider } from "../../../shared/zoom-slider.tsx";
 import { defaultTimePrefs, type TimePrefs } from "../../../shared/time.ts";
+import { devicePrefs } from "../../../shared/device-prefs.ts";
 import { useSettings, type SettingsProps } from "../context.ts";
 
-// This device's display settings and their defaults, stored in the browser.
-const DEFAULTS = { theme: "system", motion: "system", zoom: 100 } as const;
+// This browser's display settings at their defaults.
+const DEFAULTS = {
+  theme: devicePrefs.theme.fallback,
+  motion: devicePrefs.motion.fallback,
+  zoom: devicePrefs.zoom.fallback,
+};
 const TIMESTAMPS: Record<TimePrefs["style"], string> = {
   smart: "Time today, the date when older.",
   relative: "How long ago, e.g. 5 min ago.",
@@ -70,7 +75,7 @@ export function DisplayPane() {
     </Row>
   );
   return (
-    <Group title="Display" footer="Saved on this device.">
+    <Group>
       {choice(
         "Appearance",
         theme,

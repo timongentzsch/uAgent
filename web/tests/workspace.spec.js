@@ -12,7 +12,7 @@ test("appearance and configuration remain usable at large scales", async ({
   // A phone opens settings on its section list.
   await page
     .locator(".settings-nav")
-    .getByRole("button", { name: "General", exact: true })
+    .getByRole("button", { name: "Display", exact: true })
     .click();
   await expect(page.getByLabel("Appearance")).toHaveValue("system");
   await page.emulateMedia({ colorScheme: "dark" });
@@ -103,7 +103,7 @@ test("appearance and configuration remain usable at large scales", async ({
   await changed.click();
   // One sheet edits it: what it is for, the value, why, and two ways out.
   const sheet = page.getByRole("dialog", { name: "Steps per turn" });
-  await expect(sheet).toContainText("Default: 0");
+  await expect(sheet).toContainText("In effect: 0, built in.");
   await expect(sheet).toContainText("applies from your next message");
   await sheet.getByRole("spinbutton").fill("23");
   await sheet.getByRole("button", { name: "Save" }).click();
@@ -133,7 +133,7 @@ test("appearance and configuration remain usable at large scales", async ({
   await page.getByRole("button", { name: "Back", exact: true }).click();
   await page
     .locator(".settings-nav")
-    .getByRole("button", { name: "General", exact: true })
+    .getByRole("button", { name: "Display", exact: true })
     .click();
   await page.getByLabel("Appearance").selectOption("light");
   await page.emulateMedia({ colorScheme: "dark" });
@@ -583,10 +583,12 @@ test("locked settings and restart to apply", async ({ page, session }) => {
   // A locked setting is listed, with its value and no way to edit it.
   const advanced = page.locator(".configuration");
   const locked = advanced.getByRole("button", { name: /^Context window/ });
-  await expect(locked).toContainText("Locked");
+  await expect(locked).toContainText(
+    "Set by environment variable UAGENT_CONTEXT",
+  );
   await locked.click();
   const context = page.getByRole("dialog", { name: "Context window" });
-  await expect(context).toContainText("Set by the environment");
+  await expect(context).toContainText("change it there");
   await expect(context.getByRole("spinbutton")).toHaveCount(0);
   await expect(context.getByRole("button", { name: "Save" })).toHaveCount(0);
   await page.keyboard.press("Escape");

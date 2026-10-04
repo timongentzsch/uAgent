@@ -98,7 +98,6 @@ add_library(
   src/core/capture.cc
   src/core/child_env.cc
   src/core/config.cc
-  src/core/config_document.cc
   src/core/config_registry.cc
   src/core/debug.cc
   src/core/effective_config.cc

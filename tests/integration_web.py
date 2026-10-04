@@ -1433,39 +1433,26 @@ def test_web_concurrent_retry_and_resync(root, home, *, binary):
 
 
 def test_web_project_trust_and_config_precedence(root, home, *, binary):
-    first, second = root / "trusted", root / "denied"
+    """What is saved for a project applies to its conversations, over what is
+    saved for all; nothing is asked and nothing is read from the project."""
+    first, second = root / "overriding", root / "plain"
     for project in (first, second):
-        (project / ".uagent").mkdir(parents=True)
-        (project / ".uagent/.config").write_text("UAGENT_MODEL=project/model\n")
-    global_config = home / ".uagent/.config"
-    global_config.parent.mkdir(exist_ok=True)
-    global_config.write_text("UAGENT_MODEL=global/model\n")
-    try:
-        with Server([lambda _, _body: event({"content": "Configured"})]) as provider:
-            with web_host(binary, root, home, provider.url, extra_env={"UAGENT_MODEL": None}) as (
-                client,
-                code,
-                _,
-                _,
-            ):
-                client.pair(code)
-                for project, decision, expected in (
-                    (first, "y", "project/model"),
-                    (second, "n", "global/model"),
-                ):
-                    session = client.create(project)
-                    value = client.until(session, lambda value: bool(value.get("pending")))
-                    assert_true(value["pending"]["kind"] == "project.trust", value)
-                    assert_true(not provider.requests, "trust triggered a model call")
-                    client.command(
-                        "reply", session, interaction_id=value["pending"]["id"], text=decision
-                    )
-                    value = client.until(
-                        session, lambda value: value["metadata"]["status"] == "idle"
-                    )
-                    assert_true(value["state"]["route"] == expected, value)
-    finally:
-        global_config.unlink(missing_ok=True)
+        project.mkdir()
+    save_settings(home, UAGENT_MODEL="global/model")
+    save_settings(home, folder=first, UAGENT_MODEL="project/model")
+    with Server([lambda _, _body: event({"content": "Configured"})]) as provider:
+        with web_host(binary, root, home, provider.url, extra_env={"UAGENT_MODEL": None}) as (
+            client,
+            code,
+            _,
+            _,
+        ):
+            client.pair(code)
+            for project, expected in ((first, "project/model"), (second, "global/model")):
+                session = client.create(project)
+                value = client.until(session, lambda value: value["metadata"]["status"] == "idle")
+                assert_true(not value.get("pending"), value)
+                assert_true(value["state"]["route"] == expected, value)
 
 
 def test_session_runtime_crash_isolation(root, home, *, binary):
@@ -2761,12 +2748,16 @@ def test_a_subagent_gets_no_tool_its_parent_switched_off(root, home, *, binary):
                 done = client.until(
                     session,
                     # Idle again once the parent has taken up the result.
-                    lambda value: "child" in offered
-                    and value["metadata"]["status"] == "idle"
-                    and all(row["status"] == "completed" for row in value["state"]["activities"])
-                    and any(
-                        "[subagent finished" in json.dumps(body["messages"])
-                        for _, body in provider.requests
+                    lambda value: (
+                        "child" in offered
+                        and value["metadata"]["status"] == "idle"
+                        and all(
+                            row["status"] == "completed" for row in value["state"]["activities"]
+                        )
+                        and any(
+                            "[subagent finished" in json.dumps(body["messages"])
+                            for _, body in provider.requests
+                        )
                     ),
                 )
                 assert_true("write_file" not in offered["parent"], offered["parent"])

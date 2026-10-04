@@ -123,33 +123,22 @@ bool ResolveProjectTrust(const Options& options, bool& trusted,
   trusted = options.trust_project || TrustProjectConfig();
   if (!trusted) trusted = ProjectConfigTrusted(&trusted_snapshot);
   bool mcp_present = ProjectMcpPresent();
-  bool agent_config_present = ProjectAgentConfigPresent();
-  if ((mcp_present || agent_config_present) && !trusted) {
-    std::string surfaces =
-        mcp_present ? (agent_config_present ? ".mcp.json and .uagent/.config"
-                                            : ".mcp.json")
-                    : ".uagent/.config";
+  if (mcp_present && !trusted) {
     if (!InteractiveApprovalAvailable() || !options.prompt.empty()) {
-      if (mcp_present) {
-        error =
-            "project .mcp.json is untrusted; rerun with "
-            "--trust-project-config after reviewing it";
-        exit_code = 2;
-        return false;
-      }
-      fprintf(stderr,
-              "project .uagent/.config is untrusted and was ignored; rerun "
-              "with --trust-project-config after reviewing it\n");
-    } else {
-      trusted = Confirm(
-          {.kind = "project.trust",
-           .prompt = "Trust this workspace's " + surfaces + "?",
-           .options = json::array({{{"value", "y"}, {"label", "Trust"}},
-                                   {{"value", "n"}, {"label", "Decline"}}})});
-      if (trusted && !TrustProjectConfig(error, &trusted_snapshot)) {
-        error = "cannot save project trust: " + error;
-        return false;
-      }
+      error =
+          "project .mcp.json is untrusted; rerun with "
+          "--trust-project-config after reviewing it";
+      exit_code = 2;
+      return false;
+    }
+    trusted = Confirm(
+        {.kind = "project.trust",
+         .prompt = "Trust this workspace's .mcp.json?",
+         .options = json::array({{{"value", "y"}, {"label", "Trust"}},
+                                 {{"value", "n"}, {"label", "Decline"}}})});
+    if (trusted && !TrustProjectConfig(error, &trusted_snapshot)) {
+      error = "cannot save project trust: " + error;
+      return false;
     }
   }
   if (mcp_present && trusted && trusted_snapshot.is_null()) {
@@ -674,8 +663,10 @@ BootstrapResult Bootstrap(Options options, const char* executable,
     return Failure(std::move(error), exit_code);
   }
 
-  ConfigManager config_manager =
-      ConfigManager::Capture(trusted, options.overrides);
+  // Only the flag vouches for a config file an earlier version left in the
+  // project; otherwise it is taken over only as it was approved.
+  ConfigManager config_manager = ConfigManager::Capture(
+      options.trust_project || TrustProjectConfig(), options.overrides);
   RuntimeConfig config = config_manager.Initialize();
   PrintWarning(config_manager.Problem());
   // Route resolution reads UAGENT_MODEL; a coordinator starts on its own

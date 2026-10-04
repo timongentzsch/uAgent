@@ -197,6 +197,11 @@ inline void ForEachDiffLine(const Lines& old_lines, const Lines& new_lines,
   if (span.old_end < old_lines.size()) emit(' ', old_lines[span.old_end]);
 }
 
+// A unified diff of two texts, for display only.
+std::string ConfigUnifiedDiff(const std::string& before,
+                              const std::string& after,
+                              const std::string& label);
+
 }  // namespace uagent
 
 #endif  // UAGENT_INCLUDE_CORE_STRINGS_H_

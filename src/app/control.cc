@@ -87,7 +87,7 @@ int ControlMain(const std::string& argument) {
     if (!cwd || error) {
       result = {{"error", "project directory is unavailable"}};
     } else {
-      auto manager = ConfigManager::Capture(ProjectConfigTrusted(), {});
+      auto manager = ConfigManager::Capture(false, {});
       manager.Initialize();
       result = ManagementControl(request);
     }

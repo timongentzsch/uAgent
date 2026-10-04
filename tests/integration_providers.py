@@ -555,7 +555,9 @@ def test_model_choice_is_the_conversations_until_saved_for_all(root, home, *, bi
         # nowhere else.
         assert_true("UAGENT_MODEL = second/model-b:medium" in picked.stdout, picked.stdout)
         assert_true("conversation" in picked.stdout, picked.stdout)
-        assert_true(not legacy.exists() and not saved_settings(home), "choice left the conversation")
+        assert_true(
+            not legacy.exists() and not saved_settings(home), "choice left the conversation"
+        )
 
         fresh_env = provider_env(home, first.url, providers)
         # A fresh run knows nothing of it: with no model configured it says so.
@@ -569,7 +571,9 @@ def test_model_choice_is_the_conversations_until_saved_for_all(root, home, *, bi
         # Saved for all conversations only when asked.
         kept = run_dialog(root, choose_env, "/model second/fast --default\n/q\n", binary=binary)
         assert_true("also the model of new conversations" in kept.stdout, kept.stdout)
-        assert_true(saved_settings(home) == {"UAGENT_MODEL": "second/model-b:medium"}, saved_settings(home))
+        assert_true(
+            saved_settings(home) == {"UAGENT_MODEL": "second/model-b:medium"}, saved_settings(home)
+        )
         started = run(root, fresh_env, "-p", "probe", binary=binary)
         assert_true(started.stdout.strip() == "chosen-model-ok", started.stdout + started.stderr)
 

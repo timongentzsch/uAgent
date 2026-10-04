@@ -456,8 +456,10 @@ def test_a_thread_is_never_above_auto(root, home, *, binary):
         # Its limits are its runtime's to apply: continued headlessly it
         # would have none, so that is refused, and its role is not lost.
         named = {**env, "UAGENT_INTERNAL_SESSION_FILE": str(thread)}
-        for how in (run(root, env, "-c", "--yolo", "-p", "continue", binary=binary),
-                    run(root, named, "--yolo", "-p", "continue", binary=binary)):
+        for how in (
+            run(root, env, "-c", "--yolo", "-p", "continue", binary=binary),
+            run(root, named, "--yolo", "-p", "continue", binary=binary),
+        ):
             assert_true(
                 how.returncode != 0 and "coordinator's thread" in how.stderr,
                 (how.stdout, how.stderr),

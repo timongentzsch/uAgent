@@ -16,7 +16,6 @@
 #include "include/agent/session_store.h"
 #include "include/api/retry.h"
 #include "include/core/checked.h"
-#include "include/core/config_document.h"
 #include "include/core/config_registry.h"
 #include "include/core/debug.h"
 #include "include/core/env.h"

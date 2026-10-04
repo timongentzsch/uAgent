@@ -12,6 +12,7 @@ from integration_support import (
     function_names,
     run,
     run_pty,
+    saved_settings,
     tool_call,
     wait_until,
     write_json_response,
@@ -29,28 +30,30 @@ def age(path, seconds=IDLE_SECONDS):
 
 
 def test_project_agent_config_trust(root, home, *, binary):
+    """A config file an earlier version left in a project is taken over into
+    the saved settings once the folder is vouched for, and ignored until."""
     workspace = root / "config-workspace"
     (workspace / ".uagent").mkdir(parents=True)
     (home / ".uagent").mkdir(exist_ok=True)
     (home / ".uagent" / ".config").write_text("UAGENT_MODEL=global/model\n", encoding="utf-8")
-    (workspace / ".uagent" / ".config").write_text("UAGENT_MODEL=project/model\n", encoding="utf-8")
-    server = Server([event({"content": "ok"}), event({"content": "ok"})])
-    try:
+    old = workspace / ".uagent" / ".config"
+    old.write_text("UAGENT_MODEL=project/model\n", encoding="utf-8")
+    with Server([event({"content": "ok"})] * 3) as server:
         env = base_env(home, server.url)
         env.pop("UAGENT_MODEL")
-        # Untrusted the workspace file is ignored, but the run still works off
-        # the global config instead of failing.
         ignored = run(workspace, env, "-p", "reply", binary=binary)
         assert_true(ignored.returncode == 0, ignored.stderr)
-        assert_true("untrusted" in ignored.stderr, ignored.stderr)
         assert_true(server.requests[0][1]["model"] == "global/model", server.requests[0][1])
+        assert_true(old.exists() and not saved_settings(home, workspace), "taken over untrusted")
         trusted = run(workspace, env, "--trust-project-config", "-p", "reply", binary=binary)
         assert_true(trusted.returncode == 0, trusted.stderr)
         assert_true(server.requests[1][1]["model"] == "project/model", server.requests[1][1])
-    finally:
-        server.close()
-        # HOME is shared by every test; leave it as it was found.
-        (home / ".uagent" / ".config").unlink(missing_ok=True)
+        # It is the project's saved setting from then on, with or without
+        # the flag, and the file is kept aside.
+        again = run(workspace, env, "-p", "reply", binary=binary)
+        assert_true(again.returncode == 0, again.stderr)
+        assert_true(server.requests[2][1]["model"] == "project/model", server.requests[2][1])
+        assert_true(not old.exists() and old.with_name(".config.imported").exists(), "not archived")
 
 
 def test_memory_reaches_context_by_scope(root, home, *, binary):

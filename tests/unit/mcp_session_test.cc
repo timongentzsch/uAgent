@@ -409,25 +409,16 @@ void TestProjectTrustTracksSemanticConfig() {
             .output.starts_with("wrote "));
   CHECK(!ProjectConfigTrusted());
 
-  // A project config is the second surface trust covers, on its own or beside
-  // .mcp.json, and a value change in either revokes it.
-  fs::remove(".mcp.json");
+  // A config file an earlier version left in the project is no part of
+  // trust: it is taken over into the saved settings, or ignored.
   fs::create_directories(".uagent");
-  CHECK(!ProjectMcpPresent());
-  CHECK(ProjectAgentConfigPresent() == false);
   CHECK(ToolWriteFile(".uagent/.config", "UAGENT_MODEL=vendor/model\n")
             .output.starts_with("wrote "));
-  CHECK(ProjectAgentConfigPresent());
   CHECK(!ProjectConfigTrusted());
   CHECK(TrustProjectConfig(error));
-  CHECK(ProjectConfigTrusted());
-  CHECK(
-      ToolWriteFile(".uagent/.config", "# comment\nUAGENT_MODEL=vendor/model\n")
-          .output.starts_with("wrote "));
-  CHECK(ProjectConfigTrusted());  // comment-only edit
   CHECK(ToolWriteFile(".uagent/.config", "UAGENT_MODEL=other/model\n")
             .output.starts_with("wrote "));
-  CHECK(!ProjectConfigTrusted());
+  CHECK(ProjectConfigTrusted());
 }
 
 void TestScopedBaseAndMemory() {

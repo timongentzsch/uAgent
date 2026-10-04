@@ -10,7 +10,6 @@
 #include <vector>
 
 #include "include/core/config.h"
-#include "include/core/config_document.h"
 #include "include/core/config_registry.h"
 #include "include/core/effective_config.h"
 #include "include/core/env.h"
@@ -23,7 +22,6 @@ namespace uagent {
 namespace {
 
 constexpr auto kProposalLifetime = std::chrono::minutes(5);
-
 
 // A neighbouring line in the diff may assign a secret this change does not
 // touch, so both sides are sanitized before any hunk is built.
@@ -374,8 +372,7 @@ bool CommitConfigProposal(const ConfigProposal& proposal, std::string& error) {
     // must not be silently overwritten.
     for (const auto& [key, held] : proposal.expected) {
       const auto found = scope.find(key);
-      if ((found == scope.end()) != !held ||
-          (held && found->second != *held)) {
+      if ((found == scope.end()) != !held || (held && found->second != *held)) {
         return key + " changed after the preview was shown; nothing was saved";
       }
     }

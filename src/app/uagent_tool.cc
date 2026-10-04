@@ -8,7 +8,6 @@
 #include <utility>
 #include <vector>
 
-#include "include/core/config_document.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/project.h"

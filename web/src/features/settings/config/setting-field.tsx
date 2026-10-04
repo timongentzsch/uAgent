@@ -1,5 +1,5 @@
 import { RotateCcw } from "lucide-preact";
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import type { ConfigChange, ConfigSetting } from "../../../shared/types.ts";
 import { SheetButton } from "../../../shared/sheet.tsx";
 import {
@@ -56,21 +56,39 @@ export function SettingField({
       ? "Set · enter a replacement"
       : "Not set"
     : below;
-  // A switch or a choice shows what was just picked until the save answers.
-  const [picked, setPicked] = useState<string>();
-  const pick = async (value: string) => {
-    setPicked(value);
-    await set(value);
-    setPicked(undefined);
-  };
   const set = (value: string) =>
     save(
       value ? { key: setting.name, value } : { key: setting.name, unset: true },
     );
-  const commit = async () => {
+  // The latest of each, for a save that answers after something newer.
+  const typed = useRef(draft);
+  typed.current = draft;
+  // A switch or a choice shows what was just picked until its save answers.
+  const [picked, setPicked] = useState<string>();
+  const picks = useRef(0);
+  const pick = async (value: string) => {
+    const mine = ++picks.current;
+    setPicked(value);
+    await set(value);
+    if (mine === picks.current) setPicked(undefined);
+  };
+  // Saved, the draft is settled, unless more was typed meanwhile.
+  const settle = async (value: string) => {
+    if ((await set(value)) && typed.current.trim() === value) setEdited(false);
+  };
+  const commit = () => {
     const value = draft.trim();
     if (!edited || value === held) return setEdited(false);
-    if (await set(value)) setEdited(false);
+    void settle(value);
+  };
+  const keys = (event: KeyboardEvent) => {
+    // Takes back what was typed, and only that: the dialog stays.
+    if (event.key === "Escape" && edited) {
+      event.preventDefault();
+      event.stopPropagation();
+      setDraft(held);
+      setEdited(false);
+    }
   };
   const text = {
     "aria-label": setting.label,
@@ -80,7 +98,8 @@ export function SettingField({
       setDraft(event.currentTarget.value);
       setEdited(true);
     },
-    onBlur: () => void commit(),
+    onBlur: commit,
+    onKeyDown: keys,
   };
   const control = setting.locked ? (
     <span class="setting-summary">{shown(setting.effective) || "Set"}</span>
@@ -150,13 +169,7 @@ export function SettingField({
       placeholder={placeholder}
       onKeyDown={(event) => {
         if (event.key === "Enter") event.currentTarget.blur();
-        // Takes back what was typed, and only that: the dialog stays.
-        if (event.key === "Escape" && edited) {
-          event.preventDefault();
-          event.stopPropagation();
-          setDraft(held);
-          setEdited(false);
-        }
+        keys(event);
       }}
     />
   );
@@ -187,8 +200,8 @@ export function SettingField({
             label={`Reset ${setting.label}`}
             disabled={disabled}
             onClick={() => {
-              setEdited(false);
-              void set("");
+              setDraft("");
+              void settle("");
             }}
           >
             <RotateCcw />

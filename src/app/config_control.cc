@@ -54,27 +54,17 @@ json ConfigurationControl(const json& request, const ConfigManager& manager) {
     }
     std::vector<ConfigChange> changes;
     std::string error;
-    if (operation == "apply") {
-      if (!ParseConfigChanges(request, changes, error)) {
-        return {{"error", error}};
-      }
-    } else {
-      // Secrets stay: a reset must not leave the agent without its keys.
-      const SavedSettings saved = ReadSettings(manager.Folder());
-      const SettingValues& own =
-          scope == ConfigProposalScope::kUser ? saved.all : saved.project;
-      for (const auto& [key, value] : own) {
-        const ConfigDescriptor* descriptor = FindConfigDescriptor(key);
-        if (descriptor && descriptor->sensitivity == Sensitivity::kPublic &&
-            !value.empty()) {
-          changes.push_back({.key = key, .value = "", .unset = true});
-        }
-      }
+    if (operation == "apply" && !ParseConfigChanges(request, changes, error)) {
+      return {{"error", error}};
     }
-    if (!changes.empty()) {
-      auto proposal =
-          PrepareConfigProposal(scope, changes, manager, /*direct_user=*/true);
-      if (!proposal.ok) return {{"error", proposal.error}};
+    const ConfigProposal proposal =
+        operation == "apply" ? PrepareConfigProposal(scope, changes, manager,
+                                                     /*direct_user=*/true)
+                             : PrepareConfigReset(scope, manager);
+    if (!proposal.ok && !proposal.error.empty()) {
+      return {{"error", proposal.error}};
+    }
+    if (proposal.ok) {
       if (!CommitConfigProposal(proposal, error)) return {{"error", error}};
       for (const auto& effect : proposal.effects) {
         effects.push_back({{"key", effect.key},

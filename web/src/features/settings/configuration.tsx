@@ -66,11 +66,14 @@ export default function Configuration({
     (setting) =>
       setting.set?.[scope] !== undefined && setting.sensitivity === "public",
   ).length;
-  if (config.error != null)
-    return <LoadError error={config.error} retry={config.retry} />;
-  if (!config.loaded) return <SettingRowsLoading />;
+  // A refresh that fails leaves the form, and what is typed in it.
+  const failed = config.error != null && (
+    <LoadError error={config.error} retry={config.retry} />
+  );
+  if (!config.loaded) return failed || <SettingRowsLoading />;
   return (
     <section class="configuration">
+      {failed}
       {config.restart.length > 0 && (
         <RestartNotice
           key={config.restart.join()}

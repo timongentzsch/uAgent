@@ -72,6 +72,11 @@ ConfigProposal PrepareConfigProposal(ConfigProposalScope scope,
                                      const ConfigManager& manager,
                                      bool direct_user = false);
 
+// The same for putting back every public setting the scope holds, as of one
+// read; not ok and without an error when it holds none.
+ConfigProposal PrepareConfigReset(ConfigProposalScope scope,
+                                  const ConfigManager& manager);
+
 // Human CLI/UI controls share schema, validation, scope and saving.
 json ConfigurationControl(const json& request, const ConfigManager& manager);
 

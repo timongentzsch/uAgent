@@ -208,8 +208,8 @@ export default function ModelPicker({
                   .filter(Boolean)
                   .join(":"),
               );
-              if (taken !== false) close();
-              return;
+              if (taken !== false) return close();
+              throw new Error("Not saved. Its row in Settings says why.");
             }
             const result = await command("model", session, {
               operation: "select",

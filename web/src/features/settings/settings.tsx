@@ -99,7 +99,7 @@ export default function Settings(props: SettingsProps) {
           {(current === "user" || current === "project") && (
             <Deferred
               load={configuration}
-              key={current}
+              key={current + session?.cwd}
               scope={current}
               folder={session?.cwd}
               version={props.version}

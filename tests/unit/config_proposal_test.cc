@@ -292,6 +292,26 @@ void TestProjectSettingsAreSavedByFolder() {
                    {"projects", json::object()}};
   CHECK(CheckSavedSettings(exported).empty());
   CHECK(exported["all"]["UAGENT_MAX_STEPS"] == "$LIMIT");
+  // A value is checked and kept as it is, whatever the environment holds
+  // under its name.
+  {
+    ScopedEnv elsewhere("UAGENT_MAX_TOOL_CALLS", "9");
+    exported["all"]["UAGENT_MAX_TOOL_CALLS"] = "7";
+    CHECK(CheckSavedSettings(exported).empty());
+    CHECK(exported["all"]["UAGENT_MAX_TOOL_CALLS"] == "7");
+  }
+  // A reset is refused when a setting it removes changed since it was read.
+  ConfigProposal reset =
+      PrepareConfigReset(ConfigProposalScope::kProject, manager);
+  CHECK(reset.ok && reset.written.contains("UAGENT_MAX_TOOL_CALLS"));
+  CHECK(!reset.written.contains("UAGENT_API_KEY"));
+  CHECK(ChangeSettings(test.workspace.string(), [](SettingValues& project) {
+          project["UAGENT_MAX_TOOL_CALLS"] = "121";
+          project["UAGENT_MAX_STEPS"] = "3";
+          return std::string();
+        }).empty());
+  CHECK(!CommitConfigProposal(reset, error));
+  CHECK(ReadSettings(test.workspace.string()).project.size() == 4);
   exported["all"]["LIMIT"] = "many";
   CHECK(!CheckSavedSettings(exported).empty());
   // Another folder is not affected.

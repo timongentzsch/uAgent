@@ -282,12 +282,14 @@ std::string ConfigProposal::Preview() const {
   return preview;
 }
 
-ConfigProposal PrepareConfigProposal(ConfigProposalScope scope,
-                                     const std::vector<ConfigChange>& changes,
-                                     const ConfigManager& manager,
-                                     bool direct_user) {
+namespace {
+
+// `changes` absent: a reset of the scope.
+ConfigProposal Prepare(ConfigProposalScope scope,
+                       const std::vector<ConfigChange>* changes,
+                       const ConfigManager& manager, bool direct_user) {
   ConfigProposal proposal;
-  if (changes.empty()) {
+  if (changes && changes->empty()) {
     proposal.error = "no changes requested";
     return proposal;
   }
@@ -306,8 +308,18 @@ ConfigProposal PrepareConfigProposal(ConfigProposalScope scope,
     return proposal;
   }
   const SettingValues& before = user ? saved.all : saved.project;
+  // A reset is every public setting the scope holds, as of this one read.
+  // Secrets stay: a reset must not leave the agent without its keys.
+  std::vector<ConfigChange> reset;
+  for (const auto& [key, value] : before) {
+    const ConfigDescriptor* descriptor = FindConfigDescriptor(key);
+    if (descriptor && descriptor->sensitivity == Sensitivity::kPublic &&
+        !value.empty()) {
+      reset.push_back({.key = key, .value = "", .unset = true});
+    }
+  }
   bool differs = false;
-  for (const ConfigChange& change : changes) {
+  for (const ConfigChange& change : changes ? *changes : reset) {
     const ConfigDescriptor* descriptor = FindConfigDescriptor(change.key);
     if (!descriptor) {
       proposal.error = "unknown setting: " + change.key;
@@ -355,12 +367,27 @@ ConfigProposal PrepareConfigProposal(ConfigProposalScope scope,
     proposal.written.emplace(change.key, std::move(wanted));
   }
   if (!differs) {
-    proposal.error = "these values are already saved";
+    // Nothing left to reset is no error.
+    if (changes) proposal.error = "these values are already saved";
     return proposal;
   }
   proposal.expires = std::chrono::steady_clock::now() + kProposalLifetime;
   proposal.ok = true;
   return proposal;
+}
+
+}  // namespace
+
+ConfigProposal PrepareConfigProposal(ConfigProposalScope scope,
+                                     const std::vector<ConfigChange>& changes,
+                                     const ConfigManager& manager,
+                                     bool direct_user) {
+  return Prepare(scope, &changes, manager, direct_user);
+}
+
+ConfigProposal PrepareConfigReset(ConfigProposalScope scope,
+                                  const ConfigManager& manager) {
+  return Prepare(scope, nullptr, manager, /*direct_user=*/true);
 }
 
 std::string CheckSavedSettings(json& document) {
@@ -374,10 +401,15 @@ std::string CheckSavedSettings(json& document) {
       // Any other name is what a value refers to as $NAME.
       if (!descriptor || !held.is_string()) continue;
       // What a reference resolves to is what is checked; as written is what
-      // is kept.
-      std::set<std::string> resolving;
+      // is kept. It is the saved value that is resolved, under a name the
+      // environment cannot hold, so no variable stands in for it.
       const std::string raw = held.get<std::string>();
-      std::string value = ResolveEnvValue(name, values, resolving), error;
+      std::string value = raw, error;
+      if (raw.find('$') != std::string::npos) {
+        std::set<std::string> resolving;
+        values["="] = raw;
+        value = ResolveEnvValue("=", values, resolving);
+      }
       if ((descriptor->scopes & wanted) == 0) {
         return name + " cannot be set at this scope";
       }

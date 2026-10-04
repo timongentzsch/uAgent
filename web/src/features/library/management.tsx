@@ -92,8 +92,8 @@ export function ScopeField({
         value={value}
         onChange={(event) => change(event.currentTarget.value)}
       >
-        <option value="project">Project</option>
-        <option value="global">Global</option>
+        <option value="project">This project</option>
+        <option value="global">All conversations</option>
       </Select>
     </Field>
   );

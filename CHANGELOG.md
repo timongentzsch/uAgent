@@ -142,9 +142,9 @@ names one loads as before and the line has no effect.
 
 - Settings have one model of scope, the same in the terminal, the config
   files and the web: All conversations (`~/.uagent/.config`), This project
-  (the folder's `.uagent/.config`), This conversation (its model and approval
-  mode, kept with it), over which the environment and command line decide for
-  a run. A conversation's model and permission mode are `UAGENT_MODEL` and
+  (the folder's `.uagent/.config`), the environment and command line for a
+  run, and above them This conversation (its model and approval mode, kept
+  with it). A conversation's model and permission mode are `UAGENT_MODEL` and
   `UAGENT_APPROVAL` chosen at its scope, not mechanisms of their own:
   `/config conversation KEY=VALUE` sets them like any setting, and a settings
   list shows what each scope holds and which one applies.

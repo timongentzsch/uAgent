@@ -423,13 +423,14 @@ ToolResult RunSubagent(const Api& api, ProcessSupervisor& processes,
        {"UAGENT_INTERNAL_TOOLSET", mode},
        {"UAGENT_INTERNAL_PARENT_TURN", std::to_string(context.turn_id)},
        {"UAGENT_MEMORY", child_memory ? "1" : "0"},
-       // Never less confined than the session that delegates to it: its
-       // commands run under this session's sandbox, whatever its own config.
-       {"UAGENT_SANDBOX", SandboxEnabled() ? "1" : "0"},
-       {"UAGENT_SANDBOX_NET", SandboxNetworkAllowed() ? "1" : "0"},
-       {"UAGENT_SANDBOX_WRITE", SandboxWriteRoots()},
        {"UAGENT_INTERNAL_SESSION_FILE", AgentPath(id)},
        {"UAGENT_INTERNAL_DELEGATION", JsonDump(role)}});
+  // A tool this session has switched off is not handed to its child either:
+  // the child's toolset is cut down to what the session itself may call.
+  if (!context.enabled_tools.empty()) {
+    environment.emplace_back("UAGENT_INTERNAL_TOOL_ALLOWLIST",
+                             JsonDump(json(context.enabled_tools)));
+  }
   // Only a background child is polled while it runs. A foreground child
   // is read once, where progress lines would only pad the answer the
   // parent quotes.

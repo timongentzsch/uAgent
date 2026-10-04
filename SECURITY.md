@@ -126,9 +126,9 @@ The built-in file tools and the `uagent` tool still reach `.config` and
 
 A session can run unconfined in two ways, both reported:
 
-- `run(sandbox=false)` always asks a person. `--yolo`, a remembered grant and
-  headless or delegated runs answer no, so a delegated child cannot unconfine
-  itself. A child approves its own calls (approving the delegation is the
+- `run(sandbox=false)` always asks a person. Yolo and a remembered grant
+  cannot give that approval, and headless or delegated runs have nobody to
+  ask, so a delegated child cannot unconfine itself. A child approves its own calls (approving the delegation is the
   gate) and runs them under the sandbox of the session that delegated to it,
   whatever its own configuration says.
 - On a Linux kernel without Landlock, the sandbox degrades: a startup warning,

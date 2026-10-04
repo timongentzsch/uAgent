@@ -164,6 +164,17 @@ bool Application::ResumeAtStartup() {
     if (sessions.empty()) {
       fputs(Note(Tone::kNeutral, "no saved sessions").c_str(), stdout);
       fflush(stdout);
+    } else if (sessions.front().kind == kSessionKindThread) {
+      // Its sandbox, budget and approval limit are applied by its runtime;
+      // continued here it would have none, and lose its role on saving.
+      const std::string refusal =
+          "the latest session is a coordinator's thread; continue it in its "
+          "conversation, or name another session";
+      // On stderr: a headless run's stdout is the answer, and is silenced
+      // until there is one.
+      fprintf(stderr, "%s\n", refusal.c_str());
+      Emit(Event{EventId::kError, {{"error", "cannot resume: " + refusal}}});
+      return false;
     } else if (!ResumeInto(agent_, sessions.front().path, session_file_)) {
       return false;
     }

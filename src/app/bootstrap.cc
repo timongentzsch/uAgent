@@ -23,6 +23,7 @@
 #include "include/api.h"
 #include "include/app/artifact.h"
 #include "include/app/asset_store.h"
+#include "include/app/commands.h"
 #include "include/app/config_proposal.h"
 #include "include/app/coordinator.h"
 #include "include/app/permissions.h"
@@ -706,12 +707,6 @@ BootstrapResult Bootstrap(Options options, const char* executable,
     return Failure(std::move(error), 2);
   }
   MaintainArtifacts();
-  ApprovalMode configured_mode = ApprovalMode::kAsk;
-  if (!ParseApprovalMode(config.approval, configured_mode)) {
-    configured_mode = ApprovalMode::kAsk;
-  }
-  // The conversation's own mode follows once its manager is in place.
-  SetApprovalMode(options.yolo ? ApprovalMode::kYolo : configured_mode);
   if (!options.debug) {
     options.debug_path = SettingText(Cfg("UAGENT_DEBUG_LOG"));
     options.debug = !options.debug_path.empty();
@@ -798,6 +793,8 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   if (context->options.yolo) {
     context->config_manager.ChooseForConversation("UAGENT_APPROVAL", "yolo");
   }
+  // The mode in effect, resolved where it always is: scopes, then the role.
+  PermissionControl(*context, json::object());
   AppContext* app = context.get();
   context->agent = std::make_unique<Agent>(
       api, context->tools, context->runtime.processes,

@@ -453,6 +453,16 @@ def test_a_thread_is_never_above_auto(root, home, *, binary):
         # It can still be told to ask.
         tighter = run_dialog(root, env, "/permissions ask\n/q\n", "-c", binary=binary)
         assert_true('"effective": "ask"' in tighter.stdout, tighter.stdout)
+        # Its limits are its runtime's to apply: continued headlessly it
+        # would have none, so that is refused, and its role is not lost.
+        headless = run(root, env, "-c", "--yolo", "-p", "continue", binary=binary)
+        assert_true(
+            headless.returncode != 0 and "coordinator's thread" in headless.stderr,
+            (headless.stdout, headless.stderr),
+        )
+        assert_true(not server.requests, "a thread ran without its limits")
+        again = run_dialog(root, env, "/permissions\n/q\n", "-c", binary=binary)
+        assert_true('"limit": "auto"' in again.stdout, again.stdout)
 
 
 def test_coordinator_messages_a_thread_at_most_three_times_in_a_row(root, home, *, binary):

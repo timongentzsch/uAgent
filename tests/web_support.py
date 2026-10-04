@@ -97,43 +97,32 @@ def web_host(binary, root, home, provider, port=None, extra_env=None):
     log = root / "web-host.log"
     discovery = home / ".uagent/web/discovery.json"
     with log.open("w+") as output:
-        # A port chosen here can be taken before the host binds it (other
-        # tests run beside this one), so the host is given another.
-        for attempt in range(3):
-            chosen = port or available_port()
-            process = subprocess.Popen(
-                [str(binary), "--web", "--web-port", str(chosen)],
-                cwd=root,
-                env=env,
-                stdout=output,
-                stderr=output,
-            )
-            try:
-                wait_until(
-                    lambda process=process: process.poll() is not None or discovery.exists(),
-                    lambda: log.read_text(),
-                    timeout=10,
-                )
-            except AssertionError:
-                process.kill()
-                raise
-            # Only a host that ended on a taken port is tried again.
-            if (
-                port
-                or attempt == 2
-                or process.poll() is None
-                or "web port is unavailable" not in log.read_text()
-            ):
-                break
-        port = chosen
+        process = None
         try:
+            # A port chosen here can be taken before the host binds it (other
+            # tests run beside this one): a host that ended on that is given
+            # another. Every attempt is under the cleanup below.
+            for attempt in range(3):
+                chosen = port or available_port()
+                process = subprocess.Popen(
+                    [str(binary), "--web", "--web-port", str(chosen)],
+                    cwd=root,
+                    env=env,
+                    stdout=output,
+                    stderr=output,
+                )
 
-            def started():
-                if process.poll() is not None:
+                def settled(process=process):
+                    return process.poll() is not None or (
+                        discovery.exists() and "Pairing code" in log.read_text()
+                    )
+
+                wait_until(settled, lambda: log.read_text(), timeout=10)
+                if process.poll() is None:
+                    break
+                if port or attempt == 2 or "web port is unavailable" not in log.read_text():
                     raise AssertionError(log.read_text())
-                return discovery.exists() and "Pairing code" in log.read_text()
-
-            wait_until(started, lambda: log.read_text(), timeout=10)
+            port = chosen
             code = (
                 log.read_text().split("Pairing code (single use, 5 minutes): ")[1].splitlines()[0]
             )
@@ -143,17 +132,19 @@ def web_host(binary, root, home, provider, port=None, extra_env=None):
             yield client, code, process, env
         except (AssertionError, ConnectionError, http.client.HTTPException) as error:
             raise AssertionError(
-                f"{error}\n--- web host log (exit={process.poll()}):\n" + log.read_text()[-30000:]
+                f"{error}\n--- web host log (exit={process and process.poll()}):\n"
+                + log.read_text()[-30000:]
             ) from error
         finally:
             stop_sessions(home)
-            if process.poll() is None:
-                process.send_signal(signal.SIGTERM)
-            try:
-                process.wait(timeout=budget(12))
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait(timeout=5)
-                raise AssertionError(
-                    "web master failed bounded shutdown: " + log.read_text()
-                ) from None
+            if process is not None:
+                if process.poll() is None:
+                    process.send_signal(signal.SIGTERM)
+                try:
+                    process.wait(timeout=budget(12))
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=5)
+                    raise AssertionError(
+                        "web master failed bounded shutdown: " + log.read_text()
+                    ) from None

@@ -457,11 +457,14 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
       handed_off = session->background_requested;
       exited = ActivityTerminal(session->state);
     }
-    if (handed_off || exited || std::chrono::steady_clock::now() >= deadline) {
+    // An interrupt comes before the deadline and the handover: a command
+    // being stopped is not moved to the background instead.
+    if (!exited && AbortRequested()) {
+      cancelled = true;
+      handed_off = false;
       break;
     }
-    if (AbortRequested()) {
-      cancelled = true;
+    if (handed_off || exited || std::chrono::steady_clock::now() >= deadline) {
       break;
     }
     supervisor.WaitForChange(generation, deadline);

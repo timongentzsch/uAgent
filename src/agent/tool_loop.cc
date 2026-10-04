@@ -295,6 +295,10 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
 
   ToolContext context{deadline};
   context.turn_id = turn_id_;
+  for (const Tool& tool : tools_) {
+    if (tool_selection_.Enabled(tool))
+      context.enabled_tools.push_back(tool.name);
+  }
   for (size_t begin = 0; begin < runnable.size() && !AbortRequested();) {
     if (context.Expired()) break;
     size_t first = runnable[begin];

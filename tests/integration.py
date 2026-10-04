@@ -136,8 +136,15 @@ def run_shards(arguments, names):
             command = [sys.executable, __file__, str(arguments.binary)]
             for name in names[index::jobs]:
                 command += ["--test", name]
+            # A session of its own: an interrupt at the terminal reaches
+            # this script, which then asks each runner once.
             runners.append(
-                (subprocess.Popen(command, stdout=output, stderr=subprocess.STDOUT), output)
+                (
+                    subprocess.Popen(
+                        command, stdout=output, stderr=subprocess.STDOUT, start_new_session=True
+                    ),
+                    output,
+                )
             )
         failed = 0
         for index, (runner, output) in enumerate(runners):
@@ -153,9 +160,10 @@ def run_shards(arguments, names):
         live = [runner for runner, _ in runners if runner.poll() is None]
         for runner in live:
             runner.send_signal(signal.SIGINT)
+        deadline = time.monotonic() + 15
         for runner in live:
             try:
-                runner.wait(timeout=15)
+                runner.wait(timeout=max(0, deadline - time.monotonic()))
             except subprocess.TimeoutExpired:
                 runner.kill()
                 runner.wait()

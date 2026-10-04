@@ -153,7 +153,10 @@ bool SharesLink(const std::string& a, const std::string& b) {
 }
 
 ToolResult EnsureSessionAutoLink() {
-  if (!ApprovalIsYolo()) return ToolSuccess({});
+  // A person's own yolo sessions find each other. A delegated child is in
+  // yolo only because nobody is there to ask: it reaches no session its
+  // parent did not give it.
+  if (!ApprovalIsYolo() || AgentDepth() > 0) return ToolSuccess({});
   json me = OwnMember();
   if (!me.is_object()) return ToolSuccess({});
   const std::string name = "auto-" + HashHex(CanonicalCwd());

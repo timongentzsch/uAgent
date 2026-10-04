@@ -233,8 +233,8 @@ A value comes from one of these scopes, the later winning:
 | Scope | Affects | Kept in |
 | --- | --- | --- |
 | Default | everything | the registry |
-| All conversations | every conversation, browser and terminal of this user | `~/.uagent/.config` |
-| This project | conversations in one trusted folder | `<folder>/.uagent/.config` |
+| All conversations | every conversation, browser and terminal of this user | `all` in `~/.uagent/config/settings.json` |
+| This project | conversations in one folder | `projects[<folder>]` in the same document |
 | Environment | one process and those it starts | `UAGENT_*` variables |
 | Command line | one run | flags |
 | This conversation | one conversation | its session |

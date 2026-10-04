@@ -6,22 +6,22 @@ names, shows the user an exact diff, and commits nothing until they approve it.
 `inspect` still works, `configure` is rejected, and the answer is a proposal
 for the user to apply themselves.
 
-Do not hand-edit `~/.uagent/.config` with the file tools. The tool merges into
-the existing file and holds the approved bytes; a `write_file` over the same
-path discards unrelated settings and skips the approval diff.
+Do not edit `~/.uagent/config/settings.json` with the file tools. The tool
+changes only the settings it was approved for and is refused if one of them
+changed since the preview; a `write_file` over the document discards whatever
+else was saved meanwhile and skips the approval.
 
 ## Procedure
 
 1. Read the current effective value and its source with `uagent` action `inspect`, topic
    `config`, `name` set to the exact setting. Report which layer currently
-   wins: a command-line flag or process variable keeps shadowing a config file
-   after it is edited.
+   wins: a command-line flag, a process variable or the conversation's own
+   choice keeps shadowing a saved setting after it is changed.
 2. Check the `takes_effect` field. Saying a change is live when it needs a
    restart is the failure this step exists to prevent.
-3. Call `uagent` with `action=configure` and `scope` `user` for `~/.uagent/.config`, or
-   `project` for `./.uagent/.config`, which requires a workspace the user has
-   already trusted. Pass one entry per setting, each `set` with a value or
-   `unset`.
+3. Call `uagent` with `action=configure` and `scope` `user` for all
+   conversations, or `project` for the conversations in this folder. Pass one
+   entry per setting, each `set` with a value or `unset`.
 4. State the effect plainly: what changes now, what changes at the next launch,
    and what stays shadowed by a higher layer.
 
@@ -35,9 +35,10 @@ the user to enter direct credentials, and never echo one that is already set.
 ```text
 command line          --model, --budget, --no-memory, ...
 process environment   exported UAGENT_* variables
-project config        ./.uagent/.config, only when trusted
-user config           ~/.uagent/.config
+this project          saved for this folder
+all conversations     saved for every conversation
 built-in default      the registry default reported by uagent
 ```
 
-`UAGENT_CONFIG_FILE` replaces both config-file layers.
+Both saved layers are one document, `~/.uagent/config/settings.json`;
+`uagent config export` prints it and `uagent config import FILE` replaces it.

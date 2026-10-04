@@ -151,8 +151,7 @@ Every setting below is read from the running binary's registry. `takes effect` i
 | `UAGENT_TITLE_MODEL` | string | `~deepseek/deepseek-flash-latest` | next-user-turn | model route that names new sessions, or off |
 | `UAGENT_TOOL_CAPABILITIES` | string | empty | restart-required | restrict the exposed tool capability set |
 | `UAGENT_SHELL_ENV_ALLOW` | string | empty | next-user-turn | comma-separated sensitive variables approved shells may inherit |
-| `UAGENT_TRUST_PROJECT_CONFIG` | boolean | `0` | restart-required | trust this workspace's .mcp.json and config |
-| `UAGENT_CONFIG_FILE` | string | empty | restart-required | replace both config-file locations |
+| `UAGENT_TRUST_PROJECT_CONFIG` | boolean | `0` | restart-required | trust this workspace's .mcp.json |
 | `UAGENT_DEBUG_LOG` | string | empty | restart-required | write a sensitive reconstructable JSONL trace |
 | `UAGENT_MARKDOWN` | boolean | `1` | restart-required | render Markdown on a TTY |
 | `UAGENT_PLAIN` | boolean | `0` | restart-required | screen-reader terminal: labelled lines, no animation or cursor control |

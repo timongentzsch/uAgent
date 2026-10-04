@@ -361,8 +361,10 @@ export function useHost(
       setManagementVersion((version) => version + 1);
       return;
     }
-    if (event.kind === "verbosity.changed") {
+    // Something saved changed: the detail level, and whatever shows settings.
+    if (event.kind === "settings.changed") {
       setVerbosityLevel(event.level);
+      setManagementVersion((version) => version + 1);
       return;
     }
     if (event.kind === "scheduled.changed" && event.scheduled) {

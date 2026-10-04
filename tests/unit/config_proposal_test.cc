@@ -278,6 +278,13 @@ void TestProjectSettingsAreSavedByFolder() {
   CHECK(!PathExists((test.workspace / ".uagent").string()));
   // Another folder is not affected.
   CHECK(ReadSettings(test.root.string()).project.empty());
+  // Where no folder is named (the web host's own view) there is no project
+  // to save for, and never a fall-through to all conversations.
+  ConfigManager host = ConfigManager::Capture(false, {}, "");
+  CHECK(!PrepareConfigProposal(ConfigProposalScope::kProject,
+                               {{"UAGENT_MAX_STEPS", "5", false}}, host)
+             .ok);
+  CHECK(ReadSettings("").all.empty());
 }
 
 // Get reports what each scope holds; reset clears a scope's overrides in one

@@ -21,6 +21,7 @@ from integration_support import (
     run,
     run_dialog,
     run_pty,
+    save_settings,
     saved_settings,
     session_files,
     signal_process_group,
@@ -1055,6 +1056,39 @@ def test_self_configuration_commits_after_approval(root, home, *, binary):
             saved_settings(home) == {"UAGENT_MAX_TOOL_CALLS": "120", "UNKNOWN_KEY": "kept"},
             saved_settings(home),
         )
+
+
+def test_config_export_and_import_round_trip(root, home, *, binary):
+    """Everything saved leaves as one JSON document and comes back as one,
+    checked like any other change; a refused document changes nothing."""
+    save_settings(home, UAGENT_MAX_STEPS=7, MY_KEY="kept")
+    save_settings(home, folder=root, UAGENT_MAX_TOOL_CALLS=40)
+    env = base_env(home, "")
+    exported = run(root, env, "config", "export", binary=binary)
+    assert_true(exported.returncode == 0, exported.stderr)
+    document = json.loads(exported.stdout)
+    assert_true(document["all"] == {"UAGENT_MAX_STEPS": "7", "MY_KEY": "kept"}, document)
+    assert_true(
+        document["projects"] == {str(root.resolve()): {"UAGENT_MAX_TOOL_CALLS": "40"}}, document
+    )
+
+    incoming = root / "incoming.json"
+    document["all"]["UAGENT_MAX_STEPS"] = "many"
+    incoming.write_text(json.dumps(document))
+    refused = run(root, env, "config", "import", str(incoming), binary=binary)
+    assert_true(refused.returncode == 1 and "expects an integer" in refused.stderr, refused.stderr)
+    assert_true(saved_settings(home)["UAGENT_MAX_STEPS"] == "7", "a refused import saved")
+
+    document["all"] = {"UAGENT_MEMORY": "off", "MY_KEY": "kept"}
+    incoming.write_text(json.dumps(document))
+    imported = run(root, env, "config", "import", str(incoming), binary=binary)
+    assert_true(imported.returncode == 0, imported.stderr)
+    # One spelling is saved, whichever was given; what was not in the
+    # document is gone.
+    assert_true(
+        saved_settings(home) == {"UAGENT_MEMORY": "0", "MY_KEY": "kept"}, saved_settings(home)
+    )
+    assert_true(saved_settings(home, root) == {"UAGENT_MAX_TOOL_CALLS": "40"}, "project lost")
 
 
 def test_approval_remembers_exact_action_and_forwards_a_refusal(root, home, *, binary):

@@ -50,7 +50,11 @@ class ConfigManager {
   // `cli` holds UAGENT_* values named on the command line. They sit above the
   // environment layer and are re-applied with overwrite, so a flag beats an
   // inherited variable however the session was launched.
-  static ConfigManager Capture(bool trust_project, RuntimeConfig::Values cli);
+  // `folder` is the project whose saved settings apply: this process's own
+  // unless one is named (the web host has none of its own, so it names the
+  // one a request is about, or none).
+  static ConfigManager Capture(bool trust_project, RuntimeConfig::Values cli,
+                               std::optional<std::string> folder = {});
   // Inspect resolved values without exporting them as process overrides.
   EffectiveConfigSnapshot Read() const;
   // The project whose saved settings apply.
@@ -69,7 +73,7 @@ class ConfigManager {
 
  private:
   ConfigManager(RuntimeConfig::Values process, bool trust_project,
-                RuntimeConfig::Values cli);
+                RuntimeConfig::Values cli, std::string folder);
 
   RuntimeConfig::Values process_;
   bool trust_project_ = false;

@@ -225,6 +225,28 @@ SavedSettings ReadSettings(const std::string& folder, bool trusted) {
   return saved;
 }
 
+json ExportSettings(std::string& error) {
+  SavedSettings read = ReadSettings("");  // takes over what is still owed
+  error = read.error;
+  FileStamp ignored;
+  json document = ReadDocument(ignored);
+  return Valid(document) ? document : EmptyDocument();
+}
+
+std::string ReplaceSettings(json document) {
+  if (!Valid(document)) {
+    return "expected {\"format\": 1, \"all\": {name: value}, \"projects\": "
+           "{folder: {name: value}}}";
+  }
+  std::string error = ReadSettings("").error;
+  if (!error.empty()) return error;
+  PrivateJsonStore store(kSettingsFile, EmptyDocument(), kSettingsBytes, error);
+  if (!store.Ready()) return error;
+  store.Data() = std::move(document);
+  store.Save(error);
+  return error;
+}
+
 std::string ChangeSettings(
     const std::string& folder,
     const std::function<std::string(SettingValues& scope)>& change) {

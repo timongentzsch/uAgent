@@ -1,5 +1,8 @@
 // Copyright 2026 Timon Gentzsch
+#include <cstdio>
+#include <iostream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "include/app/config_proposal.h"
@@ -13,6 +16,34 @@
 #include "include/core/settings_store.h"
 
 namespace uagent {
+int ConfigMain(int argc, char** argv) {
+  const std::string action = argc > 2 ? argv[2] : "";
+  std::string error;
+  if (action == "export" && argc == 3) {
+    const json document = ExportSettings(error);
+    if (error.empty()) printf("%s\n", JsonDump(document, 2).c_str());
+  } else if (action == "import" && argc == 4) {
+    std::string bytes;
+    const std::string source = argv[3];
+    if (source == "-"
+            ? ReadBounded(std::cin, kEditFileBytes, bytes)
+            : !ReadRegularFile(source, kEditFileBytes, bytes, error)) {
+      if (error.empty()) error = "the document exceeds the size limit";
+    } else {
+      json document = json::parse(bytes, nullptr, false);
+      error = CheckSavedSettings(document);
+      if (error.empty()) error = ReplaceSettings(std::move(document));
+    }
+  } else {
+    fprintf(stderr,
+            "usage: uagent config export\n"
+            "       uagent config import FILE|-\n");
+    return 2;
+  }
+  if (!error.empty()) fprintf(stderr, "uagent: %s\n", error.c_str());
+  return error.empty() ? 0 : 1;
+}
+
 json ConfigurationControl(const json& request, const ConfigManager& manager) {
   std::string operation = JsonValue(request, "operation", "get");
   json effects = json::array();

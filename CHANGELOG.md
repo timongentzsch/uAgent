@@ -4,6 +4,22 @@
 
 ### Upgrade notes
 
+- **Settings are saved by µAgent, not in text files you edit.** What is saved
+  for all conversations and for each project folder is one private document,
+  `~/.uagent/config/settings.json`, changed with `/config`, the web's
+  Settings or the `uagent` tool, and moved between hosts with
+  `uagent config export` and `uagent config import FILE`.
+  - `~/.uagent/.config` is taken over on the first start and kept as
+    `.config.imported`; it is not read again, and editing it has no effect.
+  - A project's `.uagent/.config` is taken over the first time a
+    conversation starts in that folder, if its content is what was approved
+    when the workspace was trusted, or with `--trust-project-config`.
+    Otherwise it is ignored. Project settings are no longer files in the
+    project, so nothing asks to trust them; workspace trust is about
+    `.mcp.json` alone.
+  - `UAGENT_CONFIG_FILE` is gone.
+  - A change to a setting is refused only when that same setting changed
+    since its preview; other settings changed meanwhile are kept.
 - **Yolo no longer turns the command sandbox off.** It means nobody is
   asked; confinement is `UAGENT_SANDBOX`, the same in every approval mode. A
   setup that relied on `--yolo` or `UAGENT_APPROVAL=yolo` to run commands

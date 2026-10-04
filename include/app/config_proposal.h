@@ -75,6 +75,14 @@ ConfigProposal PrepareConfigProposal(ConfigProposalScope scope,
 // Human CLI/UI controls share schema, validation, scope and saving.
 json ConfigurationControl(const json& request, const ConfigManager& manager);
 
+// `uagent config export` prints everything saved as JSON; `uagent config
+// import FILE` (or -) replaces it with a document of that shape, once every
+// setting in it has passed the registry's checks.
+int ConfigMain(int argc, char** argv);
+// Checks each registered setting in a whole saved document as a change to it
+// would be, normalizing spellings in place. Returns the first objection.
+std::string CheckSavedSettings(json& document);
+
 bool ParseConfigScope(std::string_view name, ConfigProposalScope& scope);
 // The change list the settings screen, --control and the uagent tool send:
 // each entry is {key, value}, {key, unset: true} or

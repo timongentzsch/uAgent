@@ -293,6 +293,10 @@ ConfigProposal PrepareConfigProposal(ConfigProposalScope scope,
   const bool user = scope == ConfigProposalScope::kUser;
   proposal.folder = user ? std::string() : manager.Folder();
   proposal.target = user ? "all conversations" : proposal.folder;
+  if (!user && proposal.folder.empty()) {
+    proposal.error = "name the project folder these settings are for";
+    return proposal;
+  }
 
   const json sources = manager.Read().sources;
   const SavedSettings saved = ReadSettings(manager.Folder());
@@ -356,6 +360,39 @@ ConfigProposal PrepareConfigProposal(ConfigProposalScope scope,
   proposal.expires = std::chrono::steady_clock::now() + kProposalLifetime;
   proposal.ok = true;
   return proposal;
+}
+
+std::string CheckSavedSettings(json& document) {
+  auto check = [](json& scope, unsigned wanted) {
+    for (auto& [name, held] : scope.items()) {
+      const ConfigDescriptor* descriptor = FindConfigDescriptor(name);
+      // Any other name is what a value refers to as $NAME.
+      if (!descriptor || !held.is_string()) continue;
+      std::string value = held.get<std::string>(), error;
+      if ((descriptor->scopes & wanted) == 0) {
+        return name + " cannot be set at this scope";
+      }
+      if ((descriptor->sensitivity == Sensitivity::kCompositeSecret &&
+           !ValidateProviderProposal(value, error, /*direct_user=*/true)) ||
+          !ValidateValue(*descriptor, value, error)) {
+        return error;
+      }
+      held = value;
+    }
+    return std::string();
+  };
+  if (!document.is_object()) return std::string("expected a JSON object");
+  std::string error;
+  if (json* all = document.contains("all") ? &document["all"] : nullptr) {
+    if (all->is_object()) error = check(*all, kScopeUser);
+  }
+  if (error.empty() && JsonObject(document, "projects")) {
+    for (auto& [folder, scope] : document["projects"].items()) {
+      if (scope.is_object()) error = check(scope, kScopeProject);
+      if (!error.empty()) return folder + ": " + error;
+    }
+  }
+  return error;
 }
 
 bool CommitConfigProposal(const ConfigProposal& proposal, std::string& error) {

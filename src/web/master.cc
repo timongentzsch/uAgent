@@ -444,8 +444,7 @@ class Master {
     std::thread stopping([&] {
       for (;;) {
         std::vector<std::string> paths = host_.PresencePaths();
-        // The level is display state every browser shares: whoever saves
-        // it (here, a terminal) reaches them all.
+        // Whoever saves a setting (here, a terminal) reaches every browser.
         paths.push_back(SettingsPath());
         // Wakes for a catalogue scan the throttle deferred.
         auto deadline = Clock::now() + std::chrono::hours(24);
@@ -458,7 +457,7 @@ class Master {
           if (reexec_) std::this_thread::sleep_for(kRestartReply);
           break;
         }
-        PublishVerbosity();
+        PublishSettings();
         // Sessions a coordinator creates or deletes reach every client.
         host_.RefreshCatalogue();
         bool observed;
@@ -531,20 +530,23 @@ class Master {
   }
   // The configured level, by a name the policy table knows.
   static std::string ConfiguredVerbosity() {
-    const auto values = ConfigManager::Capture(false, {}).Read().values;
+    const auto values = ConfigManager::Capture(false, {}, "").Read().values;
     const auto found = values.find(std::string(kVerbositySetting));
     return std::string(
         DetailFor(found == values.end() ? "" : found->second).level);
   }
-  // Tells every browser the level when it is no longer the one they have.
-  void PublishVerbosity() {
-    const std::string level = ConfiguredVerbosity();
+  // Tells every browser that what is saved is no longer what they read, and
+  // the level with it: display state they all share.
+  void PublishSettings() {
+    const FileStamp saved = SnapshotFile(SettingsPath());
     {
-      std::lock_guard lock(verbosity_mutex_);
-      if (level == verbosity_) return;
-      verbosity_ = level;
+      std::lock_guard lock(settings_mutex_);
+      if (saved == settings_) return;
+      settings_ = saved;
     }
-    host_.Publish("", "", {{"kind", "verbosity.changed"}, {"level", level}});
+    host_.Publish(
+        "", "",
+        {{"kind", "settings.changed"}, {"level", ConfiguredVerbosity()}});
   }
   std::string Pair() {
     pair_ = RandomToken(12);
@@ -682,8 +684,8 @@ class Master {
   int auth_attempts_ = 0;
   httplib::Server server_;
   std::mutex mutex_;
-  std::mutex verbosity_mutex_;
-  std::string verbosity_ = ConfiguredVerbosity();
+  std::mutex settings_mutex_;
+  FileStamp settings_ = SnapshotFile(SettingsPath());
   Pipe host_wake_;
   std::vector<Device> devices_;
   size_t sse_count_ = 0;
@@ -864,9 +866,13 @@ void Master::Command(const Request& request, Response& response) {
     WakeDescriptor(shutdown_fd);
   } else if (kind == "config" && JsonValue(command, "session_id", "").empty()) {
     lock.unlock();
-    auto manager = ConfigManager::Capture(false, {});
+    // The host belongs to no project: a request names the folder it is
+    // about, and without one only what is saved for all is in reach.
+    const auto folder = CanonicalDirectory(JsonValue(command, "cwd", ""));
+    auto manager = ConfigManager::Capture(
+        false, {}, folder ? folder->string() : std::string());
     auto result = ConfigurationControl(command, manager);
-    PublishVerbosity();
+    PublishSettings();
     lock.lock();
     outcome["result"] = result;
     error = JsonValue(result, "error", "");

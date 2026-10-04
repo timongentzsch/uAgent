@@ -29,12 +29,12 @@ export const SCOPES: Record<Scope, [string, (folder?: string) => string]> = {
   user: [
     "All conversations",
     () =>
-      "Every conversation, browser and terminal on this host. Saved in ~/.uagent/.config.",
+      "Every conversation, browser and terminal on this host.",
   ],
   project: [
     "This project",
     (folder) =>
-      `Overrides All conversations for conversations in this folder. Saved in ${folder}/.uagent/.config.`,
+      `Overrides All conversations for conversations in ${folder}.`,
   ],
   browser: [
     "This browser",

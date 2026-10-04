@@ -19,6 +19,7 @@ from integration_support import (
     live_process_states,
     run,
     save_settings,
+    saved_settings,
     session_files,
     timeout_setting,
     tool_call,
@@ -1448,6 +1449,16 @@ def test_web_project_trust_and_config_precedence(root, home, *, binary):
             _,
         ):
             client.pair(code)
+            # The settings screen saves for a project by naming its folder.
+            client.command(
+                "config",
+                operation="apply",
+                scope="project",
+                cwd=str(second),
+                changes=[{"key": "UAGENT_MAX_STEPS", "value": "7"}],
+            )
+            assert_true(saved_settings(home, second) == {"UAGENT_MAX_STEPS": "7"}, "not saved")
+            assert_true(saved_settings(home) == {"UAGENT_MODEL": "global/model"}, "leaked")
             for project, expected in ((first, "project/model"), (second, "global/model")):
                 session = client.create(project)
                 value = client.until(session, lambda value: value["metadata"]["status"] == "idle")
@@ -2095,7 +2106,7 @@ def test_web_verbosity_is_one_level_pushed_to_every_browser(root, home, *, binar
                 while line := response.readline():
                     if line.startswith(b"data: "):
                         frame = json.loads(line[6:])
-                        if frame.get("kind") == "verbosity.changed":
+                        if frame.get("kind") == "settings.changed":
                             pushed.append(frame["level"])
 
             threading.Thread(target=read_events, daemon=True).start()

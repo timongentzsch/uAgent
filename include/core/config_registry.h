@@ -622,7 +622,7 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
     registry::Terminal(registry::Named(
         registry::Bul("UAGENT_TRUST_PROJECT_CONFIG", {}, false,
                       ReloadPolicy::kRestartRequired, "behaviour",
-                      "trust this workspace's .mcp.json and config"),
+                      "trust this workspace's .mcp.json"),
         "Trust project config")),
     registry::Terminal(registry::Named(
         registry::Str("UAGENT_DEBUG_LOG", {}, "",

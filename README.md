@@ -36,18 +36,25 @@ build there) and installs it with the bundled skills under `~/.local`.
 
 ## Configure
 
-Create `~/.uagent/.config`:
+Start with a key in the environment, then save what should stay:
 
-```dotenv
-OPENROUTER_API_KEY=replace-me
-OPENROUTER_MODEL=deepseek/deepseek-v4-flash
+```sh
+export OPENROUTER_API_KEY=replace-me
+uagent
+/config user UAGENT_MODEL=deepseek/deepseek-v4-flash
 ```
 
 Any OpenAI-compatible endpoint can use `UAGENT_BASE_URL`, `UAGENT_API_KEY`
 and `UAGENT_MODEL` instead; `UAGENT_PROVIDERS` defines named routes.
-Environment variables override a trusted project `.uagent/.config`, which
-overrides `~/.uagent/.config`. Project `.env` files are never loaded. The
-bundled `$uagent-config` skill holds the complete configuration reference.
+
+Settings are saved by µAgent itself, for all conversations or for one project
+folder, and edited with `/config`, the web's Settings, or as one JSON document
+(`uagent config export`, `uagent config import FILE`). Environment variables
+override what is saved for a project, which overrides what is saved for all.
+Nothing is read from the project: `.env` files are never loaded, and a
+`~/.uagent/.config` or `.uagent/.config` from an earlier version is taken
+over once and kept as `.config.imported`. The bundled `$uagent-config` skill
+holds the complete configuration reference.
 
 ## Usage
 

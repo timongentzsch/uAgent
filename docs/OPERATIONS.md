@@ -128,10 +128,10 @@ changes do not clear drafts, and a bracketed paste is inserted as one edit.
 
 ## Configuration reload
 
-Config files are re-read at user-turn boundaries. Settings marked
+Saved settings are re-read at user-turn boundaries. Settings marked
 `next-user-turn` apply at the next prompt; the rest are reported as
-restart-required. Command-line flags and process variables always shadow the
-files. Reload never changes an in-flight turn. Secrets never appear in
+restart-required. Command-line flags and process variables always shadow
+what is saved. Reload never changes an in-flight turn. Secrets never appear in
 inspection output.
 
 ## Memory

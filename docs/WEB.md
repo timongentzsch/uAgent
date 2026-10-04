@@ -333,7 +333,7 @@ focuses its decision.
   it applies, **Use default** and **Save**. Advanced lists what you changed
   and what the environment or command line locks; its search finds any other
   setting. The web edits your defaults; a project's override is shown and is
-  edited in its `.uagent/.config` or with `/config project`. **Reset all to
+  edited with `/config project`. **Reset all to
   defaults** (Advanced) also resets this device's display settings; API keys
   are kept. A change that needs a restart offers it: running conversations
   restart once

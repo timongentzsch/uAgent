@@ -28,7 +28,7 @@ Paths under `~/.uagent` unless shown otherwise.
 | session links | `links/*` |
 | web host discovery, devices and push keys | `web/*` |
 | project trust, permission rules, tool categories, first-run welcome shown | `config/trusted-projects.json`, `config/permissions.json`, `config/tool-categories.json`, `config/welcomed` |
-| configuration | `.config`, and `<workspace>/.uagent/.config` |
+| settings, for all conversations and per project folder | `config/settings.json` |
 | instructions | `AGENTS.md`, `COORDINATOR.md`, and `<folder>/.uagent/COORDINATOR.md` |
 | scratch scripts | `<workspace>/.uagent/scratch/*.py`, `*.sh` |
 | Playwright snapshots and logs | `<workspace>/.playwright-cli/*` |

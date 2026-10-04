@@ -53,13 +53,13 @@ version they match.
 ## Rules
 
 - Apply precedence correctly: command-line flags, then process environment,
-  then a trusted project config, then the global config, then built-in
-  defaults. `UAGENT_CONFIG_FILE` replaces both config-file locations.
+  then what is saved for the project folder, then what is saved for all
+  conversations, then built-in defaults.
 - Treat `UAGENT_API_KEY`, `OPENROUTER_API_KEY`, keys embedded in
   `UAGENT_PROVIDERS`, web-search keys, and MCP credentials as secrets. The
   configuration reference marks them 🔒.
-- Do not add secrets to a repository. Keep user config mode private; µAgent
-  sets a non-empty loaded config file to mode `0600`.
+- Do not add secrets to a repository. Saved settings live in µAgent's own
+  private `~/.uagent/config/settings.json`, never in a project.
 - `/model`, `/effort` and `/variant` persist the interactive selection; an
   explicit environment setting still wins at the next launch.
 - Do not enable `--yolo`, `UAGENT_APPROVAL=yolo`, project trust, credential
@@ -67,6 +67,6 @@ version they match.
   explicit.
 - Do not invent settings. `uagent` enumerates every registered setting; if
   a requested behavior is absent from it, say so rather than guessing.
-- Never write a config file with the file tools. `uagent action=configure` is offered
+- Never write the saved settings with the file tools. `uagent action=configure` is offered
   only on an interactive terminal, so when it is absent the answer is an edit
   for the user to apply, not one made on their behalf.

@@ -248,11 +248,17 @@ const char* UsageText() {
       row.append(column - row.size(), ' ');
       listing += row + spec.help + "\n";
     }
-    return synopsis + "\n       uagent coord [options]\n\n" + listing +
+    return synopsis +
+           "\n       uagent coord [options]"
+           "\n       uagent config export | import FILE\n\n" +
+           listing +
            "  coord                   open this folder's coordinator\n"
-           "\nconfig: ./.uagent/.config when trusted, then ~/.uagent/.config; "
-           "process UAGENT_* variables override both, and the flags above "
-           "override all three\n";
+           "  config export           print everything saved, as JSON\n"
+           "  config import FILE|-    replace it with such a document\n"
+           "\nsettings: what is saved for all conversations, then for this "
+           "project (/config, or the web settings); process UAGENT_* "
+           "variables override both, and the flags above override all "
+           "three\n";
   }();
   return kText.c_str();
 }

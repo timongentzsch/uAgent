@@ -11,13 +11,15 @@ account for untrusted code.
 
 - Settings come, the earlier winning, from what one conversation chose for
   itself (its model and approval mode only), command-line flags, process
-  `UAGENT_*` and `OPENROUTER_*` variables, a trusted project
-  `.uagent/.config` and `~/.uagent/.config`.
-  Config and artifact files are forced private. Project `.env` files are
-  ignored.
+  `UAGENT_*` and `OPENROUTER_*` variables, what is saved for the project
+  folder and what is saved for all conversations. Both are kept by µAgent in
+  `~/.uagent/config/settings.json`, never in the project. That file and
+  artifact files are forced private. Project `.env` files are ignored.
 - User `~/.mcp.json` is trusted executable configuration. Project `.mcp.json`
-  and `.uagent/.config` require interactive trust or `--trust-project-config`;
-  semantic edits revoke stored trust.
+  requires interactive trust or `--trust-project-config`; semantic edits
+  revoke stored trust. A `.uagent/.config` an earlier version left in a
+  project is not read: it is taken over into the saved settings once, as it
+  was approved then or when that flag vouches for it.
 - Project instruction files, memories and skills enter model context without
   configuration trust because they grant no capability. An explicit
   `$skill-name` mention loads that skill before the first model call. Treat an
@@ -38,8 +40,8 @@ account for untrusted code.
   it denies unattended calls when review fails or asks.
 - Some operations always require a person, even under YOLO, auto mode or a
   remembered rule, and are denied when no interactive client can answer, as
-  in a delegated child: writing µAgent's configuration (user and project
-  `.uagent/.config`, the trust store, `~/.uagent/config/permissions.json`,
+  in a delegated child: writing µAgent's configuration (the saved settings,
+  the trust store, `~/.uagent/config/permissions.json`,
   your instruction files in `~/.uagent`, `.mcp.json`) or reading its credential-bearing files
   through file tools, the `uagent` tool's `configure` action, and
   `run(sandbox=false)`.
@@ -98,8 +100,8 @@ mechanism; `/context` lists every writable root. A requested root that is
 refused is reported at startup.
 
 Reads are **not** restricted on either platform, except for the browser
-profile: a confined `cat ~/.uagent/.config` still pulls the file into model
-context.
+profile: a confined `cat ~/.uagent/config/settings.json` still pulls the file
+into model context.
 
 With the sandbox on, commands cannot read the browser data directory
 (`UAGENT_BROWSER_DATA`) or connect to its sockets, and the file tools refuse
@@ -117,12 +119,12 @@ A workspace's `.uagent/.config` and `.mcp.json`, and in a repository its
 of the writable workspace on macOS only; sandboxed commands can still commit,
 but not change git config. Landlock has no deny rule, so the same
 guarantee on Linux would mean not granting the workspace. On Linux, a command
-that changes `.config` or `.mcp.json` still revokes project trust, so the next
-launch asks again. A project's instruction files (`AGENTS.md`,
+that changes `.mcp.json` still revokes project trust, so the next launch asks
+again. A project's instruction files (`AGENTS.md`,
 `.uagent/COORDINATOR.md`) are ordinary repository files that any session in
 it may edit.
-The built-in file tools and the `uagent` tool still reach `.config` and
-`.mcp.json`, with mandatory human approval for each change.
+The built-in file tools still reach `.mcp.json`, and the `uagent` tool the
+saved settings, with mandatory human approval for each change.
 
 A session can run unconfined in two ways, both reported:
 
@@ -134,7 +136,7 @@ A session can run unconfined in two ways, both reported:
 - On a Linux kernel without Landlock, the sandbox degrades: a startup warning,
   a `capability.changed` event, `sandbox.mode=degraded`, and commands run
   unconfined. A session that requested the sandbox explicitly, in the
-  environment or a config file, refuses to run commands instead.
+  environment or a saved setting, refuses to run commands instead.
 
 ## Sensitive data
 

@@ -23,6 +23,7 @@ extern char** environ;
 #include "include/agent/session_role.h"
 #include "include/agent/session_store.h"
 #include "include/app/bootstrap.h"
+#include "include/app/config_proposal.h"
 #include "include/app/control.h"
 #include "include/app/options.h"
 #include "include/app/reference.h"
@@ -146,6 +147,9 @@ int Main(int argc, char** argv) {
   }
   InitializeProcess();
   SetExecutablePath(argv[0]);
+  if (argc > 1 && std::string_view(argv[1]) == "config") {
+    return ConfigMain(argc, argv);
+  }
   if (argc > 1 && std::string_view(argv[1]) == "--session-worker") {
     return session::WorkerMain(argc, argv);
   }

@@ -572,7 +572,7 @@ export type HostEvent = HostEnvelope &
           | "management.changed"
           | "scheduled.changed";
       }
-    | { kind: "verbosity.changed"; level: string }
+    | { kind: "settings.changed"; level: string }
   );
 export interface BodyPage {
   text: string;

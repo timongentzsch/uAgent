@@ -50,6 +50,13 @@ std::string ChangeSettings(
     const std::string& folder,
     const std::function<std::string(SettingValues& scope)>& change);
 
+// Everything saved, as one document: a backup, or what another host is
+// given. `error` says why it is not all there.
+json ExportSettings(std::string& error);
+// Replaces everything saved with `document`, whose shape is checked here and
+// whose values are the caller's to check. Returns why it was not saved.
+std::string ReplaceSettings(json document);
+
 }  // namespace uagent
 
 #endif  // UAGENT_INCLUDE_CORE_SETTINGS_STORE_H_

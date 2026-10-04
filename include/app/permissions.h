@@ -14,15 +14,6 @@
 
 namespace uagent {
 
-enum class PermissionOverride { kDefault, kAsk, kAuto, kYolo };
-
-const char* PermissionOverrideName(PermissionOverride mode);
-bool ParsePermissionOverride(const std::string& value,
-                             PermissionOverride& mode);
-// An explicit override wins; kDefault defers to the configured mode.
-ApprovalMode ResolveApprovalMode(PermissionOverride override,
-                                 ApprovalMode configured);
-
 std::string PermissionKey(const Tool& tool, const json& arguments,
                           ApprovalClass required);
 

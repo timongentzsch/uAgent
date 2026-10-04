@@ -7,6 +7,8 @@
 // thread and no mid-turn configuration mutation exist.
 
 #include <map>
+#include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <utility>
@@ -27,6 +29,10 @@ struct EffectiveConfigSnapshot {
   // their merge, lowest first: user, project, environment, cli, conversation.
   std::map<std::string, RuntimeConfig::Values> layers;
   std::vector<std::pair<std::string, FileStamp>> files;
+
+  // What `key` would be without the conversation's own choice: the value a
+  // conversation's control offers as its default. Empty when no scope sets it.
+  std::string Inherited(const std::string& key) const;
 };
 
 struct ConfigReload {
@@ -45,11 +51,10 @@ class ConfigManager {
   EffectiveConfigSnapshot Read() const;
   bool ProjectTrusted() const { return trust_project_; }
   // What one conversation chose for itself, above every other scope. Only
-  // settings whose descriptor allows the conversation scope belong here.
-  void SetConversation(RuntimeConfig::Values chosen) {
-    conversation_ = std::move(chosen);
-  }
-  const RuntimeConfig::Values& Conversation() const { return conversation_; }
+  // settings whose descriptor allows the conversation scope belong here; an
+  // empty value takes the choice back. Safe beside Read() on another thread.
+  void ChooseForConversation(const std::string& key, const std::string& value);
+  RuntimeConfig::Values Conversation() const;
 
   RuntimeConfig Initialize();
   std::optional<ConfigReload> Reload(const RuntimeConfig& active);
@@ -64,6 +69,8 @@ class ConfigManager {
   bool trust_project_ = false;
   RuntimeConfig::Values cli_;
   RuntimeConfig::Values conversation_;
+  std::unique_ptr<std::mutex> conversation_mutex_ =
+      std::make_unique<std::mutex>();
   std::string custom_path_;
   std::string global_path_;
   std::string project_path_;

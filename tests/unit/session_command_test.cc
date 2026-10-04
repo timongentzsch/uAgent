@@ -387,7 +387,10 @@ void TestSessionPersistence() {
       CHECK(loaded.record->state.messages.size() == 1);
       const auto& settings =
           loaded.record->state.display["facts"]["session-settings"];
-      CHECK(settings["permissions"] == (index < 3 ? "default" : "ask"));
+      // Only what the conversation chose is kept; the rest is inherited.
+      CHECK(settings["chosen"] ==
+            (index < 3 ? json::object()
+                       : json::object({{"UAGENT_APPROVAL", "ask"}})));
       if (index >= 4) CHECK(settings["tools"]["profile"] == "minimal");
     }
     std::string journal, error;

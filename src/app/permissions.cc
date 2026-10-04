@@ -86,51 +86,6 @@ Usage DecisionUsage(const json& response) {
 
 }  // namespace
 
-const char* PermissionOverrideName(PermissionOverride mode) {
-  switch (mode) {
-    case PermissionOverride::kDefault:
-      return "default";
-    case PermissionOverride::kAsk:
-      return "ask";
-    case PermissionOverride::kAuto:
-      return "auto";
-    case PermissionOverride::kYolo:
-      return "yolo";
-  }
-  return "default";
-}
-
-bool ParsePermissionOverride(const std::string& value,
-                             PermissionOverride& mode) {
-  if (value == "default") {
-    mode = PermissionOverride::kDefault;
-    return true;
-  }
-  ApprovalMode parsed;
-  if (!ParseApprovalMode(value, parsed)) {
-    return false;
-  }
-  mode = parsed == ApprovalMode::kYolo   ? PermissionOverride::kYolo
-         : parsed == ApprovalMode::kAuto ? PermissionOverride::kAuto
-                                         : PermissionOverride::kAsk;
-  return true;
-}
-
-ApprovalMode ResolveApprovalMode(PermissionOverride override,
-                                 ApprovalMode configured) {
-  switch (override) {
-    case PermissionOverride::kAsk:
-      return ApprovalMode::kAsk;
-    case PermissionOverride::kAuto:
-      return ApprovalMode::kAuto;
-    case PermissionOverride::kYolo:
-      return ApprovalMode::kYolo;
-    case PermissionOverride::kDefault:
-      break;
-  }
-  return configured;
-}
-
 std::string PermissionKey(const Tool& tool, const json& arguments,
                           ApprovalClass required) {
   json policy = {{"name", tool.name},

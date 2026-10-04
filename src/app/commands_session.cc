@@ -68,8 +68,7 @@ void SaveSessionSettings(AppSession& session) {
   session.ActiveAgent().SessionSettings(
       {{"route", RouteSelection(session.ApiClient(),
                                 session.context.provider.providers)},
-       {"permissions",
-        PermissionOverrideName(session.context.permission_override.load())},
+       {"chosen", session.context.config_manager.Conversation()},
        {"tools", session.ActiveAgent().ToolSelectionSettings()}});
 }
 

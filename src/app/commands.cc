@@ -66,13 +66,24 @@ void LoadSessionJournal(AppSession& session, const std::string& previous_path) {
       session.ActiveAgent().RouteChanged();
     }
   }
-  if (!session.context.options.yolo) {
-    PermissionOverride saved = PermissionOverride::kDefault;
+  // What the conversation chose for itself. A flag given for this run
+  // (--yolo) was chosen later and stays.
+  json chosen = JsonValue(settings, "chosen", json(nullptr));
+  if (!chosen.is_object()) {
+    // Saved before choices were kept as settings.
+    chosen = json::object();
     const std::string mode = JsonValue(settings, "permissions", "");
-    if (!mode.empty()) ParsePermissionOverride(mode, saved);
-    session.context.permission_override.store(saved);
-    PermissionControl(session.context, json::object());
+    if (!mode.empty() && mode != "default") chosen["UAGENT_APPROVAL"] = mode;
   }
+  for (const auto& [key, value] : chosen.items()) {
+    if (!value.is_string() ||
+        (key == "UAGENT_APPROVAL" && session.context.options.yolo)) {
+      continue;
+    }
+    session.context.config_manager.ChooseForConversation(
+        key, value.get<std::string>());
+  }
+  PermissionControl(session.context, json::object());
   const json saved_tools = JsonValue(settings, "tools", json::object());
   if (!saved_tools.empty()) {
     session.ActiveAgent().RestoreToolSelection(saved_tools);

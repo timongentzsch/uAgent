@@ -201,6 +201,12 @@ consteval ConfigDescriptor Named(ConfigDescriptor descriptor,
   return descriptor;
 }
 
+// One conversation may choose its own value, kept with it.
+consteval ConfigDescriptor PerConversation(ConfigDescriptor descriptor) {
+  descriptor.scopes |= kScopeConversation;
+  return descriptor;
+}
+
 // Only a terminal process or a flag uses it; the web does not list it.
 consteval ConfigDescriptor Terminal(ConfigDescriptor descriptor) {
   descriptor.terminal = true;
@@ -568,14 +574,14 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
             "behaviour",
             "expose adapt_system so the model may revise its directive"),
         "Self-directive tool"),
-    registry::Named(
+    registry::PerConversation(registry::Named(
         registry::Choice(
             registry::Str("UAGENT_APPROVAL", "approval", "ask",
                           ReloadPolicy::kNextUserTurn, Sensitivity::kPublic,
                           "behaviour",
                           "ask, auto reviewer, or yolo for ordinary mutations"),
             kApprovalModes),
-        "Approval mode"),
+        "Approval mode")),
     registry::Named(
         registry::Str("UAGENT_PERMISSION_MODEL", "permission_model",
                       "~typesafe/jev-latest", ReloadPolicy::kNextUserTurn,

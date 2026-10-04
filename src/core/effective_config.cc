@@ -117,9 +117,42 @@ EffectiveConfigSnapshot ConfigManager::Read() const {
   };
   layer("environment", process_, true);
   layer("cli", cli_, false);
-  layer("conversation", conversation_, false);
+  layer("conversation", Conversation(), false);
   snapshot.config = RuntimeConfig::FromValues(snapshot.values);
   return snapshot;
+}
+
+std::string EffectiveConfigSnapshot::Inherited(const std::string& key) const {
+  std::string value;
+  for (const ConfigScopeName& scope : kConfigScopes) {
+    if (scope.persisted == kScopeConversation) continue;
+    // A file named by UAGENT_CONFIG_FILE stands where the user's would.
+    for (std::string_view source :
+         {scope.source,
+          std::string_view(scope.persisted == kScopeUser ? "file" : "")}) {
+      const auto held = layers.find(std::string(source));
+      if (held == layers.end()) continue;
+      if (auto found = held->second.find(key); found != held->second.end()) {
+        value = found->second;
+      }
+    }
+  }
+  return value;
+}
+
+void ConfigManager::ChooseForConversation(const std::string& key,
+                                          const std::string& value) {
+  std::lock_guard lock(*conversation_mutex_);
+  if (value.empty()) {
+    conversation_.erase(key);
+  } else {
+    conversation_[key] = value;
+  }
+}
+
+RuntimeConfig::Values ConfigManager::Conversation() const {
+  std::lock_guard lock(*conversation_mutex_);
+  return conversation_;
 }
 
 RuntimeConfig ConfigManager::Initialize() {

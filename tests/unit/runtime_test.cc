@@ -468,13 +468,6 @@ void TestPermissionAndToolCategoryPolicy() {
   CHECK(ParseApprovalMode("yolo", approval));
   CHECK(approval == ApprovalMode::kYolo);
   CHECK(!ParseApprovalMode("guess", approval));
-  // An explicit override wins; the default defers to configuration.
-  CHECK(ResolveApprovalMode(PermissionOverride::kDefault,
-                            ApprovalMode::kAuto) == ApprovalMode::kAuto);
-  CHECK(ResolveApprovalMode(PermissionOverride::kAsk, ApprovalMode::kYolo) ==
-        ApprovalMode::kAsk);
-  CHECK(ResolveApprovalMode(PermissionOverride::kYolo, ApprovalMode::kAsk) ==
-        ApprovalMode::kYolo);
 
   Tool tool;
   tool.name = "write_file";

@@ -687,15 +687,12 @@ BootstrapResult Bootstrap(Options options, const char* executable,
     return Failure(std::move(error), 2);
   }
   MaintainArtifacts();
-  // Keep the explicit CLI flag distinct from the configured default so a
-  // resumed conversation can restore its own override.
   ApprovalMode configured_mode = ApprovalMode::kAsk;
   if (!ParseApprovalMode(config.approval, configured_mode)) {
     configured_mode = ApprovalMode::kAsk;
   }
-  SetApprovalMode(ResolveApprovalMode(
-      options.yolo ? PermissionOverride::kYolo : PermissionOverride::kDefault,
-      configured_mode));
+  // The conversation's own mode follows once its manager is in place.
+  SetApprovalMode(options.yolo ? ApprovalMode::kYolo : configured_mode);
   if (!options.debug) {
     options.debug_path = SettingText(Cfg("UAGENT_DEBUG_LOG"));
     options.debug = !options.debug_path.empty();
@@ -768,9 +765,10 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   context->tools =
       BuildTools(*context, workspace, trusted_snapshot, skills, tool_error);
   if (!tool_error.empty()) return Failure(tool_error);
-  context->permission_override.store(context->options.yolo
-                                         ? PermissionOverride::kYolo
-                                         : PermissionOverride::kDefault);
+  // A flag for a conversation's setting sets it for that conversation.
+  if (context->options.yolo) {
+    context->config_manager.ChooseForConversation("UAGENT_APPROVAL", "yolo");
+  }
   AppContext* app = context.get();
   context->agent = std::make_unique<Agent>(
       api, context->tools, context->runtime.processes,

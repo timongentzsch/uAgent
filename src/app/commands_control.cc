@@ -24,26 +24,35 @@
 namespace uagent {
 
 json PermissionControl(AppContext& context, const json& request) {
+  // The mode is the approval setting; a conversation's own is that setting
+  // chosen at its scope, and "default" takes the choice back.
+  const std::string key = "UAGENT_APPROVAL";
   std::string mode = JsonValue(request, "mode", "");
   if (!mode.empty()) {
-    PermissionOverride parsed;
-    if (!ParsePermissionOverride(mode, parsed)) {
+    ApprovalMode chosen = ApprovalMode::kAsk;
+    if (mode != "default" && !ParseApprovalMode(mode, chosen)) {
       return {{"error", "unknown permission mode"}};
     }
-    context.permission_override.store(parsed);
+    context.config_manager.ChooseForConversation(
+        key, mode == "default" ? "" : ApprovalModeName(chosen));
   }
-  auto configured = context.config_manager.Read();
-  auto value = configured.values.find("UAGENT_APPROVAL");
-  ApprovalMode default_mode = ApprovalMode::kAsk;
-  if (value != configured.values.end()) {
-    ParseApprovalMode(value->second, default_mode);
-  }
-  PermissionOverride override = context.permission_override.load();
-  ApprovalMode effective = ResolveApprovalMode(override, default_mode);
+  const auto configured = context.config_manager.Read();
+  // An unreadable value reads as asking.
+  auto parsed = [](const std::string& text) {
+    ApprovalMode value = ApprovalMode::kAsk;
+    if (!ParseApprovalMode(text, value)) value = ApprovalMode::kAsk;
+    return value;
+  };
+  const auto value = configured.values.find(key);
+  const ApprovalMode effective =
+      parsed(value == configured.values.end() ? "" : value->second);
   SetApprovalMode(effective);
-  json result = {{"mode", PermissionOverrideName(override)},
-                 {"effective", ApprovalModeName(effective)},
-                 {"default", ApprovalModeName(default_mode)}};
+  json result = {
+      {"mode", JsonValue(configured.sources, key.c_str(), "") == "conversation"
+                   ? ApprovalModeName(effective)
+                   : "default"},
+      {"effective", ApprovalModeName(effective)},
+      {"default", ApprovalModeName(parsed(configured.Inherited(key)))}};
   if (!mode.empty()) {
     Emit(Event{EventId::kConfigChanged, {{"permissions", result}}});
   }

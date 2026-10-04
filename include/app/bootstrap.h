@@ -96,8 +96,6 @@ struct AppContext {
   // What "don't ask again" granted, bound to the tool's current provider,
   // schema and approval policy. Session-scoped by construction: it dies here.
   std::unordered_set<std::string> session_approvals;
-  std::atomic<PermissionOverride> permission_override{
-      PermissionOverride::kDefault};
   std::unique_ptr<Agent> agent;
   HeadlessOutput output;
 };

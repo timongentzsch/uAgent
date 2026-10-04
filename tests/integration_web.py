@@ -2154,6 +2154,25 @@ def test_web_http_context_configuration_permissions_and_fork(root, home, *, bina
                 initial,
             )
             client.command("permissions", session, mode="ask")
+            # The conversation's mode is the approval setting, chosen at its
+            # scope over the one saved for all conversations.
+            approval = next(
+                item
+                for item in client.command("config", session)["result"]["settings"]
+                if item["name"] == "UAGENT_APPROVAL"
+            )
+            assert_true(
+                approval["source"] == "conversation"
+                and approval["set"] == {"user": "yolo", "conversation": "ask"}
+                and approval["scopes"] == ["user", "project", "conversation"]
+                and approval["effective"] == "ask",
+                approval,
+            )
+            assert_true(
+                client.snapshot(session)["state"]["permissions"]
+                == {"mode": "ask", "effective": "ask", "default": "yolo"},
+                "conversation mode",
+            )
             preview = client.command("context", session)["result"]["exchanges"][0]
             assert_true(preview["preview"] and not provider.requests, preview)
 

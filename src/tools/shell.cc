@@ -178,6 +178,11 @@ int SpawnPtyShell(const std::string& shell, const std::string& command,
 #endif
 }
 
+// How long a command stopped at its deadline or by an interrupt has to clean
+// up after itself (a browser removing its temporary profile) before it is
+// killed.
+constexpr auto kStopGrace = std::chrono::seconds(1);
+
 void SignalShellGroup(pid_t pid, int signal_number) {
   if (kill(-pid, signal_number) != 0) (void)kill(pid, signal_number);
 }
@@ -458,13 +463,14 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
     }
     if (AbortRequested()) {
       cancelled = true;
-      SignalShellGroup(pid, SIGKILL);
+      SignalShellGroup(pid, SIGTERM);
       supervisor.Wake();
     }
     supervisor.WaitForChange(generation, deadline);
   }
 
   if (cancelled) {
+    (void)TerminateGroup(supervisor, pid, kStopGrace, false);
     exited = WaitForTerminal(supervisor, session, DeadlineAfter(2));
   }
   // Every path below that does not background the child takes its signal
@@ -516,7 +522,7 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   if (!spec.background && !handed_off && spec.yield_ms <= 0) {
     BgTrackSignal(pid, false);
     (void)supervisor.RemoveForeground(pid);
-    SignalShellGroup(pid, SIGKILL);
+    (void)TerminateGroup(supervisor, pid, kStopGrace, false);
     WaitForTerminal(supervisor, session, DeadlineAfter(2));
     return finish([](std::string output, int) {
       if (!output.empty() && output.back() != '\n') output += '\n';

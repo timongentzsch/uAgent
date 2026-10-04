@@ -64,8 +64,8 @@ bool WaitForProcessGroupExit(ProcessSupervisor& supervisor, pid_t leader,
   return !ProcessGroupAlive(leader);
 }
 
-// TERM, then KILL if the group outlives the grace period. False only when the
-// group is still alive after the escalation.
+}  // namespace
+
 bool TerminateGroup(ProcessSupervisor& supervisor, pid_t leader,
                     std::chrono::milliseconds grace, bool reap_leader) {
   if (!SignalProcessGroup(leader, SIGTERM)) return false;
@@ -75,8 +75,6 @@ bool TerminateGroup(ProcessSupervisor& supervisor, pid_t leader,
   if (!SignalProcessGroup(leader, SIGKILL)) return false;
   return WaitForProcessGroupExit(supervisor, leader, grace, reap_leader);
 }
-
-}  // namespace
 
 std::string SupervisedJobLabel(const BgJob& job) {
   ActivityKind kind = job.kind;

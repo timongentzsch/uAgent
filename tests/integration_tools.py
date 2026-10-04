@@ -200,6 +200,28 @@ def test_an_attachment_over_the_budget_is_warned_about_once(root, home, *, binar
         assert_true(said == 1, (said, result.stdout[-1500:]))
 
 
+def test_a_command_stopped_at_its_deadline_gets_to_clean_up(root, home, *, binary):
+    # What a headless browser does with its temporary profile: removed on a
+    # clean exit, left behind by a kill.
+    marker = root / "temporary-profile"
+    command = f"trap 'rm -f {marker}; exit 0' TERM; touch {marker}; sleep 30 & wait"
+    with Server(
+        # Without a yield the command is held to its deadline, not moved to
+        # the background when it runs long.
+        [
+            tool_call("run", {"command": command, "yield_ms": 0}),
+            event({"content": "deadline-ok"}),
+        ]
+    ) as server:
+        env = base_env(home, server.url)
+        # A foreground command is bounded by its turn.
+        env["UAGENT_MAX_TURN_SECONDS"] = "2"
+        result = run_dialog(root, env, "go\n/q\n", "--yolo", timeout=20, binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true("exceeded its execution deadline" in result.stdout, result.stdout)
+        assert_true(not marker.exists(), "the command was killed before it could clean up")
+
+
 def test_full_run_and_python_terminal_trace(root, home, *, binary):
     shell_command = "printf 'shell-one\\n'\nprintf 'shell-two\\n'"
     python_code = "print('python-one')\nprint('python-two')"

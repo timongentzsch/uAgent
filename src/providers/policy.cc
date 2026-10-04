@@ -206,28 +206,6 @@ ProviderSetup ConfigureProvider(Api& api) {
           ResolveModelRoute(setup.routes, setup.providers, api.model)) {
     ApplyRoute(api, *route);
     route_metadata_validated = true;
-  } else if (api.model.empty()) {  // no explicit model: restore the last /model
-    ModelPreference preference = LoadModelPreference();
-    ModelSelection preferred = ParseModelSelection(preference.selection);
-    if (preference.route) {
-      if (std::optional<ModelRoute> saved = ResolveModelRoute(
-              setup.routes, setup.providers, preferred.base)) {
-        ApplyRoute(api, *saved);
-        route_metadata_validated = true;
-        ApplySelectionPolicy(api, preferred);
-      }
-    } else if (!preference.selection.empty()) {
-      bool same_provider = api.base_url == preference.base_url;
-      if (api.base_url.empty()) {
-        const ProviderTemplate* provider =
-            FindProviderTemplateForUrl(preference.base_url);
-        same_provider = provider && !EnvStr(provider->api_key_env).empty();
-      }
-      if (same_provider) {
-        api.model = preferred.base;
-        ApplySelectionPolicy(api, preferred);
-      }
-    }
   }
   // Command-line/config suffixes are the most specific route policy. Apply
   // them after a named route so they override its defaults without becoming

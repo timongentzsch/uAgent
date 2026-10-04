@@ -170,7 +170,7 @@ json SessionControl(AppSession& session, const json& request) {
       SelectModel(session.ApiClient(), session.context.provider.routes,
                   session.context.provider.providers, value);
   if (selected.empty()) return {{"error", "unknown model"}};
-  SaveSelectedModel(session, selected);
+  SaveSelectedModel(session, selected, JsonValue(request, "default", false));
   return {{"route", RouteSelection(session.ApiClient(),
                                    session.context.provider.providers)}};
 }

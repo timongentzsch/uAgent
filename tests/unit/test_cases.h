@@ -117,7 +117,6 @@ namespace uagent {
   X(TestAgentConfigAllowlist)                    \
   X(TestEffectiveConfigReload)                   \
   X(TestChildEnvironmentPolicy)                  \
-  X(TestModelPreference)                         \
   X(TestEffectiveImageModel)                     \
   X(TestProviderTemplates)                       \
   X(TestNamedProviders)                          \

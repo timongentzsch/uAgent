@@ -65,41 +65,20 @@ std::string ComposeSelection(const std::string& scope, const std::string& model,
   return selection;
 }
 
-std::string ModelPreferencePath() {
-  return UagentDir(kConfigDir) + "/model-preference.json";
-}
-
-bool PersistableSelection(const std::string& selection) {
-  return !selection.empty() &&
-         selection.find_first_of("\r\n") == std::string::npos &&
-         selection.find('\0') == std::string::npos;
-}
-
-ModelPreference LoadModelPreference() {
-  std::ifstream input(ModelPreferencePath());
-  json saved = json::parse(input, nullptr, false);
+ModelPreference TakeModelPreference() {
+  const std::string path = UagentDir(kConfigDir) + "/model-preference.json";
+  std::ifstream input(path);
+  if (!input) return {};
+  const json saved = json::parse(input, nullptr, false);
+  unlink(path.c_str());
   if (!saved.is_object() || JsonValue(saved, "format", 0) != 1) return {};
   ModelPreference preference{
       JsonValue(saved, "selection", ""),
       StripTrailingSlashes(JsonValue(saved, "base_url", "")),
       JsonValue(saved, "route", false)};
-  return PersistableSelection(preference.selection) ? preference
-                                                    : ModelPreference{};
-}
-
-bool SaveModelPreference(const ModelPreference& preference,
-                         std::string& error) {
-  if (!PersistableSelection(preference.selection)) {
-    error = "model selection is not persistable";
-    return false;
-  }
-  json saved = {{"format", 1},
-                {"selection", preference.selection},
-                {"base_url", preference.base_url},
-                {"route", preference.route}};
-  return AtomicWriteFile(ModelPreferencePath(), JsonDump(saved, 2) + "\n",
-                         kPrivateFileMode,
-                         /*preserve_mode=*/false, error);
+  return preference.selection.find_first_of("\r\n") == std::string::npos
+             ? preference
+             : ModelPreference{};
 }
 
 ModelSelection ParseModelSelection(const std::string& selection) {
@@ -152,18 +131,6 @@ std::optional<ModelRoute> ResolveModelRoute(
                    {}};
   route.features = provider->features;
   return route;
-}
-
-bool SaveSelectionSuffix(const std::string& variant, const std::string& effort,
-                         std::string& error) {
-  ModelPreference preference = LoadModelPreference();
-  if (!PersistableSelection(preference.selection)) {
-    error = "no saved model preference to update";
-    return false;
-  }
-  ModelSelection parsed = ParseModelSelection(preference.selection);
-  preference.selection = ComposeSelection("", parsed.base, variant, effort);
-  return SaveModelPreference(preference, error);
 }
 
 bool CanUseRawModel(const Api& api, std::string_view name) {

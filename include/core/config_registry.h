@@ -275,15 +275,15 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                       "OpenRouter credential used when no base URL is set"),
         "OpenRouter key",
         "Credential for OpenRouter, used when no API address is set"),
-    registry::Named(
+    registry::PerConversation(registry::Named(
         registry::Fallback(
             registry::Str(
                 "UAGENT_MODEL", {}, "", ReloadPolicy::kRestartRequired,
                 Sensitivity::kPublic, "route",
                 "model or named route as [provider/]model[:variant][:effort]"),
-            "last /model choice, else the provider default"),
+            "the provider default"),
         "Conversation model",
-        "Answers your messages; /model switches it for one conversation"),
+        "Answers your messages; /model chooses it for one conversation")),
     registry::Named(
         registry::Fallback(
             registry::Str("UAGENT_REASONING_EFFORT", {}, "",

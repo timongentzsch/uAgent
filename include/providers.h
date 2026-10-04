@@ -143,14 +143,10 @@ const ProviderTemplate* FindProviderTemplateForUrl(const std::string& url);
 // The built-in default template (OpenRouter) for unattributed endpoints.
 const ProviderTemplate& DefaultProviderTemplate();
 bool ApplyProviderTemplate(Api& api, const ProviderTemplate& provider);
-std::string ModelPreferencePath();
-bool PersistableSelection(const std::string& selection);
-ModelPreference LoadModelPreference();
-bool SaveModelPreference(const ModelPreference& preference, std::string& error);
-// Rewrite the saved preference's routing suffixes in place, so an interactive
-// /effort or /variant survives a restart exactly like the /model that saved it.
-bool SaveSelectionSuffix(const std::string& variant, const std::string& effort,
-                         std::string& error);
+// The model a /model once remembered for every later run, from before a
+// conversation's model was a setting. Reading it removes its file: whoever
+// takes it saves it as UAGENT_MODEL.
+ModelPreference TakeModelPreference();
 bool ValidEffort(const std::string& effort);
 bool SupportsReasoningEffort(const Api& api, std::string_view effort);
 ProviderCatalog LoadProviderCatalog();

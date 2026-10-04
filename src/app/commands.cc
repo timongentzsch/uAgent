@@ -53,9 +53,26 @@ void CommandReply::Note(Tone tone, std::string_view text) {
 
 void LoadSessionJournal(AppSession& session, const std::string& previous_path) {
   const json settings = session.ActiveAgent().SessionSettings();
-  const std::string route = JsonValue(settings, "route", "");
-  if (!route.empty() &&
-      !session.context.options.overrides.contains("UAGENT_MODEL")) {
+  // What the conversation chose for itself. A flag given for this run
+  // (--model, --yolo) was chosen later and stays.
+  json chosen = JsonValue(settings, "chosen", json(nullptr));
+  if (!chosen.is_object()) {
+    // Saved before choices were kept as settings.
+    chosen = json::object();
+    const std::string mode = JsonValue(settings, "permissions", "");
+    if (!mode.empty() && mode != "default") chosen["UAGENT_APPROVAL"] = mode;
+    const std::string route = JsonValue(settings, "route", "");
+    if (!route.empty()) chosen["UAGENT_MODEL"] = route;
+  }
+  ConfigManager& manager = session.context.config_manager;
+  const RuntimeConfig::Values flagged = manager.Conversation();
+  for (const auto& [key, value] : chosen.items()) {
+    if (value.is_string() && !flagged.contains(key)) {
+      manager.ChooseForConversation(key, value.get<std::string>());
+    }
+  }
+  const std::string route = JsonValue(chosen, "UAGENT_MODEL", "");
+  if (!route.empty() && !flagged.contains("UAGENT_MODEL")) {
     if (SelectModel(session.ApiClient(), session.context.provider.routes,
                     session.context.provider.providers, route)
             .empty()) {
@@ -65,23 +82,6 @@ void LoadSessionJournal(AppSession& session, const std::string& previous_path) {
       ActivateRoute(session.ApiClient());
       session.ActiveAgent().RouteChanged();
     }
-  }
-  // What the conversation chose for itself. A flag given for this run
-  // (--yolo) was chosen later and stays.
-  json chosen = JsonValue(settings, "chosen", json(nullptr));
-  if (!chosen.is_object()) {
-    // Saved before choices were kept as settings.
-    chosen = json::object();
-    const std::string mode = JsonValue(settings, "permissions", "");
-    if (!mode.empty() && mode != "default") chosen["UAGENT_APPROVAL"] = mode;
-  }
-  for (const auto& [key, value] : chosen.items()) {
-    if (!value.is_string() ||
-        (key == "UAGENT_APPROVAL" && session.context.options.yolo)) {
-      continue;
-    }
-    session.context.config_manager.ChooseForConversation(
-        key, value.get<std::string>());
   }
   PermissionControl(session.context, json::object());
   const json saved_tools = JsonValue(settings, "tools", json::object());

@@ -23,6 +23,7 @@
 #include "include/api.h"
 #include "include/app/artifact.h"
 #include "include/app/asset_store.h"
+#include "include/app/config_proposal.h"
 #include "include/app/coordinator.h"
 #include "include/app/permissions.h"
 #include "include/app/reference.h"
@@ -675,6 +676,24 @@ BootstrapResult Bootstrap(Options options, const char* executable,
 
   ConfigManager config_manager =
       ConfigManager::Capture(trusted, options.overrides);
+  // A model remembered by an older /model becomes the saved setting, once.
+  if (const ModelPreference remembered = TakeModelPreference();
+      !remembered.selection.empty()) {
+    const auto held = config_manager.Read();
+    const auto base = held.values.find("UAGENT_BASE_URL");
+    // A bare model name belongs to the endpoint it was chosen on.
+    const bool applies =
+        remembered.route || base == held.values.end() ||
+        StripTrailingSlashes(base->second) == remembered.base_url;
+    if (applies && !held.values.contains("UAGENT_MODEL")) {
+      ConfigurationControl(
+          {{"operation", "apply"},
+           {"scope", "user"},
+           {"changes", json::array({{{"key", "UAGENT_MODEL"},
+                                     {"value", remembered.selection}}})}},
+          config_manager, false);
+    }
+  }
   RuntimeConfig config = config_manager.Initialize();
   // Route resolution reads UAGENT_MODEL; a coordinator starts on its own
   // model. A /model saved in its session still wins on resume.
@@ -768,6 +787,11 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   // A flag for a conversation's setting sets it for that conversation.
   if (context->options.yolo) {
     context->config_manager.ChooseForConversation("UAGENT_APPROVAL", "yolo");
+  }
+  if (auto model = context->options.overrides.find("UAGENT_MODEL");
+      model != context->options.overrides.end()) {
+    context->config_manager.ChooseForConversation("UAGENT_MODEL",
+                                                  model->second);
   }
   AppContext* app = context.get();
   context->agent = std::make_unique<Agent>(

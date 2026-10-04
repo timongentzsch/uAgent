@@ -737,31 +737,6 @@ void TestChildEnvironmentPolicy() {
   CHECK(FirstLine(connection_report).find("secret-value") == std::string::npos);
 }
 
-void TestModelPreference() {
-  namespace fs = std::filesystem;
-  fs::path root = fs::temp_directory_path() /
-                  ("uagent-model-preference-" +
-                   std::to_string(static_cast<int64_t>(getpid())));
-  fs::create_directories(root);
-  ScopedEnv scoped_home("HOME", root.c_str());
-
-  std::string error;
-  CHECK(SaveModelPreference({"provider/fast", "https://example.test/v1", true},
-                            error));
-  ModelPreference saved = LoadModelPreference();
-  CHECK(saved.selection == "provider/fast");
-  CHECK(saved.base_url == "https://example.test/v1");
-  CHECK(saved.route);
-  struct stat st{};
-  CHECK(stat(ModelPreferencePath().c_str(), &st) == 0);
-  CHECK((st.st_mode & 0777) == 0600);
-  CHECK(!SaveModelPreference({"bad\nmodel", "https://example.test/v1", false},
-                             error));
-
-  std::error_code ec;
-  fs::remove_all(root, ec);
-}
-
 void TestProviderTemplates() {
   const ProviderTemplate* openrouter =
       FindProviderTemplateForUrl("https://openrouter.ai/api/v1");

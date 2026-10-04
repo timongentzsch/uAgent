@@ -484,7 +484,8 @@ def test_dynamic_provider_catalog_and_model(root, home, *, binary):
         assert_true("dynamic-route-ok" in selected.stdout, selected.stdout)
         assert_true(len(second.get_requests) == 3, second.get_requests)
 
-        restart_env = provider_env(home, first.url, providers)
+        # A catalog route named as the configured model starts a fresh run.
+        restart_env = provider_env(home, first.url, providers, "second/gpt-live")
         restarted = run(root, restart_env, "-p", "probe", binary=binary)
         assert_true(restarted.returncode == 0, restarted.stderr)
         assert_true(restarted.stdout.strip() == "dynamic-route-ok", restarted.stdout)
@@ -533,37 +534,60 @@ def test_configured_alias_keeps_catalog_efforts(root, home, *, binary):
         assert_true(result.stdout.count("not supported") >= 2, result.stdout)
 
 
-def test_model_preference_survives_restart(root, home, *, binary):
-    first = Server([event({"content": "explicit-model-ok"})])
+def test_model_choice_is_the_conversations_until_saved_for_all(root, home, *, binary):
+    first = Server([event({"content": "configured-model-ok"})] * 3)
 
-    def remembered(_, body):
+    def chosen(_, body):
         valid = body.get("model") == "model-b" and body.get("reasoning_effort") == "medium"
-        return event({"content": "remembered-model-ok" if valid else "remembered-model-bad"})
+        return event({"content": "chosen-model-ok" if valid else "chosen-model-bad"})
 
-    second = Server([remembered])
+    second = Server([chosen] * 2)
     providers = two_route_providers(first.url, second.url)
     providers["second"]["context"] = 8192
+    config = home / ".uagent" / ".config"
+    legacy = home / ".uagent" / "config" / "model-preference.json"
     try:
         choose_env = provider_env(home, first.url, providers, "first/main")
-        chosen = run_dialog(root, choose_env, "/model second/fast\n/q\n", binary=binary)
-        assert_true(chosen.returncode == 0, chosen.stderr)
+        picked = run_dialog(root, choose_env, "/model second/fast\n/config\n/q\n", binary=binary)
+        assert_true(picked.returncode == 0, picked.stderr)
+        # The choice is this conversation's: the setting at its scope, saved
+        # nowhere else.
+        assert_true("UAGENT_MODEL = second/model-b:medium" in picked.stdout, picked.stdout)
+        assert_true("conversation" in picked.stdout, picked.stdout)
+        assert_true(not legacy.exists() and not config.exists(), "choice left the conversation")
 
-        preference = home / ".uagent" / "config" / "model-preference.json"
-        saved = json.loads(preference.read_text(encoding="utf-8"))
-        assert_true(saved["selection"] == "second/fast" and saved["route"], saved)
-        assert_true(preference.stat().st_mode & 0o777 == 0o600, oct(preference.stat().st_mode))
+        fresh_env = provider_env(home, first.url, providers)
+        # A fresh run knows nothing of it: with no model configured it says so.
+        fresh = run(root, fresh_env, "-p", "probe", binary=binary)
+        assert_true(
+            fresh.returncode != 0 and "UAGENT_MODEL is not set" in fresh.stdout + fresh.stderr,
+            fresh.stdout + fresh.stderr,
+        )
+        assert_true(not second.requests, second.requests)
 
-        restart_env = provider_env(home, first.url, providers)
-        restarted = run(root, restart_env, "-p", "probe", binary=binary)
-        assert_true(restarted.returncode == 0, restarted.stderr)
-        assert_true(restarted.stdout.strip() == "remembered-model-ok", restarted.stdout)
-        assert_true(not first.requests, first.requests)
+        # Saved for all conversations only when asked.
+        kept = run_dialog(root, choose_env, "/model second/fast --default\n/q\n", binary=binary)
+        assert_true("also the model of new conversations" in kept.stdout, kept.stdout)
+        assert_true("UAGENT_MODEL=second/model-b:medium" in config.read_text(), config.read_text())
+        started = run(root, fresh_env, "-p", "probe", binary=binary)
+        assert_true(started.stdout.strip() == "chosen-model-ok", started.stdout + started.stderr)
 
-        override_env = dict(restart_env)
+        # The environment still decides over the saved setting.
+        override_env = dict(fresh_env)
         override_env["UAGENT_MODEL"] = "first/main"
         overridden = run(root, override_env, "-p", "probe", binary=binary)
-        assert_true(overridden.returncode == 0, overridden.stderr)
-        assert_true(overridden.stdout.strip() == "explicit-model-ok", overridden.stdout)
+        assert_true(overridden.stdout.strip() == "configured-model-ok", overridden.stdout)
+
+        # A model an older /model remembered becomes that setting, once.
+        config.unlink()
+        legacy.parent.mkdir(parents=True, exist_ok=True)
+        legacy.write_text(
+            json.dumps({"format": 1, "selection": "second/fast", "base_url": "", "route": True})
+        )
+        migrated = run(root, fresh_env, "-p", "probe", binary=binary)
+        assert_true(migrated.stdout.strip() == "chosen-model-ok", migrated.stdout + migrated.stderr)
+        assert_true(not legacy.exists(), "remembered model was not taken")
+        assert_true("UAGENT_MODEL=second/fast" in config.read_text(), config.read_text())
     finally:
         first.close()
         second.close()
@@ -1072,34 +1096,28 @@ def test_uagent_tool_reports_live_configuration(root, home, *, binary):
         assert_true("canary-route-key" not in result.stdout, result.stdout)
 
 
-def test_effort_and_variant_persist_like_model(root, home, *, binary):
-    """/effort updates the saved selection instead of evaporating on restart."""
-    preference = home / ".uagent" / "config" / "model-preference.json"
-    preference.parent.mkdir(parents=True, exist_ok=True)
-    preference.write_text(
-        json.dumps({"format": 1, "selection": "demo-model", "base_url": "", "route": False})
-    )
-
+def test_effort_is_part_of_the_conversations_model_choice(root, home, *, binary):
+    """/effort changes the model the conversation chose, at the same scope."""
     with Server([event({"content": "ready"})]) as server:
         env = base_env(home, server.url)
-        session = run_dialog(root, env, "/effort high\n/quit\n", binary=binary)
+        session = run_dialog(
+            root, env, "/effort high\n/config\n/effort default\n/config\n/quit\n", binary=binary
+        )
         assert_true(session.returncode == 0, session.stderr)
-        saved = json.loads(preference.read_text())
-        assert_true(saved["selection"] == "demo-model:high", saved)
-
-        # Clearing back to the provider default rewrites the same entry.
-        session = run_dialog(root, env, "/effort default\n/quit\n", binary=binary)
-        assert_true(session.returncode == 0, session.stderr)
-        saved = json.loads(preference.read_text())
-        assert_true(saved["selection"] == "demo-model", saved)
-
-    # With nothing saved, the command says so rather than implying persistence.
-    preference.unlink()
-    with Server([event({"content": "ready"})]) as server:
-        env = base_env(home, server.url)
-        session = run_dialog(root, env, "/effort high\n/quit\n", binary=binary)
-        assert_true("this session only" in session.stdout, session.stdout)
-        assert_true(not preference.exists(), "must not invent a preference")
+        chosen = [line for line in session.stdout.splitlines() if "UAGENT_MODEL = " in line]
+        assert_true(
+            len(chosen) == 2
+            and chosen[0].split(" · ")[0].endswith(":high")
+            and not chosen[1].split(" · ")[0].endswith(":high")
+            and all("conversation" in line for line in chosen),
+            session.stdout,
+        )
+        # Nothing outside the conversation remembers it.
+        assert_true(
+            not (home / ".uagent" / "config" / "model-preference.json").exists()
+            and not (home / ".uagent" / ".config").exists(),
+            "effort left the conversation",
+        )
 
 
 def test_provider_summary_capability_fallback(root, home, *, binary):

@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "include/agent/session_store.h"
+#include "include/app/config_proposal.h"
 #include "include/core/debug.h"
 #include "include/core/events.h"
 #include "include/core/signals.h"
@@ -23,33 +24,41 @@ void ActivateCurrentRoute(AppSession& session) {
   session.ActiveAgent().RouteChanged();
 }
 
-std::string SaveSelectedModel(AppSession& session,
-                              const std::string& selected) {
-  CommandReply reply;
-  ModelSelection selection = ParseModelSelection(selected);
-  bool named_route =
-      ResolveModelRoute(session.context.provider.routes,
-                        session.context.provider.providers, selection.base)
-          .has_value();
+// The route now in use is this conversation's choice: the model setting at
+// its scope, kept with it.
+void ChooseCurrentRoute(AppSession& session) {
   ActivateCurrentRoute(session);
-  std::string error;
-  // A coordinator's model is its folder's, kept in its session settings; it
-  // must not become the default of every other session.
-  bool saved =
-      session.context.options.Coordinator() ||
-      SaveModelPreference({selected, session.ApiClient().base_url, named_route},
-                          error);
+  session.context.config_manager.ChooseForConversation(
+      "UAGENT_MODEL",
+      RouteSelection(session.ApiClient(), session.context.provider.providers));
+}
+
+std::string SaveSelectedModel(AppSession& session, const std::string& selected,
+                              bool as_default) {
+  CommandReply reply;
+  ChooseCurrentRoute(session);
+  const std::string route =
+      RouteSelection(session.ApiClient(), session.context.provider.providers);
   DebugLog("route_changed", {{"route", selected},
                              {"model", session.ApiClient().model},
                              {"base_url", session.ApiClient().base_url},
                              {"effort", session.ApiClient().reasoning_effort},
-                             {"preference_saved", saved}});
-  reply.Note(Tone::kNeutral,
-             "model " + RouteSelection(session.ApiClient(),
-                                       session.context.provider.providers));
-  if (!saved) {
-    reply.Note(Tone::kWarn, "model changed but preference was not saved: " +
-                                TerminalSafe(error));
+                             {"default", as_default}});
+  reply.Note(Tone::kNeutral, "model " + route);
+  if (as_default) {
+    // New conversations start on it too: the same setting, saved for all.
+    const json saved = ConfigurationControl(
+        {{"operation", "apply"},
+         {"scope", "user"},
+         {"changes",
+          json::array({{{"key", "UAGENT_MODEL"}, {"value", route}}})}},
+        session.context.config_manager,
+        session.context.config_manager.ProjectTrusted());
+    const std::string error = JsonValue(saved, "error", "");
+    reply.Note(error.empty() ? Tone::kNeutral : Tone::kWarn,
+               error.empty()
+                   ? "also the model of new conversations"
+                   : "not saved for new conversations: " + TerminalSafe(error));
   }
   return reply.output;
 }
@@ -188,7 +197,8 @@ void HandleModels(AppSession& session, const std::string& argument,
                 session.context.provider.providers, reply);
   if (!selected) return;
   ApplyRoute(session.ApiClient(), selected->route);
-  reply.Print("%s", SaveSelectedModel(session, selected->selection).c_str());
+  reply.Print("%s",
+              SaveSelectedModel(session, selected->selection, false).c_str());
 }
 
 void HandleModel(AppSession& session, const std::string& argument,
@@ -197,13 +207,19 @@ void HandleModel(AppSession& session, const std::string& argument,
     HandleModels(session, "", reply);
     return;
   }
-  ModelSelection requested = ParseModelSelection(argument);
+  // "/model X --default" also saves it for new conversations.
+  static constexpr std::string_view kDefault = " --default";
+  const bool as_default = argument.ends_with(kDefault);
+  const std::string wanted =
+      Trim(as_default ? argument.substr(0, argument.size() - kDefault.size())
+                      : argument);
+  ModelSelection requested = ParseModelSelection(wanted);
   std::string selected =
       SelectModel(session.ApiClient(), session.context.provider.routes,
-                  session.context.provider.providers, argument);
+                  session.context.provider.providers, wanted);
   if (selected.empty()) {
     reply.Note(Tone::kError,
-               "unknown model " + TerminalSafe(argument) + "; use /models");
+               "unknown model " + TerminalSafe(wanted) + "; use /models");
     return;
   }
   if (!requested.effort.empty() &&
@@ -214,24 +230,11 @@ void HandleModel(AppSession& session, const std::string& argument,
                                      ? "provider default"
                                      : session.ApiClient().reasoning_effort));
   }
-  reply.Print("%s", SaveSelectedModel(session, selected).c_str());
+  reply.Print("%s", SaveSelectedModel(session, selected, as_default).c_str());
 }
 
-// /effort and /variant change the same saved selection /model owns, so an
-// interactive choice cannot silently evaporate on restart. A session with no
-// saved preference yet stays session-only and says so.
-static void PersistSelectionSuffix(AppSession& session, CommandReply& reply) {
-  const Api& api = session.ApiClient();
-  std::string error;
-  if (SaveSelectionSuffix(api.capabilities.model_variants
-                              ? api.config.openrouter_variant
-                              : std::string(),
-                          api.reasoning_effort, error)) {
-    return;
-  }
-  reply.Note(Tone::kNeutral, "this session only — " + TerminalSafe(error));
-}
-
+// /effort and /variant change the selection /model chose: the same setting
+// at the same scope.
 void HandleEffort(AppSession& session, const std::string& argument,
                   CommandReply& reply) {
   if (ValidEffort(argument)) {
@@ -244,9 +247,8 @@ void HandleEffort(AppSession& session, const std::string& argument,
                                 : session.ApiClient().reasoning_effort));
   } else if (argument == "default") {
     session.ApiClient().reasoning_effort.clear();
-    ActivateCurrentRoute(session);
+    ChooseCurrentRoute(session);
     reply.Note(Tone::kNeutral, "effort provider default");
-    PersistSelectionSuffix(session, reply);
   } else if (!ValidEffort(argument)) {
     reply.Note(Tone::kError,
                "effort must be none, minimal, low, medium, high, xhigh, or "
@@ -256,9 +258,8 @@ void HandleEffort(AppSession& session, const std::string& argument,
                "effort " + argument + " is not supported by the active model");
   } else {
     session.ApiClient().reasoning_effort = argument;
-    ActivateCurrentRoute(session);
+    ChooseCurrentRoute(session);
     reply.Note(Tone::kNeutral, "effort " + argument);
-    PersistSelectionSuffix(session, reply);
   }
 }
 
@@ -289,7 +290,7 @@ void HandleVariant(AppSession& session, const std::string& argument,
   session.ApiClient().config.openrouter_variant = variant;
   session.Runtime().config.openrouter_variant = variant;
   OverrideSetting("UAGENT_OPENROUTER_VARIANT", variant);
-  ActivateCurrentRoute(session);
+  ChooseCurrentRoute(session);
   const char* detail = "provider default";
   if (variant == "nitro") detail = "highest throughput";
   if (variant == "floor") detail = "lowest price";
@@ -298,7 +299,6 @@ void HandleVariant(AppSession& session, const std::string& argument,
                                {"model", session.ApiClient().RequestModel()}});
   std::string label = variant.empty() ? "default" : ":" + variant;
   reply.Note(Tone::kNeutral, "variant " + label + " — " + detail);
-  PersistSelectionSuffix(session, reply);
 }
 
 }  // namespace uagent

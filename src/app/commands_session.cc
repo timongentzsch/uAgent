@@ -66,9 +66,7 @@ bool NoteError(CommandReply& reply, const json& result) {
 
 void SaveSessionSettings(AppSession& session) {
   session.ActiveAgent().SessionSettings(
-      {{"route", RouteSelection(session.ApiClient(),
-                                session.context.provider.providers)},
-       {"chosen", session.context.config_manager.Conversation()},
+      {{"chosen", session.context.config_manager.Conversation()},
        {"tools", session.ActiveAgent().ToolSelectionSettings()}});
 }
 

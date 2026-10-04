@@ -15,7 +15,8 @@
 namespace uagent {
 
 void ActivateCurrentRoute(AppSession& session);
-std::string SaveSelectedModel(AppSession& session, const std::string& selected);
+std::string SaveSelectedModel(AppSession& session, const std::string& selected,
+                              bool as_default);
 void HandleModels(AppSession& session, const std::string& argument,
                   CommandReply& reply);
 void HandleModel(AppSession& session, const std::string& argument,

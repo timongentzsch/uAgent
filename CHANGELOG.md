@@ -173,6 +173,15 @@ names one loads as before and the line has no effect.
 
 ### Fixed
 
+- Starting a stopped conversation's runtime: a runtime that ends before it
+  can be reached is noticed at once and its reason given, instead of "session
+  runtime did not become ready" after five seconds. A conversation whose
+  folder was deleted says so. Commands that arrive while it starts (a
+  settings screen sends several) wait for the start and then run in order,
+  where they were refused as "stale worker generation", "session not ready"
+  or "this control requires an idle session"; only a running turn still
+  refuses a setting. A runtime that stays silent is stopped, so none is left
+  half-started.
 - A model's malformed tool call is answered with an error it can correct
   instead of ending the turn, and every other model fault (an empty or cut-off
   response, tool markup in prose, a call without a name) is told to the model

@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <atomic>
 #include <condition_variable>
+#include <deque>
 #include <functional>
 #include <mutex>
 #include <optional>
@@ -222,6 +223,7 @@ class WorkerChannel final : public ApplicationChannel {
           auto result = std::move(input_);
           input_.reset();
           active_command_ = std::exchange(input_command_, "");
+          NextControlLocked();
           return result;
         }
       }
@@ -405,6 +407,10 @@ class WorkerChannel final : public ApplicationChannel {
     // application's control does.
     StopSideQuestion();
     activity_control_ = control;
+    for (const auto& [request, raw] : std::exchange(early_controls_, {})) {
+      CompleteControl(
+          request, control ? control(raw) : json{{"error", "session closed"}});
+    }
   }
 
   // A session wakes to notice it is idle, and a coordinator a minute later
@@ -606,21 +612,35 @@ class WorkerChannel final : public ApplicationChannel {
            checkpoint ? std::exchange(active_command_, "") : ""},
           {"checkpoint", checkpoint}});
   }
-  // Reuse the one-slot queue while a preceding non-turn control finishes.
-  // True when the control was queued; otherwise reports into error. The
-  // caller holds mutex_.
+  // A control waits its turn behind the input already there (a settings
+  // screen sends several at once, and the first may arrive while the
+  // runtime starts); only a running turn refuses it. True when the control
+  // was taken; otherwise reports into error. The caller holds mutex_.
   bool QueueIdleControl(const std::string& request, const json& control,
                         std::string& error) {
-    if (turn_active_ || input_) {
+    if (turn_active_) {
       error = "this control requires an idle session";
       return false;
     }
-    input_ = ApplicationInput{.request_id = request, .control = control};
-    input_command_ = request;
+    if (controls_.size() >= kControlQueueLimit) {
+      error = "too many settings changes are waiting";
+      return false;
+    }
+    controls_.push_back({request, control});
+    if (!input_) NextControlLocked();
     busy_ = true;
     wake_.Wake();
     SendState();
     return true;  // Completion carries the catalog or validated selection.
+  }
+  // Moves the next waiting control into the input slot. The caller holds
+  // mutex_ and has seen the slot empty.
+  void NextControlLocked() {
+    if (controls_.empty()) return;
+    input_ = ApplicationInput{.request_id = controls_.front().first,
+                              .control = std::move(controls_.front().second)};
+    input_command_ = controls_.front().first;
+    controls_.pop_front();
   }
 
   std::optional<AppEvent> pending_delta_;
@@ -741,9 +761,12 @@ class WorkerChannel final : public ApplicationChannel {
             parsed.operation != "followup") {
           lock.unlock();
           std::lock_guard control(control_mutex_);
-          CompleteControl(request, activity_control_
-                                       ? activity_control_(parsed.raw)
-                                       : json{{"error", "session not ready"}});
+          if (activity_control_) {
+            CompleteControl(request, activity_control_(parsed.raw));
+          } else {
+            // The application is still starting: answered once it is there.
+            early_controls_.emplace_back(request, parsed.raw);
+          }
           return true;
         }
         if (QueueIdleControl(request, parsed.raw, error)) return true;
@@ -902,6 +925,7 @@ class WorkerChannel final : public ApplicationChannel {
   MailboxWatch mail_;
   std::mutex mutex_, control_mutex_;
   static constexpr size_t kGuidanceQueueLimit = 8;
+  static constexpr size_t kControlQueueLimit = 16;
   static constexpr auto kIdlePoll = std::chrono::milliseconds(30000);
   static constexpr auto kLetGo = std::chrono::milliseconds(2000);
   static constexpr auto kLetGoPoll = std::chrono::milliseconds(50);
@@ -917,7 +941,11 @@ class WorkerChannel final : public ApplicationChannel {
   json notices_ = json::array();
   std::string paused_;  // why a coordinator holds its mail, if it does
   std::function<json(const json&)> activity_control_;
+  // Permission and activity controls that arrived before the application.
+  std::vector<std::pair<std::string, json>> early_controls_;
   std::optional<ApplicationInput> input_;
+  // Controls waiting behind the input slot, each with its request.
+  std::deque<std::pair<std::string, json>> controls_;
   std::optional<std::string> reply_;
   std::string pending_, input_command_, active_command_, decided_;
   json decision_ = nullptr, state_ = json::object(), approval_ = nullptr;
@@ -928,14 +956,20 @@ class WorkerChannel final : public ApplicationChannel {
 }  // namespace
 
 int WorkerMain(int argc, char** argv) {
-  if (argc != 7 || !OpaqueId(argv[4]) || HashHex(argv[3]) != argv[4]) return 2;
+  if (argc != 7 || !OpaqueId(argv[4]) || HashHex(argv[3]) != argv[4]) {
+    return kWorkerBadLaunch;
+  }
   (void)setsid();
   SetGracefulShutdown(true);
   std::string bytes, error;
-  if (!ReadRegularFile(argv[6], kCommandBytes, bytes, error)) return 2;
+  if (!ReadRegularFile(argv[6], kCommandBytes, bytes, error)) {
+    return kWorkerBadLaunch;
+  }
   unlink(argv[6]);
   json launch = json::parse(bytes, nullptr, false);
-  if (!launch.is_object()) return 2;
+  if (!launch.is_object()) return kWorkerBadLaunch;
+  // Before anyone can connect: a runtime that cannot work never answers.
+  if (chdir(argv[2]) != 0) return kWorkerNoWorkspace;
   Options options = OptionsFromLaunch(launch);
   // The coordinator is known by its path; a thread's link is fixed at launch
   // and afterwards read back from its own header.
@@ -964,11 +998,7 @@ int WorkerMain(int argc, char** argv) {
   WorkerChannel channel(argv[3], argv[4], RandomToken(16), argv[5],
                         options.browser_session, options.Coordinator(),
                         JsonValue(options.session, "thread", json::object()));
-  if (!channel.Start()) return 2;
-  if (chdir(argv[2]) != 0) {
-    channel.Send({{"kind", "error"}, {"error", "workspace is unavailable"}});
-    return 2;
-  }
+  if (!channel.Start()) return kWorkerOwned;
   Observability observation;
   SetObservability(&observation);
   observation.EnableTerminal(false);

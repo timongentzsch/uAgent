@@ -62,8 +62,15 @@ SessionCommandResult SessionHost::ExecuteCommand(
     return result;
   }
   auto session = found->second;
-  if (session->closing || session->connecting ||
-      session->status == "updating" || session->status == "deleting") {
+  // A runtime another command is starting is waited for, not refused: the
+  // settings of a stopped conversation are opened with several commands.
+  changed_.wait(lock, [&] { return !session->connecting || stopping_; });
+  if (stopping_ || !IsCurrentLocked(session.get())) {
+    result.error = "unknown session";
+    return result;
+  }
+  if (session->closing || session->status == "updating" ||
+      session->status == "deleting") {
     result.error = "conversation update in progress";
     return result;
   }
@@ -141,10 +148,10 @@ SessionCommandResult SessionHost::ExecuteCommand(
     }
     return result;
   }
-  // A command for a saved session's runtime starts it: the runtime stopped
-  // for having nothing to do, and the command is as welcome as it was before.
-  if (ForwardsToWorker(kind) && session->pid <= 0 &&
-      JsonValue(command, "generation", "") == session->generation) {
+  // A command that names no runtime is for the conversation, whichever
+  // runtime serves it: a saved one's is started (it stopped for having
+  // nothing to do), and one that started meanwhile is used as it is.
+  if (ForwardsToWorker(kind) && JsonValue(command, "generation", "").empty()) {
     if (!ActivateLocked(session, result.error, lock, true)) return result;
     command["generation"] = session->generation;
     result.wake = true;

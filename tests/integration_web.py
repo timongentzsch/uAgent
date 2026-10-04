@@ -2670,6 +2670,69 @@ def test_idle_session_stops_and_a_message_starts_it_again(root, home, *, binary)
             assert_true(again["state"]["permissions"]["mode"] == "yolo", again["state"])
 
 
+def test_stopped_session_starts_for_several_commands_and_says_why_it_cannot(root, home, *, binary):
+    import shutil
+
+    project = root / "restart-project"
+    project.mkdir()
+    with Server([event({"content": "unused"})]) as provider:
+        with web_host(binary, root, home, provider.url) as (web, code, _, _env):
+            web.pair(code)
+            session = web.create(project)
+
+            def stop():
+                live = web.until(session, lambda value: value["metadata"]["generation"])
+                web.command("close", live["metadata"])
+                return web.until(session, lambda value: value["metadata"]["status"] == "saved")
+
+            def send(request, kind, **values):
+                return web.json(
+                    "/api/command",
+                    {
+                        "v": 2,
+                        "kind": kind,
+                        "request_id": request * 32,
+                        "session_id": session["id"],
+                        "generation": "",
+                        **values,
+                    },
+                )
+
+            stop()
+            # A settings screen opens with several commands at once: each
+            # waits for the one start instead of being refused during it.
+            outcomes = []
+            threads = [
+                threading.Thread(target=lambda r=r, k=k, v=v: outcomes.append(send(r, k, **v)))
+                for r, k, v in (
+                    ("a", "model", {"operation": "catalog"}),
+                    ("b", "tools", {"operation": "catalog"}),
+                    ("c", "permissions", {}),
+                )
+            ]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join()
+            assert_true(
+                all(status == 200 and body.get("accepted") for status, body, _ in outcomes),
+                [body for _, body, _ in outcomes],
+            )
+
+            stop()
+            # A conversation whose folder is gone cannot run: it says so at
+            # once, not after a wait for a runtime that already ended.
+            shutil.rmtree(project)
+            started = time.monotonic()
+            status, body, _ = send("d", "model", operation="catalog")
+            assert_true(
+                status == 409
+                and "folder no longer exists" in body.get("error", "")
+                and time.monotonic() - started < 2,
+                (status, body, time.monotonic() - started),
+            )
+
+
 def test_coordinator_edit_from_here_rewinds_in_place(root, home, *, binary):
     project = root / "rewind"
     project.mkdir()

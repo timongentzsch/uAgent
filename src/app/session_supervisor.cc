@@ -219,13 +219,18 @@ bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
   }
   bool create_now = create;
   for (int attempt = 0;; ++attempt) {
+    // A command that arrives while another starts the runtime waits for that
+    // start: it then finds the runtime, or starts it itself.
+    if (session->connecting) {
+      changed_.wait(lock, [&] { return !session->connecting || stopping_; });
+      if (stopping_ || !IsCurrentLocked(session.get())) {
+        error = "session was closed while starting";
+        return false;
+      }
+    }
     if (session->pid > 0 && !session->exited) {
       if (!RecycleStaleWorkerLocked(session, lock)) return true;
       create_now = true;  // recycled: fall through to a fresh spawn
-    }
-    if (session->connecting) {
-      error = "session is starting";
-      return false;
     }
     session->connecting = true;
     if (session->reader.joinable()) {
@@ -234,6 +239,7 @@ bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
       lock.lock();
       if (stopping_ || !IsCurrentLocked(session.get())) {
         session->connecting = false;
+        changed_.notify_all();
         error = "session was closed while joining its prior runtime";
         return false;
       }
@@ -242,6 +248,7 @@ bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
     auto connected = OpenRuntime(*session, create_now, error);
     lock.lock();
     session->connecting = false;
+    changed_.notify_all();
     if (stopping_ || !IsCurrentLocked(session.get())) {
       error = "session was closed while connecting";
       return false;

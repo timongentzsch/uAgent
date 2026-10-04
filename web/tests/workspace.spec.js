@@ -12,7 +12,7 @@ test("appearance and configuration remain usable at large scales", async ({
   // A phone opens settings on its section list.
   await page
     .locator(".settings-nav")
-    .getByRole("button", { name: "Display", exact: true })
+    .getByRole("button", { name: "This browser", exact: true })
     .click();
   await expect(page.getByLabel("Appearance")).toHaveValue("system");
   await page.emulateMedia({ colorScheme: "dark" });
@@ -87,53 +87,57 @@ test("appearance and configuration remain usable at large scales", async ({
   await page.getByRole("button", { name: "Back", exact: true }).click();
   await page
     .locator(".settings-nav")
-    .getByRole("button", { name: "Advanced", exact: true })
+    .getByRole("button", { name: "All conversations", exact: true })
     .click();
-  // Advanced lists only what was changed or is locked; search finds the
-  // rest by its plain name or its variable.
-  const advanced = page.locator(".configuration");
-  const changed = advanced.getByRole("button", { name: /^Steps per turn/ });
-  await expect(changed).toHaveCount(0);
-  await expect(advanced).toContainText("Everything else is at its default");
+  // Every setting is listed under its group; the box narrows them by plain
+  // name or by variable.
+  const form = page.locator(".configuration");
+  await expect(
+    form.getByRole("region", { name: "Models and connection" }),
+  ).toBeVisible();
   const find = page.getByLabel("Find a setting");
   // A setting only a terminal uses is not offered here.
   await find.fill("UAGENT_MARKDOWN");
-  await expect(advanced).toContainText("No setting matches.");
+  await expect(form).toContainText("No setting matches.");
   await find.fill("UAGENT_MAX_STEPS");
-  await changed.click();
-  // One sheet edits it: what it is for, the value, why, and two ways out.
-  const sheet = page.getByRole("dialog", { name: "Steps per turn" });
-  await expect(sheet).toContainText("In effect: 0, built in.");
-  await expect(sheet).toContainText("applies from your next message");
-  await sheet.getByRole("spinbutton").fill("23");
-  await sheet.getByRole("button", { name: "Save" }).click();
-  await expect(sheet).toHaveCount(0);
-  await find.fill("");
-  await expect(changed).toContainText("23");
-  // Use default removes the change, and the row leaves the list.
-  await changed.click();
-  await sheet.getByRole("button", { name: "Use default" }).click();
-  await expect(sheet).toHaveCount(0);
-  await expect(changed).toHaveCount(0);
+  // It is edited where it is listed, and saved on Enter or on leaving the
+  // field: nothing half-typed is.
+  const steps = form.getByRole("spinbutton", { name: "Steps per turn" });
+  const reset = form.getByRole("button", { name: "Reset Steps per turn" });
+  await expect(reset).toHaveCount(0);
+  await steps.fill("2");
+  await expect(reset).toHaveCount(0);
+  await steps.fill("23");
+  await steps.press("Enter");
+  await expect(reset).toBeVisible();
+  // What the host refuses stays in the field, with why.
+  await steps.fill("-4");
+  await steps.press("Enter");
+  await expect(form.getByRole("alert")).toContainText("UAGENT_MAX_STEPS");
+  await expect(steps).toHaveValue("-4");
+  // Escape takes back what was typed.
+  await steps.press("Escape");
+  await expect(steps).toHaveValue("23");
+  // Putting it back is its own action.
+  await reset.click();
+  await expect(reset).toHaveCount(0);
+  await expect(steps).toHaveValue("");
 
   // Reset all asks first, then returns every change to its default.
-  await find.fill("steps per turn");
-  await changed.click();
-  await sheet.getByRole("spinbutton").fill("24");
-  await sheet.getByRole("spinbutton").press("Enter");
-  await expect(sheet).toHaveCount(0);
+  await steps.fill("24");
+  await steps.blur();
+  await expect(reset).toBeVisible();
   await find.fill("");
-  await expect(changed).toContainText("24");
   await page.getByRole("button", { name: /Reset all to defaults/ }).click();
   const confirm = page.getByRole("dialog", { name: "Reset all to defaults" });
   await expect(confirm).toContainText("API keys");
   await confirm.getByRole("button", { name: "Reset all", exact: true }).click();
   await expect(confirm).toHaveCount(0);
-  await expect(changed).toHaveCount(0);
+  await expect(reset).toHaveCount(0);
   await page.getByRole("button", { name: "Back", exact: true }).click();
   await page
     .locator(".settings-nav")
-    .getByRole("button", { name: "Display", exact: true })
+    .getByRole("button", { name: "This browser", exact: true })
     .click();
   await page.getByLabel("Appearance").selectOption("light");
   await page.emulateMedia({ colorScheme: "dark" });
@@ -571,6 +575,69 @@ test("load-older holds position, spins, and keeps the newest tail", async ({
   await page.unroute("**/api/sessions/*?before=*", olderRoute);
 });
 
+// Each kind of control saves in its own way, a project's value overrides
+// what is saved for all, and what is being typed survives everyone else's
+// saves.
+test("a project overrides a setting; a draft survives other saves", async ({
+  page,
+  session,
+}) => {
+  await page.goto(`/#session=${session.id}`);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const nav = page.locator(".settings-nav");
+  const form = page.locator(".configuration");
+  const field = (name) => form.locator(`[data-setting="${name}"]`);
+  await nav.getByRole("button", { name: /^This project/ }).click();
+  await expect(form).toContainText("Remove all overrides");
+  // A number is saved on leaving its field.
+  const steps = form.getByRole("spinbutton", { name: "Steps per turn" });
+  await steps.fill("5");
+  await steps.blur();
+  await expect(field("UAGENT_MAX_STEPS")).toContainText(
+    "Overrides 0 from all conversations",
+  );
+  // A choice applies as it is chosen, and something typed elsewhere but not
+  // yet saved is still there after it.
+  const calls = form.getByRole("spinbutton", { name: "Tool calls per turn" });
+  await calls.fill("77");
+  await form
+    .getByRole("combobox", { name: "Approval mode" })
+    .selectOption("auto");
+  await expect(
+    form.getByRole("button", { name: "Reset Approval mode" }),
+  ).toBeVisible();
+  await expect(calls).toHaveValue("77");
+  await expect(
+    form.getByRole("button", { name: "Reset Tool calls per turn" }),
+  ).toHaveCount(0);
+  await calls.press("Escape");
+
+  // What is saved for all shows that this project decides instead.
+  await nav.getByRole("button", { name: "All conversations" }).click();
+  await expect(field("UAGENT_MAX_STEPS")).toContainText(
+    "Overridden in this project",
+  );
+  // A switch applies as it flips; putting it back is the reset beside it.
+  const memory = form.getByRole("switch", { name: "Memory", exact: true });
+  await expect(memory).toBeChecked();
+  await memory.uncheck();
+  const restore = form.getByRole("button", { name: "Reset Memory" });
+  await restore.click();
+  await expect(memory).toBeChecked();
+  await expect(restore).toHaveCount(0);
+
+  // Removing the project's overrides leaves what is saved for all.
+  await nav.getByRole("button", { name: /^This project/ }).click();
+  await form.getByRole("button", { name: /Remove all overrides/ }).click();
+  await page
+    .getByRole("dialog", { name: "Remove all overrides" })
+    .getByRole("button", { name: "Remove all", exact: true })
+    .click();
+  await expect(
+    form.getByRole("button", { name: "Reset Steps per turn" }),
+  ).toHaveCount(0);
+});
+
 // A value set by the environment is shown locked; a saved change that needs
 // a restart offers to restart the running conversations.
 test("locked settings and restart to apply", async ({ page, session }) => {
@@ -578,29 +645,20 @@ test("locked settings and restart to apply", async ({ page, session }) => {
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page
     .locator(".settings-nav")
-    .getByRole("button", { name: "Advanced", exact: true })
+    .getByRole("button", { name: "All conversations", exact: true })
     .click();
   // A locked setting is listed, with its value and no way to edit it.
-  const advanced = page.locator(".configuration");
-  const locked = advanced.getByRole("button", { name: /^Context window/ });
+  const form = page.locator(".configuration");
+  const locked = form.locator('[data-setting="UAGENT_CONTEXT"]');
   await expect(locked).toContainText(
-    "Set by environment variable UAGENT_CONTEXT",
+    "Set by environment variable UAGENT_CONTEXT — change it there",
   );
-  await locked.click();
-  const context = page.getByRole("dialog", { name: "Context window" });
-  await expect(context).toContainText("change it there");
-  await expect(context.getByRole("spinbutton")).toHaveCount(0);
-  await expect(context.getByRole("button", { name: "Save" })).toHaveCount(0);
-  await page.keyboard.press("Escape");
+  await expect(locked.getByRole("spinbutton")).toHaveCount(0);
 
   // A setting that needs a restart offers one, once, for what is running.
-  const find = page.getByLabel("Find a setting");
-  await find.fill("mcp call timeout");
-  await advanced.getByRole("button", { name: /^MCP call timeout/ }).click();
-  const timeout = page.getByRole("dialog", { name: "MCP call timeout" });
-  await expect(timeout).toContainText("applies after a restart");
-  await timeout.getByRole("spinbutton").fill("90");
-  await timeout.getByRole("button", { name: "Save" }).click();
+  const timeout = form.getByRole("spinbutton", { name: "MCP call timeout" });
+  await timeout.fill("90");
+  await timeout.press("Enter");
   const notice = page.getByRole("region", { name: "Restart to apply" });
   await expect(notice).toContainText("MCP call timeout");
   await notice

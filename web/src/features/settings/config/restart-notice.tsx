@@ -10,10 +10,13 @@ export function RestartNotice({
   keys,
   host,
   running,
+  folder,
 }: {
   keys: string[];
   host: boolean;
   running: number;
+  // Only this project's conversations need it.
+  folder?: string;
 }) {
   const action = useAction();
   const [done, setDone] = useState("");
@@ -23,7 +26,10 @@ export function RestartNotice({
         await manage("restart_host");
         return setDone("Restarting the web host…");
       }
-      const { restarting, deferred } = await manage("restart_conversations");
+      const { restarting, deferred } = await manage(
+        "restart_conversations",
+        folder ? { cwd: folder } : {},
+      );
       setDone(
         [
           restarting && `Restarted ${plural(restarting, "conversation")}`,

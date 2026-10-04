@@ -325,19 +325,20 @@ focuses its decision.
   and input. Ordinary subagent follow-ups can select another model; persistent
   agents keep their runtime model. Process children show statistics from their
   latest saved checkpoint and label them as such.
-- Settings group their sections as General; Agent (Instructions, Tools, MCP
-  servers, Permissions & allowed actions); Models; Host (Devices); and
-  Advanced. General holds this device's display settings. Every other
-  setting is a row with its name and the value that applies: a switch flips
-  in place, anything else opens a sheet with what it is for, the value, why
-  it applies, **Use default** and **Save**. Advanced lists what you changed
-  and what the environment or command line locks; its search finds any other
-  setting. The web edits your defaults; a project's override is shown and is
-  edited with `/config project`. **Reset all to
-  defaults** (Advanced) also resets this device's display settings; API keys
-  are kept. A change that needs a restart offers it: running conversations
-  restart once
-  idle and keep their history, and the web host re-execs itself for its own
+- Settings are found by what they affect: **All conversations**, **This
+  project** (the open conversation's folder), **This browser** (display) and
+  **Host** (devices). The first two each list every setting under its group
+  (models and connection, behaviour, limits, …), with a box that narrows
+  them by name or variable. A setting is edited where it is listed: a switch
+  or a choice applies as it changes; text and numbers are saved on leaving
+  the field or Enter, and Escape takes back what was typed. The arrow beside
+  a changed setting puts it back to what applies without it, and **Reset all
+  to defaults** (or **Remove all overrides** for a project) does that for
+  the whole scope; API keys are kept. A value the environment or the
+  command line decides is shown and cannot be edited; one this project
+  overrides says so. Everyone's saves reach every open browser. A change
+  that needs a restart offers it: running conversations restart once idle
+  and keep their history, and the web host re-execs itself for its own
   settings. The terminal has the same through `/config`, `/restart`, `/mcp`
   and `/permissions rules`. **MCP servers** lists the open conversation's
   servers under *Global* (`~/.mcp.json`) or *This project* (`.mcp.json`),

@@ -401,9 +401,9 @@ function App() {
   const screens: Record<string, () => void> = {
     "/context": showContext,
     "/config": () => open({ type: "settings" }),
-    "/verbosity": () => open({ type: "settings", section: "general" }),
-    "/permissions": () => open({ type: "settings", section: "permissions" }),
-    "/mcp": () => open({ type: "settings", section: "mcp" }),
+    "/verbosity": () => open({ type: "settings", section: "user" }),
+    "/permissions": () => open({ type: "settings", section: "user" }),
+    "/mcp": () => open({ type: "settings", section: "user" }),
     "/tools": () => setModal({ type: "tools", session_id: selected }),
     "/rename": () => session && setModal({ type: "rename", session }),
     "/memory": () => showLibrary("memory"),

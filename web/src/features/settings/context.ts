@@ -38,6 +38,10 @@ export interface SettingsProps {
   session?: Session;
   logout: () => Promise<void>;
   instructions: () => void;
+  // Counts every saved change, whoever made it: what shows settings reads
+  // again.
+  version: number;
+  // The scope to open on.
   initialSection?: string;
 }
 

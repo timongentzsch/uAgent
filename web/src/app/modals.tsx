@@ -291,6 +291,7 @@ export default function Modals({
             ownsDialog
             fallback={<SettingsLoading />}
             initialSection={modal.section}
+            version={managementVersion}
             {...preferences}
             installed={
               matchMedia("(display-mode: standalone)").matches ||

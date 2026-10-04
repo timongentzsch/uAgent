@@ -110,7 +110,7 @@ test("mobile chrome keeps an opaque safe area and applies appearance before app 
   );
   await settings
     .locator(".settings-nav")
-    .getByRole("button", { name: "Display", exact: true })
+    .getByRole("button", { name: "This browser", exact: true })
     .click();
   await settings.getByLabel("Appearance", { exact: true }).selectOption("dark");
   await expect(page.locator("#app")).toHaveCSS(
@@ -486,7 +486,7 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
     .toBeLessThan(6);
   await settings
     .locator(".settings-nav")
-    .getByRole("button", { name: "Display", exact: true })
+    .getByRole("button", { name: "This browser", exact: true })
     .click();
   await expect(settings.getByLabel("Timestamps")).toBeVisible();
   const appearance = await settings.getByLabel("Appearance").boundingBox();
@@ -544,7 +544,7 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   await settingsButton.click();
   await settings
     .locator(".settings-nav")
-    .getByRole("button", { name: "Display", exact: true })
+    .getByRole("button", { name: "This browser", exact: true })
     .click();
   await settings.getByLabel("Zoom", { exact: true }).fill("200");
   await expect
@@ -590,7 +590,7 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   await settingsButton.click();
   await settings
     .locator(".settings-nav")
-    .getByRole("button", { name: "Display", exact: true })
+    .getByRole("button", { name: "This browser", exact: true })
     .click();
   await settings.getByRole("button", { name: /^Zoom .*reset$/ }).click();
   await settings.getByRole("button", { name: "Close settings" }).click();
@@ -856,7 +856,7 @@ test("touch controls remain reachable at phone width", async ({
     await page.getByRole("button", { name: "Settings", exact: true }).tap();
     await page
       .locator(".settings-nav")
-      .getByRole("button", { name: "Display", exact: true })
+      .getByRole("button", { name: "This browser", exact: true })
       .tap();
     await page.getByLabel("Appearance").selectOption("dark");
     await page
@@ -1410,20 +1410,20 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
     });
     await settings
       .locator(".settings-nav")
-      .getByRole("button", { name: "Display", exact: true })
+      .getByRole("button", { name: "This browser", exact: true })
       .tap();
     await settings.getByLabel("Zoom", { exact: true }).fill("50");
     await settings.getByRole("button", { name: "Back", exact: true }).tap();
     await settings
       .locator(".settings-nav")
-      .getByRole("button", { name: "Advanced", exact: true })
+      .getByRole("button", { name: "All conversations", exact: true })
       .tap();
     await input(settings.getByLabel("Find a setting"), "web", 16);
     await contained(settings, 390, 70);
     await settings.getByRole("button", { name: "Back", exact: true }).tap();
     await settings
       .locator(".settings-nav")
-      .getByRole("button", { name: "Display", exact: true })
+      .getByRole("button", { name: "This browser", exact: true })
       .tap();
     await settings.getByRole("button", { name: /^Zoom .*reset$/ }).tap();
     await settings

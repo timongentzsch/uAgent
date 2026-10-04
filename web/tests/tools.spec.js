@@ -233,7 +233,9 @@ test("MCP servers show their state and switch on and off", async ({
   await page.goto(`/#session=${session.id}`);
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const settings = page.getByRole("dialog", { name: "Settings", exact: true });
-  await settings.getByRole("button", { name: "MCP servers" }).click();
+  await settings
+    .getByRole("button", { name: "All conversations", exact: true })
+    .click();
 
   // Each scope lists the servers its own file defines.
   const global = settings.getByRole("region", { name: "MCP servers" });
@@ -262,8 +264,7 @@ test("MCP servers show their state and switch on and off", async ({
   // The project's own servers are in its section, by its file.
   await settings
     .locator(".settings-nav")
-    .getByRole("region", { name: "This project" })
-    .getByRole("button")
+    .getByRole("button", { name: /^This project/ })
     .click();
   const project = settings.getByRole("region", { name: "MCP servers" });
   await expect(project).toContainText("No servers");

@@ -1,60 +1,58 @@
 import { useState } from "preact/hooks";
-import type {
-  ConfigChange,
-  Configuration,
-  Session,
-} from "../../../shared/types.ts";
-import { useAction } from "../../../shared/use-action.ts";
+import type { ConfigChange, Configuration } from "../../../shared/types.ts";
 import { useResource } from "../../../shared/use-resource.ts";
 import { manage } from "../../../state/api.ts";
 import type { SavedScope } from "./facts.ts";
 
-// The settings and the two ways to change them at `scope`. The open
-// conversation's runtime answers for its folder and itself (a stopped one
-// starts for it); during its turn, or with none open, the host answers and
-// knows only what is saved for all conversations.
+// What is saved at `scope` and the two ways to change it. The host answers:
+// it holds what is saved for all conversations and, named a folder, for that
+// project. It reads again whenever anyone saves (`version`).
 export function useConfiguration(
-  session?: Session,
-  scope: SavedScope = "user",
+  scope: SavedScope,
+  folder: string | undefined,
+  version: number,
 ) {
-  const target = session && !session.turn_active ? session : null;
+  const where = folder ? { cwd: folder } : {};
   const config = useResource<Configuration>(
-    () => manage("config", { operation: "get" }, { session: target }),
-    [target?.id],
+    () => manage("config", { operation: "get", ...where }),
+    [folder, version],
   );
-  const action = useAction();
+  // Saves in flight, and the setting the last failure belongs to.
+  const [busy, setBusy] = useState(0);
+  const [failed, setFailed] = useState<{ key: string; error: unknown }>();
   // Collected while settings are open, so several saves offer one restart.
   const [restart, setRestart] = useState<string[]>([]);
-  const [shadowed, setShadowed] = useState<string[]>([]);
-  const run = (fields: Record<string, unknown>) =>
-    action.run(async () => {
-      const result = await manage(
-        "config",
-        { scope, ...fields },
-        { session: target },
-      );
+  const run = async (key: string, fields: Record<string, unknown>) => {
+    setBusy((count) => count + 1);
+    setFailed(undefined);
+    try {
+      const result = await manage("config", { scope, ...where, ...fields });
       config.setValue(result);
-      const keys = (effect: string) =>
-        result.effects
-          .filter((item) => item.effect === effect)
-          .map((item) => item.key);
-      setRestart((current) => [...new Set([...current, ...keys("restart")])]);
-      setShadowed(keys("shadowed"));
-    });
+      const due = result.effects
+        .filter((item) => item.effect === "restart")
+        .map((item) => item.key);
+      setRestart((current) => [...new Set([...current, ...due])]);
+      return true;
+    } catch (error) {
+      setFailed({ key, error });
+      return false;
+    } finally {
+      setBusy((count) => count - 1);
+    }
+  };
   return {
     settings: (config.value?.settings || []).filter(
       (setting) => !setting.terminal && setting.scopes.includes(scope),
     ),
-    // A project's settings are its conversation's runtime's to answer.
-    answered: scope === "user" || !!target,
+    categories: config.value?.categories || [],
     loaded: !!config.value,
-    error: config.error ?? action.error,
-    retry: config.error != null ? config.retry : undefined,
-    busy: action.busy,
+    error: config.error,
+    retry: config.retry,
+    busy: busy > 0,
+    failed,
     restart,
-    shadowed,
     save: (change: ConfigChange) =>
-      run({ operation: "apply", changes: [change] }),
-    reset: () => run({ operation: "reset" }),
+      run(change.key, { operation: "apply", changes: [change] }),
+    reset: () => run("", { operation: "reset" }),
   };
 }

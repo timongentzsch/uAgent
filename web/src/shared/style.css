@@ -2395,16 +2395,6 @@ dialog > header .icon-button {
 .setting-summary[data-default] {
   color: var(--muted);
 }
-.setting-sheet {
-  display: grid;
-  gap: var(--space-4);
-}
-.setting-sheet p {
-  margin: 0;
-}
-.setting-sheet output {
-  overflow-wrap: anywhere;
-}
 .zoom-value {
   min-width: 4ch;
   text-align: end;

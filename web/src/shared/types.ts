@@ -594,7 +594,7 @@ export interface ModelCatalogue {
 // One setting as the host states it: its description, then the facts.
 // Where a setting's value can be saved, and every place it can come from.
 export type ConfigScope = "user" | "project" | "conversation";
-export type ConfigSource = ConfigScope | "file" | "environment" | "cli";
+export type ConfigSource = ConfigScope | "environment" | "cli";
 export interface ConfigSetting {
   name: string;
   label: string;
@@ -608,7 +608,7 @@ export interface ConfigSetting {
   minimum?: number;
   maximum?: number;
   choices?: string[];
-  // Listed only in a terminal and the config file.
+  // Listed only in a terminal.
   terminal?: boolean;
   // The scopes it may be saved at, lowest first.
   scopes: ConfigScope[];
@@ -631,6 +631,8 @@ export interface ConfigChange {
 }
 export interface Configuration {
   settings: ConfigSetting[];
+  // The groups settings are listed under, in order.
+  categories: { id: string; label: string }[];
   effects: {
     key: string;
     effect: "next_turn" | "restart" | "shadowed";

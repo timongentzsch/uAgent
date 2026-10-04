@@ -1,3 +1,4 @@
+import { plural } from "../../../shared/quantities.ts";
 import { Group, Row, ValueSelect } from "../../../shared/ui.tsx";
 import { ZoomSlider } from "../../../shared/zoom-slider.tsx";
 import { defaultTimePrefs, type TimePrefs } from "../../../shared/time.ts";
@@ -16,20 +17,14 @@ const TIMESTAMPS: Record<TimePrefs["style"], string> = {
   absolute: "The full date and time.",
 };
 
-// How many differ from their defaults, and putting them all back: Advanced's
-// "Reset all" counts and resets them with the host's settings.
-export const displayChanged = ({
-  theme,
-  motion,
-  zoom,
-  timePrefs,
-}: SettingsProps) =>
+// How many differ from their defaults, and putting them all back.
+const displayChanged = ({ theme, motion, zoom, timePrefs }: SettingsProps) =>
   Number(theme !== DEFAULTS.theme) +
   Number(motion !== DEFAULTS.motion) +
   Number(zoom !== DEFAULTS.zoom) +
   Number(timePrefs.clock !== defaultTimePrefs.clock) +
   Number(timePrefs.style !== defaultTimePrefs.style);
-export function resetDisplay({
+function resetDisplay({
   setTheme,
   setMotion,
   setZoom,
@@ -42,6 +37,8 @@ export function resetDisplay({
 }
 
 export function DisplayPane() {
+  const settings = useSettings();
+  const changed = displayChanged(settings);
   const {
     theme,
     setTheme,
@@ -51,7 +48,7 @@ export function DisplayPane() {
     setTimePrefs,
     zoom,
     setZoom,
-  } = useSettings();
+  } = settings;
   // One row per choice: its name, its options, and where it is kept.
   const choice = (
     label: string,
@@ -128,6 +125,17 @@ export function DisplayPane() {
           reset={() => setZoom(DEFAULTS.zoom)}
         />
       </Row>
+      <Row
+        label="Reset display"
+        detail={
+          changed
+            ? plural(changed, "changed setting")
+            : "Everything is at its default"
+        }
+        destructive
+        disabled={!changed}
+        onClick={() => resetDisplay(settings)}
+      />
     </Group>
   );
 }

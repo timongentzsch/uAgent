@@ -83,7 +83,7 @@ test("always allowing an action remembers it in Settings", async ({
   // What this repository remembers is among the project's settings.
   await settings
     .locator(".settings-nav")
-    .getByRole("button", { name: "project", exact: true })
+    .getByRole("button", { name: /^This project/ })
     .click();
   await expect(settings.getByLabel(/^Allowed actions/)).toContainText(
     "write_file",

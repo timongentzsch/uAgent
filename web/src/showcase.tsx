@@ -27,6 +27,42 @@ import {
   CodeCopy,
 } from "./shared/ui.tsx";
 import { Menu, MenuItem, MenuSub } from "./shared/menu.tsx";
+import { SettingField } from "./features/settings/config/setting-field.tsx";
+import type { ConfigSetting } from "./shared/types.ts";
+
+// One setting of each kind a field edits: typed, chosen, switched, locked.
+const sample = (
+  name: string,
+  label: string,
+  rest: Partial<ConfigSetting>,
+): ConfigSetting => ({
+  name,
+  label,
+  description: "What the setting is for",
+  category: "behaviour",
+  type: "string",
+  sensitivity: "public",
+  takes_effect: "next-user-turn",
+  scopes: ["user", "project"],
+  source: "default",
+  locked: false,
+  ...rest,
+});
+const SETTINGS = [
+  sample("SAMPLE_NUMBER", "Typed", { type: "integer", default: 20 }),
+  sample("SAMPLE_CHOICE", "Chosen", {
+    choices: ["ask", "auto"],
+    default: "ask",
+    set: { user: "auto" },
+    source: "user",
+  }),
+  sample("SAMPLE_SWITCH", "Switched", { type: "boolean", default: true }),
+  sample("SAMPLE_LOCKED", "Locked", {
+    locked: true,
+    source: "environment",
+    effective: "from the environment",
+  }),
+];
 import { SheetButton } from "./shared/sheet.tsx";
 import { ConnectionStatus, StatusLed } from "./shared/connection-status.tsx";
 import { applyMotion, applyTheme, applyZoom } from "./shared/layout.ts";
@@ -39,6 +75,7 @@ import Decision from "./features/chat/decision.tsx";
 import type { Act, Pending } from "./shared/types.ts";
 import "./features/composer/attachments.css";
 import "./features/chat/message.css";
+import "./features/settings/settings.css";
 import "./showcase.css";
 
 // A 400x300 image: small enough that a large screen shows it unscaled.
@@ -457,6 +494,19 @@ function Showcase() {
                 onClick={() => {}}
               />
               <Row label="Remove this device" destructive onClick={() => {}} />
+            </Group>
+            <Group title="Setting fields">
+              {SETTINGS.map((setting) => (
+                <SettingField
+                  key={setting.name}
+                  setting={setting}
+                  scope="user"
+                  find={() => undefined}
+                  disabled={false}
+                  online
+                  save={async () => true}
+                />
+              ))}
             </Group>
             <SectionTitle>Section title</SectionTitle>
             <EmptyState action={<Button>Create one</Button>}>

@@ -6,7 +6,7 @@ import { folderName, folderOf } from "../../shared/folder-label.tsx";
 import { nextIndex, plainKey } from "../../shared/listbox-nav.ts";
 import { SuggestionList } from "../composer/command-suggestions.tsx";
 import { fuzzy } from "../composer/slash.ts";
-import { SECTIONS, type Section } from "../settings/settings-nav.tsx";
+import { SCOPES, type Scope } from "../settings/settings-nav.tsx";
 import { SHORTCUTS, keysOf, type ShortcutId } from "../../shared/shortcuts.ts";
 
 type Item = {
@@ -50,7 +50,7 @@ export default function Palette({
   start: (cwd: string) => void;
   // A slash command, as if typed in the composer.
   run: (command: SlashCommand) => void;
-  settings: (section: Section) => void;
+  settings: (scope: Scope) => void;
   // The global shortcuts' actions, listed by their names.
   actions: Partial<Record<ShortcutId, () => void>>;
 }) {
@@ -92,7 +92,7 @@ export default function Palette({
         detail: "Command",
         run: () => run(entry),
       })),
-    ...SECTIONS.map(([id, label]) => ({
+    ...SCOPES.map(([id, label]) => ({
       key: `settings:${id}`,
       label: `Settings: ${label}`,
       detail: "Settings",

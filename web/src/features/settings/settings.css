@@ -63,7 +63,40 @@ dialog.settings-view {
 .group-block {
   padding: var(--space-6);
 }
+/* A setting edited in its row. What is typed gets a field as wide as a
+   value needs; a switch, a choice and a reset take only their own width. */
+.setting-field .row-value {
+  gap: var(--space-3);
+}
+.setting-field .row-value > .text-control:not(.select) {
+  width: calc(220rem / 14);
+}
+/* A model's name is cut short rather than pushed out of its row. */
+.setting-field .sheet-control {
+  display: flex;
+  min-width: 0;
+}
+.setting-field .sheet-control > button {
+  min-width: 0;
+}
+.setting-field .sheet-control .setting-summary {
+  display: block;
+}
+.setting-error {
+  color: var(--removed);
+}
 @media (max-width: 600px) {
+  .setting-field[data-wide] .row {
+    flex-wrap: wrap;
+  }
+  .setting-field[data-wide] .row-value {
+    flex: 1 0 100%;
+    max-width: none;
+  }
+  .setting-field .row-value > .text-control:not(.select) {
+    flex: 1;
+    width: auto;
+  }
   .settings-content {
     grid-template-columns: minmax(0, 1fr);
     padding-bottom: var(--safe-bottom);

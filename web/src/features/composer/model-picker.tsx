@@ -22,8 +22,10 @@ export default function ModelPicker({
   state?: State;
   online: boolean;
   running: boolean;
+  // With `save` the choice is handed back, not applied to a session: the
+  // picker closes once it was taken.
   selection?: string;
-  save?: (value: string) => void;
+  save?: (value: string) => unknown;
   close: () => void;
 }) {
   const [catalog, setCatalog] = useState<ModelCatalogue | null>(null);
@@ -57,8 +59,10 @@ export default function ModelPicker({
             selection === item.value || selection?.startsWith(`${item.value}:`),
         )
         .sort((a, b) => b.value.length - a.value.length)[0];
+      // A saved selection the catalogue does not list is kept, not replaced.
       setModel(
         chosen?.value ||
+          (save && selection) ||
           response.result.models.find((item) => item.active)?.value ||
           response.result.models[0]?.value ||
           "",
@@ -122,6 +126,7 @@ export default function ModelPicker({
                 setVariant("default");
               }}
             >
+              {model && !selected && <option value={model}>{model}</option>}
               {[...providers].map(([provider, models]) => (
                 <optgroup key={provider} label={provider}>
                   {models.map((item) => (
@@ -194,7 +199,7 @@ export default function ModelPicker({
           setError(null);
           try {
             if (save) {
-              save(
+              const taken = await save(
                 [
                   model,
                   variant === "default" ? "" : variant,
@@ -203,7 +208,7 @@ export default function ModelPicker({
                   .filter(Boolean)
                   .join(":"),
               );
-              close();
+              if (taken !== false) close();
               return;
             }
             const result = await command("model", session, {

@@ -23,7 +23,8 @@ namespace {
 
 FileStamp MergeFile(const std::string& path, const char* source,
                     const RuntimeConfig::Values& process,
-                    RuntimeConfig::Values& effective, json& origins) {
+                    EffectiveConfigSnapshot& snapshot) {
+  RuntimeConfig::Values& effective = snapshot.values;
   if (path.empty()) return {};
   EnvValues parsed;
   FileStamp after;
@@ -47,7 +48,9 @@ FileStamp MergeFile(const std::string& path, const char* source,
     std::set<std::string> resolving;
     effective[key] =
         ResolveEnvValue(key, scope, resolving, /*process_fallback=*/false);
-    origins[key] = source;
+    snapshot.sources[key] = source;
+    // As written: a reference stays a reference where the file is shown.
+    snapshot.layers[source][key] = parsed[key];
   }
   return after;
 }
@@ -91,35 +94,31 @@ ConfigManager::ConfigManager(RuntimeConfig::Values process, bool trust_project,
 
 EffectiveConfigSnapshot ConfigManager::Read() const {
   EffectiveConfigSnapshot snapshot;
-  RuntimeConfig::Values effective;
-  json origins = json::object();
   if (!custom_path_.empty()) {
-    FileStamp stamp =
-        MergeFile(custom_path_, "file", process_, effective, origins);
+    FileStamp stamp = MergeFile(custom_path_, "file", process_, snapshot);
     snapshot.files.emplace_back(custom_path_, stamp);
   } else {
-    FileStamp global =
-        MergeFile(global_path_, "user", process_, effective, origins);
+    FileStamp global = MergeFile(global_path_, "user", process_, snapshot);
     snapshot.files.emplace_back(global_path_, global);
     if (trust_project_) {
       FileStamp project =
-          MergeFile(project_path_, "project", process_, effective, origins);
+          MergeFile(project_path_, "project", process_, snapshot);
       snapshot.files.emplace_back(project_path_, project);
     }
   }
-  for (const auto& [key, value] : process_) {
-    if (!AgentConfigKey(key)) continue;
-    effective[key] = value;
-    origins[key] = "environment";
-  }
-
-  for (const auto& [key, value] : cli_) {
-    effective[key] = value;
-    origins[key] = "cli";
-  }
-  snapshot.config = RuntimeConfig::FromValues(effective);
-  snapshot.values = effective;
-  snapshot.sources = std::move(origins);
+  auto layer = [&](const char* source, const RuntimeConfig::Values& held,
+                   bool filter) {
+    for (const auto& [key, value] : held) {
+      if (filter && !AgentConfigKey(key)) continue;
+      snapshot.values[key] = value;
+      snapshot.sources[key] = source;
+      snapshot.layers[source][key] = value;
+    }
+  };
+  layer("environment", process_, true);
+  layer("cli", cli_, false);
+  layer("conversation", conversation_, false);
+  snapshot.config = RuntimeConfig::FromValues(snapshot.values);
   return snapshot;
 }
 

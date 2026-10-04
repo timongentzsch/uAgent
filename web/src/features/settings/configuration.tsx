@@ -42,7 +42,8 @@ export default function Configuration({
   const find = (name: string) =>
     config.settings.find((setting) => setting.name === name);
   const changed = config.settings.filter(
-    (setting) => setting.set !== undefined && setting.sensitivity === "public",
+    (setting) =>
+      setting.set?.user !== undefined && setting.sensitivity === "public",
   );
   const needle = query.trim().toLowerCase();
   const groups: Sections = filter
@@ -50,7 +51,7 @@ export default function Configuration({
     : needle
       ? [["Results", () => true]]
       : [
-          ["Changed", (setting) => setting.set !== undefined],
+          ["Changed", (setting) => setting.set?.user !== undefined],
           ["Locked", (setting) => setting.locked],
         ];
   const listed = config.settings.filter(

@@ -588,6 +588,9 @@ export interface ModelCatalogue {
   models: Model[];
 }
 // One setting as the host states it: its description, then the facts.
+// Where a setting's value can be saved, and every place it can come from.
+export type ConfigScope = "user" | "project" | "conversation";
+export type ConfigSource = ConfigScope | "file" | "environment" | "cli";
 export interface ConfigSetting {
   name: string;
   label: string;
@@ -603,11 +606,15 @@ export interface ConfigSetting {
   choices?: string[];
   // Listed only in a terminal and the config file.
   terminal?: boolean;
-  // Your own value (`true` for a secret); absent when unset.
-  set?: JSONValue;
+  // The scopes it may be saved at, lowest first.
+  scopes: ConfigScope[];
+  // What each scope holds (`true` for a secret); a scope that holds nothing
+  // is absent, and so is `set` when none does.
+  set?: Partial<Record<ConfigSource, JSONValue>>;
   // What applies now; absent for a secret.
   effective?: JSONValue;
-  source: "default" | "user" | "project" | "file" | "environment" | "cli";
+  // The scope the value in effect comes from.
+  source: "default" | ConfigSource;
   locked: boolean;
   // While empty: the setting it takes its value from, or a phrase.
   follows?: string;

@@ -57,8 +57,7 @@ json ConfigurationControl(const json& request, const ConfigManager& manager,
     return {{"error", "unknown configuration operation"}};
   }
   return {{"settings",
-           ConfigSettingsJson(manager.Read(), ReadEnvValues(UagentConfigPath()),
-                              JsonValue(request, "name", ""))},
+           ConfigSettingsJson(manager.Read(), JsonValue(request, "name", ""))},
           {"effects", effects}};
 }
 }  // namespace uagent

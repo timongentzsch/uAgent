@@ -65,6 +65,12 @@ json DescriptorJson(const ConfigDescriptor& descriptor) {
         descriptor.fallback;
   }
   entry["label"] = descriptor.label;
+  entry["scopes"] = json::array();
+  for (const ConfigScopeName& scope : kConfigScopes) {
+    if (descriptor.scopes & scope.persisted) {
+      entry["scopes"].push_back(scope.source);
+    }
+  }
   if (!descriptor.purpose.empty()) entry["purpose"] = descriptor.purpose;
   if (descriptor.terminal) entry["terminal"] = true;
   if (descriptor.type == ConfigType::kInt) {
@@ -163,7 +169,7 @@ json TypedValue(const ConfigDescriptor& descriptor, const std::string& text) {
 }
 
 json ConfigSettingsJson(const EffectiveConfigSnapshot& configured,
-                        const EnvValues& user, std::string_view name) {
+                        std::string_view name) {
   json settings = json::array();
   for (const ConfigDescriptor& descriptor : ConfigRegistry()) {
     if (!name.empty() && descriptor.environment != name) continue;
@@ -174,8 +180,14 @@ json ConfigSettingsJson(const EffectiveConfigSnapshot& configured,
         JsonValue(configured.sources, key.c_str(), "default");
     entry["source"] = source;
     entry["locked"] = source == "environment" || source == "cli";
-    if (auto own = user.find(key); own != user.end() && !own->second.empty()) {
-      entry["set"] = secret ? json(true) : TypedValue(descriptor, own->second);
+    // Where it is set, scope by scope: what a change here would override,
+    // and what overrides it.
+    for (const auto& [scope, held] : configured.layers) {
+      if (auto own = held.find(key);
+          own != held.end() && !own->second.empty()) {
+        entry["set"][scope] =
+            secret ? json(true) : TypedValue(descriptor, own->second);
+      }
     }
     if (!secret) {
       auto merged = configured.values.find(key);
@@ -253,9 +265,7 @@ json DescribeSelf(SelfTopic topic, const std::string& name,
       out["commands"] = CommandSchemaJson();
       break;
     case SelfTopic::kConfig: {
-      out["settings"] =
-          ConfigSettingsJson(inputs.config_manager.Read(),
-                             ReadEnvValues(UagentConfigPath()), name);
+      out["settings"] = ConfigSettingsJson(inputs.config_manager.Read(), name);
       out["restart_required"] = inputs.config_manager.DiagnosticJson(
           inputs.active)["restart_required"];
       break;

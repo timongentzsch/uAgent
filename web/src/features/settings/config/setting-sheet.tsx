@@ -33,13 +33,14 @@ export function SettingSheet({
   close: () => void;
 }) {
   const hidden = secret(setting);
-  const [draft, setDraft] = useState(hidden ? "" : shown(setting.set));
+  const [draft, setDraft] = useState(hidden ? "" : shown(setting.set?.user));
   const numeric = ["integer", "number"].includes(setting.type);
   const commit = async (value: string) => {
     const change = value
       ? { key: setting.name, value }
       : { key: setting.name, unset: true };
-    if ((!value && setting.set === undefined) || (await save(change))) close();
+    if ((!value && setting.set?.user === undefined) || (await save(change)))
+      close();
   };
   const line = reason(setting, find);
   return (
@@ -86,7 +87,7 @@ export function SettingSheet({
             value={draft}
             placeholder={
               hidden
-                ? setting.set
+                ? setting.set?.user
                   ? "Set · enter a replacement"
                   : "Not set"
                 : shown(setting.effective) || "Not set"
@@ -99,7 +100,7 @@ export function SettingSheet({
         {!setting.locked && (
           <Actions>
             <Button
-              disabled={busy || setting.set === undefined}
+              disabled={busy || setting.set?.user === undefined}
               onClick={() => void commit("")}
             >
               Use default

@@ -387,9 +387,10 @@ void TestConfigurationResetKeepsSecrets() {
   // Facts, typed like the default: what the user file sets, what applies and
   // where that comes from. A secret says only that it is set.
   const json calls = find(got, "UAGENT_MAX_TOOL_CALLS");
-  CHECK(calls["set"] == 40 && calls["effective"] == 40);
+  CHECK(calls["set"]["user"] == 40 && calls["effective"] == 40);
+  CHECK(calls["scopes"].size() == 2 && calls["scopes"][1] == "project");
   CHECK(calls["source"] == "user" && calls["locked"] == false);
-  CHECK(find(got, "OPENROUTER_API_KEY")["set"] == true);
+  CHECK(find(got, "OPENROUTER_API_KEY")["set"]["user"] == true);
   CHECK(!find(got, "OPENROUTER_API_KEY").contains("effective"));
   const json steps = find(got, "UAGENT_MAX_STEPS");
   CHECK(!steps.contains("set") && steps["effective"] == steps["default"]);
@@ -403,7 +404,7 @@ void TestConfigurationResetKeepsSecrets() {
   CHECK(reset["effects"].size() == 2);
   CHECK(reset["effects"][0]["effect"] == "next_turn");
   CHECK(!find(reset, "UAGENT_MAX_TOOL_CALLS").contains("set"));
-  CHECK(find(reset, "OPENROUTER_API_KEY")["set"] == true);
+  CHECK(find(reset, "OPENROUTER_API_KEY")["set"]["user"] == true);
   CHECK(Read(config).find("OPENROUTER_API_KEY=keep-me") != std::string::npos);
   CHECK(Read(config).find("UAGENT_MAX_TOOL_CALLS") == std::string::npos);
   // Nothing left to reset is not an error and writes nothing.

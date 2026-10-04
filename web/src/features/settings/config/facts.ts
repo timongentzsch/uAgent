@@ -15,7 +15,7 @@ export const shown = (value?: JSONValue) =>
 // The value a row shows: what applies, or whether a secret is set.
 export const summary = (setting: ConfigSetting) =>
   secret(setting)
-    ? setting.set || setting.source !== "default"
+    ? setting.set?.user || setting.source !== "default"
       ? "Set"
       : "Not set"
     : shown(setting.effective) || "Not set";
@@ -37,5 +37,7 @@ export function reason(
     return `Set ${setting.source === "cli" ? "on the command line" : "by the environment"}; change it there.`;
   if (setting.source === "project")
     return `This project sets ${shown(setting.effective)}.`;
-  return setting.set === undefined ? fallback : fallback && `${fallback}.`;
+  return setting.set?.user === undefined
+    ? fallback
+    : fallback && `${fallback}.`;
 }

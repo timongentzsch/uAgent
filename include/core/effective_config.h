@@ -6,6 +6,7 @@
 // Reload checks file stamps synchronously at a user-turn boundary; no watcher
 // thread and no mid-turn configuration mutation exist.
 
+#include <map>
 #include <optional>
 #include <string>
 #include <utility>
@@ -21,6 +22,10 @@ struct EffectiveConfigSnapshot {
   RuntimeConfig config;
   RuntimeConfig::Values values;
   json sources = json::object();
+  // What each scope holds, by its source name, as that scope spells it: the
+  // answer to "where is this set, and what does it override". `values` is
+  // their merge, lowest first: user, project, environment, cli, conversation.
+  std::map<std::string, RuntimeConfig::Values> layers;
   std::vector<std::pair<std::string, FileStamp>> files;
 };
 
@@ -39,6 +44,12 @@ class ConfigManager {
   // Inspect resolved values without exporting them as process overrides.
   EffectiveConfigSnapshot Read() const;
   bool ProjectTrusted() const { return trust_project_; }
+  // What one conversation chose for itself, above every other scope. Only
+  // settings whose descriptor allows the conversation scope belong here.
+  void SetConversation(RuntimeConfig::Values chosen) {
+    conversation_ = std::move(chosen);
+  }
+  const RuntimeConfig::Values& Conversation() const { return conversation_; }
 
   RuntimeConfig Initialize();
   std::optional<ConfigReload> Reload(const RuntimeConfig& active);
@@ -52,6 +63,7 @@ class ConfigManager {
   RuntimeConfig::Values process_;
   bool trust_project_ = false;
   RuntimeConfig::Values cli_;
+  RuntimeConfig::Values conversation_;
   std::string custom_path_;
   std::string global_path_;
   std::string project_path_;

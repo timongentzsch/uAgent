@@ -42,6 +42,24 @@ enum class Sensitivity { kPublic, kSecret, kCompositeSecret };
 enum ConfigScope : unsigned {
   kScopeUser = 1u << 0,
   kScopeProject = 1u << 1,
+  // One conversation's own choice, kept with it.
+  kScopeConversation = 1u << 2,
+};
+
+// Every scope a value can come from, lowest first, by the name a snapshot's
+// sources use and the name people read. A flag or the environment decides
+// for one process; the three persisted scopes are where a value is saved.
+struct ConfigScopeName {
+  std::string_view source;
+  std::string_view label;
+  unsigned persisted;  // its ConfigScope bit, or 0
+};
+inline constexpr ConfigScopeName kConfigScopes[] = {
+    {"user", "All conversations", kScopeUser},
+    {"project", "This project", kScopeProject},
+    {"environment", "Environment", 0},
+    {"cli", "Command line", 0},
+    {"conversation", "This conversation", kScopeConversation},
 };
 
 using ConfigDefault = std::variant<int64_t, double, bool, std::string_view>;

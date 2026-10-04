@@ -27,7 +27,7 @@ Paths under `~/.uagent` unless shown otherwise.
 | scheduled tasks and their worktrees | `scheduled/state.json`, `worktrees/<id>` |
 | session links | `links/*` |
 | web host discovery, devices and push keys | `web/*` |
-| project trust, model preference, permission rules, tool categories, first-run welcome shown | `config/trusted-projects.json`, `config/model-preference.json`, `config/permissions.json`, `config/tool-categories.json`, `config/welcomed` |
+| project trust, permission rules, tool categories, first-run welcome shown | `config/trusted-projects.json`, `config/permissions.json`, `config/tool-categories.json`, `config/welcomed` |
 | configuration | `.config`, and `<workspace>/.uagent/.config` |
 | instructions | `AGENTS.md`, `COORDINATOR.md`, and `<folder>/.uagent/COORDINATOR.md` |
 | scratch scripts | `<workspace>/.uagent/scratch/*.py`, `*.sh` |

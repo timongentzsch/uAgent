@@ -8,7 +8,9 @@ multi-tenant service.
 Every `UAGENT_*` setting, its default and when a change takes effect is listed
 in the generated
 [configuration reference](../skills/uagent-config/references/configuration.md).
-`/debug-config [SETTING]` shows which layer supplied each active value;
+`/config` lists what is set and the scope each value comes from (All
+conversations, This project, This conversation, Environment, Command line);
+`/debug-config [SETTING]` shows the same per setting;
 `/context` shows the redacted route, its capabilities and the schemas currently
 advertised.
 

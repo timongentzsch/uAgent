@@ -7,6 +7,18 @@
 Settings that left the registry are no longer read. A config file that still
 names one loads as before and the line has no effect.
 
+- `/model`, `/effort` and `/variant` choose for the conversation they are
+  typed in and nothing else. They no longer become the model of every later
+  conversation: for that, `/model X --default`, "Also use for new
+  conversations" in the web, or `UAGENT_MODEL` in the config. A model an
+  earlier version remembered (`config/model-preference.json`) is saved as
+  `UAGENT_MODEL` on the first start and the file removed.
+- A conversation that never chose a model follows the configured one, so
+  changing `UAGENT_MODEL` reaches it at its next start. Conversations saved
+  before this release keep the model they recorded.
+- `/config` names the scope a value comes from (All conversations, This
+  project, This conversation, Environment, Command line) where it printed
+  `user`, `project`, `environment` or `cli`.
 - Removed: `/verbose`. `/verbosity full` shows what it did, `/verbosity
   default` puts it back; unlike `/verbose` the level is saved and shared (see
   Added). `--verbosity full` sets it for one terminal without saving.
@@ -114,6 +126,14 @@ names one loads as before and the line has no effect.
 
 ### Changed
 
+- Settings have one model of scope, the same in the terminal, the config
+  files and the web: All conversations (`~/.uagent/.config`), This project
+  (the folder's `.uagent/.config`), This conversation (its model and approval
+  mode, kept with it), over which the environment and command line decide for
+  a run. A conversation's model and permission mode are `UAGENT_MODEL` and
+  `UAGENT_APPROVAL` chosen at its scope, not mechanisms of their own:
+  `/config conversation KEY=VALUE` sets them like any setting, and a settings
+  list shows what each scope holds and which one applies.
 - A session's runtime stops after 15 minutes with nothing to do (no turn, no
   queued message, no running command, no terminal attached), and with it its
   MCP servers. The next message, or a setting changed on the conversation

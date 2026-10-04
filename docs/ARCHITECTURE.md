@@ -223,11 +223,32 @@ permission policy. See [Security](../SECURITY.md).
 
 ## Configuration is described once
 
-`config_registry.h` defines defaults, bounds, sensitivity and activation timing.
-Runtime getters, CLI flags, diagnostics and generated skill references consume
-that source. Configuration precedence is explicit; trusted project configuration
-cannot silently override a command-line selection. Reload happens at a turn
-boundary, while controls report settings that require a restart.
+`config_registry.h` defines each setting once: its default, bounds,
+sensitivity, activation timing and the scopes it may be saved at. Runtime
+getters, CLI flags, `/config`, the web's Settings, diagnostics and the
+generated skill references all consume that source.
+
+A value comes from one of these scopes, the later winning:
+
+| Scope | Affects | Kept in |
+| --- | --- | --- |
+| Default | everything | the registry |
+| All conversations | every conversation, browser and terminal of this user | `~/.uagent/.config` |
+| This project | conversations in one trusted folder | `<folder>/.uagent/.config` |
+| Environment | one process and those it starts | `UAGENT_*` variables |
+| Command line | one run | flags |
+| This conversation | one conversation | its session |
+
+Only the model (`UAGENT_MODEL`, with its variant and effort) and the approval
+mode (`UAGENT_APPROVAL`) may be chosen for one conversation; `/model`,
+`/effort`, `/variant`, `/permissions` and `/yolo` choose them there, and a flag
+that names one (`--model`, `--yolo`) chooses it for the conversation it starts.
+One resolver answers what applies, where it comes from and what each scope
+holds, so a settings list can say what a change would override. Reload happens
+at a turn boundary, while controls report settings that require a restart.
+
+A browser's display preferences (appearance, motion, zoom, clock) are not
+settings of the host: they are kept in that browser only.
 
 System-prompt documents support inherit, overlay and replacement at conversation,
 project and global scope. Their editors and agent tool share revision checking

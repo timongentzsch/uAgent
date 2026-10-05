@@ -427,7 +427,9 @@ ToolResult Spawn(const std::string& folder, const json& a,
                 // Said where it applies: waiting costs nothing, polling does.
                 {"next",
                  "It reports when its turn ends, and that report starts your "
-                 "next turn. End this turn unless other work is waiting."}}));
+                 "next turn. Unless other work is waiting, end this turn with "
+                 "one line saying what you started: an empty answer counts "
+                 "as a failure."}}));
 }
 
 // Guidance into a session of the folder: a running turn takes it as

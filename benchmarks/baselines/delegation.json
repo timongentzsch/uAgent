@@ -221,6 +221,84 @@
           "input_k": 350
         }
       }
+    },
+    "c6cff034": {
+      "title": "After the browser, delegation and cleanup stages, 2026-10-05, commit `c6cff034`",
+      "note": "survey/coord is its second attempt: the first ended in an error after the coordinator answered a spawn with empty text three times.",
+      "runs": {
+        "audit/coord": {
+          "wall_s": 356,
+          "steps": 30,
+          "input_k": 680,
+          "cached_pct": 11
+        },
+        "audit/solo": {
+          "wall_s": 141,
+          "steps": 10,
+          "input_k": 199,
+          "cached_pct": 0
+        },
+        "audit/sub": {
+          "wall_s": 197,
+          "steps": 21,
+          "input_k": 463,
+          "cached_pct": 14
+        },
+        "fix/coord": {
+          "wall_s": 148,
+          "steps": 12,
+          "input_k": 80,
+          "cached_pct": 4
+        },
+        "fix/solo": {
+          "wall_s": 85,
+          "steps": 7,
+          "input_k": 30,
+          "cached_pct": 0
+        },
+        "fix/sub": {
+          "wall_s": 111,
+          "steps": 14,
+          "input_k": 114,
+          "cached_pct": 11
+        },
+        "research/coord": {
+          "wall_s": 89,
+          "steps": 11,
+          "input_k": 102,
+          "cached_pct": 2
+        },
+        "research/solo": {
+          "wall_s": 88,
+          "steps": 8,
+          "input_k": 110,
+          "cached_pct": 0
+        },
+        "research/sub": {
+          "wall_s": 160,
+          "steps": 18,
+          "input_k": 372,
+          "cached_pct": 3
+        },
+        "survey/coord": {
+          "wall_s": 104,
+          "steps": 10,
+          "input_k": 52,
+          "cached_pct": 3
+        },
+        "survey/solo": {
+          "wall_s": 68,
+          "steps": 5,
+          "input_k": 44,
+          "cached_pct": 0
+        },
+        "survey/sub": {
+          "wall_s": 115,
+          "steps": 8,
+          "input_k": 105,
+          "cached_pct": 10
+        }
+      }
     }
   }
 }

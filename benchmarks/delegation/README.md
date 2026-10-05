@@ -38,14 +38,16 @@ factor, not of a few percent.
 Every run is in `benchmarks/baselines/delegation.json`, keyed by commit.
 Coordinator runs, wall time and input tokens:
 
-| Task | `fb55c4c6` (before) | `aea30096` | `ae26decc` |
-| --- | --- | --- | --- |
-| fix | 253 s / 357k | 133 s / 88k | 127 s / 105k |
-| survey | 190 s / 280k | 143 s / 97k | 88 s / 54k |
-| research | 255 s / 702k | 236 s / 491k | 101 s / 138k |
-| audit | 231 s / 548k | 267 s / 289k | 290 s / 350k |
+| Task | `fb55c4c6` (before) | `aea30096` | `ae26decc` | `c6cff034` |
+| --- | --- | --- | --- | --- |
+| fix | 253 s / 357k | 133 s / 88k | 127 s / 105k | 148 s / 80k |
+| survey | 190 s / 280k | 143 s / 97k | 88 s / 54k | 104 s / 52k |
+| research | 255 s / 702k | 236 s / 491k | 101 s / 138k | 89 s / 102k |
+| audit | 231 s / 548k | 267 s / 289k | 290 s / 350k | 356 s / 680k |
 
 Before the fixes thirteen attempts ended on the provider's
-`server_is_overloaded`; since then twelve of twelve complete first time. A
+`server_is_overloaded`; since then the runs complete first time, but for one
+coordinator run at `c6cff034` that answered a spawn with empty text (the
+spawn result now asks for a line). A
 coordinator itself takes 3 to 12 steps; the rest is its threads' work. The
 provider reports no cached input on this route, with or without a cache key.

@@ -23,10 +23,13 @@ void ApplySelectionPolicy(Api& api, const ModelSelection& selection) {
 }
 
 namespace {
-void ExportRoute(const Api& api) {
+// The route in use, over what is saved: what a setting reads as here and what
+// a command started from here is told. Nothing goes into this process's
+// environment, which the runtimes it starts inherit as it was.
+void PublishRoute(const Api& api) {
   for (const auto& [name, value] :
        RouteEnvironment(ResolveSideRoute(api, {}, {}, ""))) {
-    setenv(name.c_str(), value.c_str(), 1);
+    OverrideSetting(name, value);
   }
 }
 
@@ -155,7 +158,7 @@ bool SupportsReasoningEffort(const Api& api, std::string_view effort) {
 
 void ActivateRoute(Api& api) {
   ResetRouteCapabilities(api);
-  ExportRoute(api);
+  PublishRoute(api);
 }
 
 ProviderSetup ConfigureProvider(Api& api) {
@@ -234,7 +237,6 @@ ProviderSetup ConfigureProvider(Api& api) {
     setup.warning +=
         "ignoring invalid reasoning effort: " + api.reasoning_effort;
     api.reasoning_effort.clear();
-    OverrideSetting("UAGENT_REASONING_EFFORT", "");
   }
   return setup;
 }

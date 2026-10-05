@@ -290,7 +290,6 @@ void HandleVariant(AppSession& session, const std::string& argument,
   }
   session.ApiClient().config.openrouter_variant = variant;
   session.Runtime().config.openrouter_variant = variant;
-  OverrideSetting("UAGENT_OPENROUTER_VARIANT", variant);
   ChooseCurrentRoute(session);
   const char* detail = "provider default";
   if (variant == "nitro") detail = "highest throughput";

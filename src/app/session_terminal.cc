@@ -25,6 +25,7 @@
 #include "include/core/effective_config.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
+#include "include/core/mailbox.h"
 #include "include/core/runtime_config.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
@@ -850,6 +851,17 @@ int CoordinatorPromptMain(const Options& options) {
     command["request_id"] = command.value("request_id", RandomToken(16));
     return WriteFrame(connection.socket.Get(), command);
   };
+  // What the session holds before this request: its answer is everything the
+  // coordinator says after it.
+  auto messages = [&path] {
+    SessionLoadResult saved = SessionStore::Inspect(path);
+    Conversation conversation;
+    return saved.record && std::move(saved.record->state)
+                               .RestoreConversation(conversation)
+               ? conversation.Messages()
+               : json::array();
+  };
+  const size_t earlier = messages().size();
   const std::string request = RandomToken(16);
   bool submitted = false, rejected = false, completed = false;
   json stop = json::object();
@@ -880,28 +892,40 @@ int CoordinatorPromptMain(const Options& options) {
             {"interaction_id", JsonValue(*pending, "id", "")},
             {"text", ""}});
     }
-    if (JsonValue(frame, "checkpoint", false) &&
-        JsonValue(frame, "completed_request_id", "") == request) {
-      // A queued thread event may already have started the next
-      // turn, which clears the stop record.
-      stop = JsonValue(frame["state"], "stop", json::object());
-      after = UsageFromJson(JsonValue(frame["state"], "usage", json::object()));
-      completed = true;
-      return false;
+    if (!JsonValue(frame, "checkpoint", false) ||
+        (!completed &&
+         JsonValue(frame, "completed_request_id", "") != request)) {
+      return true;
     }
-    return true;
+    // A queued thread event may already have started the next turn, which
+    // clears the stop record: the request's own is kept.
+    if (!completed) stop = JsonValue(frame["state"], "stop", json::object());
+    after = UsageFromJson(JsonValue(frame["state"], "usage", json::object()));
+    completed = true;
+    // The work it delegated is part of the answer: while a thread it started
+    // is at it, its report is still to come, and the turn that takes it.
+    // A thread reports before it goes idle, so a report on its way is mail
+    // the coordinator has not finished with.
+    std::error_code ignored;
+    const std::string mailbox = MailboxIdFor(path);
+    return JsonValue(frame, "busy", false) || ThreadsWorking(cwd) ||
+           !PendingMail(mailbox).empty() ||
+           !std::filesystem::is_empty(
+               std::filesystem::path(MailboxDir(mailbox)) / "cur", ignored);
   });
   if (rejected || !completed) {
     fprintf(stderr, "%s\n",
             error.empty() ? "coordinator runtime closed" : error.c_str());
     return 1;
   }
-  SessionLoadResult saved = SessionStore::Inspect(path);
-  Conversation conversation;
   std::string answer;
-  if (saved.record &&
-      std::move(saved.record->state).RestoreConversation(conversation)) {
-    answer = conversation.LastAssistantText();
+  const json said = messages();
+  for (size_t index = std::min(earlier, said.size()); index < said.size();
+       ++index) {
+    const std::string text = JsonValue(said[index], "role", "") == "assistant"
+                                 ? JsonValue(said[index], "content", "")
+                                 : std::string();
+    if (!text.empty()) answer += (answer.empty() ? "" : "\n\n") + text;
   }
   if (options.json) {
     printf("%s\n",

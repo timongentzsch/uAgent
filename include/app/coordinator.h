@@ -2,6 +2,7 @@
 #ifndef UAGENT_INCLUDE_APP_COORDINATOR_H_
 #define UAGENT_INCLUDE_APP_COORDINATOR_H_
 #include <chrono>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -43,6 +44,12 @@ inline constexpr const char* kCoordinatorTools[] = {
     "history",   "thread", "decide", "state", "ask"};
 
 // The tools only a folder's coordinator gets.
-void AddCoordinatorTools(std::vector<Tool>& tools, const std::string& folder);
+// Whether a thread this folder's coordinator started is working a turn now.
+bool ThreadsWorking(const std::string& folder);
+
+// `own_model` names the model the coordinator is on right now, as a
+// selection a thread can be started with.
+void AddCoordinatorTools(std::vector<Tool>& tools, const std::string& folder,
+                         std::function<std::string()> own_model);
 }  // namespace uagent
 #endif

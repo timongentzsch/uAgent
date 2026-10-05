@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <ctime>
 #include <filesystem>
+#include <functional>
 #include <optional>
 #include <string>
 #include <utility>
@@ -338,7 +339,8 @@ std::string Brief(const json& brief) {
          "you changed, how you verified it, and anything left open.)";
 }
 
-ToolResult Spawn(const std::string& folder, const json& a) {
+ToolResult Spawn(const std::string& folder, const json& a,
+                 const std::function<std::string()>& own_model) {
   const std::string title = Utf8Prefix(JsonValue(a, "title", ""), 120);
   const std::string objective = JsonValue(a, "objective", "");
   if (title.empty() || objective.empty()) {
@@ -390,7 +392,11 @@ ToolResult Spawn(const std::string& folder, const json& a) {
                       {"done_when", JsonValue(a, "done_when", "")},
                       {"boundaries", JsonValue(a, "boundaries", "")}};
   Options options;
+  // Named, else the one set for delegated work, else the coordinator's own:
+  // a thread is told its model and resolves the rest like any session. It
+  // inherits no endpoint from this process.
   std::string model = JsonValue(a, "model", SubagentModel());
+  if (model.empty()) model = own_model();
   if (!model.empty()) options.overrides["UAGENT_MODEL"] = model;
   options.session = {{"kind", kSessionKindThread},
                      {"thread",
@@ -503,7 +509,8 @@ ToolResult Diff(const SessionInfo& info) {
                      kDiffBytes);
 }
 
-Tool ThreadTool(const std::string& folder) {
+Tool ThreadTool(const std::string& folder,
+                std::function<std::string()> own_model) {
   Tool tool = MakeTool(
       "thread",
       "Delegate work to threads: ordinary sessions that edit and run code "
@@ -528,9 +535,10 @@ Tool ThreadTool(const std::string& folder) {
         "model":{"type":"string"},
         "text":{"type":"string"}},
         "required":["action"]})json"),
-      [folder](const json& a, const ToolContext&) {
+      [folder, own_model = std::move(own_model)](const json& a,
+                                                 const ToolContext&) {
         const std::string action = JsonValue(a, "action", "");
-        if (action == "spawn") return Spawn(folder, a);
+        if (action == "spawn") return Spawn(folder, a, own_model);
         return WithSession(folder, a, [&](const SessionInfo& info) {
           if (action == "message") {
             return Message(info, folder, JsonValue(a, "text", ""));
@@ -585,7 +593,7 @@ ToolResult Decide(const SessionInfo& info, const json& a) {
         {"kind", "reply"},
         {"text", action == "allow_once"     ? "y"
                  : action == "allow_thread" ? "s"
-                 : reason.empty() ? "n"
+                 : reason.empty()           ? "n"
                                   : "The coordinator denied this: " + reason}};
   } else {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
@@ -822,9 +830,19 @@ std::string CoordinatorPause(const std::string& folder) {
          "UAGENT_COORDINATOR_DAILY_SPEND_USD; your own messages still run.";
 }
 
-void AddCoordinatorTools(std::vector<Tool>& tools, const std::string& folder) {
+bool ThreadsWorking(const std::string& folder) {
+  return std::ranges::any_of(OwnThreads(folder), [](const SessionInfo& info) {
+    // One just started is idle until its brief arrives: it has work ahead as
+    // long as its runtime is up and it has finished no turn.
+    const std::string status = LiveStatus(info);
+    return status == "working" || (status == "idle" && info.turns == 0);
+  });
+}
+
+void AddCoordinatorTools(std::vector<Tool>& tools, const std::string& folder,
+                         std::function<std::string()> own_model) {
   tools.push_back(HistoryTool(folder));
-  tools.push_back(ThreadTool(folder));
+  tools.push_back(ThreadTool(folder, std::move(own_model)));
   tools.push_back(DecideTool(folder));
   tools.push_back(StateTool(folder));
   // The coordinator keeps what it learns about you without being asked and

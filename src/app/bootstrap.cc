@@ -321,7 +321,9 @@ std::vector<Tool> BuildTools(AppContext& context,
                   "", Options{}, ignored);
   }));
   if (context.options.Coordinator()) {
-    AddCoordinatorTools(tools, CanonicalCwd());
+    AddCoordinatorTools(tools, CanonicalCwd(), [app = &context] {
+      return RouteSelection(app->runtime.api, app->provider.providers);
+    });
   }
   if (toolset == "lean") {
     KeepLeanTools(tools);

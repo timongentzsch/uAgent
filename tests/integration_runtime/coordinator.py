@@ -1,5 +1,6 @@
 import json
 import pathlib
+import subprocess
 import threading
 import time
 
@@ -13,6 +14,7 @@ from integration_support import (
     run,
     run_dialog,
     run_pty,
+    save_settings,
     session_files,
     tool_call,
     tool_calls,
@@ -176,9 +178,13 @@ def test_coordinator_delegates_a_thread_and_hears_back(root, home, *, binary):
         env = base_env(home, server.url)
         result = run(root, env, "coord", "-p", "delegate a count", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
-        # A thread that finishes before the coordinator's next step is heard
-        # within this very turn, so either answer can end it.
-        assert_true(result.stdout.strip() in ("spawned-ok", "noted-event"), result.stdout)
+        # The run waits for the thread it started and prints all the
+        # coordinator said: a thread that finishes before the coordinator's
+        # next step is heard within that turn, a later one in a turn of its own.
+        assert_true(
+            result.stdout.strip() in ("noted-event", "spawned-ok\n\nnoted-event"),
+            repr(result.stdout),
+        )
         spawned = json.loads(
             next(
                 tool_results(body["messages"])[0]
@@ -207,6 +213,52 @@ def test_coordinator_delegates_a_thread_and_hears_back(root, home, *, binary):
         assert_true("history" not in function_names(thread_requests[0]), thread_requests[0])
 
 
+def test_a_thread_reaches_a_named_provider_with_its_key(root, home, *, binary):
+    """A coordinator on `provider/model` starts a thread that is told that
+    selection and resolves it itself: its requests carry the provider's key.
+    It used to inherit the endpoint through the environment, and no key."""
+    seen = {}
+
+    def route(handler, body):
+        text = json.dumps(body["messages"])
+        if "Objective: count the files" in text:
+            seen["thread"] = (handler.headers.get("Authorization"), body.get("model"))
+            return event({"content": "thread-report"})
+        if "[thread event" in text:
+            return event({"content": "thread-heard"})
+        if tool_results(body["messages"]):
+            return event({"content": "spawned-ok"})
+        return tool_call(
+            "thread",
+            {
+                "action": "spawn",
+                "title": "Count files",
+                "objective": "count the files",
+                "environment": "local",
+            },
+        )
+
+    with Server([route]) as server:
+        env = base_env(home, server.url)
+        for name in ("UAGENT_BASE_URL", "UAGENT_API_KEY"):
+            env.pop(name, None)
+        save_settings(
+            home,
+            NAMED_KEY="named-provider-key",
+            UAGENT_PROVIDERS=json.dumps(
+                {"named": {"base_url": server.url, "api_key": "$NAMED_KEY"}}
+            ),
+            UAGENT_MODEL="named/some-model",
+        )
+        env.pop("UAGENT_MODEL", None)
+        result = run(root, env, "coord", "-p", "delegate a count", binary=binary)
+        assert_true(result.returncode == 0, (result.stdout, result.stderr))
+        assert_true(seen.get("thread") == ("Bearer named-provider-key", "some-model"), seen)
+        # The run waited for the thread it started, and what it prints is all
+        # the coordinator said for the request, not only its last remark.
+        assert_true("thread-heard" in result.stdout, repr(result.stdout))
+
+
 def test_threads_of_one_coordinator_message_each_other(root, home, *, binary):
     """Two threads find each other by the ids the board shows, talk directly and
     wake on each other's mail; the coordinator hears each answer in its event."""
@@ -222,6 +274,7 @@ def society(root, home, binary, *, stopped):
 
     heard = threading.Event()
     seen = {"events": []}
+    client = {}
 
     def spawn(index, name):
         return {
@@ -256,6 +309,9 @@ def society(root, home, binary, *, stopped):
             return event({"content": "alpha-waiting"})
         if beta:
             if stopped:
+                # The person who asked has left: a headless run waits for the
+                # threads it started, and its runtime stays while it does.
+                client["process"].terminate()
                 # Everyone but this thread, which is mid-turn, has gone idle.
                 wait_until(
                     lambda: len(list(runtime_directory(home).glob("*.sock"))) <= 1,
@@ -307,8 +363,18 @@ def society(root, home, binary, *, stopped):
         env = base_env(home, server.url)
         if stopped:
             env["UAGENT_INTERNAL_IDLE_S"] = "1"
-        result = run(root, env, "coord", "-p", "delegate", binary=binary)
-        assert_true(result.returncode == 0, result.stderr)
+        if stopped:
+            client["process"] = subprocess.Popen(
+                [str(binary), "coord", "-p", "delegate"],
+                cwd=root,
+                env=env,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        else:
+            result = run(root, env, "coord", "-p", "delegate", timeout=60, binary=binary)
+            assert_true(result.returncode == 0, result.stderr)
         assert_true(
             heard.wait(budget(40)),
             [str(body["messages"][-1].get("content"))[:240] for _, body in server.requests],

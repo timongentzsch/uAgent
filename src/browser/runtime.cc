@@ -144,6 +144,7 @@ bool Coordinate(const json& command, const char* name, int& result) {
 }
 
 // X keysyms.
+constexpr auto kLeaseQuiet = std::chrono::minutes(3);
 constexpr const char* kLeasedElsewhere =
     "another conversation is using the browser; it is free again when that "
     "conversation's turn ends";
@@ -695,11 +696,18 @@ bool Runtime::Agent(const json& command, std::string& error) {
     error = kHumanControls;
     return false;
   }
-  if (!agent_session_.empty() && agent_session_ != session) {
+  // A holder that has asked nothing of the browser for a while has ended
+  // without giving it back, or waits on something else: it is the next
+  // conversation's.
+  const auto now = std::chrono::steady_clock::now();
+  if (!agent_session_.empty() && agent_session_ != session &&
+      now - agent_used_ < kLeaseQuiet) {
     error = kLeasedElsewhere;
     return false;
   }
+  if (agent_session_ != session) observation_.clear();
   agent_session_ = session;
+  agent_used_ = now;
   mode_ = "agent";
   return true;
 }
@@ -959,6 +967,14 @@ json Runtime::Execute(const json& command) {
   if (mode_ == "human") return {{"error", kHumanControls}};
   if (!Start(error)) return {{"error", error}};
   if (!Agent(command, error)) return {{"error", error}};
+  // Chrome's word that the attached tab is gone (closed by hand, or
+  // replaced) is read with the next reply: ask for the tabs, then attach a
+  // page again if none is.
+  Targets();
+  if (page_session_.empty()) {
+    target_.clear();
+    if (!SelectPage(error)) return {{"error", error}};
+  }
   if (op == "request_human") {
     std::string interaction = JsonValue(command, "interaction_id", "");
     if (!session::OpaqueId(interaction)) {
@@ -1006,16 +1022,10 @@ json Runtime::Execute(const json& command) {
     return {{"ok", true}, {"tabs", pages}, {"selected", target_}};
   }
   // Remember the tabs that exist before an action, so the probes after it
-  // can tell which tab the action itself opened. Chrome's word that the
-  // attached tab is gone is read with this reply.
+  // can tell which tab the action itself opened.
   known_targets_.clear();
-  json pages = PageTargets();
-  if (page_session_.empty()) {
-    target_.clear();
-    if (!SelectPage(error)) return {{"error", error}};
-  }
   action_target_ = target_;
-  if (pages.is_array()) {
+  if (json pages = PageTargets(); pages.is_array()) {
     for (const auto& page : pages) {
       known_targets_.insert(JsonValue(page, "id", ""));
     }

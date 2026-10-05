@@ -66,6 +66,8 @@ class Runtime {
   bool loading_ = false;
   std::chrono::steady_clock::time_point used_ =
       std::chrono::steady_clock::now();
+  // When the conversation holding the browser last asked something of it.
+  std::chrono::steady_clock::time_point agent_used_ = used_;
   // Bumps on every lease or tab change; guards observations.
   uint64_t generation_ = 0;
   // Bumps only when Chrome and Xvnc launch; a viewer stays connected across

@@ -293,12 +293,18 @@ std::vector<Tool> BuildTools(AppContext& context,
   // The web host runs the browser; any top-level session that reaches it may
   // use it, one at a time. A one-shot run has no session file to be named by.
   if (!browser::DataDirectory().empty() && AgentDepth() == 0 &&
-      browser::Request({{"op", "ping"}}, 100).value("ok", false)) {
+      browser::Request({{"op", "ping"}}, 3000).value("ok", false)) {
     context.browser_lease =
         session_path.empty() ? session::RandomToken(16) : HashHex(session_path);
     tools.push_back(BrowserTool(
         context.browser_lease,
-        [](const std::string& id, const std::string& prompt, bool* eof) {
+        // A one-shot run has nobody to take the browser over.
+        [alone = !context.channel && !context.options.prompt.empty()](
+            const std::string& id, const std::string& prompt, bool* eof) {
+          if (alone) {
+            *eof = true;
+            return std::string();
+          }
           return ReadInteraction(
               {.id = id, .kind = "browser", .prompt = prompt}, eof);
         }));

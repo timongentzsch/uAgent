@@ -19,6 +19,8 @@ namespace {
 
 constexpr size_t kSettingsBytes = size_t{4} * 1024 * 1024;
 constexpr char kImported[] = ".imported";
+// In the document: the files taken over whose archiving is still owed.
+constexpr char kOwed[] = "archive";
 
 json EmptyDocument() {
   return {{"format", 1}, {"all", json::object()}, {"projects", json::object()}};
@@ -40,6 +42,12 @@ bool Valid(const json& document) {
   const json* all = JsonObject(document, "all");
   const json* projects = JsonObject(document, "projects");
   if (!all || !projects || !strings(*all)) return false;
+  if (const auto owed = document.find(kOwed); owed != document.end()) {
+    if (!owed->is_array()) return false;
+    for (const json& path : *owed) {
+      if (!path.is_string()) return false;
+    }
+  }
   for (const auto& item : projects->items()) {
     if (!strings(item.value())) return false;
   }
@@ -93,12 +101,12 @@ std::string PreferencePath() {
 // What earlier versions kept in text files, still to be taken over. Each is
 // taken once: the user's when there is no document yet, a project's when the
 // document has no entry for its folder (an entry is kept even when it
-// overrides nothing, so a file that could not be archived is not taken
-// twice).
+// overrides nothing). A file taken over is archived after the document is
+// saved; until that has worked the document says it is owed.
 struct Legacy {
   bool user = false;     // ~/.uagent/.config and the remembered model
   json project;          // <folder>/.uagent/.config, as read
-  bool archive = false;  // the user's file was imported but not yet archived
+  bool archive = false;  // an archiving is owed
   std::string error;
 
   bool Any() const {
@@ -118,9 +126,8 @@ Legacy FindLegacy(const json& document, const std::string& folder,
   const bool user_file = std::filesystem::is_regular_file(user, ec);
   if (!PathExists(SettingsPath())) {
     legacy.user = user_file || PathExists(PreferencePath());
-  } else {
-    legacy.archive = user_file && !PathExists(user + kImported);
   }
+  legacy.archive = !JsonValue(document, kOwed, json::array()).empty();
   const json* projects = JsonObject(document, "projects");
   if (folder.empty() || (projects && projects->contains(folder)) ||
       !std::filesystem::is_regular_file(ProjectFile(folder), ec)) {
@@ -138,9 +145,23 @@ Legacy FindLegacy(const json& document, const std::string& folder,
   return legacy;
 }
 
-void Archive(const std::string& path) {
-  std::error_code ignored;
-  std::filesystem::rename(path, path + kImported, ignored);
+// Archives what is owed and can be: a file that is gone, or whose backup is
+// already there, is owed no more, and a backup is never overwritten. True
+// when the list changed.
+bool ArchiveOwed(json& document) {
+  json still = json::array();
+  for (const json& entry : JsonValue(document, kOwed, json::array())) {
+    const std::string path = entry.get<std::string>();
+    std::error_code failed;
+    if (PathExists(path) && !PathExists(path + kImported)) {
+      std::filesystem::rename(path, path + kImported, failed);
+      if (failed) still.push_back(path);
+    }
+  }
+  const bool changed = still != JsonValue(document, kOwed, json::array());
+  document.erase(kOwed);
+  if (!still.empty()) document[kOwed] = std::move(still);
+  return changed;
 }
 
 // The model an older /model remembered for every later run. A bare model
@@ -174,10 +195,11 @@ bool ImportModelPreference(json& all, std::string& error) {
   return true;
 }
 
-// The document is saved before a file is archived, so an interruption leaves
-// the file to be archived later, and never a value changed since to be
-// overwritten. Returns why nothing could be taken over: the files then stay,
-// and nothing is saved until they can be.
+// The document is saved, naming the files it took, before one is archived:
+// an interruption or a folder that cannot be written leaves the archiving
+// owed, to be tried again, and never a value changed since to be overwritten.
+// Returns why nothing could be taken over: the files then stay, and nothing is
+// saved until they can be.
 std::string Import(const std::string& folder, bool trusted) {
   std::string error;
   PrivateJsonStore store(kSettingsFile, EmptyDocument(), kSettingsBytes, error);
@@ -198,11 +220,16 @@ std::string Import(const std::string& folder, bool trusted) {
   }
   const bool project = !legacy.project.is_null();
   if (project) document["projects"][folder] = std::move(legacy.project);
-  if ((legacy.user || project) && !store.Save(error)) return error;
+  if (legacy.user || project) {
+    json owed = JsonValue(document, kOwed, json::array());
+    if (legacy.user) owed.push_back(user);
+    if (project) owed.push_back(ProjectFile(folder));
+    document[kOwed] = std::move(owed);
+    if (!store.Save(error)) return error;
+  }
   if (legacy.user) std::remove(PreferencePath().c_str());
-  if (legacy.user || legacy.archive) Archive(user);
-  if (project) Archive(ProjectFile(folder));
-  return {};
+  if (ArchiveOwed(document)) store.Save(error);
+  return error;
 }
 
 }  // namespace
@@ -236,7 +263,9 @@ json ExportSettings(std::string& error) {
   error = read.error;
   FileStamp ignored;
   json document = ReadDocument(ignored);
-  return Valid(document) ? document : EmptyDocument();
+  if (!Valid(document)) return EmptyDocument();
+  document.erase(kOwed);  // this host's own bookkeeping
+  return document;
 }
 
 std::string ReplaceSettings(json document) {
@@ -248,6 +277,11 @@ std::string ReplaceSettings(json document) {
   if (!error.empty()) return error;
   PrivateJsonStore store(kSettingsFile, EmptyDocument(), kSettingsBytes, error);
   if (!store.Ready()) return error;
+  // What this host still owes stays its own; a document from elsewhere
+  // names no file to move here.
+  const json owed = JsonValue(store.Data(), kOwed, json::array());
+  document.erase(kOwed);
+  if (!owed.empty()) document[kOwed] = owed;
   store.Data() = std::move(document);
   store.Save(error);
   return error;

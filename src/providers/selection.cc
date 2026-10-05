@@ -87,9 +87,7 @@ ModelSelection ParseModelSelection(const std::string& selection) {
 }
 
 bool ValidEffort(const std::string& effort) {
-  return effort.empty() ||
-         std::find(std::begin(kReasoningEfforts), std::end(kReasoningEfforts),
-                   effort) != std::end(kReasoningEfforts);
+  return Cfg("UAGENT_REASONING_EFFORT").Accepts(effort);
 }
 
 std::optional<ModelRoute> ResolveModelRoute(

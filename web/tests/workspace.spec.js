@@ -600,9 +600,18 @@ test("a project overrides a setting; a draft survives other saves", async ({
   // yet saved is still there after it.
   const calls = form.getByRole("spinbutton", { name: "Tool calls per turn" });
   await calls.fill("77");
-  await form
-    .getByRole("combobox", { name: "Approval mode" })
-    .selectOption("auto");
+  // A mode is named as it is everywhere else, and an effort is chosen, not
+  // typed.
+  const approval = form.getByRole("combobox", { name: "Approval mode" });
+  await expect(
+    approval.getByRole("option", { name: "Auto review" }),
+  ).toHaveCount(1);
+  await expect(
+    form
+      .getByRole("combobox", { name: "Reasoning effort" })
+      .getByRole("option", { name: "high", exact: true }),
+  ).toHaveCount(1);
+  await approval.selectOption("auto");
   await expect(
     form.getByRole("button", { name: "Reset Approval mode" }),
   ).toBeVisible();

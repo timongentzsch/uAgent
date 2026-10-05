@@ -1,5 +1,6 @@
 import { RotateCcw } from "lucide-preact";
 import { useEffect, useRef, useState } from "preact/hooks";
+import { permissionLabel, permissionLabels } from "../../../shared/display.ts";
 import type { ConfigChange, ConfigSetting } from "../../../shared/types.ts";
 import { SheetButton } from "../../../shared/sheet.tsx";
 import {
@@ -51,6 +52,11 @@ export function SettingField({
     if (!edited) setDraft(held);
   }, [held]);
   const below = inherited(setting, scope, find);
+  // A mode is called what it is called everywhere else.
+  const named = (choice: string) =>
+    setting.name === "UAGENT_APPROVAL" && choice in permissionLabels
+      ? permissionLabel(choice)
+      : choice;
   const placeholder = hidden
     ? own
       ? "Set · enter a replacement"
@@ -121,10 +127,10 @@ export function SettingField({
       disabled={disabled}
       onChange={(event) => void pick(event.currentTarget.value)}
     >
-      <option value="">{below}</option>
+      <option value="">{named(below)}</option>
       {setting.choices.map((choice) => (
         <option key={choice} value={choice}>
-          {choice}
+          {named(choice)}
         </option>
       ))}
     </ValueSelect>

@@ -134,6 +134,8 @@ struct ConfigDescriptor {
 
 inline constexpr std::string_view kOpenRouterVariants[] = {"nitro", "floor",
                                                            "exacto"};
+inline constexpr std::string_view kReasoningEfforts[] = {
+    "none", "minimal", "low", "medium", "high", "xhigh", "max"};
 inline constexpr std::string_view kWebSearchBackends[] = {"auto", "openrouter",
                                                           "off"};
 inline constexpr std::string_view kApprovalModes[] = {"ask", "auto", "yolo"};
@@ -316,10 +318,13 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
         "Answers your messages; /model chooses it for one conversation")),
     registry::Named(
         registry::Fallback(
-            registry::Str("UAGENT_REASONING_EFFORT", {}, "",
-                          ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
-                          "route",
-                          "none, minimal, low, medium, high, xhigh, or max"),
+            registry::Choice(
+                registry::Str(
+                    "UAGENT_REASONING_EFFORT",
+                    {}, "", ReloadPolicy::kRestartRequired,
+                    Sensitivity::kPublic,
+                    "route", "none, minimal, low, medium, high, xhigh, or max"),
+                kReasoningEfforts),
             "provider default"),
         "Reasoning effort",
         "How long the conversation model thinks before answering"),

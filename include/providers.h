@@ -90,9 +90,6 @@ struct ProviderSetup {
   std::string warning;
 };
 
-inline constexpr const char* kReasoningEfforts[] = {
-    "none", "minimal", "low", "medium", "high", "xhigh", "max"};
-
 // One selection grammar for every model-valued setting:
 //
 //   [provider/]model[:variant][:effort]

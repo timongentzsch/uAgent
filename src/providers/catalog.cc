@@ -212,8 +212,9 @@ std::optional<std::vector<ModelInfo>> ParseModels(const json& response) {
         }
       }
       if (const json* effort = JsonObject(*capabilities, "effort")) {
-        for (const char* level : kReasoningEfforts) {
-          if (const json* support = JsonObject(*effort, level)) {
+        for (std::string_view name : kReasoningEfforts) {
+          const std::string level(name);
+          if (const json* support = JsonObject(*effort, level.c_str())) {
             if (JsonValue(*support, "supported", false)) {
               info.efforts.emplace_back(level);
             }

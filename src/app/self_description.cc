@@ -305,10 +305,7 @@ json DescribeSelf(SelfTopic topic, const std::string& name,
       out["models"] = std::move(models);
       out["providers"] = std::move(providers);
       out["selection"] = "[provider/]model[:variant][:effort]";
-      out["efforts"] = json::array();
-      for (const char* effort : kReasoningEfforts) {
-        out["efforts"].push_back(effort);
-      }
+      out["efforts"] = kReasoningEfforts;
       out["note"] =
           "A named model route resolves by its own name; any other id resolves "
           "against a provider scope. Ids a provider serves are not enumerated "

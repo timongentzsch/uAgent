@@ -107,6 +107,28 @@ void TestSettingsStore() {
   Put(project, "UAGENT_MAX_STEPS=7\n");
   CHECK(ReadSettings(folder, /*trusted=*/true).project.empty());
 
+  // A file in a folder that cannot be written is taken over all the same;
+  // its archiving stays owed and is done once the folder allows it, without
+  // reading the file again.
+  {
+    const fs::path locked = test.root / "locked";
+    Put(locked / ".uagent/.config", "UAGENT_MAX_STEPS=4\n");
+    fs::permissions(locked / ".uagent",
+                    fs::perms::owner_read | fs::perms::owner_exec);
+    CHECK(ReadSettings(locked.string(), true).project.at("UAGENT_MAX_STEPS") ==
+          "4");
+    CHECK(PathExists((locked / ".uagent/.config").string()));
+    CHECK(Set(locked.string(), "UAGENT_MAX_STEPS", "6").empty());
+    fs::permissions(locked / ".uagent", fs::perms::owner_all);
+    CHECK(ReadSettings(locked.string(), true).project.at("UAGENT_MAX_STEPS") ==
+          "6");
+    CHECK(!PathExists((locked / ".uagent/.config").string()));
+    CHECK(PathExists((locked / ".uagent/.config.imported").string()));
+    // What is owed is this host's own: it is no part of what is exported.
+    std::string none;
+    CHECK(!ExportSettings(none).contains("archive"));
+  }
+
   // A folder the caller trusts needs no record.
   const fs::path flagged = test.root / "flagged";
   Put(flagged / ".uagent/.config", "UAGENT_MAX_STEPS=3\n");

@@ -6,7 +6,8 @@
 // {"format": 1, "all": {...}, "projects": {"<folder>": {...}}}. Each scope is
 // one map of names to values as they were given. A name the registry knows
 // is a setting; any other is a binding a setting's value may refer to as
-// $NAME, kept and never shown.
+// $NAME, kept and never shown. While a file taken over from an earlier
+// version could not be archived yet, "archive" lists it.
 
 #include <functional>
 #include <string>

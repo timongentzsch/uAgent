@@ -23,6 +23,9 @@ void ApplySelectionPolicy(Api& api, const ModelSelection& selection) {
 }
 
 namespace {
+// The route in use goes into this process's environment because that is
+// what a process started from here inherits: a coordinator's thread runs on
+// its coordinator's endpoint, whatever is saved.
 void ExportRoute(const Api& api) {
   for (const auto& [name, value] :
        RouteEnvironment(ResolveSideRoute(api, {}, {}, ""))) {
@@ -234,7 +237,6 @@ ProviderSetup ConfigureProvider(Api& api) {
     setup.warning +=
         "ignoring invalid reasoning effort: " + api.reasoning_effort;
     api.reasoning_effort.clear();
-    OverrideSetting("UAGENT_REASONING_EFFORT", "");
   }
   return setup;
 }

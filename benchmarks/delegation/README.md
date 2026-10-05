@@ -54,3 +54,24 @@ Every answer was correct. Thirteen further attempts ended on the provider's
 `server_is_overloaded`. The coordinator runs had no automatic reviewer (the
 isolated homes lacked its key), so every thread action was put to the
 coordinator; `prep.sh` now copies that key.
+
+## After the reliability and token stages, 2026-10-05, commit `aea30096`
+
+| Task | Mode | Wall | Steps | Input tokens | Cached |
+| --- | --- | --- | --- | --- | --- |
+| fix | solo | 76 s | 5 | 25k | 0% |
+| | sub | 73 s | 5 | 28k | 0% |
+| | coord | 133 s | 12 | 88k | 0% |
+| survey | solo | 60 s | 6 | 40k | 0% |
+| | sub | 60 s | 6 | 45k | 0% |
+| | coord | 143 s | 14 | 97k | 2% |
+| research | solo | 94 s | 9 | 117k | 0% |
+| | sub | 144 s | 18 | 367k | 0% |
+| | coord | 236 s | 32 | 491k | 2% |
+| audit | solo | 137 s | 11 | 221k | 1% |
+| | sub | 181 s | 17 | 490k | 8% |
+| | coord | 267 s | 21 | 289k | 2% |
+
+Twelve of twelve first attempts completed. A coordinator itself now takes
+3 to 11 steps and 6k to 77k input tokens; the rest is its threads' work. The
+cache key did not raise the cached share through this proxy.

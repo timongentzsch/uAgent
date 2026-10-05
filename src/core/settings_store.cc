@@ -2,6 +2,11 @@
 
 #include "include/core/settings_store.h"
 
+#include <fcntl.h>
+#include <unistd.h>
+
+#include <algorithm>
+#include <cerrno>
 #include <cstdio>
 #include <filesystem>
 #include <set>
@@ -9,6 +14,7 @@
 #include <utility>
 
 #include "include/core/config.h"
+#include "include/core/fd.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/private_store.h"
@@ -128,8 +134,12 @@ Legacy FindLegacy(const json& document, const std::string& folder,
     legacy.user = user_file || PathExists(PreferencePath());
   }
   legacy.archive = !JsonValue(document, kOwed, json::array()).empty();
+  // Taken once: not when the folder has an entry, nor while its file, taken
+  // already, still waits to be archived.
   const json* projects = JsonObject(document, "projects");
+  const json owed = JsonValue(document, kOwed, json::array());
   if (folder.empty() || (projects && projects->contains(folder)) ||
+      std::find(owed.begin(), owed.end(), ProjectFile(folder)) != owed.end() ||
       !std::filesystem::is_regular_file(ProjectFile(folder), ec)) {
     return legacy;
   }
@@ -145,18 +155,23 @@ Legacy FindLegacy(const json& document, const std::string& folder,
   return legacy;
 }
 
-// Archives what is owed and can be: a file that is gone, or whose backup is
-// already there, is owed no more, and a backup is never overwritten. True
-// when the list changed.
+// Archives what is owed and can be. A file is given its backup name without
+// ever replacing one (a link, which fails where the name is taken, then the
+// old name removed), and is owed no more only when it is known to be gone or
+// its backup known to be there, on disk. True when the list changed.
 bool ArchiveOwed(json& document) {
   json still = json::array();
   for (const json& entry : JsonValue(document, kOwed, json::array())) {
     const std::string path = entry.get<std::string>();
-    std::error_code failed;
-    if (PathExists(path) && !PathExists(path + kImported)) {
-      std::filesystem::rename(path, path + kImported, failed);
-      if (failed) still.push_back(path);
-    }
+    const std::string backup = path + kImported;
+    const bool named = link(path.c_str(), backup.c_str()) == 0 ||
+                       errno == EEXIST || errno == ENOENT;
+    const bool removed =
+        named && (unlink(path.c_str()) == 0 || errno == ENOENT);
+    const Fd folder(open(std::filesystem::path(path).parent_path().c_str(),
+                         O_RDONLY | O_DIRECTORY));
+    const bool settled = folder ? fsync(folder.Get()) == 0 : errno == ENOENT;
+    if (!(removed && settled)) still.push_back(path);
   }
   const bool changed = still != JsonValue(document, kOwed, json::array());
   document.erase(kOwed);

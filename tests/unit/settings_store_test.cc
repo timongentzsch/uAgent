@@ -124,6 +124,23 @@ void TestSettingsStore() {
           "6");
     CHECK(!PathExists((locked / ".uagent/.config").string()));
     CHECK(PathExists((locked / ".uagent/.config.imported").string()));
+    // Replacing everything saved while an archiving is owed does not make
+    // the file new again, and a backup is never replaced.
+    const fs::path owing = test.root / "owing";
+    Put(owing / ".uagent/.config", "UAGENT_MAX_STEPS=8\n");
+    Put(owing / ".uagent/.config.imported", "kept\n");
+    fs::permissions(owing / ".uagent",
+                    fs::perms::owner_read | fs::perms::owner_exec);
+    CHECK(ReadSettings(owing.string(), true).project.size() == 1);
+    std::string why;
+    json everything = ExportSettings(why);
+    everything["projects"].erase(owing.string());
+    CHECK(ReplaceSettings(everything).empty());
+    CHECK(ReadSettings(owing.string(), true).project.empty());
+    fs::permissions(owing / ".uagent", fs::perms::owner_all);
+    CHECK(ReadSettings(owing.string(), true).project.empty());
+    CHECK(ReadFile((owing / ".uagent/.config.imported").string(), 64)
+              .value_or("") == "kept\n");
     // What is owed is this host's own: it is no part of what is exported.
     std::string none;
     CHECK(!ExportSettings(none).contains("archive"));

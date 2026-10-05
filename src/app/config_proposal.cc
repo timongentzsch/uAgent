@@ -206,7 +206,8 @@ bool ValidateValue(const ConfigDescriptor& descriptor, std::string& value,
       return true;
     }
     case ConfigType::kString:
-      if (!descriptor.Accepts(value)) {
+      // A reference is what it resolves to when read, not what it spells.
+      if (value.find('$') == std::string::npos && !descriptor.Accepts(value)) {
         error = name + " expects one of:";
         for (std::string_view choice : descriptor.choices) {
           error += " " + std::string(choice);

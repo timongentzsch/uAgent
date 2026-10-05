@@ -79,6 +79,7 @@ std::optional<ModelCandidate> PickModel(
       current = candidate.selection;  // already a selection the user can type
       if (candidate.info.context > 0) {
         api.ctx_window = candidate.info.context;
+        OverrideSetting("UAGENT_CONTEXT", std::to_string(api.ctx_window));
       }
     }
     reply.Print("%s[%zu]%s %s%c %s", BOLD(), i + 1, RST(),
@@ -289,6 +290,7 @@ void HandleVariant(AppSession& session, const std::string& argument,
   }
   session.ApiClient().config.openrouter_variant = variant;
   session.Runtime().config.openrouter_variant = variant;
+  OverrideSetting("UAGENT_OPENROUTER_VARIANT", variant);
   ChooseCurrentRoute(session);
   const char* detail = "provider default";
   if (variant == "nitro") detail = "highest throughput";

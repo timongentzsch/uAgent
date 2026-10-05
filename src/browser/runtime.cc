@@ -510,6 +510,12 @@ json Runtime::Call(const std::string& method, const json& parameters,
         }
         if (event == "Page.frameStoppedLoading") loading_ = false;
       }
+      // Its tab was closed by hand, or Chrome replaced it: nothing is
+      // attached until a page is chosen again.
+      if (event == "Target.detachedFromTarget" && params &&
+          JsonValue(*params, "sessionId", "") == page_session_) {
+        page_session_.clear();
+      }
       continue;
     }
     if (cdp_buffer_.size() > size_t{16} * 1024 * 1024) {
@@ -938,10 +944,16 @@ json Runtime::Execute(const json& command) {
     return {{"ok", true}, {"tabs", pages}, {"selected", target_}};
   }
   // Remember the tabs that exist before an action, so the probes after it
-  // can tell which tab the action itself opened.
+  // can tell which tab the action itself opened. Chrome's word that the
+  // attached tab is gone is read with this reply.
   known_targets_.clear();
+  json pages = PageTargets();
+  if (page_session_.empty()) {
+    target_.clear();
+    if (!SelectPage(error)) return {{"error", error}};
+  }
   action_target_ = target_;
-  if (json pages = PageTargets(); pages.is_array()) {
+  if (pages.is_array()) {
     for (const auto& page : pages) {
       known_targets_.insert(JsonValue(page, "id", ""));
     }

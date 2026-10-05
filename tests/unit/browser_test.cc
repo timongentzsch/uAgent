@@ -376,6 +376,11 @@ void TestBrowserSecretMaskAndBack() {
   }
   CHECK(masked);
   CHECK(!navigated);
+  // A tab closed by hand leaves nothing attached: the next action attaches
+  // a page again instead of failing on the one that is gone.
+  std::ofstream(directory / "profile" / "close-tab").close();
+  CHECK(runtime.Execute({{"op", "back"}, {"session_id", kSession}})
+            .value("error", "") == "the previous page is not HTTP(S)");
   runtime.Shutdown();
 }
 

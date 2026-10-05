@@ -32,6 +32,7 @@ if not controlled:
     signal.pause()
     sys.exit(0)
 
+session = "attached"
 pending = b""
 while chunk := os.read(3, 4096):
     pending += chunk
@@ -41,6 +42,16 @@ while chunk := os.read(3, 4096):
         with (profile / "cdp.jsonl").open("a") as log:
             log.write(json.dumps(command) + "\n")
         result = {}
+        # The test closes the attached tab by leaving this file.
+        if (profile / "close-tab").exists():
+            (profile / "close-tab").unlink()
+            event = {"method": "Target.detachedFromTarget", "params": {"sessionId": session}}
+            os.write(4, json.dumps(event).encode() + b"\0")
+            session = "reattached"
+        if command.get("sessionId", session) != session:
+            error = {"message": "Session with given id not found."}
+            os.write(4, json.dumps({"id": command["id"], "error": error}).encode() + b"\0")
+            continue
         if command["method"] == "Page.getNavigationHistory":
             result = {
                 "currentIndex": 1,
@@ -57,5 +68,5 @@ while chunk := os.read(3, 4096):
                 ]
             }
         elif command["method"] == "Target.attachToTarget":
-            result = {"sessionId": "attached"}
+            result = {"sessionId": session}
         os.write(4, json.dumps({"id": command["id"], "result": result}).encode() + b"\0")

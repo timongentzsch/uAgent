@@ -86,6 +86,15 @@ RepositoryPaths Repository(const std::filesystem::path& cwd) {
   return {std::move(identity), std::move(label)};
 }
 
+// A memory's scope is ours to write (global, project) or another agent's:
+// read only, and shown beside the scope of ours it corresponds to.
+bool Ours(std::string_view scope) {
+  return scope == "global" || scope == "project";
+}
+bool Borrowed(std::string_view scope) {
+  return scope == "codex" || scope == "claude";
+}
+
 std::filesystem::path MemoryDirectory(const std::string& scope,
                                       const RepositoryPaths& repo) {
   namespace fs = std::filesystem;
@@ -360,7 +369,7 @@ static ToolResult MemoryAction(const std::string& action,
   }
   std::string scope{ScopePrefix(key)};
   std::string name = key.substr(slash + 1);
-  if (scope == "codex" || scope == "claude") {
+  if (Borrowed(scope)) {
     if (action != "get" || content) {
       return ToolFailure(ToolErrorCode::kPermissionDenied,
                          scope + " memories are read-only");
@@ -373,7 +382,7 @@ static ToolResult MemoryAction(const std::string& action,
                ? ToolFailure(ToolErrorCode::kNotFound, "no such memory")
                : ReadMemoryFile(*found);
   }
-  if (scope != "project" && scope != "global") {
+  if (!Ours(scope)) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
                        "memory key must start with project/, global/, "
                        "codex/, or claude/");
@@ -415,7 +424,7 @@ json MemoryControl(const json& request, const std::filesystem::path& cwd) {
   auto describe = [&](const MemoryEntry& entry, bool body) {
     const auto slash = entry.key.find('/');
     const std::string scope{ScopePrefix(entry.key)};
-    const bool writable = scope == "global" || scope == "project";
+    const bool writable = Ours(scope);
     std::string content, error;
     json value = {{"key", entry.key},
                   {"name", entry.key.substr(slash + 1)},
@@ -469,10 +478,9 @@ json MemoryControl(const json& request, const std::filesystem::path& cwd) {
   }
   const auto slash = key.find('/');
   const std::string scope{ScopePrefix(key)};
-  const bool external_copy = action == "copy" && found != entries.end() &&
-                             (scope == "codex" || scope == "claude");
-  if (!external_copy && (slash == std::string::npos ||
-                         (scope != "global" && scope != "project") ||
+  const bool external_copy =
+      action == "copy" && found != entries.end() && Borrowed(scope);
+  if (!external_copy && (slash == std::string::npos || !Ours(scope) ||
                          !LibraryName(key.substr(slash + 1)))) {
     return {{"error",
              "choose project/<name> or global/<name>; external memories are "
@@ -510,8 +518,7 @@ json MemoryControl(const json& request, const std::filesystem::path& cwd) {
     const std::string target = JsonValue(request, "target", "");
     const auto split = target.find('/');
     const std::string target_scope = target.substr(0, split);
-    if (split == std::string::npos ||
-        (target_scope != "project" && target_scope != "global") ||
+    if (split == std::string::npos || !Ours(target_scope) ||
         !LibraryName(target.substr(split + 1))) {
       return {{"error", "invalid destination"}};
     }

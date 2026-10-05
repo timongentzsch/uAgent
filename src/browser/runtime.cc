@@ -774,6 +774,80 @@ json Runtime::Execute(const json& command) {
   if (op != "agent_status" && op != "viewer") {
     used_ = std::chrono::steady_clock::now();
   }
+  if (json done = Control(op, command); !done.is_null()) return done;
+  std::string error;
+  if (mode_ == "human") return {{"error", kHumanControls}};
+  if (!Start(error)) return {{"error", error}};
+  if (!Agent(command, error)) return {{"error", error}};
+  // Chrome's word that the attached tab is gone (closed by hand, or
+  // replaced) is read with the next reply: ask for the tabs, then attach a
+  // page again if none is.
+  Targets();
+  if (page_session_.empty()) {
+    target_.clear();
+    if (!SelectPage(error)) return {{"error", error}};
+  }
+  if (op == "request_human") {
+    std::string interaction = JsonValue(command, "interaction_id", "");
+    if (!session::OpaqueId(interaction)) {
+      return {{"error", "invalid interaction"}};
+    }
+    interaction_ = interaction;
+    std::string previous_viewer = viewer_;
+    viewer_.clear();
+    mode_ = "human";
+    observation_.clear();
+    if (!SaveHandover()) {
+      interaction_.clear();
+      viewer_ = std::move(previous_viewer);
+      mode_ = "agent";
+      return {{"error", "cannot persist browser handover"}};
+    }
+    ++generation_;
+    return Status();
+  }
+  if (op == "probe") return Probe();
+  // Whoever takes the browser after someone else starts from the page as it
+  // is, not as it remembers it: keys and text go nowhere before that.
+  if (op == "observe" || op == "tabs" || op == "open") {
+    moved_ = false;
+  } else if (moved_) {
+    return {{"error",
+             "another conversation used the browser since; open your page "
+             "or observe before acting"}};
+  }
+  if (op == "observe") return Observe();
+  if (op == "tabs") {
+    json pages = PageTargets();
+    if (pages.contains("error")) return pages;
+    for (auto& page : pages) {
+      page["selected"] = JsonValue(page, "id", "") == target_;
+      page.erase("opener");
+    }
+    std::string requested = JsonValue(command, "target_id", "");
+    if (!requested.empty()) {
+      bool found = false;
+      for (const auto& page : pages) {
+        found |= JsonValue(page, "id", "") == requested;
+      }
+      if (!found) return {{"error", "tab is unavailable"}};
+      if (requested != target_) {
+        json activated =
+            Call("Target.activateTarget", {{"targetId", requested}});
+        if (auto reason = CdError(activated); !reason.empty()) {
+          return {{"error", reason}};
+        }
+        if (!AttachPage(requested, error)) return {{"error", error}};
+      }
+    }
+    return {{"ok", true}, {"tabs", pages}, {"selected", target_}};
+  }
+  return Act(op, command);
+}
+
+// What needs no page: profiles, who is watching and who drives, and handing
+// the browser over and back. Null for anything else.
+json Runtime::Control(const std::string& op, const json& command) {
   if (op == "create_profile" || op == "select_profile") {
     if (!profile_error_.empty()) return {{"error", profile_error_}};
     std::string device = JsonValue(command, "device", "");
@@ -967,73 +1041,11 @@ json Runtime::Execute(const json& command) {
     }
     return Status();
   }
-  std::string error;
-  if (mode_ == "human") return {{"error", kHumanControls}};
-  if (!Start(error)) return {{"error", error}};
-  if (!Agent(command, error)) return {{"error", error}};
-  // Chrome's word that the attached tab is gone (closed by hand, or
-  // replaced) is read with the next reply: ask for the tabs, then attach a
-  // page again if none is.
-  Targets();
-  if (page_session_.empty()) {
-    target_.clear();
-    if (!SelectPage(error)) return {{"error", error}};
-  }
-  if (op == "request_human") {
-    std::string interaction = JsonValue(command, "interaction_id", "");
-    if (!session::OpaqueId(interaction)) {
-      return {{"error", "invalid interaction"}};
-    }
-    interaction_ = interaction;
-    std::string previous_viewer = viewer_;
-    viewer_.clear();
-    mode_ = "human";
-    observation_.clear();
-    if (!SaveHandover()) {
-      interaction_.clear();
-      viewer_ = std::move(previous_viewer);
-      mode_ = "agent";
-      return {{"error", "cannot persist browser handover"}};
-    }
-    ++generation_;
-    return Status();
-  }
-  if (op == "probe") return Probe();
-  // Whoever takes the browser after someone else starts from the page as it
-  // is, not as it remembers it: keys and text go nowhere before that.
-  if (op == "observe" || op == "tabs" || op == "open") {
-    moved_ = false;
-  } else if (moved_) {
-    return {{"error",
-             "another conversation used the browser since; open your page "
-             "or observe before acting"}};
-  }
-  if (op == "observe") return Observe();
-  if (op == "tabs") {
-    json pages = PageTargets();
-    if (pages.contains("error")) return pages;
-    for (auto& page : pages) {
-      page["selected"] = JsonValue(page, "id", "") == target_;
-      page.erase("opener");
-    }
-    std::string requested = JsonValue(command, "target_id", "");
-    if (!requested.empty()) {
-      bool found = false;
-      for (const auto& page : pages) {
-        found |= JsonValue(page, "id", "") == requested;
-      }
-      if (!found) return {{"error", "tab is unavailable"}};
-      if (requested != target_) {
-        json activated =
-            Call("Target.activateTarget", {{"targetId", requested}});
-        if (auto reason = CdError(activated); !reason.empty()) {
-          return {{"error", reason}};
-        }
-        if (!AttachPage(requested, error)) return {{"error", error}};
-      }
-    }
-    return {{"ok", true}, {"tabs", pages}, {"selected", target_}};
-  }
+  return nullptr;
+}
+
+// One action on the attached page.
+json Runtime::Act(const std::string& op, const json& command) {
   // Remember the tabs that exist before an action, so the probes after it
   // can tell which tab the action itself opened.
   known_targets_.clear();
@@ -1194,7 +1206,7 @@ json Runtime::Execute(const json& command) {
   } else {
     return {{"error", "unsupported browser action"}};
   }
-  error = CdError(reply);
+  const std::string error = CdError(reply);
   if (!error.empty()) return {{"error", error}};
   return {{"ok", true}};
 }

@@ -38,6 +38,8 @@ class Runtime {
   json Targets();
   json PageTargets();
   bool ClearHandover();
+  json Control(const std::string& op, const json& command);
+  json Act(const std::string& op, const json& command);
   json Probe();
   json Observe();
   bool SaveHandover() const;

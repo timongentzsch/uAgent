@@ -236,6 +236,7 @@ add_library(
   src/cli/cli.cc
   src/app/session_server.cc
   src/app/session_worker.cc
+  src/app/coordinator_prompt.cc
   src/app/session_terminal.cc
   src/ui/conversation.cc
   src/ui/input_decoder.cc

@@ -213,6 +213,38 @@ def test_coordinator_delegates_a_thread_and_hears_back(root, home, *, binary):
         assert_true("history" not in function_names(thread_requests[0]), thread_requests[0])
 
 
+def test_a_headless_coordinator_waits_for_a_slow_thread(root, home, *, binary):
+    """The answer holds the thread's report however long after the first turn it comes."""
+
+    def route(_, body):
+        text = json.dumps(body["messages"])
+        if "[thread event" in text:
+            return event({"content": "heard: " + ("slow-report" if "slow-report" in text else "?")})
+        if "Objective: take your time" in text:
+            time.sleep(budget(4))
+            return event({"content": "slow-report"})
+        if not tool_results(body["messages"]):
+            return tool_call(
+                "thread",
+                {
+                    "action": "spawn",
+                    "title": "Slow one",
+                    "objective": "take your time",
+                    "environment": "local",
+                },
+            )
+        return event({"content": "spawned-ok"})
+
+    with Server([route]) as server:
+        result = run(
+            root, base_env(home, server.url), "coord", "-p", "delegate slowly", binary=binary
+        )
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(
+            result.stdout.strip() == "spawned-ok\n\nheard: slow-report", repr(result.stdout)
+        )
+
+
 def test_a_thread_reaches_a_named_provider_with_its_key(root, home, *, binary):
     """A coordinator on `provider/model` starts a thread that is told that
     selection and resolves it itself: its requests carry the provider's key.

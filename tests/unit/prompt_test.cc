@@ -149,8 +149,11 @@ void TestInstructionFiles() {
     std::ofstream(cwd / "CLAUDE.md") << "Legacy.";
   }
   fs::remove(cwd / "AGENTS.md");
+  CHECK(InstructionPath(false, true, cwd).filename() == "AGENTS.md");
+  setenv("UAGENT_OTHER_AGENTS", "claude", 1);
   CHECK(InstructionPath(false, true, cwd).filename() == "CLAUDE.md");
   CHECK(InstructionFiles(cwd)["files"][1]["text"] == "Legacy.");
+  unsetenv("UAGENT_OTHER_AGENTS");
   fs::remove(cwd / "CLAUDE.md");
   fs::create_symlink(cwd / "elsewhere", cwd / "AGENTS.md");
   CHECK(WriteInstructionFile(false, true, cwd, "x").find("symbolic link") !=

@@ -564,8 +564,9 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
         registry::Str("UAGENT_OTHER_AGENTS", {}, "",
                       ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
                       "skills",
-                      "also read the skills and memories of these agents: "
-                      "claude, codex (comma-separated; empty reads none)"),
+                      "also read what these agents keep (skills, memories, "
+                      "CLAUDE.md): claude, codex, comma-separated; empty "
+                      "reads none"),
         "Other agents"),
 
     // MCP.

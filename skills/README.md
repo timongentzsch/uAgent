@@ -31,7 +31,8 @@ the same name:
 `UAGENT_SKILL_PATH` replaces the whole list; set it for a development binary
 that has no installed tree beside it. `UAGENT_SKILL_EXCLUDE` hides skills by
 name. `UAGENT_OTHER_AGENTS` (`claude`, `codex`, comma-separated) also reads
-what those agents keep, skills and memories alike; it is empty by default,
+what those agents keep, skills and memories alike, and for `claude` a
+folder's `CLAUDE.md` where it has no `AGENTS.md`; it is empty by default,
 since their skills were written for their tools.
 
 ## Front matter

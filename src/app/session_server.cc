@@ -355,11 +355,8 @@ struct Server::State {
                         {"generation", generation}, {"binary", binary}};
           // Who only asks how the session stands reads no further.
           if (!snapshot.is_null()) {
-            hello["status"] =
-                WaitsOnPerson(JsonValue(snapshot, "pending", json()))
-                    ? "needs you"
-                : JsonValue(snapshot, "busy", false) ? "working"
-                                                     : "idle";
+            hello["status"] = Standing(JsonValue(snapshot, "pending", json()),
+                                       JsonValue(snapshot, "busy", false));
           }
           Client client{std::move(fd), FrameBuffer{kCommandBytes},
                         JsonDump(hello) + '\n'};

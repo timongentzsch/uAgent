@@ -155,7 +155,10 @@ std::string SendMail(Mail mail) {
     return "not sent: the recipient has " + std::to_string(count) +
            " messages waiting; try again after it has read them";
   }
-  if (OverRate(mail.from)) {
+  // A thread's events are its coordinator's to hear, however many: the rate
+  // is for what sessions write to each other.
+  const bool event = mail.type == kMailTaskCompleted || mail.type == kMailAsk;
+  if (!event && OverRate(mail.from)) {
     return "not sent: at most " + std::to_string(kMailSenderPerMinute) +
            " messages a minute; wait before sending more";
   }

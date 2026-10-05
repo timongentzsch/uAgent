@@ -31,8 +31,8 @@ struct ProjectInstructions {
 std::filesystem::path ProjectRoot(const std::filesystem::path& cwd);
 
 // A directory contributes one file, as in Codex: AGENTS.override.md, else
-// AGENTS.md, else CLAUDE.md as a compatibility fallback. Where none exists,
-// AGENTS.md is the one to create.
+// AGENTS.md, else CLAUDE.md where UAGENT_OTHER_AGENTS names claude. Where
+// none exists, AGENTS.md is the one to create.
 inline constexpr const char* kInstructionNames[] = {"AGENTS.override.md",
                                                     "AGENTS.md", "CLAUDE.md"};
 

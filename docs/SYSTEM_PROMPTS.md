@@ -15,7 +15,7 @@ replaces the base, except the agent's own opt-in self-directive below.
 
 A session reads `AGENTS.md` files from yours down through the repository root
 to its working directory (one per directory: `AGENTS.override.md`, else
-`AGENTS.md`, else `CLAUDE.md`); where a level has one of the others, that is
+`AGENTS.md`, else `CLAUDE.md` when `UAGENT_OTHER_AGENTS` names `claude`); where a level has one of the others, that is
 the file every editor below opens. A coordinator then reads its `COORDINATOR.md`
 files, yours first. Together they are bounded to 32 KiB and read once when a
 session starts, so they stay in the cached prefix: an edit reaches new and

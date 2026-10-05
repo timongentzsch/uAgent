@@ -56,10 +56,8 @@ std::string LiveStatus(const SessionInfo& info) {
       connection.socket.Get(), -1, session::kFrameBytes,
       [&](const json& frame) {
         if (JsonValue(frame, "kind", "") != "state") return true;
-        status = WaitsOnPerson(JsonValue(frame, "pending", json()))
-                     ? "needs you"
-                 : JsonValue(frame, "busy", false) ? "working"
-                                                   : "idle";
+        status = Standing(JsonValue(frame, "pending", json()),
+                          JsonValue(frame, "busy", false));
         return false;
       },
       // A live runtime answers at once; the board is rebuilt every step, so

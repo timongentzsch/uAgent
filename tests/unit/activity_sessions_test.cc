@@ -1270,6 +1270,10 @@ void TestMailbox() {
     CHECK(SendMail(note("e", "burst " + std::to_string(i))).empty());
   }
   CHECK(!SendMail(note("e", "one too many")).empty());
+  // A thread's finished turn is heard however much it has said.
+  Mail report = note("e", "finished");
+  report.type = kMailTaskCompleted;
+  CHECK(SendMail(report).empty());
   CHECK(!SendMail(note("f", std::string(kMailBytes, 'x'))).empty());
   TakeMail("recipient", all);
 

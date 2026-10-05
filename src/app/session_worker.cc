@@ -227,6 +227,10 @@ class WorkerChannel final : public ApplicationChannel {
         return std::nullopt;
       }
       if (ready == 0) {
+        if (link_) {
+          std::lock_guard lock(mutex_);
+          link_->Resend();
+        }
         // Mail held at the spend limit is looked at again; the application
         // delivers it once the limit allows.
         if (Paused() ||

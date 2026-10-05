@@ -116,6 +116,8 @@ void ApplyRoute(Api& api, const ModelRoute& route) {
                        .features = route.features});
   api.supported_reasoning_efforts = route.supported_efforts;
   api.capabilities.SetInputModalities(route.input_modalities);
+  api.route_name = route.name;
+  api.route_model = route.model;
 }
 
 std::string RouteSelection(const Api& api,
@@ -127,6 +129,18 @@ std::string RouteSelection(const Api& api,
       api.capabilities.model_variants ? api.config.openrouter_variant
                                       : std::string(),
       api.reasoning_effort);
+}
+
+std::string ChosenSelection(const Api& api,
+                            const std::vector<NamedProvider>& providers) {
+  if (api.route_name.empty() || api.route_model != api.CatalogModel()) {
+    return RouteSelection(api, providers);
+  }
+  return ComposeSelection("", api.route_name,
+                          api.capabilities.model_variants
+                              ? api.config.openrouter_variant
+                              : std::string(),
+                          api.reasoning_effort);
 }
 
 std::string RouteSelection(const SideRoute& route,

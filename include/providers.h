@@ -154,6 +154,11 @@ std::optional<ModelRoute> ResolveModelRoute(
 // template serves this base URL.
 std::string RouteSelection(const Api& api,
                            const std::vector<NamedProvider>& providers);
+// The same, by the name the route was chosen by where it has one of its own
+// (an alias): what a provider says of an alias is found again by that name
+// only, so a session handed this selection resolves the same route.
+std::string ChosenSelection(const Api& api,
+                            const std::vector<NamedProvider>& providers);
 std::string RouteSelection(const SideRoute& route,
                            const std::vector<NamedProvider>& providers);
 // Selection formatting shared by preference storage and route

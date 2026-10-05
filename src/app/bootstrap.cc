@@ -333,14 +333,8 @@ std::vector<Tool> BuildTools(AppContext& context,
                   "", Options{}, ignored);
   }));
   if (context.options.Coordinator()) {
-    // As it was chosen, so an alias keeps what the provider says of it; a
-    // model nobody named (probed from the endpoint) by what it resolved to.
     AddCoordinatorTools(tools, CanonicalCwd(), [app = &context] {
-      const auto values = app->config_manager.Read().values;
-      const auto chosen = values.find("UAGENT_MODEL");
-      return chosen != values.end() && !chosen->second.empty()
-                 ? chosen->second
-                 : RouteSelection(app->runtime.api, app->provider.providers);
+      return ChosenSelection(app->runtime.api, app->provider.providers);
     });
   }
   if (toolset == "lean") {

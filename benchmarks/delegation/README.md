@@ -75,3 +75,23 @@ coordinator; `prep.sh` now copies that key.
 Twelve of twelve first attempts completed. A coordinator itself now takes
 3 to 11 steps and 6k to 77k input tokens; the rest is its threads' work. The
 cache key did not raise the cached share through this proxy.
+
+## With the causal wait, 2026-10-05, commit `ae26decc`
+
+| Task | Mode | Wall | Steps | Input tokens |
+| --- | --- | --- | --- | --- |
+| fix | solo | 84 s | 5 | 26k |
+| | sub | 83 s | 6 | 34k |
+| | coord | 127 s | 13 | 105k |
+| survey | solo | 61 s | 5 | 28k |
+| | sub | 106 s | 8 | 115k |
+| | coord | 88 s | 10 | 54k |
+| research | solo | 101 s | 12 | 168k |
+| | sub | 159 s | 15 | 346k |
+| | coord | 101 s | 12 | 138k |
+| audit | solo | 132 s | 10 | 170k |
+| | sub | 182 s | 19 | 507k |
+| | coord | 290 s | 21 | 350k |
+
+Twelve of twelve again. The coordinator answered `research` itself, without
+a thread.

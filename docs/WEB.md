@@ -120,7 +120,8 @@ Opening the browser while the agent works shows the live screen, read-only.
 **Take over** pauses the agent and enables local input; **Done** hands control
 back. Watching and driving share one connection, so the screen never reloads
 on a hand-over. While you drive, agent actions fail at once and tell the
-agent to call `request_human`. When the agent calls `request_human` (login,
+agent to call `request_human`. When the agent calls `request_human` (a login
+Chrome has not saved,
 MFA, a captcha or bot check, a payment confirmation), the conversation shows
 its reason and **Open browser**, which opens the browser already in your
 control; **Done** returns you to the chat. Only the paired device that took

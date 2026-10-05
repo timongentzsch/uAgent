@@ -74,7 +74,9 @@ sessions across directories on desktop and mobile; see
 [the web guide](docs/WEB.md), including the Docker browser appliance.
 
 Passwords: sign the browser into your Google account and manage logins at
-passwords.google.com. The agent can use saved logins but never read them.
+passwords.google.com. The agent can use saved logins but never read them:
+it takes the one Chrome offers for a field, and with several accounts types
+the start of the wanted one's name first.
 
 ## Highlights
 

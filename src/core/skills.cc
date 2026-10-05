@@ -67,11 +67,15 @@ std::vector<std::filesystem::path> SkillSearchPath(
     return path;
   }
   // ".agents" is the vendor-neutral location; the others are where Claude Code
-  // and Codex keep theirs.
-  constexpr const char* kVendors[] = {".agents", ".claude", ".codex"};
+  // and Codex keep theirs, read when asked for.
+  std::vector<std::string> vendors;
+  for (const char* agent : {"claude", "codex"}) {
+    if (ReadsAgent(agent)) vendors.push_back("." + std::string(agent));
+  }
   std::string home = UserHome();
   if (!home.empty()) {
-    for (const char* vendor : kVendors) {
+    path.push_back(fs::path(home) / ".agents" / "skills");
+    for (const std::string& vendor : vendors) {
       path.push_back(fs::path(home) / vendor / "skills");
     }
   }
@@ -91,11 +95,19 @@ std::vector<std::filesystem::path> SkillSearchPath(
     path.push_back(*it / ".agents" / "skills");
   }
   // Tool-specific locations remain workspace-local compatibility roots.
-  for (const char* vendor : {".claude", ".codex"}) {
+  for (const std::string& vendor : vendors) {
     path.push_back(cwd / vendor / "skills");
   }
   path.push_back(ProjectBase(cwd) / "skills");
   return path;
+}
+
+bool ReadsAgent(std::string_view agent) {
+  for (const std::string& entry :
+       SplitPathList(SettingText(Cfg("UAGENT_OTHER_AGENTS")), ',')) {
+    if (Trim(entry) == agent) return true;
+  }
+  return false;
 }
 
 bool SkillExcluded(const std::string& name) {

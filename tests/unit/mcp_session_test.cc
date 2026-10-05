@@ -576,6 +576,10 @@ void TestScopedBaseAndMemory() {
       home / ".claude/projects" / claude_project / "memory/MEMORY.md";
   CHECK(ToolWriteFile(claude_memory.string(), "claude-memory-sentinel")
             .output.starts_with("wrote "));
+  // Only for the agents that are listed.
+  CHECK(ToolMemoryAction("get", "codex/MEMORY", std::nullopt).error ==
+        ToolErrorCode::kNotFound);
+  ScopedEnv others("UAGENT_OTHER_AGENTS", "claude,codex");
   CHECK(ToolMemoryAction("get", "codex/MEMORY", std::nullopt)
             .output.find("codex-memory-sentinel") != std::string::npos);
   CHECK(ToolMemoryAction("get", "claude/MEMORY", std::nullopt)

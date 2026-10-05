@@ -49,6 +49,10 @@ std::vector<std::filesystem::path> SkillSearchPath(
     const std::filesystem::path& cwd);
 
 bool SkillExcluded(const std::string& name);
+// Whether `agent` ("claude" or "codex") is one whose skills and memories are
+// read as well as µAgent's own (UAGENT_OTHER_AGENTS). None is by default:
+// what another agent keeps was written for its tools.
+bool ReadsAgent(std::string_view agent);
 
 std::vector<Skill> DiscoverSkills(const std::filesystem::path& cwd);
 std::vector<Skill> SelectSkills(std::vector<Skill> discovered);

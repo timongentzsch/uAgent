@@ -101,7 +101,9 @@ delivered; retention prunes the directory like `sessions/`.
 Memory Markdown files are the editable source of truth. They change only
 through an explicit `memory` action or the single background extractor.
 Codex memories in `~/.codex/memories` and the current Claude Code project
-memory in `~/.claude/projects/<project>/memory` are read-only recall sources.
+memory in `~/.claude/projects/<project>/memory` are read-only recall sources
+for the agents named in `UAGENT_OTHER_AGENTS` (`claude`, `codex`); none is
+by default.
 
 The audit log records only action, key, time, automatic source and a redacted
 preview, which `/memory` shows. The extractor marks a session done only after

@@ -31,6 +31,7 @@
 #include "include/core/limits.h"
 #include "include/core/project.h"
 #include "include/core/runtime_config.h"
+#include "include/core/skills.h"
 #include "include/core/strings.h"
 #include "include/tools/files.h"
 
@@ -559,9 +560,11 @@ std::vector<MemoryEntry> ListMemories(const std::filesystem::path& cwd,
     AddMarkdownMemories(entries, MemoryDirectory(scope, repo), scope, limit);
   }
   std::string home = UserHome();
-  if (!home.empty()) {
+  if (!home.empty() && ReadsAgent("codex")) {
     AddMarkdownMemories(entries, fs::path(home) / ".codex" / "memories",
                         "codex", limit);
+  }
+  if (!home.empty() && ReadsAgent("claude")) {
     AddMarkdownMemories(entries, ClaudeMemoryDirectory(repo), "claude", limit);
   }
   std::sort(entries.begin(), entries.end(),

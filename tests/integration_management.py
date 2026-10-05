@@ -71,6 +71,8 @@ def test_library_revisions_scopes_and_external_copy(root, home, *, binary):
     foreign = home / ".codex/memories"
     foreign.mkdir(parents=True)
     (foreign / "reference.md").write_text("external lesson")
+    assert_true("error" in call(action="get", key="codex/reference"), "read an unlisted agent")
+    env["UAGENT_OTHER_AGENTS"] = "codex"
     item = call(action="get", key="codex/reference")["item"]
     assert_true(not item["writable"], item)
     assert_true(

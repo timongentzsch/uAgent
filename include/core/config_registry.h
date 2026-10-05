@@ -560,6 +560,13 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                       ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
                       "skills", "comma-separated skill names to withhold"),
         "Disabled skills"),
+    registry::Named(
+        registry::Str("UAGENT_OTHER_AGENTS", {}, "",
+                      ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
+                      "skills",
+                      "also read the skills and memories of these agents: "
+                      "claude, codex (comma-separated; empty reads none)"),
+        "Other agents"),
 
     // MCP.
     registry::Named(registry::Int("UAGENT_MCP_TIMEOUT", "mcp_timeout_s", 60, 1,

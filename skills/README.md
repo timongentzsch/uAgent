@@ -18,17 +18,21 @@ All three are MIT-licensed as part of this repository.
 Skills are read from these roots in order; a later root overrides a skill of
 the same name:
 
-1. `~/.agents/skills`, `~/.claude/skills`, `~/.codex/skills`
+1. `~/.agents/skills`, and `~/.claude/skills` or `~/.codex/skills` when that
+   agent is named in `UAGENT_OTHER_AGENTS`
 2. `~/.uagent/skills`
 3. The installed `share/uagent/skills`
 4. `.agents/skills` in each directory from the filesystem root down to the
    workspace
-5. `.claude/skills` and `.codex/skills` in the workspace
+5. `.claude/skills` and `.codex/skills` in the workspace, on the same
+   condition
 6. `.uagent/skills` in the workspace
 
 `UAGENT_SKILL_PATH` replaces the whole list; set it for a development binary
 that has no installed tree beside it. `UAGENT_SKILL_EXCLUDE` hides skills by
-name.
+name. `UAGENT_OTHER_AGENTS` (`claude`, `codex`, comma-separated) also reads
+what those agents keep, skills and memories alike; it is empty by default,
+since their skills were written for their tools.
 
 ## Front matter
 

@@ -1198,7 +1198,7 @@ def test_context_command_shows_memory_and_skills(root, home, *, binary):
     with Server([event({"content": "unused"})]) as server:
         code, output = run_pty(
             workspace,
-            base_env(home, server.url),
+            base_env(home, server.url) | {"UAGENT_OTHER_AGENTS": "claude,codex"},
             [
                 (b"/context\n", b"context-skill-description-sentinel", b"\x1b[1m> \x1b[0m", None),
                 (b"/memory\n", b"project/browser", b"\x1b[1m> \x1b[0m", None),

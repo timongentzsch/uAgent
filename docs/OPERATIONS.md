@@ -142,7 +142,8 @@ keeps recall but disables background extraction. Each interactive startup
 extracts from at most one idle session; `UAGENT_MEMORY_MODEL` runs extraction
 on a cheaper route. The always-on slice inlines global memories newest first,
 whole entries only, and startup warns when the cap drops one. Codex top-level
-memories and the current Claude Code project memory are indexed read-only.
+memories and the current Claude Code project memory are indexed read-only
+when `UAGENT_OTHER_AGENTS` names the agent.
 `/memory` lists memories and the latest automatic change from the audit log.
 
 ## Images

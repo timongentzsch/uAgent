@@ -314,8 +314,7 @@ def test_sandbox_opens_the_package_cache_not_the_data_directory(root, home, *, b
     if not sandbox_enforced(root, home, binary=binary):
         return
     data = home / ".local" / "share"
-    (data / "uv").mkdir(parents=True)
-    (data / "autostart").mkdir()
+    (data / "autostart").mkdir(parents=True, exist_ok=True)
     (home / ".cache").mkdir(exist_ok=True)
     run_once(
         root,

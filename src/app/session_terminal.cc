@@ -853,15 +853,16 @@ int CoordinatorPromptMain(const Options& options) {
   };
   const std::string request = RandomToken(16);
   bool submitted = false, rejected = false, completed = false, busy = true;
-  bool paused = false, done = false;
+  bool accepted = false, paused = false, done = false;
   std::string probe;  // the request that asks the coordinator how it stands
   json stop = json::object();
   // The coordinator's session runs on; this request is its growth.
   Usage before, after;
   const auto receive = [&](const json& frame) {
     const std::string kind = JsonValue(frame, "kind", "");
-    if (kind == "outcome" && JsonValue(frame, "request_id", "") == request &&
-        !JsonValue(frame, "accepted", false)) {
+    if (kind == "outcome" && JsonValue(frame, "request_id", "") == request) {
+      accepted = JsonValue(frame, "accepted", false);
+      if (accepted) return true;
       error = JsonValue(frame, "error", "coordinator refused");
       rejected = true;
       return false;
@@ -893,9 +894,13 @@ int CoordinatorPromptMain(const Options& options) {
     // A report it has taken waits as guidance until its turn starts.
     busy = JsonValue(frame, "busy", false) || JsonValue(frame, "guidance", 0);
     paused = frame["state"].contains("paused");
+    // A request that met a turn a thread's report had just started was
+    // taken into that turn, which ends under its own name: idle after the
+    // request was accepted is its end too.
     if (!JsonValue(frame, "checkpoint", false) ||
         (!completed &&
-         JsonValue(frame, "completed_request_id", "") != request)) {
+         JsonValue(frame, "completed_request_id", "") != request &&
+         (!accepted || busy))) {
       return true;
     }
     // A queued thread event may already have started the next turn, which
@@ -935,7 +940,8 @@ int CoordinatorPromptMain(const Options& options) {
     probe = RandomToken(16);
     open = send({{"kind", "refresh"}, {"request_id", probe}});
   }
-  if (rejected || !completed) {
+  // A runtime that closed with work still owed has not answered.
+  if (rejected || !done) {
     fprintf(stderr, "%s\n",
             error.empty() ? "coordinator runtime closed" : error.c_str());
     return 1;
@@ -953,7 +959,7 @@ int CoordinatorPromptMain(const Options& options) {
          --index) {
       const json& message = messages[index - 1];
       if (JsonValue(message, "role", "") == "user" &&
-          JsonValue(message, "content", "") == options.prompt) {
+          Trim(JsonValue(message, "content", "")) == Trim(options.prompt)) {
         asked = index - 1;
       }
     }
@@ -965,7 +971,7 @@ int CoordinatorPromptMain(const Options& options) {
       if (!text.empty()) answer += (answer.empty() ? "" : "\n\n") + text;
     }
     // The request itself was compacted away: what was said last.
-    if (answer.empty()) answer = conversation.LastAssistantText();
+    if (asked == messages.size()) answer = conversation.LastAssistantText();
   }
   if (options.json) {
     printf("%s\n",

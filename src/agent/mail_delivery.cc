@@ -79,18 +79,23 @@ bool Agent::DeliverMail(bool hold) {
     return !hold && MailAllowed(mail, own_path, session_role_);
   });
   for (const Mail& mail : taken) {
-    unacked_mail_.push_back(mail.id);
-    if (std::find(delivered_mail_.begin(), delivered_mail_.end(), mail.id) !=
-        delivered_mail_.end()) {
+    // The sender labels its text; it is never the user's.
+    const std::string text = JsonValue(mail.body, "text", "");
+    const bool seen = std::find(delivered_mail_.begin(), delivered_mail_.end(),
+                                mail.id) != delivered_mail_.end();
+    // Mail that changes nothing has no save to be acknowledged by: one
+    // without text, or one a save already holds.
+    if ((text.empty() || seen) &&
+        std::ranges::find(unacked_mail_, mail.id) == unacked_mail_.end()) {
+      AckMail(own, {mail.id});
       continue;
     }
+    unacked_mail_.push_back(mail.id);
+    if (seen) continue;
     delivered_mail_.push_back(mail.id);
     if (delivered_mail_.size() > kDeliveredIds) {
       delivered_mail_.erase(delivered_mail_.begin());
     }
-    // The sender labels its text; it is never the user's.
-    const std::string text = JsonValue(mail.body, "text", "");
-    if (text.empty()) continue;
     // Mail wakes its recipient: an idle one starts a turn on it.
     NotFromUser(text);
     SteeringState().Queue(text, "", true);

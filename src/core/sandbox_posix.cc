@@ -277,6 +277,10 @@ SandboxInputs CollectInputs() {
   }
   const std::string home = UserHome();
   if (!home.empty()) {
+    // A root that does not exist grants nothing, and uv could not then make
+    // its own folder beneath a closed one.
+    std::error_code error;
+    std::filesystem::create_directories(home + "/.local/share/uv", error);
     inputs.tool_caches = {canonical(home + "/.cache"),
                           canonical(home + "/.local/share/uv")};
 #if defined(__APPLE__)

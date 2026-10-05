@@ -167,10 +167,14 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask) {
       "CSS pixels of that screenshot, and click/scroll need its view_id. A "
       "tab opened by your action becomes active automatically; tabs lists "
       "tabs and switches with target_id. A result starting with SUSPECTED "
-      "BLOCK means a bot check or rate limit: don't hammer it. For login, "
-      "MFA, captchas, bot checks or payment confirmation, call request_human "
-      "with a reason naming the site and step; it waits until the user hands "
-      "back. Never ask for credentials in chat.";
+      "BLOCK means a bot check or rate limit: don't hammer it. Chrome holds "
+      "the user's saved logins: on a sign-in page click the field and, if "
+      "it stays empty, press ArrowDown then Enter to take the saved one, "
+      "then submit what Chrome filled. Never type or repeat a password. For "
+      "a login Chrome has not saved, MFA, captchas, bot checks or payment "
+      "confirmation, call request_human with a reason naming the site and "
+      "step; it waits until the user hands back. Never ask for credentials "
+      "in chat.";
   tool.parameters = {
       {"type", "object"},
       {"properties",
@@ -188,7 +192,8 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask) {
         {"text", {{"type", "string"}}},
         {"key",
          {{"type", "string"},
-          {"enum", {"Enter", "Tab", "Escape", "Backspace"}}}},
+          {"enum",
+           {"Enter", "Tab", "Escape", "Backspace", "ArrowDown", "ArrowUp"}}}},
         {"reason", {{"type", "string"}}}}},
       {"required", {"action"}},
       {"additionalProperties", false}};

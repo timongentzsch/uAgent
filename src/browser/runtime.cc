@@ -1031,15 +1031,20 @@ json Runtime::Execute(const json& command) {
   } else if (op == "press") {
     std::string key = JsonValue(command, "key", "");
     if (key != "Enter" && key != "Tab" && key != "Escape" &&
-        key != "Backspace") {
+        key != "Backspace" && key != "ArrowDown" && key != "ArrowUp") {
       return {{"error", "unsupported key"}};
     }
     observation_.clear();
-    reply = Call("Input.dispatchKeyEvent", {{"type", "keyDown"}, {"key", key}},
-                 page_session_);
+    json event = {{"type", "keyDown"}, {"key", key}};
+    // Chrome's own lists (the saved logins it offers) move by key code.
+    if (key.starts_with("Arrow")) {
+      event["code"] = key;
+      event["windowsVirtualKeyCode"] = key == "ArrowDown" ? 40 : 38;
+    }
+    reply = Call("Input.dispatchKeyEvent", event, page_session_);
     if (CdError(reply).empty()) {
-      reply = Call("Input.dispatchKeyEvent", {{"type", "keyUp"}, {"key", key}},
-                   page_session_);
+      event["type"] = "keyUp";
+      reply = Call("Input.dispatchKeyEvent", event, page_session_);
     }
   } else if (op == "scroll") {
     if (observation_.empty() ||

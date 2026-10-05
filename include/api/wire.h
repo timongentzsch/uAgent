@@ -90,6 +90,9 @@ struct WireStreamDelta {
   std::vector<ReasoningDelta> reasoning_parts;
   bool tool_arguments = false;
   bool activity = false;
+  // The stream answered without producing anything: it times the first
+  // event, and is no progress a retry would repeat.
+  bool opened = false;
   std::optional<HostedToolDelta> hosted_tool;
 };
 

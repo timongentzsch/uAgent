@@ -238,8 +238,14 @@ void TestConfigProposalAndCommit() {
   CHECK(RequiredApproval(configure, inspect) == ApprovalClass::kNone);
   CHECK(configure.run(inspect, {}).Ok());
   CHECK(!configure.validate(inspect));
-  CHECK(configure.validate({{"action", "inspect"}, {"changes", json::array()}})
-            .has_value());
+  // What only a change takes is dropped from an inspect call before it is
+  // judged: models that fill every field send it along empty.
+  json filled = {{"action", "inspect"}, {"topic", "config"},
+                 {"scope", ""},         {"changes", json::array()},
+                 {"text", ""},          {"audience", ""}};
+  CanonicalizeToolArguments(configure, filled, nullptr);
+  CHECK(filled == (json{{"action", "inspect"}, {"topic", "config"}}));
+  CHECK(!configure.validate(filled));
   CHECK(RequiredApproval(configure, {{"action", "configure"}}) ==
         ApprovalClass::kMandatoryHuman);
   Tool restricted =

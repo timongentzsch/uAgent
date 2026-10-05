@@ -599,6 +599,71 @@ def test_model_choice_is_the_conversations_until_saved_for_all(root, home, *, bi
         second.close()
 
 
+def test_an_overloaded_provider_is_tried_again(root, home, *, binary):
+    """A proxy reports its upstream's overload inside the stream, after the
+    response was opened. Nothing was said yet, so the request is repeated and
+    the turn goes on."""
+    overloaded = (
+        "Codex response failed: {'type': 'service_unavailable_error', 'code': "
+        "'server_is_overloaded', 'headers': {'x-retry-metadata': 'NO_MORE_RETRY'}, "
+        "'message': 'Our servers are currently overloaded. Please try again later.', "
+        "'param': None}"
+    )
+    opened = {
+        "type": "response.created",
+        "sequence_number": 0,
+        "response": {
+            "id": "resp_1",
+            "object": "response",
+            "status": "in_progress",
+            "model": "m",
+            "output": [],
+            "usage": None,
+            "error": None,
+            "incomplete_details": None,
+        },
+    }
+
+    def busy(handler, _):
+        write_sse_sequence(
+            handler,
+            [
+                opened,
+                {
+                    "type": "error",
+                    "sequence_number": 1,
+                    "code": "upstream_error",
+                    "message": overloaded,
+                    "param": None,
+                },
+            ],
+        )
+
+    def answer(handler, _):
+        write_sse_sequence(
+            handler,
+            [
+                opened,
+                {"type": "response.output_text.delta", "delta": "after-overload-ok"},
+                {
+                    "type": "response.completed",
+                    "response": {
+                        "status": "completed",
+                        "usage": {"input_tokens": 8, "output_tokens": 3},
+                    },
+                },
+            ],
+        )
+
+    with Server([busy, busy, answer]) as server:
+        env = base_env(home, server.url)
+        env["UAGENT_INTERNAL_WIRE_API"] = "responses"
+        result = run(root, env, "--json", "-p", "go", timeout=60, binary=binary)
+        envelope = json.loads(result.stdout.strip().splitlines()[-1])
+        assert_true(envelope["answer"] == "after-overload-ok", envelope)
+        assert_true(len(server.requests) == 3, len(server.requests))
+
+
 def test_provider_responses_native_search_and_function_replay(root, home, *, binary):
     # The replayed function_call lists the workspace, so it needs an entry to
     # list: an empty directory reports itself as empty and never gets there.

@@ -19,7 +19,9 @@ namespace uagent {
 inline constexpr int kChatAttempts = 3;
 // Non-streaming side requests reuse the conversation's attempt budget.
 inline constexpr int kSideAttempts = 3;
-inline constexpr int64_t kRetryInitialMs = 500;
+// An overloaded provider refuses in bursts of a second or two, so the first
+// wait has to outlast one: about two seconds, then four.
+inline constexpr int64_t kRetryInitialMs = 2'000;
 inline constexpr int64_t kRetryMaximumMs = 8'000;
 inline constexpr int64_t kRetryJitterMinimumPerMille = 750;
 inline constexpr int64_t kRetryJitterRangePerMille = 251;

@@ -140,16 +140,17 @@ Tool UagentTool(SelfDescriptionProvider describe,
     return writes(arguments) ? ApprovalClass::kMandatoryHuman
                              : ApprovalClass::kNone;
   };
+  // Looking is not changing: what only a change takes is dropped from an
+  // inspect call, which some models send along empty for every field.
+  tool.canonicalize = [](json& arguments) {
+    if (JsonValue(arguments, "action", "") != "inspect") return;
+    for (const char* field : {"scope", "changes", "text", "audience"}) {
+      arguments.erase(field);
+    }
+  };
   tool.validate =
       [prepare](const json& arguments) -> std::optional<ToolArgumentIssue> {
-    if (JsonValue(arguments, "action", "") == "inspect") {
-      if (arguments.contains("scope") || arguments.contains("changes") ||
-          arguments.contains("text") || arguments.contains("audience")) {
-        return ArgumentIssue("config.inspect",
-                             "inspect does not accept scope or changes");
-      }
-      return std::nullopt;
-    }
+    if (JsonValue(arguments, "action", "") == "inspect") return std::nullopt;
     if (!prepare) {
       return ArgumentIssue("config.unavailable",
                            "configuration requires an interactive human");

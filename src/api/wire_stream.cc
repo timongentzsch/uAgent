@@ -536,8 +536,10 @@ WireStreamDelta DecodeResponsesEvent(const json& value, ChatResult& result,
     delta.activity = true;
     return delta;
   }
+  // The response was opened: the provider is there, but nothing has been
+  // produced yet, so a failure that follows may still be tried again.
   if (type == "response.created" || type == "response.in_progress") {
-    delta.activity = true;
+    delta.opened = true;
   }
   return delta;
 }

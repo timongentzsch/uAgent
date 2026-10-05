@@ -18,15 +18,16 @@
 #include "include/core/fd.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
+#include "include/core/platform.h"
 
 namespace uagent {
 namespace {
 
+// One write per line on a file opened for appending: several processes may
+// share a trace, and their lines must not run into each other.
 void WriteJsonLine(FILE* file, const json& record) {
-  std::string line = JsonDump(record);
-  fwrite(line.data(), 1, line.size(), file);
-  fputc('\n', file);
-  fflush(file);
+  const std::string line = JsonDump(record) + "\n";
+  (void)WriteAll(fileno(file), line.data(), line.size());
 }
 
 std::string DefaultDebugPath() {
@@ -89,13 +90,15 @@ bool DebugSink::Start(std::string path) {
     error_ = error.message();
     return false;
   }
-  Fd fd(open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC,
+  // Appended to, never emptied: a session's children and the runtimes it
+  // starts trace into the same file.
+  Fd fd(open(path.c_str(), O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC,
              kPrivateFileMode));
   if (!fd || fchmod(fd.Get(), kPrivateFileMode) != 0) {
     error_ = strerror(errno);
     return false;
   }
-  file_ = fdopen(fd.Get(), "w");
+  file_ = fdopen(fd.Get(), "a");
   if (!file_) {
     error_ = strerror(errno);
     return false;
@@ -132,6 +135,7 @@ void DebugSink::Write(const std::string& event, json data) noexcept {
   queue_.push_back({{"seq", ++seq_},
                     {"time", UtcStamp()},
                     {"elapsed_ms", ElapsedMs(started_)},
+                    {"pid", getpid()},
                     {"event", event},
                     {"data", std::move(data)}});
   wake_.notify_one();

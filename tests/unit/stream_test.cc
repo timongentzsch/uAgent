@@ -409,6 +409,38 @@ void TestSseChunkPartitions() {
   CHECK(string_error.remote_error_kind ==
         RemoteErrorKind::kContextLengthExceeded);
 
+  // A proxy's overload arrives after the stream opened, as a failed
+  // response whose message quotes the upstream error: nothing was said yet,
+  // so it is retried.
+  const char* overloaded =
+      "Codex response failed: {'type': 'service_unavailable_error', 'code': "
+      "'server_is_overloaded', 'headers': {'x-retry-metadata': "
+      "'NO_MORE_RETRY'}, 'message': 'Our servers are currently overloaded. "
+      "Please try again later.', 'param': None}";
+  for (const json& failure :
+       {json{{"type", "response.failed"},
+             {"response", {{"error", {{"message", overloaded}}}}}},
+        json{{"type", "error"}, {"error", overloaded}},
+        json{{"type", "error"}, {"message", overloaded}},
+        // As the local proxy sends it.
+        json{{"type", "error"},
+             {"code", "upstream_error"},
+             {"message", overloaded},
+             {"param", nullptr},
+             {"sequence_number", 3}}}) {
+    ChatResult busy;
+    WireStreamState busy_state;
+    for (const json& frame :
+         {json{{"type", "response.created"}, {"response", {{"id", "r1"}}}},
+          json{{"type", "response.in_progress"}, {"response", {{"id", "r1"}}}},
+          failure}) {
+      DecodeWireStreamEvent(WireApi::kResponses, JsonDump(frame), busy,
+                            no_tool_calls, busy_state);
+    }
+    CHECK(busy.error == overloaded);
+    CHECK(SafeToRetry(busy));
+  }
+
   // The same frame after visible output is not replayed: StreamCtx has
   // already appended the answer text the user has seen.
   ChatResult answered_then_error;

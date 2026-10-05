@@ -258,7 +258,7 @@ void TestToolResults() {
   CHECK(RetryDelay(2, 42) == RetryDelay(1, 42) * 2);
   CHECK(RetryDelay(1, 0, 3) == std::chrono::seconds(3));
   CHECK(RetryDelay(1, 250, 3) == std::chrono::milliseconds(3250));
-  CHECK(RetryDelay(3, 0, 1) == std::chrono::milliseconds(1500));
+  CHECK(RetryDelay(3, 0, 1) == std::chrono::milliseconds(6000));
 
   // Side requests: a transport failure carries no status, transient statuses
   // are worth another attempt, and a rejected request is not.

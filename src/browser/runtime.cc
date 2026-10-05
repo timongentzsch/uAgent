@@ -809,14 +809,17 @@ json Runtime::Execute(const json& command) {
   if (op == "probe") return Probe();
   // Whoever takes the browser after someone else starts from the page as it
   // is, not as it remembers it: keys and text go nowhere before that.
-  if (op == "observe" || op == "tabs" || op == "open") {
-    moved_ = false;
-  } else if (moved_) {
+  // Only a look or an open that worked counts.
+  if (moved_ && op != "observe" && op != "tabs" && op != "open") {
     return {{"error",
              "another conversation used the browser since; open your page "
              "or observe before acting"}};
   }
-  if (op == "observe") return Observe();
+  if (op == "observe") {
+    json seen = Observe();
+    if (!seen.contains("error")) moved_ = false;
+    return seen;
+  }
   if (op == "tabs") {
     json pages = PageTargets();
     if (pages.contains("error")) return pages;
@@ -840,6 +843,7 @@ json Runtime::Execute(const json& command) {
         if (!AttachPage(requested, error)) return {{"error", error}};
       }
     }
+    moved_ = false;
     return {{"ok", true}, {"tabs", pages}, {"selected", target_}};
   }
   return Act(op, command);
@@ -1208,6 +1212,7 @@ json Runtime::Act(const std::string& op, const json& command) {
   }
   const std::string error = CdError(reply);
   if (!error.empty()) return {{"error", error}};
+  if (op == "open") moved_ = false;
   return {{"ok", true}};
 }
 

@@ -359,7 +359,7 @@ class Agent {
   // Keep completed tool messages in active context until normal compaction,
   // while also archiving them for the user-facing /trace command.
   void ArchiveTurnTrace(size_t turn_start);
-  void PruneOldToolResults();
+  void PruneOldToolResults(bool within_turn = false);
 
   // A rejected capability -> drop it and retry. Ordered most-specific first:
   // the native-tools probe matches any "tool", so it must stay last or it would

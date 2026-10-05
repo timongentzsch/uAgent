@@ -101,9 +101,13 @@ class Conversation {
   bool HasRecentToolResult(const std::string& name,
                            const std::string& arguments,
                            const std::string& result) const;
+  // Replaces old tool results by a short note of what they were, keeping
+  // the newest `protect_chars` of them. Results of the last two user turns
+  // stay whole unless `within_turn`, which is for a turn that has itself
+  // grown long.
   ToolTracePruneResult PruneOldToolResults(
       size_t protect_chars, size_t minimum_reclaim_chars,
-      const std::vector<std::string>& retained_tools);
+      const std::vector<std::string>& retained_tools, bool within_turn = false);
 
   size_t PruneAttachments(size_t begin, const std::string& route = "");
   void ArchiveTurn(size_t turn_start, int64_t turn, int64_t archive_cap,

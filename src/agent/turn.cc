@@ -20,6 +20,7 @@
 #include "include/api/citations.h"
 #include "include/api/retry.h"
 #include "include/core/checked.h"
+#include "include/core/config_registry.h"
 #include "include/core/debug.h"
 #include "include/core/env.h"
 #include "include/core/events.h"
@@ -178,6 +179,11 @@ Agent::StepFlow Agent::PrepareStep(TurnExecution& state, StepState& loop) {
   };
   available_schemas_.Get(tools_, schemas_, loop.tool_counts, availability,
                          &tool_selection_);
+  // A long turn carries every result it has read into every later request;
+  // where asked for, the old ones give way while the turn still runs.
+  if (loop.step > 0 && BoolSetting(Cfg("UAGENT_PRUNE_IN_TURN"))) {
+    PruneOldToolResults(/*within_turn=*/true);
+  }
   if (loop.step > 0 && loop.midturn_compaction_enabled) {
     MidturnCompact compacted =
         MaybeCompactDuringTurn(state.metrics.usage, state.start);

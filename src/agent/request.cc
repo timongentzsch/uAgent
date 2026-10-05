@@ -565,13 +565,14 @@ void Agent::ArchiveTurnTrace(size_t turn_start) {
            {{"turn", turn_id_}, {"messages", conversation_.Size()}});
 }
 
-void Agent::PruneOldToolResults() {
+void Agent::PruneOldToolResults(bool within_turn) {
   std::vector<std::string> retained_tools;
   for (const Tool& tool : tools_) {
     if (tool.retain_output) retained_tools.push_back(tool.name);
   }
   ToolTracePruneResult result = conversation_.PruneOldToolResults(
-      kToolTraceProtectChars, kToolTracePruneMinChars, retained_tools);
+      kToolTraceProtectChars, kToolTracePruneMinChars, retained_tools,
+      within_turn);
   if (result.results == 0) return;
   logged_msgs_ = 0;
   ++revision_;

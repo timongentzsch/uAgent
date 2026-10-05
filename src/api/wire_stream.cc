@@ -380,6 +380,10 @@ WireStreamDelta DecodeResponsesEvent(const json& value, ChatResult& result,
   }
   if (type == "response.failed") {
     const json* response = JsonObject(value, "response");
+    if (response && response->contains("usage") &&
+        !(*response)["usage"].is_null()) {
+      result.usage = (*response)["usage"];
+    }
     const json* error = response ? JsonObject(*response, "error") : nullptr;
     ApplyStreamError(error ? *error : json(nullptr), result,
                      "response stream failed");

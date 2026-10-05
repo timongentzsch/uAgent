@@ -8,8 +8,9 @@ provider-reported usage on representative conversations.
 
 CLI and web sessions share one request encoder and one usage accounting path.
 
-- **OpenAI.** Matching prefixes cache automatically. Responses requests to the
-  official OpenAI host carry `prompt_cache_key`, a hash of the session ID. See
+- **OpenAI.** Matching prefixes cache automatically. Every Responses request,
+  to the official host or to a proxy in front of it, carries
+  `prompt_cache_key`, a hash of the session ID. See
   [OpenAI prompt caching](https://developers.openai.com/api/docs/guides/prompt-caching).
 - **Anthropic.** Requests set top-level
   `cache_control: {"type":"ephemeral"}` for automatic caching, plus a

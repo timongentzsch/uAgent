@@ -772,6 +772,48 @@ def _spawn_then(decide):
     return route, state
 
 
+def test_a_confined_thread_acts_inside_its_folder_without_review(root, home, *, binary):
+    """The sandbox holds a thread to its folder, so what it writes and runs
+    there is put to nobody: not to a reviewer, not to its coordinator."""
+    from integration_sandbox import sandbox_enforced
+
+    if not sandbox_enforced(root, home, binary=binary):
+        return
+    seen = {"asked": False}
+
+    def route(_, body):
+        text = json.dumps(body["messages"])
+        results = tool_results(body["messages"])
+        if "Objective: write and run" in text:
+            if not results:
+                return tool_call("write_file", {"path": "out.txt", "content": "x"})
+            if len(results) == 1:
+                return tool_call("run", {"command": "cp out.txt ran.txt"})
+            return event({"content": "thread-done"})
+        if "[approval request" in text:
+            seen["asked"] = True
+        if results or "[thread event" in text:
+            return event({"content": "coordinator-ack"})
+        return tool_call(
+            "thread",
+            {
+                "action": "spawn",
+                "title": "Write",
+                "objective": "write and run",
+                "environment": "local",
+            },
+        )
+
+    with Server([route]) as server:
+        env = base_env(home, server.url)
+        result = run(root, env, "coord", "-p", "delegate", timeout=60, binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true((root / "ran.txt").read_text() == "x", "the thread did not get to act")
+        # A review would have failed here (no reviewer is configured) and come
+        # to the coordinator as a question.
+        assert_true(not seen["asked"], "a confined thread's action was put to review")
+
+
 def test_coordinator_approves_what_auto_could_not(root, home, *, binary):
     route, state = _spawn_then(
         lambda thread, interaction: {
@@ -783,6 +825,8 @@ def test_coordinator_approves_what_auto_could_not(root, home, *, binary):
     )
     with Server([route]) as server:
         env = base_env(home, server.url)
+        # No sandbox to hold the thread to its folder: its actions are reviewed.
+        env["UAGENT_INTERNAL_SANDBOX_UNAVAILABLE"] = "1"
         result = run(root, env, "coord", "-p", "delegate", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(state["asked"].wait(budget(20)), "approval never reached the coordinator")
@@ -808,6 +852,8 @@ def test_yielded_and_mandatory_decisions_reach_the_user(root, home, *, binary):
     )
     with Server([route]) as server:
         env = base_env(home, server.url)
+        # No sandbox to hold the thread to its folder: its actions are reviewed.
+        env["UAGENT_INTERNAL_SANDBOX_UNAVAILABLE"] = "1"
         result = run(root, env, "coord", "-p", "delegate", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(state["asked"].wait(budget(20)), "approval never reached the coordinator")

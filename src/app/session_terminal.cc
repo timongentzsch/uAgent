@@ -1,5 +1,6 @@
 // Copyright 2026 Timon Gentzsch
 #include <poll.h>
+#include <sys/socket.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -25,7 +26,6 @@
 #include "include/core/effective_config.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
-#include "include/core/mailbox.h"
 #include "include/core/runtime_config.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
@@ -851,23 +851,14 @@ int CoordinatorPromptMain(const Options& options) {
     command["request_id"] = command.value("request_id", RandomToken(16));
     return WriteFrame(connection.socket.Get(), command);
   };
-  // What the session holds before this request: its answer is everything the
-  // coordinator says after it.
-  auto messages = [&path] {
-    SessionLoadResult saved = SessionStore::Inspect(path);
-    Conversation conversation;
-    return saved.record && std::move(saved.record->state)
-                               .RestoreConversation(conversation)
-               ? conversation.Messages()
-               : json::array();
-  };
-  const size_t earlier = messages().size();
   const std::string request = RandomToken(16);
-  bool submitted = false, rejected = false, completed = false;
+  bool submitted = false, rejected = false, completed = false, busy = true;
+  std::string answer;
+  std::set<std::string> said;
   json stop = json::object();
   // The coordinator's session runs on; this request is its growth.
   Usage before, after;
-  ReadFrames(connection.socket.Get(), -1, kFrameBytes, [&](const json& frame) {
+  const auto receive = [&](const json& frame) {
     const std::string kind = JsonValue(frame, "kind", "");
     if (kind == "outcome" && JsonValue(frame, "request_id", "") == request &&
         !JsonValue(frame, "accepted", false)) {
@@ -892,6 +883,7 @@ int CoordinatorPromptMain(const Options& options) {
             {"interaction_id", JsonValue(*pending, "id", "")},
             {"text", ""}});
     }
+    busy = JsonValue(frame, "busy", false);
     if (!JsonValue(frame, "checkpoint", false) ||
         (!completed &&
          JsonValue(frame, "completed_request_id", "") != request)) {
@@ -902,30 +894,52 @@ int CoordinatorPromptMain(const Options& options) {
     if (!completed) stop = JsonValue(frame["state"], "stop", json::object());
     after = UsageFromJson(JsonValue(frame["state"], "usage", json::object()));
     completed = true;
-    // The work it delegated is part of the answer: while a thread it started
-    // is at it, its report is still to come, and the turn that takes it.
-    // A thread reports before it goes idle, so a report on its way is mail
-    // the coordinator has not finished with.
-    std::error_code ignored;
-    const std::string mailbox = MailboxIdFor(path);
-    return JsonValue(frame, "busy", false) || ThreadsWorking(cwd) ||
-           !PendingMail(mailbox).empty() ||
-           !std::filesystem::is_empty(
-               std::filesystem::path(MailboxDir(mailbox)) / "cur", ignored);
-  });
+    // What it said last, once per row: a turn a thread's report started says
+    // more, and all of it answers the request.
+    const json blocks =
+        JsonValue(JsonValue(frame["state"], "view", json::object()), "blocks",
+                  json::array());
+    for (auto block = blocks.rbegin(); block != blocks.rend(); ++block) {
+      if (JsonValue(*block, "kind", "") != "assistant") continue;
+      const std::string id = JsonValue(*block, "id", "");
+      const std::string text = JsonValue(*block, "text", "");
+      if (!text.empty() && said.insert(id).second) {
+        answer += (answer.empty() ? "" : "\n\n") + text;
+      }
+      break;
+    }
+    return true;
+  };
+  // The work it delegated is part of the answer. It is done when, for a
+  // moment, the coordinator is idle and none of its threads is working: a
+  // finished thread's report starts the coordinator's next turn within that
+  // moment. A thread that waits for a person, or whose runtime is gone, is
+  // not waited for.
+  constexpr auto kTick = std::chrono::milliseconds(250);
+  constexpr auto kQuiet = std::chrono::seconds(2);
+  auto quiet_since = std::chrono::steady_clock::time_point::max();
+  while (!rejected) {
+    const auto tick = std::chrono::steady_clock::now();
+    ReadFrames(connection.socket.Get(), -1, kFrameBytes, receive, tick + kTick);
+    // A runtime that is gone has nothing more to say.
+    char peeked;
+    if (recv(connection.socket.Get(), &peeked, 1, MSG_PEEK | MSG_DONTWAIT) ==
+        0) {
+      break;
+    }
+    if (!submitted) continue;
+    if (!completed || busy || ThreadsWorking(cwd)) {
+      quiet_since = std::chrono::steady_clock::time_point::max();
+    } else if (quiet_since == std::chrono::steady_clock::time_point::max()) {
+      quiet_since = tick;
+    } else if (tick - quiet_since >= kQuiet) {
+      break;
+    }
+  }
   if (rejected || !completed) {
     fprintf(stderr, "%s\n",
             error.empty() ? "coordinator runtime closed" : error.c_str());
     return 1;
-  }
-  std::string answer;
-  const json said = messages();
-  for (size_t index = std::min(earlier, said.size()); index < said.size();
-       ++index) {
-    const std::string text = JsonValue(said[index], "role", "") == "assistant"
-                                 ? JsonValue(said[index], "content", "")
-                                 : std::string();
-    if (!text.empty()) answer += (answer.empty() ? "" : "\n\n") + text;
   }
   if (options.json) {
     printf("%s\n",

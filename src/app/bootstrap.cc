@@ -321,8 +321,14 @@ std::vector<Tool> BuildTools(AppContext& context,
                   "", Options{}, ignored);
   }));
   if (context.options.Coordinator()) {
+    // As it was chosen, so an alias keeps what the provider says of it; a
+    // model nobody named (probed from the endpoint) by what it resolved to.
     AddCoordinatorTools(tools, CanonicalCwd(), [app = &context] {
-      return RouteSelection(app->runtime.api, app->provider.providers);
+      const auto values = app->config_manager.Read().values;
+      const auto chosen = values.find("UAGENT_MODEL");
+      return chosen != values.end() && !chosen->second.empty()
+                 ? chosen->second
+                 : RouteSelection(app->runtime.api, app->provider.providers);
     });
   }
   if (toolset == "lean") {
@@ -400,8 +406,18 @@ Agent::Approver MakeApprover(AppContext* app) {
     bool session_rule = !mandatory && app->session_approvals.contains(key);
     bool repository_rule =
         !mandatory && !session_rule && RepositoryPermissionAllows(root, key);
-    bool automatic =
-        !mandatory && (ApprovalIsYolo() || session_rule || repository_rule);
+    // A coordinator's thread acts inside its folder without review while
+    // the sandbox holds it there: its commands, which the sandbox confines,
+    // and file changes at a path its own check finds inside the workspace.
+    // Without an enforced sandbox, or for anything else, it is reviewed like
+    // any Auto session.
+    const bool confined_thread =
+        JsonValue(app->options.session, "kind", "") == kSessionKindThread &&
+        SandboxRuntime().mode == SandboxMode::kEnforced &&
+        ((tool.capabilities & Capability(ToolCapability::kExecute)) != 0 ||
+         (tool.needs_approval && !tool.needs_approval(arguments)));
+    bool automatic = !mandatory && (ApprovalIsYolo() || session_rule ||
+                                    repository_rule || confined_thread);
     bool granted = true;
     // Who refused, for the model: a person is the default.
     std::string refusal = "user denied this action";

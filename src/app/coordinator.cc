@@ -395,7 +395,8 @@ ToolResult Spawn(const std::string& folder, const json& a,
   // Named, else the one set for delegated work, else the coordinator's own:
   // a thread is told its model and resolves the rest like any session. It
   // inherits no endpoint from this process.
-  std::string model = JsonValue(a, "model", SubagentModel());
+  std::string model = Trim(JsonValue(a, "model", ""));
+  if (model.empty()) model = SubagentModel();
   if (model.empty()) model = own_model();
   if (!model.empty()) options.overrides["UAGENT_MODEL"] = model;
   options.session = {{"kind", kSessionKindThread},

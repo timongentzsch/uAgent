@@ -440,6 +440,22 @@ void TestSseChunkPartitions() {
     CHECK(busy.error == overloaded);
     CHECK(SafeToRetry(busy));
   }
+  // Being opened times the first event and is no progress: progress without
+  // output is what refuses a replay.
+  {
+    ChatResult opening;
+    WireStreamState opening_state;
+    const WireStreamDelta opened = DecodeWireStreamEvent(
+        WireApi::kResponses, R"({"type":"response.created","response":{}})",
+        opening, no_tool_calls, opening_state);
+    CHECK(opened.opened && !opened.activity);
+    // What a failed response was billed for stays, and is never replayed.
+    DecodeWireStreamEvent(
+        WireApi::kResponses,
+        R"({"type":"response.failed","response":{"usage":{"input_tokens":9},"error":{"code":"server_is_overloaded","message":"busy"}}})",
+        opening, no_tool_calls, opening_state);
+    CHECK(opening.retryable && !SafeToRetry(opening));
+  }
 
   // The same frame after visible output is not replayed: StreamCtx has
   // already appended the answer text the user has seen.

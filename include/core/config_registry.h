@@ -712,9 +712,14 @@ consteval const ConfigDescriptor& Cfg(std::string_view environment) {
 }
 
 // A session's settings, apart from environ, which is never rewritten after
-// startup. Lookup order: override, published configuration, environ.
+// startup. Lookup order: override, published configuration, the route in
+// use, environ.
 using SettingValues = std::map<std::string, std::string>;
 void PublishSettings(SettingValues values);
+// The route in use, below what is configured: what a command started from
+// here is told where the configuration names nothing. It is no part of this
+// process's environment, which the runtimes it starts inherit as it was.
+void PublishRoute(SettingValues values);
 void OverrideSetting(std::string_view environment, std::string value);
 void ClearSettings();
 SettingValues CurrentSettings();

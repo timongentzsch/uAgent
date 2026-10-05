@@ -300,9 +300,10 @@ void TestRuntimeOwnershipHelpers() {
   api.capabilities.wire_api = WireApi::kResponses;
   body = api.BuildRequestBody(json::array(), json::array(), "stable-session");
   CHECK(body.value("prompt_cache_key", "") == HashHex("stable-session"));
+  // A proxy in front of the API gets the key as well, and passes it on.
   api.base_url = "http://127.0.0.1:8080/v1";
   body = api.BuildRequestBody(json::array(), json::array(), "stable-session");
-  CHECK(!body.contains("prompt_cache_key"));
+  CHECK(body.value("prompt_cache_key", "") == HashHex("stable-session"));
   api.base_url = "https://api.openai.com/v1";
   api.capabilities =
       CapabilitiesForRoute(ProviderProtocol::kOpenAi, api.base_url);

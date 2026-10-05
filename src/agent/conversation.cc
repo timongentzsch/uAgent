@@ -567,7 +567,7 @@ bool Conversation::HasRecentToolResult(const std::string& name,
 
 ToolTracePruneResult Conversation::PruneOldToolResults(
     size_t protect_chars, size_t minimum_reclaim_chars,
-    const std::vector<std::string>& retained_tools, bool within_turn) {
+    const std::vector<std::string>& retained_tools) {
   if (minimum_reclaim_chars == 0) return {};
   const std::unordered_set<std::string> retained(retained_tools.begin(),
                                                  retained_tools.end());
@@ -586,7 +586,7 @@ ToolTracePruneResult Conversation::PruneOldToolResults(
       ++user_turns;
       continue;
     }
-    if ((!within_turn && user_turns < kProtectedUserTurns) ||
+    if (user_turns < kProtectedUserTurns ||
         kinds_[current] != MessageKind::kToolResult) {
       continue;
     }

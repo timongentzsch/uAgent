@@ -224,24 +224,6 @@ void TestConversation() {
   CHECK(small_batch.PruneOldToolResults(0, 2000, {}).results == 0);
   CHECK(small_batch.At(2).value("content", "") == std::string(1500, 'x'));
 
-  // One long turn: its own old results stay whole, unless pruning inside a
-  // turn is asked for, which keeps only the newest.
-  Conversation long_turn;
-  long_turn.Reset(json::array({{{"role", "system"}, {"content", "sys"}}}),
-                  {MessageKind::kSystem});
-  long_turn.Push({{"role", "user"}, {"content", "one request"}},
-                 MessageKind::kUser);
-  for (char fill : {'a', 'b', 'c'}) {
-    long_turn.Push({{"role", "tool"},
-                    {"tool_call_id", "missing"},
-                    {"content", std::string(3000, fill)}},
-                   MessageKind::kToolResult);
-  }
-  CHECK(long_turn.PruneOldToolResults(3000, 2000, {}).results == 0);
-  CHECK(long_turn.PruneOldToolResults(3000, 2000, {}, true).results == 2);
-  CHECK(long_turn.At(4).value("content", "") == std::string(3000, 'c'));
-  CHECK(long_turn.At(2).value("content", "").size() < 300);
-
   json kinds = MessageKindsJson(conversation.Kinds());
   std::vector<MessageKind> parsed;
   CHECK(ParseMessageKinds(kinds, conversation.Size(), parsed));

@@ -420,12 +420,6 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
 
     // Tool results and trace retention.
     registry::Named(
-        registry::Bul("UAGENT_PRUNE_IN_TURN", {}, false,
-                      ReloadPolicy::kNextUserTurn, "tools",
-                      "shorten old tool results while a long turn still "
-                      "runs: less input, at the risk of reading again"),
-        "Prune inside a turn"),
-    registry::Named(
         registry::Int("UAGENT_TOOL_RESULT_CHARS", {}, 8000, kConfigAnyMin,
                       kConfigAnyMax, ReloadPolicy::kNextUserTurn, "tools",
                       "characters kept from one tool result"),

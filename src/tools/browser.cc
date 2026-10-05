@@ -228,7 +228,9 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask) {
   // taken for one that acts.
   tool.mutates = [](const json& args) {
     const Action* action = FindAction(args);
-    return !action || action->acts || !JsonValue(args, "target_id", "").empty();
+    return !action || action->acts ||
+           (std::string_view(action->name) == "tabs" &&
+            !JsonValue(args, "target_id", "").empty());
   };
   tool.needs_approval = tool.mutates;
   tool.capabilities = Capability(ToolCapability::kInspect) |

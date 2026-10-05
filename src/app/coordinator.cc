@@ -46,9 +46,26 @@ constexpr size_t kDiffBytes = size_t{16} * 1024;
 // waiting on a person, working a turn, or idle. A decision still with the
 // coordinator counts as working.
 std::string LiveStatus(const SessionInfo& info) {
-  const session::Connection connection = session::Connect(info.path);
+  session::Connection connection = session::Connect(info.path);
   if (!connection.socket) return "saved";
-  return connection.status.empty() ? "idle" : connection.status;
+  if (!connection.status.empty()) return connection.status;
+  // One that has said nothing yet, or started from an older binary: its
+  // first state says it.
+  std::string status = "idle";
+  session::ReadFrames(
+      connection.socket.Get(), -1, session::kFrameBytes,
+      [&](const json& frame) {
+        if (JsonValue(frame, "kind", "") != "state") return true;
+        status = WaitsOnPerson(JsonValue(frame, "pending", json()))
+                     ? "needs you"
+                 : JsonValue(frame, "busy", false) ? "working"
+                                                   : "idle";
+        return false;
+      },
+      // A live runtime answers at once; the board is rebuilt every step, so
+      // a stuck one must not hold it up.
+      std::chrono::steady_clock::now() + std::chrono::milliseconds(500));
+  return status;
 }
 
 std::string Age(std::filesystem::file_time_type mtime) {

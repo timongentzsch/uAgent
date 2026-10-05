@@ -423,6 +423,7 @@ class WorkerChannel final : public ApplicationChannel {
   bool Occupied() {
     std::lock_guard lock(mutex_);
     if (input_ || SteeringState().QueuedCount() > 0) return true;
+    if (link_ && link_->Owes()) return true;
     const json* activities = JsonArray(state_, "activities");
     return activities && std::ranges::any_of(*activities, ActivityRuns);
   }

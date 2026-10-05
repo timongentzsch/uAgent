@@ -705,7 +705,11 @@ bool Runtime::Agent(const json& command, std::string& error) {
     error = kLeasedElsewhere;
     return false;
   }
-  if (agent_session_ != session) observation_.clear();
+  if (last_holder_ != session) {
+    observation_.clear();
+    moved_ = true;
+    last_holder_ = session;
+  }
   agent_session_ = session;
   agent_used_ = now;
   mode_ = "agent";
@@ -995,6 +999,15 @@ json Runtime::Execute(const json& command) {
     return Status();
   }
   if (op == "probe") return Probe();
+  // Whoever takes the browser after someone else starts from the page as it
+  // is, not as it remembers it: keys and text go nowhere before that.
+  if (op == "observe" || op == "tabs" || op == "open") {
+    moved_ = false;
+  } else if (moved_) {
+    return {{"error",
+             "another conversation used the browser since; open your page "
+             "or observe before acting"}};
+  }
   if (op == "observe") return Observe();
   if (op == "tabs") {
     json pages = PageTargets();

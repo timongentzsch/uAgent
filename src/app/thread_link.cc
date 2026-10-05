@@ -28,6 +28,8 @@ Mail Event(const std::string& folder, const std::string& thread_path,
   mail.type = type;
   mail.correlation_id = correlation;
   mail.body = {{"text", text}, {"folder", folder}};
+  // Named here, so sending it again is the same message to its reader.
+  mail.id = RandomToken(8);
   return mail;
 }
 
@@ -43,16 +45,16 @@ bool Deliver(const Mail& mail, std::function<void()> unreachable) {
   if (!refused.empty()) {
     DebugLog("coordinator_mail_refused", {{"error", refused}});
   }
+  // Started also when the mail was refused: a full inbox empties only when
+  // its coordinator runs.
   std::thread([folder, refused, unreachable = std::move(unreachable)] {
-    if (!refused.empty()) {
-      unreachable();
-      return;
-    }
     std::string error;
     if (!Open(ExecutablePath(), folder, CoordinatorPath(folder), "", Options{},
               error)
              .socket) {
       DebugLog("coordinator_start_failed", {{"error", error}});
+      unreachable();
+    } else if (!refused.empty()) {
       unreachable();
     }
   }).detach();

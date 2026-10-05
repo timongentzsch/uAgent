@@ -29,6 +29,8 @@ class ThreadLink {
               const std::string& answer);
   // Sends again a report the coordinator's full inbox refused.
   void Resend();
+  // Whether a report still waits to be sent: its runtime stays for it.
+  bool Owes() const { return unsent_.has_value(); }
 
   // Why a message may not enter the thread, or empty. A coordinator may send
   // kStreak in a row with nobody else speaking here, so the two can never

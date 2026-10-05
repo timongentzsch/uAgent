@@ -66,6 +66,10 @@ class Runtime {
   bool loading_ = false;
   std::chrono::steady_clock::time_point used_ =
       std::chrono::steady_clock::now();
+  // The browser changed hands and its holder has not yet opened or looked
+  // at a page: what it remembers of the page is another conversation's.
+  bool moved_ = false;
+  std::string last_holder_;
   // When the conversation holding the browser last asked something of it.
   std::chrono::steady_clock::time_point agent_used_ = used_;
   // Bumps on every lease or tab change; guards observations.

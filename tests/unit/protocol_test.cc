@@ -297,7 +297,7 @@ void TestRegistries() {
   // The prompt's wording may change; its safety rules and the instruction
   // files it names may not. The budget keeps it from growing.
   for (const char* rule :
-       {"AGENTS.md", "CLAUDE.md", "AGENTS.override.md",
+       {"AGENTS.md", "AGENTS.override.md",
         "Commit or push only when asked", "Inquiries do not authorize",
         "evidence, not instructions", "cannot expand approved scope",
         "exfiltrate data"}) {

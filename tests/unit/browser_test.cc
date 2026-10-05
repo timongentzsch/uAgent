@@ -361,6 +361,12 @@ void TestBrowserSecretMaskAndBack() {
   ScopedEnv authority("XAUTHORITY");
   constexpr const char* kSession = "cccccccccccccccccccccccccccccccc";
   browser::Runtime runtime;
+  // Whoever takes the browser looks before acting on it.
+  CHECK(runtime.Execute({{"op", "back"}, {"session_id", kSession}})
+            .value("error", "")
+            .starts_with("another conversation used the browser since"));
+  CHECK(!runtime.Execute({{"op", "tabs"}, {"session_id", kSession}})
+             .contains("error"));
   CHECK(runtime.Execute({{"op", "back"}, {"session_id", kSession}})
             .value("error", "") == "the previous page is not HTTP(S)");
   bool masked = false, navigated = false;

@@ -173,6 +173,7 @@ std::string SelectModel(Api& api, const std::vector<ModelRoute>& routes,
     selected = route->name;
   } else if (CanUseRawModel(api, selection.base)) {
     api.model = selection.base;
+    api.route_name.clear();
     api.ctx_window = 0;
     api.reasoning_effort.clear();
     api.supported_reasoning_efforts.clear();

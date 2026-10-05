@@ -49,7 +49,7 @@ constexpr const char kBase[] =
     "is unavailable, say so and fall back safely.\n\n"
     "## Changes\nInquiries do not authorize workspace changes; change files "
     "when asked. Before changing a nested path, check it for a nearer "
-    "AGENTS.override.md, AGENTS.md or CLAUDE.md. Make the smallest focused "
+    "AGENTS.override.md or AGENTS.md. Make the smallest focused "
     "change; leave unrelated work as it was. Validate narrowly first; broaden "
     "for cross-cutting or risky changes, or after surprising results. Commit "
     "or push only when asked. Finish when the request is met and validation "

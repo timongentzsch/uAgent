@@ -302,8 +302,10 @@ std::vector<Tool> BuildTools(AppContext& context,
 #endif
   // The default lean child is an isolation and context-efficiency boundary:
   // do not clone the parent's entire MCP fleet into every delegation. A root
-  // lean session and an explicitly requested full child still get MCP.
-  if (AgentDepth() == 0 || toolset != "lean") {
+  // lean session and an explicitly requested full child still get MCP. A
+  // coordinator may call none of their tools, so it starts none of them.
+  if (!context.options.Coordinator() &&
+      (AgentDepth() == 0 || toolset != "lean")) {
     error = McpRegister(tools, runtime.mcp, runtime.config, trusted_snapshot);
     if (!error.empty()) return {};
   }
@@ -697,7 +699,9 @@ BootstrapResult Bootstrap(Options options, const char* executable,
                                                    options.prompt, error)) {
     return Failure(std::move(error), 2);
   }
-  MaintainArtifacts();
+  // Housekeeping over the whole artifact tree is a session's, not something
+  // each child it starts repeats.
+  if (AgentDepth() == 0) MaintainArtifacts();
   if (!options.debug) {
     options.debug_path = SettingText(Cfg("UAGENT_DEBUG_LOG"));
     options.debug = !options.debug_path.empty();

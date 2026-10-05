@@ -1256,18 +1256,11 @@ void TestMailbox() {
   CHECK(PendingMail("recipient").size() == 1);
   TakeMail("recipient", all);
 
-  // A waiting duplicate is dropped, and a progress report replaces the
-  // pending one for its task.
+  // A waiting duplicate is dropped.
   CHECK(SendMail(note("c", "same")).empty());
   CHECK(SendMail(note("c", "same")).empty());
-  Mail progress = note("c", "step 1");
-  progress.type = kMailTaskProgress;
-  progress.correlation_id = "task";
-  CHECK(SendMail(progress).empty());
-  progress.body = {{"text", "step 2"}};
-  CHECK(SendMail(progress).empty());
   CHECK(texts(TakeMail("recipient", all)) ==
-        std::vector<std::string>({"same", "step 2"}));
+        std::vector<std::string>({"same"}));
 
   // Loops, floods and oversized messages are refused with a reason.
   Mail looping = note("d", "again");

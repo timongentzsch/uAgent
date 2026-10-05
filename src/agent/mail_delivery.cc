@@ -76,8 +76,7 @@ bool Agent::DeliverMail(bool hold) {
   const std::string own = MailboxIdFor(own_path);
   if (own.empty()) return false;
   std::vector<Mail> taken = TakeMail(own, [&](const Mail& mail) {
-    if (hold && mail.delivery == MailDelivery::kWake) return false;
-    return MailAllowed(mail, own_path, session_role_);
+    return !hold && MailAllowed(mail, own_path, session_role_);
   });
   for (const Mail& mail : taken) {
     unacked_mail_.push_back(mail.id);
@@ -92,25 +91,12 @@ bool Agent::DeliverMail(bool hold) {
     // The sender labels its text; it is never the user's.
     const std::string text = JsonValue(mail.body, "text", "");
     if (text.empty()) continue;
-    switch (mail.delivery) {
-      case MailDelivery::kPassive:
-        conversation_.Push(HarnessMessage(text), MessageKind::kInternal);
-        break;
-      case MailDelivery::kInterrupt:
-        NotFromUser(text);
-        SteeringState().Queue(text, "", true);
-        RequestAbort();
-        break;
-      case MailDelivery::kWake:
-      case MailDelivery::kStep:
-        NotFromUser(text);
-        SteeringState().Queue(text, "", mail.delivery == MailDelivery::kWake);
-        break;
-    }
+    // Mail wakes its recipient: an idle one starts a turn on it.
+    NotFromUser(text);
+    SteeringState().Queue(text, "", true);
     DebugLog("mail_delivered", {{"id", mail.id},
                                 {"type", mail.type},
                                 {"from", mail.from},
-                                {"delivery", MailDeliveryName(mail.delivery)},
                                 {"latency_ms", NowMillis() - mail.created_ms}});
   }
   return !taken.empty();

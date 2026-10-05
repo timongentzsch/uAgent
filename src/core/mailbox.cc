@@ -26,9 +26,6 @@ namespace uagent {
 namespace {
 namespace fs = std::filesystem;
 
-constexpr const char* kDeliveryNames[] = {"wake", "step", "passive",
-                                          "interrupt"};
-
 bool ValidId(const std::string& id) {
   return !id.empty() && SafeFileComponent(id) == id;
 }
@@ -85,10 +82,6 @@ bool OverRate(const std::string& from) {
 }
 }  // namespace
 
-const char* MailDeliveryName(MailDelivery delivery) {
-  return kDeliveryNames[static_cast<int>(delivery)];
-}
-
 json MailToJson(const Mail& mail) {
   return {{"format", 1},
           {"id", mail.id},
@@ -97,9 +90,6 @@ json MailToJson(const Mail& mail) {
           {"type", mail.type},
           {"sender_path", mail.sender_path},
           {"correlation_id", mail.correlation_id},
-          {"causation_id", mail.causation_id},
-          {"reply_to", mail.reply_to},
-          {"delivery", MailDeliveryName(mail.delivery)},
           {"hops", mail.hops},
           {"created_ms", mail.created_ms},
           {"expires_ms", mail.expires_ms},
@@ -114,17 +104,10 @@ bool MailFromJson(const json& value, Mail& mail) {
   mail.type = JsonValue(value, "type", "");
   mail.sender_path = JsonValue(value, "sender_path", "");
   mail.correlation_id = JsonValue(value, "correlation_id", "");
-  mail.causation_id = JsonValue(value, "causation_id", "");
-  mail.reply_to = JsonValue(value, "reply_to", "");
   mail.hops = JsonValue(value, "hops", 0);
   mail.created_ms = JsonValue(value, "created_ms", int64_t{0});
   mail.expires_ms = JsonValue(value, "expires_ms", int64_t{0});
   mail.body = JsonValue(value, "body", json::object());
-  const std::string delivery = JsonValue(value, "delivery", "");
-  auto found =
-      std::find(std::begin(kDeliveryNames), std::end(kDeliveryNames), delivery);
-  if (found == std::end(kDeliveryNames)) return false;
-  mail.delivery = static_cast<MailDelivery>(found - std::begin(kDeliveryNames));
   return ValidId(mail.id) && !mail.type.empty() && mail.body.is_object();
 }
 
@@ -165,13 +148,6 @@ std::string SendMail(Mail mail) {
     if (pending.from == mail.from && pending.type == mail.type &&
         pending.body == mail.body) {
       return "";  // the same message is still waiting
-    }
-    if (mail.type == kMailTaskProgress && pending.type == mail.type &&
-        pending.from == mail.from &&
-        pending.correlation_id == mail.correlation_id) {
-      std::error_code error;
-      fs::remove(path, error);
-      continue;
     }
     ++count;
   }

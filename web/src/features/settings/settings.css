@@ -91,6 +91,7 @@ dialog.settings-view {
   }
   .setting-field[data-wide] .row-value {
     flex: 1 0 100%;
+    min-width: 0;
     max-width: none;
   }
   .setting-field .row-value > .text-control:not(.select) {

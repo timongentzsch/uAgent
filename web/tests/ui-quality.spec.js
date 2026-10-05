@@ -310,6 +310,29 @@ test.describe("touch interaction", () => {
     expect(bounds.y).toBeGreaterThanOrEqual(0);
     expect(bounds.y + bounds.height).toBeLessThanOrEqual(844);
   });
+  test("a long setting value is cut short, not scrolled to", async ({
+    page,
+    session,
+  }) => {
+    await page.goto(`/#session=${session.id}`);
+    await page.getByRole("button", { name: "Settings", exact: true }).tap();
+    const settings = page.getByRole("dialog", {
+      name: "Settings",
+      exact: true,
+    });
+    await settings
+      .locator(".settings-nav")
+      .getByRole("button", { name: "All conversations", exact: true })
+      .tap();
+    await expect(
+      settings.locator('[data-setting$="_MODEL"]').first(),
+    ).toBeVisible();
+    expect(
+      await settings
+        .locator(".settings-pane")
+        .evaluate((pane) => pane.scrollWidth - pane.clientWidth),
+    ).toBeLessThanOrEqual(1);
+  });
   test("composer text scales at every density without a sub-16px layout font", async ({
     page,
     session,

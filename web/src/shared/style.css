@@ -2296,8 +2296,11 @@ dialog > header .icon-button {
 }
 /* Quiet: rows sit on the surface itself, separated by hairlines, with no
    card around them; only hover and the current item are filled. */
+/* One column as wide as the group: a row's long value is cut short there
+   rather than widening every row. */
 .group-rows {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
 }
 .group-rows > * + * {
   border-top: 1px solid var(--line);

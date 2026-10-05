@@ -366,6 +366,19 @@ void TestObservabilityEvents() {
     ++lines;
   }
   CHECK(lines == 512);
+  // A save that follows no event leaves the file alone; the next event
+  // writes it again.
+  CHECK(journal.Flush(path, error));
+  struct stat again{};
+  CHECK(stat(path.c_str(), &again) == 0 && again.st_ino == state.st_ino);
+  Event next{EventId::kTurnCompleted,
+             {{"turn", 601},
+              {"outcome", "ok"},
+              {"steps", 1},
+              {"usage", json::object()}}};
+  journal.Append(next, PolicyFor(next.id));
+  CHECK(journal.Flush(path, error));
+  CHECK(stat(path.c_str(), &again) == 0 && again.st_ino != state.st_ino);
 
   SessionJournal restored;
   CHECK(restored.Load(path, error));
@@ -380,7 +393,7 @@ void TestObservabilityEvents() {
   while (std::getline(resumed_input, line)) {
     last = json::parse(line, nullptr, false);
   }
-  CHECK(JsonValue(last, "seq", int64_t{0}) == 601);
+  CHECK(JsonValue(last, "seq", int64_t{0}) == 602);
 
   DebugSink debug;
   std::string debug_path = (workspace.root / "debug.jsonl").string();

@@ -430,6 +430,9 @@ void TestSessionPersistence() {
   CHECK(SnapshotFile(channel.path) == checkpoint);
 
   context.agent->Rename("retry after journal failure");
+  // The journal is written when it has something new.
+  session.context.observability.Emit(
+      Event{EventId::kConfigChanged, {{"changed", json::array({"title"})}}});
   const std::string journal = channel.path + ".events.jsonl";
   std::filesystem::remove(journal);
   std::filesystem::create_directory(journal);

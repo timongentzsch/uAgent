@@ -35,6 +35,9 @@ struct Connection {
   int pid = -1;
   // FileIdentity of the executable the worker started from, from its hello.
   std::string binary;
+  // What the runtime said it was doing when it answered: "needs you",
+  // "working" or "idle"; empty before its first state.
+  std::string status;
 };
 Connection Connect(const std::string& path);
 // Open hands a runtime its options in a private launch file; this reads them

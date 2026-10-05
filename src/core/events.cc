@@ -331,6 +331,7 @@ void SessionJournal::Append(const Event& event,
   }
   bytes_ += line_bytes;
   lines_.push_back(std::move(line));
+  ++changes_;
 }
 
 bool SessionJournal::Load(const std::string& path, std::string& error) {
@@ -378,14 +379,23 @@ bool SessionJournal::Load(const std::string& path, std::string& error) {
 
 bool SessionJournal::Flush(const std::string& path, std::string& error) const {
   std::string content;
+  uint64_t changes = 0;
   {
     std::lock_guard lock(mutex_);
     if (!enabled_ || path.empty()) return true;
+    if (flushed_path_ == path && flushed_changes_ == changes_) return true;
+    changes = changes_;
     content.reserve(bytes_);
     for (const std::string& line : lines_) content += line + '\n';
   }
-  return AtomicWriteFile(path, content, kPrivateFileMode,
-                         /*preserve_mode=*/false, error);
+  if (!AtomicWriteFile(path, content, kPrivateFileMode,
+                       /*preserve_mode=*/false, error)) {
+    return false;
+  }
+  std::lock_guard lock(mutex_);
+  flushed_path_ = path;
+  flushed_changes_ = changes;
+  return true;
 }
 
 void SessionJournal::SetEnabled(bool enabled) {
@@ -403,6 +413,7 @@ void SessionJournal::ClearLocked() {
   lines_.clear();
   bytes_ = 0;
   sequence_ = 0;
+  ++changes_;
 }
 
 Observability::Observability()

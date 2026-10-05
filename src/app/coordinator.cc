@@ -42,27 +42,13 @@ constexpr size_t kReportBytes = size_t{8} * 1024;
 constexpr size_t kMessageBytes = size_t{8} * 1024;
 constexpr size_t kDiffBytes = size_t{16} * 1024;
 
-// "saved" without a runtime; else what its runtime's snapshot says: waiting
-// on a person, working a turn, or idle. A decision still with the coordinator
-// counts as working.
+// "saved" without a runtime; else what its runtime said when it answered:
+// waiting on a person, working a turn, or idle. A decision still with the
+// coordinator counts as working.
 std::string LiveStatus(const SessionInfo& info) {
-  session::Connection connection = session::Connect(info.path);
+  const session::Connection connection = session::Connect(info.path);
   if (!connection.socket) return "saved";
-  std::string status = "idle";
-  session::ReadFrames(
-      connection.socket.Get(), -1, session::kFrameBytes,
-      [&](const json& frame) {
-        if (JsonValue(frame, "kind", "") != "state") return true;
-        status = WaitsOnPerson(JsonValue(frame, "pending", json()))
-                     ? "needs you"
-                 : JsonValue(frame, "busy", false) ? "working"
-                                                   : "idle";
-        return false;
-      },
-      // A live runtime answers at once; the board is rebuilt every step, so
-      // a stuck one must not hold it up.
-      std::chrono::steady_clock::now() + std::chrono::milliseconds(500));
-  return status;
+  return connection.status.empty() ? "idle" : connection.status;
 }
 
 std::string Age(std::filesystem::file_time_type mtime) {

@@ -20,6 +20,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/session_role.h"
 #include "include/app/session.h"
 #include "include/core/child_env.h"
 #include "include/core/fd.h"
@@ -71,6 +72,7 @@ Connection Connect(const std::string& path) {
       result.generation = JsonValue(hello, "generation", "");
       result.pid = JsonValue(hello, "pid", -1);
       result.binary = JsonValue(hello, "binary", "");
+      result.status = JsonValue(hello, "status", "");
       if (JsonValue(hello, "v", 0) == kProtocol &&
           JsonValue(hello, "session_id", "") == HashHex(path) &&
           OpaqueId(result.generation) && result.pid > 0) {
@@ -350,14 +352,19 @@ struct Server::State {
         if (fd && clients.size() < kMaxClients) {
           fcntl(fd.Get(), F_SETFL, O_NONBLOCK);
           fcntl(fd.Get(), F_SETFD, FD_CLOEXEC);
+          json hello = {{"v", kProtocol},           {"kind", "hello"},
+                        {"pid", getpid()},          {"session_id", id},
+                        {"generation", generation}, {"binary", binary}};
+          // Who only asks how the session stands reads no further.
+          if (!snapshot.is_null()) {
+            hello["status"] =
+                WaitsOnPerson(JsonValue(snapshot, "pending", json()))
+                    ? "needs you"
+                : JsonValue(snapshot, "busy", false) ? "working"
+                                                     : "idle";
+          }
           Client client{std::move(fd), FrameBuffer{kCommandBytes},
-                        JsonDump({{"v", kProtocol},
-                                  {"kind", "hello"},
-                                  {"pid", getpid()},
-                                  {"session_id", id},
-                                  {"generation", generation},
-                                  {"binary", binary}}) +
-                            '\n'};
+                        JsonDump(hello) + '\n'};
           if (!snapshot.is_null()) client.output += JsonDump(snapshot) + '\n';
           if (replay_gap) {
             client.output += JsonDump({{"v", kProtocol},

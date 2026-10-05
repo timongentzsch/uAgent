@@ -117,8 +117,9 @@ non-PTY activity is rejected.
 
 ## Delegation
 
-`subagent` defaults to `operation=spawn` and returns an activity ID and a
-durable agent ID.
+`subagent` defaults to `operation=spawn` and waits for the child, returning
+its answer and a durable agent ID; with `background=true` it returns an
+activity ID at once.
 
 - `followup` resumes the child's private conversation and prepends its
   stored `directive`; an empty directive clears it.

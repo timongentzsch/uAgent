@@ -409,14 +409,17 @@ Agent::Approver MakeApprover(AppContext* app) {
     bool repository_rule =
         !mandatory && !session_rule && RepositoryPermissionAllows(root, key);
     // A coordinator's thread acts inside its folder without review while
-    // the sandbox holds it there: its commands, which the sandbox confines,
-    // and file changes at a path its own check finds inside the workspace.
+    // the sandbox holds it there: the commands the sandbox wraps (run and
+    // scratch, which may also write the sandbox's other roots: temporary
+    // files and tool caches), and file changes at a path its own check
+    // finds inside the workspace. Stopping a process is not one of them: a
+    // detached one may belong to another folder.
     // Without an enforced sandbox, or for anything else, it is reviewed like
     // any Auto session.
     const bool confined_thread =
         JsonValue(app->options.session, "kind", "") == kSessionKindThread &&
         SandboxRuntime().mode == SandboxMode::kEnforced &&
-        ((tool.capabilities & Capability(ToolCapability::kExecute)) != 0 ||
+        (tool.name == "run" || tool.name == "scratch" ||
          (tool.needs_approval && !tool.needs_approval(arguments)));
     bool automatic = !mandatory && (ApprovalIsYolo() || session_rule ||
                                     repository_rule || confined_thread);

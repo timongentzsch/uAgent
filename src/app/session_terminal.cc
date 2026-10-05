@@ -853,8 +853,6 @@ int CoordinatorPromptMain(const Options& options) {
   };
   const std::string request = RandomToken(16);
   bool submitted = false, rejected = false, completed = false, busy = true;
-  std::string answer;
-  std::set<std::string> said;
   json stop = json::object();
   // The coordinator's session runs on; this request is its growth.
   Usage before, after;
@@ -894,45 +892,37 @@ int CoordinatorPromptMain(const Options& options) {
     if (!completed) stop = JsonValue(frame["state"], "stop", json::object());
     after = UsageFromJson(JsonValue(frame["state"], "usage", json::object()));
     completed = true;
-    // What it said last, once per row: a turn a thread's report started says
-    // more, and all of it answers the request.
-    const json blocks =
-        JsonValue(JsonValue(frame["state"], "view", json::object()), "blocks",
-                  json::array());
-    for (auto block = blocks.rbegin(); block != blocks.rend(); ++block) {
-      if (JsonValue(*block, "kind", "") != "assistant") continue;
-      const std::string id = JsonValue(*block, "id", "");
-      const std::string text = JsonValue(*block, "text", "");
-      if (!text.empty() && said.insert(id).second) {
-        answer += (answer.empty() ? "" : "\n\n") + text;
-      }
-      break;
-    }
     return true;
   };
   // The work it delegated is part of the answer. It is done when, for a
   // moment, the coordinator is idle and none of its threads is working: a
   // finished thread's report starts the coordinator's next turn within that
   // moment. A thread that waits for a person, or whose runtime is gone, is
-  // not waited for.
-  constexpr auto kTick = std::chrono::milliseconds(250);
+  // not waited for. One buffer for the whole wait: a frame may arrive in
+  // pieces on either side of a tick.
+  constexpr int kTickMs = 250;
   constexpr auto kQuiet = std::chrono::seconds(2);
   auto quiet_since = std::chrono::steady_clock::time_point::max();
-  while (!rejected) {
-    const auto tick = std::chrono::steady_clock::now();
-    ReadFrames(connection.socket.Get(), -1, kFrameBytes, receive, tick + kTick);
-    // A runtime that is gone has nothing more to say.
-    char peeked;
-    if (recv(connection.socket.Get(), &peeked, 1, MSG_PEEK | MSG_DONTWAIT) ==
-        0) {
-      break;
+  FrameBuffer frames;
+  char buffer[4096];
+  for (bool open = true; open && !rejected;) {
+    pollfd wait{connection.socket.Get(), POLLIN, 0};
+    const int ready = poll(&wait, 1, kTickMs);
+    if (ready < 0 && errno != EINTR) break;
+    if (ready > 0) {
+      const ssize_t count = read(wait.fd, buffer, sizeof buffer);
+      if (count < 0 && (errno == EINTR || errno == EAGAIN)) continue;
+      open = count > 0 &&
+             frames.Feed(std::string_view(buffer, static_cast<size_t>(count)),
+                         receive);
+      continue;
     }
-    if (!submitted) continue;
-    if (!completed || busy || ThreadsWorking(cwd)) {
+    const auto now = std::chrono::steady_clock::now();
+    if (!submitted || !completed || busy || ThreadsWorking(cwd)) {
       quiet_since = std::chrono::steady_clock::time_point::max();
     } else if (quiet_since == std::chrono::steady_clock::time_point::max()) {
-      quiet_since = tick;
-    } else if (tick - quiet_since >= kQuiet) {
+      quiet_since = now;
+    } else if (now - quiet_since >= kQuiet) {
       break;
     }
   }
@@ -940,6 +930,33 @@ int CoordinatorPromptMain(const Options& options) {
     fprintf(stderr, "%s\n",
             error.empty() ? "coordinator runtime closed" : error.c_str());
     return 1;
+  }
+  // Everything the coordinator said since the request, in full: a thread's
+  // report reopens its turn or starts another, and each says part of it.
+  std::string answer;
+  SessionLoadResult saved = SessionStore::Inspect(path);
+  Conversation conversation;
+  if (saved.record &&
+      std::move(saved.record->state).RestoreConversation(conversation)) {
+    const json& messages = conversation.Messages();
+    size_t asked = messages.size();
+    for (size_t index = messages.size(); index > 0 && asked == messages.size();
+         --index) {
+      const json& message = messages[index - 1];
+      if (JsonValue(message, "role", "") == "user" &&
+          JsonValue(message, "content", "") == options.prompt) {
+        asked = index - 1;
+      }
+    }
+    for (size_t index = asked + 1; index < messages.size(); ++index) {
+      const std::string text =
+          JsonValue(messages[index], "role", "") == "assistant"
+              ? JsonValue(messages[index], "content", "")
+              : std::string();
+      if (!text.empty()) answer += (answer.empty() ? "" : "\n\n") + text;
+    }
+    // The request itself was compacted away: what was said last.
+    if (answer.empty()) answer = conversation.LastAssistantText();
   }
   if (options.json) {
     printf("%s\n",

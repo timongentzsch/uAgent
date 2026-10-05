@@ -215,7 +215,9 @@ void ExecuteCall(CallTask& task, const ToolCall& call, int64_t turn,
   // Decided again now that the calls before it in the batch have run: one of
   // them can have made its path a link to something only a person may touch.
   task.result =
-      RequiredApproval(*task.tool, task.args) > task.required
+      RequiredApproval(*task.tool, task.args) > task.required ||
+              (!task.outside && task.tool->needs_approval &&
+               task.tool->needs_approval(task.args))
           ? ToolFailure(ToolErrorCode::kPermissionDenied,
                         "error: what this call reaches changed after it was "
                         "approved; ask for it again")

@@ -206,6 +206,8 @@ void Agent::PrepareCall(const ToolCall& call, CallTask& task,
   const ApprovalClass required =
       valid ? RequiredApproval(*tool, arguments) : ApprovalClass::kNone;
   task.required = required;
+  task.outside =
+      valid && tool->needs_approval && tool->needs_approval(arguments);
   task.activity = {
       {"id", call.id},
       {"category", valid ? ToolActivityCategory(*tool, arguments) : "run"},

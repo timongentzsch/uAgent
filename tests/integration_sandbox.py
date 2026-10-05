@@ -351,53 +351,56 @@ def test_sandbox_hides_the_web_hosts_devices(root, home, *, binary):
 
 def test_a_link_made_in_the_same_batch_does_not_reach_the_saved_settings(root, home, *, binary):
     """A call is approved for what it reaches when the batch is prepared. A
-    call before it can make its path a link to the saved settings: what it
-    needs is decided again when it runs, and it is refused."""
+    call before it can make its path a link to something else: what it needs
+    is decided again when it runs, and it is refused. So for the saved
+    settings, which only a person may touch, and for any file outside the
+    folder, which is a different question from one inside it."""
     ws = workspace(root)
-    target = settings_path(home)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    seen = []
+    settings = settings_path(home)
+    settings.parent.mkdir(parents=True, exist_ok=True)
+    for name, link, target, path in (
+        ("settings", ws / "alias", settings.parent, "alias/settings.json"),
+        ("outside", ws / "local.txt", root / "outside.txt", "local.txt"),
+    ):
+        seen = []
+        if name == "outside":
+            target.write_text("before")
 
-    def route(_, body):
-        results = [str(m.get("content", "")) for m in body["messages"] if m.get("role") == "tool"]
-        if results:
-            seen.extend(results)
-            return event({"content": "done"})
-        return event(
-            {
-                "tool_calls": [
-                    {
-                        "index": 0,
-                        "id": "link",
-                        "function": {
-                            "name": "run",
-                            "arguments": json.dumps(
-                                {"command": f"ln -s {target.parent} {ws}/alias"}
-                            ),
-                        },
-                    },
-                    {
-                        "index": 1,
-                        "id": "write",
-                        "function": {
-                            "name": "write_file",
-                            "arguments": json.dumps(
-                                {"path": "alias/settings.json", "content": "{}"}
-                            ),
-                        },
-                    },
-                ]
-            },
-            finish="tool_calls",
+        def route(_, body, seen=seen, link=link, target=target, path=path):
+            results = [
+                str(m.get("content", "")) for m in body["messages"] if m.get("role") == "tool"
+            ]
+            if results:
+                seen.extend(results)
+                return event({"content": "done"})
+            calls = (
+                ("link", "run", {"command": f"ln -s {target} {link}"}),
+                ("write", "write_file", {"path": path, "content": "{}"}),
+            )
+            return event(
+                {
+                    "tool_calls": [
+                        {
+                            "index": index,
+                            "id": call,
+                            "function": {"name": tool, "arguments": json.dumps(arguments)},
+                        }
+                        for index, (call, tool, arguments) in enumerate(calls)
+                    ]
+                },
+                finish="tool_calls",
+            )
+
+        with Server([route] * 2) as server:
+            env = sandbox_env(home, server.url, UAGENT_SANDBOX="0")
+            result = run(ws, env, "--yolo", "-p", "go", timeout=30, binary=binary)
+        assert_true(result.returncode == 0, (result.stdout, result.stderr))
+        assert_true(link.is_symlink(), f"{name}: the link was never made: {seen}")
+        assert_true(
+            not settings.exists() and (name == "settings" or target.read_text() == "before"),
+            f"{name}: a file tool wrote through the link",
         )
-
-    with Server([route] * 2) as server:
-        env = sandbox_env(home, server.url, UAGENT_SANDBOX="0")
-        result = run(ws, env, "--yolo", "-p", "go", timeout=30, binary=binary)
-    assert_true(result.returncode == 0, (result.stdout, result.stderr))
-    assert_true((ws / "alias").is_symlink(), f"the link was never made: {seen}")
-    assert_true(not target.exists(), "a file tool wrote the saved settings through a link")
-    assert_true(any("changed after it was approved" in text for text in seen), seen)
+        assert_true(any("changed after it was approved" in text for text in seen), (name, seen))
 
 
 def test_sandbox_reads_stay_open(root, home, *, binary):

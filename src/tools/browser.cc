@@ -17,6 +17,34 @@
 
 namespace uagent {
 namespace {
+// What the tool can do. An action that acts on the page changes it and is
+// followed by a look at what came of it; the others ask or hand over.
+struct Action {
+  const char* name;
+  bool acts;
+  const char* doing;
+  const char* done;
+};
+constexpr Action kActions[] = {
+    {"status", false, "Checking", "Checked"},
+    {"open", true, "Opening", "Opened"},
+    {"tabs", false, "Checking", "Checked"},
+    {"observe", false, "Looking at", "Looked at"},
+    {"click", true, "Clicking in", "Clicked in"},
+    {"type", true, "Typing", "Typed"},
+    {"press", true, "Pressing a key in", "Pressed a key in"},
+    {"fill_saved", true, "Taking a saved login in", "Took a saved login in"},
+    {"scroll", true, "Scrolling", "Scrolled"},
+    {"back", true, "Going back in", "Went back in"},
+    {"request_human", false, "Asking you to use", "Asked you to use"},
+    {"release", false, "Releasing", "Released"}};
+
+const Action* FindAction(const json& args) {
+  const std::string name = JsonValue(args, "action", "");
+  const auto* found = std::ranges::find(kActions, name, &Action::name);
+  return found == std::end(kActions) ? nullptr : found;
+}
+
 constexpr int kProbeIntervalMs = 250;
 constexpr int kSettleMs = 8000;
 // Unchanged probes in a row (about half a second) that count as settled.
@@ -177,14 +205,12 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask) {
       "confirmation, call request_human with a reason naming the site and "
       "step; it waits until the user hands back. Never ask for credentials "
       "in chat.";
+  json names = json::array();
+  for (const Action& action : kActions) names.push_back(action.name);
   tool.parameters = {
       {"type", "object"},
       {"properties",
-       {{"action",
-         {{"type", "string"},
-          {"enum",
-           {"status", "open", "tabs", "observe", "click", "type", "press",
-            "fill_saved", "scroll", "back", "request_human", "release"}}}},
+       {{"action", {{"type", "string"}, {"enum", std::move(names)}}},
         {"url", {{"type", "string"}}},
         {"target_id", {{"type", "string"}}},
         {"view_id", {{"type", "string"}}},
@@ -198,11 +224,11 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask) {
         {"reason", {{"type", "string"}}}}},
       {"required", {"action"}},
       {"additionalProperties", false}};
+  // Switching tabs changes what the user sees too; an unknown action is
+  // taken for one that acts.
   tool.mutates = [](const json& args) {
-    std::string action = JsonValue(args, "action", "");
-    if (action == "tabs") return !JsonValue(args, "target_id", "").empty();
-    return action != "status" && action != "observe" &&
-           action != "request_human" && action != "release";
+    const Action* action = FindAction(args);
+    return !action || action->acts || !JsonValue(args, "target_id", "").empty();
   };
   tool.needs_approval = tool.mutates;
   tool.capabilities = Capability(ToolCapability::kInspect) |
@@ -215,28 +241,15 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask) {
   };
   tool.intent = "research";
   tool.header = [](const json& args) {
-    const std::string action = JsonValue(args, "action", "");
-    if (action == "open") {
-      return json{{"verb", {"Opening", "Opened"}},
-                  {"target", JsonValue(args, "url", "")}};
-    }
-    if (action == "type") {
-      return json{{"verb", {"Typing", "Typed"}},
-                  {"target", FirstLine(JsonValue(args, "text", ""))}};
-    }
-    const json verb =
-        action == "observe" ? json{"Looking at", "Looked at"}
-        : action == "click" ? json{"Clicking in", "Clicked in"}
-        : action == "press" ? json{"Pressing a key in", "Pressed a key in"}
-        : action == "fill_saved"
-            ? json{"Taking a saved login in", "Took a saved login in"}
-        : action == "scroll" ? json{"Scrolling", "Scrolled"}
-        : action == "back"   ? json{"Going back in", "Went back in"}
-        : action == "request_human"
-            ? json{"Asking you to use", "Asked you to use"}
-        : action == "release" ? json{"Releasing", "Released"}
-                              : json{"Checking", "Checked"};
-    return json{{"verb", verb}, {"target", "the browser"}};
+    const Action* action = FindAction(args);
+    const std::string name = action ? action->name : "";
+    return json{
+        {"verb",
+         {action ? action->doing : "Checking",
+          action ? action->done : "Checked"}},
+        {"target", name == "open"   ? JsonValue(args, "url", "")
+                   : name == "type" ? FirstLine(JsonValue(args, "text", ""))
+                                    : "the browser"}};
   };
   tool.run = [session_id = std::move(session_id), ask = std::move(ask)](
                  const json& args, const ToolContext& context) {
@@ -254,7 +267,7 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask) {
     if (auto error = JsonValue(outcome, "error", ""); !error.empty()) {
       return ToolFailure(ToolErrorCode::kRemoteError, error);
     }
-    if (action == "status" || action == "tabs" || action == "release") {
+    if (const Action* row = FindAction(args); !row || !row->acts) {
       return ToolSuccess(JsonDump(outcome));
     }
     std::string lead = action + " done.\n" + Settle(session_id, context);

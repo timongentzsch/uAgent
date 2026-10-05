@@ -402,7 +402,7 @@ ToolResult RunSubagent(const Api& api, ProcessSupervisor& processes,
   const int64_t steps = JsonValue(limits, "steps", SubagentMaxSteps());
   const int64_t tool_calls =
       JsonValue(limits, "tool_calls", SubagentMaxToolCalls());
-  const bool background = JsonValue(arguments, "background", true);
+  const bool background = JsonValue(arguments, "background", false);
   // A caller may deny memory but not grant it: the session decides what
   // this process may read, and a child cannot widen that.
   const bool child_memory =
@@ -563,8 +563,8 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
       {"background",
        {{"type", "boolean"},
         {"description",
-         "default true; false blocks and returns the child's answer "
-         "directly"}}},
+         "default false: wait and get the child's answer directly; true "
+         "when several start in one batch or other work is waiting"}}},
       {"mode",
        {{"type", "string"},
         {"enum", json::array({"lean", "full"})},
@@ -595,7 +595,8 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
       "starts a child, followup resumes it, message guides a running child at "
       "its next step or runs a finished one again; the activity tool waits "
       "on, reads or stops it. Name the reusable role and describe it at "
-      "spawn. Keep background=true while you have other work.",
+      "spawn, and put what you already found into the prompt so the child "
+      "does not look it up again.",
       {{"type", "object"}, {"properties", std::move(properties)}},
       [&api, &routes, &providers, debug, &processes](
           const json& arguments, const ToolContext& context) {
@@ -632,7 +633,7 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
     const std::string name = JsonValue(arguments, "name", "");
     if (!name.empty()) label = name + " · " + label;
     if (JsonValue(arguments, "mode", "lean") == "full") label += " · full";
-    if (!JsonValue(arguments, "background", true)) label += " · foreground";
+    if (JsonValue(arguments, "background", false)) label += " · background";
     if (!id.empty()) label += " · " + id;
     return "[" + label + "] " + prompt;
   };

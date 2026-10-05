@@ -67,7 +67,7 @@ def test_completed_parent_answer_survives_late_child_budget_usage(root, home, *,
             assert_true(child_requested.wait(budget(2)), "child request did not arrive")
             time.sleep(0.3)
             return event({"content": "parent-answer"})
-        return tool_call("subagent", {"prompt": "late-budget-child"})
+        return tool_call("subagent", {"prompt": "late-budget-child", "background": True})
 
     with Server([route]) as server:
         result = run(
@@ -123,7 +123,7 @@ def test_subagent_auto_join_continues_turn(root, home, *, binary):
             return event({"content": "late-task-ok"})
         if any("[started] subagent id " in str(message.get("content", "")) for message in messages):
             return tool_call("activity", {"operation": "wait", "wait_ms": 30000})
-        return tool_call("subagent", {"prompt": "child"})
+        return tool_call("subagent", {"prompt": "child", "background": True})
 
     with Server([route]) as server:
         env = base_env(home, server.url)
@@ -517,7 +517,7 @@ def test_parallel_subagents_auto_join(root, home, *, binary):
                         "id": f"task-{index}",
                         "function": {
                             "name": "subagent",
-                            "arguments": json.dumps({"prompt": child_prompt}),
+                            "arguments": json.dumps({"prompt": child_prompt, "background": True}),
                         },
                     }
                     for index, child_prompt in enumerate(("child-a", "child-b"))
@@ -555,7 +555,7 @@ def test_subagent_interrupt_reaps_child(root, home, *, binary):
                     "id": "call-task",
                     "function": {
                         "name": "subagent",
-                        "arguments": json.dumps({"prompt": "slow-child"}),
+                        "arguments": json.dumps({"prompt": "slow-child", "background": True}),
                     },
                 },
                 {
@@ -667,6 +667,7 @@ def test_subagent_uses_selected_model_route(root, home, *, binary):
                 "prompt": "child",
                 "mode": "full",
                 "model": "codex-local/child model",
+                "background": True,
             },
         )
 
@@ -745,7 +746,11 @@ def test_subagent_failure_reports_route_stage_and_bounded_diagnostics(root, home
             return tool_call("activity", {"operation": "wait", "wait_ms": 30000})
         return tool_call(
             "subagent",
-            {"prompt": "fail on the configured route", "model": "failing/child"},
+            {
+                "prompt": "fail on the configured route",
+                "model": "failing/child",
+                "background": True,
+            },
         )
 
     parent = Server([route])

@@ -417,10 +417,15 @@ ToolResult Spawn(const std::string& folder, const json& a,
   if (!error.empty()) {
     return Unavailable(error);
   }
-  return ToolSuccess(JsonDump({{"session_id", HashHex(launch.path)},
-                               {"title", title},
-                               {"cwd", launch.cwd},
-                               {"environment", environment}}));
+  return ToolSuccess(
+      JsonDump({{"session_id", HashHex(launch.path)},
+                {"title", title},
+                {"cwd", launch.cwd},
+                {"environment", environment},
+                // Said where it applies: waiting costs nothing, polling does.
+                {"next",
+                 "It reports when its turn ends, and that report starts your "
+                 "next turn. End this turn unless other work is waiting."}}));
 }
 
 // Guidance into a session of the folder: a running turn takes it as

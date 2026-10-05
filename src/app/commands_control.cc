@@ -207,9 +207,11 @@ json SessionControl(AppSession& session, const json& request) {
         SubagentTool(session.ApiClient(), session.Runtime().processes,
                      session.context.provider.routes,
                      session.context.provider.providers, Debug().Enabled());
+    // From the interface it runs beside the conversation, never in its way.
     json arguments = {{"operation", "followup"},
                       {"agent_id", JsonValue(request, "agent_id", "")},
-                      {"prompt", JsonValue(request, "text", "")}};
+                      {"prompt", JsonValue(request, "text", "")},
+                      {"background", true}};
     const std::string model = JsonValue(request, "model", "");
     if (!model.empty()) arguments["model"] = model;
     // A follow-up is not a decision about tools: the child keeps the ceiling

@@ -352,7 +352,9 @@ void TestBrowserSecretMaskAndBack() {
   TestWorkspace workspace("browser-secrets");
   const auto bin = workspace.root / "bin";
   InstallFakeBrowser(bin);
-  const auto directory = fs::canonical(workspace.root) / "browser";
+  // Short, so the display's socket fits an address on every platform.
+  const auto directory =
+      fs::canonical("/tmp") / ("uagent-browser-" + std::to_string(getpid()));
   ScopedEnv configured("UAGENT_BROWSER_DATA", directory.string());
   ScopedEnv search("PATH", bin.string() + ":" + getenv("PATH"));
   ScopedEnv display("DISPLAY");
@@ -381,7 +383,18 @@ void TestBrowserSecretMaskAndBack() {
   std::ofstream(directory / "profile" / "close-tab").close();
   CHECK(runtime.Execute({{"op", "back"}, {"session_id", kSession}})
             .value("error", "") == "the previous page is not HTTP(S)");
+  // A saved login is taken with keys on the display itself, where Chrome's
+  // own list listens: Escape, Down, Down, Return, each pressed and let go.
+  CHECK(!runtime.Execute({{"op", "fill_saved"}, {"session_id", kSession}})
+             .contains("error"));
+  std::ifstream keys(directory / "display.sock.keys");
+  const std::string pressed((std::istreambuf_iterator<char>(keys)),
+                            std::istreambuf_iterator<char>());
+  CHECK(pressed ==
+        "1 ff1b\n0 ff1b\n1 ff54\n0 ff54\n1 ff54\n0 ff54\n"
+        "1 ff0d\n0 ff0d\n");
   runtime.Shutdown();
+  fs::remove_all(directory);
 }
 
 }  // namespace uagent

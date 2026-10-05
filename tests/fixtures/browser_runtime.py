@@ -4,6 +4,8 @@
 import json
 import os
 import signal
+import socket
+import struct
 import sys
 from pathlib import Path
 
@@ -11,9 +13,25 @@ name = Path(sys.argv[0]).name
 if name == "xauth":
     sys.exit(0)
 if name == "Xtigervnc":
-    Path(sys.argv[sys.argv.index("-rfbunixpath") + 1]).touch()
-    signal.pause()
-    sys.exit(0)
+    # A display that takes a viewer's handshake and writes down its keys.
+    path = sys.argv[sys.argv.index("-rfbunixpath") + 1]
+    server = socket.socket(socket.AF_UNIX)
+    # By its name inside its folder: a test's path outgrows a socket address.
+    os.chdir(Path(path).parent)
+    server.bind(Path(path).name)
+    server.listen()
+    while True:
+        viewer, _ = server.accept()
+        viewer.sendall(b"RFB 003.008\n")
+        viewer.recv(12)
+        viewer.sendall(b"\x01\x01")
+        viewer.recv(1)
+        viewer.sendall(bytes(4))
+        viewer.recv(1)
+        viewer.sendall(bytes(20) + struct.pack(">I", 4) + b"fake")
+        while len(pressed := viewer.recv(8)) == 8:
+            with open(path + ".keys", "a") as log:
+                log.write(f"{pressed[1]} {struct.unpack('>I', pressed[4:])[0]:x}\n")
 
 profile = Path(next(arg.split("=", 1)[1] for arg in sys.argv if arg.startswith("--user-data-dir=")))
 controlled = "--remote-debugging-pipe" in sys.argv

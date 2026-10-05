@@ -143,6 +143,62 @@ bool Coordinate(const json& command, const char* name, int& result) {
   return result >= 0 && result <= 10000;
 }
 
+// X keysyms.
+constexpr uint32_t kKeyEscape = 0xFF1B, kKeyDown = 0xFF54, kKeyReturn = 0xFF0D;
+
+// Presses keys on the browser's display, as a person at it would, each with
+// the wait in milliseconds that follows it. Chrome's own lists (the saved
+// logins it offers) take keys from there only, never from the debugging
+// channel, which reaches the page alone.
+bool PressOnDisplay(std::initializer_list<std::pair<uint32_t, int>> keys) {
+  Fd rfb = ConnectUnix(RfbPath());
+  if (!rfb) return false;
+  std::string bytes;
+  const auto take = [&](size_t count) {
+    bytes.assign(count, '\0');
+    for (size_t have = 0; have < count;) {
+      pollfd ready{rfb.Get(), POLLIN, 0};
+      if (poll(&ready, 1, 2000) <= 0) return false;
+      const ssize_t n = read(rfb.Get(), bytes.data() + have, count - have);
+      if (n <= 0) return false;
+      have += static_cast<size_t>(n);
+    }
+    return true;
+  };
+  const auto send = [&](std::string_view data) {
+    return WriteAllWithin(rfb.Get(), data, 2000);
+  };
+  using std::string_view_literals::operator""sv;
+  // Version, the one security type the display is started with (none), its
+  // result, then a shared session and the server's description of itself.
+  if (!take(12) || !send("RFB 003.008\n"sv) || !take(1) ||
+      !take(static_cast<unsigned char>(bytes[0])) || !send("\x01"sv) ||
+      !take(4) || bytes != "\0\0\0\0"sv || !send("\x01"sv) || !take(24)) {
+    return false;
+  }
+  uint32_t name = 0;
+  for (size_t index = 20; index < 24; ++index) {
+    name = name << 8 | static_cast<unsigned char>(bytes[index]);
+  }
+  if (name > 4096 || !take(name)) return false;
+  for (const auto& [key, wait] : keys) {
+    for (const char down : {'\1', '\0'}) {
+      const char event[] = {'\4',
+                            down,
+                            '\0',
+                            '\0',
+                            static_cast<char>(key >> 24),
+                            static_cast<char>(key >> 16),
+                            static_cast<char>(key >> 8),
+                            static_cast<char>(key)};
+      if (!send(std::string_view(event, sizeof event))) return false;
+      poll(nullptr, 0, 50);
+    }
+    poll(nullptr, 0, wait);
+  }
+  return true;
+}
+
 std::string CdError(const json& value) {
   const json* object = JsonObject(value, "error");
   return object ? JsonValue(*object, "message", "Chrome rejected action")
@@ -1028,23 +1084,31 @@ json Runtime::Execute(const json& command) {
     if (value.size() > 32768) return {{"error", "text exceeds limit"}};
     observation_.clear();
     reply = Call("Input.insertText", {{"text", value}}, page_session_);
+  } else if (op == "fill_saved") {
+    // The first login Chrome offers under the focused field. A look at the
+    // page closes Chrome's list, so it is closed by now: Escape makes sure,
+    // Down opens it, and after the moment Chrome ignores input to a list it
+    // has just shown, Down and Return choose.
+    observation_.clear();
+    if (!PressOnDisplay({{kKeyEscape, 300},
+                         {kKeyDown, 1000},
+                         {kKeyDown, 200},
+                         {kKeyReturn, 300}})) {
+      return {{"error", "cannot reach the browser's display"}};
+    }
+    reply = json::object();
   } else if (op == "press") {
     std::string key = JsonValue(command, "key", "");
     if (key != "Enter" && key != "Tab" && key != "Escape" &&
-        key != "Backspace" && key != "ArrowDown" && key != "ArrowUp") {
+        key != "Backspace") {
       return {{"error", "unsupported key"}};
     }
     observation_.clear();
-    json event = {{"type", "keyDown"}, {"key", key}};
-    // Chrome's own lists (the saved logins it offers) move by key code.
-    if (key.starts_with("Arrow")) {
-      event["code"] = key;
-      event["windowsVirtualKeyCode"] = key == "ArrowDown" ? 40 : 38;
-    }
-    reply = Call("Input.dispatchKeyEvent", event, page_session_);
+    reply = Call("Input.dispatchKeyEvent", {{"type", "keyDown"}, {"key", key}},
+                 page_session_);
     if (CdError(reply).empty()) {
-      event["type"] = "keyUp";
-      reply = Call("Input.dispatchKeyEvent", event, page_session_);
+      reply = Call("Input.dispatchKeyEvent", {{"type", "keyUp"}, {"key", key}},
+                   page_session_);
     }
   } else if (op == "scroll") {
     if (observation_.empty() ||

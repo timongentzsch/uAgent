@@ -168,9 +168,9 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask) {
       "tab opened by your action becomes active automatically; tabs lists "
       "tabs and switches with target_id. A result starting with SUSPECTED "
       "BLOCK means a bot check or rate limit: don't hammer it. Chrome holds "
-      "the user's saved logins: on a sign-in page click the field and, if "
-      "it stays empty, press ArrowDown then Enter to take the saved one, "
-      "then submit what Chrome filled. Never type or repeat a password. For "
+      "the user's saved logins: on a sign-in page click the field, call "
+      "fill_saved to take the one Chrome offers for it, then submit what "
+      "Chrome filled. Never type or repeat a password. For "
       "a login Chrome has not saved, MFA, captchas, bot checks or payment "
       "confirmation, call request_human with a reason naming the site and "
       "step; it waits until the user hands back. Never ask for credentials "
@@ -182,7 +182,7 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask) {
          {{"type", "string"},
           {"enum",
            {"status", "open", "tabs", "observe", "click", "type", "press",
-            "scroll", "back", "request_human", "release"}}}},
+            "fill_saved", "scroll", "back", "request_human", "release"}}}},
         {"url", {{"type", "string"}}},
         {"target_id", {{"type", "string"}}},
         {"view_id", {{"type", "string"}}},
@@ -192,8 +192,7 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask) {
         {"text", {{"type", "string"}}},
         {"key",
          {{"type", "string"},
-          {"enum",
-           {"Enter", "Tab", "Escape", "Backspace", "ArrowDown", "ArrowUp"}}}},
+          {"enum", {"Enter", "Tab", "Escape", "Backspace"}}}},
         {"reason", {{"type", "string"}}}}},
       {"required", {"action"}},
       {"additionalProperties", false}};
@@ -223,16 +222,18 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask) {
       return json{{"verb", {"Typing", "Typed"}},
                   {"target", FirstLine(JsonValue(args, "text", ""))}};
     }
-    const json verb = action == "observe" ? json{"Looking at", "Looked at"}
-                      : action == "click" ? json{"Clicking in", "Clicked in"}
-                      : action == "press"
-                          ? json{"Pressing a key in", "Pressed a key in"}
-                      : action == "scroll" ? json{"Scrolling", "Scrolled"}
-                      : action == "back" ? json{"Going back in", "Went back in"}
-                      : action == "request_human"
-                          ? json{"Asking you to use", "Asked you to use"}
-                      : action == "release" ? json{"Releasing", "Released"}
-                                            : json{"Checking", "Checked"};
+    const json verb =
+        action == "observe" ? json{"Looking at", "Looked at"}
+        : action == "click" ? json{"Clicking in", "Clicked in"}
+        : action == "press" ? json{"Pressing a key in", "Pressed a key in"}
+        : action == "fill_saved"
+            ? json{"Taking a saved login in", "Took a saved login in"}
+        : action == "scroll" ? json{"Scrolling", "Scrolled"}
+        : action == "back"   ? json{"Going back in", "Went back in"}
+        : action == "request_human"
+            ? json{"Asking you to use", "Asked you to use"}
+        : action == "release" ? json{"Releasing", "Released"}
+                              : json{"Checking", "Checked"};
     return json{{"verb", verb}, {"target", "the browser"}};
   };
   tool.run = [session_id = std::move(session_id), ask = std::move(ask)](

@@ -18,9 +18,10 @@
 namespace uagent::session {
 namespace {
 // Mails the folder's coordinator and starts its runtime if none runs: a
-// starting runtime delivers its pending mail. Off the caller's thread, which
-// may hold its session's lock; `unreachable` runs when the mail cannot be
-// sent or the runtime not started.
+// starting runtime delivers its pending mail. The mail is written before
+// this returns, so a thread never shows idle with its report still unsent.
+// The start is off the caller's thread, which may hold its session's lock;
+// `unreachable` runs when the mail cannot be sent or the runtime not started.
 void Notify(const std::string& folder, const std::string& thread_path,
             const char* type, const std::string& correlation,
             const std::string& text, std::function<void()> unreachable) {
@@ -31,10 +32,12 @@ void Notify(const std::string& folder, const std::string& thread_path,
   mail.type = type;
   mail.correlation_id = correlation;
   mail.body = {{"text", text}, {"folder", folder}};
-  std::thread([folder, mail = std::move(mail),
-               unreachable = std::move(unreachable)] {
-    if (const std::string error = SendMail(mail); !error.empty()) {
-      DebugLog("coordinator_mail_refused", {{"error", error}});
+  const std::string refused = SendMail(std::move(mail));
+  if (!refused.empty()) {
+    DebugLog("coordinator_mail_refused", {{"error", refused}});
+  }
+  std::thread([folder, refused, unreachable = std::move(unreachable)] {
+    if (!refused.empty()) {
       unreachable();
       return;
     }

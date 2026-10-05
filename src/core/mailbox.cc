@@ -203,6 +203,11 @@ std::vector<Mail> PendingMail(const std::string& id) {
   return pending;
 }
 
+bool MailTaken(const std::string& id) {
+  const fs::path dir = MailboxDir(id);
+  return !dir.empty() && !Messages(dir / "cur").empty();
+}
+
 void AckMail(const std::string& id, const std::vector<std::string>& ids) {
   const fs::path dir = ids.empty() ? "" : MailboxDir(id);
   if (dir.empty()) return;

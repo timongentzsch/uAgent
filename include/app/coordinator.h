@@ -45,7 +45,7 @@ inline constexpr const char* kCoordinatorTools[] = {
 
 // The tools only a folder's coordinator gets.
 // Whether a thread this folder's coordinator started is working a turn now.
-bool ThreadsWorking(const std::string& folder);
+bool ThreadsOwe(const std::string& folder);
 
 // `own_model` names the model the coordinator is on right now, as a
 // selection a thread can be started with.

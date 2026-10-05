@@ -853,6 +853,8 @@ int CoordinatorPromptMain(const Options& options) {
   };
   const std::string request = RandomToken(16);
   bool submitted = false, rejected = false, completed = false, busy = true;
+  bool paused = false, done = false;
+  std::string probe;  // the request that asks the coordinator how it stands
   json stop = json::object();
   // The coordinator's session runs on; this request is its growth.
   Usage before, after;
@@ -863,6 +865,13 @@ int CoordinatorPromptMain(const Options& options) {
       error = JsonValue(frame, "error", "coordinator refused");
       rejected = true;
       return false;
+    }
+    // Its state came just before, and nothing is owed: it stands as it said.
+    if (kind == "outcome" && !probe.empty() &&
+        JsonValue(frame, "request_id", "") == probe) {
+      probe.clear();
+      done = !busy;
+      return !done;
     }
     if (kind != "state") return true;
     if (!submitted && !JsonValue(frame, "busy", true)) {
@@ -881,7 +890,9 @@ int CoordinatorPromptMain(const Options& options) {
             {"interaction_id", JsonValue(*pending, "id", "")},
             {"text", ""}});
     }
-    busy = JsonValue(frame, "busy", false);
+    // A report it has taken waits as guidance until its turn starts.
+    busy = JsonValue(frame, "busy", false) || JsonValue(frame, "guidance", 0);
+    paused = frame["state"].contains("paused");
     if (!JsonValue(frame, "checkpoint", false) ||
         (!completed &&
          JsonValue(frame, "completed_request_id", "") != request)) {
@@ -894,18 +905,18 @@ int CoordinatorPromptMain(const Options& options) {
     completed = true;
     return true;
   };
-  // The work it delegated is part of the answer. It is done when, for a
-  // moment, the coordinator is idle and none of its threads is working: a
-  // finished thread's report starts the coordinator's next turn within that
-  // moment. A thread that waits for a person, or whose runtime is gone, is
-  // not waited for. One buffer for the whole wait: a frame may arrive in
-  // pieces on either side of a tick.
+  // The work it delegated is part of the answer. Each step is in place
+  // before the one before it ends: a thread mails its report before it shows
+  // idle, the coordinator queues a report before acknowledging it, and the
+  // queue starts its turn. So when no thread owes anything, the coordinator
+  // is asked, and its word that it is idle is the end. A thread that waits
+  // for a person, or whose runtime is gone, is not waited for, nor are
+  // reports the spend limit holds. One buffer for the whole wait: a frame
+  // may arrive in pieces on either side of a tick.
   constexpr int kTickMs = 250;
-  constexpr auto kQuiet = std::chrono::seconds(2);
-  auto quiet_since = std::chrono::steady_clock::time_point::max();
   FrameBuffer frames;
   char buffer[4096];
-  for (bool open = true; open && !rejected;) {
+  for (bool open = true; open && !rejected && !done;) {
     pollfd wait{connection.socket.Get(), POLLIN, 0};
     const int ready = poll(&wait, 1, kTickMs);
     if (ready < 0 && errno != EINTR) break;
@@ -917,14 +928,12 @@ int CoordinatorPromptMain(const Options& options) {
                          receive);
       continue;
     }
-    const auto now = std::chrono::steady_clock::now();
-    if (!submitted || !completed || busy || ThreadsWorking(cwd)) {
-      quiet_since = std::chrono::steady_clock::time_point::max();
-    } else if (quiet_since == std::chrono::steady_clock::time_point::max()) {
-      quiet_since = now;
-    } else if (now - quiet_since >= kQuiet) {
-      break;
+    if (!submitted || !completed || busy || !probe.empty() ||
+        (!paused && ThreadsOwe(cwd))) {
+      continue;
     }
+    probe = RandomToken(16);
+    open = send({{"kind", "refresh"}, {"request_id", probe}});
   }
   if (rejected || !completed) {
     fprintf(stderr, "%s\n",

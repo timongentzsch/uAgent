@@ -31,7 +31,7 @@ SandboxInputs BaseInputs() {
   inputs.workspace = "/home/u/work";
   inputs.global_base = "/home/u/.uagent";
   inputs.tmpdir = "/private/var/folders/ab/T";
-  inputs.tool_caches = {"/home/u/.cache", "/home/u/.local/share"};
+  inputs.tool_caches = {"/home/u/.cache", "/home/u/.local/share/uv"};
   inputs.terminal_logs = "/home/u/.uagent/terminals/logs";
   return inputs;
 }
@@ -43,7 +43,7 @@ void TestSandboxPolicy() {
   CHECK(HasRoot(base.policy, "/home/u/work"));
   CHECK(HasRoot(base.policy, "/private/var/folders/ab/T"));
   CHECK(HasRoot(base.policy, "/home/u/.cache"));
-  CHECK(HasRoot(base.policy, "/home/u/.local/share"));
+  CHECK(HasRoot(base.policy, "/home/u/.local/share/uv"));
   // The detached log directory is the one deliberate hole inside ~/.uagent.
   CHECK(HasRoot(base.policy, "/home/u/.uagent/terminals/logs"));
   // /dev is granted on both platforms, not just Linux: under a blanket write

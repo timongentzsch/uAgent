@@ -309,6 +309,25 @@ def test_sandbox_confines_writes_to_the_workspace(root, home, *, binary):
     assert_true("[sandbox:" in output, f"a refused write did not name the sandbox: {output}")
 
 
+def test_sandbox_opens_the_package_cache_not_the_data_directory(root, home, *, binary):
+    """Other programs keep keys and autostart entries beside uv's tools."""
+    if not sandbox_enforced(root, home, binary=binary):
+        return
+    data = home / ".local" / "share"
+    (data / "uv").mkdir(parents=True)
+    (data / "autostart").mkdir()
+    (home / ".cache").mkdir(exist_ok=True)
+    run_once(
+        root,
+        sandbox_env(home, ""),
+        f"echo x > {data}/uv/tool; echo x > {data}/autostart/job; echo x > {home}/.cache/entry",
+        binary=binary,
+    )
+    assert_true((data / "uv" / "tool").exists(), "the package manager's own folder was closed")
+    assert_true((home / ".cache" / "entry").exists(), "the cache was closed")
+    assert_true(not (data / "autostart" / "job").exists(), "wrote another program's data")
+
+
 def test_sandbox_protects_agent_state(root, home, *, binary):
     """A shell command cannot reach the saved settings or the trust store.
 

@@ -58,6 +58,8 @@ std::string SendMail(Mail mail);
 std::vector<Mail> TakeMail(const std::string& id,
                            const std::function<bool(const Mail&)>& accept);
 std::vector<Mail> PendingMail(const std::string& id);
+// Whether a message is taken and not yet acknowledged.
+bool MailTaken(const std::string& id);
 void AckMail(const std::string& id, const std::vector<std::string>& ids);
 // Taken but unacknowledged messages become pending again: a runtime starting
 // after a crash delivers what its predecessor never saved.

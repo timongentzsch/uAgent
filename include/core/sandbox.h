@@ -50,7 +50,9 @@ struct SandboxInputs {
   // Package-manager caches, which are per-user rather than per-project and so
   // sit outside every other root. A list because a platform has more than one
   // and they do not partition by platform: uv keeps its cache in ~/.cache even
-  // on macOS, where the native location is ~/Library/Caches.
+  // on macOS, where the native location is ~/Library/Caches. Of the data
+  // directory only uv's part: the rest holds keyrings, autostart entries and
+  // other programs' state.
   std::vector<std::string> tool_caches;
   // ~/.uagent/terminals/logs -- the one deliberate exception inside
   // global_base, because a detached job's own log pump writes there.

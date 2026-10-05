@@ -33,65 +33,19 @@ the provider settings copied from the real home and the model named in
 commit the corpus was made from. One trial per cell: read differences of a
 factor, not of a few percent.
 
-## Baseline, 2026-10-05, `local/gpt-6.1-sol`, commit `fb55c4c6`
+## Results
 
-| Task | Mode | Wall | Steps | Input tokens | Cached |
-| --- | --- | --- | --- | --- | --- |
-| fix | solo | 71 s | 5 | 25k | 0% |
-| | sub | 153 s | 9 | 85k | 9% |
-| | coord | 253 s | 49 | 357k | 18% |
-| survey | solo | 101 s | 6 | 37k | 4% |
-| | sub | 74 s | 5 | 26k | 15% |
-| | coord | 190 s | 31 | 280k | 19% |
-| research | solo | 128 s | 9 | 98k | 17% |
-| | sub | 161 s | 15 | 336k | 9% |
-| | coord | 255 s | 49 | 702k | 20% |
-| audit | solo | 159 s | 11 | 206k | 0% |
-| | sub | 206 s | 17 | 457k | 6% |
-| | coord | 231 s | 32 | 548k | 10% |
+Every run is in `benchmarks/baselines/delegation.json`, keyed by commit.
+Coordinator runs, wall time and input tokens:
 
-Every answer was correct. Thirteen further attempts ended on the provider's
-`server_is_overloaded`. The coordinator runs had no automatic reviewer (the
-isolated homes lacked its key), so every thread action was put to the
-coordinator; `prep.sh` now copies that key.
+| Task | `fb55c4c6` (before) | `aea30096` | `ae26decc` |
+| --- | --- | --- | --- |
+| fix | 253 s / 357k | 133 s / 88k | 127 s / 105k |
+| survey | 190 s / 280k | 143 s / 97k | 88 s / 54k |
+| research | 255 s / 702k | 236 s / 491k | 101 s / 138k |
+| audit | 231 s / 548k | 267 s / 289k | 290 s / 350k |
 
-## After the reliability and token stages, 2026-10-05, commit `aea30096`
-
-| Task | Mode | Wall | Steps | Input tokens | Cached |
-| --- | --- | --- | --- | --- | --- |
-| fix | solo | 76 s | 5 | 25k | 0% |
-| | sub | 73 s | 5 | 28k | 0% |
-| | coord | 133 s | 12 | 88k | 0% |
-| survey | solo | 60 s | 6 | 40k | 0% |
-| | sub | 60 s | 6 | 45k | 0% |
-| | coord | 143 s | 14 | 97k | 2% |
-| research | solo | 94 s | 9 | 117k | 0% |
-| | sub | 144 s | 18 | 367k | 0% |
-| | coord | 236 s | 32 | 491k | 2% |
-| audit | solo | 137 s | 11 | 221k | 1% |
-| | sub | 181 s | 17 | 490k | 8% |
-| | coord | 267 s | 21 | 289k | 2% |
-
-Twelve of twelve first attempts completed. A coordinator itself now takes
-3 to 11 steps and 6k to 77k input tokens; the rest is its threads' work. The
-cache key did not raise the cached share through this proxy.
-
-## With the causal wait, 2026-10-05, commit `ae26decc`
-
-| Task | Mode | Wall | Steps | Input tokens |
-| --- | --- | --- | --- | --- |
-| fix | solo | 84 s | 5 | 26k |
-| | sub | 83 s | 6 | 34k |
-| | coord | 127 s | 13 | 105k |
-| survey | solo | 61 s | 5 | 28k |
-| | sub | 106 s | 8 | 115k |
-| | coord | 88 s | 10 | 54k |
-| research | solo | 101 s | 12 | 168k |
-| | sub | 159 s | 15 | 346k |
-| | coord | 101 s | 12 | 138k |
-| audit | solo | 132 s | 10 | 170k |
-| | sub | 182 s | 19 | 507k |
-| | coord | 290 s | 21 | 350k |
-
-Twelve of twelve again. The coordinator answered `research` itself, without
-a thread.
+Before the fixes thirteen attempts ended on the provider's
+`server_is_overloaded`; since then twelve of twelve complete first time. A
+coordinator itself takes 3 to 12 steps; the rest is its threads' work. The
+provider reports no cached input on this route, with or without a cache key.

@@ -1,0 +1,226 @@
+{
+  "schema": "uagent.delegation.baseline.v1",
+  "model": "local/gpt-6.1-sol",
+  "note": "One trial per cell: read differences of a factor, not of a few percent. Add a run with benchmarks/delegation/collect.py on the host.",
+  "results": {
+    "fb55c4c6": {
+      "title": "Baseline, 2026-10-05, `local/gpt-6.1-sol`, commit `fb55c4c6`",
+      "runs": {
+        "fix/solo": {
+          "wall_s": 71,
+          "steps": 5,
+          "input_k": 25,
+          "cached_pct": 0
+        },
+        "fix/sub": {
+          "wall_s": 153,
+          "steps": 9,
+          "input_k": 85,
+          "cached_pct": 9
+        },
+        "fix/coord": {
+          "wall_s": 253,
+          "steps": 49,
+          "input_k": 357,
+          "cached_pct": 18
+        },
+        "survey/solo": {
+          "wall_s": 101,
+          "steps": 6,
+          "input_k": 37,
+          "cached_pct": 4
+        },
+        "survey/sub": {
+          "wall_s": 74,
+          "steps": 5,
+          "input_k": 26,
+          "cached_pct": 15
+        },
+        "survey/coord": {
+          "wall_s": 190,
+          "steps": 31,
+          "input_k": 280,
+          "cached_pct": 19
+        },
+        "research/solo": {
+          "wall_s": 128,
+          "steps": 9,
+          "input_k": 98,
+          "cached_pct": 17
+        },
+        "research/sub": {
+          "wall_s": 161,
+          "steps": 15,
+          "input_k": 336,
+          "cached_pct": 9
+        },
+        "research/coord": {
+          "wall_s": 255,
+          "steps": 49,
+          "input_k": 702,
+          "cached_pct": 20
+        },
+        "audit/solo": {
+          "wall_s": 159,
+          "steps": 11,
+          "input_k": 206,
+          "cached_pct": 0
+        },
+        "audit/sub": {
+          "wall_s": 206,
+          "steps": 17,
+          "input_k": 457,
+          "cached_pct": 6
+        },
+        "audit/coord": {
+          "wall_s": 231,
+          "steps": 32,
+          "input_k": 548,
+          "cached_pct": 10
+        }
+      }
+    },
+    "aea30096": {
+      "title": "After the reliability and token stages, 2026-10-05, commit `aea30096`",
+      "runs": {
+        "fix/solo": {
+          "wall_s": 76,
+          "steps": 5,
+          "input_k": 25,
+          "cached_pct": 0
+        },
+        "fix/sub": {
+          "wall_s": 73,
+          "steps": 5,
+          "input_k": 28,
+          "cached_pct": 0
+        },
+        "fix/coord": {
+          "wall_s": 133,
+          "steps": 12,
+          "input_k": 88,
+          "cached_pct": 0
+        },
+        "survey/solo": {
+          "wall_s": 60,
+          "steps": 6,
+          "input_k": 40,
+          "cached_pct": 0
+        },
+        "survey/sub": {
+          "wall_s": 60,
+          "steps": 6,
+          "input_k": 45,
+          "cached_pct": 0
+        },
+        "survey/coord": {
+          "wall_s": 143,
+          "steps": 14,
+          "input_k": 97,
+          "cached_pct": 2
+        },
+        "research/solo": {
+          "wall_s": 94,
+          "steps": 9,
+          "input_k": 117,
+          "cached_pct": 0
+        },
+        "research/sub": {
+          "wall_s": 144,
+          "steps": 18,
+          "input_k": 367,
+          "cached_pct": 0
+        },
+        "research/coord": {
+          "wall_s": 236,
+          "steps": 32,
+          "input_k": 491,
+          "cached_pct": 2
+        },
+        "audit/solo": {
+          "wall_s": 137,
+          "steps": 11,
+          "input_k": 221,
+          "cached_pct": 1
+        },
+        "audit/sub": {
+          "wall_s": 181,
+          "steps": 17,
+          "input_k": 490,
+          "cached_pct": 8
+        },
+        "audit/coord": {
+          "wall_s": 267,
+          "steps": 21,
+          "input_k": 289,
+          "cached_pct": 2
+        }
+      }
+    },
+    "ae26decc": {
+      "title": "With the causal wait, 2026-10-05, commit `ae26decc`",
+      "runs": {
+        "fix/solo": {
+          "wall_s": 84,
+          "steps": 5,
+          "input_k": 26
+        },
+        "fix/sub": {
+          "wall_s": 83,
+          "steps": 6,
+          "input_k": 34
+        },
+        "fix/coord": {
+          "wall_s": 127,
+          "steps": 13,
+          "input_k": 105
+        },
+        "survey/solo": {
+          "wall_s": 61,
+          "steps": 5,
+          "input_k": 28
+        },
+        "survey/sub": {
+          "wall_s": 106,
+          "steps": 8,
+          "input_k": 115
+        },
+        "survey/coord": {
+          "wall_s": 88,
+          "steps": 10,
+          "input_k": 54
+        },
+        "research/solo": {
+          "wall_s": 101,
+          "steps": 12,
+          "input_k": 168
+        },
+        "research/sub": {
+          "wall_s": 159,
+          "steps": 15,
+          "input_k": 346
+        },
+        "research/coord": {
+          "wall_s": 101,
+          "steps": 12,
+          "input_k": 138
+        },
+        "audit/solo": {
+          "wall_s": 132,
+          "steps": 10,
+          "input_k": 170
+        },
+        "audit/sub": {
+          "wall_s": 182,
+          "steps": 19,
+          "input_k": 507
+        },
+        "audit/coord": {
+          "wall_s": 290,
+          "steps": 21,
+          "input_k": 350
+        }
+      }
+    }
+  }
+}

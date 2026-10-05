@@ -72,10 +72,17 @@ inline std::string CitationEvidence(
   std::string out;
   for (size_t i = 0; i < std::min(entries.size(), max_entries); ++i) {
     const CitationEntry& entry = entries[i];
-    out += (out.empty() ? "" : "\n\n") + entry.url;
-    if (!entry.title.empty()) out += "\n" + entry.title;
+    // Appended piece by piece: GCC 12 misreads the sum of a literal and a
+    // temporary string as an overflowing copy.
+    if (!out.empty()) out += "\n\n";
+    out += entry.url;
+    if (!entry.title.empty()) {
+      out += "\n";
+      out += entry.title;
+    }
     if (!entry.content.empty()) {
-      out += "\n" + Utf8Prefix(entry.content, excerpt_chars);
+      out += "\n";
+      out += Utf8Prefix(entry.content, excerpt_chars);
     }
   }
   return out;

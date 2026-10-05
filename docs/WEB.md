@@ -194,6 +194,12 @@ browser profile separately:
 
 Passwords follow Chrome's own model: sign the profile into your Google account
 and manage logins at [passwords.google.com](https://passwords.google.com). The
+agent uses a saved login with `fill_saved`, which takes the one Chrome offers
+for the focused field and says so when Chrome filled nothing; with several
+accounts it types the start of the wanted one's name first. It never reads or
+types a password. Any top-level session may use the browser while the web
+host runs it, one conversation at a time: a terminal or headless session
+needs `UAGENT_BROWSER_DATA` in its settings, as the web host has. The
 managed policy blocks Chrome's local password and autofill pages,
 `view-source:` and DevTools. The Docker image contains it; on a native install,
 copy it once:

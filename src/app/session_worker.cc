@@ -26,7 +26,6 @@
 #include "include/app/session.h"
 #include "include/app/session_command.h"
 #include "include/app/thread_link.h"
-#include "include/browser/browser.h"
 #include "include/cli.h"
 #include "include/core/events.h"
 #include "include/core/fs.h"
@@ -107,14 +106,12 @@ json AttachmentsToJson(const std::vector<Attachment>& attachments) {
 class WorkerChannel final : public ApplicationChannel {
  public:
   WorkerChannel(std::string path, std::string id, std::string generation,
-                std::string title, bool browser_session, bool coordinator,
-                json thread)
+                std::string title, bool coordinator, json thread)
       : path_(std::move(path)),
         id_(std::move(id)),
         generation_(std::move(generation)),
         title_(std::move(title)),
         mail_(MailboxIdFor(path_)),
-        browser_session_(browser_session),
         coordinator_(coordinator) {
     if (!thread.empty()) link_.emplace(std::move(thread), path_, id_);
   }
@@ -181,13 +178,6 @@ class WorkerChannel final : public ApplicationChannel {
       turn_active_ = true;
       BeginTurn();
       SendState();
-    }
-    if (event.type == "turn.completed" || event.type == "turn.stopped") {
-#ifdef UAGENT_WEB
-      if (browser_session_) {
-        browser::Request({{"op", "release"}, {"session_id", id_}}, 1000);
-      }
-#endif
     }
     if (event.type == "activity.status") {
       std::lock_guard lock(mutex_);
@@ -933,7 +923,6 @@ class WorkerChannel final : public ApplicationChannel {
   static constexpr auto kSpendRecheck = std::chrono::milliseconds(60000);
   bool closed_ = false, busy_ = true;
   bool turn_active_ = false;
-  [[maybe_unused]] bool browser_session_ = false;  // web builds only
   const bool coordinator_ = false;
   std::optional<ThreadLink> link_;  // set when this session is a thread
   bool reply_cancelled_ = false;
@@ -996,7 +985,7 @@ int WorkerMain(int argc, char** argv) {
     }
   }
   WorkerChannel channel(argv[3], argv[4], RandomToken(16), argv[5],
-                        options.browser_session, options.Coordinator(),
+                        options.Coordinator(),
                         JsonValue(options.session, "thread", json::object()));
   if (!channel.Start()) return kWorkerOwned;
   Observability observation;

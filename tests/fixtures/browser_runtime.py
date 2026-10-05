@@ -51,6 +51,7 @@ if not controlled:
     sys.exit(0)
 
 session = "attached"
+measured = 0
 pending = b""
 while chunk := os.read(3, 4096):
     pending += chunk
@@ -85,6 +86,13 @@ while chunk := os.read(3, 4096):
                     {"targetId": "left-open", "type": "page", "url": "https://example.com/"},
                 ]
             }
+        elif command["method"] == "Runtime.evaluate":
+            result = {"result": {"objectId": "field"}}
+        elif command["method"] == "Runtime.callFunctionOn":
+            # The field grows with every look once the test says a login is saved.
+            if (profile / "saved-login-here").exists():
+                measured += 1
+            result = {"result": {"value": measured}}
         elif command["method"] == "Target.attachToTarget":
             result = {"sessionId": session}
         os.write(4, json.dumps({"id": command["id"], "result": result}).encode() + b"\0")

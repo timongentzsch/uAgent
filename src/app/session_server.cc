@@ -87,7 +87,6 @@ Connection Connect(const std::string& path) {
 }
 Options OptionsFromLaunch(const json& launch) {
   Options options;
-  options.browser_session = JsonValue(launch, "browser_session", false);
   options.yolo = JsonValue(launch, "yolo", false);
   options.debug = JsonValue(launch, "debug", false);
   options.debug_path = JsonValue(launch, "debug_path", "");
@@ -119,8 +118,7 @@ Connection Open(const std::string& executable, const std::string& cwd,
     error = "session runtime directory must be private";
     return {};
   }
-  json config = {{"browser_session", options.browser_session},
-                 {"overrides", options.overrides},
+  json config = {{"overrides", options.overrides},
                  {"yolo", options.yolo},
                  {"debug", options.debug},
                  {"debug_path", options.debug_path},

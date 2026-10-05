@@ -94,6 +94,9 @@ struct AppContext {
   ProviderSetup provider;
   ToolPolicy tool_policy;
   std::vector<Tool> tools;
+  // The name this session holds the shared browser under, when it has the
+  // browser tool: what a finished turn gives the browser back by.
+  std::string browser_lease;
   // What "don't ask again" granted, bound to the tool's current provider,
   // schema and approval policy. Session-scoped by construction: it dies here.
   std::unordered_set<std::string> session_approvals;

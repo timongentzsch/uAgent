@@ -289,11 +289,15 @@ std::vector<Tool> BuildTools(AppContext& context,
         },
         std::move(image)));
   }
-#ifdef UAGENT_BROWSER  // the web host starts the browser and serves its viewer
-  if (!browser::DataDirectory().empty() && context.options.browser_session &&
-      !session_path.empty() && AgentDepth() == 0) {
+#ifdef UAGENT_BROWSER
+  // The web host runs the browser; any top-level session that reaches it may
+  // use it, one at a time. A one-shot run has no session file to be named by.
+  if (!browser::DataDirectory().empty() && AgentDepth() == 0 &&
+      browser::Request({{"op", "ping"}}, 100).value("ok", false)) {
+    context.browser_lease =
+        session_path.empty() ? session::RandomToken(16) : HashHex(session_path);
     tools.push_back(BrowserTool(
-        HashHex(session_path),
+        context.browser_lease,
         [](const std::string& id, const std::string& prompt, bool* eof) {
           return ReadInteraction(
               {.id = id, .kind = "browser", .prompt = prompt}, eof);

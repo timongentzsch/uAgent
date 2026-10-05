@@ -10,6 +10,7 @@
 
 #include "include/agent/child_agent.h"
 #include "include/app/launch.h"
+#include "include/browser/browser.h"
 #include "include/cli.h"
 #include "include/core/checked.h"
 #include "include/core/debug.h"
@@ -125,6 +126,13 @@ void Application::RunTurns(const std::string& input, json content,
     agent_.Turn(input, std::move(content), images, request_id_);
     SteeringState().Take();
   }
+#ifdef UAGENT_BROWSER
+  // The turn is over: the shared browser is free for the next conversation.
+  if (!context_.browser_lease.empty()) {
+    browser::Request(
+        {{"op", "release"}, {"session_id", context_.browser_lease}}, 1000);
+  }
+#endif
   if (channel_ || !session_file_.empty()) PublishChannelState(false);
 }
 

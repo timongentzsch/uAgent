@@ -409,7 +409,7 @@ json ToolSurfaceJson() {
   conditional.emplace_back(ArtifactTool(""), "a session with a client");
 #ifdef UAGENT_BROWSER
   conditional.emplace_back(BrowserTool("", nullptr),
-                           "browser appliance, top-level web session");
+                           "a top-level session while the browser appliance runs");
 #endif
   conditional.emplace_back(SkillTool({}, {}), "skills installed");
 

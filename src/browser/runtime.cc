@@ -144,7 +144,10 @@ bool Coordinate(const json& command, const char* name, int& result) {
 }
 
 // X keysyms.
-constexpr uint32_t kKeyEscape = 0xFF1B, kKeyDown = 0xFF54, kKeyReturn = 0xFF0D;
+constexpr const char* kLeasedElsewhere =
+    "another conversation is using the browser; it is free again when that "
+    "conversation's turn ends";
+constexpr uint32_t kKeyEscape = 0xFF1B, kKeyDown = 0xFF54, kKeyTab = 0xFF09;
 
 // Presses keys on the browser's display, as a person at it would, each with
 // the wait in milliseconds that follows it. Chrome's own lists (the saved
@@ -458,6 +461,9 @@ bool Runtime::Start(std::string& error, bool profile_setup) {
       // a black line; one pixel past the edge is kept as asked.
       "--window-position=0,0", "--window-size=1281,801", "--ozone-platform=x11",
       "--password-store=basic", "--restore-last-session",
+      // A restart of the host stops Chrome without a goodbye; its offer to
+      // restore would cover the page.
+      "--hide-crash-restore-bubble",
       // Keep the profile small: no downloaded components or on-device
       // models (most of a 258 MB profile), and a bounded page cache.
       "--disable-component-update", no_downloads, "--disk-cache-size=67108864"};
@@ -690,7 +696,7 @@ bool Runtime::Agent(const json& command, std::string& error) {
     return false;
   }
   if (!agent_session_.empty() && agent_session_ != session) {
-    error = "browser is leased to another conversation";
+    error = kLeasedElsewhere;
     return false;
   }
   agent_session_ = session;
@@ -800,7 +806,7 @@ json Runtime::Execute(const json& command) {
     if (!session::OpaqueId(session)) return {{"error", "invalid session"}};
     if (mode_ == "human") return {{"error", kHumanControls}};
     if (!agent_session_.empty() && agent_session_ != session) {
-      return {{"error", "browser is leased to another conversation"}};
+      return {{"error", kLeasedElsewhere}};
     }
     return Status();
   }
@@ -1088,13 +1094,41 @@ json Runtime::Execute(const json& command) {
     // The first login Chrome offers under the focused field. A look at the
     // page closes Chrome's list, so it is closed by now: Escape makes sure,
     // Down opens it, and after the moment Chrome ignores input to a list it
-    // has just shown, Down and Return choose.
+    // has just shown, Down and Tab choose. Tab, since with no list it only
+    // moves on, where Return would send the form. How long the field's text
+    // is, before and after, says whether Chrome filled it; the text itself
+    // is never read.
+    json field =
+        Call("Runtime.evaluate", {{"expression", "document.activeElement"}},
+             page_session_);
+    const json* held = JsonObject(field, "result");
+    held = held ? JsonObject(*held, "result") : nullptr;
+    const std::string id = held ? JsonValue(*held, "objectId", "") : "";
+    const auto length = [&] {
+      json measured = Call("Runtime.callFunctionOn",
+                           {{"objectId", id},
+                            {"functionDeclaration",
+                             "function(){return typeof this.value==='string'?"
+                             "this.value.length:-1}"},
+                            {"returnByValue", true}},
+                           page_session_);
+      const json* result = JsonObject(measured, "result");
+      result = result ? JsonObject(*result, "result") : nullptr;
+      return result ? JsonValue(*result, "value", -1) : -1;
+    };
+    const int before = id.empty() ? -1 : length();
     observation_.clear();
     if (!PressOnDisplay({{kKeyEscape, 300},
                          {kKeyDown, 1000},
                          {kKeyDown, 200},
-                         {kKeyReturn, 300}})) {
+                         {kKeyTab, 300}})) {
       return {{"error", "cannot reach the browser's display"}};
+    }
+    if (before >= 0 && length() == before) {
+      return {
+          {"error",
+           "Chrome filled nothing: no saved login matches this field, or it "
+           "already holds one"}};
     }
     reply = json::object();
   } else if (op == "press") {

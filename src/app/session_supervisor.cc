@@ -93,7 +93,6 @@ void SessionHost::PublishLifecycle(const HostSession& session, json frame) {
 Connection SessionHost::OpenRuntime(const HostSession& session, bool create,
                                     std::string& error) const {
   Options options;
-  options.browser_session = true;
   if (!session.launch.empty()) {
     const std::string model = JsonValue(session.launch, "model", "");
     if (!model.empty()) options.overrides["UAGENT_MODEL"] = model;

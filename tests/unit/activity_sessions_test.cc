@@ -458,7 +458,7 @@ void TestActivitySessions() {
   CHECK(public_run != nullptr);
   if (public_run) {
     ToolResult yielded = public_run->run(
-        {{"command", "sleep 5"}, {"yield_ms", kMinYieldMs}}, context);
+        {{"command", "sleep 60"}, {"yield_ms", kMinYieldMs}}, context);
     CHECK(yielded.Ok());
     CHECK(yielded.output.find("[running] activity") != std::string::npos);
     for (const BgJob& job : automatic_yield.Snapshot()) {
@@ -715,7 +715,7 @@ void TestActivityWaitAndDelivery() {
   ProcessSupervisor steering_wait;
   CHECK(RunShellCommand(
             steering_wait, context,
-            {.command = "sleep 5", .background = true, .immediate = true})
+            {.command = "sleep 60", .background = true, .immediate = true})
             .result.Ok());
   std::vector<BgJob> steering_jobs = steering_wait.Snapshot();
   CHECK(steering_jobs.size() == 1);
@@ -740,7 +740,7 @@ void TestActivityWaitAndDelivery() {
   ProcessSupervisor steering_yield;
   CHECK(RunShellCommand(
             steering_yield, context,
-            {.command = "sleep 5", .background = true, .immediate = true})
+            {.command = "sleep 60", .background = true, .immediate = true})
             .result.Ok());
   std::vector<BgJob> steering_yield_jobs = steering_yield.Snapshot();
   CHECK(steering_yield_jobs.size() == 1);

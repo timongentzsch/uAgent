@@ -83,7 +83,7 @@ test("streaming stays pinned to the end while following", async ({
   await expect(page.locator(".composer .status-led.running")).toBeHidden({
     timeout: 60000,
   });
-  await expect.poll(() => gap(page), { timeout: 15000 }).toBeLessThan(2);
+  await expect.poll(() => gap(page)).toBeLessThan(2);
   await expect(
     page.getByRole("button", { name: "Jump to latest" }),
   ).toHaveCount(0);

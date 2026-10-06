@@ -27,7 +27,7 @@ cmake --build --preset debug --parallel
 
 Style checks (clang-format, cpplint, clang-tidy, Ruff, Prettier) are in
 [CONTRIBUTING.md](../CONTRIBUTING.md). [CI](#ci) lists what a pull request
-runs beyond this and what waits for the push to `master`.
+runs beyond this.
 
 ## Hermetic suite
 
@@ -70,6 +70,8 @@ The groups are `runtime`, `tools`, `ui`, `providers`, `mcp`, `delegation`,
 - A new top-level `test_` function in a group's module registers itself.
 - Each case has its own deadline. `UAGENT_TEST_TIMEOUT_SCALE` multiplies
   them on slow or instrumented builds.
+- A failing case does not stop the run: every case runs, and the failures
+  are listed at the end.
 - `-j N` runs the selection in N processes. Every case has a home and ports
   of its own, so the whole suite takes about 20 s at `-j 8` against two
   minutes in one.
@@ -247,13 +249,8 @@ On a pull request, `.github/changes.py` selects jobs by the paths changed:
 | those and `web/` | `python`, `web` |
 | anything else | every job |
 
-A pull request also skips the slow scans. These run only on a push to
-`master`, a tag and the weekly run, which always run everything:
-
-- `thread-sanitizer` and `coverage`;
-- the full clang-tidy scan (a pull request checks its changed lines);
-- the CLI-only (`UAGENT_WEB=OFF`) and no-browser (`UAGENT_BROWSER=OFF`)
-  builds.
+A pull request that touches native code runs what a push to `master` runs,
+so a green pull request is a green `master`.
 
 | Job | Runs |
 | --- | --- |
@@ -277,3 +274,19 @@ Keep tests proportional: pure helpers get focused unit tests, and externally
 visible behavior gets one hermetic integration path. Do not repeat a contract
 across unit, integration and live layers. Never put secrets in prompts,
 fixtures, reports or failure output.
+
+A test passes or fails the same way on a slow machine:
+
+- Wait for the event (a reply row, a state, a file), never for a duration,
+  and not for the echo of what the test itself typed.
+- A deadline only bounds a wait. Use the shared ones (`budget()` in
+  `tests/integration_support.py`; `timeout` and `expect.timeout` in
+  `web/playwright.config.js`) and name a longer one only where a step is
+  known to be long.
+- A command that stands for "still running" outlasts the test (`sleep 60`),
+  and the test stops it.
+- The runtime's own request and stream timeouts are hang guards in tests. A
+  case about a timeout sets it itself; no other case may depend on one
+  firing.
+- After a look at state, act on it only if a refusal is handled: the state
+  may have moved on.

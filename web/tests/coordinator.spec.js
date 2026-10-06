@@ -114,9 +114,7 @@ for (const [name, viewport] of VIEWPORTS) {
     for (const [index, text] of ["first", "second", "third"].entries()) {
       await prompt.fill(text);
       await prompt.press("Enter");
-      await expect(page.locator(".turn-summary")).toHaveCount(index + 1, {
-        timeout: 15_000,
-      });
+      await expect(page.locator(".turn-summary")).toHaveCount(index + 1);
     }
     // Each answer keeps its own stats line, in order, and what was typed is
     // shown as typed.

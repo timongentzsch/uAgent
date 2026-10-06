@@ -37,7 +37,7 @@ test("the session list follows sessions created and deleted elsewhere", async ({
       }),
   );
   const row = page.getByText("Made elsewhere", { exact: true }).first();
-  await expect(row).toBeVisible({ timeout: 10000 });
+  await expect(row).toBeVisible();
   await rm(file);
-  await expect(row).toHaveCount(0, { timeout: 10000 });
+  await expect(row).toHaveCount(0);
 });

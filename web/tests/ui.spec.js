@@ -314,6 +314,15 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
 }, testInfo) => {
   await withoutServiceWorker(page);
   await page.setViewportSize({ width: 1440, height: 1000 });
+  // Held from the start: the app loads this code by itself two seconds in,
+  // and the loading state below is only there to see while it is held.
+  let releaseSettings;
+  const settingsGate = new Promise((resolve) => (releaseSettings = resolve));
+  // The dialog's chunk; settings-nav-* belongs to the shell and must load.
+  await page.route(/\/assets\/settings-(?!nav-)[^/]+\.js$/, async (route) => {
+    await settingsGate;
+    await route.continue();
+  });
   await page.goto("/");
   await expect(page.getByText("Connected", { exact: true })).toBeVisible();
 
@@ -437,12 +446,6 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   await expect(picker).toHaveCount(0);
   await expect(prompt).toHaveValue("Keep this draft through popups");
 
-  let releaseSettings;
-  const settingsGate = new Promise((resolve) => (releaseSettings = resolve));
-  await page.route("**/assets/settings-*.js", async (route) => {
-    await settingsGate;
-    await route.continue();
-  });
   const settingsButton = page.getByRole("button", {
     name: "Settings",
     exact: true,
@@ -2295,7 +2298,7 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
     .locator(".message.tool")
     .filter({ hasText: "BROWSER_ACTIVITY" })
     .filter({ hasText: "Finished" });
-  await expect(receipt).toBeVisible({ timeout: 15000 });
+  await expect(receipt).toBeVisible();
   await expect(receipt.locator("summary")).toContainText("Finished");
   await expect(
     receipt.getByRole("button", { name: "Tool input/output" }),

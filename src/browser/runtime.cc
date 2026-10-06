@@ -1408,7 +1408,9 @@ json Runtime::Read(const json& command) {
            {{"expression", std::string(kReadScript) + "(" + arguments + ")"},
             {"returnByValue", true}},
            page_session_);
-  if (auto reason = CdError(page); !reason.empty()) return {{"error", reason}};
+  if (auto reason = CdError(page); !reason.empty()) {
+    return {{"error", reason}};
+  }
   const json* value = JsonObject(page, "result");
   value = value ? JsonObject(*value, "result") : nullptr;
   value = value ? JsonObject(*value, "value") : nullptr;

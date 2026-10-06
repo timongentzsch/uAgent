@@ -550,12 +550,12 @@ void TestBrowserToolSteps() {
   std::ifstream log(directory / "profile" / "cdp.jsonl");
   for (std::string line; std::getline(log, line);) {
     const json params = json::parse(line).value("params", json::object());
-    if (params.value("type", "") == "mousePressed") order.push_back("click");
-    if (params.contains("commands")) order.push_back("select");
+    if (params.value("type", "") == "mousePressed") order.emplace_back("click");
+    if (params.contains("commands")) order.emplace_back("select");
     if (params.contains("text") && !params.contains("key")) {
       order.push_back("type " + params.value("text", ""));
     }
-    if (params.value("type", "") == "keyDown") order.push_back("Enter");
+    if (params.value("type", "") == "keyDown") order.emplace_back("Enter");
   }
   CHECK(order ==
         std::vector<std::string>({"click", "select", "type kestrel", "Enter"}));

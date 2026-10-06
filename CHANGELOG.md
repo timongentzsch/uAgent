@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Web: at minimal detail a finished turn's row says how long the turn took
+  ("Worked · 6 steps · 1m 12s").
+
 ## v1.3.1 - 2026-10-06
 
 ### Fixed

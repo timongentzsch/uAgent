@@ -677,8 +677,7 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
   // The summary names the model and the brief; what it cannot show is the
   // authority handed over with them. The child runs with automatic approvals,
   // so approving the spawn approves every tool call that child then decides
-  // to make -- and "always" is no narrower, because the approval key hashes
-  // tool policy rather than these arguments.
+  // to make.
   tool.approval_preview = [describe, &api](const json& arguments) {
     std::string preview = describe(arguments);
     std::string operation = JsonValue(arguments, "operation", "spawn");
@@ -690,7 +689,7 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
     preview += std::string("\n\u00b7 toolset ") +
                (full ? "full: reading, editing and running, plus its own "
                        "children"
-                     : "lean: reading and running, no file edits");
+                     : "lean: reading and running, no file-editing tools");
     const json& limits = ChildLimits(arguments);
     preview += "\n\u00b7 bounded by " +
                std::to_string(JsonValue(limits, "steps", SubagentMaxSteps())) +
@@ -701,9 +700,6 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
                (api.config.memory_enabled && JsonValue(limits, "memory", true)
                     ? ", memory on"
                     : ", memory off");
-    preview +=
-        "\n\u00b7 \"always\" covers every later subagent call, not "
-        "this brief";
     return preview;
   };
   return tool;  // Spawns serialize; immediate-background children overlap.

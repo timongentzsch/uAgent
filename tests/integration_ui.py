@@ -200,8 +200,10 @@ def test_non_utf8_locale_draws_only_ascii(root, home, *, binary):
             root,
             env,
             [
-                (b"/verbosity full\n", b"verbosity full"),
-                (b"/verbosity default\n", b"verbosity default"),
+                # The reply's own row, not the echo of what was typed: the
+                # screen is redrawn before it, and keys sent meanwhile are lost.
+                (b"/verbosity full\n", b"- verbosity full"),
+                (b"/verbosity default\n", b"- verbosity default"),
                 (b"go\n", b"ascii-ok", b"Ready", None),
                 (b"/cost\n", b"total"),
                 b"/q\n",

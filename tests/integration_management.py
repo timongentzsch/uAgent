@@ -329,12 +329,20 @@ def test_scheduled_runtime_survives_web_restart(root, home, *, binary):
                     # The run's mode is kept with its conversation: a runtime
                     # started by a host that no longer knows the task asks too.
                     session = dict(id=run["session_id"])
-                    live = resumed.snapshot(session)["metadata"]
-                    if live["generation"]:
-                        resumed.command("close", live)
-                    saved = resumed.until(
-                        session, lambda value: value["metadata"]["status"] == "saved"
-                    )
+
+                    def closed():
+                        live = resumed.snapshot(session)["metadata"]
+                        if live["status"] != "saved" and live["generation"]:
+                            # The finished run's runtime may move on between
+                            # the look and the close; then look again.
+                            try:
+                                resumed.command("close", live)
+                            except AssertionError:
+                                pass
+                        return live["status"] == "saved"
+
+                    wait_until(closed, "the finished run's conversation never closed")
+                    saved = resumed.snapshot(session)
                     again = resumed.command("activate", saved["metadata"])["session"]
                     state = resumed.until(again, lambda value: value["state"].get("permissions"))
                     assert_true(

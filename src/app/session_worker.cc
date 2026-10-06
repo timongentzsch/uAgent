@@ -979,9 +979,11 @@ int WorkerMain(int argc, char** argv) {
         {"thread", JsonValue(header, kSessionHeaderThread, json::object())}};
   }
   // A thread runs sandboxed and within its budget however its runtime is
-  // started again, so a restart never widens it. Its approval mode is held
-  // to Auto where the mode is resolved (PermissionControl).
+  // started again, so a restart never widens it: not even a sandbox policy
+  // inherited through the environment stands in for its own. Its approval
+  // mode is held to Auto where the mode is resolved (PermissionControl).
   if (JsonValue(options.session, "kind", "") == kSessionKindThread) {
+    ::unsetenv("UAGENT_INTERNAL_SANDBOX");
     options.overrides["UAGENT_SANDBOX"] = "true";
     const double budget =
         ThreadBudget(JsonValue(options.session, "thread", json::object()));

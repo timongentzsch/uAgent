@@ -403,9 +403,13 @@ def test_headless_json_stream_emits_lifecycle_events(root, home, *, binary):
             ),
         ]
     ) as server:
+        env = base_env(home, server.url)
+        # On Linux the suite's home is under /tmp, which the sandbox then
+        # refuses as a writable root and says so before the turn starts.
+        env["UAGENT_SANDBOX"] = "0"
         result = run(
             root,
-            base_env(home, server.url),
+            env,
             "--yolo",
             "--json-stream",
             "-p",

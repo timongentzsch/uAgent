@@ -434,8 +434,6 @@ void TestRegistries() {
       json{{"operation", "spawn"}, {"prompt", "audit the parser"}});
   CHECK(spawn_preview.find("approves its own tool calls") != std::string::npos);
   CHECK(spawn_preview.find("lean: reading and running") != std::string::npos);
-  CHECK(spawn_preview.find("\"always\" covers every later subagent call") !=
-        std::string::npos);
   CHECK(
       subagent.approval_preview(json{{"operation", "spawn"}, {"mode", "full"}})
           .find("full: reading, editing and running") != std::string::npos);

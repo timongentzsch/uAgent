@@ -438,6 +438,20 @@ void TestObservabilityEvents() {
   CHECK(std::filesystem::exists(live));
   CHECK(std::filesystem::exists(live + ".lock"));
   CHECK(std::filesystem::exists(unnamed));
+
+  // The limit counts conversations: a full history keeps every one of them.
+  const std::filesystem::path sessions = UagentDir(kHistoryDir);
+  std::filesystem::create_directories(sessions);
+  for (int64_t i = 0; i < kHistoryFiles; ++i) {
+    const std::string session =
+        (sessions / (std::to_string(i) + ".json")).string();
+    std::ofstream(session) << "session";
+    std::ofstream(session + ".lock") << "";
+  }
+  MaintainArtifacts();
+  for (int64_t i = 0; i < kHistoryFiles; ++i) {
+    CHECK(std::filesystem::exists(sessions / (std::to_string(i) + ".json")));
+  }
 }
 
 }  // namespace uagent

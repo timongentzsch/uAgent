@@ -838,6 +838,9 @@ def test_a_confined_thread_acts_inside_its_folder_without_review(root, home, *, 
 
     with Server([route]) as server:
         env = base_env(home, server.url)
+        # A thread is confined whatever policy its launcher's environment hands
+        # down: this one says "off".
+        env["UAGENT_INTERNAL_SANDBOX"] = '{"mode":0}'
         result = run(root, env, "coord", "-p", "delegate", timeout=60, binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true((root / "ran.txt").read_text() == "x", "the thread did not get to act")

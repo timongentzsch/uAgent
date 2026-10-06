@@ -10,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import traceback
 
 import integration_delegation
 import integration_management
@@ -197,6 +198,7 @@ def main():
         tmpdir = root / "tmp"
         tmpdir.mkdir()
         os.environ["TMPDIR"] = str(tmpdir)
+        failed = []
         for name in names:
             print(f"running {name}", flush=True)
             case_root = root / name
@@ -211,13 +213,20 @@ def main():
             started = time.monotonic()
             try:
                 ALL_TESTS[name](case_root, home, binary=arguments.binary.resolve())
+                print(f"passed {name} ({time.monotonic() - started:.3f}s)", flush=True)
+            except Exception:
+                # One failure does not hide the next: every case still runs.
+                traceback.print_exc()
+                print(f"FAILED {name}", flush=True)
+                failed.append(name)
             finally:
                 from session_support import stop_sessions
 
                 stop_sessions(home)
                 for state in case_root.rglob(".uagent"):
                     stop_sessions(state.parent)
-            print(f"passed {name} ({time.monotonic() - started:.3f}s)", flush=True)
+        if failed:
+            raise SystemExit(f"{len(failed)} of {len(names)} failed: " + ", ".join(failed))
         print(f"all {len(names)} {label} integration tests passed")
     finally:
         remove_suite(pathlib.Path(temp))

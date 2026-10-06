@@ -2,10 +2,36 @@
 
 ## Unreleased
 
+### Added
+
+- `browser`: `type` fills a field in one call: with `x`, `y` and `view_id`
+  it clicks the field first, `replace` overwrites what it holds, and `key`
+  is pressed after. `open` with `new_tab` keeps the current page, and `tabs`
+  with `close` closes one. `press` knows the arrow keys, Delete, Space,
+  PageUp, PageDown, Home and End.
+- `browser`: `read` returns a page's text from an offset, or only the lines
+  and links that contain what it searches for; `open` takes the same and
+  answers as `read` does, so a page that is only read is one call. `click`
+  and `type` take the number of an element in place of coordinates.
+- `scratch` takes `code`: the script is written and run in one call.
+
 ### Changed
 
 - Web: at minimal detail a finished turn's row says how long the turn took
   ("Worked · 6 steps · 1m 12s").
+- `browser`: an action returns the page as text, its elements numbered,
+  and no screenshot; `observe` still returns one. A turn of many steps no
+  longer carries a picture per step.
+- `browser`: a result carries the page's text whole, up to 12,000
+  characters, and says how much more there is and how to read on; it was
+  cut in the middle at the general result limit.
+- The approval for a command outside the sandbox says what it can reach:
+  saved logins, browser sessions and settings.
+
+### Fixed
+
+- `browser`: Enter sends a form and types a line break, and Backspace
+  deletes. The keys reached only a page's own listeners.
 
 ## v1.3.1 - 2026-10-06
 

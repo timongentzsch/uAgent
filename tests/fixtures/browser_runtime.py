@@ -86,13 +86,35 @@ while chunk := os.read(3, 4096):
                     {"targetId": "left-open", "type": "page", "url": "https://example.com/"},
                 ]
             }
+        elif command["method"] == "Page.getLayoutMetrics":
+            result = {"cssVisualViewport": {"clientWidth": 800, "clientHeight": 600}}
+        elif command["method"] == "Page.captureScreenshot":
+            result = {"data": "c2hvdA=="}
         elif command["method"] == "Runtime.evaluate":
-            result = {"result": {"objectId": "field"}}
+            asked = command["params"]["expression"]
+            if "scrollIntoView" in asked:
+                # Element 1 is on the page; any other is gone.
+                value = {"x": 40, "y": 30} if asked.endswith("(1)") else None
+                result = {"result": {"value": value}}
+            elif asked.endswith(',"clip",false)'):
+                read = {"url": "https://example.com/", "title": "Clips", "chars": 9, "matches": 1}
+                result = {"result": {"value": read | {"text": "Clip one", "links": ""}}}
+            elif asked.endswith(',"",true)'):
+                looked = {"url": "https://example.com/", "title": "Clips", "chars": 5}
+                looked |= {"text": "Clips", "elements": '[1] text "Search" (empty)'}
+                result = {"result": {"value": looked}}
+            elif "performance.timeOrigin" in asked:
+                # A page that has finished loading and stays as it is.
+                result = {"result": {"value": {"ready": "complete", "doc": "1", "sig": "1"}}}
+            else:
+                result = {"result": {"objectId": "field"}}
         elif command["method"] == "Runtime.callFunctionOn":
             # The field grows with every look once the test says a login is saved.
             if (profile / "saved-login-here").exists():
                 measured += 1
             result = {"result": {"value": measured}}
+        elif command["method"] == "Target.createTarget":
+            result = {"targetId": "new"}
         elif command["method"] == "Target.attachToTarget":
             result = {"sessionId": session}
         os.write(4, json.dumps({"id": command["id"], "result": result}).encode() + b"\0")

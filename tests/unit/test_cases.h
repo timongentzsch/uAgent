@@ -4,13 +4,14 @@
 namespace uagent {
 // The browser appliance's tests exist only when it is built.
 #ifdef UAGENT_BROWSER
-#define UAGENT_BROWSER_TESTS(X)  \
-  X(TestBrowserInputFilter)      \
-  X(TestBrowserHandoverRecovery) \
-  X(TestBrowserProfiles)         \
-  X(TestBrowserProfileSignIn)    \
-  X(TestBrowserHandBackOnClose)  \
-  X(TestBrowserSecretMaskAndBack)
+#define UAGENT_BROWSER_TESTS(X)   \
+  X(TestBrowserInputFilter)       \
+  X(TestBrowserHandoverRecovery)  \
+  X(TestBrowserProfiles)          \
+  X(TestBrowserProfileSignIn)     \
+  X(TestBrowserHandBackOnClose)   \
+  X(TestBrowserSecretMaskAndBack) \
+  X(TestBrowserToolSteps)
 #else
 #define UAGENT_BROWSER_TESTS(X)
 #endif

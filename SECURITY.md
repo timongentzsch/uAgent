@@ -121,7 +121,8 @@ cookies.
 - Actions that change the page need approval like any mutating call.
 - The agent can use a saved login without seeing it: `fill_saved` has Chrome
   fill the one it offers for the focused field and does not read what was
-  filled. Screenshots draw password fields as dots;
+  filled. The text the agent gets says whether a field holds something,
+  never what. Screenshots draw password fields as dots;
   [the web guide](docs/WEB.md#isolation) lists the fields that are not
   masked.
 - With the sandbox on, commands cannot read the profile or connect to its

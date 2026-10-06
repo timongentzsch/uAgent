@@ -69,31 +69,127 @@ constexpr const char* kSecretScript =
     "attributeFilter:['type','autocomplete','style',T]});"
     "if(document.documentElement)scan(document.documentElement)})()";
 
-// Page details plus narrow, high-signal evidence of a bot wall: an error
-// status, a challenge title, a large visible challenge frame, or a short page
-// that asks for human verification. Advisory only; the agent decides.
-constexpr const char* kPageScript =
-    "(()=>{const t=document.body?document.body.innerText:'';"
-    "const title=document.title||'';let block=null;"
-    "const nav=performance.getEntriesByType('navigation')[0];"
-    "const status=nav&&nav.responseStatus||0;"
-    "if(status===403||status===429)block={kind:status===429?'rate_limited':"
-    "'access_denied',evidence:'HTTP '+status};"
-    "if(!block&&/^(just a moment|attention required|security check|access "
-    "denied)/i.test(title.trim()))block={kind:'bot_check',evidence:'title \"'+"
-    "title.slice(0,80)+'\"'};"
-    "if(!block)for(const f of document.querySelectorAll('iframe[src]')){"
-    "if(!/challenges\\.cloudflare\\.com|hcaptcha\\.com|google\\.com\\/"
-    "recaptcha|captcha-delivery\\.com|px-captcha/.test(f.src))continue;"
-    "const r=f.getBoundingClientRect();"
-    "if(r.width*r.height>=0.15*innerWidth*innerHeight||(r.width>0&&"
-    "t.length<400)){block={kind:'captcha',evidence:'challenge frame '+"
-    "new URL(f.src).host};break}}"
-    "if(!block&&t.length<1500){const m=/unusual (traffic|behaviou?r)|verify "
-    "you are (a )?human|are you a robot|not a robot|press (&|and) hold/i"
-    ".exec(t);if(m)block={kind:'bot_check',evidence:'page says \"'+m[0]+'\"'}}"
-    "return {url:location.href.split(/[?#]/)[0],title,"
-    "text:t.slice(0,12000),block}})()";
+// The page, for a look (`acting`) or for reading. Both get its address,
+// title, how long its text is, and narrow, high-signal evidence of a bot
+// wall: an error status, a challenge title, a large visible challenge frame,
+// or a short page that asks for human verification. Advisory only; the agent
+// decides.
+//
+// A look also gets what can be acted on, numbered and kept on the page so a
+// click can name one by its number. A field says whether it holds text,
+// never what.
+//
+// Reading gets text from `offset`, or with `find` the lines that contain it
+// (from match `offset` on) and the links that do.
+constexpr const char* kPageScript = R"js(((offset, find, acting) => {
+  const t = document.body ? document.body.innerText : '';
+  const title = document.title || '';
+  let block = null;
+  const nav = performance.getEntriesByType('navigation')[0];
+  const status = nav && nav.responseStatus || 0;
+  if (status === 403 || status === 429) {
+    block = {kind: status === 429 ? 'rate_limited' : 'access_denied',
+             evidence: 'HTTP ' + status};
+  }
+  if (!block && /^(just a moment|attention required|security check|access denied)/i
+          .test(title.trim())) {
+    block = {kind: 'bot_check', evidence: 'title "' + title.slice(0, 80) + '"'};
+  }
+  if (!block) for (const frame of document.querySelectorAll('iframe[src]')) {
+    if (!/challenges\.cloudflare\.com|hcaptcha\.com|google\.com\/recaptcha|captcha-delivery\.com|px-captcha/
+             .test(frame.src)) continue;
+    const r = frame.getBoundingClientRect();
+    if (r.width * r.height >= 0.15 * innerWidth * innerHeight ||
+        (r.width > 0 && t.length < 400)) {
+      block = {kind: 'captcha',
+               evidence: 'challenge frame ' + new URL(frame.src).host};
+      break;
+    }
+  }
+  if (!block && t.length < 1500) {
+    const m = /unusual (traffic|behaviou?r)|verify you are (a )?human|are you a robot|not a robot|press (&|and) hold/i
+                  .exec(t);
+    if (m) block = {kind: 'bot_check', evidence: 'page says "' + m[0] + '"'};
+  }
+  const page = {url: location.href.split(/[?#]/)[0], title, chars: t.length,
+                block};
+  const plain = s => (s || '').replace(/\s+/g, ' ').trim();
+  if (acting) {
+    const kept = window.__uagentElements = [];
+    const rows = [];
+    for (const n of document.querySelectorAll(
+             'a[href],button,select,textarea,summary,input:not([type=hidden]),' +
+             '[role=button],[role=link],[role=tab],[role=menuitem],' +
+             '[role=checkbox],[role=radio],[role=option],[role=switch],' +
+             '[contenteditable=true]')) {
+      if (kept.length >= 100) break;
+      const r = n.getBoundingClientRect();
+      if (r.width < 1 || r.height < 1 || n.disabled) continue;
+      const style = getComputedStyle(n);
+      if (style.visibility === 'hidden' || style.display === 'none') continue;
+      const tag = n.tagName.toLowerCase();
+      const kind = n.getAttribute('role') ||
+          (tag === 'a' ? 'link' : tag === 'input' ? (n.type || 'text') : tag);
+      const name = plain(
+          n.getAttribute('aria-label') ||
+          (n.labels && n.labels[0] && n.labels[0].innerText) ||
+          (tag !== 'select' && n.innerText) || n.placeholder || n.title ||
+          n.alt || n.name ||
+          ((n.type === 'submit' || n.type === 'button') && n.value)).slice(0, 80);
+      const state =
+          n.type === 'checkbox' || n.type === 'radio'
+              ? (n.checked ? ' (checked)' : '')
+              : tag === 'select'
+                    ? ' (' + plain(n.selectedOptions[0] &&
+                                   n.selectedOptions[0].text).slice(0, 40) + ')'
+                    : tag === 'input' || tag === 'textarea'
+                          ? (n.value ? ' (filled)' : ' (empty)') : '';
+      kept.push(n);
+      rows.push('[' + kept.length + '] ' + kind + ' "' + name + '"' + state);
+    }
+    return {...page, text: t.slice(0, 12000), elements: rows.join('\n')};
+  }
+  const wanted = find.toLowerCase();
+  const links = new Map();
+  for (const a of document.querySelectorAll('a[href]')) {
+    if (links.size >= 100) break;
+    if (typeof a.href !== 'string' || !/^https?:/.test(a.href)) continue;
+    const name = plain(a.innerText || a.getAttribute('aria-label'));
+    if (links.has(a.href) ||
+        (find ? !(name + ' ' + a.href).toLowerCase().includes(wanted)
+              : offset > 0)) continue;
+    links.set(a.href, name.slice(0, 80));
+  }
+  const list = [...links].map(([to, name]) => name + ' -> ' + to).join('\n');
+  if (!find) {
+    return {...page, text: t.slice(offset, offset + 12000), links: list};
+  }
+  // A long line is cut around what was searched for, not before it.
+  const hits = [];
+  for (const line of t.split('\n')) {
+    const at = line.toLowerCase().indexOf(wanted);
+    if (at < 0) continue;
+    const from = Math.max(0, Math.min(at - 100, line.length - 300));
+    hits.push(line.slice(from, from + 300).trim());
+  }
+  return {...page, matches: hits.length,
+          text: hits.slice(offset, offset + 200).join('\n'), links: list};
+}))js";
+
+// Where a numbered element is now, brought into view first. Nothing when it
+// left the page, has no size, or lies under something else: a click there
+// would land on whatever is in its place.
+constexpr const char* kElementScript = R"js((n => {
+  const e = (window.__uagentElements || [])[n - 1];
+  if (!e || !e.isConnected) return null;
+  e.scrollIntoView({block: 'center', inline: 'center', behavior: 'instant'});
+  const r = e.getBoundingClientRect();
+  const x = Math.round(r.x + r.width / 2), y = Math.round(r.y + r.height / 2);
+  const hit = document.elementFromPoint(x, y);
+  if (r.width < 1 || r.height < 1 || !hit ||
+      !(e.contains(hit) || hit.contains(e))) return null;
+  return {x, y};
+}))js";
 
 pid_t Launch(const std::vector<std::string>& arguments,
              posix_spawn_file_actions_t* actions = nullptr) {
@@ -137,6 +233,21 @@ bool Alive(pid_t& pid) {
   }
   return kill(pid, 0) == 0;
 }
+
+// The keys `press` knows. Chrome acts on a key by its virtual key code, and
+// types what `text` says: the name alone reaches the page's own listeners
+// and nothing else, so Enter would not send a form nor Backspace delete.
+struct Key {
+  const char* name;
+  int code;
+  const char* text;
+};
+constexpr Key kKeys[] = {
+    {"Enter", 13, "\r"},    {"Tab", 9, ""},        {"Escape", 27, ""},
+    {"Backspace", 8, ""},   {"Delete", 46, ""},    {"Space", 32, " "},
+    {"ArrowUp", 38, ""},    {"ArrowDown", 40, ""}, {"ArrowLeft", 37, ""},
+    {"ArrowRight", 39, ""}, {"PageUp", 33, ""},    {"PageDown", 34, ""},
+    {"Home", 36, ""},       {"End", 35, ""}};
 
 bool Coordinate(const json& command, const char* name, int& result) {
   result = JsonValue(command, name, -1);
@@ -812,16 +923,18 @@ json Runtime::Execute(const json& command) {
   // Whoever takes the browser after someone else starts from the page as it
   // is, not as it remembers it: keys and text go nowhere before that.
   // Only a look or an open that worked counts.
-  if (moved_ && op != "observe" && op != "tabs" && op != "open") {
+  if (moved_ && op != "observe" && op != "read" && op != "tabs" &&
+      op != "open") {
     return {{"error",
              "another conversation used the browser since; open your page "
              "or observe before acting"}};
   }
   if (op == "observe") {
-    json seen = Observe();
+    json seen = Observe(JsonValue(command, "image", true));
     if (!seen.contains("error")) moved_ = false;
     return seen;
   }
+  if (op == "read") return Read(command);
   if (op == "tabs") {
     json pages = PageTargets();
     if (pages.contains("error")) return pages;
@@ -836,7 +949,17 @@ json Runtime::Execute(const json& command) {
         found |= JsonValue(page, "id", "") == requested;
       }
       if (!found) return {{"error", "tab is unavailable"}};
-      if (requested != target_) {
+      if (JsonValue(command, "close", false)) {
+        if (requested == target_) {
+          return {{"error", "switch to another tab before closing this one"}};
+        }
+        json closed = Call("Target.closeTarget", {{"targetId", requested}});
+        if (auto reason = CdError(closed); !reason.empty()) {
+          return {{"error", reason}};
+        }
+        moved_ = false;
+        return {{"ok", true}, {"closed", requested}, {"selected", target_}};
+      } else if (requested != target_) {
         json activated =
             Call("Target.activateTarget", {{"targetId", requested}});
         if (auto reason = CdError(activated); !reason.empty()) {
@@ -1069,6 +1192,14 @@ json Runtime::Act(const std::string& op, const json& command) {
       return {{"error", "URL must be HTTP(S)"}};
     }
     observation_.clear();
+    if (JsonValue(command, "new_tab", false)) {
+      json created = Call("Target.createTarget", {{"url", "about:blank"}});
+      const json* made = JsonObject(created, "result");
+      std::string error;
+      if (!made || !AttachPage(JsonValue(*made, "targetId", ""), error)) {
+        return {{"error", made ? error : "Chrome did not open a tab"}};
+      }
+    }
     reply = Call("Page.navigate", {{"url", url}}, page_session_);
     if (const json* result = JsonObject(reply, "result")) {
       if (auto failed = JsonValue(*result, "errorText", ""); !failed.empty()) {
@@ -1108,10 +1239,24 @@ json Runtime::Act(const std::string& op, const json& command) {
                             : "click needs view_id from the latest observe"}};
     }
     int x, y;
-    if (!Coordinate(command, "x", x) || !Coordinate(command, "y", y)) {
-      return {{"error", "click requires x and y"}};
+    if (const int element = JsonValue(command, "element", 0); element > 0) {
+      json where = Call("Runtime.evaluate",
+                        {{"expression", std::string(kElementScript) + "(" +
+                                            std::to_string(element) + ")"},
+                         {"returnByValue", true}},
+                        page_session_);
+      const json* found = JsonObject(where, "result");
+      found = found ? JsonObject(*found, "result") : nullptr;
+      found = found ? JsonObject(*found, "value") : nullptr;
+      if (!found) {
+        return {{"error", "that element is gone or covered; look again"}};
+      }
+      x = JsonValue(*found, "x", -1);
+      y = JsonValue(*found, "y", -1);
+    } else if (!Coordinate(command, "x", x) || !Coordinate(command, "y", y)) {
+      return {{"error", "click requires an element, or x and y"}};
     }
-    if (x >= view_width_ || y >= view_height_) {
+    if (x < 0 || y < 0 || x >= view_width_ || y >= view_height_) {
       return {{"error", "coordinates exceed the observed viewport"}};
     }
     observation_.clear();
@@ -1130,6 +1275,17 @@ json Runtime::Act(const std::string& op, const json& command) {
     std::string value = JsonValue(command, "text", "");
     if (value.size() > 32768) return {{"error", "text exceeds limit"}};
     observation_.clear();
+    if (JsonValue(command, "replace", false)) {
+      // What the field holds becomes the selection, which the text replaces.
+      // Unselected, the text would be added to it instead.
+      json chosen = Call(
+          "Input.dispatchKeyEvent",
+          {{"type", "rawKeyDown"}, {"commands", json::array({"selectAll"})}},
+          page_session_);
+      if (auto reason = CdError(chosen); !reason.empty()) {
+        return {{"error", reason}};
+      }
+    }
     reply = Call("Input.insertText", {{"text", value}}, page_session_);
   } else if (op == "fill_saved") {
     // The first login Chrome offers under the focused field. A look at the
@@ -1173,17 +1329,22 @@ json Runtime::Act(const std::string& op, const json& command) {
     }
     reply = json::object();
   } else if (op == "press") {
-    std::string key = JsonValue(command, "key", "");
-    if (key != "Enter" && key != "Tab" && key != "Escape" &&
-        key != "Backspace") {
-      return {{"error", "unsupported key"}};
-    }
+    const std::string name = JsonValue(command, "key", "");
+    const Key* key = std::ranges::find_if(
+        kKeys, [&](const Key& known) { return name == known.name; });
+    if (key == std::end(kKeys)) return {{"error", "unsupported key"}};
     observation_.clear();
-    reply = Call("Input.dispatchKeyEvent", {{"type", "keyDown"}, {"key", key}},
-                 page_session_);
+    const std::string typed = key->text;
+    json event = {{"type", typed.empty() ? "rawKeyDown" : "keyDown"},
+                  {"key", typed == " " ? typed : name},
+                  {"code", name},
+                  {"windowsVirtualKeyCode", key->code}};
+    if (!typed.empty()) event["text"] = typed;
+    reply = Call("Input.dispatchKeyEvent", event, page_session_);
     if (CdError(reply).empty()) {
-      reply = Call("Input.dispatchKeyEvent", {{"type", "keyUp"}, {"key", key}},
-                   page_session_);
+      event["type"] = "keyUp";
+      event.erase("text");
+      reply = Call("Input.dispatchKeyEvent", event, page_session_);
     }
   } else if (op == "scroll") {
     if (observation_.empty() ||
@@ -1291,7 +1452,29 @@ json Runtime::Probe() {
   return result;
 }
 
-json Runtime::Observe() {
+json Runtime::Read(const json& command) {
+  json page =
+      Call("Runtime.evaluate",
+           {{"expression",
+             std::string(kPageScript) + "(" +
+                 std::to_string(std::max(JsonValue(command, "offset", 0), 0)) +
+                 "," + JsonDump(JsonValue(command, "find", "")) + ",false)"},
+            {"returnByValue", true}},
+           page_session_);
+  if (auto reason = CdError(page); !reason.empty()) {
+    return {{"error", reason}};
+  }
+  const json* value = JsonObject(page, "result");
+  value = value ? JsonObject(*value, "result") : nullptr;
+  value = value ? JsonObject(*value, "value") : nullptr;
+  if (!value) return {{"error", "the page could not be read"}};
+  moved_ = false;
+  json read = *value;
+  read["ok"] = true;
+  return read;
+}
+
+json Runtime::Observe(bool image) {
   json metrics = Call("Page.getLayoutMetrics", json::object(), page_session_);
   if (auto reason = CdError(metrics); !reason.empty()) {
     return {{"error", reason}};
@@ -1309,28 +1492,34 @@ json Runtime::Observe() {
   // device-independent pixels relative to the document.
   double zoom = JsonValue(*viewport, "zoom", 1.0);
   if (zoom <= 0) zoom = 1;
-  if (auto masked = CdError(Call(
-          "Runtime.evaluate", {{"expression", kSecretScript}}, page_session_));
-      !masked.empty()) {
-    return {{"error", masked}};
-  }
-  json shot = Call("Page.captureScreenshot",
-                   {{"format", "jpeg"},
-                    {"quality", 70},
-                    {"clip",
-                     {{"x", JsonValue(*viewport, "pageX", 0.0) * zoom},
-                      {"y", JsonValue(*viewport, "pageY", 0.0) * zoom},
-                      {"width", width * zoom},
-                      {"height", height * zoom},
-                      {"scale", 1 / zoom}}}},
-                   page_session_);
-  const json* image_result = JsonObject(shot, "result");
-  if (!image_result) {
-    return {
-        {"error", CdError(shot).empty() ? "screenshot failed" : CdError(shot)}};
+  std::string picture;
+  if (image) {
+    if (auto masked =
+            CdError(Call("Runtime.evaluate", {{"expression", kSecretScript}},
+                         page_session_));
+        !masked.empty()) {
+      return {{"error", masked}};
+    }
+    json shot = Call("Page.captureScreenshot",
+                     {{"format", "jpeg"},
+                      {"quality", 70},
+                      {"clip",
+                       {{"x", JsonValue(*viewport, "pageX", 0.0) * zoom},
+                        {"y", JsonValue(*viewport, "pageY", 0.0) * zoom},
+                        {"width", width * zoom},
+                        {"height", height * zoom},
+                        {"scale", 1 / zoom}}}},
+                     page_session_);
+    const json* taken = JsonObject(shot, "result");
+    if (!taken) {
+      return {{"error",
+               CdError(shot).empty() ? "screenshot failed" : CdError(shot)}};
+    }
+    picture = JsonValue(*taken, "data", "");
   }
   json page = Call("Runtime.evaluate",
-                   {{"expression", kPageScript}, {"returnByValue", true}},
+                   {{"expression", std::string(kPageScript) + "(0,\"\",true)"},
+                    {"returnByValue", true}},
                    page_session_);
   json details = json::object();
   if (const json* response = JsonObject(page, "result")) {
@@ -1342,7 +1531,7 @@ json Runtime::Observe() {
   view_width_ = static_cast<int>(width);
   view_height_ = static_cast<int>(height);
   return {{"ok", true},
-          {"image", JsonValue(*image_result, "data", "")},
+          {"image", std::move(picture)},
           {"page", details},
           {"generation", generation_},
           {"view_id", observation_},

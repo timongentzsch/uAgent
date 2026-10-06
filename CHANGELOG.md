@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Keys typed ahead are no longer lost when the terminal shows the
+  conversation again, as `/verbosity` does: a line that arrived with the
+  command is sent after the redraw.
+
 ## v1.3.0 - 2026-10-06
 
 ### Upgrade notes

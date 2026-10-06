@@ -200,8 +200,7 @@ def test_non_utf8_locale_draws_only_ascii(root, home, *, binary):
             root,
             env,
             [
-                # The reply's own row, not the echo of what was typed: the
-                # screen is redrawn before it, and keys sent meanwhile are lost.
+                # The reply's own row, not the echo of what was typed.
                 (b"/verbosity full\n", b"- verbosity full"),
                 (b"/verbosity default\n", b"- verbosity default"),
                 (b"go\n", b"ascii-ok", b"Ready", None),
@@ -214,6 +213,19 @@ def test_non_utf8_locale_draws_only_ascii(root, home, *, binary):
     assert_true(code == 0, output[-2000:])
     assert_true(b"* item one" in output, output[-2000:])
     assert_true(re.search(rb"[\x80-\xff]", output) is None, output[-2000:])
+
+
+def test_keys_typed_ahead_survive_a_redraw(root, home, *, binary):
+    # /verbosity shows the conversation again at the new level. A line that
+    # arrived with the command is still sent afterwards.
+    with Server([event({"content": "typed-ahead-ok"})]) as server:
+        code, output = run_pty(
+            root,
+            base_env(home, server.url),
+            [(b"/verbosity full\ngo\n", b"typed-ahead-ok", b"Ready", None), b"/q\n"],
+            binary=binary,
+        )
+    assert_true(code == 0, output[-2000:])
 
 
 def test_plain_mode_writes_labelled_lines_without_cursor_control(root, home, *, binary):

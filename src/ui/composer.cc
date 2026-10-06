@@ -124,8 +124,12 @@ bool WordSpace(unsigned char ch) { return std::isspace(ch) != 0; }
 
 }  // namespace
 
-RawComposer::RawComposer(const InteractiveOutput& output, LiveRegion& region)
-    : output_(output), region_(region), prompt_(InputPrompt()) {}
+RawComposer::RawComposer(const InteractiveOutput& output, LiveRegion& region,
+                         TerminalInputDecoder& keys)
+    : output_(output),
+      region_(region),
+      prompt_(InputPrompt()),
+      decoder_(keys) {}
 
 RawComposer::~RawComposer() { Stop(); }
 

@@ -102,13 +102,15 @@ class Terminal {
   // `draft` starts the composer, e.g. the message a rewind forked before.
   // `pinned`: --verbosity set this terminal's level, so it follows no other.
   // `redrawn`: the conversation is shown again because the level changed.
+  // `keys`: what was typed and not yet read, kept from one attach to the next.
   Terminal(Connection connection, std::string path, const DetailPolicy& detail,
-           bool pinned, bool redrawn, std::string draft = "")
+           bool pinned, bool redrawn, TerminalInputDecoder& keys,
+           std::string draft = "")
       : connection_(std::move(connection)),
         path_(std::move(path)),
         draft_(std::move(draft)),
         region_(output_),
-        composer_(output_, region_),
+        composer_(output_, region_, keys),
         detail_(&detail),
         pinned_(pinned),
         redrawn_(redrawn) {
@@ -869,6 +871,7 @@ int TerminalMain(Options options) {
       options.overrides.contains(std::string(kVerbositySetting));
   const DetailPolicy* detail = &ConfiguredDetail(options.overrides);
   bool redrawn = false;
+  TerminalInputDecoder keys;
   for (;;) {
     // A saved session reopens in its own folder; so does a coordinator
     // reached from a session in another directory.
@@ -885,7 +888,7 @@ int TerminalMain(Options options) {
     const bool coordinator = path == CoordinatorPath(cwd);
     if (coordinator) printf("%s", TerminalSafe(CoordinatorBoard(cwd)).c_str());
     Terminal terminal(std::move(connection), path, *detail, pinned, redrawn,
-                      draft);
+                      keys, draft);
     int result = terminal.Run(options.attach_paths);
     draft = terminal.Carry();
     detail = &terminal.Detail();

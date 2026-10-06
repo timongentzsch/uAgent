@@ -79,7 +79,10 @@ class InteractiveOutput {
 // Edits the draft; the LiveRegion draws it, from View.
 class RawComposer {
  public:
-  RawComposer(const InteractiveOutput& output, LiveRegion& region);
+  // `keys` outlives the composer: what was typed ahead is still there when
+  // the terminal attaches again.
+  RawComposer(const InteractiveOutput& output, LiveRegion& region,
+              TerminalInputDecoder& keys);
   ~RawComposer();
 
   bool Start();
@@ -141,7 +144,7 @@ class RawComposer {
   size_t cursor_ = 0;
   // The highlighted row of the slash command menu; any edit resets it.
   size_t selected_ = 0;
-  TerminalInputDecoder decoder_;
+  TerminalInputDecoder& decoder_;
   std::deque<std::string> history_;
   size_t history_index_ = 0;
   std::string history_draft_;

@@ -93,6 +93,18 @@ a client cannot mistake an unrelated idle/background update for its command
 finishing. Human replies identify the pending interaction, so the first accepted
 reply wins and a second client cannot answer a stale approval.
 
+The transport's bounds are constants, in `include/transport/session.h` unless
+named:
+
+| Resource | Bound |
+| --- | --- |
+| Frame / command | 1 MiB / 512 KiB |
+| A client's output queue / the web host's replay log | 4 MiB each |
+| Command receipts | 256 per runtime |
+| Session header | 16 KiB (`include/agent/session_store.h`) |
+| Catalogue | 4,096 sessions (`src/agent/session_store.cc`) |
+| History page | 64 blocks (`src/agent/session_view.cc`) |
+
 One poll thread owns client sockets and bounded fanout queues. Publishing does
 not wait for a slow terminal or browser. A joining client receives a checkpoint
 and its ordered event suffix. Gaps require refresh, not command replay. The web

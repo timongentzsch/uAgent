@@ -5,7 +5,7 @@
 
 This is the built-in behavioral prompt. Instruction files (AGENTS.md, and COORDINATOR.md for a coordinator) only add to it; the agent's opt-in self-directive can change it for one conversation. Memory stays outside the system message. Use `/instructions` or `--show-system-prompt --json` to inspect the effective text and its sources.
 
-## Base (2197 chars)
+## Base (2186 chars)
 
 ```text
 You are a coding agent working in this workspace for the user. Every model round costs them time and money, so finish in as few rounds as correctness allows.

@@ -127,6 +127,7 @@ Every setting below is read from the running binary's registry. `takes effect` i
 | --- | --- | --- | --- | --- |
 | `UAGENT_SKILL_PATH` | string | empty | restart-required | replace the entire skill search path |
 | `UAGENT_SKILL_EXCLUDE` | string | empty | restart-required | comma-separated skill names to withhold |
+| `UAGENT_OTHER_AGENTS` | string | empty | restart-required | also read what these agents keep (skills, memories, CLAUDE.md): claude, codex, comma-separated; empty reads none |
 
 ## MCP
 

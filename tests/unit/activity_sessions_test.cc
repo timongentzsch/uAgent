@@ -959,7 +959,8 @@ void TestActivityWaitAndDelivery() {
     parallel_threads[index] = std::thread([&, index] {
       parallel_results[index] = RunShellCommand(
           parallel_handoff, context,
-          {.command = "sleep 5; printf parallel-" + std::to_string(index)});
+          // Long enough to still be running when it is stopped below.
+          {.command = "sleep 60; printf parallel-" + std::to_string(index)});
     });
   }
   CHECK(parallel_handoff.WaitForForeground(

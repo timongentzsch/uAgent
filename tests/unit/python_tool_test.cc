@@ -143,6 +143,12 @@ void TestPythonTool() {
   CHECK(result.output.ends_with("inline-ran"));
   CHECK(ToolRunScratch(supervisor, root, "inline.sh")
             .output.ends_with("inline-ran"));
+  // What runs is what the approval showed: code that is given, even empty,
+  // replaces the script, so an old one never runs behind an empty preview.
+  const json emptied = {{"path", "inline.sh"}, {"code", ""}};
+  CHECK(scratch_tool && scratch_tool->approval_preview(emptied).empty());
+  result = scratch_tool ? scratch_tool->run(emptied, {}) : ToolResult{};
+  CHECK(result.output.find("inline-ran") == std::string::npos);
 
   // Every parameter has one plain type: a union ("string or null") breaks
   // the tool-call conversion some providers do for a model.

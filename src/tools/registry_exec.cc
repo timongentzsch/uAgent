@@ -1,10 +1,8 @@
 // Copyright 2026 Timon Gentzsch
 
 #include <cstdint>
-#include <filesystem>
 #include <optional>
 #include <string>
-#include <system_error>
 #include <utility>
 #include <vector>
 
@@ -144,26 +142,21 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
                 R"json({"type":"object","additionalProperties":false,"properties":{
                     "path":{"type":"string","minLength":1,
                       "description":"the script's path relative to .uagent/scratch"},
-                    "code":{"type":"string","maxLength":65536,
+                    "code":{"type":"string","minLength":1,"maxLength":65536,
                       "description":"the script's text: written to path, then run"},
                     "args":{"type":"array","items":{"type":"string","maxLength":4096},"maxItems":32,
                       "description":"argv for this run, read from sys.argv or $@"}},
                     "required":["path"]})json"),
             [&supervisor, workspace](const json& a,
                                      const ToolContext& context) {
-              if (const std::string code = JsonValue(a, "code", "");
-                  !code.empty()) {
+              if (a.contains("code")) {
                 std::string error;
                 const auto script = ScratchScriptPath(
                     workspace, JsonValue(a, "path", ""), error);
-                std::error_code made;
-                if (script) {
-                  std::filesystem::create_directories(script->parent_path(),
-                                                      made);
-                }
                 if (!script ||
-                    !AtomicWriteFile(script->string(), code, kSharedFileMode,
-                                     /*preserve_mode=*/false, error)) {
+                    !AtomicWriteFile(script->string(), JsonValue(a, "code", ""),
+                                     kSharedFileMode, /*preserve_mode=*/false,
+                                     error)) {
                   return ToolFailure(ToolErrorCode::kInvalidArguments, error);
                 }
               }

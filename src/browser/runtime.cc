@@ -69,81 +69,127 @@ constexpr const char* kSecretScript =
     "attributeFilter:['type','autocomplete','style',T]});"
     "if(document.documentElement)scan(document.documentElement)})()";
 
-// Page details plus narrow, high-signal evidence of a bot wall: an error
-// status, a challenge title, a large visible challenge frame, or a short page
-// that asks for human verification. Advisory only; the agent decides.
-constexpr const char* kPageScript =
-    "(()=>{const t=document.body?document.body.innerText:'';"
-    "const title=document.title||'';let block=null;"
-    "const nav=performance.getEntriesByType('navigation')[0];"
-    "const status=nav&&nav.responseStatus||0;"
-    "if(status===403||status===429)block={kind:status===429?'rate_limited':"
-    "'access_denied',evidence:'HTTP '+status};"
-    "if(!block&&/^(just a moment|attention required|security check|access "
-    "denied)/i.test(title.trim()))block={kind:'bot_check',evidence:'title \"'+"
-    "title.slice(0,80)+'\"'};"
-    "if(!block)for(const f of document.querySelectorAll('iframe[src]')){"
-    "if(!/challenges\\.cloudflare\\.com|hcaptcha\\.com|google\\.com\\/"
-    "recaptcha|captcha-delivery\\.com|px-captcha/.test(f.src))continue;"
-    "const r=f.getBoundingClientRect();"
-    "if(r.width*r.height>=0.15*innerWidth*innerHeight||(r.width>0&&"
-    "t.length<400)){block={kind:'captcha',evidence:'challenge frame '+"
-    "new URL(f.src).host};break}}"
-    "if(!block&&t.length<1500){const m=/unusual (traffic|behaviou?r)|verify "
-    "you are (a )?human|are you a robot|not a robot|press (&|and) hold/i"
-    ".exec(t);if(m)block={kind:'bot_check',evidence:'page says \"'+m[0]+'\"'}}"
-    // What can be acted on, numbered: kept on the page so a click can name
-    // one by its number. A field says whether it holds text, never what.
-    "const E=window.__uagentElements=[];const rows=[];"
-    "for(const n of document.querySelectorAll('a[href],button,select,"
-    "textarea,summary,input:not([type=hidden]),[role=button],[role=link],"
-    "[role=tab],[role=menuitem],[role=checkbox],[role=radio],[role=option],"
-    "[role=switch],[contenteditable=true]')){if(E.length>=100)break;"
-    "const r=n.getBoundingClientRect();if(r.width<1||r.height<1||n.disabled)"
-    "continue;const s=getComputedStyle(n);if(s.visibility==='hidden'||"
-    "s.display==='none')continue;const g=n.tagName.toLowerCase();"
-    "const kind=n.getAttribute('role')||(g==='a'?'link':g==='input'?"
-    "(n.type||'text'):g);const name=(n.getAttribute('aria-label')||"
-    "(n.labels&&n.labels[0]&&n.labels[0].innerText)||"
-    "(g!=='select'&&n.innerText)||n.placeholder||n.title||n.alt||n.name||"
-    "((n.type==='submit'||n.type==='button')&&n.value)||'')"
-    ".replace(/\\s+/g,' ').trim().slice(0,80);"
-    "const state=n.type==='checkbox'||n.type==='radio'?(n.checked?"
-    "' (checked)':''):g==='select'?' ('+(n.selectedOptions[0]?"
-    "n.selectedOptions[0].text.trim().slice(0,40):'')+')':g==='input'||"
-    "g==='textarea'?(n.value?' (filled)':' (empty)'):'';"
-    "E.push(n);rows.push('['+E.length+'] '+kind+' \"'+name+'\"'+state)}"
-    "return {url:location.href.split(/[?#]/)[0],title,"
-    "text:t.slice(0,12000),chars:t.length,elements:rows.join('\\n'),block}})()";
+// The page, for a look (`acting`) or for reading. Both get its address,
+// title, how long its text is, and narrow, high-signal evidence of a bot
+// wall: an error status, a challenge title, a large visible challenge frame,
+// or a short page that asks for human verification. Advisory only; the agent
+// decides.
+//
+// A look also gets what can be acted on, numbered and kept on the page so a
+// click can name one by its number. A field says whether it holds text,
+// never what.
+//
+// Reading gets text from `offset`, or with `find` the lines that contain it
+// (from match `offset` on) and the links that do.
+constexpr const char* kPageScript = R"js(((offset, find, acting) => {
+  const t = document.body ? document.body.innerText : '';
+  const title = document.title || '';
+  let block = null;
+  const nav = performance.getEntriesByType('navigation')[0];
+  const status = nav && nav.responseStatus || 0;
+  if (status === 403 || status === 429) {
+    block = {kind: status === 429 ? 'rate_limited' : 'access_denied',
+             evidence: 'HTTP ' + status};
+  }
+  if (!block && /^(just a moment|attention required|security check|access denied)/i
+          .test(title.trim())) {
+    block = {kind: 'bot_check', evidence: 'title "' + title.slice(0, 80) + '"'};
+  }
+  if (!block) for (const frame of document.querySelectorAll('iframe[src]')) {
+    if (!/challenges\.cloudflare\.com|hcaptcha\.com|google\.com\/recaptcha|captcha-delivery\.com|px-captcha/
+             .test(frame.src)) continue;
+    const r = frame.getBoundingClientRect();
+    if (r.width * r.height >= 0.15 * innerWidth * innerHeight ||
+        (r.width > 0 && t.length < 400)) {
+      block = {kind: 'captcha',
+               evidence: 'challenge frame ' + new URL(frame.src).host};
+      break;
+    }
+  }
+  if (!block && t.length < 1500) {
+    const m = /unusual (traffic|behaviou?r)|verify you are (a )?human|are you a robot|not a robot|press (&|and) hold/i
+                  .exec(t);
+    if (m) block = {kind: 'bot_check', evidence: 'page says "' + m[0] + '"'};
+  }
+  const page = {url: location.href.split(/[?#]/)[0], title, chars: t.length,
+                block};
+  const plain = s => (s || '').replace(/\s+/g, ' ').trim();
+  if (acting) {
+    const kept = window.__uagentElements = [];
+    const rows = [];
+    for (const n of document.querySelectorAll(
+             'a[href],button,select,textarea,summary,input:not([type=hidden]),' +
+             '[role=button],[role=link],[role=tab],[role=menuitem],' +
+             '[role=checkbox],[role=radio],[role=option],[role=switch],' +
+             '[contenteditable=true]')) {
+      if (kept.length >= 100) break;
+      const r = n.getBoundingClientRect();
+      if (r.width < 1 || r.height < 1 || n.disabled) continue;
+      const style = getComputedStyle(n);
+      if (style.visibility === 'hidden' || style.display === 'none') continue;
+      const tag = n.tagName.toLowerCase();
+      const kind = n.getAttribute('role') ||
+          (tag === 'a' ? 'link' : tag === 'input' ? (n.type || 'text') : tag);
+      const name = plain(
+          n.getAttribute('aria-label') ||
+          (n.labels && n.labels[0] && n.labels[0].innerText) ||
+          (tag !== 'select' && n.innerText) || n.placeholder || n.title ||
+          n.alt || n.name ||
+          ((n.type === 'submit' || n.type === 'button') && n.value)).slice(0, 80);
+      const state =
+          n.type === 'checkbox' || n.type === 'radio'
+              ? (n.checked ? ' (checked)' : '')
+              : tag === 'select'
+                    ? ' (' + plain(n.selectedOptions[0] &&
+                                   n.selectedOptions[0].text).slice(0, 40) + ')'
+                    : tag === 'input' || tag === 'textarea'
+                          ? (n.value ? ' (filled)' : ' (empty)') : '';
+      kept.push(n);
+      rows.push('[' + kept.length + '] ' + kind + ' "' + name + '"' + state);
+    }
+    return {...page, text: t.slice(0, 12000), elements: rows.join('\n')};
+  }
+  const wanted = find.toLowerCase();
+  const links = new Map();
+  for (const a of document.querySelectorAll('a[href]')) {
+    if (links.size >= 100) break;
+    if (typeof a.href !== 'string' || !/^https?:/.test(a.href)) continue;
+    const name = plain(a.innerText || a.getAttribute('aria-label'));
+    if (links.has(a.href) ||
+        (find ? !(name + ' ' + a.href).toLowerCase().includes(wanted)
+              : offset > 0)) continue;
+    links.set(a.href, name.slice(0, 80));
+  }
+  const list = [...links].map(([to, name]) => name + ' -> ' + to).join('\n');
+  if (!find) {
+    return {...page, text: t.slice(offset, offset + 12000), links: list};
+  }
+  // A long line is cut around what was searched for, not before it.
+  const hits = [];
+  for (const line of t.split('\n')) {
+    const at = line.toLowerCase().indexOf(wanted);
+    if (at < 0) continue;
+    const from = Math.max(0, Math.min(at - 100, line.length - 300));
+    hits.push(line.slice(from, from + 300).trim());
+  }
+  return {...page, matches: hits.length,
+          text: hits.slice(offset, offset + 200).join('\n'), links: list};
+}))js";
 
-// Where a numbered element is now, brought into view first.
-constexpr const char* kElementScript =
-    "(n=>{const e=(window.__uagentElements||[])[n-1];"
-    "if(!e||!e.isConnected)return null;"
-    "e.scrollIntoView({block:'center',inline:'center'});"
-    "const r=e.getBoundingClientRect();"
-    "return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)}})";
-
-// Page text from an offset, or the lines that contain `f`, and the links
-// that go with them. A link's address is given as a page's own is: without
-// its query.
-constexpr const char* kReadScript =
-    "((o,f)=>{const t=document.body?document.body.innerText:'';"
-    "const q=f.toLowerCase();const links=new Map();"
-    "for(const a of document.querySelectorAll('a[href]')){"
-    "const u=a.href.split(/[?#]/)[0];if(!/^https?:/.test(u)||links.has(u))"
-    "continue;const s=(a.innerText||a.getAttribute('aria-label')||'')"
-    ".replace(/\\s+/g,' ').trim().slice(0,80);"
-    "if(!f?!o:(s+' '+u).toLowerCase().includes(q))links.set(u,s);"
-    "if(links.size>=100)break}"
-    "const list=[...links].map(([u,s])=>s+' -> '+u).join('\\n');"
-    "const page={url:location.href.split(/[?#]/)[0],"
-    "title:document.title||'',chars:t.length,links:list};"
-    "if(!f)return {...page,text:t.slice(o,o+12000)};"
-    "const hits=[];for(const line of t.split('\\n')){"
-    "if(hits.length>=200)break;if(line.toLowerCase().includes(q))"
-    "hits.push(line.trim().slice(0,300))}"
-    "return {...page,text:hits.join('\\n')}})";
+// Where a numbered element is now, brought into view first. Nothing when it
+// left the page, has no size, or lies under something else: a click there
+// would land on whatever is in its place.
+constexpr const char* kElementScript = R"js((n => {
+  const e = (window.__uagentElements || [])[n - 1];
+  if (!e || !e.isConnected) return null;
+  e.scrollIntoView({block: 'center', inline: 'center', behavior: 'instant'});
+  const r = e.getBoundingClientRect();
+  const x = Math.round(r.x + r.width / 2), y = Math.round(r.y + r.height / 2);
+  const hit = document.elementFromPoint(x, y);
+  if (r.width < 1 || r.height < 1 || !hit ||
+      !(e.contains(hit) || hit.contains(e))) return null;
+  return {x, y};
+}))js";
 
 pid_t Launch(const std::vector<std::string>& arguments,
              posix_spawn_file_actions_t* actions = nullptr) {
@@ -1202,7 +1248,9 @@ json Runtime::Act(const std::string& op, const json& command) {
       const json* found = JsonObject(where, "result");
       found = found ? JsonObject(*found, "result") : nullptr;
       found = found ? JsonObject(*found, "value") : nullptr;
-      if (!found) return {{"error", "that element is gone; look again"}};
+      if (!found) {
+        return {{"error", "that element is gone or covered; look again"}};
+      }
       x = JsonValue(*found, "x", -1);
       y = JsonValue(*found, "y", -1);
     } else if (!Coordinate(command, "x", x) || !Coordinate(command, "y", y)) {
@@ -1229,9 +1277,14 @@ json Runtime::Act(const std::string& op, const json& command) {
     observation_.clear();
     if (JsonValue(command, "replace", false)) {
       // What the field holds becomes the selection, which the text replaces.
-      Call("Input.dispatchKeyEvent",
-           {{"type", "rawKeyDown"}, {"commands", json::array({"selectAll"})}},
-           page_session_);
+      // Unselected, the text would be added to it instead.
+      json chosen = Call(
+          "Input.dispatchKeyEvent",
+          {{"type", "rawKeyDown"}, {"commands", json::array({"selectAll"})}},
+          page_session_);
+      if (auto reason = CdError(chosen); !reason.empty()) {
+        return {{"error", reason}};
+      }
     }
     reply = Call("Input.insertText", {{"text", value}}, page_session_);
   } else if (op == "fill_saved") {
@@ -1400,12 +1453,12 @@ json Runtime::Probe() {
 }
 
 json Runtime::Read(const json& command) {
-  const std::string arguments =
-      std::to_string(std::max(JsonValue(command, "offset", 0), 0)) + "," +
-      JsonDump(JsonValue(command, "find", ""));
   json page =
       Call("Runtime.evaluate",
-           {{"expression", std::string(kReadScript) + "(" + arguments + ")"},
+           {{"expression",
+             std::string(kPageScript) + "(" +
+                 std::to_string(std::max(JsonValue(command, "offset", 0), 0)) +
+                 "," + JsonDump(JsonValue(command, "find", "")) + ",false)"},
             {"returnByValue", true}},
            page_session_);
   if (auto reason = CdError(page); !reason.empty()) {
@@ -1439,33 +1492,34 @@ json Runtime::Observe(bool image) {
   // device-independent pixels relative to the document.
   double zoom = JsonValue(*viewport, "zoom", 1.0);
   if (zoom <= 0) zoom = 1;
-  json shot = json{{"result", json::object()}};
-  if (auto masked = !image ? std::string()
-                           : CdError(Call("Runtime.evaluate",
-                                          {{"expression", kSecretScript}},
-                                          page_session_));
-      !masked.empty()) {
-    return {{"error", masked}};
-  }
+  std::string picture;
   if (image) {
-    shot = Call("Page.captureScreenshot",
-                {{"format", "jpeg"},
-                 {"quality", 70},
-                 {"clip",
-                  {{"x", JsonValue(*viewport, "pageX", 0.0) * zoom},
-                   {"y", JsonValue(*viewport, "pageY", 0.0) * zoom},
-                   {"width", width * zoom},
-                   {"height", height * zoom},
-                   {"scale", 1 / zoom}}}},
-                page_session_);
-  }
-  const json* image_result = JsonObject(shot, "result");
-  if (!image_result) {
-    return {
-        {"error", CdError(shot).empty() ? "screenshot failed" : CdError(shot)}};
+    if (auto masked =
+            CdError(Call("Runtime.evaluate", {{"expression", kSecretScript}},
+                         page_session_));
+        !masked.empty()) {
+      return {{"error", masked}};
+    }
+    json shot = Call("Page.captureScreenshot",
+                     {{"format", "jpeg"},
+                      {"quality", 70},
+                      {"clip",
+                       {{"x", JsonValue(*viewport, "pageX", 0.0) * zoom},
+                        {"y", JsonValue(*viewport, "pageY", 0.0) * zoom},
+                        {"width", width * zoom},
+                        {"height", height * zoom},
+                        {"scale", 1 / zoom}}}},
+                     page_session_);
+    const json* taken = JsonObject(shot, "result");
+    if (!taken) {
+      return {{"error",
+               CdError(shot).empty() ? "screenshot failed" : CdError(shot)}};
+    }
+    picture = JsonValue(*taken, "data", "");
   }
   json page = Call("Runtime.evaluate",
-                   {{"expression", kPageScript}, {"returnByValue", true}},
+                   {{"expression", std::string(kPageScript) + "(0,\"\",true)"},
+                    {"returnByValue", true}},
                    page_session_);
   json details = json::object();
   if (const json* response = JsonObject(page, "result")) {
@@ -1477,7 +1531,7 @@ json Runtime::Observe(bool image) {
   view_width_ = static_cast<int>(width);
   view_height_ = static_cast<int>(height);
   return {{"ok", true},
-          {"image", JsonValue(*image_result, "data", "")},
+          {"image", std::move(picture)},
           {"page", details},
           {"generation", generation_},
           {"view_id", observation_},

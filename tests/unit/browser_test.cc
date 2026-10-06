@@ -2,6 +2,10 @@
 
 #include "include/browser/browser.h"
 
+#include <fcntl.h>
+#include <poll.h>
+#include <unistd.h>
+
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -12,6 +16,7 @@
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/lease.h"
+#include "include/tools/browser.h"
 #include "include/transport/session.h"
 #include "include/web/rfb_filter.h"
 #include "tests/unit/test_support.h"
@@ -414,7 +419,8 @@ void TestBrowserSecretMaskAndBack() {
   CHECK(looked.value("image", "x").empty());
   const std::string view = looked.value("view_id", "");
   CHECK(act({{"op", "click"}, {"element", 2}, {"view_id", view}})
-            .value("error", "") == "that element is gone; look again");
+            .value("error", "") ==
+        "that element is gone or covered; look again");
   CHECK(!act({{"op", "click"}, {"element", 1}, {"view_id", view}})
              .contains("error"));
   CHECK(act({{"op", "observe"}}).value("image", "") == "c2hvdA==");
@@ -474,6 +480,85 @@ void TestBrowserSecretMaskAndBack() {
   CHECK(!runtime.Execute({{"op", "tabs"}, {"session_id", kOther}})
              .contains("error"));
   runtime.Shutdown();
+  fs::remove_all(directory);
+}
+
+// The tool's own part: several steps in one call, in order, and a page that
+// is only read. The service runs here, in front of the stand-in Chrome.
+void TestBrowserToolSteps() {
+  namespace fs = std::filesystem;
+  TestWorkspace workspace("browser-tool");
+  const auto bin = workspace.root / "bin";
+  InstallFakeBrowser(bin);
+  const auto directory = fs::canonical("/tmp") /
+                         ("uagent-browser-tool-" + std::to_string(getpid()));
+  ScopedEnv configured("UAGENT_BROWSER_DATA", directory.string());
+  ScopedEnv search("PATH", bin.string() + ":" + getenv("PATH"));
+  ScopedEnv display("DISPLAY");
+  ScopedEnv authority("XAUTHORITY");
+  int owner[2];
+  CHECK(pipe(owner) == 0);
+  // Chrome must not inherit the end whose closing stops the service.
+  CHECK(fcntl(owner[1], F_SETFD, FD_CLOEXEC) == 0);
+  std::thread service([&] { browser::ServiceMain(owner[0]); });
+  for (int wait = 0; wait < 500 && !fs::exists(browser::SocketPath()); ++wait) {
+    poll(nullptr, 0, 10);
+  }
+  const Tool tool = BrowserTool("cccccccccccccccccccccccccccccccc",
+                                [](const std::string&, const std::string&,
+                                   bool*) { return std::string(); });
+  const auto view = [](const std::string& output) {
+    const size_t at = output.find("View ID: ") + 9;
+    return output.substr(at, output.find(' ', at) - at);
+  };
+  // An action answers with the page as text, and no picture.
+  ToolResult opened =
+      tool.run({{"action", "open"}, {"url", "https://example.com/"}}, {});
+  CHECK(opened.Ok());
+  CHECK(opened.output.starts_with("open done.\nURL: https://example.com/"));
+  CHECK(opened.output.find("Elements:\n[1] text \"Search\" (empty)") !=
+        std::string::npos);
+  CHECK(opened.output.find("image saved") == std::string::npos);
+  // A field in one call: clicked, its content replaced, the key pressed.
+  ToolResult filled = tool.run({{"action", "type"},
+                                {"element", 1},
+                                {"view_id", view(opened.output)},
+                                {"text", "kestrel"},
+                                {"replace", true},
+                                {"key", "Enter"}},
+                               {});
+  CHECK(filled.output.starts_with("click done.\ntype done.\npress done.\n"));
+  // A field that is gone stops the call before anything is typed.
+  CHECK(!tool.run({{"action", "type"},
+                   {"element", 2},
+                   {"view_id", view(filled.output)},
+                   {"text", "lost"},
+                   {"key", "Enter"}},
+                  {})
+             .Ok());
+  // A page that is only read: opened, then the lines asked for.
+  ToolResult read = tool.run(
+      {{"action", "open"}, {"url", "https://example.com/"}, {"find", "clip"}},
+      {});
+  CHECK(read.output.starts_with("open done.\nURL: https://example.com/"));
+  CHECK(read.output.ends_with("Lines containing it (1 in all):\nClip one"));
+  CHECK(read.output.find("Elements:") == std::string::npos);
+  close(owner[1]);
+  service.join();
+  close(owner[0]);
+  std::vector<std::string> order;
+  std::ifstream log(directory / "profile" / "cdp.jsonl");
+  for (std::string line; std::getline(log, line);) {
+    const json params = json::parse(line).value("params", json::object());
+    if (params.value("type", "") == "mousePressed") order.push_back("click");
+    if (params.contains("commands")) order.push_back("select");
+    if (params.contains("text") && !params.contains("key")) {
+      order.push_back("type " + params.value("text", ""));
+    }
+    if (params.value("type", "") == "keyDown") order.push_back("Enter");
+  }
+  CHECK(order ==
+        std::vector<std::string>({"click", "select", "type kestrel", "Enter"}));
   fs::remove_all(directory);
 }
 

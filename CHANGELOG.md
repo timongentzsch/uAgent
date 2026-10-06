@@ -23,9 +23,8 @@
   and no screenshot; `observe` still returns one. A turn of many steps no
   longer carries a picture per step.
 - `browser`: a result carries the page's text whole, up to 12,000
-  characters, and says how much more there is; it was cut in the middle at
-  the general result limit. Text that an action left unchanged is not sent
-  again in the same turn.
+  characters, and says how much more there is and how to read on; it was
+  cut in the middle at the general result limit.
 - The approval for a command outside the sandbox says what it can reach:
   saved logins, browser sessions and settings.
 

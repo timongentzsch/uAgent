@@ -96,8 +96,16 @@ while chunk := os.read(3, 4096):
                 # Element 1 is on the page; any other is gone.
                 value = {"x": 40, "y": 30} if asked.endswith("(1)") else None
                 result = {"result": {"value": value}}
-            elif asked.endswith(',"clip")'):
-                result = {"result": {"value": {"chars": 9, "text": "Clip one", "links": ""}}}
+            elif asked.endswith(',"clip",false)'):
+                read = {"url": "https://example.com/", "title": "Clips", "chars": 9, "matches": 1}
+                result = {"result": {"value": read | {"text": "Clip one", "links": ""}}}
+            elif asked.endswith(',"",true)'):
+                looked = {"url": "https://example.com/", "title": "Clips", "chars": 5}
+                looked |= {"text": "Clips", "elements": '[1] text "Search" (empty)'}
+                result = {"result": {"value": looked}}
+            elif "performance.timeOrigin" in asked:
+                # A page that has finished loading and stays as it is.
+                result = {"result": {"value": {"ready": "complete", "doc": "1", "sig": "1"}}}
             else:
                 result = {"result": {"objectId": "field"}}
         elif command["method"] == "Runtime.callFunctionOn":

@@ -233,8 +233,10 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask) {
       "view_id. Fill a field in one call: type with element and view_id "
       "clicks it first, replace=true overwrites what it holds, and key is "
       "pressed after. read returns more: page text from offset, or with find "
-      "only the lines and links that contain it; several open or read calls "
-      "in one step read several pages. observe adds a screenshot, for a "
+      "only the lines and links that contain it. open takes the same offset "
+      "or find and then answers as read does, for a page you only need to "
+      "read; several such calls in one step read several pages. observe "
+      "adds a screenshot, for a "
       "page that text does not describe; x and y in its CSS pixels work "
       "where no element number does. A "
       "tab opened by your action becomes active automatically; open with "
@@ -322,9 +324,14 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask) {
       return Observation(session_id, "", context, *seen, /*look=*/true);
     }
     // One call, in order: type may click its field first and press a key
-    // after. Every other action is the one step it names.
+    // after, and open may read the page it opened. Every other action is
+    // the one step it names.
     std::vector<std::string> steps = {action == "status" ? "agent_status"
                                                          : action};
+    if (action == "open" &&
+        (args.contains("find") || args.contains("offset"))) {
+      steps.emplace_back("read");
+    }
     if (action == "type") {
       if (args.contains("element") || args.contains("x")) {
         steps.insert(steps.begin(), "click");
@@ -334,6 +341,8 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask) {
     std::string lead;
     json outcome;
     for (const std::string& step : steps) {
+      // What is read is the page once it has settled.
+      if (step == "read" && !lead.empty()) lead += Settle(session_id, context);
       json command = args;
       command["op"] = step;
       command["session_id"] = session_id;
@@ -345,12 +354,14 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask) {
         lead += step + " failed: " + error + ".\n";
         break;
       }
-      lead += step + " done.\n";
+      if (step != "read") lead += step + " done.\n";
     }
-    if (action == "read") {
+    if (steps.back() == "read" && !outcome.contains("error")) {
       const std::string links = JsonValue(outcome, "links", "");
       return ToolSuccess(
-          "Page text (" + std::to_string(JsonValue(outcome, "chars", 0)) +
+          lead + "URL: " + JsonValue(outcome, "url", "") +
+          "\nTitle: " + JsonValue(outcome, "title", "") + "\nPage text (" +
+          std::to_string(JsonValue(outcome, "chars", 0)) +
           " characters in all):\n" + JsonValue(outcome, "text", "") +
           (links.empty() ? "" : "\nLinks:\n" + links));
     }

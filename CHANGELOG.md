@@ -10,8 +10,9 @@
   with `close` closes one. `press` knows the arrow keys, Delete, Space,
   PageUp, PageDown, Home and End.
 - `browser`: `read` returns a page's text from an offset, or only the lines
-  and links that contain what it searches for. `click` and `type` take the
-  number of an element in place of coordinates.
+  and links that contain what it searches for; `open` takes the same and
+  answers as `read` does, so a page that is only read is one call. `click`
+  and `type` take the number of an element in place of coordinates.
 - `scratch` takes `code`: the script is written and run in one call.
 
 ### Changed

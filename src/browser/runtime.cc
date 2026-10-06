@@ -137,11 +137,13 @@ constexpr const char* kReadScript =
     "if(!f?!o:(s+' '+u).toLowerCase().includes(q))links.set(u,s);"
     "if(links.size>=100)break}"
     "const list=[...links].map(([u,s])=>s+' -> '+u).join('\\n');"
-    "if(!f)return {chars:t.length,text:t.slice(o,o+12000),links:list};"
+    "const page={url:location.href.split(/[?#]/)[0],"
+    "title:document.title||'',chars:t.length,links:list};"
+    "if(!f)return {...page,text:t.slice(o,o+12000)};"
     "const hits=[];for(const line of t.split('\\n')){"
     "if(hits.length>=200)break;if(line.toLowerCase().includes(q))"
     "hits.push(line.trim().slice(0,300))}"
-    "return {chars:t.length,text:hits.join('\\n'),links:list}})";
+    "return {...page,text:hits.join('\\n')}})";
 
 pid_t Launch(const std::vector<std::string>& arguments,
              posix_spawn_file_actions_t* actions = nullptr) {

@@ -423,7 +423,7 @@ test("minimal folds a turn's work into one row before its answer", () => {
     { ...call("e3", "edit"), view: { target: "b.ts" } },
     call("c1", "run", "cancelled"),
     { id: "m2", kind: "assistant", text: "Done.", reasoning: "sure" },
-    { id: "s1", kind: "assistant", summary: { turn: 1 } },
+    { id: "s1", kind: "assistant", summary: { turn: 1, duration_ms: 72000 } },
     { id: "u2", kind: "user", text: "more" },
     call("r1", "run", "running"),
   ];
@@ -440,7 +440,8 @@ test("minimal folds a turn's work into one row before its answer", () => {
     "u2",
     ["r1"],
   ]);
-  assert.equal(rows[1].label, "Worked · 4 steps · edited 2 files");
+  // A finished turn says how long it took; one still running cannot.
+  assert.equal(rows[1].label, "Worked · 4 steps · edited 2 files · 1m 12s");
   assert.equal(rows[7].label, "Worked · 1 step");
   assert.equal(rows[4].text, "Done.");
   // A turn with nothing but an answer has no work row.

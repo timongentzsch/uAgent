@@ -1,4 +1,5 @@
 import { isFailedStatus, isRunningStatus } from "./display.ts";
+import { duration } from "./duration.ts";
 import { plural } from "./quantities.ts";
 import type { Block, DetailPolicy, PresentedBlock } from "./types.ts";
 import { defaultDetail } from "./verbosity.ts";
@@ -154,8 +155,9 @@ function foldGroups(rows: PresentedBlock[]): PresentedBlock[] {
   return folded;
 }
 
-// What a turn's folded work did: "Worked · 14 steps · edited 2 files".
-function workLabel(steps: PresentedBlock[]) {
+// What a turn's folded work did: "Worked · 14 steps · edited 2 files · 1m 12s".
+// How long the turn took is known once it has ended.
+function workLabel(steps: PresentedBlock[], took?: number) {
   const calls = steps.filter((step) => step.kind !== "assistant");
   const edited = new Set(
     calls
@@ -165,6 +167,7 @@ function workLabel(steps: PresentedBlock[]) {
   return [
     `Worked · ${plural(calls.length, "step")}`,
     edited && `edited ${plural(edited, "file")}`,
+    took !== undefined && duration(took),
   ]
     .filter(Boolean)
     .join(" · ");
@@ -177,7 +180,7 @@ function workLabel(steps: PresentedBlock[]) {
 function foldTurns(rows: PresentedBlock[]): PresentedBlock[] {
   const folded: PresentedBlock[] = [];
   let turn: PresentedBlock[] = [];
-  const flush = () => {
+  const flush = (took?: number) => {
     const answer = turn.findLast((row) => row.kind === "assistant" && row.text);
     const steps: PresentedBlock[] = [];
     let at = -1;
@@ -196,7 +199,7 @@ function foldTurns(rows: PresentedBlock[]): PresentedBlock[] {
         steps.push(row);
       } else folded.push(row);
     }
-    if (steps.length) folded[at] = fold(steps, workLabel(steps));
+    if (steps.length) folded[at] = fold(steps, workLabel(steps, took));
     turn = [];
   };
   for (const row of rows) {
@@ -204,7 +207,7 @@ function foldTurns(rows: PresentedBlock[]): PresentedBlock[] {
       row.kind === "user" ||
       (row.kind === "attachment" && row.origin !== "tool");
     if (yours || row.summary) {
-      flush();
+      flush(row.summary?.duration_ms);
       folded.push(row);
     } else turn.push(row);
   }

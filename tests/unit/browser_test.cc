@@ -407,6 +407,20 @@ void TestBrowserSecretMaskAndBack() {
            .contains("error"));
   CHECK(act({{"op", "tabs"}, {"target_id", "left-open"}, {"close", true}})
             .value("closed", "") == "left-open");
+  // A look without its picture takes no screenshot, and what it numbered
+  // can be clicked by number: where that element is now is where the mouse
+  // goes. A number the page no longer has is refused, not guessed.
+  json looked = act({{"op", "observe"}, {"image", false}});
+  CHECK(looked.value("image", "x").empty());
+  const std::string view = looked.value("view_id", "");
+  CHECK(act({{"op", "click"}, {"element", 2}, {"view_id", view}})
+            .value("error", "") == "that element is gone; look again");
+  CHECK(!act({{"op", "click"}, {"element", 1}, {"view_id", view}})
+             .contains("error"));
+  CHECK(act({{"op", "observe"}}).value("image", "") == "c2hvdA==");
+  CHECK(act({{"op", "read"}, {"find", "clip"}}).value("text", "") ==
+        "Clip one");
+  bool pictured = false, pointed = false;
   bool entered = false, selected = false, created = false, closed = false;
   std::ifstream acted(directory / "profile" / "cdp.jsonl");
   for (std::string line; std::getline(acted, line);) {
@@ -423,8 +437,16 @@ void TestBrowserSecretMaskAndBack() {
     if (method == "Page.navigate") CHECK(created);
     closed = closed || (method == "Target.closeTarget" &&
                         params.value("targetId", "") == "left-open");
+    // The one screenshot comes after the click: the first look took none.
+    pointed =
+        pointed || (params.value("type", "") == "mousePressed" &&
+                    params.value("x", 0) == 40 && params.value("y", 0) == 30);
+    if (method == "Page.captureScreenshot") {
+      CHECK(pointed && !pictured);
+      pictured = true;
+    }
   }
-  CHECK(entered && selected && created && closed);
+  CHECK(entered && selected && created && closed && pointed && pictured);
   // A saved login is taken with keys on the display itself, where Chrome's
   // own list listens: Escape, Down, Down, Tab, each pressed and let go. A
   // field that stays as long as it was had nothing saved for it.

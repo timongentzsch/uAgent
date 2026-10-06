@@ -92,8 +92,56 @@ constexpr const char* kPageScript =
     "if(!block&&t.length<1500){const m=/unusual (traffic|behaviou?r)|verify "
     "you are (a )?human|are you a robot|not a robot|press (&|and) hold/i"
     ".exec(t);if(m)block={kind:'bot_check',evidence:'page says \"'+m[0]+'\"'}}"
+    // What can be acted on, numbered: kept on the page so a click can name
+    // one by its number. A field says whether it holds text, never what.
+    "const E=window.__uagentElements=[];const rows=[];"
+    "for(const n of document.querySelectorAll('a[href],button,select,"
+    "textarea,summary,input:not([type=hidden]),[role=button],[role=link],"
+    "[role=tab],[role=menuitem],[role=checkbox],[role=radio],[role=option],"
+    "[role=switch],[contenteditable=true]')){if(E.length>=100)break;"
+    "const r=n.getBoundingClientRect();if(r.width<1||r.height<1||n.disabled)"
+    "continue;const s=getComputedStyle(n);if(s.visibility==='hidden'||"
+    "s.display==='none')continue;const g=n.tagName.toLowerCase();"
+    "const kind=n.getAttribute('role')||(g==='a'?'link':g==='input'?"
+    "(n.type||'text'):g);const name=(n.getAttribute('aria-label')||"
+    "(n.labels&&n.labels[0]&&n.labels[0].innerText)||"
+    "(g!=='select'&&n.innerText)||n.placeholder||n.title||n.alt||n.name||"
+    "((n.type==='submit'||n.type==='button')&&n.value)||'')"
+    ".replace(/\\s+/g,' ').trim().slice(0,80);"
+    "const state=n.type==='checkbox'||n.type==='radio'?(n.checked?"
+    "' (checked)':''):g==='select'?' ('+(n.selectedOptions[0]?"
+    "n.selectedOptions[0].text.trim().slice(0,40):'')+')':g==='input'||"
+    "g==='textarea'?(n.value?' (filled)':' (empty)'):'';"
+    "E.push(n);rows.push('['+E.length+'] '+kind+' \"'+name+'\"'+state)}"
     "return {url:location.href.split(/[?#]/)[0],title,"
-    "text:t.slice(0,12000),chars:t.length,block}})()";
+    "text:t.slice(0,12000),chars:t.length,elements:rows.join('\\n'),block}})()";
+
+// Where a numbered element is now, brought into view first.
+constexpr const char* kElementScript =
+    "(n=>{const e=(window.__uagentElements||[])[n-1];"
+    "if(!e||!e.isConnected)return null;"
+    "e.scrollIntoView({block:'center',inline:'center'});"
+    "const r=e.getBoundingClientRect();"
+    "return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)}})";
+
+// Page text from an offset, or the lines that contain `f`, and the links
+// that go with them. A link's address is given as a page's own is: without
+// its query.
+constexpr const char* kReadScript =
+    "((o,f)=>{const t=document.body?document.body.innerText:'';"
+    "const q=f.toLowerCase();const links=new Map();"
+    "for(const a of document.querySelectorAll('a[href]')){"
+    "const u=a.href.split(/[?#]/)[0];if(!/^https?:/.test(u)||links.has(u))"
+    "continue;const s=(a.innerText||a.getAttribute('aria-label')||'')"
+    ".replace(/\\s+/g,' ').trim().slice(0,80);"
+    "if(!f?!o:(s+' '+u).toLowerCase().includes(q))links.set(u,s);"
+    "if(links.size>=100)break}"
+    "const list=[...links].map(([u,s])=>s+' -> '+u).join('\\n');"
+    "if(!f)return {chars:t.length,text:t.slice(o,o+12000),links:list};"
+    "const hits=[];for(const line of t.split('\\n')){"
+    "if(hits.length>=200)break;if(line.toLowerCase().includes(q))"
+    "hits.push(line.trim().slice(0,300))}"
+    "return {chars:t.length,text:hits.join('\\n'),links:list}})";
 
 pid_t Launch(const std::vector<std::string>& arguments,
              posix_spawn_file_actions_t* actions = nullptr) {
@@ -827,16 +875,18 @@ json Runtime::Execute(const json& command) {
   // Whoever takes the browser after someone else starts from the page as it
   // is, not as it remembers it: keys and text go nowhere before that.
   // Only a look or an open that worked counts.
-  if (moved_ && op != "observe" && op != "tabs" && op != "open") {
+  if (moved_ && op != "observe" && op != "read" && op != "tabs" &&
+      op != "open") {
     return {{"error",
              "another conversation used the browser since; open your page "
              "or observe before acting"}};
   }
   if (op == "observe") {
-    json seen = Observe();
+    json seen = Observe(JsonValue(command, "image", true));
     if (!seen.contains("error")) moved_ = false;
     return seen;
   }
+  if (op == "read") return Read(command);
   if (op == "tabs") {
     json pages = PageTargets();
     if (pages.contains("error")) return pages;
@@ -1141,10 +1191,22 @@ json Runtime::Act(const std::string& op, const json& command) {
                             : "click needs view_id from the latest observe"}};
     }
     int x, y;
-    if (!Coordinate(command, "x", x) || !Coordinate(command, "y", y)) {
-      return {{"error", "click requires x and y"}};
+    if (const int element = JsonValue(command, "element", 0); element > 0) {
+      json where = Call("Runtime.evaluate",
+                        {{"expression", std::string(kElementScript) + "(" +
+                                            std::to_string(element) + ")"},
+                         {"returnByValue", true}},
+                        page_session_);
+      const json* found = JsonObject(where, "result");
+      found = found ? JsonObject(*found, "result") : nullptr;
+      found = found ? JsonObject(*found, "value") : nullptr;
+      if (!found) return {{"error", "that element is gone; look again"}};
+      x = JsonValue(*found, "x", -1);
+      y = JsonValue(*found, "y", -1);
+    } else if (!Coordinate(command, "x", x) || !Coordinate(command, "y", y)) {
+      return {{"error", "click requires an element, or x and y"}};
     }
-    if (x >= view_width_ || y >= view_height_) {
+    if (x < 0 || y < 0 || x >= view_width_ || y >= view_height_) {
       return {{"error", "coordinates exceed the observed viewport"}};
     }
     observation_.clear();
@@ -1335,7 +1397,27 @@ json Runtime::Probe() {
   return result;
 }
 
-json Runtime::Observe() {
+json Runtime::Read(const json& command) {
+  const std::string arguments =
+      std::to_string(std::max(JsonValue(command, "offset", 0), 0)) + "," +
+      JsonDump(JsonValue(command, "find", ""));
+  json page =
+      Call("Runtime.evaluate",
+           {{"expression", std::string(kReadScript) + "(" + arguments + ")"},
+            {"returnByValue", true}},
+           page_session_);
+  if (auto reason = CdError(page); !reason.empty()) return {{"error", reason}};
+  const json* value = JsonObject(page, "result");
+  value = value ? JsonObject(*value, "result") : nullptr;
+  value = value ? JsonObject(*value, "value") : nullptr;
+  if (!value) return {{"error", "the page could not be read"}};
+  moved_ = false;
+  json read = *value;
+  read["ok"] = true;
+  return read;
+}
+
+json Runtime::Observe(bool image) {
   json metrics = Call("Page.getLayoutMetrics", json::object(), page_session_);
   if (auto reason = CdError(metrics); !reason.empty()) {
     return {{"error", reason}};
@@ -1353,21 +1435,26 @@ json Runtime::Observe() {
   // device-independent pixels relative to the document.
   double zoom = JsonValue(*viewport, "zoom", 1.0);
   if (zoom <= 0) zoom = 1;
-  if (auto masked = CdError(Call(
-          "Runtime.evaluate", {{"expression", kSecretScript}}, page_session_));
+  json shot = json{{"result", json::object()}};
+  if (auto masked = !image ? std::string()
+                           : CdError(Call("Runtime.evaluate",
+                                          {{"expression", kSecretScript}},
+                                          page_session_));
       !masked.empty()) {
     return {{"error", masked}};
   }
-  json shot = Call("Page.captureScreenshot",
-                   {{"format", "jpeg"},
-                    {"quality", 70},
-                    {"clip",
-                     {{"x", JsonValue(*viewport, "pageX", 0.0) * zoom},
-                      {"y", JsonValue(*viewport, "pageY", 0.0) * zoom},
-                      {"width", width * zoom},
-                      {"height", height * zoom},
-                      {"scale", 1 / zoom}}}},
-                   page_session_);
+  if (image) {
+    shot = Call("Page.captureScreenshot",
+                {{"format", "jpeg"},
+                 {"quality", 70},
+                 {"clip",
+                  {{"x", JsonValue(*viewport, "pageX", 0.0) * zoom},
+                   {"y", JsonValue(*viewport, "pageY", 0.0) * zoom},
+                   {"width", width * zoom},
+                   {"height", height * zoom},
+                   {"scale", 1 / zoom}}}},
+                page_session_);
+  }
   const json* image_result = JsonObject(shot, "result");
   if (!image_result) {
     return {

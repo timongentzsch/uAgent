@@ -32,6 +32,7 @@ constexpr Action kActions[] = {
     {"open", true, "Opening", "Opened"},
     {"tabs", false, "Checking", "Checked"},
     {"observe", false, "Looking at", "Looked at"},
+    {"read", false, "Reading", "Read"},
     {"click", true, "Clicking in", "Clicked in"},
     {"type", true, "Typing", "Typed"},
     {"press", true, "Pressing a key in", "Pressed a key in"},
@@ -93,13 +94,14 @@ struct Seen {
   std::string text;
 };
 
-// Screenshot, page text and bot-wall evidence of the current tab. `lead`
-// states what already happened, so a failed look never hides a done action.
+// The current tab as text: what can be acted on, numbered, the page's text
+// and bot-wall evidence; with `look`, the screenshot too. `lead` states what
+// already happened, so a failed look never hides a done action.
 ToolResult Observation(const std::string& session_id, const std::string& lead,
-                       const ToolContext& context, Seen& seen) {
+                       const ToolContext& context, Seen& seen, bool look) {
   const std::string done = lead.empty() ? "" : lead + "\n";
-  json outcome =
-      browser::Request({{"op", "observe"}, {"session_id", session_id}});
+  json outcome = browser::Request(
+      {{"op", "observe"}, {"session_id", session_id}, {"image", look}});
   json current =
       outcome.contains("error")
           ? json::object()
@@ -112,7 +114,7 @@ ToolResult Observation(const std::string& session_id, const std::string& lead,
                          JsonValue(current, "session_id", "") != session_id)) {
     failed = "browser control changed; observe again";
   }
-  if (failed.empty() && JsonValue(outcome, "image", "").empty()) {
+  if (failed.empty() && look && JsonValue(outcome, "image", "").empty()) {
     failed = "empty browser screenshot";
   }
   if (!failed.empty()) {
@@ -122,9 +124,11 @@ ToolResult Observation(const std::string& session_id, const std::string& lead,
     return ToolSuccess(done + "The page could not be observed (" + failed +
                        "). Do not repeat the action; call observe.");
   }
-  ToolResult attached = ToolImageResult(
-      {{"data", JsonValue(outcome, "image", "")}, {"mimeType", "image/jpeg"}},
-      context.call_id, "browser", kArtifactsDir);
+  ToolResult attached =
+      look ? ToolImageResult({{"data", JsonValue(outcome, "image", "")},
+                              {"mimeType", "image/jpeg"}},
+                             context.call_id, "browser", kArtifactsDir)
+           : ToolSuccess("");
   if (!attached.Ok()) {
     if (lead.empty()) return attached;
     return ToolSuccess(done + "The screenshot could not be saved (" +
@@ -151,11 +155,19 @@ ToolResult Observation(const std::string& session_id, const std::string& lead,
                                  " of " + std::to_string(chars) + " characters)"
                            : std::string()) +
                       ":\n" + text;
+  const std::string elements = JsonValue(*page, "elements", "");
+  // A canvas, a chart or an image says nothing here: the picture does.
+  const std::string sparse =
+      !look && elements.empty() && text.size() < 200
+          ? "\nThis page shows little as text; observe returns a screenshot."
+          : "";
   seen = {context.turn_id, std::move(text)};
   attached.output =
-      done + block + attached.output + "\nURL: " + JsonValue(*page, "url", "") +
-      "\nTitle: " + JsonValue(*page, "title", "") + "\n" + shown +
-      "\nView ID: " + JsonValue(outcome, "view_id", "") + " (" +
+      done + block + attached.output + (look ? "\n" : "") +
+      "URL: " + JsonValue(*page, "url", "") +
+      "\nTitle: " + JsonValue(*page, "title", "") +
+      (elements.empty() ? "" : "\nElements:\n" + elements) + "\n" + shown +
+      sparse + "\nView ID: " + JsonValue(outcome, "view_id", "") + " (" +
       std::to_string(JsonValue(outcome, "width", 0)) + "x" +
       std::to_string(JsonValue(outcome, "height", 0)) + " CSS pixels)";
   return attached;
@@ -216,10 +228,15 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask) {
       "Use the shared persistent Google Chrome in this web appliance; the "
       "user sees and can drive the same browser. open, click, type (into the "
       "focused field), press, scroll and back wait for the page to settle "
-      "and return a fresh screenshot, page text and view_id; coordinates are "
-      "CSS pixels of that screenshot, and click/scroll need its view_id. Fill "
-      "a field in one call: type with x, y and view_id clicks it first, "
-      "replace=true overwrites what it holds, and key is pressed after. A "
+      "and return it as text: its numbered elements, its text and a view_id. "
+      "click takes element (a number from the latest result) and that "
+      "view_id. Fill a field in one call: type with element and view_id "
+      "clicks it first, replace=true overwrites what it holds, and key is "
+      "pressed after. read returns more: page text from offset, or with find "
+      "only the lines and links that contain it; several open or read calls "
+      "in one step read several pages. observe adds a screenshot, for a "
+      "page that text does not describe; x and y in its CSS pixels work "
+      "where no element number does. A "
       "tab opened by your action becomes active automatically; open with "
       "new_tab=true keeps the current page; tabs lists tabs, switches with "
       "target_id and closes one with close=true. A result starting with "
@@ -243,6 +260,9 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask) {
         {"url", {{"type", "string"}}},
         {"target_id", {{"type", "string"}}},
         {"view_id", {{"type", "string"}}},
+        {"element", {{"type", "integer"}}},
+        {"offset", {{"type", "integer"}}},
+        {"find", {{"type", "string"}}},
         {"x", {{"type", "integer"}}},
         {"y", {{"type", "integer"}}},
         {"delta_y", {{"type", "integer"}}},
@@ -288,7 +308,7 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask) {
                    : name == "type" ? FirstLine(JsonValue(args, "text", ""))
                                     : "the browser"}};
   };
-  tool.result_chars = kPageTextChars + 1024;
+  tool.result_chars = kPageTextChars + 8192;
   tool.run = [session_id = std::move(session_id), ask = std::move(ask),
               seen = std::make_shared<Seen>()](const json& args,
                                                const ToolContext& context) {
@@ -299,14 +319,16 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask) {
                       ask);
     }
     if (action == "observe") {
-      return Observation(session_id, "", context, *seen);
+      return Observation(session_id, "", context, *seen, /*look=*/true);
     }
     // One call, in order: type may click its field first and press a key
     // after. Every other action is the one step it names.
     std::vector<std::string> steps = {action == "status" ? "agent_status"
                                                          : action};
     if (action == "type") {
-      if (args.contains("x")) steps.insert(steps.begin(), "click");
+      if (args.contains("element") || args.contains("x")) {
+        steps.insert(steps.begin(), "click");
+      }
       if (args.contains("key")) steps.emplace_back("press");
     }
     std::string lead;
@@ -325,12 +347,19 @@ Tool BrowserTool(std::string session_id, BrowserAsk ask) {
       }
       lead += step + " done.\n";
     }
+    if (action == "read") {
+      const std::string links = JsonValue(outcome, "links", "");
+      return ToolSuccess(
+          "Page text (" + std::to_string(JsonValue(outcome, "chars", 0)) +
+          " characters in all):\n" + JsonValue(outcome, "text", "") +
+          (links.empty() ? "" : "\nLinks:\n" + links));
+    }
     if (const Action* row = FindAction(args); !row || !row->acts) {
       return ToolSuccess(JsonDump(outcome));
     }
     lead += Settle(session_id, context);
     lead.pop_back();
-    return Observation(session_id, lead, context, *seen);
+    return Observation(session_id, lead, context, *seen, /*look=*/false);
   };
   return tool;
 }

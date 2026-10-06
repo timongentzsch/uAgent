@@ -86,8 +86,20 @@ while chunk := os.read(3, 4096):
                     {"targetId": "left-open", "type": "page", "url": "https://example.com/"},
                 ]
             }
+        elif command["method"] == "Page.getLayoutMetrics":
+            result = {"cssVisualViewport": {"clientWidth": 800, "clientHeight": 600}}
+        elif command["method"] == "Page.captureScreenshot":
+            result = {"data": "c2hvdA=="}
         elif command["method"] == "Runtime.evaluate":
-            result = {"result": {"objectId": "field"}}
+            asked = command["params"]["expression"]
+            if "scrollIntoView" in asked:
+                # Element 1 is on the page; any other is gone.
+                value = {"x": 40, "y": 30} if asked.endswith("(1)") else None
+                result = {"result": {"value": value}}
+            elif asked.endswith(',"clip")'):
+                result = {"result": {"value": {"chars": 9, "text": "Clip one", "links": ""}}}
+            else:
+                result = {"result": {"objectId": "field"}}
         elif command["method"] == "Runtime.callFunctionOn":
             # The field grows with every look once the test says a login is saved.
             if (profile / "saved-login-here").exists():

@@ -41,7 +41,10 @@ class Runtime {
   json Control(const std::string& op, const json& command);
   json Act(const std::string& op, const json& command);
   json Probe();
-  json Observe();
+  // The page as text, with the screenshot when `image` asks for it.
+  json Observe(bool image);
+  // More of the page's text than a look carries, or the lines that match.
+  json Read(const json& command);
   bool SaveHandover() const;
   bool SaveProfiles() const;
   std::string ProfilePath() const;

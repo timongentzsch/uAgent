@@ -98,7 +98,7 @@ uint64_t BeginTerminalActivity(std::string label) {
   return state.next;
 }
 
-void UpdateTerminalActivity(uint64_t id, std::string label) {
+void UpdateTerminalActivity(uint64_t id, const std::string& label) {
   TerminalActivityState& state = TerminalActivities();
   std::lock_guard<std::mutex> lock(state.mutex);
   for (TerminalActivityState::Entry& entry : state.active) {

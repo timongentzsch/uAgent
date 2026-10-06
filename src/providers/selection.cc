@@ -12,10 +12,12 @@
 #include <utility>
 #include <vector>
 
+#include "include/core/config_registry.h"
 #include "include/core/debug.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
+#include "include/core/runtime_config.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
 #include "include/providers.h"
@@ -65,43 +67,6 @@ std::string ComposeSelection(const std::string& scope, const std::string& model,
   return selection;
 }
 
-std::string ModelPreferencePath() {
-  return UagentDir(kConfigDir) + "/model-preference.json";
-}
-
-bool PersistableSelection(const std::string& selection) {
-  return !selection.empty() &&
-         selection.find_first_of("\r\n") == std::string::npos &&
-         selection.find('\0') == std::string::npos;
-}
-
-ModelPreference LoadModelPreference() {
-  std::ifstream input(ModelPreferencePath());
-  json saved = json::parse(input, nullptr, false);
-  if (!saved.is_object() || JsonValue(saved, "format", 0) != 1) return {};
-  ModelPreference preference{
-      JsonValue(saved, "selection", ""),
-      StripTrailingSlashes(JsonValue(saved, "base_url", "")),
-      JsonValue(saved, "route", false)};
-  return PersistableSelection(preference.selection) ? preference
-                                                    : ModelPreference{};
-}
-
-bool SaveModelPreference(const ModelPreference& preference,
-                         std::string& error) {
-  if (!PersistableSelection(preference.selection)) {
-    error = "model selection is not persistable";
-    return false;
-  }
-  json saved = {{"format", 1},
-                {"selection", preference.selection},
-                {"base_url", preference.base_url},
-                {"route", preference.route}};
-  return AtomicWriteFile(ModelPreferencePath(), JsonDump(saved, 2) + "\n",
-                         kPrivateFileMode,
-                         /*preserve_mode=*/false, error);
-}
-
 ModelSelection ParseModelSelection(const std::string& selection) {
   ModelSelection parsed;
   parsed.base = Trim(selection);
@@ -122,9 +87,7 @@ ModelSelection ParseModelSelection(const std::string& selection) {
 }
 
 bool ValidEffort(const std::string& effort) {
-  return effort.empty() ||
-         std::find(std::begin(kReasoningEfforts), std::end(kReasoningEfforts),
-                   effort) != std::end(kReasoningEfforts);
+  return Cfg("UAGENT_REASONING_EFFORT").Accepts(effort);
 }
 
 std::optional<ModelRoute> ResolveModelRoute(
@@ -152,18 +115,6 @@ std::optional<ModelRoute> ResolveModelRoute(
                    {}};
   route.features = provider->features;
   return route;
-}
-
-bool SaveSelectionSuffix(const std::string& variant, const std::string& effort,
-                         std::string& error) {
-  ModelPreference preference = LoadModelPreference();
-  if (!PersistableSelection(preference.selection)) {
-    error = "no saved model preference to update";
-    return false;
-  }
-  ModelSelection parsed = ParseModelSelection(preference.selection);
-  preference.selection = ComposeSelection("", parsed.base, variant, effort);
-  return SaveModelPreference(preference, error);
 }
 
 bool CanUseRawModel(const Api& api, std::string_view name) {
@@ -222,6 +173,7 @@ std::string SelectModel(Api& api, const std::vector<ModelRoute>& routes,
     selected = route->name;
   } else if (CanUseRawModel(api, selection.base)) {
     api.model = selection.base;
+    api.route_name.clear();
     api.ctx_window = 0;
     api.reasoning_effort.clear();
     api.supported_reasoning_efforts.clear();

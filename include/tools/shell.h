@@ -25,6 +25,9 @@ struct ShellCommandResult {
 
 struct ShellCommand {
   std::string command;
+  // Run this program directly, through no shell; `command` then only names
+  // the activity.
+  std::vector<std::string> argv = {};
   std::string shell = "bash";
   bool background = false;
   bool detach = false;

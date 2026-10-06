@@ -8,7 +8,6 @@
 #include <utility>
 #include <vector>
 
-#include "include/core/config_document.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/project.h"
@@ -51,8 +50,8 @@ Tool UagentTool(SelfDescriptionProvider describe,
           {{"type", "string"},
            {"enum", json::array({"user", "project"})},
            {"description",
-            "user writes ~/.uagent/.config; project writes ./.uagent/.config "
-            "and requires an already-trusted workspace"}}},
+            "user saves for all conversations; project saves for this "
+            "project folder"}}},
          {"changes",
           {{"type", "array"},
            {"description", "one entry per setting"},
@@ -122,15 +121,13 @@ Tool UagentTool(SelfDescriptionProvider describe,
         }
         const ConfigProposal& approved = *taken;
         std::string error;
-        std::string notice;
-        if (!CommitConfigProposal(approved, error, &notice)) {
+        if (!CommitConfigProposal(approved, error)) {
           return ToolFailure(ToolErrorCode::kProcessFailed, error);
         }
-        std::string report = "wrote " + approved.target;
+        std::string report = "saved for " + approved.target;
         for (const ConfigChangeEffect& effect : approved.effects) {
           report += "\n" + effect.key + ": " + ConfigEffectName(effect.effect);
         }
-        if (!notice.empty()) report += "\nnote: " + notice;
         return ToolSuccess(report);
       });
   const auto writes = [](const json& arguments) {
@@ -143,16 +140,17 @@ Tool UagentTool(SelfDescriptionProvider describe,
     return writes(arguments) ? ApprovalClass::kMandatoryHuman
                              : ApprovalClass::kNone;
   };
+  // Looking is not changing: what only a change takes is dropped from an
+  // inspect call, which some models send along empty for every field.
+  tool.canonicalize = [](json& arguments) {
+    if (JsonValue(arguments, "action", "") != "inspect") return;
+    for (const char* field : {"scope", "changes", "text", "audience"}) {
+      arguments.erase(field);
+    }
+  };
   tool.validate =
       [prepare](const json& arguments) -> std::optional<ToolArgumentIssue> {
-    if (JsonValue(arguments, "action", "") == "inspect") {
-      if (arguments.contains("scope") || arguments.contains("changes") ||
-          arguments.contains("text") || arguments.contains("audience")) {
-        return ArgumentIssue("config.inspect",
-                             "inspect does not accept scope or changes");
-      }
-      return std::nullopt;
-    }
+    if (JsonValue(arguments, "action", "") == "inspect") return std::nullopt;
     if (!prepare) {
       return ArgumentIssue("config.unavailable",
                            "configuration requires an interactive human");

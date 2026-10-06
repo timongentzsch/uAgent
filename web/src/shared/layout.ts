@@ -1,5 +1,4 @@
 import { useEffect, useState } from "preact/hooks";
-import { storage } from "./storage.ts";
 export const minimumZoom = 50;
 export const maximumZoom = 200;
 const conversationMeasure = 1040;
@@ -216,7 +215,6 @@ export function applyMotion(motion: string) {
       motion === "off" || media.matches ? "off" : "on";
   };
   apply();
-  storage.setItem("uagent-motion", motion);
   media.addEventListener("change", apply);
   return () => media.removeEventListener("change", apply);
 }
@@ -232,7 +230,6 @@ export function applyTheme(theme: string) {
     )!.content = resolved === "dark" ? "#000000" : "#ffffff";
   };
   apply();
-  storage.setItem("uagent-theme", theme);
   media.addEventListener("change", apply);
   return () => media.removeEventListener("change", apply);
 }

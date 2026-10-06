@@ -13,6 +13,7 @@
 #include "include/app/permissions.h"
 #include "include/app/self_description.h"
 #include "include/cli.h"
+#include "include/core/config_registry.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/project.h"
@@ -66,10 +67,7 @@ bool NoteError(CommandReply& reply, const json& result) {
 
 void SaveSessionSettings(AppSession& session) {
   session.ActiveAgent().SessionSettings(
-      {{"route", RouteSelection(session.ApiClient(),
-                                session.context.provider.providers)},
-       {"permissions",
-        PermissionOverrideName(session.context.permission_override.load())},
+      {{"chosen", session.context.config_manager.Conversation()},
        {"tools", session.ActiveAgent().ToolSelectionSettings()}});
 }
 
@@ -394,13 +392,13 @@ void HandleConfig(AppSession& session, const std::string& argument,
                     : TerminalSafe(value.is_string() ? value.get<std::string>()
                                                      : JsonDump(value))
                           .c_str(),
-                source.c_str(), RST());
+                std::string(ConfigScopeLabel(source)).c_str(), RST());
   }
   if (!changed) {
     reply.Note(Tone::kNeutral, "every setting is at its default");
   }
   reply.Note(Tone::kNeutral,
-             "/config user|project KEY=VALUE, unset KEY, or reset "
+             "/config user|project|conversation KEY=VALUE, unset KEY, or reset "
              "(keeps secrets)");
 }
 

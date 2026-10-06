@@ -11,7 +11,10 @@ from integration_support import (
     assert_true,
     base_env,
     budget,
+    detached_pid,
     event,
+    live_process_states,
+    signal_process_group,
     tool_call,
     wait_until,
 )
@@ -68,6 +71,8 @@ def test_library_revisions_scopes_and_external_copy(root, home, *, binary):
     foreign = home / ".codex/memories"
     foreign.mkdir(parents=True)
     (foreign / "reference.md").write_text("external lesson")
+    assert_true("error" in call(action="get", key="codex/reference"), "read an unlisted agent")
+    env["UAGENT_OTHER_AGENTS"] = "codex"
     item = call(action="get", key="codex/reference")["item"]
     assert_true(not item["writable"], item)
     assert_true(
@@ -220,8 +225,11 @@ def test_scheduled_run_native_session_and_restart(root, home, *, binary):
 def test_scheduled_run_completes_beside_a_detached_server(root, home, *, binary):
     """A server the task leaves running must not hold its run open."""
 
+    server = {}
+
     def respond(_index, body):
         if any(message.get("role") == "tool" for message in body["messages"]):
+            server["pid"] = detached_pid(body)
             return event({"content": "Server left running"})
         return tool_call("run", {"command": "sleep 60", "detach": True}, call_id="serve")
 
@@ -245,7 +253,12 @@ def test_scheduled_run_completes_beside_a_detached_server(root, home, *, binary)
                 runs = client.command("schedule", action="list")["result"]["runs"]
                 return any(r["id"] == run["id"] and r["status"] == "completed" for r in runs)
 
-            wait_until(completed, lambda: client.command("schedule", action="list"), timeout=20)
+            try:
+                wait_until(completed, lambda: client.command("schedule", action="list"), timeout=20)
+                # The run completed beside its server, not after it.
+                assert_true(live_process_states([server["pid"]]), "the server was stopped")
+            finally:
+                signal_process_group(server.get("pid"), signal.SIGKILL)
 
 
 def test_scheduled_runtime_survives_web_restart(root, home, *, binary):
@@ -257,7 +270,14 @@ def test_scheduled_runtime_survives_web_restart(root, home, *, binary):
         return event({"content": "Finished across web restart"})
 
     with Server([response]) as provider:
-        with web_host(binary, root, home, provider.url) as (client, code, host, env):
+        # The task asks, under a default that would not.
+        loose = {"UAGENT_APPROVAL": "yolo"}
+        with web_host(binary, root, home, provider.url, extra_env=loose) as (
+            client,
+            code,
+            host,
+            env,
+        ):
             client.pair(code)
             task = client.command(
                 "schedule",
@@ -268,7 +288,7 @@ def test_scheduled_runtime_survives_web_restart(root, home, *, binary):
                     prompt="Review",
                     cwd=str(root),
                     environment="local",
-                    permissions="yolo",
+                    permissions="ask",
                     schedule=dict(type="interval", seconds=3600),
                 ),
             )["result"]["item"]
@@ -282,7 +302,12 @@ def test_scheduled_runtime_survives_web_restart(root, home, *, binary):
                 before = client.snapshot(dict(id=run["session_id"]))
                 host.send_signal(signal.SIGTERM)
                 host.wait(timeout=budget(10))
-                with web_host(binary, root, home, provider.url) as (resumed, code, _, _):
+                with web_host(binary, root, home, provider.url, extra_env=loose) as (
+                    resumed,
+                    code,
+                    _,
+                    _,
+                ):
                     resumed.pair(code)
                     current = resumed.until(
                         dict(id=run["session_id"]),
@@ -301,6 +326,30 @@ def test_scheduled_runtime_survives_web_restart(root, home, *, binary):
                         timeout=15,
                     )
                     assert len(provider.requests) == 1, "restart repeated scheduled work"
+                    # The run's mode is kept with its conversation: a runtime
+                    # started by a host that no longer knows the task asks too.
+                    session = dict(id=run["session_id"])
+
+                    def closed():
+                        live = resumed.snapshot(session)["metadata"]
+                        if live["status"] != "saved" and live["generation"]:
+                            # The finished run's runtime may move on between
+                            # the look and the close; then look again.
+                            try:
+                                resumed.command("close", live)
+                            except AssertionError:
+                                pass
+                        return live["status"] == "saved"
+
+                    wait_until(closed, "the finished run's conversation never closed")
+                    saved = resumed.snapshot(session)
+                    again = resumed.command("activate", saved["metadata"])["session"]
+                    state = resumed.until(again, lambda value: value["state"].get("permissions"))
+                    assert_true(
+                        state["state"]["permissions"]
+                        == {"mode": "ask", "effective": "ask", "default": "yolo"},
+                        state["state"]["permissions"],
+                    )
             finally:
                 release.set()
 

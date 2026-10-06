@@ -13,6 +13,7 @@ from integration_support import (
     run,
     run_dialog,
     run_pty,
+    save_settings,
     session_files,
     tool_call,
     tool_results,
@@ -51,7 +52,7 @@ def test_config_reload_applies_only_at_turn_boundaries(root, home, *, binary):
         )
 
     def change_during_first_request(_, __):
-        config.write_text("UAGENT_MAX_TOOL_CALLS=1\n", encoding="utf-8")
+        save_settings(home, UAGENT_MAX_TOOL_CALLS=1)
         return two_calls()
 
     with Server(
@@ -402,9 +403,13 @@ def test_headless_json_stream_emits_lifecycle_events(root, home, *, binary):
             ),
         ]
     ) as server:
+        env = base_env(home, server.url)
+        # On Linux the suite's home is under /tmp, which the sandbox then
+        # refuses as a writable root and says so before the turn starts.
+        env["UAGENT_SANDBOX"] = "0"
         result = run(
             root,
-            base_env(home, server.url),
+            env,
             "--yolo",
             "--json-stream",
             "-p",

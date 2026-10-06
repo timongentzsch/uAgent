@@ -16,6 +16,7 @@
 #include "include/core/effective_config.h"
 #include "include/core/fs.h"
 #include "include/core/project.h"
+#include "include/core/runtime_config.h"
 #include "include/core/signals.h"
 #include "include/providers.h"
 
@@ -86,7 +87,7 @@ int ControlMain(const std::string& argument) {
     if (!cwd || error) {
       result = {{"error", "project directory is unavailable"}};
     } else {
-      auto manager = ConfigManager::Capture(ProjectConfigTrusted(), {});
+      auto manager = ConfigManager::Capture(false, {});
       manager.Initialize();
       result = ManagementControl(request);
     }

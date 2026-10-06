@@ -18,14 +18,8 @@
 
 namespace uagent {
 
-// How a message enters its recipient: a wake starts a turn when it is idle, a
-// step waits for its next turn, a passive one is only recorded, and an
-// interrupt stops the running turn first.
-enum class MailDelivery { kWake, kStep, kPassive, kInterrupt };
-
 // Message types. The type, not the text, says what a message is.
 inline constexpr const char* kMailTaskCompleted = "task.completed";
-inline constexpr const char* kMailTaskProgress = "task.progress";
 inline constexpr const char* kMailAsk = "ask";
 inline constexpr const char* kMailSteer = "steer";
 inline constexpr const char* kMailNote = "note";
@@ -34,9 +28,8 @@ struct Mail {
   // Mailbox ids (MailboxIdFor), and the sender's session file, which the
   // recipient reads to decide whether the two may talk.
   std::string id, from, to, type, sender_path;
-  // The task or conversation it belongs to, and the message that caused it.
-  std::string correlation_id, causation_id, reply_to;
-  MailDelivery delivery = MailDelivery::kWake;
+  // The task or conversation it belongs to.
+  std::string correlation_id;
   int hops = 0;
   int64_t created_ms = 0, expires_ms = 0;
   json body = json::object();
@@ -65,6 +58,8 @@ std::string SendMail(Mail mail);
 std::vector<Mail> TakeMail(const std::string& id,
                            const std::function<bool(const Mail&)>& accept);
 std::vector<Mail> PendingMail(const std::string& id);
+// Whether a message is taken and not yet acknowledged.
+bool MailTaken(const std::string& id);
 void AckMail(const std::string& id, const std::vector<std::string>& ids);
 // Taken but unacknowledged messages become pending again: a runtime starting
 // after a crash delivers what its predecessor never saved.
@@ -72,7 +67,6 @@ void RecoverMail(const std::string& id);
 
 json MailToJson(const Mail& mail);
 bool MailFromJson(const json& value, Mail& mail);
-const char* MailDeliveryName(MailDelivery delivery);
 
 // Readable when mail may have arrived; Get() is -1 where the platform cannot
 // watch, and callers look again on a timer instead.

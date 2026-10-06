@@ -4,6 +4,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include "include/agent/child_agent.h"
 #include "include/agent/jobs.h"
@@ -11,9 +12,12 @@
 #include "include/app/commands.h"
 #include "include/app/config_proposal.h"
 #include "include/app/launch.h"
+#include "include/core/config_registry.h"
+#include "include/core/env.h"
 #include "include/core/events.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
+#include "include/core/runtime_config.h"
 #include "include/core/steering.h"
 #include "include/core/strings.h"
 #include "include/mcp/register.h"
@@ -24,30 +28,86 @@
 namespace uagent {
 
 json PermissionControl(AppContext& context, const json& request) {
+  // The mode is the approval setting; a conversation's own is that setting
+  // chosen at its scope, and "default" takes the choice back.
+  const std::string key = "UAGENT_APPROVAL";
+  // A thread works unattended for its coordinator: it reviews (Auto) unless
+  // told to ask, and nothing puts it above that.
+  const bool thread =
+      JsonValue(context.options.session, "kind", "") == kSessionKindThread;
   std::string mode = JsonValue(request, "mode", "");
   if (!mode.empty()) {
-    PermissionOverride parsed;
-    if (!ParsePermissionOverride(mode, parsed)) {
+    ApprovalMode chosen = ApprovalMode::kAsk;
+    if (mode != "default" && !ParseApprovalMode(mode, chosen)) {
       return {{"error", "unknown permission mode"}};
     }
-    context.permission_override.store(parsed);
+    if (thread && chosen == ApprovalMode::kYolo) {
+      return {{"error", "a thread's approval mode cannot be above auto"}};
+    }
+    context.config_manager.ChooseForConversation(
+        key, mode == "default" ? "" : ApprovalModeName(chosen));
   }
-  auto configured = context.config_manager.Read();
-  auto value = configured.values.find("UAGENT_APPROVAL");
-  ApprovalMode default_mode = ApprovalMode::kAsk;
-  if (value != configured.values.end()) {
-    ParseApprovalMode(value->second, default_mode);
+  const auto configured = context.config_manager.Read();
+  // An unreadable value reads as asking.
+  auto parsed = [](const std::string& text) {
+    ApprovalMode value = ApprovalMode::kAsk;
+    if (!ParseApprovalMode(text, value)) value = ApprovalMode::kAsk;
+    return value;
+  };
+  const auto value = configured.values.find(key);
+  const bool chosen =
+      JsonValue(configured.sources, key.c_str(), "") == "conversation";
+  ApprovalMode effective =
+      parsed(value == configured.values.end() ? "" : value->second);
+  ApprovalMode inherited = parsed(configured.Inherited(key));
+  if (thread) {
+    inherited = ApprovalMode::kAuto;
+    if (!chosen || effective == ApprovalMode::kYolo) effective = inherited;
   }
-  PermissionOverride override = context.permission_override.load();
-  ApprovalMode effective = ResolveApprovalMode(override, default_mode);
   SetApprovalMode(effective);
-  json result = {{"mode", PermissionOverrideName(override)},
+  json result = {{"mode", chosen ? ApprovalModeName(effective) : "default"},
                  {"effective", ApprovalModeName(effective)},
-                 {"default", ApprovalModeName(default_mode)}};
+                 {"default", ApprovalModeName(inherited)}};
+  // What no choice here can exceed, for the control that offers the modes.
+  if (thread) result["limit"] = ApprovalModeName(ApprovalMode::kAuto);
   if (!mode.empty()) {
     Emit(Event{EventId::kConfigChanged, {{"permissions", result}}});
   }
   return result;
+}
+
+// Chooses `key` for this conversation, or takes the choice back when `value`
+// is empty; the setting must allow that scope. Returns why not, or nothing.
+static std::string ChooseForConversation(AppSession& session,
+                                         const std::string& key,
+                                         const std::string& value) {
+  const ConfigDescriptor* descriptor = FindConfigDescriptor(key);
+  if (!descriptor || !(descriptor->scopes & kScopeConversation)) {
+    return key + " cannot be set for one conversation";
+  }
+  if (key == "UAGENT_APPROVAL") {
+    return JsonValue(
+        PermissionControl(session.context,
+                          {{"mode", value.empty() ? "default" : value}}),
+        "error", "");
+  }
+  ConfigManager& manager = session.context.config_manager;
+  // The model: back on the configured one, or on the one named.
+  const std::string wanted =
+      value.empty() ? manager.Read().Inherited(key) : value;
+  if (value.empty()) manager.ChooseForConversation(key, "");
+  if (wanted.empty()) return "";  // nothing configured: the route stays
+  const std::string selected =
+      SelectModel(session.ApiClient(), session.context.provider.routes,
+                  session.context.provider.providers, wanted);
+  if (selected.empty()) return "unknown model " + wanted;
+  if (value.empty()) {
+    ActivateRoute(session.ApiClient());
+    session.ActiveAgent().RouteChanged();
+  } else {
+    SaveSelectedModel(session, selected, false);
+  }
+  return "";
 }
 
 json SessionControl(AppSession& session, const json& request) {
@@ -105,9 +165,30 @@ json SessionControl(AppSession& session, const json& request) {
                               JsonValue(request, "message_id", ""));
   }
   if (kind == "config") {
-    return ConfigurationControl(
-        request, session.context.config_manager,
-        session.context.config_manager.ProjectTrusted());
+    ConfigManager& manager = session.context.config_manager;
+    json effects = json::array();
+    // The conversation's scope is kept with it, not in a file: the choice
+    // is made here and takes effect at once.
+    if (JsonValue(request, "scope", "") == "conversation" &&
+        JsonValue(request, "operation", "") == "apply") {
+      std::vector<ConfigChange> changes;
+      std::string error;
+      if (!ParseConfigChanges(request, changes, error)) {
+        return {{"error", error}};
+      }
+      for (const ConfigChange& change : changes) {
+        error = ChooseForConversation(session, change.key,
+                                      change.unset ? "" : change.value);
+        if (!error.empty()) return {{"error", error}};
+        effects.push_back({{"key", change.key},
+                           {"effect", "next_turn"},
+                           {"text", "applies from your next message"}});
+      }
+    }
+    json reply = ConfigurationControl(
+        effects.empty() ? request : json{{"operation", "get"}}, manager);
+    if (!effects.empty()) reply["effects"] = std::move(effects);
+    return reply;
   }
   if (kind == "revert") {
     return session.ActiveAgent().Revert(JsonValue(request, "turn", int64_t{0}),
@@ -127,12 +208,18 @@ json SessionControl(AppSession& session, const json& request) {
         SubagentTool(session.ApiClient(), session.Runtime().processes,
                      session.context.provider.routes,
                      session.context.provider.providers, Debug().Enabled());
+    // From the interface it runs beside the conversation, never in its way.
     json arguments = {{"operation", "followup"},
                       {"agent_id", JsonValue(request, "agent_id", "")},
-                      {"prompt", JsonValue(request, "text", "")}};
+                      {"prompt", JsonValue(request, "text", "")},
+                      {"background", true}};
     const std::string model = JsonValue(request, "model", "");
     if (!model.empty()) arguments["model"] = model;
-    ToolResult result = tool.run(arguments, ToolContext{});
+    // A follow-up is not a decision about tools: the child keeps the ceiling
+    // of the conversation it belongs to.
+    ToolContext context;
+    context.enabled_tools = session.ActiveAgent().EnabledTools();
+    ToolResult result = tool.run(arguments, context);
     return result.Ok() ? json{{"output", result.output}}
                        : json{{"error", result.output}};
   }
@@ -161,7 +248,7 @@ json SessionControl(AppSession& session, const json& request) {
       SelectModel(session.ApiClient(), session.context.provider.routes,
                   session.context.provider.providers, value);
   if (selected.empty()) return {{"error", "unknown model"}};
-  SaveSelectedModel(session, selected);
+  SaveSelectedModel(session, selected, JsonValue(request, "default", false));
   return {{"route", RouteSelection(session.ApiClient(),
                                    session.context.provider.providers)}};
 }

@@ -140,10 +140,16 @@ export function ToolRow({
   retry,
   online,
   inspect,
+  open,
+  loadFull,
   onToggle,
 }: {
   block: PresentedBlock;
   running: boolean;
+  // Whether the row starts open, on the preview it holds.
+  open: boolean;
+  // Set while only a preview is held: loads the whole result.
+  loadFull?: () => void;
   output: string;
   text?: string;
   expanding: boolean;
@@ -195,6 +201,7 @@ export function ToolRow({
         )
       }
       status={subtitle}
+      open={open}
       onToggle={onToggle}
     >
       <div class="tool-body">
@@ -237,6 +244,11 @@ export function ToolRow({
           <p class="small muted">
             Recent output only. Connect to load the full result.
           </p>
+        )}
+        {loadFull && !expanding && online && block.view?.output !== "tail" && (
+          <Button variant="quiet" class="tool-link" onClick={loadFull}>
+            Load full output
+          </Button>
         )}
         {expanding && <Skeleton label="Loading full tool output…" />}
         {loadError && <LoadError error={loadError} retry={retry} />}

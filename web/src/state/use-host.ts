@@ -27,7 +27,7 @@ import {
   writeStored,
   hasContent,
 } from "./store.ts";
-import { api, protocol, receiveOutcome } from "./api.ts";
+import { api, manage, protocol, receiveOutcome } from "./api.ts";
 import { snapshotStore } from "./snapshot-store.ts";
 import { queuedGuidance } from "../shared/message-view.ts";
 import { selectedFromURL, writeSelection } from "../shared/navigation.ts";
@@ -166,6 +166,26 @@ export function useHost(
       });
       return changed ? { ...prior, sessions } : prior;
     });
+  // The global verbosity level, as the host last stated it.
+  const setVerbosityLevel = (level: string) =>
+    setCatalogue((prior) =>
+      prior.verbosity && prior.verbosity.level !== level
+        ? { ...prior, verbosity: { ...prior.verbosity, level } }
+        : prior,
+    );
+  // Changing it is a setting of the host's: every browser hears of it, and
+  // this one need not wait to.
+  const setVerbosity = useCallback(async (level: string) => {
+    const saved = await manage("config", {
+      scope: "user",
+      operation: "apply",
+      changes: [{ key: "UAGENT_VERBOSITY", value: level }],
+    });
+    // Saved, yet the environment or a project's config still decides it.
+    const shadowed = saved.effects.find((item) => item.effect === "shadowed");
+    if (shadowed) throw new Error(`${shadowed.key}: ${shadowed.text}`);
+    setVerbosityLevel(level);
+  }, []);
   // A new or reactivated session leads the list.
   const upsertSession = useCallback(
     (session: Session) =>
@@ -338,6 +358,12 @@ export function useHost(
       event.kind === "management.changed" ||
       (event.kind === "event" && event.type === "prompt.changed")
     ) {
+      setManagementVersion((version) => version + 1);
+      return;
+    }
+    // Something saved changed: the detail level, and whatever shows settings.
+    if (event.kind === "settings.changed") {
+      setVerbosityLevel(event.level);
       setManagementVersion((version) => version + 1);
       return;
     }
@@ -811,6 +837,7 @@ export function useHost(
     catalogue,
     listed,
     upsertSession,
+    setVerbosity,
     snapshots,
     selected,
     setSelected: select,

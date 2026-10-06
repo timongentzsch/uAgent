@@ -11,7 +11,7 @@
 #include <string>
 #include <utility>
 
-#include "include/core/config_document.h"
+#include "include/core/config_registry.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
@@ -20,13 +20,18 @@
 
 namespace uagent {
 
+// KEY=value lines, as the text config files of earlier versions and .env
+// files spell them: `export ` is allowed, # starts a comment line.
 EnvValues ParseEnvValues(std::istream& input) {
   EnvValues values;
   std::string line;
   while (std::getline(input, line)) {
-    ConfigAssignment assignment;
-    if (!ParseConfigAssignment(line, assignment)) continue;
-    values[assignment.key] = Unquote(assignment.value);
+    std::string text = Trim(line);
+    if (text.starts_with("export ")) text = Trim(text.substr(7));
+    const size_t equals = text.find('=');
+    if (text.empty() || text[0] == '#' || equals == std::string::npos) continue;
+    const std::string key = Trim(text.substr(0, equals));
+    if (!key.empty()) values[key] = Unquote(Trim(text.substr(equals + 1)));
   }
   return values;
 }
@@ -34,12 +39,6 @@ EnvValues ParseEnvValues(std::istream& input) {
 EnvValues ParseEnvValues(const std::string& text) {
   std::istringstream input(text);
   return ParseEnvValues(input);
-}
-
-EnvValues ReadEnvValues(const std::string& path) {
-  std::ifstream f(path);
-  if (!f) return {};
-  return ParseEnvValues(f);
 }
 
 std::string ResolveEnvValue(const std::string& key, const EnvValues& values,
@@ -92,10 +91,11 @@ std::string ResolveEnvValue(const std::string& key, const EnvValues& values,
 }
 
 std::string ExpandProcessEnv(const std::string& value) {
-  EnvValues none;
-  none["__uagent_value"] = value;
+  // A saved setting may be referred to like a variable: it is no longer one.
+  EnvValues settings = CurrentSettings();
+  settings["__uagent_value"] = value;
   std::set<std::string> resolving;
-  return ResolveEnvValue("__uagent_value", none, resolving);
+  return ResolveEnvValue("__uagent_value", settings, resolving);
 }
 
 bool AgentConfigKey(const std::string& key) {
@@ -109,12 +109,6 @@ bool AgentConfigKey(const std::string& key) {
 bool ProjectMcpPresent() {
   std::error_code ec;
   return std::filesystem::is_regular_file(".mcp.json", ec);
-}
-
-bool ProjectAgentConfigPresent() {
-  std::string path = ProjectConfigFilePath();
-  std::error_code ec;
-  return !path.empty() && std::filesystem::is_regular_file(path, ec);
 }
 
 bool ProjectMcpSnapshot(json& snapshot, std::string& error) {
@@ -136,14 +130,7 @@ bool ProjectMcpSnapshot(json& snapshot, std::string& error) {
 bool ProjectTrustSnapshot(json& snapshot, std::string& error) {
   json mcp = nullptr;
   if (ProjectMcpPresent() && !ProjectMcpSnapshot(mcp, error)) return false;
-  json config = nullptr;
-  if (ProjectAgentConfigPresent()) {
-    config = json::object();
-    for (const auto& [key, value] : ReadEnvValues(ProjectConfigFilePath())) {
-      config[key] = value;
-    }
-  }
-  snapshot = {{"mcp", std::move(mcp)}, {"config", std::move(config)}};
+  snapshot = {{"mcp", std::move(mcp)}};
   return true;
 }
 
@@ -157,6 +144,12 @@ bool WriteTrustRecord(const std::string& root, json record,
                          error);
   if (!store.Ready()) return false;
   if (!store.Data().is_object()) store.Data() = json::object();
+  // What an earlier version approved as the project's config stays with the
+  // record until the settings import has taken it over.
+  if (const json* approved = JsonObject(store.Data(), root.c_str());
+      approved && approved->contains("config") && !record.contains("config")) {
+    record["config"] = (*approved)["config"];
+  }
   store.Data()[root] = std::move(record);
   return store.Save(error);
 }
@@ -170,8 +163,7 @@ json ReadTrustStore() {
 
 bool TrustRecordMatches(const json& record, const json& snapshot) {
   return record.is_object() && JsonValue(record, "format", 0) == 3 &&
-         record.contains("mcp") && record["mcp"] == snapshot["mcp"] &&
-         record.contains("config") && record["config"] == snapshot["config"];
+         record.contains("mcp") && record["mcp"] == snapshot["mcp"];
 }
 
 bool ProjectConfigTrusted(json* trusted_mcp) {
@@ -187,35 +179,11 @@ bool ProjectConfigTrusted(json* trusted_mcp) {
   return true;
 }
 
-bool RestampProjectConfigTrust(std::string& error) {
-  json store = ReadTrustStore();
-  std::string root = CanonicalCwd();
-  if (!store.contains(root)) {
-    error = "this workspace has no trust record to update";
-    return false;
-  }
-  json record = store[root];
-  json snapshot;
-  if (!ProjectTrustSnapshot(snapshot, error)) return false;
-  if (JsonValue(record, "format", 0) != 3 || !record.contains("mcp") ||
-      record["mcp"] != snapshot["mcp"]) {
-    error = "project .mcp.json changed, so trust must be granted again";
-    return false;
-  }
-  return WriteTrustRecord(
-      root,
-      {{"format", 3}, {"mcp", record["mcp"]}, {"config", snapshot["config"]}},
-      error);
-}
-
 bool TrustProjectConfig(std::string& error, json* trusted_mcp) {
   json snapshot;
   if (!ProjectTrustSnapshot(snapshot, error)) return false;
   if (!WriteTrustRecord(CanonicalCwd(),
-                        {{"format", 3},
-                         {"mcp", snapshot["mcp"]},
-                         {"config", snapshot["config"]}},
-                        error)) {
+                        {{"format", 3}, {"mcp", snapshot["mcp"]}}, error)) {
     return false;
   }
   if (trusted_mcp) *trusted_mcp = std::move(snapshot["mcp"]);

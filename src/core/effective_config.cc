@@ -2,8 +2,6 @@
 
 #include "include/core/effective_config.h"
 
-#include <sys/stat.h>
-
 #include <algorithm>
 #include <cstdlib>
 #include <set>
@@ -12,8 +10,11 @@
 #include <vector>
 
 #include "include/core/config.h"
+#include "include/core/config_registry.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
+#include "include/core/runtime_config.h"
+#include "include/core/settings_store.h"
 #include "include/core/strings.h"
 
 extern char** environ;
@@ -21,35 +22,23 @@ extern char** environ;
 namespace uagent {
 namespace {
 
-FileStamp MergeFile(const std::string& path, const char* source,
-                    const RuntimeConfig::Values& process,
-                    RuntimeConfig::Values& effective, json& origins) {
-  if (path.empty()) return {};
-  EnvValues parsed;
-  FileStamp after;
-  bool stable = false;
-  for (int attempt = 0; attempt < 3; ++attempt) {
-    FileStamp before = SnapshotFile(path);
-    parsed = ReadEnvValues(path);
-    after = SnapshotFile(path);
-    if (before == after) {
-      stable = true;
-      break;
-    }
-  }
-  if (!stable) after.size = -2;  // force another boundary check
-  if (!parsed.empty()) chmod(path.c_str(), kPrivateFileMode);
-  RuntimeConfig::Values scope(parsed.begin(), parsed.end());
+// One saved scope laid over what is below it. A value may refer to another
+// name in its own scope or in the environment as $NAME; only names the
+// registry knows become settings.
+void MergeScope(const SettingValues& saved, const char* source,
+                const RuntimeConfig::Values& process,
+                EffectiveConfigSnapshot& snapshot) {
+  RuntimeConfig::Values scope(saved.begin(), saved.end());
   for (const auto& [key, value] : process) scope[key] = value;
-  for (const auto& [key, ignored] : parsed) {
-    (void)ignored;
+  for (const auto& [key, value] : saved) {
     if (!AgentConfigKey(key)) continue;
     std::set<std::string> resolving;
-    effective[key] =
+    snapshot.values[key] =
         ResolveEnvValue(key, scope, resolving, /*process_fallback=*/false);
-    origins[key] = source;
+    snapshot.sources[key] = source;
+    // As saved: a reference stays a reference where the scope is shown.
+    snapshot.layers[source][key] = value;
   }
-  return after;
 }
 
 std::vector<std::string> DifferentKeys(const RuntimeConfig& configured,
@@ -67,7 +56,8 @@ std::vector<std::string> DifferentKeys(const RuntimeConfig& configured,
 }  // namespace
 
 ConfigManager ConfigManager::Capture(bool trust_project,
-                                     RuntimeConfig::Values cli) {
+                                     RuntimeConfig::Values cli,
+                                     std::optional<std::string> folder) {
   RuntimeConfig::Values process;
   for (char** entry = environ; entry && *entry; ++entry) {
     std::string value(*entry);
@@ -75,75 +65,87 @@ ConfigManager ConfigManager::Capture(bool trust_project,
     if (equal == std::string::npos || equal == 0) continue;
     process[value.substr(0, equal)] = value.substr(equal + 1);
   }
-  return ConfigManager(std::move(process), trust_project, std::move(cli));
+  return ConfigManager(std::move(process), trust_project, std::move(cli),
+                       folder ? std::move(*folder) : CanonicalCwd());
 }
 
 ConfigManager::ConfigManager(RuntimeConfig::Values process, bool trust_project,
-                             RuntimeConfig::Values cli)
+                             RuntimeConfig::Values cli, std::string folder)
     : process_(std::move(process)),
       trust_project_(trust_project),
-      cli_(std::move(cli)) {
-  auto custom = process_.find("UAGENT_CONFIG_FILE");
-  if (custom != process_.end()) custom_path_ = custom->second;
-  global_path_ = UagentConfigPath();
-  project_path_ = ProjectConfigFilePath();
-}
+      cli_(std::move(cli)),
+      folder_(std::move(folder)) {}
 
 EffectiveConfigSnapshot ConfigManager::Read() const {
   EffectiveConfigSnapshot snapshot;
-  RuntimeConfig::Values effective;
-  json origins = json::object();
-  if (!custom_path_.empty()) {
-    FileStamp stamp =
-        MergeFile(custom_path_, "file", process_, effective, origins);
-    snapshot.files.emplace_back(custom_path_, stamp);
-  } else {
-    FileStamp global =
-        MergeFile(global_path_, "user", process_, effective, origins);
-    snapshot.files.emplace_back(global_path_, global);
-    if (trust_project_) {
-      FileStamp project =
-          MergeFile(project_path_, "project", process_, effective, origins);
-      snapshot.files.emplace_back(project_path_, project);
+  const SavedSettings saved = ReadSettings(folder_, trust_project_);
+  snapshot.stamp = saved.stamp;
+  snapshot.error = saved.error;
+  MergeScope(saved.all, "user", process_, snapshot);
+  MergeScope(saved.project, "project", process_, snapshot);
+  auto layer = [&](const char* source, const RuntimeConfig::Values& held,
+                   bool filter) {
+    for (const auto& [key, value] : held) {
+      if (filter && !AgentConfigKey(key)) continue;
+      snapshot.values[key] = value;
+      snapshot.sources[key] = source;
+      snapshot.layers[source][key] = value;
+    }
+  };
+  layer("environment", process_, true);
+  layer("cli", cli_, false);
+  layer("conversation", Conversation(), false);
+  snapshot.config = RuntimeConfig::FromValues(snapshot.values);
+  return snapshot;
+}
+
+std::string EffectiveConfigSnapshot::Inherited(const std::string& key) const {
+  std::string value;
+  for (const ConfigScopeName& scope : kConfigScopes) {
+    if (scope.persisted == kScopeConversation) continue;
+    const auto held = layers.find(std::string(scope.source));
+    if (held == layers.end()) continue;
+    if (auto found = held->second.find(key); found != held->second.end()) {
+      value = found->second;
     }
   }
-  for (const auto& [key, value] : process_) {
-    if (!AgentConfigKey(key)) continue;
-    effective[key] = value;
-    origins[key] = "environment";
-  }
+  return value;
+}
 
-  for (const auto& [key, value] : cli_) {
-    effective[key] = value;
-    origins[key] = "cli";
+void ConfigManager::ChooseForConversation(const std::string& key,
+                                          const std::string& value) {
+  std::lock_guard lock(*conversation_mutex_);
+  if (value.empty()) {
+    conversation_.erase(key);
+  } else {
+    conversation_[key] = value;
   }
-  snapshot.config = RuntimeConfig::FromValues(effective);
-  snapshot.values = effective;
-  snapshot.sources = std::move(origins);
-  return snapshot;
+}
+
+RuntimeConfig::Values ConfigManager::Conversation() const {
+  std::lock_guard lock(*conversation_mutex_);
+  return conversation_;
 }
 
 RuntimeConfig ConfigManager::Initialize() {
   current_ = Read();
-  for (const auto& [key, value] : current_.values) {
-    setenv(key.c_str(), value.c_str(), cli_.contains(key) ? 1 : 0);
-  }
   PublishSettings(current_.values);
   initialized_ = true;
   return current_.config;
 }
 
-bool ConfigManager::FilesChanged() const {
-  if (!initialized_) return true;
-  for (const auto& [path, stamp] : current_.files) {
-    if (SnapshotFile(path) != stamp) return true;
-  }
-  return false;
-}
-
 std::optional<ConfigReload> ConfigManager::Reload(const RuntimeConfig& active) {
-  if (!FilesChanged()) return std::nullopt;
+  // A read that failed is tried again; one that still fails changes nothing:
+  // empty layers would otherwise pass for everything having been reset.
+  if (initialized_ && current_.error.empty() &&
+      SnapshotFile(SettingsPath()) == current_.stamp) {
+    return std::nullopt;
+  }
   EffectiveConfigSnapshot next = Read();
+  if (initialized_ && !next.error.empty()) {
+    current_.error = next.error;
+    return std::nullopt;
+  }
   if (next.values == current_.values) {
     current_ = std::move(next);
     return std::nullopt;

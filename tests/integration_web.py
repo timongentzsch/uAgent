@@ -15,7 +15,11 @@ from integration_support import (
     assert_true,
     budget,
     event,
+    function_names,
+    live_process_states,
     run,
+    save_settings,
+    saved_settings,
     session_files,
     timeout_setting,
     tool_call,
@@ -1430,39 +1434,36 @@ def test_web_concurrent_retry_and_resync(root, home, *, binary):
 
 
 def test_web_project_trust_and_config_precedence(root, home, *, binary):
-    first, second = root / "trusted", root / "denied"
+    """What is saved for a project applies to its conversations, over what is
+    saved for all; nothing is asked and nothing is read from the project."""
+    first, second = root / "overriding", root / "plain"
     for project in (first, second):
-        (project / ".uagent").mkdir(parents=True)
-        (project / ".uagent/.config").write_text("UAGENT_MODEL=project/model\n")
-    global_config = home / ".uagent/.config"
-    global_config.parent.mkdir(exist_ok=True)
-    global_config.write_text("UAGENT_MODEL=global/model\n")
-    try:
-        with Server([lambda _, _body: event({"content": "Configured"})]) as provider:
-            with web_host(binary, root, home, provider.url, extra_env={"UAGENT_MODEL": None}) as (
-                client,
-                code,
-                _,
-                _,
-            ):
-                client.pair(code)
-                for project, decision, expected in (
-                    (first, "y", "project/model"),
-                    (second, "n", "global/model"),
-                ):
-                    session = client.create(project)
-                    value = client.until(session, lambda value: bool(value.get("pending")))
-                    assert_true(value["pending"]["kind"] == "project.trust", value)
-                    assert_true(not provider.requests, "trust triggered a model call")
-                    client.command(
-                        "reply", session, interaction_id=value["pending"]["id"], text=decision
-                    )
-                    value = client.until(
-                        session, lambda value: value["metadata"]["status"] == "idle"
-                    )
-                    assert_true(value["state"]["route"] == expected, value)
-    finally:
-        global_config.unlink(missing_ok=True)
+        project.mkdir()
+    save_settings(home, UAGENT_MODEL="global/model")
+    save_settings(home, folder=first, UAGENT_MODEL="project/model")
+    with Server([lambda _, _body: event({"content": "Configured"})]) as provider:
+        with web_host(binary, root, home, provider.url, extra_env={"UAGENT_MODEL": None}) as (
+            client,
+            code,
+            _,
+            _,
+        ):
+            client.pair(code)
+            # The settings screen saves for a project by naming its folder.
+            client.command(
+                "config",
+                operation="apply",
+                scope="project",
+                cwd=str(second),
+                changes=[{"key": "UAGENT_MAX_STEPS", "value": "7"}],
+            )
+            assert_true(saved_settings(home, second) == {"UAGENT_MAX_STEPS": "7"}, "not saved")
+            assert_true(saved_settings(home) == {"UAGENT_MODEL": "global/model"}, "leaked")
+            for project, expected in ((first, "project/model"), (second, "global/model")):
+                session = client.create(project)
+                value = client.until(session, lambda value: value["metadata"]["status"] == "idle")
+                assert_true(not value.get("pending"), value)
+                assert_true(value["state"]["route"] == expected, value)
 
 
 def test_session_runtime_crash_isolation(root, home, *, binary):
@@ -2069,6 +2070,62 @@ def test_web_child_controls_and_conversation_ownership(root, home, *, binary):
             assert_true("Child follow-up result" in json.dumps(detail["conversation"]), detail)
 
 
+def test_web_verbosity_is_one_level_pushed_to_every_browser(root, home, *, binary):
+    import http.client
+
+    with Server([event({"content": "unused"})]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+            client.pair(code)
+            listing = client.json("/api/sessions")[1]
+            # The level and what each level shows come from the host: the
+            # browser holds no rule of its own.
+            assert_true(listing["verbosity"]["level"] == "default", listing["verbosity"])
+            assert_true(
+                listing["verbosity"]["order"] == ["minimal", "default", "full"],
+                listing["verbosity"],
+            )
+            levels = listing["verbosity"]["levels"]
+            assert_true(
+                [levels[name]["work"] for name in ("minimal", "default", "full")]
+                == ["turn", "groups", "calls"]
+                and levels["full"]["open"]
+                and not levels["default"]["open"],
+                levels,
+            )
+            connection = http.client.HTTPConnection("127.0.0.1", client.port, timeout=15)
+            connection.request(
+                "GET",
+                f"/api/events?cursor={listing['epoch']}:{listing['cursor']}",
+                headers={"Cookie": client.cookie},
+            )
+            response = connection.getresponse()
+            assert_true(response.status == 200, response.status)
+            pushed = []
+
+            def read_events():
+                while line := response.readline():
+                    if line.startswith(b"data: "):
+                        frame = json.loads(line[6:])
+                        if frame.get("kind") == "settings.changed":
+                            pushed.append(frame["level"])
+
+            threading.Thread(target=read_events, daemon=True).start()
+            client.command(
+                "config",
+                operation="apply",
+                scope="user",
+                changes=[{"key": "UAGENT_VERBOSITY", "value": "minimal"}],
+            )
+            wait_until(lambda: pushed == ["minimal"], f"change was not pushed: {pushed}")
+            # A terminal saves to the same place: browsers follow.
+            save_settings(home, UAGENT_VERBOSITY="full")
+            wait_until(lambda: pushed == ["minimal", "full"], f"change not pushed: {pushed}")
+            assert_true(
+                client.json("/api/sessions")[1]["verbosity"]["level"] == "full", "stale level"
+            )
+            # The reader ends with the host; closing here would wait on it.
+
+
 def test_web_http_context_configuration_permissions_and_fork(root, home, *, binary):
     project = root / "context-fork"
     project.mkdir()
@@ -2100,6 +2157,64 @@ def test_web_http_context_configuration_permissions_and_fork(root, home, *, bina
                 == {"mode": "default", "effective": "yolo", "default": "yolo"},
                 initial,
             )
+            client.command("permissions", session, mode="ask")
+            # The conversation's mode is the approval setting, chosen at its
+            # scope over the one saved for all conversations.
+            approval = next(
+                item
+                for item in client.command("config", session)["result"]["settings"]
+                if item["name"] == "UAGENT_APPROVAL"
+            )
+            assert_true(
+                approval["source"] == "conversation"
+                and approval["set"] == {"user": "yolo", "conversation": "ask"}
+                and approval["scopes"] == ["user", "project", "conversation"]
+                and approval["effective"] == "ask",
+                approval,
+            )
+            assert_true(
+                client.snapshot(session)["state"]["permissions"]
+                == {"mode": "ask", "effective": "ask", "default": "yolo"},
+                "conversation mode",
+            )
+
+            # One path for every scope: the same command chooses for the
+            # conversation, and unsetting takes the choice back.
+            def choose(**change):
+                return client.command(
+                    "config",
+                    session,
+                    operation="apply",
+                    scope="conversation",
+                    changes=[{"key": "UAGENT_APPROVAL", **change}],
+                )["result"]
+
+            choose(value="auto")
+            assert_true(
+                client.snapshot(session)["state"]["permissions"]
+                == {"mode": "auto", "effective": "auto", "default": "yolo"},
+                "chosen through config",
+            )
+            choose(unset=True)
+            assert_true(
+                client.snapshot(session)["state"]["permissions"]
+                == {"mode": "default", "effective": "yolo", "default": "yolo"},
+                "choice taken back",
+            )
+            status, refused, _ = client.json(
+                "/api/command",
+                {
+                    "v": 2,
+                    "kind": "config",
+                    "request_id": "e" * 32,
+                    "session_id": session["id"],
+                    "generation": "",
+                    "operation": "apply",
+                    "scope": "conversation",
+                    "changes": [{"key": "UAGENT_MAX_STEPS", "value": "9"}],
+                },
+            )
+            assert_true("cannot be set for one conversation" in json.dumps(refused), refused)
             client.command("permissions", session, mode="ask")
             preview = client.command("context", session)["result"]["exchanges"][0]
             assert_true(preview["preview"] and not provider.requests, preview)
@@ -2607,11 +2722,154 @@ def test_idle_session_stops_and_a_message_starts_it_again(root, home, *, binary)
             wait_until(lambda: not sockets(), "idle session kept running", timeout=30)
             saved = web.until(session, lambda value: value["metadata"]["status"] == "saved")
             assert_true("first-ok" in json.dumps(saved), saved)
-            # No resume step: the message itself starts the runtime.
-            web.command("submit", saved["metadata"], text="two")
+            # No resume step: a command for the runtime starts it, a setting
+            # as much as a message.
+            web.command("model", saved["metadata"], operation="catalog")
+            started = web.until(session, lambda value: value["metadata"]["generation"])
+            web.command("submit", started["metadata"], text="two")
             again = web.until(session, lambda value: "second-ok" in json.dumps(value))
             # The same session: its settings came back with it.
             assert_true(again["state"]["permissions"]["mode"] == "yolo", again["state"])
+
+
+def test_a_subagent_gets_no_tool_its_parent_switched_off(root, home, *, binary):
+    project = root / "tools-project"
+    project.mkdir()
+    offered = {}
+
+    def route(_, body):
+        users = [str(m.get("content", "")) for m in body["messages"] if m.get("role") == "user"]
+        if "go" not in users:
+            offered["child"] = function_names(body)
+            return event({"content": "child-done"})
+        if any(m.get("role") == "tool" for m in body["messages"]):
+            return event({"content": "parent-done"})
+        offered["parent"] = function_names(body)
+        return tool_call("subagent", {"prompt": "child-task", "mode": "full", "background": True})
+
+    with Server([route] * 8) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+            client.pair(code)
+            session = client.create(project)
+            client.command("permissions", session, mode="yolo")
+            client.command("tools", session, operation="set", name="write_file", active=False)
+            client.command("submit", session, text="go")
+
+            def ceiling_kept():
+                done = client.until(
+                    session,
+                    # Idle again once the parent has taken up the result.
+                    lambda value: (
+                        "child" in offered
+                        and value["metadata"]["status"] == "idle"
+                        and all(
+                            row["status"] == "completed" for row in value["state"]["activities"]
+                        )
+                        and any(
+                            "[subagent finished" in json.dumps(body["messages"])
+                            for _, body in provider.requests
+                        )
+                    ),
+                )
+                assert_true("write_file" not in offered["parent"], offered["parent"])
+                # The child's full toolset, less what its parent may not call.
+                child = offered.pop("child")
+                assert_true("write_file" not in child and "read_path" in child, child)
+                return done["state"]["activities"][0]["agent_id"]
+
+            child = ceiling_kept()
+            # A person's follow-up to it is no decision about tools either.
+            client.command(
+                "activity", session, operation="followup", agent_id=child, text="child-task more"
+            )
+            ceiling_kept()
+
+
+def test_web_interrupt_stops_a_command_that_ignores_being_asked(root, home, *, binary):
+    """Stop asks a running command to end, then ends it: the turn does not
+    wait out a command that ignores the request."""
+    project = root / "interrupt-project"
+    project.mkdir()
+    started = project / "started"
+    command = f"trap '' TERM; echo $$ > {started}; sleep 30 & wait"
+    with Server(
+        [tool_call("run", {"command": command, "yield_ms": 0}), event({"content": "after"})]
+    ) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+            client.pair(code)
+            session = client.create(project)
+            client.command("permissions", session, mode="yolo")
+            client.command("submit", session, text="go")
+            wait_until(started.exists, "the command never started", timeout=10)
+            shell = int(started.read_text())
+            asked = time.monotonic()
+            client.command("interrupt", client.snapshot(session)["metadata"])
+            client.until(session, lambda value: not value["metadata"]["turn_active"])
+            assert_true(time.monotonic() - asked < budget(8), "the interrupt waited on the command")
+            assert_true(not live_process_states([shell]), "the command outlived its interrupt")
+
+
+def test_stopped_session_starts_for_several_commands_and_says_why_it_cannot(root, home, *, binary):
+    import shutil
+
+    project = root / "restart-project"
+    project.mkdir()
+    with Server([event({"content": "unused"})]) as provider:
+        with web_host(binary, root, home, provider.url) as (web, code, _, _env):
+            web.pair(code)
+            session = web.create(project)
+
+            def stop():
+                live = web.until(session, lambda value: value["metadata"]["generation"])
+                web.command("close", live["metadata"])
+                return web.until(session, lambda value: value["metadata"]["status"] == "saved")
+
+            def send(request, kind, **values):
+                return web.json(
+                    "/api/command",
+                    {
+                        "v": 2,
+                        "kind": kind,
+                        "request_id": request * 32,
+                        "session_id": session["id"],
+                        "generation": "",
+                        **values,
+                    },
+                )
+
+            stop()
+            # A settings screen opens with several commands at once: each
+            # waits for the one start instead of being refused during it.
+            outcomes = []
+            threads = [
+                threading.Thread(target=lambda r=r, k=k, v=v: outcomes.append(send(r, k, **v)))
+                for r, k, v in (
+                    ("a", "model", {"operation": "catalog"}),
+                    ("b", "tools", {"operation": "catalog"}),
+                    ("c", "permissions", {}),
+                )
+            ]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join()
+            assert_true(
+                all(status == 200 and body.get("accepted") for status, body, _ in outcomes),
+                [body for _, body, _ in outcomes],
+            )
+
+            stop()
+            # A conversation whose folder is gone cannot run: it says so at
+            # once, not after a wait for a runtime that already ended.
+            shutil.rmtree(project)
+            started = time.monotonic()
+            status, body, _ = send("d", "model", operation="catalog")
+            assert_true(
+                status == 409
+                and "folder no longer exists" in body.get("error", "")
+                and time.monotonic() - started < 2,
+                (status, body, time.monotonic() - started),
+            )
 
 
 def test_coordinator_edit_from_here_rewinds_in_place(root, home, *, binary):

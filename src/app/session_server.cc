@@ -10,21 +10,25 @@
 
 #include <algorithm>
 #include <atomic>
+#include <csignal>
 #include <cstdlib>
 #include <deque>
 #include <filesystem>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
 #include <utility>
 #include <vector>
 
+#include "include/agent/session_role.h"
 #include "include/app/session.h"
 #include "include/core/child_env.h"
 #include "include/core/fd.h"
 #include "include/core/fs.h"
 #include "include/core/lease.h"
 #include "include/core/platform.h"
+#include "include/core/signals.h"
 
 namespace uagent::session {
 namespace {
@@ -69,6 +73,7 @@ Connection Connect(const std::string& path) {
       result.generation = JsonValue(hello, "generation", "");
       result.pid = JsonValue(hello, "pid", -1);
       result.binary = JsonValue(hello, "binary", "");
+      result.status = JsonValue(hello, "status", "");
       if (JsonValue(hello, "v", 0) == kProtocol &&
           JsonValue(hello, "session_id", "") == HashHex(path) &&
           OpaqueId(result.generation) && result.pid > 0) {
@@ -83,7 +88,6 @@ Connection Connect(const std::string& path) {
 }
 Options OptionsFromLaunch(const json& launch) {
   Options options;
-  options.browser_session = JsonValue(launch, "browser_session", false);
   options.yolo = JsonValue(launch, "yolo", false);
   options.debug = JsonValue(launch, "debug", false);
   options.debug_path = JsonValue(launch, "debug_path", "");
@@ -103,6 +107,10 @@ Connection Open(const std::string& executable, const std::string& cwd,
                 const Options& options, std::string& error) {
   auto connected = Connect(path);
   if (connected.socket) return connected;
+  if (std::error_code missing; !std::filesystem::is_directory(cwd, missing)) {
+    error = "this conversation's folder no longer exists: " + cwd;
+    return {};
+  }
   const auto folder = std::filesystem::path(SocketPath(path)).parent_path();
   CreatePrivateDirectories(folder);
   struct stat info{};
@@ -111,60 +119,94 @@ Connection Open(const std::string& executable, const std::string& cwd,
     error = "session runtime directory must be private";
     return {};
   }
-  const std::string launch = folder.string() + "/" + RandomToken(16) + ".json";
-  json config = {{"browser_session", options.browser_session},
-                 {"overrides", options.overrides},
+  json config = {{"overrides", options.overrides},
                  {"yolo", options.yolo},
                  {"debug", options.debug},
                  {"debug_path", options.debug_path},
                  {"trust_project", options.trust_project},
                  {"session", options.session}};
-  if (!AtomicWriteFile(launch, JsonDump(config), 0600, false, error)) return {};
-  std::vector<std::string> args{
-      executable, "--session-worker", cwd, path, HashHex(path), title, launch};
+  const auto deadline = std::chrono::steady_clock::now() + kRuntimeStartTimeout;
+  for (;;) {
+    const std::string launch =
+        folder.string() + "/" + RandomToken(16) + ".json";
+    if (!AtomicWriteFile(launch, JsonDump(config), 0600, false, error)) {
+      return {};
+    }
+    std::vector<std::string> args{executable, "--session-worker", cwd,
+                                  path,       HashHex(path),      title,
+                                  launch};
 #ifdef __linux__
-  // A service restart kills its cgroup even after setsid(). Give the runtime
-  // a user scope so its lifetime belongs to the session, not the web service.
-  if (getenv("INVOCATION_ID")) {
-    args.insert(args.begin(), {"systemd-run", "--user", "--scope", "--quiet",
-                               "--collect", "--expand-environment=no",
-                               "--unit=uagent-session-" + HashHex(path) + "-" +
-                                   RandomToken(4),
-                               "--"});
-  }
+    // A service restart kills its cgroup even after setsid(). Give the
+    // runtime a user scope so its lifetime belongs to the session, not the
+    // web service.
+    if (getenv("INVOCATION_ID")) {
+      args.insert(args.begin(), {"systemd-run", "--user", "--scope", "--quiet",
+                                 "--collect", "--expand-environment=no",
+                                 "--unit=uagent-session-" + HashHex(path) +
+                                     "-" + RandomToken(4),
+                                 "--"});
+    }
 #endif
-  std::vector<char*> argv;
-  argv.reserve(args.size() + 1);
-  for (auto& arg : args) argv.push_back(arg.data());
-  argv.push_back(nullptr);
-  posix_spawn_file_actions_t actions;
-  posix_spawn_file_actions_init(&actions);
-  for (int fd : {STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO}) {
-    posix_spawn_file_actions_addopen(&actions, fd, "/dev/null", O_RDWR, 0);
-  }
-  pid_t pid = -1;
-  // This is the same application continuing in its session process. Keep
-  // provider credential references and user limits; tool children apply their
-  // separate, restricted environment policy when they are dispatched.
-  int status = posix_spawnp(&pid, args.front().c_str(), &actions, nullptr,
-                            argv.data(), ProcessEnvironment());
-  posix_spawn_file_actions_destroy(&actions);
-  if (status) {
-    unlink(launch.c_str());
-    error = "cannot start session runtime: " + std::string(strerror(status));
-    return {};
-  }
-  // Reap only our child. Detaching the client must not stop its runtime.
-  std::thread([pid] { WaitPid(pid, nullptr); }).detach();
-  auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
-  while (std::chrono::steady_clock::now() < deadline) {
+    std::vector<char*> argv;
+    argv.reserve(args.size() + 1);
+    for (auto& arg : args) argv.push_back(arg.data());
+    argv.push_back(nullptr);
+    posix_spawn_file_actions_t actions;
+    posix_spawn_file_actions_init(&actions);
+    for (int fd : {STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO}) {
+      posix_spawn_file_actions_addopen(&actions, fd, "/dev/null", O_RDWR, 0);
+    }
+    pid_t pid = -1;
+    // This is the same application continuing in its session process. Keep
+    // provider credential references and user limits; tool children apply
+    // their separate, restricted environment policy when they are dispatched.
+    int status = posix_spawnp(&pid, args.front().c_str(), &actions, nullptr,
+                              argv.data(), ProcessEnvironment());
+    posix_spawn_file_actions_destroy(&actions);
+    if (status) {
+      unlink(launch.c_str());
+      error = "cannot start session runtime: " + std::string(strerror(status));
+      return {};
+    }
+    // Reap only our child, and learn how it ended: a runtime that is gone
+    // is not waited for. Detaching the client must not stop its runtime.
+    auto ended = std::make_shared<std::atomic<int>>(-1);
+    std::thread([pid, ended] {
+      int result = 0;
+      WaitPid(pid, &result);
+      ended->store(WIFEXITED(result) ? WEXITSTATUS(result) : 128);
+    }).detach();
+    while (ended->load() < 0 && std::chrono::steady_clock::now() < deadline) {
+      connected = Connect(path);
+      if (connected.socket) return connected;
+      poll(nullptr, 0, 20);
+    }
+    // It may have ended because another runtime owns the session: use that.
     connected = Connect(path);
     if (connected.socket) return connected;
-    poll(nullptr, 0, 20);
+    unlink(launch.c_str());
+    const int exit = ended->load();
+    if (exit < 0) {
+      // Alive and silent for the whole wait: nothing is left half-started.
+      kill(pid, SIGKILL);
+      error = "session runtime did not become ready";
+      return {};
+    }
+    if (exit == kWorkerNoWorkspace) {
+      error = "this conversation's folder no longer exists: " + cwd;
+      return {};
+    }
+    // The owner is leaving or arriving; it is reached, or replaced, shortly.
+    if (exit == kWorkerOwned && std::chrono::steady_clock::now() < deadline) {
+      poll(nullptr, 0, 100);
+      continue;
+    }
+    error = exit == kWorkerOwned
+                ? "another runtime still holds this session"
+                : "session runtime ended while starting (status " +
+                      std::to_string(exit) + ")";
+    return {};
   }
-  unlink(launch.c_str());
-  error = "session runtime did not become ready";
-  return {};
 }
 
 struct Server::State {
@@ -309,14 +351,16 @@ struct Server::State {
         if (fd && clients.size() < kMaxClients) {
           fcntl(fd.Get(), F_SETFL, O_NONBLOCK);
           fcntl(fd.Get(), F_SETFD, FD_CLOEXEC);
+          json hello = {{"v", kProtocol},           {"kind", "hello"},
+                        {"pid", getpid()},          {"session_id", id},
+                        {"generation", generation}, {"binary", binary}};
+          // Who only asks how the session stands reads no further.
+          if (!snapshot.is_null()) {
+            hello["status"] = Standing(JsonValue(snapshot, "pending", json()),
+                                       JsonValue(snapshot, "busy", false));
+          }
           Client client{std::move(fd), FrameBuffer{kCommandBytes},
-                        JsonDump({{"v", kProtocol},
-                                  {"kind", "hello"},
-                                  {"pid", getpid()},
-                                  {"session_id", id},
-                                  {"generation", generation},
-                                  {"binary", binary}}) +
-                            '\n'};
+                        JsonDump(hello) + '\n'};
           if (!snapshot.is_null()) client.output += JsonDump(snapshot) + '\n';
           if (replay_gap) {
             client.output += JsonDump({{"v", kProtocol},

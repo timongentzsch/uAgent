@@ -110,7 +110,7 @@ test("mobile chrome keeps an opaque safe area and applies appearance before app 
   );
   await settings
     .locator(".settings-nav")
-    .getByRole("button", { name: "General", exact: true })
+    .getByRole("button", { name: "This browser", exact: true })
     .click();
   await settings.getByLabel("Appearance", { exact: true }).selectOption("dark");
   await expect(page.locator("#app")).toHaveCSS(
@@ -472,8 +472,8 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
     .toBeGreaterThan(0);
   const settingsLoadingBox = await settings.boundingBox();
   releaseSettings();
-  await expect(settings.getByLabel("Appearance")).toBeVisible();
-  await expect(settings.getByLabel("Timestamps")).toBeVisible();
+  // The first section loaded: what applies to all conversations.
+  await expect(settings.getByText("Detail shown")).toBeVisible();
   // The loaded form fills in over staged renders (chunk, then config
   // data), so pin parity once the settled height matches instead of
   // sampling a mid-render frame. The invariant is unchanged.
@@ -484,6 +484,11 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
       ),
     )
     .toBeLessThan(6);
+  await settings
+    .locator(".settings-nav")
+    .getByRole("button", { name: "This browser", exact: true })
+    .click();
+  await expect(settings.getByLabel("Timestamps")).toBeVisible();
   const appearance = await settings.getByLabel("Appearance").boundingBox();
   const displayField = await settings
     .getByLabel("Zoom", { exact: true })
@@ -539,7 +544,7 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   await settingsButton.click();
   await settings
     .locator(".settings-nav")
-    .getByRole("button", { name: "General", exact: true })
+    .getByRole("button", { name: "This browser", exact: true })
     .click();
   await settings.getByLabel("Zoom", { exact: true }).fill("200");
   await expect
@@ -585,7 +590,7 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   await settingsButton.click();
   await settings
     .locator(".settings-nav")
-    .getByRole("button", { name: "General", exact: true })
+    .getByRole("button", { name: "This browser", exact: true })
     .click();
   await settings.getByRole("button", { name: /^Zoom .*reset$/ }).click();
   await settings.getByRole("button", { name: "Close settings" }).click();
@@ -851,7 +856,7 @@ test("touch controls remain reachable at phone width", async ({
     await page.getByRole("button", { name: "Settings", exact: true }).tap();
     await page
       .locator(".settings-nav")
-      .getByRole("button", { name: "General", exact: true })
+      .getByRole("button", { name: "This browser", exact: true })
       .tap();
     await page.getByLabel("Appearance").selectOption("dark");
     await page
@@ -1405,20 +1410,20 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
     });
     await settings
       .locator(".settings-nav")
-      .getByRole("button", { name: "General", exact: true })
+      .getByRole("button", { name: "This browser", exact: true })
       .tap();
     await settings.getByLabel("Zoom", { exact: true }).fill("50");
     await settings.getByRole("button", { name: "Back", exact: true }).tap();
     await settings
       .locator(".settings-nav")
-      .getByRole("button", { name: "Advanced", exact: true })
+      .getByRole("button", { name: "All conversations", exact: true })
       .tap();
     await input(settings.getByLabel("Find a setting"), "web", 16);
     await contained(settings, 390, 70);
     await settings.getByRole("button", { name: "Back", exact: true }).tap();
     await settings
       .locator(".settings-nav")
-      .getByRole("button", { name: "General", exact: true })
+      .getByRole("button", { name: "This browser", exact: true })
       .tap();
     await settings.getByRole("button", { name: /^Zoom .*reset$/ }).tap();
     await settings
@@ -1729,12 +1734,38 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
   const prompt = page.getByLabel("Message or guidance");
   await prompt.fill("Exploration probe");
   await prompt.press("Enter");
-  // Two calls stay rows of their own; only three or more fold.
-  await expect(page.locator(".transcript .tool-disclosure")).toHaveCount(2);
-  await expect(page.locator(".transcript .group")).toHaveCount(0);
+  // The host grouped the two reads: one row under its label, as a terminal
+  // shows them.
+  await expect(page.locator(".transcript .tool-disclosure")).toHaveCount(1);
+  await expect(page.locator(".transcript .group")).toHaveText(
+    /Explored · 2 calls/,
+  );
   await expect(
     page.getByRole("heading", { name: "Verified response" }),
   ).toBeVisible();
+  // The conversation menu sets the level, and what is shown restyles: every
+  // call at full, the whole turn's work in one row at minimal.
+  const detail = async (level) => {
+    await page
+      .locator(".conversation-head")
+      .getByLabel("Conversation menu", { exact: true })
+      .click();
+    // One row opens the levels in place, with a way back.
+    await page.getByRole("menuitem", { name: /^Detail/ }).click();
+    await expect(page.getByText("For all conversations.")).toBeVisible();
+    await page.getByRole("menuitemradio", { name: level, exact: true }).click();
+  };
+  await detail("Full");
+  await expect(page.locator(".transcript .group")).toHaveCount(0);
+  await expect(page.locator(".transcript .tool-disclosure")).toHaveCount(2);
+  await detail("Minimal");
+  await expect(page.locator(".transcript .group")).toHaveText(
+    /Worked · 2 steps/,
+  );
+  await detail("Default");
+  await expect(page.locator(".transcript .group")).toHaveText(
+    /Explored · 2 calls/,
+  );
   // Tables keep their layout and scroll instead of squeezing a column.
   const table = page.locator(".message .table-scroll > table");
   await expect(table).toHaveCount(1);
@@ -1787,9 +1818,9 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
     page.getByRole("button", { name: "Jump to latest" }),
   ).toBeVisible();
   await page.reload();
-  await expect(page.locator(".transcript > * .tool-disclosure")).toHaveCount(3);
-  // Retained history replays through the live pipeline: one row per call,
-  // none stuck on Running.
+  await expect(page.locator(".transcript > * .tool-disclosure")).toHaveCount(2);
+  // Retained history replays through the live pipeline: the same group and
+  // the receipt, none stuck on Running.
   await expect(
     page.locator(".transcript .tool-disclosure", { hasText: "Running" }),
   ).toHaveCount(0);

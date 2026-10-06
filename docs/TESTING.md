@@ -4,19 +4,41 @@ How to run µAgent's test suites, behavioral evaluation and measurement tools,
 and how CI selects them. Build and style rules live in
 [CONTRIBUTING.md](../CONTRIBUTING.md).
 
-## Hermetic suite
+## Common cases
 
-The default suite needs no API key or network:
+The suite needs no API key or network. Build the debug tree while iterating:
+the release tree links with LTO, about 20 s after any edit.
 
 ```sh
 cmake --preset debug
-cmake --build --preset debug
-ctest --preset debug --output-on-failure
+cmake --build --preset debug --parallel
 ```
 
-Test presets exist for `debug`, `release`, `sanitize` (ASan and UBSan), `tsan`
-and `coverage`. `ctest -L source` runs only the Python and source-contract
-tests; `-LE source` excludes them.
+| To check | Run | About |
+| --- | --- | --- |
+| one unit test area | `build/debug/uagent_tests -k Activity` | seconds |
+| one unit test | `build/debug/uagent_tests --test TestActivitySessions` | seconds |
+| one integration test | `python3 tests/integration.py build/debug/uagent --test test_plain_turn` | seconds |
+| integration tests by name | `python3 tests/integration.py build/debug/uagent -k compaction` | seconds |
+| a web edit | `npm test` and `npm run typecheck` in `web/` | 2 s |
+| one web spec in a browser | `npm run build`, then `npm run test:spec -- tests/ui.spec.js` in `web/` | 10 s + the spec |
+| everything before a commit | `ctest --preset debug` | 20–40 s |
+| web work before a push | `npm run test:browser` in `web/` (both browsers) | minutes |
+
+Style checks (clang-format, cpplint, clang-tidy, Ruff, Prettier) are in
+[CONTRIBUTING.md](../CONTRIBUTING.md). [CI](#ci) lists what a pull request
+runs beyond this and what waits for the push to `master`.
+
+## Hermetic suite
+
+```sh
+ctest --preset debug                      # everything, six tests at a time
+ctest --preset debug -R '^core$'          # one CTest by name
+ctest --preset debug -L source            # only the source contracts
+ctest --preset debug -LE source           # everything else
+```
+
+Test presets exist for `debug`, `release`, `sanitize`, `tsan` and `coverage`.
 
 | CTest name | Covers |
 | --- | --- |
@@ -29,40 +51,95 @@ tests; `-LE source` excludes them.
 | `ci_changes`, `layer_boundary`, `wire_contract` | CI path selection and source contracts (label `source`) |
 | `benchmarks` | native micro-benchmarks; only with `UAGENT_BUILD_BENCHMARKS=ON` |
 
-Run a subset of unit or integration cases with `--list`, `--test NAME`, or
-`-k SUBSTRING`:
+### Selecting cases
+
+Both runners take `--list`, `--test NAME` (exact) and `-k SUBSTRING`. The
+integration runner also takes `--group` and `-j`, and repeats `--test` and
+`-k`:
 
 ```sh
-build/debug/uagent_tests --test TestActivitySessions
-build/debug/uagent_tests -k Activity
+build/debug/uagent_tests --list
 python3 tests/integration.py build/debug/uagent --group runtime --list
-python3 tests/integration.py build/debug/uagent --test test_plain_turn
-python3 tests/integration.py build/debug/uagent -k compaction
+python3 tests/integration.py build/debug/uagent --group tools -j 8
+python3 tests/integration.py build/debug/uagent -j 8      # every group
 ```
 
-Integration cases are discovered in source order, so a new top-level `test_`
-function registers itself. Each case has its own deadline;
-`UAGENT_TEST_TIMEOUT_SCALE` multiplies them on slow or instrumented builds.
+The groups are `runtime`, `tools`, `ui`, `providers`, `mcp`, `delegation`,
+`sandbox`, `web` and `management`; `--list` prints each case with its group.
 
-The SSE and input-decoder fuzzers build with the `fuzz` preset. CI runs a short
-smoke pass from `tests/fuzz/corpus`; a weekly workflow runs longer.
+- A new top-level `test_` function in a group's module registers itself.
+- Each case has its own deadline. `UAGENT_TEST_TIMEOUT_SCALE` multiplies
+  them on slow or instrumented builds.
+- `-j N` runs the selection in N processes. Every case has a home and ports
+  of its own, so the whole suite takes about 20 s at `-j 8` against two
+  minutes in one.
+
+### Sanitizers, coverage and fuzzers
+
+```sh
+cmake --preset sanitize && cmake --build --preset sanitize --parallel
+ctest --preset sanitize -LE source        # ASan and UBSan
+
+cmake --preset tsan && cmake --build --preset tsan --parallel
+ctest --preset tsan -R '^(core|integration_(runtime|tools|web))$'
+
+cmake --preset coverage && cmake --build --preset coverage --parallel
+ctest --preset coverage -R '^(core|integration_.*)$'
+```
+
+Runtimes have no stderr, so each process writes its sanitizer report to
+`build/sanitize/report.*` or `build/tsan/report.*`. Instrumented runs need
+longer deadlines; CI sets `UAGENT_TEST_TIMEOUT_SCALE=6` for both sanitizer
+jobs.
+
+The SSE and input-decoder fuzzers need Clang:
+
+```sh
+CC=clang CXX=clang++ cmake --preset fuzz
+cmake --build --preset fuzz --parallel
+cp -r tests/fuzz/corpus /tmp/corpus      # libFuzzer writes into its corpus
+build/fuzz/uagent_fuzz_sse -runs=1000 -max_len=8192 /tmp/corpus/sse
+build/fuzz/uagent_fuzz_input_decoder -runs=2000 -max_len=4096 \
+  /tmp/corpus/input_decoder
+```
+
+That is CI's smoke pass. A weekly workflow (`fuzz.yml`) searches for five
+minutes per fuzzer and uploads the corpus it reached.
 
 ## Web tests
 
 Run from `web/`:
 
 ```sh
-npm test                 # Node unit tests
-npm run test:browser     # Playwright against a native host
+npm test                 # Node unit tests (tests/*.test.js)
+npm run typecheck
+npm run test:browser     # Playwright against a native host, both browsers
+npm run test:spec -- tests/ui.spec.js   # one spec: Chromium, no retry, stops at a failure
 ```
 
-Browser tests start `tests/web_host.py` with `UAGENT_TEST_BINARY` (default
-`../build/release/uagent`). Each test owns its host, temporary HOME and
-project, mock provider, pairing cookie and output directory, and waits on
-visible state or an API condition rather than a fixed delay. Chromium runs
-every spec; WebKit runs the layout, browser and scroll specs. Playwright
-retries a failed test once locally and twice in CI (`CI ? 2 : 1`), uses two
-workers in CI, and keeps traces and screenshots of failures.
+Which binary and bundle a browser test drives:
+
+- The host is `tests/web_host.py`, started with `UAGENT_TEST_BINARY`.
+  Without it: `../build/debug/uagent` locally, `../build/release/uagent` in
+  CI and for `performance.spec.js`, whose timings are a release build's.
+- Locally the host serves the bundle in `web/dist` from disk, so a web edit
+  needs `npm run build` and no rebuild of the binary. In CI it serves the
+  bundle embedded in the binary, as a release does.
+
+How the tests are isolated:
+
+- Each test owns its host, temporary HOME and project, mock provider, pairing
+  cookie and output directory. It waits on visible state or an API condition
+  rather than a fixed delay.
+- The showcase's dev server takes a port derived from the checkout's path and
+  is never reused if one already listens there, so a run cannot test another
+  checkout's tree.
+
+Playwright has two projects. `chromium` runs every spec. `webkit` runs `ui`,
+`ui-quality`, `browser`, `showcase`, `dismiss`, `history-anchor`,
+`scroll-restore`, `scroll-stick` and `coordinator`. A failed test is retried
+once locally and twice in CI; four workers run locally and two in CI; traces
+and screenshots of failures are kept in `web/test-results`.
 
 ## Behavioral evaluation
 
@@ -134,9 +211,8 @@ that gives every selected route exactly one mode:
   sessions, 8 model calls, 32 tool calls, 8,192 output tokens per call and
   300 seconds per session. They are enforced in the child through
   `UAGENT_MAX_STEPS`, `UAGENT_MAX_TOOL_CALLS`, `UAGENT_MAX_TOKENS`,
-  `UAGENT_MAX_TURN_SECONDS` and a subprocess deadline, with OpenRouter
-  fallbacks disabled, and checked again afterwards. Unreported cost is never
-  counted as `$0`.
+  `UAGENT_MAX_TURN_SECONDS` and a subprocess deadline, and checked again
+  afterwards. Unreported cost is never counted as `$0`.
 
 The report records the authority file's SHA-256 and each route's mode.
 
@@ -160,22 +236,35 @@ python3 benchmarks/session_metrics.py --cohort ID --json /tmp/sessions.json
 
 ## CI
 
-`.github/changes.py` selects jobs for pull requests. Changes only under `docs/`
-or to top-level `README.md`, `CHANGELOG.md`, `CONTRIBUTING.md`, `SECURITY.md`
-or `LICENSE` run the Python job alone; adding `web/` changes adds the web job.
-Any other path runs every job. Pushes to `master`, tags and the weekly run
-always run everything.
+`.github/workflows/ci.yml` runs on pull requests, pushes to `master`, `v*`
+tags and weekly.
+
+On a pull request, `.github/changes.py` selects jobs by the paths changed:
+
+| Changed paths | Jobs |
+| --- | --- |
+| only `docs/`, `README.md`, `CHANGELOG.md`, `CONTRIBUTING.md`, `SECURITY.md`, `LICENSE` | `python` |
+| those and `web/` | `python`, `web` |
+| anything else | every job |
+
+A pull request also skips the slow scans. These run only on a push to
+`master`, a tag and the weekly run, which always run everything:
+
+- `thread-sanitizer` and `coverage`;
+- the full clang-tidy scan (a pull request checks its changed lines);
+- the CLI-only (`UAGENT_WEB=OFF`) and no-browser (`UAGENT_BROWSER=OFF`)
+  builds.
 
 | Job | Runs |
 | --- | --- |
-| `build-and-test` | Release builds on Linux x86_64, Linux ARM64 and macOS ARM64; `ctest -LE source`; generated-reference check; CLI-only build (push and weekly); packaging |
+| `build-and-test` | Release builds with Web Push on Linux x86_64, Linux ARM64 and macOS ARM64; `ctest -LE source`; generated-reference check (Linux x86_64); packaging |
 | `sanitizers` | `sanitize` preset, `ctest -LE source` |
-| `thread-sanitizer` | `tsan` preset: `core`, `integration_runtime`, `integration_tools`, `integration_web`; push and weekly only |
+| `thread-sanitizer` | `tsan` preset: `core`, `integration_runtime`, `integration_tools`, `integration_web` |
 | `fuzzers` | SSE and input-decoder smoke runs |
-| `coverage` | `core` and integration groups with a branch report; push and weekly only |
+| `coverage` | `core` and every integration group with a branch report; fails under 67% line coverage |
 | `python` | Ruff check and format; `ctest -L source` |
-| `cpp-style` | clang-format, cpplint and clang-tidy (a pull request's changed lines; the whole tree on push and weekly) |
-| `web` | format, Node tests, bundle and notices check, Web Push host build, Playwright |
+| `cpp-style` | clang-format, cpplint and clang-tidy |
+| `web` | Prettier check, Node tests, bundle, notices and size checks, a release host with Web Push, Playwright in Chromium and WebKit |
 | `CI result` | fails if any required job failed or was cancelled |
 
 The `master requires CI` ruleset requires `CI result`, so a red run blocks a

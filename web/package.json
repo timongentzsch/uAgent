@@ -6,6 +6,7 @@
     "build": "npm run typecheck && UAGENT_WEB_OUT_DIR=dist.next vite build && node scripts/promote-dist.js",
     "test": "node --test tests/*.test.js",
     "test:browser": "playwright test",
+    "test:spec": "playwright test --project=chromium --retries=0 -x",
     "format": "prettier --write src tests scripts public/*.js *.js *.json *.html",
     "format:check": "prettier --check src tests scripts public/*.js *.js *.json *.html",
     "notices": "node scripts/notices.js",

@@ -20,7 +20,7 @@ test("bare slash commands open their screens", async ({ page, session }) => {
   await run("/permissions");
   const settings = page.getByRole("dialog", { name: "Settings" });
   await expect(
-    settings.getByRole("button", { name: "Permissions" }),
+    settings.getByRole("button", { name: "All conversations" }),
   ).toHaveAttribute("aria-current", "page");
   await page.keyboard.press("Escape");
   await expect(settings).toHaveCount(0);

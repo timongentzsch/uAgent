@@ -31,6 +31,10 @@ struct CallTask {
   json raw_args;
   json args;
   std::vector<std::string> clamped;  // pacing hints pulled to their bound
+  // What its approval was decided as, before any call of its batch ran.
+  ApprovalClass required = ApprovalClass::kNone;
+  // Whether its own check wanted approval then (a path outside the folder).
+  bool outside = false;
   ToolResult result;
   std::optional<ToolArgumentIssue> issue;
   std::string trace_status;

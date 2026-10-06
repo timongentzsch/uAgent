@@ -14,9 +14,10 @@ lead route, disclose that and make no savings claim.
 
 ## Start or recover the sidekick
 
-List agents first after compaction or when the identity is uncertain. Reuse
-the one sidekick with `operation=followup`. Otherwise spawn it with
-`name=sidekick`, `mode=full`, and `background=false`. Give it this directive:
+List agents first (`operation=list`) after compaction or when the identity
+is uncertain. Reuse the one sidekick with `operation=followup`. Otherwise
+spawn it with `name=sidekick`, `mode=full`, and `background=false`. Give it
+this directive:
 
 > Execute only the scoped brief. Surface decisions that change the plan. Return
 > concise changes, verification evidence, reusable runtime handles, and open
@@ -34,8 +35,9 @@ Pass `background=false` on every follow-up.
    success criteria, narrow checks, and conditions that return control. Relay
    relevant user requirements; do not copy the conversation.
 3. Let the sidekick inspect, edit, test, and fix one useful phase. Use `message`
-   only to guide a running handoff. Idle guidance waits for the next
-   `followup`; it does not start work.
+   only to guide a running handoff. A `message` to a sidekick that has
+   finished starts a new run, exactly like `followup`, so hold guidance for an
+   idle sidekick until the next brief.
 4. Review the actual diff, artifacts, and decisive execution evidence. Batch
    corrections into one follow-up. Do not repeat unchanged successful checks.
 5. After two failed correction rounds without a new hypothesis, take over or

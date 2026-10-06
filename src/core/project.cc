@@ -14,6 +14,7 @@
 #include "include/core/checked.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
+#include "include/core/skills.h"
 #include "include/core/strings.h"
 
 namespace uagent {
@@ -29,6 +30,10 @@ std::filesystem::path ProjectRoot(const std::filesystem::path& cwd) {
 
 std::filesystem::path InstructionFileIn(const std::filesystem::path& dir) {
   for (const char* name : kInstructionNames) {
+    // Claude's file speaks for a folder only where Claude is read from.
+    if (std::string_view(name) == "CLAUDE.md" && !ReadsAgent("claude")) {
+      continue;
+    }
     std::error_code ec;
     if (std::filesystem::is_regular_file(dir / name, ec)) return dir / name;
   }

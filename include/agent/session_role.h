@@ -18,5 +18,11 @@ inline bool WaitsOnPerson(const json& pending) {
   return pending.is_object() &&
          JsonValue(pending, "route", "") != kRouteCoordinator;
 }
+
+// How a session stands to someone looking from outside, from what its
+// runtime last said: a decision still with the coordinator counts as working.
+inline const char* Standing(const json& pending, bool busy) {
+  return WaitsOnPerson(pending) ? "needs you" : busy ? "working" : "idle";
+}
 }  // namespace uagent
 #endif

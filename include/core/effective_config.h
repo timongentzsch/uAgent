@@ -6,6 +6,9 @@
 // Reload checks file stamps synchronously at a user-turn boundary; no watcher
 // thread and no mid-turn configuration mutation exist.
 
+#include <map>
+#include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <utility>
@@ -14,6 +17,7 @@
 #include "include/core/env.h"
 #include "include/core/file_watch.h"
 #include "include/core/json.h"
+#include "include/core/runtime_config.h"
 
 namespace uagent {
 
@@ -21,7 +25,18 @@ struct EffectiveConfigSnapshot {
   RuntimeConfig config;
   RuntimeConfig::Values values;
   json sources = json::object();
-  std::vector<std::pair<std::string, FileStamp>> files;
+  // What each scope holds, by its source name, as that scope spells it: the
+  // answer to "where is this set, and what does it override". `values` is
+  // their merge, lowest first: user, project, environment, cli, conversation.
+  std::map<std::string, RuntimeConfig::Values> layers;
+  // The saved settings' stamp when they were read, and why they are not all
+  // here if they are not.
+  FileStamp stamp;
+  std::string error;
+
+  // What `key` would be without the conversation's own choice: the value a
+  // conversation's control offers as its default. Empty when no scope sets it.
+  std::string Inherited(const std::string& key) const;
 };
 
 struct ConfigReload {
@@ -33,12 +48,24 @@ struct ConfigReload {
 class ConfigManager {
  public:
   // `cli` holds UAGENT_* values named on the command line. They sit above the
-  // environment layer and are re-applied with overwrite, so a flag beats an
-  // inherited variable however the session was launched.
-  static ConfigManager Capture(bool trust_project, RuntimeConfig::Values cli);
-  // Inspect resolved values without exporting them as process overrides.
+  // environment layer, so a flag beats an inherited variable however the
+  // session was launched.
+  // `folder` is the project whose saved settings apply: this process's own
+  // unless one is named (the web host has none of its own, so it names the
+  // one a request is about, or none).
+  static ConfigManager Capture(bool trust_project, RuntimeConfig::Values cli,
+                               std::optional<std::string> folder = {});
+  // The resolved values as they are now, publishing nothing.
   EffectiveConfigSnapshot Read() const;
-  bool ProjectTrusted() const { return trust_project_; }
+  // The project whose saved settings apply.
+  const std::string& Folder() const { return folder_; }
+  // Why the saved settings were not all read, as of the last read.
+  const std::string& Problem() const { return current_.error; }
+  // What one conversation chose for itself, above every other scope. Only
+  // settings whose descriptor allows the conversation scope belong here; an
+  // empty value takes the choice back. Safe beside Read() on another thread.
+  void ChooseForConversation(const std::string& key, const std::string& value);
+  RuntimeConfig::Values Conversation() const;
 
   RuntimeConfig Initialize();
   std::optional<ConfigReload> Reload(const RuntimeConfig& active);
@@ -46,15 +73,15 @@ class ConfigManager {
 
  private:
   ConfigManager(RuntimeConfig::Values process, bool trust_project,
-                RuntimeConfig::Values cli);
-  bool FilesChanged() const;
+                RuntimeConfig::Values cli, std::string folder);
 
   RuntimeConfig::Values process_;
   bool trust_project_ = false;
   RuntimeConfig::Values cli_;
-  std::string custom_path_;
-  std::string global_path_;
-  std::string project_path_;
+  RuntimeConfig::Values conversation_;
+  std::unique_ptr<std::mutex> conversation_mutex_ =
+      std::make_unique<std::mutex>();
+  std::string folder_;
   EffectiveConfigSnapshot current_;
   std::vector<std::string> deferred_;
   bool initialized_ = false;

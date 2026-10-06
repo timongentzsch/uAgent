@@ -5,6 +5,8 @@ import os
 import pathlib
 import pkgutil
 import shutil
+import signal
+import subprocess
 import sys
 import tempfile
 import time
@@ -65,7 +67,13 @@ def parse_args():
         "-k", "--match", action="append", default=[], help="substring filter; repeatable"
     )
     parser.add_argument("--list", action="store_true", help="print the selection and exit")
-    return parser.parse_args()
+    parser.add_argument(
+        "-j", "--jobs", type=int, default=1, help="run the selection in this many processes"
+    )
+    arguments = parser.parse_args()
+    if arguments.jobs < 1:
+        parser.error("--jobs must be at least 1")
+    return arguments
 
 
 def select(arguments):
@@ -94,6 +102,9 @@ def remove_suite(root):
     homes = list(root.glob("*.home"))
     deadline = time.monotonic() + budget(5)
     quiet_since = time.monotonic()
+    # A suite in which no runtime ever started has none to wait for.
+    if not any(runtime_directory(home).exists() for home in homes):
+        deadline = quiet_since
     while time.monotonic() < deadline and time.monotonic() - quiet_since < 1:
         live = [home for home in homes if any(runtime_directory(home).glob("*.sock"))]
         for home in live:
@@ -111,6 +122,58 @@ def remove_suite(root):
             time.sleep(0.5)
 
 
+def run_shards(arguments, names):
+    """The selection dealt round-robin to `jobs` runners of this script, each
+    with a suite directory of its own; a case is already isolated by its
+    home and its ports. A runner writes to a file, so none waits on another
+    for its output to be read; each is shown, with how it ended, when all
+    are done."""
+    jobs = min(arguments.jobs, len(names))
+    runners = []
+    try:
+        for index in range(jobs):
+            output = tempfile.TemporaryFile(mode="w+")
+            command = [sys.executable, __file__, str(arguments.binary)]
+            for name in names[index::jobs]:
+                command += ["--test", name]
+            # A session of its own: an interrupt at the terminal reaches
+            # this script, which then asks each runner once.
+            runners.append(
+                (
+                    subprocess.Popen(
+                        command, stdout=output, stderr=subprocess.STDOUT, start_new_session=True
+                    ),
+                    output,
+                )
+            )
+        failed = 0
+        for index, (runner, output) in enumerate(runners):
+            status = runner.wait()
+            output.seek(0)
+            sys.stdout.write(output.read())
+            if status:
+                failed += 1
+                print(f"runner {index + 1} of {jobs} failed (exit {status})", flush=True)
+    finally:
+        # Interrupted: each runner is asked to stop, so it closes its hosts
+        # and removes its suite, and killed only if it does not.
+        live = [runner for runner, _ in runners if runner.poll() is None]
+        for runner in live:
+            runner.send_signal(signal.SIGINT)
+        deadline = time.monotonic() + 15
+        for runner in live:
+            try:
+                runner.wait(timeout=max(0, deadline - time.monotonic()))
+            except subprocess.TimeoutExpired:
+                runner.kill()
+                runner.wait()
+        for _, output in runners:
+            output.close()
+    if failed:
+        raise SystemExit(f"{failed} of {jobs} runners failed")
+    print(f"all {len(names)} integration tests passed in {jobs} runners")
+
+
 def main():
     arguments = parse_args()
     names = select(arguments)
@@ -120,6 +183,8 @@ def main():
         return
     if not names:
         raise SystemExit(f"no integration tests selected (group={arguments.group})")
+    if arguments.jobs > 1 and len(names) > 1:
+        return run_shards(arguments, names)
     label = arguments.group if not (arguments.test or arguments.match) else "selected"
     temp = tempfile.mkdtemp(prefix="uagent-integration-")
     try:

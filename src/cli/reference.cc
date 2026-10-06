@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "include/app/self_description.h"
+#include "include/core/config_registry.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/limits.h"
@@ -61,8 +62,8 @@ std::string CliMarkdown() {
   }
   out +=
       "\nPrecedence: these flags override process `UAGENT_*` variables, which "
-      "override a trusted `./.uagent/.config`, which overrides "
-      "`~/.uagent/.config`.\n"
+      "override what is saved for this project, which overrides what is saved "
+      "for all conversations.\n"
       "\n## Coordinator\n\n"
       "`uagent coord [options]` opens this folder's coordinator: one per "
       "folder, it reads the folder's sessions, delegates threads and decides "
@@ -88,31 +89,24 @@ std::string CommandsMarkdown() {
 
 std::string ConfigMarkdown() {
   json settings = ConfigSchemaJson();
-  std::vector<std::string> categories;
-  for (const json& setting : settings) {
-    std::string category = JsonValue(setting, "category", std::string());
-    if (std::find(categories.begin(), categories.end(), category) ==
-        categories.end()) {
-      categories.push_back(category);
-    }
-  }
   std::string out = "# Configuration\n\n";
   out += kGenerated;
   out +=
       "Every setting below is read from the running binary's registry. "
-      "`takes effect` is `next-user-turn` when a change to a config file "
-      "applies at the next prompt, and `restart-required` when it does not. "
+      "`takes effect` is `next-user-turn` when a changed setting applies "
+      "at the next prompt, and `restart-required` when it does not. "
       "Secret values are never displayed; diagnostics report only whether they "
       "are set.\n";
   // A contents list, because this is the one reference long enough that a
   // reader previewing the head of it would otherwise see only the first few
   // categories and conclude the rest are missing.
   out += "\n## Contents\n\n";
-  for (const std::string& category : categories) {
-    out += "- " + category + "\n";
+  for (const ConfigCategory& category : kConfigCategories) {
+    out += "- " + std::string(category.label) + "\n";
   }
-  for (const std::string& category : categories) {
-    out += "\n## " + category + "\n\n";
+  for (const ConfigCategory& group : kConfigCategories) {
+    const std::string category(group.id);
+    out += "\n## " + std::string(group.label) + "\n\n";
     out +=
         "| Setting | Type | Default | Takes effect | Description |\n"
         "| --- | --- | --- | --- | --- |\n";

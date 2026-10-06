@@ -17,6 +17,7 @@
 #include "include/app/self_description.h"
 #include "include/cli.h"
 #include "include/core/env.h"
+#include "include/core/runtime_config.h"
 #include "include/core/strings.h"
 #include "tests/unit/test_support.h"
 
@@ -106,7 +107,12 @@ void TestConfigRegistryContract() {
   for (const ConfigDescriptor& descriptor : ConfigRegistry()) {
     CHECK(!descriptor.environment.empty());
     CHECK(names.insert(descriptor.environment).second);
-    CHECK(!descriptor.category.empty());
+    // Listed under a group people can find it in.
+    CHECK(std::any_of(std::begin(kConfigCategories),
+                      std::end(kConfigCategories),
+                      [&](const ConfigCategory& category) {
+                        return category.id == descriptor.category;
+                      }));
     CHECK(!descriptor.description.empty());
     if (descriptor.type == ConfigType::kInt) {
       CHECK(descriptor.minimum <= descriptor.maximum);

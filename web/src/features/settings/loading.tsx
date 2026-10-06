@@ -7,16 +7,16 @@ import { useMedia } from "../../shared/layout.ts";
 // feature's own primitives from sample data (see <Placeholder>).
 const noop = () => {};
 
-// Settings before its code arrives: the same header, section list and pane.
+// Settings before its code arrives: the same header, scope list and page.
 export function SettingsLoading() {
   const phone = useMedia("(max-width: 600px)");
   return (
     <>
       <DialogHeader title="Settings" />
       <div class="dialog-body settings-content">
-        <SettingsNav current={phone ? undefined : "general"} select={noop} />
+        <SettingsNav current={phone ? undefined : "user"} select={noop} />
         <div class="settings-pane">
-          {!phone && <h3 class="settings-pane-title">General</h3>}
+          {!phone && <h3 class="settings-pane-title">All conversations</h3>}
           <Placeholder label="Loading settings…">
             <SettingRows />
           </Placeholder>

@@ -629,4 +629,28 @@ size_t TerminalWidth(int64_t reserved) {
       std::max(int64_t{1}, TerminalColumns() - reserved));
 }
 
+std::string ConfigUnifiedDiff(const std::string& before,
+                              const std::string& after,
+                              const std::string& label) {
+  auto lines = [](const std::string& text) {
+    std::vector<std::string> out;
+    size_t start = 0;
+    while (start < text.size()) {
+      size_t end = text.find('\n', start);
+      if (end == std::string::npos) end = text.size();
+      out.push_back(text.substr(start, end - start));
+      start = end + 1;
+    }
+    return out;
+  };
+  const std::vector<std::string> old_lines = lines(before);
+  const std::vector<std::string> new_lines = lines(after);
+  std::string diff = "--- " + label + "\n+++ " + label + "\n";
+  ForEachDiffLine(old_lines, new_lines, TrimCommonLines(old_lines, new_lines),
+                  [&](char marker, const std::string& line) {
+                    diff += std::string(1, marker) + " " + line + "\n";
+                  });
+  return diff;
+}
+
 }  // namespace uagent

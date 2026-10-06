@@ -21,6 +21,7 @@
 #include "include/core/fs.h"
 #include "include/core/limits.h"
 #include "include/core/output_buffer.h"
+#include "include/core/sandbox.h"
 #include "include/core/signals.h"
 #include "include/core/steering.h"
 #include "include/core/strings.h"
@@ -189,14 +190,20 @@ EnvironmentOverrides ChildAgentEnvironment(SideRoute route) {
                            std::to_string(AgentDepth() + 1));
   environment.emplace_back("UAGENT_API_KEY", std::move(route.api_key));
   environment.emplace_back("UAGENT_INTERNAL_USAGE_FILE", UsageLedger());
+  // A child is never less confined than the session that delegates to it:
+  // it runs under the sandbox this process actually has (fixed at start), not
+  // one it composes from a configuration that may have been loosened since.
+  environment.emplace_back("UAGENT_INTERNAL_SANDBOX", SandboxInheritance());
   return environment;
 }
 
-std::string ChildAgentCommand(bool debug, const std::string& prompt,
-                              const std::string& model) {
-  return ShellQuote(ExecutablePath()) + " --yolo --json" +
-         (debug ? " --debug" : "") + " --model " + ShellQuote(model) + " -p " +
-         ShellQuote(prompt);
+std::vector<std::string> ChildAgentCommand(bool debug,
+                                           const std::string& prompt,
+                                           const std::string& model) {
+  std::vector<std::string> argv = {ExecutablePath(), "--yolo", "--json"};
+  if (debug) argv.emplace_back("--debug");
+  argv.insert(argv.end(), {"--model", model, "-p", prompt});
+  return argv;
 }
 
 // The child prints its envelope as one line. Progress lines precede it, the

@@ -6,7 +6,7 @@ import type {
 } from "../../shared/types.ts";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { command } from "../../state/api.ts";
-import { Field, Select, LoadError } from "../../shared/ui.tsx";
+import { Field, Select, LoadError, Row, Switch } from "../../shared/ui.tsx";
 import { ModelLoading, ModelActions } from "../../shared/loading.tsx";
 
 export default function ModelPicker({
@@ -22,14 +22,18 @@ export default function ModelPicker({
   state?: State;
   online: boolean;
   running: boolean;
+  // With `save` the choice is handed back, not applied to a session: the
+  // picker closes once it was taken.
   selection?: string;
-  save?: (value: string) => void;
+  save?: (value: string) => unknown;
   close: () => void;
 }) {
   const [catalog, setCatalog] = useState<ModelCatalogue | null>(null);
   const [model, setModel] = useState("");
   const [effort, setEffort] = useState(state?.effort || "default");
   const [variant, setVariant] = useState(state?.variant || "default");
+  // The choice is this conversation's; saving it for all is asked for.
+  const [forAll, setForAll] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const generation = useRef(0);
@@ -55,8 +59,10 @@ export default function ModelPicker({
             selection === item.value || selection?.startsWith(`${item.value}:`),
         )
         .sort((a, b) => b.value.length - a.value.length)[0];
+      // A saved selection the catalogue does not list is kept, not replaced.
       setModel(
         chosen?.value ||
+          (save && selection) ||
           response.result.models.find((item) => item.active)?.value ||
           response.result.models[0]?.value ||
           "",
@@ -120,6 +126,7 @@ export default function ModelPicker({
                 setVariant("default");
               }}
             >
+              {model && !selected && <option value={model}>{model}</option>}
               {[...providers].map(([provider, models]) => (
                 <optgroup key={provider} label={provider}>
                   {models.map((item) => (
@@ -167,6 +174,19 @@ export default function ModelPicker({
               </Field>
             )}
           </div>
+          {!save && (
+            <Row
+              label="Also use for new conversations"
+              detail="Otherwise only this conversation changes."
+            >
+              <Switch
+                label="Also use for new conversations"
+                checked={forAll}
+                disabled={busy}
+                onChange={setForAll}
+              />
+            </Row>
+          )}
           {error && <LoadError error={error} />}
         </>
       )}
@@ -179,7 +199,7 @@ export default function ModelPicker({
           setError(null);
           try {
             if (save) {
-              save(
+              const taken = await save(
                 [
                   model,
                   variant === "default" ? "" : variant,
@@ -188,14 +208,15 @@ export default function ModelPicker({
                   .filter(Boolean)
                   .join(":"),
               );
-              close();
-              return;
+              if (taken !== false) return close();
+              throw new Error("Not saved. Its row in Settings says why.");
             }
             const result = await command("model", session, {
               operation: "select",
               model,
               effort,
               variant,
+              default: forAll,
             });
             if (result.pending)
               throw new Error(

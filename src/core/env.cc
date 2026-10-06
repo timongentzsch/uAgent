@@ -14,6 +14,7 @@
 
 #include "include/core/config_registry.h"
 #include "include/core/limits.h"
+#include "include/core/runtime_config.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
 
@@ -238,10 +239,28 @@ void ForEachBinding(Visit&& visit) {
 
 }  // namespace
 
+RuntimeConfig::RuntimeConfig() {
+  ForEachBinding([this](const auto& option) {
+    using Field = std::remove_reference_t<decltype(this->*option.field)>;
+    if constexpr (std::is_same_v<Field, std::string>) {
+      this->*option.field =
+          std::get<std::string_view>(option.descriptor->default_value);
+    } else {
+      this->*option.field = std::get<Field>(option.descriptor->default_value);
+    }
+  });
+}
+
+bool ValidOpenRouterVariant(std::string_view variant) {
+  return Cfg("UAGENT_OPENROUTER_VARIANT").Accepts(variant);
+}
+
 RuntimeConfig RuntimeConfig::FromEnvironment() {
   Values values;
   ForEachBinding([&](const auto& option) {
-    if (const char* value = getenv(option.Env())) values[option.Env()] = value;
+    // What is saved is not in the environment: both are read here.
+    const std::string value = SettingText(std::string(option.Env()));
+    if (!value.empty()) values[option.Env()] = value;
   });
   return FromValues(values);
 }

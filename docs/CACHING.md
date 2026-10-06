@@ -8,8 +8,9 @@ provider-reported usage on representative conversations.
 
 CLI and web sessions share one request encoder and one usage accounting path.
 
-- **OpenAI.** Matching prefixes cache automatically. Responses requests to the
-  official OpenAI host carry `prompt_cache_key`, a hash of the session ID. See
+- **OpenAI.** Matching prefixes cache automatically. Every Responses request,
+  to the official host or to a proxy in front of it, carries
+  `prompt_cache_key`, a hash of the session ID. See
   [OpenAI prompt caching](https://developers.openai.com/api/docs/guides/prompt-caching).
 - **Anthropic.** Requests set top-level
   `cache_control: {"type":"ephemeral"}` for automatic caching, plus a
@@ -31,9 +32,16 @@ provider-native reasoning is replayed as received. These operations still
 change earlier input and can cost cache reuse:
 
 - compaction, attachment pruning and old tool-result pruning;
-- updated runtime context, which removes its previous copy before appending;
-- permission, adaptive-instruction, tool-availability and effort changes;
+- a changed self-directive (`adapt_system`), which rewrites the system
+  message;
+- tool-availability changes (`/tools`, an MCP server's list, a tool reaching
+  its per-turn cap) and effort changes;
 - forks, which get a new session identity (resumed sessions keep theirs).
+
+A new day, a changed approval mode or a memory write does not: the runtime
+note that carries them is appended as a new message and the old one stays in
+place. Instruction files are read once at start, so editing one costs nothing
+until the session restarts.
 
 µAgent sends no keepalive requests to hold a cache warm, including between
 Fusion handoffs; they cost a model call and cannot guarantee a hit.

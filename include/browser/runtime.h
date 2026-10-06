@@ -38,6 +38,8 @@ class Runtime {
   json Targets();
   json PageTargets();
   bool ClearHandover();
+  json Control(const std::string& op, const json& command);
+  json Act(const std::string& op, const json& command);
   json Probe();
   json Observe();
   bool SaveHandover() const;
@@ -66,6 +68,12 @@ class Runtime {
   bool loading_ = false;
   std::chrono::steady_clock::time_point used_ =
       std::chrono::steady_clock::now();
+  // The browser changed hands and its holder has not yet opened or looked
+  // at a page: what it remembers of the page is another conversation's.
+  bool moved_ = false;
+  std::string last_holder_;
+  // When the conversation holding the browser last asked something of it.
+  std::chrono::steady_clock::time_point agent_used_ = used_;
   // Bumps on every lease or tab change; guards observations.
   uint64_t generation_ = 0;
   // Bumps only when Chrome and Xvnc launch; a viewer stays connected across

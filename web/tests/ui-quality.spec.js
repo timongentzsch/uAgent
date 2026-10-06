@@ -310,6 +310,29 @@ test.describe("touch interaction", () => {
     expect(bounds.y).toBeGreaterThanOrEqual(0);
     expect(bounds.y + bounds.height).toBeLessThanOrEqual(844);
   });
+  test("a long setting value is cut short, not scrolled to", async ({
+    page,
+    session,
+  }) => {
+    await page.goto(`/#session=${session.id}`);
+    await page.getByRole("button", { name: "Settings", exact: true }).tap();
+    const settings = page.getByRole("dialog", {
+      name: "Settings",
+      exact: true,
+    });
+    await settings
+      .locator(".settings-nav")
+      .getByRole("button", { name: "All conversations", exact: true })
+      .tap();
+    await expect(
+      settings.locator('[data-setting$="_MODEL"]').first(),
+    ).toBeVisible();
+    expect(
+      await settings
+        .locator(".settings-pane")
+        .evaluate((pane) => pane.scrollWidth - pane.clientWidth),
+    ).toBeLessThanOrEqual(1);
+  });
   test("composer text scales at every density without a sub-16px layout font", async ({
     page,
     session,
@@ -324,7 +347,7 @@ test.describe("touch interaction", () => {
       });
       await settings
         .locator(".settings-nav")
-        .getByRole("button", { name: "General", exact: true })
+        .getByRole("button", { name: "This browser", exact: true })
         .click();
       await settings.getByLabel("Zoom", { exact: true }).fill(String(zoom));
       await settings.getByRole("button", { name: "Close settings" }).click();
@@ -431,7 +454,7 @@ test.describe("touch interaction", () => {
       });
       await settings
         .locator(".settings-nav")
-        .getByRole("button", { name: "General", exact: true })
+        .getByRole("button", { name: "This browser", exact: true })
         .click();
       await settings.getByLabel("Zoom", { exact: true }).fill(String(zoom));
       // A phone shows one section at a time: back to the list first.
@@ -440,30 +463,22 @@ test.describe("touch interaction", () => {
       await settings
         .locator(".settings-nav")
         .getByRole("button", {
-          name: "Permissions & allowed actions",
+          name: "All conversations",
           exact: true,
         })
         .click();
       await expect(
-        settings.getByRole("button", { name: /^Approval mode/ }),
+        settings.getByRole("combobox", { name: "Approval mode" }),
       ).toBeVisible();
-      if (await back.isVisible()) await back.click();
-      await settings
-        .locator(".settings-nav")
-        .getByRole("button", { name: "Advanced", exact: true })
-        .click();
       const search = settings.getByRole("searchbox", {
         name: "Find a setting",
       });
+      // A setting's own field is in its row.
       await search.fill("timeout");
+      await expect(
+        settings.getByRole("spinbutton", { name: "Tool timeout" }),
+      ).toBeVisible();
       await scaledFields(settings, zoom);
-      // A setting's own field lives in its sheet.
-      await settings.getByRole("button", { name: /^Tool timeout/ }).click();
-      const sheet = page.getByRole("dialog", { name: "Tool timeout" });
-      await expect(sheet.getByRole("spinbutton")).toBeVisible();
-      await scaledFields(sheet, zoom);
-      await page.keyboard.press("Escape");
-      await expect(sheet).toHaveCount(0);
       await search.fill("memory");
       await expect(settings.locator('[role="switch"]').first()).toBeVisible();
       await scaledFields(settings, zoom);

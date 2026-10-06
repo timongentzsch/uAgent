@@ -79,6 +79,11 @@ struct DetachedActivity {
 
 void BgTrackSignal(pid_t pid, bool add);
 bool SignalProcessGroup(pid_t leader, int signal_number);
+// TERM, then KILL if the group outlives the grace period, so a program that
+// cleans up on exit gets to. False only when the group is still alive after
+// the escalation.
+bool TerminateGroup(ProcessSupervisor& supervisor, pid_t leader,
+                    std::chrono::milliseconds grace, bool reap_leader);
 void KillProcess(pid_t pid);
 std::string FmtExit(int status, bool show_ok);
 ToolResult ProcessResult(std::string output, int status);

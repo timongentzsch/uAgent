@@ -16,6 +16,7 @@
 #include "include/api/types.h"
 #include "include/api/wire.h"
 #include "include/core/env.h"
+#include "include/core/runtime_config.h"
 
 using CURL = void;
 using CURLM = void;
@@ -29,6 +30,9 @@ class HttpExchange;
 // with the single-owner client. Side requests snapshot this exact route.
 struct ApiSettings {
   std::string base_url, api_key, model, reasoning_effort;
+  // The selection a catalogue route was chosen by and the model it named,
+  // so the choice can be written down as it was made (an alias stays one).
+  std::string route_name, route_model;
   std::vector<std::string> supported_reasoning_efforts;
   int64_t ctx_window = 0;
   ProviderCapabilities capabilities;

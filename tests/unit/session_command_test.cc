@@ -18,9 +18,11 @@
 #include "include/app/asset_store.h"
 #include "include/app/commands.h"
 #include "include/app/session_host.h"
+#include "include/core/env.h"
 #include "include/core/events.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
+#include "include/core/runtime_config.h"
 #include "tests/unit/terminal_test_support.h"
 #include "tests/unit/test_support.h"
 
@@ -387,7 +389,10 @@ void TestSessionPersistence() {
       CHECK(loaded.record->state.messages.size() == 1);
       const auto& settings =
           loaded.record->state.display["facts"]["session-settings"];
-      CHECK(settings["permissions"] == (index < 3 ? "default" : "ask"));
+      // Only what the conversation chose is kept; the rest is inherited.
+      CHECK(settings["chosen"] ==
+            (index < 3 ? json::object()
+                       : json::object({{"UAGENT_APPROVAL", "ask"}})));
       if (index >= 4) CHECK(settings["tools"]["profile"] == "minimal");
     }
     std::string journal, error;
@@ -425,6 +430,9 @@ void TestSessionPersistence() {
   CHECK(SnapshotFile(channel.path) == checkpoint);
 
   context.agent->Rename("retry after journal failure");
+  // The journal is written when it has something new.
+  session.context.observability.Emit(
+      Event{EventId::kConfigChanged, {{"changed", json::array({"title"})}}});
   const std::string journal = channel.path + ".events.jsonl";
   std::filesystem::remove(journal);
   std::filesystem::create_directory(journal);

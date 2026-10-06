@@ -10,6 +10,7 @@
 
 #include "include/agent/child_agent.h"
 #include "include/app/launch.h"
+#include "include/browser/browser.h"
 #include "include/cli.h"
 #include "include/core/checked.h"
 #include "include/core/debug.h"
@@ -17,6 +18,7 @@
 #include "include/core/events.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
+#include "include/core/signals.h"
 #include "include/core/steering.h"
 #include "include/core/strings.h"
 #include "include/core/style.h"
@@ -124,6 +126,13 @@ void Application::RunTurns(const std::string& input, json content,
     agent_.Turn(input, std::move(content), images, request_id_);
     SteeringState().Take();
   }
+#ifdef UAGENT_BROWSER
+  // The turn is over: the shared browser is free for the next conversation.
+  if (!context_.browser_lease.empty()) {
+    browser::Request(
+        {{"op", "release"}, {"session_id", context_.browser_lease}}, 1000);
+  }
+#endif
   if (channel_ || !session_file_.empty()) PublishChannelState(false);
 }
 
@@ -153,17 +162,33 @@ void Application::Teardown(const char* reason) {
 
 bool Application::ResumeAtStartup() {
   std::string previous_path = session_file_;
-  if (!session_file_.empty()) {
-    if (PathExists(session_file_) &&
-        !ResumeInto(agent_, session_file_, session_file_, !channel_)) {
-      return false;
-    }
-  } else if (context_.options.resume_latest) {
+  std::string source = session_file_;
+  if (source.empty() && context_.options.resume_latest) {
     std::vector<SessionInfo> sessions = ListSessions();
     if (sessions.empty()) {
       fputs(Note(Tone::kNeutral, "no saved sessions").c_str(), stdout);
       fflush(stdout);
-    } else if (!ResumeInto(agent_, sessions.front().path, session_file_)) {
+    } else {
+      source = sessions.front().path;
+    }
+  }
+  if (!source.empty() && PathExists(source)) {
+    // A thread's sandbox, budget and approval limit are applied by its
+    // runtime; continued without one it would have none, and lose its role on
+    // saving.
+    if (!channel_ && JsonValue(SessionHeader(source), kSessionHeaderKind, "") ==
+                         kSessionKindThread) {
+      const std::string refusal =
+          "that session is a coordinator's thread; continue it in its "
+          "conversation, or name another session";
+      // On stderr: a headless run's stdout is the answer, and is silenced
+      // until there is one.
+      fprintf(stderr, "%s\n", refusal.c_str());
+      Emit(Event{EventId::kError, {{"error", "cannot resume: " + refusal}}});
+      return false;
+    }
+    if (!ResumeInto(agent_, source, session_file_,
+                    source == session_file_ && !channel_)) {
       return false;
     }
   }

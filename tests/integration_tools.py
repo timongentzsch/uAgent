@@ -21,6 +21,8 @@ from integration_support import (
     run,
     run_dialog,
     run_pty,
+    save_settings,
+    saved_settings,
     session_files,
     signal_process_group,
     tool_call,
@@ -200,6 +202,28 @@ def test_an_attachment_over_the_budget_is_warned_about_once(root, home, *, binar
         assert_true(said == 1, (said, result.stdout[-1500:]))
 
 
+def test_a_command_stopped_at_its_deadline_gets_to_clean_up(root, home, *, binary):
+    # What a headless browser does with its temporary profile: removed on a
+    # clean exit, left behind by a kill.
+    marker = root / "temporary-profile"
+    command = f"trap 'rm -f {marker}; exit 0' TERM; touch {marker}; sleep 30 & wait"
+    with Server(
+        # Without a yield the command is held to its deadline, not moved to
+        # the background when it runs long.
+        [
+            tool_call("run", {"command": command, "yield_ms": 0}),
+            event({"content": "deadline-ok"}),
+        ]
+    ) as server:
+        env = base_env(home, server.url)
+        # A foreground command is bounded by its turn.
+        env["UAGENT_MAX_TURN_SECONDS"] = "2"
+        result = run_dialog(root, env, "go\n/q\n", "--yolo", timeout=20, binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true("exceeded its execution deadline" in result.stdout, result.stdout)
+        assert_true(not marker.exists(), "the command was killed before it could clean up")
+
+
 def test_full_run_and_python_terminal_trace(root, home, *, binary):
     shell_command = "printf 'shell-one\\n'\nprintf 'shell-two\\n'"
     python_code = "print('python-one')\nprint('python-two')"
@@ -215,7 +239,9 @@ def test_full_run_and_python_terminal_trace(root, home, *, binary):
         ]
     ) as server:
         env = base_env(home, server.url)
-        result = run_dialog(root, env, "/verbose\ntrace\n/q\n", "--yolo", timeout=20, binary=binary)
+        result = run_dialog(
+            root, env, "trace\n/q\n", "--yolo", "--verbosity", "full", timeout=20, binary=binary
+        )
         assert_true(result.returncode == 0, result.stderr)
         for expected in (
             "printf 'shell-one",
@@ -410,13 +436,13 @@ def test_skill_tool_offers_and_opens(root, home, *, binary):
         code, output = run_pty(
             workspace,
             base_env(home, server.url),
-            # Verbose output shows the opened skill body in the tool result.
+            # Full output shows the opened skill body in the tool result.
             [
-                (b"/verbose\n", b"verbose on"),
                 (b"reply\n", b"skill-ok", b"Ready", None),
                 b"\x04",
             ],
             columns=24,
+            args=("--verbosity", "full"),
             binary=binary,
         )
         assert_true(code == 0, output)
@@ -876,7 +902,7 @@ def test_composite_configuration_requires_exact_human_approval(root, home, *, bi
 
     def finish(_, body):
         result = tool_results(body["messages"])[-1]
-        assert_true("wrote" in result and "needs a restart" in result, result)
+        assert_true("saved for" in result and "needs a restart" in result, result)
         return event({"content": "composite-config-ok"})
 
     with Server([request_change, finish]) as server:
@@ -900,17 +926,14 @@ def test_composite_configuration_requires_exact_human_approval(root, home, *, bi
         assert_true(b'\x1b[32m+   "codex-local": {' in output, output)
         # The diff belongs to the approval prompt alone, never the call label.
         assert_true(output.count(b'+   "codex-local": {') == 1, output)
-        written = config.read_text()
-        assert_true(proposed in written, written)
-        assert_true("# keep me" in written, written)
+        saved = saved_settings(home)
+        assert_true(saved["UAGENT_PROVIDERS"] == proposed, saved)
+        # What a value refers to stays beside it.
+        assert_true(saved["LOCAL_PROXY_API_KEY"] == "adjacent-integration-secret", saved)
 
 
 def test_composite_configuration_rejects_literal_credentials(root, home, *, binary):
     """A literal credential is rejected without a prompt or terminal leak."""
-    config = home / ".uagent" / ".config"
-    config.parent.mkdir(parents=True, exist_ok=True)
-    original = "# unchanged\n"
-    config.write_text(original)
     literal = "literal-provider-secret"
     proposed = json.dumps(
         {
@@ -953,11 +976,11 @@ def test_composite_configuration_rejects_literal_credentials(root, home, *, bina
         assert_true(status == 0, output)
         assert_true(b"Allow uagent?" not in output, output)
         assert_true(literal.encode() not in output, output)
-        assert_true(config.read_text() == original, config.read_text())
+        assert_true(not saved_settings(home), saved_settings(home))
 
 
 def test_self_configuration_requires_a_person(root, home, *, binary):
-    """With nobody to ask, the tool is not offered and the file is untouched.
+    """With nobody to ask, the tool is not offered and nothing saved changes.
 
     The approver denies a mandatory-human call whenever no interactive
     terminal is attached, so advertising the schema to a piped run would spend
@@ -967,16 +990,15 @@ def test_self_configuration_requires_a_person(root, home, *, binary):
     """
     config = home / ".uagent" / ".config"
     config.parent.mkdir(parents=True, exist_ok=True)
-    original = "# keep me\nUAGENT_MAX_TOOL_CALLS=40\n"
-    config.write_text(original)
+    config.write_text("UAGENT_MAX_TOOL_CALLS=40\n")
 
     def refuse(_, body):
         names = function_names(body)
         assert_true("uagent" in names, names)
         tool = next(t["function"] for t in body["tools"] if t["function"]["name"] == "uagent")
         assert_true(tool["parameters"]["properties"]["action"]["enum"] == ["inspect"], tool)
-        # The escape hatch is closed too: writing the file directly stays a
-        # mandatory-human mutation.
+        # The escape hatch is closed too: writing the saved settings directly
+        # stays a mandatory-human mutation.
         assert_true("write_file" in names, names)
         return event({"content": "configure-absent"})
 
@@ -986,14 +1008,15 @@ def test_self_configuration_requires_a_person(root, home, *, binary):
         )
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip().endswith("configure-absent"), result.stdout)
-        assert_true(config.read_text() == original, config.read_text())
+        assert_true(saved_settings(home) == {"UAGENT_MAX_TOOL_CALLS": "40"}, saved_settings(home))
 
 
 def test_self_configuration_commits_after_approval(root, home, *, binary):
-    """An approved change preserves comments and reports when it takes effect."""
+    """An approved change is saved beside what was there and reports when it
+    takes effect."""
     config = home / ".uagent" / ".config"
     config.parent.mkdir(parents=True, exist_ok=True)
-    config.write_text("# keep me\nUAGENT_MAX_TOOL_CALLS=40\nUNKNOWN_KEY=kept\n")
+    config.write_text("UAGENT_MAX_TOOL_CALLS=40\nUNKNOWN_KEY=kept\n")
 
     def request_change(_, __):
         return tool_call(
@@ -1007,7 +1030,7 @@ def test_self_configuration_commits_after_approval(root, home, *, binary):
 
     def finish(_, body):
         result = tool_results(body["messages"])[-1]
-        assert_true("wrote" in result, result)
+        assert_true("saved for all conversations" in result, result)
         assert_true("active at the next user turn" in result, result)
         return event({"content": "configure-ok"})
 
@@ -1029,11 +1052,43 @@ def test_self_configuration_commits_after_approval(root, home, *, binary):
         )
         assert_true(status == 0, output)
         assert_true(b"configure-ok" in output, output)
-        assert_true(b"wrote " in output, output)
-        written = config.read_text()
-        assert_true("UAGENT_MAX_TOOL_CALLS=120" in written, written)
-        assert_true("# keep me" in written, written)
-        assert_true("UNKNOWN_KEY=kept" in written, written)
+        assert_true(
+            saved_settings(home) == {"UAGENT_MAX_TOOL_CALLS": "120", "UNKNOWN_KEY": "kept"},
+            saved_settings(home),
+        )
+
+
+def test_config_export_and_import_round_trip(root, home, *, binary):
+    """Everything saved leaves as one JSON document and comes back as one,
+    checked like any other change; a refused document changes nothing."""
+    save_settings(home, UAGENT_MAX_STEPS=7, MY_KEY="kept")
+    save_settings(home, folder=root, UAGENT_MAX_TOOL_CALLS=40)
+    env = base_env(home, "")
+    exported = run(root, env, "config", "export", binary=binary)
+    assert_true(exported.returncode == 0, exported.stderr)
+    document = json.loads(exported.stdout)
+    assert_true(document["all"] == {"UAGENT_MAX_STEPS": "7", "MY_KEY": "kept"}, document)
+    assert_true(
+        document["projects"] == {str(root.resolve()): {"UAGENT_MAX_TOOL_CALLS": "40"}}, document
+    )
+
+    incoming = root / "incoming.json"
+    document["all"]["UAGENT_MAX_STEPS"] = "many"
+    incoming.write_text(json.dumps(document))
+    refused = run(root, env, "config", "import", str(incoming), binary=binary)
+    assert_true(refused.returncode == 1 and "expects an integer" in refused.stderr, refused.stderr)
+    assert_true(saved_settings(home)["UAGENT_MAX_STEPS"] == "7", "a refused import saved")
+
+    document["all"] = {"UAGENT_MEMORY": "off", "MY_KEY": "kept"}
+    incoming.write_text(json.dumps(document))
+    imported = run(root, env, "config", "import", str(incoming), binary=binary)
+    assert_true(imported.returncode == 0, imported.stderr)
+    # One spelling is saved, whichever was given; what was not in the
+    # document is gone.
+    assert_true(
+        saved_settings(home) == {"UAGENT_MEMORY": "0", "MY_KEY": "kept"}, saved_settings(home)
+    )
+    assert_true(saved_settings(home, root) == {"UAGENT_MAX_TOOL_CALLS": "40"}, "project lost")
 
 
 def test_approval_remembers_exact_action_and_forwards_a_refusal(root, home, *, binary):

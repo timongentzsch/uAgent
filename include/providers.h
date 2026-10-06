@@ -70,11 +70,6 @@ json ModelCatalogue(Api& api, const std::vector<ModelRoute>& routes,
                     const std::vector<NamedProvider>& providers,
                     const std::string& query = "all");
 
-struct ModelPreference {
-  std::string selection, base_url;
-  bool route = false;
-};
-
 using ProviderUrlMatcher = bool (*)(std::string);
 struct ProviderTemplate {
   const char* name;
@@ -94,9 +89,6 @@ struct ProviderSetup {
   std::vector<NamedProvider> providers;
   std::string warning;
 };
-
-inline constexpr const char* kReasoningEfforts[] = {
-    "none", "minimal", "low", "medium", "high", "xhigh", "max"};
 
 // One selection grammar for every model-valued setting:
 //
@@ -143,14 +135,6 @@ const ProviderTemplate* FindProviderTemplateForUrl(const std::string& url);
 // The built-in default template (OpenRouter) for unattributed endpoints.
 const ProviderTemplate& DefaultProviderTemplate();
 bool ApplyProviderTemplate(Api& api, const ProviderTemplate& provider);
-std::string ModelPreferencePath();
-bool PersistableSelection(const std::string& selection);
-ModelPreference LoadModelPreference();
-bool SaveModelPreference(const ModelPreference& preference, std::string& error);
-// Rewrite the saved preference's routing suffixes in place, so an interactive
-// /effort or /variant survives a restart exactly like the /model that saved it.
-bool SaveSelectionSuffix(const std::string& variant, const std::string& effort,
-                         std::string& error);
 bool ValidEffort(const std::string& effort);
 bool SupportsReasoningEffort(const Api& api, std::string_view effort);
 ProviderCatalog LoadProviderCatalog();
@@ -170,6 +154,11 @@ std::optional<ModelRoute> ResolveModelRoute(
 // template serves this base URL.
 std::string RouteSelection(const Api& api,
                            const std::vector<NamedProvider>& providers);
+// The same, by the name the route was chosen by where it has one of its own
+// (an alias): what a provider says of an alias is found again by that name
+// only, so a session handed this selection resolves the same route.
+std::string ChosenSelection(const Api& api,
+                            const std::vector<NamedProvider>& providers);
 std::string RouteSelection(const SideRoute& route,
                            const std::vector<NamedProvider>& providers);
 // Selection formatting shared by preference storage and route

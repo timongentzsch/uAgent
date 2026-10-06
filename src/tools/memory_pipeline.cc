@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cerrno>
 #include <chrono>
+#include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -210,34 +211,26 @@ std::string StartMemoryExtractor(ProcessSupervisor& processes, const Api& api,
   std::filesystem::remove(receipt, ignored);
   std::string source_id = WorkspaceId(source);
   environment.emplace_back("UAGENT_INTERNAL_MEMORY_RECEIPT", receipt);
-  // Best effort, not a guarantee: a shell defers an EXIT trap until its
-  // foreground child is reaped, and shutdown allows a background group 500ms
-  // before SIGKILL (BgShutdownAll). A child too slow to unwind loses that race
-  // and leaves its claim behind. That is why the claim is reclaimed by age
-  // rather than only by this trap -- and why the trap narrows to `processing`,
-  // so a claim already marked `done` is never removed by a late signal.
-  std::string cleanup =
-      "if [ \"$(cat " + ShellQuote(marker) +
-      " 2>/dev/null)\" = processing ]; then rm -f " + ShellQuote(marker) +
-      "; printf 'memory extraction did not complete\\n' >&2; fi";
-  std::string command = "trap " + ShellQuote(cleanup) + " EXIT HUP INT TERM; " +
-                        ShellQuote(ExecutablePath()) +
-                        " --yolo -p memory-extract && printf 'done\\n' > " +
-                        ShellQuote(marker);
+  // The child settles its own claim when it ends (SettleMemoryClaim). One
+  // that is killed first leaves it, which is why a claim is also reclaimed by
+  // age.
+  environment.emplace_back("UAGENT_INTERNAL_MEMORY_CLAIM", marker);
   ToolResult started =
-      RunShellCommand(processes, {},
-                      {.command = std::move(command),
-                       .background = true,
-                       .immediate = true,
-                       // Runs uagent itself, which writes ~/.uagent state a
-                       // confined child could not. Its own commands inherit
-                       // UAGENT_SANDBOX and are confined one level down.
-                       .sandbox = false,
-                       .activity_kind = ActivityKind::kMemory,
-                       .activity_label = "extracting from " + source_id,
-                       .receipt_path = receipt,
-                       .source_id = source_id,
-                       .environment = std::move(environment)})
+      RunShellCommand(
+          processes, {},
+          {.command = "uagent memory-extract",
+           .argv = {ExecutablePath(), "--yolo", "-p", "memory-extract"},
+           .background = true,
+           .immediate = true,
+           // Runs uagent itself, which writes ~/.uagent state a
+           // confined child could not. Its own commands run under
+           // this session's sandbox.
+           .sandbox = false,
+           .activity_kind = ActivityKind::kMemory,
+           .activity_label = "extracting from " + source_id,
+           .receipt_path = receipt,
+           .source_id = source_id,
+           .environment = std::move(environment)})
           .result;
   if (!started.Ok()) {
     ReleaseClaim(source, cwd);
@@ -245,6 +238,23 @@ std::string StartMemoryExtractor(ProcessSupervisor& processes, const Api& api,
     return started.output;
   }
   return {};
+}
+
+void SettleMemoryClaim(bool extracted) {
+  const std::string marker = EnvStr("UAGENT_INTERNAL_MEMORY_CLAIM");
+  if (marker.empty()) return;
+  std::error_code failed;
+  std::string error;
+  if (!extracted) {
+    std::filesystem::remove(marker, failed);
+    error = failed ? failed.message() : "";
+  } else {
+    AtomicWriteFile(marker, "done\n", kPrivateFileMode,
+                    /*preserve_mode=*/false, error);
+  }
+  if (!error.empty()) {
+    fprintf(stderr, "cannot settle memory claim: %s\n", error.c_str());
+  }
 }
 
 bool BuildMemoryExtractionPrompt(const std::string& source,

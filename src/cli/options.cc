@@ -8,6 +8,7 @@
 #include <string_view>
 #include <utility>
 
+#include "include/core/config_registry.h"
 #include "include/core/strings.h"
 
 namespace uagent {
@@ -49,6 +50,8 @@ constexpr FlagSpec kFlags[] = {
      .key = "UAGENT_MEMORY",
      .help = "disable memory recall and writes for this session",
      .preset = "0"},
+    {"--verbosity", FlagKind::kConfig, nullptr, "UAGENT_VERBOSITY", "LEVEL",
+     "detail shown in this terminal: minimal, default or full"},
     {"--model", FlagKind::kConfig, nullptr, "UAGENT_MODEL", "SELECTION",
      "conversation model as [provider/]model[:variant][:effort]"},
     {"--image-model", FlagKind::kConfig, nullptr, "UAGENT_IMAGE_MODEL",
@@ -86,7 +89,8 @@ constexpr FlagSpec kFlags[] = {
      .help = "",
      .text = &Options::reference_dir},
     {"--trust-project-config", FlagKind::kToggle, &Options::trust_project,
-     nullptr, nullptr, "allow this workspace's .mcp.json and .uagent/.config"},
+     nullptr, nullptr,
+     "trust this workspace's .mcp.json and import its legacy .uagent/.config"},
     {"-h", FlagKind::kHelp, nullptr, nullptr, nullptr, ""},
     {"--help", FlagKind::kHelp, nullptr, nullptr, nullptr, "show this help"},
 };
@@ -138,6 +142,15 @@ ParsedOptions ParseOptions(int argc, char* const argv[]) {
       case FlagKind::kConfig:
         if (Trim(value).empty()) {
           parsed.error = argument + " requires a value";
+          return parsed;
+        }
+        if (const ConfigDescriptor* descriptor =
+                FindConfigDescriptor(spec->key);
+            descriptor && !descriptor->Accepts(Trim(value))) {
+          parsed.error = argument + " expects one of:";
+          for (std::string_view choice : descriptor->choices) {
+            parsed.error += " " + std::string(choice);
+          }
           return parsed;
         }
         parsed.options.overrides[spec->key] = Trim(value);
@@ -236,11 +249,17 @@ const char* UsageText() {
       row.append(column - row.size(), ' ');
       listing += row + spec.help + "\n";
     }
-    return synopsis + "\n       uagent coord [options]\n\n" + listing +
+    return synopsis +
+           "\n       uagent coord [options]"
+           "\n       uagent config export | import FILE\n\n" +
+           listing +
            "  coord                   open this folder's coordinator\n"
-           "\nconfig: ./.uagent/.config when trusted, then ~/.uagent/.config; "
-           "process UAGENT_* variables override both, and the flags above "
-           "override all three\n";
+           "  config export           print everything saved, as JSON\n"
+           "  config import FILE|-    replace it with such a document\n"
+           "\nsettings: what is saved for all conversations, then for this "
+           "project (/config, or the web settings); process UAGENT_* "
+           "variables override both, and the flags above override all "
+           "three\n";
   }();
   return kText.c_str();
 }

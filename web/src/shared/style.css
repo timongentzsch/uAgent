@@ -41,10 +41,8 @@
   --motion-fast: 120ms;
   --motion-base: 200ms;
   --motion-slow: 280ms;
-  /* Theme-independent: what dims the page behind a dialog, and a knob's
-     lift off its track. */
+  /* Theme-independent: what dims the page behind a dialog. */
   --scrim: rgb(0 0 0 / 0.6);
-  --shadow-knob: 0 1px 2px rgb(0 0 0 / 0.25);
   /* Loops that say something is alive: status lights, skeletons. */
   --motion-pulse: 1.6s;
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
@@ -95,8 +93,6 @@
   --accent-active: #ccc;
   --on-accent: #000;
   --knob: #a3a3a3;
-  /* Anything floating over the page: menus, suggestions, banners. */
-  --shadow-float: 0 var(--space-2) var(--space-12) rgb(0 0 0 / 0.7);
 }
 :root[data-theme="light"],
 [data-theme="dark"] .message.user,
@@ -124,7 +120,6 @@
   --removed-bg: rgba(209, 36, 47, 0.1);
   --on-accent: #fff;
   --knob: #fff;
-  --shadow-float: 0 var(--space-2) var(--space-6) rgb(0 0 0 / 0.18);
 }
 * {
   box-sizing: border-box;
@@ -202,7 +197,8 @@ input[type="radio"] {
   padding: 0;
   accent-color: var(--accent);
 }
-/* Switch: the checkbox drawn as a track and knob, with a 44px touch area. */
+/* Switch: the checkbox drawn as a square track and knob, with a 44px touch
+   area. Like every control here it is flat: no rounding, no shadow. */
 .switch {
   display: inline-flex;
   align-items: center;
@@ -221,7 +217,6 @@ input[type="radio"] {
   min-height: calc(24rem / 14);
   margin: 0;
   border: 1px solid var(--field-border);
-  border-radius: 999px;
   background: var(--raised);
   cursor: pointer;
   transition: background var(--motion-fast) var(--ease-standard);
@@ -233,9 +228,7 @@ input[type="radio"] {
   left: 1px;
   width: calc(20rem / 14);
   height: calc(20rem / 14);
-  border-radius: 50%;
   background: var(--knob);
-  box-shadow: var(--shadow-knob);
   transition: translate var(--motion-fast) var(--ease-standard);
 }
 .switch input[role="switch"]:checked {
@@ -552,9 +545,9 @@ pre code {
 .error-banner,
 .update-banner {
   padding: var(--space-3) var(--space-6);
-  border: 1px solid var(--line);
+  /* What floats over the page is set apart by its edge alone. */
+  border: 1px solid var(--field-border);
   background: var(--raised);
-  box-shadow: var(--shadow-float);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -718,7 +711,6 @@ dialog.sidebar:not([open]) {
   min-width: 1.35em;
   height: 1.35em;
   padding-inline: var(--space-1);
-  border-radius: 0.7em;
   background: var(--accent);
   color: var(--on-accent);
   font-size: var(--font-micro);
@@ -1292,10 +1284,10 @@ dialog.sidebar:not([open]) {
   min-width: 0;
   max-width: 100%;
 }
-/* Not connected: a pill, so the state reads apart from a turn's phase. */
+/* Not connected: a tag, so the state reads apart from a turn's phase. */
 .connection-pill {
   padding: 0 var(--space-4);
-  border-radius: 999px;
+  border: 1px solid var(--field-border);
   background: var(--raised);
   color: var(--text);
 }
@@ -1614,10 +1606,9 @@ details[open]:not(.disclosure-row) > summary::before {
   margin: 0;
   min-width: calc(180rem / 14);
   padding: var(--space-2);
-  border: 1px solid var(--line);
+  border: 1px solid var(--field-border);
   background: var(--surface);
   color: var(--text);
-  box-shadow: var(--shadow-float);
   overflow: auto;
   transition:
     opacity var(--motion-base) var(--ease-out),
@@ -1642,6 +1633,31 @@ details[open]:not(.disclosure-row) > summary::before {
   border: 0;
   text-align: left;
   font-size: var(--font-small);
+}
+/* A row that opens a view names what is chosen in it and points on; the
+   row that leads back points the other way. */
+.menu-panel button[data-menu-stay] {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--space-2);
+}
+/* A choice carries its tick at the row's far edge. */
+.menu-panel button[role="menuitemradio"] {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+.menu-value {
+  margin-left: auto;
+  color: var(--muted);
+}
+.menu-note {
+  margin: 0;
+  padding: var(--space-2) var(--space-4);
+  color: var(--muted);
+  font-size: var(--font-micro);
 }
 .model-form {
   display: grid;
@@ -2280,8 +2296,11 @@ dialog > header .icon-button {
 }
 /* Quiet: rows sit on the surface itself, separated by hairlines, with no
    card around them; only hover and the current item are filled. */
+/* One column as wide as the group: a row's long value is cut short there
+   rather than widening every row. */
 .group-rows {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
 }
 .group-rows > * + * {
   border-top: 1px solid var(--line);
@@ -2378,16 +2397,6 @@ dialog > header .icon-button {
 }
 .setting-summary[data-default] {
   color: var(--muted);
-}
-.setting-sheet {
-  display: grid;
-  gap: var(--space-4);
-}
-.setting-sheet p {
-  margin: 0;
-}
-.setting-sheet output {
-  overflow-wrap: anywhere;
 }
 .zoom-value {
   min-width: 4ch;

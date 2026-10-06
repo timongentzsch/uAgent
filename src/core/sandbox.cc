@@ -21,9 +21,11 @@ constexpr std::string_view kFixedRoots[] = {"/tmp", "/var/tmp", "/dev"};
 bool Acceptable(std::string_view root, std::string_view global_base) {
   if (root.empty() || root.front() != '/') return false;
   if (root == "/") return false;
-  // An ancestor of ~/.uagent would hand over the config and the trust store by
-  // inheritance. A descendant is fine and is how terminals/logs gets in.
-  return !SandboxPathWithin(global_base, root);
+  // An ancestor of ~/.uagent would hand over the saved settings and the trust
+  // store by inheritance, and so would the folder that holds them. Any other
+  // descendant is fine and is how terminals/logs gets in.
+  return !SandboxPathWithin(global_base, root) &&
+         !SandboxPathWithin(root, std::string(global_base) + "/config");
 }
 
 void Offer(std::string_view root, const SandboxInputs& inputs,

@@ -33,7 +33,7 @@ const blank = (cwd: string): ScheduledTask => ({
   prompt: "",
   cwd,
   model: "",
-  permissions: "prompt",
+  permissions: "ask",
   environment: "worktree",
   enabled: true,
   schedule: {
@@ -423,16 +423,19 @@ export default function Scheduled({
                   <Field
                     label="Permissions"
                     help={
-                      task.permissions === "prompt"
-                        ? "Pauses for approval in the run's conversation."
+                      task.permissions === "yolo"
+                        ? "Runs without ordinary approval prompts."
                         : task.permissions === "auto"
                           ? "Uses the configured permission reviewer; uncertain actions remain denied in unattended runs."
-                          : "Runs without ordinary approval prompts."
+                          : "Pauses for approval in the run's conversation."
                     }
                   >
                     <Select
                       aria-label="Permissions"
-                      value={task.permissions}
+                      // A task saved before the modes had one name asks.
+                      value={
+                        task.permissions === "prompt" ? "ask" : task.permissions
+                      }
                       onChange={(event) =>
                         edit({
                           permissions: event.currentTarget
@@ -440,9 +443,11 @@ export default function Scheduled({
                         })
                       }
                     >
-                      <option value="prompt">{permissionLabels.ask}</option>
-                      <option value="auto">{permissionLabels.auto}</option>
-                      <option value="yolo">{permissionLabels.yolo}</option>
+                      {Object.entries(permissionLabels).map(
+                        ([value, label]) => (
+                          <option value={value}>{label}</option>
+                        ),
+                      )}
                     </Select>
                   </Field>
                 </div>

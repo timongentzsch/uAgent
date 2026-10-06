@@ -143,6 +143,66 @@ bool Coordinate(const json& command, const char* name, int& result) {
   return result >= 0 && result <= 10000;
 }
 
+// X keysyms.
+constexpr auto kLeaseQuiet = std::chrono::minutes(3);
+constexpr const char* kLeasedElsewhere =
+    "another conversation is using the browser; it is free again when that "
+    "conversation's turn ends";
+constexpr uint32_t kKeyEscape = 0xFF1B, kKeyDown = 0xFF54, kKeyTab = 0xFF09;
+
+// Presses keys on the browser's display, as a person at it would, each with
+// the wait in milliseconds that follows it. Chrome's own lists (the saved
+// logins it offers) take keys from there only, never from the debugging
+// channel, which reaches the page alone.
+bool PressOnDisplay(std::initializer_list<std::pair<uint32_t, int>> keys) {
+  Fd rfb = ConnectUnix(RfbPath());
+  if (!rfb) return false;
+  std::string bytes;
+  const auto take = [&](size_t count) {
+    bytes.assign(count, '\0');
+    for (size_t have = 0; have < count;) {
+      pollfd ready{rfb.Get(), POLLIN, 0};
+      if (poll(&ready, 1, 2000) <= 0) return false;
+      const ssize_t n = read(rfb.Get(), bytes.data() + have, count - have);
+      if (n <= 0) return false;
+      have += static_cast<size_t>(n);
+    }
+    return true;
+  };
+  const auto send = [&](std::string_view data) {
+    return WriteAllWithin(rfb.Get(), data, 2000);
+  };
+  using std::string_view_literals::operator""sv;
+  // Version, the one security type the display is started with (none), its
+  // result, then a shared session and the server's description of itself.
+  if (!take(12) || !send("RFB 003.008\n"sv) || !take(1) ||
+      !take(static_cast<unsigned char>(bytes[0])) || !send("\x01"sv) ||
+      !take(4) || bytes != "\0\0\0\0"sv || !send("\x01"sv) || !take(24)) {
+    return false;
+  }
+  uint32_t name = 0;
+  for (size_t index = 20; index < 24; ++index) {
+    name = name << 8 | static_cast<unsigned char>(bytes[index]);
+  }
+  if (name > 4096 || !take(name)) return false;
+  for (const auto& [key, wait] : keys) {
+    for (const char down : {'\1', '\0'}) {
+      const char event[] = {'\4',
+                            down,
+                            '\0',
+                            '\0',
+                            static_cast<char>(key >> 24),
+                            static_cast<char>(key >> 16),
+                            static_cast<char>(key >> 8),
+                            static_cast<char>(key)};
+      if (!send(std::string_view(event, sizeof event))) return false;
+      poll(nullptr, 0, 50);
+    }
+    poll(nullptr, 0, wait);
+  }
+  return true;
+}
+
 std::string CdError(const json& value) {
   const json* object = JsonObject(value, "error");
   return object ? JsonValue(*object, "message", "Chrome rejected action")
@@ -402,6 +462,9 @@ bool Runtime::Start(std::string& error, bool profile_setup) {
       // a black line; one pixel past the edge is kept as asked.
       "--window-position=0,0", "--window-size=1281,801", "--ozone-platform=x11",
       "--password-store=basic", "--restore-last-session",
+      // A restart of the host stops Chrome without a goodbye; its offer to
+      // restore would cover the page.
+      "--hide-crash-restore-bubble",
       // Keep the profile small: no downloaded components or on-device
       // models (most of a 258 MB profile), and a bounded page cache.
       "--disable-component-update", no_downloads, "--disk-cache-size=67108864"};
@@ -509,6 +572,12 @@ json Runtime::Call(const std::string& method, const json& parameters,
           loading_ = true;
         }
         if (event == "Page.frameStoppedLoading") loading_ = false;
+      }
+      // Its tab was closed by hand, or Chrome replaced it: nothing is
+      // attached until a page is chosen again.
+      if (event == "Target.detachedFromTarget" && params &&
+          JsonValue(*params, "sessionId", "") == page_session_) {
+        page_session_.clear();
       }
       continue;
     }
@@ -627,11 +696,22 @@ bool Runtime::Agent(const json& command, std::string& error) {
     error = kHumanControls;
     return false;
   }
-  if (!agent_session_.empty() && agent_session_ != session) {
-    error = "browser is leased to another conversation";
+  // A holder that has asked nothing of the browser for a while has ended
+  // without giving it back, or waits on something else: it is the next
+  // conversation's.
+  const auto now = std::chrono::steady_clock::now();
+  if (!agent_session_.empty() && agent_session_ != session &&
+      now - agent_used_ < kLeaseQuiet) {
+    error = kLeasedElsewhere;
     return false;
   }
+  if (last_holder_ != session) {
+    observation_.clear();
+    moved_ = true;
+    last_holder_ = session;
+  }
   agent_session_ = session;
+  agent_used_ = now;
   mode_ = "agent";
   return true;
 }
@@ -694,6 +774,86 @@ json Runtime::Execute(const json& command) {
   if (op != "agent_status" && op != "viewer") {
     used_ = std::chrono::steady_clock::now();
   }
+  if (json done = Control(op, command); !done.is_null()) {
+    return done;
+  }
+  std::string error;
+  if (mode_ == "human") return {{"error", kHumanControls}};
+  if (!Start(error)) return {{"error", error}};
+  if (!Agent(command, error)) return {{"error", error}};
+  // Chrome's word that the attached tab is gone (closed by hand, or
+  // replaced) is read with the next reply: ask for the tabs, then attach a
+  // page again if none is.
+  Targets();
+  if (page_session_.empty()) {
+    target_.clear();
+    if (!SelectPage(error)) return {{"error", error}};
+  }
+  if (op == "request_human") {
+    std::string interaction = JsonValue(command, "interaction_id", "");
+    if (!session::OpaqueId(interaction)) {
+      return {{"error", "invalid interaction"}};
+    }
+    interaction_ = interaction;
+    std::string previous_viewer = viewer_;
+    viewer_.clear();
+    mode_ = "human";
+    observation_.clear();
+    if (!SaveHandover()) {
+      interaction_.clear();
+      viewer_ = std::move(previous_viewer);
+      mode_ = "agent";
+      return {{"error", "cannot persist browser handover"}};
+    }
+    ++generation_;
+    return Status();
+  }
+  if (op == "probe") return Probe();
+  // Whoever takes the browser after someone else starts from the page as it
+  // is, not as it remembers it: keys and text go nowhere before that.
+  // Only a look or an open that worked counts.
+  if (moved_ && op != "observe" && op != "tabs" && op != "open") {
+    return {{"error",
+             "another conversation used the browser since; open your page "
+             "or observe before acting"}};
+  }
+  if (op == "observe") {
+    json seen = Observe();
+    if (!seen.contains("error")) moved_ = false;
+    return seen;
+  }
+  if (op == "tabs") {
+    json pages = PageTargets();
+    if (pages.contains("error")) return pages;
+    for (auto& page : pages) {
+      page["selected"] = JsonValue(page, "id", "") == target_;
+      page.erase("opener");
+    }
+    std::string requested = JsonValue(command, "target_id", "");
+    if (!requested.empty()) {
+      bool found = false;
+      for (const auto& page : pages) {
+        found |= JsonValue(page, "id", "") == requested;
+      }
+      if (!found) return {{"error", "tab is unavailable"}};
+      if (requested != target_) {
+        json activated =
+            Call("Target.activateTarget", {{"targetId", requested}});
+        if (auto reason = CdError(activated); !reason.empty()) {
+          return {{"error", reason}};
+        }
+        if (!AttachPage(requested, error)) return {{"error", error}};
+      }
+    }
+    moved_ = false;
+    return {{"ok", true}, {"tabs", pages}, {"selected", target_}};
+  }
+  return Act(op, command);
+}
+
+// What needs no page: profiles, who is watching and who drives, and handing
+// the browser over and back. Null for anything else.
+json Runtime::Control(const std::string& op, const json& command) {
   if (op == "create_profile" || op == "select_profile") {
     if (!profile_error_.empty()) return {{"error", profile_error_}};
     std::string device = JsonValue(command, "device", "");
@@ -738,7 +898,7 @@ json Runtime::Execute(const json& command) {
     if (!session::OpaqueId(session)) return {{"error", "invalid session"}};
     if (mode_ == "human") return {{"error", kHumanControls}};
     if (!agent_session_.empty() && agent_session_ != session) {
-      return {{"error", "browser is leased to another conversation"}};
+      return {{"error", kLeasedElsewhere}};
     }
     return Status();
   }
@@ -887,56 +1047,11 @@ json Runtime::Execute(const json& command) {
     }
     return Status();
   }
-  std::string error;
-  if (mode_ == "human") return {{"error", kHumanControls}};
-  if (!Start(error)) return {{"error", error}};
-  if (!Agent(command, error)) return {{"error", error}};
-  if (op == "request_human") {
-    std::string interaction = JsonValue(command, "interaction_id", "");
-    if (!session::OpaqueId(interaction)) {
-      return {{"error", "invalid interaction"}};
-    }
-    interaction_ = interaction;
-    std::string previous_viewer = viewer_;
-    viewer_.clear();
-    mode_ = "human";
-    observation_.clear();
-    if (!SaveHandover()) {
-      interaction_.clear();
-      viewer_ = std::move(previous_viewer);
-      mode_ = "agent";
-      return {{"error", "cannot persist browser handover"}};
-    }
-    ++generation_;
-    return Status();
-  }
-  if (op == "probe") return Probe();
-  if (op == "observe") return Observe();
-  if (op == "tabs") {
-    json pages = PageTargets();
-    if (pages.contains("error")) return pages;
-    for (auto& page : pages) {
-      page["selected"] = JsonValue(page, "id", "") == target_;
-      page.erase("opener");
-    }
-    std::string requested = JsonValue(command, "target_id", "");
-    if (!requested.empty()) {
-      bool found = false;
-      for (const auto& page : pages) {
-        found |= JsonValue(page, "id", "") == requested;
-      }
-      if (!found) return {{"error", "tab is unavailable"}};
-      if (requested != target_) {
-        json activated =
-            Call("Target.activateTarget", {{"targetId", requested}});
-        if (auto reason = CdError(activated); !reason.empty()) {
-          return {{"error", reason}};
-        }
-        if (!AttachPage(requested, error)) return {{"error", error}};
-      }
-    }
-    return {{"ok", true}, {"tabs", pages}, {"selected", target_}};
-  }
+  return nullptr;
+}
+
+// One action on the attached page.
+json Runtime::Act(const std::string& op, const json& command) {
   // Remember the tabs that exist before an action, so the probes after it
   // can tell which tab the action itself opened.
   known_targets_.clear();
@@ -1016,6 +1131,47 @@ json Runtime::Execute(const json& command) {
     if (value.size() > 32768) return {{"error", "text exceeds limit"}};
     observation_.clear();
     reply = Call("Input.insertText", {{"text", value}}, page_session_);
+  } else if (op == "fill_saved") {
+    // The first login Chrome offers under the focused field. A look at the
+    // page closes Chrome's list, so it is closed by now: Escape makes sure,
+    // Down opens it, and after the moment Chrome ignores input to a list it
+    // has just shown, Down and Tab choose. Tab, since with no list it only
+    // moves on, where Return would send the form. How long the field's text
+    // is, before and after, says whether Chrome filled it; the text itself
+    // is never read.
+    json field =
+        Call("Runtime.evaluate", {{"expression", "document.activeElement"}},
+             page_session_);
+    const json* held = JsonObject(field, "result");
+    held = held ? JsonObject(*held, "result") : nullptr;
+    const std::string id = held ? JsonValue(*held, "objectId", "") : "";
+    const auto length = [&] {
+      json measured = Call("Runtime.callFunctionOn",
+                           {{"objectId", id},
+                            {"functionDeclaration",
+                             "function(){return typeof this.value==='string'?"
+                             "this.value.length:-1}"},
+                            {"returnByValue", true}},
+                           page_session_);
+      const json* result = JsonObject(measured, "result");
+      result = result ? JsonObject(*result, "result") : nullptr;
+      return result ? JsonValue(*result, "value", -1) : -1;
+    };
+    const int before = id.empty() ? -1 : length();
+    observation_.clear();
+    if (!PressOnDisplay({{kKeyEscape, 300},
+                         {kKeyDown, 1000},
+                         {kKeyDown, 200},
+                         {kKeyTab, 300}})) {
+      return {{"error", "cannot reach the browser's display"}};
+    }
+    if (before >= 0 && length() == before) {
+      return {
+          {"error",
+           "Chrome filled nothing: no saved login matches this field, or it "
+           "already holds one"}};
+    }
+    reply = json::object();
   } else if (op == "press") {
     std::string key = JsonValue(command, "key", "");
     if (key != "Enter" && key != "Tab" && key != "Escape" &&
@@ -1056,8 +1212,9 @@ json Runtime::Execute(const json& command) {
   } else {
     return {{"error", "unsupported browser action"}};
   }
-  error = CdError(reply);
+  const std::string error = CdError(reply);
   if (!error.empty()) return {{"error", error}};
+  if (op == "open") moved_ = false;
   return {{"ok", true}};
 }
 

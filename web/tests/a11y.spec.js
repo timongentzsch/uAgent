@@ -82,7 +82,28 @@ showcaseTest("a menu opens, moves and closes by keyboard", async ({ page }) => {
   const item = (name) => menu.getByRole("menuitem", { name });
   // Up opens at the last available item, Down at the first.
   await page.keyboard.press("ArrowUp");
-  await expect(item("Second action")).toBeFocused();
+  await expect(item("Empty view")).toBeFocused();
+  // A view with nothing to choose still holds the keyboard: focus goes to
+  // the row that leads back, named for where it leads.
+  await page.keyboard.press("ArrowRight");
+  await expect(item("Back to Example menu")).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(item("Empty view")).toBeFocused();
+  await page.keyboard.press("ArrowUp");
+  await expect(item("Nested view")).toBeFocused();
+  // Right opens the row's view in place and moves into it; Left and Escape
+  // lead back to the row, and only then does Escape close the menu.
+  await page.keyboard.press("ArrowRight");
+  await expect(item("One")).toBeFocused();
+  await expect(item("First action")).toHaveCount(0);
+  await expect(menu.getByRole("group", { name: "Nested view" })).toBeVisible();
+  expect(await violations(page, ".menu-panel")).toEqual([]);
+  await page.keyboard.press("ArrowLeft");
+  await expect(item("Nested view")).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(item("One")).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(item("Nested view")).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(trigger).toBeFocused();
   await page.keyboard.press("ArrowDown");
@@ -201,7 +222,7 @@ test("the settings sheet has no violations", async ({ page, session }) => {
 });
 
 for (const width of [390, 1280])
-  test(`a setting's sheet has no violations at ${width}px, and logging out asks first`, async ({
+  test(`the settings form has no violations at ${width}px, and logging out asks first`, async ({
     page,
     session,
   }) => {
@@ -210,16 +231,16 @@ for (const width of [390, 1280])
     await page.getByRole("button", { name: "Settings", exact: true }).click();
     const settings = page.getByRole("dialog", { name: "Settings" });
     const nav = settings.locator(".settings-nav");
-    await nav.getByRole("button", { name: "Models", exact: true }).click();
+    await nav
+      .getByRole("button", { name: "All conversations", exact: true })
+      .click();
+    await expect(
+      settings.locator('[data-setting="UAGENT_SUBAGENT_MODEL"]'),
+    ).toContainText("follows Conversation model");
     expect(await violations(page)).toEqual([]);
-    await settings.getByRole("button", { name: /^Sub-agent model/ }).click();
-    const sheet = page.getByRole("dialog", { name: "Sub-agent model" });
-    await expect(sheet).toContainText("Follows Conversation model");
-    expect(await violations(page)).toEqual([]);
-    await page.keyboard.press("Escape");
     const back = settings.getByRole("button", { name: "Back", exact: true });
     if (await back.isVisible()) await back.click();
-    await nav.getByRole("button", { name: "Devices", exact: true }).click();
+    await nav.getByRole("button", { name: "Host", exact: true }).click();
     await settings.getByRole("button", { name: "Log out this device" }).click();
     const confirm = page.getByRole("dialog", { name: "Log out" });
     await expect(confirm).toContainText("unpaired");

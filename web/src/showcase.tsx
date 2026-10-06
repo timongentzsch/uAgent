@@ -1,4 +1,3 @@
-import { storage } from "./shared/storage.ts";
 import { render } from "preact";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { Check, Copy, Plus, Wrench } from "lucide-preact";
@@ -27,17 +26,48 @@ import {
   Time,
   CodeCopy,
 } from "./shared/ui.tsx";
-import { Menu, MenuItem } from "./shared/menu.tsx";
+import { Menu, MenuItem, MenuSub } from "./shared/menu.tsx";
+import { SettingField } from "./features/settings/config/setting-field.tsx";
+import type { ConfigSetting } from "./shared/types.ts";
+
+// One setting of each kind a field edits: typed, chosen, switched, locked.
+const sample = (
+  name: string,
+  label: string,
+  rest: Partial<ConfigSetting>,
+): ConfigSetting => ({
+  name,
+  label,
+  description: "What the setting is for",
+  category: "behaviour",
+  type: "string",
+  sensitivity: "public",
+  takes_effect: "next-user-turn",
+  scopes: ["user", "project"],
+  source: "default",
+  locked: false,
+  ...rest,
+});
+const SETTINGS = [
+  sample("SAMPLE_NUMBER", "Typed", { type: "integer", default: 20 }),
+  sample("SAMPLE_CHOICE", "Chosen", {
+    choices: ["ask", "auto"],
+    default: "ask",
+    set: { user: "auto" },
+    source: "user",
+  }),
+  sample("SAMPLE_SWITCH", "Switched", { type: "boolean", default: true }),
+  sample("SAMPLE_LOCKED", "Locked", {
+    locked: true,
+    source: "environment",
+    effective: "from the environment",
+  }),
+];
 import { SheetButton } from "./shared/sheet.tsx";
 import { ConnectionStatus, StatusLed } from "./shared/connection-status.tsx";
-import {
-  applyMotion,
-  applyTheme,
-  applyZoom,
-  normalizeZoom,
-} from "./shared/layout.ts";
+import { applyMotion, applyTheme, applyZoom } from "./shared/layout.ts";
 import { ZoomSlider } from "./shared/zoom-slider.tsx";
-import { readStored, writeStored } from "./state/store.ts";
+import { devicePrefs } from "./shared/device-prefs.ts";
 import BrowserTouch from "./features/browser/touch.tsx";
 import { BrowserFrame, BrowserTools } from "./features/browser/frame.tsx";
 import { ImageViewerDialog } from "./shared/attachments.tsx";
@@ -45,6 +75,7 @@ import Decision from "./features/chat/decision.tsx";
 import type { Act, Pending } from "./shared/types.ts";
 import "./features/composer/attachments.css";
 import "./features/chat/message.css";
+import "./features/settings/settings.css";
 import "./showcase.css";
 
 // A 400x300 image: small enough that a large screen shows it unscaled.
@@ -186,24 +217,20 @@ function DelayedContent() {
 }
 
 function Showcase() {
-  const [theme, setTheme] = useState(
-    () => storage.getItem("uagent-theme") || "system",
-  );
-  const [zoom, setZoom] = useState(() =>
-    normalizeZoom(readStored<number>(storage, "uagent-zoom", 100)),
-  );
+  const [theme, setTheme] = useState(devicePrefs.theme.read);
+  const [zoom, setZoom] = useState(devicePrefs.zoom.read);
   const [enabled, setEnabled] = useState(true);
   const [dialog, setDialog] = useState<
     "example" | "confirm" | "browser" | "loading" | "image" | null
   >(null);
 
-  useEffect(() => applyTheme(theme), [theme]);
-  useLayoutEffect(
-    () => applyMotion(storage.getItem("uagent-motion") || "system"),
-    [],
-  );
   useEffect(() => {
-    writeStored(storage, "uagent-zoom", zoom);
+    devicePrefs.theme.write(theme);
+    return applyTheme(theme);
+  }, [theme]);
+  useLayoutEffect(() => applyMotion(devicePrefs.motion.read()), []);
+  useEffect(() => {
+    devicePrefs.zoom.write(zoom);
     applyZoom(zoom);
   }, [zoom]);
 
@@ -319,6 +346,13 @@ function Showcase() {
                 <MenuItem>First action</MenuItem>
                 <MenuItem>Second action</MenuItem>
                 <MenuItem disabled>Unavailable</MenuItem>
+                <MenuSub label="Nested view" value="One">
+                  <MenuItem>One</MenuItem>
+                  <MenuItem>Two</MenuItem>
+                </MenuSub>
+                <MenuSub label="Empty view">
+                  <MenuItem disabled>Not now</MenuItem>
+                </MenuSub>
               </Menu>
             </div>
           </div>
@@ -460,6 +494,19 @@ function Showcase() {
                 onClick={() => {}}
               />
               <Row label="Remove this device" destructive onClick={() => {}} />
+            </Group>
+            <Group title="Setting fields">
+              {SETTINGS.map((setting) => (
+                <SettingField
+                  key={setting.name}
+                  setting={setting}
+                  scope="user"
+                  find={() => undefined}
+                  disabled={false}
+                  online
+                  save={async () => true}
+                />
+              ))}
             </Group>
             <SectionTitle>Section title</SectionTitle>
             <EmptyState action={<Button>Create one</Button>}>

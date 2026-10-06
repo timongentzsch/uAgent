@@ -1,12 +1,57 @@
 # Changelog
 
-## Unreleased
+## v1.3.0 - 2026-10-06
 
 ### Upgrade notes
 
+- **Settings are saved by µAgent, not in text files you edit.** What is saved
+  for all conversations and for each project folder is one private document,
+  `~/.uagent/config/settings.json`, changed with `/config`, the web's
+  Settings or the `uagent` tool, and moved between hosts with
+  `uagent config export` and `uagent config import FILE`.
+  - `~/.uagent/.config` is taken over on the first start and kept as
+    `.config.imported`; it is not read again, and editing it has no effect.
+  - A project's `.uagent/.config` is taken over the first time a
+    conversation starts in that folder, if its content is what was approved
+    when the workspace was trusted, or with `--trust-project-config`.
+    Otherwise it is ignored. Project settings are no longer files in the
+    project, so nothing asks to trust them; workspace trust is about
+    `.mcp.json` alone.
+  - `UAGENT_CONFIG_FILE` is gone.
+  - A change to a setting is refused only when that same setting changed
+    since its preview; other settings changed meanwhile are kept.
+- **Yolo no longer turns the command sandbox off.** It means nobody is
+  asked; confinement is `UAGENT_SANDBOX`, the same in every approval mode. A
+  setup that relied on `--yolo` or `UAGENT_APPROVAL=yolo` to run commands
+  unconfined now needs `UAGENT_SANDBOX=0` as well, and `run(sandbox=false)`
+  still asks a person under yolo.
+- A subagent runs its commands under the sandbox of the conversation that
+  delegated to it. It was launched in yolo, which lifted the sandbox whatever
+  its parent's mode. The delegation's approval now says so.
+- A coordinator's thread cannot be put in yolo: `/permissions yolo` there is
+  refused, and a saved or flagged yolo reads as Auto.
+- A scheduled task's permission is an approval mode by its own name: `ask`
+  where it was `prompt` (a saved `prompt` still asks). A run keeps its
+  task's mode when its runtime starts again, where it fell back to the
+  default after a host restart.
 Settings that left the registry are no longer read. A config file that still
 names one loads as before and the line has no effect.
 
+- `/model`, `/effort` and `/variant` choose for the conversation they are
+  typed in and nothing else. They no longer become the model of every later
+  conversation: for that, `/model X --default`, "Also use for new
+  conversations" in the web, or `UAGENT_MODEL` in the config. A model an
+  earlier version remembered (`config/model-preference.json`) is saved as
+  `UAGENT_MODEL` on the first start and the file removed.
+- A conversation that never chose a model follows the configured one, so
+  changing `UAGENT_MODEL` reaches it at its next start. Conversations saved
+  before this release keep the model they recorded.
+- `/config` names the scope a value comes from (All conversations, This
+  project, This conversation, Environment, Command line) where it printed
+  `user`, `project`, `environment` or `cli`.
+- Removed: `/verbose`. `/verbosity full` shows what it did, `/verbosity
+  default` puts it back; unlike `/verbose` the level is saved and shared (see
+  Added). `--verbosity full` sets it for one terminal without saving.
 - Removed: `UAGENT_STEERING` (it gated nothing) and
   `UAGENT_OPENROUTER_FALLBACKS`. A provider pinned with
   `UAGENT_OPENROUTER_PROVIDER` no longer falls back to another.
@@ -46,6 +91,15 @@ names one loads as before and the line has no effect.
 
 ### Added
 
+- Verbosity: one display setting, `UAGENT_VERBOSITY` (`minimal`, `default`,
+  `full`), for the terminal and the web. `minimal` shows the answer and one
+  "Worked · N steps" row per turn, with failures and prompts still on rows of
+  their own; `full` shows thinking, every call, its arguments and its output.
+  `/verbosity LEVEL` or Detail in a web conversation's menu changes it
+  everywhere and restyles what is already shown; `--verbosity` pins one
+  terminal for one run. The model never sees it.
+- Web: tool calls fold into the same groups the terminal shows ("Explored ·
+  4 calls").
 - Web: the conversation menu exports the transcript, compacts and restarts
   the conversation; typed `/restart` does the same.
 - `uagent --plain` (or `UAGENT_PLAIN=1`) for screen readers: append-only
@@ -102,9 +156,17 @@ names one loads as before and the line has no effect.
 
 ### Changed
 
+- Settings have one model of scope, the same in the terminal and the
+  web: All conversations, This project, the environment and command line for a
+  run, and above them This conversation (its model and approval mode, kept
+  with it). A conversation's model and permission mode are `UAGENT_MODEL` and
+  `UAGENT_APPROVAL` chosen at its scope, not mechanisms of their own:
+  `/config conversation KEY=VALUE` sets them like any setting, and a settings
+  list shows what each scope holds and which one applies.
 - A session's runtime stops after 15 minutes with nothing to do (no turn, no
   queued message, no running command, no terminal attached), and with it its
-  MCP servers. The next message starts it again with its model and permission
+  MCP servers. The next message, or a setting changed on the conversation
+  (model, permissions, tools), starts it again with its model and permission
   mode: in the web the composer stays, with no Resume step, and the `session`
   tool starts a coordinator or thread its message found stopped. Coordinators
   follow the same rule (15 minutes, was 10). A runtime that ends with nothing
@@ -129,21 +191,16 @@ names one loads as before and the line has no effect.
   still run.
 - `/tell` is gone: the model messages other sessions with its `session` tool,
   and nothing else used the command.
-- Web: settings are plain rows, each a name and the value that applies, and
-  one sheet edits a setting: what it is for, the value, why it applies,
-  **Use default** and **Save**. Advanced lists only what you changed and what
-  is locked; search finds the rest. The web edits your defaults; a project's
-  override is shown, not edited. Twelve settings only a terminal process uses
-  are not listed.
+- Web: Settings is arranged by what a setting reaches: All conversations,
+  This project, This browser and Host. A setting is a row with its name and
+  the value that applies. **Reset all to defaults** clears what is saved for
+  all conversations, and **Remove all overrides** what a project overrides.
 - Every setting has a plain name ("Steps per turn", "Title model"), which the
   host states along with its value, where it comes from and what it follows;
-  `/config` and `/debug-config` print the same facts. A value's source reads
-  `user`, `project`, `file`, `environment`, `cli` or `default`.
+  `/config` and `/debug-config` print the same facts.
 - Web: a coordinator's threads nest under its folder header, and a row that
   waits on you, works or failed carries an icon beside its words. The
-  coordinator's help is a one-line subtitle. Settings group as General; Agent
-  (Instructions, Tools, MCP servers, Permissions & allowed actions); Models;
-  Host (Devices); Advanced.
+  coordinator's help is a one-line subtitle.
 - Web: an approval is a card: the command or diff, the folder and its risks,
   with **Deny**, **Allow for session** and **Allow once** in one row; **More
   options** holds the **Always allow this exact action here** box and
@@ -153,13 +210,20 @@ names one loads as before and the line has no effect.
   **Retry**, instead of the page's error banner; a refused message no longer
   also returns to the composer. Reconnecting shows as a pill, the running
   composer reads "Add guidance… (Esc to stop)", and YOLO mode is red.
-- Web: three or more tool calls in a row fold into one row ("Ran 4 commands ·
-  edited 2 files"), whatever their kind; two stay rows of their own.
 - Web: the light theme's diff green and red are darker, to meet WCAG AA on
   their tinted lines.
 
 ### Fixed
 
+- Starting a stopped conversation's runtime: a runtime that ends before it
+  can be reached is noticed at once and its reason given, instead of "session
+  runtime did not become ready" after five seconds. A conversation whose
+  folder was deleted says so. Commands that arrive while it starts (a
+  settings screen sends several) wait for the start and then run in order,
+  where they were refused as "stale worker generation", "session not ready"
+  or "this control requires an idle session"; only a running turn still
+  refuses a setting. A runtime that stays silent is stopped, so none is left
+  half-started.
 - A model's malformed tool call is answered with an error it can correct
   instead of ending the turn, and every other model fault (an empty or cut-off
   response, tool markup in prose, a call without a name) is told to the model

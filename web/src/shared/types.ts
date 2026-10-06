@@ -199,6 +199,8 @@ export interface Block {
 }
 export interface PresentedBlock extends Block {
   children?: PresentedBlock[];
+  // A folded row's own line: the host's group label, or a turn's work.
+  label?: string;
   key?: string;
   source?: Block;
   result_loaded?: boolean;
@@ -307,6 +309,8 @@ export interface Permissions {
   mode: string;
   default: string;
   effective?: string;
+  // The mode no choice here can exceed, where the conversation has one.
+  limit?: string;
 }
 export interface PermissionRule {
   key: string;
@@ -437,8 +441,25 @@ export interface SlashCommand {
   // here it still runs, and its aliases still resolve.
   terminal?: boolean;
 }
+// What one verbosity level shows, as the host's table states it (see
+// DetailPolicy in verbosity.h): how tool work is laid out, and what is shown
+// without asking.
+export interface DetailPolicy {
+  work: "turn" | "groups" | "calls";
+  // Thinking: absent, a closed row, or shown.
+  reasoning: "hidden" | "closed" | "open";
+  open: boolean;
+  minor: boolean;
+}
+export interface Verbosity {
+  level: string;
+  levels: Record<string, DetailPolicy>;
+  // The level names from least detail to most.
+  order: string[];
+}
 export interface Catalogue {
   commands?: SlashCommand[];
+  verbosity?: Verbosity;
   scheduled?: ScheduledState;
   epoch?: string;
   cursor?: number;
@@ -551,6 +572,7 @@ export type HostEvent = HostEnvelope &
           | "management.changed"
           | "scheduled.changed";
       }
+    | { kind: "settings.changed"; level: string }
   );
 export interface BodyPage {
   text: string;
@@ -570,6 +592,9 @@ export interface ModelCatalogue {
   models: Model[];
 }
 // One setting as the host states it: its description, then the facts.
+// Where a setting's value can be saved, and every place it can come from.
+export type ConfigScope = "user" | "project" | "conversation";
+export type ConfigSource = ConfigScope | "environment" | "cli";
 export interface ConfigSetting {
   name: string;
   label: string;
@@ -583,13 +608,17 @@ export interface ConfigSetting {
   minimum?: number;
   maximum?: number;
   choices?: string[];
-  // Listed only in a terminal and the config file.
+  // Listed only in a terminal.
   terminal?: boolean;
-  // Your own value (`true` for a secret); absent when unset.
-  set?: JSONValue;
+  // The scopes it may be saved at, lowest first.
+  scopes: ConfigScope[];
+  // What each scope holds (`true` for a secret); a scope that holds nothing
+  // is absent, and so is `set` when none does.
+  set?: Partial<Record<ConfigSource, JSONValue>>;
   // What applies now; absent for a secret.
   effective?: JSONValue;
-  source: "default" | "user" | "project" | "file" | "environment" | "cli";
+  // The scope the value in effect comes from.
+  source: "default" | ConfigSource;
   locked: boolean;
   // While empty: the setting it takes its value from, or a phrase.
   follows?: string;
@@ -602,6 +631,8 @@ export interface ConfigChange {
 }
 export interface Configuration {
   settings: ConfigSetting[];
+  // The groups settings are listed under, in order.
+  categories: { id: string; label: string }[];
   effects: {
     key: string;
     effect: "next_turn" | "restart" | "shadowed";
@@ -721,6 +752,8 @@ export interface CommandFields {
   model?: string;
   effort?: string;
   variant?: string;
+  // Model select: also save the choice for all conversations.
+  default?: boolean;
   mode?: string;
   profile?: string;
   active?: boolean;
@@ -839,7 +872,8 @@ export interface ScheduledTask {
   prompt: string;
   cwd: string;
   model: string;
-  permissions: "prompt" | "auto" | "yolo";
+  // An approval mode; "prompt" is how "ask" was saved before.
+  permissions: "ask" | "auto" | "yolo" | "prompt";
   environment: "local" | "worktree";
   schedule: ScheduleRule;
   enabled: boolean;

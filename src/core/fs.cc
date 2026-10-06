@@ -287,10 +287,11 @@ void PruneArtifactTree(const std::string& dir, int64_t max_age_days,
         fs::remove(artifact.path, remove_error);
         return;
       }
-      // A session's journal, undo blobs and attachments age out, but never
-      // count against the sessions themselves.
+      // A session's lock, journal, undo blobs and attachments age out, but
+      // never count against the sessions themselves.
       const std::string path = artifact.path.string();
-      bool session_sidecar = path.ends_with(".events.jsonl") ||
+      bool session_sidecar = path.ends_with(".json.lock") ||
+                             path.ends_with(".events.jsonl") ||
                              path.find(".json.edits/") != std::string::npos ||
                              path.find(".json.assets/") != std::string::npos;
       if (max_files > 0 && !session_sidecar) {

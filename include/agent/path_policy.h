@@ -16,6 +16,7 @@
 #include "include/core/fs.h"
 #include "include/core/project.h"
 #include "include/core/sandbox.h"
+#include "include/core/settings_store.h"
 #include "include/tools/tool.h"
 
 namespace uagent {
@@ -52,8 +53,8 @@ inline bool SelfConfigurationPath(const std::string& path) {
     return true;
   }
   if (matches(UagentConfigPath()) || matches(ProjectConfigFilePath()) ||
-      matches(TrustStorePath()) ||
-      matches(SettingText(Cfg("UAGENT_CONFIG_FILE"))) ||
+      matches(TrustStorePath()) || matches(SettingsPath()) ||
+      matches(SettingsPath() + ".lock") ||
       matches(UagentDir(kConfigDir) + "/" + kPermissionStoreFile)) {
     return true;
   }
@@ -78,7 +79,9 @@ inline bool HiddenPath(const std::string& path) {
 inline std::optional<ToolArgumentIssue> RefuseHidden(const json& args) {
   if (!HiddenPath(JsonValue(args, "path", "."))) return std::nullopt;
   return ArgumentIssue("policy.hidden",
-                       "the browser profile is private to the browser", "path");
+                       "the browser profile and the web host's state are "
+                       "private to them",
+                       "path");
 }
 
 // Checked again when the call runs, not only when it is validated: an earlier

@@ -100,32 +100,6 @@ export default function Tools({
     active?: boolean;
     profile?: string;
   }) => {
-    const previous = catalogue;
-    if (fields.operation === "set" && fields.name && fields.active != null) {
-      setCatalogue((current) => {
-        if (!current) return current;
-        const tools = current.tools.map((tool) =>
-          tool.name === fields.name
-            ? { ...tool, active: fields.active! }
-            : tool,
-        );
-        const active = tools.filter((tool) => tool.active).length;
-        const schemaBytes =
-          2 +
-          tools.reduce(
-            (total, tool) => total + (tool.active ? tool.schema_bytes : 0),
-            0,
-          ) +
-          Math.max(0, active - 1);
-        return {
-          ...current,
-          profile: "custom",
-          active,
-          schema_bytes: schemaBytes,
-          tools,
-        };
-      });
-    }
     setError(null);
     setSaving(fields.name || fields.profile || fields.operation);
     try {
@@ -135,7 +109,6 @@ export default function Tools({
       setCatalogue(response.result);
       changed();
     } catch (failure) {
-      if (previous) setCatalogue(previous);
       setError(failure);
     } finally {
       setSaving("");
@@ -325,7 +298,8 @@ export default function Tools({
                 <label class="tool-toggle">
                   <Input
                     type="checkbox"
-                    checked={tool.active}
+                    // What was just picked, until the host answers.
+                    checked={tool.active !== (saving === tool.name)}
                     disabled={locked || !tool.available}
                     onChange={(event) =>
                       update({

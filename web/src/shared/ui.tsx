@@ -420,12 +420,15 @@ export function DisclosureRow({
   time,
   icon,
   marker,
+  open = false,
   onToggle,
   className = "",
   messageId,
   children,
 }: {
   label: string;
+  // Whether it starts open; from then on the person's toggles decide.
+  open?: boolean;
   status?: string;
   time?: string;
   icon?: ComponentChildren;
@@ -436,8 +439,8 @@ export function DisclosureRow({
   messageId?: string;
   children: ComponentChildren;
 }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [mounted, setMounted] = useState(false);
+  const [isOpen, setIsOpen] = useState(open);
+  const [mounted, setMounted] = useState(open);
   // Internal state only, so user toggles survive streaming re-renders
   // (never reset to closed) with no post-paint prop sync to lag a frame.
   // The toggle is driven explicitly on click: a focus scroll landing

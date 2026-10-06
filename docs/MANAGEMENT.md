@@ -1,31 +1,53 @@
-# Library and scheduled tasks
+# Memory, skills and scheduled tasks
 
-The web UI's Library and Scheduled views call the same native operations as
-`/memory`, `/skills`, `/schedule` and `uagent --control`. Management commands
-do not start a model turn. Storage changes invalidate open Library views and
-publish scheduled task and run snapshots over the web event stream.
+Memories, skills and scheduled tasks are managed the same way from three
+places: the web UI (Library and Scheduled), the terminal (`/memory`,
+`/skills`, `/schedule`) and scripts (`uagent --control`).
+
+| To | Terminal |
+| --- | --- |
+| see what the agent remembers | `/memory` |
+| give it a memory | `/memory set global/NAME @FILE`, or ask it to remember something |
+| remove or move one | `/memory forget KEY`, `/memory rename KEY TARGET`, `/memory copy KEY TARGET` |
+| see installed skills | `/skills` |
+| add a skill | `/skills set global/NAME @SKILL.md` |
+| switch a skill off or on | `/skills disable ID`, `/skills enable ID` |
+| list scheduled tasks and runs | `/schedule` |
+| run, pause or resume a task | `/schedule run ID`, `/schedule pause ID`, `/schedule resume ID` |
+
+A key is `global/NAME` (every project) or `project/NAME` (this project).
+Text after the key is taken as the content; `@FILE` reads it from a file.
 
 ## Library
 
-The Library lists global and project memories and the discovered skills.
-Memories are grouped as Global plus one group per project folder, matching the
-conversation sidebar; only the open project's contents are loaded and searched.
-The Project field also accepts a directory outside the conversation catalogue.
+A memory is a short Markdown note of at most 2 KiB; each scope holds up to
+32. Global memories are read into every top-level session, smallest first,
+while they fit in 2 KiB together. Of the rest the agent sees only the names
+and opens one with its `memory` tool when the topic fits. It writes a memory
+when you ask, and a background extractor adds lessons from finished sessions
+unless `UAGENT_MEMORY_GENERATE=0`. `UAGENT_MEMORY=0` or `--no-memory` turns
+memory off.
 
-Selecting an item shows its source, path, revision, size, recorded provenance
-and rendered Markdown. **Edit** opens the source; drafts survive navigation in
+A skill is a folder with a `SKILL.md`; see
+[Bundled skills](../skills/README.md) for the format and where skills are
+found.
+
+- µAgent's own memories and skills are editable. Bundled skills are
+  read-only, and so is what Codex and Claude keep, which is listed only when
+  `UAGENT_OTHER_AGENTS` names them. Copy one into a new entry to change it.
+- Skill status is available, overridden, disabled or invalid. Required tools
+  and supporting files are listed without executing anything.
+- Disabling a skill adds it to `UAGENT_SKILL_EXCLUDE` as saved for all
+  conversations; a project's own exclusion can still apply. Deleting a skill
+  removes its `SKILL.md` and keeps supporting files.
+- Saved changes apply to new sessions. They do not rewrite a running agent's
+  startup context.
+
+In the web UI, **Edit** opens an item's source; drafts survive navigation in
 the current tab, and a stale revision cannot overwrite a newer file.
 **Refresh** picks up changes made by an external editor.
 
-- uAgent memories and skills are editable. External (Codex, Claude) and bundled
-  sources are read-only; copy them into a new uAgent entry to customize.
-- Skill status is available, overridden, disabled or invalid. Required tools
-  and supporting files are listed without executing anything.
-- Disabling a skill edits the global `UAGENT_SKILL_EXCLUDE` list; a project
-  exclusion can still apply. Deleting a skill removes its `SKILL.md` and keeps
-  supporting files.
-- Saved changes apply to new sessions. They do not rewrite a running agent's
-  startup context.
+From a script:
 
 ```sh
 uagent --control '{"kind":"memory","action":"list","cwd":"/absolute/project"}'
@@ -41,26 +63,31 @@ uagent --control '{"kind":"skills","action":"list","cwd":"/absolute/project"}'
 | `enable`, `disable` | skills | `key` |
 
 Writes require the `revision` returned by `get`. New items use a
-`global/NAME` or `project/NAME` key with an empty revision. In the terminal,
-`/memory set KEY @FILE` and `/skills set KEY @FILE` read content from a file
-and fill in the current revision; a JSON argument sends a raw control request.
+`global/NAME` or `project/NAME` key with an empty revision; an existing skill
+is named by the `key` that `list` returns. The terminal commands fill in the
+current revision themselves, and a JSON argument (`/memory {...}`) sends a
+raw control request.
 
 ## Scheduled tasks
 
-Scheduled tasks run only while `uagent --web` is running on the host; no
-browser needs to stay open. A task runs once at a future time, at a fixed
-interval between one minute and one year, or on selected weekdays at `HH:MM`
-in an installed IANA timezone. Previews use the same calculation as execution.
-A repeated local time runs at its first occurrence; a nonexistent
-daylight-saving time is skipped.
+A scheduled task is a prompt that runs by itself: once at a future time, at
+a fixed interval between one minute and one year, or on selected weekdays at
+`HH:MM` in an installed IANA timezone. Create and edit tasks in the web UI's
+Scheduled view, or with the `save` request below.
 
-Each run freezes its task definition and is claimed before launch. It creates
-an ordinary session with the task's model (blank uses the project default) and
-permission mode: Ask (`prompt`), Auto (`auto`) or YOLO (`yolo`). When a run
-needs a decision, open it in the web UI or terminal to answer.
+Tasks run only while `uagent --web` is running on the host; no browser needs
+to stay open. Previews use the same calculation as execution. A repeated
+local time runs at its first occurrence; a nonexistent daylight-saving time
+is skipped.
 
-Runs use a Git worktree by default (`environment: "worktree"`), created
-detached from committed `HEAD`; `local` runs in the project directory.
+Each run is an ordinary session, started from a frozen copy of the task:
+
+- `model`: the task's model; blank uses the project default.
+- `permissions`: the approval mode, `ask` (the default), `auto` or `yolo`.
+  When a run needs a decision, open it in the web UI or terminal to answer.
+- `environment`: `worktree` (the default) runs in a Git worktree created
+  detached from committed `HEAD`; `local` runs in the project directory.
+
 Worktrees and conversations are kept for review, including after the task is
 deleted; remove a reviewed worktree with `git worktree remove`.
 
@@ -75,26 +102,32 @@ deleted; remove a reviewed worktree with `git worktree remove`.
 - After a web host restart, runs whose runtime survived reconnect. A claimed
   run whose runtime is gone becomes interrupted and is never resubmitted
   automatically; unclaimed queued runs may still start.
-- The store holds up to 64 tasks and 128 run records; the oldest finished
-  records are pruned first. A damaged store is reported and preserved.
+- Up to 64 tasks and 128 run records are kept; the oldest finished records
+  are pruned first.
+
+From a script, `save` creates a task (empty `revision`) or updates one
+(`key` and the `revision` that `get` returns):
 
 ```sh
-uagent --control '{"kind":"schedule","action":"save","revision":"","task":{"name":"Review","prompt":"Review the repository and report findings.","cwd":"/absolute/project","environment":"worktree","permissions":"prompt","schedule":{"type":"weekly","days":[1,2,3,4,5],"time":"09:00","timezone":"Europe/Zurich"}}}'
-uagent --control '{"kind":"schedule","action":"list"}'
+uagent --control '{
+  "kind": "schedule", "action": "save", "revision": "",
+  "task": {
+    "name": "Review",
+    "prompt": "Review the repository and report findings.",
+    "cwd": "/absolute/project",
+    "schedule": {"type": "weekly", "days": [1,2,3,4,5],
+                 "time": "09:00", "timezone": "Europe/Zurich"}
+  }
+}'
 ```
 
-| Action | Arguments |
-| --- | --- |
-| `list` | — |
-| `get` | `key` |
-| `save` | `task`, `revision` (empty for a new task; `key` to update) |
-| `pause`, `resume`, `forget` | `key`, `revision` |
-| `run` | `key` |
-| `stop` | `key` set to the run ID |
-| `preview` | `schedule`, optional Unix `after` |
+A schedule is `{"type":"once","at":UNIX}`,
+`{"type":"interval","seconds":N}` (optional `start`) or the weekly form
+above, where day 0 is Sunday. `preview` takes a `schedule` and an optional
+Unix `after` and returns when it would run.
 
-Schedules use `{"type":"once","at":UNIX}`,
-`{"type":"interval","seconds":N}` (optional `start`) or
-`{"type":"weekly","days":[0-6],"time":"HH:MM","timezone":"Zone/Name"}`, where
-day 0 is Sunday. `/schedule run ID`, `/schedule pause ID` and
-`/schedule resume ID` are terminal shortcuts.
+The other actions take the task's `key`: `list` (none), `get`, `run`, and
+`pause`, `resume` and `forget` with its `revision`; `stop` takes the run ID
+as `key`. In the terminal, `/schedule run ID`, `/schedule pause ID`,
+`/schedule resume ID`, `/schedule forget ID` and `/schedule stop RUN_ID` do
+the same without JSON; the IDs are in `/schedule`.

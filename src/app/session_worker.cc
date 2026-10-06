@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <atomic>
 #include <condition_variable>
+#include <deque>
 #include <functional>
 #include <mutex>
 #include <optional>
@@ -25,7 +26,6 @@
 #include "include/app/session.h"
 #include "include/app/session_command.h"
 #include "include/app/thread_link.h"
-#include "include/browser/browser.h"
 #include "include/cli.h"
 #include "include/core/events.h"
 #include "include/core/fs.h"
@@ -106,14 +106,12 @@ json AttachmentsToJson(const std::vector<Attachment>& attachments) {
 class WorkerChannel final : public ApplicationChannel {
  public:
   WorkerChannel(std::string path, std::string id, std::string generation,
-                std::string title, bool browser_session, bool coordinator,
-                json thread)
+                std::string title, bool coordinator, json thread)
       : path_(std::move(path)),
         id_(std::move(id)),
         generation_(std::move(generation)),
         title_(std::move(title)),
         mail_(MailboxIdFor(path_)),
-        browser_session_(browser_session),
         coordinator_(coordinator) {
     if (!thread.empty()) link_.emplace(std::move(thread), path_, id_);
   }
@@ -181,13 +179,6 @@ class WorkerChannel final : public ApplicationChannel {
       BeginTurn();
       SendState();
     }
-    if (event.type == "turn.completed" || event.type == "turn.stopped") {
-#ifdef UAGENT_WEB
-      if (browser_session_) {
-        browser::Request({{"op", "release"}, {"session_id", id_}}, 1000);
-      }
-#endif
-    }
     if (event.type == "activity.status") {
       std::lock_guard lock(mutex_);
       state_.update(data);
@@ -222,6 +213,7 @@ class WorkerChannel final : public ApplicationChannel {
           auto result = std::move(input_);
           input_.reset();
           active_command_ = std::exchange(input_command_, "");
+          NextControlLocked();
           return result;
         }
       }
@@ -235,6 +227,10 @@ class WorkerChannel final : public ApplicationChannel {
         return std::nullopt;
       }
       if (ready == 0) {
+        if (link_) {
+          std::lock_guard lock(mutex_);
+          link_->Resend();
+        }
         // Mail held at the spend limit is looked at again; the application
         // delivers it once the limit allows.
         if (Paused() ||
@@ -405,6 +401,10 @@ class WorkerChannel final : public ApplicationChannel {
     // application's control does.
     StopSideQuestion();
     activity_control_ = control;
+    for (const auto& [request, raw] : std::exchange(early_controls_, {})) {
+      CompleteControl(
+          request, control ? control(raw) : json{{"error", "session closed"}});
+    }
   }
 
   // A session wakes to notice it is idle, and a coordinator a minute later
@@ -423,6 +423,7 @@ class WorkerChannel final : public ApplicationChannel {
   bool Occupied() {
     std::lock_guard lock(mutex_);
     if (input_ || SteeringState().QueuedCount() > 0) return true;
+    if (link_ && link_->Owes()) return true;
     const json* activities = JsonArray(state_, "activities");
     return activities && std::ranges::any_of(*activities, ActivityRuns);
   }
@@ -606,21 +607,35 @@ class WorkerChannel final : public ApplicationChannel {
            checkpoint ? std::exchange(active_command_, "") : ""},
           {"checkpoint", checkpoint}});
   }
-  // Reuse the one-slot queue while a preceding non-turn control finishes.
-  // True when the control was queued; otherwise reports into error. The
-  // caller holds mutex_.
+  // A control waits its turn behind the input already there (a settings
+  // screen sends several at once, and the first may arrive while the
+  // runtime starts); only a running turn refuses it. True when the control
+  // was taken; otherwise reports into error. The caller holds mutex_.
   bool QueueIdleControl(const std::string& request, const json& control,
                         std::string& error) {
-    if (turn_active_ || input_) {
+    if (turn_active_) {
       error = "this control requires an idle session";
       return false;
     }
-    input_ = ApplicationInput{.request_id = request, .control = control};
-    input_command_ = request;
+    if (controls_.size() >= kControlQueueLimit) {
+      error = "too many settings changes are waiting";
+      return false;
+    }
+    controls_.emplace_back(request, control);
+    if (!input_) NextControlLocked();
     busy_ = true;
     wake_.Wake();
     SendState();
     return true;  // Completion carries the catalog or validated selection.
+  }
+  // Moves the next waiting control into the input slot. The caller holds
+  // mutex_ and has seen the slot empty.
+  void NextControlLocked() {
+    if (controls_.empty()) return;
+    input_ = ApplicationInput{.request_id = controls_.front().first,
+                              .control = std::move(controls_.front().second)};
+    input_command_ = controls_.front().first;
+    controls_.pop_front();
   }
 
   std::optional<AppEvent> pending_delta_;
@@ -741,9 +756,12 @@ class WorkerChannel final : public ApplicationChannel {
             parsed.operation != "followup") {
           lock.unlock();
           std::lock_guard control(control_mutex_);
-          CompleteControl(request, activity_control_
-                                       ? activity_control_(parsed.raw)
-                                       : json{{"error", "session not ready"}});
+          if (activity_control_) {
+            CompleteControl(request, activity_control_(parsed.raw));
+          } else {
+            // The application is still starting: answered once it is there.
+            early_controls_.emplace_back(request, parsed.raw);
+          }
           return true;
         }
         if (QueueIdleControl(request, parsed.raw, error)) return true;
@@ -902,6 +920,7 @@ class WorkerChannel final : public ApplicationChannel {
   MailboxWatch mail_;
   std::mutex mutex_, control_mutex_;
   static constexpr size_t kGuidanceQueueLimit = 8;
+  static constexpr size_t kControlQueueLimit = 16;
   static constexpr auto kIdlePoll = std::chrono::milliseconds(30000);
   static constexpr auto kLetGo = std::chrono::milliseconds(2000);
   static constexpr auto kLetGoPoll = std::chrono::milliseconds(50);
@@ -909,7 +928,6 @@ class WorkerChannel final : public ApplicationChannel {
   static constexpr auto kSpendRecheck = std::chrono::milliseconds(60000);
   bool closed_ = false, busy_ = true;
   bool turn_active_ = false;
-  [[maybe_unused]] bool browser_session_ = false;  // web builds only
   const bool coordinator_ = false;
   std::optional<ThreadLink> link_;  // set when this session is a thread
   bool reply_cancelled_ = false;
@@ -917,7 +935,11 @@ class WorkerChannel final : public ApplicationChannel {
   json notices_ = json::array();
   std::string paused_;  // why a coordinator holds its mail, if it does
   std::function<json(const json&)> activity_control_;
+  // Permission and activity controls that arrived before the application.
+  std::vector<std::pair<std::string, json>> early_controls_;
   std::optional<ApplicationInput> input_;
+  // Controls waiting behind the input slot, each with its request.
+  std::deque<std::pair<std::string, json>> controls_;
   std::optional<std::string> reply_;
   std::string pending_, input_command_, active_command_, decided_;
   json decision_ = nullptr, state_ = json::object(), approval_ = nullptr;
@@ -928,14 +950,20 @@ class WorkerChannel final : public ApplicationChannel {
 }  // namespace
 
 int WorkerMain(int argc, char** argv) {
-  if (argc != 7 || !OpaqueId(argv[4]) || HashHex(argv[3]) != argv[4]) return 2;
+  if (argc != 7 || !OpaqueId(argv[4]) || HashHex(argv[3]) != argv[4]) {
+    return kWorkerBadLaunch;
+  }
   (void)setsid();
   SetGracefulShutdown(true);
   std::string bytes, error;
-  if (!ReadRegularFile(argv[6], kCommandBytes, bytes, error)) return 2;
+  if (!ReadRegularFile(argv[6], kCommandBytes, bytes, error)) {
+    return kWorkerBadLaunch;
+  }
   unlink(argv[6]);
   json launch = json::parse(bytes, nullptr, false);
-  if (!launch.is_object()) return 2;
+  if (!launch.is_object()) return kWorkerBadLaunch;
+  // Before anyone can connect: a runtime that cannot work never answers.
+  if (chdir(argv[2]) != 0) return kWorkerNoWorkspace;
   Options options = OptionsFromLaunch(launch);
   // The coordinator is known by its path; a thread's link is fixed at launch
   // and afterwards read back from its own header.
@@ -950,10 +978,12 @@ int WorkerMain(int argc, char** argv) {
         {"kind", kSessionKindThread},
         {"thread", JsonValue(header, kSessionHeaderThread, json::object())}};
   }
-  // A thread runs in Auto mode, sandboxed and within its budget however its
-  // runtime is started again, so a restart never widens it.
+  // A thread runs sandboxed and within its budget however its runtime is
+  // started again, so a restart never widens it: not even a sandbox policy
+  // inherited through the environment stands in for its own. Its approval
+  // mode is held to Auto where the mode is resolved (PermissionControl).
   if (JsonValue(options.session, "kind", "") == kSessionKindThread) {
-    options.overrides["UAGENT_APPROVAL"] = "auto";
+    ::unsetenv("UAGENT_INTERNAL_SANDBOX");
     options.overrides["UAGENT_SANDBOX"] = "true";
     const double budget =
         ThreadBudget(JsonValue(options.session, "thread", json::object()));
@@ -962,13 +992,9 @@ int WorkerMain(int argc, char** argv) {
     }
   }
   WorkerChannel channel(argv[3], argv[4], RandomToken(16), argv[5],
-                        options.browser_session, options.Coordinator(),
+                        options.Coordinator(),
                         JsonValue(options.session, "thread", json::object()));
-  if (!channel.Start()) return 2;
-  if (chdir(argv[2]) != 0) {
-    channel.Send({{"kind", "error"}, {"error", "workspace is unavailable"}});
-    return 2;
-  }
+  if (!channel.Start()) return kWorkerOwned;
   Observability observation;
   SetObservability(&observation);
   observation.EnableTerminal(false);

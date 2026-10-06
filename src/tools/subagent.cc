@@ -402,7 +402,7 @@ ToolResult RunSubagent(const Api& api, ProcessSupervisor& processes,
   const int64_t steps = JsonValue(limits, "steps", SubagentMaxSteps());
   const int64_t tool_calls =
       JsonValue(limits, "tool_calls", SubagentMaxToolCalls());
-  const bool background = JsonValue(arguments, "background", true);
+  const bool background = JsonValue(arguments, "background", false);
   // A caller may deny memory but not grant it: the session decides what
   // this process may read, and a child cannot widen that.
   const bool child_memory =
@@ -425,6 +425,15 @@ ToolResult RunSubagent(const Api& api, ProcessSupervisor& processes,
        {"UAGENT_MEMORY", child_memory ? "1" : "0"},
        {"UAGENT_INTERNAL_SESSION_FILE", AgentPath(id)},
        {"UAGENT_INTERNAL_DELEGATION", JsonDump(role)}});
+  // A tool this session has switched off is not handed to its child either:
+  // the child's toolset is cut down to what the session itself may call.
+  if (context.enabled_tools.empty()) {
+    return ToolFailure(ToolErrorCode::kUnavailable,
+                       "every tool is switched off in this conversation, so a "
+                       "child would have none");
+  }
+  environment.emplace_back("UAGENT_INTERNAL_TOOL_ALLOWLIST",
+                           JsonDump(json(context.enabled_tools)));
   // Only a background child is polled while it runs. A foreground child
   // is read once, where progress lines would only pad the answer the
   // parent quotes.
@@ -469,13 +478,12 @@ ToolResult RunSubagent(const Api& api, ProcessSupervisor& processes,
   if (max_seconds > 0) child_context = context.WithTimeout(max_seconds);
   ShellCommandResult child = RunShellCommand(
       processes, child_context,
-      {.command = ChildAgentCommand(debug, prompt, child_model),
+      {.command = "uagent subagent",
+       .argv = ChildAgentCommand(debug, prompt, child_model),
        .background = background,
        .immediate = background,
-       // Runs uagent itself, which writes ~/.uagent
-       // state a confined child could not. Its own
-       // commands inherit UAGENT_SANDBOX and are
-       // confined one level down.
+       // Runs uagent itself, which writes ~/.uagent state a confined child
+       // could not. Its own commands run under this session's sandbox.
        .sandbox = false,
        .activity_kind = ActivityKind::kSubagent,
        .activity_label = route_label,
@@ -555,8 +563,8 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
       {"background",
        {{"type", "boolean"},
         {"description",
-         "default true; false blocks and returns the child's answer "
-         "directly"}}},
+         "default false: wait and get the child's answer directly; true "
+         "when several start in one batch or other work is waiting"}}},
       {"mode",
        {{"type", "string"},
         {"enum", json::array({"lean", "full"})},
@@ -587,7 +595,8 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
       "starts a child, followup resumes it, message guides a running child at "
       "its next step or runs a finished one again; the activity tool waits "
       "on, reads or stops it. Name the reusable role and describe it at "
-      "spawn. Keep background=true while you have other work.",
+      "spawn, and put what you already found into the prompt so the child "
+      "does not look it up again.",
       {{"type", "object"}, {"properties", std::move(properties)}},
       [&api, &routes, &providers, debug, &processes](
           const json& arguments, const ToolContext& context) {
@@ -624,7 +633,7 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
     const std::string name = JsonValue(arguments, "name", "");
     if (!name.empty()) label = name + " · " + label;
     if (JsonValue(arguments, "mode", "lean") == "full") label += " · full";
-    if (!JsonValue(arguments, "background", true)) label += " · foreground";
+    if (JsonValue(arguments, "background", false)) label += " · background";
     if (!id.empty()) label += " · " + id;
     return "[" + label + "] " + prompt;
   };
@@ -668,8 +677,7 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
   // The summary names the model and the brief; what it cannot show is the
   // authority handed over with them. The child runs with automatic approvals,
   // so approving the spawn approves every tool call that child then decides
-  // to make -- and "always" is no narrower, because the approval key hashes
-  // tool policy rather than these arguments.
+  // to make.
   tool.approval_preview = [describe, &api](const json& arguments) {
     std::string preview = describe(arguments);
     std::string operation = JsonValue(arguments, "operation", "spawn");
@@ -677,11 +685,11 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
     const bool full = JsonValue(arguments, "mode", "lean") == "full";
     preview +=
         "\n\u00b7 the child approves its own tool calls; it writes files and "
-        "runs commands unattended";
+        "runs commands unattended, under this session's sandbox";
     preview += std::string("\n\u00b7 toolset ") +
                (full ? "full: reading, editing and running, plus its own "
                        "children"
-                     : "lean: reading and running, no file edits");
+                     : "lean: reading and running, no file-editing tools");
     const json& limits = ChildLimits(arguments);
     preview += "\n\u00b7 bounded by " +
                std::to_string(JsonValue(limits, "steps", SubagentMaxSteps())) +
@@ -692,9 +700,6 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
                (api.config.memory_enabled && JsonValue(limits, "memory", true)
                     ? ", memory on"
                     : ", memory off");
-    preview +=
-        "\n\u00b7 \"always\" covers every later subagent call, not "
-        "this brief";
     return preview;
   };
   return tool;  // Spawns serialize; immediate-background children overlap.

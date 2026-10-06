@@ -18,6 +18,7 @@
 | `--token-budget` | `TOKENS` | cap generated tokens across the session between model calls |
 | `--plain` | — | screen-reader output: labelled lines, no animation |
 | `--no-memory` | — | disable memory recall and writes for this session |
+| `--verbosity` | `LEVEL` | detail shown in this terminal: minimal, default or full |
 | `--model` | `SELECTION` | conversation model as [provider/]model[:variant][:effort] |
 | `--image-model` | `SELECTION` | read attached images with this model route |
 | `--subagent-model` | `SELECTION` | default model route for delegated subagents |
@@ -28,10 +29,10 @@
 | `-c` | — | resume the most recent saved session |
 | `--resume` | — | pick a saved session to resume at startup |
 | `--version` | — | print the installed version |
-| `--trust-project-config` | — | allow this workspace's .mcp.json and .uagent/.config |
+| `--trust-project-config` | — | trust this workspace's .mcp.json and import its legacy .uagent/.config |
 | `--help` | — | show this help |
 
-Precedence: these flags override process `UAGENT_*` variables, which override a trusted `./.uagent/.config`, which overrides `~/.uagent/.config`.
+Precedence: these flags override process `UAGENT_*` variables, which override what is saved for this project, which overrides what is saved for all conversations.
 
 ## Coordinator
 

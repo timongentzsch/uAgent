@@ -277,8 +277,12 @@ SandboxInputs CollectInputs() {
   }
   const std::string home = UserHome();
   if (!home.empty()) {
+    // A root that does not exist grants nothing, and uv could not then make
+    // its own folder beneath a closed one.
+    std::error_code error;
+    std::filesystem::create_directories(home + "/.local/share/uv", error);
     inputs.tool_caches = {canonical(home + "/.cache"),
-                          canonical(home + "/.local/share")};
+                          canonical(home + "/.local/share/uv")};
 #if defined(__APPLE__)
     inputs.tool_caches.push_back(canonical(home + "/Library/Caches"));
 #endif
@@ -286,8 +290,41 @@ SandboxInputs CollectInputs() {
   return inputs;
 }
 
+// A delegated child runs under the policy of the session that started it,
+// whole: composing its own from the configuration could add a root, lose an
+// exclusion, or turn a refusal into a policy that runs commands. Anything
+// unreadable refuses.
+SandboxStatus InheritedStatus(const std::string& text) {
+  SandboxStatus status;
+  const json from = json::parse(text, nullptr, false);
+  const int mode = JsonValue(from, "mode", -1);
+  status.mode = SandboxMode::kRefused;
+  status.reason =
+      "the sandbox policy this session was started with is "
+      "unreadable";
+  if (mode < 0 || mode > static_cast<int>(SandboxMode::kRefused)) return status;
+  status.mode = static_cast<SandboxMode>(mode);
+  status.level = SandboxSupported();
+  status.reason = JsonValue(from, "reason", "");
+  status.policy.allow_network = JsonValue(from, "network", false);
+  auto paths = [&](const char* key) {
+    std::vector<std::string> out;
+    for (const json& path : JsonValue(from, key, json::array())) {
+      if (path.is_string()) out.push_back(path.get<std::string>());
+    }
+    return out;
+  };
+  status.policy.writable_roots = paths("roots");
+  status.policy.denied_writes = paths("denied");
+  return status;
+}
+
 SandboxStatus BuildStatus() {
   SandboxStatus status;
+  if (const std::string inherited = EnvStr("UAGENT_INTERNAL_SANDBOX");
+      !inherited.empty()) {
+    return InheritedStatus(inherited);
+  }
   if (!SandboxEnabled()) return status;
   status.level = SandboxSupported();
   // Test-only, and only ever stricter: it can make an enforceable host look
@@ -295,10 +332,10 @@ SandboxStatus BuildStatus() {
   if (!EnvStr("UAGENT_INTERNAL_SANDBOX_UNAVAILABLE").empty()) {
     status.level = SandboxLevel::kUnavailable;
   }
-  // A value in the environment here is a value somebody wrote down: the
-  // configuration layer exports what a file, the environment or a flag
-  // supplied, and never the registry defaults. That is the whole of the
-  // provenance the two unenforceable tiers need.
+  // A value here is a value somebody wrote down: the settings hold what was
+  // saved, the environment or a flag supplied, and never the registry
+  // defaults. That is the whole of the provenance the two unenforceable
+  // tiers need.
   const bool requested = !SettingText(Cfg("UAGENT_SANDBOX")).empty();
   if (status.level == SandboxLevel::kUnavailable) {
     status.mode = requested ? SandboxMode::kRefused : SandboxMode::kDegraded;
@@ -347,12 +384,16 @@ const SandboxStatus& SandboxRuntime() {
   return kStatus;
 }
 
+std::string SandboxInheritance() {
+  const SandboxStatus& status = SandboxRuntime();
+  return JsonDump({{"mode", static_cast<int>(status.mode)},
+                   {"reason", status.reason},
+                   {"network", status.policy.allow_network},
+                   {"roots", status.policy.writable_roots},
+                   {"denied", status.policy.denied_writes}});
+}
+
 json SandboxDiagnosticJson() {
-  if (ApprovalIsYolo()) {
-    return {{"mode", "off"},
-            {"reason", "yolo approval mode"},
-            {"summary", "off (yolo)"}};
-  }
   const SandboxStatus& status = SandboxRuntime();
   switch (status.mode) {
     case SandboxMode::kOff:
@@ -419,12 +460,19 @@ std::vector<std::string> SandboxWrapperArgv(const SandboxStatus& status) {
 }
 
 std::vector<std::string> HiddenPaths() {
-  const std::string browser = SettingText(Cfg("UAGENT_BROWSER_DATA"));
-  if (browser.empty() || browser.front() != '/') return {};
-  std::string canonical = CanonicalAccessPath(browser).string();
-  struct stat info{};
-  if (lstat(canonical.c_str(), &info) != 0) return {};
-  return {std::move(canonical)};
+  // The browser's profile, and the web host's own state: its paired devices'
+  // tokens would let a command act as the person at a browser.
+  std::vector<std::string> hidden;
+  for (const std::string& path :
+       {SettingText(Cfg("UAGENT_BROWSER_DATA")), GlobalBase() + "/web"}) {
+    if (path.empty() || path.front() != '/') continue;
+    std::string canonical = CanonicalAccessPath(path).string();
+    struct stat info{};
+    if (lstat(canonical.c_str(), &info) == 0) {
+      hidden.push_back(std::move(canonical));
+    }
+  }
+  return hidden;
 }
 
 int SandboxChildMain(int argc, char** argv) {

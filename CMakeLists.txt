@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(uagent VERSION 1.2.0 DESCRIPTION "Lean terminal coding agent" LANGUAGES CXX)
+project(uagent VERSION 1.3.0 DESCRIPTION "Lean terminal coding agent" LANGUAGES CXX)
 include(GNUInstallDirs)
 
 if(NOT UNIX)
@@ -98,7 +98,6 @@ add_library(
   src/core/capture.cc
   src/core/child_env.cc
   src/core/config.cc
-  src/core/config_document.cc
   src/core/config_registry.cc
   src/core/debug.cc
   src/core/effective_config.cc
@@ -114,6 +113,7 @@ add_library(
   src/core/project.cc
   src/core/sandbox.cc
   src/core/sandbox_posix.cc
+  src/core/settings_store.cc
   src/core/signals.cc
   src/core/skills.cc
   src/core/steering.cc
@@ -236,6 +236,7 @@ add_library(
   src/cli/cli.cc
   src/app/session_server.cc
   src/app/session_worker.cc
+  src/app/coordinator_prompt.cc
   src/app/session_terminal.cc
   src/ui/conversation.cc
   src/ui/input_decoder.cc
@@ -370,6 +371,7 @@ if(BUILD_TESTING)
     tests/unit/sandbox_test.cc
     tests/unit/session_command_test.cc
     tests/unit/session_server_test.cc
+    tests/unit/settings_store_test.cc
     tests/unit/skills_test.cc
     tests/unit/stream_test.cc
     tests/unit/test_main.cc

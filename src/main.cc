@@ -23,6 +23,7 @@ extern char** environ;
 #include "include/agent/session_role.h"
 #include "include/agent/session_store.h"
 #include "include/app/bootstrap.h"
+#include "include/app/config_proposal.h"
 #include "include/app/control.h"
 #include "include/app/options.h"
 #include "include/app/reference.h"
@@ -37,6 +38,7 @@ extern char** environ;
 #include "include/core/strings.h"
 #include "include/core/term.h"
 #include "include/core/usage.h"
+#include "include/tools/memory.h"
 #ifdef UAGENT_WEB
 #include "include/web/protocol.h"
 #endif
@@ -145,6 +147,9 @@ int Main(int argc, char** argv) {
   }
   InitializeProcess();
   SetExecutablePath(argv[0]);
+  if (argc > 1 && std::string_view(argv[1]) == "config") {
+    return ConfigMain(argc, argv);
+  }
   if (argc > 1 && std::string_view(argv[1]) == "--session-worker") {
     return session::WorkerMain(argc, argv);
   }
@@ -244,7 +249,7 @@ int Main(int argc, char** argv) {
       }
     }
     auto settings =
-        ConfigManager::Capture(false, parsed.options.overrides).Read();
+        ConfigManager::Capture(false, parsed.options.overrides, "").Read();
     auto setting = [&](const char* key, const char* fallback = "") {
       auto found = settings.values.find(key);
       return found == settings.values.end() ? std::string(fallback)
@@ -286,6 +291,7 @@ int Main(int argc, char** argv) {
   int code = boot.Ok()
                  ? RunApplication(*boot.context)
                  : Fail(json_stream, json_envelope, boot.error, boot.exit_code);
+  SettleMemoryClaim(code == 0);
   // Direct owners stop in deterministic reverse order: application/runtime,
   // then observational sinks, then process-level signal state at exit.
   boot.context.reset();

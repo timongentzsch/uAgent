@@ -18,6 +18,7 @@
 #include "include/core/config.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
+#include "include/core/runtime_config.h"
 #include "include/core/usage.h"
 #include "include/media/attachments.h"
 #include "include/providers.h"
@@ -331,10 +332,14 @@ void TestArrivalsSurviveFactEviction() {
   const uint64_t id = conversation.DisplayIds().back();
   const std::string arrived = conversation.Arrival(id);
   CHECK(!arrived.empty());
-  for (int index = 0; index < 5000; ++index) {
+  // Until eviction takes the message's own fact, and no further: each
+  // record past the fact count scans every kept fact for its victim.
+  const std::string fact = "m-" + std::to_string(id);
+  for (int index = 0;
+       index < 5000 && conversation.DisplayFacts().contains(fact); ++index) {
     conversation.RecordDisplay("x-" + std::to_string(index), {{"n", index}});
   }
-  CHECK(!conversation.DisplayFacts().contains("m-" + std::to_string(id)));
+  CHECK(!conversation.DisplayFacts().contains(fact));
   CHECK(conversation.Arrival(id) == arrived);
   Conversation restored;
   CHECK(restored.Restore(conversation.Messages(), conversation.Kinds(),

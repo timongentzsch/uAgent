@@ -10,6 +10,7 @@ neither the workspace nor under any other default root, so a write to one is
 denied on both platforms.
 """
 
+import json
 import os
 import pathlib
 import shlex
@@ -24,6 +25,7 @@ from integration_support import (
     run,
     run_dialog,
     run_pty,
+    settings_path,
     tool_call,
 )
 
@@ -87,21 +89,102 @@ def sandbox_enforced(root, home, *, binary):
     return not escaped
 
 
-def test_yolo_disables_the_sandbox_from_cli_and_config(root, home, *, binary):
-    """Both startup forms of yolo run the default shell path unconfined."""
+def test_yolo_keeps_the_sandbox_and_only_its_setting_lifts_it(root, home, *, binary):
+    """Yolo means nobody is asked, in either startup form; confinement is the
+    sandbox setting's alone."""
     if not sandbox_enforced(root, home, binary=binary):
         return
-    for source in ("cli", "config"):
-        outside = root / f"yolo-{source}.txt"
+    for source, sandbox in (("cli", "1"), ("config", "1"), ("cli", "0")):
+        outside = root / f"yolo-{source}-{sandbox}.txt"
         command = f"echo x > {outside}"
         with Server([tool_call("run", {"command": command}), event({"content": "ok"})]) as server:
             env = sandbox_env(home, server.url)
+            env["UAGENT_SANDBOX"] = sandbox
             flags = ("--yolo",) if source == "cli" else ()
             if source == "config":
                 env["UAGENT_APPROVAL"] = "yolo"
             result = run(workspace(root), env, *flags, "-p", "go", timeout=30, binary=binary)
         assert_true(result.returncode == 0, (result.stdout, result.stderr))
-        assert_true(outside.exists(), f"{source} yolo still used the sandbox")
+        assert_true(
+            outside.exists() == (sandbox == "0"),
+            f"{source} yolo with UAGENT_SANDBOX={sandbox}: {result.stdout}",
+        )
+
+
+def delegating_server(outside, inside, loosen=None):
+    """A parent that delegates one task; its child writes inside the
+    workspace, then tries to write outside it. `loosen` runs once the parent
+    is up, before it delegates."""
+
+    def route(_, body):
+        users = [str(m.get("content", "")) for m in body["messages"] if m.get("role") == "user"]
+        results = [m for m in body["messages"] if m.get("role") == "tool"]
+        if any("child-task" in text for text in users):
+            if results:
+                return event({"content": "child-done"})
+            return tool_call("run", {"command": f"echo x > {inside}; echo x > {outside}"})
+        if "second" not in users and loosen:
+            loosen()
+            return event({"content": "first-done"})
+        if results:
+            return event({"content": "parent-done"})
+        return tool_call("subagent", {"prompt": "child-task", "mode": "full", "background": False})
+
+    return Server([route] * 6)
+
+
+def test_a_subagent_is_no_less_confined_than_its_parent(root, home, *, binary):
+    """A delegated child approves its own calls, and runs them under the
+    sandbox of the session that delegated to it."""
+    if not sandbox_enforced(root, home, binary=binary):
+        return
+    # The second folder's name reads, in a colon-separated list, as itself
+    # and its parent: a child handed its parent's roots that way gains one.
+    for sandbox, ws in (("1", workspace(root)), ("0", workspace(root)), ("1", root / "ws:..")):
+        ws.mkdir(exist_ok=True)
+        outside, inside = root / f"{ws.name}-{sandbox}.txt", ws / f"child-{sandbox}.txt"
+        with delegating_server(outside, inside) as server:
+            env = sandbox_env(home, server.url, UAGENT_SANDBOX=sandbox)
+            result = run(ws, env, "--yolo", "-p", "go", timeout=60, binary=binary)
+        assert_true(result.returncode == 0, (result.stdout, result.stderr))
+        assert_true("parent-done" in result.stdout, result.stdout)
+        # The child ran: it wrote where it may. Unconfined only when its
+        # parent is.
+        assert_true(inside.exists(), f"the child never ran its command: {result.stdout}")
+        assert_true(
+            outside.exists() == (sandbox == "0"),
+            f"child of a parent with UAGENT_SANDBOX={sandbox}: {result.stdout}",
+        )
+
+
+def test_a_subagent_keeps_the_sandbox_its_parent_runs_under(root, home, *, binary):
+    """Not the one configured now, and no shell startup file has a say: the
+    parent's sandbox is fixed at its start, and so is its child's."""
+    if not sandbox_enforced(root, home, binary=binary):
+        return
+    ws = workspace(root)
+    config = home / ".uagent" / ".config"
+    config.parent.mkdir(parents=True, exist_ok=True)
+    config.write_text("UAGENT_SANDBOX=1\n")
+    outside, inside, hooked = root / "later.txt", ws / "later.txt", root / "hooked.txt"
+    # A startup file a confined command could have written: the child starts
+    # outside the sandbox, so it is started through no shell.
+    hook = ws / "hook.sh"
+    hook.write_text(f"export UAGENT_SANDBOX=0\ntouch {hooked}\n")
+
+    def loosen():
+        config.write_text("UAGENT_SANDBOX=0\n")
+
+    with delegating_server(outside, inside, loosen) as server:
+        env = base_env(home, server.url)
+        env.pop("UAGENT_SANDBOX", None)
+        env["BASH_ENV"] = str(hook)
+        result = run_dialog(ws, env, "first\nsecond\n/q\n", "--yolo", timeout=60, binary=binary)
+    assert_true(result.returncode == 0, (result.stdout, result.stderr))
+    assert_true("parent-done" in result.stdout, result.stdout)
+    assert_true(inside.exists(), f"the child never ran its command: {result.stdout}")
+    assert_true(not outside.exists(), "a reload loosened the child ahead of its parent")
+    assert_true(not hooked.exists(), "the child's launch ran a startup file unconfined")
 
 
 def test_sudo_uses_shared_approval_and_sandbox_policy(root, home, *, binary):
@@ -117,7 +200,7 @@ def test_sudo_uses_shared_approval_and_sandbox_policy(root, home, *, binary):
         for mode in ("yolo", "confined", "approved", "denied"):
             if mode == "approved" and tool == "scratch":
                 continue  # scratch has no per-command escape hatch
-            if mode in ("confined", "approved") and not enforced:
+            if mode in ("yolo", "confined", "approved") and not enforced:
                 continue
             outside = root / f"{tool}-{mode}.txt"
             command = "sudo sh -c " + shlex.quote(f"echo written > {shlex.quote(str(outside))}")
@@ -164,11 +247,12 @@ def test_sudo_uses_shared_approval_and_sandbox_policy(root, home, *, binary):
             output = "\n".join(seen)
             assert_true("privileged commands are unavailable" not in output, output)
             assert_true(("SUDO_FIXTURE" in output) == (mode != "denied"), (tool, mode, output))
-            assert_true(outside.exists() == (mode in ("yolo", "approved")), (tool, mode, output))
+            # Yolo spares the question, not the confinement.
+            assert_true(outside.exists() == (mode == "approved"), (tool, mode, output))
 
 
-def test_yolo_toggle_changes_sandboxing_for_the_next_command(root, home, *, binary):
-    """Interactive /yolo disables confinement and restores it when toggled off."""
+def test_yolo_toggle_leaves_sandboxing_alone(root, home, *, binary):
+    """Interactive /yolo stops the questions; commands stay confined either way."""
     if not sandbox_enforced(root, home, binary=binary):
         return
     unconfined = root / "toggle-yolo.txt"
@@ -201,10 +285,10 @@ def test_yolo_toggle_changes_sandboxing_for_the_next_command(root, home, *, bina
             binary=binary,
         )
     assert_true(result.returncode == 0, (result.stdout, result.stderr))
-    assert_true(unconfined.exists(), f"/yolo did not disable confinement: {result.stdout}")
+    assert_true("unconfined-ok" in result.stdout, result.stdout)
     assert_true(
-        not confined.exists(),
-        f"toggling /yolo off did not restore confinement: {result.stdout}",
+        not unconfined.exists() and not confined.exists(),
+        f"a command escaped the sandbox: {result.stdout}",
     )
 
 
@@ -225,22 +309,116 @@ def test_sandbox_confines_writes_to_the_workspace(root, home, *, binary):
     assert_true("[sandbox:" in output, f"a refused write did not name the sandbox: {output}")
 
 
+def test_sandbox_opens_the_package_cache_not_the_data_directory(root, home, *, binary):
+    """Other programs keep keys and autostart entries beside uv's tools."""
+    if not sandbox_enforced(root, home, binary=binary):
+        return
+    data = home / ".local" / "share"
+    (data / "autostart").mkdir(parents=True, exist_ok=True)
+    (home / ".cache").mkdir(exist_ok=True)
+    run_once(
+        root,
+        sandbox_env(home, ""),
+        f"echo x > {data}/uv/tool; echo x > {data}/autostart/job; echo x > {home}/.cache/entry",
+        binary=binary,
+    )
+    assert_true((data / "uv" / "tool").exists(), "the package manager's own folder was closed")
+    assert_true((home / ".cache" / "entry").exists(), "the cache was closed")
+    assert_true(not (data / "autostart" / "job").exists(), "wrote another program's data")
+
+
 def test_sandbox_protects_agent_state(root, home, *, binary):
-    """A shell command cannot reach the config or the trust store.
+    """A shell command cannot reach the saved settings or the trust store.
 
     The unsandboxed control is the point of the case: without it a passing
     assertion could just mean the command was malformed.
     """
     if not sandbox_enforced(root, home, binary=binary):
         return
-    target = home / ".uagent" / ".config"
+    target = settings_path(home)
     target.parent.mkdir(parents=True, exist_ok=True)
-    command = f"echo UAGENT_YOLO=1 >> {target}"
+    command = f"echo x >> {target}"
     run_once(root, sandbox_env(home, ""), command, binary=binary)
-    assert_true(not target.exists(), "sandboxed command wrote the config")
+    assert_true(not target.exists(), "sandboxed command wrote the saved settings")
 
     run_once(root, sandbox_env(home, "", UAGENT_SANDBOX="0"), command, binary=binary)
-    assert_true(target.exists(), "control run could not write the config either")
+    assert_true(target.exists(), "control run could not write the saved settings either")
+
+
+def test_sandbox_hides_the_web_hosts_devices(root, home, *, binary):
+    """A paired device's token would let a command act as the person at a
+    browser: commands cannot read the web host's state, and the file tools
+    refuse it. The unsandboxed control shows the command itself works."""
+    if not sandbox_enforced(root, home, binary=binary):
+        return
+    devices = home / ".uagent" / "web" / "devices.json"
+    devices.parent.mkdir(parents=True, exist_ok=True)
+    devices.write_text("device-token-marker\n")
+    command = f"cat {devices}"
+    assert_true(
+        "device-token-marker"
+        not in tool_output(root, sandbox_env(home, ""), command, binary=binary),
+        "a sandboxed command read the paired devices",
+    )
+    assert_true(
+        "device-token-marker"
+        in tool_output(root, sandbox_env(home, "", UAGENT_SANDBOX="0"), command, binary=binary),
+        "control run could not read the file either",
+    )
+
+
+def test_a_link_made_in_the_same_batch_does_not_reach_the_saved_settings(root, home, *, binary):
+    """A call is approved for what it reaches when the batch is prepared. A
+    call before it can make its path a link to something else: what it needs
+    is decided again when it runs, and it is refused. So for the saved
+    settings, which only a person may touch, and for any file outside the
+    folder, which is a different question from one inside it."""
+    ws = workspace(root)
+    settings = settings_path(home)
+    settings.parent.mkdir(parents=True, exist_ok=True)
+    for name, link, target, path in (
+        ("settings", ws / "alias", settings.parent, "alias/settings.json"),
+        ("outside", ws / "local.txt", root / "outside.txt", "local.txt"),
+    ):
+        seen = []
+        if name == "outside":
+            target.write_text("before")
+
+        def route(_, body, seen=seen, link=link, target=target, path=path):
+            results = [
+                str(m.get("content", "")) for m in body["messages"] if m.get("role") == "tool"
+            ]
+            if results:
+                seen.extend(results)
+                return event({"content": "done"})
+            calls = (
+                ("link", "run", {"command": f"ln -s {target} {link}"}),
+                ("write", "write_file", {"path": path, "content": "{}"}),
+            )
+            return event(
+                {
+                    "tool_calls": [
+                        {
+                            "index": index,
+                            "id": call,
+                            "function": {"name": tool, "arguments": json.dumps(arguments)},
+                        }
+                        for index, (call, tool, arguments) in enumerate(calls)
+                    ]
+                },
+                finish="tool_calls",
+            )
+
+        with Server([route] * 2) as server:
+            env = sandbox_env(home, server.url, UAGENT_SANDBOX="0")
+            result = run(ws, env, "--yolo", "-p", "go", timeout=30, binary=binary)
+        assert_true(result.returncode == 0, (result.stdout, result.stderr))
+        assert_true(link.is_symlink(), f"{name}: the link was never made: {seen}")
+        assert_true(
+            not settings.exists() and (name == "settings" or target.read_text() == "before"),
+            f"{name}: a file tool wrote through the link",
+        )
+        assert_true(any("changed after it was approved" in text for text in seen), (name, seen))
 
 
 def test_sandbox_reads_stay_open(root, home, *, binary):
@@ -310,8 +488,8 @@ def landlock_abi():
 def test_sandbox_hides_the_browser_profile(root, home, *, binary):
     """A sandboxed command cannot read the browser profile; nothing else changes.
 
-    Yolo, a person-approved sandbox=false and a disabled sandbox lift it, as
-    they lift the sandbox itself.
+    A person-approved sandbox=false and a disabled sandbox lift it, as they
+    lift the sandbox itself; yolo does not.
     """
     if not sandbox_enforced(root, home, binary=binary):
         return
@@ -343,7 +521,10 @@ def test_sandbox_hides_the_browser_profile(root, home, *, binary):
         env = sandbox_env(home, "", UAGENT_BROWSER_DATA=str(profile))
         reached = browser_reach(root, env, profile, binary=binary)
         assert_true(reached == expected, f"confined: reached {sorted(reached)}")
-        for case in ("off", "approve", "yolo"):
+        # Yolo asks nobody and confines as before.
+        reached = browser_reach(root, env, profile, binary=binary, yolo=True)
+        assert_true(reached == expected, f"yolo: reached {sorted(reached)}")
+        for case in ("off", "approve"):
             case_env = dict(env, UAGENT_SANDBOX="0") if case == "off" else env
             options = {} if case == "off" else {case: True}
             reached = browser_reach(root, case_env, profile, binary=binary, **options)

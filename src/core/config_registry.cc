@@ -27,6 +27,7 @@ struct SettingStore {
   std::mutex mutex;
   SettingValues published;
   SettingValues overrides;
+  SettingValues route;
 };
 
 SettingStore& Settings() {
@@ -43,6 +44,12 @@ void PublishSettings(SettingValues values) {
   store.published = std::move(values);
 }
 
+void PublishRoute(SettingValues values) {
+  SettingStore& store = Settings();
+  std::lock_guard lock(store.mutex);
+  store.route = std::move(values);
+}
+
 void OverrideSetting(std::string_view environment, std::string value) {
   SettingStore& store = Settings();
   std::lock_guard lock(store.mutex);
@@ -54,6 +61,7 @@ void ClearSettings() {
   std::lock_guard lock(store.mutex);
   store.published.clear();
   store.overrides.clear();
+  store.route.clear();
 }
 
 SettingValues CurrentSettings() {
@@ -61,19 +69,27 @@ SettingValues CurrentSettings() {
   std::lock_guard lock(store.mutex);
   SettingValues current = store.overrides;
   current.insert(store.published.begin(), store.published.end());
+  current.insert(store.route.begin(), store.route.end());
   return current;
 }
 
-std::string SettingText(const ConfigDescriptor& descriptor) {
+std::string SettingText(const std::string& name) {
   {
     SettingStore& store = Settings();
     std::lock_guard lock(store.mutex);
-    for (const SettingValues* layer : {&store.overrides, &store.published}) {
-      auto found = layer->find(std::string(descriptor.environment));
+    for (const SettingValues* layer :
+         {&store.overrides, &store.published, &store.route}) {
+      auto found = layer->find(name);
       if (found != layer->end()) return found->second;
     }
   }
-  return EnvStr(descriptor.EnvName());
+  // Before anything is published (a tool run on its own, a test) the
+  // environment is all there is.
+  return EnvStr(name.c_str());
+}
+
+std::string SettingText(const ConfigDescriptor& descriptor) {
+  return SettingText(std::string(descriptor.environment));
 }
 
 int64_t LongSetting(const ConfigDescriptor& descriptor) {

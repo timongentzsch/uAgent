@@ -7,12 +7,13 @@
 // The model may only describe a typed change against registered settings. It
 // receives a redacted preview and never the decision: the host approval lane
 // owns that, and commit is reachable only with a proposal the human was shown.
-// A proposal is single-use, expires, and is bound to the exact bytes the
-// preview was computed from, so an external edit in between is rejected rather
-// than silently merged.
+// A proposal is single-use, expires, and is bound to the entries the preview
+// showed, so a change made to them in between is rejected rather than
+// silently overwritten.
 
 #include <chrono>
 #include <map>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -21,7 +22,6 @@
 namespace uagent {
 
 class ConfigManager;
-struct RuntimeConfig;
 
 enum class ConfigProposalScope { kUser, kProject };
 
@@ -40,21 +40,21 @@ enum class ConfigEffect {
 
 struct ConfigChangeEffect {
   std::string key;
-  std::string configured;  // current file value, redacted
+  std::string configured;  // what the scope holds now, redacted
   std::string proposed;    // requested value, redacted
-  std::string source;      // layer that currently wins
+  std::string source;      // scope that currently wins
   ConfigEffect effect = ConfigEffect::kRestartRequired;
 };
 
 struct ConfigProposal {
   bool ok = false;
   std::string error;
-  ConfigProposalScope scope = ConfigProposalScope::kUser;
-  std::string target;     // absolute path that would be written
-  std::string diff;       // exact redacted unified diff
-  std::string candidate;  // full proposed bytes
-  std::string snapshot;   // bytes the preview was computed from
-  bool existed = false;   // whether the target already exists
+  std::string folder;  // the project the change is saved for; empty for all
+  std::string target;  // that scope, as a person reads it
+  // Per setting: what it is saved as (nothing: removed), and what the scope
+  // held when the preview was made.
+  std::map<std::string, std::optional<std::string>> written;
+  std::map<std::string, std::optional<std::string>> expected;
   std::vector<ConfigChangeEffect> effects;
   std::chrono::steady_clock::time_point expires;
 
@@ -65,18 +65,28 @@ const char* ConfigEffectName(ConfigEffect effect);
 // The same, as the token clients switch on: next_turn, restart, shadowed.
 const char* ConfigEffectToken(ConfigEffect effect);
 
-// Validates against the registry, applies the edit to a line-preserving
-// document, re-parses the candidate through the real loader, and confirms each
-// requested value round-trips. Performs no writes.
+// Validates against the registry and records what the scope holds now.
+// Saves nothing.
 ConfigProposal PrepareConfigProposal(ConfigProposalScope scope,
                                      const std::vector<ConfigChange>& changes,
                                      const ConfigManager& manager,
-                                     bool project_trusted,
                                      bool direct_user = false);
 
-// Human CLI/UI controls share schema, validation, scope and atomic persistence.
-json ConfigurationControl(const json& request, const ConfigManager& manager,
-                          bool project_trusted);
+// The same for putting back every public setting the scope holds, as of one
+// read; not ok and without an error when it holds none.
+ConfigProposal PrepareConfigReset(ConfigProposalScope scope,
+                                  const ConfigManager& manager);
+
+// Human CLI/UI controls share schema, validation, scope and saving.
+json ConfigurationControl(const json& request, const ConfigManager& manager);
+
+// `uagent config export` prints everything saved as JSON; `uagent config
+// import FILE` (or -) replaces it with a document of that shape, once every
+// setting in it has passed the registry's checks.
+int ConfigMain(int argc, char** argv);
+// Checks each registered setting in a whole saved document as a change to it
+// would be, normalizing spellings in place. Returns the first objection.
+std::string CheckSavedSettings(json& document);
 
 bool ParseConfigScope(std::string_view name, ConfigProposalScope& scope);
 // The change list the settings screen, --control and the uagent tool send:
@@ -85,13 +95,9 @@ bool ParseConfigScope(std::string_view name, ConfigProposalScope& scope);
 bool ParseConfigChanges(const json& request, std::vector<ConfigChange>& changes,
                         std::string& error);
 
-// Re-reads the target and refuses when its bytes no longer match the snapshot
-// the human approved, then replaces it atomically. A project-scope commit also
-// re-records the workspace trust snapshot, since the approved edit necessarily
-// changes the content that snapshot covers; `notice` carries anything the user
-// should know that did not stop the write.
-bool CommitConfigProposal(const ConfigProposal& proposal, std::string& error,
-                          std::string* notice = nullptr);
+// Saves the change in one step, and refuses when an entry it replaces is no
+// longer what the preview showed.
+bool CommitConfigProposal(const ConfigProposal& proposal, std::string& error);
 
 }  // namespace uagent
 

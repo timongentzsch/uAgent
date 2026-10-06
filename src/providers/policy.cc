@@ -23,11 +23,13 @@ void ApplySelectionPolicy(Api& api, const ModelSelection& selection) {
 }
 
 namespace {
-void ExportRoute(const Api& api) {
-  for (const auto& [name, value] :
+void PublishActiveRoute(const Api& api) {
+  SettingValues route;
+  for (auto& [name, value] :
        RouteEnvironment(ResolveSideRoute(api, {}, {}, ""))) {
-    setenv(name.c_str(), value.c_str(), 1);
+    route[name] = std::move(value);
   }
+  PublishRoute(std::move(route));
 }
 
 void ResetRouteCapabilities(Api& api) {
@@ -114,6 +116,8 @@ void ApplyRoute(Api& api, const ModelRoute& route) {
                        .features = route.features});
   api.supported_reasoning_efforts = route.supported_efforts;
   api.capabilities.SetInputModalities(route.input_modalities);
+  api.route_name = route.name;
+  api.route_model = route.model;
 }
 
 std::string RouteSelection(const Api& api,
@@ -125,6 +129,18 @@ std::string RouteSelection(const Api& api,
       api.capabilities.model_variants ? api.config.openrouter_variant
                                       : std::string(),
       api.reasoning_effort);
+}
+
+std::string ChosenSelection(const Api& api,
+                            const std::vector<NamedProvider>& providers) {
+  if (api.route_name.empty() || api.route_model != api.CatalogModel()) {
+    return RouteSelection(api, providers);
+  }
+  return ComposeSelection("", api.route_name,
+                          api.capabilities.model_variants
+                              ? api.config.openrouter_variant
+                              : std::string(),
+                          api.reasoning_effort);
 }
 
 std::string RouteSelection(const SideRoute& route,
@@ -155,12 +171,13 @@ bool SupportsReasoningEffort(const Api& api, std::string_view effort) {
 
 void ActivateRoute(Api& api) {
   ResetRouteCapabilities(api);
-  ExportRoute(api);
+  PublishActiveRoute(api);
 }
 
 ProviderSetup ConfigureProvider(Api& api) {
   api.base_url = StripTrailingSlashes(SettingText(Cfg("UAGENT_BASE_URL")));
-  api.api_key = EnvStr("UAGENT_API_KEY", kPlaceholderApiKey);
+  api.api_key = SettingText(Cfg("UAGENT_API_KEY"));
+  if (api.api_key.empty()) api.api_key = kPlaceholderApiKey;
   ModelSelection requested =
       ParseModelSelection(SettingText(Cfg("UAGENT_MODEL")));
   api.model = requested.base;
@@ -206,28 +223,6 @@ ProviderSetup ConfigureProvider(Api& api) {
           ResolveModelRoute(setup.routes, setup.providers, api.model)) {
     ApplyRoute(api, *route);
     route_metadata_validated = true;
-  } else if (api.model.empty()) {  // no explicit model: restore the last /model
-    ModelPreference preference = LoadModelPreference();
-    ModelSelection preferred = ParseModelSelection(preference.selection);
-    if (preference.route) {
-      if (std::optional<ModelRoute> saved = ResolveModelRoute(
-              setup.routes, setup.providers, preferred.base)) {
-        ApplyRoute(api, *saved);
-        route_metadata_validated = true;
-        ApplySelectionPolicy(api, preferred);
-      }
-    } else if (!preference.selection.empty()) {
-      bool same_provider = api.base_url == preference.base_url;
-      if (api.base_url.empty()) {
-        const ProviderTemplate* provider =
-            FindProviderTemplateForUrl(preference.base_url);
-        same_provider = provider && !EnvStr(provider->api_key_env).empty();
-      }
-      if (same_provider) {
-        api.model = preferred.base;
-        ApplySelectionPolicy(api, preferred);
-      }
-    }
   }
   // Command-line/config suffixes are the most specific route policy. Apply
   // them after a named route so they override its defaults without becoming

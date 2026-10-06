@@ -32,7 +32,7 @@ def test_first_event_timeout(root, home, *, binary):
             handler.send_header("Content-Length", str(len(data)))
             handler.end_headers()
             handler.wfile.write(data)
-        except BrokenPipeError:
+        except (BrokenPipeError, ConnectionResetError):
             pass
 
     with Server([stall, stall, stall]) as server:
@@ -48,7 +48,7 @@ def test_first_event_timeout(root, home, *, binary):
         # 1s first-event timeout -- so it is absolute. The upper bound only
         # says the retries ended, which is a wall-clock claim about the host
         # and scales with an instrumented build like every other deadline.
-        assert_true(3.0 < elapsed < budget(6.5), elapsed)
+        assert_true(3.0 < elapsed < budget(12), elapsed)
 
 
 def test_provider_retry_after_is_a_minimum_delay(root, home, *, binary):

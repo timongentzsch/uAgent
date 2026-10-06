@@ -14,6 +14,7 @@ from integration_support import (
     run,
     run_dialog,
     run_pty,
+    saved_settings,
     session_files,
     timeout_setting,
     tool_call,
@@ -135,12 +136,12 @@ def test_reasoning_modes_render_consistently(root, home, *, binary):
             root,
             env,
             [
-                (b"/verbose\n", b"verbose on"),
                 # Quit once the turn has settled, however slow the build.
                 (b"go\n", b"Final answer", b"Ready", None),
                 b"/q\n",
             ],
             timeout=10,
+            args=("--verbosity", "full"),
             binary=binary,
         )
         assert_true(code == 0, verbose)
@@ -199,8 +200,10 @@ def test_non_utf8_locale_draws_only_ascii(root, home, *, binary):
             root,
             env,
             [
-                (b"/verbose\n", b"verbose on"),
-                (b"/verbose\n", b"verbose off"),
+                # The reply's own row, not the echo of what was typed: the
+                # screen is redrawn before it, and keys sent meanwhile are lost.
+                (b"/verbosity full\n", b"- verbosity full"),
+                (b"/verbosity default\n", b"- verbosity default"),
                 (b"go\n", b"ascii-ok", b"Ready", None),
                 (b"/cost\n", b"total"),
                 b"/q\n",
@@ -607,9 +610,8 @@ def test_tool_output_drops_its_own_colours(root, home, *, binary):
             code, output = run_pty(
                 root,
                 base_env(home, server.url),
-                [(b"/verbose\n", b"verbose on")] * verbose
-                + [(b"go\n", b"colour-ok", b"Ready", None), b"/q\n"],
-                args=("--yolo",),
+                [(b"go\n", b"colour-ok", b"Ready", None), b"/q\n"],
+                args=("--yolo", *(("--verbosity", "full") * verbose)),
                 binary=binary,
             )
             assert_true(code == 0, output[-2000:])
@@ -1198,7 +1200,7 @@ def test_context_command_shows_memory_and_skills(root, home, *, binary):
     with Server([event({"content": "unused"})]) as server:
         code, output = run_pty(
             workspace,
-            base_env(home, server.url),
+            base_env(home, server.url) | {"UAGENT_OTHER_AGENTS": "claude,codex"},
             [
                 (b"/context\n", b"context-skill-description-sentinel", b"\x1b[1m> \x1b[0m", None),
                 (b"/memory\n", b"project/browser", b"\x1b[1m> \x1b[0m", None),
@@ -1457,7 +1459,7 @@ def test_cli_permissions_config_http_and_fork(root, home, *, binary):
             "fork modified source",
         )
         assert_true(
-            "UAGENT_MAX_STEPS=23" in (home / ".uagent/.config").read_text(),
+            saved_settings(home).get("UAGENT_MAX_STEPS") == "23",
             "CLI config not persisted",
         )
 
@@ -1559,9 +1561,9 @@ def test_cli_mcp_config_and_restart(root, home, *, binary):
         assert_true("/restart applies it here" in output, output)
         assert_true("UAGENT_MAX_TOKENS: active at the next user turn" in output, output)
         assert_true("Before restart, cap 321" in output, output)
-        assert_true(re.search(r"UAGENT_MCP_TIMEOUT = .*100 .*user", output), output)
+        assert_true(re.search(r"UAGENT_MCP_TIMEOUT = .*100 .*All conversations", output), output)
         assert_true("history kept" in output, output)
-        assert_true("UAGENT_MCP_TIMEOUT" not in (home / ".uagent/.config").read_text(), "reset")
+        assert_true("UAGENT_MCP_TIMEOUT" not in saved_settings(home), "reset")
         assert_true("no remembered actions for this repository" in output, output)
         assert_true(
             any("Parity check" in path.read_text() for path in session_files(home)),

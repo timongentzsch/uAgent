@@ -203,6 +203,11 @@ class SessionJournal {
   size_t bytes_ = 0;
   int64_t sequence_ = 0;
   bool enabled_ = true;
+  // Counts every change to the lines; where and at which count they were
+  // last written, so a save that follows no event writes nothing.
+  uint64_t changes_ = 0;
+  mutable uint64_t flushed_changes_ = 0;
+  mutable std::string flushed_path_;
 };
 
 // Directly owns the built-in terminal, public JSONL, private debug JSONL, and

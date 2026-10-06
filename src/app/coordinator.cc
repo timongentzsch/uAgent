@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <ctime>
 #include <filesystem>
+#include <functional>
 #include <optional>
 #include <string>
 #include <utility>
@@ -22,6 +23,7 @@
 #include "include/core/debug.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
+#include "include/core/mailbox.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
 #include "include/core/time.h"
@@ -40,21 +42,22 @@ constexpr size_t kReportBytes = size_t{8} * 1024;
 constexpr size_t kMessageBytes = size_t{8} * 1024;
 constexpr size_t kDiffBytes = size_t{16} * 1024;
 
-// "saved" without a runtime; else what its runtime's snapshot says: waiting
-// on a person, working a turn, or idle. A decision still with the coordinator
-// counts as working.
+// "saved" without a runtime; else what its runtime said when it answered:
+// waiting on a person, working a turn, or idle. A decision still with the
+// coordinator counts as working.
 std::string LiveStatus(const SessionInfo& info) {
   session::Connection connection = session::Connect(info.path);
   if (!connection.socket) return "saved";
+  if (!connection.status.empty()) return connection.status;
+  // One that has said nothing yet, or started from an older binary: its
+  // first state says it.
   std::string status = "idle";
   session::ReadFrames(
       connection.socket.Get(), -1, session::kFrameBytes,
       [&](const json& frame) {
         if (JsonValue(frame, "kind", "") != "state") return true;
-        status = WaitsOnPerson(JsonValue(frame, "pending", json()))
-                     ? "needs you"
-                 : JsonValue(frame, "busy", false) ? "working"
-                                                   : "idle";
+        status = Standing(JsonValue(frame, "pending", json()),
+                          JsonValue(frame, "busy", false));
         return false;
       },
       // A live runtime answers at once; the board is rebuilt every step, so
@@ -338,7 +341,8 @@ std::string Brief(const json& brief) {
          "you changed, how you verified it, and anything left open.)";
 }
 
-ToolResult Spawn(const std::string& folder, const json& a) {
+ToolResult Spawn(const std::string& folder, const json& a,
+                 const std::function<std::string()>& own_model) {
   const std::string title = Utf8Prefix(JsonValue(a, "title", ""), 120);
   const std::string objective = JsonValue(a, "objective", "");
   if (title.empty() || objective.empty()) {
@@ -390,7 +394,12 @@ ToolResult Spawn(const std::string& folder, const json& a) {
                       {"done_when", JsonValue(a, "done_when", "")},
                       {"boundaries", JsonValue(a, "boundaries", "")}};
   Options options;
-  std::string model = JsonValue(a, "model", SubagentModel());
+  // Named, else the one set for delegated work, else the coordinator's own:
+  // a thread is told its model and resolves the rest like any session. It
+  // inherits no endpoint from this process.
+  std::string model = Trim(JsonValue(a, "model", ""));
+  if (model.empty()) model = SubagentModel();
+  if (model.empty()) model = own_model();
   if (!model.empty()) options.overrides["UAGENT_MODEL"] = model;
   options.session = {{"kind", kSessionKindThread},
                      {"thread",
@@ -410,10 +419,17 @@ ToolResult Spawn(const std::string& folder, const json& a) {
   if (!error.empty()) {
     return Unavailable(error);
   }
-  return ToolSuccess(JsonDump({{"session_id", HashHex(launch.path)},
-                               {"title", title},
-                               {"cwd", launch.cwd},
-                               {"environment", environment}}));
+  return ToolSuccess(
+      JsonDump({{"session_id", HashHex(launch.path)},
+                {"title", title},
+                {"cwd", launch.cwd},
+                {"environment", environment},
+                // Said where it applies: waiting costs nothing, polling does.
+                {"next",
+                 "It reports when its turn ends, and that report starts your "
+                 "next turn. Unless other work is waiting, end this turn with "
+                 "one line saying what you started: an empty answer counts "
+                 "as a failure."}}));
 }
 
 // Guidance into a session of the folder: a running turn takes it as
@@ -503,7 +519,8 @@ ToolResult Diff(const SessionInfo& info) {
                      kDiffBytes);
 }
 
-Tool ThreadTool(const std::string& folder) {
+Tool ThreadTool(const std::string& folder,
+                std::function<std::string()> own_model) {
   Tool tool = MakeTool(
       "thread",
       "Delegate work to threads: ordinary sessions that edit and run code "
@@ -528,9 +545,10 @@ Tool ThreadTool(const std::string& folder) {
         "model":{"type":"string"},
         "text":{"type":"string"}},
         "required":["action"]})json"),
-      [folder](const json& a, const ToolContext&) {
+      [folder, own_model = std::move(own_model)](const json& a,
+                                                 const ToolContext&) {
         const std::string action = JsonValue(a, "action", "");
-        if (action == "spawn") return Spawn(folder, a);
+        if (action == "spawn") return Spawn(folder, a, own_model);
         return WithSession(folder, a, [&](const SessionInfo& info) {
           if (action == "message") {
             return Message(info, folder, JsonValue(a, "text", ""));
@@ -822,9 +840,36 @@ std::string CoordinatorPause(const std::string& folder) {
          "UAGENT_COORDINATOR_DAILY_SPEND_USD; your own messages still run.";
 }
 
-void AddCoordinatorTools(std::vector<Tool>& tools, const std::string& folder) {
+bool ThreadsOwe(const std::string& folder) {
+  // Looked at in the order the work moves, so nothing slips between two
+  // looks: a thread mails its report before it shows idle, and the mail is
+  // taken before it is acknowledged.
+  const std::vector<SessionInfo> threads = OwnThreads(folder);
+  if (std::ranges::any_of(threads, [](const SessionInfo& info) {
+        // One just started is idle until its brief arrives: it has work ahead
+        // as long as its runtime is up and it has finished no turn.
+        const std::string status = LiveStatus(info);
+        return status == "working" || (status == "idle" && info.turns == 0);
+      })) {
+    return true;
+  }
+  // Mail from anyone else may never be taken, and is not waited for.
+  const std::string box = MailboxIdFor(CoordinatorPath(folder));
+  return std::ranges::any_of(PendingMail(box),
+                             [&](const Mail& mail) {
+                               return std::ranges::any_of(
+                                   threads, [&](const SessionInfo& info) {
+                                     return MailboxIdFor(info.path) ==
+                                            mail.from;
+                                   });
+                             }) ||
+         MailTaken(box);
+}
+
+void AddCoordinatorTools(std::vector<Tool>& tools, const std::string& folder,
+                         std::function<std::string()> own_model) {
   tools.push_back(HistoryTool(folder));
-  tools.push_back(ThreadTool(folder));
+  tools.push_back(ThreadTool(folder, std::move(own_model)));
   tools.push_back(DecideTool(folder));
   tools.push_back(StateTool(folder));
   // The coordinator keeps what it learns about you without being asked and

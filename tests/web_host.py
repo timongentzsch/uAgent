@@ -4,6 +4,7 @@
 import argparse
 import base64
 import json
+import os
 import pathlib
 import signal
 import tempfile
@@ -193,6 +194,17 @@ with (
         extra_env={
             "UAGENT_PROVIDERS": json.dumps(providers),
             "UAGENT_MODEL": "mock/main:floor:high",
+            # Locally the host serves the bundle on disk, so a web edit needs
+            # no rebuild of the binary; CI serves the embedded one.
+            **(
+                {}
+                if os.environ.get("CI")
+                else {
+                    "UAGENT_INTERNAL_WEB_DIST": str(
+                        pathlib.Path(__file__).resolve().parents[1] / "web" / "dist"
+                    )
+                }
+            ),
         },
     ) as (
         client,

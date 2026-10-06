@@ -9,6 +9,7 @@
 
 #include "include/api.h"
 #include "include/api/wire.h"
+#include "include/core/env.h"
 #include "include/core/strings.h"
 
 namespace uagent {
@@ -547,11 +548,11 @@ json Api::BuildRequestBody(const json& messages, const json& tool_schemas,
   json body = cache ? cache->Encode(capabilities.wire_api, request)
                     : EncodeWireRequest(capabilities.wire_api, request);
   if (capabilities.wire_api != WireApi::kChatCompletions) {
-    // OpenAI already caches matching prefixes automatically. A stable,
+    // The Responses API caches matching prefixes automatically. A stable,
     // session-scoped routing key improves the chance that later turns reach
-    // the same cache without exposing the session identifier itself.
-    if (capabilities.wire_api == WireApi::kResponses && OpenaiUrl(base_url) &&
-        !session_id.empty()) {
+    // the same cache without exposing the session identifier itself; a
+    // proxy in front of it passes the key on.
+    if (capabilities.wire_api == WireApi::kResponses && !session_id.empty()) {
       body["prompt_cache_key"] = HashHex(session_id);
     }
     return body;

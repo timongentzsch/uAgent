@@ -74,7 +74,8 @@ std::string ResolveShellExecutable(const std::string& shell) {
   return shell;
 }
 
-int SpawnShellWithFallback(const std::string& shell, const std::string& command,
+// `program` is the argv to run: `shell -c command`, or a program run directly.
+int SpawnShellWithFallback(const std::vector<std::string>& program,
                            const std::vector<std::string>& wrapper,
                            const posix_spawn_file_actions_t& actions,
                            PosixSpawnFlags group_flag, char* const* environment,
@@ -82,20 +83,21 @@ int SpawnShellWithFallback(const std::string& shell, const std::string& command,
   posix_spawnattr_t attributes;
   posix_spawnattr_init(&attributes);
   ConfigureShellSpawn(attributes, group_flag);
+  const std::string& shell = program.front();
   auto spawn = [&](const std::string& executable) {
     std::vector<char*> argv;
-    argv.reserve(wrapper.size() + 4);
+    argv.reserve(wrapper.size() + program.size() + 1);
     for (const std::string& word : wrapper) {
       argv.push_back(const_cast<char*>(word.c_str()));
     }
     argv.push_back(const_cast<char*>(executable.c_str()));
-    argv.push_back(const_cast<char*>("-c"));
-    argv.push_back(const_cast<char*>(command.c_str()));
+    for (size_t i = 1; i < program.size(); ++i) {
+      argv.push_back(const_cast<char*>(program[i].c_str()));
+    }
     argv.push_back(nullptr);
     // The program is the wrapper when there is one; the shell is then just its
-    // first argument, and `command` stays unwrapped either way.
-    const char* program = wrapper.empty() ? executable.c_str() : argv[0];
-    return posix_spawnp(&pid, program, &actions, &attributes, argv.data(),
+    // first argument, and the rest stays unwrapped either way.
+    return posix_spawnp(&pid, argv[0], &actions, &attributes, argv.data(),
                         environment);
   };
   int error = spawn(wrapper.empty() ? shell : ResolveShellExecutable(shell));
@@ -108,10 +110,10 @@ int SpawnShellWithFallback(const std::string& shell, const std::string& command,
   return error;
 }
 
-// Spawn `shell -c command` with stdin at /dev/null, both output streams on the
+// Spawn `program` with stdin at /dev/null, both output streams on the
 // log, default signal dispositions, and its own process group (or session, for
 // a detached terminal). Returns the posix_spawnp errno; `pid` is set on 0.
-int SpawnLoggedShell(const std::string& shell, const std::string& command,
+int SpawnLoggedShell(const std::vector<std::string>& program,
                      const std::vector<std::string>& wrapper, int log_fd,
                      bool detach, char* const* environment, pid_t& pid) {
   posix_spawn_file_actions_t actions;
@@ -125,14 +127,14 @@ int SpawnLoggedShell(const std::string& shell, const std::string& command,
 #ifdef POSIX_SPAWN_SETSID
   if (detach) group_flag = POSIX_SPAWN_SETSID;
 #endif
-  int error = SpawnShellWithFallback(shell, command, wrapper, actions,
-                                     group_flag, environment, pid);
+  int error = SpawnShellWithFallback(program, wrapper, actions, group_flag,
+                                     environment, pid);
   posix_spawn_file_actions_destroy(&actions);
   return error;
 }
 
 // master_fd is set only on success; the caller owns it from then on.
-int SpawnPtyShell(const std::string& shell, const std::string& command,
+int SpawnPtyShell(const std::vector<std::string>& program,
                   const std::vector<std::string>& wrapper,
                   char* const* environment, pid_t& pid, int& master_fd) {
 #if defined(__unix__) || defined(__APPLE__)
@@ -162,14 +164,13 @@ int SpawnPtyShell(const std::string& shell, const std::string& command,
 #ifdef POSIX_SPAWN_SETSID
   group_flag = POSIX_SPAWN_SETSID;
 #endif
-  int error = SpawnShellWithFallback(shell, command, wrapper, actions,
-                                     group_flag, environment, pid);
+  int error = SpawnShellWithFallback(program, wrapper, actions, group_flag,
+                                     environment, pid);
   posix_spawn_file_actions_destroy(&actions);
   if (error == 0) master_fd = master.Release();
   return error;
 #else
-  (void)shell;
-  (void)command;
+  (void)program;
   (void)wrapper;
   (void)environment;
   (void)pid;
@@ -177,6 +178,11 @@ int SpawnPtyShell(const std::string& shell, const std::string& command,
   return ENOTSUP;
 #endif
 }
+
+// How long a command stopped at its deadline or by an interrupt has to clean
+// up after itself (a browser removing its temporary profile) before it is
+// killed.
+constexpr auto kStopGrace = std::chrono::seconds(1);
 
 void SignalShellGroup(pid_t pid, int signal_number) {
   if (kill(-pid, signal_number) != 0) (void)kill(pid, signal_number);
@@ -221,10 +227,9 @@ ToolResult DelegatedJobLimitError() {
 // the one outcome the sandbox exists to rule out, arriving without a word.
 std::string SandboxWrapperFor(const ShellCommand& spec,
                               std::vector<std::string>* wrapper) {
-  // Yolo is an explicit session-wide choice to run without approval or OS
-  // confinement. Read it per spawn so /yolo takes effect immediately and
-  // toggling it off restores the configured sandbox for the next command.
-  if (!spec.sandbox || ApprovalIsYolo()) return {};
+  // The sandbox follows its own setting in every approval mode: yolo means
+  // nobody is asked, not that nothing is confined.
+  if (!spec.sandbox) return {};
   const SandboxStatus& status = SandboxRuntime();
   if (status.mode == SandboxMode::kRefused) {
     return "error: UAGENT_SANDBOX is on but cannot be enforced: " +
@@ -285,7 +290,7 @@ ShellCommandResult StartDetachedShell(ProcessSupervisor& supervisor,
   pid_t pid = -1;
   ChildEnvironment child_environment(spec.environment, spec.environment_policy);
   int spawn_error =
-      SpawnLoggedShell(spec.shell, bounded_cmd, wrapper, pending.Get(),
+      SpawnLoggedShell({spec.shell, "-c", bounded_cmd}, wrapper, pending.Get(),
                        /*detach=*/true, child_environment.Data(), pid);
   pending.Close();
   if (spawn_error != 0) {
@@ -336,6 +341,10 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   if (spec.yield_ms > 0) {
     spec.yield_ms = std::clamp(spec.yield_ms, kMinYieldMs, kMaxYieldMs);
   }
+  if (spec.detach && !spec.argv.empty()) {
+    return {ToolFailure(ToolErrorCode::kInvalidArguments,
+                        "a detached command runs through a shell")};
+  }
   if (shell.empty() || shell.find('\0') != std::string::npos) {
     return {ToolFailure(ToolErrorCode::kInvalidArguments,
                         "shell must be a non-empty executable name or path")};
@@ -378,11 +387,14 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   auto session = std::make_shared<ActivitySession>();
   session->tty = tty;
   ChildEnvironment child_environment(spec.environment, spec.environment_policy);
+  const std::vector<std::string> program =
+      spec.argv.empty() ? std::vector<std::string>{shell, "-c", cmd}
+                        : spec.argv;
   int spawn_error =
-      tty ? SpawnPtyShell(shell, cmd, wrapper, child_environment.Data(), pid,
+      tty ? SpawnPtyShell(program, wrapper, child_environment.Data(), pid,
                           master_fd)
-          : SpawnLoggedShell(shell, cmd, wrapper, pipe_fds[1],
-                             /*detach=*/false, child_environment.Data(), pid);
+          : SpawnLoggedShell(program, wrapper, pipe_fds[1], /*detach=*/false,
+                             child_environment.Data(), pid);
   pipe_write.Reset();
   Fd master(master_fd);
   if (spawn_error != 0) {
@@ -453,18 +465,21 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
       handed_off = session->background_requested;
       exited = ActivityTerminal(session->state);
     }
-    if (handed_off || exited || std::chrono::steady_clock::now() >= deadline) {
+    // An interrupt comes before the deadline and the handover: a command
+    // being stopped is not moved to the background instead.
+    if (!exited && AbortRequested()) {
+      cancelled = true;
+      handed_off = false;
       break;
     }
-    if (AbortRequested()) {
-      cancelled = true;
-      SignalShellGroup(pid, SIGKILL);
-      supervisor.Wake();
+    if (handed_off || exited || std::chrono::steady_clock::now() >= deadline) {
+      break;
     }
     supervisor.WaitForChange(generation, deadline);
   }
 
   if (cancelled) {
+    (void)TerminateGroup(supervisor, pid, kStopGrace, false);
     exited = WaitForTerminal(supervisor, session, DeadlineAfter(2));
   }
   // Every path below that does not background the child takes its signal
@@ -516,7 +531,7 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   if (!spec.background && !handed_off && spec.yield_ms <= 0) {
     BgTrackSignal(pid, false);
     (void)supervisor.RemoveForeground(pid);
-    SignalShellGroup(pid, SIGKILL);
+    (void)TerminateGroup(supervisor, pid, kStopGrace, false);
     WaitForTerminal(supervisor, session, DeadlineAfter(2));
     return finish([](std::string output, int) {
       if (!output.empty() && output.back() != '\n') output += '\n';
@@ -533,6 +548,14 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
     return {ToolFailure(ToolErrorCode::kInternal,
                         "foreground activity ownership was lost"),
             std::nullopt, /*launched=*/true};
+  }
+  // An interrupt that arrived while a command being waited for was handed
+  // over stops it all the same: nothing else would, once it is in the
+  // background.
+  if (!spec.immediate && AbortRequested()) {
+    (void)ToolActivityStop(supervisor, activity_id);
+    return {ToolCancelled("error: command cancelled by user"), std::nullopt,
+            /*launched=*/true};
   }
   if (is_subagent) {
     ToolResult started = ToolSuccess(

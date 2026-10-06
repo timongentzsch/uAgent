@@ -115,6 +115,25 @@ bool HasMember(const json& members, const std::string& id) {
   return false;
 }
 
+// Who a link joins. The automatic link is for a person's own sessions: a
+// delegated child an older version put there is not counted, so it reaches no
+// session its parent did not give it. Nor is a session whose saved header
+// cannot be read, which could be one.
+json LinkMembers(const std::string& name) {
+  json members = JsonValue(ReadLink(name), "members", json::array());
+  if (!name.starts_with("auto-")) return members;
+  json own = json::array();
+  for (json& member : members) {
+    const std::string path = JsonValue(member, "path", "");
+    const json header = SessionHeader(path);
+    if (!PathExists(path) ||
+        (!header.empty() && !header.contains(kSessionHeaderDelegation))) {
+      own.push_back(std::move(member));
+    }
+  }
+  return own;
+}
+
 std::vector<std::string> LinkFiles() {
   std::vector<std::string> names;
   std::error_code error;
@@ -145,7 +164,7 @@ std::string SessionLinkDir() { return UagentDir("links"); }
 bool SharesLink(const std::string& a, const std::string& b) {
   if (a.empty() || b.empty() || a == b) return a == b && !a.empty();
   for (const std::string& name : LinkFiles()) {
-    const json members = JsonValue(ReadLink(name), "members", json::array());
+    const json members = LinkMembers(name);
     if (HasMember(members, a) && HasMember(members, b)) return true;
   }
   const std::string me = OwnSessionId();
@@ -153,11 +172,15 @@ bool SharesLink(const std::string& a, const std::string& b) {
 }
 
 ToolResult EnsureSessionAutoLink() {
-  if (!ApprovalIsYolo()) return ToolSuccess({});
+  // A person's own yolo sessions find each other. A delegated child is in
+  // yolo only because nobody is there to ask: it reaches no session its
+  // parent did not give it.
+  if (!ApprovalIsYolo() || AgentDepth() > 0) return ToolSuccess({});
   json me = OwnMember();
   if (!me.is_object()) return ToolSuccess({});
   const std::string name = "auto-" + HashHex(CanonicalCwd());
-  json members = JsonValue(ReadLink(name), "members", json::array());
+  // Only those who count: the rest take no place and are not saved again.
+  json members = LinkMembers(name);
   const std::string id = JsonValue(me, "id", "");
   if (HasMember(members, id)) return ToolSuccess({});
   if (members.size() >= kSessionLinkMembers) {
@@ -177,7 +200,7 @@ std::vector<json> LinkedMembers() {
   std::vector<json> out;
   if (me.empty()) return out;
   for (const std::string& name : LinkFiles()) {
-    const json members = JsonValue(ReadLink(name), "members", json::array());
+    const json members = LinkMembers(name);
     if (!HasMember(members, me)) continue;
     for (const json& member : members) {
       if (!member.is_object()) continue;

@@ -20,6 +20,7 @@ namespace uagent {
   X(TestForeignToolMarkup)                       \
   X(TestToolResults)                             \
   X(TestToolViews)                               \
+  X(TestVerbosityLevels)                         \
   X(TestModelHints)                              \
   X(TestRegistries)                              \
   X(TestCommandAndDisplayRegistries)             \
@@ -47,9 +48,9 @@ namespace uagent {
   X(TestTerminalInputDecoder)                    \
   X(TestSseChunkPartitions)                      \
   X(TestChatCompletionAnnotationDeduplication)   \
-  X(TestConfigDocumentPreservesFile)             \
+  X(TestSettingsStore)                           \
   X(TestConfigProposalAndCommit)                 \
-  X(TestProjectConfigTrustRestamp)               \
+  X(TestProjectSettingsAreSavedByFolder)         \
   X(TestConfigurationResetKeepsSecrets)          \
   X(TestConfigRegistryContract)                  \
   X(TestRuntimeConfigCoherence)                  \
@@ -116,7 +117,6 @@ namespace uagent {
   X(TestAgentConfigAllowlist)                    \
   X(TestEffectiveConfigReload)                   \
   X(TestChildEnvironmentPolicy)                  \
-  X(TestModelPreference)                         \
   X(TestEffectiveImageModel)                     \
   X(TestProviderTemplates)                       \
   X(TestNamedProviders)                          \

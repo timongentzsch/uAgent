@@ -12,6 +12,7 @@
 #include "include/core/env.h"
 #include "include/core/json.h"
 #include "include/core/limits.h"
+#include "include/core/runtime_config.h"
 #include "include/core/strings.h"
 #include "include/core/time.h"
 #include "include/mcp/invoke.h"

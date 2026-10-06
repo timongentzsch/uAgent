@@ -1,5 +1,6 @@
 // Copyright 2026 Timon Gentzsch
 #include <poll.h>
+#include <sys/socket.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -14,14 +15,17 @@
 #include <utility>
 #include <vector>
 
-#include "include/agent/session_store.h"
 #include "include/agent/session_view.h"
+#include "include/app/config_proposal.h"
 #include "include/app/coordinator.h"
 #include "include/app/launch.h"
 #include "include/app/session.h"
 #include "include/cli.h"
+#include "include/core/config_registry.h"
+#include "include/core/effective_config.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
+#include "include/core/runtime_config.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
 #include "include/core/style.h"
@@ -41,7 +45,7 @@ namespace {
 // runs, the session row otherwise -- the same renderers presentation_test pins.
 std::string StatusRow(const json& state,
                       std::chrono::steady_clock::duration elapsed,
-                      bool interrupting, bool verbose) {
+                      bool interrupting, std::string_view verbosity) {
   const int64_t used = JsonValue(state, "context_tokens", int64_t{0});
   const int64_t window = JsonValue(state, "context_window", int64_t{0});
   const std::string route = JsonValue(state, "route", "");
@@ -81,19 +85,36 @@ std::string StatusRow(const json& state,
                     .context_window = window,
                     .model = route,
                     .approval = JsonValue(permissions, "effective", "ask"),
-                    .verbose = verbose,
+                    .verbosity = std::string(verbosity),
                     .background = background + subagents});
+}
+
+// The level this terminal shows: its --verbosity when given, else the
+// configured one.
+const DetailPolicy& ConfiguredDetail(const RuntimeConfig::Values& overrides) {
+  const auto values = ConfigManager::Capture(false, overrides).Read().values;
+  const auto found = values.find(std::string(kVerbositySetting));
+  return DetailFor(found == values.end() ? "" : found->second);
 }
 
 class Terminal {
  public:
   // `draft` starts the composer, e.g. the message a rewind forked before.
-  Terminal(Connection connection, std::string path, std::string draft = "")
+  // `pinned`: --verbosity set this terminal's level, so it follows no other.
+  // `redrawn`: the conversation is shown again because the level changed.
+  Terminal(Connection connection, std::string path, const DetailPolicy& detail,
+           bool pinned, bool redrawn, std::string draft = "")
       : connection_(std::move(connection)),
         path_(std::move(path)),
         draft_(std::move(draft)),
         region_(output_),
-        composer_(output_, region_) {}
+        composer_(output_, region_),
+        detail_(&detail),
+        pinned_(pinned),
+        redrawn_(redrawn) {
+    presenter_.SetDetail(detail);
+  }
+  const DetailPolicy& Detail() const { return *detail_; }
 
   // Shows a decision that just arrived, or gives the composer back once it
   // is gone. True when it was settled here and the loop starts over.
@@ -517,15 +538,37 @@ class Terminal {
         if (argument.empty()) return Command::kPass;
         Send({{"kind", "side"}, {"text", argument}});
         return Command::kDone;
-      case SlashCommandId::kVerbose:
-        presenter_.SetDetailed(!presenter_.Detailed());
-        WriteTerminalRecord(
-            Note(Tone::kNeutral,
-                 presenter_.Detailed()
-                     ? "verbose on — full reasoning and tool output"
-                     : "verbose off — compact reasoning and tool output"));
-        wake_.Wake();
+      case SlashCommandId::kVerbosity: {
+        if (argument.empty()) {
+          WriteTerminalRecord(
+              Note(Tone::kNeutral,
+                   "verbosity " + std::string(Detail().level) +
+                       (pinned_ ? " · this terminal only (--verbosity)" : "")));
+          return Command::kDone;
+        }
+        if (std::ranges::find(kVerbosityLevels, argument) ==
+            std::end(kVerbosityLevels)) {
+          WriteTerminalRecord(
+              Note(Tone::kNeutral, "usage: /verbosity minimal|default|full"));
+          return Command::kDone;
+        }
+        // The level is one setting for every terminal and browser; a pinned
+        // terminal changes only itself.
+        if (!pinned_) {
+          const json saved = ConfigurationControl(
+              {{"operation", "apply"},
+               {"changes", json::array({{{"key", kVerbositySetting},
+                                         {"value", argument}}})}},
+              ConfigManager::Capture(false, {}));
+          if (const std::string error = JsonValue(saved, "error", "");
+              !error.empty()) {
+            WriteTerminalRecord(Note(Tone::kError, TerminalSafe(error)));
+            return Command::kDone;
+          }
+        }
+        Restyle(DetailFor(argument));
         return Command::kDone;
+      }
       case SlashCommandId::kShare:
         Send({{"kind", "share"}});
         return Command::kDone;
@@ -609,6 +652,11 @@ class Terminal {
             presenter_.Block(block);
           }
           history_ = true;
+          // Why the screen changed, where the eye is after a redraw.
+          if (std::exchange(redrawn_, false)) {
+            WriteTerminalRecord(Note(
+                Tone::kNeutral, "verbosity " + std::string(Detail().level)));
+          }
         }
       }
       // A coordinator holding thread events says why, once per change.
@@ -660,6 +708,16 @@ class Terminal {
           WriteTerminalRecord(AsciiGlyphs(TerminalSafe(output)) + "\n");
         }
       } else {
+        // The level changed elsewhere (another terminal, the web, the file).
+        if (const json* changed = JsonArray(data, "changed");
+            type == "config.changed" && !pinned_ && changed &&
+            std::ranges::find(*changed, json(kVerbositySetting)) !=
+                changed->end()) {
+          if (const DetailPolicy* detail = &ConfiguredDetail({});
+              detail != detail_) {
+            Restyle(*detail);
+          }
+        }
         presenter_.Consume(
             AppEvent{0, JsonValue(frame, "time", ""), type, data, false});
       }
@@ -704,6 +762,21 @@ class Terminal {
     fflush(stdout);
     wake_.Wake();
   }
+  // Shows the conversation at another level. A terminal cannot restyle rows
+  // it printed, so it attaches again and the conversation is replayed; plain
+  // and piped output is not repeated, only what follows changes.
+  void Restyle(const DetailPolicy& detail) {
+    detail_ = &detail;
+    if (raw_) {
+      next_ = path_;
+      navigate_ = true;
+    } else {
+      presenter_.SetDetail(detail);
+      WriteTerminalRecord(
+          Note(Tone::kNeutral, "verbosity " + std::string(detail.level)));
+    }
+    wake_.Wake();
+  }
   // Brings the live region up to date: new output, the status row and the
   // draft, repainted only where they changed.
   void Paint() {
@@ -728,7 +801,7 @@ class Terminal {
         state,
         turn_started_ ? std::chrono::steady_clock::now() - *turn_started_
                       : std::chrono::steady_clock::duration{},
-        interrupting_, presenter_.Detailed())));
+        interrupting_, Detail().level)));
     const RawComposer::Layout draft = composer_.View();
     region_.SetComposer(draft.rows, draft.caret_row, draft.caret_col);
     region_.Flush();
@@ -755,92 +828,14 @@ class Terminal {
   std::atomic<bool> navigate_{false};
   std::atomic<bool> rewinding_{false};
   std::string carry_;
+  std::atomic<const DetailPolicy*> detail_;
+  const bool pinned_;
+  bool redrawn_;
   std::atomic<bool> input_blocked_{true}, interaction_{false};
   std::set<std::string> shown_;
   std::set<std::string> own_requests_, echoed_;
 };
 }  // namespace
-int CoordinatorPromptMain(const Options& options) {
-  const std::string cwd = CanonicalCwd();
-  const std::string path = CoordinatorPath(cwd);
-  std::string error;
-  auto connection = Open(ExecutablePath(), cwd, path, "", options, error);
-  if (!connection.socket) {
-    fprintf(stderr, "%s\n", error.c_str());
-    return 1;
-  }
-  auto send = [&](json command) {
-    StampFrame(command, HashHex(path), connection.generation);
-    command["request_id"] = command.value("request_id", RandomToken(16));
-    return WriteFrame(connection.socket.Get(), command);
-  };
-  const std::string request = RandomToken(16);
-  bool submitted = false, rejected = false, completed = false;
-  json stop = json::object();
-  // The coordinator's session runs on; this request is its growth.
-  Usage before, after;
-  ReadFrames(connection.socket.Get(), -1, kFrameBytes, [&](const json& frame) {
-    const std::string kind = JsonValue(frame, "kind", "");
-    if (kind == "outcome" && JsonValue(frame, "request_id", "") == request &&
-        !JsonValue(frame, "accepted", false)) {
-      error = JsonValue(frame, "error", "coordinator refused");
-      rejected = true;
-      return false;
-    }
-    if (kind != "state") return true;
-    if (!submitted && !JsonValue(frame, "busy", true)) {
-      before =
-          UsageFromJson(JsonValue(frame["state"], "usage", json::object()));
-      submitted = send({{"kind", "submit"},
-                        {"request_id", request},
-                        {"text", options.prompt}});
-      return submitted;
-    }
-    // Nobody is here to approve: a question is declined.
-    if (const json* pending = JsonObject(frame, "pending")) {
-      fprintf(stderr, "· declined: %s\n",
-              TerminalSafe(JsonValue(*pending, "prompt", "approval")).c_str());
-      send({{"kind", "reply"},
-            {"interaction_id", JsonValue(*pending, "id", "")},
-            {"text", ""}});
-    }
-    if (JsonValue(frame, "checkpoint", false) &&
-        JsonValue(frame, "completed_request_id", "") == request) {
-      // A queued thread event may already have started the next
-      // turn, which clears the stop record.
-      stop = JsonValue(frame["state"], "stop", json::object());
-      after = UsageFromJson(JsonValue(frame["state"], "usage", json::object()));
-      completed = true;
-      return false;
-    }
-    return true;
-  });
-  if (rejected || !completed) {
-    fprintf(stderr, "%s\n",
-            error.empty() ? "coordinator runtime closed" : error.c_str());
-    return 1;
-  }
-  SessionLoadResult saved = SessionStore::Inspect(path);
-  Conversation conversation;
-  std::string answer;
-  if (saved.record &&
-      std::move(saved.record->state).RestoreConversation(conversation)) {
-    answer = conversation.LastAssistantText();
-  }
-  if (options.json) {
-    printf("%s\n",
-           JsonDump({{"answer", answer},
-                     {"session_id", HashHex(path)},
-                     {"usage", UsageJson(UsageDifference(after, before))},
-                     {"stop", stop}})
-               .c_str());
-  } else {
-    printf("%s\n", answer.c_str());
-  }
-  const std::string reason = JsonValue(stop, "reason", "completed");
-  return reason == "completed" ? 0 : 1;
-}
-
 namespace {
 // Once per home, before the first conversation: what to try and the keys
 // that are easy to miss.
@@ -870,6 +865,10 @@ int TerminalMain(Options options) {
     if (!sessions.empty()) path = sessions.front().path;
   }
   std::string draft, folder = CanonicalCwd();
+  const bool pinned =
+      options.overrides.contains(std::string(kVerbositySetting));
+  const DetailPolicy* detail = &ConfiguredDetail(options.overrides);
+  bool redrawn = false;
   for (;;) {
     // A saved session reopens in its own folder; so does a coordinator
     // reached from a session in another directory.
@@ -885,9 +884,13 @@ int TerminalMain(Options options) {
     }
     const bool coordinator = path == CoordinatorPath(cwd);
     if (coordinator) printf("%s", TerminalSafe(CoordinatorBoard(cwd)).c_str());
-    Terminal terminal(std::move(connection), path, draft);
+    Terminal terminal(std::move(connection), path, *detail, pinned, redrawn,
+                      draft);
     int result = terminal.Run(options.attach_paths);
     draft = terminal.Carry();
+    detail = &terminal.Detail();
+    // The same session again is a redraw at another level.
+    redrawn = terminal.Next() == path;
     options.attach_paths.clear();
     if (result || terminal.Next().empty()) return result;
     if (terminal.Next() == "/restart") {
@@ -902,6 +905,7 @@ int TerminalMain(Options options) {
       // The folder has one coordinator; its reset keeps the same file.
       if (!coordinator) path.clear();
     } else {
+      if (redrawn) fputs(ClearScreen(), stdout);
       path = terminal.Next();
       if (!terminal.NextFolder().empty()) folder = terminal.NextFolder();
     }

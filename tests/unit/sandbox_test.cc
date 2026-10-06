@@ -31,7 +31,7 @@ SandboxInputs BaseInputs() {
   inputs.workspace = "/home/u/work";
   inputs.global_base = "/home/u/.uagent";
   inputs.tmpdir = "/private/var/folders/ab/T";
-  inputs.tool_caches = {"/home/u/.cache", "/home/u/.local/share"};
+  inputs.tool_caches = {"/home/u/.cache", "/home/u/.local/share/uv"};
   inputs.terminal_logs = "/home/u/.uagent/terminals/logs";
   return inputs;
 }
@@ -43,7 +43,7 @@ void TestSandboxPolicy() {
   CHECK(HasRoot(base.policy, "/home/u/work"));
   CHECK(HasRoot(base.policy, "/private/var/folders/ab/T"));
   CHECK(HasRoot(base.policy, "/home/u/.cache"));
-  CHECK(HasRoot(base.policy, "/home/u/.local/share"));
+  CHECK(HasRoot(base.policy, "/home/u/.local/share/uv"));
   // The detached log directory is the one deliberate hole inside ~/.uagent.
   CHECK(HasRoot(base.policy, "/home/u/.uagent/terminals/logs"));
   // /dev is granted on both platforms, not just Linux: under a blanket write
@@ -68,8 +68,14 @@ void TestSandboxPolicy() {
   // The regression this whole design exists for: no root may be ~/.uagent or
   // an ancestor of it, or the config and the trust store come along with it.
   SandboxInputs reaching = BaseInputs();
-  reaching.extra_roots = {"/home/u/.uagent", "/home/u", "/",
-                          "/home/u/.uagent/.."};
+  // Nor the folder inside it that holds the saved settings, or anything
+  // under that.
+  reaching.extra_roots = {"/home/u/.uagent",
+                          "/home/u",
+                          "/",
+                          "/home/u/.uagent/..",
+                          "/home/u/.uagent/config",
+                          "/home/u/.uagent/config/x"};
   SandboxPolicyResult guarded = BuildSandboxPolicy(reaching);
   for (const std::string& root : guarded.policy.writable_roots) {
     CHECK(!SandboxPathWithin("/home/u/.uagent", root));
@@ -77,6 +83,8 @@ void TestSandboxPolicy() {
   CHECK(Rejected(guarded, "/home/u/.uagent"));
   CHECK(Rejected(guarded, "/home/u"));
   CHECK(Rejected(guarded, "/"));
+  CHECK(Rejected(guarded, "/home/u/.uagent/config"));
+  CHECK(Rejected(guarded, "/home/u/.uagent/config/x"));
 
   // Relative roots are rejected rather than resolved: this code never touches
   // the filesystem, so it cannot know what one would resolve to.

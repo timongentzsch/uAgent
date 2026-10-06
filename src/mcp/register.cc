@@ -18,6 +18,7 @@
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/limits.h"
+#include "include/core/runtime_config.h"
 #include "include/core/time.h"
 #include "include/mcp/config.h"
 #include "include/mcp/discover.h"
@@ -283,11 +284,8 @@ bool WriteDisabled(const McpServer& server, bool disabled, std::string& error) {
   }
   // The person made exactly this edit, so trust follows it; anything else
   // that changed meanwhile no longer matches and is asked about again.
-  return !project || WriteTrustRecord(dir,
-                                      {{"format", 3},
-                                       {"mcp", std::move(file)},
-                                       {"config", trust["config"]}},
-                                      error);
+  return !project || WriteTrustRecord(
+                         dir, {{"format", 3}, {"mcp", std::move(file)}}, error);
 }
 
 // The end of the server's own stderr usually says why it stopped.

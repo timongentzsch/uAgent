@@ -352,13 +352,21 @@ void TestBrowserSecretMaskAndBack() {
   TestWorkspace workspace("browser-secrets");
   const auto bin = workspace.root / "bin";
   InstallFakeBrowser(bin);
-  const auto directory = fs::canonical(workspace.root) / "browser";
+  // Short, so the display's socket fits an address on every platform.
+  const auto directory =
+      fs::canonical("/tmp") / ("uagent-browser-" + std::to_string(getpid()));
   ScopedEnv configured("UAGENT_BROWSER_DATA", directory.string());
   ScopedEnv search("PATH", bin.string() + ":" + getenv("PATH"));
   ScopedEnv display("DISPLAY");
   ScopedEnv authority("XAUTHORITY");
   constexpr const char* kSession = "cccccccccccccccccccccccccccccccc";
   browser::Runtime runtime;
+  // Whoever takes the browser looks before acting on it.
+  CHECK(runtime.Execute({{"op", "back"}, {"session_id", kSession}})
+            .value("error", "")
+            .starts_with("another conversation used the browser since"));
+  CHECK(!runtime.Execute({{"op", "tabs"}, {"session_id", kSession}})
+             .contains("error"));
   CHECK(runtime.Execute({{"op", "back"}, {"session_id", kSession}})
             .value("error", "") == "the previous page is not HTTP(S)");
   bool masked = false, navigated = false;
@@ -376,7 +384,39 @@ void TestBrowserSecretMaskAndBack() {
   }
   CHECK(masked);
   CHECK(!navigated);
+  // A tab closed by hand leaves nothing attached: the next action attaches
+  // a page again instead of failing on the one that is gone.
+  std::ofstream(directory / "profile" / "close-tab").close();
+  CHECK(runtime.Execute({{"op", "back"}, {"session_id", kSession}})
+            .value("error", "") == "the previous page is not HTTP(S)");
+  // A saved login is taken with keys on the display itself, where Chrome's
+  // own list listens: Escape, Down, Down, Tab, each pressed and let go. A
+  // field that stays as long as it was had nothing saved for it.
+  CHECK(runtime.Execute({{"op", "fill_saved"}, {"session_id", kSession}})
+            .value("error", "")
+            .starts_with("Chrome filled nothing"));
+  std::ofstream(directory / "profile" / "saved-login-here").close();
+  fs::remove(directory / "display.sock.keys");
+  CHECK(!runtime.Execute({{"op", "fill_saved"}, {"session_id", kSession}})
+             .contains("error"));
+  std::ifstream keys(directory / "display.sock.keys");
+  const std::string pressed((std::istreambuf_iterator<char>(keys)),
+                            std::istreambuf_iterator<char>());
+  CHECK(pressed ==
+        "1 ff1b\n0 ff1b\n1 ff54\n0 ff54\n1 ff54\n0 ff54\n"
+        "1 ff09\n0 ff09\n");
+  // One browser, one conversation at a time: another waits for the turn of
+  // the one that holds it to end.
+  constexpr const char* kOther = "dddddddddddddddddddddddddddddddd";
+  CHECK(runtime.Execute({{"op", "tabs"}, {"session_id", kOther}})
+            .value("error", "")
+            .starts_with("another conversation is using the browser"));
+  CHECK(!runtime.Execute({{"op", "release"}, {"session_id", kSession}})
+             .contains("error"));
+  CHECK(!runtime.Execute({{"op", "tabs"}, {"session_id", kOther}})
+             .contains("error"));
   runtime.Shutdown();
+  fs::remove_all(directory);
 }
 
 }  // namespace uagent

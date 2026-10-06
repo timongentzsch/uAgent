@@ -8,6 +8,7 @@
 #include <clocale>
 #include <cstdio>
 #include <string>
+#include <utility>
 
 #include "include/agent/child_agent.h"
 #include "include/agent/session_view.h"
@@ -214,11 +215,11 @@ void TestPollCollapse() {
   CHECK(!compact.multiline);
   CHECK(compact.summary.starts_with("[script: .uagent/scratch/x.py · wrote]"));
   CHECK(compact.summary.find("+30 lines") != std::string::npos);
-  // The whole output travels with the row; /verbose prints it.
+  // The whole output travels with the row; the full level prints it.
   CHECK(compact.output.find("\n30") != std::string::npos);
   // Indented under its row.
   CHECK(CaptureStdout([&] {
-          PrintPresentation(compact, true);
+          PrintPresentation(compact, DetailFor("full"));
         }).find("\n    30") != std::string::npos);
   std::string drawn = CaptureStdout([&] { PrintPresentation(compact); });
   CHECK(drawn.find("← [2] activity") != std::string::npos);
@@ -249,7 +250,7 @@ void TestPollCollapse() {
   CHECK(plain.find("←") == std::string::npos);
   compact.output = "model text: µ · ← …\nsecond";
   CHECK(CaptureStdout([&] {
-          PrintPresentation(compact, true);
+          PrintPresentation(compact, DetailFor("full"));
         }).find("    model text: µ · ← …\n    second") != std::string::npos);
   CHECK(StatusBarLine("thinking · 2s").find("thinking - 2s") !=
         std::string::npos);
@@ -361,6 +362,63 @@ void TestReplayBlocksMirrorLiveRows() {
 }
 
 // Every client renders one vocabulary; the shapes below are that contract.
+// One recorded turn at the three levels: a turn's work in one row, in rows
+// per group, or every call with its output. A failure always keeps its row.
+void TestVerbosityLevels() {
+  auto result = [](const char* id, const char* status, const char* category,
+                   json group = nullptr) {
+    json activity = {{"category", category}};
+    if (!group.is_null()) activity["group"] = std::move(group);
+    return json{{"kind", "tool_result"},
+                {"call_id", id},
+                {"name", "read_path"},
+                {"status", status},
+                {"text", std::string("body of ") + id + "\nsecond line"},
+                {"activity", std::move(activity)},
+                {"replay",
+                 {{"title", std::string("[") + id + "] read_path"},
+                  {"summary", std::string("summary of ") + id}}}};
+  };
+  const json group = {{"id", "a"}, {"label", "Explored · 2 calls"}};
+  auto drawn = [&](std::string_view level) {
+    return CaptureStdout([&] {
+      TerminalPresenter presenter;
+      presenter.SetDetail(DetailFor(level));
+      presenter.Block({{"kind", "user"}, {"text", "go"}});
+      presenter.Block(
+          {{"kind", "assistant"}, {"text", "done"}, {"reasoning", "pondered"}});
+      presenter.Block(result("a", "success", "explore", group));
+      presenter.Block(result("b", "success", "explore", group));
+      presenter.Block(result("c", "success", "edit"));
+      presenter.Block(result("d", "failed", "explore"));
+      presenter.Block({{"kind", "turn_summary"}, {"summary", json::object()}});
+    });
+  };
+  const std::string minimal = drawn("minimal");
+  CHECK(minimal.find("Worked · 3 steps · edited 1 file\n") !=
+        std::string::npos);
+  CHECK(minimal.find("summary of a") == std::string::npos);
+  CHECK(minimal.find("Explored") == std::string::npos);
+  CHECK(minimal.find("summary of d") != std::string::npos);
+  CHECK(minimal.find("pondered") == std::string::npos);
+  CHECK(minimal.find("done") != std::string::npos);
+
+  const std::string standard = drawn("default");
+  CHECK(standard.find("Worked") == std::string::npos);
+  CHECK(standard.find("Explored · 2 calls") != std::string::npos);
+  CHECK(standard.find("summary of a") == std::string::npos);
+  CHECK(standard.find("summary of c") != std::string::npos);
+  CHECK(standard.find("pondered") == std::string::npos);
+  // An unknown level reads as the default one.
+  CHECK(drawn("loud") == standard);
+
+  const std::string full = drawn("full");
+  CHECK(full.find("Explored") == std::string::npos);
+  CHECK(full.find("    body of a\n    second line") != std::string::npos);
+  CHECK(full.find("Thinking") != std::string::npos);
+  CHECK(full.find("pondered") != std::string::npos);
+}
+
 void TestToolViews() {
   // The generic view: short scalars are fields, long text is code, nested
   // values are indented JSON, and display labels are never repeated.
@@ -462,7 +520,7 @@ void TestHostedSearchStatusRow() {
   CHECK(CurrentTerminalActivity().empty());
   const std::string corrected = CaptureStdout([&] {
     TerminalPresenter verbose;
-    verbose.SetDetailed(true);
+    verbose.SetDetail(DetailFor("full"));
     verbose.Consume(AppEvent{1, "", "response.started", json::object(), false});
     verbose.Consume(AppEvent{
         2, "", "response.reasoning.delta", {{"text", "original"}}, false});
@@ -621,7 +679,7 @@ void TestStatusBarDropsByPriority() {
   view.model = "anthropic/claude-sonnet-4-5";
   view.context_used = 12000;
   view.context_window = 1300000;
-  view.verbose = true;
+  view.verbosity = "full";
   view.background = 1;
 
   // Wide enough for everything: the full row is the baseline the narrower
@@ -634,17 +692,17 @@ void TestStatusBarDropsByPriority() {
   CHECK(wide ==
         "anthropic/claude-sonnet-4-5 · Ask · 99% left · $0.4200 · "
         "est. ctx 12k/1.3M · bg:1 · 12k in · 3.4k out · cache 33% · "
-        "verbose · /help for shortcuts");
+        "full · /help for shortcuts");
 
   // Each narrower width is a prefix of the priorities that survive: 7 (the
-  // hint) goes first, then 6 (verbose), then 5 (cache), and so on.
+  // hint) goes first, then 6 (the level), then 5 (cache), and so on.
   std::string medium;
   {
     FixedWidth columns(80);
     medium = StatusBar(usage, view);
   }
   CHECK(medium.find("/help for shortcuts") == std::string::npos);
-  CHECK(medium.find("verbose") == std::string::npos);
+  CHECK(medium.find(" · full") == std::string::npos);
   CHECK(medium.find("anthropic/claude-sonnet-4-5") != std::string::npos);
   CHECK(DisplayWidth(medium) <= 80);
   // Route, approval mode, headroom and spend are the last to go.

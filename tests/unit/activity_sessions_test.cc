@@ -26,6 +26,7 @@
 #include "include/app/session_host.h"
 #include "include/core/capture.h"
 #include "include/core/config.h"
+#include "include/core/env.h"
 #include "include/core/file_watch.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
@@ -1255,18 +1256,11 @@ void TestMailbox() {
   CHECK(PendingMail("recipient").size() == 1);
   TakeMail("recipient", all);
 
-  // A waiting duplicate is dropped, and a progress report replaces the
-  // pending one for its task.
+  // A waiting duplicate is dropped.
   CHECK(SendMail(note("c", "same")).empty());
   CHECK(SendMail(note("c", "same")).empty());
-  Mail progress = note("c", "step 1");
-  progress.type = kMailTaskProgress;
-  progress.correlation_id = "task";
-  CHECK(SendMail(progress).empty());
-  progress.body = {{"text", "step 2"}};
-  CHECK(SendMail(progress).empty());
   CHECK(texts(TakeMail("recipient", all)) ==
-        std::vector<std::string>({"same", "step 2"}));
+        std::vector<std::string>({"same"}));
 
   // Loops, floods and oversized messages are refused with a reason.
   Mail looping = note("d", "again");
@@ -1276,6 +1270,10 @@ void TestMailbox() {
     CHECK(SendMail(note("e", "burst " + std::to_string(i))).empty());
   }
   CHECK(!SendMail(note("e", "one too many")).empty());
+  // A thread's finished turn is heard however much it has said.
+  Mail report = note("e", "finished");
+  report.type = kMailTaskCompleted;
+  CHECK(SendMail(report).empty());
   CHECK(!SendMail(note("f", std::string(kMailBytes, 'x'))).empty());
   TakeMail("recipient", all);
 
@@ -1306,12 +1304,16 @@ void TestSessionLinks() {
   // the fixtures are real files.
   const fs::path fa = workspace.workspace / "aaa.json";
   const fs::path fb = workspace.workspace / "bbb.json";
-  {
-    std::ofstream(fa) << "{}\n";
-  }
-  {
-    std::ofstream(fb) << "{}\n";
-  }
+  json header = {{"cwd", ""},
+                 {"model", ""},
+                 {"session_id", ""},
+                 {"turns", 0},
+                 {"title", ""}};
+  auto save = [&](const fs::path& file) {
+    std::ofstream(file) << header << "\n";
+  };
+  save(fa);
+  save(fb);
   ScopedEnv self("UAGENT_INTERNAL_SESSION_PATH", fa.string());
   CHECK(!SharesLink("aaa", "bbb"));
   // Only yolo sessions join the workspace link.
@@ -1333,6 +1335,18 @@ void TestSessionLinks() {
     CHECK(!MessageSession("aaa", "loop", kMailMaxHops).Ok());
   }
   SetApprovalMode(before);
+  CHECK(SharesLink("aaa", "bbb"));
+  // A delegated child an older version let join does not count as a member,
+  // nor does a session whose header cannot be read.
+  header["delegation"] = json::object();
+  save(fb);
+  CHECK(!SharesLink("aaa", "bbb"));
+  {
+    std::ofstream(fb) << "{}\n";
+  }
+  CHECK(!SharesLink("aaa", "bbb"));
+  header.erase("delegation");
+  save(fb);
   CHECK(SharesLink("aaa", "bbb"));
   // A coordinator's threads are linked by living in one history folder: no
   // yolo, no joining, and nobody else in that folder is.

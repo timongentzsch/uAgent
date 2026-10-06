@@ -21,9 +21,13 @@
 #include "include/app/tool_categories.h"
 #include "include/core/child_env.h"
 #include "include/core/config.h"
+#include "include/core/config_registry.h"
 #include "include/core/effective_config.h"
+#include "include/core/env.h"
 #include "include/core/events.h"
 #include "include/core/fs.h"
+#include "include/core/runtime_config.h"
+#include "include/core/settings_store.h"
 #include "include/core/signals.h"
 #include "include/core/steering.h"
 #include "include/providers.h"
@@ -296,9 +300,10 @@ void TestRuntimeOwnershipHelpers() {
   api.capabilities.wire_api = WireApi::kResponses;
   body = api.BuildRequestBody(json::array(), json::array(), "stable-session");
   CHECK(body.value("prompt_cache_key", "") == HashHex("stable-session"));
+  // A proxy in front of the API gets the key as well, and passes it on.
   api.base_url = "http://127.0.0.1:8080/v1";
   body = api.BuildRequestBody(json::array(), json::array(), "stable-session");
-  CHECK(!body.contains("prompt_cache_key"));
+  CHECK(body.value("prompt_cache_key", "") == HashHex("stable-session"));
   api.base_url = "https://api.openai.com/v1";
   api.capabilities =
       CapabilitiesForRoute(ProviderProtocol::kOpenAi, api.base_url);
@@ -468,13 +473,6 @@ void TestPermissionAndToolCategoryPolicy() {
   CHECK(ParseApprovalMode("yolo", approval));
   CHECK(approval == ApprovalMode::kYolo);
   CHECK(!ParseApprovalMode("guess", approval));
-  // An explicit override wins; the default defers to configuration.
-  CHECK(ResolveApprovalMode(PermissionOverride::kDefault,
-                            ApprovalMode::kAuto) == ApprovalMode::kAuto);
-  CHECK(ResolveApprovalMode(PermissionOverride::kAsk, ApprovalMode::kYolo) ==
-        ApprovalMode::kAsk);
-  CHECK(ResolveApprovalMode(PermissionOverride::kYolo, ApprovalMode::kAsk) ==
-        ApprovalMode::kYolo);
 
   Tool tool;
   tool.name = "write_file";
@@ -640,15 +638,14 @@ void TestAgentConfigAllowlist() {
             .output.starts_with("wrote "));
 
   ScopedEnv scoped_home("HOME", root.c_str());
-  ScopedEnv scoped_config("UAGENT_CONFIG_FILE");
   ScopedEnv scoped_key("OPENROUTER_API_KEY");
   ScopedEnv scoped_model("OPENROUTER_MODEL");
   ScopedEnv scoped_effort("OPENROUTER_EFFORT");
   ConfigManager loaded = ConfigManager::Capture(/*trust_project=*/false, {});
   (void)loaded.Initialize();
-  CHECK(EnvStr("OPENROUTER_API_KEY") == "test-key");
-  CHECK(EnvStr("OPENROUTER_MODEL") == "vendor/model");
-  CHECK(EnvStr("OPENROUTER_EFFORT") == "high");
+  CHECK(SettingText("OPENROUTER_API_KEY") == "test-key");
+  CHECK(SettingText("OPENROUTER_MODEL") == "vendor/model");
+  CHECK(SettingText("OPENROUTER_EFFORT") == "high");
 
   std::error_code ec;
   fs::remove_all(root, ec);
@@ -742,31 +739,6 @@ void TestChildEnvironmentPolicy() {
         "error: child execution: connection error: Couldn't connect to "
         "server");
   CHECK(FirstLine(connection_report).find("secret-value") == std::string::npos);
-}
-
-void TestModelPreference() {
-  namespace fs = std::filesystem;
-  fs::path root = fs::temp_directory_path() /
-                  ("uagent-model-preference-" +
-                   std::to_string(static_cast<int64_t>(getpid())));
-  fs::create_directories(root);
-  ScopedEnv scoped_home("HOME", root.c_str());
-
-  std::string error;
-  CHECK(SaveModelPreference({"provider/fast", "https://example.test/v1", true},
-                            error));
-  ModelPreference saved = LoadModelPreference();
-  CHECK(saved.selection == "provider/fast");
-  CHECK(saved.base_url == "https://example.test/v1");
-  CHECK(saved.route);
-  struct stat st{};
-  CHECK(stat(ModelPreferencePath().c_str(), &st) == 0);
-  CHECK((st.st_mode & 0777) == 0600);
-  CHECK(!SaveModelPreference({"bad\nmodel", "https://example.test/v1", false},
-                             error));
-
-  std::error_code ec;
-  fs::remove_all(root, ec);
 }
 
 void TestProviderTemplates() {
@@ -1051,7 +1023,7 @@ void TestEffectiveConfigReload() {
             "route_secret=private-route-key\n"
             "OPENROUTER_API_KEY=$route_secret\n")
             .output.starts_with("wrote "));
-  // The CLI layer outranks the environment and both config files.
+  // The CLI layer outranks the environment and what is saved.
   ConfigManager manager = ConfigManager::Capture(
       /*trust_project=*/false,
       {{"UAGENT_SESSION_BUDGET", "3.5"}, {"UAGENT_MEMORY", "0"}});
@@ -1075,15 +1047,16 @@ void TestEffectiveConfigReload() {
   CHECK(shown.find("private-route-key") == std::string::npos);
   CHECK(shown.find("user:pass") == std::string::npos);
 
-  CHECK(ToolWriteFile(path,
-                      "UAGENT_MAX_TOOL_CALLS=7\n"
-                      "UAGENT_MAX_TURN_TOKENS=150\n"
-                      "UAGENT_SESSION_TOKEN_BUDGET=250\n"
-                      "UAGENT_MCP_TIMEOUT=10\n"
-                      "UAGENT_TOOL_RESULT_CHARS=1234\n"
-                      "UAGENT_MODEL=next-model\n"
-                      "OPENROUTER_API_KEY=changed-secret\n")
-            .output.starts_with("wrote "));
+  CHECK(ChangeSettings("", [](SettingValues& all) {
+          all["UAGENT_MAX_TOOL_CALLS"] = "7";
+          all["UAGENT_MAX_TURN_TOKENS"] = "150";
+          all["UAGENT_SESSION_TOKEN_BUDGET"] = "250";
+          all["UAGENT_MCP_TIMEOUT"] = "10";
+          all["UAGENT_TOOL_RESULT_CHARS"] = "1234";
+          all["UAGENT_MODEL"] = "next-model";
+          all["OPENROUTER_API_KEY"] = "changed-secret";
+          return std::string();
+        }).empty());
   std::optional<ConfigReload> reload = manager.Reload(active);
   REQUIRE(reload.has_value());
   CHECK(reload->active.max_steps == 9);
@@ -1114,6 +1087,14 @@ void TestEffectiveConfigReload() {
     told |= std::string_view(*entry) == "UAGENT_TOOL_RESULT_CHARS=1234";
   }
   CHECK(told);
+  // Put back to its default, it is at its default: nothing saved was ever
+  // left in the environment to come back from.
+  CHECK(ChangeSettings("", [](SettingValues& all) {
+          all.erase("UAGENT_TOOL_RESULT_CHARS");
+          return std::string();
+        }).empty());
+  CHECK(manager.Reload(reload->active).has_value());
+  CHECK(ToolResultCap() != 1234);
   OverrideSetting("UAGENT_TOOL_RESULT_CHARS", "99");
   CHECK(ToolResultCap() == 99);
 }

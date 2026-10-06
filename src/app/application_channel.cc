@@ -6,6 +6,7 @@
 
 #include "include/agent/child_agent.h"
 #include "include/cli.h"
+#include "include/core/config_registry.h"
 #include "include/core/debug.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
@@ -122,7 +123,7 @@ void Application::PublishChannelState(bool checkpoint) {
   state["permissions"] = PermissionControl(context_, json::object());
   state["mcp"] = McpStatus(runtime_.mcp, context_.tools);
   state["efforts"] = json::array({"default"});
-  for (const char* effort : kReasoningEfforts) {
+  for (std::string_view effort : kReasoningEfforts) {
     if (SupportsReasoningEffort(api_, effort)) {
       state["efforts"].push_back(effort);
     }

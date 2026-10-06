@@ -13,6 +13,7 @@
 #include "include/app/session_host.h"
 #include "include/core/capture.h"
 #include "include/core/fs.h"
+#include "include/core/signals.h"
 #include "include/core/strings.h"
 #include "include/core/time.h"
 #include "include/core/usage.h"
@@ -92,12 +93,11 @@ void SessionHost::PublishLifecycle(const HostSession& session, json frame) {
 Connection SessionHost::OpenRuntime(const HostSession& session, bool create,
                                     std::string& error) const {
   Options options;
-  options.browser_session = true;
   if (!session.launch.empty()) {
     const std::string model = JsonValue(session.launch, "model", "");
     if (!model.empty()) options.overrides["UAGENT_MODEL"] = model;
-    options.overrides["UAGENT_APPROVAL"] =
-        JsonValue(session.launch, "permissions", "prompt");
+    const std::string mode = JsonValue(session.launch, "permissions", "ask");
+    options.overrides["UAGENT_APPROVAL"] = mode == "prompt" ? "ask" : mode;
   }
   Connection connection = create ? Open(executable_, session.cwd, session.path,
                                         session.draft_title, options, error)
@@ -219,13 +219,18 @@ bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
   }
   bool create_now = create;
   for (int attempt = 0;; ++attempt) {
+    // A command that arrives while another starts the runtime waits for that
+    // start: it then finds the runtime, or starts it itself.
+    if (session->connecting) {
+      changed_.wait(lock, [&] { return !session->connecting || stopping_; });
+      if (stopping_ || !IsCurrentLocked(session.get())) {
+        error = "session was closed while starting";
+        return false;
+      }
+    }
     if (session->pid > 0 && !session->exited) {
       if (!RecycleStaleWorkerLocked(session, lock)) return true;
       create_now = true;  // recycled: fall through to a fresh spawn
-    }
-    if (session->connecting) {
-      error = "session is starting";
-      return false;
     }
     session->connecting = true;
     if (session->reader.joinable()) {
@@ -234,6 +239,7 @@ bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
       lock.lock();
       if (stopping_ || !IsCurrentLocked(session.get())) {
         session->connecting = false;
+        changed_.notify_all();
         error = "session was closed while joining its prior runtime";
         return false;
       }
@@ -242,6 +248,7 @@ bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
     auto connected = OpenRuntime(*session, create_now, error);
     lock.lock();
     session->connecting = false;
+    changed_.notify_all();
     if (stopping_ || !IsCurrentLocked(session.get())) {
       error = "session was closed while connecting";
       return false;

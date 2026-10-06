@@ -557,6 +557,39 @@ def fnv1a64(text):
     return f"{value:016x}"
 
 
+def settings_path(home):
+    return pathlib.Path(home) / ".uagent" / "config" / "settings.json"
+
+
+def saved_settings(home, folder=None):
+    """What the host has saved: for all conversations, or for `folder`."""
+    path = settings_path(home)
+    document = json.loads(path.read_text()) if path.exists() else {"all": {}, "projects": {}}
+    if folder is None:
+        return document["all"]
+    return document["projects"].get(str(pathlib.Path(folder).resolve()), {})
+
+
+def save_settings(home, folder=None, **values):
+    """Saves settings from outside, as another process's change arrives:
+    the document replaced in one step. None removes a setting."""
+    path = settings_path(home)
+    document = {"format": 1, "all": {}, "projects": {}}
+    if path.exists():
+        document = json.loads(path.read_text())
+    scope = document["all"]
+    if folder is not None:
+        scope = document["projects"].setdefault(str(pathlib.Path(folder).resolve()), {})
+    for name, value in values.items():
+        scope.pop(name, None)
+        if value is not None:
+            scope[name] = str(value)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    pending = path.with_suffix(".pending")
+    pending.write_text(json.dumps(document, indent=2) + "\n")
+    pending.replace(path)
+
+
 def wait_until(predicate, message, timeout=30, interval=0.02):
     """Poll until predicate() holds, or fail the test with message."""
     deadline = time.monotonic() + budget(timeout)

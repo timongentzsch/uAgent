@@ -38,8 +38,10 @@ export interface SettingsProps {
   session?: Session;
   logout: () => Promise<void>;
   instructions: () => void;
-  // The open conversation's tools, in their own sheet.
-  tools: () => void;
+  // Counts every saved change, whoever made it: what shows settings reads
+  // again.
+  version: number;
+  // The scope to open on.
   initialSection?: string;
 }
 

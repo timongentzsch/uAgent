@@ -7,6 +7,7 @@
 #include <utility>
 
 #include "include/agent/jobs.h"
+#include "include/core/runtime_config.h"
 
 namespace uagent {
 

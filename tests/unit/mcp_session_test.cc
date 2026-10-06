@@ -12,8 +12,11 @@
 #include "include/agent/session_store.h"
 #include "include/app/runtime.h"
 #include "include/core/config.h"
+#include "include/core/config_registry.h"
 #include "include/core/effective_config.h"
+#include "include/core/env.h"
 #include "include/core/project.h"
+#include "include/core/runtime_config.h"
 #include "include/core/signals.h"
 #include "include/core/skills.h"
 #include "include/mcp/config.h"
@@ -407,25 +410,16 @@ void TestProjectTrustTracksSemanticConfig() {
             .output.starts_with("wrote "));
   CHECK(!ProjectConfigTrusted());
 
-  // A project config is the second surface trust covers, on its own or beside
-  // .mcp.json, and a value change in either revokes it.
-  fs::remove(".mcp.json");
+  // A config file an earlier version left in the project is no part of
+  // trust: it is taken over into the saved settings, or ignored.
   fs::create_directories(".uagent");
-  CHECK(!ProjectMcpPresent());
-  CHECK(ProjectAgentConfigPresent() == false);
   CHECK(ToolWriteFile(".uagent/.config", "UAGENT_MODEL=vendor/model\n")
             .output.starts_with("wrote "));
-  CHECK(ProjectAgentConfigPresent());
   CHECK(!ProjectConfigTrusted());
   CHECK(TrustProjectConfig(error));
-  CHECK(ProjectConfigTrusted());
-  CHECK(
-      ToolWriteFile(".uagent/.config", "# comment\nUAGENT_MODEL=vendor/model\n")
-          .output.starts_with("wrote "));
-  CHECK(ProjectConfigTrusted());  // comment-only edit
   CHECK(ToolWriteFile(".uagent/.config", "UAGENT_MODEL=other/model\n")
             .output.starts_with("wrote "));
-  CHECK(!ProjectConfigTrusted());
+  CHECK(ProjectConfigTrusted());
 }
 
 void TestScopedBaseAndMemory() {
@@ -582,6 +576,10 @@ void TestScopedBaseAndMemory() {
       home / ".claude/projects" / claude_project / "memory/MEMORY.md";
   CHECK(ToolWriteFile(claude_memory.string(), "claude-memory-sentinel")
             .output.starts_with("wrote "));
+  // Only for the agents that are listed.
+  CHECK(ToolMemoryAction("get", "codex/MEMORY", std::nullopt).error ==
+        ToolErrorCode::kNotFound);
+  ScopedEnv others("UAGENT_OTHER_AGENTS", "claude,codex");
   CHECK(ToolMemoryAction("get", "codex/MEMORY", std::nullopt)
             .output.find("codex-memory-sentinel") != std::string::npos);
   CHECK(ToolMemoryAction("get", "claude/MEMORY", std::nullopt)
@@ -659,32 +657,32 @@ void TestScopedBaseAndMemory() {
             .output.starts_with("forgot "));
   fs::current_path(workspace);
 
-  // A trusted project config wins key by key; the global file fills the rest.
+  // What an earlier version kept in text files is taken over on the first
+  // read: the user's file always, a project's only once it is trusted.
   CHECK(ToolWriteFile(".uagent/.config", "UAGENT_MODEL=project/model\n")
             .output.starts_with("wrote "));
   CHECK(ToolWriteFile((home / ".uagent/.config").string(),
                       "UAGENT_MODEL=global/model\nUAGENT_API_KEY=global-key\n")
             .output.starts_with("wrote "));
-  const char* prior_config = getenv("UAGENT_CONFIG_FILE");
-  std::string prior_config_value = prior_config ? prior_config : "";
-  unsetenv("UAGENT_CONFIG_FILE");
-  unsetenv("UAGENT_MODEL");
-  unsetenv("UAGENT_API_KEY");
-  ConfigManager trusted = ConfigManager::Capture(/*trust_project=*/true, {});
-  (void)trusted.Initialize();
-  CHECK(EnvStr("UAGENT_MODEL") == "project/model");
-  CHECK(EnvStr("UAGENT_API_KEY") == "global-key");
-
-  // Untrusted, the project file is skipped entirely.
   unsetenv("UAGENT_MODEL");
   unsetenv("UAGENT_API_KEY");
   ConfigManager untrusted = ConfigManager::Capture(/*trust_project=*/false, {});
   (void)untrusted.Initialize();
-  CHECK(EnvStr("UAGENT_MODEL") == "global/model");
+  CHECK(SettingText(Cfg("UAGENT_MODEL")) == "global/model");
+
+  // A project's setting wins key by key; what is saved for all fills the
+  // rest.
+  unsetenv("UAGENT_MODEL");
+  unsetenv("UAGENT_API_KEY");
+  ConfigManager trusted = ConfigManager::Capture(/*trust_project=*/true, {});
+  (void)trusted.Initialize();
+  CHECK(SettingText(Cfg("UAGENT_MODEL")) == "project/model");
+  CHECK(SettingText(Cfg("UAGENT_API_KEY")) == "global-key");
+  // What is saved is read from the settings, never put in the environment.
+  CHECK(getenv("UAGENT_MODEL") == nullptr);
 
   unsetenv("UAGENT_MODEL");
   unsetenv("UAGENT_API_KEY");
-  if (prior_config) setenv("UAGENT_CONFIG_FILE", prior_config_value.c_str(), 1);
 }
 
 }  // namespace uagent

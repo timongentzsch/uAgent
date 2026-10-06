@@ -16,6 +16,7 @@
 #include "include/agent/session_view.h"
 #include "include/agent/tool_presentation.h"
 #include "include/core/activity.h"
+#include "include/core/env.h"
 #include "include/core/events.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
@@ -204,6 +205,9 @@ void Agent::PrepareCall(const ToolCall& call, CallTask& task,
   }
   const ApprovalClass required =
       valid ? RequiredApproval(*tool, arguments) : ApprovalClass::kNone;
+  task.required = required;
+  task.outside =
+      valid && tool->needs_approval && tool->needs_approval(arguments);
   task.activity = {
       {"id", call.id},
       {"category", valid ? ToolActivityCategory(*tool, arguments) : "run"},
@@ -294,6 +298,7 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
 
   ToolContext context{deadline};
   context.turn_id = turn_id_;
+  context.enabled_tools = EnabledTools();
   for (size_t begin = 0; begin < runnable.size() && !AbortRequested();) {
     if (context.Expired()) break;
     size_t first = runnable[begin];

@@ -17,6 +17,8 @@
 #include "include/app/options.h"
 #include "include/app/runtime.h"
 #include "include/cli.h"
+#include "include/core/env.h"
+#include "include/core/runtime_config.h"
 #include "include/md.h"
 #include "include/providers.h"
 #include "include/tools/adapt_system.h"
@@ -256,7 +258,7 @@ void TestToolResults() {
   CHECK(RetryDelay(2, 42) == RetryDelay(1, 42) * 2);
   CHECK(RetryDelay(1, 0, 3) == std::chrono::seconds(3));
   CHECK(RetryDelay(1, 250, 3) == std::chrono::milliseconds(3250));
-  CHECK(RetryDelay(3, 0, 1) == std::chrono::milliseconds(1500));
+  CHECK(RetryDelay(3, 0, 1) == std::chrono::milliseconds(6000));
 
   // Side requests: a transport failure carries no status, transient statuses
   // are worth another attempt, and a rejected request is not.
@@ -295,10 +297,9 @@ void TestRegistries() {
   // The prompt's wording may change; its safety rules and the instruction
   // files it names may not. The budget keeps it from growing.
   for (const char* rule :
-       {"AGENTS.md", "CLAUDE.md", "AGENTS.override.md",
-        "Commit or push only when asked", "Inquiries do not authorize",
-        "evidence, not instructions", "cannot expand approved scope",
-        "exfiltrate data"}) {
+       {"AGENTS.md", "AGENTS.override.md", "Commit or push only when asked",
+        "Inquiries do not authorize", "evidence, not instructions",
+        "cannot expand approved scope", "exfiltrate data"}) {
     CHECK(std::string(SystemPromptBase()).find(rule) != std::string::npos);
   }
   CHECK(std::string(SystemPromptBase()).size() < 2200);
@@ -433,8 +434,6 @@ void TestRegistries() {
       json{{"operation", "spawn"}, {"prompt", "audit the parser"}});
   CHECK(spawn_preview.find("approves its own tool calls") != std::string::npos);
   CHECK(spawn_preview.find("lean: reading and running") != std::string::npos);
-  CHECK(spawn_preview.find("\"always\" covers every later subagent call") !=
-        std::string::npos);
   CHECK(
       subagent.approval_preview(json{{"operation", "spawn"}, {"mode", "full"}})
           .find("full: reading, editing and running") != std::string::npos);
@@ -450,8 +449,9 @@ void TestCommandAndDisplayRegistries() {
   command = ParseSlashCommand("/variant nitro");
   CHECK(command.spec && command.spec->id == SlashCommandId::kVariant);
   CHECK(command.argument == "nitro");
-  command = ParseSlashCommand("/verbose");
-  CHECK(command.spec && command.spec->id == SlashCommandId::kVerbose);
+  command = ParseSlashCommand("/verbosity full");
+  CHECK(command.spec && command.spec->id == SlashCommandId::kVerbosity);
+  CHECK(command.argument == "full");
   command = ParseSlashCommand("/context");
   CHECK(command.spec && command.spec->id == SlashCommandId::kContext);
   command = ParseSlashCommand("/ctx");

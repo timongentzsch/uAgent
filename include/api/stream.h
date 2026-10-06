@@ -162,6 +162,9 @@ struct StreamCtx {
     // the timeout the same way every other event does, and additionally says
     // what it was so a presenter need not infer it from silence.
     if (delta.activity) MarkEvent();
+    if (delta.opened && res->first_event_ms < 0) {
+      res->first_event_ms = ElapsedMs(started);
+    }
     if (res->first_token_ms < 0 &&
         (!delta.content.empty() || !delta.reasoning.empty())) {
       res->first_token_ms = ElapsedMs(started);

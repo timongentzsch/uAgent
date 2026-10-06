@@ -351,41 +351,175 @@ const call = (id, category, status = "success") => ({
   activity: { category },
 });
 
-test("three or more tool calls in a row fold; a failure ends the run", () => {
-  const rows = presentMessages([
-    call("v1", "verify"),
-    call("v2", "explore"),
-    call("v3", "verify", "failed"),
-    call("e1", "edit"),
-    call("e2", "edit"),
-    call("r1", "run"),
-    { id: "m1", kind: "assistant", text: "done" },
-    call("r2", "run"),
-  ]);
-  assert.deepEqual(
-    rows.map((row) => row.children?.map((step) => step.id) || row.id),
-    ["v1", "v2", "v3", ["e1", "e2", "r1"], "m1", "r2"],
+// The host's table (DetailPoliciesJson): what each verbosity level shows.
+const MINIMAL = {
+  work: "turn",
+  reasoning: "hidden",
+  open: false,
+  minor: false,
+};
+const DEFAULT = {
+  work: "groups",
+  reasoning: "closed",
+  open: false,
+  minor: false,
+};
+const FULL = { work: "calls", reasoning: "open", open: true, minor: true };
+const grouped = (id, category, group, label) => ({
+  ...call(id, category),
+  activity: { category, group: { id: group, label } },
+});
+const shape = (rows) =>
+  rows.map((row) => row.children?.map((step) => step.id) || row.id);
+
+test("default folds the calls the host grouped, and no others", () => {
+  const rows = presentMessages(
+    [
+      call("r1", "run"),
+      call("r2", "run"),
+      call("r3", "run"),
+      grouped("x1", "explore", "x1", "Explored · 2 calls"),
+      grouped("x2", "explore", "x1", "Explored · 2 calls"),
+      grouped("e1", "edit", "e1", "Edited · 2 calls"),
+      grouped("e2", "edit", "e1", "Edited · 2 calls"),
+      { id: "m1", kind: "assistant", text: "done" },
+      // A group cut by the page's edge is one row, not a fold of one.
+      grouped("x3", "explore", "x3", "Explored · 2 calls"),
+    ],
+    DEFAULT,
   );
+  assert.deepEqual(shape(rows), [
+    "r1",
+    "r2",
+    "r3",
+    ["x1", "x2"],
+    ["e1", "e2"],
+    "m1",
+    "x3",
+  ]);
+  assert.equal(rows[3].label, "Explored · 2 calls");
   // The group takes its first row's key, so the row keeps its place.
-  assert.equal(rows[3].key, "e1");
+  assert.equal(rows[3].key, "x1");
+  // No policy named is the default one.
+  assert.deepEqual(
+    shape(
+      presentMessages([
+        grouped("a", "edit", "a", "E"),
+        grouped("b", "edit", "a", "E"),
+      ]),
+    ),
+    [["a", "b"]],
+  );
 });
 
-test("a streamed row refolds only the last run", () => {
-  const blocks = [
-    call("a1", "run"),
-    call("a2", "run"),
-    call("a3", "run"),
-    { id: "m1", kind: "assistant", text: "next" },
-    call("b1", "edit"),
-    call("b2", "edit"),
-    call("b3", "edit"),
+test("minimal folds a turn's work into one row before its answer", () => {
+  const turn = [
+    { id: "u1", kind: "user", text: "go" },
+    { id: "m1", kind: "assistant", text: "Looking.", reasoning: "hm" },
+    call("x1", "explore"),
+    call("v1", "verify", "failed"),
+    { ...call("e1", "edit"), view: { target: "a.ts" } },
+    { ...call("e2", "edit"), view: { target: "a.ts" } },
+    { ...call("e3", "edit"), view: { target: "b.ts" } },
+    call("c1", "run", "cancelled"),
+    { id: "m2", kind: "assistant", text: "Done.", reasoning: "sure" },
+    { id: "s1", kind: "assistant", summary: { turn: 1 } },
+    { id: "u2", kind: "user", text: "more" },
+    call("r1", "run", "running"),
   ];
-  const before = presentMessages(blocks);
-  const after = presentMessages([...blocks, call("b4", "run")]);
+  const rows = presentMessages(turn, MINIMAL);
+  // Failed and cancelled calls, the answer, the footer and your messages
+  // stay rows; the rest of each turn is one row where its first step stood.
+  assert.deepEqual(shape(rows), [
+    "u1",
+    ["m1", "x1", "e1", "e2", "e3"],
+    "v1",
+    "c1",
+    "m2",
+    "s1",
+    "u2",
+    ["r1"],
+  ]);
+  assert.equal(rows[1].label, "Worked · 4 steps · edited 2 files");
+  assert.equal(rows[7].label, "Worked · 1 step");
+  assert.equal(rows[4].text, "Done.");
+  // A turn with nothing but an answer has no work row.
+  assert.deepEqual(
+    shape(
+      presentMessages(
+        [
+          { id: "u1", kind: "user", text: "hi" },
+          { id: "m1", kind: "assistant", text: "hello" },
+        ],
+        MINIMAL,
+      ),
+    ),
+    ["u1", "m1"],
+  );
+});
+
+test("a reply that is only thinking is a row where thinking shows", () => {
+  const turn = [
+    { id: "u1", kind: "user", text: "go" },
+    { id: "m1", kind: "assistant", text: "", reasoning: "hm" },
+    call("x1", "explore"),
+    { id: "m2", kind: "assistant", text: "Done." },
+  ];
+  // Hidden thinking leaves nothing to show, so no empty row is kept.
+  assert.deepEqual(shape(presentMessages(turn, MINIMAL)), ["u1", ["x1"], "m2"]);
+  assert.deepEqual(shape(presentMessages(turn, DEFAULT)), [
+    "u1",
+    "m1",
+    "x1",
+    "m2",
+  ]);
+});
+
+test("full folds nothing and keeps routine rows", () => {
+  const blocks = [
+    grouped("x1", "explore", "x1", "Explored · 2 calls"),
+    grouped("x2", "explore", "x1", "Explored · 2 calls"),
+    {
+      id: "n1",
+      kind: "activity",
+      memory: { action: "kept", key: "k", automatic: true, minor: true },
+    },
+    { id: "m1", kind: "assistant", text: "done", reasoning: "why" },
+  ];
+  const rows = presentMessages(blocks, FULL);
+  assert.deepEqual(shape(rows), ["x1", "x2", "n1", "m1"]);
+  assert.equal(rows[3].reasoning, "why");
+  for (const policy of [MINIMAL, DEFAULT])
+    assert.ok(
+      !presentMessages(blocks, policy)
+        .flatMap((row) => row.children || [row])
+        .some((row) => row.id === "n1"),
+    );
+});
+
+test("a streamed row refolds only the last fold", () => {
+  const blocks = [
+    grouped("a1", "explore", "a1", "Explored · 2 calls"),
+    grouped("a2", "explore", "a1", "Explored · 2 calls"),
+    { id: "m1", kind: "assistant", text: "next" },
+    grouped("b1", "edit", "b1", "Edited · 2 calls"),
+    grouped("b2", "edit", "b1", "Edited · 2 calls"),
+  ];
+  const before = presentMessages(blocks, DEFAULT);
+  const after = presentMessages(
+    [...blocks, grouped("b3", "edit", "b1", "Edited · 3 calls")],
+    DEFAULT,
+  );
   assert.equal(after[0], before[0]);
   assert.notEqual(after[2], before[2]);
   assert.deepEqual(
     after[2].children.map((step) => step.id),
-    ["b1", "b2", "b3", "b4"],
+    ["b1", "b2", "b3"],
+  );
+  // A turn's work row is the same row until the turn's rows change.
+  const turn = [{ id: "u1", kind: "user", text: "go" }, ...blocks];
+  assert.equal(
+    presentMessages(turn, MINIMAL)[1],
+    presentMessages([...turn], MINIMAL)[1],
   );
 });

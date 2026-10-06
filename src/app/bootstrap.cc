@@ -23,6 +23,8 @@
 #include "include/api.h"
 #include "include/app/artifact.h"
 #include "include/app/asset_store.h"
+#include "include/app/commands.h"
+#include "include/app/config_proposal.h"
 #include "include/app/coordinator.h"
 #include "include/app/permissions.h"
 #include "include/app/reference.h"
@@ -39,6 +41,7 @@
 #include "include/core/json.h"
 #include "include/core/limits.h"
 #include "include/core/project.h"
+#include "include/core/runtime_config.h"
 #include "include/core/sandbox.h"
 #include "include/core/signals.h"
 #include "include/core/skills.h"
@@ -120,33 +123,22 @@ bool ResolveProjectTrust(const Options& options, bool& trusted,
   trusted = options.trust_project || TrustProjectConfig();
   if (!trusted) trusted = ProjectConfigTrusted(&trusted_snapshot);
   bool mcp_present = ProjectMcpPresent();
-  bool agent_config_present = ProjectAgentConfigPresent();
-  if ((mcp_present || agent_config_present) && !trusted) {
-    std::string surfaces =
-        mcp_present ? (agent_config_present ? ".mcp.json and .uagent/.config"
-                                            : ".mcp.json")
-                    : ".uagent/.config";
+  if (mcp_present && !trusted) {
     if (!InteractiveApprovalAvailable() || !options.prompt.empty()) {
-      if (mcp_present) {
-        error =
-            "project .mcp.json is untrusted; rerun with "
-            "--trust-project-config after reviewing it";
-        exit_code = 2;
-        return false;
-      }
-      fprintf(stderr,
-              "project .uagent/.config is untrusted and was ignored; rerun "
-              "with --trust-project-config after reviewing it\n");
-    } else {
-      trusted = Confirm(
-          {.kind = "project.trust",
-           .prompt = "Trust this workspace's " + surfaces + "?",
-           .options = json::array({{{"value", "y"}, {"label", "Trust"}},
-                                   {{"value", "n"}, {"label", "Decline"}}})});
-      if (trusted && !TrustProjectConfig(error, &trusted_snapshot)) {
-        error = "cannot save project trust: " + error;
-        return false;
-      }
+      error =
+          "project .mcp.json is untrusted; rerun with "
+          "--trust-project-config after reviewing it";
+      exit_code = 2;
+      return false;
+    }
+    trusted = Confirm(
+        {.kind = "project.trust",
+         .prompt = "Trust this workspace's .mcp.json?",
+         .options = json::array({{{"value", "y"}, {"label", "Trust"}},
+                                 {{"value", "n"}, {"label", "Decline"}}})});
+    if (trusted && !TrustProjectConfig(error, &trusted_snapshot)) {
+      error = "cannot save project trust: " + error;
+      return false;
     }
   }
   if (mcp_present && trusted && trusted_snapshot.is_null()) {
@@ -249,8 +241,7 @@ std::vector<Tool> BuildTools(AppContext& context,
       (context.tool_policy.allowed & Capability(ToolCapability::kMutate))) {
     prepare = [app = &context](ConfigProposalScope scope,
                                const std::vector<ConfigChange>& changes) {
-      return PrepareConfigProposal(scope, changes, app->config_manager,
-                                   app->config_manager.ProjectTrusted());
+      return PrepareConfigProposal(scope, changes, app->config_manager);
     };
   }
   tools.push_back(UagentTool(
@@ -298,12 +289,22 @@ std::vector<Tool> BuildTools(AppContext& context,
         },
         std::move(image)));
   }
-#ifdef UAGENT_BROWSER  // the web host starts the browser and serves its viewer
-  if (!browser::DataDirectory().empty() && context.options.browser_session &&
-      !session_path.empty() && AgentDepth() == 0) {
+#ifdef UAGENT_BROWSER
+  // The web host runs the browser; any top-level session that reaches it may
+  // use it, one at a time. A one-shot run has no session file to be named by.
+  if (!browser::DataDirectory().empty() && AgentDepth() == 0 &&
+      browser::Request({{"op", "ping"}}, 3000).value("ok", false)) {
+    context.browser_lease =
+        session_path.empty() ? session::RandomToken(16) : HashHex(session_path);
     tools.push_back(BrowserTool(
-        HashHex(session_path),
-        [](const std::string& id, const std::string& prompt, bool* eof) {
+        context.browser_lease,
+        // A one-shot run has nobody to take the browser over.
+        [alone = !context.channel && !context.options.prompt.empty()](
+            const std::string& id, const std::string& prompt, bool* eof) {
+          if (alone) {
+            *eof = true;
+            return std::string();
+          }
           return ReadInteraction(
               {.id = id, .kind = "browser", .prompt = prompt}, eof);
         }));
@@ -311,8 +312,10 @@ std::vector<Tool> BuildTools(AppContext& context,
 #endif
   // The default lean child is an isolation and context-efficiency boundary:
   // do not clone the parent's entire MCP fleet into every delegation. A root
-  // lean session and an explicitly requested full child still get MCP.
-  if (AgentDepth() == 0 || toolset != "lean") {
+  // lean session and an explicitly requested full child still get MCP. A
+  // coordinator may call none of their tools, so it starts none of them.
+  if (!context.options.Coordinator() &&
+      (AgentDepth() == 0 || toolset != "lean")) {
     error = McpRegister(tools, runtime.mcp, runtime.config, trusted_snapshot);
     if (!error.empty()) return {};
   }
@@ -330,7 +333,9 @@ std::vector<Tool> BuildTools(AppContext& context,
                   "", Options{}, ignored);
   }));
   if (context.options.Coordinator()) {
-    AddCoordinatorTools(tools, CanonicalCwd());
+    AddCoordinatorTools(tools, CanonicalCwd(), [app = &context] {
+      return ChosenSelection(app->runtime.api, app->provider.providers);
+    });
   }
   if (toolset == "lean") {
     KeepLeanTools(tools);
@@ -407,8 +412,21 @@ Agent::Approver MakeApprover(AppContext* app) {
     bool session_rule = !mandatory && app->session_approvals.contains(key);
     bool repository_rule =
         !mandatory && !session_rule && RepositoryPermissionAllows(root, key);
-    bool automatic =
-        !mandatory && (ApprovalIsYolo() || session_rule || repository_rule);
+    // A coordinator's thread acts inside its folder without review while
+    // the sandbox holds it there: the commands the sandbox wraps (run and
+    // scratch, which may also write the sandbox's other roots: temporary
+    // files and tool caches), and file changes at a path its own check
+    // finds inside the workspace. Stopping a process is not one of them: a
+    // detached one may belong to another folder.
+    // Without an enforced sandbox, or for anything else, it is reviewed like
+    // any Auto session.
+    const bool confined_thread =
+        JsonValue(app->options.session, "kind", "") == kSessionKindThread &&
+        SandboxRuntime().mode == SandboxMode::kEnforced &&
+        (tool.name == "run" || tool.name == "scratch" ||
+         (tool.needs_approval && !tool.needs_approval(arguments)));
+    bool automatic = !mandatory && (ApprovalIsYolo() || session_rule ||
+                                    repository_rule || confined_thread);
     bool granted = true;
     // Who refused, for the model: a person is the default.
     std::string refusal = "user denied this action";
@@ -534,7 +552,6 @@ Agent::ToolRefresher MakeToolRefresher(AppContext* app) {
 // Two things a session must not discover only when a command fails: that the
 // sandbox it asked for is not running, and that a root it listed was dropped.
 void ReportSandbox() {
-  if (ApprovalIsYolo()) return;
   const SandboxStatus& status = SandboxRuntime();
   if (status.mode == SandboxMode::kDegraded) {
     Emit(Event{EventId::kCapabilityChanged,
@@ -673,9 +690,12 @@ BootstrapResult Bootstrap(Options options, const char* executable,
     return Failure(std::move(error), exit_code);
   }
 
-  ConfigManager config_manager =
-      ConfigManager::Capture(trusted, options.overrides);
+  // Only the flag vouches for a config file an earlier version left in the
+  // project; otherwise it is taken over only as it was approved.
+  ConfigManager config_manager = ConfigManager::Capture(
+      options.trust_project || TrustProjectConfig(), options.overrides);
   RuntimeConfig config = config_manager.Initialize();
+  PrintWarning(config_manager.Problem());
   // Route resolution reads UAGENT_MODEL; a coordinator starts on its own
   // model. A /model saved in its session still wins on resume.
   if (options.Coordinator() && !options.overrides.contains("UAGENT_MODEL")) {
@@ -686,16 +706,9 @@ BootstrapResult Bootstrap(Options options, const char* executable,
                                                    options.prompt, error)) {
     return Failure(std::move(error), 2);
   }
-  MaintainArtifacts();
-  // Keep the explicit CLI flag distinct from the configured default so a
-  // resumed conversation can restore its own override.
-  ApprovalMode configured_mode = ApprovalMode::kAsk;
-  if (!ParseApprovalMode(config.approval, configured_mode)) {
-    configured_mode = ApprovalMode::kAsk;
-  }
-  SetApprovalMode(ResolveApprovalMode(
-      options.yolo ? PermissionOverride::kYolo : PermissionOverride::kDefault,
-      configured_mode));
+  // Housekeeping over the whole artifact tree is a session's, not something
+  // each child it starts repeats.
+  if (AgentDepth() == 0) MaintainArtifacts();
   if (!options.debug) {
     options.debug_path = SettingText(Cfg("UAGENT_DEBUG_LOG"));
     options.debug = !options.debug_path.empty();
@@ -758,6 +771,23 @@ BootstrapResult Bootstrap(Options options, const char* executable,
                    "/models returned nothing usable");
   }
   ActivateRoute(api);
+  // A flag for a conversation's setting sets it for that conversation, and
+  // is kept with it: a run started with a model and a mode (a scheduled
+  // task's) still has them when its runtime starts again without the flag.
+  for (const ConfigDescriptor& setting : ConfigRegistry()) {
+    const auto flag =
+        context->options.overrides.find(std::string(setting.environment));
+    if ((setting.scopes & kScopeConversation) &&
+        flag != context->options.overrides.end()) {
+      context->config_manager.ChooseForConversation(flag->first, flag->second);
+    }
+  }
+  if (context->options.yolo) {
+    context->config_manager.ChooseForConversation("UAGENT_APPROVAL", "yolo");
+  }
+  // The mode in effect, resolved where it always is: scopes, then the role.
+  // Before the tools, whose servers are started with it.
+  PermissionControl(*context, json::object());
   context->tool_policy = ToolPolicyFromEnvironment();
   if (context->options.Coordinator()) {
     context->tool_policy.tool_allowlist.assign(std::begin(kCoordinatorTools),
@@ -768,9 +798,6 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   context->tools =
       BuildTools(*context, workspace, trusted_snapshot, skills, tool_error);
   if (!tool_error.empty()) return Failure(tool_error);
-  context->permission_override.store(context->options.yolo
-                                         ? PermissionOverride::kYolo
-                                         : PermissionOverride::kDefault);
   AppContext* app = context.get();
   context->agent = std::make_unique<Agent>(
       api, context->tools, context->runtime.processes,

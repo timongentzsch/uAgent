@@ -12,6 +12,7 @@
 
 #include "include/core/config_registry.h"
 #include "include/core/env.h"
+#include "include/core/runtime_config.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {

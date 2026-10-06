@@ -12,6 +12,7 @@ from integration_support import (
     function_names,
     run,
     run_pty,
+    saved_settings,
     tool_call,
     wait_until,
     write_json_response,
@@ -29,28 +30,30 @@ def age(path, seconds=IDLE_SECONDS):
 
 
 def test_project_agent_config_trust(root, home, *, binary):
+    """A config file an earlier version left in a project is taken over into
+    the saved settings once the folder is vouched for, and ignored until."""
     workspace = root / "config-workspace"
     (workspace / ".uagent").mkdir(parents=True)
     (home / ".uagent").mkdir(exist_ok=True)
     (home / ".uagent" / ".config").write_text("UAGENT_MODEL=global/model\n", encoding="utf-8")
-    (workspace / ".uagent" / ".config").write_text("UAGENT_MODEL=project/model\n", encoding="utf-8")
-    server = Server([event({"content": "ok"}), event({"content": "ok"})])
-    try:
+    old = workspace / ".uagent" / ".config"
+    old.write_text("UAGENT_MODEL=project/model\n", encoding="utf-8")
+    with Server([event({"content": "ok"})] * 3) as server:
         env = base_env(home, server.url)
         env.pop("UAGENT_MODEL")
-        # Untrusted the workspace file is ignored, but the run still works off
-        # the global config instead of failing.
         ignored = run(workspace, env, "-p", "reply", binary=binary)
         assert_true(ignored.returncode == 0, ignored.stderr)
-        assert_true("untrusted" in ignored.stderr, ignored.stderr)
         assert_true(server.requests[0][1]["model"] == "global/model", server.requests[0][1])
+        assert_true(old.exists() and not saved_settings(home, workspace), "taken over untrusted")
         trusted = run(workspace, env, "--trust-project-config", "-p", "reply", binary=binary)
         assert_true(trusted.returncode == 0, trusted.stderr)
         assert_true(server.requests[1][1]["model"] == "project/model", server.requests[1][1])
-    finally:
-        server.close()
-        # HOME is shared by every test; leave it as it was found.
-        (home / ".uagent" / ".config").unlink(missing_ok=True)
+        # It is the project's saved setting from then on, with or without
+        # the flag, and the file is kept aside.
+        again = run(workspace, env, "-p", "reply", binary=binary)
+        assert_true(again.returncode == 0, again.stderr)
+        assert_true(server.requests[2][1]["model"] == "project/model", server.requests[2][1])
+        assert_true(not old.exists() and old.with_name(".config.imported").exists(), "not archived")
 
 
 def test_memory_reaches_context_by_scope(root, home, *, binary):
@@ -382,10 +385,10 @@ def test_memory_background_extractor_releases_failed_claims(root, _home, *, bina
                     )
                 return server.requests
 
-            # Shutdown gives a background group 500ms to run its EXIT trap
-            # before SIGKILL (BgShutdownAll in jobs.cc), and a shell defers
-            # that trap until its foreground child is reaped -- so a child too
-            # slow to unwind loses the race and the claim outlives it. That is
+            # Shutdown gives a background group 500ms before SIGKILL
+            # (BgShutdownAll in jobs.cc), and the extractor releases its claim
+            # as it exits -- so a child too slow to unwind loses the race and
+            # the claim outlives it. That is
             # a liveness cost the stale-claim sweep reclaims after 15 minutes,
             # not a correctness one, and it is reproducible under TSan.
             #
@@ -401,7 +404,7 @@ def test_memory_background_extractor_releases_failed_claims(root, _home, *, bina
             for marker in markers(case_home):
                 state = marker.read_text(encoding="utf-8").strip()
                 assert_true(state == "processing", f"killed extractor claimed {state!r}")
-            # On a plain build the trap always wins, so a survivor there is a
+            # On a plain build the child always wins, so a survivor there is a
             # real regression rather than the documented race.
             assert_true(released or TIMEOUT_SCALE > 1, "claim survived shutdown")
             return server.requests

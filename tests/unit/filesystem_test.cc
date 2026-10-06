@@ -10,9 +10,11 @@
 #include "include/agent/path_policy.h"
 #include "include/app/options.h"
 #include "include/core/config.h"
+#include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/lease.h"
 #include "include/core/limits.h"
+#include "include/core/settings_store.h"
 #include "include/core/signals.h"
 #include "include/core/term.h"
 #include "include/tools/files.h"
@@ -421,26 +423,21 @@ void TestFileTools() {
                    CanonicalAccessPath(".")));
 
   // Mandatory approval follows the same canonical spelling as workspace
-  // access checks, so a symlink cannot disguise the configured file and a
-  // configured symlink cannot disguise its target.
-  fs::path custom_config = root / "custom-config";
-  fs::path custom_config_alias = root / "custom-config-alias";
-  CHECK(ToolWriteFile(custom_config.string(), "MODEL=test\n").Ok());
-  fs::create_symlink(custom_config, custom_config_alias);
-  {
-    ScopedEnv configured("UAGENT_CONFIG_FILE", custom_config.string());
-    CHECK(SelfConfigurationPath(custom_config_alias.string()));
-    CHECK(PathApprovalClass(custom_config_alias.string(), PathAccess::kWrite) ==
-          ApprovalClass::kMandatoryHuman);
-    // The config file holds provider keys, so reading it is the harm too.
-    CHECK(PathApprovalClass(custom_config_alias.string(), PathAccess::kRead) ==
-          ApprovalClass::kMandatoryHuman);
-  }
-
+  // access checks, so a symlink cannot disguise the saved settings.
   // The trust store holds path hashes and no secret: reading it tells the
   // agent which projects it already trusts, writing it decides that question.
   {
     ScopedEnv scoped_home("HOME", root.string());
+    // The saved settings hold provider keys, so reading them is the harm
+    // too; their lock decides who may save.
+    fs::path settings_alias = root / "settings-alias";
+    CHECK(ToolWriteFile(SettingsPath(), "{}\n").Ok());
+    fs::create_symlink(SettingsPath(), settings_alias);
+    for (PathAccess access : {PathAccess::kRead, PathAccess::kWrite}) {
+      CHECK(PathApprovalClass(settings_alias.string(), access) ==
+            ApprovalClass::kMandatoryHuman);
+    }
+    CHECK(SelfConfigurationPath(SettingsPath() + ".lock"));
     CHECK(ToolWriteFile(TrustStorePath(), "{}\n").Ok());
     CHECK(SelfConfigurationPath(TrustStorePath()));
     CHECK(PathApprovalClass(TrustStorePath(), PathAccess::kRead) ==
@@ -469,10 +466,6 @@ void TestFileTools() {
     CHECK(SelfConfigurationPath(rules));
     CHECK(PathApprovalClass(rules, PathAccess::kWrite) ==
           ApprovalClass::kMandatoryHuman);
-  }
-  {
-    ScopedEnv configured("UAGENT_CONFIG_FILE", custom_config_alias.string());
-    CHECK(SelfConfigurationPath(custom_config.string()));
   }
 
   // The browser profile is refused outright, not escalated to approval: by

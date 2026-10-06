@@ -548,7 +548,7 @@ export default function Composer({
           />
           <SheetButton
             label="Permissions"
-            title={`${effectiveLabel}${permission?.mode === "default" ? " · using default permissions" : " · conversation override"}`}
+            title={`${effectiveLabel}${permission?.mode === "default" ? " · the default" : " · chosen for this conversation"}`}
             // YOLO runs everything unasked: it says so loudly.
             className={`permission-control${effective === "yolo" ? " yolo" : ""}`}
             disabled={!online}
@@ -562,7 +562,10 @@ export default function Composer({
             }
           >
             {(close) => (
-              <Field label="Conversation permissions">
+              <Field
+                label="This conversation's permissions"
+                help="The default is the approval mode in Settings, unless a project or the environment sets another."
+              >
                 <Select
                   aria-label="Permissions"
                   value={permission?.mode || "default"}
@@ -575,11 +578,22 @@ export default function Composer({
                   }
                 >
                   <option value="default">
-                    Default · {permissionLabel(permission?.default)}
+                    Default ({permissionLabel(permission?.default)})
                   </option>
-                  {Object.entries(permissionLabels).map(([value, label]) => (
-                    <option value={value}>{label}</option>
-                  ))}
+                  {Object.entries(permissionLabels)
+                    // A thread is held to its limit: nothing above it is
+                    // offered.
+                    .filter(
+                      (_, index, modes) =>
+                        !permission?.limit ||
+                        index <=
+                          modes.findIndex(
+                            ([value]) => value === permission.limit,
+                          ),
+                    )
+                    .map(([value, label]) => (
+                      <option value={value}>{label}</option>
+                    ))}
                 </Select>
               </Field>
             )}

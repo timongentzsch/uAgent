@@ -13,6 +13,7 @@
 #include "include/agent.h"
 #include "include/core/env.h"
 #include "include/core/limits.h"
+#include "include/core/runtime_config.h"
 #include "include/core/usage.h"
 
 namespace uagent {
@@ -223,7 +224,7 @@ inline constexpr FaultRule kFaultRules[] = {
 // A rule's text with its strike and subject filled in.
 inline std::string FaultText(std::string text, int64_t strike,
                              const std::string& about) {
-  for (auto [slot, value] :
+  for (const auto& [slot, value] :
        {std::pair<const char*, std::string>{"{n}", std::to_string(strike)},
         {"{x}", about}}) {
     if (size_t at = text.find(slot); at != std::string::npos) {

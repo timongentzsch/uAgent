@@ -11,8 +11,6 @@
 #include <string_view>
 #include <vector>
 
-#include "include/core/config.h"
-#include "include/core/effective_config.h"
 #include "include/core/json.h"
 
 namespace uagent {
@@ -21,6 +19,7 @@ class Agent;
 class Api;
 class ConfigManager;
 struct RuntimeConfig;
+struct EffectiveConfigSnapshot;
 struct Tool;
 
 enum class SelfTopic {
@@ -53,11 +52,11 @@ json DescribeSelf(SelfTopic topic, const std::string& name,
 // The configuration schema alone, used by the build-time reference generator.
 json ConfigSchemaJson();
 // One entry of facts per setting (one setting when `name` is set): its
-// descriptor, `set` (the user file's own value), `effective` (the configured
-// value that applies), `source`, `locked`. A secret reports only that it is
-// set.
+// descriptor, `scopes` (where it may be saved), `set` (what each scope
+// holds, by scope), `effective` (the value that applies), `source` (the
+// scope it comes from), `locked`. A secret reports only that it is set.
 json ConfigSettingsJson(const EffectiveConfigSnapshot& configured,
-                        const EnvValues& user, std::string_view name);
+                        std::string_view name);
 json CliSchemaJson();
 // Every listed command; `terminal` marks those the web does not offer.
 const json& CommandSchemaJson();

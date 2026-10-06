@@ -13,10 +13,13 @@
 #include "include/agent/session_view.h"
 #include "include/app/control.h"
 #include "include/app/self_description.h"
+#include "include/core/config_registry.h"
+#include "include/core/env.h"
 #include "include/core/events.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/limits.h"
+#include "include/core/runtime_config.h"
 #include "include/core/steering.h"
 #include "include/core/strings.h"
 #include "include/core/style.h"
@@ -53,9 +56,31 @@ void CommandReply::Note(Tone tone, std::string_view text) {
 
 void LoadSessionJournal(AppSession& session, const std::string& previous_path) {
   const json settings = session.ActiveAgent().SessionSettings();
-  const std::string route = JsonValue(settings, "route", "");
-  if (!route.empty() &&
-      !session.context.options.overrides.contains("UAGENT_MODEL")) {
+  // What the conversation chose for itself. A flag given for this run
+  // (--model, --yolo) was chosen later and stays.
+  json chosen = JsonValue(settings, "chosen", json(nullptr));
+  if (!chosen.is_object()) {
+    // Saved before choices were kept as settings.
+    chosen = json::object();
+    const std::string mode = JsonValue(settings, "permissions", "");
+    if (!mode.empty() && mode != "default") chosen["UAGENT_APPROVAL"] = mode;
+    const std::string route = JsonValue(settings, "route", "");
+    if (!route.empty()) chosen["UAGENT_MODEL"] = route;
+  }
+  ConfigManager& manager = session.context.config_manager;
+  const RuntimeConfig::Values flagged = manager.Conversation();
+  for (const auto& [key, value] : chosen.items()) {
+    // Only what a conversation may choose, spelled as the setting allows:
+    // the file is the session's, and is not taken on trust.
+    const ConfigDescriptor* setting = FindConfigDescriptor(key);
+    if (value.is_string() && !flagged.contains(key) && setting &&
+        (setting->scopes & kScopeConversation) &&
+        setting->Accepts(value.get<std::string>())) {
+      manager.ChooseForConversation(key, value.get<std::string>());
+    }
+  }
+  const std::string route = JsonValue(chosen, "UAGENT_MODEL", "");
+  if (!route.empty() && !flagged.contains("UAGENT_MODEL")) {
     if (SelectModel(session.ApiClient(), session.context.provider.routes,
                     session.context.provider.providers, route)
             .empty()) {
@@ -66,13 +91,7 @@ void LoadSessionJournal(AppSession& session, const std::string& previous_path) {
       session.ActiveAgent().RouteChanged();
     }
   }
-  if (!session.context.options.yolo) {
-    PermissionOverride saved = PermissionOverride::kDefault;
-    const std::string mode = JsonValue(settings, "permissions", "");
-    if (!mode.empty()) ParsePermissionOverride(mode, saved);
-    session.context.permission_override.store(saved);
-    PermissionControl(session.context, json::object());
-  }
+  PermissionControl(session.context, json::object());
   const json saved_tools = JsonValue(settings, "tools", json::object());
   if (!saved_tools.empty()) {
     session.ActiveAgent().RestoreToolSelection(saved_tools);
@@ -102,7 +121,7 @@ CommandReply RunSlashCommand(AppSession& session,
     case SlashCommandId::kRestart:
     case SlashCommandId::kSessions:
     case SlashCommandId::kFork:
-    case SlashCommandId::kVerbose:
+    case SlashCommandId::kVerbosity:
     case SlashCommandId::kBtw:
     case SlashCommandId::kCoord:
     case SlashCommandId::kBoard:

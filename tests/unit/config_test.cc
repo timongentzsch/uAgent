@@ -128,13 +128,18 @@ void TestProjectInstructionDiscovery() {
   CHECK(loaded.memory_index.find("global/lesson: remembered-evidence") !=
         std::string::npos);
 
-  // ...but it is used when the directory has no AGENTS file
+  // ...but it is used when the directory has no AGENTS file and Claude is
+  // one of the agents read from.
   fs::path only_claude = repo / "claude-only";
   fs::create_directories(only_claude);
   CHECK(ToolWriteFile((only_claude / "CLAUDE.md").string(), "claude-fallback")
             .output.starts_with("wrote "));
   CHECK(LoadProjectInstructions(only_claude, size_t{32} * 1024)
+            .text.find("claude-fallback") == std::string::npos);
+  setenv("UAGENT_OTHER_AGENTS", "claude", 1);
+  CHECK(LoadProjectInstructions(only_claude, size_t{32} * 1024)
             .text.find("claude-fallback") != std::string::npos);
+  unsetenv("UAGENT_OTHER_AGENTS");
 
   ProjectInstructions shadowed =
       LoadProjectInstructions(empty, size_t{32} * 1024);

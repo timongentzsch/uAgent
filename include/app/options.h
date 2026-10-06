@@ -3,6 +3,7 @@
 #ifndef UAGENT_INCLUDE_APP_OPTIONS_H_
 #define UAGENT_INCLUDE_APP_OPTIONS_H_
 
+#include <map>
 #include <span>
 #include <string>
 #include <string_view>
@@ -23,7 +24,6 @@ enum class OptionsAction {
 
 struct Options {
   bool web = false;
-  bool browser_session = false;  // internal launch context from web host
   bool show_system_prompt = false;
   bool yolo = false;
   bool trust_project = false;
@@ -45,7 +45,8 @@ struct Options {
   }
   // UAGENT_* values named on the command line; they outrank the environment
   // and both config files. --budget and --no-memory land here too.
-  RuntimeConfig::Values overrides;
+  // Setting names to values, as RuntimeConfig::Values spells it.
+  std::map<std::string, std::string> overrides;
 };
 
 // One table drives parsing, `--help` and the generated CLI reference, so a flag

@@ -7,6 +7,7 @@
 #include "include/agent/process.h"
 #include "include/api.h"
 #include "include/core/env.h"
+#include "include/core/runtime_config.h"
 #include "include/core/usage.h"
 #include "include/mcp/server.h"
 

@@ -34,6 +34,18 @@ inline constexpr int kSocketBacklog = 16;
 inline constexpr auto kConnectTimeout = std::chrono::seconds(2);
 inline constexpr auto kConnectPollInterval = std::chrono::milliseconds(100);
 inline constexpr auto kWorkerShutdownTimeout = std::chrono::seconds(5);
+// How long a runtime that is still alive may take to answer its first
+// connection. One that ends sooner is not waited for at all.
+inline constexpr auto kRuntimeStartTimeout = std::chrono::seconds(30);
+
+// Why a runtime ended before it could be reached, as its exit status, so the
+// one who started it can say so instead of waiting.
+enum WorkerExit : int {
+  kWorkerBadLaunch = 64,
+  // Another runtime holds the session: one still leaving, or one arriving.
+  kWorkerOwned = 65,
+  kWorkerNoWorkspace = 66,
+};
 // A session's socket, by its id (the hash of its file's path).
 inline std::string SocketPathForId(const std::string& id) {
   return RuntimeDir() + "/" + id + ".sock";

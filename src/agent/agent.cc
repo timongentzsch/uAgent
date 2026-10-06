@@ -313,6 +313,14 @@ void Agent::SessionSettings(const json& settings) {
 }
 json Agent::ToolCatalogue() const { return tool_selection_.Catalogue(tools_); }
 
+std::vector<std::string> Agent::EnabledTools() const {
+  std::vector<std::string> names;
+  for (const Tool& tool : tools_) {
+    if (tool_selection_.Enabled(tool)) names.push_back(tool.name);
+  }
+  return names;
+}
+
 json Agent::ConfigureTools(const json& request) {
   const json before = tool_selection_.Save();
   std::string error;

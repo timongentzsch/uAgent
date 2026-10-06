@@ -42,7 +42,55 @@ enum class Sensitivity { kPublic, kSecret, kCompositeSecret };
 enum ConfigScope : unsigned {
   kScopeUser = 1u << 0,
   kScopeProject = 1u << 1,
+  // One conversation's own choice, kept with it.
+  kScopeConversation = 1u << 2,
 };
+
+// Every scope a value can come from, lowest first, by the name a snapshot's
+// sources use and the name people read. A flag or the environment decides
+// for one process; the three persisted scopes are where a value is saved.
+struct ConfigScopeName {
+  std::string_view source;
+  std::string_view label;
+  unsigned persisted;  // its ConfigScope bit, or 0
+};
+inline constexpr ConfigScopeName kConfigScopes[] = {
+    {"user", "All conversations", kScopeUser},
+    {"project", "This project", kScopeProject},
+    {"environment", "Environment", 0},
+    {"cli", "Command line", 0},
+    {"conversation", "This conversation", kScopeConversation},
+};
+// The groups settings are listed in, in the order and under the names people
+// read: the settings screen and the generated reference both follow it.
+struct ConfigCategory {
+  std::string_view id;
+  std::string_view label;
+};
+inline constexpr ConfigCategory kConfigCategories[] = {
+    {"route", "Models and connection"},
+    {"behaviour", "Behaviour"},
+    {"budget", "Limits"},
+    {"request", "Requests"},
+    {"tools", "Tools"},
+    {"delegation", "Subagents"},
+    {"coordination", "Coordinator"},
+    {"search", "Web search"},
+    {"memory", "Memory"},
+    {"skills", "Skills"},
+    {"mcp", "MCP"},
+    {"media", "Media"},
+    {"retention", "History"},
+    {"web", "Web host"},
+};
+
+// The name people read for a source; anything else is the default.
+constexpr std::string_view ConfigScopeLabel(std::string_view source) {
+  for (const ConfigScopeName& scope : kConfigScopes) {
+    if (scope.source == source) return scope.label;
+  }
+  return "Default";
+}
 
 using ConfigDefault = std::variant<int64_t, double, bool, std::string_view>;
 
@@ -86,10 +134,14 @@ struct ConfigDescriptor {
 
 inline constexpr std::string_view kOpenRouterVariants[] = {"nitro", "floor",
                                                            "exacto"};
+inline constexpr std::string_view kReasoningEfforts[] = {
+    "none", "minimal", "low", "medium", "high", "xhigh", "max"};
 inline constexpr std::string_view kWebSearchBackends[] = {"auto", "openrouter",
                                                           "off"};
 inline constexpr std::string_view kApprovalModes[] = {"ask", "auto", "yolo"};
 inline constexpr std::string_view kThreadEnvironments[] = {"worktree", "local"};
+inline constexpr std::string_view kVerbosityLevels[] = {"minimal", "default",
+                                                        "full"};
 
 // Default model route when nothing is configured: DeepSeek flash through
 // OpenRouter auto-routing. One constant so the provider template and side-model
@@ -181,6 +233,12 @@ consteval ConfigDescriptor Named(ConfigDescriptor descriptor,
   return descriptor;
 }
 
+// One conversation may choose its own value, kept with it.
+consteval ConfigDescriptor PerConversation(ConfigDescriptor descriptor) {
+  descriptor.scopes |= kScopeConversation;
+  return descriptor;
+}
+
 // Only a terminal process or a flag uses it; the web does not list it.
 consteval ConfigDescriptor Terminal(ConfigDescriptor descriptor) {
   descriptor.terminal = true;
@@ -249,21 +307,24 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                       "OpenRouter credential used when no base URL is set"),
         "OpenRouter key",
         "Credential for OpenRouter, used when no API address is set"),
-    registry::Named(
+    registry::PerConversation(registry::Named(
         registry::Fallback(
             registry::Str(
                 "UAGENT_MODEL", {}, "", ReloadPolicy::kRestartRequired,
                 Sensitivity::kPublic, "route",
                 "model or named route as [provider/]model[:variant][:effort]"),
-            "last /model choice, else the provider default"),
+            "the provider default"),
         "Conversation model",
-        "Answers your messages; /model switches it for one conversation"),
+        "Answers your messages; /model chooses it for one conversation")),
     registry::Named(
         registry::Fallback(
-            registry::Str("UAGENT_REASONING_EFFORT", {}, "",
-                          ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
-                          "route",
-                          "none, minimal, low, medium, high, xhigh, or max"),
+            registry::Choice(
+                registry::Str(
+                    "UAGENT_REASONING_EFFORT",
+                    {}, "", ReloadPolicy::kRestartRequired,
+                    Sensitivity::kPublic,
+                    "route", "none, minimal, low, medium, high, xhigh, or max"),
+                kReasoningEfforts),
             "provider default"),
         "Reasoning effort",
         "How long the conversation model thinks before answering"),
@@ -499,6 +560,14 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                       ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
                       "skills", "comma-separated skill names to withhold"),
         "Disabled skills"),
+    registry::Named(
+        registry::Str("UAGENT_OTHER_AGENTS", {}, "",
+                      ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
+                      "skills",
+                      "also read what these agents keep (skills, memories, "
+                      "CLAUDE.md): claude, codex, comma-separated; empty "
+                      "reads none"),
+        "Other agents"),
 
     // MCP.
     registry::Named(registry::Int("UAGENT_MCP_TIMEOUT", "mcp_timeout_s", 60, 1,
@@ -548,14 +617,14 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
             "behaviour",
             "expose adapt_system so the model may revise its directive"),
         "Self-directive tool"),
-    registry::Named(
+    registry::PerConversation(registry::Named(
         registry::Choice(
             registry::Str("UAGENT_APPROVAL", "approval", "ask",
                           ReloadPolicy::kNextUserTurn, Sensitivity::kPublic,
                           "behaviour",
                           "ask, auto reviewer, or yolo for ordinary mutations"),
             kApprovalModes),
-        "Approval mode"),
+        "Approval mode")),
     registry::Named(
         registry::Str("UAGENT_PERMISSION_MODEL", "permission_model",
                       "~typesafe/jev-latest", ReloadPolicy::kNextUserTurn,
@@ -589,13 +658,8 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
     registry::Terminal(registry::Named(
         registry::Bul("UAGENT_TRUST_PROJECT_CONFIG", {}, false,
                       ReloadPolicy::kRestartRequired, "behaviour",
-                      "trust this workspace's .mcp.json and config"),
+                      "trust this workspace's .mcp.json"),
         "Trust project config")),
-    registry::Terminal(registry::Named(
-        registry::Str("UAGENT_CONFIG_FILE", {}, "",
-                      ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
-                      "behaviour", "replace both config-file locations"),
-        "Config file")),
     registry::Terminal(registry::Named(
         registry::Str("UAGENT_DEBUG_LOG", {}, "",
                       ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
@@ -618,6 +682,15 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                       ReloadPolicy::kRestartRequired, "behaviour",
                       "show a still status instead of the terminal spinner"),
         "Reduced motion")),
+    registry::Named(
+        registry::Choice(
+            registry::Str("UAGENT_VERBOSITY", {}, "default",
+                          ReloadPolicy::kNextUserTurn, Sensitivity::kPublic,
+                          "behaviour",
+                          "how much of the agent's work is shown: minimal, "
+                          "default or full; display only"),
+            kVerbosityLevels),
+        "Detail shown"),
     registry::Named(
         registry::Str("UAGENT_MEMORY_REDACT_KEYWORDS", {}, "",
                       ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
@@ -647,13 +720,22 @@ consteval const ConfigDescriptor& Cfg(std::string_view environment) {
 }
 
 // A session's settings, apart from environ, which is never rewritten after
-// startup. Lookup order: override, published configuration, environ.
+// startup. Lookup order: override, published configuration, the route in
+// use, environ.
 using SettingValues = std::map<std::string, std::string>;
 void PublishSettings(SettingValues values);
+// The route in use, below what is configured: what a command started from
+// here is told where the configuration names nothing. It is no part of this
+// process's environment, which the runtimes it starts inherit as it was.
+void PublishRoute(SettingValues values);
 void OverrideSetting(std::string_view environment, std::string value);
 void ClearSettings();
 SettingValues CurrentSettings();
 std::string SettingText(const ConfigDescriptor& descriptor);
+// The same by name, for the few names that are no registered setting (a
+// provider's own variables). What is saved is not in the environment: it is
+// read here.
+std::string SettingText(const std::string& name);
 
 int64_t LongSetting(const ConfigDescriptor& descriptor);
 bool BoolSetting(const ConfigDescriptor& descriptor);

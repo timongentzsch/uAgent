@@ -129,13 +129,17 @@ void TestSkillDiscovery() {
   // omits it, so a skill can never claim another skill's name.
   if (lint) CHECK(lint->description == "how this repo lints");
 
-  // Skills installed for another agent are already on the machine and use the
-  // same format, so they are found too; ours wins a name collision.
+  // Skills installed for another agent were written for its tools: they are
+  // found when its name is listed, and ours wins a name collision.
   write_skill(home / ".claude/skills/vendor-only",
               "---\ndescription: from claude code\n"
               "requires-tools: vendor-tool\n---\n\nVendor body.\n");
   write_skill(home / ".codex/skills/release",
               "---\ndescription: codex's release steps\n---\n\nCodex body.\n");
+  CHECK(LoadSkills(workspace).size() == 2);
+  setenv("UAGENT_OTHER_AGENTS", "codex", 1);
+  CHECK(LoadSkills(workspace).size() == 2);
+  setenv("UAGENT_OTHER_AGENTS", "claude, codex", 1);
   skills = LoadSkills(workspace);
   CHECK(skills.size() == 3);
   for (const Skill& s : skills) {
@@ -272,6 +276,7 @@ void TestSkillDiscovery() {
               "requires-tools: vendor-tool\n---\n\nUnusable body.\n");
   CHECK(!frozen.run({{"name", "needs-vendor"}}, {}).Ok());
   unsetenv("UAGENT_SKILL_PATH");
+  unsetenv("UAGENT_OTHER_AGENTS");
 
   Tool crowded = SkillTool(catalogue_skills, {});
   CHECK(crowded.description.size() <= 8000);

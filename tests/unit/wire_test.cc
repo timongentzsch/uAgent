@@ -10,6 +10,7 @@
 #include "include/api.h"
 #include "include/api/stream.h"
 #include "include/core/config.h"
+#include "include/core/runtime_config.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {

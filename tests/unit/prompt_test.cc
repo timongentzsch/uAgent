@@ -10,6 +10,7 @@
 
 #include "include/agent.h"
 #include "include/core/project.h"
+#include "include/core/runtime_config.h"
 #include "include/tools/adapt_system.h"
 #include "tests/unit/test_support.h"
 
@@ -148,8 +149,11 @@ void TestInstructionFiles() {
     std::ofstream(cwd / "CLAUDE.md") << "Legacy.";
   }
   fs::remove(cwd / "AGENTS.md");
+  CHECK(InstructionPath(false, true, cwd).filename() == "AGENTS.md");
+  setenv("UAGENT_OTHER_AGENTS", "claude", 1);
   CHECK(InstructionPath(false, true, cwd).filename() == "CLAUDE.md");
   CHECK(InstructionFiles(cwd)["files"][1]["text"] == "Legacy.");
+  unsetenv("UAGENT_OTHER_AGENTS");
   fs::remove(cwd / "CLAUDE.md");
   fs::create_symlink(cwd / "elsewhere", cwd / "AGENTS.md");
   CHECK(WriteInstructionFile(false, true, cwd, "x").find("symbolic link") !=

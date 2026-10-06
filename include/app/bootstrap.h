@@ -20,6 +20,7 @@
 #include "include/core/events.h"
 #include "include/core/fd.h"
 #include "include/core/json.h"
+#include "include/core/runtime_config.h"
 #include "include/core/usage.h"
 #include "include/media/attachments.h"
 #include "include/providers.h"
@@ -93,11 +94,12 @@ struct AppContext {
   ProviderSetup provider;
   ToolPolicy tool_policy;
   std::vector<Tool> tools;
+  // The name this session holds the shared browser under, when it has the
+  // browser tool: what a finished turn gives the browser back by.
+  std::string browser_lease;
   // What "don't ask again" granted, bound to the tool's current provider,
   // schema and approval policy. Session-scoped by construction: it dies here.
   std::unordered_set<std::string> session_approvals;
-  std::atomic<PermissionOverride> permission_override{
-      PermissionOverride::kDefault};
   std::unique_ptr<Agent> agent;
   HeadlessOutput output;
 };

@@ -1,30 +1,30 @@
+import { plural } from "../../../shared/quantities.ts";
 import { Group, Row, ValueSelect } from "../../../shared/ui.tsx";
 import { ZoomSlider } from "../../../shared/zoom-slider.tsx";
 import { defaultTimePrefs, type TimePrefs } from "../../../shared/time.ts";
+import { devicePrefs } from "../../../shared/device-prefs.ts";
 import { useSettings, type SettingsProps } from "../context.ts";
 
-// This device's display settings and their defaults, stored in the browser.
-const DEFAULTS = { theme: "system", motion: "system", zoom: 100 } as const;
+// This browser's display settings at their defaults.
+const DEFAULTS = {
+  theme: devicePrefs.theme.fallback,
+  motion: devicePrefs.motion.fallback,
+  zoom: devicePrefs.zoom.fallback,
+};
 const TIMESTAMPS: Record<TimePrefs["style"], string> = {
   smart: "Time today, the date when older.",
   relative: "How long ago, e.g. 5 min ago.",
   absolute: "The full date and time.",
 };
 
-// How many differ from their defaults, and putting them all back: Advanced's
-// "Reset all" counts and resets them with the host's settings.
-export const displayChanged = ({
-  theme,
-  motion,
-  zoom,
-  timePrefs,
-}: SettingsProps) =>
+// How many differ from their defaults, and putting them all back.
+const displayChanged = ({ theme, motion, zoom, timePrefs }: SettingsProps) =>
   Number(theme !== DEFAULTS.theme) +
   Number(motion !== DEFAULTS.motion) +
   Number(zoom !== DEFAULTS.zoom) +
   Number(timePrefs.clock !== defaultTimePrefs.clock) +
   Number(timePrefs.style !== defaultTimePrefs.style);
-export function resetDisplay({
+function resetDisplay({
   setTheme,
   setMotion,
   setZoom,
@@ -37,6 +37,8 @@ export function resetDisplay({
 }
 
 export function DisplayPane() {
+  const settings = useSettings();
+  const changed = displayChanged(settings);
   const {
     theme,
     setTheme,
@@ -46,7 +48,7 @@ export function DisplayPane() {
     setTimePrefs,
     zoom,
     setZoom,
-  } = useSettings();
+  } = settings;
   // One row per choice: its name, its options, and where it is kept.
   const choice = (
     label: string,
@@ -70,7 +72,7 @@ export function DisplayPane() {
     </Row>
   );
   return (
-    <Group title="Display" footer="Saved on this device.">
+    <Group>
       {choice(
         "Appearance",
         theme,
@@ -123,6 +125,17 @@ export function DisplayPane() {
           reset={() => setZoom(DEFAULTS.zoom)}
         />
       </Row>
+      <Row
+        label="Reset display"
+        detail={
+          changed
+            ? plural(changed, "changed setting")
+            : "Everything is at its default"
+        }
+        destructive
+        disabled={!changed}
+        onClick={() => resetDisplay(settings)}
+      />
     </Group>
   );
 }

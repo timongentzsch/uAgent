@@ -40,8 +40,10 @@
 #include "include/core/lease.h"
 #include "include/core/limits.h"
 #include "include/core/platform.h"
+#include "include/core/settings_store.h"
 #include "include/core/signals.h"
 #include "include/core/time.h"
+#include "include/core/verbosity.h"
 #include "include/tools/files.h"
 #include "include/web/assets.h"
 #include "include/web/browser_viewer.h"
@@ -257,6 +259,12 @@ class Master {
                              {"cursor", std::move(catalogue["cursor"])},
                              {"sessions", std::move(catalogue["sessions"])},
                              {"commands", CommandSchemaJson()},
+                             {"verbosity",
+                              [] {
+                                json table = DetailPoliciesJson();
+                                table["level"] = ConfiguredVerbosity();
+                                return table;
+                              }()},
                              {"capabilities", push_->Capabilities(device)},
                              {"devices", PublicDevices()},
                              {"scheduled", std::move(catalogue["scheduled"])},
@@ -371,9 +379,22 @@ class Master {
                 [this](const Request& request, Response& response) {
                   AssetRead(request, response);
                 });
-    server_.Get(R"(/.*)", [](const Request& request, Response& response) {
+    // Browser tests serve the bundle they just built, so a web edit needs no
+    // rebuild of this binary: that folder alone answers, never a mix of it
+    // and the embedded bundle. Never set outside a test run.
+    const char* dist = getenv("UAGENT_INTERNAL_WEB_DIST");
+    if (dist) {
+      server_.set_file_extension_and_mimetype_mapping(
+          "webmanifest", "application/manifest+json");
+      if (!server_.set_mount_point("/", dist)) {
+        error = std::string("cannot serve the web bundle in ") + dist;
+        return false;
+      }
+    }
+    server_.Get(R"(/.*)", [dist](const Request& request, Response& response) {
       std::string path = request.path == "/" ? "/index.html" : request.path;
       for (const Asset& asset : Assets()) {
+        if (dist) break;
         if (asset.path != path) {
           continue;
         }
@@ -423,6 +444,8 @@ class Master {
     std::thread stopping([&] {
       for (;;) {
         std::vector<std::string> paths = host_.PresencePaths();
+        // Whoever saves a setting (here, a terminal) reaches every browser.
+        paths.push_back(SettingsPath());
         // Wakes for a catalogue scan the throttle deferred.
         auto deadline = Clock::now() + std::chrono::hours(24);
         if (auto rescan = host_.RescanDue()) {
@@ -434,6 +457,7 @@ class Master {
           if (reexec_) std::this_thread::sleep_for(kRestartReply);
           break;
         }
+        PublishSettings();
         // Sessions a coordinator creates or deletes reach every client.
         host_.RefreshCatalogue();
         bool observed;
@@ -503,6 +527,26 @@ class Master {
       return &local_;
     }
     return nullptr;
+  }
+  // The configured level, by a name the policy table knows.
+  static std::string ConfiguredVerbosity() {
+    const auto values = ConfigManager::Capture(false, {}, "").Read().values;
+    const auto found = values.find(std::string(kVerbositySetting));
+    return std::string(
+        DetailFor(found == values.end() ? "" : found->second).level);
+  }
+  // Tells every browser that what is saved is no longer what they read, and
+  // the level with it: display state they all share.
+  void PublishSettings() {
+    const FileStamp saved = SnapshotFile(SettingsPath());
+    {
+      std::lock_guard lock(settings_mutex_);
+      if (saved == settings_) return;
+      settings_ = saved;
+    }
+    host_.Publish(
+        "", "",
+        {{"kind", "settings.changed"}, {"level", ConfiguredVerbosity()}});
   }
   std::string Pair() {
     pair_ = RandomToken(12);
@@ -640,6 +684,8 @@ class Master {
   int auth_attempts_ = 0;
   httplib::Server server_;
   std::mutex mutex_;
+  std::mutex settings_mutex_;
+  FileStamp settings_ = SnapshotFile(SettingsPath());
   Pipe host_wake_;
   std::vector<Device> devices_;
   size_t sse_count_ = 0;
@@ -820,8 +866,13 @@ void Master::Command(const Request& request, Response& response) {
     WakeDescriptor(shutdown_fd);
   } else if (kind == "config" && JsonValue(command, "session_id", "").empty()) {
     lock.unlock();
-    auto manager = ConfigManager::Capture(false, {});
-    auto result = ConfigurationControl(command, manager, false);
+    // The host belongs to no project: a request names the folder it is
+    // about, and without one only what is saved for all is in reach.
+    const auto folder = CanonicalDirectory(JsonValue(command, "cwd", ""));
+    auto manager = ConfigManager::Capture(
+        false, {}, folder ? folder->string() : std::string());
+    auto result = ConfigurationControl(command, manager);
+    PublishSettings();
     lock.lock();
     outcome["result"] = result;
     error = JsonValue(result, "error", "");

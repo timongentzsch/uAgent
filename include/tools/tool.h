@@ -113,6 +113,9 @@ struct ToolContext {
   int64_t timeout_s = 0;
   std::string call_id;
   int64_t turn_id = 0;
+  // The tools the calling session has enabled, by name: what it may hand on
+  // to a child.
+  std::vector<std::string> enabled_tools;
 
   bool Expired() const;
 

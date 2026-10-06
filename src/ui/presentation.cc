@@ -214,8 +214,8 @@ std::string ColorizeDiffLines(std::string_view text) {
 }
 
 struct TerminalPresenter::State {
-  State(const Event& event, bool detailed)
-      : render(event.render), full_reasoning(detailed) {}
+  State(const Event& event, bool reasoning)
+      : render(event.render), full_reasoning(reasoning) {}
 
   void Text(std::string_view value) {
     if (!render) return;
@@ -308,6 +308,8 @@ void TerminalPresenter::Consume(const Event& event) noexcept {
   switch (event.id) {
     case EventId::kTurnStarted:
       Finish();
+      // A turn that never completed still owes its row.
+      fputs(WorkLine().c_str(), stdout);
       spinner_ = std::make_unique<TerminalSpinner>(false);
       break;
     case EventId::kToolResult:
@@ -316,9 +318,13 @@ void TerminalPresenter::Consume(const Event& event) noexcept {
     case EventId::kResponseSources:
       Finish();
       if (event.render) {
-        PrintSearchReceipt(JsonValue(event.data, "searches", int64_t{0}),
-                           event.data["annotations"], detailed_,
-                           JsonValue(event.data, "line_open", false));
+        if (detail_->work == WorkRows::kTurn) {
+          ++steps_;
+        } else {
+          PrintSearchReceipt(JsonValue(event.data, "searches", int64_t{0}),
+                             event.data["annotations"], detail_->open,
+                             JsonValue(event.data, "line_open", false));
+        }
         if (JsonValue(event.data, "citations", false)) {
           PrintCitationSources(event.data["annotations"]);
         }
@@ -329,14 +335,15 @@ void TerminalPresenter::Consume(const Event& event) noexcept {
       if (event.render) {
         std::string footer =
             (JsonValue(event.data, "line_open", false) ? "\n" : "") +
-            std::string(RST()) + DIM() + TurnStatsLine(event.data) + RST() +
+            WorkLine() + RST() + DIM() + TurnStatsLine(event.data) + RST() +
             "\n";
         fputs(footer.c_str(), stdout);
       }
       break;
     case EventId::kResponseStarted:
       Finish();
-      state_ = std::make_unique<State>(event, detailed_);
+      state_ =
+          std::make_unique<State>(event, detail_->reasoning == Thinking::kOpen);
       break;
     case EventId::kReasoningDelta:
       if (state_ && state_->full_reasoning && spinner_) spinner_->Stop();
@@ -372,7 +379,7 @@ void TerminalPresenter::Consume(const Event& event) noexcept {
     default:
       if (event.render && event.presentation) {
         if (spinner_) spinner_->Stop();
-        PrintPresentation(*event.presentation, detailed_);
+        Present(*event.presentation);
       }
       break;
   }
@@ -401,6 +408,7 @@ void TerminalPresenter::Block(const json& block) {
   const std::string kind = JsonValue(block, "kind", "");
   const std::string text = TerminalSafe(JsonValue(block, "text", ""));
   if (kind == "user" || kind == "attachment") {
+    if (kind == "user") WriteTerminalRecord(WorkLine());
     // The view already dropped the "Attached:" path trailer; attachments
     // render as the delivery gallery, like history replay and the web.
     WriteTerminalRecord(
@@ -410,20 +418,32 @@ void TerminalPresenter::Block(const json& block) {
     // Mirror the stored-transcript printer and the live presenter: the mark
     // only prints with text (tool-only turns show rows, never a bare mark)
     // and the answer is line-terminated. Tool rows are blocks of their own.
-    if (!JsonValue(block, "text", "").empty()) {
-      PrintMessageHeader();
+    const std::string reasoning =
+        detail_->reasoning == Thinking::kOpen
+            ? TerminalSafe(JsonValue(block, "reasoning", ""))
+            : "";
+    if (!text.empty() || !reasoning.empty()) PrintMessageHeader();
+    if (!reasoning.empty()) {
+      // The rows the live presenter drew while the model was thinking.
+      WriteTerminalRecord(
+          std::string(DIM()) + RowMark(Mark::kNote) + "Thinking" + RST() +
+          "\n" +
+          StyledBlock(reasoning, (std::string(MUTED()) + ITAL()).c_str()));
+    }
+    if (!text.empty()) {
       MdPrint(text);
       WriteTerminalRecord("\n");
     }
   } else if (kind == "turn_summary") {
     WriteTerminalRecord(
+        WorkLine() +
         TurnStatsLine(JsonValue(block, "summary", json::object())) + "\n");
   } else if (kind == "compaction") {
     // The row the live "compacted" notice drew.
     WriteTerminalRecord(Note(Tone::kNeutral, "compacted"));
   } else if (kind == "activity") {
     const json memory = JsonValue(block, "memory", json::object());
-    if (detailed_ || !JsonValue(memory, "minor", false)) {
+    if (detail_->minor || !JsonValue(memory, "minor", false)) {
       WriteTerminalRecord(Note(Tone::kNeutral, text));
     }
   } else if (kind == "tool_result") {
@@ -440,7 +460,7 @@ void TerminalPresenter::Block(const json& block) {
       record.skill = JsonValue(block, "name", "") == "skill";
       record.poll = JsonValue(*replay, "poll", false);
       record.view = JsonValue(block, "view", json(nullptr));
-      PrintPresentation(record, detailed_);
+      Present(record);
       // A call that never finished has no result line.
       if (JsonValue(block, "status", "running") == "running") return;
     }
@@ -473,8 +493,41 @@ void TerminalPresenter::Block(const json& block) {
     record.id = JsonValue(block, "call_id", "");
     record.activity = JsonValue(block, "activity", json::object());
     record.change_path = JsonValue(block, "change_path", "");
-    PrintPresentation(record, detailed_);
+    Present(record);
   }
+}
+
+void TerminalPresenter::Present(const PresentationRecord& record) {
+  if (detail_->work == WorkRows::kTurn &&
+      record.kind != PresentationKind::kNotice &&
+      record.status != PresentationStatus::kFailed) {
+    if (record.kind == PresentationKind::kToolCall) {
+      targets_[record.id] = JsonValue(record.view, "target", "");
+    } else if (record.kind == PresentationKind::kToolResult && !record.poll) {
+      ++steps_;
+      if (JsonValue(record.activity, "category", "") == "edit") {
+        // Files, not edits: two edits of one file are one file.
+        const std::string& target = targets_[record.id];
+        edited_.insert(target.empty() ? record.id : target);
+      }
+    }
+    return;
+  }
+  PrintPresentation(record, *detail_);
+}
+
+std::string TerminalPresenter::WorkLine() {
+  if (!steps_) return "";
+  std::string line =
+      "Worked · " + std::to_string(steps_) + (steps_ == 1 ? " step" : " steps");
+  if (!edited_.empty()) {
+    line += " · edited " + std::to_string(edited_.size()) +
+            (edited_.size() == 1 ? " file" : " files");
+  }
+  steps_ = 0;
+  edited_.clear();
+  targets_.clear();
+  return StyledBlock(Indented(AsciiGlyphs(line), kRowIndent), DIM());
 }
 
 void TerminalPresenter::Finish() noexcept {
@@ -511,10 +564,11 @@ std::string InputPartsText(const json& view) {
   return text;
 }
 // What stays visible under a result row: a command's last output lines
-// (already printed in full when detailed) and the parts the call produced.
-std::string ResultExtras(const PresentationRecord& record, bool detailed) {
+// (already printed in full when output is open) and the parts the call
+// produced.
+std::string ResultExtras(const PresentationRecord& record, bool open) {
   std::string text;
-  if (!detailed && JsonValue(record.view, "output", "") == "tail") {
+  if (!open && JsonValue(record.view, "output", "") == "tail") {
     std::vector<std::string> lines;
     std::istringstream input(record.output);
     for (std::string line; std::getline(input, line);) {
@@ -557,9 +611,9 @@ std::string ResultExtras(const PresentationRecord& record, bool detailed) {
 }  // namespace
 
 void PrintPresentation(const PresentationRecord& record,
-                       bool detailed) noexcept {
+                       const DetailPolicy& detail) noexcept {
   if (record.kind == PresentationKind::kNotice) {
-    if (record.minor && !detailed) return;
+    if (record.minor && !detail.minor) return;
     WriteTerminalRecord(
         Note(record.status == PresentationStatus::kFailed   ? Tone::kError
              : record.status == PresentationStatus::kWarned ? Tone::kWarn
@@ -591,7 +645,7 @@ void PrintPresentation(const PresentationRecord& record,
       body += '(' + TerminalSafe(record.summary) + ')';
     }
     WriteTerminalRecord(StyledBlock(body, BOLD()));
-    if (detailed) {
+    if (detail.open) {
       const std::string input = InputPartsText(record.view);
       if (!input.empty()) {
         WriteTerminalRecord(
@@ -603,7 +657,7 @@ void PrintPresentation(const PresentationRecord& record,
   if (record.kind != PresentationKind::kToolResult) return;
 
   if (const auto group = record.activity.find("group");
-      !detailed && group != record.activity.end()) {
+      detail.work != WorkRows::kCalls && group != record.activity.end()) {
     if (JsonValue(*group, "id", "") == record.id) {
       WriteTerminalRecord(StyledBlock(
           Indented(TerminalSafe(JsonValue(*group, "label", "")), kRowIndent),
@@ -645,21 +699,21 @@ void PrintPresentation(const PresentationRecord& record,
                                                            : Mark::kResult) +
           TerminalSafe(record.title),
       kRowIndent);
-  if (detailed && record.output.find('\n') != std::string::npos) {
+  if (detail.open && record.output.find('\n') != std::string::npos) {
     WriteTerminalRecord(std::string(style) + prefix + RST() + "\n" +
                         Indented(OutputText(record.output), kDetailIndent) +
-                        "\n" + ResultExtras(record, detailed));
+                        "\n" + ResultExtras(record, detail.open));
     return;
   }
-  if (detailed && !record.output.empty()) {
+  if (detail.open && !record.output.empty()) {
     WriteTerminalRecord(std::string(style) + prefix + ": " +
                         OutputText(record.output) + RST() + "\n" +
-                        ResultExtras(record, detailed));
+                        ResultExtras(record, detail.open));
     return;
   }
   WriteTerminalRecord(std::string(style) + prefix + ": " +
                       AsciiGlyphs(OutputText(record.summary)) + RST() + "\n" +
-                      ResultExtras(record, detailed));
+                      ResultExtras(record, detail.open));
 }
 
 }  // namespace uagent

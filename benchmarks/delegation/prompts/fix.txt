@@ -1,0 +1,2 @@
+Make every test in this project pass without changing anything under tests/. Run them with: python3 -m unittest discover -s tests
+Finish by reporting the last lines of the final test run.

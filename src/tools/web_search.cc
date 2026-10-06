@@ -14,6 +14,7 @@
 #include "include/core/debug.h"
 #include "include/core/env.h"
 #include "include/core/limits.h"
+#include "include/core/runtime_config.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
 #include "include/providers.h"
@@ -22,7 +23,8 @@ namespace uagent {
 namespace {
 
 std::string DefaultSearchModel() {
-  return EnvStr("OPENROUTER_MODEL", kDefaultModelRoute);
+  const std::string model = SettingText("OPENROUTER_MODEL");
+  return model.empty() ? std::string(kDefaultModelRoute) : model;
 }
 
 ToolResult SearchError(int64_t http_status, const std::string& detail) {
@@ -123,12 +125,12 @@ Tool WebSearchTool(Api& api, UsageAccumulator& usage,
                    std::vector<NamedProvider> providers) {
   Tool t = MakeTool(
       "web_search",
-      "Search the web with cited sources; put up to 4 related queries in one "
+      "Search the web with cited sources; put up to 3 related queries in one "
       "call. Include dates or cutoffs in recency queries. Do not repeat a "
       "search.",
       json::parse(R"json({"type":"object","properties":{
           "queries":{"type":"array","items":{"type":"string","minLength":1},
-            "minItems":1,"maxItems":4}},
+            "minItems":1,"maxItems":3}},
           "required":["queries"]})json"),
       [&api, &usage, providers = std::move(providers)](
           const json& a, const ToolContext& context) -> ToolResult {

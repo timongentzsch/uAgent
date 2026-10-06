@@ -389,6 +389,42 @@ void TestBrowserSecretMaskAndBack() {
   std::ofstream(directory / "profile" / "close-tab").close();
   CHECK(runtime.Execute({{"op", "back"}, {"session_id", kSession}})
             .value("error", "") == "the previous page is not HTTP(S)");
+  // A key reaches Chrome whole, with its code and what it types: by name
+  // alone Enter sends no form. replace selects what the field holds first.
+  // A new tab leaves the open page alone, and a tab that is not the current
+  // one can be closed.
+  const auto act = [&](json command) {
+    command["session_id"] = kSession;
+    return runtime.Execute(command);
+  };
+  CHECK(!act({{"op", "press"}, {"key", "Enter"}}).contains("error"));
+  CHECK(act({{"op", "press"}, {"key", "F5"}}).value("error", "") ==
+        "unsupported key");
+  CHECK(!act({{"op", "type"}, {"text", "new"}, {"replace", true}})
+             .contains("error"));
+  CHECK(
+      !act({{"op", "open"}, {"url", "https://example.com/"}, {"new_tab", true}})
+           .contains("error"));
+  CHECK(act({{"op", "tabs"}, {"target_id", "left-open"}, {"close", true}})
+            .value("closed", "") == "left-open");
+  bool entered = false, selected = false, created = false, closed = false;
+  std::ifstream acted(directory / "profile" / "cdp.jsonl");
+  for (std::string line; std::getline(acted, line);) {
+    const json command = json::parse(line);
+    const std::string method = command.value("method", "");
+    const json params = command.value("params", json::object());
+    entered = entered || (params.value("type", "") == "keyDown" &&
+                          params.value("windowsVirtualKeyCode", 0) == 13 &&
+                          params.value("text", "") == "\r");
+    selected = selected || params.value("commands", json::array()) ==
+                               json::array({"selectAll"});
+    // The tab is made before the page is asked for.
+    created = created || method == "Target.createTarget";
+    if (method == "Page.navigate") CHECK(created);
+    closed = closed || (method == "Target.closeTarget" &&
+                        params.value("targetId", "") == "left-open");
+  }
+  CHECK(entered && selected && created && closed);
   // A saved login is taken with keys on the display itself, where Chrome's
   // own list listens: Escape, Down, Down, Tab, each pressed and let go. A
   // field that stays as long as it was had nothing saved for it.

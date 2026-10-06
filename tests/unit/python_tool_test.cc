@@ -132,6 +132,18 @@ void TestPythonTool() {
   CHECK(scratch_tool && scratch_tool->approval_preview({{"path", "priv.sh"}}) ==
                             "sudo printf before\n");
 
+  // With code the script is written and run in the one call, and the code
+  // is what a person approves.
+  const json inline_call = {{"path", "inline.sh"},
+                            {"code", "printf inline-ran\n"}};
+  CHECK(scratch_tool &&
+        scratch_tool->approval_preview(inline_call) == "printf inline-ran\n");
+  result = scratch_tool ? scratch_tool->run(inline_call, {}) : ToolResult{};
+  CHECK(result.Ok());
+  CHECK(result.output.ends_with("inline-ran"));
+  CHECK(ToolRunScratch(supervisor, root, "inline.sh")
+            .output.ends_with("inline-ran"));
+
   // Every parameter has one plain type: a union ("string or null") breaks
   // the tool-call conversion some providers do for a model.
   std::function<bool(const json&)> plain = [&](const json& schema) {

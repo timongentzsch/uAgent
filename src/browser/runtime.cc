@@ -93,7 +93,7 @@ constexpr const char* kPageScript =
     "you are (a )?human|are you a robot|not a robot|press (&|and) hold/i"
     ".exec(t);if(m)block={kind:'bot_check',evidence:'page says \"'+m[0]+'\"'}}"
     "return {url:location.href.split(/[?#]/)[0],title,"
-    "text:t.slice(0,12000),block}})()";
+    "text:t.slice(0,12000),chars:t.length,block}})()";
 
 pid_t Launch(const std::vector<std::string>& arguments,
              posix_spawn_file_actions_t* actions = nullptr) {
@@ -137,6 +137,21 @@ bool Alive(pid_t& pid) {
   }
   return kill(pid, 0) == 0;
 }
+
+// The keys `press` knows. Chrome acts on a key by its virtual key code, and
+// types what `text` says: the name alone reaches the page's own listeners
+// and nothing else, so Enter would not send a form nor Backspace delete.
+struct Key {
+  const char* name;
+  int code;
+  const char* text;
+};
+constexpr Key kKeys[] = {
+    {"Enter", 13, "\r"},    {"Tab", 9, ""},        {"Escape", 27, ""},
+    {"Backspace", 8, ""},   {"Delete", 46, ""},    {"Space", 32, " "},
+    {"ArrowUp", 38, ""},    {"ArrowDown", 40, ""}, {"ArrowLeft", 37, ""},
+    {"ArrowRight", 39, ""}, {"PageUp", 33, ""},    {"PageDown", 34, ""},
+    {"Home", 36, ""},       {"End", 35, ""}};
 
 bool Coordinate(const json& command, const char* name, int& result) {
   result = JsonValue(command, name, -1);
@@ -836,7 +851,17 @@ json Runtime::Execute(const json& command) {
         found |= JsonValue(page, "id", "") == requested;
       }
       if (!found) return {{"error", "tab is unavailable"}};
-      if (requested != target_) {
+      if (JsonValue(command, "close", false)) {
+        if (requested == target_) {
+          return {{"error", "switch to another tab before closing this one"}};
+        }
+        json closed = Call("Target.closeTarget", {{"targetId", requested}});
+        if (auto reason = CdError(closed); !reason.empty()) {
+          return {{"error", reason}};
+        }
+        moved_ = false;
+        return {{"ok", true}, {"closed", requested}, {"selected", target_}};
+      } else if (requested != target_) {
         json activated =
             Call("Target.activateTarget", {{"targetId", requested}});
         if (auto reason = CdError(activated); !reason.empty()) {
@@ -1069,6 +1094,14 @@ json Runtime::Act(const std::string& op, const json& command) {
       return {{"error", "URL must be HTTP(S)"}};
     }
     observation_.clear();
+    if (JsonValue(command, "new_tab", false)) {
+      json created = Call("Target.createTarget", {{"url", "about:blank"}});
+      const json* made = JsonObject(created, "result");
+      std::string error;
+      if (!made || !AttachPage(JsonValue(*made, "targetId", ""), error)) {
+        return {{"error", made ? error : "Chrome did not open a tab"}};
+      }
+    }
     reply = Call("Page.navigate", {{"url", url}}, page_session_);
     if (const json* result = JsonObject(reply, "result")) {
       if (auto failed = JsonValue(*result, "errorText", ""); !failed.empty()) {
@@ -1130,6 +1163,12 @@ json Runtime::Act(const std::string& op, const json& command) {
     std::string value = JsonValue(command, "text", "");
     if (value.size() > 32768) return {{"error", "text exceeds limit"}};
     observation_.clear();
+    if (JsonValue(command, "replace", false)) {
+      // What the field holds becomes the selection, which the text replaces.
+      Call("Input.dispatchKeyEvent",
+           {{"type", "rawKeyDown"}, {"commands", json::array({"selectAll"})}},
+           page_session_);
+    }
     reply = Call("Input.insertText", {{"text", value}}, page_session_);
   } else if (op == "fill_saved") {
     // The first login Chrome offers under the focused field. A look at the
@@ -1173,17 +1212,22 @@ json Runtime::Act(const std::string& op, const json& command) {
     }
     reply = json::object();
   } else if (op == "press") {
-    std::string key = JsonValue(command, "key", "");
-    if (key != "Enter" && key != "Tab" && key != "Escape" &&
-        key != "Backspace") {
-      return {{"error", "unsupported key"}};
-    }
+    const std::string name = JsonValue(command, "key", "");
+    const Key* key = std::ranges::find_if(
+        kKeys, [&](const Key& known) { return name == known.name; });
+    if (key == std::end(kKeys)) return {{"error", "unsupported key"}};
     observation_.clear();
-    reply = Call("Input.dispatchKeyEvent", {{"type", "keyDown"}, {"key", key}},
-                 page_session_);
+    const std::string typed = key->text;
+    json event = {{"type", typed.empty() ? "rawKeyDown" : "keyDown"},
+                  {"key", typed == " " ? typed : name},
+                  {"code", name},
+                  {"windowsVirtualKeyCode", key->code}};
+    if (!typed.empty()) event["text"] = typed;
+    reply = Call("Input.dispatchKeyEvent", event, page_session_);
     if (CdError(reply).empty()) {
-      reply = Call("Input.dispatchKeyEvent", {{"type", "keyUp"}, {"key", key}},
-                   page_session_);
+      event["type"] = "keyUp";
+      event.erase("text");
+      reply = Call("Input.dispatchKeyEvent", event, page_session_);
     }
   } else if (op == "scroll") {
     if (observation_.empty() ||

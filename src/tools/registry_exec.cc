@@ -1,8 +1,10 @@
 // Copyright 2026 Timon Gentzsch
 
 #include <cstdint>
+#include <filesystem>
 #include <optional>
 #include <string>
+#include <system_error>
 #include <utility>
 #include <vector>
 
@@ -75,7 +77,11 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
       return JsonValue(a, "sandbox", true) ? ApprovalClass::kNone
                                            : ApprovalClass::kMandatoryHuman;
     };
-    run.mandatory_reason = "runs without the OS sandbox";
+    // What that means, said where it is approved: the sandbox is all that
+    // keeps a command from these.
+    run.mandatory_reason =
+        "runs without the OS sandbox: it can reach saved logins, browser "
+        "sessions and settings";
   }
   run.clamped_arguments = {"yield_ms", "max_output_chars"};
   run.mutating = true;
@@ -130,18 +136,37 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
             "scratch",
             "Run a one-off script under .uagent/scratch, never requested "
             "project code: a .py with a PEP 723 `# /// script` header runs "
-            "under isolated uv, a .sh under sh. Write and fix it with the file "
-            "tools, then rerun it with new args instead of resending a long "
-            "pipeline through run.",
+            "under isolated uv, a .sh under sh. Give code to write the script "
+            "and run it in this call; without code the file at path runs "
+            "again, with new args, instead of a long pipeline resent through "
+            "run.",
             json::parse(
                 R"json({"type":"object","additionalProperties":false,"properties":{
                     "path":{"type":"string","minLength":1,
                       "description":"the script's path relative to .uagent/scratch"},
+                    "code":{"type":"string","maxLength":65536,
+                      "description":"the script's text: written to path, then run"},
                     "args":{"type":"array","items":{"type":"string","maxLength":4096},"maxItems":32,
                       "description":"argv for this run, read from sys.argv or $@"}},
                     "required":["path"]})json"),
             [&supervisor, workspace](const json& a,
                                      const ToolContext& context) {
+              if (const std::string code = JsonValue(a, "code", "");
+                  !code.empty()) {
+                std::string error;
+                const auto script = ScratchScriptPath(
+                    workspace, JsonValue(a, "path", ""), error);
+                std::error_code made;
+                if (script) {
+                  std::filesystem::create_directories(script->parent_path(),
+                                                      made);
+                }
+                if (!script ||
+                    !AtomicWriteFile(script->string(), code, kSharedFileMode,
+                                     /*preserve_mode=*/false, error)) {
+                  return ToolFailure(ToolErrorCode::kInvalidArguments, error);
+                }
+              }
               return ToolRunScratch(
                   supervisor, workspace, JsonValue(a, "path", ""),
                   JsonValue(a, "args", json(nullptr)), context);
@@ -164,6 +189,9 @@ void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
     };
     // Running is what a person approves, so they read what will run.
     python.approval_preview = [workspace](const json& a) {
+      if (a.contains("code")) {
+        return Utf8Trunc(JsonValue(a, "code", ""), kPreviewChars);
+      }
       std::string error;
       const auto script =
           ScratchScriptPath(workspace, JsonValue(a, "path", ""), error);

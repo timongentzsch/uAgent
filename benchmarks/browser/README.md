@@ -8,14 +8,20 @@ calls, how long, and whether it had to hand over to a person.
 python3 benchmarks/browser/run.py http://HOST:PORT "Open example.com and say what its heading is." [provider/model]
 ```
 
-Run it on the host, with `uagent` on the path and this repository's `tests/`
-beside it (it borrows the test web client). It pairs a temporary client and
-logs it out when done; the conversation stays in `~/uagent-browser-bench`.
+`http://HOST:PORT` is the origin the web host was started with. The optional
+third argument selects the model with `/model` before the prompt is sent.
 
-For a headless check of the same tool, with the web host running:
+Run it on the host, from a checkout (it borrows the test web client in
+`tests/`), with `uagent` on the path. It pairs a temporary client and logs it
+out when done; the conversation stays in `~/uagent-browser-bench`. It prints
+the final status, wall time, usage, each tool result and the answer.
+
+For a headless check of the same tool, with the web host running, point
+`UAGENT_BROWSER_DATA` at the browser directory that host uses:
 
 ```sh
-UAGENT_BROWSER_DATA=~/.uagent/browser uagent -p "Open example.com and say what its heading is."
+UAGENT_BROWSER_DATA=/path/to/browser-data \
+  uagent -p "Open example.com and say what its heading is."
 ```
 
 Signing in is part of what it measures: with a login saved in the browser's

@@ -1,17 +1,25 @@
 # Tools
 
 The tools µAgent offers the model, when each is available, and how calls are
-approved. The exact schemas and their sizes are in the generated
-[tool reference](../skills/uagent-config/references/tools.md); `/context` shows
-the set a live session currently advertises, including MCP tools.
+approved.
+
+| To | Use |
+| --- | --- |
+| see what this conversation offers, MCP tools included | `/context` |
+| switch a tool off or on for this conversation | `/tools off NAME`, `/tools on NAME`, `/tools reset` |
+| narrow the set in one step | `/tools profile coding\|research\|minimal\|default` |
+| limit every session to kinds of tools | `UAGENT_TOOL_CAPABILITIES`, a comma-separated list of `inspect`, `execute`, `mutate`, `delegate`, `external` |
+| choose how calls are approved | `/permissions ask\|auto\|yolo`; see [Approval](#approval) |
+
+The exact schemas and their sizes are in the generated
+[tool reference](../skills/uagent-config/references/tools.md).
 
 ## Inventory
 
-The registry is built at startup and refreshed when MCP tool lists change. It is
-filtered by the toolset (a `lean` child gets no implementation tools),
-`UAGENT_TOOL_CAPABILITIES` (`inspect`, `execute`, `mutate`, `delegate`,
-`external`), route capabilities, installed skills, delegation depth and
-per-conversation choices made with `/tools`.
+The set is built when a session starts and refreshed when an MCP server's
+tool list changes. "Full toolset" means every session except a `lean`
+subagent, which reads and runs but gets no file-editing, memory, `uagent`
+or `subagent` tool.
 
 | Tool | Purpose | Available |
 | --- | --- | --- |
@@ -22,58 +30,73 @@ per-conversation choices made with `/tools`.
 | `delete_file` | delete a regular file and show the removed content | full toolset |
 | `run` | run a supervised shell command, optionally with a PTY or detached | always |
 | `scratch` | run a `.py` (under uv) or `.sh` script written to `.uagent/scratch` with `write_file`; writes there need no approval, the run does and shows the script | `uv` or `python3` on `PATH` |
-| `activity` | list, poll, wait for, write to, resize or stop activities | when activities exist |
+| `activity` | list, poll, wait for, write to, resize or stop activities | once a command is still running or detached |
 | `memory` | list, search and read memory; write when the user asks | full toolset, memory enabled |
-| `uagent` | inspect this build (status, flags, commands, config, tools, prompt, routes); change settings | full toolset |
+| `uagent` | inspect this build (status, flags, commands, config, tools, prompt, routes, instructions); change settings and instruction files | full toolset; changes only where a person can approve |
 | `web_fetch` | read one public http(s) URL as text | always |
 | `artifact` | hand the user a file to open or download (HTML runs sandboxed, PDFs and images open inline); snapshot into the session's assets | a session with a client |
 | `web_search` | cited web search through OpenRouter's hosted search | an OpenRouter-protocol route or search endpoint |
-| `session` | list linked sessions and message them; an idle one starts a turn on the message | always |
+| `session` | list linked sessions and message them; an idle one starts a turn on the message | always; a coordinator and its threads are linked, and so are YOLO sessions in one folder |
 | `ask` | put 1 to 8 multiple-choice questions to the user and wait; an option can show an image the agent made in the workspace and a monospace preview; they may answer in their own words or with an image | a session someone can answer (never headless runs or children); a thread's questions go to its coordinator first |
-| `subagent` | delegate a subtask to a durable child session | delegation depth below `UAGENT_SUBAGENT_DEPTH` |
+| `subagent` | delegate a subtask to a durable child session | full toolset, delegation depth below `UAGENT_SUBAGENT_DEPTH` |
 | `skill` | load an installed skill | a usable skill is installed |
 | `adapt_system` | add to or replace the base prompt for this conversation | `UAGENT_ADAPT_SYSTEM=1`; see [SYSTEM_PROMPTS.md](SYSTEM_PROMPTS.md) |
 | `browser` | drive the shared Chrome of the browser appliance | top-level sessions (web, terminal, headless, a coordinator's threads) while the web host's browser runs and `UAGENT_BROWSER_DATA` names it; one conversation at a time; see [WEB.md](WEB.md) |
 | `<server>_<tool>` | tools discovered from MCP servers; see [OPERATIONS.md](OPERATIONS.md#mcp) | configured servers; not in lean children |
 
-Independent calls to parallel-safe tools may run concurrently; results are
-appended in the order the model issued the calls. A tool with a per-turn cap
-(`web_search` 4, `subagent` 32 by default) is withdrawn for the rest of the
-turn once the cap is reached. Tool limits, timeouts and turn budgets apply in
-every approval mode.
+Independent calls to parallel-safe tools run up to four at a time; results
+are appended in the order the model issued the calls. A tool with a per-turn
+cap (`web_search` 4, `subagent` 32) is withdrawn for the rest of the turn once
+the cap is reached. Tool limits, timeouts and turn budgets apply in every
+approval mode.
 
 ## Approval
 
-Paths outside the workspace need approval. Mutating, process and network tools
-follow the permission mode (`/permissions`, `UAGENT_APPROVAL`):
+Reading and searching inside the workspace needs no approval. Calls that
+change files, run commands, use the network or touch a path outside the
+workspace follow the approval mode. Set it with `/permissions ask|auto|yolo`
+for a conversation, `--yolo` or `/yolo` as shortcuts, or `UAGENT_APPROVAL` as
+the saved default (`ask`).
 
-- **Ask** shows the full action and can allow it once, for the session, or
+- **Ask** shows the full action and its risks (runs commands, makes changes,
+  uses the network, outside this folder). Allow it once, for the session, or
   always for that exact action in this repository. A remembered rule covers
   the tool's provider, schema, approval class and arguments, so a change to
-  any of them asks again. Rules live in `~/.uagent/config/permissions.json`
-  and can be removed from the web Settings page or with `/permissions rules`
-  and `/permissions forget N|all`.
+  any of them asks again. Rules live in `~/.uagent/config/permissions.json`;
+  list them with `/permissions rules` and remove them with
+  `/permissions forget N|all` or in the web's Settings.
 - **Auto** sends the user request and a bounded preview of the action to
   OpenRouter's Decisions API (`UAGENT_PERMISSION_MODEL`, default
   `~typesafe/jev-latest`; `UAGENT_PERMISSION_URL`) and follows its allow, ask
-  or deny answer. An ask opens the normal prompt, or denies when no
-  interactive client is attached; network, authentication and parse failures
-  are treated the same way. Reviewer usage counts toward the turn and
-  session.
-- **YOLO** (`--yolo`, `/yolo`) approves ordinary mutations. It does not
-  turn the command sandbox off: that is its own setting (`UAGENT_SANDBOX`),
-  the same in every mode.
+  or deny answer. It needs `OPENROUTER_API_KEY`. An ask opens the normal
+  prompt, or denies when no interactive client is attached; network,
+  authentication and parse failures are treated the same way. Reviewer usage
+  counts toward the turn and session.
+- **YOLO** approves these calls without asking. It does not turn the command
+  sandbox off: that is its own setting (`UAGENT_SANDBOX`), the same in every
+  mode.
 
-A coordinator's thread reviews (Auto) unless it is told to ask, and cannot be
-put above that. A subagent approves its own calls and runs them under the
-sandbox of the conversation that delegated to it.
+Two kinds of session differ:
 
-Some actions always need a person: reading or writing µAgent's config files,
-`.mcp.json` or `permissions.json`, writing the project trust store, your
-instruction files in `~/.uagent`, changing settings through `uagent`, and
-`run(sandbox=false)`. Remembered rules and automatic modes do not apply, and a
-session with nobody to ask denies. Child processes get the sanitized
-environment described in [SECURITY.md](../SECURITY.md).
+- A subagent approves its own calls, so approving the delegation approves
+  what the child then does. Its commands run under the sandbox of the
+  conversation that delegated to it.
+- A coordinator's thread runs in Auto unless it is told to ask, and cannot be
+  put in YOLO. While the sandbox is enforced, its commands and its file
+  changes inside the folder run without review.
+
+Some actions always need a person, in every mode:
+
+- reading or writing saved settings (`~/.uagent/config/settings.json`), a
+  legacy `.config` file, `.mcp.json` or `permissions.json`;
+- writing the project trust store or your instruction files in `~/.uagent`;
+- changing settings or instruction files through `uagent`;
+- replacing the base prompt with `adapt_system`;
+- `run(sandbox=false)`, which runs one command outside the sandbox.
+
+Remembered rules, Auto and YOLO do not apply to these, and a session with
+nobody to ask denies them. Child processes get the sanitized environment
+described in [SECURITY.md](../SECURITY.md).
 
 ## Files and search
 
@@ -86,6 +109,9 @@ environment described in [SECURITY.md](../SECURITY.md).
   paths whose contents match; both path modes ignore `context`.
 - A byte-identical repeat of a `read_path` or `grep` result still in recent
   context is returned as a short receipt.
+- `/changes` lists the files the last turn's `write_file`, `edit_file` and
+  `delete_file` calls changed, and `/undo [FILE]` puts them back. Changes
+  made by shell commands are not tracked.
 - `run`, `scratch` and `grep` execute inside the OS sandbox: writes are
   limited to the workspace, temporary directories and package caches; reads
   and, by default, the network stay open, except for the browser profile,
@@ -121,6 +147,14 @@ non-PTY activity is rejected.
 its answer and a durable agent ID; with `background=true` it returns an
 activity ID at once.
 
+- `mode` is `lean` by default (read and run, no file edits); `full` adds the
+  editing tools and lets the child delegate in turn. A child never gets a
+  tool its parent has switched off.
+- `model` picks the child's route; without it `UAGENT_SUBAGENT_MODEL`
+  applies, else the parent's route.
+- `limits` lowers or raises `steps`, `tool_calls`, `seconds` and `cost` for
+  one child, within the session's remaining budgets; `memory=false` withholds
+  memory.
 - `followup` resumes the child's private conversation and prepends its
   stored `directive`; an empty directive clears it.
 - `message` delivers one-shot guidance at a running child's next step; a
@@ -145,7 +179,17 @@ are ignored so a proxy cannot resolve an unchecked address.
 
 `web_search` has one schema for every model. It calls OpenRouter's hosted
 `openrouter:web_search` on its own route, so citations and accounting do not
-depend on the conversation model. `UAGENT_WEB_SEARCH_BACKEND=off` withholds it.
+depend on the conversation model. `UAGENT_WEB_SEARCH_MODEL` names that route
+and `UAGENT_WEB_SEARCH_BACKEND=off` withholds the tool.
+
+`browser` drives the web appliance's shared Chrome, which you can watch and
+take over. Each action returns a fresh screenshot and the page text. Chrome
+keeps your saved logins: the agent has Chrome fill one (`fill_saved`) and
+never types a password. For a login Chrome has not saved, MFA, a captcha or a
+payment confirmation it calls `request_human` and waits for you. Actions
+that change the page (open, click, type, scroll) follow the approval mode;
+looking does not. See [WEB.md](WEB.md) for setup and hand-over. Outside the
+appliance, the `browser-use` skill drives `playwright-cli` through `run`.
 
 ## Presentation
 

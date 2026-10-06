@@ -3,80 +3,139 @@
 [![CI](https://github.com/timongentzsch/uAgent/actions/workflows/ci.yml/badge.svg)](https://github.com/timongentzsch/uAgent/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-µAgent is a local coding agent shipped as one native C++ binary `uagent`. It
-streams Chat Completions, OpenAI Responses and Anthropic Messages through
-explicit route adapters, and serves a terminal client, an embedded browser
-interface and machine-readable output from one conversation runtime.
-
-## Requirements
-
-- Linux or macOS
-- CMake 3.21+, a C++20 compiler and libcurl
-- Optional: [uv](https://docs.astral.sh/uv/) for Python `scratch` scripts;
-  Node.js with `npm install -g @playwright/cli@latest` for browser automation;
-  OpenSSL 3 libcrypto to build Web Push from source (`-DUAGENT_WEB_PUSH=ON`;
-  release archives and the Docker image include it)
-
-The browser interface is built from `web/` and embedded in the binary.
-`./install.sh` builds it when Node.js is present; without Node.js the build is
-CLI-only, and each release also ships the built interface
-(`uagent-web-dist-<version>.tar.gz`, unpacked into `web/dist`).
-`-DUAGENT_WEB=OFF` asks for a CLI-only binary, and `-DUAGENT_BROWSER=OFF`
-leaves out the browser appliance.
+µAgent is a local coding agent in one native binary, `uagent`. Run it in a
+terminal, from a script (`-p`, with JSON output) or in the browser
+(`--web`); all three drive the same conversations. It talks to any Chat
+Completions, OpenAI Responses or Anthropic Messages endpoint.
 
 ## Install
+
+Linux and macOS. From a checkout:
 
 ```sh
 ./install.sh
 ```
 
-The installer builds a Release binary in `build/release` (reusing an existing
-build there) and installs it with the bundled skills under `~/.local`.
-`UAGENT_PREFIX` and `UAGENT_BUILD_DIR` override those locations.
+This builds a Release binary in `build/release` (reusing a build already
+there) and installs `uagent` and the bundled skills under `~/.local`; put
+`~/.local/bin` on your `PATH`. `UAGENT_PREFIX` and `UAGENT_BUILD_DIR` change
+the two locations.
+
+Each tagged release also ships built archives
+(`uagent-<version>-linux-x86_64`, `-linux-arm64`, `-macos-arm64`, each
+`.tar.gz`). Unpack one and run `bin/uagent`; keep `bin` and `share` together,
+since the skills are found relative to the binary.
+
+### Requirements
+
+- CMake 3.21+, a C++20 compiler and libcurl.
+- Node.js, to build the browser interface from `web/`. Without it the build
+  is terminal-only. Each release also ships the built interface as
+  `uagent-web-dist-<version>.tar.gz`; unpack it into `web/dist` before
+  building.
+- Optional at run time: [uv](https://docs.astral.sh/uv/) for Python `scratch`
+  scripts with dependencies; `npm install -g @playwright/cli@latest` for the
+  `browser-use` skill.
+
+| CMake option | Effect |
+| --- | --- |
+| `-DUAGENT_WEB=OFF` | Terminal-only binary, no browser interface |
+| `-DUAGENT_BROWSER=OFF` | Leave out the browser appliance |
+| `-DUAGENT_WEB_PUSH=ON` | Web Push notifications; needs OpenSSL 3 libcrypto. Release archives and the Docker image include it |
 
 ## Configure
 
-Start with a key in the environment, then save what should stay:
+Give it a key and start it in a project folder:
 
 ```sh
 export OPENROUTER_API_KEY=replace-me
+cd my-project
 uagent
+```
+
+With only an OpenRouter key it uses a default model. Choose your own inside
+the session; either line also saves it for new conversations:
+
+```text
+/model deepseek/deepseek-v4-flash --default
 /config user UAGENT_MODEL=deepseek/deepseek-v4-flash
 ```
 
-Any OpenAI-compatible endpoint can use `UAGENT_BASE_URL`, `UAGENT_API_KEY`
-and `UAGENT_MODEL` instead; `UAGENT_PROVIDERS` defines named routes.
+For any other OpenAI-compatible endpoint set `UAGENT_BASE_URL`,
+`UAGENT_API_KEY` and `UAGENT_MODEL` instead:
 
-Settings are saved by µAgent itself, for all conversations or for one project
-folder, and edited with `/config`, the web's Settings, or as one JSON document
-(`uagent config export`, `uagent config import FILE`). Environment variables
-override what is saved for a project, which overrides what is saved for all.
-Nothing is read from the project: `.env` files are never loaded, and a
-`~/.uagent/.config` or `.uagent/.config` from an earlier version is taken
-over once and kept as `.config.imported`. The bundled `$uagent-config` skill
-holds the complete configuration reference.
+```sh
+export UAGENT_BASE_URL=http://localhost:8080/v1
+export UAGENT_MODEL=my-model
+```
+
+`UAGENT_PROVIDERS` defines named providers, including ones that speak
+OpenAI Responses or Anthropic Messages (`wire_api`).
+
+Settings are saved by µAgent, not in files you edit:
+
+| To | Use |
+| --- | --- |
+| see what is set and where from | `/config` |
+| save for all conversations | `/config user KEY=VALUE` |
+| save for this project folder | `/config project KEY=VALUE` |
+| set this conversation's model or approval mode | `/config conversation KEY=VALUE` |
+| remove a saved value | `/config user unset KEY` |
+| move settings between hosts | `uagent config export`, `uagent config import FILE` |
+
+The web's Settings edits the same values. Command-line flags override
+`UAGENT_*` environment variables, which override what is saved for the
+project, which overrides what is saved for all conversations. Nothing is read
+from the project: `.env` files are never loaded, and a `~/.uagent/.config` or
+`.uagent/.config` from an earlier version is taken over once and kept as
+`.config.imported`.
+
+Every setting and its default is in the
+[configuration reference](skills/uagent-config/references/configuration.md);
+inside a session, the bundled `$uagent-config` skill answers from it.
 
 ## Usage
 
 ```sh
-uagent                                   # interactive session
-uagent -p "inspect this repository"      # one headless run
-uagent -p "inspect this repository" --json
-uagent -p "inspect this repository" --json-stream --budget 2 --token-budget 20000
+uagent                                   # interactive session in this folder
 uagent -c                                # continue the latest session
 uagent --resume                          # pick a saved session
-uagent --debug=/tmp/uagent.jsonl         # write a sensitive debug trace
-uagent --web                             # local browser control center
+uagent --model MODEL --attach shot.png   # a model and a file for this run
+uagent --yolo                            # approve changes without asking
+uagent --plain                           # screen-reader output
 ```
 
-`uagent --web` prints a URL and a single-use pairing code. One host serves
-sessions across directories on desktop and mobile; see
-[the web guide](docs/WEB.md), including the Docker browser appliance.
+Headless, for scripts. `-p` runs one turn and prints the final answer:
 
-Passwords: sign the browser into your Google account and manage logins at
-passwords.google.com. The agent can use saved logins but never read them:
-it takes the one Chrome offers for a field, and with several accounts types
-the start of the wanted one's name first.
+```sh
+uagent -p "inspect this repository"
+uagent -p "inspect this repository" --json          # one JSON envelope
+uagent -p "inspect this repository" --json-stream   # JSONL events
+uagent -p "fix the tests" --yolo --budget 2 --token-budget 20000
+```
+
+The `--json` envelope has `schema` (`uagent.headless.v1`), `answer`, `error`,
+`stop`, `usage`, `routes`, `trace` and `exit_code`. `--budget` caps spend in
+USD and `--token-budget` generated tokens. A failed run exits nonzero.
+
+In the browser:
+
+```sh
+uagent --web                             # prints a URL and a pairing link
+```
+
+One host serves every folder's sessions on desktop and mobile. The pairing
+code is single-use and valid for five minutes. See
+[the web guide](docs/WEB.md) for remote access, the Docker browser appliance
+and how the agent uses logins saved in that browser.
+
+Several sessions in one folder: `uagent coord` (or `/coord`) opens the
+folder's coordinator, which delegates work to threads and decides the
+approvals they cannot settle. `/board` lists the folder's sessions and
+`/open ID` switches to one.
+
+`uagent --help` lists every flag; `--debug=PATH` writes a trace for bug
+reports, which contains sensitive data.
 
 ## Highlights
 
@@ -88,8 +147,11 @@ the start of the wanted one's name first.
   handoff and bounded logs, confined by an OS sandbox that restricts writes.
 - File, search, shell, memory, web, skill, subagent and MCP tools, filtered
   by policy and route capabilities; see [Tools](docs/TOOLS.md).
-- Approval modes (ask, auto, YOLO) with mandatory human approval for changes
-  to µAgent's own configuration and unsandboxed commands.
+- Approval modes (ask, auto, YOLO). YOLO stops the questions, not the
+  sandbox, and changes to µAgent's own configuration and unsandboxed commands
+  always need a person.
+- `/changes` and `/undo` list and put back the files the last turn's edits
+  changed.
 - Bounded time, output, processes, context and persistence, plus optional
   turn budgets for spend, tokens and calls.
 
@@ -124,7 +186,8 @@ Common slash commands:
 | `/changes`, `/undo [FILE]` | List the files the last turn changed; put them back as they were |
 | `/status`, `/context`, `/cost`, `/http` | Inspect configuration, the model request, spend and captured traffic |
 | `/ps`, `/agents`, `/tools`, `/mcp`, `/permissions`, `/yolo` | Manage background work, delegated agents, tools, MCP servers and approval mode |
-| `/sessions`, `/new`, `/rename`, `/fork`, `/rewind`, `/compact`, `/share` | Manage sessions and context |
+| `/sessions`, `/reset`, `/rename`, `/fork`, `/rewind`, `/compact`, `/share` | Resume a saved session, start a new one, rename, branch, edit an earlier message, summarize, export |
+| `/coord`, `/board`, `/open ID` | Open the folder's coordinator, list its sessions, switch to one |
 | `/memory`, `/skills`, `/schedule`, `/instructions`, `/config`, `/restart` | Manage memory, skills, scheduled tasks, instructions and settings; restart to apply one |
 | `/btw QUESTION` | Ask a side question about the conversation; the answer is not added to it |
 | `/verbosity LEVEL`, `/clear`, `/help`, `/quit` | Show minimal, default or full detail everywhere; clear the screen, list all commands, detach |
@@ -133,19 +196,22 @@ Common slash commands:
 
 ## Documentation
 
-- [Architecture](docs/ARCHITECTURE.md)
-- [Operations and limits](docs/OPERATIONS.md)
-- [Tools](docs/TOOLS.md)
-- [Persistence](docs/PERSISTENCE.md)
 - [Web interface](docs/WEB.md)
-- [Accessibility](docs/ACCESSIBILITY.md)
+- [Tools](docs/TOOLS.md)
 - [Memory, skills and scheduled tasks](docs/MANAGEMENT.md)
-- [System prompts](docs/SYSTEM_PROMPTS.md)
-- [Prompt caching](docs/CACHING.md)
-- [Testing](docs/TESTING.md)
 - [Bundled skills](skills/README.md)
+- [Operations and limits](docs/OPERATIONS.md)
+- [Persistence](docs/PERSISTENCE.md)
+- [Accessibility](docs/ACCESSIBILITY.md)
 - [Security](SECURITY.md)
-- [Contributing](CONTRIBUTING.md)
+- Reference, generated from the binary:
+  [flags](skills/uagent-config/references/cli.md),
+  [slash commands](skills/uagent-config/references/slash-commands.md),
+  [settings](skills/uagent-config/references/configuration.md)
+- Internals: [Architecture](docs/ARCHITECTURE.md),
+  [System prompts](docs/SYSTEM_PROMPTS.md),
+  [Prompt caching](docs/CACHING.md)
+- [Changelog](CHANGELOG.md)
 
 ## Development
 
@@ -153,7 +219,7 @@ Common slash commands:
 cmake --preset debug
 cmake --build --preset debug --parallel
 ctest --preset debug --output-on-failure
-uv run --frozen ruff check .github tests benchmarks skills
 ```
 
-See [Contributing](CONTRIBUTING.md) for the full check list.
+See [Contributing](CONTRIBUTING.md) for the checks CI runs and
+[Testing](docs/TESTING.md) for running one test.

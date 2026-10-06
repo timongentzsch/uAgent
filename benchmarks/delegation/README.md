@@ -14,20 +14,24 @@ answers that can be checked mechanically.
 
 ## Running it
 
-On the host that has the binary and a provider (paths are the host's):
+Run it on a Linux host that has the binary and a provider. The scripts are
+written for one host: `run.sh` and `rerun.sh` expect the folder at
+`/home/dev/uagent-eval` and the binary at `/home/dev/.local/bin/uagent`, and
+`prep.sh` names the model (`local/gpt-6.1-sol`). Edit those for another host.
 
 ```sh
 mkdir -p ~/uagent-eval && cp -r benchmarks/delegation/. ~/uagent-eval/
 git archive HEAD src include docs tests web/src skills README.md \
   SECURITY.md CHANGELOG.md CMakeLists.txt > ~/uagent-eval/corpus.tar
 cd ~/uagent-eval && nohup ./all.sh &      # twelve runs, one after another
-./rerun.sh                                # repeats runs a provider error ended
+./rerun.sh                                # waits, repeats unfinished runs
 python3 collect.py                        # table, and results.json
 ```
 
-Each run gets its own home and workspace under `runs/<task>-<mode>/`, with
-the provider settings copied from the real home and the model named in
-`prep.sh`. Nothing touches the real settings or conversations.
+Each run gets its own home and workspace under `runs/<task>-<mode>/`. Its
+provider settings are copied from the real `~/.uagent/config/settings.json`;
+it runs in yolo with the sandbox, memory and web search off. Nothing touches
+the real settings or conversations. `progress.txt` shows where `all.sh` is.
 
 `research` and `audit` read this repository, so their answers follow the
 commit the corpus was made from. One trial per cell: read differences of a

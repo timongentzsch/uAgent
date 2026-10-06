@@ -1,6 +1,6 @@
 ---
 name: uagent-config
-description: Configure, inspect, troubleshoot, or explain µAgent settings, providers, models, effort, approvals, tools, skills, memory, MCP, web search, limits, retention, and installation. Use for questions about UAGENT_* or OPENROUTER_* variables, ~/.uagent/.config, trusted project .uagent/.config, .mcp.json, or changing µAgent behavior.
+description: Configure, inspect, troubleshoot, or explain µAgent settings, providers, models, effort, approvals, tools, skills, memory, MCP, web search, limits, retention, and installation. Use for questions about UAGENT_* or OPENROUTER_* variables, /config and saved settings (~/.uagent/config/settings.json), legacy ~/.uagent/.config or project .uagent/.config files, .mcp.json, or changing µAgent behavior.
 ---
 
 # Configure µAgent
@@ -35,24 +35,32 @@ version they match.
 
 ## Workflow
 
-1. Establish scope: one command, the global user config, or a trusted project.
+1. Establish scope: one run (a flag or an exported variable), all
+   conversations (`user`), the conversations in this project folder
+   (`project`), or this conversation only (model and approval mode).
 2. Read the live value before proposing a change; `uagent` reports the
    source of each active setting and whether a restart is required.
-3. Persist a setting with `uagent` action `configure`, which merges into the existing
-   file and shows the user the exact diff. Never print secret values; report
-   only whether they are set.
+3. Persist a setting with `uagent` action `configure`, which changes only the
+   named settings in the saved document and shows the user the exact diff.
+   Never print secret values; report only whether they are set.
 4. Prefer scope `user` for persistent settings. Use `project` only when
-   project-specific behavior is intended, and explain that the project must be
-   trusted. Use process exports for a one-off command.
+   project-specific behavior is intended; it is saved for that folder, not
+   written into the repository, and needs no workspace trust. Web host
+   settings (`UAGENT_WEB_*`, `UAGENT_BROWSER_DATA`) save at `user` only. Use
+   process exports for a one-off command. The tool has no conversation
+   scope: the user sets that with `/config conversation KEY=VALUE`,
+   `/model` or `/permissions`.
 5. Change only the settings needed for the requested outcome. Keep limits at
    defaults unless there is a measured reason to raise them.
 6. Validate without a billable model call: `uagent --help`, `uagent --version`,
-   and `uagent`. Inspect `.mcp.json` as JSON when it changed. Explain that
-   a real prompt is the end-to-end check and may incur provider usage.
+   and the `uagent` tool's `inspect`. Inspect `.mcp.json` as JSON when it
+   changed. Explain that a real prompt is the end-to-end check and may incur
+   provider usage.
 
 ## Rules
 
-- Apply precedence correctly: command-line flags, then process environment,
+- Apply precedence correctly: the conversation's own choice (model and
+  approval mode only), then command-line flags, then process environment,
   then what is saved for the project folder, then what is saved for all
   conversations, then built-in defaults.
 - Treat `UAGENT_API_KEY`, `OPENROUTER_API_KEY`, keys embedded in
@@ -60,13 +68,19 @@ version they match.
   configuration reference marks them 🔒.
 - Do not add secrets to a repository. Saved settings live in µAgent's own
   private `~/.uagent/config/settings.json`, never in a project.
-- `/model`, `/effort` and `/variant` persist the interactive selection; an
-  explicit environment setting still wins at the next launch.
+- Legacy `~/.uagent/.config` and project `.uagent/.config` files are taken
+  over once at most and not read afterwards; never tell the user to edit
+  them.
+- `/model`, `/effort` and `/variant` choose for the conversation they are
+  typed in only. `/model NAME --default` also saves the model for new
+  conversations (`UAGENT_MODEL`).
 - Do not enable `--yolo`, `UAGENT_APPROVAL=yolo`, project trust, credential
   forwarding, or broader tool capabilities without making the authority change
   explicit.
 - Do not invent settings. `uagent` enumerates every registered setting; if
   a requested behavior is absent from it, say so rather than guessing.
-- Never write the saved settings with the file tools. `uagent action=configure` is offered
-  only on an interactive terminal, so when it is absent the answer is an edit
-  for the user to apply, not one made on their behalf.
+- Never write the saved settings with the file tools. `uagent
+  action=configure` is offered only in a top-level session where a person can
+  approve (a terminal or the web UI, not a headless run or a subagent). When
+  it is absent, give the user the `/config user KEY=VALUE` (or `project`)
+  command to run themselves; do not make the change on their behalf.

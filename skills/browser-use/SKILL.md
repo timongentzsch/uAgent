@@ -1,7 +1,7 @@
 ---
 name: browser-use
 description: Use token-efficient Playwright CLI browser automation for navigation, forms, screenshots, debugging, or repeatable web workflows, and to read or verify a page web_search could not confirm (X, LinkedIn, logged-in or JS-rendered pages).
-requires-tools: run, attach
+requires-tools: run, read_path
 ---
 
 # Browser automation
@@ -61,8 +61,8 @@ answer the question:
 playwright-cli screenshot --filename=page.png
 ```
 
-A screenshot on disk is invisible until it is in context: open it with the
-`attach` tool. If this model has no image input, µAgent routes the image to the
+A screenshot on disk is invisible until it is in context: open it with
+`read_path`. If this model has no image input, µAgent routes the image to the
 configured vision model and splices back a **written description** — so the
 answer names what is visible, not coordinates.
 
@@ -74,7 +74,7 @@ playwright-cli snapshot --boxes --raw     # ref → [box=x,y,width,height]
 playwright-cli highlight e14              # box labelled aria-ref=e14
 playwright-cli highlight e22
 playwright-cli screenshot --filename=marked.png
-# attach marked.png, decide, then:
+# read_path marked.png, decide, then:
 playwright-cli highlight --hide
 ```
 

@@ -1,10 +1,12 @@
 # Changing µAgent configuration
 
-`uagent` with `action=configure` persists a setting. It accepts only registered `UAGENT_*`
-names, shows the user an exact diff, and commits nothing until they approve it.
-`--yolo` does not apply. A headless or delegated run cannot commit at all:
-`inspect` still works, `configure` is rejected, and the answer is a proposal
-for the user to apply themselves.
+`uagent` with `action=configure` persists a setting. It accepts only
+registered setting names, shows the user an exact diff, and commits nothing
+until they approve it. `--yolo` does not apply. An approved preview is good
+for five minutes. A headless or delegated run cannot commit at all: `inspect`
+still works, `configure` is rejected, and the answer is a proposal for the
+user to apply themselves with `/config user KEY=VALUE` or
+`/config project KEY=VALUE`.
 
 Do not edit `~/.uagent/config/settings.json` with the file tools. The tool
 changes only the settings it was approved for and is refused if one of them
@@ -20,8 +22,10 @@ else was saved meanwhile and skips the approval.
 2. Check the `takes_effect` field. Saying a change is live when it needs a
    restart is the failure this step exists to prevent.
 3. Call `uagent` with `action=configure` and `scope` `user` for all
-   conversations, or `project` for the conversations in this folder. Pass one
-   entry per setting, each `set` with a value or `unset`.
+   conversations, or `project` for the conversations in this folder. Pass
+   `changes` with one entry per setting: `key`, `operation` (`set` or
+   `unset`) and, for `set`, `value` as a string. Web host settings
+   (`UAGENT_WEB_*`, `UAGENT_BROWSER_DATA`) are refused at `project`.
 4. State the effect plainly: what changes now, what changes at the next launch,
    and what stays shadowed by a higher layer.
 
@@ -33,6 +37,8 @@ the user to enter direct credentials, and never echo one that is already set.
 ## Layers
 
 ```text
+this conversation     its own model and approval mode (/model, /permissions,
+                      /config conversation KEY=VALUE); not set by this tool
 command line          --model, --budget, --no-memory, ...
 process environment   exported UAGENT_* variables
 this project          saved for this folder

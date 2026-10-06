@@ -6,25 +6,27 @@ no application server language runtime or dynamically loaded plugin layer.
 
 ## Boundaries
 
-| Domain | Responsibility |
+| Path | Owns |
 | --- | --- |
+| `src/main.cc` | Entry point: internal modes such as `--session-worker`, otherwise the application |
+| `src/cli/` | Flag parsing (`options.cc`), the slash-command registry (`cli.cc`), interactive reads, `--emit-reference` (`reference.cc`) |
 | `src/app/` | Bootstrap, session transport and lifecycle |
-| `src/app/session_*.cc` | Session-host facets: routing, schedules, supervision, snapshots (facade: `session_host.h`; event log: `replay_log`, attachments: `asset_store`, receipts: `outcome_store`) |
-| `src/tools/registry_*.cc` | Tool registration by family (files, exec, activity, memory); `registry.cc` only orders the families |
-| `src/app/commands_*.cc` | Slash-command dispatcher (commands.cc) plus model, session and control handlers |
-| `src/cli/` | Terminal entry surface: flag parsing, slash-command registry, interactive reads, `--emit-reference` |
-| `src/api/` | Provider dialects, streaming, capabilities, usage and HTTP captures: transport in client.cc, request-body construction in wire_request.cc |
-| `src/agent/` | Turn execution, canonical conversation, context preparation, persistence, supervision services (process/jobs/child_agent), memory store and observation records |
+| `src/app/session_*.cc` | The session runtime, its terminal client and the host's facets; see [Session runtime and clients](#session-runtime-and-clients) |
+| `src/app/commands_*.cc` | Slash-command handlers for model, session and control; `commands.cc` dispatches |
+| `src/app/coordinator.cc`, `thread_link.cc`, `launch.cc` | A folder's coordinator, its threads and where a launched session runs |
+| `src/agent/` | Turn execution, canonical conversation, context preparation, persistence, supervision services (process, jobs, child agent), mail delivery, the edit journal behind `/undo`, memory store and observation records |
+| `src/api/` | Provider dialects, streaming, capabilities, usage and HTTP captures: transport in `client.cc`, request bodies in `wire_request.cc`, stream decoding in `wire_stream.cc` |
 | `src/providers/` | Route catalog, model selection grammar and route policy |
-| `src/media/` | Attachment encoding and display projections |
-| `src/transport/` | SSE framing for event delivery |
 | `src/tools/` | Tool surface and adapters over agent services; no session or supervision ownership |
-| `src/core/` | Shared policy, events, limits, filesystem, signals and platform primitives |
-| `src/ui/` | Terminal input and presentation |
-| `src/web/` | Authenticated HTTP/SSE adapter, assets and optional push |
-| `web/src/` | Browser event projection and presentation (`app/` shell, `state/` host-data layer, `features/<name>/` self-contained UI, `shared/` cross-feature rendering and formatting) |
+| `src/tools/registry_*.cc` | Tool registration by family (files, exec, activity, memory); `registry.cc` only orders the families |
 | `src/mcp/` | Bounded stdio JSON-RPC integration |
 | `src/browser/` | Browser service for the Docker appliance: owns Chrome and Xvnc behind a private socket |
+| `src/core/` | Shared policy, events, limits, settings, mailboxes, sandbox, filesystem, signals and platform primitives |
+| `src/media/` | Attachment encoding and display projections |
+| `src/transport/` | Session frames and SSE framing |
+| `src/ui/` | Terminal input and presentation |
+| `src/web/` | Authenticated HTTP/SSE adapter (`master.cc`), assets and optional push |
+| `web/src/` | Browser event projection and presentation: `app/` shell, `state/` host-data layer, `features/<name>/` self-contained UI, `shared/` cross-feature rendering and formatting |
 | `tests/`, `benchmarks/` | Behavioral contracts and measurement |
 
 The registry owns tool contracts, configuration descriptors own settings, route
@@ -33,26 +35,31 @@ Clients do not interpret shell text to infer permission or mutation authority.
 
 ## Build layers
 
-CMake mirrors the dependency DAG; each library links the one above it:
+CMake mirrors the dependency DAG; each library links the one in the row
+above it:
 
 | Library | Contents |
 | --- | --- |
-| `uagent_core_base` | `src/core/`, `src/transport/`, `src/media/` (leaf) |
+| `uagent_core_base` | `src/core/`, `src/transport/` (leaf) |
 | `uagent_api` | `src/api/` |
-| `uagent_toolcore` | Tool vocabulary (`src/tools/tool.cc`) and `src/providers/`; no agent, tool or app dependency |
+| `uagent_toolcore` | Tool vocabulary (`src/tools/tool.cc`), `src/media/` and `src/providers/`; no agent, tool or app dependency |
 | `uagent_agent` | `src/agent/`: turn loop, persistence, supervision services, memory store, observation records |
-| `uagent_tools` | Tool surface, `src/mcp/` and `src/browser/`, consuming agent services |
+| `uagent_tools` | Tool surface and `src/mcp/`, consuming agent services; `src/browser/` when `UAGENT_BROWSER=ON` (default with the web UI) |
 | `uagent_app` | `src/app/`, `src/ui/`, `src/cli/` |
 | `uagent_web` | `src/web/` and the embedded bundle; built when `UAGENT_WEB=ON` (default) |
 
 `uagent_core` is an INTERFACE umbrella over `uagent_app`; tests, benchmarks,
-fuzzers and `uagent_web` link it. Public headers live under `include/`
-(top-level facades plus `include/<module>/`); only module-private shared
-declarations stay in `src/<module>/*_internal.h`. `tests/boundary_test.py`
-rejects any new include that points up this order; its `KNOWN` set lists the
-remaining exceptions. The web host embeds the
-built `web/dist` (`npm run build` in `web/`, or CI's web-dist artifact); a
-first configure without it builds CLI-only and says how to add the UI.
+fuzzers and `uagent_web` link it.
+
+Public headers live under `include/` (top-level facades plus
+`include/<module>/`). Only module-private shared declarations stay in
+`src/<module>/*_internal.h`. `tests/boundary_test.py` (CTest
+`layer_boundary`) rejects any new include that points up this order; its
+`KNOWN` set lists the remaining exceptions.
+
+The web host embeds the built `web/dist` (`npm ci && npm run build` in
+`web/`, or CI's web-dist artifact). A first configure without it builds
+CLI-only and says how to add the UI.
 
 ## Session runtime and clients
 
@@ -61,6 +68,17 @@ its local command/event boundary. CLI and web attach to that same process; the
 client that starts a conversation has no extra authority or capabilities.
 The web server adapts HTTP commands and SSE to this boundary. It neither runs a
 second agent nor reconciles competing conversation files.
+
+| Piece | Code |
+| --- | --- |
+| Runtime process (`uagent --session-worker`) | `src/app/session_worker.cc`; its socket server in `session_server.cc` |
+| Terminal client | `src/app/session_terminal.cc` |
+| Web host | `src/web/master.cc` over `SessionHost` (`include/app/session_host.h`) |
+| `SessionHost` facets | `src/app/session_router.cc` (commands), `session_supervisor.cc` (runtimes), `session_schedules.cc`, `session_snapshot.cc`, `session_assets.cc`; event log in `replay_log.cc`, attachments in `asset_store.cc`, receipts in `outcome_store.cc` |
+| Frame format and limits | `include/transport/session.h` |
+| Headless `-p` run | `src/app/application_headless.cc` |
+| Subagents | `src/tools/subagent.cc`, `src/agent/child_agent.cc` |
+| Mailboxes | `src/core/mailbox.cc`, `src/agent/mail_delivery.cc` |
 
 The runtime owns the agent, provider session identity, tools, approvals, pending
 interactions and supervised children. `ApplicationChannel` connects its input
@@ -96,23 +114,29 @@ folder; edits to shared project files still require coordination.
 A delegated child is a headless `-p` run of the same binary, supervised as a
 background activity of its parent. It saves an ordinary session file in the
 workspace's history whose header carries a `delegation` object (parent, name,
-role, directive, mode, model); the catalogue hides such files, and the parent
-finds its children by that header. A follow-up starts a new bounded child
-process from the saved conversation, and a message to a finished child starts
-one on that message. A child's result reaches its parent through the activity
-completion; an idle parent takes it up at once as a turn.
+directive, mode, model, route); the catalogue hides such files, and the parent
+finds its children by that header. A child approves its own tool calls and
+runs its commands under its parent's sandbox. A follow-up starts a new bounded
+child process from the saved conversation, and a message to a finished child
+starts one on that message. A child's result reaches its parent through the
+activity completion; an idle parent takes it up at once as a turn.
+
+A folder's coordinator is a session that reads and delegates but never writes
+or runs commands. The sessions it starts are its threads.
 
 Sessions message each other through durable mailboxes
 ([PERSISTENCE.md](PERSISTENCE.md#mail)): linked peers, a parent and its
 children, children of one parent, and a folder's coordinator and its threads.
-Each runtime watches its mailbox (inotify, kqueue on macOS) and delivers at
-the next model step, including after a final answer, which reopens the turn;
-an idle runtime starts a turn on mail meant to wake it, and a headless child
-answers mail that arrives after its last step before it exits. A thread's
-finished turns and questions reach its coordinator this way within
-milliseconds, starting the coordinator's runtime when none runs; at the daily
-spend limit the coordinator's mail waits. Senders are refused, visibly, past 64
-pending messages, 20 a minute or 8 forwards.
+
+- Each runtime watches its mailbox (inotify, kqueue on macOS) and delivers at
+  the next model step, including after a final answer, which reopens the turn.
+- An idle runtime starts a turn on mail meant to wake it. A headless child
+  answers mail that arrives after its last step before it exits.
+- A thread's finished turns and questions reach its coordinator this way
+  within milliseconds, starting the coordinator's runtime when none runs. At
+  the daily spend limit the coordinator's mail waits.
+- Senders are refused, visibly, past 64 pending messages, 20 a minute or 8
+  forwards (`include/core/mailbox.h`).
 
 Headless `-p` runs use the same application, agent and event policies in one
 process. Their bounded invocation and machine-output contract are separate from
@@ -120,11 +144,12 @@ an attached interactive client.
 
 ## Events and observability
 
-`EventId` and one compile-time policy table define names, durability and public
-redaction. Producers publish semantic facts; fixed consumers handle terminal
-presentation, JSONL, debug output and a bounded session journal. Runtime adapters
-subscribe to the same application events. Subscriber delivery is ordered and
-cannot return a tool result or grant authority.
+`EventId` (`include/core/events.h`) and one compile-time policy table
+(`src/core/events.cc`) define names, durability and public redaction.
+Producers publish semantic facts; fixed consumers handle terminal
+presentation, JSONL, debug output and a bounded session journal. Runtime
+adapters subscribe to the same application events. Subscriber delivery is
+ordered and cannot return a tool result or grant authority.
 
 The command side changes state; the event side reports the change.
 `message.changed` updates visible history, `usage.updated` reports current
@@ -138,37 +163,52 @@ That identity reaches the saved assistant display record, while provider tool
 call IDs remain raw provider facts. Tool occurrences are scoped to the response
 and have a separate retained-detail identity. Content revision and completeness
 are independent: a bounded checkpoint preview at the same revision cannot
-replace a fuller body already held by a client. One reducer
-(`ApplySessionEvent`) folds events into a view of rows: one per message and
-one per tool call, keyed so a live call, its result and the saved message land
-on the same row. The worker, the host and an attached terminal each fold with
-it; browsers receive the host's result as `block` patches. The runtime also publishes its
-canonical execution phase and pending decision; transport connection health
-remains client-owned.
+replace a fuller body already held by a client.
+
+One reducer (`ApplySessionEvent`, `src/agent/session_view.cc`) folds events
+into a view of rows: one per message and one per tool call, keyed so a live
+call, its result and the saved message land on the same row. The worker, the
+host and an attached terminal each fold with it; browsers receive the host's
+result as `block` patches. The runtime also publishes its canonical execution
+phase and pending decision; transport connection health remains client-owned.
+
+How much of that view a client shows is one display setting,
+`UAGENT_VERBOSITY` (`include/core/verbosity.h`). The model never sees it.
 
 One activity projection (`include/core/activity.h`) derives the working label
-for the terminal, the browser and process-child progress. `tool.call` marks a
-call being prepared, before approval; `tool.started` is emitted immediately
-before execution. Calls are tracked by occurrence ID, so one finished parallel
-call cannot clear another. Pending decisions, provider retry waits and terminal
-states override descriptive labels. `run` and `scratch` accept an optional
-model-authored `description` for the label; it is stripped before validation,
-approval and execution, while the original arguments stay in provider replay.
-While the model reasons, the label is `Thinking · <line>`, where the line is
-the latest complete readable line of supplied reasoning, stripped of Markdown
-decoration and capped at 160 bytes; lines over 192 bytes are skipped, and
-without one the label is `Thinking`. This is a display heuristic: labels never
-establish that an action ran or succeeded.
+for the terminal, the browser and process-child progress.
 
-Readable reasoning summaries are requested per route. Official OpenAI
-Responses routes send `reasoning.summary: auto` unless effort is `none`.
-Anthropic routes send adaptive thinking with `display: summarized` when the
-Models API catalog advertises adaptive thinking and an effort other than
-`none` is set. Other routes opt in with the `reasoning_summary` and
-`adaptive_thinking` model features (a provider's `features` in
-`UAGENT_PROVIDERS`), which override catalog metadata. A 400 response
-that rejects the summary field turns summary requests off for that route and
-retries only if the attempt produced no progress. Signed or opaque reasoning is replayed to the provider unchanged.
+- `tool.call` marks a call being prepared, before approval; `tool.started` is
+  emitted immediately before execution. Calls are tracked by occurrence ID, so
+  one finished parallel call cannot clear another.
+- Pending decisions, provider retry waits and terminal states override
+  descriptive labels.
+- `run` and `scratch` accept an optional `intent` (`explore`, `research`,
+  `edit`, `verify`, `run`, `setup`). It only groups the call for display and
+  grants nothing.
+- While the model reasons, the label is `Thinking · <line>`: the latest
+  complete readable line of supplied reasoning, stripped of Markdown
+  decoration and capped at 160 bytes. Lines over 192 bytes are skipped;
+  without a line the label is `Thinking`.
+
+Labels are a display heuristic: they never establish that an action ran or
+succeeded.
+
+Readable reasoning summaries are requested per route
+(`src/api/wire_request.cc`):
+
+- Official OpenAI Responses routes send `reasoning.summary: auto` unless
+  effort is `none`.
+- Anthropic routes send adaptive thinking with `display: summarized` when the
+  Models API catalog advertises adaptive thinking and an effort other than
+  `none` is set.
+- Other routes opt in with the `reasoning_summary` and `adaptive_thinking`
+  model features (a provider's `features` in `UAGENT_PROVIDERS`), which
+  override catalog metadata.
+
+A 400 response that rejects the summary field turns summary requests off for
+that route and retries only if the attempt produced no progress. Signed or
+opaque reasoning is replayed to the provider unchanged.
 
 Provider-reported partial usage is combined with the confirmed session total for
 live display. Final usage replaces that provisional view through the normal
@@ -223,7 +263,7 @@ permission policy. See [Security](../SECURITY.md).
 
 ## Configuration is described once
 
-`config_registry.h` defines each setting once: its default, bounds,
+`include/core/config_registry.h` defines each setting once: its default, bounds,
 sensitivity, activation timing and the scopes it may be saved at. Runtime
 getters, CLI flags, `/config`, the web's Settings, diagnostics and the
 generated skill references all consume that source.
@@ -277,8 +317,17 @@ snapshots are reported without overwriting them. A crash does not establish
 whether an external tool side effect happened; restart never assumes that it is
 safe to repeat it.
 
-Add behavior at its owning boundary: a registry entry for a tool, a route adapter
-for wire semantics, a runtime command/event for session behavior, or a presenter
-for layout. Tests should assert the externally meaningful contract at that
-boundary. Keep distinct safety, concurrency and platform cases; avoid tests that
-only count implementation strings. [Testing](TESTING.md) documents the checks.
+Add behavior at its owning boundary:
+
+| To add | Change |
+| --- | --- |
+| A tool | A registry entry in `src/tools/registry_<family>.cc` |
+| Wire semantics for a provider | The route adapter in `src/api/wire_request.cc` and `wire_stream.cc` |
+| A setting | Its descriptor in `include/core/config_registry.h` |
+| A slash command | The registry in `src/cli/cli.cc` and a handler in `src/app/commands_*.cc` |
+| Session behavior | A runtime command (`src/app/session_command.cc`) or an event (`include/core/events.h`) |
+| Layout | A presenter in `src/ui/` or `web/src/` |
+
+Tests should assert the externally meaningful contract at that boundary. Keep
+distinct safety, concurrency and platform cases; avoid tests that only count
+implementation strings. [Testing](TESTING.md) documents the checks.

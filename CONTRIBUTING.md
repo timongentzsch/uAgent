@@ -5,6 +5,87 @@ over local exceptions, and preserve behavior before redesigning a boundary.
 First-party C++ follows the
 [Google C++ Style Guide](https://google.github.io/styleguide/cppguide.html).
 
+## Verify
+
+Build and run the hermetic suite; it needs no API key or network:
+
+```sh
+cmake --preset debug
+cmake --build --preset debug --parallel
+ctest --preset debug --output-on-failure
+```
+
+While iterating, run one case instead of the suite
+([Testing](docs/TESTING.md) has the rest):
+
+```sh
+build/debug/uagent_tests -k Activity
+python3 tests/integration.py build/debug/uagent -k compaction
+```
+
+Before a commit, run what CI checks on every change:
+
+```sh
+uvx --from clang-format==22.1.8 clang-format --dry-run --Werror \
+  include/*.h include/*/*.h src/*.cc src/*/*.cc \
+  tests/unit/*.h tests/unit/*.cc tests/fuzz/*.cc benchmarks/*.cc
+uv run --frozen ruff check .github tests benchmarks skills
+uv run --frozen ruff format --check .github tests benchmarks skills
+git diff --check
+```
+
+After changing a flag, slash command, setting or tool, regenerate the
+reference the `uagent-config` skill ships; CI fails when it is stale:
+
+```sh
+build/debug/uagent --emit-reference skills/uagent-config/references
+```
+
+Builds are warning-clean under `-Wall -Wextra -Wpedantic -Wconversion
+-Wsign-conversion -Wshadow -Wold-style-cast`, and presets treat warnings as
+errors. Make a narrowing or signedness change explicit where it happens rather
+than widening the receiving type.
+
+For web changes, run from `web/`:
+
+```sh
+npm ci
+npm run format:check
+npm test
+npm run build
+npm run notices
+npm run size
+```
+
+`web/dist` is build output and not committed; CI builds it once and embeds
+it in every native build. A build tree first configured without `web/dist`
+is terminal-only; after the first `npm run build`, configure it again with
+`-DUAGENT_WEB=ON`.
+Commit `web/THIRD_PARTY_NOTICES.md` when dependencies change; CI fails when
+it differs from a fresh `npm run notices`. `npm run test:browser` runs the
+Playwright suite against a native host; see [Testing](docs/TESTING.md).
+
+CI also runs cpplint and clang-tidy. Configure clang-tidy through the `tidy`
+preset: it disables the precompiled header, which another clang cannot read.
+On macOS use Homebrew LLVM with the Apple SDK, since upstream clang-tidy cannot
+parse the SDK's libc++ headers without `-isysroot`:
+
+```sh
+uvx --from cpplint==2.0.2 cpplint --recursive --exclude=third_party \
+  --exclude=tests/fixtures --extensions=h,cc \
+  --filter=-build/c++17,-build/header_guard,-whitespace/indent_namespace,-readability/check \
+  include src tests benchmarks
+
+cmake --preset tidy
+$(brew --prefix llvm)/bin/run-clang-tidy \
+  -clang-tidy-binary $(brew --prefix llvm)/bin/clang-tidy \
+  -p build/tidy -header-filter='.*/(include|src|tests|benchmarks)/.*' -quiet \
+  -extra-arg=-isysroot$(xcrun --show-sdk-path)
+```
+
+Before a release, also run the `release`, `sanitize`, `tsan`, `fuzz` and
+`coverage` presets. Benchmarks are trend signals, not correctness gates.
+
 ## Changes
 
 - Add tools through `MakeTool`. Set approval, mutation, concurrency, timeout,
@@ -45,55 +126,3 @@ applies events, and components own only presentation and local interaction
 state. Derive status from the shared snapshot; do not keep another
 conversation or execution state machine in a component. Use semantic controls,
 visible focus and accessible status text.
-
-## Verify
-
-```sh
-cmake --preset debug
-cmake --build --preset debug --parallel
-ctest --preset debug --output-on-failure
-
-uv run --frozen ruff check .github tests benchmarks skills
-uv run --frozen ruff format --check .github tests benchmarks skills
-git diff --check
-```
-
-Builds are warning-clean under `-Wall -Wextra -Wpedantic -Wconversion
--Wsign-conversion -Wshadow -Wold-style-cast`, and presets treat warnings as
-errors. Make a narrowing or signedness change explicit where it happens rather
-than widening the receiving type.
-
-For web changes, run from `web/`:
-
-```sh
-npm ci
-npm run format:check
-npm test
-npm run build
-npm run notices
-```
-
-`web/dist` is build output and not committed; CI builds it once and embeds
-it in every native build. Commit `web/THIRD_PARTY_NOTICES.md` when
-dependencies change; CI fails when it differs from a fresh `npm run notices`.
-
-CI also runs cpplint and clang-tidy. Configure clang-tidy through the `tidy`
-preset: it disables the precompiled header, which another clang cannot read.
-On macOS use Homebrew LLVM with the Apple SDK, since upstream clang-tidy cannot
-parse the SDK's libc++ headers without `-isysroot`:
-
-```sh
-uvx --from cpplint==2.0.2 cpplint --recursive --exclude=third_party \
-  --exclude=tests/fixtures --extensions=h,cc \
-  --filter=-build/c++17,-build/header_guard,-whitespace/indent_namespace,-readability/check \
-  include src tests benchmarks
-
-cmake --preset tidy
-$(brew --prefix llvm)/bin/run-clang-tidy \
-  -clang-tidy-binary $(brew --prefix llvm)/bin/clang-tidy \
-  -p build/tidy -header-filter='.*/(include|src|tests|benchmarks)/.*' -quiet \
-  -extra-arg=-isysroot$(xcrun --show-sdk-path)
-```
-
-Before a release, also run the `release`, `sanitize`, `tsan`, `fuzz` and
-`coverage` presets. Benchmarks are trend signals, not correctness gates.

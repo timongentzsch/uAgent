@@ -1,7 +1,20 @@
 # Bundled skills
 
-This directory holds the skills shipped with µAgent. Installs copy it to
-`share/uagent/skills`, which the runtime finds relative to the executable.
+A skill is a folder with a `SKILL.md`: instructions the model opens when a
+task calls for them. This directory holds the skills shipped with µAgent.
+Installs copy it to `share/uagent/skills`, which the runtime finds relative
+to the executable.
+
+| To | Do |
+| --- | --- |
+| use a skill now | type `$name` in a message, as in `$fusion TASK` |
+| see what is installed | `/skills` |
+| read, switch off or on | `/skills get ID`, `/skills disable ID`, `/skills enable ID` |
+| add your own | write `~/.uagent/skills/NAME/SKILL.md`, or `.uagent/skills/NAME/SKILL.md` in a project |
+
+Without `$name`, the model opens a skill itself when its description fits
+the task. The web's Library lists and edits the same skills; see
+[Memory, skills and scheduled tasks](../docs/MANAGEMENT.md).
 
 ## What ships
 
@@ -37,10 +50,21 @@ since their skills were written for their tools.
 
 ## Front matter
 
-Only the front matter of each `SKILL.md` is read at startup; the body is sent
-to the model when it opens the skill. `ParseSkillFrontMatter` is a flat
-`key: value` reader that ignores unknown keys, so skills written to the
-[Agent Skills](https://agentskills.io) format load unchanged.
+A minimal skill:
+
+```markdown
+---
+description: Use when the user asks for release notes. Summarize the commits since the last tag.
+argument-hint: TAG
+---
+
+Write release notes for $ARGUMENTS. The template is ${SKILL_DIR}/template.md.
+```
+
+Only the front matter is read at startup; the body is sent to the model when
+it opens the skill. Front matter is flat `key: value` lines and unknown keys
+are ignored, so skills written to the [Agent Skills](https://agentskills.io)
+format load unchanged.
 
 | Key | Read by µAgent |
 | --- | --- |

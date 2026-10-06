@@ -24,7 +24,8 @@ the two locations.
 Each tagged release also ships built archives
 (`uagent-<version>-linux-x86_64`, `-linux-arm64`, `-macos-arm64`, each
 `.tar.gz`). Unpack one and run `bin/uagent`; keep `bin` and `share` together,
-since the skills are found relative to the binary.
+since the skills are found relative to the binary. `SHA256SUMS`, signed
+with Sigstore (`SHA256SUMS.sigstore.json`), lists every archive's checksum.
 
 ### Requirements
 
@@ -54,11 +55,10 @@ uagent
 ```
 
 With only an OpenRouter key it uses a default model. Choose your own inside
-the session; either line also saves it for new conversations:
+the session; `--default` also saves it for new conversations:
 
 ```text
 /model deepseek/deepseek-v4-flash --default
-/config user UAGENT_MODEL=deepseek/deepseek-v4-flash
 ```
 
 For any other OpenAI-compatible endpoint set `UAGENT_BASE_URL`,
@@ -68,9 +68,6 @@ For any other OpenAI-compatible endpoint set `UAGENT_BASE_URL`,
 export UAGENT_BASE_URL=http://localhost:8080/v1
 export UAGENT_MODEL=my-model
 ```
-
-`UAGENT_PROVIDERS` defines named providers, including ones that speak
-OpenAI Responses or Anthropic Messages (`wire_api`).
 
 Settings are saved by µAgent, not in files you edit:
 
@@ -85,12 +82,13 @@ Settings are saved by µAgent, not in files you edit:
 
 The web's Settings edits the same values. Command-line flags override
 `UAGENT_*` environment variables, which override what is saved for the
-project, which overrides what is saved for all conversations. Nothing is read
-from the project: `.env` files are never loaded, and a `~/.uagent/.config` or
-`.uagent/.config` from an earlier version is taken over once and kept as
-`.config.imported`.
+project, which overrides what is saved for all conversations. Saved settings
+live outside the project, and `.env` files are never loaded. A
+`~/.uagent/.config` or a trusted project's `.uagent/.config` from an earlier
+version is imported once and kept as `.config.imported`.
 
-Every setting and its default is in the
+Every setting and its default, named providers (`UAGENT_PROVIDERS`)
+included, is in the
 [configuration reference](skills/uagent-config/references/configuration.md);
 inside a session, the bundled `$uagent-config` skill answers from it.
 
@@ -137,24 +135,6 @@ approvals they cannot settle. `/board` lists the folder's sessions and
 `uagent --help` lists every flag; `--debug=PATH` writes a trace for bug
 reports, which contains sensitive data.
 
-## Highlights
-
-- One runtime per conversation; terminal and browser clients send commands to
-  it and render the same ordered events.
-- Streamed answers and reasoning, queued steering while the agent works, and
-  interruption at any point.
-- Supervised processes with optional PTYs, writable input, background
-  handoff and bounded logs, confined by an OS sandbox that restricts writes.
-- File, search, shell, memory, web, skill, subagent and MCP tools, filtered
-  by policy and route capabilities; see [Tools](docs/TOOLS.md).
-- Approval modes (ask, auto, YOLO). YOLO stops the questions, not the
-  sandbox, and changes to µAgent's own configuration and unsandboxed commands
-  always need a person.
-- `/changes` and `/undo` list and put back the files the last turn's edits
-  changed.
-- Bounded time, output, processes, context and persistence, plus optional
-  turn budgets for spend, tokens and calls.
-
 ## Interactive controls
 
 | Input | Action |
@@ -177,22 +157,20 @@ repository) or `n`; any other answer denies the call and is sent to the model
 as guidance. Changes that need a person accept only `y` or `n`. Remembered
 shell approvals match the exact command, not the executable.
 
-Common slash commands:
+Slash commands for a first session:
 
 | Command | Action |
 | --- | --- |
-| `/model`, `/models`, `/effort`, `/variant` | Choose this conversation's route, model, reasoning effort or OpenRouter routing; `/model X --default` also saves it for new conversations |
-| `/attach PATH`, `/diff`, `/review`, `/init` | Attach a file, show the git diff, review changes, write `AGENTS.md` |
+| `/model NAME` | Choose this conversation's model; `--default` also saves it |
+| `/attach PATH` | Attach a file |
 | `/changes`, `/undo [FILE]` | List the files the last turn changed; put them back as they were |
-| `/status`, `/context`, `/cost`, `/http` | Inspect configuration, the model request, spend and captured traffic |
-| `/ps`, `/agents`, `/tools`, `/mcp`, `/permissions`, `/yolo` | Manage background work, delegated agents, tools, MCP servers and approval mode |
-| `/sessions`, `/reset`, `/rename`, `/fork`, `/rewind`, `/compact`, `/share` | Resume a saved session, start a new one, rename, branch, edit an earlier message, summarize, export |
-| `/coord`, `/board`, `/open ID` | Open the folder's coordinator, list its sessions, switch to one |
-| `/memory`, `/skills`, `/schedule`, `/instructions`, `/config`, `/restart` | Manage memory, skills, scheduled tasks, instructions and settings; restart to apply one |
-| `/btw QUESTION` | Ask a side question about the conversation; the answer is not added to it |
-| `/verbosity LEVEL`, `/clear`, `/help`, `/quit` | Show minimal, default or full detail everywhere; clear the screen, list all commands, detach |
+| `/permissions ask\|auto\|yolo` | Choose how calls are approved |
+| `/sessions`, `/reset` | Resume a saved session; start a new one |
+| `/config` | Show and change settings |
+| `/help`, `/quit` | List every command with its arguments; detach |
 
-`/help` lists every command with its arguments.
+The full list is in the
+[slash-command reference](skills/uagent-config/references/slash-commands.md).
 
 ## Documentation
 
@@ -215,11 +193,5 @@ Common slash commands:
 
 ## Development
 
-```sh
-cmake --preset debug
-cmake --build --preset debug --parallel
-ctest --preset debug --output-on-failure
-```
-
-See [Contributing](CONTRIBUTING.md) for the checks CI runs and
+See [Contributing](CONTRIBUTING.md) for building, the checks CI runs and
 [Testing](docs/TESTING.md) for running one test.

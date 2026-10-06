@@ -166,8 +166,7 @@ off or try another source.
 | Answer the agent's request | **Open browser** on its card opens the viewer already in your control; **Done** returns you to the chat |
 | Free Chrome's memory | **Stop browser** in the status menu, shown while Chrome runs unused |
 
-- Watching and driving share one connection, so the screen does not reload on
-  a hand-over. The host serves the screen to one viewer at a time.
+- The host serves the screen to one viewer at a time.
 - While you drive, agent actions fail at once and tell the agent to call
   `request_human`.
 - The agent calls `request_human` for a login Chrome has not saved, MFA, a
@@ -291,30 +290,23 @@ settings and inspect activity. See [Architecture](ARCHITECTURE.md) and
 
 "Nothing to do" means no turn, no queued message, no running command and no
 terminal attached. The next message, or a setting changed on the conversation
-(model, permission mode, tools), starts a runtime from the saved snapshot
-with the conversation's model and permission mode. It never repeats a
-previous command. Commands started with `detach` keep running through both.
+(model, permission mode, tools), starts a runtime from the saved conversation
+with its model and permission mode. It never repeats a previous command.
+Commands started with `detach` keep running through both.
 
 On Linux, a systemd-launched web host starts each runtime in its own user
 scope through `systemd-run` (254 or newer), so a service restart does not
 kill it. Keep the normal service kill policy; Close owns session shutdown.
 
-Delivery is safe to retry:
+When the connection drops or the page reloads:
 
-- Commands carry stable request IDs and a runtime generation. A repeated
-  delivery returns the original receipt, conflicting reuse is rejected, and a
-  changed generation requires a fresh snapshot.
-- A reload or reconnect mid-stream resumes the same rows: the browser applies
-  the host's changes to the snapshot it loaded, and the saved conversation
-  remains the durable authority. Controls stay disabled until the browser
-  has caught up.
-- A sent message shows a pending row until the runtime accepts it. Reconnect
-  checks receipts and history without resubmitting.
+- The status line shows "Reconnecting…". The conversation resumes where it
+  was, and controls stay disabled until the browser has caught up.
+- A sent message shows as pending until the runtime accepts it. Reconnecting
+  does not send it twice.
 - A message the host refused or never confirmed stays at its row with the
   reason, **Retry** and **Return to composer**. A failed decision reply stays
-  on the decision with **Retry**. Neither goes to the page's error banner.
-- While the event stream reconnects, the status line shows a
-  "Reconnecting…" pill.
+  on the decision with **Retry**.
 
 Session cost follows provider-reported usage and is never invented. The
 context counter is an estimate of the current request size, separate from
@@ -324,21 +316,15 @@ billing totals.
 
 ### Status and decisions
 
-One status indicator is used in the sidebar and composer: hollow without a
-live runtime, filled when connected, breathing while work runs. A pending
-decision shows a steady indicator and "Needs your input"; a separate dot
-marks unread responses. A sidebar row that waits on you or failed shows an
-icon in place of the indicator, so no state rests on colour alone.
-
-Decisions waiting on you are counted once, across every folder:
+A conversation with a pending decision shows "Needs your input". Decisions
+waiting on you are counted once, across every folder:
 
 - The count heads the sidebar ("2 need you") and opens every waiting
   decision, with its folder and question, to answer or open in place.
 - It also shows in the tab title ("(2) µAgent") and, where the browser
   supports it, on the installed app's badge.
 - Answering there or in the conversation is the same act; the first answer
-  wins. A notification opens `#session=<id>&decision=<id>`, which opens the
-  conversation and focuses its decision.
+  wins.
 
 An approval opens above the input, which stays in place, read-only, until it
 is answered; Permissions stays usable. The card shows what it would do (the
@@ -356,16 +342,13 @@ before Submit.
 
 ### Composer
 
-- Its action row has fixed places in every turn state: Attach, the model,
-  Permissions, and one primary button. That button is Send, or Stop while a
-  turn runs and the draft is empty. The permission control turns red in YOLO
-  mode.
 - The model control combines provider/model, variant and reasoning effort.
   Choosing does not send a message and applies to this conversation; **Also
   use for new conversations** makes it the default.
 - Enter sends; Shift+Enter inserts a newline. On a touch keyboard Enter
   inserts a newline and the Send button sends.
-- While a turn runs, Enter adds guidance to it and Esc stops it. **Queue
+- While a turn runs, Enter adds guidance to it and Esc stops it; with an
+  empty draft the Send button is Stop. **Queue
   next** (Alt+Enter), on the status line once there is a draft, holds the
   message until the turn ends and then runs it as its own turn.
 - After a turn stopped short (Stop, an error, a step or budget limit) the
@@ -393,8 +376,8 @@ before Submit.
   captures. Credential headers are redacted; bodies can contain sensitive
   workspace content.
 - Background completions, memory updates and compaction appear as expandable
-  event rows. Subagent views reuse the main conversation renderer, statistics
-  and input. Ordinary subagent follow-ups can select another model;
+  event rows. Subagent views work like the main conversation. Ordinary
+  subagent follow-ups can select another model;
   persistent agents keep their runtime model. Process children show
   statistics from their latest saved checkpoint and label them as such.
 - Markdown supports code highlighting, math and fenced `mermaid` diagrams.
@@ -454,23 +437,14 @@ dedicated editors; see [Memory, skills and scheduled tasks](MANAGEMENT.md) and
 
 The page stays pinch-zoomable; inside the browser viewer a pinch zooms the
 remote display instead. Settings → This browser → Zoom scales the whole
-interface from 50 to 200%. On touch devices, fields keep a layout font of at
-least 16px to avoid focus zoom. A reduced-motion preference, or Animations:
-Off, disables animation. See [Accessibility](ACCESSIBILITY.md).
+interface from 50 to 200%. A reduced-motion preference, or Animations: Off,
+disables animation. See [Accessibility](ACCESSIBILITY.md).
 
 ## Attachments
 
-The native attachment pipeline inspects original files and projects them for
-the selected model's declared capabilities. Images use native image input when
-supported, or the configured vision fallback. Supported document routes receive
-native document input; other routes use bounded extraction or an explicit
-unsupported-format error. Audio and video are sent natively only on Chat
-Completions routes; other dialects receive the file path.
-
-Web uploads are private session assets; local `/attach PATH` uses the same
-inspection. Uploads are claimed before the prompt is accepted, so cleanup
-cannot remove a referenced file. See [Tools](TOOLS.md) for `read_path` media
-input and [Operations](OPERATIONS.md) for extraction and fallback limits.
+Attach files in the composer; what a model accepts depends on the selected
+model. See [Tools](TOOLS.md) for `read_path` media input and
+[Operations](OPERATIONS.md) for extraction and fallback limits.
 
 The image viewer fits the whole image and zooms like a document viewer: the
 **− / + / Fit** controls, ⌘/Ctrl+wheel or a trackpad pinch, ⌘/Ctrl with −, +
@@ -485,14 +459,10 @@ limit) and replaces the draft image it was drawn on.
 
 ## Offline behavior
 
-There is no offline conversation storage. Transcripts and history need a live
-host connection; while disconnected, commands are disabled until reconnect
-refreshes authoritative state. The browser keeps only unsent drafts and the
-last conversation list (titles and folders, without scheduled runs), so a
-reload paints the sidebar, title and composer at once, inert until the host
-answers. The service worker precaches the shell and core conversation assets;
-optional renderers enter a bounded runtime cache after first use. Signing out
-or a revoked device clears local UI state.
+A connection to the host is required: transcripts and history are not stored
+in the browser, and commands are disabled while disconnected. The browser
+keeps only unsent drafts and the last conversation list (titles and folders).
+Signing out or a revoked device clears local UI state.
 
 ## Security model
 
@@ -515,11 +485,7 @@ or a revoked device clears local UI state.
 
 | Resource | Bound |
 | --- | --- |
-| IPC frame / command | 1 MiB / 512 KiB |
-| Runtime output queue / host replay | 4 MiB each |
-| Recent command receipts | 256 per runtime |
-| Session file / session header | 64 MiB / 16 KiB |
-| Catalogue / active history page | 4,096 sessions / 64 blocks |
+| Session file | 64 MiB |
 | Upload / files per prompt | 8 MiB / 8 |
 | Session / global source assets | 64 MiB / 512 MiB |
 | Paired devices / device lifetime | 16 / 30 days |
@@ -551,43 +517,7 @@ npm run test:browser --prefix web
 | `size` | Report raw and gzip bundle sizes (advisory, no ceiling) |
 | `notices` / `icons` | Regenerate third-party notices / icons |
 
-### Component ownership
-
-| Concern | Owner |
-| --- | --- |
-| Connection and replay | `web/src/state/use-host.ts` |
-| Event projection | `web/src/state/store.ts` |
-| Command and management transport | `web/src/state/api.ts` |
-| Cache and rendering budgets | `web/src/shared/limits.ts` |
-| Decimal display units | `web/src/shared/quantities.ts` |
-| Viewer gesture tuning | `web/src/features/browser/gestures.ts` |
-
-Feature modules render the store. Shared controls, popovers, spinners and
-spacing tokens keep layout changes centralized; editable fields must use the
-shared `Input`, `Textarea` and `Select` controls (`web/tests/form-controls.test.js`
-rejects native fields). The `Modal` shell owns dialog size, so loading and
-loaded states share geometry. A loading state is the loaded view itself,
-rendered from sample data inside `<Placeholder>` (`web/src/shared/placeholder.tsx`):
-primitives draw their data text as bars and the subtree is inert, so a screen
-and its loading state cannot drift apart. Text of unknown length uses
-`Skeleton`, and unknown content (a document, a live screen) uses one spinner.
-The shell, sidebar, transcript and composer ship in the entry bundle and render
-from the first frame; dialog and page chunks are warmed shortly after boot.
-
-The UI showcase renders the real shared components, including the browser
-viewer controls, without a host connection for visual review. It is a
-development page, not part of the product: `npx vite` in `web/` serves it at
-`/ui.html`, and the Playwright configuration starts that server for its tests.
-
-`web/tests/performance.spec.js` streams 5,000 mock tokens through the real
-EventSource handlers, checks lossless final text and samples frame gaps and
-input latency:
-
-```sh
-npm run test:browser --prefix web -- performance.spec.js
-```
-
-It measures browser processing only, not provider throughput or phone
-performance. Physical iOS keyboard, focus zoom, installation and notification
-behavior is not covered by automated tests; browser emulation does not
-establish it.
+See [Architecture](ARCHITECTURE.md) for how the frontend is laid out and
+[Testing](TESTING.md#web-tests) for how the web tests run. Physical iOS
+keyboard, installation and notification behavior is not covered by automated
+tests; browser emulation does not establish it.

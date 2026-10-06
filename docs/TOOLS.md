@@ -54,49 +54,19 @@ approval mode.
 
 Reading and searching inside the workspace needs no approval. Calls that
 change files, run commands, use the network or touch a path outside the
-workspace follow the approval mode. Set it with `/permissions ask|auto|yolo`
-for a conversation, `--yolo` or `/yolo` as shortcuts, or `UAGENT_APPROVAL` as
-the saved default (`ask`).
+workspace follow the approval mode:
 
-- **Ask** shows the full action and its risks (runs commands, makes changes,
-  uses the network, outside this folder). Allow it once, for the session, or
-  always for that exact action in this repository. A remembered rule covers
-  the tool's provider, schema, approval class and arguments, so a change to
-  any of them asks again. Rules live in `~/.uagent/config/permissions.json`;
-  list them with `/permissions rules` and remove them with
-  `/permissions forget N|all` or in the web's Settings.
-- **Auto** sends the user request and a bounded preview of the action to
-  OpenRouter's Decisions API (`UAGENT_PERMISSION_MODEL`, default
-  `~typesafe/jev-latest`; `UAGENT_PERMISSION_URL`) and follows its allow, ask
-  or deny answer. It needs `OPENROUTER_API_KEY`. An ask opens the normal
-  prompt, or denies when no interactive client is attached; network,
-  authentication and parse failures are treated the same way. Reviewer usage
-  counts toward the turn and session.
-- **YOLO** approves these calls without asking. It does not turn the command
-  sandbox off: that is its own setting (`UAGENT_SANDBOX`), the same in every
-  mode.
+| To | Use |
+| --- | --- |
+| approve each call yourself (the default) | `/permissions ask` |
+| let a reviewer model decide | `/permissions auto`; needs `OPENROUTER_API_KEY`, and `UAGENT_PERMISSION_MODEL` and `UAGENT_PERMISSION_URL` choose the reviewer |
+| run them unasked, commands still sandboxed | `/permissions yolo`, `/yolo` or `--yolo` |
+| save a mode as the default | `UAGENT_APPROVAL` |
+| list or remove remembered approvals | `/permissions rules`, `/permissions forget N\|all` |
 
-Two kinds of session differ:
-
-- A subagent approves its own calls, so approving the delegation approves
-  what the child then does. Its commands run under the sandbox of the
-  conversation that delegated to it.
-- A coordinator's thread runs in Auto unless it is told to ask, and cannot be
-  put in YOLO. While the sandbox is enforced, its commands and its file
-  changes inside the folder run without review.
-
-Some actions always need a person, in every mode:
-
-- reading or writing saved settings (`~/.uagent/config/settings.json`), a
-  legacy `.config` file, `.mcp.json` or `permissions.json`;
-- writing the project trust store or your instruction files in `~/.uagent`;
-- changing settings or instruction files through `uagent`;
-- replacing the base prompt with `adapt_system`;
-- `run(sandbox=false)`, which runs one command outside the sandbox.
-
-Remembered rules, Auto and YOLO do not apply to these, and a session with
-nobody to ask denies them. Child processes get the sanitized environment
-described in [SECURITY.md](../SECURITY.md).
+What each mode covers, what always needs a person, and how subagents and a
+coordinator's threads differ is in
+[SECURITY.md](../SECURITY.md#what-the-agent-may-do-without-asking).
 
 ## Files and search
 
@@ -107,8 +77,6 @@ described in [SECURITY.md](../SECURITY.md).
 - `grep` defaults to regex content matches. `literal=true` searches exact
   text, `mode=files` matches file names and `mode=matching_files` returns the
   paths whose contents match; both path modes ignore `context`.
-- A byte-identical repeat of a `read_path` or `grep` result still in recent
-  context is returned as a short receipt.
 - `/changes` lists the files the last turn's `write_file`, `edit_file` and
   `delete_file` calls changed, and `/undo [FILE]` puts them back. Changes
   made by shell commands are not tracked.
@@ -147,9 +115,9 @@ non-PTY activity is rejected.
 its answer and a durable agent ID; with `background=true` it returns an
 activity ID at once.
 
-- `mode` is `lean` by default (read and run, no file edits); `full` adds the
-  editing tools and lets the child delegate in turn. A child never gets a
-  tool its parent has switched off.
+- `mode` is `lean` by default (read and run, no file-editing tools); `full`
+  adds the editing tools and lets the child delegate in turn. A child never
+  gets a tool its parent has switched off.
 - `model` picks the child's route; without it `UAGENT_SUBAGENT_MODEL`
   applies, else the parent's route.
 - `limits` lowers or raises `steps`, `tool_calls`, `seconds` and `cost` for
@@ -171,39 +139,22 @@ open them with `read_path`. Bodies over the attachment cap
 (`UAGENT_ATTACHMENT_MB`) are truncated and marked partial. Pages behind a login
 or built by scripts need the browser.
 
-Only public Internet addresses are accepted. Every resolved IPv4 and IPv6
-address of the initial request and of each redirect is checked; loopback,
-private, carrier-grade NAT, link-local, reserved and multicast addresses are
-refused, including IPv4-mapped, NAT64, Teredo and 6to4 forms. Proxy variables
-are ignored so a proxy cannot resolve an unchecked address.
+Only public Internet addresses are accepted, on redirects too; loopback,
+private and link-local addresses are refused and proxy variables are
+ignored.
 
-`web_search` has one schema for every model. It calls OpenRouter's hosted
-`openrouter:web_search` on its own route, so citations and accounting do not
-depend on the conversation model. `UAGENT_WEB_SEARCH_MODEL` names that route
-and `UAGENT_WEB_SEARCH_BACKEND=off` withholds the tool.
+`web_search` calls OpenRouter's hosted search on its own route, whatever the
+conversation model. `UAGENT_WEB_SEARCH_MODEL` names that route and
+`UAGENT_WEB_SEARCH_BACKEND=off` withholds the tool.
 
-`browser` drives the web appliance's shared Chrome, which you can watch and
-take over. Each action returns a fresh screenshot and the page text. Chrome
-keeps your saved logins: the agent has Chrome fill one (`fill_saved`) and
-never types a password. For a login Chrome has not saved, MFA, a captcha or a
-payment confirmation it calls `request_human` and waits for you. Actions
-that change the page (open, click, type, scroll) follow the approval mode;
-looking does not. See [WEB.md](WEB.md) for setup and hand-over. Outside the
-appliance, the `browser-use` skill drives `playwright-cli` through `run`.
+`browser` drives the web appliance's shared Chrome; [WEB.md](WEB.md)
+explains setup, saved logins and taking over.
 
 ## Presentation
 
-Each call carries an intent: `explore` (read, list, search), `research`
-(web search, fetch, browser), `edit`, `verify` (test, lint, build), `run`,
-`setup` (install, configure) or `delegate`; memory and shared files keep their
-own rows. Native tools know theirs. `run` and `scratch` take an optional
-`intent` from the model; without one, a command made only of read-only
-programs (`ls`, `cat`, `rg`, `git log`, …) reads as `explore`, anything else
-as `run`. Intent labels and groups calls and never changes permissions.
-
-Adjacent successful calls of one intent fold into one row: Explored,
-Researched, Verified or Edited, in the web UI and as a compact terminal
-summary. A failure or an approval prompt keeps its own row.
+Adjacent successful calls of one kind fold into one row: Explored,
+Researched, Verified or Edited. A failure or an approval prompt keeps its
+own row.
 
 How much of this is shown is one display setting, `UAGENT_VERBOSITY`, read by
 the terminal and the web alike and never by the model:
@@ -215,25 +166,5 @@ the terminal and the web alike and never by the model:
 | `full` | every call its own row | shown | shown | shown |
 
 `/verbosity LEVEL` (or Detail in a web conversation's menu) changes it for
-every terminal and browser, and what is already on screen is shown again at
-the new level: browsers restyle at once, a terminal clears and replays the
-conversation (a terminal attached elsewhere follows at its next turn; plain
-and piped output changes from the next row on). It is one level for all
-conversations; `--verbosity LEVEL` pins one terminal for one run.
-
-## How a call reads
-
-Each tool declares how its row reads, as data both clients render the same
-way (`ToolView` in `include/tools/tool.h`):
-
-- A headline of verb and target: "Editing src/a.ts" while it runs, "Edited
-  src/a.ts" after. Tools without their own verbs read "Called <tool>".
-- Visible without expanding: a change's diff, a command's output, and the
-  parts the call produced. A shared file previews inline
-  (images, sandboxed HTML, PDF on desktop) with Open and Download; started
-  work links to its agent, activity or memory.
-- On expand: the call's input (a command, code or fields) and its full
-  output.
-
-Commands keep their output in one scrollable box under the row, opened at the
-end. Memory saves and finished background work use the same row.
+every terminal and browser, across all conversations; `--verbosity LEVEL`
+pins one terminal for one run.

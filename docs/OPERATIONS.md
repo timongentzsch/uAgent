@@ -47,8 +47,8 @@ changes. That reference lists every setting with its default.
 
 ## Limits
 
-A setting of `0` disables the corresponding limit. Rows without a setting are
-fixed in the binary.
+Rows without a setting are fixed in the binary. `0` switches off a turn or
+session limit and the coordinator's daily cost limit.
 
 | Concern | Default | Setting |
 | --- | --- | --- |
@@ -148,51 +148,19 @@ uagent --budget 5 --token-budget 200000 -p "fix the failing test"
 terminals share activity IDs. `/ps` lists them, `/ps ID output` shows one and
 `/ps ID stop` ends it; the status bar counts them as `bg:N`.
 
-- Session activities have opaque IDs and live only in memory. Detached
-  (`detach=true`) activities are PID-backed with a rotating log; a record is
-  reused or signalled only when its boot-scoped process identity still
-  matches. Launching the same detached command from the same directory reuses
-  its process group. Detached activities cannot be reattached interactively
-  after µAgent exits.
+- Session activities live only in memory. Detached (`detach=true`)
+  activities are PID-backed with a rotating log. Launching the same detached
+  command from the same directory reuses its process group. Detached
+  activities cannot be reattached interactively after µAgent exits.
 - Output already returned by `run` or `activity` is not delivered again.
   Command completion appears only in the UI and never starts a model turn.
   Subagent completion is added once to the next model call without starting
   one.
-- Log readers wait on kqueue (macOS) or inotify (Linux) and fall back to
-  bounded polling elsewhere.
 - `stop` sends TERM, then KILL, to the whole process group and removes its
   records and logs.
-- A subagent approves its own tool calls and runs its commands under the
-  sandbox of the session that delegated to it; approving the delegation is the
-  gate.
 - A failed child reports its route, failure stage, bounded diagnostics and a
   remedy. µAgent never silently changes provider, model, pricing or privacy
   policy for a child.
-
-## Interactive control
-
-| Key | During a turn |
-| --- | --- |
-| Enter | queues guidance for the next model or tool boundary; a passive `activity` wait returns at once without cancelling its activity |
-| Escape | interrupts the foreground request or tool batch |
-| Ctrl+B | moves a running foreground tool batch to background supervision without restarting it |
-
-Focus changes do not clear drafts, and a bracketed paste is inserted as one
-edit.
-
-## Memory
-
-- `--no-memory` (or `UAGENT_MEMORY=0`) disables recall and writes for the
-  coordinator and its children, for reproducible runs.
-- `UAGENT_MEMORY_GENERATE=0` keeps recall but disables background extraction.
-- `UAGENT_MEMORY_MODEL` runs extraction on a cheaper route. Each interactive
-  startup extracts from at most one idle session.
-- `UAGENT_OTHER_AGENTS=claude,codex` also indexes, read-only, Codex top-level
-  memories and the current Claude Code project memory.
-- `/memory` lists memories and the latest automatic change from the audit log.
-
-The always-on slice inlines global memories newest first, whole entries only,
-and startup warns when the cap drops one.
 
 ## Images
 
@@ -219,42 +187,22 @@ retry one or switch it.
   server's `roots` array in `.mcp.json` replaces it; per-server paths are
   relative to that file. Roots are cooperative protocol scope, not a sandbox:
   servers run with the user's permissions, outside the command sandbox.
-- `roots/list` is answered through `input_required` continuations, at most
-  eight per call. Tool-list changes arrive over one `subscriptions/listen`
-  stream per server. A timed-out request sends `notifications/cancelled`.
 - Server stderr goes to a rotating log under `~/.uagent/mcp/`, bounded at
   16 MiB. Errors without text point to that log.
 - Not supported: HTTP transport, sampling, elicitation, task extensions,
   `$ref` and output-schema validation, and automatic restart of exited servers.
 
-Browser automation is not MCP. Where the web host runs the shared Chrome, the
-agent uses the built-in `browser` tool (see
-[WEB.md](WEB.md#docker-browser-appliance)). Elsewhere the `browser-use` skill
-drives `playwright-cli` through `run`: install it with
-`npm install -g @playwright/cli@latest`, and use `attach --cdp=chrome` only for
-a user-owned Chrome session.
-
 ## Release
 
-```sh
-cmake --preset release
-cmake --build --preset release --parallel
-ctest --preset release --output-on-failure
-UAGENT_PREFIX=/tmp/uagent-prefix ./install.sh
-/tmp/uagent-prefix/bin/uagent --version
-```
-
-`install.sh` reuses `build/release` and builds only the installable target
-with four jobs; set `UAGENT_BUILD_JOBS` to change that. Release archives
-include the bundled skills and are checked by `tests/package_contents.py`. The
-release job publishes a `SHA256SUMS` manifest with a keyless Sigstore bundle
-and GitHub artifact attestations. Before tagging, verify the installed archive,
-one real turn per supported wire API, both Playwright browsers, one debug trace
-and the hermetic suite ([TESTING.md](TESTING.md)).
+Build and test as [CONTRIBUTING.md](../CONTRIBUTING.md) and
+[TESTING.md](TESTING.md) describe. Before tagging, also verify the installed
+archive, one real turn per supported wire API, both Playwright browsers and
+one debug trace.
 
 ## Failure triage
 
-- **A headless run failed.** It exits nonzero with a complete JSON envelope.
+- **A headless run failed.** It exits nonzero and prints the error to stderr;
+  with `--json` it prints a complete JSON envelope instead.
 - **You need the full exchange.** `--debug` writes an opt-in, sensitive trace;
   see [ARCHITECTURE.md](ARCHITECTURE.md) for its contents. `/http` shows the
   captured requests of the running conversation.
@@ -273,10 +221,11 @@ and the hermetic suite ([TESTING.md](TESTING.md)).
   `UAGENT_SANDBOX=0` or an approved `run(sandbox=false)`. `--yolo` does not
   lift the sandbox; it only stops the questions.
 - **Every command is refused, or startup reports `degraded`.** The Linux
-  kernel has no Landlock (5.13 or newer has it). With `UAGENT_SANDBOX` set
-  anywhere, every command is refused; with it unset, commands run unconfined
-  and startup says so. `UAGENT_SANDBOX_NET=0` on a kernel whose Landlock
-  cannot restrict the network (before ABI 4) also refuses every command.
+  kernel has no Landlock (5.13 or newer has it). With `UAGENT_SANDBOX`
+  explicitly switched on, every command is refused; with it unset, commands
+  run unconfined and startup says so. `UAGENT_SANDBOX_NET=0` on a kernel
+  whose Landlock cannot restrict the network (before ABI 4) also refuses
+  every command.
 - **Old terminal logs pile up.** `~/.uagent/terminals/logs` is not pruned by
   age because live detached terminals write there. A crash between creating a
   log and writing its record leaves a `pending-*` file to delete by hand.
@@ -284,4 +233,5 @@ and the hermetic suite ([TESTING.md](TESTING.md)).
   debugging endpoint; `playwright-cli list` shows the session and `detach`
   leaves Chrome running.
 
-Local state and removal are described in [PERSISTENCE.md](PERSISTENCE.md).
+Local state and removal are described in [PERSISTENCE.md](PERSISTENCE.md);
+memory, skills and scheduled tasks in [MANAGEMENT.md](MANAGEMENT.md).

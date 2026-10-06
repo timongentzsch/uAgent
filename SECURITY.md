@@ -60,9 +60,9 @@ Two kinds of session act for you unattended:
 - Workspace trust is about `.mcp.json` alone. User `~/.mcp.json` is trusted
   executable configuration. Project `.mcp.json` requires interactive trust or
   `--trust-project-config`; semantic edits revoke stored trust. A
-  `.uagent/.config` an earlier version left in a project is not read: it is
-  taken over into the saved settings once, as it was approved then or when
-  that flag vouches for it.
+  `.uagent/.config` an earlier version left in a project is imported into
+  the saved settings once and archived, and only when its content was
+  approved then or that flag vouches for it.
 - Project instruction files, memories and skills enter model context without
   configuration trust because they grant no capability. An explicit
   `$skill-name` mention loads that skill before the first model call. Treat an
@@ -80,12 +80,10 @@ Two kinds of session act for you unattended:
   command sandbox.
 - Auto mode sends the current request and a bounded action preview to the
   configured OpenRouter Decisions model.
-- What a tool call needs approved is decided when its batch is prepared and
-  again when it runs: a call whose path an earlier call of the same batch
-  turned into a link to something only a person may touch is refused.
-- Paths are canonicalized to reduce symlink escapes. Writes are atomic.
-- Requests, responses, attachments, tool output, scans, jobs, turns, costs,
-  MCP data and logs are bounded. MCP server stderr goes to a rotating,
+- Paths are canonicalized to reduce symlink escapes, and path restrictions
+  are checked again when the call runs. Writes are atomic.
+- Requests, responses, attachments, tool output, scans, jobs, MCP data and
+  logs are bounded. MCP server stderr goes to a rotating,
   size-bounded log.
 - API redirects are rejected and bearer-auth transfers use HTTP(S) only.
 - `web_fetch` makes credential-free direct HTTP(S) connections only to public
@@ -106,10 +104,9 @@ Two kinds of session act for you unattended:
   child receives the configured model credential and only the memory tool.
   Transcript text and event previews are redacted for known credential forms
   before model requests and memory writes; `UAGENT_MEMORY_REDACT_KEYWORDS`
-  adds site-specific assignment keywords. `~/.uagent/memory/events.jsonl`
-  stores only action, key, time, source and a redacted 160-character preview.
-  Codex and Claude memories are read-only, untrusted evidence. Redaction is
-  defense in depth, not a guarantee that every secret is recognized.
+  adds site-specific assignment keywords. Codex and Claude memories are
+  read-only, untrusted evidence. Redaction is defense in depth, not a
+  guarantee that every secret is recognized.
 - Model, MCP and tool text is terminal-sanitized.
 
 ## Browser automation
@@ -231,9 +228,11 @@ refuses the command rather than running it under a truncated profile.
 Sessions and debug logs may contain source, prompts, commands, output and
 reasoning. They are private (owner-only files) but not encrypted. Default
 retention is 30 days / 200 files for sessions, 14 days / 50 files for debug
-traces, 14 days for mail, and 7 days for background, MCP and terminal logs
-and for captured outputs and HTTP exchanges. See
-[docs/PERSISTENCE.md](docs/PERSISTENCE.md) for locations and removal.
+traces, 14 days for mail, and 7 days for background and MCP logs and for
+captured outputs and HTTP exchanges. A detached terminal's log is not pruned
+by age alone; it goes when the record of its exited job expires. See
+[docs/PERSISTENCE.md](docs/PERSISTENCE.md) for the detail, locations and
+removal.
 
 `uagent config export` prints everything saved, API keys included; treat its
 output as a secret.

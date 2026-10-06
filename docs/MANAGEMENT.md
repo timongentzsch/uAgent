@@ -2,8 +2,7 @@
 
 Memories, skills and scheduled tasks are managed the same way from three
 places: the web UI (Library and Scheduled), the terminal (`/memory`,
-`/skills`, `/schedule`) and scripts (`uagent --control`). None of them starts
-a model turn.
+`/skills`, `/schedule`) and scripts (`uagent --control`).
 
 | To | Terminal |
 | --- | --- |
@@ -44,14 +43,9 @@ found.
 - Saved changes apply to new sessions. They do not rewrite a running agent's
   startup context.
 
-In the web UI, memories are grouped as Global plus one group per project
-folder, matching the conversation sidebar; only the open project's contents
-are loaded and searched. The Project field also accepts a directory outside
-the conversation catalogue. Selecting an item shows its source, path,
-revision, size, recorded provenance and rendered Markdown. **Edit** opens the
-source; drafts survive navigation in the current tab, and a stale revision
-cannot overwrite a newer file. **Refresh** picks up changes made by an
-external editor.
+In the web UI, **Edit** opens an item's source; drafts survive navigation in
+the current tab, and a stale revision cannot overwrite a newer file.
+**Refresh** picks up changes made by an external editor.
 
 From a script:
 
@@ -68,11 +62,11 @@ uagent --control '{"kind":"skills","action":"list","cwd":"/absolute/project"}'
 | `rename`, `copy` | memory | `key`, `revision`, `target` |
 | `enable`, `disable` | skills | `key` |
 
-Writes require the `revision` returned by `get`, so a stale copy cannot
-overwrite a newer file. New items use a `global/NAME` or `project/NAME` key
-with an empty revision; an existing skill is named by the `key` that `list`
-returns. The terminal commands fill in the current revision themselves, and a
-JSON argument (`/memory {...}`) sends a raw control request.
+Writes require the `revision` returned by `get`. New items use a
+`global/NAME` or `project/NAME` key with an empty revision; an existing skill
+is named by the `key` that `list` returns. The terminal commands fill in the
+current revision themselves, and a JSON argument (`/memory {...}`) sends a
+raw control request.
 
 ## Scheduled tasks
 
@@ -108,27 +102,32 @@ deleted; remove a reviewed worktree with `git worktree remove`.
 - After a web host restart, runs whose runtime survived reconnect. A claimed
   run whose runtime is gone becomes interrupted and is never resubmitted
   automatically; unclaimed queued runs may still start.
-- The store holds up to 64 tasks and 128 run records; the oldest finished
-  records are pruned first. A damaged store is reported and preserved.
+- Up to 64 tasks and 128 run records are kept; the oldest finished records
+  are pruned first.
+
+From a script, `save` creates a task (empty `revision`) or updates one
+(`key` and the `revision` that `get` returns):
 
 ```sh
-uagent --control '{"kind":"schedule","action":"save","revision":"","task":{"name":"Review","prompt":"Review the repository and report findings.","cwd":"/absolute/project","environment":"worktree","permissions":"ask","schedule":{"type":"weekly","days":[1,2,3,4,5],"time":"09:00","timezone":"Europe/Zurich"}}}'
-uagent --control '{"kind":"schedule","action":"list"}'
+uagent --control '{
+  "kind": "schedule", "action": "save", "revision": "",
+  "task": {
+    "name": "Review",
+    "prompt": "Review the repository and report findings.",
+    "cwd": "/absolute/project",
+    "schedule": {"type": "weekly", "days": [1,2,3,4,5],
+                 "time": "09:00", "timezone": "Europe/Zurich"}
+  }
+}'
 ```
 
-| Action | Arguments |
-| --- | --- |
-| `list` | — |
-| `get` | `key` |
-| `save` | `task`, `revision` (empty for a new task; `key` to update) |
-| `pause`, `resume`, `forget` | `key`, `revision` |
-| `run` | `key` |
-| `stop` | `key` set to the run ID |
-| `preview` | `schedule`, optional Unix `after` |
+A schedule is `{"type":"once","at":UNIX}`,
+`{"type":"interval","seconds":N}` (optional `start`) or the weekly form
+above, where day 0 is Sunday. `preview` takes a `schedule` and an optional
+Unix `after` and returns when it would run.
 
-Schedules use `{"type":"once","at":UNIX}`,
-`{"type":"interval","seconds":N}` (optional `start`) or
-`{"type":"weekly","days":[0-6],"time":"HH:MM","timezone":"Zone/Name"}`, where
-day 0 is Sunday. In the terminal, `/schedule run ID`, `/schedule pause ID`,
+The other actions take the task's `key`: `list` (none), `get`, `run`, and
+`pause`, `resume` and `forget` with its `revision`; `stop` takes the run ID
+as `key`. In the terminal, `/schedule run ID`, `/schedule pause ID`,
 `/schedule resume ID`, `/schedule forget ID` and `/schedule stop RUN_ID` do
 the same without JSON; the IDs are in `/schedule`.

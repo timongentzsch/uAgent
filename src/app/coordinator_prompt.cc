@@ -6,6 +6,7 @@
 #include <cerrno>
 #include <cstdio>
 #include <string>
+#include <utility>
 
 #include "include/agent/session_store.h"
 #include "include/app/coordinator.h"

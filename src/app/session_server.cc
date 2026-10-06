@@ -14,6 +14,7 @@
 #include <cstdlib>
 #include <deque>
 #include <filesystem>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <thread>

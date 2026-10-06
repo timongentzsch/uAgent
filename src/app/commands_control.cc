@@ -4,6 +4,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include "include/agent/child_agent.h"
 #include "include/agent/jobs.h"

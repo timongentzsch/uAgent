@@ -3,7 +3,9 @@
 #ifndef UAGENT_INCLUDE_CORE_VERBOSITY_H_
 #define UAGENT_INCLUDE_CORE_VERBOSITY_H_
 
+#include <string>
 #include <string_view>
+#include <utility>
 
 #include "include/core/config_registry.h"
 #include "include/core/json.h"

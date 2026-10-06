@@ -774,7 +774,9 @@ json Runtime::Execute(const json& command) {
   if (op != "agent_status" && op != "viewer") {
     used_ = std::chrono::steady_clock::now();
   }
-  if (json done = Control(op, command); !done.is_null()) return done;
+  if (json done = Control(op, command); !done.is_null()) {
+    return done;
+  }
   std::string error;
   if (mode_ == "human") return {{"error", kHumanControls}};
   if (!Start(error)) return {{"error", error}};

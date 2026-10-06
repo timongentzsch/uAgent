@@ -603,7 +603,7 @@ ToolResult Decide(const SessionInfo& info, const json& a) {
         {"kind", "reply"},
         {"text", action == "allow_once"     ? "y"
                  : action == "allow_thread" ? "s"
-                 : reason.empty()           ? "n"
+                 : reason.empty() ? "n"
                                   : "The coordinator denied this: " + reason}};
   } else {
     return ToolFailure(ToolErrorCode::kInvalidArguments,

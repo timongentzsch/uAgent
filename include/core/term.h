@@ -84,7 +84,7 @@ inline void TerminalClearToEnd() {
 }
 // The transient activity registry shown while a call is in flight.
 uint64_t BeginTerminalActivity(std::string label);
-void UpdateTerminalActivity(uint64_t id, std::string label);
+void UpdateTerminalActivity(uint64_t id, const std::string& label);
 void EndTerminalActivity(uint64_t id);
 std::string CurrentTerminalActivity();
 
@@ -158,12 +158,12 @@ class TerminalSpinner {
   TerminalSpinner& operator=(const TerminalSpinner&) = delete;
 
   // Rename the live row when its observed operation changes.
-  void SetLabel(std::string label) {
+  void SetLabel(const std::string& label) {
     {
       std::lock_guard<std::mutex> lock(mutex_);
       label_ = label;
     }
-    UpdateTerminalActivity(activity_id_, std::move(label));
+    UpdateTerminalActivity(activity_id_, label);
     wake_.notify_one();
   }
 

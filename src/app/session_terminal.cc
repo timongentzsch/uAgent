@@ -713,9 +713,9 @@ class Terminal {
             type == "config.changed" && !pinned_ && changed &&
             std::ranges::find(*changed, json(kVerbositySetting)) !=
                 changed->end()) {
-          if (const DetailPolicy& detail = ConfiguredDetail({});
-              &detail != detail_) {
-            Restyle(detail);
+          if (const DetailPolicy* detail = &ConfiguredDetail({});
+              detail != detail_) {
+            Restyle(*detail);
           }
         }
         presenter_.Consume(

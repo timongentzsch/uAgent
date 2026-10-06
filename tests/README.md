@@ -1,7 +1,19 @@
 # Tests
 
-Commands, scope and the behavioral evaluation are described in
-[Testing](../docs/TESTING.md). This file maps the directory.
+The suite is hermetic: no API key, no network. From the repository root:
+
+```sh
+cmake --preset debug && cmake --build --preset debug --parallel
+ctest --preset debug --output-on-failure            # everything
+build/debug/uagent_tests -k Activity                # unit cases by substring
+python3 tests/integration.py build/debug/uagent --group runtime --list
+python3 tests/integration.py build/debug/uagent -k compaction
+python3 tests/integration.py build/debug/uagent -j 8   # all groups, in parallel
+```
+
+`--test NAME` takes an exact name in both runners. The web tests, the
+behavioral evaluation and what each CI job runs are in
+[Testing](../docs/TESTING.md). The rest of this file maps the directory.
 
 | Path | Contents |
 | --- | --- |

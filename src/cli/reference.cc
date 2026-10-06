@@ -62,8 +62,8 @@ std::string CliMarkdown() {
   }
   out +=
       "\nPrecedence: these flags override process `UAGENT_*` variables, which "
-      "override a trusted `./.uagent/.config`, which overrides "
-      "`~/.uagent/.config`.\n"
+      "override what is saved for this project, which overrides what is saved "
+      "for all conversations.\n"
       "\n## Coordinator\n\n"
       "`uagent coord [options]` opens this folder's coordinator: one per "
       "folder, it reads the folder's sessions, delegates threads and decides "
@@ -93,8 +93,8 @@ std::string ConfigMarkdown() {
   out += kGenerated;
   out +=
       "Every setting below is read from the running binary's registry. "
-      "`takes effect` is `next-user-turn` when a change to a config file "
-      "applies at the next prompt, and `restart-required` when it does not. "
+      "`takes effect` is `next-user-turn` when a changed setting applies "
+      "at the next prompt, and `restart-required` when it does not. "
       "Secret values are never displayed; diagnostics report only whether they "
       "are set.\n";
   // A contents list, because this is the one reference long enough that a

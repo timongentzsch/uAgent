@@ -32,7 +32,7 @@
 | `--trust-project-config` | — | allow this workspace's .mcp.json and .uagent/.config |
 | `--help` | — | show this help |
 
-Precedence: these flags override process `UAGENT_*` variables, which override a trusted `./.uagent/.config`, which overrides `~/.uagent/.config`.
+Precedence: these flags override process `UAGENT_*` variables, which override what is saved for this project, which overrides what is saved for all conversations.
 
 ## Coordinator
 

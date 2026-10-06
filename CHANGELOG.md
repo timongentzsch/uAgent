@@ -99,7 +99,7 @@ names one loads as before and the line has no effect.
   everywhere and restyles what is already shown; `--verbosity` pins one
   terminal for one run. The model never sees it.
 - Web: tool calls fold into the same groups the terminal shows ("Explored ·
-  4 calls") instead of any three calls in a row.
+  4 calls").
 - Web: the conversation menu exports the transcript, compacts and restarts
   the conversation; typed `/restart` does the same.
 - `uagent --plain` (or `UAGENT_PLAIN=1`) for screen readers: append-only
@@ -156,9 +156,8 @@ names one loads as before and the line has no effect.
 
 ### Changed
 
-- Settings have one model of scope, the same in the terminal, the config
-  files and the web: All conversations (`~/.uagent/.config`), This project
-  (the folder's `.uagent/.config`), the environment and command line for a
+- Settings have one model of scope, the same in the terminal and the
+  web: All conversations, This project, the environment and command line for a
   run, and above them This conversation (its model and approval mode, kept
   with it). A conversation's model and permission mode are `UAGENT_MODEL` and
   `UAGENT_APPROVAL` chosen at its scope, not mechanisms of their own:
@@ -192,21 +191,16 @@ names one loads as before and the line has no effect.
   still run.
 - `/tell` is gone: the model messages other sessions with its `session` tool,
   and nothing else used the command.
-- Web: settings are plain rows, each a name and the value that applies, and
-  one sheet edits a setting: what it is for, the value, why it applies,
-  **Use default** and **Save**. Advanced lists only what you changed and what
-  is locked; search finds the rest. The web edits your defaults; a project's
-  override is shown, not edited. Twelve settings only a terminal process uses
-  are not listed.
+- Web: Settings is arranged by what a setting reaches: All conversations,
+  This project, This browser and Host. A setting is a row with its name and
+  the value that applies. **Reset all to defaults** clears what is saved for
+  all conversations, and **Remove all overrides** what a project overrides.
 - Every setting has a plain name ("Steps per turn", "Title model"), which the
   host states along with its value, where it comes from and what it follows;
-  `/config` and `/debug-config` print the same facts. A value's source reads
-  `user`, `project`, `file`, `environment`, `cli` or `default`.
+  `/config` and `/debug-config` print the same facts.
 - Web: a coordinator's threads nest under its folder header, and a row that
   waits on you, works or failed carries an icon beside its words. The
-  coordinator's help is a one-line subtitle. Settings group as General; Agent
-  (Instructions, Tools, MCP servers, Permissions & allowed actions); Models;
-  Host (Devices); Advanced.
+  coordinator's help is a one-line subtitle.
 - Web: an approval is a card: the command or diff, the folder and its risks,
   with **Deny**, **Allow for session** and **Allow once** in one row; **More
   options** holds the **Always allow this exact action here** box and
@@ -216,8 +210,6 @@ names one loads as before and the line has no effect.
   **Retry**, instead of the page's error banner; a refused message no longer
   also returns to the composer. Reconnecting shows as a pill, the running
   composer reads "Add guidance… (Esc to stop)", and YOLO mode is red.
-- Web: three or more tool calls in a row fold into one row ("Ran 4 commands ·
-  edited 2 files"), whatever their kind; two stay rows of their own.
 - Web: the light theme's diff green and red are darker, to meet WCAG AA on
   their tinted lines.
 

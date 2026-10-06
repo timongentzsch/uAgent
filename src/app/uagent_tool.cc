@@ -50,8 +50,8 @@ Tool UagentTool(SelfDescriptionProvider describe,
           {{"type", "string"},
            {"enum", json::array({"user", "project"})},
            {"description",
-            "user writes ~/.uagent/.config; project writes ./.uagent/.config "
-            "and requires an already-trusted workspace"}}},
+            "user saves for all conversations; project saves for this "
+            "project folder"}}},
          {"changes",
           {{"type", "array"},
            {"description", "one entry per setting"},

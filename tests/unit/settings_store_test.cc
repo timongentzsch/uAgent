@@ -165,7 +165,7 @@ void TestSettingsStore() {
   {
     TestWorkspace big("settings-store-too-big");
     Put(big.home / ".uagent/.config",
-        "BIG=" + std::string(5 * 1024 * 1024, 'x') + "\n");
+        "BIG=" + std::string(size_t{5} * 1024 * 1024, 'x') + "\n");
     CHECK(!ReadSettings("").error.empty());
     CHECK(!Set("", "UAGENT_MODEL", "m").empty());
     CHECK(PathExists((big.home / ".uagent/.config").string()));

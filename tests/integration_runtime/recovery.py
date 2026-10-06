@@ -32,7 +32,7 @@ def test_first_event_timeout(root, home, *, binary):
             handler.send_header("Content-Length", str(len(data)))
             handler.end_headers()
             handler.wfile.write(data)
-        except BrokenPipeError:
+        except (BrokenPipeError, ConnectionResetError):
             pass
 
     with Server([stall, stall, stall]) as server:

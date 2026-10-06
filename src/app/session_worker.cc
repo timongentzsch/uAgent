@@ -621,7 +621,7 @@ class WorkerChannel final : public ApplicationChannel {
       error = "too many settings changes are waiting";
       return false;
     }
-    controls_.push_back({request, control});
+    controls_.emplace_back(request, control);
     if (!input_) NextControlLocked();
     busy_ = true;
     wake_.Wake();

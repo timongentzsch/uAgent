@@ -528,15 +528,13 @@ test("load-older holds position, spins, and keeps the newest tail", async ({
   await expect(loading).toBeDisabled();
   releasePage();
   await expect
-    .poll(
-      () =>
-        page
-          .locator(".transcript")
-          .evaluate(
-            (element) =>
-              element.scrollHeight - element.scrollTop - element.clientHeight,
-          ),
-      { timeout: 15000 },
+    .poll(() =>
+      page
+        .locator(".transcript")
+        .evaluate(
+          (element) =>
+            element.scrollHeight - element.scrollTop - element.clientHeight,
+        ),
     )
     .toBeGreaterThan(100);
   // Still reading history: not pinned to the bottom, the same first

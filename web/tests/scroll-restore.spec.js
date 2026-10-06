@@ -46,9 +46,7 @@ test("returning to a session restores its position unfollowed", async ({
   await page.getByRole("button", { name: /Restore A/ }).click();
   const box = page.locator(".transcript");
   await expect
-    .poll(() => box.evaluate((el) => el.scrollHeight - el.clientHeight), {
-      timeout: 15000,
-    })
+    .poll(() => box.evaluate((el) => el.scrollHeight - el.clientHeight))
     .toBeGreaterThan(500);
   await box.evaluate((element) => {
     element.scrollTop = 24;
@@ -59,20 +57,16 @@ test("returning to a session restores its position unfollowed", async ({
   await page.getByRole("button", { name: /Restore B/ }).click();
   await expect(page.locator(".conversation-head h1")).toContainText(
     "Restore B",
-    { timeout: 15000 },
   );
   await page.getByRole("button", { name: /Restore A/ }).click();
   await expect(page.locator(".conversation-head h1")).toContainText(
     "Restore A",
-    { timeout: 15000 },
   );
   // Unfollowed (Jump visible, not pinned) and back at the saved spot.
   await expect(
     page.getByRole("button", { name: "Jump to latest" }),
-  ).toBeVisible({ timeout: 15000 });
+  ).toBeVisible();
   await expect
-    .poll(() => box.evaluate((element) => element.scrollTop), {
-      timeout: 15000,
-    })
+    .poll(() => box.evaluate((element) => element.scrollTop))
     .toBeLessThan(124);
 });

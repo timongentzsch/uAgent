@@ -186,10 +186,7 @@ test("a conversation with a reply has no violations", async ({
   await prompt.fill("Hello there");
   await page.getByRole("button", { name: "Send", exact: true }).click();
   await expect(page.locator(".message.response").first()).toBeVisible();
-  await expect(page.locator(".composer .activity-caption")).toHaveText(
-    "Ready",
-    { timeout: 15000 },
-  );
+  await expect(page.locator(".composer .activity-caption")).toHaveText("Ready");
   expect(await violations(page)).toEqual([]);
 });
 

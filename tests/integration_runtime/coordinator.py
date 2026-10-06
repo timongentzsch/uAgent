@@ -683,6 +683,8 @@ def test_coordinator_caps_working_threads_in_worktrees(root, home, *, binary):
                     ),
                 ]
             )
+        # The second spawn has been refused: the first thread may finish.
+        release.set()
         return event({"content": "capped-ok"})
 
     with Server([route]) as server:

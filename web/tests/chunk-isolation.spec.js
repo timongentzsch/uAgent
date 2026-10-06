@@ -80,7 +80,5 @@ test("transcript renders while dialog chunks are held", async ({
     .getByRole("button", { name: /^Turn statistics: / })
     .first()
     .click();
-  await expect(page.locator("dialog dl.stats").first()).toBeVisible({
-    timeout: 15000,
-  });
+  await expect(page.locator("dialog dl.stats").first()).toBeVisible();
 });

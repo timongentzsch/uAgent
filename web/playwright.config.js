@@ -12,7 +12,11 @@ export default defineConfig({
   // Each test has a host and ports of its own, so they run side by side.
   workers: process.env.CI ? 2 : 4,
   fullyParallel: true,
-  timeout: 30000,
+  // Deadlines, not delays: a test waits for an event and these only bound
+  // how long. A turn against the real host takes seconds on a busy runner,
+  // so the defaults leave room for one and the specs name no shorter ones.
+  timeout: 60000,
+  expect: { timeout: 15000 },
   // Sub-frame browser timing (restore vs. paint vs. async row hydration)
   // can strand one attempt of a scroll assertion a few pixels off; the
   // app code serializes everything serializable, and a single retry

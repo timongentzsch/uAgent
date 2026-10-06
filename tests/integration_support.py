@@ -30,8 +30,10 @@ SMALL_PNG = base64.b64decode(
 # coin flip on a shared runner. Those jobs raise the multiplier instead of each
 # deadline being retuned by hand.
 TIMEOUT_SCALE = float(os.environ.get("UAGENT_TEST_TIMEOUT_SCALE", "1"))
-REQUEST_TIMEOUT_SECONDS = 5
-STREAM_TIMEOUT_SECONDS = 5
+# Guards against a hang, well clear of what a scripted answer takes on a busy
+# runner. A case that is about a deadline sets its own.
+REQUEST_TIMEOUT_SECONDS = 30
+STREAM_TIMEOUT_SECONDS = 30
 
 
 def budget(seconds):

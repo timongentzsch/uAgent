@@ -74,10 +74,7 @@ test("always allowing an action remembers it in Settings", async ({
   await expect
     .poll(() => exists(`${host.project}/browser-proof.txt`))
     .toBe(true);
-  await expect(page.locator(".composer .activity-caption")).toHaveText(
-    "Ready",
-    { timeout: 15000 },
-  );
+  await expect(page.locator(".composer .activity-caption")).toHaveText("Ready");
   await send(page, "/permissions");
   const settings = page.getByRole("dialog", { name: "Settings" });
   // What this repository remembers is among the project's settings.
@@ -95,7 +92,7 @@ test("an undone turn puts its file back", async ({ page, session, host }) => {
   await send(page, "request approval");
   await page.getByRole("button", { name: "Allow once", exact: true }).click();
   const receipt = page.getByRole("button", { name: /^Review changes: / });
-  await expect(receipt).toHaveText(/1 file · \+1 −0/, { timeout: 15000 });
+  await expect(receipt).toHaveText(/1 file · \+1 −0/);
   await expect(
     page.getByRole("button", { name: /^Turn statistics: / }),
   ).toBeVisible();
@@ -151,9 +148,7 @@ test("a stopped turn ends with Continue", async ({ page, session }) => {
   await page.getByLabel("Message or guidance").press("Escape");
   // The status line above the input says so and offers the way on.
   const line = page.locator(".composer .status-line");
-  await expect(line.locator(".activity-caption")).toHaveText("Stopped", {
-    timeout: 15000,
-  });
+  await expect(line.locator(".activity-caption")).toHaveText("Stopped");
   await expect(line.getByRole("status")).toHaveText("Stopped");
   const resume = line.getByRole("button", { name: "Continue" });
   await resume.click();
@@ -187,7 +182,7 @@ test("a refused send stays at its message with Retry", async ({
   await row.getByRole("button", { name: "Retry" }).click();
   await expect(
     page.getByRole("heading", { name: "Verified response" }),
-  ).toBeVisible({ timeout: 15000 });
+  ).toBeVisible();
   await expect(page.getByText("Refused for this test")).toHaveCount(0);
 });
 
@@ -225,9 +220,7 @@ for (const [name, viewport] of [
     await expect(page.getByRole("button", { name: "Stop" })).toBeVisible();
     states.running = await measure();
     await prompt.press("Escape");
-    await expect(page.getByRole("button", { name: "Continue" })).toBeVisible({
-      timeout: 15000,
-    });
+    await expect(page.getByRole("button", { name: "Continue" })).toBeVisible();
     states.stopped = await measure();
     await send(page, "request approval");
     await expect(

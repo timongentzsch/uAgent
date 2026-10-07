@@ -130,7 +130,10 @@ and how the agent uses logins saved in that browser.
 Several sessions in one folder: `uagent coord` (or `/coord`) opens the
 folder's coordinator, which delegates work to threads and decides the
 approvals they cannot settle. `/board` lists the folder's sessions and
-`/open ID` switches to one.
+`/open ID` switches to one. Ask it for other voices and it adds members to
+the conversation, each with a persona and, if you like, its own model: they
+answer you and each other, you address one with `@name`, and the coordinator
+sums up when they are done.
 
 `uagent --help` lists every flag; `--debug=PATH` writes a trace for bug
 reports, which contains sensitive data.

@@ -786,6 +786,11 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   if (context->options.Coordinator()) {
     context->tool_policy.tool_allowlist.assign(std::begin(kCoordinatorTools),
                                                std::end(kCoordinatorTools));
+  } else if (!ChatMember(
+                  JsonValue(context->options.session, "thread", json::object()))
+                  .empty()) {
+    context->tool_policy.tool_allowlist.assign(std::begin(kMemberTools),
+                                               std::end(kMemberTools));
   }
   PrintWarning(context->tool_policy.error);
   std::string tool_error;
@@ -805,6 +810,12 @@ BootstrapResult Bootstrap(Options options, const char* executable,
           RecordCoordinatorCost(folder, agent->SessionUsage().cost);
           return CoordinatorContext(folder);
         });
+    context->chat.emplace(CanonicalCwd());
+    context->agent->SetChat(
+        [chat = &*context->chat](const std::string& text) {
+          chat->Said(text, /*person=*/true);
+        },
+        [chat = &*context->chat](Mail& mail) { chat->Heard(mail); });
   }
   if (context->channel && !context->channel->SessionPath().empty()) {
     context->agent->OpenEditJournal(context->channel->SessionPath() + ".edits");

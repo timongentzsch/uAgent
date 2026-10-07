@@ -84,6 +84,11 @@ void Agent::PushSkillContext(std::string skill) {
 // The person's message, with the files the transcript shows for it.
 void Agent::PushUserInput(json content, bool attachment, const json& images,
                           const std::string& request_id) {
+  // With files, the text part: the message and where each file is.
+  const std::string text = content.is_string() ? content.get<std::string>()
+                           : content.is_array() && !content.empty()
+                               ? JsonValue(content[0], "text", "")
+                               : "";
   conversation_.Push(
       {{"role", "user"}, {"content", std::move(content)}},
       attachment ? MessageKind::kAttachment : MessageKind::kUser);
@@ -92,11 +97,15 @@ void Agent::PushUserInput(json content, bool attachment, const json& images,
                                 {{"files", images}});
   }
   if (const auto mail = std::ranges::find(
-          not_user_, conversation_.LastText(MessageKind::kUser));
+          not_user_, text, &std::pair<std::string, std::string>::first);
       mail != not_user_.end()) {
+    json facts = {{"origin", "mail"}};
+    if (!mail->second.empty()) facts["author"] = mail->second;
     not_user_.erase(mail);
     conversation_.RecordDisplay(conversation_.LastDisplayId(),
-                                {{"origin", "mail"}});
+                                std::move(facts));
+  } else if (chat_said_) {
+    chat_said_(text);
   }
   PublishMessage(request_id);
 }

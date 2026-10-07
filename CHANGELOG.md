@@ -42,6 +42,14 @@
   answers as `read` does, so a page that is only read is one call. `click`
   and `type` take the number of an element in place of coordinates.
 - `scratch` takes `code`: the script is written and run in one call.
+- A coordinator's conversation is a chat. `thread` with `add_member` brings
+  in a member under a name, a persona and optionally its own model; it
+  reads everything written there and answers when it has something to add,
+  or passes. `@name` addresses one member, a message that names nobody is
+  everyone's, and the coordinator takes the floor when the members have
+  spoken. `UAGENT_COORDINATOR_CHAT_TURNS` (`coordinator.chatTurns`, 12) caps
+  the member turns one message of yours can start; `remove_member` takes a
+  member out.
 
 ### Changed
 

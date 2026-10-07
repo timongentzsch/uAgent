@@ -23,6 +23,9 @@ inline constexpr const char* kMailTaskCompleted = "task.completed";
 inline constexpr const char* kMailAsk = "ask";
 inline constexpr const char* kMailSteer = "steer";
 inline constexpr const char* kMailNote = "note";
+// A message in a coordinator's chat. Its body names the `author`; one marked
+// `quiet` joins the reader's conversation without starting a turn.
+inline constexpr const char* kMailChat = "chat";
 
 struct Mail {
   // Mailbox ids (MailboxIdFor), and the sender's session file, which the

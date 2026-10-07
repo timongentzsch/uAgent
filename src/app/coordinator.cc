@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <functional>
 #include <optional>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -875,7 +876,8 @@ std::string CoordinatorContext(const std::string& folder) {
       context += "\n## " + std::string(block) + "\n" + value + "\n";
     }
   }
-  return context + "\n## board\n" + CoordinatorBoard(folder);
+  return context + ChatContext(folder) + "\n## board\n" +
+         CoordinatorBoard(folder);
 }
 
 void RecordCoordinatorCost(const std::string& folder, double cost) {
@@ -906,11 +908,20 @@ bool ThreadsOwe(const std::string& folder) {
   // looks: a thread mails its report before it shows idle, and the mail is
   // taken before it is acknowledged.
   const std::vector<SessionInfo> threads = OwnThreads(folder);
-  if (std::ranges::any_of(threads, [](const SessionInfo& info) {
+  const std::set<std::string> typing = ChatTyping(folder);
+  if (std::ranges::any_of(threads, [&](const SessionInfo& info) {
         // One just started is idle until its brief arrives: it has work ahead
         // as long as its runtime is up and it has finished no turn.
         const std::string status = LiveStatus(info);
-        return status == "working" || (status == "idle" && info.turns == 0);
+        if (status == "working" || (status == "idle" && info.turns == 0)) {
+          return true;
+        }
+        // A chat member woken and not yet heard from has an answer ahead
+        // as long as something can still bring it: its runtime, or the
+        // message that starts one.
+        const std::string box = MailboxIdFor(info.path);
+        return typing.contains(box) &&
+               (status != "saved" || !PendingMail(box).empty());
       })) {
     return true;
   }

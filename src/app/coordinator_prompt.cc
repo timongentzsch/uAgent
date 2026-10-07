@@ -150,10 +150,12 @@ int CoordinatorPromptMain(const Options& options) {
     }
     for (size_t index = asked + 1; index < messages.size(); ++index) {
       const std::string content = JsonValue(messages[index], "content", "");
+      // What it passed on or waited over is not part of what was said.
       const std::string text =
-          JsonValue(messages[index], "role", "") == "assistant"
-              ? content
-              : ChatPost(content);
+          JsonValue(messages[index], "role", "") != "assistant"
+              ? ChatPost(content)
+          : SilentAnswer(Trim(content)) ? std::string()
+                                        : content;
       if (!text.empty()) answer += (answer.empty() ? "" : "\n\n") + text;
     }
     // The request itself was compacted away: what was said last.

@@ -256,10 +256,14 @@ void Agent::PushAssistantMessage(ChatResult& response,
 // Plain prose and no call: the turn is done unless steering reopened it.
 Agent::StepFlow Agent::FinishWithProse(TurnExecution& state, StepState& loop) {
   // Mail that arrived during the final model call reopens the turn too. A
-  // chat member's answer stands as its message: what came meanwhile starts
-  // its next turn, so nothing it wrote goes unsaid.
-  if (ChatMember(JsonValue(session_role_, "thread", json::object())).empty()) {
+  // chat participant's answer stands as its message: what came meanwhile
+  // starts its next turn, so nothing it wrote goes unsaid. One that only
+  // passes or waits is shown to nobody.
+  if (!ChatParticipant()) {
     DeliverMail();
+  } else if (SilentTurn()) {
+    conversation_.RecordDisplay(conversation_.LastDisplayId(),
+                                {{"silent", true}});
   }
   if (ApplyQueuedSteering(loop)) return StepFlow::kNextStep;
   if (SteeringState().Requested()) return InterruptTurn(state);

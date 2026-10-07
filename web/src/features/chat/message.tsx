@@ -31,6 +31,7 @@ import {
   Time,
 } from "../../shared/ui.tsx";
 import { MessageMenu } from "./message-menu.tsx";
+import { Avatar } from "../../shared/avatar.tsx";
 import { AttachmentList, ImageTile } from "../../shared/attachments.tsx";
 import { diffCounts, formatStat } from "./tool-preview.ts";
 import { useBlockReader } from "../../state/block-reader.ts";
@@ -114,6 +115,8 @@ function MessageView({ block, online, session }: MessageProps) {
     retry: resend,
     branch,
     http,
+    team,
+    prompt,
   } = useContext(MessageActions);
   const { policy } = useContext(DetailContext);
   const [full, setFull] = useState<string | null>(null);
@@ -207,6 +210,8 @@ function MessageView({ block, online, session }: MessageProps) {
   // Another session's or the harness's words: an event with its sender's
   // label, never the person's bar. The label is the text's own opening
   // bracket ("[thread event, not a user message] …").
+  // A pass or a wait in a chat is nobody's to read.
+  if (block.silent) return null;
   if (block.kind === "user" && block.origin === "mail" && !member) {
     const match = /^\[([^\]]+)\]\s*([\s\S]*)$/.exec(text || "");
     const label = match?.[1] ?? "Message";
@@ -241,7 +246,11 @@ function MessageView({ block, online, session }: MessageProps) {
   const agentRow =
     block.kind === "assistant" ||
     (block.kind === "attachment" && block.origin === "tool");
-  const actor = member || (userOwned || row || agentRow ? null : block.kind);
+  // In a chat with members the coordinator is named like everyone else.
+  const coordinator =
+    !!team?.length && block.kind === "assistant" ? "Coordinator" : undefined;
+  const actor =
+    member || coordinator || (userOwned || row || agentRow ? null : block.kind);
   const running = block.duration_ms == null && isRunningStatus(block.status);
   const assets = `/api/sessions/${session.id}/assets/`;
   const nameId = useId();
@@ -260,7 +269,7 @@ function MessageView({ block, online, session }: MessageProps) {
   return (
     <article
       data-message-id={block.key || block.id}
-      className={`message ${row ? "tool" : userOwned ? "user" : "response"}${member ? " member" : ""}${block.turn_root === block.id ? " turn-start" : ""}`}
+      className={`message ${row ? "tool" : userOwned ? "user" : "response"}${member || coordinator ? " member" : ""}${block.turn_root === block.id ? " turn-start" : ""}`}
       aria-labelledby={nameId}
     >
       <h3 class="sr-only" id={nameId}>
@@ -268,6 +277,7 @@ function MessageView({ block, online, session }: MessageProps) {
       </h3>
       {!row && (
         <header>
+          {member && <Avatar name={member} />}
           {actor && <span class="actor">{actor}</span>}
           {block.status && (
             <span class="muted">
@@ -297,6 +307,11 @@ function MessageView({ block, online, session }: MessageProps) {
             statistics={statistics}
             http={http}
             branch={userOwned ? branch : undefined}
+            prompt={
+              prompt && (member || coordinator)
+                ? () => prompt(member)
+                : undefined
+            }
           />
         </header>
       )}

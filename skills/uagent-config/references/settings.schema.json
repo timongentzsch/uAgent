@@ -83,8 +83,8 @@
         "coordinator.chatTurns": {
           "anyOf": [
             {
-              "default": 8,
-              "maximum": 256,
+              "default": 3,
+              "maximum": 64,
               "minimum": 0,
               "type": "integer"
             },
@@ -93,7 +93,7 @@
               "type": "string"
             }
           ],
-          "description": "turns the members of a coordinator's chat may take on one message of the user's; 0 lets them only read",
+          "description": "turns each participant of a coordinator's chat may take on one message of the user's; 0 lets the members only read",
           "x-env": "UAGENT_COORDINATOR_CHAT_TURNS"
         },
         "coordinator.dailySpendUsd": {

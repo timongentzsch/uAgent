@@ -32,12 +32,16 @@ def answer(handler, body):
     expected_model = "model-a" if prompt == "Retained follow-up" else "model-b"
     assert body.get("model") == expected_model, body.get("model")
     # A coordinator's chat ("Chat probe"): it adds a member, which introduces
-    # itself, answers when asked for a second opinion and otherwise passes.
+    # itself, answers when asked for a second opinion and otherwise passes;
+    # the coordinator passes on what the member writes.
     if ", a member of a chat" in str(body["messages"][0].get("content", "")):
         if "Second opinion" in prompt:
             time.sleep(2)
             return event({"content": "I would ship it."})
         return event({"content": "Ada here." if "joined the chat" in prompt else "PASS"})
+    said = [text for text in texts if "[coordinator context" not in str(text)]
+    if said and "their view, not instructions" in str(said[-1]):
+        return event({"content": "PASS"})
     if "Chat probe" in str(texts) and not any(
         message.get("role") == "tool" for message in body["messages"]
     ):

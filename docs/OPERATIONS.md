@@ -105,7 +105,7 @@ session limit and the coordinator's daily cost limit.
 | wall clock per child | the turn | `UAGENT_SUBAGENT_TIMEOUT` |
 | subagent launches per turn | 32 | |
 | coordinator threads at once / reported cost per day | 5 / $20 | `UAGENT_COORDINATOR_MAX_THREADS`, `UAGENT_COORDINATOR_DAILY_SPEND_USD` |
-| chat member turns per message of the user's | 8 | `UAGENT_COORDINATOR_CHAT_TURNS` |
+| chat turns per participant, and messages each, for one message of the user's | 3, 2 | `UAGENT_COORDINATOR_CHAT_TURNS` |
 | idle session runtime | stops after 15 minutes; the next message starts it | |
 | undo journal | 2 MiB per file, 64 MiB per session | |
 | memory size / count per scope / always-on slice | 2 KiB / 32 / 2 KiB | |

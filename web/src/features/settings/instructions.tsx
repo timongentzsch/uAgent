@@ -106,6 +106,13 @@ export default function Instructions({
               label="Built-in coordinator base"
             />
             {files.filter((file) => file.audience === "coordinator").map(card)}
+            <h3>Chat members</h3>
+            <Base text={stack?.base.member} label="Built-in member base" />
+            <p class="muted instructions-also">
+              A coordinator fills in each member&rsquo;s name, persona and
+              skills when it adds one. What a member was sent is under
+              &ldquo;Show prompt&rdquo; on its messages.
+            </p>
           </>
         </Placeholder>
       )}

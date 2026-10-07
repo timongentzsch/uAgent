@@ -587,9 +587,12 @@ void Agent::FinishTurn(TurnExecution& state, int64_t step) {
                   {"messages", conversation_.Size()},
                   {"context_tokens", ContextUsed()},
                   {"line_open", state.line_open}});
-  json block = conversation_.RecordEntry({{"kind", "turn_summary"},
-                                          {"turn_root", turn_root_},
-                                          {"summary", summary}});
+  json entry = {{"kind", "turn_summary"},
+                {"turn_root", turn_root_},
+                {"summary", summary}};
+  // A turn that only passed or waited leaves no row of its own.
+  if (SilentTurn()) entry["silent"] = true;
+  json block = conversation_.RecordEntry(std::move(entry));
   Emit(Event{EventId::kMessageChanged, {{"block", std::move(block)}}});
   Event completed{EventId::kTurnCompleted, std::move(summary)};
   completed.render = true;

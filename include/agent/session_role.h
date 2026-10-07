@@ -18,6 +18,12 @@ inline json ChatMember(const json& thread) {
   return JsonValue(thread, "member", json::object());
 }
 
+// A chat participant's whole answer when it has nothing to say now: it
+// passes, or waits to read someone who is typing. Shown to nobody.
+inline bool SilentAnswer(std::string_view text) {
+  return text == "PASS" || text == "PASS." || text == "WAIT" || text == "WAIT.";
+}
+
 // A pending decision or approval that waits on a person rather than on the
 // thread's coordinator.
 inline bool WaitsOnPerson(const json& pending) {

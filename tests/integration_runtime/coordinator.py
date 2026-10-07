@@ -1233,7 +1233,10 @@ def test_a_chat_round_outlives_the_coordinators_runtime(root, home, *, binary):
 
     def route(_, body):
         member, last = _member(body), _last_user(body)
-        if member and "slow one" in last:
+        # The coordinator's own answer may reach Ada before her turn starts
+        # and be the newest message she sees: the question is still hers.
+        said = json.dumps(body["messages"])
+        if member and "slow one" in said and "Late answer." not in said:
             answering.set()
             time.sleep(budget(1.5))
             return event({"content": "Late answer."})

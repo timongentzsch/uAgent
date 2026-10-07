@@ -954,11 +954,17 @@ def test_a_background_child_keeps_its_own_time_limit(root, home, *, binary):
 
 
 def test_stopping_a_child_stops_what_it_started(root, home, *, binary):
-    """A stopped child takes its own commands and children with it."""
+    """A stopped child takes its own commands and children with it, and what
+    they spent still reaches the parent."""
     pids = [root / "command.pid", root / "grandchild-command.pid"]
 
+    def spent(response):
+        response["usage"] = {"prompt_tokens": 1, "completion_tokens": 4}
+        return response
+
     def sleeper(pid_file):
-        return tool_call("run", {"command": f"echo $$ > {shlex.quote(str(pid_file))}; sleep 60"})
+        command = f"echo $$ > {shlex.quote(str(pid_file))}; sleep 60"
+        return spent(tool_call("run", {"command": command}))
 
     def route(_, body):
         messages = body["messages"]
@@ -967,8 +973,8 @@ def test_stopping_a_child_stops_what_it_started(root, home, *, binary):
         if has_message(messages, "user", "child"):
             if any("[started] subagent id " in result for result in tool_results(messages)):
                 return sleeper(pids[0])
-            return tool_call(
-                "subagent", {"prompt": "grandchild", "mode": "full", "background": True}
+            return spent(
+                tool_call("subagent", {"prompt": "grandchild", "mode": "full", "background": True})
             )
         results = tool_results(messages)
         if any("stopped" in result for result in results[1:]):
@@ -980,11 +986,13 @@ def test_stopping_a_child_stops_what_it_started(root, home, *, binary):
         return tool_call("subagent", {"prompt": "child", "mode": "full", "background": True})
 
     with Server([route]) as server:
-        result = run(
-            root, base_env(home, server.url), "--yolo", "-p", "delegate", timeout=30, binary=binary
-        )
+        args = ("--yolo", "--json", "-p", "delegate")
+        result = run(root, base_env(home, server.url), *args, timeout=30, binary=binary)
         assert_true(result.returncode == 0, result.stderr)
-        assert_true(result.stdout.strip() == "child-stopped", result.stdout)
+        envelope = json.loads(result.stdout)
+        assert_true(envelope["answer"] == "child-stopped", envelope)
+        # Two rounds of the child and one of its child, four tokens each.
+        assert_true(envelope["stop"]["session_generated_tokens"] == 12, envelope["stop"])
         survivors = wait_for_processes_stopped({int(p.read_text()) for p in pids})
         assert_true(not survivors, f"processes of a stopped child survived: {survivors}")
 

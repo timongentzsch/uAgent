@@ -20,6 +20,21 @@ namespace uagent {
 int Application::FinishHeadless(std::string answer, std::string error,
                                 int exit_code) {
   Teardown(exit_code == 0 ? "headless_complete" : "headless_error");
+  // What this child spent, for the parent that started it: written on every
+  // way out, after teardown has taken in what its own children spent.
+  if (std::string ledger = EnvStr("UAGENT_INTERNAL_USAGE_FILE");
+      !ledger.empty()) {
+    std::string failure;
+    json entry = {
+        {"route", agent_.ActiveRoute()},
+        {"routes", agent_.RouteUsageJson()},
+        {"usage", UsageJson(agent_.SessionUsage())},
+        {"statistics", agent_.Statistics()},
+        {"parent_turn", EnvLong("UAGENT_INTERNAL_PARENT_TURN", int64_t{0})}};
+    if (!AppendPrivateLine(ledger, JsonDump(entry), failure)) {
+      fprintf(stderr, "cannot write usage ledger: %s\n", failure.c_str());
+    }
+  }
   if (context_.options.json_stream || context_.options.json) {
     json envelope =
         HeadlessResult(std::move(answer), std::move(error),
@@ -43,6 +58,9 @@ int Application::RunHeadless() {
   // Delegated children are durable conversations even though ordinary
   // one-shot `-p` calls remain ephemeral.
   persist_ = !session_file_.empty();
+  if (!EnvStr("UAGENT_INTERNAL_USAGE_FILE").empty()) {
+    SetGracefulShutdown(true, /*stop_started=*/true);
+  }
   // A followup run first receives what the previous run took but never saved.
   RecoverMail(MailboxIdFor(session_file_));
   json content;
@@ -83,19 +101,6 @@ int Application::RunHeadless() {
   agent_.AccountSideUsage();
   context_.output.Restore();
 
-  std::string ledger = EnvStr("UAGENT_INTERNAL_USAGE_FILE");
-  if (!ledger.empty()) {
-    std::string error;
-    json entry = {
-        {"route", agent_.ActiveRoute()},
-        {"routes", agent_.RouteUsageJson()},
-        {"usage", UsageJson(agent_.SessionUsage())},
-        {"statistics", agent_.Statistics()},
-        {"parent_turn", EnvLong("UAGENT_INTERNAL_PARENT_TURN", int64_t{0})}};
-    if (!AppendPrivateLine(ledger, JsonDump(entry), error)) {
-      fprintf(stderr, "cannot write usage ledger: %s\n", error.c_str());
-    }
-  }
   std::string answer = agent_.LastText();
   if (!agent_.LastError().empty()) {
     return FinishHeadless("", agent_.LastError(), 1);

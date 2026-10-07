@@ -52,6 +52,8 @@
   until someone stopped it.
 - Stopping a subagent stops the commands and subagents it started. A stopped
   child killed its own children outright, so theirs were left running.
+- What a stopped subagent had spent counts toward the session's usage and
+  budgets. Only a child that finished reported it.
 - `browser`: Enter sends a form and types a line break, and Backspace
   deletes. The keys reached only a page's own listeners.
 

@@ -642,6 +642,8 @@ export interface Configuration {
   // The file it is all saved in, and what in it the host could not take.
   file: string;
   problem: string;
+  // That file as it stands, every secret hidden.
+  document?: JSONValue;
   // The groups settings are listed under, in order.
   categories: { id: string; label: string }[];
   effects: {

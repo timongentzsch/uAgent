@@ -66,6 +66,12 @@ const char* ConfigEffectName(ConfigEffect effect);
 // The same, as the token clients switch on: next_turn, restart, shadowed.
 const char* ConfigEffectToken(ConfigEffect effect);
 
+// What stands where a secret would: in a providers value shown to a person
+// or a model, and sent back by a person for a key they did not change.
+inline constexpr const char* kRedactedValue = "<redacted>";
+// A providers value with every key that is no $NAME reference hidden.
+std::string SanitizeCompositeValue(const std::string& value);
+
 // Validates against the registry and records what the scope holds now.
 // Saves nothing.
 ConfigProposal PrepareConfigProposal(ConfigProposalScope scope,

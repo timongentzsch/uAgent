@@ -2311,6 +2311,23 @@ dialog > header .icon-button {
   }
 }
 .group-footer {
+  margin: 0;
+  padding-block: var(--space-2);
+}
+.configuration-bar {
+  display: flex;
+  gap: var(--gap);
+}
+.configuration-bar > :first-child {
+  flex: 1;
+}
+.configuration-file {
+  margin: 0;
+  padding: var(--space-3) var(--space-6);
+  overflow: auto;
+  font-size: var(--font-small);
+}
+.group-footer {
   margin: var(--space-3) 0 0;
   padding-inline: var(--space-6);
   color: var(--muted);

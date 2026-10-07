@@ -11,7 +11,7 @@ import tempfile
 import threading
 import time
 
-from integration_support import Server, event, tool_call, write_sse_sequence
+from integration_support import Server, event, save_settings, tool_call, write_sse_sequence
 from web_support import web_host
 
 parser = argparse.ArgumentParser()
@@ -201,6 +201,9 @@ with (
             "models": {"main": {"id": "model-a", "effort": "high"}},
         }
     }
+    # Saved, not exported: what the environment sets cannot be edited in
+    # Settings, and the providers are edited there.
+    save_settings(home, UAGENT_PROVIDERS=json.dumps(providers))
     with web_host(
         args.binary.resolve(),
         root,
@@ -208,7 +211,6 @@ with (
         provider.url,
         args.port,
         extra_env={
-            "UAGENT_PROVIDERS": json.dumps(providers),
             "UAGENT_MODEL": "mock/main:floor:high",
             # Locally the host serves the bundle on disk, so a web edit needs
             # no rebuild of the binary; CI serves the embedded one.

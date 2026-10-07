@@ -2,6 +2,7 @@ import { useState } from "preact/hooks";
 import { plural } from "../../shared/quantities.ts";
 import type { Session } from "../../shared/types.ts";
 import {
+  Button,
   ConfirmModal,
   Group,
   Input,
@@ -31,6 +32,11 @@ const WHOLE = {
   },
 } as const;
 
+// How the connection settings fit together, said once above them.
+const INTRO: Partial<Record<SavedScope, string>> = {
+  user: "To connect, one of these is enough: an OpenRouter key, or an API address with its key. Named providers add further endpoints, each with its own address and key; a model is then chosen as provider/model.",
+};
+
 // Everything that can be saved at `scope`, under its groups, each setting
 // edited in place. The box narrows the same rows.
 export default function Configuration({
@@ -52,6 +58,8 @@ export default function Configuration({
   const whole = WHOLE[scope];
   const [query, setQuery] = useState("");
   const [confirm, setConfirm] = useState(false);
+  // The same settings as the file holds them, for reading.
+  const [asFile, setAsFile] = useState(false);
   const find = (name: string) =>
     config.settings.find((setting) => setting.name === name);
   const needle = query.trim().toLowerCase();
@@ -88,60 +96,85 @@ export default function Configuration({
           folder={scope === "project" ? folder : undefined}
         />
       )}
-      <div class="group-block">
+      <div class="group-block configuration-bar">
         <Input
           type="search"
           aria-label="Find a setting"
           placeholder="Find a setting"
           value={query}
+          disabled={asFile}
           onInput={(event) => setQuery(event.currentTarget.value)}
         />
+        <Button variant="quiet" onClick={() => setAsFile(!asFile)}>
+          {asFile ? "Show the form" : "Show the file"}
+        </Button>
       </div>
-      {config.categories.map(({ id, label }) => {
-        const own = listed.filter((setting) => setting.category === id);
-        return (
-          own.length > 0 && (
-            <Group key={id} title={label}>
-              {own.map((setting) => (
-                <SettingField
-                  key={setting.name}
-                  setting={setting}
-                  scope={scope}
-                  folder={folder}
-                  find={find}
-                  note={note(
-                    setting,
-                    scope,
-                    find,
-                    config.restart.includes(setting.name),
-                  )}
-                  error={
-                    config.failed?.key === setting.name
-                      ? String(
-                          (config.failed.error as Error)?.message ||
-                            config.failed.error,
-                        )
-                      : undefined
-                  }
-                  disabled={!online}
-                  online={online}
-                  save={config.save}
-                />
-              ))}
-            </Group>
-          )
-        );
-      })}
-      {needle && !listed.length && (
+      {asFile && (
+        <Group
+          title="settings.json"
+          footer={
+            <>
+              <code>{config.file}</code> as it stands, with keys and other
+              secrets hidden. Edit it in an editor:{" "}
+              <code>settings.schema.json</code> beside it completes and checks
+              every setting, and a change is taken up at the next message.
+            </>
+          }
+        >
+          <pre class="configuration-file">
+            <code>{JSON.stringify(config.document ?? {}, null, 2)}</code>
+          </pre>
+        </Group>
+      )}
+      {!asFile && INTRO[scope] && !needle && (
+        <p class="group-footer">{INTRO[scope]}</p>
+      )}
+      {!asFile &&
+        config.categories.map(({ id, label }) => {
+          const own = listed.filter((setting) => setting.category === id);
+          return (
+            own.length > 0 && (
+              <Group key={id} title={label}>
+                {own.map((setting) => (
+                  <SettingField
+                    key={setting.name}
+                    setting={setting}
+                    scope={scope}
+                    folder={folder}
+                    find={find}
+                    note={note(
+                      setting,
+                      scope,
+                      find,
+                      config.restart.includes(setting.name),
+                    )}
+                    error={
+                      config.failed?.key === setting.name
+                        ? String(
+                            (config.failed.error as Error)?.message ||
+                              config.failed.error,
+                          )
+                        : undefined
+                    }
+                    disabled={!online}
+                    online={online}
+                    save={config.save}
+                  />
+                ))}
+              </Group>
+            )
+          );
+        })}
+      {!asFile && needle && !listed.length && (
         <p class="group-footer">No setting matches.</p>
       )}
-      {!needle && config.file && (
+      {!asFile && !needle && config.file && (
         <p class="group-footer">
           Saved in <code>{config.file}</code>, which an editor can open too:{" "}
           <code>settings.schema.json</code> beside it names every setting.
         </p>
       )}
-      {!needle && (
+      {!asFile && !needle && (
         <Group>
           <Row
             label={whole.reset}

@@ -8,11 +8,11 @@ import {
   Input,
   Row,
   Switch,
-  Textarea,
   ValueSelect,
 } from "../../../shared/ui.tsx";
 import ModelPicker from "../../composer/model-picker.tsx";
 import { inherited, raw, secret, shown, type SavedScope } from "./facts.ts";
+import { ProvidersField } from "./providers-field.tsx";
 
 // One setting, edited where it is listed. A switch and a choice apply as
 // they change; text and numbers keep a draft and are saved on leaving the
@@ -156,9 +156,7 @@ export function SettingField({
         />
       )}
     </SheetButton>
-  ) : setting.sensitivity === "composite-secret" ? (
-    <Textarea {...text} rows={3} placeholder={placeholder} spellcheck={false} />
-  ) : (
+  ) : setting.sensitivity === "composite-secret" ? null : (
     <Input
       {...text}
       type={
@@ -217,6 +215,9 @@ export function SettingField({
           </IconButton>
         )}
       </Row>
+      {setting.sensitivity === "composite-secret" && !setting.locked && (
+        <ProvidersField value={own} disabled={disabled} save={set} />
+      )}
     </div>
   );
 }

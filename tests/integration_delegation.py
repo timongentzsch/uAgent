@@ -744,7 +744,6 @@ def test_subagent_failure_reports_route_stage_and_bounded_diagnostics(root, home
                     "@ 127.0.0.1",
                     "failure stage: child execution",
                     "remedy:",
-                    "fallback: none",
                     "fixture endpoint rejects unsupported-model",
                 )
             )
@@ -995,6 +994,62 @@ def test_stopping_a_child_stops_what_it_started(root, home, *, binary):
         assert_true(envelope["stop"]["session_generated_tokens"] == 12, envelope["stop"])
         survivors = wait_for_processes_stopped({int(p.read_text()) for p in pids})
         assert_true(not survivors, f"processes of a stopped child survived: {survivors}")
+
+
+def test_a_follow_up_reports_only_what_it_spent(root, home, *, binary):
+    """A resumed child's session holds what its earlier runs used; the parent
+    is told what this run added, so nothing is counted twice."""
+    spent = {"prompt_tokens": 1, "completion_tokens": 4}
+
+    def route(_, body):
+        messages = body["messages"]
+        if has_message(messages, "user", "again"):
+            return event({"content": "second-run"}, usage=spent)
+        if has_message(messages, "user", "child"):
+            return event({"content": "first-run"}, usage=spent)
+        results = "\n".join(tool_results(messages))
+        if "second-run" in results:
+            return event({"content": "both-ran"})
+        if "first-run" in results:
+            agent = re.search(r"\[collaborator (agent-[^;\]]+)", results).group(1)
+            again = {"operation": "followup", "agent_id": agent, "prompt": "again"}
+            return tool_call("subagent", again | {"background": False})
+        return tool_call("subagent", {"prompt": "child", "background": False})
+
+    with Server([route]) as server:
+        args = ("--yolo", "--json", "-p", "delegate")
+        result = run(root, base_env(home, server.url), *args, timeout=30, binary=binary)
+        envelope = json.loads(result.stdout)
+        assert_true(envelope["answer"] == "both-ran", envelope)
+        assert_true(envelope["stop"]["session_generated_tokens"] == 8, envelope["stop"])
+
+
+def test_a_childs_time_limit_covers_what_it_left_running(root, home, *, binary):
+    """A child that answered is not kept alive past limits.seconds by a child
+    of its own that is still working."""
+
+    def route(_, body):
+        messages = body["messages"]
+        if has_message(messages, "user", "grandchild"):
+            time.sleep(20)
+            return event({"content": "too-late"})
+        if has_message(messages, "user", "child"):
+            if tool_results(messages):
+                return event({"content": "child-answered"})
+            return tool_call("subagent", {"prompt": "grandchild", "background": True})
+        if any("child-answered" in result for result in tool_results(messages)):
+            return event({"content": "limit-held"})
+        child = {"prompt": "child", "mode": "full", "background": False}
+        return tool_call("subagent", child | {"limits": {"seconds": 2}})
+
+    with Server([route]) as server:
+        started = time.monotonic()
+        result = run(
+            root, base_env(home, server.url), "--yolo", "-p", "delegate", timeout=30, binary=binary
+        )
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "limit-held", result.stdout)
+        assert_true(time.monotonic() - started < 12, "the child outlived its limit")
 
 
 def test_subagent_clamps_are_reported_not_silent(root, home, *, binary):

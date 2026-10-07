@@ -263,18 +263,20 @@ bool TakeIdleInterrupt() {
 // Commands are killed. Child agents and MCP servers are asked to stop: an
 // agent then stops what it started in turn, which a killed one never would.
 static void StopStartedFromHandler() {
+  // Each slot is read once: one cleared between a test and a second read
+  // would be zero, and a signal to group zero is a signal to this process's
+  // own group.
   for (int index = 0; index < kBgMax; ++index) {
-    if (g_agent_pids[index] > 0) {
-      kill(-static_cast<pid_t>(g_agent_pids[index]), SIGTERM);
-    }
-    if (g_bg_pids[index] <= 0) continue;
-    pid_t pid = static_cast<pid_t>(g_bg_pids[index]);
+    const pid_t agent = static_cast<pid_t>(g_agent_pids[index]);
+    if (agent > 0) kill(-agent, SIGTERM);
+    const pid_t pid = static_cast<pid_t>(g_bg_pids[index]);
+    if (pid <= 0) continue;
     kill(-pid, SIGKILL);
     kill(pid, SIGKILL);
   }
   for (int index = 0; index < kMcpMax; ++index) {
-    if (g_mcp_pids[index] <= 0) continue;
-    pid_t pid = static_cast<pid_t>(g_mcp_pids[index]);
+    const pid_t pid = static_cast<pid_t>(g_mcp_pids[index]);
+    if (pid <= 0) continue;
     kill(-pid, SIGTERM);
     kill(pid, SIGTERM);
   }

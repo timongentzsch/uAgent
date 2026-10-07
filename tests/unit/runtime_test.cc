@@ -727,7 +727,6 @@ void TestChildEnvironmentPolicy() {
   CHECK(report.find("configured route: provider/child @ child.example") !=
         std::string::npos);
   CHECK(report.find("failure stage: child execution") != std::string::npos);
-  CHECK(report.find("fallback: none") != std::string::npos);
   CHECK(report.find("diagnostic-head") != std::string::npos);
   CHECK(report.find("diagnostic-tail") != std::string::npos);
   std::string connection_report = ChildAgentFailureReport(
@@ -752,9 +751,12 @@ void TestChildEnvironmentPolicy() {
   CHECK(limited.find("rerun with that ceiling raised") != std::string::npos);
   CHECK(limited.find("remedy:") == std::string::npos);
   CHECK(limited.find("· Working") == std::string::npos);
-  const std::string errored = reported("error");
-  CHECK(errored.find("remedy:") != std::string::npos);
-  CHECK(errored.find("ceiling") == std::string::npos);
+  // A stop that names no ceiling the caller could raise gets no such advice.
+  for (const char* reason : {"error", "repeated_calls"}) {
+    const std::string other = reported(reason);
+    CHECK(other.find("remedy:") != std::string::npos);
+    CHECK(other.find("ceiling") == std::string::npos);
+  }
 }
 
 void TestProviderTemplates() {

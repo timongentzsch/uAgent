@@ -161,7 +161,10 @@ Agent::StepFlow Agent::PrepareStep(TurnExecution& state, StepState& loop) {
     FailTurn(state, prompt_error_);
     return StepFlow::kEndTurn;
   }
-  if (SteeringState().Requested()) return InterruptTurn(state);
+  // A process told to stop does not take up queued guidance instead.
+  if (SteeringState().Requested() || ShutdownRequested()) {
+    return InterruptTurn(state);
+  }
   if (TurnDeadlineExceeded(state)) return StepFlow::kEndTurn;
   if (refresh_tools_ && refresh_tools_(state.deadline)) RebuildToolSchemas();
   if (TurnDeadlineExceeded(state)) return StepFlow::kEndTurn;
@@ -434,7 +437,13 @@ void Agent::AnswerAtLimit(TurnExecution& state, StepState& loop) {
   if ((state.stop.reason != TurnStopReason::kMaxSteps &&
        state.stop.reason != TurnStopReason::kMaxToolCalls &&
        state.stop.reason != TurnStopReason::kTurnDeadline) ||
-      SteeringState().Requested()) {
+      SteeringState().Requested() || ShutdownRequested()) {
+    return;
+  }
+  // The round is paid for like any other: a turn that is also out of tokens
+  // or money does not get it.
+  if (TurnTokenBudgetExceeded(state, /*before_model=*/true) ||
+      TurnCostExceeded(state)) {
     return;
   }
   active_deadline_ = DeadlineAfter(kLimitAnswerSeconds);
@@ -445,11 +454,15 @@ void Agent::AnswerAtLimit(TurnExecution& state, StepState& loop) {
       MessageKind::kInternal);
   ChatResult response = Chat("turn", loop.step, available_schemas_.Schemas());
   conversation_.Erase(conversation_.Size() - 1, conversation_.Size());
-  if (response.interrupted || !response.error.empty() ||
-      response.content.empty()) {
+  if (response.interrupted || !response.error.empty()) return;
+  RecordModelResponse(response, state, loop.tool_counts);
+  // Only prose that ended on its own is an answer: text beside a tool call
+  // announces work that will not happen.
+  if (TurnTokenBudgetExceeded(state) || TurnCostExceeded(state) ||
+      !ProseOnlyResponse(response) || response.suppressed ||
+      response.stop_cause == ResponseStopCause::kPause) {
     return;
   }
-  RecordModelResponse(response, state, loop.tool_counts);
   PushAssistantMessage(response, {});
   state.answered_at_limit = true;
 }

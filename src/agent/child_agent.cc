@@ -118,12 +118,14 @@ std::string FailureSummary(ChildAgentFailureStage stage,
                    size_t{180});
 }
 
-// A stop the caller could lift by raising a ceiling, as opposed to an error,
-// an interrupt or a finished turn.
+// A stop the caller could lift by raising a ceiling: the reasons that name a
+// configurable one, not an error, an interrupt or a repeated call.
 bool StoppedAtLimit(const json& stop) {
+  static constexpr std::string_view kCeilings[] = {
+      "max_steps", "max_tool_calls", "turn_deadline",       "turn_tokens",
+      "turn_cost", "session_budget", "session_token_budget"};
   const std::string reason = JsonValue(stop, "reason", std::string());
-  return !reason.empty() && reason != "completed" && reason != "error" &&
-         reason != "cancelled";
+  return std::ranges::find(kCeilings, reason) != std::end(kCeilings);
 }
 
 }  // namespace
@@ -166,9 +168,6 @@ std::string ChildAgentFailureReport(std::string_view route,
   if (!StoppedAtLimit(stop)) {
     report += "\nremedy: " + std::string(FailureRemedy(stage));
   }
-  report +=
-      "\nfallback: none; provider, model, pricing, and privacy policy "
-      "were not changed";
   // A child that reported has given its account above. Without one, what it
   // printed is all there is.
   if (!envelope) {

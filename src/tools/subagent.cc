@@ -482,7 +482,8 @@ ToolResult RunSubagent(const Api& api, ProcessSupervisor& processes,
                              {"name", name},
                              {"mode", mode},
                              {"model", route_label}},
-       .environment = std::move(environment)});
+       .environment = std::move(environment),
+       .environment_policy = ChildEnvironmentPolicy::kAgent});
   ToolResult result = std::move(child.result);
   if (child.wait_status && result.artifact) {
     // The child ran long enough for its log to outgrow the cap, so the

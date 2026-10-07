@@ -9,6 +9,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/core/config.h"
 #include "include/core/config_registry.h"
 #include "include/core/env.h"
 #include "include/core/platform.h"
@@ -59,7 +60,9 @@ ChildEnvironment::ChildEnvironment(const EnvironmentOverrides& overrides,
   if (policy == ChildEnvironmentPolicy::kApprovedShell) {
     allow_list = ShellAllowList();
   }
+  const bool agent = policy == ChildEnvironmentPolicy::kAgent;
   auto permitted = [&](const std::string& key) {
+    if (!agent && AgentConfigKey(key)) return false;
     return !SensitiveEnvironmentKey(key) ||
            std::find(allow_list.begin(), allow_list.end(), key) !=
                allow_list.end();
@@ -74,12 +77,13 @@ ChildEnvironment::ChildEnvironment(const EnvironmentOverrides& overrides,
     if (permitted(KeyOf(entry))) values_.push_back(std::move(entry));
   }
   // environ predates reloads and session choices.
-  for (const auto& [key, value] : CurrentSettings()) {
-    if (permitted(key)) set(key, value);
+  if (agent) {
+    for (const auto& [key, value] : CurrentSettings()) {
+      if (permitted(key)) set(key, value);
+    }
   }
-  if (policy != ChildEnvironmentPolicy::kIndependentAgent) {
-    set("UAGENT_APPROVAL", ApprovalModeName(CurrentApprovalMode()));
-  }
+  // A uagent started from a command is no freer than the session it runs in.
+  set("UAGENT_APPROVAL", ApprovalModeName(CurrentApprovalMode()));
   for (const auto& [key, value] : overrides) set(key, value);
   pointers_.reserve(values_.size() + 1);
   for (std::string& value : values_) pointers_.push_back(value.data());

@@ -671,7 +671,15 @@ void TestChildEnvironmentPolicy() {
   CHECK(!shell.Contains("SESSION_COOKIE"));
   CHECK(!shell.Contains("UAGENT_INTERNAL_USAGE_FILE"));
   CHECK(!shell.Contains("UAGENT_PROVIDERS"));
-  CHECK(shell.Contains("UAGENT_CHILD_ENV_SAFE"));
+  // A program is not told uagent's settings: a build or a test run under
+  // them would behave as though the user had set them. What keeps a nested
+  // uagent confined still reaches it.
+  ScopedEnv scoped_depth("UAGENT_INTERNAL_DEPTH", "1");
+  CHECK(!shell.Contains("UAGENT_CHILD_ENV_SAFE"));
+  CHECK(ChildEnvironment().Contains("UAGENT_INTERNAL_DEPTH"));
+  CHECK(shell.Contains("UAGENT_APPROVAL"));
+  CHECK(ChildEnvironment({}, ChildEnvironmentPolicy::kAgent)
+            .Contains("UAGENT_CHILD_ENV_SAFE"));
 
   ChildEnvironment approved({}, ChildEnvironmentPolicy::kApprovedShell);
   CHECK(!approved.Contains("UAGENT_API_KEY"));
@@ -1098,7 +1106,7 @@ void TestEffectiveConfigReload() {
                   "UAGENT_TOOL_RESULT_CHARS") != reload->applied.end());
   CHECK(ToolResultCap() == 1234);
   CHECK(getenv("UAGENT_TOOL_RESULT_CHARS") == nullptr);
-  ChildEnvironment child({}, ChildEnvironmentPolicy::kIndependentAgent);
+  ChildEnvironment child({}, ChildEnvironmentPolicy::kAgent);
   bool told = false;
   for (char** entry = child.Data(); entry && *entry; ++entry) {
     told |= std::string_view(*entry) == "UAGENT_TOOL_RESULT_CHARS=1234";

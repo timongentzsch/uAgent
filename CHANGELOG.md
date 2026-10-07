@@ -26,6 +26,10 @@
 
 ### Changed
 
+- A command started by `run`, a scratch script and an MCP server are no
+  longer told uagent's settings (`UAGENT_MODEL`, `UAGENT_BASE_URL` and the
+  rest). A program that reads them, such as a test of uagent itself, sees
+  what the user's shell would give it. Subagents are told them as before.
 - A turn stopped by its step, tool-call or time limit answers once more from
   what it has, told that no further tool will run, where it used to end
   without an answer. The stop still names the limit; `-p` prints the answer

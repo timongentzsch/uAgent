@@ -48,14 +48,19 @@ skills (`.agents/skills`).
 ## Settings
 
 Saved settings are one document, `config/settings.json`:
-`{"format": 1, "all": {...}, "projects": {"<folder>": {...}}}`. µAgent alone
-writes it, under a lock, through `/config`, the web's Settings or the `uagent`
-tool. See [OPERATIONS.md](OPERATIONS.md#settings).
+`{"format": 2, "all": {...}, "projects": {"<folder>": {...}}}`, with
+`config/settings.schema.json` beside it for an editor. µAgent writes it under
+a lock, through `/config`, the web's Settings or the `uagent` tool; it may
+also be edited by hand. See [OPERATIONS.md](OPERATIONS.md#settings).
 
 - To back it up or move it to another host, use `uagent config export` and
   `uagent config import FILE`. The export contains API keys in clear text.
 - A document that cannot be parsed is refused, never read as empty: the error
-  names the file to fix or remove, and nothing is saved over it.
+  names the file to fix or remove, and nothing is saved over it. One entry
+  that cannot be taken is reported and left out, and the rest applies.
+- A document of the format before (`"format": 1`, settings named by their
+  environment variable and every value text) is rewritten in this format the
+  first time it is read. `uagent config import` takes either.
 - Text files of earlier versions are taken over once. `~/.uagent/.config`
   moves in on the first start. A project's `.uagent/.config` moves in the
   first time a conversation starts in that folder, if its content is what was

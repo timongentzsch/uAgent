@@ -183,6 +183,7 @@ export function SettingField({
     <div
       class="setting-field"
       data-setting={setting.name}
+      title={setting.key}
       // A value that may be long gets its own line on a phone.
       data-wide={
         setting.type === "boolean" || setting.choices?.length ? undefined : ""

@@ -7,6 +7,8 @@
 // member added without a table entry fails here instead of silently
 // keeping its hard-coded default.
 
+#include <algorithm>
+#include <cctype>
 #include <set>
 #include <string>
 
@@ -42,6 +44,19 @@ void TestRuntimeConfigCoherence() {
   for (auto it = diagnostic.begin(); it != diagnostic.end(); ++it) {
     CHECK(registry_fields.count(it.key()) > 0 ||
           IsDerivedDiagnosticKey(it.key()));
+  }
+
+  // Every setting has one name in the settings file, spelled as a path of
+  // words, and none takes the name the file keeps for variables.
+  std::set<std::string_view> keys;
+  for (const ConfigDescriptor& descriptor : ConfigRegistry()) {
+    const std::string_view key = descriptor.key;
+    CHECK(!key.empty() && key != "variables" && keys.insert(key).second);
+    CHECK(std::islower(static_cast<unsigned char>(key.front())) != 0);
+    CHECK(std::ranges::all_of(
+        key, [](unsigned char c) { return std::isalnum(c) != 0 || c == '.'; }));
+    CHECK(key.back() != '.' && key.find("..") == std::string_view::npos);
+    CHECK(FindConfigKey(key) == &descriptor);
   }
 
   // FromValues round-trips a renamed field through the same tables.

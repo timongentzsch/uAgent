@@ -58,7 +58,7 @@ export default function Configuration({
   const listed = config.settings.filter(
     (setting) =>
       !needle ||
-      `${setting.label} ${setting.name} ${setting.purpose || ""} ${setting.description}`
+      `${setting.label} ${setting.key} ${setting.name} ${setting.purpose || ""} ${setting.description}`
         .toLowerCase()
         .includes(needle),
   );
@@ -74,6 +74,11 @@ export default function Configuration({
   return (
     <section class="configuration">
       {failed}
+      {config.problem && (
+        <p class="group-footer setting-error" role="alert">
+          {config.problem}
+        </p>
+      )}
       {config.restart.length > 0 && (
         <RestartNotice
           key={config.restart.join()}
@@ -129,6 +134,12 @@ export default function Configuration({
       })}
       {needle && !listed.length && (
         <p class="group-footer">No setting matches.</p>
+      )}
+      {!needle && config.file && (
+        <p class="group-footer">
+          Saved in <code>{config.file}</code>, which an editor can open too:{" "}
+          <code>settings.schema.json</code> beside it names every setting.
+        </p>
       )}
       {!needle && (
         <Group>

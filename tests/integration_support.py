@@ -564,7 +564,8 @@ def settings_path(home):
 
 
 def saved_settings(home, folder=None):
-    """What the host has saved: for all conversations, or for `folder`."""
+    """What the host has saved, as the document holds it: for all
+    conversations, or for `folder`."""
     path = settings_path(home)
     document = json.loads(path.read_text()) if path.exists() else {"all": {}, "projects": {}}
     if folder is None:
@@ -572,20 +573,32 @@ def saved_settings(home, folder=None):
     return document["projects"].get(str(pathlib.Path(folder).resolve()), {})
 
 
+def setting_keys():
+    """A setting's name in the settings file, by its name in the environment,
+    from the schema the build under test generated."""
+    references = pathlib.Path(__file__).resolve().parent.parent / "skills/uagent-config/references"
+    schema = references / "settings.schema.json"
+    properties = json.loads(schema.read_text())["definitions"]["scope"]["properties"]
+    return {held["x-env"]: key for key, held in properties.items() if "x-env" in held}
+
+
 def save_settings(home, folder=None, **values):
     """Saves settings from outside, as another process's change arrives:
-    the document replaced in one step. None removes a setting."""
+    the document replaced in one step. Settings are named as the environment
+    names them; any other name is a variable. None removes one."""
     path = settings_path(home)
-    document = {"format": 1, "all": {}, "projects": {}}
+    document = {"format": 2, "all": {}, "projects": {}}
     if path.exists():
         document = json.loads(path.read_text())
     scope = document["all"]
     if folder is not None:
         scope = document["projects"].setdefault(str(pathlib.Path(folder).resolve()), {})
+    keys = setting_keys()
     for name, value in values.items():
-        scope.pop(name, None)
+        held = scope if name in keys else scope.setdefault("variables", {})
+        held.pop(keys.get(name, name), None)
         if value is not None:
-            scope[name] = str(value)
+            held[keys.get(name, name)] = value if name in keys else str(value)
     path.parent.mkdir(parents=True, exist_ok=True)
     pending = path.with_suffix(".pending")
     pending.write_text(json.dumps(document, indent=2) + "\n")

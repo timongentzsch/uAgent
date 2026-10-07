@@ -210,6 +210,23 @@ void TestConfigProposalAndCommit() {
   CHECK(!CommitConfigProposal(expired, error));
   CHECK(error.find("expired") != std::string::npos);
 
+  // A value typed into the document that its setting does not take, and
+  // one spelled another way, are replaced like any other: the preview and
+  // the save compare with what the document holds.
+  CHECK(ChangeSettings("", [](SettingValues& scope) {
+          scope["UAGENT_MAX_STEPS"] = "many";
+          scope["UAGENT_SANDBOX"] = "off";
+          return std::string();
+        }).empty());
+  ConfigProposal repair = PrepareConfigProposal(
+      ConfigProposalScope::kUser,
+      {{"UAGENT_MAX_STEPS", "11", false}, {"UAGENT_SANDBOX", "1", false}},
+      manager);
+  CHECK(repair.ok);
+  CHECK(CommitConfigProposal(repair, error));
+  CHECK(ReadSettings("").all.at("UAGENT_MAX_STEPS") == "11");
+  CHECK(ReadSettings("").warning.empty());
+
   // The store hands a proposal out once, and only for the arguments it was
   // prepared from.
   ConfigApprovals store;
@@ -293,18 +310,17 @@ void TestProjectSettingsAreSavedByFolder() {
   CHECK(resolved.values.at("UAGENT_API_KEY") == "project-token");
   CHECK(!resolved.values.contains("TOKEN"));
   // Such a document goes out and comes back as written.
-  json exported = {{"format", 1},
-                   {"all", {{"LIMIT", "7"}, {"UAGENT_MAX_STEPS", "$LIMIT"}}},
-                   {"projects", json::object()}};
+  AllSettings exported{.all = {{"LIMIT", "7"}, {"UAGENT_MAX_STEPS", "$LIMIT"}},
+                       .projects = {}};
   CHECK(CheckSavedSettings(exported).empty());
-  CHECK(exported["all"]["UAGENT_MAX_STEPS"] == "$LIMIT");
+  CHECK(exported.all["UAGENT_MAX_STEPS"] == "$LIMIT");
   // A value is checked and kept as it is, whatever the environment holds
   // under its name.
   {
     ScopedEnv elsewhere("UAGENT_MAX_TOOL_CALLS", "9");
-    exported["all"]["UAGENT_MAX_TOOL_CALLS"] = "7";
+    exported.all["UAGENT_MAX_TOOL_CALLS"] = "7";
     CHECK(CheckSavedSettings(exported).empty());
-    CHECK(exported["all"]["UAGENT_MAX_TOOL_CALLS"] == "7");
+    CHECK(exported.all["UAGENT_MAX_TOOL_CALLS"] == "7");
   }
   // A reset is refused when a setting it removes changed since it was read.
   ConfigProposal reset =
@@ -318,7 +334,7 @@ void TestProjectSettingsAreSavedByFolder() {
         }).empty());
   CHECK(!CommitConfigProposal(reset, error));
   CHECK(ReadSettings(test.workspace.string()).project.size() == 4);
-  exported["all"]["LIMIT"] = "many";
+  exported.all["LIMIT"] = "many";
   CHECK(!CheckSavedSettings(exported).empty());
   // Another folder is not affected.
   CHECK(ReadSettings(test.root.string()).project.empty());
@@ -329,6 +345,13 @@ void TestProjectSettingsAreSavedByFolder() {
                                {{"UAGENT_MAX_STEPS", "5", false}}, host)
              .ok);
   CHECK(ReadSettings("").all.empty());
+  // A change may name a setting as the settings file does.
+  std::vector<ConfigChange> named;
+  std::string why;
+  CHECK(ParseConfigChanges(
+      {{"changes", {{{"key", "limits.maxSteps"}, {"value", "5"}}}}}, named,
+      why));
+  CHECK(named.size() == 1 && named[0].key == "UAGENT_MAX_STEPS");
 }
 
 // Get reports what each scope holds; reset clears a scope's overrides in one

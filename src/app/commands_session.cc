@@ -167,7 +167,7 @@ void HandleContext(AppSession& session, CommandReply& reply) {
   auto source = [&](const char* key, const std::string& fallback = "runtime") {
     return sources.is_object() ? JsonValue(sources, key, fallback) : fallback;
   };
-  std::string model_source = source("UAGENT_MODEL", source("OPENROUTER_MODEL"));
+  std::string model_source = source("UAGENT_MODEL");
   std::string credential_source =
       source("UAGENT_API_KEY", source("OPENROUTER_API_KEY"));
   effective["route"] = {

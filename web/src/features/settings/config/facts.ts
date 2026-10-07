@@ -60,5 +60,8 @@ export function note(
   if (overridden(setting, scope)) return "Overridden in this project";
   if (scope === "project" && setting.set?.project !== undefined)
     return `Overrides ${inherited(setting, scope, find)} from all conversations`;
-  return restart ? "Takes effect after restart" : undefined;
+  if (restart) return "Takes effect after restart";
+  return setting.terminal
+    ? `${setting.purpose || setting.description} · read by the terminal and the host as they start`
+    : undefined;
 }

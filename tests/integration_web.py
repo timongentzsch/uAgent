@@ -1458,8 +1458,8 @@ def test_web_project_trust_and_config_precedence(root, home, *, binary):
                 cwd=str(second),
                 changes=[{"key": "UAGENT_MAX_STEPS", "value": "7"}],
             )
-            assert_true(saved_settings(home, second) == {"UAGENT_MAX_STEPS": "7"}, "not saved")
-            assert_true(saved_settings(home) == {"UAGENT_MODEL": "global/model"}, "leaked")
+            assert_true(saved_settings(home, second) == {"limits.maxSteps": 7}, "not saved")
+            assert_true(saved_settings(home) == {"model": "global/model"}, "leaked")
             for project, expected in ((first, "project/model"), (second, "global/model")):
                 session = client.create(project)
                 value = client.until(session, lambda value: value["metadata"]["status"] == "idle")

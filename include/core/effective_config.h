@@ -33,6 +33,8 @@ struct EffectiveConfigSnapshot {
   // here if they are not.
   FileStamp stamp;
   std::string error;
+  // What the saved settings hold that was not taken; the rest applies.
+  std::string warning;
 
   // What `key` would be without the conversation's own choice: the value a
   // conversation's control offers as its default. Empty when no scope sets it.
@@ -59,8 +61,11 @@ class ConfigManager {
   EffectiveConfigSnapshot Read() const;
   // The project whose saved settings apply.
   const std::string& Folder() const { return folder_; }
-  // Why the saved settings were not all read, as of the last read.
-  const std::string& Problem() const { return current_.error; }
+  // Why the saved settings were not all read or not all taken, as of the
+  // last read.
+  const std::string& Problem() const {
+    return current_.error.empty() ? current_.warning : current_.error;
+  }
   // What one conversation chose for itself, above every other scope. Only
   // settings whose descriptor allows the conversation scope belong here; an
   // empty value takes the choice back. Safe beside Read() on another thread.

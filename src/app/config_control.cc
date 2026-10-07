@@ -30,9 +30,11 @@ int ConfigMain(int argc, char** argv) {
             : !ReadRegularFile(source, kEditFileBytes, bytes, error)) {
       if (error.empty()) error = "the document exceeds the size limit";
     } else {
-      json document = json::parse(bytes, nullptr, false);
-      error = CheckSavedSettings(document);
-      if (error.empty()) error = ReplaceSettings(std::move(document));
+      AllSettings settings;
+      if (ParseSettings(json::parse(bytes, nullptr, false), settings, error)) {
+        error = CheckSavedSettings(settings);
+      }
+      if (error.empty()) error = ReplaceSettings(settings);
     }
   } else {
     fprintf(stderr,
@@ -79,9 +81,14 @@ json ConfigurationControl(const json& request, const ConfigManager& manager) {
   for (const ConfigCategory& category : kConfigCategories) {
     categories.push_back({{"id", category.id}, {"label", category.label}});
   }
-  return {{"settings",
-           ConfigSettingsJson(manager.Read(), JsonValue(request, "name", ""))},
-          {"categories", std::move(categories)},
-          {"effects", effects}};
+  const EffectiveConfigSnapshot saved = manager.Read();
+  return {
+      {"settings", ConfigSettingsJson(saved, JsonValue(request, "name", ""))},
+      {"categories", std::move(categories)},
+      {"effects", effects},
+      // Where it is all saved, for whoever would rather edit the file,
+      // and what that file holds that could not be taken.
+      {"file", SettingsPath()},
+      {"problem", saved.error.empty() ? saved.warning : saved.error}};
 }
 }  // namespace uagent

@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "include/core/json.h"
+#include "include/core/settings_store.h"
 
 namespace uagent {
 
@@ -84,9 +85,9 @@ json ConfigurationControl(const json& request, const ConfigManager& manager);
 // import FILE` (or -) replaces it with a document of that shape, once every
 // setting in it has passed the registry's checks.
 int ConfigMain(int argc, char** argv);
-// Checks each registered setting in a whole saved document as a change to it
-// would be, normalizing spellings in place. Returns the first objection.
-std::string CheckSavedSettings(json& document);
+// Checks each registered setting in everything saved as a change to it would
+// be, normalizing spellings in place. Returns the first objection.
+std::string CheckSavedSettings(AllSettings& settings);
 
 bool ParseConfigScope(std::string_view name, ConfigProposalScope& scope);
 // The change list the settings screen, --control and the uagent tool send:

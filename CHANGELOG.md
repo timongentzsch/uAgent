@@ -4,12 +4,31 @@
 
 ### Upgrade notes
 
+- **The settings file names settings in words and holds typed values.**
+  `~/.uagent/config/settings.json` is now
+  `{"format": 2, "all": {"model": "…", "limits.maxSteps": 40,
+  "sandbox.enabled": false}, "projects": {…}}`: each setting under the name
+  the configuration reference lists (`limits.maxSteps` for
+  `UAGENT_MAX_STEPS`), its value a number, a boolean, text or, for the
+  providers, an object. What a value refers to as `$NAME` moves under
+  `variables`. The file of the earlier format is rewritten the first time it
+  is read, and `uagent config import` takes either.
+  - The file may be edited by hand. `settings.schema.json` is written beside
+    it for an editor to complete and check it; a name that is no setting or a
+    value its setting does not take is reported at the start and after an
+    edit, and the rest of the file applies.
+  - `/config`, the web's Settings and the `uagent` tool take a setting by
+    either name. Environment variables and flags are unchanged.
 - **`UAGENT_SUBAGENT_MODEL`, `--subagent-model` and
   `UAGENT_COORDINATOR_MODEL` are gone.** A subagent and a coordinator's
   thread run on the model of the conversation that starts them, unless that
   conversation names one in the call (`model`). A coordinator starts on
   `UAGENT_MODEL`; `/model` inside it still changes it for that folder. A
   saved value for a removed setting has no effect.
+- **`OPENROUTER_MODEL` and `OPENROUTER_EFFORT` are no longer read.** Name the
+  model with `UAGENT_MODEL` (`model`) and the effort with
+  `UAGENT_REASONING_EFFORT` (`reasoningEffort`); `OPENROUTER_API_KEY` is
+  unchanged.
 
 ### Added
 

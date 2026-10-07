@@ -37,6 +37,7 @@ const sample = (
   rest: Partial<ConfigSetting>,
 ): ConfigSetting => ({
   name,
+  key: name.toLowerCase(),
   label,
   description: "What the setting is for",
   category: "behaviour",

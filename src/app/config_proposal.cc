@@ -169,56 +169,6 @@ std::string PrettyCompositeValue(const std::string& value) {
   return parsed.is_discarded() ? value : JsonDump(parsed, 2);
 }
 
-// Booleans are normalized to 0/1 in place, so one spelling is saved whichever
-// of the accepted words the caller wrote.
-bool ValidateValue(const ConfigDescriptor& descriptor, std::string& value,
-                   std::string& error) {
-  const std::string name(descriptor.environment);
-  switch (descriptor.type) {
-    case ConfigType::kInt: {
-      int64_t parsed = 0;
-      if (!ParseInt64(value.c_str(), parsed)) {
-        error = name + " expects an integer";
-        return false;
-      }
-      if (parsed < descriptor.minimum || parsed > descriptor.maximum) {
-        error = name + " accepts " + std::to_string(descriptor.minimum) +
-                " to " + std::to_string(descriptor.maximum);
-        return false;
-      }
-      return true;
-    }
-    case ConfigType::kDouble: {
-      double parsed = 0;
-      if (!ParseFiniteDouble(value.c_str(), parsed) || parsed < 0) {
-        error = name + " expects a non-negative number";
-        return false;
-      }
-      return true;
-    }
-    case ConfigType::kBool: {
-      bool parsed = false;
-      if (!ParseBool(value, parsed)) {
-        error = name + " expects 0 or 1 (also true/false, yes/no, on/off)";
-        return false;
-      }
-      value = parsed ? "1" : "0";
-      return true;
-    }
-    case ConfigType::kString:
-      // A reference is what it resolves to when read, not what it spells.
-      if (value.find('$') == std::string::npos && !descriptor.Accepts(value)) {
-        error = name + " expects one of:";
-        for (std::string_view choice : descriptor.choices) {
-          error += " " + std::string(choice);
-        }
-        return false;
-      }
-      return true;
-  }
-  return true;
-}
-
 ConfigEffect ClassifyEffect(const ConfigDescriptor& descriptor,
                             const std::string& source, bool user_scope) {
   // A scope above the saved one keeps winning after it changes, so saying
@@ -308,7 +258,7 @@ ConfigProposal Prepare(ConfigProposalScope scope,
     proposal.error = saved.error;
     return proposal;
   }
-  const SettingValues& before = user ? saved.all : saved.project;
+  const SettingValues before = HeldSettings(user ? "" : manager.Folder());
   // A reset is every public setting the scope holds, as of this one read.
   // Secrets stay: a reset must not leave the agent without its keys.
   std::vector<ConfigChange> reset;
@@ -348,7 +298,8 @@ ConfigProposal Prepare(ConfigProposalScope scope,
       return proposal;
     }
     std::string value = change.value;
-    if (!change.unset && !ValidateValue(*descriptor, value, proposal.error)) {
+    if (!change.unset &&
+        !ValidSettingValue(*descriptor, value, proposal.error)) {
       return proposal;
     }
     const auto existing = before.find(change.key);
@@ -391,24 +342,20 @@ ConfigProposal PrepareConfigReset(ConfigProposalScope scope,
   return Prepare(scope, nullptr, manager, /*direct_user=*/true);
 }
 
-std::string CheckSavedSettings(json& document) {
-  auto check = [](json& scope, unsigned wanted) {
-    EnvValues values;
-    for (const auto& [name, held] : scope.items()) {
-      if (held.is_string()) values[name] = held.get<std::string>();
-    }
-    for (auto& [name, held] : scope.items()) {
+std::string CheckSavedSettings(AllSettings& settings) {
+  auto check = [](SettingValues& scope, unsigned wanted) {
+    for (auto& [name, held] : scope) {
       const ConfigDescriptor* descriptor = FindConfigDescriptor(name);
       // Any other name is what a value refers to as $NAME.
-      if (!descriptor || !held.is_string()) continue;
+      if (!descriptor) continue;
       // What a reference resolves to is what is checked; as written is what
       // is kept. It is the saved value that is resolved, under a name the
       // environment cannot hold, so no variable stands in for it.
-      const std::string raw = held.get<std::string>();
-      std::string value = raw, error;
-      if (raw.find('$') != std::string::npos) {
+      std::string value = held, error;
+      if (held.find('$') != std::string::npos) {
+        EnvValues values = scope;
         std::set<std::string> resolving;
-        values["="] = raw;
+        values["="] = held;
         value = ResolveEnvValue("=", values, resolving);
       }
       if ((descriptor->scopes & wanted) == 0) {
@@ -416,23 +363,18 @@ std::string CheckSavedSettings(json& document) {
       }
       if ((descriptor->sensitivity == Sensitivity::kCompositeSecret &&
            !ValidateProviderProposal(value, error, /*direct_user=*/true)) ||
-          !ValidateValue(*descriptor, value, error)) {
+          !ValidSettingValue(*descriptor, value, error)) {
         return error;
       }
-      if (raw.find('$') == std::string::npos) held = value;
+      if (held.find('$') == std::string::npos) held = value;
     }
     return std::string();
   };
-  if (!document.is_object()) return std::string("expected a JSON object");
-  std::string error;
-  if (json* all = document.contains("all") ? &document["all"] : nullptr) {
-    if (all->is_object()) error = check(*all, kScopeUser);
-  }
-  if (error.empty() && JsonObject(document, "projects")) {
-    for (auto& [folder, scope] : document["projects"].items()) {
-      if (scope.is_object()) error = check(scope, kScopeProject);
-      if (!error.empty()) return folder + ": " + error;
-    }
+  std::string error = check(settings.all, kScopeUser);
+  for (auto& [folder, scope] : settings.projects) {
+    if (!error.empty()) break;
+    error = check(scope, kScopeProject);
+    if (!error.empty()) error = folder + ": " + error;
   }
   return error;
 }
@@ -492,6 +434,10 @@ bool ParseConfigChanges(const json& request, std::vector<ConfigChange>& changes,
   for (const json& entry : *list) {
     ConfigChange change;
     change.key = Trim(JsonValue(entry, "key", ""));
+    // A setting may be named as the settings file names it.
+    if (const ConfigDescriptor* named = FindConfigKey(change.key)) {
+      change.key = named->environment;
+    }
     const std::string operation = Trim(JsonValue(entry, "operation", "set"));
     change.unset = JsonValue(entry, "unset", false) || operation == "unset";
     if (change.key.empty()) {

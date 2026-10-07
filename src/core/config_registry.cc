@@ -21,6 +21,11 @@ const ConfigDescriptor* FindConfigDescriptor(std::string_view environment) {
   return found == std::end(kConfigRegistry) ? nullptr : &*found;
 }
 
+const ConfigDescriptor* FindConfigKey(std::string_view key) {
+  auto found = std::ranges::find(kConfigRegistry, key, &ConfigDescriptor::key);
+  return found == std::end(kConfigRegistry) ? nullptr : &*found;
+}
+
 namespace {
 
 struct SettingStore {
@@ -119,6 +124,56 @@ double DoubleSetting(const ConfigDescriptor& descriptor) {
   double value = declared ? *declared : 0.0;
   ParseFiniteDouble(SettingText(descriptor).c_str(), value);
   return value;
+}
+
+// Booleans are normalized to 0/1 in place, so one spelling is saved whichever
+// of the accepted words the caller wrote.
+bool ValidSettingValue(const ConfigDescriptor& descriptor, std::string& value,
+                       std::string& error, std::string_view called) {
+  const std::string name(called.empty() ? descriptor.environment : called);
+  switch (descriptor.type) {
+    case ConfigType::kInt: {
+      int64_t parsed = 0;
+      if (!ParseInt64(value.c_str(), parsed)) {
+        error = name + " expects an integer";
+        return false;
+      }
+      if (parsed < descriptor.minimum || parsed > descriptor.maximum) {
+        error = name + " accepts " + std::to_string(descriptor.minimum) +
+                " to " + std::to_string(descriptor.maximum);
+        return false;
+      }
+      return true;
+    }
+    case ConfigType::kDouble: {
+      double parsed = 0;
+      if (!ParseFiniteDouble(value.c_str(), parsed) || parsed < 0) {
+        error = name + " expects a non-negative number";
+        return false;
+      }
+      return true;
+    }
+    case ConfigType::kBool: {
+      bool parsed = false;
+      if (!ParseBool(value, parsed)) {
+        error = name + " expects 0 or 1 (also true/false, yes/no, on/off)";
+        return false;
+      }
+      value = parsed ? "1" : "0";
+      return true;
+    }
+    case ConfigType::kString:
+      // A reference is what it resolves to when read, not what it spells.
+      if (value.find('$') == std::string::npos && !descriptor.Accepts(value)) {
+        error = name + " expects one of:";
+        for (std::string_view choice : descriptor.choices) {
+          error += " " + std::string(choice);
+        }
+        return false;
+      }
+      return true;
+  }
+  return true;
 }
 
 const char* ConfigTypeName(ConfigType type) {

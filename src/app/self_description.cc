@@ -51,6 +51,7 @@ constexpr TopicName kTopics[] = {
 
 json DescriptorJson(const ConfigDescriptor& descriptor) {
   json entry = {{"name", descriptor.environment},
+                {"key", descriptor.key},
                 {"type", ConfigTypeName(descriptor.type)},
                 {"default", std::visit([](auto value) { return json(value); },
                                        descriptor.default_value)},
@@ -172,7 +173,10 @@ json ConfigSettingsJson(const EffectiveConfigSnapshot& configured,
                         std::string_view name) {
   json settings = json::array();
   for (const ConfigDescriptor& descriptor : ConfigRegistry()) {
-    if (!name.empty() && descriptor.environment != name) continue;
+    if (!name.empty() && descriptor.environment != name &&
+        descriptor.key != name) {
+      continue;
+    }
     json entry = DescriptorJson(descriptor);
     const std::string key(descriptor.environment);
     const bool secret = descriptor.sensitivity != Sensitivity::kPublic;

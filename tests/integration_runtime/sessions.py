@@ -15,7 +15,9 @@ from integration_support import (
     run_pty,
     save_settings,
     session_files,
+    settings_path,
     tool_call,
+    tool_calls,
     tool_results,
     write_sse_sequence,
 )
@@ -76,6 +78,23 @@ def test_config_reload_applies_only_at_turn_boundaries(root, home, *, binary):
         asked = server.requests[3][1]["messages"][-1]["content"]
         assert_true("tool call limit reached (1)" in asked and "No further tool" in asked, asked)
         assert_true("second-turn-answered-at-its-limit" in result.stdout, result.stdout)
+
+
+def test_a_settings_file_edited_by_hand_says_what_it_cannot_take(root, home, *, binary):
+    """The file is the user's to edit. A name that is no setting and a value a
+    setting does not take are named at the start; the rest applies."""
+    path = settings_path(home)
+    path.parent.mkdir(parents=True)
+    edited = {"limits.maxToolCalls": 1, "limits.maxStps": 3, "sandbox.enabled": "maybe"}
+    path.write_text(json.dumps({"format": 2, "all": edited, "projects": {}}))
+    calls = tool_calls([("one", "read_path", {"path": "."}), ("two", "read_path", {"path": "."})])
+    with Server([calls, event({"content": "answered-at-the-limit"})]) as server:
+        result = run_dialog(root, base_env(home, server.url), "go\n/q\n", timeout=12, binary=binary)
+        assert_true(result.returncode == 0, (result.stdout, result.stderr))
+        assert_true("limits.maxStps is not a setting" in result.stdout, result.stdout)
+        assert_true("sandbox.enabled expects 0 or 1" in result.stdout, result.stdout)
+        # What it could take applies.
+        assert_true("tool call limit reached (1)" in result.stdout, result.stdout)
 
 
 def test_prompt_overlay_reaches_the_live_prompt(root, home, *, binary):

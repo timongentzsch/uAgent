@@ -42,6 +42,8 @@ constexpr size_t kToolTextChars = 160;
 constexpr size_t kDetailBytes = size_t{16} * 1024;
 constexpr size_t kReportBytes = size_t{8} * 1024;
 constexpr size_t kMessageBytes = size_t{8} * 1024;
+// Members one coordinator's chat may have.
+constexpr int64_t kChatMembers = 16;
 constexpr size_t kDiffBytes = size_t{16} * 1024;
 
 // "saved" without a runtime; else what its runtime said when it answered:
@@ -379,17 +381,28 @@ ToolResult Spawn(const std::string& folder, const json& a,
   std::vector<bool> busy;
   busy.reserve(threads.size());
   for (const SessionInfo& info : threads) busy.push_back(Working(info));
-  const int64_t working = std::ranges::count(busy, true);
-  if (working >= cap) {
-    return ToolFailure(ToolErrorCode::kLimitExceeded,
-                       std::to_string(cap) +
-                           " threads are already working; wait for one to "
-                           "finish or stop one");
+  // The cap is on threads at work. A chat's members answer and fall silent
+  // again, so they have a limit of their own, on how many there are.
+  int64_t working = 0, members = 0;
+  for (size_t i = 0; i < threads.size(); ++i) {
+    const bool seated = !ChatMember(threads[i].thread).empty();
+    members += seated;
+    working += busy[i] && !seated;
+  }
+  if (member ? members >= kChatMembers : working >= cap) {
+    return ToolFailure(
+        ToolErrorCode::kLimitExceeded,
+        member ? "a chat has at most " + std::to_string(kChatMembers) +
+                     " members; delete one first"
+               : std::to_string(cap) +
+                     " threads are already working; wait for one to "
+                     "finish or stop one");
   }
   const double limit = DoubleSetting(Cfg("UAGENT_COORDINATOR_DAILY_SPEND_USD"));
   // Each thread gets an equal share of what is left for the free slots.
   const double left = limit > 0 ? limit - SpentToday(folder, threads, busy) : 0;
-  const double budget = left / static_cast<double>(cap - working);
+  const double budget =
+      left / static_cast<double>(std::max<int64_t>(1, cap - working));
   if (limit > 0 && budget < 0.01) {
     return ToolFailure(
         ToolErrorCode::kLimitExceeded,

@@ -230,7 +230,8 @@ std::string StartMemoryExtractor(ProcessSupervisor& processes, const Api& api,
            .activity_label = "extracting from " + source_id,
            .receipt_path = receipt,
            .source_id = source_id,
-           .environment = std::move(environment)})
+           .environment = std::move(environment),
+           .environment_policy = ChildEnvironmentPolicy::kAgent})
           .result;
   if (!started.Ok()) {
     ReleaseClaim(source, cwd);

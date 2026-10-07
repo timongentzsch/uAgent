@@ -26,6 +26,14 @@
 
 ### Changed
 
+- `subagent`: an empty `name`, `description` or `directive` is one that was
+  not given. An empty directive used to clear the stored one, so a model
+  that fills in every optional field wiped it on each follow-up and was
+  refused on `message`; a new directive replaces the old.
+- A command started by `run`, a scratch script and an MCP server are no
+  longer told uagent's settings (`UAGENT_MODEL`, `UAGENT_BASE_URL` and the
+  rest). A program that reads them, such as a test of uagent itself, sees
+  what the user's shell would give it. Subagents are told them as before.
 - A turn stopped by its step, tool-call or time limit answers once more from
   what it has, told that no further tool will run, where it used to end
   without an answer. The stop still names the limit; `-p` prints the answer
@@ -50,6 +58,10 @@
 - `subagent`: `limits.seconds` stops a background child too. It was applied
   only by a parent that waited, so a child started in the background ran
   until someone stopped it.
+- A new conversation is titled when the session runs on an endpoint that
+  cannot take the title model's name: its own model writes the title. The
+  default title model is an OpenRouter name, so on any other endpoint the
+  request failed and the first message stayed as the title.
 - `run`: output longer than a result may be keeps its beginning and its end.
   Only the end was kept, so reading a file's first lines through `run`
   returned its last.

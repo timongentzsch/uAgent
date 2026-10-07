@@ -124,7 +124,7 @@ activity ID at once.
   one child, within the session's remaining budgets; `memory=false` withholds
   memory.
 - `followup` resumes the child's private conversation and prepends its
-  stored `directive`; an empty directive clears it.
+  stored `directive`; a new directive replaces it.
 - `message` delivers one-shot guidance at a running child's next step; a
   finished child runs again on it.
 - `list` reports this session's children with model, toolset and state.

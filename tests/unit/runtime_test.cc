@@ -659,8 +659,9 @@ void TestChildEnvironmentPolicy() {
   ScopedEnv scoped_usage("UAGENT_INTERNAL_USAGE_FILE", "/tmp/ledger");
   ScopedEnv scoped_providers("UAGENT_PROVIDERS", "private-provider-config");
   ScopedEnv scoped_safe("UAGENT_CHILD_ENV_SAFE", "visible");
+  ScopedEnv scoped_router("OPENROUTER_API_KEY", "secret");
   ScopedEnv scoped_allow("UAGENT_SHELL_ENV_ALLOW",
-                         " GITHUB_TOKEN, SSH_AUTH_SOCK ");
+                         " GITHUB_TOKEN, SSH_AUTH_SOCK, OPENROUTER_API_KEY ");
 
   ChildEnvironment shell;
   CHECK(!shell.Contains("UAGENT_API_KEY"));
@@ -671,11 +672,22 @@ void TestChildEnvironmentPolicy() {
   CHECK(!shell.Contains("SESSION_COOKIE"));
   CHECK(!shell.Contains("UAGENT_INTERNAL_USAGE_FILE"));
   CHECK(!shell.Contains("UAGENT_PROVIDERS"));
-  CHECK(shell.Contains("UAGENT_CHILD_ENV_SAFE"));
+  // A program is not told uagent's settings: a build or a test run under
+  // them would behave as though the user had set them. What keeps a nested
+  // uagent confined still reaches it.
+  ScopedEnv scoped_depth("UAGENT_INTERNAL_DEPTH", "1");
+  CHECK(!shell.Contains("UAGENT_CHILD_ENV_SAFE"));
+  CHECK(ChildEnvironment().Contains("UAGENT_INTERNAL_DEPTH"));
+  CHECK(shell.Contains("UAGENT_APPROVAL"));
+  CHECK(ChildEnvironment({}, ChildEnvironmentPolicy::kAgent)
+            .Contains("UAGENT_CHILD_ENV_SAFE"));
 
+  CHECK(!shell.Contains("OPENROUTER_API_KEY"));
   ChildEnvironment approved({}, ChildEnvironmentPolicy::kApprovedShell);
   CHECK(!approved.Contains("UAGENT_API_KEY"));
   CHECK(approved.Contains("GITHUB_TOKEN"));
+  // Named by the user, a credential of uagent's own reaches the command too.
+  CHECK(approved.Contains("OPENROUTER_API_KEY"));
   CHECK(!approved.Contains("DATABASE_PASSWD"));
   CHECK(!approved.Contains("SERVICE_ACCESS_KEY"));
   CHECK(!approved.Contains("SIGNING_PRIVATE_KEY"));
@@ -1098,7 +1110,7 @@ void TestEffectiveConfigReload() {
                   "UAGENT_TOOL_RESULT_CHARS") != reload->applied.end());
   CHECK(ToolResultCap() == 1234);
   CHECK(getenv("UAGENT_TOOL_RESULT_CHARS") == nullptr);
-  ChildEnvironment child({}, ChildEnvironmentPolicy::kIndependentAgent);
+  ChildEnvironment child({}, ChildEnvironmentPolicy::kAgent);
   bool told = false;
   for (char** entry = child.Data(); entry && *entry; ++entry) {
     told |= std::string_view(*entry) == "UAGENT_TOOL_RESULT_CHARS=1234";

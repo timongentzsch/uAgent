@@ -292,7 +292,7 @@ ToolResult RunSubagent(const Api& api, ProcessSupervisor& processes,
     return ToolSuccess(agents.empty() ? "no agents" : JsonDump(agents, 2));
   }
   if (operation == "message") {
-    if (arguments.contains("directive")) {
+    if (!JsonValue(arguments, "directive", "").empty()) {
       return ToolFailure(ToolErrorCode::kInvalidArguments,
                          "message cannot change directive; use "
                          "followup");
@@ -328,10 +328,11 @@ ToolResult RunSubagent(const Api& api, ProcessSupervisor& processes,
                              std::to_string(*active));
     }
   }
+  // An empty value is one that was not given: models that fill in every
+  // optional field would otherwise wipe what an earlier call had set.
   for (const char* field : {"name", "description", "directive"}) {
-    if (arguments.contains(field)) {
-      role[field] = JsonValue(arguments, field, "");
-    }
+    std::string given = JsonValue(arguments, field, "");
+    if (!given.empty()) role[field] = std::move(given);
   }
   const std::string name = JsonValue(role, "name", "");
   if (!name.empty() && !ValidAgentName(name)) {
@@ -482,7 +483,8 @@ ToolResult RunSubagent(const Api& api, ProcessSupervisor& processes,
                              {"name", name},
                              {"mode", mode},
                              {"model", route_label}},
-       .environment = std::move(environment)});
+       .environment = std::move(environment),
+       .environment_policy = ChildEnvironmentPolicy::kAgent});
   ToolResult result = std::move(child.result);
   if (child.wait_status && result.artifact) {
     // The child ran long enough for its log to outgrow the cap, so the
@@ -547,8 +549,8 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
        {{"type", "string"},
         {"maxLength", kAgentDirectiveMax},
         {"description",
-         "persistent coordinator guidance prepended to followups; an "
-         "explicit empty string clears it"}}},
+         "persistent coordinator guidance prepended to followups; a new "
+         "one replaces it"}}},
       {"background",
        {{"type", "boolean"},
         {"description",

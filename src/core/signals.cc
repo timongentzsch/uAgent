@@ -27,6 +27,7 @@ std::atomic<bool> g_thread_abort{false};
 thread_local std::atomic<bool>* g_local_abort = nullptr;
 SignalFlag g_mcp_pids[kMcpMax] = {};
 SignalFlag g_bg_pids[kBgMax] = {};
+SignalFlag g_agent_pids[kBgMax] = {};
 bool g_tty = false;
 bool g_color = false;
 bool g_attributes = false;
@@ -280,6 +281,9 @@ void SigintHandler(int signal_number) {
     return;
   }
   for (int index = 0; index < kBgMax; ++index) {
+    if (g_agent_pids[index] > 0) {
+      kill(-static_cast<pid_t>(g_agent_pids[index]), SIGTERM);
+    }
     if (g_bg_pids[index] <= 0) continue;
     pid_t pid = static_cast<pid_t>(g_bg_pids[index]);
     kill(-pid, SIGKILL);

@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import shlex
 import signal
 import subprocess
 import sys
@@ -951,6 +952,42 @@ def test_a_background_child_keeps_its_own_time_limit(root, home, *, binary):
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "time-limit-ok", result.stdout)
         assert_true(time.monotonic() - started < 15, "the child outlived its limit")
+
+
+def test_stopping_a_child_stops_what_it_started(root, home, *, binary):
+    """A stopped child takes its own commands and children with it."""
+    pids = [root / "command.pid", root / "grandchild-command.pid"]
+
+    def sleeper(pid_file):
+        return tool_call("run", {"command": f"echo $$ > {shlex.quote(str(pid_file))}; sleep 60"})
+
+    def route(_, body):
+        messages = body["messages"]
+        if has_message(messages, "user", "grandchild"):
+            return sleeper(pids[1])
+        if has_message(messages, "user", "child"):
+            if any("[started] subagent id " in result for result in tool_results(messages)):
+                return sleeper(pids[0])
+            return tool_call(
+                "subagent", {"prompt": "grandchild", "mode": "full", "background": True}
+            )
+        results = tool_results(messages)
+        if any("stopped" in result for result in results[1:]):
+            return event({"content": "child-stopped"})
+        started = re.search(r"\[started\] subagent id (\d+)", results[0]) if results else None
+        if started:
+            wait_until(lambda: all(p.exists() for p in pids), "the child tree did not start")
+            return tool_call("activity", {"operation": "stop", "id": int(started.group(1))})
+        return tool_call("subagent", {"prompt": "child", "mode": "full", "background": True})
+
+    with Server([route]) as server:
+        result = run(
+            root, base_env(home, server.url), "--yolo", "-p", "delegate", timeout=30, binary=binary
+        )
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "child-stopped", result.stdout)
+        survivors = wait_for_processes_stopped({int(p.read_text()) for p in pids})
+        assert_true(not survivors, f"processes of a stopped child survived: {survivors}")
 
 
 def test_subagent_clamps_are_reported_not_silent(root, home, *, binary):

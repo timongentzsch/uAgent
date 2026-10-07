@@ -34,8 +34,9 @@
 
 namespace uagent {
 
-void BgTrackSignal(pid_t pid, bool add) {
-  TrackPid(g_bg_pids, kBgMax, pid, add);
+void BgTrackSignal(pid_t pid, bool add, bool agent) {
+  if (agent || !add) TrackPid(g_agent_pids, kBgMax, pid, add);
+  if (!agent || !add) TrackPid(g_bg_pids, kBgMax, pid, add);
 }
 
 void KillProcess(pid_t pid) {

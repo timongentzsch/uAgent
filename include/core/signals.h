@@ -45,6 +45,9 @@ extern SignalFlag g_mcp_pids[kMcpMax];
 // Supervised processes, foreground and background, that SIGINT kills.
 inline constexpr int kBgMax = 64;
 extern SignalFlag g_bg_pids[kBgMax];
+// Those of them that are child agents. They are asked to stop, not killed:
+// each then stops what it started in turn, which a killed one never would.
+extern SignalFlag g_agent_pids[kBgMax];
 
 // Pid slot tables read by the signal handler. Parallel tool workers claim slots
 // concurrently, so writers serialise here; the handler only ever reads.

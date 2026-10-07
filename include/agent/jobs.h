@@ -77,7 +77,7 @@ struct DetachedActivity {
   std::string log;
 };
 
-void BgTrackSignal(pid_t pid, bool add);
+void BgTrackSignal(pid_t pid, bool add, bool agent = false);
 bool SignalProcessGroup(pid_t leader, int signal_number);
 // TERM, then KILL if the group outlives the grace period, so a program that
 // cleans up on exit gets to. False only when the group is still alive after

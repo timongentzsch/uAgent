@@ -71,19 +71,31 @@ int64_t AutomaticResultCap() {
 }
 
 // A detached leader's exit status, from the poll that reaps it until its
-// process group is gone: no later poll finds a child to ask. Process-wide,
-// like the pids it is kept by.
-std::optional<int> LeaderStatus(pid_t pid, std::optional<int> reaped,
-                                bool forget) {
-  static std::mutex mutex;
-  static std::map<pid_t, int> statuses;
-  std::lock_guard lock(mutex);
-  if (reaped) statuses[pid] = *reaped;
-  const auto found = statuses.find(pid);
-  if (found == statuses.end()) return std::nullopt;
-  const int status = found->second;
-  if (forget) statuses.erase(found);
-  return status;
+// result is taken: no later poll finds a child to ask. Reaping and keeping
+// are one step, so two waits at once agree on it. Process-wide, like the
+// pids it is kept by.
+struct LeaderExits {
+  std::mutex mutex;
+  std::map<pid_t, int> statuses;
+};
+LeaderExits& Leaders() {
+  static LeaderExits exits;
+  return exits;
+}
+
+// Whether the leader has ended, with its status when it has.
+bool LeaderEnded(pid_t pid, int& status) {
+  LeaderExits& exits = Leaders();
+  std::lock_guard lock(exits.mutex);
+  int reaped = 0;
+  const pid_t waited = WaitPid(pid, &reaped, WNOHANG);
+  // No child and no status kept: it was never this process's to wait for.
+  const bool gone = waited < 0 && errno == ECHILD;
+  if (waited == pid) exits.statuses[pid] = reaped;
+  const auto found = exits.statuses.find(pid);
+  if (found == exits.statuses.end()) return gone;
+  status = found->second;
+  return true;
 }
 
 std::vector<std::string> TakeCompleted(
@@ -112,17 +124,10 @@ std::vector<std::string> TakeCompleted(
     int status = 0;
     bool completed = false;
     if (candidate.Detached()) {
-      pid_t waited = WaitPid(candidate.pid, &status, WNOHANG);
-      bool leader_reaped =
-          waited == candidate.pid || (waited < 0 && errno == ECHILD);
-      completed = leader_reaped && !ProcessGroupAlive(candidate.pid);
       // The leader may end long before what it started does.
-      const std::optional<int> kept = LeaderStatus(
-          candidate.pid,
-          waited == candidate.pid ? std::optional<int>(status) : std::nullopt,
-          /*forget=*/completed);
+      completed = LeaderEnded(candidate.pid, status) &&
+                  !ProcessGroupAlive(candidate.pid);
       if (!completed) continue;
-      status = kept.value_or(status);
     } else if (candidate.session) {
       std::lock_guard<std::mutex> lock(candidate.session->mutex);
       completed = candidate.session->state == ActivityState::kDrained;
@@ -134,6 +139,10 @@ std::vector<std::string> TakeCompleted(
         supervisor.Take(ActivityId(candidate), /*retain=*/true);
     if (!taken) continue;  // another waiter owns exactly-once delivery
     BgJob job = std::move(*taken);
+    if (job.Detached()) {
+      std::lock_guard lock(Leaders().mutex);
+      Leaders().statuses.erase(job.pid);
+    }
     if (!job.Detached()) BgTrackSignal(job.pid, false);
     if (job.Detached()) unlink(DetachedRecordPath(job.pid).c_str());
     std::string incremental =

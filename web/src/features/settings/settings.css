@@ -82,6 +82,23 @@ dialog.settings-view {
 .setting-field .sheet-control .setting-summary {
   display: block;
 }
+/* A provider's rows sit one step in from the setting they belong to. */
+.providers {
+  border-top: 1px solid var(--line);
+}
+.provider {
+  border-bottom: 1px solid var(--line);
+  padding-inline-start: var(--space-6);
+}
+.provider >
+/* An address is long: its field takes the room the row has. */
+.provider .row-value {
+  flex: 1;
+}
+.provider .row-value > .text-control:not(.select) {
+  flex: 1;
+  width: auto;
+}
 .setting-error {
   color: var(--removed);
 }

@@ -130,7 +130,9 @@ bool ValidateProviderProposal(const std::string& value, std::string& error,
          ValidateProviderNode(providers, "UAGENT_PROVIDERS", false, error);
 }
 
-void SanitizeCompositeNode(json& node, bool& changed) {
+}  // namespace
+
+static void SanitizeCompositeNode(json& node, bool& changed) {
   if (node.is_array()) {
     for (json& item : node) SanitizeCompositeNode(item, changed);
     return;
@@ -139,7 +141,7 @@ void SanitizeCompositeNode(json& node, bool& changed) {
   for (auto& [key, child] : node.items()) {
     if (key == "api_key" && (!child.is_string() ||
                              !EnvironmentReference(child.get<std::string>()))) {
-      child = "<redacted>";
+      child = kRedactedValue;
       changed = true;
     } else {
       SanitizeCompositeNode(child, changed);
@@ -154,6 +156,31 @@ std::string SanitizeCompositeValue(const std::string& value) {
   SanitizeCompositeNode(parsed, changed);
   return changed ? JsonDump(parsed) : value;
 }
+
+// A providers value a person edited, with each key they left hidden put back
+// from what is held. Empty with `error` when a hidden key has nothing behind
+// it.
+static std::string KeepHiddenKeys(const std::string& value,
+                                  const std::string& held, std::string& error) {
+  json providers = json::parse(value, nullptr, false);
+  const json before = json::parse(held, nullptr, false);
+  if (!providers.is_object()) return value;
+  for (auto& [name, provider] : providers.items()) {
+    if (!provider.is_object() ||
+        JsonValue(provider, "api_key", "") != kRedactedValue) {
+      continue;
+    }
+    const json* kept = JsonObject(before, name.c_str());
+    if (!kept || !kept->contains("api_key")) {
+      error = "enter the key for provider " + name;
+      return "";
+    }
+    provider["api_key"] = (*kept)["api_key"];
+  }
+  return JsonDump(providers);
+}
+
+namespace {
 
 std::string DisplayValue(const ConfigDescriptor& descriptor,
                          const std::string& value) {
@@ -288,16 +315,24 @@ ConfigProposal Prepare(ConfigProposalScope scope,
           "unset it here or enter the replacement directly";
       return proposal;
     }
+    std::string value = change.value;
     if (!change.unset &&
-        descriptor->sensitivity == Sensitivity::kCompositeSecret &&
-        !ValidateProviderProposal(change.value, proposal.error, direct_user)) {
-      return proposal;
+        descriptor->sensitivity == Sensitivity::kCompositeSecret) {
+      // The screen shows providers with their keys hidden, and sends back
+      // what it was shown.
+      if (const auto held = before.find(change.key); direct_user) {
+        value = KeepHiddenKeys(value, held == before.end() ? "" : held->second,
+                               proposal.error);
+        if (!proposal.error.empty()) return proposal;
+      }
+      if (!ValidateProviderProposal(value, proposal.error, direct_user)) {
+        return proposal;
+      }
     }
     if ((descriptor->scopes & (user ? kScopeUser : kScopeProject)) == 0) {
       proposal.error = change.key + " cannot be set at this scope";
       return proposal;
     }
-    std::string value = change.value;
     if (!change.unset &&
         !ValidSettingValue(*descriptor, value, proposal.error)) {
       return proposal;

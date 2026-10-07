@@ -62,6 +62,7 @@ export function useConfiguration(
       setting.scopes.includes(scope),
     ),
     file: value?.file || "",
+    document: value?.document,
     problem: value?.problem || "",
     categories: value?.categories || [],
     loaded: !!value,

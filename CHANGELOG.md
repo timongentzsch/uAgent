@@ -55,6 +55,10 @@
 
 ### Changed
 
+- Settings: named providers are edited as what they are, one block each with
+  its address, its key and the API it speaks, instead of one JSON field. A
+  key is never shown, and one that is not retyped is kept. "Show the file"
+  shows `settings.json` as it stands, with keys and other secrets hidden.
 - `subagent`: an empty `name`, `description` or `directive` is one that was
   not given. An empty directive used to clear the stored one, so a model
   that fills in every optional field wiped it on each follow-up and was

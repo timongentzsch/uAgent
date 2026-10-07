@@ -227,6 +227,35 @@ void TestConfigProposalAndCommit() {
   CHECK(ReadSettings("").all.at("UAGENT_MAX_STEPS") == "11");
   CHECK(ReadSettings("").warning.empty());
 
+  // The screen shows providers with their keys hidden and sends back what it
+  // was shown: a key left hidden is the one held, and one with nothing
+  // behind it is asked for.
+  CHECK(ChangeSettings("", [](SettingValues& scope) {
+          scope["UAGENT_PROVIDERS"] =
+              R"({"old":{"base_url":"https://old.example/v1",)"
+              R"("api_key":"existing-provider-secret"}})";
+          return std::string();
+        }).empty());
+  const std::string shown =
+      R"({"old":{"base_url":"https://new.example/v1","api_key":"<redacted>"}})";
+  ConfigProposal edited = PrepareConfigProposal(
+      ConfigProposalScope::kUser, {{"UAGENT_PROVIDERS", shown, false}}, manager,
+      /*direct_user=*/true);
+  CHECK(edited.ok);
+  CHECK(CommitConfigProposal(edited, error));
+  const json kept = json::parse(HeldSettings("").at("UAGENT_PROVIDERS"));
+  CHECK(kept["old"]["api_key"] == "existing-provider-secret");
+  CHECK(kept["old"]["base_url"] == "https://new.example/v1");
+  ConfigProposal keyless = PrepareConfigProposal(
+      ConfigProposalScope::kUser,
+      {{"UAGENT_PROVIDERS",
+        R"({"new":{"base_url":"https://n.example/v1","api_key":"<redacted>"}})",
+        false}},
+      manager, /*direct_user=*/true);
+  CHECK(!keyless.ok);
+  CHECK(keyless.error.find("enter the key for provider new") !=
+        std::string::npos);
+
   // The store hands a proposal out once, and only for the arguments it was
   // prepared from.
   ConfigApprovals store;

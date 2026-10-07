@@ -46,6 +46,36 @@ int ConfigMain(int argc, char** argv) {
   return error.empty() ? 0 : 1;
 }
 
+namespace {
+// The settings file as a person may be shown it: every secret hidden, and
+// with it any text under a name that is no setting, which may be a key
+// someone mistyped the name of.
+json ShownDocument() {
+  std::string ignored;
+  json document = ExportSettings(ignored);
+  const auto hide = [](json& scope) {
+    if (!scope.is_object()) return;
+    for (auto& [key, value] : scope.items()) {
+      const ConfigDescriptor* descriptor = FindConfigKey(key);
+      if (key == "variables" && value.is_object()) {
+        for (auto& [name, held] : value.items()) held = kRedactedValue;
+      } else if (descriptor &&
+                 descriptor->sensitivity == Sensitivity::kPublic) {
+        continue;
+      } else if (descriptor && value.is_object()) {
+        value = json::parse(SanitizeCompositeValue(JsonDump(value)), nullptr,
+                            false);
+      } else if (value.is_string() || descriptor) {
+        value = kRedactedValue;
+      }
+    }
+  };
+  hide(document["all"]);
+  for (auto& [folder, scope] : document["projects"].items()) hide(scope);
+  return document;
+}
+}  // namespace
+
 json ConfigurationControl(const json& request, const ConfigManager& manager) {
   std::string operation = JsonValue(request, "operation", "get");
   json effects = json::array();
@@ -89,6 +119,7 @@ json ConfigurationControl(const json& request, const ConfigManager& manager) {
       // Where it is all saved, for whoever would rather edit the file,
       // and what that file holds that could not be taken.
       {"file", SettingsPath()},
+      {"document", ShownDocument()},
       {"problem", saved.error.empty() ? saved.warning : saved.error}};
 }
 }  // namespace uagent

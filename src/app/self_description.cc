@@ -189,8 +189,16 @@ json ConfigSettingsJson(const EffectiveConfigSnapshot& configured,
     for (const auto& [scope, held] : configured.layers) {
       if (auto own = held.find(key);
           own != held.end() && !own->second.empty()) {
+        // A secret is only said to be set; the providers are shown with
+        // their keys hidden.
+        json shown =
+            json::parse(SanitizeCompositeValue(own->second), nullptr, false);
         entry["set"][scope] =
-            secret ? json(true) : TypedValue(descriptor, own->second);
+            !secret ? TypedValue(descriptor, own->second)
+            : descriptor.sensitivity == Sensitivity::kCompositeSecret &&
+                    shown.is_object()
+                ? std::move(shown)
+                : json(true);
       }
     }
     if (!secret) {

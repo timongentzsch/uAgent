@@ -577,7 +577,11 @@ def test_activity_wait_outlives_the_per_call_budget(root, home, *, binary):
 
 def test_parallel_run_overlaps(root, home, *, binary):
     """`run` is parallel_safe: independent commands must overlap, not queue."""
-    sleep, count = 3, 4
+    count = 4
+    # Each command says when it began and when it ended, so overlap is read
+    # from the commands themselves, not from how long the run took. Whole
+    # seconds are enough beside a four-second sleep.
+    stamp = "date +%s"
     batch = event(
         {
             "tool_calls": [
@@ -586,7 +590,9 @@ def test_parallel_run_overlaps(root, home, *, binary):
                     "id": f"call-{i}",
                     "function": {
                         "name": "run",
-                        "arguments": json.dumps({"command": f"sleep {sleep}; echo done{i}"}),
+                        "arguments": json.dumps(
+                            {"command": f"{stamp} > begin{i}; sleep 4; {stamp} > end{i}"}
+                        ),
                     },
                 }
                 for i in range(count)
@@ -595,15 +601,15 @@ def test_parallel_run_overlaps(root, home, *, binary):
         finish="tool_calls",
     )
     with Server([batch, event({"content": "parallel-run-ok"})]) as server:
-        started = time.time()
         result = run(
             root, base_env(home, server.url), "--yolo", "-p", "go", timeout=90, binary=binary
         )
-        elapsed = time.time() - started
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "parallel-run-ok", result.stdout)
-        # serial would be count*sleep; allow generous slack for spawn overhead
-        assert_true(elapsed < sleep * count * 0.7, f"{elapsed:.1f}s for {count}x{sleep}s")
+        begins = [float((root / f"begin{i}").read_text()) for i in range(count)]
+        ends = [float((root / f"end{i}").read_text()) for i in range(count)]
+        # Run one after another, the last would begin after the first ended.
+        assert_true(max(begins) < min(ends), (begins, ends))
 
 
 def test_detached_terminal_survives_and_is_readable(root, home, *, binary):

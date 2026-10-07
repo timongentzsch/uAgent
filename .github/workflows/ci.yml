@@ -33,9 +33,11 @@ jobs:
           CI_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: python3 .github/changes.py
 
+  # Embedded by the native builds, which are its only readers: a change to
+  # the web alone is built by the web job itself.
   web-dist:
     needs: changes
-    if: needs.changes.outputs.native == 'true' || needs.changes.outputs.web == 'true'
+    if: needs.changes.outputs.native == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:

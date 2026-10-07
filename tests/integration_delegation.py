@@ -951,7 +951,7 @@ def test_a_background_child_keeps_its_own_time_limit(root, home, *, binary):
         )
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "time-limit-ok", result.stdout)
-        assert_true(time.monotonic() - started < 15, "the child outlived its limit")
+        assert_true(time.monotonic() - started < budget(15), "the child outlived its limit")
 
 
 def test_stopping_a_child_stops_what_it_started(root, home, *, binary):
@@ -1054,7 +1054,7 @@ def test_a_childs_time_limit_covers_what_it_left_running(root, home, *, binary):
         )
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "limit-held", result.stdout)
-        assert_true(time.monotonic() - started < 12, "the child outlived its limit")
+        assert_true(time.monotonic() - started < budget(12), "the child outlived its limit")
 
 
 def test_subagent_clamps_are_reported_not_silent(root, home, *, binary):

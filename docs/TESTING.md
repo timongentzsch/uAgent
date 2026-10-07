@@ -255,6 +255,7 @@ so a green pull request is a green `master`.
 
 | Job | Runs |
 | --- | --- |
+| `web-dist` | The web bundle the native builds embed; skipped when only `web/` or documents changed |
 | `build-and-test` | Release builds with Web Push on Linux x86_64, Linux ARM64 and macOS ARM64; `ctest -LE source`; generated-reference check (Linux x86_64); packaging |
 | `variants` | CLI-only and no-browser Release builds with their tests |
 | `sanitizers` | `sanitize` preset, `ctest -LE source` |

@@ -52,10 +52,8 @@ docker run --rm \
       --exclude=self-configuration.md
     if [ -n "$TIDY_FILES" ]; then
       curl -LsSf https://astral.sh/uv/install.sh | sh >/dev/null 2>&1
-      cmake -S /work/uagent -B /work/build/tidy -DBUILD_TESTING=ON \
-        -DUAGENT_WARNINGS_AS_ERRORS=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
-        -DUAGENT_BUILD_BENCHMARKS=ON -DCMAKE_DISABLE_PRECOMPILE_HEADERS=ON >/dev/null
       cd /work/uagent
+      cmake --preset tidy -B /work/build/tidy >/dev/null
       "$HOME/.local/bin/uvx" --from clang-tidy==22.1.8 run-clang-tidy.py \
         -quiet -p /work/build/tidy \
         -header-filter=".*/(include|src|tests|benchmarks)/.*" $TIDY_FILES

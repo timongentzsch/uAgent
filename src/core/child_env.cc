@@ -62,10 +62,10 @@ ChildEnvironment::ChildEnvironment(const EnvironmentOverrides& overrides,
   }
   const bool agent = policy == ChildEnvironmentPolicy::kAgent;
   auto permitted = [&](const std::string& key) {
-    if (!agent && AgentConfigKey(key)) return false;
-    return !SensitiveEnvironmentKey(key) ||
-           std::find(allow_list.begin(), allow_list.end(), key) !=
-               allow_list.end();
+    // What the user lets an approved shell have by name, it has, a
+    // credential of uagent's own included.
+    if (std::ranges::find(allow_list, key) != allow_list.end()) return true;
+    return (agent || !AgentConfigKey(key)) && !SensitiveEnvironmentKey(key);
   };
   auto set = [&](const std::string& key, const std::string& value) {
     std::erase_if(

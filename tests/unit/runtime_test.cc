@@ -659,8 +659,9 @@ void TestChildEnvironmentPolicy() {
   ScopedEnv scoped_usage("UAGENT_INTERNAL_USAGE_FILE", "/tmp/ledger");
   ScopedEnv scoped_providers("UAGENT_PROVIDERS", "private-provider-config");
   ScopedEnv scoped_safe("UAGENT_CHILD_ENV_SAFE", "visible");
+  ScopedEnv scoped_router("OPENROUTER_API_KEY", "secret");
   ScopedEnv scoped_allow("UAGENT_SHELL_ENV_ALLOW",
-                         " GITHUB_TOKEN, SSH_AUTH_SOCK ");
+                         " GITHUB_TOKEN, SSH_AUTH_SOCK, OPENROUTER_API_KEY ");
 
   ChildEnvironment shell;
   CHECK(!shell.Contains("UAGENT_API_KEY"));
@@ -681,9 +682,12 @@ void TestChildEnvironmentPolicy() {
   CHECK(ChildEnvironment({}, ChildEnvironmentPolicy::kAgent)
             .Contains("UAGENT_CHILD_ENV_SAFE"));
 
+  CHECK(!shell.Contains("OPENROUTER_API_KEY"));
   ChildEnvironment approved({}, ChildEnvironmentPolicy::kApprovedShell);
   CHECK(!approved.Contains("UAGENT_API_KEY"));
   CHECK(approved.Contains("GITHUB_TOKEN"));
+  // Named by the user, a credential of uagent's own reaches the command too.
+  CHECK(approved.Contains("OPENROUTER_API_KEY"));
   CHECK(!approved.Contains("DATABASE_PASSWD"));
   CHECK(!approved.Contains("SERVICE_ACCESS_KEY"));
   CHECK(!approved.Contains("SIGNING_PRIVATE_KEY"));

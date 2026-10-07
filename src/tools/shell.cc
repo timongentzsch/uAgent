@@ -493,14 +493,15 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
       status = session->wait_status.value_or(0);
       output = LimitOutput(session->transcript.Snapshot(), interaction_cap);
     }
-    CollectedLog collected = CollectCompletedLog(
+    // The transcript above is what the caller reads; the log is only kept.
+    std::optional<ToolArtifact> artifact = KeepCompletedLog(
         log, ToolResultCap(),
         /*failed=*/!(WIFEXITED(status) && WEXITSTATUS(status) == 0));
     ToolResult result = build(std::move(output), status);
     if (!result.Ok() && !wrapper.empty()) {
       result.output += SandboxHint(result.output);
     }
-    result.artifact = std::move(collected.artifact);
+    result.artifact = std::move(artifact);
     return ShellCommandResult{std::move(result), status, /*launched=*/true};
   };
 

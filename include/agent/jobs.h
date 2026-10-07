@@ -106,6 +106,10 @@ ToolArtifact PromoteLogArtifact(const std::string& path, uint64_t bytes);
 // when someone needs it.
 CollectedLog CollectCompletedLog(const std::string& path, int64_t cap,
                                  bool failed);
+// The same decision without reading the log: kept as an artifact when it is
+// large or its process failed, removed otherwise.
+std::optional<ToolArtifact> KeepCompletedLog(const std::string& path,
+                                             int64_t cap, bool failed);
 int ToolLogPump(const std::string& path, int64_t max_bytes);
 bool ProcessGroupAlive(pid_t leader);
 std::string DetachedRecordPath(pid_t pid);

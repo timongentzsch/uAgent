@@ -1085,6 +1085,30 @@ void TestDetachedActivityOwnership() {
     CHECK(waited.output.find("waited-for") != std::string::npos);
   }
 
+  // A detached command that fails while something it started lives on is
+  // reported as failed when the last of it is gone, not as the success a
+  // process with no child left to ask would pass for.
+  ProcessSupervisor detached_failure;
+  // Its output is piped to this executable as the log pump, and the pipe's
+  // last failure is the command's: a stand-in that succeeds lets the
+  // command's own status through.
+  const std::string executable = ExecutablePath();
+  SetExecutablePath("/usr/bin/true");
+  CHECK(
+      RunShellCommand(
+          detached_failure, context,
+          {.command = "sleep 0.5 & exit 7", .detach = true, .immediate = true})
+          .result.Ok());
+  SetExecutablePath(executable);
+  std::vector<BgJob> failed_jobs = detached_failure.Snapshot();
+  CHECK(failed_jobs.size() == 1);
+  if (!failed_jobs.empty()) {
+    ToolResult failed =
+        ToolActivityWait(detached_failure, {ActivityId(failed_jobs[0])}, "all",
+                         BudgetMs(5000), context);
+    CHECK(failed.output.find("exit code 7") != std::string::npos);
+  }
+
   // Stopping an ordinary supervised job owns that job's log, but not a
   // detached record that happens to use the same process id. Such a record can
   // survive PID reuse and must only be unlinked for detached activities.

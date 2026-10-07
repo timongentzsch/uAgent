@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cerrno>
 #include <chrono>
+#include <map>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -69,6 +70,22 @@ int64_t AutomaticResultCap() {
                  : kActivityResultChars;
 }
 
+// A detached leader's exit status, from the poll that reaps it until its
+// process group is gone: no later poll finds a child to ask. Process-wide,
+// like the pids it is kept by.
+std::optional<int> LeaderStatus(pid_t pid, std::optional<int> reaped,
+                                bool forget) {
+  static std::mutex mutex;
+  static std::map<pid_t, int> statuses;
+  std::lock_guard lock(mutex);
+  if (reaped) statuses[pid] = *reaped;
+  const auto found = statuses.find(pid);
+  if (found == statuses.end()) return std::nullopt;
+  const int status = found->second;
+  if (forget) statuses.erase(found);
+  return status;
+}
+
 std::vector<std::string> TakeCompleted(
     ProcessSupervisor& supervisor, std::string_view kind,
     const std::vector<int64_t>* ids, std::vector<BackgroundCompletion>* details,
@@ -99,7 +116,13 @@ std::vector<std::string> TakeCompleted(
       bool leader_reaped =
           waited == candidate.pid || (waited < 0 && errno == ECHILD);
       completed = leader_reaped && !ProcessGroupAlive(candidate.pid);
+      // The leader may end long before what it started does.
+      const std::optional<int> kept = LeaderStatus(
+          candidate.pid,
+          waited == candidate.pid ? std::optional<int>(status) : std::nullopt,
+          /*forget=*/completed);
       if (!completed) continue;
+      status = kept.value_or(status);
     } else if (candidate.session) {
       std::lock_guard<std::mutex> lock(candidate.session->mutex);
       completed = candidate.session->state == ActivityState::kDrained;

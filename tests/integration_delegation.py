@@ -1037,7 +1037,10 @@ def test_a_childs_time_limit_covers_what_it_left_running(root, home, *, binary):
             if tool_results(messages):
                 return event({"content": "child-answered"})
             return tool_call("subagent", {"prompt": "grandchild", "background": True})
-        if any("child-answered" in result for result in tool_results(messages)):
+        report = next((r for r in tool_results(messages) if "child-answered" in r), "")
+        if report:
+            # It answered, and says that its time ended with work outstanding.
+            assert_true("child stopped: turn_deadline" in report, report)
             return event({"content": "limit-held"})
         child = {"prompt": "child", "mode": "full", "background": False}
         return tool_call("subagent", child | {"limits": {"seconds": 2}})

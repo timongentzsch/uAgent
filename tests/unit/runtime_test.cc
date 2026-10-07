@@ -751,11 +751,12 @@ void TestChildEnvironmentPolicy() {
   CHECK(limited.find("rerun with that ceiling raised") != std::string::npos);
   CHECK(limited.find("remedy:") == std::string::npos);
   CHECK(limited.find("· Working") == std::string::npos);
-  // A stop that names no ceiling the caller could raise gets no such advice.
+  // A stop that names no ceiling the caller could raise gets no such advice,
+  // and only a failure gets advice about the endpoint.
+  CHECK(reported("error").find("remedy:") != std::string::npos);
+  CHECK(reported("repeated_calls").find("remedy:") == std::string::npos);
   for (const char* reason : {"error", "repeated_calls"}) {
-    const std::string other = reported(reason);
-    CHECK(other.find("remedy:") != std::string::npos);
-    CHECK(other.find("ceiling") == std::string::npos);
+    CHECK(reported(reason).find("ceiling") == std::string::npos);
   }
 }
 

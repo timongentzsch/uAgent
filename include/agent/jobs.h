@@ -78,6 +78,10 @@ struct DetachedActivity {
 };
 
 void BgTrackSignal(pid_t pid, bool add, bool agent = false);
+// How long a child agent told to stop is given before it is killed. It has
+// already stopped what it started; the time is for closing its MCP servers,
+// saving its session and reporting what it spent.
+inline constexpr auto kAgentStopGrace = std::chrono::seconds(3);
 bool SignalProcessGroup(pid_t leader, int signal_number);
 // TERM, then KILL if the group outlives the grace period, so a program that
 // cleans up on exit gets to. False only when the group is still alive after

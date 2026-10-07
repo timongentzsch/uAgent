@@ -537,7 +537,10 @@ ToolResult ToolActivityStop(ProcessSupervisor& supervisor, int64_t requested) {
   }
   supervisor.Wake();
   if (was_alive) {
-    if (!TerminateGroup(supervisor, pid, std::chrono::seconds(1),
+    const bool agent =
+        supervised && supervised->kind == ActivityKind::kSubagent;
+    if (!TerminateGroup(supervisor, pid,
+                        agent ? kAgentStopGrace : std::chrono::seconds(1),
                         reap_leader)) {
       return ToolFailure(ToolErrorCode::kProcessFailed,
                          "could not stop process group " + std::to_string(pid));
@@ -567,8 +570,11 @@ void BgShutdownAll(ProcessSupervisor& supervisor) {
   std::vector<BgJob> jobs = supervisor.TakeAllForShutdown();
   std::erase_if(jobs, [](const BgJob& job) { return job.Detached(); });
   for (const BgJob& job : jobs) SignalProcessGroup(job.pid, SIGTERM);
-  auto deadline =
-      std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
+  const bool agents = std::ranges::any_of(jobs, [](const BgJob& job) {
+    return job.kind == ActivityKind::kSubagent;
+  });
+  auto deadline = std::chrono::steady_clock::now() +
+                  (agents ? kAgentStopGrace : std::chrono::milliseconds(500));
   while (!jobs.empty()) {
     uint64_t generation = supervisor.Generation();
     std::erase_if(jobs, [](const BgJob& job) {
@@ -599,7 +605,7 @@ size_t BgCancelSubagents(ProcessSupervisor& supervisor) {
     std::optional<BgJob> job = supervisor.Take(ActivityId(candidate));
     if (!job) continue;
     ++cancelled;
-    (void)TerminateGroup(supervisor, job->pid, std::chrono::milliseconds(500),
+    (void)TerminateGroup(supervisor, job->pid, kAgentStopGrace,
                          /*reap_leader=*/false);
     BgTrackSignal(job->pid, false);
     RemoveLog(job->log);

@@ -150,11 +150,12 @@ std::string ChildAgentFailureReport(std::string_view route,
   const std::string reported =
       envelope ? JsonValue(*envelope, "error", "") : std::string();
   std::string configured = route.empty() ? "(unresolved)" : TerminalSafe(route);
-  std::string summary_source = reported;
-  if (!summary_source.empty()) summary_source += '\n';
-  summary_source.append(diagnostics);
+  // The child's own error names the failure; what else it printed would only
+  // let a progress line decide the summary.
   std::string report =
-      "error: " + FailureSummary(stage, summary_source) +
+      "error: " +
+      FailureSummary(stage,
+                     envelope ? std::string_view(reported) : diagnostics) +
       "\ndelegated child failed\nconfigured route: " + configured +
       "\nfailure stage: " + FailureStageName(stage);
   if (!reported.empty()) {
@@ -164,8 +165,10 @@ std::string ChildAgentFailureReport(std::string_view route,
   if (!answer.empty()) {
     report += "\npartial answer:\n" + TerminalSafe(answer);
   }
-  // A ceiling the child named is not something to verify an endpoint over.
-  if (!StoppedAtLimit(stop)) {
+  // Advice about the endpoint is for a child that failed or said nothing,
+  // not for one that named why it stopped.
+  if (const std::string reason = JsonValue(stop, "reason", std::string());
+      reason.empty() || reason == "error") {
     report += "\nremedy: " + std::string(FailureRemedy(stage));
   }
   // A child that reported has given its account above. Without one, what it

@@ -441,7 +441,8 @@ void Agent::AnswerAtLimit(TurnExecution& state, StepState& loop) {
     return;
   }
   // The round is paid for like any other: a turn that is also out of tokens
-  // or money does not get it.
+  // or money, with what its children spent taken in, does not get it.
+  AccountSideUsage(&state.metrics.usage);
   if (TurnTokenBudgetExceeded(state, /*before_model=*/true) ||
       TurnCostExceeded(state)) {
     return;
@@ -457,10 +458,12 @@ void Agent::AnswerAtLimit(TurnExecution& state, StepState& loop) {
   if (response.interrupted || !response.error.empty()) return;
   RecordModelResponse(response, state, loop.tool_counts);
   // Only prose that ended on its own is an answer: text beside a tool call
-  // announces work that will not happen.
+  // announces work that will not happen, and a reply cut short is not one.
+  const bool ended = response.stop_cause == ResponseStopCause::kNone ||
+                     response.stop_cause == ResponseStopCause::kComplete;
   if (TurnTokenBudgetExceeded(state) || TurnCostExceeded(state) ||
       !ProseOnlyResponse(response) || response.suppressed ||
-      response.stop_cause == ResponseStopCause::kPause) {
+      response.incomplete || !ended) {
     return;
   }
   PushAssistantMessage(response, {});
@@ -474,6 +477,12 @@ void Agent::FinishTurn(TurnExecution& state, int64_t step) {
   if (state.stop.reason == TurnStopReason::kNone &&
       state.stop.outcome != TurnOutcome::kComplete) {
     if (!TurnTokenBudgetExceeded(state)) TurnCostExceeded(state);
+  }
+  // What a child reported while the answer at a limit was being written
+  // counts against the same budgets as the answer.
+  if (state.answered_at_limit &&
+      (TurnTokenBudgetExceeded(state) || TurnCostExceeded(state))) {
+    state.answered_at_limit = false;
   }
   bool step_limited = state.stop.reason == TurnStopReason::kMaxSteps;
   // One record of why this turn ended and what was in force, so a parent

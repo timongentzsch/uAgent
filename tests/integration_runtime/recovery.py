@@ -474,13 +474,16 @@ def test_a_turn_out_of_steps_answers_from_what_it_has(root, home, *, binary):
     assert_true(envelope["stop"]["reason"] == "max_steps", envelope["stop"])
     assert_true(envelope["usage"]["output"] == 4, envelope["usage"])
 
-    # Text beside a tool call announces work that will not happen.
+    # Text beside a tool call announces work that will not happen, and a
+    # reply cut short is not an answer either.
     announced = tool_call("read_path", {"path": "."}, usage=spent)
     announced["choices"][0]["delta"]["content"] = "I will look again"
-    code, envelope = ask(announced)
-    assert_true(code == 1 and not envelope["answer"], envelope)
-    assert_true("step limit (1) reached" in envelope["error"], envelope)
-    assert_true(envelope["usage"]["output"] == 4, envelope["usage"])
+    cut_short = event({"content": "The findings are"}, finish="length", usage=spent)
+    for unusable in (announced, cut_short):
+        code, envelope = ask(unusable)
+        assert_true(code == 1 and not envelope["answer"], envelope)
+        assert_true("step limit (1) reached" in envelope["error"], envelope)
+        assert_true(envelope["usage"]["output"] == 4, envelope["usage"])
 
 
 def test_headless_reaps_timed_out_process(root, home, *, binary):

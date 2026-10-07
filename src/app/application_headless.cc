@@ -72,10 +72,15 @@ int Application::FinishHeadless(std::string answer, std::string error,
     }
   }
   if (context_.options.json_stream || context_.options.json) {
+    json stop = agent_.LastStop();
+    if (out_of_time_ && stop.is_object()) {
+      stop["reason"] = "turn_deadline";
+      stop["detail"] = "time limit reached with work it started still running";
+    }
     json envelope =
         HeadlessResult(std::move(answer), std::move(error),
                        agent_.LatestToolTrace(), agent_.SessionUsage(),
-                       agent_.RouteUsageJson(), exit_code, agent_.LastStop());
+                       agent_.RouteUsageJson(), exit_code, std::move(stop));
     if (context_.options.json_stream) {
       Emit(Event{exit_code == 0 ? EventId::kAnswer : EventId::kError,
                  std::move(envelope)});
@@ -131,6 +136,13 @@ int Application::RunHeadless() {
       if (stopping()) return;
       auto next = SteeringState().TakeNextAutoStart();
       if (!next) return;
+      // A later turn gets what is left of the child's time, not a new share.
+      if (deadline != std::chrono::steady_clock::time_point::max()) {
+        api_.config.max_turn_seconds = std::max<int64_t>(
+            1, std::chrono::duration_cast<std::chrono::seconds>(
+                   deadline - std::chrono::steady_clock::now())
+                   .count());
+      }
       RunTurns(next->text);
       SaveSession();
     }
@@ -148,6 +160,8 @@ int Application::RunHeadless() {
     answer_mail();
     SaveSession();
   }
+  out_of_time_ = runtime_.processes.JoinableCount() > 0 &&
+                 std::chrono::steady_clock::now() >= deadline;
   agent_.AccountSideUsage();
   context_.output.Restore();
 

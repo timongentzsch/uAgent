@@ -70,17 +70,23 @@ bool Valid(const json& document) {
 json Typed(const ConfigDescriptor& descriptor, const std::string& text) {
   switch (descriptor.type) {
     case ConfigType::kInt:
-      if (int64_t value = 0; ParseInt64(text.c_str(), value)) return value;
+      if (int64_t value = 0; ParseInt64(text.c_str(), value)) {
+        return value;
+      }
       break;
     case ConfigType::kDouble:
       // A whole number is written as one: 2, not 2.0.
-      if (int64_t whole = 0; ParseInt64(text.c_str(), whole)) return whole;
+      if (int64_t whole = 0; ParseInt64(text.c_str(), whole)) {
+        return whole;
+      }
       if (double value = 0; ParseFiniteDouble(text.c_str(), value)) {
         return value;
       }
       break;
     case ConfigType::kBool:
-      if (bool value = false; ParseBool(text, value)) return value;
+      if (bool value = false; ParseBool(text, value)) {
+        return value;
+      }
       break;
     case ConfigType::kString:
       // The providers are an object, and are held as one.

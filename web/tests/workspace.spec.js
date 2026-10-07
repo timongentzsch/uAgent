@@ -96,8 +96,10 @@ test("appearance and configuration remain usable at large scales", async ({
     form.getByRole("region", { name: "Models and connection" }),
   ).toBeVisible();
   const find = page.getByLabel("Find a setting");
-  // A setting only a terminal uses is not offered here.
+  // A setting only a terminal uses is listed too, and says who reads it.
   await find.fill("UAGENT_MARKDOWN");
+  await expect(form).toContainText("read by the terminal");
+  await find.fill("no such setting");
   await expect(form).toContainText("No setting matches.");
   await find.fill("UAGENT_MAX_STEPS");
   // It is edited where it is listed, and saved on Enter or on leaving the

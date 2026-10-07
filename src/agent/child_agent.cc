@@ -57,10 +57,9 @@ const char* FailureRemedy(ChildAgentFailureStage stage) {
       return "verify the uagent executable and local process limits, then "
              "retry this route";
     case ChildAgentFailureStage::kExecution:
-      return "inspect the partial diagnostics and verify this endpoint and "
-             "model before retrying";
+      return "verify this endpoint and model before retrying";
   }
-  return "inspect the partial diagnostics before retrying";
+  return "verify this endpoint and model before retrying";
 }
 
 // Fixed transport/provider categories, each with the report fragments that
@@ -119,6 +118,14 @@ std::string FailureSummary(ChildAgentFailureStage stage,
                    size_t{180});
 }
 
+// A stop the caller could lift by raising a ceiling, as opposed to an error,
+// an interrupt or a finished turn.
+bool StoppedAtLimit(const json& stop) {
+  const std::string reason = JsonValue(stop, "reason", std::string());
+  return !reason.empty() && reason != "completed" && reason != "error" &&
+         reason != "cancelled";
+}
+
 }  // namespace
 
 std::string ChildAgentFailureReport(std::string_view route,
@@ -132,36 +139,14 @@ std::string ChildAgentFailureReport(std::string_view route,
   // A child that ran and stopped on a limit reports which one, before the
   // diagnostics are squeezed: that line is what tells the caller whether
   // raising a ceiling would change anything.
-  std::string stopped;
-  std::string answer;
-  std::string reported;
-  if (std::optional<json> envelope =
-          ChildAgentEnvelope(std::string(diagnostics))) {
-    stopped = ChildAgentStopNote(JsonValue(*envelope, "stop", json()));
-    answer = JsonValue(*envelope, "answer", std::string());
-    reported = JsonValue(*envelope, "error", "");
-  }
-  // Whatever the child printed besides its envelope. The envelope's own
-  // content is rendered above as the reported error, the stop and the partial
-  // answer, so repeating it here would spend the diagnostics budget on bytes
-  // the reader has already been given.
-  std::string rest;
-  for (std::string_view remaining = diagnostics; !remaining.empty();) {
-    size_t brk = remaining.find('\n');
-    std::string_view line = remaining.substr(0, brk);
-    remaining = brk == std::string_view::npos ? std::string_view()
-                                              : remaining.substr(brk + 1);
-    if (line.starts_with('{') &&
-        line.find("uagent.headless.v1") != std::string_view::npos) {
-      continue;
-    }
-    if (!rest.empty()) rest += "\n";
-    rest.append(line);
-  }
-  HeadTailBuffer bounded(kChildDiagnosticBytes);
-  bounded.Push(TerminalSafe(rest));
-  std::string partial = bounded.Snapshot();
-  if (Trim(partial).empty()) partial = "(none captured)";
+  const std::optional<json> envelope =
+      ChildAgentEnvelope(std::string(diagnostics));
+  const json stop = envelope ? JsonValue(*envelope, "stop", json()) : json();
+  const std::string stopped = ChildAgentStopNote(stop);
+  const std::string answer =
+      envelope ? JsonValue(*envelope, "answer", std::string()) : std::string();
+  const std::string reported =
+      envelope ? JsonValue(*envelope, "error", "") : std::string();
   std::string configured = route.empty() ? "(unresolved)" : TerminalSafe(route);
   std::string summary_source = reported;
   if (!summary_source.empty()) summary_source += '\n';
@@ -177,10 +162,22 @@ std::string ChildAgentFailureReport(std::string_view route,
   if (!answer.empty()) {
     report += "\npartial answer:\n" + TerminalSafe(answer);
   }
-  report += "\nremedy: " + std::string(FailureRemedy(stage)) +
-            "\nfallback: none; provider, model, pricing, and privacy policy "
-            "were not changed\npartial diagnostics:\n" +
-            partial;
+  // A ceiling the child named is not something to verify an endpoint over.
+  if (!StoppedAtLimit(stop)) {
+    report += "\nremedy: " + std::string(FailureRemedy(stage));
+  }
+  report +=
+      "\nfallback: none; provider, model, pricing, and privacy policy "
+      "were not changed";
+  // A child that reported has given its account above. Without one, what it
+  // printed is all there is.
+  if (!envelope) {
+    HeadTailBuffer bounded(kChildDiagnosticBytes);
+    bounded.Push(TerminalSafe(std::string(diagnostics)));
+    const std::string printed = bounded.Snapshot();
+    report += "\ndiagnostics:\n" +
+              (Trim(printed).empty() ? "(none captured)" : printed);
+  }
   return report;
 }
 
@@ -254,11 +251,13 @@ std::string ChildAgentStopNote(const json& stop) {
           FmtCost(JsonValue(stop, "cost", 0.0));
   std::string detail = JsonValue(stop, "detail", std::string());
   if (!detail.empty()) note += "; " + detail;
-  // The point of naming the limit is that the caller can decide between
+  // The point of naming a limit is that the caller can decide between
   // raising it and living with what came back.
-  note +=
-      "; rerun with that ceiling raised, or use this partial result as it is]";
-  return note;
+  if (StoppedAtLimit(stop)) {
+    note +=
+        "; rerun with that ceiling raised, or use this partial result as it is";
+  }
+  return note + "]";
 }
 
 const std::string& DelegatedSessionFile() {

@@ -737,6 +737,24 @@ void TestChildEnvironmentPolicy() {
         "error: child execution: connection error: Couldn't connect to "
         "server");
   CHECK(FirstLine(connection_report).find("secret-value") == std::string::npos);
+  // A child that reported gives its own account: what it printed besides is
+  // left out, and a ceiling it named is not answered with endpoint advice.
+  const auto reported = [](const char* reason) {
+    return ChildAgentFailureReport(
+        "provider/child", ChildAgentFailureStage::kExecution,
+        "· Working\n" + JsonDump(json{{"schema", "uagent.headless.v1"},
+                                      {"answer", ""},
+                                      {"error", "it failed"},
+                                      {"stop", {{"reason", reason}}}}));
+  };
+  const std::string limited = reported("session_budget");
+  CHECK(limited.find("child reported: it failed") != std::string::npos);
+  CHECK(limited.find("rerun with that ceiling raised") != std::string::npos);
+  CHECK(limited.find("remedy:") == std::string::npos);
+  CHECK(limited.find("· Working") == std::string::npos);
+  const std::string errored = reported("error");
+  CHECK(errored.find("remedy:") != std::string::npos);
+  CHECK(errored.find("ceiling") == std::string::npos);
 }
 
 void TestProviderTemplates() {

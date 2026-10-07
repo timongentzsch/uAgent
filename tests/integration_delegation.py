@@ -745,7 +745,6 @@ def test_subagent_failure_reports_route_stage_and_bounded_diagnostics(root, home
                     "failure stage: child execution",
                     "remedy:",
                     "fallback: none",
-                    "partial diagnostics:",
                     "fixture endpoint rejects unsupported-model",
                 )
             )

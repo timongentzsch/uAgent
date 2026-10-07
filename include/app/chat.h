@@ -19,6 +19,10 @@ std::vector<SessionInfo> ChatMembers(const std::string& folder);
 // @ and not the coordinator.
 bool ForMembersOnly(const std::string& folder, const std::string& text);
 
+// A member's message as the coordinator's conversation holds it, as
+// "Name: what it wrote"; empty for any other message.
+std::string ChatPost(const std::string& message);
+
 // A coordinator's chat with its members. What anyone writes reaches every
 // member; who is woken to answer it is settled here, never by a model: those
 // a message names with @, or everyone when it names nobody. A member answers

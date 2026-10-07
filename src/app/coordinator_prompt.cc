@@ -9,6 +9,7 @@
 #include <utility>
 
 #include "include/agent/session_store.h"
+#include "include/app/chat.h"
 #include "include/app/coordinator.h"
 #include "include/app/launch.h"
 #include "include/app/session.h"
@@ -129,8 +130,9 @@ int CoordinatorPromptMain(const Options& options) {
             error.empty() ? "coordinator runtime closed" : error.c_str());
     return 1;
   }
-  // Everything the coordinator said since the request, in full: a thread's
-  // report reopens its turn or starts another, and each says part of it.
+  // Everything the coordinator and its chat's members said since the
+  // request, in full: a thread's report reopens its turn or starts another,
+  // and each says part of it.
   std::string answer;
   SessionLoadResult saved = SessionStore::Inspect(path);
   Conversation conversation;
@@ -147,10 +149,11 @@ int CoordinatorPromptMain(const Options& options) {
       }
     }
     for (size_t index = asked + 1; index < messages.size(); ++index) {
+      const std::string content = JsonValue(messages[index], "content", "");
       const std::string text =
           JsonValue(messages[index], "role", "") == "assistant"
-              ? JsonValue(messages[index], "content", "")
-              : std::string();
+              ? content
+              : ChatPost(content);
       if (!text.empty()) answer += (answer.empty() ? "" : "\n\n") + text;
     }
     // The request itself was compacted away: what was said last.

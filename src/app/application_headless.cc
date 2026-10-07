@@ -34,7 +34,7 @@ json UsedSince(const Agent& agent, const json& before) {
     routes[route] =
         since(used, JsonValue(before["routes"], route.c_str(), json::object()));
   }
-  const json statistics_now = agent.Statistics();
+  const json& statistics_now = agent.Statistics();
   json statistics = json::object();
   for (const auto& [key, value] : statistics_now.items()) {
     if (!value.is_number()) continue;

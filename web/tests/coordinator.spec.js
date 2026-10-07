@@ -190,6 +190,59 @@ for (const [name, viewport] of VIEWPORTS) {
   });
 }
 
+test("a member joins the chat, is addressed with @ and answers under its name", async ({
+  page,
+  session,
+  command,
+  request,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const id = await openCoordinator(page, session);
+  let meta;
+  await expect
+    .poll(async () => {
+      meta = (await (await request.get(`/api/sessions/${id}`)).json()).metadata;
+      return meta.generation;
+    })
+    .toBeTruthy();
+  await command("model", {
+    session_id: id,
+    generation: meta.generation,
+    operation: "select",
+    model: "mock/model-b",
+  });
+  const prompt = page.getByLabel("Message or guidance");
+  await prompt.fill("Chat probe");
+  await prompt.press("Enter");
+  // The member is listed on the board, and its introduction is a message
+  // under its name, without the label the model reads it by.
+  const board = page.getByRole("complementary", { name: "Board" });
+  await expect(board.getByRole("heading", { name: /^Members/ })).toBeVisible();
+  const said = page.locator(".transcript .message", {
+    has: page.locator(".actor", { hasText: "Ada" }),
+  });
+  await expect(said.first()).toContainText("Ada here.");
+  await expect(said.first()).not.toContainText("in the chat");
+  await expect(page.locator(".turn-summary")).toHaveCount(1);
+
+  // @ offers the member, and a message for it alone is answered by it
+  // alone: it is seen typing, and the coordinator takes no turn.
+  await prompt.pressSequentially("@A");
+  await page.getByRole("option", { name: "@Ada" }).click();
+  await expect(prompt).toHaveValue("@Ada ");
+  await prompt.fill("@Ada Second opinion");
+  await prompt.press("Enter");
+  await expect(page.locator(".composer .status-line")).toContainText(
+    "Ada is typing…",
+  );
+  await expect(said.last()).toContainText("I would ship it.");
+  await expect(page.locator(".composer .status-line")).not.toContainText(
+    "typing",
+  );
+  await expect(page.locator(".turn-summary")).toHaveCount(1);
+  await shot(page, "coordinator-chat");
+});
+
 test("the coordinator's subtitle opens its instructions", async ({
   page,
   session,

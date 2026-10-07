@@ -12,6 +12,12 @@ inline constexpr const char* kSessionKindThread = "thread";
 // A thread's decision with this route is its coordinator's to answer.
 inline constexpr const char* kRouteCoordinator = "coordinator";
 
+// Who a thread is in its coordinator's chat (name, persona, skills), from its
+// `thread` role; empty for a thread that works a brief.
+inline json ChatMember(const json& thread) {
+  return JsonValue(thread, "member", json::object());
+}
+
 // A pending decision or approval that waits on a person rather than on the
 // thread's coordinator.
 inline bool WaitsOnPerson(const json& pending) {

@@ -43,6 +43,11 @@ inline constexpr const char* kCoordinatorTools[] = {
     "read_path", "grep",   "memory", "skill", "uagent",
     "history",   "thread", "decide", "state", "ask"};
 
+// Everything a member of the coordinator's chat may use: it reads and
+// searches to check what it says, and changes nothing.
+inline constexpr const char* kMemberTools[] = {"read_path", "grep", "skill",
+                                               "web_search", "web_fetch"};
+
 // The tools only a folder's coordinator gets.
 // Whether a thread this folder's coordinator started is working a turn now.
 bool ThreadsOwe(const std::string& folder);

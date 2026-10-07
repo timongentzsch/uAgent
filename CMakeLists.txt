@@ -220,6 +220,7 @@ add_library(
   src/app/thread_link.cc
   src/app/uagent_tool.cc
   src/app/coordinator.cc
+  src/app/chat.cc
   src/cli/options.cc
   src/cli/reference.cc
   src/app/runtime.cc

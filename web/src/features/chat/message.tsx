@@ -125,7 +125,13 @@ function MessageView({ block, online, session }: MessageProps) {
   const [wantFull, setWantFull] = useState(false);
   const [loadError, setLoadError] = useState<unknown>(null);
   const [retry, setRetry] = useState(0);
-  const text = full ?? block.text;
+  // A chat member's message: shown under its name, without the label its
+  // text opens with for the model ("[Ada in the chat, …]").
+  const member =
+    block.kind === "user" && block.origin === "mail" ? block.author : undefined;
+  const text = member
+    ? (block.text || "").replace(/^\[[^\]]*\]\n?/, "")
+    : (full ?? block.text);
   const tool = block.kind === "tool_result";
   const load = useBlockReader(session, read);
   useEffect(() => {
@@ -201,7 +207,7 @@ function MessageView({ block, online, session }: MessageProps) {
   // Another session's or the harness's words: an event with its sender's
   // label, never the person's bar. The label is the text's own opening
   // bracket ("[thread event, not a user message] …").
-  if (block.kind === "user" && block.origin === "mail") {
+  if (block.kind === "user" && block.origin === "mail" && !member) {
     const match = /^\[([^\]]+)\]\s*([\s\S]*)$/.exec(text || "");
     const label = match?.[1] ?? "Message";
     const body = match?.[2] ?? "";
@@ -230,29 +236,31 @@ function MessageView({ block, online, session }: MessageProps) {
   // Receipts (memory saves, finished background work) read as tool rows.
   const row = tool || block.kind === "activity";
   const userOwned =
-    block.kind === "user" ||
+    (block.kind === "user" && !member) ||
     (block.kind === "attachment" && block.origin !== "tool");
   const agentRow =
     block.kind === "assistant" ||
     (block.kind === "attachment" && block.origin === "tool");
-  const actor = userOwned || row || agentRow ? null : block.kind;
+  const actor = member || (userOwned || row || agentRow ? null : block.kind);
   const running = block.duration_ms == null && isRunningStatus(block.status);
   const assets = `/api/sessions/${session.id}/assets/`;
   const nameId = useId();
   const name = useRowName(
-    userOwned
-      ? "You"
-      : agentRow
-        ? "Assistant"
-        : row
-          ? block.name || "Tool"
-          : block.kind.charAt(0).toUpperCase() + block.kind.slice(1),
+    member
+      ? member
+      : userOwned
+        ? "You"
+        : agentRow
+          ? "Assistant"
+          : row
+            ? block.name || "Tool"
+            : block.kind.charAt(0).toUpperCase() + block.kind.slice(1),
     block.time,
   );
   return (
     <article
       data-message-id={block.key || block.id}
-      className={`message ${row ? "tool" : userOwned ? "user" : "response"}${block.turn_root === block.id ? " turn-start" : ""}`}
+      className={`message ${row ? "tool" : userOwned ? "user" : "response"}${member ? " member" : ""}${block.turn_root === block.id ? " turn-start" : ""}`}
       aria-labelledby={nameId}
     >
       <h3 class="sr-only" id={nameId}>

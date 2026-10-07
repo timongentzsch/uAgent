@@ -425,8 +425,19 @@ Agent::Approver MakeApprover(AppContext* app) {
         SandboxRuntime().mode == SandboxMode::kEnforced &&
         (tool.name == "run" || tool.name == "scratch" ||
          (tool.needs_approval && !tool.needs_approval(arguments)));
-    bool automatic = !mandatory && (ApprovalIsYolo() || session_rule ||
-                                    repository_rule || confined_thread);
+    // A chat member reads what was shared in its coordinator's chat as it
+    // reads the folder: without review.
+    const json thread =
+        JsonValue(app->options.session, "thread", json::object());
+    const bool shared_file =
+        tool.name == "read_path" && !ChatMember(thread).empty() &&
+        PathWithin(
+            CanonicalAccessPath(JsonValue(arguments, "path", "")),
+            CanonicalAccessPath(
+                CoordinatorPath(JsonValue(thread, "folder", "")) + ".assets"));
+    bool automatic =
+        !mandatory && (ApprovalIsYolo() || session_rule || repository_rule ||
+                       confined_thread || shared_file);
     bool granted = true;
     // Who refused, for the model: a person is the default.
     std::string refusal = "user denied this action";
@@ -786,6 +797,11 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   if (context->options.Coordinator()) {
     context->tool_policy.tool_allowlist.assign(std::begin(kCoordinatorTools),
                                                std::end(kCoordinatorTools));
+  } else if (!ChatMember(
+                  JsonValue(context->options.session, "thread", json::object()))
+                  .empty()) {
+    context->tool_policy.tool_allowlist.assign(std::begin(kMemberTools),
+                                               std::end(kMemberTools));
   }
   PrintWarning(context->tool_policy.error);
   std::string tool_error;
@@ -805,6 +821,12 @@ BootstrapResult Bootstrap(Options options, const char* executable,
           RecordCoordinatorCost(folder, agent->SessionUsage().cost);
           return CoordinatorContext(folder);
         });
+    context->chat.emplace(CanonicalCwd());
+    context->agent->SetChat(
+        [chat = &*context->chat](const std::string& text) {
+          chat->Said(text, /*person=*/true);
+        },
+        [chat = &*context->chat](Mail& mail) { chat->Heard(mail); });
   }
   if (context->channel && !context->channel->SessionPath().empty()) {
     context->agent->OpenEditJournal(context->channel->SessionPath() + ".edits");

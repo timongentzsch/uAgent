@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "include/agent.h"
+#include "include/app/chat.h"
 #include "include/app/options.h"
 #include "include/app/permissions.h"
 #include "include/app/runtime.h"
@@ -36,6 +37,9 @@ struct ApplicationInput {
   json control{};
   std::vector<Attachment> attachments{};
   bool wake = false;
+  // The text joins the conversation as the person's message and starts no
+  // turn: a coordinator's chat message for its members alone.
+  bool quiet = false;
   std::optional<std::string> title{};
 };
 
@@ -100,6 +104,9 @@ struct AppContext {
   // What "don't ask again" granted, bound to the tool's current provider,
   // schema and approval policy. Session-scoped by construction: it dies here.
   std::unordered_set<std::string> session_approvals;
+  // A coordinator's chat with its members; unset for every other session.
+  // Before the agent, which calls into it.
+  std::optional<Chat> chat;
   std::unique_ptr<Agent> agent;
   HeadlessOutput output;
 };

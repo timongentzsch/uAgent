@@ -80,6 +80,22 @@
           "description": "context-window tokens; 0 uses the provider profile",
           "x-env": "UAGENT_CONTEXT"
         },
+        "coordinator.chatTurns": {
+          "anyOf": [
+            {
+              "default": 8,
+              "maximum": 256,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "pattern": "\\$",
+              "type": "string"
+            }
+          ],
+          "description": "turns the members of a coordinator's chat may take on one message of the user's; 0 lets them only read",
+          "x-env": "UAGENT_COORDINATOR_CHAT_TURNS"
+        },
         "coordinator.dailySpendUsd": {
           "anyOf": [
             {

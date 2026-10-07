@@ -639,9 +639,12 @@ bool Agent::DegradeAndRetry(const ChatResult& result) {
 std::string Agent::PromptBase() const {
   const bool coordinator =
       JsonValue(session_role_, "kind", "") == kSessionKindCoordinator;
-  return ApplyPromptOverlay(
-             coordinator ? CoordinatorPromptBase() : SystemPromptBase(),
-             PromptOverlay(nullptr), nullptr) +
+  const json member =
+      ChatMember(JsonValue(session_role_, "thread", json::object()));
+  return ApplyPromptOverlay(!member.empty() ? MemberPromptBase(member)
+                            : coordinator   ? CoordinatorPromptBase()
+                                            : SystemPromptBase(),
+                            PromptOverlay(nullptr), nullptr) +
          CapabilityPrompt(tools_, &tool_selection_);
 }
 

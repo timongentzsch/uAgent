@@ -104,6 +104,7 @@ A setting has two names. `Setting` is its name in `~/.uagent/config/settings.jso
 | --- | --- | --- | --- | --- | --- |
 | `coordinator.maxThreads` | `UAGENT_COORDINATOR_MAX_THREADS` | integer | `5` | next-user-turn | threads one coordinator may run at once |
 | `coordinator.dailySpendUsd` | `UAGENT_COORDINATOR_DAILY_SPEND_USD` | number | `20.0` | next-user-turn | reported cost a coordinator and its threads may spend per day; at it, thread events wait. 0 disables it |
+| `coordinator.chatTurns` | `UAGENT_COORDINATOR_CHAT_TURNS` | integer | `8` | next-user-turn | turns the members of a coordinator's chat may take on one message of the user's; 0 lets them only read |
 | `coordinator.environment` | `UAGENT_COORDINATOR_ENVIRONMENT` | string | `worktree` | next-user-turn | where threads run: a fresh git worktree, or the folder itself |
 
 ## Web search

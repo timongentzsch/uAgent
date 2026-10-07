@@ -39,8 +39,9 @@ struct HostSession {
   json launch = json::object();
   std::string id, path, cwd, title, draft_title, generation, status = "saved",
                                                              error, binary;
-  // "coordinator", "thread" or empty; a thread names its project `folder`.
-  std::string kind, folder;
+  // "coordinator", "thread" or empty; a thread names its project `folder`,
+  // and itself as a `member` of its coordinator's chat when it is one.
+  std::string kind, folder, member;
   int64_t activated = 0;  // wall-clock ms of the last successful activation
   json state = json::object(), pending = nullptr;
   std::map<std::string, json> active_exchanges;

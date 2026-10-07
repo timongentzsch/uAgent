@@ -34,6 +34,7 @@
 #include "include/tools/tool.h"
 
 namespace uagent {
+struct Mail;
 
 struct BackgroundCompletion;
 struct CallTask;
@@ -199,8 +200,23 @@ class Agent {
   // wake messages stay pending. True when anything was taken.
   bool DeliverMail(bool hold = false);
   // Text about to arrive as input that another session or the harness wrote:
-  // its row is shown as an event, not as the person's message.
-  void NotFromUser(const std::string& text) { not_user_.push_back(text); }
+  // its row is shown as an event, not as the person's message, under its
+  // `author` when it has one.
+  void NotFromUser(const std::string& text, const std::string& author = "") {
+    not_user_.emplace_back(text, author);
+  }
+  // The person's message, written into the conversation without a turn.
+  void Say(const std::string& text, const std::string& request_id) {
+    PushUserInput(text, false, json(), request_id);
+  }
+  // A coordinator's chat (app/chat.h): `said` hears what a person writes
+  // here, `heard` is handed each message from another session before it is
+  // delivered and may rewrite it.
+  void SetChat(std::function<void(const std::string&)> said,
+               std::function<void(Mail&)> heard) {
+    chat_said_ = std::move(said);
+    chat_heard_ = std::move(heard);
+  }
 
   // The session's undo (EditJournal), kept in `directory`; unset, nothing is
   // journaled, as for a subagent.
@@ -452,7 +468,9 @@ class Agent {
   // Mail taken but not yet in a saved snapshot, acknowledged by Save, and the
   // ids of the latest delivered, so one delivered again is recognised.
   mutable std::vector<std::string> unacked_mail_;
-  std::vector<std::string> not_user_;
+  std::vector<std::pair<std::string, std::string>> not_user_;  // text, author
+  std::function<void(const std::string&)> chat_said_;
+  std::function<void(Mail&)> chat_heard_;
   json delivered_mail_ = json::array();
   EditJournal edits_;
   uint64_t view_epoch_ = 0;

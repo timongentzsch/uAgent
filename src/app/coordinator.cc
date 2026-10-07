@@ -16,6 +16,7 @@
 #include "include/agent/conversation.h"
 #include "include/agent/session_role.h"
 #include "include/agent/session_view.h"
+#include "include/app/chat.h"
 #include "include/app/launch.h"
 #include "include/app/session.h"
 #include "include/core/capture.h"
@@ -341,13 +342,34 @@ std::string Brief(const json& brief) {
          "you changed, how you verified it, and anything left open.)";
 }
 
+// Starts a thread on a brief, or with `member` a chat member under a name and
+// a persona: the same session within the same ceiling, told who it is
+// instead of what to finish.
 ToolResult Spawn(const std::string& folder, const json& a,
-                 const std::function<std::string()>& own_model) {
-  const std::string title = Utf8Prefix(JsonValue(a, "title", ""), 120);
-  const std::string objective = JsonValue(a, "objective", "");
+                 const std::function<std::string()>& own_model, bool member) {
+  const std::string title =
+      Utf8Prefix(JsonValue(a, member ? "name" : "title", ""), 120);
+  const std::string objective =
+      JsonValue(a, member ? "persona" : "objective", "");
   if (title.empty() || objective.empty()) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "spawn needs a title and an objective");
+                       member ? "add_member needs a name and a persona"
+                              : "spawn needs a title and an objective");
+  }
+  // A name is what an @ addresses: one word, and nobody else's.
+  if (member &&
+      (title.size() > 24 || AsciiLower(title) == "coordinator" ||
+       !std::ranges::all_of(title,
+                            [](unsigned char c) {
+                              return std::isalnum(c) || c == '_' || c == '-';
+                            }) ||
+       std::ranges::any_of(ChatMembers(folder), [&](const SessionInfo& info) {
+         return AsciiLower(JsonValue(ChatMember(info.thread), "name", "")) ==
+                AsciiLower(title);
+       }))) {
+    return ToolFailure(ToolErrorCode::kInvalidArguments,
+                       "a member's name is one word of letters, digits, - "
+                       "and _, at most 24, that no other member has");
   }
   const std::string coordinator = CoordinatorId(folder);
   const int64_t cap = LongSetting(Cfg("UAGENT_COORDINATOR_MAX_THREADS"));
@@ -376,8 +398,11 @@ ToolResult Spawn(const std::string& folder, const json& a,
             " more threads; ask the user to raise "
             "UAGENT_COORDINATOR_DAILY_SPEND_USD or wait for tomorrow");
   }
-  const std::string environment = JsonValue(
-      a, "environment", StringSetting(Cfg("UAGENT_COORDINATOR_ENVIRONMENT")));
+  // A member reads the folder as it is; it changes nothing, so needs no copy.
+  const std::string environment =
+      member ? "local"
+             : JsonValue(a, "environment",
+                         StringSetting(Cfg("UAGENT_COORDINATOR_ENVIRONMENT")));
   const LaunchPaths launch = PlanLaunch(folder, environment == "worktree",
                                         "thread-", HashHex(MakeSessionId()));
   if (environment == "worktree") {
@@ -389,10 +414,20 @@ ToolResult Spawn(const std::string& folder, const json& a,
                              "folder itself");
     }
   }
-  const json brief = {{"objective", objective},
-                      {"output", JsonValue(a, "output", "")},
-                      {"done_when", JsonValue(a, "done_when", "")},
-                      {"boundaries", JsonValue(a, "boundaries", "")}};
+  json thread = {{"coordinator_id", coordinator},
+                 {"folder", folder},
+                 {"day", Today()},
+                 {"ceiling", {{"budget_usd", budget}}}};
+  if (member) {
+    thread["member"] = {{"name", title},
+                        {"persona", objective},
+                        {"skills", JsonValue(a, "skills", "")}};
+  } else {
+    thread["brief"] = {{"objective", objective},
+                       {"output", JsonValue(a, "output", "")},
+                       {"done_when", JsonValue(a, "done_when", "")},
+                       {"boundaries", JsonValue(a, "boundaries", "")}};
+  }
   Options options;
   // Named, else the coordinator's own: a thread is told its model and
   // resolves the rest like any session. It inherits no endpoint from this
@@ -400,23 +435,31 @@ ToolResult Spawn(const std::string& folder, const json& a,
   std::string model = Trim(JsonValue(a, "model", ""));
   if (model.empty()) model = own_model();
   if (!model.empty()) options.overrides["UAGENT_MODEL"] = model;
-  options.session = {{"kind", kSessionKindThread},
-                     {"thread",
-                      {{"coordinator_id", coordinator},
-                       {"folder", folder},
-                       {"day", Today()},
-                       {"brief", brief},
-                       {"ceiling", {{"budget_usd", budget}}}}}};
+  options.session = {{"kind", kSessionKindThread}, {"thread", thread}};
   std::string error;
   session::Connection connection = session::Open(
       ExecutablePath(), launch.cwd, launch.path, title, options, error);
   if (!connection.socket) {
     return Unavailable(error);
   }
-  error = SendWhenReady(connection, launch.path,
-                        {{"kind", "submit"}, {"text", Brief(brief)}}, true);
+  error = SendWhenReady(
+      connection, launch.path,
+      {{"kind", "submit"},
+       {"text", member ? "(From this folder's coordinator.) You have joined "
+                         "the chat. Introduce yourself to the others in one "
+                         "sentence."
+                       : Brief(thread["brief"])}},
+      true);
   if (!error.empty()) {
     return Unavailable(error);
+  }
+  if (member) {
+    return ToolSuccess(JsonDump(
+        {{"session_id", HashHex(launch.path)},
+         {"name", title},
+         {"next",
+          "It introduces itself in the chat, and from now on reads what is "
+          "written here and answers when it has something to add."}}));
   }
   return ToolSuccess(
       JsonDump({{"session_id", HashHex(launch.path)},
@@ -440,6 +483,13 @@ ToolResult Message(const SessionInfo& info, const std::string& folder,
   if (text.empty() || text.size() > kMessageBytes) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
                        "a message needs 1 to 8192 bytes of text");
+  }
+  // The chat's cap on turns counts what is written there, nothing else.
+  if (const std::string name = JsonValue(ChatMember(info.thread), "name", "");
+      !name.empty()) {
+    return ToolFailure(
+        ToolErrorCode::kInvalidArguments,
+        "a member reads the chat: write @" + name + " in your answer instead");
   }
   std::string error =
       "the session is not running; only this coordinator's "
@@ -530,10 +580,13 @@ Tool ThreadTool(const std::string& folder,
       "user); stop interrupts its turn; close ends its runtime; diff shows "
       "what it changed; delete closes and removes a session, and its "
       "worktree if nothing would be lost, after the user confirms. One "
-      "thread per independent part; keep dependent steps in one thread.",
+      "thread per independent part; keep dependent steps in one thread. "
+      "add_member brings a member into this chat to discuss, not to work "
+      "(name, persona, skills, model); delete takes it out again.",
       json::parse(R"json({"type":"object","properties":{
         "action":{"type":"string",
-          "enum":["spawn","message","stop","close","diff","delete"]},
+          "enum":["spawn","message","stop","close","diff","delete",
+                  "add_member"]},
         "session_id":{"type":"string"},
         "title":{"type":"string"},
         "objective":{"type":"string"},
@@ -542,12 +595,17 @@ Tool ThreadTool(const std::string& folder,
         "boundaries":{"type":"string"},
         "environment":{"type":"string","enum":["worktree","local"]},
         "model":{"type":"string"},
-        "text":{"type":"string"}},
+        "text":{"type":"string"},
+        "name":{"type":"string"},
+        "persona":{"type":"string"},
+        "skills":{"type":"string"}},
         "required":["action"]})json"),
       [folder, own_model = std::move(own_model)](const json& a,
                                                  const ToolContext&) {
         const std::string action = JsonValue(a, "action", "");
-        if (action == "spawn") return Spawn(folder, a, own_model);
+        if (action == "spawn" || action == "add_member") {
+          return Spawn(folder, a, own_model, action == "add_member");
+        }
         return WithSession(folder, a, [&](const SessionInfo& info) {
           if (action == "message") {
             return Message(info, folder, JsonValue(a, "text", ""));
@@ -572,7 +630,8 @@ Tool ThreadTool(const std::string& folder,
   tool.mandatory_reason = "deleting a session";
   tool.summary = [](const json& a) {
     return JsonValue(a, "action", "") + " " +
-           JsonValue(a, "title", JsonValue(a, "session_id", ""));
+           JsonValue(a, "title",
+                     JsonValue(a, "name", JsonValue(a, "session_id", "")));
   };
   tool.header = Verbs("Delegating", "Delegated");
   return tool;
@@ -787,9 +846,12 @@ std::string CoordinatorBoard(const std::string& folder) {
   for (const SessionInfo& info : sessions) {
     std::string line =
         HashHex(info.path) + " " + LiveStatus(info) + " · " +
-        (info.kind == kSessionKindThread ? "↳ " : "") + OneLine(info.title) +
-        " · " + std::to_string(info.turns) + " turns · " + Age(info.mtime) +
-        (LaunchWorktree(info.cwd) ? " · " + info.cwd : "") + "\n";
+        (!ChatMember(info.thread).empty()  ? "@"
+         : info.kind == kSessionKindThread ? "↳ "
+                                           : "") +
+        OneLine(info.title) + " · " + std::to_string(info.turns) + " turns · " +
+        Age(info.mtime) + (LaunchWorktree(info.cwd) ? " · " + info.cwd : "") +
+        "\n";
     if (board.size() + line.size() > kBoardBytes - 64) break;
     board += line;
     ++shown;

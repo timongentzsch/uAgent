@@ -13,7 +13,7 @@ no application server language runtime or dynamically loaded plugin layer.
 | `src/app/` | Bootstrap, session transport and lifecycle |
 | `src/app/session_*.cc` | The session runtime, its terminal client and the host's facets; see [Session runtime and clients](#session-runtime-and-clients) |
 | `src/app/commands_*.cc` | Slash-command handlers for model, session and control; `commands.cc` dispatches |
-| `src/app/coordinator.cc`, `thread_link.cc`, `launch.cc` | A folder's coordinator, its threads and where a launched session runs |
+| `src/app/coordinator.cc`, `chat.cc`, `thread_link.cc`, `launch.cc` | A folder's coordinator, its threads, its chat with members and where a launched session runs |
 | `src/agent/` | Turn execution, canonical conversation, context preparation, persistence, supervision services (process, jobs, child agent), mail delivery, the edit journal behind `/undo`, memory store and observation records |
 | `src/api/` | Provider dialects, streaming, capabilities, usage and HTTP captures: transport in `client.cc`, request bodies in `wire_request.cc`, stream decoding in `wire_stream.cc` |
 | `src/providers/` | Route catalog, model selection grammar and route policy |
@@ -135,6 +135,36 @@ activity completion; an idle parent takes it up at once as a turn.
 
 A folder's coordinator is a session that reads and delegates but never writes
 or runs commands. The sessions it starts are its threads.
+
+The coordinator's conversation is also a chat (`src/app/chat.cc`). A member
+is a thread the coordinator added under a name and a persona instead of a
+brief: it reads and searches, changes nothing, and its prompt comes from its
+session header, which it cannot rewrite.
+
+- What the user, the coordinator or a member writes is mailed to every
+  member. The coordinator's runtime decides who is woken, no model does: the
+  members a message names with `@`, or all of them when it names nobody. The
+  coordinator's own messages wake only whom they name.
+- A woken member answers, or answers `PASS`, which is shown to nobody.
+  Messages for members that are not woken join their conversation without a
+  turn.
+- A member's answer appears in the coordinator's conversation under its name
+  without starting a turn there. The coordinator takes the floor once no
+  member owes an answer and something was written.
+- A message of the user's that names only members is theirs: it joins the
+  coordinator's conversation without a turn, the floor does not return to
+  the coordinator, and an answer wakes only whom it names in turn.
+- A file the user attaches reaches the members as its path in the message;
+  they read what is shared in the coordinator's chat without review, like
+  the folder itself.
+- One message of the user's starts at most `UAGENT_COORDINATOR_CHAT_TURNS`
+  member turns, so an exchange cannot run on by itself; the coordinator
+  cannot message a member past the chat. Members spend from the same daily
+  limit as threads.
+- The round (turns left, who owes an answer) is saved beside the
+  coordinator's session, so a runtime that starts again takes it up. A
+  member's answer is forwarded under an id derived from it: forwarded again
+  after a crash, it is the mail its readers already have.
 
 Sessions message each other through durable mailboxes
 ([PERSISTENCE.md](PERSISTENCE.md#mail)): linked peers, a parent and its

@@ -157,7 +157,9 @@ std::string SendMail(Mail mail) {
   }
   // A thread's events are its coordinator's to hear, however many: the rate
   // is for what sessions write to each other.
-  const bool event = mail.type == kMailTaskCompleted || mail.type == kMailAsk;
+  // A chat's messages are bounded by its own cap on turns.
+  const bool event = mail.type == kMailTaskCompleted || mail.type == kMailAsk ||
+                     mail.type == kMailChat;
   if (!event && OverRate(mail.from)) {
     return "not sent: at most " + std::to_string(kMailSenderPerMinute) +
            " messages a minute; wait before sending more";

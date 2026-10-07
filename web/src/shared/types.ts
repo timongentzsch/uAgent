@@ -166,6 +166,8 @@ export interface Block {
   incoming?: number;
   files?: Asset[];
   origin?: string;
+  // Who wrote a message that came by mail: a member of a coordinator's chat.
+  author?: string;
   // Tool calls whose results added these files to context.
   source_call_ids?: string[];
   unavailable_images?: number;
@@ -345,6 +347,8 @@ export interface Session {
   // A folder's coordinator, or a thread it launched (in `folder`).
   kind?: "coordinator" | "thread" | "";
   folder?: string;
+  // A thread's name as a member of its coordinator's chat.
+  member?: string;
   status?: SessionStatus;
   presence?: "active" | "";
   updated?: number;

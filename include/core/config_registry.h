@@ -495,6 +495,13 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
             "day; at it, thread events wait. 0 disables it"),
         "Coordinator daily spend"),
     registry::Named(
+        registry::Int("coordinator.chatTurns", "UAGENT_COORDINATOR_CHAT_TURNS",
+                      {}, 8, 0, 256, ReloadPolicy::kNextUserTurn,
+                      "coordination",
+                      "turns the members of a coordinator's chat may take on "
+                      "one message of the user's; 0 lets them only read"),
+        "Chat member turns"),
+    registry::Named(
         registry::Choice(
             registry::Str("coordinator.environment",
                           "UAGENT_COORDINATOR_ENVIRONMENT", {}, "worktree",

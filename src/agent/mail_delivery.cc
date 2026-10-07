@@ -78,11 +78,12 @@ bool Agent::DeliverMail(bool hold) {
   std::vector<Mail> taken = TakeMail(own, [&](const Mail& mail) {
     return !hold && MailAllowed(mail, own_path, session_role_);
   });
-  for (const Mail& mail : taken) {
-    // The sender labels its text; it is never the user's.
-    const std::string text = JsonValue(mail.body, "text", "");
+  for (Mail& mail : taken) {
     const bool seen = std::find(delivered_mail_.begin(), delivered_mail_.end(),
                                 mail.id) != delivered_mail_.end();
+    if (!seen && chat_heard_) chat_heard_(mail);
+    // The sender labels its text; it is never the user's.
+    const std::string text = JsonValue(mail.body, "text", "");
     // Mail that changes nothing has no save to be acknowledged by: one
     // without text, or one a save already holds.
     if ((text.empty() || seen) &&
@@ -96,9 +97,14 @@ bool Agent::DeliverMail(bool hold) {
     if (delivered_mail_.size() > kDeliveredIds) {
       delivered_mail_.erase(delivered_mail_.begin());
     }
-    // Mail wakes its recipient: an idle one starts a turn on it.
-    NotFromUser(text);
-    SteeringState().Queue(text, "", true);
+    NotFromUser(text, JsonValue(mail.body, "author", ""));
+    if (JsonValue(mail.body, "quiet", false)) {
+      // Read, not answered: it joins the conversation where it stands.
+      PushUserInput(text, false, json(), "");
+    } else {
+      // Mail wakes its recipient: an idle one starts a turn on it.
+      SteeringState().Queue(text, "", true);
+    }
     DebugLog("mail_delivered", {{"id", mail.id},
                                 {"type", mail.type},
                                 {"from", mail.from},

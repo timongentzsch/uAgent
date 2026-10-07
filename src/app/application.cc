@@ -261,6 +261,11 @@ void Application::RunPrompt(const std::string& input) {
     attachments_.clear();
   }
   RunTurns(input, std::move(content), images);
+  // A coordinator's answer is a message in its chat.
+  if (context_.chat &&
+      JsonValue(agent_.LastStop(), "reason", "") == "completed") {
+    context_.chat->Said(agent_.LastText(), /*person=*/false);
+  }
 }
 
 json Application::InterfaceState() const {

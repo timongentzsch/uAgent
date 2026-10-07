@@ -98,9 +98,9 @@ void ThreadLink::Report(const std::string& reason, const std::string& title,
   Mail report =
       !ChatMember(thread_).empty()
           ? Event(folder, path_, kMailChat, id_,
-                  answer.empty() && reason != "completed"
-                      ? "(could not answer: " + reason + ")"
-                      : answer)
+                  // What a turn that failed shows last is an earlier answer.
+                  reason == "completed" ? answer
+                                        : "(could not answer: " + reason + ")")
           : Event(folder, path_, kMailTaskCompleted, id_,
                   "[thread event, not a user message] Thread " + id_ + " \"" +
                       OneLine(title) + "\" finished its turn (" + reason +

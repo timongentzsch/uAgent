@@ -158,8 +158,13 @@ session header, which it cannot rewrite.
   they read what is shared in the coordinator's chat without review, like
   the folder itself.
 - One message of the user's starts at most `UAGENT_COORDINATOR_CHAT_TURNS`
-  member turns, so an exchange cannot run on by itself. Members spend from
-  the same daily limit as threads.
+  member turns, so an exchange cannot run on by itself; the coordinator
+  cannot message a member past the chat. Members spend from the same daily
+  limit as threads.
+- The round (turns left, who owes an answer) is saved beside the
+  coordinator's session, so a runtime that starts again takes it up. A
+  member's answer is forwarded under an id derived from it: forwarded again
+  after a crash, it is the mail its readers already have.
 
 Sessions message each other through durable mailboxes
 ([PERSISTENCE.md](PERSISTENCE.md#mail)): linked peers, a parent and its

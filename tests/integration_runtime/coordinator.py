@@ -1092,8 +1092,9 @@ def test_a_chat_wakes_whom_a_message_is_for_and_hears_who_has_something_to_add(
                     "skills": "etymology",
                 },
             )
-        if "let Lin go" in last and "removed" not in results:
-            return tool_call("thread", {"action": "remove_member", "name": "lin"})
+        if "nudge Lin" in last and "write @Lin" not in json.dumps(results):
+            lin = next(line.split()[0] for line in json.dumps(body).split("\\n") if "@Lin" in line)
+            return tool_call("thread", {"action": "message", "session_id": lin, "text": "hello"})
         return event({"content": "coordinator-" + str(len(results))})
 
     def asked(server, name, text):
@@ -1150,12 +1151,14 @@ def test_a_chat_wakes_whom_a_message_is_for_and_hears_who_has_something_to_add(
         time.sleep(budget(1))
         assert_true(all(_member(b) == "Lin" for _, b in server.requests), server.requests)
 
-        result = run(root, env, "coord", "-p", "let Lin go", binary=binary)
+        # The coordinator reads the exchange when it next has a turn. It
+        # cannot message a member past the chat, whose cap would not count it.
+        server.requests.clear()
+        result = run(root, env, "coord", "-p", "nudge Lin", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
-        text = json.dumps(server.requests[-1][1]["messages"])
+        text = json.dumps([b for _, b in server.requests if not _member(b)][-1]["messages"])
         assert_true("@lin only you" in text and "Just me, then." in text, text)
-        left = [path for path in session_files(home) if path.name.startswith("thread-")]
-        assert_true(len(left) == 1, left)
+        assert_true("write @Lin in your answer instead" in text, text)
 
 
 def test_a_chat_that_never_falls_silent_stops_at_its_cap(root, home, *, binary):
@@ -1223,3 +1226,57 @@ def test_a_member_reads_what_was_shared_in_the_chat_without_review(root, home, *
         assert_true(result.stdout.strip() == "Ada: It says ship on friday", repr(result.stdout))
         # Nobody was asked: not the reviewing model, not the coordinator.
         assert_true(all(_member(b) == "Ada" for _, b in server.requests), server.requests)
+
+
+def test_a_chat_round_outlives_the_coordinators_runtime(root, home, *, binary):
+    answering = threading.Event()
+
+    def route(_, body):
+        member, last = _member(body), _last_user(body)
+        if member and "slow one" in last:
+            answering.set()
+            time.sleep(budget(1.5))
+            return event({"content": "Late answer."})
+        if member:
+            return event({"content": "PASS"})
+        if "bring Ada" in last and not tool_results(body["messages"]):
+            return tool_call(
+                "thread", {"action": "add_member", "name": "Ada", "persona": "You are slow."}
+            )
+        return event({"content": "ok"})
+
+    with Server([route]) as server:
+        env = base_env(home, server.url)
+        result = run(root, env, "coord", "-p", "bring Ada", binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        coordinator = next(path for path in session_files(home) if path.name == "coordinator.json")
+        server.requests.clear()
+        asking = subprocess.Popen(
+            [str(binary), "coord", "-p", "slow one"],
+            cwd=root,
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        try:
+            # The coordinator has answered and Ada is still writing when the
+            # coordinator's runtime dies. Ada's answer starts it again, and
+            # the round it finds saved gives it the floor.
+            assert_true(answering.wait(budget(10)), "Ada was never woken")
+            wait_until(
+                lambda: any(
+                    not _member(b) and "slow one" in _last_user(b) for _, b in server.requests
+                ),
+                "the coordinator never answered",
+            )
+            time.sleep(budget(0.3))
+            subprocess.run(["pkill", "-9", "-f", f"--session-worker .*{coordinator}"], check=False)
+            wait_until(
+                lambda: any(
+                    not _member(b) and "Late answer." in _last_user(b) for _, b in server.requests
+                ),
+                "the floor did not return after the restart",
+            )
+        finally:
+            asking.kill()
+            asking.wait()

@@ -29,10 +29,11 @@ std::string ChatPost(const std::string& message);
 // or passes, and the coordinator takes the floor once nobody is owed a turn,
 // unless the user's message was for members alone.
 // One message of the user's starts at most UAGENT_COORDINATOR_CHAT_TURNS
-// member turns, so no exchange runs on by itself.
+// member turns, so no exchange runs on by itself. The round is kept beside
+// the coordinator's session, so a runtime that starts again takes it up.
 class Chat {
  public:
-  explicit Chat(std::string folder) : folder_(std::move(folder)) {}
+  explicit Chat(std::string folder);
 
   // What the user (`person`) or the coordinator wrote here.
   void Said(const std::string& text, bool person);
@@ -41,15 +42,23 @@ class Chat {
   void Heard(Mail& mail);
 
  private:
+  // Mails `text` to every member but its author (`from`), waking those it
+  // names, or all of them when it names nobody and is `open`. `source` is
+  // the message it forwards, whose id makes sending it again the same mail.
   void Tell(const std::vector<SessionInfo>& members, const std::string& from,
-            const std::string& author, const std::string& text, bool open);
+            const std::string& author, const std::string& text, bool open,
+            const std::string& source = "");
+  void Save() const;
 
   std::string folder_;
   int64_t turns_ = 0;  // member turns this round may still start
   // A member wrote since the coordinator last had the floor, and whether the
   // floor returns to it when the members are done.
   bool posted_ = false, moderated_ = true;
-  std::set<std::string> awaited_;  // mailboxes of the members owing a turn
+  // Mailboxes of the members owing an answer. A set: a member woken twice
+  // answers once when the second message reaches it mid-turn, so the floor
+  // may return a message early, never late.
+  std::set<std::string> awaited_;
 };
 }  // namespace uagent
 #endif  // UAGENT_INCLUDE_APP_CHAT_H_

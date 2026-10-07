@@ -48,8 +48,8 @@
   or passes. `@name` addresses one member, a message that names nobody is
   everyone's, and the coordinator takes the floor when the members have
   spoken. `UAGENT_COORDINATOR_CHAT_TURNS` (`coordinator.chatTurns`, 8) caps
-  the member turns one message of yours can start; `remove_member` takes a
-  member out. In the web, members are listed on the board, shown typing
+  the member turns one message of yours can start; `delete` takes a member
+  out, after you confirm. In the web, members are listed on the board, shown typing
   while they answer, offered after `@` in the composer, and their messages
   appear under their names.
 

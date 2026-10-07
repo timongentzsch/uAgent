@@ -484,6 +484,13 @@ ToolResult Message(const SessionInfo& info, const std::string& folder,
     return ToolFailure(ToolErrorCode::kInvalidArguments,
                        "a message needs 1 to 8192 bytes of text");
   }
+  // The chat's cap on turns counts what is written there, nothing else.
+  if (const std::string name = JsonValue(ChatMember(info.thread), "name", "");
+      !name.empty()) {
+    return ToolFailure(
+        ToolErrorCode::kInvalidArguments,
+        "a member reads the chat: write @" + name + " in your answer instead");
+  }
   std::string error =
       "the session is not running; only this coordinator's "
       "threads can be started again";
@@ -548,22 +555,6 @@ ToolResult Delete(const SessionInfo& info, const std::string& folder) {
   return removed.Ok() ? ToolSuccess("deleted") : Unavailable(removed.message);
 }
 
-// A member leaves with its conversation; what it wrote in the chat stays.
-ToolResult RemoveMember(const std::string& folder, const std::string& name) {
-  for (const SessionInfo& info : ChatMembers(folder)) {
-    if (AsciiLower(JsonValue(ChatMember(info.thread), "name", "")) !=
-        AsciiLower(name)) {
-      continue;
-    }
-    if (const std::string error = CloseRuntime(info); !error.empty()) {
-      return Unavailable(error);
-    }
-    SessionStoreStatus removed = SessionStore::Remove(info.path);
-    return removed.Ok() ? ToolSuccess("removed") : Unavailable(removed.message);
-  }
-  return ToolFailure(ToolErrorCode::kNotFound, "no member is called " + name);
-}
-
 // What a thread changed, from the host's git, never a model-run shell.
 ToolResult Diff(const SessionInfo& info) {
   auto diff = HostGit(info.cwd, {"diff", "--no-ext-diff", "--no-textconv",
@@ -591,11 +582,11 @@ Tool ThreadTool(const std::string& folder,
       "worktree if nothing would be lost, after the user confirms. One "
       "thread per independent part; keep dependent steps in one thread. "
       "add_member brings a member into this chat to discuss, not to work "
-      "(name, persona, skills, model); remove_member (name) takes it out.",
+      "(name, persona, skills, model); delete takes it out again.",
       json::parse(R"json({"type":"object","properties":{
         "action":{"type":"string",
           "enum":["spawn","message","stop","close","diff","delete",
-                  "add_member","remove_member"]},
+                  "add_member"]},
         "session_id":{"type":"string"},
         "title":{"type":"string"},
         "objective":{"type":"string"},
@@ -614,9 +605,6 @@ Tool ThreadTool(const std::string& folder,
         const std::string action = JsonValue(a, "action", "");
         if (action == "spawn" || action == "add_member") {
           return Spawn(folder, a, own_model, action == "add_member");
-        }
-        if (action == "remove_member") {
-          return RemoveMember(folder, JsonValue(a, "name", ""));
         }
         return WithSession(folder, a, [&](const SessionInfo& info) {
           if (action == "message") {

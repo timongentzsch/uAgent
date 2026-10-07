@@ -10,6 +10,7 @@
 
 #include "include/agent.h"
 #include "include/agent/protocol.h"
+#include "include/agent/session_role.h"
 #include "include/api/citations.h"
 #include "include/api/retry.h"
 #include "include/core/checked.h"
@@ -254,8 +255,12 @@ void Agent::PushAssistantMessage(ChatResult& response,
 
 // Plain prose and no call: the turn is done unless steering reopened it.
 Agent::StepFlow Agent::FinishWithProse(TurnExecution& state, StepState& loop) {
-  // Mail that arrived during the final model call reopens the turn too.
-  DeliverMail();
+  // Mail that arrived during the final model call reopens the turn too. A
+  // chat member's answer stands as its message: what came meanwhile starts
+  // its next turn, so nothing it wrote goes unsaid.
+  if (ChatMember(JsonValue(session_role_, "thread", json::object())).empty()) {
+    DeliverMail();
+  }
   if (ApplyQueuedSteering(loop)) return StepFlow::kNextStep;
   if (SteeringState().Requested()) return InterruptTurn(state);
   state.complete = true;

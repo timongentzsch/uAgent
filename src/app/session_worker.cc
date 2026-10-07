@@ -365,6 +365,10 @@ class WorkerChannel final : public ApplicationChannel {
       for (auto block = blocks.rbegin(); block != blocks.rend(); ++block) {
         if (JsonValue(*block, "kind", "") != "assistant") continue;
         answer = JsonValue(*block, "text", "");
+        // The view holds a long answer's opening only.
+        if (JsonValue(*block, "truncated", false)) {
+          answer += "\n[cut short here; history shows the rest]";
+        }
         break;
       }
       link_->Report(JsonValue(JsonValue(state, "stop", json::object()),

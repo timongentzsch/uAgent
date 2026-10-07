@@ -92,6 +92,8 @@ int Application::RunChannel() {
       } else {
         ProcessInput(std::move(input->text));
       }
+      // Mail that came as the turn was ending starts the next one.
+      agent_.DeliverMail(channel_->HoldMail());
     }
     SaveSession(input->title.has_value());
     if (!input->title && !input->control.is_null()) {

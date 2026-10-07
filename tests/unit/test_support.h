@@ -131,6 +131,15 @@ extern int failures;
 // so one execution reports every failure rather than the first.
 bool Check(bool condition, const char* expression, const char* file, int line);
 
+// Check for a tool call that should have succeeded: a failure also prints what
+// the tool said, which is the only account of why.
+inline bool CheckOk(const ToolResult& result, const char* expression,
+                    const char* file, int line) {
+  if (Check(result.Ok(), expression, file, line)) return true;
+  std::cerr << "  " << result.output << '\n';
+  return false;
+}
+
 // The schema error a tool call would get, or empty when the arguments fit.
 inline std::string InvalidToolArgument(const Tool& tool, const json& args) {
   auto issue = FindToolArgumentIssue(tool, args);
@@ -141,6 +150,9 @@ inline std::string InvalidToolArgument(const Tool& tool, const json& args) {
 
 #define CHECK(expression) \
   ::uagent::Check((expression), #expression, __FILE__, __LINE__)
+
+#define CHECK_OK(result) \
+  ::uagent::CheckOk((result), #result, __FILE__, __LINE__)
 
 // CHECK for a condition the rest of the test body dereferences: a failed CHECK
 // keeps going, so `CHECK(opt.has_value()); use(*opt);` crashes the whole binary

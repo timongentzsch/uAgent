@@ -222,8 +222,9 @@ def test_subagent_followup_resumes_durable_conversation(root, home, *, binary):
         child_prompts = [
             message.get("content") for message in messages if message.get("role") == "user"
         ]
-        if child_prompts and child_prompts[-1] == "directive cleared?":
-            return event({"content": "directive-cleared"})
+        if child_prompts and str(child_prompts[-1]).endswith("directive kept?"):
+            kept = child_prompts[-1].startswith("[collaborator directive]\nalways mention beta")
+            return event({"content": "directive-kept" if kept else "directive-lost"})
         if any(str(prompt).endswith("remember alpha") for prompt in child_prompts):
             initial_directive = any(
                 prompt == "[collaborator directive]\nalways mention beta\n\nremember alpha"
@@ -244,7 +245,7 @@ def test_subagent_followup_resumes_durable_conversation(root, home, *, binary):
                 )
             return event({"content": "stored alpha" if initial_directive else "bad seed"})
         results = "\n".join(tool_results(messages))
-        if "directive-cleared" in results:
+        if "directive-kept" in results:
             return event({"content": "followup-ok"})
         if "alpha-from-history-with-directive" in results:
             match = re.search(r"\[collaborator (agent-[^;\]]+)", results)
@@ -254,7 +255,8 @@ def test_subagent_followup_resumes_durable_conversation(root, home, *, binary):
                 {
                     "operation": "followup",
                     "agent_id": match.group(1),
-                    "prompt": "directive cleared?",
+                    # An empty value is one that was not given.
+                    "prompt": "directive kept?",
                     "directive": "",
                     "background": False,
                 },
@@ -289,8 +291,8 @@ def test_subagent_followup_resumes_durable_conversation(root, home, *, binary):
         assert_true(len(sessions) == 1, sessions)
         text = sessions[0].read_text(encoding="utf-8")
         role = json.loads(text.split("\n", 1)[0])["delegation"]
-        assert_true(role["directive"] == "", role)
-        assert_true(role["label"] == "directive cleared?", role)
+        assert_true(role["directive"] == "always mention beta", role)
+        assert_true(role["label"] == "directive kept?", role)
         # A child has to know it is one: guidance can arrive mid-run as an
         # ordinary user message, which it cannot infer from its own prompt.
         assert_true("[collaborator:" in text, sessions[0])

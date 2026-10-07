@@ -26,6 +26,10 @@
 
 ### Changed
 
+- `subagent`: an empty `name`, `description` or `directive` is one that was
+  not given. An empty directive used to clear the stored one, so a model
+  that fills in every optional field wiped it on each follow-up and was
+  refused on `message`; a new directive replaces the old.
 - A command started by `run`, a scratch script and an MCP server are no
   longer told uagent's settings (`UAGENT_MODEL`, `UAGENT_BASE_URL` and the
   rest). A program that reads them, such as a test of uagent itself, sees

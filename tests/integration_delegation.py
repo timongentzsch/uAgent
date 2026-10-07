@@ -923,6 +923,36 @@ def test_subagent_foreground_outlives_the_per_call_budget(root, home, *, binary)
         assert_true(result.stdout.strip() == "slow-child-ok", result.stdout)
 
 
+def test_a_background_child_keeps_its_own_time_limit(root, home, *, binary):
+    """limits.seconds stops a child nobody is waiting on, and it still answers."""
+
+    def route(_, body):
+        messages = body["messages"]
+        if has_message(messages, "user", "child"):
+            if "No further tool call will run" in str(messages[-1].get("content")):
+                return event({"content": "child-out-of-time"})
+            return tool_call("run", {"command": "sleep 30"})
+        results = tool_results(messages)
+        report = next((result for result in results if "child-out-of-time" in result), "")
+        if report:
+            assert_true("child stopped: turn_deadline" in report, report)
+            return event({"content": "time-limit-ok"})
+        if any("[started] subagent id " in result for result in results):
+            return tool_call("activity", {"operation": "wait", "wait_ms": 30000})
+        return tool_call(
+            "subagent", {"prompt": "child", "background": True, "limits": {"seconds": 1}}
+        )
+
+    with Server([route]) as server:
+        started = time.monotonic()
+        result = run(
+            root, base_env(home, server.url), "--yolo", "-p", "delegate", timeout=30, binary=binary
+        )
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "time-limit-ok", result.stdout)
+        assert_true(time.monotonic() - started < 15, "the child outlived its limit")
+
+
 def test_subagent_clamps_are_reported_not_silent(root, home, *, binary):
     """A background launch and its completion both retain host clamps."""
 

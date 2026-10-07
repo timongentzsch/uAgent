@@ -47,6 +47,9 @@
 
 ### Fixed
 
+- `subagent`: `limits.seconds` stops a background child too. It was applied
+  only by a parent that waited, so a child started in the background ran
+  until someone stopped it.
 - `browser`: Enter sends a form and types a line break, and Backspace
   deletes. The keys reached only a page's own listeners.
 

@@ -22,11 +22,6 @@
 namespace uagent {
 namespace {
 
-std::string DefaultSearchModel() {
-  const std::string model = SettingText("OPENROUTER_MODEL");
-  return model.empty() ? std::string(kDefaultModelRoute) : model;
-}
-
 ToolResult SearchError(int64_t http_status, const std::string& detail) {
   std::string message = "error: web_search OpenRouter";
   if (http_status) message += " HTTP " + std::to_string(http_status);
@@ -88,13 +83,14 @@ WebSearchRoute SelectWebSearchRoute(
   }
   for (const NamedProvider& provider : providers) {
     if (provider.protocol != ProviderProtocol::kOpenRouter) continue;
-    candidates.push_back(
-        candidate(provider.base_url, provider.api_key, DefaultSearchModel()));
+    candidates.push_back(candidate(provider.base_url, provider.api_key,
+                                   std::string(kDefaultModelRoute)));
     break;
   }
   if (std::string key = SettingText(Cfg("OPENROUTER_API_KEY")); !key.empty()) {
     candidates.push_back(candidate("https://openrouter.ai/api/v1",
-                                   std::move(key), DefaultSearchModel()));
+                                   std::move(key),
+                                   std::string(kDefaultModelRoute)));
   }
   for (WebSearchRoute& winner : candidates) {
     if (winner.Valid()) return std::move(winner);

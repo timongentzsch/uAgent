@@ -619,8 +619,6 @@ void TestAgentConfigAllowlist() {
   namespace fs = std::filesystem;
   CHECK(AgentConfigKey("UAGENT_MODEL"));
   CHECK(AgentConfigKey("OPENROUTER_API_KEY"));
-  CHECK(AgentConfigKey("OPENROUTER_MODEL"));
-  CHECK(AgentConfigKey("OPENROUTER_EFFORT"));
   CHECK(!AgentConfigKey("OPENAI_API_KEY"));
   CHECK(!AgentConfigKey("UAGENT_INTERNAL_DEPTH"));
 
@@ -630,20 +628,14 @@ void TestAgentConfigAllowlist() {
   fs::create_directories(root / ".uagent");
   CHECK(ToolWriteFile((root / ".uagent/.config").string(),
                       "secret=test-key\n"
-                      "OPENROUTER_API_KEY=$secret\n"
-                      "OPENROUTER_MODEL=vendor/model\n"
-                      "OPENROUTER_EFFORT=high\n")
+                      "OPENROUTER_API_KEY=$secret\n")
             .output.starts_with("wrote "));
 
   ScopedEnv scoped_home("HOME", root.c_str());
   ScopedEnv scoped_key("OPENROUTER_API_KEY");
-  ScopedEnv scoped_model("OPENROUTER_MODEL");
-  ScopedEnv scoped_effort("OPENROUTER_EFFORT");
   ConfigManager loaded = ConfigManager::Capture(/*trust_project=*/false, {});
   (void)loaded.Initialize();
   CHECK(SettingText("OPENROUTER_API_KEY") == "test-key");
-  CHECK(SettingText("OPENROUTER_MODEL") == "vendor/model");
-  CHECK(SettingText("OPENROUTER_EFFORT") == "high");
 
   std::error_code ec;
   fs::remove_all(root, ec);
@@ -785,8 +777,6 @@ void TestProviderTemplates() {
       "test",
       "https://provider.test/v1",
       "UAGENT_TEST_PROVIDER_KEY",
-      "UAGENT_TEST_PROVIDER_MODEL",
-      "UAGENT_TEST_PROVIDER_EFFORT",
       "default-model",
       // Signature fixed by ProviderUrlMatcher, whose real implementations
       // consume the string they are handed.
@@ -797,16 +787,12 @@ void TestProviderTemplates() {
       false,
   };
   ScopedEnv scoped_key(kTestProvider.api_key_env, "test-key");
-  ScopedEnv scoped_model(kTestProvider.model_env, "selected-model");
-  ScopedEnv scoped_provider_effort(kTestProvider.effort_env, "low");
-  ScopedEnv scoped_effort("UAGENT_REASONING_EFFORT");
   RuntimeConfig config;
   Api api(config);
   CHECK(ApplyProviderTemplate(api, kTestProvider));
   CHECK(api.base_url == kTestProvider.base_url);
   CHECK(api.api_key == "test-key");
-  CHECK(api.model == "selected-model");
-  CHECK(api.reasoning_effort == "low");
+  CHECK(api.model == "default-model");
 }
 
 void TestNamedProviders() {

@@ -25,6 +25,10 @@
   conversation names one in the call (`model`). A coordinator starts on
   `UAGENT_MODEL`; `/model` inside it still changes it for that folder. A
   saved value for a removed setting has no effect.
+- **`OPENROUTER_MODEL` and `OPENROUTER_EFFORT` are no longer read.** Name the
+  model with `UAGENT_MODEL` (`model`) and the effort with
+  `UAGENT_REASONING_EFFORT` (`reasoningEffort`); `OPENROUTER_API_KEY` is
+  unchanged.
 
 ### Added
 

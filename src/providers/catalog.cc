@@ -18,8 +18,6 @@ constexpr ProviderTemplate kProviderTemplates[] = {{
     "openrouter",
     "https://openrouter.ai/api/v1",
     "OPENROUTER_API_KEY",
-    "OPENROUTER_MODEL",
-    "OPENROUTER_EFFORT",
     kDefaultModelRoute,
     OpenrouterUrl,
     ProviderProtocol::kOpenRouter,
@@ -65,13 +63,7 @@ bool ApplyProviderTemplate(Api& api, const ProviderTemplate& provider) {
   api.capabilities =
       CapabilitiesForRoute(provider.protocol, api.base_url, provider.wire_api,
                            provider.hosted_web_search);
-  if (api.model.empty()) {
-    api.model = SettingText(provider.model_env);
-    if (api.model.empty()) api.model = provider.default_model;
-  }
-  if (SettingText(Cfg("UAGENT_REASONING_EFFORT")).empty()) {
-    api.reasoning_effort = SettingText(provider.effort_env);
-  }
+  if (api.model.empty()) api.model = provider.default_model;
   return true;
 }
 

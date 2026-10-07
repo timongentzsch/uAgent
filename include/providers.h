@@ -75,8 +75,6 @@ struct ProviderTemplate {
   const char* name;
   const char* base_url;
   const char* api_key_env;
-  const char* model_env;
-  const char* effort_env;
   const char* default_model;
   ProviderUrlMatcher matches_url;
   ProviderProtocol protocol;

@@ -77,8 +77,9 @@ std::string Names(const std::vector<SessionInfo>& members,
       names += (names.empty() ? "" : ", ") + Name(member);
     }
   }
-  if (ids.contains(kSelf))
+  if (ids.contains(kSelf)) {
     names += (names.empty() ? "" : ", ") + std::string("the coordinator");
+  }
   return names;
 }
 }  // namespace

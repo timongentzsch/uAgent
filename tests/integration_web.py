@@ -2755,20 +2755,23 @@ def test_a_subagent_gets_no_tool_its_parent_switched_off(root, home, *, binary):
             client.command("tools", session, operation="set", name="write_file", active=False)
             client.command("submit", session, text="go")
 
-            def ceiling_kept():
+            def ceiling_kept(answers):
                 done = client.until(
                     session,
-                    # Idle again once the parent has taken up the result.
+                    # Idle again once the parent has answered the result: the
+                    # turn that takes it up has ended, not merely begun. Idle
+                    # alone may be the moment before that turn starts.
                     lambda value: (
                         "child" in offered
                         and value["metadata"]["status"] == "idle"
                         and all(
                             row["status"] == "completed" for row in value["state"]["activities"]
                         )
-                        and any(
-                            "[subagent finished" in json.dumps(body["messages"])
-                            for _, body in provider.requests
+                        and sum(
+                            block.get("kind") == "assistant" and block.get("text") == "parent-done"
+                            for block in value["state"].get("view", {}).get("blocks", [])
                         )
+                        >= answers
                     ),
                 )
                 assert_true("write_file" not in offered["parent"], offered["parent"])
@@ -2777,12 +2780,12 @@ def test_a_subagent_gets_no_tool_its_parent_switched_off(root, home, *, binary):
                 assert_true("write_file" not in child and "read_path" in child, child)
                 return done["state"]["activities"][0]["agent_id"]
 
-            child = ceiling_kept()
+            child = ceiling_kept(2)
             # A person's follow-up to it is no decision about tools either.
             client.command(
                 "activity", session, operation="followup", agent_id=child, text="child-task more"
             )
-            ceiling_kept()
+            ceiling_kept(3)
 
 
 def test_web_interrupt_stops_a_command_that_ignores_being_asked(root, home, *, binary):

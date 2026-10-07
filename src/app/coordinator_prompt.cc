@@ -172,6 +172,15 @@ int CoordinatorPromptMain(const Options& options) {
     printf("%s\n", answer.c_str());
   }
   const std::string reason = JsonValue(stop, "reason", "completed");
-  return reason == "completed" ? 0 : 1;
+  if (reason == "completed") return 0;
+  // Why there is no answer, where a person running this would look for it.
+  if (!options.json) {
+    const std::string detail = JsonValue(stop, "detail", "");
+    fprintf(
+        stderr, "%s\n",
+        TerminalSafe(detail.empty() ? "the turn stopped: " + reason : detail)
+            .c_str());
+  }
+  return 1;
 }
 }  // namespace uagent::session

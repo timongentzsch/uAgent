@@ -129,6 +129,15 @@ def test_coordinator_answers_headless_and_lists_the_board(root, home, *, binary)
     assert_true(code == 0, output)
 
 
+def test_a_headless_coordinator_says_why_it_has_no_answer(root, home, *, binary):
+    # Nothing listens at this address.
+    env = base_env(home, "http://127.0.0.1:9")
+    result = run(root, env, "coord", "-p", "hello", binary=binary, timeout=budget(60))
+    assert_true(result.returncode == 1, result)
+    assert_true(result.stdout.strip() == "", repr(result.stdout))
+    assert_true("connect" in result.stderr, repr(result.stderr))
+
+
 def test_coordinator_saves_memory_unasked_but_forgets_only_with_the_user(root, home, *, binary):
     with Server(
         [

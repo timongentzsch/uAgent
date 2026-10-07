@@ -57,6 +57,8 @@
 
 ### Changed
 
+- `uagent coord -p` says on standard error why a run ended without an
+  answer; it used to exit 1 with nothing printed.
 - Settings: named providers are edited as what they are, one block each with
   its address, its key and the API it speaks, instead of one JSON field. A
   key is never shown, and one that is not retyped is kept. "Show the file"

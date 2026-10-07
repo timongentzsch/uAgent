@@ -469,27 +469,8 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                       ReloadPolicy::kNextUserTurn, "delegation",
                       "wall-clock ceiling per delegated child; 0 is the turn"),
         "Sub-agent time limit"),
-    registry::Named(
-        registry::Fallback(
-            registry::Str("UAGENT_SUBAGENT_MODEL", {}, "",
-                          ReloadPolicy::kNextUserTurn, Sensitivity::kPublic,
-                          "delegation",
-                          "default model route for delegated children"),
-            "UAGENT_MODEL"),
-        "Sub-agent model", "Runs the side tasks a conversation delegates"),
 
     // Coordination.
-    registry::Named(
-        registry::Fallback(
-            registry::Str("UAGENT_COORDINATOR_MODEL", {}, "",
-                          ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
-                          "coordination",
-                          "model route of each folder's coordinator; /model "
-                          "inside it overrides this for that folder"),
-            "UAGENT_MODEL"),
-        "Coordinator model",
-        "Plans and supervises a folder's threads; /model inside a coordinator "
-        "overrides it there"),
     registry::Named(
         registry::Int("UAGENT_COORDINATOR_MAX_THREADS", {}, 5, 1, 64,
                       ReloadPolicy::kNextUserTurn, "coordination",

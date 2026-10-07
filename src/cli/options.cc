@@ -56,8 +56,6 @@ constexpr FlagSpec kFlags[] = {
      "conversation model as [provider/]model[:variant][:effort]"},
     {"--image-model", FlagKind::kConfig, nullptr, "UAGENT_IMAGE_MODEL",
      "SELECTION", "read attached images with this model route"},
-    {"--subagent-model", FlagKind::kConfig, nullptr, "UAGENT_SUBAGENT_MODEL",
-     "SELECTION", "default model route for delegated subagents"},
     {"--web-search-model", FlagKind::kConfig, nullptr,
      "UAGENT_WEB_SEARCH_MODEL", "SELECTION", "model route for web search"},
     {"--memory-model", FlagKind::kConfig, nullptr, "UAGENT_MEMORY_MODEL",

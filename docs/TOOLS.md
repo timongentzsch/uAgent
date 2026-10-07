@@ -118,8 +118,8 @@ activity ID at once.
 - `mode` is `lean` by default (read and run, no file-editing tools); `full`
   adds the editing tools and lets the child delegate in turn. A child never
   gets a tool its parent has switched off.
-- `model` picks the child's route; without it `UAGENT_SUBAGENT_MODEL`
-  applies, else the parent's route.
+- `model` picks the child's route; without it the child runs on the
+  parent's.
 - `limits` lowers or raises `steps`, `tool_calls`, `seconds` and `cost` for
   one child, within the session's remaining budgets; `memory=false` withholds
   memory.

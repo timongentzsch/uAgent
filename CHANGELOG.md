@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Upgrade notes
+
+- **`UAGENT_SUBAGENT_MODEL`, `--subagent-model` and
+  `UAGENT_COORDINATOR_MODEL` are gone.** A subagent and a coordinator's
+  thread run on the model of the conversation that starts them, unless that
+  conversation names one in the call (`model`). A coordinator starts on
+  `UAGENT_MODEL`; `/model` inside it still changes it for that folder. A
+  saved value for a removed setting has no effect.
+
 ### Added
 
 - `browser`: `type` fills a field in one call: with `x`, `y` and `view_id`

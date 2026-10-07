@@ -696,12 +696,6 @@ BootstrapResult Bootstrap(Options options, const char* executable,
       options.trust_project || TrustProjectConfig(), options.overrides);
   RuntimeConfig config = config_manager.Initialize();
   PrintWarning(config_manager.Problem());
-  // Route resolution reads UAGENT_MODEL; a coordinator starts on its own
-  // model. A /model saved in its session still wins on resume.
-  if (options.Coordinator() && !options.overrides.contains("UAGENT_MODEL")) {
-    const std::string model = CoordinatorModel();
-    if (!model.empty()) OverrideSetting("UAGENT_MODEL", model);
-  }
   if (memory_child && !BuildMemoryExtractionPrompt(memory_source, workspace,
                                                    options.prompt, error)) {
     return Failure(std::move(error), 2);

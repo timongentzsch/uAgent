@@ -62,6 +62,7 @@ class Chat {
  private:
   enum class Answer { kMessage, kPass, kWait };
   struct Seat {
+    int64_t turns = 0;    // turns begun this round
     int posts = 0;        // messages this round
     bool waited = false;  // its last answer was to wait
   };
@@ -82,7 +83,7 @@ class Chat {
 
   std::string folder_;
   std::function<void(const std::string&)> wake_;
-  int64_t turns_ = 0;  // turns this round may still start
+  int64_t each_ = 0;  // turns one participant may take this round
   // Participants woken and not yet heard from, those who chose to wait (the
   // earliest first), and what each has done this round. A member is known by
   // its mailbox, the coordinator by kSelf.

@@ -44,6 +44,8 @@ constexpr size_t kReportBytes = size_t{8} * 1024;
 constexpr size_t kMessageBytes = size_t{8} * 1024;
 // Members one coordinator's chat may have.
 constexpr int64_t kChatMembers = 16;
+// How long a member's runtime may take to start on the mail that wakes it.
+constexpr int64_t kStartingMs = 30 * 1000;
 constexpr size_t kDiffBytes = size_t{16} * 1024;
 
 // "saved" without a runtime; else what its runtime said when it answered:
@@ -930,11 +932,15 @@ bool ThreadsOwe(const std::string& folder) {
           return true;
         }
         // A chat member woken and not yet heard from has an answer ahead
-        // as long as something can still bring it: its runtime, or the
-        // message that starts one.
+        // as long as something can still bring it: a runtime that does not
+        // wait on a person, or a wake-up sent moments ago that is starting
+        // one.
         const std::string box = MailboxIdFor(info.path);
-        return typing.contains(box) &&
-               (status != "saved" || !PendingMail(box).empty());
+        if (!typing.contains(box) || status == "needs you") return false;
+        return status != "saved" ||
+               std::ranges::any_of(PendingMail(box), [](const Mail& mail) {
+                 return NowMillis() - mail.created_ms < kStartingMs;
+               });
       })) {
     return true;
   }

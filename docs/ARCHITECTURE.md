@@ -159,7 +159,8 @@ participants, with no part of its own beyond its tools.
 - A file the user attaches reaches the members as its path in the message;
   they read what is shared in the coordinator's chat without review, like
   the folder itself.
-- The round (turns left, who is typing, who waits) is saved beside the
+- The round (each participant's turns and messages, who is typing, who
+  waits) is saved beside the
   coordinator's session, so a runtime that starts again takes it up. A
   member's answer is forwarded under an id derived from it: forwarded again
   after a crash, it is the mail its readers already have.

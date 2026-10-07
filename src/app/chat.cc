@@ -86,7 +86,7 @@ std::string Names(const std::vector<SessionInfo>& members,
 Chat::Chat(std::string folder, std::function<void(const std::string&)> wake)
     : folder_(std::move(folder)), wake_(std::move(wake)) {
   const json saved = ReadState(folder_);
-  turns_ = JsonValue(saved, "turns", int64_t{0});
+  each_ = JsonValue(saved, "each", int64_t{0});
   for (const char* list : {"typing", "waiting"}) {
     const json* ids = JsonArray(saved, list);
     if (!ids) continue;
@@ -101,20 +101,24 @@ Chat::Chat(std::string folder, std::function<void(const std::string&)> wake)
   }
   if (const json* seats = JsonObject(saved, "seats")) {
     for (const auto& [who, seat] : seats->items()) {
-      seats_[who] = {JsonValue(seat, "posts", 0),
+      seats_[who] = {JsonValue(seat, "turns", int64_t{0}),
+                     JsonValue(seat, "posts", 0),
                      JsonValue(seat, "waited", false)};
     }
   }
+  // A runtime that starts again has no turn of its own under way.
+  typing_.erase(kSelf);
 }
 
 void Chat::Save() const {
   json seats = json::object();
   for (const auto& [who, seat] : seats_) {
-    seats[who] = {{"posts", seat.posts}, {"waited", seat.waited}};
+    seats[who] = {
+        {"turns", seat.turns}, {"posts", seat.posts}, {"waited", seat.waited}};
   }
   std::string error;
   if (!AtomicWriteFile(StatePath(folder_),
-                       JsonDump({{"turns", turns_},
+                       JsonDump({{"each", each_},
                                  {"typing", typing_},
                                  {"waiting", waiting_},
                                  {"seats", std::move(seats)}}),
@@ -200,10 +204,11 @@ bool Chat::Wakes(const std::string& who, bool any_named, bool named) {
   // Whoever waited, waited for this.
   const bool waited = std::erase(waiting_, who) > 0;
   // Whoever is writing what may be its last message reads this one after.
-  const int ahead = seats_[who].posts + (typing_.contains(who) ? 1 : 0);
-  if (turns_ <= 0 || ahead >= kPostsEach) return false;
+  Seat& seat = seats_[who];
+  const int ahead = seat.posts + (typing_.contains(who) ? 1 : 0);
+  if (seat.turns >= each_ || ahead >= kPostsEach) return false;
   if (!waited && any_named && !named) return false;
-  --turns_;
+  ++seat.turns;
   typing_.insert(who);
   return true;
 }
@@ -260,7 +265,7 @@ bool Chat::Deliver(const std::string& from, const std::string& author,
       DebugLog("chat_mail_refused", {{"error", refused}});
       // Owed nothing it was not sent.
       if (wake) {
-        ++turns_;
+        --seats_[to].turns;
         typing_.erase(to);
       }
       continue;
@@ -285,54 +290,53 @@ bool Chat::Deliver(const std::string& from, const std::string& author,
 }
 
 void Chat::Release(const std::vector<SessionInfo>& members) {
-  if (!typing_.empty() || waiting_.empty()) return;
-  const std::string who = waiting_.front();
-  waiting_.erase(waiting_.begin());
-  if (turns_ <= 0) {
-    waiting_.clear();
-    return;
-  }
-  --turns_;
-  typing_.insert(who);
   const std::string note = "[chat, not a user message] Nobody is typing now.";
-  if (who == kSelf) {
-    wake_(note);
-    return;
+  // The first waiter that can still be woken; one that cannot is passed
+  // over, so nobody waits behind it.
+  while (typing_.empty() && !waiting_.empty()) {
+    const std::string who = waiting_.front();
+    waiting_.erase(waiting_.begin());
+    Seat& seat = seats_[who];
+    if (seat.turns >= each_) continue;
+    if (who == kSelf) {
+      ++seat.turns;
+      typing_.insert(who);
+      wake_(note);
+      return;
+    }
+    const auto member = std::ranges::find_if(members, [&](const auto& item) {
+      return MailboxIdFor(item.path) == who;
+    });
+    if (member == members.end()) continue;
+    Mail mail;
+    mail.to = who;
+    mail.sender_path = CoordinatorPath(folder_);
+    mail.from = MailboxIdFor(mail.sender_path);
+    mail.type = kMailChat;
+    mail.body = {{"text", note}, {"quiet", false}};
+    if (!SendMail(std::move(mail)).empty()) continue;
+    ++seat.turns;
+    typing_.insert(who);
+    std::thread([member = *member] {
+      std::string error;
+      session::Open(ExecutablePath(), member.cwd, member.path, "", Options{},
+                    error);
+    }).detach();
   }
-  const auto member = std::ranges::find_if(members, [&](const auto& item) {
-    return MailboxIdFor(item.path) == who;
-  });
-  if (member == members.end()) {
-    typing_.erase(who);
-    return;
-  }
-  Mail mail;
-  mail.to = who;
-  mail.sender_path = CoordinatorPath(folder_);
-  mail.from = MailboxIdFor(mail.sender_path);
-  mail.type = kMailChat;
-  mail.body = {{"text", note}, {"quiet", false}};
-  if (!SendMail(std::move(mail)).empty()) typing_.erase(who);
-  std::thread([member = *member] {
-    std::string error;
-    session::Open(ExecutablePath(), member.cwd, member.path, "", Options{},
-                  error);
-  }).detach();
 }
 
 void Chat::Said(const std::string& text) {
   const std::vector<SessionInfo> members = ChatMembers(folder_);
   if (members.empty()) return;
   // A new round: whoever still owed an answer to the last one owes none.
-  turns_ = LongSetting(Cfg("UAGENT_COORDINATOR_CHAT_TURNS")) *
-           static_cast<int64_t>(members.size() + 1);
+  each_ = LongSetting(Cfg("UAGENT_COORDINATOR_CHAT_TURNS"));
   typing_.clear();
   waiting_.clear();
   seats_.clear();
   // The coordinator answers its user's message like any other, unless it is
   // for members alone.
   if (!ForMembersOnly(folder_, text)) {
-    --turns_;
+    seats_[kSelf].turns = 1;
     typing_.insert(kSelf);
   }
   Deliver("", "The user", text);

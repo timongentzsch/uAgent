@@ -24,6 +24,7 @@ cmake --build --preset debug --parallel
 | one web spec in a browser | `npm run build`, then `npm run test:spec -- tests/ui.spec.js` in `web/` | 10 s + the spec |
 | everything before a commit | `ctest --preset debug` | 20–40 s |
 | web work before a push | `npm run test:browser` in `web/` (both browsers) | minutes |
+| what only CI's compilers and linters report | `.github/ci-local.sh` | minutes; incremental after the first run |
 
 Style checks (clang-format, cpplint, clang-tidy, Ruff, Prettier) are in
 [CONTRIBUTING.md](../CONTRIBUTING.md). [CI](#ci) lists what a pull request
@@ -255,12 +256,14 @@ so a green pull request is a green `master`.
 | Job | Runs |
 | --- | --- |
 | `build-and-test` | Release builds with Web Push on Linux x86_64, Linux ARM64 and macOS ARM64; `ctest -LE source`; generated-reference check (Linux x86_64); packaging |
+| `variants` | CLI-only and no-browser Release builds with their tests |
 | `sanitizers` | `sanitize` preset, `ctest -LE source` |
 | `thread-sanitizer` | `tsan` preset: `core`, `integration_runtime`, `integration_tools`, `integration_web` |
 | `fuzzers` | SSE and input-decoder smoke runs |
 | `coverage` | `core` and every integration group with a branch report; fails under 67% line coverage |
 | `python` | Ruff check and format; `ctest -L source` |
-| `cpp-style` | clang-format, cpplint and clang-tidy |
+| `cpp-style` | clang-format and cpplint |
+| `clang-tidy` | clang-tidy, translation units split across three runners |
 | `web` | Prettier check, Node tests, bundle, notices and size checks, a release host with Web Push, Playwright in Chromium and WebKit |
 | `CI result` | fails if any required job failed or was cancelled |
 

@@ -44,16 +44,18 @@ jobs:
       - name: Install dependencies
         if: steps.changes.outputs.native == 'true'
         run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev
+      # CodeQL reads the compiler invocations, not the binary, so an unoptimised
+      # build without the release link-time optimisation is enough.
       - name: Configure
         if: steps.changes.outputs.native == 'true'
         run: >-
           cmake -S . -B build
-          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_BUILD_TYPE=Debug
           -DBUILD_TESTING=OFF
           -DUAGENT_WARNINGS_AS_ERRORS=ON
       - name: Build
         if: steps.changes.outputs.native == 'true'
-        run: cmake --build build --parallel 2
+        run: cmake --build build --parallel 4
       - name: Analyze
         if: steps.changes.outputs.native == 'true'
         uses: github/codeql-action/analyze@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8

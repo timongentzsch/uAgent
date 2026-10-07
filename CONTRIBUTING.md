@@ -65,23 +65,13 @@ Commit `web/THIRD_PARTY_NOTICES.md` when dependencies change; CI fails when
 it differs from a fresh `npm run notices`. `npm run test:browser` runs the
 Playwright suite against a native host; see [Testing](docs/TESTING.md).
 
-CI also runs cpplint and clang-tidy. Configure clang-tidy through the `tidy`
-preset: it disables the precompiled header, which another clang cannot read.
-On macOS use Homebrew LLVM with the Apple SDK, since upstream clang-tidy cannot
-parse the SDK's libc++ headers without `-isysroot`:
-
-```sh
-uvx --from cpplint==2.0.2 cpplint --recursive --exclude=third_party \
-  --exclude=tests/fixtures --extensions=h,cc \
-  --filter=-build/c++17,-build/header_guard,-whitespace/indent_namespace,-readability/check \
-  include src tests benchmarks
-
-cmake --preset tidy
-$(brew --prefix llvm)/bin/run-clang-tidy \
-  -clang-tidy-binary $(brew --prefix llvm)/bin/clang-tidy \
-  -p build/tidy -header-filter='.*/(include|src|tests|benchmarks)/.*' -quiet \
-  -extra-arg=-isysroot$(xcrun --show-sdk-path)
-```
+CI also checks clang-format, cpplint, clang-tidy, the generated references
+and a GCC 13 build with warnings as errors, none of which a macOS build
+shows. `.github/ci-local.sh` runs them before a push, the compiler checks
+inside the Ubuntu image CI uses. It needs uv and Docker. The first run builds
+everything and later ones only what changed; clang-tidy reads the changed
+sources, or every source when a header changed. Both scale with the cores
+Docker is given.
 
 Before a release, also run the `release`, `sanitize`, `tsan`, `fuzz` and
 `coverage` presets. Benchmarks are trend signals, not correctness gates.

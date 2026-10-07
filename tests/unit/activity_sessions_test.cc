@@ -42,11 +42,33 @@
 
 namespace uagent {
 namespace {
+// A background command's first output belongs to whichever call reads it
+// first, and on a loaded host that is the call that started it. A command
+// held here prints nothing until Open(), so what it prints is still to come
+// when the start has returned.
+class Gate {
+ public:
+  ~Gate() { unlink(path_.c_str()); }
+  std::string Hold(const std::string& command) const {
+    return "while [ ! -e '" + path_ + "' ]; do sleep 0.01; done; " + command;
+  }
+  void Open() const { std::ofstream{path_}; }
+
+ private:
+  std::string path_ =
+      (std::filesystem::temp_directory_path() /
+       ("uagent-gate-" + std::to_string(getpid()) + "-" +
+        std::to_string(
+            std::chrono::steady_clock::now().time_since_epoch().count())))
+          .string();
+};
+
 // Blocks until the activity behind `job` has drained its output, or until the
 // timeout expires; returns whether it drained.
 inline bool WaitForActivityDrain(
     ProcessSupervisor& supervisor, const BgJob& job,
-    std::chrono::milliseconds timeout = std::chrono::seconds(2)) {
+    std::chrono::milliseconds timeout =
+        std::chrono::milliseconds(BudgetMs(2000))) {
   if (!job.session) return false;
   const auto deadline = std::chrono::steady_clock::now() + timeout;
   for (;;) {
@@ -462,7 +484,7 @@ void TestActivitySessions() {
     CHECK(yielded.Ok());
     CHECK(yielded.output.find("[running] activity") != std::string::npos);
     for (const BgJob& job : automatic_yield.Snapshot()) {
-      CHECK(ToolActivityStop(automatic_yield, ActivityId(job)).Ok());
+      CHECK_OK(ToolActivityStop(automatic_yield, ActivityId(job)));
     }
   }
 
@@ -734,7 +756,7 @@ void TestActivityWaitAndDelivery() {
     CHECK(interrupted.output.find("wait cancelled") != std::string::npos);
     CHECK(wait_time < std::chrono::milliseconds(500));
     CHECK(SteeringState().Take());
-    CHECK(ToolActivityStop(steering_wait, ActivityId(steering_jobs[0])).Ok());
+    CHECK_OK(ToolActivityStop(steering_wait, ActivityId(steering_jobs[0])));
   }
 
   ProcessSupervisor steering_yield;
@@ -777,7 +799,7 @@ void TestActivityWaitAndDelivery() {
     CHECK(ProcessGroupAlive(steering_yield_jobs[0].pid));
     queued = SteeringState().TakeMessages();
     CHECK(queued.size() == 1 && queued[0].text == "inspect output");
-    CHECK(ToolActivityStop(steering_yield, id).Ok());
+    CHECK_OK(ToolActivityStop(steering_yield, id));
   }
 
   ProcessSupervisor no_duplicate_completion;
@@ -807,11 +829,13 @@ void TestActivityWaitAndDelivery() {
   {
     ProcessSupervisor bounded_completion;
     ScopedEnv scoped_result_cap("UAGENT_TOOL_RESULT_CHARS", "8000");
+    Gate gate;
     CHECK(RunShellCommand(bounded_completion, context,
-                          {.command = "printf '%7000s' x",
+                          {.command = gate.Hold("printf '%7000s' x"),
                            .background = true,
                            .immediate = true})
               .result.Ok());
+    gate.Open();
     std::vector<BgJob> bounded_jobs = bounded_completion.Snapshot();
     CHECK(bounded_jobs.size() == 1);
     if (!bounded_jobs.empty()) {
@@ -833,13 +857,16 @@ void TestActivityWaitAndDelivery() {
   }
 
   ProcessSupervisor incremental;
-  CHECK(
-      RunShellCommand(incremental, context,
-                      {.command = "printf 'Server '; sleep 0.1; printf ready; "
-                                  "sleep 0.1; printf done",
-                       .background = true,
-                       .immediate = true})
-          .result.Ok());
+  Gate incremental_gate;
+  CHECK(RunShellCommand(
+            incremental, context,
+            {.command = incremental_gate.Hold(
+                 "printf 'Server '; sleep 0.1; printf ready; sleep 0.1; "
+                 "printf done"),
+             .background = true,
+             .immediate = true})
+            .result.Ok());
+  incremental_gate.Open();
   std::vector<BgJob> incremental_jobs = incremental.Snapshot();
   CHECK(incremental_jobs.size() == 1);
   if (!incremental_jobs.empty()) {
@@ -877,8 +904,9 @@ void TestActivityWaitAndDelivery() {
   }
 
   ProcessSupervisor memory_activity;
+  Gate memory_gate;
   CHECK(RunShellCommand(memory_activity, context,
-                        {.command = "printf memory-done",
+                        {.command = memory_gate.Hold("printf memory-done"),
                          .background = true,
                          .immediate = true,
                          .activity_kind = ActivityKind::kMemory,
@@ -886,6 +914,7 @@ void TestActivityWaitAndDelivery() {
                          .receipt_path = "/tmp/receipt-123.json",
                          .source_id = "source-123"})
             .result.Ok());
+  memory_gate.Open();
   std::vector<BgJob> memory_jobs = memory_activity.Snapshot();
   CHECK(memory_jobs.size() == 1);
   CHECK(
@@ -919,12 +948,15 @@ void TestActivityWaitAndDelivery() {
   }
 
   ProcessSupervisor delivery_race;
-  CHECK(RunShellCommand(delivery_race, context,
-                        {.command = "sleep 0.05; printf \"$RACE_VALUE\"",
-                         .background = true,
-                         .immediate = true,
-                         .environment = {{"RACE_VALUE", "delivery-token"}}})
-            .result.Ok());
+  Gate delivery_gate;
+  CHECK(
+      RunShellCommand(delivery_race, context,
+                      {.command = delivery_gate.Hold("printf \"$RACE_VALUE\""),
+                       .background = true,
+                       .immediate = true,
+                       .environment = {{"RACE_VALUE", "delivery-token"}}})
+          .result.Ok());
+  delivery_gate.Open();
   std::vector<BgJob> delivery_jobs = delivery_race.Snapshot();
   CHECK(delivery_jobs.size() == 1);
   if (!delivery_jobs.empty()) {
@@ -970,7 +1002,7 @@ void TestActivityWaitAndDelivery() {
   CHECK(parallel_handoff.ForegroundCount() == 0);
   CHECK(parallel_handoff.PendingCount() == 3);
   for (const BgJob& job : parallel_handoff.Snapshot()) {
-    CHECK(ToolActivityStop(parallel_handoff, ActivityId(job)).Ok());
+    CHECK_OK(ToolActivityStop(parallel_handoff, ActivityId(job)));
   }
 
   ProcessSupervisor handoff;
@@ -989,7 +1021,7 @@ void TestActivityWaitAndDelivery() {
   CHECK(handed_off.size() == 1);
   if (!handed_off.empty()) {
     CHECK(ProcessGroupAlive(handed_off[0].pid));
-    CHECK(ToolActivityStop(handoff, ActivityId(handed_off[0])).Ok());
+    CHECK_OK(ToolActivityStop(handoff, ActivityId(handed_off[0])));
   }
 }
 

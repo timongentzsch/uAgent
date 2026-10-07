@@ -49,7 +49,9 @@
   everyone's, and the coordinator takes the floor when the members have
   spoken. `UAGENT_COORDINATOR_CHAT_TURNS` (`coordinator.chatTurns`, 12) caps
   the member turns one message of yours can start; `remove_member` takes a
-  member out.
+  member out. In the web, members are listed on the board, shown typing
+  while they answer, offered after `@` in the composer, and their messages
+  appear under their names.
 
 ### Changed
 

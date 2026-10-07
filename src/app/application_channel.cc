@@ -87,7 +87,11 @@ int Application::RunChannel() {
       for (auto& attachment : input->attachments) {
         attachments_.push_back(std::move(attachment));
       }
-      ProcessInput(std::move(input->text));
+      if (input->quiet) {
+        agent_.Say(input->text, input->request_id);
+      } else {
+        ProcessInput(std::move(input->text));
+      }
     }
     SaveSession(input->title.has_value());
     if (!input->title && !input->control.is_null()) {

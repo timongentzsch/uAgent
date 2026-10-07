@@ -182,6 +182,11 @@ export default function ChatPage({
     !blocks.at(-1)?.id.startsWith("outgoing-")
       ? stop.reason
       : undefined;
+  // A coordinator's board, escalations and chat read the same threads.
+  const threads =
+    session?.kind === "coordinator"
+      ? threadsOf(catalogue.sessions, session.cwd || "")
+      : undefined;
   // The conversation's composer; before the session is known, the same
   // composer drawn from a sample (see <Placeholder>).
   const composerFor = (item: Session) => (
@@ -218,13 +223,9 @@ export default function ChatPage({
       openBrowser={() => setModal({ type: "browser", handoff: true })}
       stopped={stopped}
       resume={actions.resume}
+      members={threads?.filter((thread) => thread.member)}
     />
   );
-  // A coordinator's board and escalations read the same threads.
-  const threads =
-    session?.kind === "coordinator"
-      ? threadsOf(catalogue.sessions, session.cwd || "")
-      : undefined;
   return session ? (
     <CoordinatorLayout
       board={

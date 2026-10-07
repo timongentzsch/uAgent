@@ -24,17 +24,23 @@ export default function Board({
   );
   const working = (item: Session) => online && item.turn_active;
   // Each group with how many rows it lists: what is done shows the latest
-  // few, and the rest stay in the sidebar.
+  // few, and the rest stay in the sidebar. The chat's members are neither
+  // working nor done: they are there.
   const groups: [string, Session[], number][] = [
     ["Needs you", waiting(managed), Infinity],
     [
+      "Members",
+      managed.filter((item) => !item.pending && item.member),
+      Infinity,
+    ],
+    [
       "Working",
-      managed.filter((item) => !item.pending && working(item)),
+      managed.filter((item) => !item.pending && !item.member && working(item)),
       Infinity,
     ],
     [
       "Done",
-      managed.filter((item) => !item.pending && !working(item)),
+      managed.filter((item) => !item.pending && !item.member && !working(item)),
       DONE_SHOWN,
     ],
   ];
@@ -58,7 +64,9 @@ export default function Board({
                 item.pending
                   ? "Needs your input"
                   : working(item)
-                    ? item.activity || "Working"
+                    ? item.member
+                      ? "Typing…"
+                      : item.activity || "Working"
                     : item.updated && <Time value={item.updated} />
               }
             />

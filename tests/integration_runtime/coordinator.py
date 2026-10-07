@@ -1139,23 +1139,21 @@ def test_a_chat_wakes_whom_a_message_is_for_and_hears_who_has_something_to_add(
         assert_true("[Ada in the chat, not a user message; their view" in text, text)
         assert_true("PASS" not in text, text)
 
-        # A message that names a member wakes that member alone; the others
-        # read it when they are next woken.
+        # A message that names a member is that member's alone: nobody else
+        # is woken, the coordinator included, which reads the answer when it
+        # next has a turn.
         server.requests.clear()
         result = run(root, env, "coord", "-p", "@lin only you", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         wait_until(lambda: asked(server, "Lin", "only you"), "Lin was not woken")
-        wait_until(
-            lambda: any(
-                not _member(b) and "Just me, then." in json.dumps(b["messages"])
-                for _, b in server.requests
-            ),
-            "the coordinator never read Lin",
-        )
+        time.sleep(budget(1))
         assert_true(not asked(server, "Ada", "only you"), server.requests)
+        assert_true(all(_member(b) for _, b in server.requests), server.requests)
 
         result = run(root, env, "coord", "-p", "let Lin go", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
+        text = json.dumps(server.requests[-1][1]["messages"])
+        assert_true("@lin only you" in text and "Just me, then." in text, text)
         left = [path for path in session_files(home) if path.name.startswith("thread-")]
         assert_true(len(left) == 1, left)
 

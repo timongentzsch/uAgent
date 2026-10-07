@@ -205,6 +205,10 @@ class Agent {
   void NotFromUser(const std::string& text, const std::string& author = "") {
     not_user_.emplace_back(text, author);
   }
+  // The person's message, written into the conversation without a turn.
+  void Say(const std::string& text, const std::string& request_id) {
+    PushUserInput(text, false, json(), request_id);
+  }
   // A coordinator's chat (app/chat.h): `said` hears what a person writes
   // here, `heard` is handed each message from another session before it is
   // delivered and may rewrite it.

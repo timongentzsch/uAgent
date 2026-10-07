@@ -74,6 +74,11 @@
     opacity: 0;
   }
 }
+/* A chat member's message opens with its name on a line of its own. */
+.message.member > header {
+  float: none;
+  margin-left: 0;
+}
 .message > header > .actor {
   font-weight: 600;
 }

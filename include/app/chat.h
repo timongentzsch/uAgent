@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "include/agent/session_store.h"
@@ -14,10 +15,15 @@ namespace uagent {
 // name and a persona, oldest first.
 std::vector<SessionInfo> ChatMembers(const std::string& folder);
 
+// Whether `text` is for members of the folder's chat alone: it names one with
+// @ and not the coordinator.
+bool ForMembersOnly(const std::string& folder, const std::string& text);
+
 // A coordinator's chat with its members. What anyone writes reaches every
 // member; who is woken to answer it is settled here, never by a model: those
 // a message names with @, or everyone when it names nobody. A member answers
-// or passes, and the coordinator takes the floor once nobody is owed a turn.
+// or passes, and the coordinator takes the floor once nobody is owed a turn,
+// unless the user's message was for members alone.
 // One message of the user's starts at most UAGENT_COORDINATOR_CHAT_TURNS
 // member turns, so no exchange runs on by itself.
 class Chat {
@@ -36,8 +42,9 @@ class Chat {
 
   std::string folder_;
   int64_t turns_ = 0;  // member turns this round may still start
-  bool posted_ =
-      false;  // a member wrote since the coordinator last had the floor
+  // A member wrote since the coordinator last had the floor, and whether the
+  // floor returns to it when the members are done.
+  bool posted_ = false, moderated_ = true;
   std::set<std::string> awaited_;  // mailboxes of the members owing a turn
 };
 }  // namespace uagent

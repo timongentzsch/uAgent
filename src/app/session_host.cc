@@ -167,6 +167,7 @@ bool SessionHost::RefreshCatalogue(bool force) {
     session.cwd = item.cwd;
     session.kind = item.kind;
     session.folder = JsonValue(item.thread, "folder", "");
+    session.member = JsonValue(ChatMember(item.thread), "name", "");
     session.incoming = std::max(session.incoming, item.incoming);
     session.title = item.title;
     const FileStamp stamp = SnapshotFile(item.path);
@@ -275,6 +276,7 @@ json SessionHost::Metadata(const HostSession& session) const {
       {"cwd", session.cwd},
       {"kind", session.kind},
       {"folder", session.folder},
+      {"member", session.member},
       {"title", session.title},
       {"generation", session.generation},
       {"status", session.status},

@@ -37,6 +37,9 @@ struct ApplicationInput {
   json control{};
   std::vector<Attachment> attachments{};
   bool wake = false;
+  // The text joins the conversation as the person's message and starts no
+  // turn: a coordinator's chat message for its members alone.
+  bool quiet = false;
   std::optional<std::string> title{};
 };
 

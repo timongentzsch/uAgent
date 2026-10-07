@@ -48,6 +48,14 @@ bool Passes(const std::string& text) {
 }
 }  // namespace
 
+bool ForMembersOnly(const std::string& folder, const std::string& text) {
+  return text.find('@') != std::string::npos &&
+         !Mentions(text, "coordinator") &&
+         std::ranges::any_of(ChatMembers(folder), [&](const auto& member) {
+           return Mentions(text, Name(member));
+         });
+}
+
 std::vector<SessionInfo> ChatMembers(const std::string& folder) {
   const std::string coordinator = CoordinatorId(folder);
   std::vector<SessionInfo> members;
@@ -114,10 +122,17 @@ void Chat::Said(const std::string& text, bool person) {
     turns_ = LongSetting(Cfg("UAGENT_COORDINATOR_CHAT_TURNS"));
     posted_ = false;
   }
+  const bool coordinator = Mentions(text, "coordinator");
+  // What the coordinator asks comes back to it; what the user asks of
+  // members alone is theirs to answer.
+  moderated_ = !person || coordinator ||
+               std::ranges::none_of(members, [&](const auto& member) {
+                 return Mentions(text, Name(member));
+               });
   // The user's message is everyone's to answer unless it names the
   // coordinator; the coordinator's own wakes only whom it names.
   Tell(members, "", person ? "The user" : "The coordinator", text,
-       person && !Mentions(text, "coordinator"));
+       person && !coordinator);
 }
 
 void Chat::Heard(Mail& mail) {
@@ -144,7 +159,7 @@ void Chat::Heard(Mail& mail) {
   }
   // The coordinator answers once nobody is owed a turn, and only when
   // something was written. A member introducing itself was owed none.
-  const bool floor = owed && awaited_.empty() && posted_;
+  const bool floor = owed && awaited_.empty() && posted_ && moderated_;
   if (floor) {
     posted_ = false;
     if (JsonValue(mail.body, "text", "").empty()) {

@@ -50,6 +50,15 @@ import { permissionLabel, permissionLabels } from "../../shared/display.ts";
 // Prompts sent from this page per session, oldest first: Up and Down recall
 // them the way the terminal composer does.
 const sentPrompts = new Map<string, string[]>();
+const NO_MEMBERS: Session[] = [];
+
+// "Ada is typing…", for the members answering now.
+function typingLabel(names: string[]) {
+  if (!names.length) return "";
+  if (names.length === 1) return `${names[0]} is typing…`;
+  if (names.length === 2) return `${names[0]} and ${names[1]} are typing…`;
+  return `${names.length} members are typing…`;
+}
 
 export default function Composer({
   session,
@@ -75,6 +84,7 @@ export default function Composer({
   zoom,
   stopped,
   resume,
+  members = NO_MEMBERS,
 }: {
   session: Session;
   commands: SlashCommand[];
@@ -97,6 +107,9 @@ export default function Composer({
   showStatistics: () => void;
   openBrowser: () => void;
   zoom: number;
+  // The members of a coordinator's chat: whom @ can address, and who is
+  // answering right now.
+  members?: Session[];
   // Why the last turn stopped short, while nothing has been sent since.
   stopped?: string;
   // Continues that stopped turn.
@@ -114,18 +127,27 @@ export default function Composer({
   const [mentionIndex, setMentionIndex] = useState(-1);
   const [mentionClosed, setMentionClosed] = useState(false);
   const mention = matchMention(draft.text, caret);
-  const mentionCandidates = mention
-    ? mentionOptions(
-        draft.files.filter((item) => !item.pending),
-        mention.query,
-      )
-    : [];
+  // Members first: a name is typed as it stands, a file becomes a token.
+  const mentionCandidates: { id: string; name: string; bytes?: number }[] =
+    mention
+      ? [
+          ...mentionOptions(
+            members.map((item) => ({ id: "", name: item.member || "" })),
+            mention.query,
+          ),
+          ...mentionOptions(
+            draft.files.filter((item) => !item.pending),
+            mention.query,
+          ),
+        ]
+      : [];
   const mentionOpen =
     !!mention && !mentionClosed && mentionCandidates.length > 0;
-  const insertMention = (id: string) => {
-    const target = draft.files.find((item) => item.id === id);
+  const insertMention = (target?: { id: string; name: string }) => {
     if (!mention || !target || !input.current) return;
-    const token = `${encodeMention(target.name, target.id)} `;
+    const token = target.id
+      ? `${encodeMention(target.name, target.id)} `
+      : `@${target.name} `;
     setDraft({
       ...draft,
       text:
@@ -160,7 +182,7 @@ export default function Composer({
           Math.min(mentionIndex, mentionCandidates.length - 1)
         ] ??
         (mentionCandidates.length === 1 ? mentionCandidates[0] : undefined);
-      if (target && !event.repeat) insertMention(target.id);
+      if (target && !event.repeat) insertMention(target);
       else return false;
     } else return false;
     event.preventDefault();
@@ -317,7 +339,15 @@ export default function Composer({
           <span class="activity-toggle">
             <ActivityStatus
               phase={
-                detached || state?.activity || (state ? "Ready" : "Loading…")
+                detached ||
+                (!running &&
+                  typingLabel(
+                    members
+                      .filter((item) => online && item.turn_active)
+                      .map((item) => item.member || ""),
+                  )) ||
+                state?.activity ||
+                (state ? "Ready" : "Loading…")
               }
               running={running}
               started={state?.turn_started_ms}
@@ -362,17 +392,19 @@ export default function Composer({
         {mentionOpen && (
           <SuggestionList
             id="mention-suggestions"
-            label="Attached files"
+            label={
+              members.length ? "Members and attached files" : "Attached files"
+            }
             prefix="mention"
             items={mentionCandidates}
             index={mentionIndex}
-            pick={(item) => insertMention(item.id)}
-            keyOf={(item) => item.id}
+            pick={insertMention}
+            keyOf={(item) => item.id || item.name}
           >
             {(item) => (
               <>
                 <strong>@{item.name}</strong>
-                <span>{bytes(item.bytes)}</span>
+                <span>{item.id ? bytes(item.bytes || 0) : "Member"}</span>
               </>
             )}
           </SuggestionList>

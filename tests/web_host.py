@@ -9,6 +9,7 @@ import pathlib
 import signal
 import tempfile
 import threading
+import time
 
 from integration_support import Server, event, tool_call, write_sse_sequence
 from web_support import web_host
@@ -30,6 +31,21 @@ def answer(handler, body):
     prompt = str(texts[-1]) if texts else ""
     expected_model = "model-a" if prompt == "Retained follow-up" else "model-b"
     assert body.get("model") == expected_model, body.get("model")
+    # A coordinator's chat ("Chat probe"): it adds a member, which introduces
+    # itself, answers when asked for a second opinion and otherwise passes.
+    if ", a member of a chat" in str(body["messages"][0].get("content", "")):
+        if "Second opinion" in prompt:
+            time.sleep(2)
+            return event({"content": "I would ship it."})
+        return event({"content": "Ada here." if "joined the chat" in prompt else "PASS"})
+    if "Chat probe" in str(texts) and not any(
+        message.get("role") == "tool" for message in body["messages"]
+    ):
+        return tool_call(
+            "thread",
+            {"action": "add_member", "name": "Ada", "persona": "You give second opinions."},
+            call_id="add-ada",
+        )
     if "Summarize the bounded transcript" in str(body["messages"]):
         return event({"content": "COMPACT-PREVIEW-SUMMARY"})
     if prompt == "Delegate preview task" and not any(

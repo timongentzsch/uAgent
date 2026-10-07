@@ -21,6 +21,7 @@
 #include "include/agent/session_store.h"
 #include "include/agent/session_view.h"
 #include "include/app/bootstrap.h"
+#include "include/app/chat.h"
 #include "include/app/coordinator.h"
 #include "include/app/launch.h"
 #include "include/app/session.h"
@@ -688,6 +689,12 @@ class WorkerChannel final : public ApplicationChannel {
         break;
     }
     SessionCommandKind kind = parsed.kind;
+    // Read before the lock: it looks at the folder's session files.
+    const json* files = JsonArray(parsed.raw, "attachments");
+    const bool members_only = coordinator_ &&
+                              kind == SessionCommandKind::kSubmit &&
+                              (!files || files->empty()) &&
+                              ForMembersOnly(CanonicalCwd(), parsed.text);
     std::unique_lock lock(mutex_);
     if (kind == SessionCommandKind::kSteer && !turn_active_) {
       kind = SessionCommandKind::kSubmit;
@@ -780,7 +787,7 @@ class WorkerChannel final : public ApplicationChannel {
         if (QueueIdleControl(request, parsed.raw, error)) return true;
         break;
       case SessionCommandKind::kSubmit:
-        SubmitLocked(parsed, error);
+        SubmitLocked(parsed, members_only, error);
         break;
       case SessionCommandKind::kCreate:
       case SessionCommandKind::kDelete:
@@ -871,7 +878,10 @@ class WorkerChannel final : public ApplicationChannel {
 
   // A message during a turn is guidance; otherwise it takes the one-slot
   // input queue. The caller holds mutex_.
-  void SubmitLocked(const SessionCommand& parsed, std::string& error) {
+  // With `members_only` the message is written into a coordinator's chat for
+  // the members it names: it starts no turn of the coordinator's own.
+  void SubmitLocked(const SessionCommand& parsed, bool members_only,
+                    std::string& error) {
     if (turn_active_ && !parsed.text.empty() && !parsed.text.starts_with("/") &&
         !parsed.has_attachments) {
       if (SteeringState().QueuedCount() >= kGuidanceQueueLimit) {
@@ -893,6 +903,7 @@ class WorkerChannel final : public ApplicationChannel {
     ApplicationInput input;
     input.request_id = parsed.client_request_id;
     input.text = parsed.text;
+    input.quiet = members_only;
     json images = json::array();
     if (!ResolveCommandAttachments(parsed.raw, input.attachments, images,
                                    error)) {
@@ -908,8 +919,8 @@ class WorkerChannel final : public ApplicationChannel {
     if (!error.empty()) return;
     ClearAbort();
     busy_ = true;
-    turn_active_ =
-        !input.text.starts_with("/") || !SlashCommandPrompt(slash).empty();
+    turn_active_ = !members_only && (!input.text.starts_with("/") ||
+                                     !SlashCommandPrompt(slash).empty());
     if (turn_active_) BeginTurn();
     input_ = std::move(input);
     input_command_ = parsed.request_id;

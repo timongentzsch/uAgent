@@ -216,7 +216,7 @@ void TestSettingsStore() {
         R"({"format": 2, "projects": {}, "all": {"model": "kept",)"
         R"( "limits.maxSteps": "many", "limits.maxToolCalls": -4,)"
         R"( "limits.maxTurnSeconds": false, "title.model": 7,)"
-        R"( "sandbox.enabled": "off",)"
+        R"( "sandbox.enabled": "off", "memory.enabled": 1,)"
         R"( "sandbox.enabld": true, "variables": {"A": 1}}})");
     SavedSettings read = ReadSettings("");
     CHECK(read.error.empty());
@@ -226,6 +226,7 @@ void TestSettingsStore() {
     for (const char* named :
          {"limits.maxSteps expects an integer", "limits.maxToolCalls accepts",
           "limits.maxTurnSeconds expects a number", "title.model expects text",
+          "memory.enabled expects true or false",
           "sandbox.enabld is not a setting", "variables.A must be text"}) {
       CHECK(read.warning.find(named) != std::string::npos);
     }
@@ -235,6 +236,9 @@ void TestSettingsStore() {
     CHECK(kept["all"]["sandbox.enabld"] == true);
     CHECK(kept["all"]["limits.maxSteps"] == "many");
     CHECK(kept["all"]["variables"]["A"] == 1);
+    // What was not taken is not made takeable by a save of something else.
+    CHECK(kept["all"]["memory.enabled"] == 1);
+    CHECK(kept["all"]["sandbox.enabled"] == "off");
     // What the document holds is what a correction is compared with.
     CHECK(HeldSettings("").at("UAGENT_MAX_STEPS") == "many");
   }

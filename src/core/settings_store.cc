@@ -126,7 +126,14 @@ json EncodeScope(const SettingValues& values, const json& prior = {}) {
   }
   for (const auto& [name, text] : values) {
     if (const ConfigDescriptor* descriptor = FindConfigDescriptor(name)) {
-      scope[std::string(descriptor->key)] = Typed(*descriptor, text);
+      // A value nobody changed stays as its author wrote it: writing it in
+      // its setting's kind could turn one that was not taken into one that
+      // is.
+      const std::string key(descriptor->key);
+      const json* held =
+          prior.is_object() && prior.contains(key) ? &prior[key] : nullptr;
+      scope[key] =
+          held && Text(*held) == text ? *held : Typed(*descriptor, text);
     } else {
       variables[name] = text;
     }

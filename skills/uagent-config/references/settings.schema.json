@@ -5,15 +5,23 @@
       "additionalProperties": false,
       "properties": {
         "approval.mode": {
-          "default": "ask",
-          "description": "ask, auto reviewer, or yolo for ordinary mutations",
-          "enum": [
-            "",
-            "ask",
-            "auto",
-            "yolo"
+          "anyOf": [
+            {
+              "default": "ask",
+              "enum": [
+                "",
+                "ask",
+                "auto",
+                "yolo"
+              ],
+              "type": "string"
+            },
+            {
+              "pattern": "\\$",
+              "type": "string"
+            }
           ],
-          "type": "string",
+          "description": "ask, auto reviewer, or yolo for ordinary mutations",
           "x-env": "UAGENT_APPROVAL"
         },
         "approval.reviewerModel": {
@@ -76,6 +84,7 @@
           "anyOf": [
             {
               "default": 20.0,
+              "minimum": 0,
               "type": "number"
             },
             {
@@ -87,14 +96,22 @@
           "x-env": "UAGENT_COORDINATOR_DAILY_SPEND_USD"
         },
         "coordinator.environment": {
-          "default": "worktree",
-          "description": "where threads run: a fresh git worktree, or the folder itself",
-          "enum": [
-            "",
-            "worktree",
-            "local"
+          "anyOf": [
+            {
+              "default": "worktree",
+              "enum": [
+                "",
+                "worktree",
+                "local"
+              ],
+              "type": "string"
+            },
+            {
+              "pattern": "\\$",
+              "type": "string"
+            }
           ],
-          "type": "string",
+          "description": "where threads run: a fresh git worktree, or the folder itself",
           "x-env": "UAGENT_COORDINATOR_ENVIRONMENT"
         },
         "coordinator.maxThreads": {
@@ -185,6 +202,7 @@
           "anyOf": [
             {
               "default": 0.0,
+              "minimum": 0,
               "type": "number"
             },
             {
@@ -229,6 +247,7 @@
           "anyOf": [
             {
               "default": 0.0,
+              "minimum": 0,
               "type": "number"
             },
             {
@@ -348,15 +367,23 @@
           "x-env": "UAGENT_OPENROUTER_PROVIDER"
         },
         "openrouter.variant": {
-          "default": "",
-          "description": "nitro, floor, or exacto routing preference",
-          "enum": [
-            "",
-            "nitro",
-            "floor",
-            "exacto"
+          "anyOf": [
+            {
+              "default": "",
+              "enum": [
+                "",
+                "nitro",
+                "floor",
+                "exacto"
+              ],
+              "type": "string"
+            },
+            {
+              "pattern": "\\$",
+              "type": "string"
+            }
           ],
-          "type": "string",
+          "description": "nitro, floor, or exacto routing preference",
           "x-env": "UAGENT_OPENROUTER_VARIANT"
         },
         "pdf.engine": {
@@ -408,19 +435,27 @@
           "x-env": "UAGENT_PROVIDERS"
         },
         "reasoningEffort": {
-          "default": "",
-          "description": "How long the conversation model thinks before answering",
-          "enum": [
-            "",
-            "none",
-            "minimal",
-            "low",
-            "medium",
-            "high",
-            "xhigh",
-            "max"
+          "anyOf": [
+            {
+              "default": "",
+              "enum": [
+                "",
+                "none",
+                "minimal",
+                "low",
+                "medium",
+                "high",
+                "xhigh",
+                "max"
+              ],
+              "type": "string"
+            },
+            {
+              "pattern": "\\$",
+              "type": "string"
+            }
           ],
-          "type": "string",
+          "description": "How long the conversation model thinks before answering",
           "x-env": "UAGENT_REASONING_EFFORT"
         },
         "request.streamTimeout": {
@@ -672,15 +707,23 @@
           "type": "object"
         },
         "verbosity": {
-          "default": "default",
-          "description": "how much of the agent's work is shown: minimal, default or full; display only",
-          "enum": [
-            "",
-            "minimal",
-            "default",
-            "full"
+          "anyOf": [
+            {
+              "default": "default",
+              "enum": [
+                "",
+                "minimal",
+                "default",
+                "full"
+              ],
+              "type": "string"
+            },
+            {
+              "pattern": "\\$",
+              "type": "string"
+            }
           ],
-          "type": "string",
+          "description": "how much of the agent's work is shown: minimal, default or full; display only",
           "x-env": "UAGENT_VERBOSITY"
         },
         "web.bind": {
@@ -724,15 +767,23 @@
           "x-env": "UAGENT_WEB_PUSH_CONTACT"
         },
         "webSearch.backend": {
-          "default": "auto",
-          "description": "auto, openrouter, or off",
-          "enum": [
-            "",
-            "auto",
-            "openrouter",
-            "off"
+          "anyOf": [
+            {
+              "default": "auto",
+              "enum": [
+                "",
+                "auto",
+                "openrouter",
+                "off"
+              ],
+              "type": "string"
+            },
+            {
+              "pattern": "\\$",
+              "type": "string"
+            }
           ],
-          "type": "string",
+          "description": "auto, openrouter, or off",
           "x-env": "UAGENT_WEB_SEARCH_BACKEND"
         },
         "webSearch.model": {

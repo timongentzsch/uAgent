@@ -9,6 +9,7 @@
 #include <cerrno>
 #include <cstdio>
 #include <filesystem>
+#include <mutex>
 #include <set>
 #include <string>
 #include <utility>
@@ -115,7 +116,14 @@ json EncodeScope(const SettingValues& values, const json& prior = {}) {
       if (key != kVariables && !FindConfigKey(key)) scope[key] = value;
     }
   }
+  // A variable that is not text was never taken, so it is not in `values`:
+  // it stays as written too.
   json variables = json::object();
+  if (const json* held = JsonObject(prior, kVariables)) {
+    for (const auto& [name, value] : held->items()) {
+      if (!value.is_string()) variables[name] = value;
+    }
+  }
   for (const auto& [name, text] : values) {
     if (const ConfigDescriptor* descriptor = FindConfigDescriptor(name)) {
       scope[std::string(descriptor->key)] = Typed(*descriptor, text);
@@ -123,8 +131,30 @@ json EncodeScope(const SettingValues& values, const json& prior = {}) {
       variables[name] = text;
     }
   }
-  if (!variables.empty()) scope[kVariables] = std::move(variables);
+  if (!variables.empty()) {
+    scope[kVariables] = std::move(variables);
+  } else if (prior.is_object() && prior.contains(kVariables) &&
+             !prior[kVariables].is_object()) {
+    scope[kVariables] = prior[kVariables];
+  }
   return scope;
+}
+
+// Whether `held` is of the kind `descriptor` holds. Text always may be: it is
+// a reference, or the value spelled out.
+bool KindFits(const ConfigDescriptor& descriptor, const json& held) {
+  if (held.is_string()) return true;
+  switch (descriptor.type) {
+    case ConfigType::kInt:
+    case ConfigType::kDouble:
+      return held.is_number();
+    case ConfigType::kBool:
+      return held.is_boolean();
+    case ConfigType::kString:
+      return descriptor.sensitivity == Sensitivity::kCompositeSecret &&
+             held.is_object();
+  }
+  return false;
 }
 
 // A scope of the document as settings. With `problems`, what cannot be taken
@@ -156,10 +186,19 @@ SettingValues DecodeScope(const json& scope, const std::string& where,
       report(key + " is not a setting");
       continue;
     }
-    std::string text = Text(held), problem;
-    // A reference is judged by what it resolves to, where it is read.
-    if (problems && text.find('$') == std::string::npos &&
-        !ValidSettingValue(*descriptor, text, problem, key)) {
+    std::string text = Text(held);
+    if (problems && !KindFits(*descriptor, held)) {
+      report(key + " expects " +
+             (descriptor->type == ConfigType::kBool     ? "true or false"
+              : descriptor->type == ConfigType::kString ? "text"
+                                                        : "a number"));
+      continue;
+    }
+    // A reference is judged by what it resolves to, where it is read. The
+    // value is taken as written: the check works on its own copy.
+    if (std::string checked = text, problem;
+        problems && text.find('$') == std::string::npos &&
+        !ValidSettingValue(*descriptor, checked, problem, key)) {
       report(std::move(problem));
       continue;
     }
@@ -185,16 +224,15 @@ bool FromNames(const json& held, json& out) {
 // The document of the format before this one as this one, or nothing when it
 // is not one: {"format": 1, "all": {NAME: text}, "projects": {folder: {...}}}.
 bool Upgrade(json& document) {
-  const auto& scope = FromNames;
   json upgraded = EmptyDocument();
   const json* projects = JsonObject(document, "projects");
   if (!document.is_object() || JsonValue(document, "format", 0) != 1 ||
       !projects ||
-      !scope(JsonValue(document, "all", json()), upgraded["all"])) {
+      !FromNames(JsonValue(document, "all", json()), upgraded["all"])) {
     return false;
   }
   for (const auto& [folder, held] : projects->items()) {
-    if (!scope(held, upgraded["projects"][folder])) return false;
+    if (!FromNames(held, upgraded["projects"][folder])) return false;
   }
   if (document.contains(kOwed)) upgraded[kOwed] = document[kOwed];
   document = std::move(upgraded);
@@ -429,7 +467,21 @@ SavedSettings ReadSettings(const std::string& folder, bool trusted) {
     saved.project = DecodeScope(*project, "this project: ", &problems);
   }
   saved.warning = Joined(problems);
+  // Once a run: a build newer than the schema beside the document replaces
+  // it.
+  static std::once_flag schema;
+  std::call_once(schema, WriteSchema);
   return saved;
+}
+
+SettingValues HeldSettings(const std::string& folder) {
+  FileStamp ignored;
+  const json document = ReadDocument(ignored);
+  if (!Valid(document)) return {};
+  const json* scope = folder.empty()
+                          ? JsonObject(document, "all")
+                          : JsonObject(document["projects"], folder.c_str());
+  return scope ? DecodeScope(*scope, "", nullptr) : SettingValues{};
 }
 
 json ExportSettings(std::string& error) {
@@ -516,6 +568,8 @@ json SettingsSchema() {
       if (descriptor.maximum != kConfigAnyMax) {
         value["maximum"] = descriptor.maximum;
       }
+    } else if (descriptor.type == ConfigType::kDouble) {
+      value["minimum"] = 0;
     }
     if (!descriptor.choices.empty()) {
       value["enum"] = json::array({""});
@@ -534,7 +588,7 @@ json SettingsSchema() {
                                                 : descriptor.purpose)},
         // Not a keyword of the schema: the same setting in the environment.
         {"x-env", descriptor.environment}};
-    if (value["type"] == "string") {
+    if (value["type"] == "string" && !value.contains("enum")) {
       property.update(value);
     } else {
       // Any setting may name a variable instead of holding its value.

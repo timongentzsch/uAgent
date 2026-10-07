@@ -258,7 +258,7 @@ ConfigProposal Prepare(ConfigProposalScope scope,
     proposal.error = saved.error;
     return proposal;
   }
-  const SettingValues& before = user ? saved.all : saved.project;
+  const SettingValues before = HeldSettings(user ? "" : manager.Folder());
   // A reset is every public setting the scope holds, as of this one read.
   // Secrets stay: a reset must not leave the agent without its keys.
   std::vector<ConfigChange> reset;

@@ -210,6 +210,23 @@ void TestConfigProposalAndCommit() {
   CHECK(!CommitConfigProposal(expired, error));
   CHECK(error.find("expired") != std::string::npos);
 
+  // A value typed into the document that its setting does not take, and
+  // one spelled another way, are replaced like any other: the preview and
+  // the save compare with what the document holds.
+  CHECK(ChangeSettings("", [](SettingValues& scope) {
+          scope["UAGENT_MAX_STEPS"] = "many";
+          scope["UAGENT_SANDBOX"] = "off";
+          return std::string();
+        }).empty());
+  ConfigProposal repair = PrepareConfigProposal(
+      ConfigProposalScope::kUser,
+      {{"UAGENT_MAX_STEPS", "11", false}, {"UAGENT_SANDBOX", "1", false}},
+      manager);
+  CHECK(repair.ok);
+  CHECK(CommitConfigProposal(repair, error));
+  CHECK(ReadSettings("").all.at("UAGENT_MAX_STEPS") == "11");
+  CHECK(ReadSettings("").warning.empty());
+
   // The store hands a proposal out once, and only for the arguments it was
   // prepared from.
   ConfigApprovals store;

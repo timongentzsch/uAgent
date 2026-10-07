@@ -215,12 +215,17 @@ void TestSettingsStore() {
     Put(SettingsPath(),
         R"({"format": 2, "projects": {}, "all": {"model": "kept",)"
         R"( "limits.maxSteps": "many", "limits.maxToolCalls": -4,)"
+        R"( "limits.maxTurnSeconds": false, "title.model": 7,)"
+        R"( "sandbox.enabled": "off",)"
         R"( "sandbox.enabld": true, "variables": {"A": 1}}})");
     SavedSettings read = ReadSettings("");
     CHECK(read.error.empty());
-    CHECK(read.all == (SettingValues{{"UAGENT_MODEL", "kept"}}));
+    // A value spelled as text is taken as written.
+    CHECK(read.all ==
+          (SettingValues{{"UAGENT_MODEL", "kept"}, {"UAGENT_SANDBOX", "off"}}));
     for (const char* named :
          {"limits.maxSteps expects an integer", "limits.maxToolCalls accepts",
+          "limits.maxTurnSeconds expects a number", "title.model expects text",
           "sandbox.enabld is not a setting", "variables.A must be text"}) {
       CHECK(read.warning.find(named) != std::string::npos);
     }
@@ -229,6 +234,9 @@ void TestSettingsStore() {
     CHECK(kept["all"]["model"] == "changed");
     CHECK(kept["all"]["sandbox.enabld"] == true);
     CHECK(kept["all"]["limits.maxSteps"] == "many");
+    CHECK(kept["all"]["variables"]["A"] == 1);
+    // What the document holds is what a correction is compared with.
+    CHECK(HeldSettings("").at("UAGENT_MAX_STEPS") == "many");
   }
 
   // A document in the format before this one is rewritten in this one the

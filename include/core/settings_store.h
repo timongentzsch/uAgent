@@ -53,6 +53,10 @@ struct SavedSettings {
 // the folder is `trusted`.
 SavedSettings ReadSettings(const std::string& folder, bool trusted = false);
 
+// One scope as the document holds it, also the values reading does not take:
+// what a change to it is compared with, and what a correction replaces.
+SettingValues HeldSettings(const std::string& folder);
+
 // The one way a setting is saved: `change` edits one scope's map (all
 // conversations, or `folder`'s when it is not empty) while the document is
 // locked against every other writer, and the result is saved in one piece.

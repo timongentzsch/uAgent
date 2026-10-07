@@ -2477,6 +2477,29 @@ def test_web_session_title_generation_respects_rename(root, home, *, binary):
             assert_true(title == "Mine", title)
 
 
+def test_a_title_model_the_endpoint_cannot_take_falls_to_the_sessions(root, home, *, binary):
+    """The default title model is an OpenRouter name. A session on another
+    endpoint titles with its own model instead of sending a name that fails."""
+    models = []
+
+    def route(_, body):
+        if "Title this coding session" not in json.dumps(body["messages"]):
+            return event({"content": "Recorded answer"})
+        models.append(body.get("model"))
+        return event({"content": "Named by the session model"})
+
+    with Server([route]) as provider:
+        env = {"UAGENT_TITLE_MODEL": "~vendor/title-model", "UAGENT_MODEL": "session-model"}
+        with web_host(binary, root, home, provider.url, extra_env=env) as (client, code, _, _):
+            client.pair(code)
+            session = client.create(root)
+            client.command("submit", session, text="why is the browser slow on this page")
+            client.until(
+                session, lambda value: value["metadata"]["title"] == "Named by the session model"
+            )
+            assert_true(models == ["session-model"], models)
+
+
 def test_web_mcp_overview_toggles_and_restarts(root, home, *, binary):
     project = root / "mcp-overview"
     project.mkdir()

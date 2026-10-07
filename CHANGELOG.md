@@ -54,6 +54,10 @@
 - `subagent`: `limits.seconds` stops a background child too. It was applied
   only by a parent that waited, so a child started in the background ran
   until someone stopped it.
+- A new conversation is titled when the session runs on an endpoint that
+  cannot take the title model's name: its own model writes the title. The
+  default title model is an OpenRouter name, so on any other endpoint the
+  request failed and the first message stayed as the title.
 - `run`: output longer than a result may be keeps its beginning and its end.
   Only the end was kept, so reading a file's first lines through `run`
   returned its last.

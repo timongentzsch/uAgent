@@ -599,6 +599,8 @@ export type ConfigScope = "user" | "project" | "conversation";
 export type ConfigSource = ConfigScope | "environment" | "cli";
 export interface ConfigSetting {
   name: string;
+  // Its name in the settings file: "limits.maxSteps".
+  key: string;
   label: string;
   purpose?: string;
   description: string;
@@ -610,7 +612,7 @@ export interface ConfigSetting {
   minimum?: number;
   maximum?: number;
   choices?: string[];
-  // Listed only in a terminal.
+  // Read by a terminal or by the host as it starts, not by a conversation.
   terminal?: boolean;
   // The scopes it may be saved at, lowest first.
   scopes: ConfigScope[];
@@ -633,6 +635,9 @@ export interface ConfigChange {
 }
 export interface Configuration {
   settings: ConfigSetting[];
+  // The file it is all saved in, and what in it the host could not take.
+  file: string;
+  problem: string;
   // The groups settings are listed under, in order.
   categories: { id: string; label: string }[];
   effects: {

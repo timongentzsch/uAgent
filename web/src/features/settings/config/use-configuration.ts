@@ -58,9 +58,11 @@ export function useConfiguration(
     }
   };
   return {
-    settings: (value?.settings || []).filter(
-      (setting) => !setting.terminal && setting.scopes.includes(scope),
+    settings: (value?.settings || []).filter((setting) =>
+      setting.scopes.includes(scope),
     ),
+    file: value?.file || "",
+    problem: value?.problem || "",
     categories: value?.categories || [],
     loaded: !!value,
     error,

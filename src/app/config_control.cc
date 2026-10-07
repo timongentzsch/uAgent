@@ -81,9 +81,14 @@ json ConfigurationControl(const json& request, const ConfigManager& manager) {
   for (const ConfigCategory& category : kConfigCategories) {
     categories.push_back({{"id", category.id}, {"label", category.label}});
   }
-  return {{"settings",
-           ConfigSettingsJson(manager.Read(), JsonValue(request, "name", ""))},
-          {"categories", std::move(categories)},
-          {"effects", effects}};
+  const EffectiveConfigSnapshot saved = manager.Read();
+  return {
+      {"settings", ConfigSettingsJson(saved, JsonValue(request, "name", ""))},
+      {"categories", std::move(categories)},
+      {"effects", effects},
+      // Where it is all saved, for whoever would rather edit the file,
+      // and what that file holds that could not be taken.
+      {"file", SettingsPath()},
+      {"problem", saved.error.empty() ? saved.warning : saved.error}};
 }
 }  // namespace uagent

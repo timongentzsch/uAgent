@@ -1063,6 +1063,28 @@ void TestDetachedActivityOwnership() {
     CHECK(!std::filesystem::exists(job.log));
   }
 
+  // A detached command gives out its id, and a wait that names it waits for
+  // it; a wait for everything does not, since it may never end.
+  ProcessSupervisor detached_wait;
+  Gate detached_gate;
+  CHECK(RunShellCommand(detached_wait, context,
+                        {.command = detached_gate.Hold("printf waited-for"),
+                         .detach = true,
+                         .immediate = true})
+            .result.Ok());
+  std::vector<BgJob> waited_jobs = detached_wait.Snapshot();
+  CHECK(waited_jobs.size() == 1);
+  if (!waited_jobs.empty()) {
+    CHECK(ToolActivityWait(detached_wait, {}, "all", 0, context)
+              .output.find("no waitable activities") != std::string::npos);
+    detached_gate.Open();
+    ToolResult waited =
+        ToolActivityWait(detached_wait, {ActivityId(waited_jobs[0])}, "all",
+                         BudgetMs(5000), context);
+    CHECK_OK(waited);
+    CHECK(waited.output.find("waited-for") != std::string::npos);
+  }
+
   // Stopping an ordinary supervised job owns that job's log, but not a
   // detached record that happens to use the same process id. Such a record can
   // survive PID reuse and must only be unlinked for detached activities.

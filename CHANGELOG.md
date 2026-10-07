@@ -50,6 +50,11 @@
 - `subagent`: `limits.seconds` stops a background child too. It was applied
   only by a parent that waited, so a child started in the background ran
   until someone stopped it.
+- `run`: output longer than a result may be keeps its beginning and its end.
+  Only the end was kept, so reading a file's first lines through `run`
+  returned its last.
+- `activity`: `wait` with the id of a detached command waits for it. It
+  refused the id that `run` had just given out for it.
 - Stopping a subagent stops the commands and subagents it started. A stopped
   child killed its own children outright, so theirs were left running.
 - What a stopped subagent had spent counts toward the session's usage and

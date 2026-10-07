@@ -181,15 +181,16 @@ ToolResult ToolActivityWait(ProcessSupervisor& supervisor,
                             int64_t max_output_chars) {
   // Waiting consumes the completion it observes. Memory extraction is drained
   // by the harness into the memory audit instead, so a wait that scooped one
-  // up would silently lose that record; it is no more waitable than a detached
-  // activity.
+  // up would silently lose that record. A detached activity is waited for
+  // when it is named: it may be a server that never ends, so a wait for
+  // everything leaves it out.
   auto waitable = [](const BgJob& job) {
-    return !job.Detached() && job.kind != ActivityKind::kMemory;
+    return job.kind != ActivityKind::kMemory;
   };
   std::vector<int64_t> ids;
   if (requested.empty()) {
     for (const BgJob& job : supervisor.Snapshot()) {
-      if (waitable(job)) ids.push_back(ActivityId(job));
+      if (waitable(job) && !job.Detached()) ids.push_back(ActivityId(job));
     }
   } else {
     for (int64_t requested_id : requested) {

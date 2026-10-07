@@ -496,7 +496,6 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
     CollectedLog collected = CollectCompletedLog(
         log, ToolResultCap(),
         /*failed=*/!(WIFEXITED(status) && WEXITSTATUS(status) == 0));
-    if (collected.artifact) output = std::move(collected.output);
     ToolResult result = build(std::move(output), status);
     if (!result.Ok() && !wrapper.empty()) {
       result.output += SandboxHint(result.output);

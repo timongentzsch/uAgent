@@ -320,6 +320,7 @@ export default function Composer({
                 detached || state?.activity || (state ? "Ready" : "Loading…")
               }
               running={running}
+              started={state?.turn_started_ms}
               pending={pending}
               stopped={continuing ? stopLabel : undefined}
               present={online && !!session?.presence}

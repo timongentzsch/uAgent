@@ -341,7 +341,9 @@ class WorkerChannel final : public ApplicationChannel {
     std::string activity = JsonValue(state_, "activity", "Ready");
     std::string phase = JsonValue(state_, "phase", "idle");
     json detail = JsonValue(state_, "activity_detail", json(nullptr));
+    int64_t started = JsonValue(state_, "turn_started_ms", int64_t{0});
     state_ = state;
+    state_["turn_started_ms"] = started;
     state_["notices"] = notices_;
     state_["activity"] = activity;
     state_["phase"] = phase;
@@ -594,6 +596,7 @@ class WorkerChannel final : public ApplicationChannel {
     state_.erase("stop");
     state_["activity"] = "Working";
     state_["phase"] = "working";
+    state_["turn_started_ms"] = NowMillis();
   }
   void SendState(bool checkpoint = false) {
     Send({{"kind", "state"},

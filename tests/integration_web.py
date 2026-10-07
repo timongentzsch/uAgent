@@ -346,6 +346,7 @@ def test_partial_usage_reconciles_without_double_counting(root, home, *, binary)
                     session, lambda value: value["state"].get("usage", {}).get("cost") == 0.01
                 )
                 assert live["metadata"]["turn_active"], live
+                assert abs(time.time() * 1000 - live["state"]["turn_started_ms"]) < 60_000, live
                 assert live["state"]["context_tokens"] > initial, live
                 release.set()
                 growing = client.until(

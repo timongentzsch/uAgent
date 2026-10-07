@@ -145,10 +145,13 @@ test("a stopped turn ends with Continue", async ({ page, session }) => {
   await page.goto(`/#session=${session.id}`);
   await send(page, "Long continuity probe");
   await expect(page.getByRole("button", { name: "Stop" })).toBeVisible();
-  await page.getByLabel("Message or guidance").press("Escape");
-  // The status line above the input says so and offers the way on.
+  // The status line above the input counts the turn's seconds while it runs.
   const line = page.locator(".composer .status-line");
+  await expect(line.locator(".activity-counts")).toHaveText(/ · \d+s$/);
+  await page.getByLabel("Message or guidance").press("Escape");
+  // It says the turn stopped, drops the count and offers the way on.
   await expect(line.locator(".activity-caption")).toHaveText("Stopped");
+  await expect(line.locator(".activity-counts")).toHaveCount(0);
   await expect(line.getByRole("status")).toHaveText("Stopped");
   const resume = line.getByRole("button", { name: "Continue" });
   await resume.click();

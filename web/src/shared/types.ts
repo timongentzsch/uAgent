@@ -370,6 +370,8 @@ export interface ActivityStatusDetail {
 }
 export interface State {
   phase?: ExecutionPhase;
+  // When the running turn started, on the host's clock.
+  turn_started_ms?: number;
   activity_detail?: ActivityStatusDetail | null;
   attachments?: number;
   title?: string;

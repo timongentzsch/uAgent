@@ -168,6 +168,8 @@ export interface Block {
   origin?: string;
   // Who wrote a message that came by mail: a member of a coordinator's chat.
   author?: string;
+  // A chat participant's pass or wait: shown to nobody.
+  silent?: boolean;
   // Tool calls whose results added these files to context.
   source_call_ids?: string[];
   unavailable_images?: number;
@@ -693,7 +695,7 @@ export interface InstructionFile {
 export interface InstructionStack {
   files: InstructionFile[];
   also_loaded: string[];
-  base: { sessions: string; coordinator: string };
+  base: { sessions: string; coordinator: string; member: string };
 }
 export interface SelfDirective {
   mode: "overlay" | "replace";

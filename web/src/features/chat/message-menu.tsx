@@ -9,6 +9,7 @@ export function MessageMenu({
   statistics,
   http,
   branch,
+  prompt,
 }: {
   label: string;
   block: PresentedBlock;
@@ -17,8 +18,10 @@ export function MessageMenu({
   // Your own messages: continue in a fork from here, editing this message
   // (edit) or keeping it and its reply.
   branch?: (block: PresentedBlock, edit: boolean) => void;
+  // A chat participant's message: the prompt its author was last sent.
+  prompt?: () => void;
 }) {
-  if (!statistics && !http && !branch) return null;
+  if (!statistics && !http && !branch && !prompt) return null;
   const exchanges = block.http || block.source?.http;
   const showHttp =
     !!http && (block.kind === "assistant" || (exchanges?.length || 0) > 0);
@@ -34,6 +37,7 @@ export function MessageMenu({
           </MenuItem>
         </>
       )}
+      {prompt && <MenuItem onClick={prompt}>Show prompt</MenuItem>}
       {statistics && (
         <MenuItem onClick={() => statistics(block)}>Statistics</MenuItem>
       )}

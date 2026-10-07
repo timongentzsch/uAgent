@@ -214,19 +214,26 @@ test("a member joins the chat, is addressed with @ and answers under its name", 
   const prompt = page.getByLabel("Message or guidance");
   await prompt.fill("Chat probe");
   await prompt.press("Enter");
-  // The member is listed on the board, and its introduction is a message
-  // under its name, without the label the model reads it by.
+  // The member is listed on the board and in the sidebar with its avatar,
+  // and its introduction is a message under its name, without the label the
+  // model reads it by. The coordinator is named above its own.
   const board = page.getByRole("complementary", { name: "Board" });
   await expect(board.getByRole("heading", { name: /^Members/ })).toBeVisible();
+  await expect(board.locator(".avatar")).toHaveText("A");
   const said = page.locator(".transcript .message", {
     has: page.locator(".actor", { hasText: "Ada" }),
   });
   await expect(said.first()).toContainText("Ada here.");
   await expect(said.first()).not.toContainText("in the chat");
+  await expect(said.first().locator(".avatar")).toHaveText("A");
+  await expect(
+    page.locator(".transcript .message .actor", { hasText: "Coordinator" }),
+  ).toHaveCount(1);
   await expect(page.locator(".turn-summary")).toHaveCount(1);
 
-  // @ offers the member, and a message for it alone is answered by it
-  // alone: it is seen typing, and the coordinator takes no turn.
+  // @ offers the member, and a message for it alone wakes it alone: it is
+  // seen typing. Its answer wakes the coordinator, which passes, and a pass
+  // is shown to nobody: no bubble, no stats line.
   await prompt.pressSequentially("@A");
   await page.getByRole("option", { name: "@Ada" }).click();
   await expect(prompt).toHaveValue("@Ada ");
@@ -236,10 +243,31 @@ test("a member joins the chat, is addressed with @ and answers under its name", 
     "Ada is typing…",
   );
   await expect(said.last()).toContainText("I would ship it.");
-  await expect(page.locator(".composer .status-line")).not.toContainText(
-    "typing",
-  );
+  await expect
+    .poll(async () => {
+      const blocks = (await (await request.get(`/api/sessions/${id}`)).json())
+        .state.view.blocks;
+      return blocks.filter((block) => block.silent).length;
+    })
+    .toBeGreaterThan(0);
+  await expect(page.locator(".composer .status-led.running")).toHaveCount(0);
+  await expect(page.locator(".transcript")).not.toContainText("PASS");
   await expect(page.locator(".turn-summary")).toHaveCount(1);
+  await expect(
+    page.locator(".transcript .message .actor", { hasText: "Coordinator" }),
+  ).toHaveCount(1);
+
+  // What a member was sent is one click from what it wrote.
+  await said.last().hover();
+  await said
+    .last()
+    .getByRole("button", { name: /^Actions for Ada/ })
+    .click();
+  await page.getByRole("menuitem", { name: "Show prompt" }).click();
+  await expect(page.getByRole("dialog")).toContainText(
+    "You are Ada, a member of a chat",
+  );
+  await page.keyboard.press("Escape");
   await shot(page, "coordinator-chat");
 });
 

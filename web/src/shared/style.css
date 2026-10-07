@@ -721,6 +721,21 @@ dialog.sidebar:not([open]) {
   color: var(--muted);
   margin-right: var(--space-2);
 }
+/* A chat member's initials, sized by the text they stand beside. */
+.avatar {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 1.7em;
+  height: 1.7em;
+  margin-right: var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  color: var(--muted);
+  font-size: var(--font-micro);
+  font-weight: 600;
+  line-height: 1;
+}
 /* A coordinator's threads hang under its folder header. */
 .sidebar .threads {
   margin-left: var(--space-4);

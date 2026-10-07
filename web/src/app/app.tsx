@@ -399,7 +399,7 @@ function App() {
   // A command with a screen opens it when typed bare; with an argument it
   // runs on the host, as in the terminal.
   const screens: Record<string, () => void> = {
-    "/context": showContext,
+    "/context": () => showContext(),
     "/config": () => open({ type: "settings" }),
     "/verbosity": () => open({ type: "settings", section: "user" }),
     "/permissions": () => open({ type: "settings", section: "user" }),
@@ -629,6 +629,8 @@ function App() {
     session,
     deliver,
     busy,
+    showContext,
+    sessions: catalogue.sessions,
   };
   const latest = useRef(current);
   latest.current = current;
@@ -796,6 +798,28 @@ function App() {
     }),
     [report, recallGuidance, branchFrom, selected],
   );
+  // A coordinator's chat names who wrote what and shows each one's prompt.
+  const teamNames =
+    session?.kind === "coordinator"
+      ? threadsOf(catalogue.sessions, session.cwd || "")
+          .map((item) => item.member)
+          .filter(Boolean)
+          .join(" ")
+      : "";
+  const chatActions = useMemo(
+    () =>
+      teamNames
+        ? {
+            ...messageActions,
+            team: threadsOf(
+              latest.current.sessions,
+              latest.current.session?.cwd || "",
+            ).filter((item) => item.member),
+            prompt: (member?: string) => latest.current.showContext(member),
+          }
+        : messageActions,
+    [messageActions, teamNames],
+  );
   async function logout() {
     try {
       const registration = await navigator.serviceWorker?.getRegistration();
@@ -807,14 +831,22 @@ function App() {
       report(failure);
     }
   }
-  function showContext() {
-    const prepare =
-      session?.generation && !running && online ? session : undefined;
+  // The context a session was last sent, its system prompt first: the open
+  // conversation's, or that of a member of its chat.
+  function showContext(member?: string) {
+    const shown = member
+      ? threadsOf(catalogue.sessions, session?.cwd || "").find(
+          (item) => item.member === member,
+        )
+      : session;
+    const busy = member ? shown?.turn_active : running;
+    const prepare = shown?.generation && !busy && online ? shown : undefined;
+    const id = shown?.id || selected;
     setModal({
       type: "raw",
       context: true,
-      session: selected,
-      exchanges: prepare ? [] : snapshots.get()[selected]?.state?.http || [],
+      session: id,
+      exchanges: prepare ? [] : snapshots.get()[id]?.state?.http || [],
       prepare,
     });
   }
@@ -1187,10 +1219,10 @@ function App() {
                     zoom={zoom}
                     side={side}
                     closeSide={closeSide}
-                    actions={messageActions}
+                    actions={chatActions}
                     setModal={setModal}
                     setInspector={setInspector}
-                    showContext={showContext}
+                    showContext={() => showContext()}
                   />
                 </main>
               </div>
@@ -1252,7 +1284,7 @@ function App() {
             report={report}
             managementVersion={managementVersion}
             projects={projects}
-            showContext={showContext}
+            showContext={() => showContext()}
             folder={folder}
             setFolder={setFolder}
             create={create}

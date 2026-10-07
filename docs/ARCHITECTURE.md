@@ -139,29 +139,28 @@ or runs commands. The sessions it starts are its threads.
 The coordinator's conversation is also a chat (`src/app/chat.cc`). A member
 is a thread the coordinator added under a name and a persona instead of a
 brief: it reads and searches, changes nothing, and its prompt comes from its
-session header, which it cannot rewrite.
+session header, which it cannot rewrite. The coordinator is one of the
+participants, with no part of its own beyond its tools.
 
-- What the user, the coordinator or a member writes is mailed to every
-  member. The coordinator's runtime decides who is woken, no model does: the
-  members a message names with `@`, or all of them when it names nobody. The
-  coordinator's own messages wake only whom they name.
-- A woken member answers, or answers `PASS`, which is shown to nobody.
-  Messages for members that are not woken join their conversation without a
-  turn.
-- A member's answer appears in the coordinator's conversation under its name
-  without starting a turn there. The coordinator takes the floor once no
-  member owes an answer and something was written.
-- A message of the user's that names only members is theirs: it joins the
-  coordinator's conversation without a turn, the floor does not return to
-  the coordinator, and an answer wakes only whom it names in turn.
+- Everyone hears every message. What the coordinator's runtime settles, and
+  no model does, is who is woken: the participants a message names with `@`,
+  or all of them when it names nobody. The rest read it without a turn.
+- A woken participant answers, or answers `PASS` (nothing to add) or `WAIT`
+  (someone who is typing is likely to cover it). Neither is shown to anyone.
+  Each wake-up says who is typing; whoever waited is woken by the next
+  message, or as soon as nobody is typing.
+- A member's answer appears in the coordinator's conversation under its
+  name. It starts a turn there only when it wakes the coordinator like any
+  other participant.
+- Two limits keep an exchange from running on by itself, both counted from
+  one message of the user's: `UAGENT_COORDINATOR_CHAT_TURNS` turns per
+  participant, and two messages each. The coordinator cannot message a
+  member past the chat. Members spend from the same daily limit as threads.
 - A file the user attaches reaches the members as its path in the message;
   they read what is shared in the coordinator's chat without review, like
   the folder itself.
-- One message of the user's starts at most `UAGENT_COORDINATOR_CHAT_TURNS`
-  member turns, so an exchange cannot run on by itself; the coordinator
-  cannot message a member past the chat. Members spend from the same daily
-  limit as threads.
-- The round (turns left, who owes an answer) is saved beside the
+- The round (each participant's turns and messages, who is typing, who
+  waits) is saved beside the
   coordinator's session, so a runtime that starts again takes it up. A
   member's answer is forwarded under an id derived from it: forwarded again
   after a crash, it is the mail its readers already have.

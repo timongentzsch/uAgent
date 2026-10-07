@@ -43,15 +43,17 @@
   and `type` take the number of an element in place of coordinates.
 - `scratch` takes `code`: the script is written and run in one call.
 - A coordinator's conversation is a chat. `thread` with `add_member` brings
-  in a member under a name, a persona and optionally its own model; it
-  reads everything written there and answers when it has something to add,
-  or passes. `@name` addresses one member, a message that names nobody is
-  everyone's, and the coordinator takes the floor when the members have
-  spoken. `UAGENT_COORDINATOR_CHAT_TURNS` (`coordinator.chatTurns`, 8) caps
-  the member turns one message of yours can start; `delete` takes a member
-  out, after you confirm. In the web, members are listed on the board, shown typing
-  while they answer, offered after `@` in the composer, and their messages
-  appear under their names.
+  in a member under a name, a persona and optionally its own model; `delete`
+  takes one out, after you confirm. Everyone in the chat, the coordinator
+  included, hears every message and decides for itself: it answers, passes,
+  or waits for someone who is typing and is woken by the next message.
+  `@name` asks one participant; the others read along without a turn. For
+  one message of yours each participant gets
+  `UAGENT_COORDINATOR_CHAT_TURNS` turns (`coordinator.chatTurns`, 3) and two
+  messages. In the web, members have avatars in the sidebar and on the
+  board, are shown typing, are offered after `@`, every message carries its
+  author's name, and "Show prompt" on a message shows what its author was
+  sent.
 
 ### Changed
 

@@ -39,6 +39,7 @@ import {
   mentionOptions,
 } from "./mention.ts";
 import { SheetButton } from "../../shared/sheet.tsx";
+import { Avatar } from "../../shared/avatar.tsx";
 import { ActivityButton, ActivityStatus } from "../chat/activity-status.tsx";
 import type { InspectorTarget } from "../chat/inspector.tsx";
 import MessageInput from "./message-input.tsx";
@@ -403,6 +404,7 @@ export default function Composer({
           >
             {(item) => (
               <>
+                {!item.id && <Avatar name={item.name} />}
                 <strong>@{item.name}</strong>
                 <span>{item.id ? bytes(item.bytes || 0) : "Member"}</span>
               </>

@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <functional>
 #include <optional>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -41,6 +42,10 @@ constexpr size_t kToolTextChars = 160;
 constexpr size_t kDetailBytes = size_t{16} * 1024;
 constexpr size_t kReportBytes = size_t{8} * 1024;
 constexpr size_t kMessageBytes = size_t{8} * 1024;
+// Members one coordinator's chat may have.
+constexpr int64_t kChatMembers = 16;
+// How long a member's runtime may take to start on the mail that wakes it.
+constexpr int64_t kStartingMs = int64_t{30} * 1000;
 constexpr size_t kDiffBytes = size_t{16} * 1024;
 
 // "saved" without a runtime; else what its runtime said when it answered:
@@ -378,17 +383,28 @@ ToolResult Spawn(const std::string& folder, const json& a,
   std::vector<bool> busy;
   busy.reserve(threads.size());
   for (const SessionInfo& info : threads) busy.push_back(Working(info));
-  const int64_t working = std::ranges::count(busy, true);
-  if (working >= cap) {
-    return ToolFailure(ToolErrorCode::kLimitExceeded,
-                       std::to_string(cap) +
-                           " threads are already working; wait for one to "
-                           "finish or stop one");
+  // The cap is on threads at work. A chat's members answer and fall silent
+  // again, so they have a limit of their own, on how many there are.
+  int64_t working = 0, members = 0;
+  for (size_t i = 0; i < threads.size(); ++i) {
+    const bool seated = !ChatMember(threads[i].thread).empty();
+    members += seated;
+    working += busy[i] && !seated;
+  }
+  if (member ? members >= kChatMembers : working >= cap) {
+    return ToolFailure(
+        ToolErrorCode::kLimitExceeded,
+        member ? "a chat has at most " + std::to_string(kChatMembers) +
+                     " members; delete one first"
+               : std::to_string(cap) +
+                     " threads are already working; wait for one to "
+                     "finish or stop one");
   }
   const double limit = DoubleSetting(Cfg("UAGENT_COORDINATOR_DAILY_SPEND_USD"));
   // Each thread gets an equal share of what is left for the free slots.
   const double left = limit > 0 ? limit - SpentToday(folder, threads, busy) : 0;
-  const double budget = left / static_cast<double>(cap - working);
+  const double budget =
+      left / static_cast<double>(std::max<int64_t>(1, cap - working));
   if (limit > 0 && budget < 0.01) {
     return ToolFailure(
         ToolErrorCode::kLimitExceeded,
@@ -875,7 +891,8 @@ std::string CoordinatorContext(const std::string& folder) {
       context += "\n## " + std::string(block) + "\n" + value + "\n";
     }
   }
-  return context + "\n## board\n" + CoordinatorBoard(folder);
+  return context + ChatContext(folder) + "\n## board\n" +
+         CoordinatorBoard(folder);
 }
 
 void RecordCoordinatorCost(const std::string& folder, double cost) {
@@ -906,11 +923,24 @@ bool ThreadsOwe(const std::string& folder) {
   // looks: a thread mails its report before it shows idle, and the mail is
   // taken before it is acknowledged.
   const std::vector<SessionInfo> threads = OwnThreads(folder);
-  if (std::ranges::any_of(threads, [](const SessionInfo& info) {
+  const std::set<std::string> typing = ChatTyping(folder);
+  if (std::ranges::any_of(threads, [&](const SessionInfo& info) {
         // One just started is idle until its brief arrives: it has work ahead
         // as long as its runtime is up and it has finished no turn.
         const std::string status = LiveStatus(info);
-        return status == "working" || (status == "idle" && info.turns == 0);
+        if (status == "working" || (status == "idle" && info.turns == 0)) {
+          return true;
+        }
+        // A chat member woken and not yet heard from has an answer ahead
+        // as long as something can still bring it: a runtime that does not
+        // wait on a person, or a wake-up sent moments ago that is starting
+        // one.
+        const std::string box = MailboxIdFor(info.path);
+        if (!typing.contains(box) || status == "needs you") return false;
+        return status != "saved" ||
+               std::ranges::any_of(PendingMail(box), [](const Mail& mail) {
+                 return NowMillis() - mail.created_ms < kStartingMs;
+               });
       })) {
     return true;
   }

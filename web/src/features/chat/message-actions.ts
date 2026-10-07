@@ -4,6 +4,7 @@ import type {
   Exchange,
   PresentedBlock,
   Report,
+  Session,
 } from "../../shared/types.ts";
 
 // What a transcript row can ask of the surface showing it: the
@@ -26,6 +27,10 @@ export interface MessageActions {
   resume?: () => void;
   branch?: (block: PresentedBlock, edit: boolean) => void;
   http?: (exchanges: Exchange[]) => void;
+  // In a coordinator's chat: its members, and a way to see the prompt a
+  // participant was last sent (a member by name, the coordinator by none).
+  team?: Session[];
+  prompt?: (member?: string) => void;
 }
 
 export const MessageActions = createContext<MessageActions>({

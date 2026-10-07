@@ -821,11 +821,13 @@ BootstrapResult Bootstrap(Options options, const char* executable,
           RecordCoordinatorCost(folder, agent->SessionUsage().cost);
           return CoordinatorContext(folder);
         });
-    context->chat.emplace(CanonicalCwd());
+    context->chat.emplace(CanonicalCwd(), [agent = context->agent.get()](
+                                              const std::string& note) {
+      agent->NotFromUser(note);
+      SteeringState().Queue(note, "", true);
+    });
     context->agent->SetChat(
-        [chat = &*context->chat](const std::string& text) {
-          chat->Said(text, /*person=*/true);
-        },
+        [chat = &*context->chat](const std::string& text) { chat->Said(text); },
         [chat = &*context->chat](Mail& mail) { chat->Heard(mail); });
   }
   if (context->channel && !context->channel->SessionPath().empty()) {

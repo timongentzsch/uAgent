@@ -23,6 +23,7 @@
 #include "include/agent/conversation.h"
 #include "include/agent/edit_journal.h"
 #include "include/agent/process.h"
+#include "include/agent/session_role.h"
 #include "include/agent/trace.h"
 #include "include/api.h"
 #include "include/core/json.h"
@@ -208,6 +209,17 @@ class Agent {
   // The person's message, written into the conversation without a turn.
   void Say(const std::string& text, const std::string& request_id) {
     PushUserInput(text, false, json(), request_id);
+  }
+  // Whether this session is one of a chat's participants: its coordinator, or
+  // a member. And whether its last answer was only to pass or to wait.
+  bool ChatParticipant() const {
+    return static_cast<bool>(chat_said_) ||
+           !ChatMember(JsonValue(session_role_, "thread", json::object()))
+                .empty();
+  }
+  bool SilentTurn() const {
+    return ChatParticipant() &&
+           SilentAnswer(Trim(conversation_.LastAssistantText()));
   }
   // A coordinator's chat (app/chat.h): `said` hears what a person writes
   // here, `heard` is handed each message from another session before it is

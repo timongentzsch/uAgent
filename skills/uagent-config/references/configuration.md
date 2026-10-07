@@ -5,6 +5,8 @@
 
 Every setting below is read from the running binary's registry. `takes effect` is `next-user-turn` when a changed setting applies at the next prompt, and `restart-required` when it does not. Secret values are never displayed; diagnostics report only whether they are set.
 
+A setting has two names. `Setting` is its name in `~/.uagent/config/settings.json`, where its value has the type shown (`settings.schema.json` beside it describes the file to an editor). `Environment` is its name as an environment variable, whose value is text and which wins over the file.
+
 ## Contents
 
 - Models and connection
@@ -24,136 +26,136 @@ Every setting below is read from the running binary's registry. `takes effect` i
 
 ## Models and connection
 
-| Setting | Type | Default | Takes effect | Description |
-| --- | --- | --- | --- | --- |
-| `UAGENT_BASE_URL` | string | empty | restart-required | active API base URL |
-| `UAGENT_API_KEY 🔒` | string | `sk-noop` | restart-required | credential for the active route |
-| `OPENROUTER_API_KEY 🔒` | string | empty | restart-required | OpenRouter credential used when no base URL is set |
-| `UAGENT_MODEL` | string | empty | restart-required | model or named route as [provider/]model[:variant][:effort] |
-| `UAGENT_REASONING_EFFORT` | string | empty | restart-required | none, minimal, low, medium, high, xhigh, or max |
-| `UAGENT_PROVIDERS 🔒` | string | empty | restart-required | JSON object of named endpoints, transports, and aliases |
-| `UAGENT_OPENROUTER_PROVIDER` | string | empty | next-user-turn | pin OpenRouter to one upstream provider |
-| `UAGENT_OPENROUTER_VARIANT` | string | empty | next-user-turn | nitro, floor, or exacto routing preference |
-| `UAGENT_CONTEXT` | integer | `0` | restart-required | context-window tokens; 0 uses the provider profile |
-| `UAGENT_MAX_TOKENS` | integer | `-1` | next-user-turn | maximum response tokens; -1 omits the optional cap |
+| Setting | Environment | Type | Default | Takes effect | Description |
+| --- | --- | --- | --- | --- | --- |
+| `endpoint.baseUrl` | `UAGENT_BASE_URL` | string | empty | restart-required | active API base URL |
+| `endpoint.apiKey` | `UAGENT_API_KEY 🔒` | string | `sk-noop` | restart-required | credential for the active route |
+| `openrouter.apiKey` | `OPENROUTER_API_KEY 🔒` | string | empty | restart-required | OpenRouter credential used when no base URL is set |
+| `model` | `UAGENT_MODEL` | string | empty | restart-required | model or named route as [provider/]model[:variant][:effort] |
+| `reasoningEffort` | `UAGENT_REASONING_EFFORT` | string | empty | restart-required | none, minimal, low, medium, high, xhigh, or max |
+| `providers` | `UAGENT_PROVIDERS 🔒` | string | empty | restart-required | JSON object of named endpoints, transports, and aliases |
+| `openrouter.provider` | `UAGENT_OPENROUTER_PROVIDER` | string | empty | next-user-turn | pin OpenRouter to one upstream provider |
+| `openrouter.variant` | `UAGENT_OPENROUTER_VARIANT` | string | empty | next-user-turn | nitro, floor, or exacto routing preference |
+| `contextWindow` | `UAGENT_CONTEXT` | integer | `0` | restart-required | context-window tokens; 0 uses the provider profile |
+| `maxOutputTokens` | `UAGENT_MAX_TOKENS` | integer | `-1` | next-user-turn | maximum response tokens; -1 omits the optional cap |
 
 ## Behaviour
 
-| Setting | Type | Default | Takes effect | Description |
-| --- | --- | --- | --- | --- |
-| `UAGENT_ADAPT_SYSTEM` | boolean | `0` | restart-required | expose adapt_system so the model may revise its directive |
-| `UAGENT_APPROVAL` | string | `ask` | next-user-turn | ask, auto reviewer, or yolo for ordinary mutations |
-| `UAGENT_PERMISSION_MODEL` | string | `~typesafe/jev-latest` | next-user-turn | OpenRouter Decisions model used by auto permissions |
-| `UAGENT_PERMISSION_URL` | string | `https://openrouter.ai/api/alpha` | next-user-turn | OpenRouter Decisions API base URL |
-| `UAGENT_TITLE_MODEL` | string | `~deepseek/deepseek-flash-latest` | next-user-turn | model route that names new sessions, or off |
-| `UAGENT_TOOL_CAPABILITIES` | string | empty | restart-required | restrict the exposed tool capability set |
-| `UAGENT_SHELL_ENV_ALLOW` | string | empty | next-user-turn | comma-separated sensitive variables approved shells may inherit |
-| `UAGENT_TRUST_PROJECT_CONFIG` | boolean | `0` | restart-required | trust this workspace's .mcp.json |
-| `UAGENT_DEBUG_LOG` | string | empty | restart-required | write a sensitive reconstructable JSONL trace |
-| `UAGENT_MARKDOWN` | boolean | `1` | restart-required | render Markdown on a TTY |
-| `UAGENT_PLAIN` | boolean | `0` | restart-required | screen-reader terminal: labelled lines, no animation or cursor control |
-| `UAGENT_REDUCED_MOTION` | boolean | `0` | restart-required | show a still status instead of the terminal spinner |
-| `UAGENT_VERBOSITY` | string | `default` | next-user-turn | how much of the agent's work is shown: minimal, default or full; display only |
-| `UAGENT_MEMORY_REDACT_KEYWORDS` | string | empty | restart-required | extra keywords redacted from stored memories |
+| Setting | Environment | Type | Default | Takes effect | Description |
+| --- | --- | --- | --- | --- | --- |
+| `prompt.adaptSystem` | `UAGENT_ADAPT_SYSTEM` | boolean | `0` | restart-required | expose adapt_system so the model may revise its directive |
+| `approval.mode` | `UAGENT_APPROVAL` | string | `ask` | next-user-turn | ask, auto reviewer, or yolo for ordinary mutations |
+| `approval.reviewerModel` | `UAGENT_PERMISSION_MODEL` | string | `~typesafe/jev-latest` | next-user-turn | OpenRouter Decisions model used by auto permissions |
+| `approval.reviewerUrl` | `UAGENT_PERMISSION_URL` | string | `https://openrouter.ai/api/alpha` | next-user-turn | OpenRouter Decisions API base URL |
+| `title.model` | `UAGENT_TITLE_MODEL` | string | `~deepseek/deepseek-flash-latest` | next-user-turn | model route that names new sessions, or off |
+| `tools.capabilities` | `UAGENT_TOOL_CAPABILITIES` | string | empty | restart-required | restrict the exposed tool capability set |
+| `shell.envAllow` | `UAGENT_SHELL_ENV_ALLOW` | string | empty | next-user-turn | comma-separated sensitive variables approved shells may inherit |
+| `project.trustConfig` | `UAGENT_TRUST_PROJECT_CONFIG` | boolean | `0` | restart-required | trust this workspace's .mcp.json |
+| `debug.log` | `UAGENT_DEBUG_LOG` | string | empty | restart-required | write a sensitive reconstructable JSONL trace |
+| `terminal.markdown` | `UAGENT_MARKDOWN` | boolean | `1` | restart-required | render Markdown on a TTY |
+| `terminal.plain` | `UAGENT_PLAIN` | boolean | `0` | restart-required | screen-reader terminal: labelled lines, no animation or cursor control |
+| `terminal.reducedMotion` | `UAGENT_REDUCED_MOTION` | boolean | `0` | restart-required | show a still status instead of the terminal spinner |
+| `verbosity` | `UAGENT_VERBOSITY` | string | `default` | next-user-turn | how much of the agent's work is shown: minimal, default or full; display only |
+| `memory.redactKeywords` | `UAGENT_MEMORY_REDACT_KEYWORDS` | string | empty | restart-required | extra keywords redacted from stored memories |
 
 ## Limits
 
-| Setting | Type | Default | Takes effect | Description |
-| --- | --- | --- | --- | --- |
-| `UAGENT_MAX_STEPS` | integer | `0` | next-user-turn | model rounds per turn; 0 disables the limit |
-| `UAGENT_MAX_TOOL_CALLS` | integer | `0` | next-user-turn | tool calls per turn; 0 disables the limit |
-| `UAGENT_MAX_TURN_SECONDS` | integer | `0` | next-user-turn | wall-clock seconds per turn; 0 disables the deadline |
-| `UAGENT_MAX_TURN_TOKENS` | integer | `0` | next-user-turn | generated-token ceiling per turn; 0 disables it |
-| `UAGENT_SESSION_TOKEN_BUDGET` | integer | `0` | next-user-turn | cumulative generated-token ceiling; 0 disables it |
-| `UAGENT_MAX_TURN_COST` | number | `0.0` | next-user-turn | reported-cost ceiling per turn; 0 disables it |
-| `UAGENT_SESSION_BUDGET` | number | `0.0` | next-user-turn | cumulative reported-cost ceiling; 0 disables it |
-| `UAGENT_TOOL_TIMEOUT` | integer | `30` | next-user-turn | seconds one tool call may run |
-| `UAGENT_AUTO_COMPACT_PCT` | integer | `85` | next-user-turn | context percentage that triggers compaction |
+| Setting | Environment | Type | Default | Takes effect | Description |
+| --- | --- | --- | --- | --- | --- |
+| `limits.maxSteps` | `UAGENT_MAX_STEPS` | integer | `0` | next-user-turn | model rounds per turn; 0 disables the limit |
+| `limits.maxToolCalls` | `UAGENT_MAX_TOOL_CALLS` | integer | `0` | next-user-turn | tool calls per turn; 0 disables the limit |
+| `limits.maxTurnSeconds` | `UAGENT_MAX_TURN_SECONDS` | integer | `0` | next-user-turn | wall-clock seconds per turn; 0 disables the deadline |
+| `limits.maxTurnTokens` | `UAGENT_MAX_TURN_TOKENS` | integer | `0` | next-user-turn | generated-token ceiling per turn; 0 disables it |
+| `limits.sessionTokens` | `UAGENT_SESSION_TOKEN_BUDGET` | integer | `0` | next-user-turn | cumulative generated-token ceiling; 0 disables it |
+| `limits.maxTurnCost` | `UAGENT_MAX_TURN_COST` | number | `0.0` | next-user-turn | reported-cost ceiling per turn; 0 disables it |
+| `limits.sessionCost` | `UAGENT_SESSION_BUDGET` | number | `0.0` | next-user-turn | cumulative reported-cost ceiling; 0 disables it |
+| `tools.timeout` | `UAGENT_TOOL_TIMEOUT` | integer | `30` | next-user-turn | seconds one tool call may run |
+| `context.autoCompactPercent` | `UAGENT_AUTO_COMPACT_PCT` | integer | `85` | next-user-turn | context percentage that triggers compaction |
 
 ## Requests
 
-| Setting | Type | Default | Takes effect | Description |
-| --- | --- | --- | --- | --- |
-| `UAGENT_STREAM_TIMEOUT` | integer | `300` | next-user-turn | seconds of stream silence allowed, before the first event or between events |
-| `UAGENT_REQUEST_TIMEOUT` | integer | `600` | next-user-turn | total seconds allowed for one model request |
+| Setting | Environment | Type | Default | Takes effect | Description |
+| --- | --- | --- | --- | --- | --- |
+| `request.streamTimeout` | `UAGENT_STREAM_TIMEOUT` | integer | `300` | next-user-turn | seconds of stream silence allowed, before the first event or between events |
+| `request.timeout` | `UAGENT_REQUEST_TIMEOUT` | integer | `600` | next-user-turn | total seconds allowed for one model request |
 
 ## Tools
 
-| Setting | Type | Default | Takes effect | Description |
-| --- | --- | --- | --- | --- |
-| `UAGENT_TOOL_RESULT_CHARS` | integer | `8000` | next-user-turn | characters kept from one tool result |
-| `UAGENT_READ_FILE_LINES` | integer | `1000` | next-user-turn | default lines returned by read_path |
-| `UAGENT_SANDBOX` | boolean | `1` | restart-required | confine shell commands with the OS sandbox |
-| `UAGENT_SANDBOX_NET` | boolean | `1` | restart-required | let sandboxed commands reach the network |
-| `UAGENT_SANDBOX_WRITE` | string | empty | restart-required | extra writable roots for the sandbox, colon-separated |
+| Setting | Environment | Type | Default | Takes effect | Description |
+| --- | --- | --- | --- | --- | --- |
+| `tools.resultChars` | `UAGENT_TOOL_RESULT_CHARS` | integer | `8000` | next-user-turn | characters kept from one tool result |
+| `tools.readFileLines` | `UAGENT_READ_FILE_LINES` | integer | `1000` | next-user-turn | default lines returned by read_path |
+| `sandbox.enabled` | `UAGENT_SANDBOX` | boolean | `1` | restart-required | confine shell commands with the OS sandbox |
+| `sandbox.network` | `UAGENT_SANDBOX_NET` | boolean | `1` | restart-required | let sandboxed commands reach the network |
+| `sandbox.write` | `UAGENT_SANDBOX_WRITE` | string | empty | restart-required | extra writable roots for the sandbox, colon-separated |
 
 ## Subagents
 
-| Setting | Type | Default | Takes effect | Description |
-| --- | --- | --- | --- | --- |
-| `UAGENT_SUBAGENT_DEPTH` | integer | `2` | restart-required | deepest delegation level allowed |
-| `UAGENT_SUBAGENT_MAX_STEPS` | integer | `100` | next-user-turn | model rounds per delegated child |
-| `UAGENT_SUBAGENT_MAX_TOOL_CALLS` | integer | `240` | next-user-turn | tool calls per delegated child |
-| `UAGENT_SUBAGENT_TIMEOUT` | integer | `0` | next-user-turn | wall-clock ceiling per delegated child; 0 is the turn |
+| Setting | Environment | Type | Default | Takes effect | Description |
+| --- | --- | --- | --- | --- | --- |
+| `subagent.depth` | `UAGENT_SUBAGENT_DEPTH` | integer | `2` | restart-required | deepest delegation level allowed |
+| `subagent.maxSteps` | `UAGENT_SUBAGENT_MAX_STEPS` | integer | `100` | next-user-turn | model rounds per delegated child |
+| `subagent.maxToolCalls` | `UAGENT_SUBAGENT_MAX_TOOL_CALLS` | integer | `240` | next-user-turn | tool calls per delegated child |
+| `subagent.timeout` | `UAGENT_SUBAGENT_TIMEOUT` | integer | `0` | next-user-turn | wall-clock ceiling per delegated child; 0 is the turn |
 
 ## Coordinator
 
-| Setting | Type | Default | Takes effect | Description |
-| --- | --- | --- | --- | --- |
-| `UAGENT_COORDINATOR_MAX_THREADS` | integer | `5` | next-user-turn | threads one coordinator may run at once |
-| `UAGENT_COORDINATOR_DAILY_SPEND_USD` | number | `20.0` | next-user-turn | reported cost a coordinator and its threads may spend per day; at it, thread events wait. 0 disables it |
-| `UAGENT_COORDINATOR_ENVIRONMENT` | string | `worktree` | next-user-turn | where threads run: a fresh git worktree, or the folder itself |
+| Setting | Environment | Type | Default | Takes effect | Description |
+| --- | --- | --- | --- | --- | --- |
+| `coordinator.maxThreads` | `UAGENT_COORDINATOR_MAX_THREADS` | integer | `5` | next-user-turn | threads one coordinator may run at once |
+| `coordinator.dailySpendUsd` | `UAGENT_COORDINATOR_DAILY_SPEND_USD` | number | `20.0` | next-user-turn | reported cost a coordinator and its threads may spend per day; at it, thread events wait. 0 disables it |
+| `coordinator.environment` | `UAGENT_COORDINATOR_ENVIRONMENT` | string | `worktree` | next-user-turn | where threads run: a fresh git worktree, or the folder itself |
 
 ## Web search
 
-| Setting | Type | Default | Takes effect | Description |
-| --- | --- | --- | --- | --- |
-| `UAGENT_WEB_SEARCH_BACKEND` | string | `auto` | restart-required | auto, openrouter, or off |
-| `UAGENT_WEB_SEARCH_MODEL` | string | empty | next-user-turn | model route used for search |
+| Setting | Environment | Type | Default | Takes effect | Description |
+| --- | --- | --- | --- | --- | --- |
+| `webSearch.backend` | `UAGENT_WEB_SEARCH_BACKEND` | string | `auto` | restart-required | auto, openrouter, or off |
+| `webSearch.model` | `UAGENT_WEB_SEARCH_MODEL` | string | empty | next-user-turn | model route used for search |
 
 ## Memory
 
-| Setting | Type | Default | Takes effect | Description |
-| --- | --- | --- | --- | --- |
-| `UAGENT_MEMORY` | boolean | `1` | restart-required | enable memory recall and writes |
-| `UAGENT_MEMORY_GENERATE` | boolean | `1` | restart-required | run the background memory extractor |
-| `UAGENT_MEMORY_MODEL` | string | empty | next-user-turn | model route for background memory extraction |
+| Setting | Environment | Type | Default | Takes effect | Description |
+| --- | --- | --- | --- | --- | --- |
+| `memory.enabled` | `UAGENT_MEMORY` | boolean | `1` | restart-required | enable memory recall and writes |
+| `memory.generate` | `UAGENT_MEMORY_GENERATE` | boolean | `1` | restart-required | run the background memory extractor |
+| `memory.model` | `UAGENT_MEMORY_MODEL` | string | empty | next-user-turn | model route for background memory extraction |
 
 ## Skills
 
-| Setting | Type | Default | Takes effect | Description |
-| --- | --- | --- | --- | --- |
-| `UAGENT_SKILL_PATH` | string | empty | restart-required | replace the entire skill search path |
-| `UAGENT_SKILL_EXCLUDE` | string | empty | restart-required | comma-separated skill names to withhold |
-| `UAGENT_OTHER_AGENTS` | string | empty | restart-required | also read what these agents keep (skills, memories, CLAUDE.md): claude, codex, comma-separated; empty reads none |
+| Setting | Environment | Type | Default | Takes effect | Description |
+| --- | --- | --- | --- | --- | --- |
+| `skills.path` | `UAGENT_SKILL_PATH` | string | empty | restart-required | replace the entire skill search path |
+| `skills.exclude` | `UAGENT_SKILL_EXCLUDE` | string | empty | restart-required | comma-separated skill names to withhold |
+| `skills.otherAgents` | `UAGENT_OTHER_AGENTS` | string | empty | restart-required | also read what these agents keep (skills, memories, CLAUDE.md): claude, codex, comma-separated; empty reads none |
 
 ## MCP
 
-| Setting | Type | Default | Takes effect | Description |
-| --- | --- | --- | --- | --- |
-| `UAGENT_MCP_TIMEOUT` | integer | `60` | restart-required | seconds allowed for one MCP call |
-| `UAGENT_MCP_ROOTS` | string | empty | restart-required | roots advertised to MCP servers |
+| Setting | Environment | Type | Default | Takes effect | Description |
+| --- | --- | --- | --- | --- | --- |
+| `mcp.timeout` | `UAGENT_MCP_TIMEOUT` | integer | `60` | restart-required | seconds allowed for one MCP call |
+| `mcp.roots` | `UAGENT_MCP_ROOTS` | string | empty | restart-required | roots advertised to MCP servers |
 
 ## Media
 
-| Setting | Type | Default | Takes effect | Description |
-| --- | --- | --- | --- | --- |
-| `UAGENT_IMAGE_MODEL` | string | empty | next-user-turn | model route that reads attached images; empty uses the main route when it reads images, else the shared default route |
-| `UAGENT_PDF_ENGINE` | string | `cloudflare-ai` | next-user-turn | OpenRouter file-parser engine for documents |
-| `UAGENT_ATTACHMENT_MB` | integer | `10` | next-user-turn | largest attachment in mebibytes |
+| Setting | Environment | Type | Default | Takes effect | Description |
+| --- | --- | --- | --- | --- | --- |
+| `image.model` | `UAGENT_IMAGE_MODEL` | string | empty | next-user-turn | model route that reads attached images; empty uses the main route when it reads images, else the shared default route |
+| `pdf.engine` | `UAGENT_PDF_ENGINE` | string | `cloudflare-ai` | next-user-turn | OpenRouter file-parser engine for documents |
+| `attachments.maxMb` | `UAGENT_ATTACHMENT_MB` | integer | `10` | next-user-turn | largest attachment in mebibytes |
 
 ## History
 
-| Setting | Type | Default | Takes effect | Description |
-| --- | --- | --- | --- | --- |
-| `UAGENT_HISTORY_DAYS` | integer | `30` | next-user-turn | days of saved sessions kept |
+| Setting | Environment | Type | Default | Takes effect | Description |
+| --- | --- | --- | --- | --- | --- |
+| `history.days` | `UAGENT_HISTORY_DAYS` | integer | `30` | next-user-turn | days of saved sessions kept |
 
 ## Web host
 
-| Setting | Type | Default | Takes effect | Description |
-| --- | --- | --- | --- | --- |
-| `UAGENT_WEB_BIND` | string | `127.0.0.1` | restart-required | web listener address: loopback by default, all interfaces only when explicitly configured |
-| `UAGENT_BROWSER_DATA` | string | empty | restart-required | private browser profile and service directory; empty disables the browser appliance |
-| `UAGENT_WEB_PORT` | integer | `8080` | restart-required | global web master's loopback port |
-| `UAGENT_WEB_ORIGIN` | string | empty | restart-required | exact browser origin via an explicitly configured HTTPS or tailnet proxy |
-| `UAGENT_WEB_PUSH_CONTACT` | string | empty | restart-required | VAPID mailto or HTTPS contact; empty disables optional native Web Push |
+| Setting | Environment | Type | Default | Takes effect | Description |
+| --- | --- | --- | --- | --- | --- |
+| `web.bind` | `UAGENT_WEB_BIND` | string | `127.0.0.1` | restart-required | web listener address: loopback by default, all interfaces only when explicitly configured |
+| `web.browserData` | `UAGENT_BROWSER_DATA` | string | empty | restart-required | private browser profile and service directory; empty disables the browser appliance |
+| `web.port` | `UAGENT_WEB_PORT` | integer | `8080` | restart-required | global web master's loopback port |
+| `web.origin` | `UAGENT_WEB_ORIGIN` | string | empty | restart-required | exact browser origin via an explicitly configured HTTPS or tailnet proxy |
+| `web.pushContact` | `UAGENT_WEB_PUSH_CONTACT` | string | empty | restart-required | VAPID mailto or HTTPS contact; empty disables optional native Web Push |

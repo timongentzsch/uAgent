@@ -81,6 +81,7 @@ EffectiveConfigSnapshot ConfigManager::Read() const {
   const SavedSettings saved = ReadSettings(folder_, trust_project_);
   snapshot.stamp = saved.stamp;
   snapshot.error = saved.error;
+  snapshot.warning = saved.warning;
   MergeScope(saved.all, "user", process_, snapshot);
   MergeScope(saved.project, "project", process_, snapshot);
   auto layer = [&](const char* source, const RuntimeConfig::Values& held,

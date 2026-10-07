@@ -30,9 +30,11 @@ int ConfigMain(int argc, char** argv) {
             : !ReadRegularFile(source, kEditFileBytes, bytes, error)) {
       if (error.empty()) error = "the document exceeds the size limit";
     } else {
-      json document = json::parse(bytes, nullptr, false);
-      error = CheckSavedSettings(document);
-      if (error.empty()) error = ReplaceSettings(std::move(document));
+      AllSettings settings;
+      if (ParseSettings(json::parse(bytes, nullptr, false), settings, error)) {
+        error = CheckSavedSettings(settings);
+      }
+      if (error.empty()) error = ReplaceSettings(settings);
     }
   } else {
     fprintf(stderr,

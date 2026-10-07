@@ -928,9 +928,11 @@ def test_composite_configuration_requires_exact_human_approval(root, home, *, bi
         # The diff belongs to the approval prompt alone, never the call label.
         assert_true(output.count(b'+   "codex-local": {') == 1, output)
         saved = saved_settings(home)
-        assert_true(saved["UAGENT_PROVIDERS"] == proposed, saved)
+        # The providers are held as the object they are.
+        assert_true(saved["providers"] == json.loads(proposed), saved)
         # What a value refers to stays beside it.
-        assert_true(saved["LOCAL_PROXY_API_KEY"] == "adjacent-integration-secret", saved)
+        held = saved["variables"]["LOCAL_PROXY_API_KEY"]
+        assert_true(held == "adjacent-integration-secret", saved)
 
 
 def test_composite_configuration_rejects_literal_credentials(root, home, *, binary):
@@ -1009,7 +1011,7 @@ def test_self_configuration_requires_a_person(root, home, *, binary):
         )
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip().endswith("configure-absent"), result.stdout)
-        assert_true(saved_settings(home) == {"UAGENT_MAX_TOOL_CALLS": "40"}, saved_settings(home))
+        assert_true(saved_settings(home) == {"limits.maxToolCalls": 40}, saved_settings(home))
 
 
 def test_self_configuration_commits_after_approval(root, home, *, binary):
@@ -1054,7 +1056,8 @@ def test_self_configuration_commits_after_approval(root, home, *, binary):
         assert_true(status == 0, output)
         assert_true(b"configure-ok" in output, output)
         assert_true(
-            saved_settings(home) == {"UAGENT_MAX_TOOL_CALLS": "120", "UNKNOWN_KEY": "kept"},
+            saved_settings(home)
+            == {"limits.maxToolCalls": 120, "variables": {"UNKNOWN_KEY": "kept"}},
             saved_settings(home),
         )
 
@@ -1068,28 +1071,27 @@ def test_config_export_and_import_round_trip(root, home, *, binary):
     exported = run(root, env, "config", "export", binary=binary)
     assert_true(exported.returncode == 0, exported.stderr)
     document = json.loads(exported.stdout)
-    assert_true(document["all"] == {"UAGENT_MAX_STEPS": "7", "MY_KEY": "kept"}, document)
+    kept = {"variables": {"MY_KEY": "kept"}}
+    assert_true(document["all"] == {"limits.maxSteps": 7} | kept, document)
     assert_true(
-        document["projects"] == {str(root.resolve()): {"UAGENT_MAX_TOOL_CALLS": "40"}}, document
+        document["projects"] == {str(root.resolve()): {"limits.maxToolCalls": 40}}, document
     )
 
     incoming = root / "incoming.json"
-    document["all"]["UAGENT_MAX_STEPS"] = "many"
+    document["all"]["limits.maxSteps"] = "many"
     incoming.write_text(json.dumps(document))
     refused = run(root, env, "config", "import", str(incoming), binary=binary)
     assert_true(refused.returncode == 1 and "expects an integer" in refused.stderr, refused.stderr)
-    assert_true(saved_settings(home)["UAGENT_MAX_STEPS"] == "7", "a refused import saved")
+    assert_true(saved_settings(home)["limits.maxSteps"] == 7, "a refused import saved")
 
-    document["all"] = {"UAGENT_MEMORY": "off", "MY_KEY": "kept"}
+    document["all"] = {"memory.enabled": "off"} | kept
     incoming.write_text(json.dumps(document))
     imported = run(root, env, "config", "import", str(incoming), binary=binary)
     assert_true(imported.returncode == 0, imported.stderr)
     # One spelling is saved, whichever was given; what was not in the
     # document is gone.
-    assert_true(
-        saved_settings(home) == {"UAGENT_MEMORY": "0", "MY_KEY": "kept"}, saved_settings(home)
-    )
-    assert_true(saved_settings(home, root) == {"UAGENT_MAX_TOOL_CALLS": "40"}, "project lost")
+    assert_true(saved_settings(home) == {"memory.enabled": False} | kept, saved_settings(home))
+    assert_true(saved_settings(home, root) == {"limits.maxToolCalls": 40}, "project lost")
 
 
 def test_approval_remembers_exact_action_and_forwards_a_refusal(root, home, *, binary):

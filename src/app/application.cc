@@ -37,6 +37,7 @@ Application::Application(AppContext& context)
       session_file_(context.channel ? context.channel->SessionPath()
                                     : DelegatedSessionFile()),
       saved_revision_(agent_.Revision()),
+      config_problem_(context.config_manager.Problem()),
       channel_(context.channel) {
   agent_.RetainExchanges(channel_ || context_.options.prompt.empty() ||
                          !session_file_.empty());
@@ -87,6 +88,15 @@ int Application::LoadInitialAttachments() {
 void Application::ReloadConfigAtTurnBoundary() {
   std::optional<ConfigReload> reload =
       context_.config_manager.Reload(runtime_.config);
+  // A document edited since may hold what cannot be taken: said when it
+  // appears, not at every turn.
+  if (const std::string& problem = context_.config_manager.Problem();
+      problem != config_problem_) {
+    config_problem_ = problem;
+    if (!problem.empty()) {
+      Emit(NoticeEvent(PresentationStatus::kWarned, problem));
+    }
+  }
   if (!reload) return;
   runtime_.config = reload->active;
   api_.config = reload->active;

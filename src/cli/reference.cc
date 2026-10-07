@@ -11,6 +11,7 @@
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/limits.h"
+#include "include/core/settings_store.h"
 #include "include/core/strings.h"
 
 namespace uagent {
@@ -96,7 +97,11 @@ std::string ConfigMarkdown() {
       "`takes effect` is `next-user-turn` when a changed setting applies "
       "at the next prompt, and `restart-required` when it does not. "
       "Secret values are never displayed; diagnostics report only whether they "
-      "are set.\n";
+      "are set.\n\nA setting has two names. `Setting` is its name in "
+      "`~/.uagent/config/settings.json`, where its value has the type shown "
+      "(`settings.schema.json` beside it describes the file to an editor). "
+      "`Environment` is its name as an environment variable, whose value is "
+      "text and which wins over the file.\n";
   // A contents list, because this is the one reference long enough that a
   // reader previewing the head of it would otherwise see only the first few
   // categories and conclude the rest are missing.
@@ -108,16 +113,18 @@ std::string ConfigMarkdown() {
     const std::string category(group.id);
     out += "\n## " + std::string(group.label) + "\n\n";
     out +=
-        "| Setting | Type | Default | Takes effect | Description |\n"
-        "| --- | --- | --- | --- | --- |\n";
+        "| Setting | Environment | Type | Default | Takes effect | "
+        "Description |\n"
+        "| --- | --- | --- | --- | --- | --- |\n";
     for (const json& setting : settings) {
       if (JsonValue(setting, "category", std::string()) != category) continue;
       std::string name = JsonValue(setting, "name", std::string());
       if (JsonValue(setting, "sensitivity", std::string()) != "public") {
         name += " 🔒";
       }
-      out += "| `" + name + "` | " + JsonValue(setting, "type", std::string()) +
-             " | " + DefaultCell(setting) + " | " +
+      out += "| `" + JsonValue(setting, "key", std::string()) + "` | `" + name +
+             "` | " + JsonValue(setting, "type", std::string()) + " | " +
+             DefaultCell(setting) + " | " +
              JsonValue(setting, "takes_effect", std::string()) + " | " +
              Escape(JsonValue(setting, "description", std::string())) + " |\n";
     }
@@ -254,6 +261,7 @@ std::vector<ReferenceFile> ReferenceFiles() {
           {"configuration.md", ConfigMarkdown()},
           {"system-prompt.md", PromptMarkdown()},
           {"tools.md", ToolsMarkdown()},
+          {"settings.schema.json", JsonDump(SettingsSchema(), 2) + "\n"},
           {"manifest.json", ReferenceManifest()}};
 }
 

@@ -8,21 +8,52 @@ service.
 
 ## Settings
 
-Settings are saved by µAgent in one private document,
-`~/.uagent/config/settings.json`. It is not a file to edit: change it with
-`/config`, the web's Settings, or the agent's `uagent` tool (which asks you to
-approve the exact change).
+Settings are saved in one private document,
+`~/.uagent/config/settings.json`:
+
+```json
+{
+  "$schema": "./settings.schema.json",
+  "format": 2,
+  "all": {
+    "model": "openrouter/vendor/model",
+    "limits.maxTurnCost": 2,
+    "sandbox.network": false,
+    "openrouter.apiKey": "$OPENROUTER_KEY",
+    "variables": { "OPENROUTER_KEY": "sk-or-…" }
+  },
+  "projects": {
+    "/home/me/project": { "tools.timeout": 120 }
+  }
+}
+```
+
+`all` applies to every conversation and `projects` to the conversations in
+one folder. A setting is named as the
+[configuration reference](../skills/uagent-config/references/configuration.md)
+lists it and holds a value of its type. A value may be `$NAME`, which stands
+for the entry of that name under `variables`.
+
+Change it with `/config`, the web's Settings, the agent's `uagent` tool
+(which asks you to approve the exact change), or an editor:
+`settings.schema.json` beside it lets one complete and check the file. An
+edit applies from your next message. A name that is no setting, or a value
+its setting does not take, is reported and left out; everything else in the
+file applies, and what you wrote stays in it.
 
 ```text
 /config                                  what is set, and where from
-/config user UAGENT_MAX_TURN_COST=2      save for all conversations
-/config project UAGENT_TOOL_TIMEOUT=120  save for this project folder
-/config conversation UAGENT_APPROVAL=auto
-/config user unset UAGENT_MAX_TURN_COST
+/config user limits.maxTurnCost=2        save for all conversations
+/config project tools.timeout=120        save for this project folder
+/config conversation approval.mode=auto
+/config user unset limits.maxTurnCost
 /config project reset                    clear a scope (keeps secrets)
 /debug-config UAGENT_SANDBOX             one setting, scope by scope
 /context                                 route, capabilities, advertised schemas
 ```
+
+A setting has a second name, an environment variable (`UAGENT_MAX_TURN_COST`
+for `limits.maxTurnCost`), which `/config` takes as well.
 
 Five scopes can hold a value; the later wins: All conversations, This
 project, Environment (`UAGENT_*` variables of the process), Command line, and

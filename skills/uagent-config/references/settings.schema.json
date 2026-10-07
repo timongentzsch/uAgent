@@ -1,0 +1,780 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "scope": {
+      "additionalProperties": false,
+      "properties": {
+        "approval.mode": {
+          "default": "ask",
+          "description": "ask, auto reviewer, or yolo for ordinary mutations",
+          "enum": [
+            "",
+            "ask",
+            "auto",
+            "yolo"
+          ],
+          "type": "string",
+          "x-env": "UAGENT_APPROVAL"
+        },
+        "approval.reviewerModel": {
+          "default": "~typesafe/jev-latest",
+          "description": "Judges risky actions when approval is Auto",
+          "type": "string",
+          "x-env": "UAGENT_PERMISSION_MODEL"
+        },
+        "approval.reviewerUrl": {
+          "default": "https://openrouter.ai/api/alpha",
+          "description": "OpenRouter Decisions API base URL",
+          "type": "string",
+          "x-env": "UAGENT_PERMISSION_URL"
+        },
+        "attachments.maxMb": {
+          "anyOf": [
+            {
+              "default": 10,
+              "maximum": 17592186044415,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "pattern": "\\$",
+              "type": "string"
+            }
+          ],
+          "description": "largest attachment in mebibytes",
+          "x-env": "UAGENT_ATTACHMENT_MB"
+        },
+        "context.autoCompactPercent": {
+          "anyOf": [
+            {
+              "default": 85,
+              "type": "integer"
+            },
+            {
+              "pattern": "\\$",
+              "type": "string"
+            }
+          ],
+          "description": "context percentage that triggers compaction",
+          "x-env": "UAGENT_AUTO_COMPACT_PCT"
+        },
+        "contextWindow": {
+          "anyOf": [
+            {
+              "default": 0,
+              "type": "integer"
+            },
+            {
+              "pattern": "\\$",
+              "type": "string"
+            }
+          ],
+          "description": "context-window tokens; 0 uses the provider profile",
+          "x-env": "UAGENT_CONTEXT"
+        },
+        "coordinator.dailySpendUsd": {
+          "anyOf": [
+            {
+              "default": 20.0,
+              "type": "number"
+            },
+            {
+              "pattern": "\\$",
+              "type": "string"
+            }
+          ],
+          "description": "reported cost a coordinator and its threads may spend per day; at it, thread events wait. 0 disables it",
+          "x-env": "UAGENT_COORDINATOR_DAILY_SPEND_USD"
+        },
+        "coordinator.environment": {
+          "default": "worktree",
+          "description": "where threads run: a fresh git worktree, or the folder itself",
+          "enum": [
+            "",
+            "worktree",
+            "local"
+          ],
+          "type": "string",
+          "x-env": "UAGENT_COORDINATOR_ENVIRONMENT"
+        },
+        "coordinator.maxThreads": {
+          "anyOf": [
+            {
+              "default": 5,
+              "maximum": 64,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "pattern": "\\$",
+              "type": "string"
+            }
+          ],
+          "description": "threads one coordinator may run at once",
+          "x-env": "UAGENT_COORDINATOR_MAX_THREADS"
+        },
+        "debug.log": {
+          "default": "",
+          "description": "write a sensitive reconstructable JSONL trace",
+          "type": "string",
+          "x-env": "UAGENT_DEBUG_LOG"
+        },
+        "endpoint.apiKey": {
+          "default": "sk-noop",
+          "description": "Credential sent to the API address",
+          "type": "string",
+          "x-env": "UAGENT_API_KEY"
+        },
+        "endpoint.baseUrl": {
+          "default": "",
+          "description": "Where requests go; empty uses OpenRouter when its key is set",
+          "type": "string",
+          "x-env": "UAGENT_BASE_URL"
+        },
+        "history.days": {
+          "anyOf": [
+            {
+              "default": 30,
+              "type": "integer"
+            },
+            {
+              "pattern": "\\$",
+              "type": "string"
+            }
+          ],
+          "description": "days of saved sessions kept",
+          "x-env": "UAGENT_HISTORY_DAYS"
+        },
+        "image.model": {
+          "default": "",
+          "description": "Describes attached images when the conversation model cannot see them",
+          "type": "string",
+          "x-env": "UAGENT_IMAGE_MODEL"
+        },
+        "limits.maxSteps": {
+          "anyOf": [
+            {
+              "default": 0,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "pattern": "\\$",
+              "type": "string"
+            }
+          ],
+          "description": "model rounds per turn; 0 disables the limit",
+          "x-env": "UAGENT_MAX_STEPS"
+        },
+        "limits.maxToolCalls": {
+          "anyOf": [
+            {
+              "default": 0,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "pattern": "\\$",
+              "type": "string"
+            }
+          ],
+          "description": "tool calls per turn; 0 disables the limit",
+          "x-env": "UAGENT_MAX_TOOL_CALLS"
+        },
+        "limits.maxTurnCost": {
+          "anyOf": [
+            {
+              "default": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "\\$",
+              "type": "string"
+            }
+          ],
+          "description": "reported-cost ceiling per turn; 0 disables it",
+          "x-env": "UAGENT_MAX_TURN_COST"
+        },
+        "limits.maxTurnSeconds": {
+          "anyOf": [
+            {
+              "default": 0,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "pattern": "\\$",
+              "type": "string"
+            }
+          ],
+          "description": "wall-clock seconds per turn; 0 disables the deadline",
+          "x-env": "UAGENT_MAX_TURN_SECONDS"
+        },
+        "limits.maxTurnTokens": {
+          "anyOf": [
+            {
+              "default": 0,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "pattern": "\\$",
+              "type": "string"
+            }
+          ],
+          "description": "generated-token ceiling per turn; 0 disables it",
+          "x-env": "UAGENT_MAX_TURN_TOKENS"
+        },
+        "limits.sessionCost": {
+          "anyOf": [
+            {
+              "default": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "\\$",
+              "type": "string"
+            }
+          ],
+          "description": "cumulative reported-cost ceiling; 0 disables it",
+          "x-env": "UAGENT_SESSION_BUDGET"
+        },
+        "limits.sessionTokens": {
+          "anyOf": [
+            {
+              "default": 0,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "pattern": "\\$",
+              "type": "string"
+            }
+          ],
+          "description": "cumulative generated-token ceiling; 0 disables it",
+          "x-env": "UAGENT_SESSION_TOKEN_BUDGET"
+        },
+        "maxOutputTokens": {
+          "anyOf": [
+            {
+              "default": -1,
+              "type": "integer"
+            },
+            {
+              "pattern": "\\$",
+              "type": "string"
+            }
+          ],
+          "description": "maximum response tokens; -1 omits the optional cap",
+          "x-env": "UAGENT_MAX_TOKENS"
+        },
+        "mcp.roots": {
+          "default": "",
+          "description": "roots advertised to MCP servers",
+          "type": "string",
+          "x-env": "UAGENT_MCP_ROOTS"
+        },
+        "mcp.timeout": {
+          "anyOf": [
+            {
+              "default": 60,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "pattern": "\\$",
+              "type": "string"
+            }
+          ],
+          "description": "seconds allowed for one MCP call",
+          "x-env": "UAGENT_MCP_TIMEOUT"
+        },
+        "memory.enabled": {
+          "anyOf": [
+            {
+              "default": true,
+              "type": "boolean"
+            },
+            {
+              "pattern": "\\$",
+              "type": "string"
+            }
+          ],
+          "description": "enable memory recall and writes",
+          "x-env": "UAGENT_MEMORY"
+        },
+        "memory.generate": {
+          "anyOf": [
+            {
+              "default": true,
+              "type": "boolean"
+            },
+            {
+              "pattern": "\\$",
+              "type": "string"
+            }
+          ],
+          "description": "run the background memory extractor",
+          "x-env": "UAGENT_MEMORY_GENERATE"
+        },
+        "memory.model": {
+          "default": "",
+          "description": "Distils memories from finished conversations in the background",
+          "type": "string",
+          "x-env": "UAGENT_MEMORY_MODEL"
+        },
+        "memory.redactKeywords": {
+          "default": "",
+          "description": "extra keywords redacted from stored memories",
+          "type": "string",
+          "x-env": "UAGENT_MEMORY_REDACT_KEYWORDS"
+        },
+        "model": {
+          "default": "",
+          "description": "Answers your messages; /model chooses it for one conversation",
+          "type": "string",
+          "x-env": "UAGENT_MODEL"
+        },
+        "openrouter.apiKey": {
+          "default": "",
+          "description": "Credential for OpenRouter, used when no API address is set",
+          "type": "string",
+          "x-env": "OPENROUTER_API_KEY"
+        },
+        "openrouter.provider": {
+          "default": "",
+          "description": "pin OpenRouter to one upstream provider",
+          "type": "string",
+          "x-env": "UAGENT_OPENROUTER_PROVIDER"
+        },
+        "openrouter.variant": {
+          "default": "",
+          "description": "nitro, floor, or exacto routing preference",
+          "enum": [
+            "",
+            "nitro",
+            "floor",
+            "exacto"
+          ],
+          "type": "string",
+          "x-env": "UAGENT_OPENROUTER_VARIANT"
+        },
+        "pdf.engine": {
+          "default": "cloudflare-ai",
+          "description": "OpenRouter file-parser engine for documents",
+          "type": "string",
+          "x-env": "UAGENT_PDF_ENGINE"
+        },
+        "project.trustConfig": {
+          "anyOf": [
+            {
+              "default": false,
+              "type": "boolean"
+            },
+            {
+              "pattern": "\\$",
+              "type": "string"
+            }
+          ],
+          "description": "trust this workspace's .mcp.json",
+          "x-env": "UAGENT_TRUST_PROJECT_CONFIG"
+        },
+        "prompt.adaptSystem": {
+          "anyOf": [
+            {
+              "default": false,
+              "type": "boolean"
+            },
+            {
+              "pattern": "\\$",
+              "type": "string"
+            }
+          ],
+          "description": "expose adapt_system so the model may revise its directive",
+          "x-env": "UAGENT_ADAPT_SYSTEM"
+        },
+        "providers": {
+          "anyOf": [
+            {
+              "default": "",
+              "type": "object"
+            },
+            {
+              "pattern": "\\$",
+              "type": "string"
+            }
+          ],
+          "description": "JSON object of named endpoints, transports, and aliases",
+          "x-env": "UAGENT_PROVIDERS"
+        },
+        "reasoningEffort": {
+          "default": "",
+          "description": "How long the conversation model thinks before answering",
+          "enum": [
+            "",
+            "none",
+            "minimal",
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ],
+          "type": "string",
+          "x-env": "UAGENT_REASONING_EFFORT"
+        },
+        "request.streamTimeout": {
+          "anyOf": [
+            {
+              "default": 300,
+              "type": "integer"
+            },
+            {
+              "pattern": "\\$",
+              "type": "string"
+            }
+          ],
+          "description": "seconds of stream silence allowed, before the first event or between events",
+          "x-env": "UAGENT_STREAM_TIMEOUT"
+        },
+        "request.timeout": {
+          "anyOf": [
+            {
+              "default": 600,
+              "type": "integer"
+            },
+            {
+              "pattern": "\\$",
+              "type": "string"
+            }
+          ],
+          "description": "total seconds allowed for one model request",
+          "x-env": "UAGENT_REQUEST_TIMEOUT"
+        },
+        "sandbox.enabled": {
+          "anyOf": [
+            {
+              "default": true,
+              "type": "boolean"
+            },
+            {
+              "pattern": "\\$",
+              "type": "string"
+            }
+          ],
+          "description": "confine shell commands with the OS sandbox",
+          "x-env": "UAGENT_SANDBOX"
+        },
+        "sandbox.network": {
+          "anyOf": [
+            {
+              "default": true,
+              "type": "boolean"
+            },
+            {
+              "pattern": "\\$",
+              "type": "string"
+            }
+          ],
+          "description": "let sandboxed commands reach the network",
+          "x-env": "UAGENT_SANDBOX_NET"
+        },
+        "sandbox.write": {
+          "default": "",
+          "description": "extra writable roots for the sandbox, colon-separated",
+          "type": "string",
+          "x-env": "UAGENT_SANDBOX_WRITE"
+        },
+        "shell.envAllow": {
+          "default": "",
+          "description": "comma-separated sensitive variables approved shells may inherit",
+          "type": "string",
+          "x-env": "UAGENT_SHELL_ENV_ALLOW"
+        },
+        "skills.exclude": {
+          "default": "",
+          "description": "comma-separated skill names to withhold",
+          "type": "string",
+          "x-env": "UAGENT_SKILL_EXCLUDE"
+        },
+        "skills.otherAgents": {
+          "default": "",
+          "description": "also read what these agents keep (skills, memories, CLAUDE.md): claude, codex, comma-separated; empty reads none",
+          "type": "string",
+          "x-env": "UAGENT_OTHER_AGENTS"
+        },
+        "skills.path": {
+          "default": "",
+          "description": "replace the entire skill search path",
+          "type": "string",
+          "x-env": "UAGENT_SKILL_PATH"
+        },
+        "subagent.depth": {
+          "anyOf": [
+            {
+              "default": 2,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "pattern": "\\$",
+              "type": "string"
+            }
+          ],
+          "description": "deepest delegation level allowed",
+          "x-env": "UAGENT_SUBAGENT_DEPTH"
+        },
+        "subagent.maxSteps": {
+          "anyOf": [
+            {
+              "default": 100,
+              "type": "integer"
+            },
+            {
+              "pattern": "\\$",
+              "type": "string"
+            }
+          ],
+          "description": "model rounds per delegated child",
+          "x-env": "UAGENT_SUBAGENT_MAX_STEPS"
+        },
+        "subagent.maxToolCalls": {
+          "anyOf": [
+            {
+              "default": 240,
+              "type": "integer"
+            },
+            {
+              "pattern": "\\$",
+              "type": "string"
+            }
+          ],
+          "description": "tool calls per delegated child",
+          "x-env": "UAGENT_SUBAGENT_MAX_TOOL_CALLS"
+        },
+        "subagent.timeout": {
+          "anyOf": [
+            {
+              "default": 0,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "pattern": "\\$",
+              "type": "string"
+            }
+          ],
+          "description": "wall-clock ceiling per delegated child; 0 is the turn",
+          "x-env": "UAGENT_SUBAGENT_TIMEOUT"
+        },
+        "terminal.markdown": {
+          "anyOf": [
+            {
+              "default": true,
+              "type": "boolean"
+            },
+            {
+              "pattern": "\\$",
+              "type": "string"
+            }
+          ],
+          "description": "render Markdown on a TTY",
+          "x-env": "UAGENT_MARKDOWN"
+        },
+        "terminal.plain": {
+          "anyOf": [
+            {
+              "default": false,
+              "type": "boolean"
+            },
+            {
+              "pattern": "\\$",
+              "type": "string"
+            }
+          ],
+          "description": "screen-reader terminal: labelled lines, no animation or cursor control",
+          "x-env": "UAGENT_PLAIN"
+        },
+        "terminal.reducedMotion": {
+          "anyOf": [
+            {
+              "default": false,
+              "type": "boolean"
+            },
+            {
+              "pattern": "\\$",
+              "type": "string"
+            }
+          ],
+          "description": "show a still status instead of the terminal spinner",
+          "x-env": "UAGENT_REDUCED_MOTION"
+        },
+        "title.model": {
+          "default": "~deepseek/deepseek-flash-latest",
+          "description": "Names new conversations; off keeps the first message as the title",
+          "type": "string",
+          "x-env": "UAGENT_TITLE_MODEL"
+        },
+        "tools.capabilities": {
+          "default": "",
+          "description": "restrict the exposed tool capability set",
+          "type": "string",
+          "x-env": "UAGENT_TOOL_CAPABILITIES"
+        },
+        "tools.readFileLines": {
+          "anyOf": [
+            {
+              "default": 1000,
+              "type": "integer"
+            },
+            {
+              "pattern": "\\$",
+              "type": "string"
+            }
+          ],
+          "description": "default lines returned by read_path",
+          "x-env": "UAGENT_READ_FILE_LINES"
+        },
+        "tools.resultChars": {
+          "anyOf": [
+            {
+              "default": 8000,
+              "type": "integer"
+            },
+            {
+              "pattern": "\\$",
+              "type": "string"
+            }
+          ],
+          "description": "characters kept from one tool result",
+          "x-env": "UAGENT_TOOL_RESULT_CHARS"
+        },
+        "tools.timeout": {
+          "anyOf": [
+            {
+              "default": 30,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "pattern": "\\$",
+              "type": "string"
+            }
+          ],
+          "description": "seconds one tool call may run",
+          "x-env": "UAGENT_TOOL_TIMEOUT"
+        },
+        "variables": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Values a setting may refer to as $NAME, such as an API key.",
+          "type": "object"
+        },
+        "verbosity": {
+          "default": "default",
+          "description": "how much of the agent's work is shown: minimal, default or full; display only",
+          "enum": [
+            "",
+            "minimal",
+            "default",
+            "full"
+          ],
+          "type": "string",
+          "x-env": "UAGENT_VERBOSITY"
+        },
+        "web.bind": {
+          "default": "127.0.0.1",
+          "description": "web listener address: loopback by default, all interfaces only when explicitly configured",
+          "type": "string",
+          "x-env": "UAGENT_WEB_BIND"
+        },
+        "web.browserData": {
+          "default": "",
+          "description": "private browser profile and service directory; empty disables the browser appliance",
+          "type": "string",
+          "x-env": "UAGENT_BROWSER_DATA"
+        },
+        "web.origin": {
+          "default": "",
+          "description": "exact browser origin via an explicitly configured HTTPS or tailnet proxy",
+          "type": "string",
+          "x-env": "UAGENT_WEB_ORIGIN"
+        },
+        "web.port": {
+          "anyOf": [
+            {
+              "default": 8080,
+              "maximum": 65535,
+              "minimum": 1024,
+              "type": "integer"
+            },
+            {
+              "pattern": "\\$",
+              "type": "string"
+            }
+          ],
+          "description": "global web master's loopback port",
+          "x-env": "UAGENT_WEB_PORT"
+        },
+        "web.pushContact": {
+          "default": "",
+          "description": "VAPID mailto or HTTPS contact; empty disables optional native Web Push",
+          "type": "string",
+          "x-env": "UAGENT_WEB_PUSH_CONTACT"
+        },
+        "webSearch.backend": {
+          "default": "auto",
+          "description": "auto, openrouter, or off",
+          "enum": [
+            "",
+            "auto",
+            "openrouter",
+            "off"
+          ],
+          "type": "string",
+          "x-env": "UAGENT_WEB_SEARCH_BACKEND"
+        },
+        "webSearch.model": {
+          "default": "",
+          "description": "Answers web lookups",
+          "type": "string",
+          "x-env": "UAGENT_WEB_SEARCH_MODEL"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "all": {
+      "$ref": "#/definitions/scope",
+      "description": "Settings for all conversations."
+    },
+    "archive": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "format": {
+      "const": 2
+    },
+    "projects": {
+      "additionalProperties": {
+        "$ref": "#/definitions/scope"
+      },
+      "description": "Settings for the conversations in one folder, by its path.",
+      "type": "object"
+    }
+  },
+  "required": [
+    "format",
+    "all",
+    "projects"
+  ],
+  "title": "uagent settings",
+  "type": "object"
+}

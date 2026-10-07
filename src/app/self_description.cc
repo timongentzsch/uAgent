@@ -51,6 +51,7 @@ constexpr TopicName kTopics[] = {
 
 json DescriptorJson(const ConfigDescriptor& descriptor) {
   json entry = {{"name", descriptor.environment},
+                {"key", descriptor.key},
                 {"type", ConfigTypeName(descriptor.type)},
                 {"default", std::visit([](auto value) { return json(value); },
                                        descriptor.default_value)},

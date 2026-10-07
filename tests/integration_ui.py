@@ -1471,7 +1471,7 @@ def test_cli_permissions_config_http_and_fork(root, home, *, binary):
             "fork modified source",
         )
         assert_true(
-            saved_settings(home).get("UAGENT_MAX_STEPS") == "23",
+            saved_settings(home).get("limits.maxSteps") == 23,
             "CLI config not persisted",
         )
 
@@ -1575,7 +1575,7 @@ def test_cli_mcp_config_and_restart(root, home, *, binary):
         assert_true("Before restart, cap 321" in output, output)
         assert_true(re.search(r"UAGENT_MCP_TIMEOUT = .*100 .*All conversations", output), output)
         assert_true("history kept" in output, output)
-        assert_true("UAGENT_MCP_TIMEOUT" not in saved_settings(home), "reset")
+        assert_true("mcp.timeout" not in saved_settings(home), "reset")
         assert_true("no remembered actions for this repository" in output, output)
         assert_true(
             any("Parity check" in path.read_text() for path in session_files(home)),

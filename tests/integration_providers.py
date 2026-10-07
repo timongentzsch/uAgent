@@ -572,7 +572,7 @@ def test_model_choice_is_the_conversations_until_saved_for_all(root, home, *, bi
         kept = run_dialog(root, choose_env, "/model second/fast --default\n/q\n", binary=binary)
         assert_true("also the model of new conversations" in kept.stdout, kept.stdout)
         assert_true(
-            saved_settings(home) == {"UAGENT_MODEL": "second/model-b:medium"}, saved_settings(home)
+            saved_settings(home) == {"model": "second/model-b:medium"}, saved_settings(home)
         )
         started = run(root, fresh_env, "-p", "probe", binary=binary)
         assert_true(started.stdout.strip() == "chosen-model-ok", started.stdout + started.stderr)
@@ -593,7 +593,7 @@ def test_model_choice_is_the_conversations_until_saved_for_all(root, home, *, bi
         migrated = run(root, fresh_env, "-p", "probe", binary=binary)
         assert_true(migrated.stdout.strip() == "chosen-model-ok", migrated.stdout + migrated.stderr)
         assert_true(not legacy.exists(), "remembered model was not taken")
-        assert_true(saved_settings(home) == {"UAGENT_MODEL": "second/fast"}, saved_settings(home))
+        assert_true(saved_settings(home) == {"model": "second/fast"}, saved_settings(home))
     finally:
         first.close()
         second.close()

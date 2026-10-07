@@ -496,7 +496,7 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
         "Coordinator daily spend"),
     registry::Named(
         registry::Int("coordinator.chatTurns", "UAGENT_COORDINATOR_CHAT_TURNS",
-                      {}, 12, 0, 256, ReloadPolicy::kNextUserTurn,
+                      {}, 8, 0, 256, ReloadPolicy::kNextUserTurn,
                       "coordination",
                       "turns the members of a coordinator's chat may take on "
                       "one message of the user's; 0 lets them only read"),

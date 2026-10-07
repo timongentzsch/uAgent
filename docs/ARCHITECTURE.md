@@ -152,8 +152,8 @@ session header, which it cannot rewrite.
   without starting a turn there. The coordinator takes the floor once no
   member owes an answer and something was written.
 - A message of the user's that names only members is theirs: it joins the
-  coordinator's conversation without a turn, and the floor does not return
-  to the coordinator.
+  coordinator's conversation without a turn, the floor does not return to
+  the coordinator, and an answer wakes only whom it names in turn.
 - One message of the user's starts at most `UAGENT_COORDINATOR_CHAT_TURNS`
   member turns, so an exchange cannot run on by itself. Members spend from
   the same daily limit as threads.

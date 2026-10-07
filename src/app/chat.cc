@@ -163,7 +163,9 @@ void Chat::Heard(Mail& mail) {
     // Named from its header, never from what it sent.
     const std::string name = Name(*sender);
     posted_ = true;
-    Tell(members, mail.from, name, text, /*open=*/true);
+    // In an exchange the user began with members alone, an answer wakes
+    // only whom it names; the others read it.
+    Tell(members, mail.from, name, text, /*open=*/moderated_);
     mail.body["author"] = name;
     mail.body["text"] = "[" + name + std::string(kPostLabel) + text;
   }

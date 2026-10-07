@@ -1148,8 +1148,7 @@ def test_a_chat_wakes_whom_a_message_is_for_and_hears_who_has_something_to_add(
         # Its answer is what the run prints: the coordinator said nothing.
         assert_true(result.stdout.strip() == "Lin: Just me, then.", repr(result.stdout))
         time.sleep(budget(1))
-        assert_true(not asked(server, "Ada", "only you"), server.requests)
-        assert_true(all(_member(b) for _, b in server.requests), server.requests)
+        assert_true(all(_member(b) == "Lin" for _, b in server.requests), server.requests)
 
         result = run(root, env, "coord", "-p", "let Lin go", binary=binary)
         assert_true(result.returncode == 0, result.stderr)

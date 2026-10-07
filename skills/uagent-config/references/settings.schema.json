@@ -83,7 +83,7 @@
         "coordinator.chatTurns": {
           "anyOf": [
             {
-              "default": 12,
+              "default": 8,
               "maximum": 256,
               "minimum": 0,
               "type": "integer"

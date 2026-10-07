@@ -45,7 +45,7 @@ constexpr size_t kMessageBytes = size_t{8} * 1024;
 // Members one coordinator's chat may have.
 constexpr int64_t kChatMembers = 16;
 // How long a member's runtime may take to start on the mail that wakes it.
-constexpr int64_t kStartingMs = 30 * 1000;
+constexpr int64_t kStartingMs = int64_t{30} * 1000;
 constexpr size_t kDiffBytes = size_t{16} * 1024;
 
 // "saved" without a runtime; else what its runtime said when it answered:

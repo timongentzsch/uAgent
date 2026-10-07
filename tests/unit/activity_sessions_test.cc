@@ -1091,7 +1091,9 @@ void TestDetachedActivityOwnership() {
   ProcessSupervisor detached_failure;
   // Its output is piped to this executable as the log pump, and the pipe's
   // last failure is the command's: a stand-in that succeeds lets the
-  // command's own status through.
+  // command's own status through. A copy: SetExecutablePath replaces the
+  // string ExecutablePath refers to.
+  // NOLINTNEXTLINE(performance-unnecessary-copy-initialization)
   const std::string executable = ExecutablePath();
   SetExecutablePath("/usr/bin/true");
   CHECK(

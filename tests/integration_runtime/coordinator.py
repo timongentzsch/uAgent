@@ -1190,3 +1190,36 @@ def test_a_chat_that_never_falls_silent_stops_at_its_cap(root, home, *, binary):
         time.sleep(budget(1))
         turns = [b for _, b in server.requests if _member(b)]
         assert_true(2 <= len(turns) <= 3, [_last_user(b)[:80] for b in turns])
+
+
+def test_a_member_reads_what_was_shared_in_the_chat_without_review(root, home, *, binary):
+    def route(_, body):
+        member, last = _member(body), _last_user(body)
+        results = tool_results(body["messages"])
+        if member and "look at" in last:
+            if not results:
+                return tool_call("read_path", {"path": last.split("look at ")[1].split('"')[0]})
+            return event({"content": "It says " + results[-1].splitlines()[-1]})
+        if member:
+            return event({"content": "PASS"})
+        if "bring Ada" in last and not results:
+            return tool_call(
+                "thread", {"action": "add_member", "name": "Ada", "persona": "You read files."}
+            )
+        return event({"content": "ok"})
+
+    with Server([route]) as server:
+        env = base_env(home, server.url)
+        result = run(root, env, "coord", "-p", "bring Ada", binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        # Where the web keeps the files a person uploads to the coordinator.
+        coordinator = next(path for path in session_files(home) if path.name == "coordinator.json")
+        shared = pathlib.Path(str(coordinator) + ".assets")
+        shared.mkdir()
+        (shared / "plan.txt").write_text("ship on friday\n", encoding="utf-8")
+        server.requests.clear()
+        result = run(root, env, "coord", "-p", f"@Ada look at {shared / 'plan.txt'}", binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "Ada: It says ship on friday", repr(result.stdout))
+        # Nobody was asked: not the reviewing model, not the coordinator.
+        assert_true(all(_member(b) == "Ada" for _, b in server.requests), server.requests)

@@ -415,7 +415,43 @@ void Agent::Turn(const std::string& user_input, json user_content,
                          : ExecuteToolCalls(calls, state, loop);
     if (flow == StepFlow::kEndTurn) break;
   }
+  AnswerAtLimit(state, loop);
   FinishTurn(state, loop.step);
+}
+
+// A turn stopped by its step, tool-call or time limit has done work nobody
+// has been told about. One more round, told that nothing further will run,
+// turns it into the answer; the stop still names the limit.
+void Agent::AnswerAtLimit(TurnExecution& state, StepState& loop) {
+  if (state.stop.reason == TurnStopReason::kNone &&
+      state.limits.max_steps > 0 && loop.step >= state.limits.max_steps) {
+    last_error_ =
+        "step limit (" + std::to_string(state.limits.max_steps) + ") reached";
+    state.stop.reason = TurnStopReason::kMaxSteps;
+    Emit(NoticeEvent(PresentationStatus::kFailed,
+                     last_error_ + " — stopping this turn"));
+  }
+  if ((state.stop.reason != TurnStopReason::kMaxSteps &&
+       state.stop.reason != TurnStopReason::kMaxToolCalls &&
+       state.stop.reason != TurnStopReason::kTurnDeadline) ||
+      SteeringState().Requested()) {
+    return;
+  }
+  active_deadline_ = DeadlineAfter(kLimitAnswerSeconds);
+  conversation_.Push(
+      HarnessMessage("This turn stopped: " + last_error_ +
+                     ". No further tool call will run. Answer now from what "
+                     "you have: what you found, and what is left undone."),
+      MessageKind::kInternal);
+  ChatResult response = Chat("turn", loop.step, available_schemas_.Schemas());
+  conversation_.Erase(conversation_.Size() - 1, conversation_.Size());
+  if (response.interrupted || !response.error.empty() ||
+      response.content.empty()) {
+    return;
+  }
+  RecordModelResponse(response, state, loop.tool_counts);
+  PushAssistantMessage(response, {});
+  state.answered_at_limit = true;
 }
 
 void Agent::FinishTurn(TurnExecution& state, int64_t step) {
@@ -426,15 +462,7 @@ void Agent::FinishTurn(TurnExecution& state, int64_t step) {
       state.stop.outcome != TurnOutcome::kComplete) {
     if (!TurnTokenBudgetExceeded(state)) TurnCostExceeded(state);
   }
-  bool step_limited =
-      state.limits.max_steps > 0 && step >= state.limits.max_steps;
-  if (step_limited && state.stop.reason == TurnStopReason::kNone) {
-    last_error_ =
-        "step limit (" + std::to_string(state.limits.max_steps) + ") reached";
-    state.stop.reason = TurnStopReason::kMaxSteps;
-    Emit(NoticeEvent(PresentationStatus::kFailed,
-                     last_error_ + " — stopping this turn"));
-  }
+  bool step_limited = state.stop.reason == TurnStopReason::kMaxSteps;
   // One record of why this turn ended and what was in force, so a parent
   // reading a child's envelope can tell "raise this ceiling and retry" from
   // "the work is done" without parsing prose.
@@ -474,6 +502,7 @@ void Agent::FinishTurn(TurnExecution& state, int64_t step) {
                   {"session_budget", state.limits.session_budget}}},
                 {"session_generated_tokens", session_usage_.GeneratedTokens()},
                 {"session_cost", session_usage_.cost}};
+  if (state.answered_at_limit) last_error_.clear();
   PruneAttachments(state.start);
   ArchiveTurnTrace(state.start);
   PruneOldToolResults();

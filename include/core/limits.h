@@ -75,6 +75,9 @@ inline constexpr size_t kSharedToolResultChars = 2000;
 inline constexpr size_t kRetainedArtifactPathChars = 4096;
 inline constexpr size_t kKqueueWatchTargets = 64;
 inline constexpr int64_t kModelRequestDeadlineReserveSeconds = 1;
+// What the round that answers for a turn stopped at a limit may take, also
+// past the turn's own deadline.
+inline constexpr int64_t kLimitAnswerSeconds = 60;
 // Parallel workers for one batch of parallel-safe tool calls.
 inline constexpr int64_t kToolConcurrency = 4;
 

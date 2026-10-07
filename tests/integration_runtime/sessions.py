@@ -60,6 +60,7 @@ def test_config_reload_applies_only_at_turn_boundaries(root, home, *, binary):
             change_during_first_request,
             event({"content": "first-turn-used-snapshot"}),
             two_calls(),
+            event({"content": "second-turn-answered-at-its-limit"}),
         ]
     ) as server:
         result = run_dialog(
@@ -69,7 +70,12 @@ def test_config_reload_applies_only_at_turn_boundaries(root, home, *, binary):
         assert_true("first-turn-used-snapshot" in result.stdout, result.stdout)
         assert_true("configuration reloaded for the next turn" in result.stdout, result.stdout)
         assert_true("tool call limit reached (1)" in result.stdout, result.stdout)
-        assert_true(len(server.requests) == 3, server.requests)
+        # A turn stopped at a limit is asked once more, for an answer from what
+        # it has, and told that no tool will run.
+        assert_true(len(server.requests) == 4, server.requests)
+        asked = server.requests[3][1]["messages"][-1]["content"]
+        assert_true("tool call limit reached (1)" in asked and "No further tool" in asked, asked)
+        assert_true("second-turn-answered-at-its-limit" in result.stdout, result.stdout)
 
 
 def test_prompt_overlay_reaches_the_live_prompt(root, home, *, binary):

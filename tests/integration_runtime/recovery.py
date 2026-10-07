@@ -463,14 +463,17 @@ def test_headless_reaps_timed_out_process(root, home, *, binary):
     command = (
         f"echo $$ > {shlex.quote(str(pid_file))}; printf 'partial-before-timeout\\n'; sleep 30"
     )
-    with Server([tool_call("run", {"command": command})]) as server:
+    responses = [tool_call("run", {"command": command}), event({"content": "answered-late"})]
+    with Server(responses) as server:
         trace = workspace / "trace.jsonl"
         env = base_env(home, server.url)
         env["UAGENT_MAX_TURN_SECONDS"] = "1"
         result = run(
             workspace, env, "--yolo", f"--debug={trace}", "-p", "probe", timeout=8, binary=binary
         )
-        assert_true(result.returncode == 1, (result.stdout, result.stderr))
+        # Out of time, the turn still answers from what it has.
+        assert_true(result.returncode == 0, (result.stdout, result.stderr))
+        assert_true(result.stdout.strip() == "answered-late", result.stdout)
         events = [json.loads(line) for line in trace.read_text().splitlines()]
         assert_true(
             any(

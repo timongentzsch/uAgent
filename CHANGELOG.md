@@ -26,6 +26,10 @@
 
 ### Changed
 
+- A turn stopped by its step, tool-call or time limit answers once more from
+  what it has, told that no further tool will run, where it used to end
+  without an answer. The stop still names the limit; `-p` prints the answer
+  and exits 0, and a parent gets its child's answer with the limit noted.
 - Web: at minimal detail a finished turn's row says how long the turn took
   ("Worked · 6 steps · 1m 12s").
 - Web: the status line above the input counts a running turn's time

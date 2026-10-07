@@ -817,11 +817,14 @@ def test_subagent_recursion_is_depth_bounded(root, home, *, binary):
 
 
 def test_subagent_reports_the_limit_that_stopped_the_child(root, home, *, binary):
-    """A child that hits a ceiling says which one, so the caller can decide."""
+    """A child that hits a ceiling answers from what it has and says which
+    ceiling, so the caller can decide."""
 
     def route(_, body):
         messages = body["messages"]
         if has_message(messages, "user", "child"):
+            if "No further tool call will run" in str(messages[-1].get("content")):
+                return event({"content": "child-findings-so-far"})
             # Two calls in one round against a ceiling of one: the child
             # refuses the batch and stops on max_tool_calls.
             return event(
@@ -843,12 +846,12 @@ def test_subagent_reports_the_limit_that_stopped_the_child(root, home, *, binary
         results = tool_results(messages)
         if results:
             report = results[-1]
+            assert_true("child-findings-so-far" in report, report)
+            assert_true("delegated child failed" not in report, report)
             assert_true("max_tool_calls" in report, report)
             assert_true("child stopped" in report, report)
             # The parent gets the child's answer and reason, not its envelope.
             assert_true("uagent.headless.v1" not in report, report)
-            # And a pointer to everything the child printed.
-            assert_true("captured log:" in report, report)
             return event({"content": "limit-reported-ok"})
         return tool_call(
             "subagent",

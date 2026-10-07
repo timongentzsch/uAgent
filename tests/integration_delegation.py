@@ -155,9 +155,17 @@ def test_subagent_foreground_returns_result_without_wait_round(root, home, *, bi
 
     with Server([route]) as server:
         env = base_env(home, server.url)
-        result = run(root, env, "--yolo", "-p", "delegate", timeout=8, binary=binary)
+        args = ("--yolo", "--model", "parent-model", "-p", "delegate")
+        result = run(root, env, *args, timeout=8, binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "foreground-task-ok", result.stdout)
+        # A child given no model runs on the one its parent is on.
+        child_models = {
+            body.get("model")
+            for _, body in server.requests
+            if has_message(body["messages"], "user", "child")
+        }
+        assert_true(child_models == {"parent-model"}, child_models)
         parent_requests = [
             body
             for _, body in server.requests

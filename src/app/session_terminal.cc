@@ -8,7 +8,6 @@
 #include <chrono>
 #include <cstdio>
 #include <mutex>
-#include <optional>
 #include <set>
 #include <string>
 #include <thread>
@@ -30,6 +29,7 @@
 #include "include/core/strings.h"
 #include "include/core/style.h"
 #include "include/core/term.h"
+#include "include/core/time.h"
 #include "include/md.h"
 #include "include/ui/ask_picker.h"
 #include "include/ui/display.h"
@@ -43,9 +43,8 @@ namespace uagent::session {
 namespace {
 // The pinned row from the worker's state frame: the working row while a turn
 // runs, the session row otherwise -- the same renderers presentation_test pins.
-std::string StatusRow(const json& state,
-                      std::chrono::steady_clock::duration elapsed,
-                      bool interrupting, std::string_view verbosity) {
+std::string StatusRow(const json& state, bool interrupting,
+                      std::string_view verbosity) {
   const int64_t used = JsonValue(state, "context_tokens", int64_t{0});
   const int64_t window = JsonValue(state, "context_window", int64_t{0});
   const std::string route = JsonValue(state, "route", "");
@@ -68,15 +67,20 @@ std::string StatusRow(const json& state,
     }
   }
   if (JsonValue(state, "turn_active", false)) {
-    return ActivityBar({.elapsed = elapsed,
-                        .context_used = used,
-                        .context_window = window,
-                        .model = route,
-                        .background = background,
-                        .foreground = foreground,
-                        .subagents = subagents,
-                        .interrupting = interrupting,
-                        .subagent = std::move(subagent)});
+    // The worker's clock, so a terminal attached mid-turn counts from the
+    // turn's start and not from its own.
+    const int64_t now = NowMillis();
+    return ActivityBar(
+        {.elapsed = std::chrono::milliseconds(std::max(
+             int64_t{0}, now - JsonValue(state, "turn_started_ms", now))),
+         .context_used = used,
+         .context_window = window,
+         .model = route,
+         .background = background,
+         .foreground = foreground,
+         .subagents = subagents,
+         .interrupting = interrupting,
+         .subagent = std::move(subagent)});
   }
   const json permissions = JsonValue(state, "permissions", json::object());
   return StatusBar(UsageFromJson(JsonValue(state, "usage", json::object())),
@@ -627,8 +631,9 @@ class Terminal {
       {
         std::lock_guard lock(mutex_);
         for (const char* field :
-             {"activity", "route", "usage", "turn_active", "context_tokens",
-              "context_window", "activities", "permissions"}) {
+             {"activity", "route", "usage", "turn_active", "turn_started_ms",
+              "context_tokens", "context_window", "activities",
+              "permissions"}) {
           if (state.contains(field)) state_[field] = state[field];
         }
         pending_ = JsonValue(frame, "pending", json(nullptr));
@@ -788,22 +793,14 @@ class Terminal {
       std::lock_guard lock(mutex_);
       state = state_;
     }
-    if (!JsonValue(state, "turn_active", false)) {
-      turn_started_.reset();
-      interrupting_ = false;
-    } else if (!turn_started_) {
-      turn_started_ = std::chrono::steady_clock::now();
-    }
+    if (!JsonValue(state, "turn_active", false)) interrupting_ = false;
     if (update.changed) {
       region_.Commit(std::move(update.committed));
       tail_ = std::move(update.tail);
       region_.SetTail(tail_);
     }
-    region_.SetStatus(StatusBarLine(StatusRow(
-        state,
-        turn_started_ ? std::chrono::steady_clock::now() - *turn_started_
-                      : std::chrono::steady_clock::duration{},
-        interrupting_, Detail().level)));
+    region_.SetStatus(
+        StatusBarLine(StatusRow(state, interrupting_, Detail().level)));
     const RawComposer::Layout draft = composer_.View();
     region_.SetComposer(draft.rows, draft.caret_row, draft.caret_col);
     region_.Flush();
@@ -823,7 +820,6 @@ class Terminal {
   json state_ = json::object(), pending_;
   bool running_ = false, history_ = false, raw_ = false;
   bool quit_hint_ = false;
-  std::optional<std::chrono::steady_clock::time_point> turn_started_;
   std::atomic<bool> interrupting_{false};
   std::atomic<bool> disconnected_{false}, detaching_{false}, ended_{false},
       failed_{false};

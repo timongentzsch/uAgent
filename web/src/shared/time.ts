@@ -95,6 +95,20 @@ export function formatFullMoment(value: Date, prefs: TimePrefs): string {
   return format(value, prefs, { dateStyle: "full", timeStyle: "long" });
 }
 
+// The whole seconds since `started`, counted while `live`.
+export function useElapsedSeconds(live: boolean, started?: number) {
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    if (!live) return;
+    setNow(Date.now());
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [live]);
+  return live && started
+    ? Math.max(0, Math.floor((now - started) / 1000))
+    : undefined;
+}
+
 // One shared minute tick for every stamp whose text can change on its own.
 const listeners = new Set<() => void>();
 let ticker: ReturnType<typeof setInterval> | undefined;

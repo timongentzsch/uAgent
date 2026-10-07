@@ -232,7 +232,7 @@ for (const width of [390, 1280])
       .getByRole("button", { name: "All conversations", exact: true })
       .click();
     await expect(
-      settings.locator('[data-setting="UAGENT_SUBAGENT_MODEL"]'),
+      settings.locator('[data-setting="UAGENT_MEMORY_MODEL"]'),
     ).toContainText("follows Conversation model");
     expect(await violations(page)).toEqual([]);
     const back = settings.getByRole("button", { name: "Back", exact: true });

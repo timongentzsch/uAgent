@@ -705,18 +705,18 @@ void TestOptions() {
   CHECK(!ParseOptions(5, conflicting_json).Ok());
 
   // Model-valued flags become config overrides, which outrank the environment.
-  char subagent_flag[] = "--subagent-model";
-  char subagent_route[] = "openrouter/opus:xhigh";
-  char* routed[] = {executable, subagent_flag, subagent_route,
-                    budget,     two_dollars,   no_memory};
+  char search_flag[] = "--web-search-model";
+  char search_route[] = "openrouter/opus:xhigh";
+  char* routed[] = {executable, search_flag, search_route,
+                    budget,     two_dollars, no_memory};
   ParsedOptions overrides = ParseOptions(6, routed);
   CHECK(overrides.Ok());
-  CHECK(overrides.options.overrides["UAGENT_SUBAGENT_MODEL"] ==
+  CHECK(overrides.options.overrides["UAGENT_WEB_SEARCH_MODEL"] ==
         "openrouter/opus:xhigh");
   CHECK(overrides.options.overrides["UAGENT_MEMORY"] == "0");
   CHECK(overrides.options.overrides.contains("UAGENT_SESSION_BUDGET"));
-  char* subagent_without_value[] = {executable, subagent_flag};
-  CHECK(!ParseOptions(2, subagent_without_value).Ok());
+  char* search_without_value[] = {executable, search_flag};
+  CHECK(!ParseOptions(2, search_without_value).Ok());
 
   std::string usage = UsageText();
   CHECK(usage.find("--debug[=PATH]") != std::string::npos);
@@ -724,7 +724,6 @@ void TestOptions() {
         std::string::npos);
   CHECK(usage.find("--yolo") != std::string::npos);
   // The table drives both, so every accepted flag is documented.
-  CHECK(usage.find("--subagent-model SELECTION") != std::string::npos);
   CHECK(usage.find("--token-budget TOKENS") != std::string::npos);
   CHECK(usage.find("--web-search-model SELECTION") != std::string::npos);
 }

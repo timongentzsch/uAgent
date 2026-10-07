@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Upgrade notes
+
+- **`UAGENT_SUBAGENT_MODEL`, `--subagent-model` and
+  `UAGENT_COORDINATOR_MODEL` are gone.** A subagent and a coordinator's
+  thread run on the model of the conversation that starts them, unless that
+  conversation names one in the call (`model`). A coordinator starts on
+  `UAGENT_MODEL`; `/model` inside it still changes it for that folder. A
+  saved value for a removed setting has no effect.
+
 ### Added
 
 - `browser`: `type` fills a field in one call: with `x`, `y` and `view_id`
@@ -19,6 +28,10 @@
 
 - Web: at minimal detail a finished turn's row says how long the turn took
   ("Worked · 6 steps · 1m 12s").
+- Web: the status line above the input counts a running turn's time
+  ("Working · 42s"), at every level of detail.
+- Terminal: the working row counts from the turn's start, also when the
+  terminal attached while the turn was running.
 - `browser`: an action returns the page as text, its elements numbered,
   and no screenshot; `observe` still returns one. A turn of many steps no
   longer carries a picture per step.

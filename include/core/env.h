@@ -35,8 +35,6 @@ bool LeanToolset();
 int64_t SubagentMaxSteps();
 int64_t SubagentMaxToolCalls();
 int64_t SubagentTimeoutSeconds();
-std::string SubagentModel();
-std::string CoordinatorModel();
 int64_t MaxOutputTokens();
 bool SandboxEnabled();
 // Outbound TCP. Allowed by default: git, npm and pip all need it.

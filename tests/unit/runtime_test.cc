@@ -195,7 +195,6 @@ void TestRuntimeOwnershipHelpers() {
       {"UAGENT_TEST_LONG", "999999999999999999999999999999"},
       {"UAGENT_SESSION_BUDGET", "2.5"},
       {"UAGENT_MAX_TURN_COST", "nan"},
-      {"UAGENT_SUBAGENT_MODEL", "fast/model"},
       {"UAGENT_WEB_SEARCH_MODEL", "vendor/search"},
       {"UAGENT_WEB_SEARCH_BACKEND", "off"},
       {"UAGENT_MCP_ROOTS", "/tmp/one:/tmp/two"},
@@ -210,7 +209,6 @@ void TestRuntimeOwnershipHelpers() {
   CHECK(EnvLong("UAGENT_TEST_LONG", 7) == 7);
   CHECK(config.session_budget == 2.5);
   CHECK(config.max_turn_cost == 0);
-  CHECK(SubagentModel() == "fast/model");
   CHECK(config.web_search_model == "vendor/search");
   CHECK(config.web_search_backend == "off");
   CHECK(config.mcp_roots == "/tmp/one:/tmp/two");
@@ -931,7 +929,6 @@ void TestNamedProviders() {
   openrouter_api.capabilities = CapabilitiesForRoute(
       ProviderProtocol::kOpenRouter, openrouter_api.base_url);
   openrouter_api.model = "parent-model";
-  CHECK(DefaultSubagentModel(openrouter_api) == "parent-model");
   // The runtime context names the parent in schema form, so the child can be
   // asked for a route in the same spelling the user would type.
   CHECK(DelegationRuntimeContext(openrouter_api) ==
@@ -945,7 +942,6 @@ void TestNamedProviders() {
   openrouter_api.capabilities =
       CapabilitiesForRoute(ProviderProtocol::kOpenAi, openrouter_api.base_url);
   CHECK(!CanUseRawModel(openrouter_api, "stepfun/step-3.7-flash"));
-  CHECK(DefaultSubagentModel(openrouter_api) == "parent-model");
   std::optional<ModelRoute> fixed =
       ResolveModelRoute(catalog.models, catalog.providers, "static/fast");
   REQUIRE(fixed.has_value());

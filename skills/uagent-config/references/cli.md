@@ -21,7 +21,6 @@
 | `--verbosity` | `LEVEL` | detail shown in this terminal: minimal, default or full |
 | `--model` | `SELECTION` | conversation model as [provider/]model[:variant][:effort] |
 | `--image-model` | `SELECTION` | read attached images with this model route |
-| `--subagent-model` | `SELECTION` | default model route for delegated subagents |
 | `--web-search-model` | `SELECTION` | model route for web search |
 | `--memory-model` | `SELECTION` | model route for background memory extraction |
 | `--debug` | `PATH` | write a sensitive reconstructable JSONL trace |

@@ -364,7 +364,7 @@ void TestConfigurationResetKeepsSecrets() {
   CHECK(!steps.contains("set") && steps["effective"] == steps["default"]);
   CHECK(steps["source"] == "default");
   // A model role names the setting it follows and takes its value.
-  CHECK(find(got, "UAGENT_SUBAGENT_MODEL")["follows"] == "UAGENT_MODEL");
+  CHECK(find(got, "UAGENT_MEMORY_MODEL")["follows"] == "UAGENT_MODEL");
 
   json reset = ConfigurationControl({{"operation", "reset"}, {"scope", "user"}},
                                     manager);

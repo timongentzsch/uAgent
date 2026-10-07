@@ -26,6 +26,7 @@ import { SheetButton } from "../../shared/sheet.tsx";
 import { command } from "../../state/api.ts";
 import { useAction } from "../../shared/use-action.ts";
 import { duration } from "../../shared/duration.ts";
+import { useElapsedSeconds } from "../../shared/time.ts";
 import type { InspectorTarget } from "./inspector.tsx";
 export const active = (item: Activity) =>
   ["running", "starting", "stopping", "finishing"].includes(item.status || "");
@@ -59,6 +60,7 @@ function activityLabel(items: Activity[] = []) {
 export function ActivityStatus({
   phase = "Ready",
   running,
+  started,
   items = [],
   pending,
   stopped,
@@ -68,6 +70,8 @@ export function ActivityStatus({
 }: {
   phase?: string;
   running?: boolean;
+  // When the running turn started: its time so far follows the caption.
+  started?: number;
   items?: Activity[];
   pending?: Pending | boolean | null;
   // Why the last turn stopped short ("Stopped"): shown and announced in
@@ -82,9 +86,18 @@ export function ActivityStatus({
   // a response starts, needs input or ends.
   const responded = useRef(false);
   if (running) responded.current = true;
+  const elapsed = useElapsedSeconds(!!running, started);
   if (connection && connection !== "connected")
     return <ConnectionStatus phase={connection} />;
-  const counts = activityLabel(items);
+  // Whole seconds below a minute: a tenth that only moves once a second
+  // reads as a stuck clock.
+  const detail = [
+    elapsed !== undefined &&
+      (elapsed < 60 ? `${elapsed}s` : duration(elapsed * 1000)),
+    activityLabel(items),
+  ]
+    .filter(Boolean)
+    .join(" · ");
   const announcement = pending
     ? "Needs your input"
     : running
@@ -107,7 +120,7 @@ export function ActivityStatus({
       <span class="activity-caption" title={caption}>
         {caption}
       </span>
-      {counts && <span class="activity-counts"> · {counts}</span>}
+      {detail && <span class="activity-counts"> · {detail}</span>}
       {announce && (
         <span
           class="sr-only"

@@ -254,8 +254,7 @@ std::string ModelPropertyDescription(
   // Naming an alias here is an override, not the default. Spelling that out
   // matters: a child sent to an unreachable alias fails outright rather than
   // falling back, so the default must read as the safe choice.
-  std::string description =
-      "child route; omit to inherit the delegated default";
+  std::string description = "child route; omit to run it on your own";
   std::string configured = JoinSelections(std::move(aliases));
   if (!configured.empty()) {
     description += " Overrides: " + configured + ".";
@@ -269,18 +268,6 @@ std::string ModelPropertyDescription(
         "action=inspect topic=routes lists them.";
   }
   return description;
-}
-
-// A delegated child runs on the parent's route unless the request or
-// UAGENT_SUBAGENT_MODEL names one; an empty selection tells the shared
-// resolver to inherit.
-SideRoute ResolveSubagentRoute(const Api& api,
-                               const std::vector<ModelRoute>& routes,
-                               const std::vector<NamedProvider>& providers,
-                               const std::string& requested) {
-  return ResolveSideRoute(
-      api, routes, providers,
-      requested.empty() ? NormalizeModelId(SubagentModel()) : requested);
 }
 
 std::string SubagentDiagnosticRoute(
@@ -377,7 +364,8 @@ ToolResult RunSubagent(const Api& api, ProcessSupervisor& processes,
   }
   const std::string requested = NormalizeModelId(
       JsonValue(arguments, "model", JsonValue(role, "model", "")));
-  SideRoute route = ResolveSubagentRoute(api, routes, providers, requested);
+  // No route named: the parent's own, whatever it is now.
+  SideRoute route = ResolveSideRoute(api, routes, providers, requested);
   const std::string route_label = SubagentDiagnosticRoute(route, providers);
   if (route.unresolved && route.selection.find('/') != std::string::npos &&
       !CanUseRawModel(api, route.selection)) {
@@ -625,11 +613,10 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
     std::string prompt = JsonValue(arguments, "prompt", "");
     std::string id = JsonValue(arguments, "agent_id", "");
     if (operation == "message") return "[message " + id + "] " + prompt;
-    std::string label =
-        RouteSelection(ResolveSubagentRoute(
-                           api, routes, providers,
-                           NormalizeModelId(JsonValue(arguments, "model", ""))),
-                       providers);
+    std::string label = RouteSelection(
+        ResolveSideRoute(api, routes, providers,
+                         NormalizeModelId(JsonValue(arguments, "model", ""))),
+        providers);
     const std::string name = JsonValue(arguments, "name", "");
     if (!name.empty()) label = name + " · " + label;
     if (JsonValue(arguments, "mode", "lean") == "full") label += " · full";

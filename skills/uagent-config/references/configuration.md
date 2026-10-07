@@ -95,13 +95,11 @@ Every setting below is read from the running binary's registry. `takes effect` i
 | `UAGENT_SUBAGENT_MAX_STEPS` | integer | `100` | next-user-turn | model rounds per delegated child |
 | `UAGENT_SUBAGENT_MAX_TOOL_CALLS` | integer | `240` | next-user-turn | tool calls per delegated child |
 | `UAGENT_SUBAGENT_TIMEOUT` | integer | `0` | next-user-turn | wall-clock ceiling per delegated child; 0 is the turn |
-| `UAGENT_SUBAGENT_MODEL` | string | empty | next-user-turn | default model route for delegated children |
 
 ## Coordinator
 
 | Setting | Type | Default | Takes effect | Description |
 | --- | --- | --- | --- | --- |
-| `UAGENT_COORDINATOR_MODEL` | string | empty | restart-required | model route of each folder's coordinator; /model inside it overrides this for that folder |
 | `UAGENT_COORDINATOR_MAX_THREADS` | integer | `5` | next-user-turn | threads one coordinator may run at once |
 | `UAGENT_COORDINATOR_DAILY_SPEND_USD` | number | `20.0` | next-user-turn | reported cost a coordinator and its threads may spend per day; at it, thread events wait. 0 disables it |
 | `UAGENT_COORDINATOR_ENVIRONMENT` | string | `worktree` | next-user-turn | where threads run: a fresh git worktree, or the folder itself |

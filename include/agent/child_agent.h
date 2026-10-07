@@ -94,7 +94,6 @@ std::optional<ToolResult> ChildAgentBudgetBlock(
 
 // The model a delegated child runs by default, and the one-line runtime
 // context describing the parent route and that default.
-std::string DefaultSubagentModel(const Api& api);
 std::string DelegationRuntimeContext(const Api& api);
 
 }  // namespace uagent

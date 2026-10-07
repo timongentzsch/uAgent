@@ -9,8 +9,8 @@ requires-tools: subagent, read_path, grep, run
 
 Optimize total resources for a verified result. Keep tiny tasks, unresolved
 architecture, consequential definitions, evaluation criteria, and final review
-with the lead. Use `UAGENT_SUBAGENT_MODEL` as configured; if it inherits the
-lead route, disclose that and make no savings claim.
+with the lead. The sidekick runs on the lead's route unless the user named one
+for it; on the lead's route, disclose that and make no savings claim.
 
 ## Start or recover the sidekick
 
@@ -23,7 +23,7 @@ this directive:
 > concise changes, verification evidence, reusable runtime handles, and open
 > questions. Do not commit, publish, change permissions, or delegate further.
 
-Do not override the configured worker model unless the user chose a route.
+Pass `model` only when the user chose a route for the sidekick.
 Follow-ups keep the conversation, model, mode and directive; each one is a
 fresh process, so processes and shell state from an earlier handoff are gone.
 Pass `background=false` on every follow-up.

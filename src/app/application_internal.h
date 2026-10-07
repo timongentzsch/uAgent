@@ -52,6 +52,12 @@ class Application {
   std::string session_file_;
   uint64_t saved_revision_;
   bool persist_ = false;
+  // What a delegated child's session had already used when this run of it
+  // began: a follow-up resumes the session, and its parent is owed only what
+  // this run adds.
+  json used_before_;
+  // A delegated child's time ran out while work it had started was running.
+  bool out_of_time_ = false;
   bool turn_active_ = false;
   std::string request_id_;
   uint64_t message_subscription_ = 0;

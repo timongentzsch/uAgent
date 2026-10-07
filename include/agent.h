@@ -275,6 +275,7 @@ class Agent {
       std::unordered_map<std::string, int64_t>& tool_counts);
   bool ToolCallsWithinLimits(const std::vector<ToolCall>& calls,
                              TurnExecution& state, StepState& loop);
+  void AnswerAtLimit(TurnExecution& state, StepState& loop);
   void FinishTurn(TurnExecution& state, int64_t step);
   void UpdateTurnSideUsage(int64_t turn, const Usage& usage,
                            const json& statistics);

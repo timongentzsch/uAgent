@@ -26,6 +26,10 @@
 
 ### Changed
 
+- A turn stopped by its step, tool-call or time limit answers once more from
+  what it has, told that no further tool will run, where it used to end
+  without an answer. The stop still names the limit; `-p` prints the answer
+  and exits 0, and a parent gets its child's answer with the limit noted.
 - Web: at minimal detail a finished turn's row says how long the turn took
   ("Worked · 6 steps · 1m 12s").
 - Web: the status line above the input counts a running turn's time
@@ -43,6 +47,13 @@
 
 ### Fixed
 
+- `subagent`: `limits.seconds` stops a background child too. It was applied
+  only by a parent that waited, so a child started in the background ran
+  until someone stopped it.
+- Stopping a subagent stops the commands and subagents it started. A stopped
+  child killed its own children outright, so theirs were left running.
+- What a stopped subagent had spent counts toward the session's usage and
+  budgets. Only a child that finished reported it.
 - `browser`: Enter sends a form and types a line break, and Backspace
   deletes. The keys reached only a page's own listeners.
 

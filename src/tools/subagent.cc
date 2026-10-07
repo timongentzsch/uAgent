@@ -450,10 +450,8 @@ ToolResult RunSubagent(const Api& api, ProcessSupervisor& processes,
     environment.emplace_back("UAGENT_SESSION_TOKEN_BUDGET",
                              std::to_string(remaining_token_budget));
   }
-  // The per-call budget bounds a command that might run away. A child
-  // the caller chose to wait for is supervised, so it is bounded by
-  // max_seconds when given and by the turn otherwise.
-  ToolContext child_context = context;
+  // The child keeps its own time, like its steps and tool calls: it is the
+  // one that can stop at the limit and still answer, in the background too.
   int64_t max_seconds = JsonValue(limits, "seconds", int64_t{0});
   int64_t ceiling = SubagentTimeoutSeconds();
   if (ceiling > 0 && (max_seconds <= 0 || max_seconds > ceiling)) {
@@ -463,9 +461,12 @@ ToolResult RunSubagent(const Api& api, ProcessSupervisor& processes,
     }
     max_seconds = ceiling;
   }
-  if (max_seconds > 0) child_context = context.WithTimeout(max_seconds);
+  if (max_seconds > 0) {
+    environment.emplace_back("UAGENT_MAX_TURN_SECONDS",
+                             std::to_string(max_seconds));
+  }
   ShellCommandResult child = RunShellCommand(
-      processes, child_context,
+      processes, context,
       {.command = "uagent subagent",
        .argv = ChildAgentCommand(debug, prompt, child_model),
        .background = background,

@@ -45,6 +45,8 @@ extern SignalFlag g_mcp_pids[kMcpMax];
 // Supervised processes, foreground and background, that SIGINT kills.
 inline constexpr int kBgMax = 64;
 extern SignalFlag g_bg_pids[kBgMax];
+// Those of them that are child agents, which are asked to stop, not killed.
+extern SignalFlag g_agent_pids[kBgMax];
 
 // Pid slot tables read by the signal handler. Parallel tool workers claim slots
 // concurrently, so writers serialise here; the handler only ever reads.
@@ -83,8 +85,10 @@ bool TakeIdleInterrupt();
 // Armed only while an interactive session is idle; elsewhere SIGINT still
 // kills.
 void SetQuitGesture(bool enabled);
-// Persistent runtimes unwind through application teardown on TERM/HUP.
-void SetGracefulShutdown(bool enabled);
+// Persistent runtimes unwind through application teardown on TERM/HUP. A
+// delegated child does too, so that what it spent is reported, but stops
+// what it started at once: its parent does not wait long for it.
+void SetGracefulShutdown(bool enabled, bool stop_started = false);
 bool ShutdownRequested();
 // Drain a stale abort byte only while the flag is clear, then re-arm if a
 // concurrent request arrived during the drain.

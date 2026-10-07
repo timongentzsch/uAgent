@@ -449,7 +449,7 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
 
   // Registered for the signal handler's kill sweep from spawn onward, so a
   // Ctrl-C at any point, including the handover below, reaches the child.
-  BgTrackSignal(pid, true);
+  BgTrackSignal(pid, true, is_subagent);
   bool cancelled = false;
   bool handed_off = false;
   bool exited = false;

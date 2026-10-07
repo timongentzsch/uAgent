@@ -27,6 +27,7 @@ std::atomic<bool> g_thread_abort{false};
 thread_local std::atomic<bool>* g_local_abort = nullptr;
 SignalFlag g_mcp_pids[kMcpMax] = {};
 SignalFlag g_bg_pids[kBgMax] = {};
+SignalFlag g_agent_pids[kBgMax] = {};
 bool g_tty = false;
 bool g_color = false;
 bool g_attributes = false;
@@ -250,8 +251,8 @@ SignalFlag g_graceful_shutdown = 0;
 SignalFlag g_shutdown_requested = 0;
 
 void SetQuitGesture(bool enabled) { g_quit_gesture = enabled ? 1 : 0; }
-void SetGracefulShutdown(bool enabled) {
-  g_graceful_shutdown = enabled ? 1 : 0;
+void SetGracefulShutdown(bool enabled, bool stop_started) {
+  g_graceful_shutdown = !enabled ? 0 : stop_started ? 2 : 1;
 }
 bool ShutdownRequested() { return g_shutdown_requested != 0; }
 
@@ -259,8 +260,31 @@ bool TakeIdleInterrupt() {
   return g_signal_idle_interrupt.exchange(false, std::memory_order_relaxed);
 }
 
+// Commands are killed. Child agents and MCP servers are asked to stop: an
+// agent then stops what it started in turn, which a killed one never would.
+static void StopStartedFromHandler() {
+  // Each slot is read once: one cleared between a test and a second read
+  // would be zero, and a signal to group zero is a signal to this process's
+  // own group.
+  for (int index = 0; index < kBgMax; ++index) {
+    const pid_t agent = static_cast<pid_t>(g_agent_pids[index]);
+    if (agent > 0) kill(-agent, SIGTERM);
+    const pid_t pid = static_cast<pid_t>(g_bg_pids[index]);
+    if (pid <= 0) continue;
+    kill(-pid, SIGKILL);
+    kill(pid, SIGKILL);
+  }
+  for (int index = 0; index < kMcpMax; ++index) {
+    const pid_t pid = static_cast<pid_t>(g_mcp_pids[index]);
+    if (pid <= 0) continue;
+    kill(-pid, SIGTERM);
+    kill(pid, SIGTERM);
+  }
+}
+
 void SigintHandler(int signal_number) {
   if (signal_number != SIGINT && g_graceful_shutdown) {
+    if (g_graceful_shutdown == 2) StopStartedFromHandler();
     g_shutdown_requested = 1;
     g_signal_abort.test_and_set(std::memory_order_relaxed);
     WakeDescriptor(g_abort_wake_write);
@@ -279,18 +303,7 @@ void SigintHandler(int signal_number) {
     WakeDescriptor(g_abort_wake_write);
     return;
   }
-  for (int index = 0; index < kBgMax; ++index) {
-    if (g_bg_pids[index] <= 0) continue;
-    pid_t pid = static_cast<pid_t>(g_bg_pids[index]);
-    kill(-pid, SIGKILL);
-    kill(pid, SIGKILL);
-  }
-  for (int index = 0; index < kMcpMax; ++index) {
-    if (g_mcp_pids[index] <= 0) continue;
-    pid_t pid = static_cast<pid_t>(g_mcp_pids[index]);
-    kill(-pid, SIGTERM);
-    kill(pid, SIGTERM);
-  }
+  StopStartedFromHandler();
   RestoreTerminalModesFromHandler();
   _exit(128 + signal_number);
 }

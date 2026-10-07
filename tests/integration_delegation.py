@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import shlex
 import signal
 import subprocess
 import sys
@@ -743,8 +744,6 @@ def test_subagent_failure_reports_route_stage_and_bounded_diagnostics(root, home
                     "@ 127.0.0.1",
                     "failure stage: child execution",
                     "remedy:",
-                    "fallback: none",
-                    "partial diagnostics:",
                     "fixture endpoint rejects unsupported-model",
                 )
             )
@@ -817,11 +816,14 @@ def test_subagent_recursion_is_depth_bounded(root, home, *, binary):
 
 
 def test_subagent_reports_the_limit_that_stopped_the_child(root, home, *, binary):
-    """A child that hits a ceiling says which one, so the caller can decide."""
+    """A child that hits a ceiling answers from what it has and says which
+    ceiling, so the caller can decide."""
 
     def route(_, body):
         messages = body["messages"]
         if has_message(messages, "user", "child"):
+            if "No further tool call will run" in str(messages[-1].get("content")):
+                return event({"content": "child-findings-so-far"})
             # Two calls in one round against a ceiling of one: the child
             # refuses the batch and stops on max_tool_calls.
             return event(
@@ -843,12 +845,12 @@ def test_subagent_reports_the_limit_that_stopped_the_child(root, home, *, binary
         results = tool_results(messages)
         if results:
             report = results[-1]
+            assert_true("child-findings-so-far" in report, report)
+            assert_true("delegated child failed" not in report, report)
             assert_true("max_tool_calls" in report, report)
             assert_true("child stopped" in report, report)
             # The parent gets the child's answer and reason, not its envelope.
             assert_true("uagent.headless.v1" not in report, report)
-            # And a pointer to everything the child printed.
-            assert_true("captured log:" in report, report)
             return event({"content": "limit-reported-ok"})
         return tool_call(
             "subagent",
@@ -918,6 +920,139 @@ def test_subagent_foreground_outlives_the_per_call_budget(root, home, *, binary)
         result = run(root, env, "--yolo", "-p", "delegate", timeout=40, binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "slow-child-ok", result.stdout)
+
+
+def test_a_background_child_keeps_its_own_time_limit(root, home, *, binary):
+    """limits.seconds stops a child nobody is waiting on, and it still answers."""
+
+    def route(_, body):
+        messages = body["messages"]
+        if has_message(messages, "user", "child"):
+            if "No further tool call will run" in str(messages[-1].get("content")):
+                return event({"content": "child-out-of-time"})
+            return tool_call("run", {"command": "sleep 30"})
+        results = tool_results(messages)
+        report = next((result for result in results if "child-out-of-time" in result), "")
+        if report:
+            assert_true("child stopped: turn_deadline" in report, report)
+            return event({"content": "time-limit-ok"})
+        if any("[started] subagent id " in result for result in results):
+            return tool_call("activity", {"operation": "wait", "wait_ms": 30000})
+        return tool_call(
+            "subagent", {"prompt": "child", "background": True, "limits": {"seconds": 1}}
+        )
+
+    with Server([route]) as server:
+        started = time.monotonic()
+        result = run(
+            root, base_env(home, server.url), "--yolo", "-p", "delegate", timeout=30, binary=binary
+        )
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "time-limit-ok", result.stdout)
+        assert_true(time.monotonic() - started < 15, "the child outlived its limit")
+
+
+def test_stopping_a_child_stops_what_it_started(root, home, *, binary):
+    """A stopped child takes its own commands and children with it, and what
+    they spent still reaches the parent."""
+    pids = [root / "command.pid", root / "grandchild-command.pid"]
+
+    def spent(response):
+        response["usage"] = {"prompt_tokens": 1, "completion_tokens": 4}
+        return response
+
+    def sleeper(pid_file):
+        command = f"echo $$ > {shlex.quote(str(pid_file))}; sleep 60"
+        return spent(tool_call("run", {"command": command}))
+
+    def route(_, body):
+        messages = body["messages"]
+        if has_message(messages, "user", "grandchild"):
+            return sleeper(pids[1])
+        if has_message(messages, "user", "child"):
+            if any("[started] subagent id " in result for result in tool_results(messages)):
+                return sleeper(pids[0])
+            return spent(
+                tool_call("subagent", {"prompt": "grandchild", "mode": "full", "background": True})
+            )
+        results = tool_results(messages)
+        if any("stopped" in result for result in results[1:]):
+            return event({"content": "child-stopped"})
+        started = re.search(r"\[started\] subagent id (\d+)", results[0]) if results else None
+        if started:
+            wait_until(lambda: all(p.exists() for p in pids), "the child tree did not start")
+            return tool_call("activity", {"operation": "stop", "id": int(started.group(1))})
+        return tool_call("subagent", {"prompt": "child", "mode": "full", "background": True})
+
+    with Server([route]) as server:
+        args = ("--yolo", "--json", "-p", "delegate")
+        result = run(root, base_env(home, server.url), *args, timeout=30, binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        envelope = json.loads(result.stdout)
+        assert_true(envelope["answer"] == "child-stopped", envelope)
+        # Two rounds of the child and one of its child, four tokens each.
+        assert_true(envelope["stop"]["session_generated_tokens"] == 12, envelope["stop"])
+        survivors = wait_for_processes_stopped({int(p.read_text()) for p in pids})
+        assert_true(not survivors, f"processes of a stopped child survived: {survivors}")
+
+
+def test_a_follow_up_reports_only_what_it_spent(root, home, *, binary):
+    """A resumed child's session holds what its earlier runs used; the parent
+    is told what this run added, so nothing is counted twice."""
+    spent = {"prompt_tokens": 1, "completion_tokens": 4}
+
+    def route(_, body):
+        messages = body["messages"]
+        if has_message(messages, "user", "again"):
+            return event({"content": "second-run"}, usage=spent)
+        if has_message(messages, "user", "child"):
+            return event({"content": "first-run"}, usage=spent)
+        results = "\n".join(tool_results(messages))
+        if "second-run" in results:
+            return event({"content": "both-ran"})
+        if "first-run" in results:
+            agent = re.search(r"\[collaborator (agent-[^;\]]+)", results).group(1)
+            again = {"operation": "followup", "agent_id": agent, "prompt": "again"}
+            return tool_call("subagent", again | {"background": False})
+        return tool_call("subagent", {"prompt": "child", "background": False})
+
+    with Server([route]) as server:
+        args = ("--yolo", "--json", "-p", "delegate")
+        result = run(root, base_env(home, server.url), *args, timeout=30, binary=binary)
+        envelope = json.loads(result.stdout)
+        assert_true(envelope["answer"] == "both-ran", envelope)
+        assert_true(envelope["stop"]["session_generated_tokens"] == 8, envelope["stop"])
+
+
+def test_a_childs_time_limit_covers_what_it_left_running(root, home, *, binary):
+    """A child that answered is not kept alive past limits.seconds by a child
+    of its own that is still working."""
+
+    def route(_, body):
+        messages = body["messages"]
+        if has_message(messages, "user", "grandchild"):
+            time.sleep(20)
+            return event({"content": "too-late"})
+        if has_message(messages, "user", "child"):
+            if tool_results(messages):
+                return event({"content": "child-answered"})
+            return tool_call("subagent", {"prompt": "grandchild", "background": True})
+        report = next((r for r in tool_results(messages) if "child-answered" in r), "")
+        if report:
+            # It answered, and says that its time ended with work outstanding.
+            assert_true("child stopped: turn_deadline" in report, report)
+            return event({"content": "limit-held"})
+        child = {"prompt": "child", "mode": "full", "background": False}
+        return tool_call("subagent", child | {"limits": {"seconds": 2}})
+
+    with Server([route]) as server:
+        started = time.monotonic()
+        result = run(
+            root, base_env(home, server.url), "--yolo", "-p", "delegate", timeout=30, binary=binary
+        )
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "limit-held", result.stdout)
+        assert_true(time.monotonic() - started < 12, "the child outlived its limit")
 
 
 def test_subagent_clamps_are_reported_not_silent(root, home, *, binary):

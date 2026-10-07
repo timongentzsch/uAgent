@@ -456,6 +456,36 @@ def test_image_fallback_reaches_another_provider(root, home, *, binary):
         vision.close()
 
 
+def test_a_turn_out_of_steps_answers_from_what_it_has(root, home, *, binary):
+    """The last allowed step is followed by one round for an answer. It is
+    paid for like any other, and only prose alone is taken as the answer."""
+    look = tool_call("read_path", {"path": "."})
+    spent = {"prompt_tokens": 1, "completion_tokens": 4}
+
+    def ask(final):
+        with Server([look, final]) as server:
+            env = base_env(home, server.url)
+            env["UAGENT_MAX_STEPS"] = "1"
+            result = run(root, env, "--yolo", "--json", "-p", "probe", timeout=8, binary=binary)
+            return result.returncode, json.loads(result.stdout)
+
+    code, envelope = ask(event({"content": "answered-at-the-limit"}, usage=spent))
+    assert_true(code == 0 and envelope["answer"] == "answered-at-the-limit", envelope)
+    assert_true(envelope["stop"]["reason"] == "max_steps", envelope["stop"])
+    assert_true(envelope["usage"]["output"] == 4, envelope["usage"])
+
+    # Text beside a tool call announces work that will not happen, and a
+    # reply cut short is not an answer either.
+    announced = tool_call("read_path", {"path": "."}, usage=spent)
+    announced["choices"][0]["delta"]["content"] = "I will look again"
+    cut_short = event({"content": "The findings are"}, finish="length", usage=spent)
+    for unusable in (announced, cut_short):
+        code, envelope = ask(unusable)
+        assert_true(code == 1 and not envelope["answer"], envelope)
+        assert_true("step limit (1) reached" in envelope["error"], envelope)
+        assert_true(envelope["usage"]["output"] == 4, envelope["usage"])
+
+
 def test_headless_reaps_timed_out_process(root, home, *, binary):
     workspace = root / "timed-out-process-workspace"
     workspace.mkdir()
@@ -463,14 +493,17 @@ def test_headless_reaps_timed_out_process(root, home, *, binary):
     command = (
         f"echo $$ > {shlex.quote(str(pid_file))}; printf 'partial-before-timeout\\n'; sleep 30"
     )
-    with Server([tool_call("run", {"command": command})]) as server:
+    responses = [tool_call("run", {"command": command}), event({"content": "answered-late"})]
+    with Server(responses) as server:
         trace = workspace / "trace.jsonl"
         env = base_env(home, server.url)
         env["UAGENT_MAX_TURN_SECONDS"] = "1"
         result = run(
             workspace, env, "--yolo", f"--debug={trace}", "-p", "probe", timeout=8, binary=binary
         )
-        assert_true(result.returncode == 1, (result.stdout, result.stderr))
+        # Out of time, the turn still answers from what it has.
+        assert_true(result.returncode == 0, (result.stdout, result.stderr))
+        assert_true(result.stdout.strip() == "answered-late", result.stdout)
         events = [json.loads(line) for line in trace.read_text().splitlines()]
         assert_true(
             any(

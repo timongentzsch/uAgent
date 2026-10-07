@@ -150,17 +150,21 @@ ToolArtifact PromoteLogArtifact(const std::string& path, uint64_t bytes) {
 // stands in for "already fully reported", which holds only when the caller
 // keeps the whole thing: a failure is summarised on its way back, so deleting
 // the log destroys the detail the caller needs precisely when it needs it.
-CollectedLog CollectCompletedLog(const std::string& path, int64_t cap,
-                                 bool failed) {
+std::optional<ToolArtifact> KeepCompletedLog(const std::string& path,
+                                             int64_t cap, bool failed) {
   uint64_t bytes = LogFileBytes(path);
-  CollectedLog collected{ReadLogTail(path, cap), std::nullopt};
   if (bytes > 0 &&
       (failed || (cap > 0 && bytes > static_cast<uint64_t>(cap)))) {
-    collected.artifact = PromoteLogArtifact(path, bytes);
-  } else {
-    RemoveLog(path);
+    return PromoteLogArtifact(path, bytes);
   }
-  return collected;
+  RemoveLog(path);
+  return std::nullopt;
+}
+
+CollectedLog CollectCompletedLog(const std::string& path, int64_t cap,
+                                 bool failed) {
+  std::string tail = ReadLogTail(path, cap);
+  return {std::move(tail), KeepCompletedLog(path, cap, failed)};
 }
 
 // Hidden subprocess mode used by detached shells. Two half-size segments keep

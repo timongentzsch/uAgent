@@ -655,14 +655,17 @@ def function_names(body):
 
 def large_json_command():
     payload = {
-        "sentinel": "HEAD-ONLY",
-        "padding": "x" * 12000,
+        "head": "FULL-START",
+        "before": "x" * 6000,
+        "sentinel": "MIDDLE-ONLY",
+        "after": "x" * 6000,
         "tail": "FULL-END",
     }
     script = (
         "import json;"
-        "print(json.dumps({'sentinel':'HEAD-ONLY','padding':'x'*12000,"
-        "'tail':'FULL-END'},separators=(',',':')))"
+        "print(json.dumps({'head':'FULL-START','before':'x'*6000,"
+        "'sentinel':'MIDDLE-ONLY','after':'x'*6000,'tail':'FULL-END'},"
+        "separators=(',',':')))"
     )
     command = f"{shlex.quote(sys.executable)} -c {shlex.quote(script)}"
     return command, len((json.dumps(payload, separators=(",", ":")) + "\n").encode())

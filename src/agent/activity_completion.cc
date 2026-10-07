@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cerrno>
 #include <chrono>
+#include <map>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -69,6 +70,34 @@ int64_t AutomaticResultCap() {
                  : kActivityResultChars;
 }
 
+// A detached leader's exit status, from the poll that reaps it until its
+// result is taken: no later poll finds a child to ask. Reaping and keeping
+// are one step, so two waits at once agree on it. Process-wide, like the
+// pids it is kept by.
+struct LeaderExits {
+  std::mutex mutex;
+  std::map<pid_t, int> statuses;
+};
+LeaderExits& Leaders() {
+  static LeaderExits exits;
+  return exits;
+}
+
+// Whether the leader has ended, with its status when it has.
+bool LeaderEnded(pid_t pid, int& status) {
+  LeaderExits& exits = Leaders();
+  std::lock_guard lock(exits.mutex);
+  int reaped = 0;
+  const pid_t waited = WaitPid(pid, &reaped, WNOHANG);
+  // No child and no status kept: it was never this process's to wait for.
+  const bool gone = waited < 0 && errno == ECHILD;
+  if (waited == pid) exits.statuses[pid] = reaped;
+  const auto found = exits.statuses.find(pid);
+  if (found == exits.statuses.end()) return gone;
+  status = found->second;
+  return true;
+}
+
 std::vector<std::string> TakeCompleted(
     ProcessSupervisor& supervisor, std::string_view kind,
     const std::vector<int64_t>* ids, std::vector<BackgroundCompletion>* details,
@@ -95,10 +124,9 @@ std::vector<std::string> TakeCompleted(
     int status = 0;
     bool completed = false;
     if (candidate.Detached()) {
-      pid_t waited = WaitPid(candidate.pid, &status, WNOHANG);
-      bool leader_reaped =
-          waited == candidate.pid || (waited < 0 && errno == ECHILD);
-      completed = leader_reaped && !ProcessGroupAlive(candidate.pid);
+      // The leader may end long before what it started does.
+      completed = LeaderEnded(candidate.pid, status) &&
+                  !ProcessGroupAlive(candidate.pid);
       if (!completed) continue;
     } else if (candidate.session) {
       std::lock_guard<std::mutex> lock(candidate.session->mutex);
@@ -111,6 +139,10 @@ std::vector<std::string> TakeCompleted(
         supervisor.Take(ActivityId(candidate), /*retain=*/true);
     if (!taken) continue;  // another waiter owns exactly-once delivery
     BgJob job = std::move(*taken);
+    if (job.Detached()) {
+      std::lock_guard lock(Leaders().mutex);
+      Leaders().statuses.erase(job.pid);
+    }
     if (!job.Detached()) BgTrackSignal(job.pid, false);
     if (job.Detached()) unlink(DetachedRecordPath(job.pid).c_str());
     std::string incremental =
@@ -181,15 +213,16 @@ ToolResult ToolActivityWait(ProcessSupervisor& supervisor,
                             int64_t max_output_chars) {
   // Waiting consumes the completion it observes. Memory extraction is drained
   // by the harness into the memory audit instead, so a wait that scooped one
-  // up would silently lose that record; it is no more waitable than a detached
-  // activity.
+  // up would silently lose that record. A detached activity is waited for
+  // when it is named: it may be a server that never ends, so a wait for
+  // everything leaves it out.
   auto waitable = [](const BgJob& job) {
-    return !job.Detached() && job.kind != ActivityKind::kMemory;
+    return job.kind != ActivityKind::kMemory;
   };
   std::vector<int64_t> ids;
   if (requested.empty()) {
     for (const BgJob& job : supervisor.Snapshot()) {
-      if (waitable(job)) ids.push_back(ActivityId(job));
+      if (waitable(job) && !job.Detached()) ids.push_back(ActivityId(job));
     }
   } else {
     for (int64_t requested_id : requested) {

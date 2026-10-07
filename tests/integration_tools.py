@@ -264,16 +264,17 @@ def test_large_run_output_is_recoverable(root, home, *, binary):
         result = tool_results(body["messages"])[-1]
         path = captured_log_path(result)
         artifact["path"] = path
+        # Both ends are in the result; what lies between is in the log.
         assert_true(len(result) <= 512, len(result))
-        assert_true("FULL-END" in result, result)
-        assert_true("HEAD-ONLY" not in result, result)
+        assert_true("FULL-START" in result and "FULL-END" in result, result)
+        assert_true("MIDDLE-ONLY" not in result, result)
         assert_true(path.exists(), path)
         assert_true(path.stat().st_size == expected_bytes, path.stat().st_size)
         return tool_call("run", {"command": json_sentinel_command(path)})
 
     def verify_recovery(_, body):
         results = tool_results(body["messages"])
-        recovered = results[-1].strip() == "HEAD-ONLY"
+        recovered = results[-1].strip() == "MIDDLE-ONLY"
         return event({"content": "artifact-ok" if recovered else "artifact-bad"})
 
     with Server(

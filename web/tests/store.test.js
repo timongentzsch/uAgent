@@ -2,9 +2,13 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   applySessionEvent,
+  confirmOutgoing,
   keepOlderPages,
+  patchCatalogue,
+  raiseIncoming,
   readStored,
   stateFrame,
+  withActivities,
 } from "../src/state/store.ts";
 import { api, command, receiveOutcome } from "../src/state/api.ts";
 import { maxHttpExchanges } from "../src/shared/limits.ts";
@@ -227,6 +231,38 @@ test("block patches rebuild the host's view", () => {
     block: { id: "m-0", sequence: 0, kind: "user", text: "first" },
   });
   assert.equal(retained.state.view.blocks.at(-2).id, "m-0");
+});
+
+// The shell re-renders on identity, so an update that changes nothing must
+// hand back the very object it was given.
+test("a catalogue update that changes nothing keeps the catalogue's identity", () => {
+  const a = { id: "a", incoming: 2, activities: [{ id: "1" }] };
+  const b = { id: "b" };
+  const catalogue = { sessions: [a, b], devices: [], capabilities: {} };
+  const raise = (to) =>
+    patchCatalogue(catalogue, "a", (item) => raiseIncoming(item, to));
+  assert.equal(raise(2), catalogue);
+  assert.equal(raise(1), catalogue);
+  const raised = raise(3);
+  assert.equal(raised.sessions[0].incoming, 3);
+  assert.equal(raised.sessions[1], b);
+  assert.equal(raised.devices, catalogue.devices);
+  const activities = (value) =>
+    patchCatalogue(catalogue, "a", (item) => withActivities(item, value));
+  assert.equal(activities([{ id: "1" }]), catalogue);
+  assert.deepEqual(activities([]).sessions[0].activities, []);
+  assert.equal(
+    patchCatalogue(catalogue, "missing", () => ({ id: "missing" })),
+    catalogue,
+  );
+});
+
+test("the host's row removes the outgoing one for its request, and only that", () => {
+  const outgoing = [{ request_id: "r1" }, { request_id: "r2" }];
+  assert.deepEqual(confirmOutgoing(outgoing, "r1"), [{ request_id: "r2" }]);
+  assert.equal(confirmOutgoing(outgoing, "r3"), outgoing);
+  // A row with no request (history, another client's message) confirms none.
+  assert.equal(confirmOutgoing(outgoing, undefined), outgoing);
 });
 
 test("closing a view aborts its pending command wait", async () => {

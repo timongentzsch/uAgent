@@ -94,7 +94,6 @@ jobs:
           name: web-dist
           path: web/dist
       - uses: ./.github/actions/ccache
-        if: runner.os == 'Linux'
         with:
           name: release
       - name: Install Linux dependencies
@@ -115,11 +114,11 @@ jobs:
         # heavy enough that a smaller runner swaps instead of compiling: the
         # same build takes minutes on Linux and outlived a 20 minute budget on
         # macOS.
-        run: cmake --build build --parallel 4
+        run: cmake --build build --parallel 4 && ccache --show-stats
       - name: Verify native architecture
         run: test "$(uname -m)" = "${{ matrix.arch }}"
       - name: Test
-        run: ctest --test-dir build --output-on-failure -j 2 -LE source
+        run: ctest --test-dir build --output-on-failure -j 3 -LE source
       - name: Check generated skill references
         if: matrix.build_type == 'Release' && matrix.target == 'linux-x86_64'
         run: |
@@ -225,7 +224,7 @@ jobs:
       - name: Configure ASan and UBSan
         run: cmake --preset sanitize
       - name: Build
-        run: cmake --build --preset sanitize --parallel 4
+        run: cmake --build --preset sanitize --parallel 4 && ccache --show-stats
       - name: Test
         run: ctest --preset sanitize -j 2 -LE source
       # Session workers run with no stderr, so every process writes its
@@ -395,15 +394,18 @@ jobs:
           npm run size --prefix web
           git diff --exit-code -- web/THIRD_PARTY_NOTICES.md
       # Only the host the browser tests drive; build-and-test already runs
-      # the native suites against the same Web Push build.
+      # the native suites against the same Web Push build. Configured exactly
+      # as there, in the same directory, so the objects that job cached are
+      # the ones asked for here: differently, every unit was compiled again.
       - uses: ./.github/actions/ccache
         with:
           name: release
+          save: "false"
       - name: Build native push host
         run: |
           sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev libssl-dev
-          cmake --preset release -DUAGENT_WEB_PUSH=ON
-          cmake --build --preset release --target uagent --parallel 4
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DUAGENT_WARNINGS_AS_ERRORS=ON -DUAGENT_WEB_PUSH=ON
+          cmake --build build --target uagent --parallel 4 && ccache --show-stats
       # The browsers are a download keyed by the locked Playwright version;
       # their system libraries still come from apt on every run.
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -417,6 +419,8 @@ jobs:
         run: npm exec --prefix web -- playwright install --with-deps chromium webkit
       - name: Browser integration against native host
         run: npm run test:browser --prefix web
+        env:
+          UAGENT_TEST_BINARY: ../build/uagent
       # Also when a retry passed: what the failed attempt left is the only
       # trace of a flaky test.
       - name: Retain browser failure evidence

@@ -2,6 +2,7 @@
 
 import json
 import os
+import shutil
 import socket
 import time
 import uuid
@@ -50,6 +51,13 @@ class SessionClient:
     def close(self):
         self.stream.close()
         self.socket.close()
+
+
+def remove_runtime(home):
+    """Remove the directory the runtimes of `home` kept their sockets and
+    locks in. It lives in /tmp under a name made from the home's, so removing
+    a test's home does not take it along."""
+    shutil.rmtree(runtime_directory(home), ignore_errors=True)
 
 
 def close_sessions(home):

@@ -8,7 +8,7 @@ import socket
 import subprocess
 
 from integration_support import base_env, budget, wait_until
-from session_support import stop_sessions
+from session_support import remove_runtime, stop_sessions
 
 
 def available_port():
@@ -148,3 +148,4 @@ def web_host(binary, root, home, provider, port=None, extra_env=None):
                     raise AssertionError(
                         "web master failed bounded shutdown: " + log.read_text()
                     ) from None
+            remove_runtime(home)

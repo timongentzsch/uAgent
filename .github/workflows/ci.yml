@@ -9,9 +9,11 @@ on:
     - cron: "23 4 * * 1"
   workflow_dispatch:
 
+# A newer push to a pull request replaces the run of the older one. Runs on
+# master are never cancelled: each merge is tested as it landed.
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -91,6 +93,10 @@ jobs:
         with:
           name: web-dist
           path: web/dist
+      - uses: ./.github/actions/ccache
+        if: runner.os == 'Linux'
+        with:
+          name: release
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev libssl-dev
@@ -181,6 +187,9 @@ jobs:
         with:
           name: web-dist
           path: web/dist
+      - uses: ./.github/actions/ccache
+        with:
+          name: variant-${{ matrix.name }}
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev libssl-dev
       - name: Configure
@@ -208,6 +217,9 @@ jobs:
         with:
           name: web-dist
           path: web/dist
+      - uses: ./.github/actions/ccache
+        with:
+          name: sanitize
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev
       - name: Configure ASan and UBSan
@@ -238,6 +250,9 @@ jobs:
         with:
           name: web-dist
           path: web/dist
+      - uses: ./.github/actions/ccache
+        with:
+          name: tsan
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev
       - name: Configure TSan
@@ -299,6 +314,9 @@ jobs:
         with:
           name: web-dist
           path: web/dist
+      - uses: ./.github/actions/ccache
+        with:
+          name: coverage
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y gcovr libcurl4-openssl-dev
       - name: Configure coverage
@@ -378,6 +396,9 @@ jobs:
           git diff --exit-code -- web/THIRD_PARTY_NOTICES.md
       # Only the host the browser tests drive; build-and-test already runs
       # the native suites against the same Web Push build.
+      - uses: ./.github/actions/ccache
+        with:
+          name: release
       - name: Build native push host
         run: |
           sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev libssl-dev

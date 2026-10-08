@@ -1157,8 +1157,8 @@ def test_a_chat_is_heard_by_everyone_and_answered_by_who_has_something_to_say(
         server.requests.clear()
         result = run(root, env, "coord", "-p", "name the kite", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
-        assert_true(_asked(server, "Ada", "[The user in the chat"), server.requests)
-        assert_true(_asked(server, "Lin", "[The user in the chat"), server.requests)
+        assert_true(_asked(server, "Ada", "[user in the chat"), server.requests)
+        assert_true(_asked(server, "Lin", "[user in the chat"), server.requests)
         wait_until(lambda: _asked(server, "Lin", "[Ada in the chat"), "Lin never read Ada")
         wait_until(
             lambda: any(not _member(b) and POSTED in _last_user(b) for _, b in server.requests),

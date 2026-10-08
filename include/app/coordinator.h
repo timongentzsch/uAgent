@@ -51,6 +51,10 @@ inline constexpr const char* kMemberTools[] = {"read_path", "grep", "skill",
 // The tools only a folder's coordinator gets.
 // Whether a thread this folder's coordinator started is working a turn now.
 bool ThreadsOwe(const std::string& folder);
+// Whether something can still bring the answer of a chat member that was
+// woken: a runtime that does not wait on a person, or a wake-up sent moments
+// ago that is starting one.
+bool AnswerAhead(const SessionInfo& member);
 
 // `own_model` names the model the coordinator is on right now, as a
 // selection a thread can be started with.

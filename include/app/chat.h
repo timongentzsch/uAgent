@@ -85,6 +85,9 @@ class Chat {
   // Whether `who` may take another turn on a message for `some` only, which
   // it is `one` of.
   bool Wakes(const std::string& who, bool some, bool one);
+  // Drops whoever is no longer awaited: a member that left, or one whose
+  // answer nothing can bring any more.
+  void Settle(const std::vector<SessionInfo>& members);
   // With nobody typing, whoever waited longest is told so.
   void Release(const std::vector<SessionInfo>& members);
   // Whether `to`, what a message answers, is of an earlier round.

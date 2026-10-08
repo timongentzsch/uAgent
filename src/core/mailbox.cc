@@ -133,7 +133,10 @@ std::string SendMail(Mail mail) {
     return "not sent: it has been forwarded " + std::to_string(mail.hops) +
            " times, which looks like a loop";
   }
-  if (mail.id.empty()) mail.id = session::RandomToken(8);
+  // A sender that names its mail sends that mail again under the same name.
+  // Only unnamed mail is told from a repeat by what it says.
+  const bool named = !mail.id.empty();
+  if (!named) mail.id = session::RandomToken(8);
   if (mail.id.empty()) return "cannot name the message";
   if (!mail.created_ms) mail.created_ms = NowMillis();
   if (!mail.expires_ms) mail.expires_ms = mail.created_ms + kMailLifetimeMs;
@@ -145,8 +148,9 @@ std::string SendMail(Mail mail) {
   const std::string dir = MailboxDir(mail.to);
   size_t count = 0;
   for (auto& [path, pending] : ReadPending(dir)) {
-    if (pending.from == mail.from && pending.type == mail.type &&
-        pending.body == mail.body) {
+    if (named ? pending.id == mail.id
+              : pending.from == mail.from && pending.type == mail.type &&
+                    pending.body == mail.body) {
       return "";  // the same message is still waiting
     }
     ++count;

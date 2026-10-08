@@ -1342,6 +1342,17 @@ void TestMailbox() {
   CHECK(SendMail(note("c", "same")).empty());
   CHECK(texts(TakeMail("recipient", all)) ==
         std::vector<std::string>({"same"}));
+  // So is a named mail sent again. Another mail that happens to say the
+  // same is a message of its own: a thread that reports twice is heard twice.
+  Mail named = note("c", "done");
+  named.id = "first-report";
+  CHECK(SendMail(named).empty());
+  CHECK(SendMail(named).empty());
+  CHECK(PendingMail("recipient").size() == 1);
+  named.id = "second-report";
+  CHECK(SendMail(named).empty());
+  CHECK(texts(TakeMail("recipient", all)) ==
+        std::vector<std::string>({"done", "done"}));
 
   // Loops, floods and oversized messages are refused with a reason.
   Mail looping = note("d", "again");

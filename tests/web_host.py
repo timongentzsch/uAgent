@@ -258,4 +258,8 @@ with (
             )
         )
         args.fixture.chmod(0o600)
-        stop.wait()
+        # Until told to stop, or until the test runner that started this is
+        # gone: a runner that was killed tells nobody.
+        parent = os.getppid()
+        while not stop.wait(1) and os.getppid() == parent:
+            pass

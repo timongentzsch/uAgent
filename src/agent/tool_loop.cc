@@ -414,13 +414,10 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, TurnExecution& state,
   }
   for (size_t index = 0; index < tasks.size(); ++index) {
     const CallTask& task = tasks[index];
-    if (calls[index].name == "activity" && task.args.is_object() &&
-        JsonValue(task.args, "operation", "") == "poll") {
-      int64_t id = JsonValue(task.args, "id", int64_t{0});
-      if (id > 0) {
-        activity_polls.push_back({id, task.result.Ok(), task.result.no_change,
-                                  task.result.activity_terminal});
-      }
+    if (IsActivityPoll(task)) {
+      activity_polls.push_back({JsonValue(task.args, "id", int64_t{0}),
+                                task.result.Ok(), task.result.no_change,
+                                task.result.activity_terminal});
     }
     if (!task.issue) continue;
     rejections.push_back({calls[index].name, task.issue->code,

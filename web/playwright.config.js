@@ -10,7 +10,7 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   testMatch: "**/*.spec.js",
   // Each test has a host and ports of its own, so they run side by side.
-  workers: process.env.CI ? 2 : 4,
+  workers: process.env.CI ? 3 : 4,
   fullyParallel: true,
   // Deadlines, not delays: a test waits for an event and these only bound
   // how long. A turn against the real host takes seconds on a busy runner,

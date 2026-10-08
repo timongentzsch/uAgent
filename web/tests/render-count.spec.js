@@ -100,6 +100,19 @@ test("streaming renders only what changed", async ({ page }) => {
           }),
         );
       const frame = () => new Promise((resolve) => setTimeout(resolve, 20));
+      // What the page still does after it first shows (lists and settings
+      // that arrive late on a busy machine) is not the stream's doing:
+      // counting starts once nothing has rendered for half a second.
+      const quiet = async () => {
+        for (let still = 0, seen = ""; still < 25; await frame()) {
+          const now = JSON.stringify(globalThis.renderCounts);
+          still = now === seen ? still + 1 : 0;
+          seen = now;
+        }
+      };
+      await quiet();
+      for (const name of Object.keys(globalThis.renderCounts))
+        delete globalThis.renderCounts[name];
       send({
         kind: "block",
         block: {
@@ -160,7 +173,7 @@ test("streaming renders only what changed", async ({ page }) => {
             sequence: sequence,
           },
         });
-      await frame();
+      await quiet();
       const before = { ...globalThis.renderCounts };
       for (let index = 0; index < 20; index++) {
         send({

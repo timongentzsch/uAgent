@@ -9,7 +9,9 @@ const pixel = Buffer.from(
 
 async function ready(page, session, command) {
   await page.goto(`/#session=${session.id}`);
-  await expect(page.getByLabel("Message or guidance")).toBeVisible();
+  // Attaching is off until the event stream has caught up, and neither
+  // setInputFiles nor a dispatched drop waits for that: the file is dropped.
+  await expect(page.locator('.composer input[type="file"]')).toBeEnabled();
   await command("model", {
     session_id: session.id,
     generation: session.generation,

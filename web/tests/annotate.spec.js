@@ -14,7 +14,9 @@ async function open(page, session) {
     const blob = await canvas.convertToBlob({ type: "image/png" });
     return [...new Uint8Array(await blob.arrayBuffer())];
   });
-  await page.locator('.composer input[type="file"]').setInputFiles({
+  const input = page.locator('.composer input[type="file"]');
+  await expect(input).toBeEnabled();
+  await input.setInputFiles({
     name: "shot.png",
     mimeType: "image/png",
     buffer: Buffer.from(png),

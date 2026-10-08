@@ -426,7 +426,7 @@ def run_pty(
             time.sleep(0.05)
         if index + 1 < len(payloads):
             if marker is not None and not read_until(marker, start, following):
-                awaited = marker
+                awaited = marker if following is None else marker + b" ... " + following
                 break
             if marker is None:
                 read_prompt(start)

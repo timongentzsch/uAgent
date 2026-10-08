@@ -46,12 +46,13 @@ export function useDraftUploads({
   }
   // Resolves true once every file is attached to the draft.
   async function upload(files: File[]) {
-    if (!session || uploading || !files.length) return false;
+    if (!session || !files.length) return false;
     // Said, not dropped: the files are gone from the page once let go.
     if (!online) {
       report(new Error("Not connected: nothing was attached. Add it again."));
       return false;
     }
+    if (uploading) return false;
     const id = selected;
     if (
       files.length + draft.files.length > maxDraftFiles ||

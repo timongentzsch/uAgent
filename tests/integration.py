@@ -21,7 +21,22 @@ import integration_sandbox
 import integration_tools
 import integration_ui
 import integration_web
-from integration_support import Skipped
+from integration_support import Skipped, budget
+
+# No case takes a tenth of this on a plain build (the slowest about 9 s).
+# Scaled like every test deadline, and at the sanitizers' scale still below
+# the limit CTest gives a whole group, so a case that hangs fails here, under
+# its name, with where it hung.
+CASE_SECONDS = 120
+
+
+class CaseDeadline(Exception):
+    pass
+
+
+def past_deadline(_signal, _frame):
+    raise CaseDeadline(f"still running after {budget(CASE_SECONDS):.0f}s")
+
 
 TEST_MODULES = (
     ("runtime", integration_runtime),
@@ -98,7 +113,6 @@ def remove_suite(root):
     """Remove the suite's directory once no runtime writes into it: a
     session that finished at the end of a case can still start another (a
     thread waking its coordinator) after that case's cleanup."""
-    from integration_support import budget
     from session_support import close_sessions, remove_runtime, runtime_directory
 
     homes = list(root.glob("*.home"))
@@ -216,8 +230,11 @@ def main():
             case_root.mkdir(parents=True)
             home.mkdir(parents=True)
             started = time.monotonic()
+            signal.signal(signal.SIGALRM, past_deadline)
+            signal.alarm(int(budget(CASE_SECONDS)))
             try:
                 ALL_TESTS[name](case_root, home, binary=arguments.binary.resolve())
+                signal.alarm(0)
                 print(f"passed {name} ({time.monotonic() - started:.3f}s)", flush=True)
             except Skipped as reason:
                 # Said as what it is: a case that did not run proved nothing.
@@ -231,6 +248,7 @@ def main():
             finally:
                 from session_support import stop_sessions
 
+                signal.alarm(0)
                 stop_sessions(home)
                 for state in case_root.rglob(".uagent"):
                     stop_sessions(state.parent)

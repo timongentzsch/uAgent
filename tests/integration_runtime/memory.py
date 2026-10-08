@@ -4,7 +4,6 @@ import threading
 import time
 
 from integration_support import (
-    TIMEOUT_SCALE,
     Server,
     assert_true,
     base_env,
@@ -397,7 +396,7 @@ def test_memory_background_extractor_releases_failed_claims(root, _home, *, bina
             # killed extractor claiming completion would skip that session for
             # good.
             try:
-                wait_until(lambda: not markers(case_home), "claim released")
+                wait_until(lambda: not markers(case_home), "claim released", timeout=10)
                 released = True
             except AssertionError:
                 released = False
@@ -405,8 +404,11 @@ def test_memory_background_extractor_releases_failed_claims(root, _home, *, bina
                 state = marker.read_text(encoding="utf-8").strip()
                 assert_true(state == "processing", f"killed extractor claimed {state!r}")
             # On a plain build the child always wins, so a survivor there is a
-            # real regression rather than the documented race.
-            assert_true(released or TIMEOUT_SCALE > 1, "claim survived shutdown")
+            # real regression rather than the documented race. A sanitizer
+            # leg is known by the options its preset sets, not by how far the
+            # deadlines are stretched: every CI leg stretches them.
+            sanitized = any(name in os.environ for name in ("ASAN_OPTIONS", "TSAN_OPTIONS"))
+            assert_true(released or sanitized, "claim survived shutdown")
             return server.requests
 
     def fail_request(handler, _):

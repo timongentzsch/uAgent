@@ -57,6 +57,21 @@
 
 ### Changed
 
+- A session can no longer end up with two runtimes: a lease is held only on
+  the file its path names, and stale runtime files are removed under their
+  lease.
+- `/restart` waits for the runtime to be gone, not for its socket file, and
+  says so when it did not exit in time. A runtime that cannot open its
+  socket says that at once instead of being waited for as a busy session.
+- Mail that wakes a session survives the session being killed before its
+  turn starts, and a second report with the same text as one still waiting
+  is delivered.
+- Usage, cost and the token and cost budgets include what a failed model
+  call was billed.
+- Settings: a value that refers to a variable is checked against what the
+  variable holds and reported like any other invalid value; a save that
+  would overwrite what an editor saved meanwhile is refused with "try
+  again".
 - `uagent coord -p` says on standard error why a run ended without an
   answer; it used to exit 1 with nothing printed.
 - Settings: named providers are edited as what they are, one block each with

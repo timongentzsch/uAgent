@@ -638,13 +638,8 @@ size_t Conversation::PruneAttachments(size_t begin, const std::string& route) {
     if (!references) {
       if (index < begin) continue;
       attachments += content.empty() ? 0 : content.size() - 1;
-      std::string text;
-      for (const json& part : content) {
-        if (JsonValue(part, "type", "") == "text") {
-          text += JsonValue(part, "text", "");
-        }
-      }
-      content = text + "\n[attachments omitted after processing]";
+      content =
+          ContentText(message, "") + "\n[attachments omitted after processing]";
     }
     // Reclassified in place: the message stays where it is and only stops
     // being an attachment, so this is the one kind write that has no message

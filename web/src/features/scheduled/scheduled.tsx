@@ -4,7 +4,7 @@ import type {
   ScheduledState,
   ScheduleRule,
 } from "../../shared/types.ts";
-import { useEffect, useState } from "preact/hooks";
+import { useContext, useEffect, useState } from "preact/hooks";
 import { Plus, Play, Square, ChevronLeft } from "lucide-preact";
 import {
   Button,
@@ -22,7 +22,8 @@ import { Menu, MenuItem } from "../../shared/menu.tsx";
 import { SheetButton } from "../../shared/sheet.tsx";
 import ModelPicker from "../composer/model-picker.tsx";
 import { readStored, writeStored } from "../../state/store.ts";
-import { ProjectField, dateTime, taskActive } from "../library/management.tsx";
+import { ProjectField, taskActive } from "../library/management.tsx";
+import { TimePrefsContext, formatMoment } from "../../shared/time.ts";
 import { ListRow } from "../../shared/list-row.tsx";
 import { permissionLabels } from "../../shared/display.ts";
 
@@ -70,6 +71,12 @@ export default function Scheduled({
   const [task, setTask] = useState<ScheduledTask | null>(() =>
     readStored(sessionStorage, storage, null),
   );
+  const prefs = useContext(TimePrefsContext);
+  // A run's moment by the viewer's time preferences, in its task's zone.
+  const moment = (seconds?: number, zone?: string) =>
+    seconds
+      ? formatMoment(new Date(seconds * 1000), prefs, undefined, zone)
+      : "—";
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [confirm, setConfirm] = useState(false);
@@ -216,7 +223,7 @@ export default function Scheduled({
                 }
                 meta={
                   entry.enabled
-                    ? dateTime(entry.next, entry.schedule.timezone)
+                    ? moment(entry.next, entry.schedule.timezone)
                     : "Paused"
                 }
               />
@@ -390,7 +397,7 @@ export default function Scheduled({
                     ? "Choose a valid schedule to see upcoming runs."
                     : times
                       ? times.length
-                        ? `Next: ${times.map((at) => dateTime(at, task.schedule.timezone)).join(" · ")}`
+                        ? `Next: ${times.map((at) => moment(at, task.schedule.timezone)).join(" · ")}`
                         : "No future run. Choose a later date."
                       : online
                         ? "Calculating upcoming runs…"
@@ -530,7 +537,7 @@ export default function Scheduled({
                       onClick={() => choose(run.session_id).catch(setError)}
                       title={run.title}
                       unread={unread.has(run.session_id) && "Unread results"}
-                      meta={`${run.status.replace(/^./, (c) => c.toUpperCase())} · ${dateTime(run.scheduled_for)}`}
+                      meta={`${run.status.replace(/^./, (c) => c.toUpperCase())} · ${moment(run.scheduled_for)}`}
                     >
                       {run.error && <small>{run.error}</small>}
                     </ListRow>

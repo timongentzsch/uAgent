@@ -36,13 +36,7 @@ int64_t SubagentMaxSteps();
 int64_t SubagentMaxToolCalls();
 int64_t SubagentTimeoutSeconds();
 int64_t MaxOutputTokens();
-bool SandboxEnabled();
-// Outbound TCP. Allowed by default: git, npm and pip all need it.
-bool SandboxNetworkAllowed();
-std::string SandboxWriteRoots();
-bool AdaptiveSystemEnabled();
 bool MarkdownEnabled();
-bool TrustProjectConfig();
 // A delegated child echoes one line per durable event to stderr, which is the
 // only way its parent can tell work from a stall before the answer arrives.
 bool HeadlessProgressEnabled();
@@ -52,9 +46,7 @@ std::string PromptOverlayPath();
 // Bounded tunables. Fixed ceilings live in include/core/limits.h.
 int64_t ReadFileLines();
 int64_t AttachmentLimitMb();
-int64_t ContextWindow();
 int64_t HistoryDays();
-std::string ShellEnvironmentAllowlist();
 
 // Approval mode is the one setting a running session can toggle, so it cannot
 // live in environ: spawning a child iterates environ on another thread while

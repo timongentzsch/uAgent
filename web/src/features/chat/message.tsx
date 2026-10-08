@@ -562,7 +562,7 @@ function GroupRow(props: MessageProps) {
   );
 }
 
-export type MessageRowsProps = Omit<MessageProps, "block"> & {
+type MessageRowsProps = Omit<MessageProps, "block"> & {
   blocks: Block[];
 };
 

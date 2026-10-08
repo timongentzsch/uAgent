@@ -15,7 +15,6 @@
 #include "include/core/fs.h"
 #include "include/core/signals.h"
 #include "include/tools/image_result.h"
-#include "include/transport/session.h"
 
 namespace uagent {
 namespace {
@@ -55,7 +54,7 @@ constexpr int kQuietProbes = 2;
 
 ToolResult Handover(const std::string& session_id, const std::string& reason,
                     const BrowserAsk& ask) {
-  std::string interaction = session::RandomToken(16);
+  std::string interaction = RandomToken(16);
   json outcome = browser::Request({{"op", "request_human"},
                                    {"session_id", session_id},
                                    {"interaction_id", interaction}});

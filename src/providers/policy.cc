@@ -185,7 +185,7 @@ ProviderSetup ConfigureProvider(Api& api) {
       SettingText(Cfg("UAGENT_REASONING_EFFORT"));
   const std::string configured_variant = api.config.openrouter_variant;
   api.reasoning_effort = configured_effort;
-  api.ctx_window = ContextWindow();
+  api.ctx_window = LongSetting(Cfg("UAGENT_CONTEXT"));
   std::string protocol_setting = EnvStr("UAGENT_INTERNAL_PROVIDER_PROTOCOL");
   std::string wire_setting =
       EnvStr("UAGENT_INTERNAL_WIRE_API", "chat_completions");

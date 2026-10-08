@@ -73,8 +73,6 @@ inline constexpr auto kStreamBatchInterval =
 inline constexpr auto kUsagePublishInterval =
     std::chrono::milliseconds(kUsageProgressIntervalMs);
 
-// OS randomness for credentials and opaque identities. Empty on failure.
-std::string RandomToken(size_t bytes = 24);
 bool OpaqueId(std::string_view value);
 // Addresses `frame` to session `id` at `generation` in this protocol.
 void StampFrame(json& frame, const std::string& id,

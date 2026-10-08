@@ -4,7 +4,7 @@ import { Button, Time } from "../../shared/ui.tsx";
 import { waiting } from "../../state/attention.ts";
 import SessionName from "../../shared/session-name.tsx";
 import { ListRow } from "../../shared/list-row.tsx";
-import { useMedia } from "../../shared/layout.ts";
+import { usePhone } from "../../shared/layout.ts";
 
 const DONE_SHOWN = 8;
 
@@ -90,7 +90,7 @@ export function CoordinatorLayout({
   board: ComponentChildren;
   children: ComponentChildren;
 }) {
-  const phone = useMedia("(max-width: 600px)");
+  const phone = usePhone();
   if (!board || phone) return <>{children}</>;
   return (
     <div class="coordinator-layout">

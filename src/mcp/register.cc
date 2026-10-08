@@ -284,8 +284,7 @@ bool WriteDisabled(const McpServer& server, bool disabled, std::string& error) {
   }
   // The person made exactly this edit, so trust follows it; anything else
   // that changed meanwhile no longer matches and is asked about again.
-  return !project || WriteTrustRecord(
-                         dir, {{"format", 3}, {"mcp", std::move(file)}}, error);
+  return !project || WriteTrustRecord(dir, {{"mcp", std::move(file)}}, error);
 }
 
 // The end of the server's own stderr usually says why it stopped.

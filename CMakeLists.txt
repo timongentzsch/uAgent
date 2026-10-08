@@ -16,7 +16,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
   set(_IS_GCC_CLANG ON)
 endif()
 
-find_package(CURL REQUIRED)
+find_package(CURL 7.66 REQUIRED)
 find_package(Threads REQUIRED)
 
 add_library(uagent_options INTERFACE)

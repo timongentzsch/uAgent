@@ -16,7 +16,7 @@ export function dedupeName(
   }
 }
 
-export interface MentionMatch {
+interface MentionMatch {
   start: number;
   end: number;
   query: string;

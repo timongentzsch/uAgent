@@ -17,6 +17,7 @@ extern char** environ;
 #include <string>
 #include <string_view>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "include/agent/jobs.h"
@@ -30,6 +31,7 @@ extern char** environ;
 #include "include/app/session.h"
 #include "include/browser/browser.h"
 #include "include/cli.h"
+#include "include/core/config_registry.h"
 #include "include/core/effective_config.h"
 #include "include/core/events.h"
 #include "include/core/json.h"
@@ -250,18 +252,27 @@ int Main(int argc, char** argv) {
     }
     auto settings =
         ConfigManager::Capture(false, parsed.options.overrides, "").Read();
-    auto setting = [&](const char* key, const char* fallback = "") {
+    auto setting = [&](const char* key, std::string_view fallback = {}) {
       auto found = settings.values.find(key);
       return found == settings.values.end() ? std::string(fallback)
                                             : found->second;
     };
-    int64_t port = 0;
-    if (!ParseInt64(setting("UAGENT_WEB_PORT", "8080").c_str(), port) ||
-        port < 1024 || port > 65535) {
-      fprintf(stderr, "web port must be between 1024 and 65535\n");
+    // The registry declares the default and the range. A port outside it is
+    // refused here: a clamped one would listen where nobody asked.
+    const ConfigDescriptor& range = Cfg("UAGENT_WEB_PORT");
+    int64_t port = std::get<int64_t>(range.default_value);
+    const auto saved = settings.values.find("UAGENT_WEB_PORT");
+    if ((saved != settings.values.end() &&
+         !ParseInt64(saved->second.c_str(), port)) ||
+        port < range.minimum || port > range.maximum) {
+      fprintf(stderr, "web port must be between %s and %s\n",
+              std::to_string(range.minimum).c_str(),
+              std::to_string(range.maximum).c_str());
       return 2;
     }
-    std::string bind = setting("UAGENT_WEB_BIND", "127.0.0.1");
+    std::string bind = setting(
+        "UAGENT_WEB_BIND",
+        std::get<std::string_view>(Cfg("UAGENT_WEB_BIND").default_value));
     if (bind != "127.0.0.1" && bind != "0.0.0.0") {
       fprintf(stderr, "web bind must be 127.0.0.1 or 0.0.0.0\n");
       return 2;

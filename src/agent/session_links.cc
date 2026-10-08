@@ -32,8 +32,6 @@ namespace {
 
 constexpr int kSessionLinkFormat = 1;
 constexpr size_t kSessionLinkMembers = 32;
-constexpr size_t kSessionLinkFiles = 256;
-constexpr size_t kSessionLinkNameChars = 64;
 
 // A coordinator and its threads work together, so they are linked by where
 // they live, whatever mode each runs in: one history folder holds
@@ -53,13 +51,9 @@ std::vector<json> SocietyMembers() {
   return out;
 }
 
-std::string LinkPath(const std::string& name) {
-  return SessionLinkDir() + "/" + name + ".json";
-}
-
-bool ValidLinkName(const std::string& name) {
-  if (name.empty() || name.size() > kSessionLinkNameChars) return false;
-  return SafeFileComponent(name) == name;
+// The one link file a workspace has.
+std::string AutoLinkPath() {
+  return UagentDir("links") + "/auto-" + HashHex(CanonicalCwd()) + ".json";
 }
 
 // Members whose session file is gone cannot come back; dropping them here
@@ -77,26 +71,10 @@ json PruneMembers(const json& members) {
   return kept;
 }
 
-json ReadLink(const std::string& name) {
-  if (!ValidLinkName(name)) return json::object();
-  std::ifstream input(LinkPath(name));
-  // Misses come back null, never an empty object: an empty object would
-  // read as a link with no members and let unknown tokens create links.
-  json link = json::parse(input, nullptr, false);
-  if (!link.is_object()) return json();
-  if (JsonValue(link, "format", int64_t{0}) != kSessionLinkFormat) {
-    return json();
-  }
-  return link;
-}
-
-ToolResult WriteLink(const std::string& name, const json& members) {
-  if (!ValidLinkName(name)) {
-    return ToolFailure(ToolErrorCode::kInvalidArguments, "bad link name");
-  }
+ToolResult WriteLink(const json& members) {
   json link = {{"format", kSessionLinkFormat},
                {"members", PruneMembers(members)}};
-  return ToolAtomicWrite(LinkPath(name), JsonDump(link, 2) + "\n",
+  return ToolAtomicWrite(AutoLinkPath(), JsonDump(link, 2) + "\n",
                          kPrivateFileMode, /*preserve_mode=*/true);
 }
 
@@ -115,15 +93,16 @@ bool HasMember(const json& members, const std::string& id) {
   return false;
 }
 
-// Who a link joins. The automatic link is for a person's own sessions: a
-// delegated child an older version put there is not counted, so it reaches no
-// session its parent did not give it. Nor is a session whose saved header
-// cannot be read, which could be one.
-json LinkMembers(const std::string& name) {
-  json members = JsonValue(ReadLink(name), "members", json::array());
-  if (!name.starts_with("auto-")) return members;
+// Who the link joins. It is for a person's own sessions: a delegated child an
+// older version put there is not counted, so it reaches no session its parent
+// did not give it. Nor is a session whose saved header cannot be read, which
+// could be one.
+json LinkMembers() {
+  std::ifstream input(AutoLinkPath());
+  const json link = json::parse(input, nullptr, false);
   json own = json::array();
-  for (json& member : members) {
+  if (JsonValue(link, "format", int64_t{0}) != kSessionLinkFormat) return own;
+  for (json& member : JsonValue(link, "members", json::array())) {
     const std::string path = JsonValue(member, "path", "");
     const json header = SessionHeader(path);
     if (!PathExists(path) ||
@@ -132,21 +111,6 @@ json LinkMembers(const std::string& name) {
     }
   }
   return own;
-}
-
-std::vector<std::string> LinkFiles() {
-  std::vector<std::string> names;
-  std::error_code error;
-  for (std::filesystem::directory_iterator it(SessionLinkDir(), error), end;
-       !error && it != end; it.increment(error)) {
-    if (names.size() >= kSessionLinkFiles) break;
-    std::string name = it->path().filename().string();
-    if (name.ends_with(".json") && it->is_regular_file(error)) {
-      name.resize(name.size() - 5);
-      if (ValidLinkName(name)) names.push_back(name);
-    }
-  }
-  return names;
 }
 
 std::string MemberTitle(const std::string& id, const std::string& path) {
@@ -159,14 +123,10 @@ std::string MemberTitle(const std::string& id, const std::string& path) {
 
 }  // namespace
 
-std::string SessionLinkDir() { return UagentDir("links"); }
-
 bool SharesLink(const std::string& a, const std::string& b) {
   if (a.empty() || b.empty() || a == b) return a == b && !a.empty();
-  for (const std::string& name : LinkFiles()) {
-    const json members = LinkMembers(name);
-    if (HasMember(members, a) && HasMember(members, b)) return true;
-  }
+  const json members = LinkMembers();
+  if (HasMember(members, a) && HasMember(members, b)) return true;
   const std::string me = OwnSessionId();
   return (me == a || me == b) && HasMember(SocietyMembers(), me == a ? b : a);
 }
@@ -178,9 +138,8 @@ ToolResult EnsureSessionAutoLink() {
   if (!ApprovalIsYolo() || AgentDepth() > 0) return ToolSuccess({});
   json me = OwnMember();
   if (!me.is_object()) return ToolSuccess({});
-  const std::string name = "auto-" + HashHex(CanonicalCwd());
   // Only those who count: the rest take no place and are not saved again.
-  json members = LinkMembers(name);
+  json members = LinkMembers();
   const std::string id = JsonValue(me, "id", "");
   if (HasMember(members, id)) return ToolSuccess({});
   if (members.size() >= kSessionLinkMembers) {
@@ -188,25 +147,22 @@ ToolResult EnsureSessionAutoLink() {
                        "auto-link is full (32 sessions)");
   }
   members.push_back(std::move(me));
-  ToolResult saved = WriteLink(name, members);
+  ToolResult saved = WriteLink(members);
   return saved.Ok() ? ToolSuccess({}) : saved;
 }
 
 namespace {
 
-// All ids this process shares any link with, including itself.
+// Everyone this process is linked with, itself left out.
 std::vector<json> LinkedMembers() {
   const std::string me = OwnSessionId();
   std::vector<json> out;
   if (me.empty()) return out;
-  for (const std::string& name : LinkFiles()) {
-    const json members = LinkMembers(name);
-    if (!HasMember(members, me)) continue;
+  if (const json members = LinkMembers(); HasMember(members, me)) {
     for (const json& member : members) {
       if (!member.is_object()) continue;
       const std::string id = JsonValue(member, "id", "");
-      if (id.empty() || id == me) continue;
-      if (HasMember(out, id)) continue;
+      if (id.empty() || id == me || HasMember(out, id)) continue;
       out.push_back(member);
     }
   }

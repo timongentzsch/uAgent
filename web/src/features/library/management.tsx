@@ -100,11 +100,3 @@ export function ScopeField({
 }
 export const taskActive = (state: string) =>
   ["queued", "starting", "running", "waiting", "stopping"].includes(state);
-export const dateTime = (seconds?: number, timezone?: string) =>
-  seconds
-    ? new Intl.DateTimeFormat(undefined, {
-        dateStyle: "medium",
-        timeStyle: "short",
-        ...(timezone ? { timeZone: timezone } : {}),
-      }).format(seconds * 1000)
-    : "—";

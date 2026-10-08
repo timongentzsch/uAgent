@@ -96,11 +96,15 @@ void TestConversation() {
                MessageKind::kUser);
   bounded.ArchiveRange("first", 1, bounded.Size(), 1, 4096);
   CHECK(bounded.Archive().size() == 1);
-  int64_t one_segment_bytes = bounded.ArchivedBytes();
+  // What the cap counts: the archive's serialization without its brackets.
+  auto archived_bytes = [](const Conversation& held) {
+    return static_cast<int64_t>(JsonDump(held.Archive()).size()) - 2;
+  };
+  int64_t one_segment_bytes = archived_bytes(bounded);
   bounded.ArchiveRange("next", 1, bounded.Size(), 2, one_segment_bytes);
   CHECK(bounded.Archive().size() == 1);
   CHECK(bounded.Archive()[0]["turn"] == 2);
-  CHECK(bounded.ArchivedBytes() <= one_segment_bytes);
+  CHECK(archived_bytes(bounded) <= one_segment_bytes);
   CHECK(bounded.DroppedSegments() == 1);
   for (int turn = 3; turn <= 6; ++turn) {
     CHECK(bounded.ArchiveRange("next", 1, bounded.Size(), turn, 4096));
@@ -108,15 +112,11 @@ void TestConversation() {
   Conversation restored;
   CHECK(restored.Restore(bounded.Messages(), bounded.Kinds(), bounded.Archive(),
                          bounded.DroppedSegments()));
-  CHECK(restored.ArchivedBytes() ==
-        static_cast<int64_t>(JsonDump(restored.Archive()).size()) - 2);
   CHECK(
       restored.ArchiveRange("next", 1, restored.Size(), 7, one_segment_bytes));
   CHECK(restored.Archive().size() == 1);
   CHECK(restored.Archive()[0]["turn"] == 7);
   CHECK(restored.DroppedSegments() == 6);
-  CHECK(restored.ArchivedBytes() ==
-        static_cast<int64_t>(JsonDump(restored.Archive()).size()) - 2);
   // A save writes the kept segment texts, byte for byte the archive's dump.
   CHECK(restored.ArchiveText() == JsonDump(restored.Archive()));
   CHECK(bounded.ArchiveText() == JsonDump(bounded.Archive()));
@@ -129,7 +129,6 @@ void TestConversation() {
   rejected.ArchiveRange("disabled", 1, rejected.Size(), 1, 0);
   rejected.ArchiveRange("oversized", 1, rejected.Size(), 2, 1);
   CHECK(rejected.Archive().size() == 0);
-  CHECK(rejected.ArchivedBytes() == 0);
   CHECK(rejected.DroppedSegments() == 2);
 
   Conversation traces;

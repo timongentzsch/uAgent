@@ -507,7 +507,7 @@ bool Runtime::Start(std::string& error, bool profile_setup) {
     unlink((profile + "/" + name).c_str());
   }
   std::string authority = base + "/Xauthority";
-  std::string cookie = session::RandomToken(16);
+  std::string cookie = RandomToken(16);
   if (cookie.empty()) {
     error = "cannot generate X authorization";
     return false;
@@ -994,7 +994,7 @@ json Runtime::Control(const std::string& op, const json& command) {
           return {{"error", "Chrome profile name already exists"}};
         }
       }
-      std::string id = session::RandomToken(16);
+      std::string id = RandomToken(16);
       if (id.empty()) return {{"error", "cannot create Chrome profile ID"}};
       profiles_.push_back({id, name});
       if (!SaveProfiles()) {
@@ -1527,7 +1527,7 @@ json Runtime::Observe(bool image) {
       if (const json* value = JsonObject(*remote, "value")) details = *value;
     }
   }
-  observation_ = session::RandomToken(12);
+  observation_ = RandomToken(12);
   view_width_ = static_cast<int>(width);
   view_height_ = static_cast<int>(height);
   return {{"ok", true},

@@ -137,7 +137,6 @@ int SpawnLoggedShell(const std::vector<std::string>& program,
 int SpawnPtyShell(const std::vector<std::string>& program,
                   const std::vector<std::string>& wrapper,
                   char* const* environment, pid_t& pid, int& master_fd) {
-#if defined(__unix__) || defined(__APPLE__)
   master_fd = -1;
   // Owned here until the child is running; every failure below closes it.
   Fd master(posix_openpt(O_RDWR | O_NOCTTY | O_CLOEXEC));
@@ -169,14 +168,6 @@ int SpawnPtyShell(const std::vector<std::string>& program,
   posix_spawn_file_actions_destroy(&actions);
   if (error == 0) master_fd = master.Release();
   return error;
-#else
-  (void)program;
-  (void)wrapper;
-  (void)environment;
-  (void)pid;
-  (void)master_fd;
-  return ENOTSUP;
-#endif
 }
 
 // How long a command stopped at its deadline or by an interrupt has to clean

@@ -68,17 +68,13 @@ void TestSettingsStore() {
 
   // Approved content is taken over; content changed since is not.
   std::string error;
-  CHECK(WriteTrustRecord(folder,
-                         {{"format", 3},
-                          {"mcp", nullptr},
-                          {"config", {{"UAGENT_MAX_STEPS", "9"}}}},
-                         error));
+  CHECK(WriteTrustRecord(
+      folder, {{"mcp", nullptr}, {"config", {{"UAGENT_MAX_STEPS", "9"}}}},
+      error));
   CHECK(ReadSettings(folder).project.empty());
-  CHECK(WriteTrustRecord(folder,
-                         {{"format", 3},
-                          {"mcp", nullptr},
-                          {"config", {{"UAGENT_MAX_STEPS", "7"}}}},
-                         error));
+  CHECK(WriteTrustRecord(
+      folder, {{"mcp", nullptr}, {"config", {{"UAGENT_MAX_STEPS", "7"}}}},
+      error));
   CHECK(ReadSettings(folder).project ==
         (SettingValues{{"UAGENT_MAX_STEPS", "7"}}));
   CHECK(PathExists(project.string() + ".imported"));

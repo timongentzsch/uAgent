@@ -32,20 +32,12 @@ struct GetterCheck {
   int64_t (*getter)();
 };
 
-struct BoolGetterCheck {
-  const char* environment;
-  bool (*getter)();
-};
-
 // Every boolean-in-nature setting, so one declared as a string -- which no
 // validator would then normalize and whose getter would have to restate the
 // default -- fails here rather than drifting quietly.
-constexpr BoolGetterCheck kBoolGetters[] = {
-    {"UAGENT_SANDBOX", SandboxEnabled},
-    {"UAGENT_SANDBOX_NET", SandboxNetworkAllowed},
-    {"UAGENT_ADAPT_SYSTEM", AdaptiveSystemEnabled},
-    {"UAGENT_MARKDOWN", MarkdownEnabled},
-    {"UAGENT_TRUST_PROJECT_CONFIG", TrustProjectConfig},
+constexpr const char* kBoolSettings[] = {
+    "UAGENT_SANDBOX",  "UAGENT_SANDBOX_NET",          "UAGENT_ADAPT_SYSTEM",
+    "UAGENT_MARKDOWN", "UAGENT_TRUST_PROJECT_CONFIG",
 };
 
 constexpr GetterCheck kIntGetters[] = {
@@ -56,7 +48,6 @@ constexpr GetterCheck kIntGetters[] = {
     {"UAGENT_MAX_TOKENS", MaxOutputTokens},
     {"UAGENT_READ_FILE_LINES", ReadFileLines},
     {"UAGENT_ATTACHMENT_MB", AttachmentLimitMb},
-    {"UAGENT_CONTEXT", ContextWindow},
     {"UAGENT_HISTORY_DAYS", HistoryDays},
 };
 
@@ -142,16 +133,15 @@ void TestConfigRegistryContract() {
     if (declared) CHECK(check.getter() == *declared);
   }
 
-  for (const BoolGetterCheck& check : kBoolGetters) {
-    const ConfigDescriptor* descriptor =
-        FindConfigDescriptor(check.environment);
+  for (const char* environment : kBoolSettings) {
+    const ConfigDescriptor* descriptor = FindConfigDescriptor(environment);
     CHECK(descriptor != nullptr);
     if (!descriptor) continue;
     CHECK(descriptor->type == ConfigType::kBool);
-    ScopedEnv cleared(check.environment);
+    ScopedEnv cleared(environment);
     const bool* declared = std::get_if<bool>(&descriptor->default_value);
     CHECK(declared != nullptr);
-    if (declared) CHECK(check.getter() == *declared);
+    if (declared) CHECK(BoolSetting(*descriptor) == *declared);
   }
 
   // Bounds are enforced, not merely documented.

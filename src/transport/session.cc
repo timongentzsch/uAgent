@@ -7,7 +7,6 @@
 #include <unistd.h>
 
 #include <algorithm>
-#include <array>
 #include <cerrno>
 #include <chrono>
 #include <string>
@@ -18,36 +17,6 @@
 #include "include/core/time.h"
 
 namespace uagent::session {
-std::string RandomToken(size_t bytes) {
-  if (bytes > 64) {
-    return {};
-  }
-  Fd fd(open("/dev/urandom", O_RDONLY | O_CLOEXEC));
-  std::array<unsigned char, 64> data{};
-  size_t offset = 0;
-  while (fd && offset < bytes) {
-    ssize_t count = read(fd.Get(), data.data() + offset, bytes - offset);
-    if (count < 0 && errno == EINTR) {
-      continue;
-    }
-    if (count <= 0) {
-      return {};
-    }
-    offset += static_cast<size_t>(count);
-  }
-  if (offset != bytes) {
-    return {};
-  }
-  constexpr char kHex[] = "0123456789abcdef";
-  std::string result;
-  result.reserve(bytes * 2);
-  for (size_t i = 0; i < bytes; ++i) {
-    result += kHex[data[i] >> 4];
-    result += kHex[data[i] & 15];
-  }
-  return result;
-}
-
 bool OpaqueId(std::string_view value) {
   return value.size() >= 16 && value.size() <= 64 &&
          value.find_first_not_of("0123456789abcdef") == std::string_view::npos;

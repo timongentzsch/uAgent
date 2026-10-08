@@ -9,6 +9,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cerrno>
 #include <chrono>
@@ -355,14 +356,44 @@ void MaintainArtifacts() {
   }
 }
 
-std::string MakeSessionId() {
+std::string UniqueSeed() {
   static std::atomic<uint64_t> sequence{0};
-  return "uagent-" +
-         HashHex(
-             CanonicalCwd() + ":" + std::to_string(getpid()) + ":" +
-             std::to_string(
-                 std::chrono::steady_clock::now().time_since_epoch().count()) +
-             ":" + std::to_string(++sequence));
+  return CanonicalCwd() + ":" + std::to_string(getpid()) + ":" +
+         std::to_string(
+             std::chrono::steady_clock::now().time_since_epoch().count()) +
+         ":" + std::to_string(++sequence);
+}
+
+std::string MakeSessionId() { return "uagent-" + HashHex(UniqueSeed()); }
+
+std::string RandomToken(size_t bytes) {
+  if (bytes > 64) {
+    return {};
+  }
+  Fd fd(open("/dev/urandom", O_RDONLY | O_CLOEXEC));
+  std::array<unsigned char, 64> data{};
+  size_t offset = 0;
+  while (fd && offset < bytes) {
+    ssize_t count = read(fd.Get(), data.data() + offset, bytes - offset);
+    if (count < 0 && errno == EINTR) {
+      continue;
+    }
+    if (count <= 0) {
+      return {};
+    }
+    offset += static_cast<size_t>(count);
+  }
+  if (offset != bytes) {
+    return {};
+  }
+  constexpr char kHex[] = "0123456789abcdef";
+  std::string result;
+  result.reserve(bytes * 2);
+  for (size_t i = 0; i < bytes; ++i) {
+    result += kHex[data[i] >> 4];
+    result += kHex[data[i] & 15];
+  }
+  return result;
 }
 
 bool AtomicWriteFile(const std::string& path, const std::string& content,

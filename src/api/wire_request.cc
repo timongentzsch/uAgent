@@ -236,18 +236,6 @@ void AppendAnthropicMessage(json& messages, std::string role, json blocks) {
       {{"role", std::move(role)}, {"content", std::move(blocks)}});
 }
 
-std::string SystemText(const json& content) {
-  if (content.is_string()) return content.get<std::string>();
-  if (!content.is_array()) return "";
-  std::string result;
-  for (const json& part : content) {
-    if (JsonValue(part, "type", "") != "text") continue;
-    std::string text = JsonValue(part, "text", "");
-    if (!text.empty()) result += (result.empty() ? "" : "\n\n") + text;
-  }
-  return result;
-}
-
 json AnthropicMessages(const json& canonical, std::string& system) {
   if (!canonical.is_array()) return canonical;
   json messages = json::array();
@@ -257,7 +245,7 @@ json AnthropicMessages(const json& canonical, std::string& system) {
     const json& content =
         message.contains("content") ? message["content"] : json(nullptr);
     if (role == "system" || role == "developer") {
-      std::string text = SystemText(content);
+      std::string text = ContentText(message, "\n\n");
       if (!text.empty()) system += (system.empty() ? "" : "\n\n") + text;
       continue;
     }

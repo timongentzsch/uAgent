@@ -63,6 +63,18 @@ test("relative and absolute styles", () => {
   assert.ok(absolute.includes("2026") && absolute.includes(clock24(at(0))));
 });
 
+test("a moment in a named zone is written out in that zone", () => {
+  const prefs = { clock: "24", style: "smart" };
+  const written = new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+    hourCycle: "h23",
+    timeZone: "Asia/Tokyo",
+  }).format(at(0));
+  assert.equal(formatMoment(at(0), prefs, now, "Asia/Tokyo"), written);
+  assert.equal(formatMoment(at(0), prefs, now, ""), clock24(at(0)));
+});
+
 test("stored preferences are normalized", () => {
   assert.deepEqual(normalizeTimePrefs({ clock: "25", style: "smart" }), {
     clock: "system",

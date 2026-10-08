@@ -2,7 +2,7 @@ import "./settings.css";
 import { ChevronLeft } from "lucide-preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { useDismiss } from "../../shared/dismiss.ts";
-import { useMedia } from "../../shared/layout.ts";
+import { usePhone } from "../../shared/layout.ts";
 import {
   Button,
   Deferred,
@@ -27,7 +27,7 @@ export default function Settings(props: SettingsProps) {
   const [picked, setPicked] = useState<Scope | null>(
     () => SCOPES.find(([id]) => id === props.initialSection)?.[0] ?? null,
   );
-  const phone = useMedia("(max-width: 600px)");
+  const phone = usePhone();
   useDismiss(phone && picked !== null, () => setPicked(null));
   const body = useRef<HTMLDivElement>(null);
   useEffect(() => {

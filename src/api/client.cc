@@ -205,7 +205,6 @@ void CollectCurlTimings(CURL* handle, ChatResult& result) {
 }
 
 int64_t CurlRetryAfterSeconds(CURL* handle) {
-#if LIBCURL_VERSION_NUM >= 0x074200
   curl_off_t seconds = 0;
   if (curl_easy_getinfo(handle, CURLINFO_RETRY_AFTER, &seconds) != CURLE_OK ||
       seconds <= 0) {
@@ -214,10 +213,6 @@ int64_t CurlRetryAfterSeconds(CURL* handle) {
   return seconds > std::numeric_limits<int64_t>::max()
              ? std::numeric_limits<int64_t>::max()
              : static_cast<int64_t>(seconds);
-#else
-  (void)handle;
-  return 0;
-#endif
 }
 
 // One silence allowance, measured from the request until the first event and
@@ -271,13 +266,8 @@ CURLcode PerformWithAbortWake(CURLM* multi, CURL* easy,
     int descriptors = 0;
     const int timeout = local ? std::min(CurlPollTimeout(multi, context), 250)
                               : CurlPollTimeout(multi, context);
-#if LIBCURL_VERSION_NUM >= 0x074200
     multi_result = curl_multi_poll(multi, local ? nullptr : &wake,
                                    local ? 0 : 1, timeout, &descriptors);
-#else
-    multi_result = curl_multi_wait(multi, local ? nullptr : &wake,
-                                   local ? 0 : 1, timeout, &descriptors);
-#endif
     if ((wake.revents & CURL_WAIT_POLLIN) && !AbortRequested()) {
       NormalizeAbortWake();
     }

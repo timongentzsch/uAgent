@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <limits>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include "include/core/checked.h"
@@ -125,6 +126,24 @@ inline json JsonValue(const json& object, const char* key, json fallback) {
   if (!object.is_object()) return fallback;
   auto value = object.find(key);
   return value == object.end() ? fallback : *value;
+}
+
+// The words of a message: its string content, or the non-empty text parts of
+// a content array joined by `separator`. Parts of any other type are skipped.
+inline std::string ContentText(const json& message,
+                               std::string_view separator) {
+  if (const json* parts = JsonArray(message, "content")) {
+    std::string text;
+    for (const json& part : *parts) {
+      if (JsonValue(part, "type", "") != "text") continue;
+      const std::string* words = JsonStringRef(part, "text");
+      if (!words || words->empty()) continue;
+      if (!text.empty()) text += separator;
+      text += *words;
+    }
+    return text;
+  }
+  return JsonValue(message, "content", "");
 }
 
 #ifdef UAGENT_VERSION

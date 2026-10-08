@@ -21,7 +21,7 @@ export default defineConfig({
   // can strand one attempt of a scroll assertion a few pixels off; the
   // app code serializes everything serializable, and a single retry
   // covers the residual race without hiding systematic failures.
-  retries: process.env.CI ? 2 : 1,
+  retries: 1,
   // Geometry assertions must not sample a surface mid-transition.
   use: {
     trace: "retain-on-failure",

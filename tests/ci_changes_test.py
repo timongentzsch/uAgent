@@ -4,9 +4,8 @@ import runpy
 import unittest
 from pathlib import Path
 
-classify = runpy.run_path(str(Path(__file__).resolve().parents[1] / ".github/changes.py"))[
-    "classify"
-]
+changes = runpy.run_path(str(Path(__file__).resolve().parents[1] / ".github/changes.py"))
+classify, tidy = changes["classify"], changes["tidy"]
 
 
 class ChangeSelectionTest(unittest.TestCase):
@@ -30,6 +29,16 @@ class ChangeSelectionTest(unittest.TestCase):
         ):
             with self.subTest(path=path):
                 self.assertEqual(classify(["web/src/raw.tsx", path]), {"native": True, "web": True})
+
+    def test_clang_tidy_reads_changed_units_unless_any_unit_may_be_affected(self):
+        self.assertEqual(
+            tidy(["src/app/chat.cc", "tests/unit/stream_test.cc", "docs/WEB.md", "web/a.ts"]),
+            "src/app/chat.cc tests/unit/stream_test.cc",
+        )
+        self.assertEqual(tidy(["tests/integration.py"]), "")
+        for path in ("include/app/chat.h", ".clang-tidy", "CMakeLists.txt", ".github/changes.py"):
+            with self.subTest(path=path):
+                self.assertEqual(tidy(["src/app/chat.cc", path]), "all")
 
 
 if __name__ == "__main__":

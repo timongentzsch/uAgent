@@ -268,7 +268,10 @@ On a pull request, `.github/changes.py` selects jobs by the paths changed:
 | anything else | every job |
 
 A pull request that touches native code runs what a push to `master` runs,
-so a green pull request is a green `master`.
+with two exceptions that `master` then covers. `coverage` runs on `master`
+only. `clang-tidy` reads the translation units the pull request changed, in
+one job; when it changes a header, the build files or the rules, it reads
+all of them, as `master` always does.
 
 The Linux build jobs reuse compiled objects through ccache
 (`.github/actions/ccache`): restored in every run, saved only from `master`.

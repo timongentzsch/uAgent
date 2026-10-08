@@ -150,6 +150,7 @@ add_library(
   src/agent/agent.cc
   src/agent/child_agent.cc
   src/agent/mail_delivery.cc
+  src/agent/compaction.cc
   src/agent/conversation.cc
   src/agent/dispatch.cc
   src/agent/edit_journal.cc

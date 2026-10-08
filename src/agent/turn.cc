@@ -463,7 +463,10 @@ void Agent::AnswerAtLimit(TurnExecution& state, StepState& loop) {
       MessageKind::kInternal);
   ChatResult response = Chat("turn", loop.step, available_schemas_.Schemas());
   conversation_.Erase(conversation_.Size() - 1, conversation_.Size());
-  if (response.interrupted || !response.error.empty()) return;
+  if (response.interrupted || !response.error.empty()) {
+    state.metrics.usage.Merge(AccountModelUsage(response.usage));
+    return;
+  }
   RecordModelResponse(response, state, loop.tool_counts);
   // Only prose that ended on its own is an answer: text beside a tool call
   // announces work that will not happen, and a reply cut short is not one.

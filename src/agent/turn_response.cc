@@ -92,6 +92,10 @@ Agent::StepFlow Agent::HandleFailedResponse(ChatResult& response,
                                             StepState& loop,
                                             const json& schemas,
                                             bool attachment) {
+  // What the provider counted before a call failed is spent all the same.
+  if (response.interrupted || !response.error.empty()) {
+    state.metrics.usage.Merge(AccountModelUsage(response.usage));
+  }
   if (response.interrupted) {
     state.line_open = false;
     printf("\n");

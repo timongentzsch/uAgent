@@ -914,7 +914,7 @@ def test_web_approval_interrupt_and_independent_workers(root, home, *, binary):
             wait_until(
                 lambda: not client.snapshot(session)["pending"],
                 "approval did not resolve",
-                timeout=budget(5),
+                timeout=5,
             )
             started = time.monotonic()
             client.command("interrupt", session)
@@ -1149,7 +1149,7 @@ def test_web_push_announces_pending_approval(root, home, *, binary):
             wait_until(
                 lambda: capture.exists() and capture.read_text().strip(),
                 "a pending approval sent no push",
-                timeout=budget(5),
+                timeout=5,
             )
             deliveries = [json.loads(line) for line in capture.read_text().splitlines()]
             assert_true(len(deliveries) == 1, deliveries)

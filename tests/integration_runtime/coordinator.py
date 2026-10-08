@@ -132,7 +132,7 @@ def test_coordinator_answers_headless_and_lists_the_board(root, home, *, binary)
 def test_a_headless_coordinator_says_why_it_has_no_answer(root, home, *, binary):
     # Nothing listens at this address.
     env = base_env(home, "http://127.0.0.1:9")
-    result = run(root, env, "coord", "-p", "hello", binary=binary, timeout=budget(60))
+    result = run(root, env, "coord", "-p", "hello", binary=binary, timeout=60)
     assert_true(result.returncode == 1, result)
     assert_true(result.stdout.strip() == "", repr(result.stdout))
     assert_true("connect" in result.stderr, repr(result.stderr))
@@ -1259,7 +1259,7 @@ def test_a_member_that_waits_reads_who_was_typing_and_nobody_waits_for_ever(root
         waited = _asked(server, "Lin", "slow start")[0]["messages"][-1]["content"]
         assert_true("Ada" in waited.split("(typing: ")[1], waited)
 
-        result = run(root, env, "coord", "-p", "all wait", binary=binary, timeout=budget(20))
+        result = run(root, env, "coord", "-p", "all wait", binary=binary, timeout=20)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "", repr(result.stdout))
 
@@ -1275,7 +1275,7 @@ def test_a_chat_that_never_falls_silent_stops_at_its_limits(root, home, *, binar
         server.requests.clear()
         # Every answer would wake everyone else for ever. Three participants
         # get nine turns between them and two messages each, and no more.
-        result = run(root, env, "coord", "-p", "keep talking", binary=binary, timeout=budget(30))
+        result = run(root, env, "coord", "-p", "keep talking", binary=binary, timeout=30)
         assert_true(result.returncode == 0, result.stderr)
         time.sleep(budget(1))
         assert_true(len(server.requests) <= 9, [_last_user(b)[:60] for _, b in server.requests])
@@ -1343,7 +1343,7 @@ def test_an_answer_to_an_earlier_message_is_read_and_is_no_turn_of_the_next(root
         try:
             # The user writes again while Ada still answers the first message.
             assert_true(answering.wait(budget(10)), "Ada was never woken")
-            result = run(root, env, "coord", "-p", "second", binary=binary, timeout=budget(30))
+            result = run(root, env, "coord", "-p", "second", binary=binary, timeout=30)
         finally:
             first.kill()
             first.wait()

@@ -106,6 +106,7 @@ namespace uagent {
   X(TestAttachmentEncoding)                      \
   X(TestVectorAndHeicAttachments)                \
   X(TestAudioVideoAttachments)                   \
+  X(TestCloseRuntimeWaitsForTheRuntime)          \
   X(TestWorkerBinaryIdentity)                    \
   X(TestGrepTool)                                \
   X(TestPythonTool)                              \

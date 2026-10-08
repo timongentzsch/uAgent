@@ -484,11 +484,7 @@ class Terminal {
       case SlashCommandId::kRestart:
         // A fresh runtime for this conversation, e.g. after a setting that
         // needs a restart; its history is kept.
-        if (Leave("/restart", "restarting") == Command::kDone) {
-          return Command::kDone;
-        }
-        Send({{"kind", "close"}});
-        return Command::kLeave;
+        return Leave("/restart", "restarting");
       case SlashCommandId::kReset:
         return Leave("/reset", "switching sessions");
       case SlashCommandId::kSessions: {
@@ -893,13 +889,11 @@ int TerminalMain(Options options) {
     options.attach_paths.clear();
     if (result || terminal.Next().empty()) return result;
     if (terminal.Next() == "/restart") {
-      // The runtime was asked to close; once it is gone the next Open
-      // starts a fresh one on the same history.
-      for (int attempt = 0; attempt < 100 && PathExists(SocketPath(path));
-           ++attempt) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
-      }
-      fputs(Note(Tone::kNeutral, "restarted").c_str(), stdout);
+      // Once the runtime is gone the next Open starts a fresh one on the
+      // same history.
+      const std::string still = CloseRuntime(path);
+      fputs(Note(Tone::kNeutral, still.empty() ? "restarted" : still).c_str(),
+            stdout);
     } else if (terminal.Next() == "/reset") {
       // The folder has one coordinator; its reset keeps the same file.
       if (!coordinator) path.clear();

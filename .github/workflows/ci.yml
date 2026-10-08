@@ -410,12 +410,17 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('web/package-lock.json') }}
+      # Its own step and limit: a download that stalls fails in minutes and
+      # is told apart from a test that hangs.
+      - name: Install browsers
+        timeout-minutes: 6
+        run: npm exec --prefix web -- playwright install --with-deps chromium webkit
       - name: Browser integration against native host
-        run: |
-          npm exec --prefix web -- playwright install --with-deps chromium webkit
-          npm run test:browser --prefix web
+        run: npm run test:browser --prefix web
+      # Also when a retry passed: what the failed attempt left is the only
+      # trace of a flaky test.
       - name: Retain browser failure evidence
-        if: failure()
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.0
         with:
           name: browser-failure

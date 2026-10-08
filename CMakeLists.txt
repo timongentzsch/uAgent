@@ -393,6 +393,9 @@ if(BUILD_TESTING)
   target_compile_definitions(
     uagent_tests PRIVATE UAGENT_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
   add_test(NAME core COMMAND uagent_tests)
+  # About 20 s on a plain build: a case that never returns fails here, not
+  # at the job's limit.
+  set_tests_properties(core PROPERTIES TIMEOUT 600)
   find_package(Python3 REQUIRED COMPONENTS Interpreter)
   if(UAGENT_WEB)
     add_test(NAME integration_web COMMAND ${Python3_EXECUTABLE}

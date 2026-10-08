@@ -234,10 +234,11 @@ test("a conversation opened as a closed layer's entry leaves stays open", async 
   command,
 }) => {
   const { session: other } = await command("create", { cwd: host.project });
-  // As on a busy page: the step lands late enough to act before it does.
+  // The step lands when the test lets it, so it can act before it does.
   await page.addInitScript(() => {
     const go = history.go.bind(history);
-    history.go = (delta) => setTimeout(() => go(delta), 400);
+    window.held = [];
+    history.go = (delta) => window.held.push(() => go(delta));
   });
   await page.goto(`/#session=${session.id}`);
   await expect(page.locator(".sidebar .session")).toHaveCount(2);
@@ -252,10 +253,9 @@ test("a conversation opened as a closed layer's entry leaves stays open", async 
   const settings = page.getByRole("dialog", { name: "Settings" });
   await settings.getByRole("button", { name: "Close settings" }).click();
   await expect(settings).toHaveCount(0);
-  await expect.poll(() => page.evaluate(() => history.state?.layer)).toBe(1);
-  await page.waitForTimeout(100);
+  await expect.poll(() => page.evaluate(() => window.held.length)).toBe(1);
   await page.keyboard.press(down ? "Alt+ArrowDown" : "Alt+ArrowUp");
-  await page.waitForTimeout(800);
+  await page.evaluate(() => window.held.shift()());
   await expect(page).toHaveURL(new RegExp(other.id));
   expect(await page.evaluate(() => history.state?.layer ?? 0)).toBe(0);
 });

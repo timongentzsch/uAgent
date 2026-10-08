@@ -26,6 +26,10 @@ import {
   readStored,
   writeStored,
   hasContent,
+  patchCatalogue,
+  withActivities,
+  raiseIncoming,
+  confirmOutgoing,
 } from "./store.ts";
 import { api, manage, protocol, receiveOutcome } from "./api.ts";
 import { snapshotStore } from "./snapshot-store.ts";
@@ -153,19 +157,8 @@ export function useHost(
       setOnline(false);
     else if (scope !== "inline") setError(issue.message);
   }, []);
-  // One session's catalogue entry changes in place; unchanged entries keep
-  // the catalogue's identity, so the shell skips the frame.
   const patchSession = (id: string, change: (item: Session) => Session) =>
-    setCatalogue((prior) => {
-      let changed = false;
-      const sessions = prior.sessions.map((item) => {
-        if (item.id !== id) return item;
-        const next = change(item);
-        changed ||= next !== item;
-        return next;
-      });
-      return changed ? { ...prior, sessions } : prior;
-    });
+    setCatalogue((prior) => patchCatalogue(prior, id, change));
   // The global verbosity level, as the host last stated it.
   const setVerbosityLevel = (level: string) =>
     setCatalogue((prior) =>
@@ -395,32 +388,18 @@ export function useHost(
           ...applySessionEvent(current, event),
           ...(event.metadata && { metadata: event.metadata }),
         };
-      // A repeat of the activities it has keeps the session's identity.
       patchSession(
         id,
-        (item) =>
-          event.metadata ||
-          (JSON.stringify(item.activities) === JSON.stringify(data.activities)
-            ? item
-            : { ...item, activities: data.activities }),
+        (item) => event.metadata || withActivities(item, data.activities),
       );
     };
     switch (event.kind) {
       case "block":
         if (event.block) {
           const block = event.block;
-          // Unchanged state keeps its identity, so the shell skips the frame.
-          setOutgoing((items) =>
-            items.some((item) => item.request_id === block.request_id)
-              ? items.filter((item) => item.request_id !== block.request_id)
-              : items,
-          );
+          setOutgoing((items) => confirmOutgoing(items, block.request_id));
           if (block.incoming)
-            patchSession(id, (item) =>
-              (item.incoming || 0) < block.incoming!
-                ? { ...item, incoming: block.incoming }
-                : item,
-            );
+            patchSession(id, (item) => raiseIncoming(item, block.incoming!));
         }
         if (current) live.current[id] = applySessionEvent(current, event);
         break;

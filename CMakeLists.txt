@@ -148,8 +148,10 @@ add_library(
   src/agent/activity_completion.cc
   src/agent/activity_log.cc
   src/agent/agent.cc
+  src/agent/background_drain.cc
   src/agent/child_agent.cc
   src/agent/mail_delivery.cc
+  src/agent/compaction.cc
   src/agent/conversation.cc
   src/agent/dispatch.cc
   src/agent/edit_journal.cc
@@ -168,7 +170,8 @@ add_library(
   src/agent/trace.cc
   src/agent/turn.cc
   src/agent/turn_budgets.cc
-  src/agent/turn_response.cc)
+  src/agent/turn_response.cc
+  src/agent/usage_accounting.cc)
 target_link_libraries(uagent_agent PUBLIC uagent_toolcore)
 
 add_library(
@@ -277,8 +280,7 @@ cmake_dependent_option(UAGENT_BROWSER "Build the browser appliance" ON
                        "UAGENT_WEB" OFF)
 if(UAGENT_WEB)
   include(cmake/embed_web.cmake)
-  add_library(uagent_web src/web/master.cc src/web/push.cc
-                         "${_web_generated}")
+  add_library(uagent_web src/web/master.cc "${_web_generated}")
   target_link_libraries(uagent_web PUBLIC uagent_core)
   target_include_directories(uagent_web SYSTEM PRIVATE third_party/cpp-httplib)
   # The browser appliance only runs under the web host, so builds without it
@@ -299,9 +301,10 @@ if(UAGENT_WEB)
   target_link_libraries(uagent PRIVATE uagent_web)
   if(UAGENT_WEB_PUSH)
     find_package(OpenSSL 3 REQUIRED COMPONENTS Crypto)
-    target_sources(uagent_web PRIVATE src/web/push_crypto.cc)
-    target_compile_definitions(uagent_web PRIVATE UAGENT_WEB_PUSH)
+    target_sources(uagent_web PRIVATE src/web/push.cc src/web/push_crypto.cc)
     target_link_libraries(uagent_web PUBLIC OpenSSL::Crypto)
+  else()
+    target_sources(uagent_web PRIVATE src/web/no_push.cc)
   endif()
 elseif(UAGENT_WEB_PUSH)
   message(FATAL_ERROR "UAGENT_WEB_PUSH requires UAGENT_WEB")

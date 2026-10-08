@@ -1,9 +1,12 @@
 import type {
   Block,
   BlockPatch,
+  Catalogue,
   Draft,
   ExecutionPhase,
   HostEvent,
+  Outgoing,
+  Session,
   Snapshot,
   State,
   View,
@@ -186,6 +189,49 @@ export function applySessionEvent(
     state,
     cursor: event.sequence,
   };
+}
+
+// One session's catalogue entry changes in place; unchanged entries keep
+// the catalogue's identity, so the shell skips the frame.
+export function patchCatalogue(
+  prior: Catalogue,
+  id: string,
+  change: (item: Session) => Session,
+): Catalogue {
+  let changed = false;
+  const sessions = prior.sessions.map((item) => {
+    if (item.id !== id) return item;
+    const next = change(item);
+    changed ||= next !== item;
+    return next;
+  });
+  return changed ? { ...prior, sessions } : prior;
+}
+
+// A repeat of the activities it has keeps the session's identity.
+export function withActivities(
+  item: Session,
+  activities: Session["activities"],
+): Session {
+  return JSON.stringify(item.activities) === JSON.stringify(activities)
+    ? item
+    : { ...item, activities };
+}
+
+// A session's count of arrivals only rises.
+export function raiseIncoming(item: Session, incoming: number): Session {
+  return (item.incoming || 0) < incoming ? { ...item, incoming } : item;
+}
+
+// A row the host sent replaces the outgoing one for its request. Unchanged
+// state keeps its identity, so the shell skips the frame.
+export function confirmOutgoing(
+  items: Outgoing[],
+  request_id: string | undefined,
+): Outgoing[] {
+  return items.some((item) => item.request_id === request_id)
+    ? items.filter((item) => item.request_id !== request_id)
+    : items;
 }
 
 export function isIncoming(event: HostEvent) {

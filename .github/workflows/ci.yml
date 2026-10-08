@@ -25,6 +25,7 @@ jobs:
     outputs:
       native: ${{ steps.select.outputs.native }}
       web: ${{ steps.select.outputs.web }}
+      tidy: ${{ steps.select.outputs.tidy }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -302,9 +303,11 @@ jobs:
           build/fuzz/uagent_fuzz_input_decoder -runs=2000 -max_len=4096 \
             /tmp/corpus/input_decoder
 
+  # Not on a pull request: the same suites already run there under two
+  # sanitizers and on three systems, and the floor it guards moves slowly.
   coverage:
     needs: [changes, web-dist]
-    if: needs.changes.outputs.native == 'true'
+    if: needs.changes.outputs.native == 'true' && github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
@@ -463,16 +466,19 @@ jobs:
 
   # The scan is the longest check, so its translation units are dealt round
   # robin to three runners. The generated web bundle source is not scanned.
+  # A pull request that changes only translation units has those read, in
+  # one job; one that changes a header, the build or the rules, and every
+  # run on master, has all of them read, in three (.github/changes.py).
   clang-tidy:
     name: clang-tidy (${{ matrix.shard }}/3)
     needs: [changes, web-dist]
-    if: needs.changes.outputs.native == 'true'
+    if: needs.changes.outputs.native == 'true' && needs.changes.outputs.tidy != ''
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2]
+        shard: ${{ fromJSON(needs.changes.outputs.tidy == 'all' && '[0, 1, 2]' || '[0]') }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -491,14 +497,23 @@ jobs:
       - name: Configure clang-tidy
         run: cmake --preset tidy
       - name: Check C++ semantics and naming
+        env:
+          UNITS: ${{ needs.changes.outputs.tidy }}
         run: |
           files=$(python3 - ${{ matrix.shard }} <<'PYTHON'
-          import json, re, sys
+          import json, os, re, sys
           entries = json.load(open("build/tidy/compile_commands.json"))
           files = sorted({e["file"] for e in entries if re.search(r"/(src|tests|benchmarks)/", e["file"]) and "/build/" not in e["file"]})
-          print(" ".join(re.escape(f) + "$" for f in files[int(sys.argv[1])::3]))
+          units = os.environ["UNITS"]
+          if units == "all":
+              files = files[int(sys.argv[1])::3]
+          else:
+              # A changed unit this build does not compile is not in the list.
+              files = [f for f in files if any(f.endswith("/" + unit) for unit in units.split())]
+          print(" ".join(re.escape(f) + "$" for f in files))
           PYTHON
           )
+          test -n "$files" || exit 0
           uvx --from clang-tidy==22.1.8 run-clang-tidy.py -p build/tidy \
             -header-filter='.*/(include|src|tests|benchmarks)/.*' $files
 

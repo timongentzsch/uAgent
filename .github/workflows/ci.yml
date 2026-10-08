@@ -86,6 +86,9 @@ jobs:
     # timeout it is. Deadlines are upper bounds, so a fast leg is unaffected.
     env:
       UAGENT_TEST_TIMEOUT_SCALE: "3"
+      # These runners confine: a sandbox case that would be skipped here
+      # is a failure, so the suite cannot go quiet about enforcement.
+      UAGENT_TEST_REQUIRE_SANDBOX: "1"
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       # The web UI is built once (web-dist) and embedded by every native build.

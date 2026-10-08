@@ -30,6 +30,8 @@ async function attach(page, name) {
   await expect(
     page.locator(".composer .file-chip", { hasText: name }),
   ).toBeVisible();
+  // Uploaded, not merely listed: nothing is sent while one is under way.
+  await expect(page.locator(".composer [aria-busy]")).toHaveCount(0);
 }
 
 test("duplicate uploads dedupe, rename and @-mention send cleanly", async ({

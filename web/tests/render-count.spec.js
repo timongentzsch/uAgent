@@ -210,9 +210,13 @@ test("streaming renders only what changed", async ({ page }) => {
   await expect(page.locator('[data-message-id="spawn"]')).toContainText(
     "running",
   );
-  expect(ticks.ToolRow).toBe(20);
+  // At most once a tick: two ticks that reach one frame are one render, as
+  // happened on a busy runner where an exact count of 20 came out as 19.
+  expect(ticks.ToolRow).toBeGreaterThan(0);
+  expect(ticks.ToolRow).toBeLessThanOrEqual(20);
   // The sidebar renders that session's row, not the other forty.
-  expect(ticks.SessionRow).toBe(20);
+  expect(ticks.SessionRow).toBeGreaterThan(0);
+  expect(ticks.SessionRow).toBeLessThanOrEqual(20);
 
   // The palette fills its sheet, and a list the person scrolled stays where
   // they left it while events keep re-rendering the app behind it.

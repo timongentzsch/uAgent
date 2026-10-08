@@ -96,11 +96,10 @@ void Agent::PushUserInput(json content, bool attachment, const json& images,
     conversation_.RecordDisplay(conversation_.LastDisplayId(),
                                 {{"files", images}});
   }
-  if (const auto mail = std::ranges::find(
-          not_user_, text, &std::pair<std::string, std::string>::first);
+  if (const auto mail = std::ranges::find(not_user_, text, &Arriving::text);
       mail != not_user_.end()) {
     json facts = {{"origin", "mail"}};
-    if (!mail->second.empty()) facts["author"] = mail->second;
+    if (!mail->author.empty()) facts["author"] = mail->author;
     not_user_.erase(mail);
     conversation_.RecordDisplay(conversation_.LastDisplayId(),
                                 std::move(facts));

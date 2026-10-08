@@ -14,6 +14,7 @@
 #include "include/core/mailbox.h"
 #include "include/core/signals.h"
 #include "include/core/steering.h"
+#include "include/core/strings.h"
 
 namespace uagent {
 namespace {
@@ -82,8 +83,9 @@ bool Agent::DeliverMail(bool hold) {
     const bool seen = std::find(delivered_mail_.begin(), delivered_mail_.end(),
                                 mail.id) != delivered_mail_.end();
     if (!seen && chat_heard_) chat_heard_(mail);
-    // The sender labels its text; it is never the user's.
-    const std::string text = JsonValue(mail.body, "text", "");
+    // The sender labels its text; it is never the user's. Trimmed as input
+    // is, so the message it becomes is known for this mail's.
+    const std::string text = Trim(JsonValue(mail.body, "text", ""));
     // Mail that changes nothing has no save to be acknowledged by: one
     // without text, or one a save already holds.
     if ((text.empty() || seen) &&
@@ -97,7 +99,7 @@ bool Agent::DeliverMail(bool hold) {
     if (delivered_mail_.size() > kDeliveredIds) {
       delivered_mail_.erase(delivered_mail_.begin());
     }
-    NotFromUser(text, JsonValue(mail.body, "author", ""));
+    NotFromUser(text, JsonValue(mail.body, "author", ""), mail.id);
     if (JsonValue(mail.body, "quiet", false)) {
       // Read, not answered: it joins the conversation where it stands.
       PushUserInput(text, false, json(), "");

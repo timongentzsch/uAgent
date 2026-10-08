@@ -382,6 +382,16 @@ bool Agent::Save(const std::string& path, std::string& error) const {
   if (!writer_.Acquire(SessionLockPath(path), error, true)) {
     return false;
   }
+  // Mail whose text has not reached the conversation is not in this save.
+  const auto arriving = [this](const std::string& id) {
+    return std::ranges::find(not_user_, id, &Arriving::mail) != not_user_.end();
+  };
+  json delivered = json::array();
+  for (const json& id : delivered_mail_) {
+    if (!id.is_string() || !arriving(id.get<std::string>())) {
+      delivered.push_back(id);
+    }
+  }
   SessionRecord record;
   // Named, not positional: fifteen fields across the two structs, several of
   // them adjacent same-typed strings and integers, so a field inserted in the
@@ -411,14 +421,16 @@ bool Agent::Save(const std::string& path, std::string& error) const {
       .adaptive_system_revision =
           adaptive_system_ ? adaptive_system_->revision : 0,
       .display = conversation_.DisplayMetadata(),
-      .delivered_mail = delivered_mail_};
+      .delivered_mail = std::move(delivered)};
   SessionStoreStatus status = SessionStore::Save(path, record, &conversation_);
   if (!status.Ok()) {
     error = std::move(status.message);
     return false;
   }
   // Only now is the mail part of the record a restart would load.
-  AckMail(MailboxIdFor(path), std::exchange(unacked_mail_, {}));
+  const auto waiting = std::ranges::stable_partition(unacked_mail_, arriving);
+  AckMail(MailboxIdFor(path), {waiting.begin(), waiting.end()});
+  unacked_mail_.erase(waiting.begin(), waiting.end());
   return true;
 }
 

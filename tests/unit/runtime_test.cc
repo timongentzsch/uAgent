@@ -15,6 +15,7 @@
 
 #include "include/agent.h"
 #include "include/agent/child_agent.h"
+#include "include/agent/session_store.h"
 #include "include/api/retry.h"
 #include "include/app/permissions.h"
 #include "include/app/self_description.h"
@@ -26,6 +27,7 @@
 #include "include/core/env.h"
 #include "include/core/events.h"
 #include "include/core/fs.h"
+#include "include/core/mailbox.h"
 #include "include/core/runtime_config.h"
 #include "include/core/settings_store.h"
 #include "include/core/signals.h"
@@ -613,6 +615,56 @@ void TestEffectiveImageModel() {
   CHECK(agent.EffectiveImageModel().empty());
   api.capabilities.image_input = false;
   CHECK(agent.EffectiveImageModel() == kDefaultModelRoute);
+}
+
+// Mail that wakes a session is its to lose until the turn it starts has the
+// text: a runtime killed between the save and that turn receives it again.
+void TestAWakeSurvivesARuntimeKilledBeforeItsTurn() {
+  TestWorkspace workspace("wake-before-turn");
+  const std::string folder = workspace.workspace.string();
+  const std::string path = CoordinatorPath(folder);
+  const std::string own = MailboxIdFor(path);
+  ScopedEnv session("UAGENT_INTERNAL_SESSION_PATH", path.c_str());
+  Mail wake;
+  wake.sender_path = (workspace.workspace / "thread.json").string();
+  wake.from = MailboxIdFor(wake.sender_path);
+  wake.to = own;
+  wake.type = kMailTaskCompleted;
+  wake.body = {{"text", "the thread finished\n"}, {"folder", folder}};
+  CHECK(SendMail(wake).empty());
+
+  Api api(RuntimeConfig{});
+  api.model = "test";
+  std::vector<Tool> tools;
+  ProcessSupervisor processes;
+  UsageAccumulator usage;
+  const auto denied = [](const Tool&, const json&, int64_t) {
+    return std::string("denied");
+  };
+  std::string error;
+  {
+    Agent killed(api, tools, processes, usage, denied);
+    CHECK(killed.DeliverMail());
+    CHECK(killed.Save(path, error));
+    // Gone with the process: the wake was only queued.
+    CHECK(SteeringState().TakeNextAutoStart().has_value());
+  }
+  {
+    Agent restarted(api, tools, processes, usage, denied);
+    CHECK(restarted.Load(path, CanonicalCwd(), error));
+    RecoverMail(own);
+    CHECK(restarted.DeliverMail());
+    const auto next = SteeringState().TakeNextAutoStart();
+    CHECK(next && next->text == "the thread finished");
+    // Its turn has the text now, so this save holds the mail for good.
+    restarted.Say("the thread finished", "");
+    CHECK(restarted.Save(path, error));
+  }
+  Agent again(api, tools, processes, usage, denied);
+  CHECK(again.Load(path, CanonicalCwd(), error));
+  RecoverMail(own);
+  CHECK(!again.DeliverMail());
+  CHECK(!SteeringState().TakeNextAutoStart().has_value());
 }
 
 void TestAgentConfigAllowlist() {

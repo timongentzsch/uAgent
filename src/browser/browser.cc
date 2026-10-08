@@ -128,8 +128,13 @@ ServiceProcess::~ServiceProcess() {
                  std::chrono::milliseconds(kServiceShutdownGraceMs))) {
     return;
   }
+  // One that does not heed the request is not waited for without end.
   kill(pid, SIGTERM);
-  waitpid(pid, nullptr, 0);
+  if (!ReapPidFor(pid, nullptr,
+                  std::chrono::milliseconds(kChildShutdownGraceMs))) {
+    kill(pid, SIGKILL);
+    WaitPid(pid, nullptr);
+  }
 }
 
 json Request(const json& command, int timeout_ms) {

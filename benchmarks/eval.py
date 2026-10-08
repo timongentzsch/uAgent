@@ -52,7 +52,7 @@ sys.path.insert(0, str(ROOT / "tests"))
 
 # isort: off
 from integration_support import Server, event, write_session  # noqa: E402
-from session_support import stop_sessions  # noqa: E402
+from session_support import remove_runtime, stop_sessions  # noqa: E402
 from run_trace import (  # noqa: E402
     measured_command,
     peak_rss,
@@ -408,6 +408,7 @@ def run_case(
             # Threads a coordinator started outlive its answer; none may
             # outlive the case.
             stop_sessions(home)
+            remove_runtime(home)
             if mock is not None:
                 mock.close()
 

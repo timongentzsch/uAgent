@@ -98,7 +98,7 @@ def remove_suite(root):
     session that finished at the end of a case can still start another (a
     thread waking its coordinator) after that case's cleanup."""
     from integration_support import budget
-    from session_support import close_sessions, runtime_directory
+    from session_support import close_sessions, remove_runtime, runtime_directory
 
     homes = list(root.glob("*.home"))
     deadline = time.monotonic() + budget(5)
@@ -113,6 +113,9 @@ def remove_suite(root):
         if live:
             quiet_since = time.monotonic()
         time.sleep(0.05)
+    # Every home a case made, also one inside another.
+    for state in root.rglob(".uagent"):
+        remove_runtime(state.parent)
     for attempt in range(10):
         try:
             shutil.rmtree(root)

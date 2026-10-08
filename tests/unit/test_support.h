@@ -22,6 +22,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/core/fs.h"
 #include "include/tools/tool.h"
 
 namespace uagent {
@@ -69,6 +70,8 @@ class TestWorkspace {
   ~TestWorkspace() {
     std::error_code ignored;
     std::filesystem::current_path(original_, ignored);
+    // Named after this home and kept in /tmp, so it is not under `root`.
+    std::filesystem::remove_all(RuntimeDir(), ignored);
     if (had_home_) {
       setenv("HOME", prior_home_.c_str(), 1);
     } else {

@@ -243,6 +243,25 @@ void TestSettingsStore() {
     CHECK(HeldSettings("").at("UAGENT_MAX_STEPS") == "many");
   }
 
+  // An editor takes no lock. What it saves while a change is being made is
+  // kept, and the change is refused for another try.
+  {
+    TestWorkspace raced("settings-store-raced");
+    CHECK(Set("", "UAGENT_MODEL", "first").empty());
+    const std::string edited =
+        R"({"format": 2, "projects": {}, "all": {"model": "by hand"}})";
+    const std::string refused = ChangeSettings("", [&](SettingValues& scope) {
+      Put(SettingsPath(), edited);
+      scope["UAGENT_MAX_STEPS"] = "5";
+      return std::string();
+    });
+    CHECK(refused.find("try again") != std::string::npos);
+    CHECK(ReadFile(SettingsPath(), 4096).value_or("") == edited);
+    CHECK(Set("", "UAGENT_MAX_STEPS", "5").empty());
+    CHECK(ReadSettings("").all == (SettingValues{{"UAGENT_MAX_STEPS", "5"},
+                                                 {"UAGENT_MODEL", "by hand"}}));
+  }
+
   // A value that refers to another is judged by what that one holds: the
   // same problem as if it stood there itself. What it refers to may be
   // defined nowhere, and then nothing is set.

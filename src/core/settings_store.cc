@@ -568,6 +568,12 @@ std::string ChangeSettings(
   PrivateJsonStore store(kSettingsFile, EmptyDocument(), kSettingsBytes, error);
   if (!store.Ready()) return error;
   json& document = store.Data();
+  // An editor takes no lock: the document is read with its stamp, and what
+  // an editor saves from here on is not overwritten.
+  FileStamp read;
+  if (json held = ReadDocument(read); !held.is_discarded()) {
+    document = std::move(held);
+  }
   if (!Valid(document)) return Invalid();
   json& scope = folder.empty() ? document["all"] : document["projects"][folder];
   if (!scope.is_object()) scope = json::object();
@@ -577,6 +583,9 @@ std::string ChangeSettings(
   error = change(values);
   if (!error.empty()) return error;
   scope = EncodeScope(values, scope);
+  if (SnapshotFile(SettingsPath()) != read) {
+    return SettingsPath() + " changed while this was being saved; try again";
+  }
   store.Save(error);
   WriteSchema();
   return error;

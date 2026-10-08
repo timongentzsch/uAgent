@@ -271,9 +271,7 @@ A pull request that touches native code runs what a push to `master` runs,
 with two exceptions that `master` then covers. `coverage` runs on `master`
 only. `clang-tidy` reads the translation units the pull request changed, in
 one job; when it changes a header, the build files or the rules, it reads
-all of them, as `master` always does. A finding in an unchanged unit that
-only `master` reports is possible for a change to generated or vendored
-code, not for a header.
+all of them, as `master` always does.
 
 The Linux build jobs reuse compiled objects through ccache
 (`.github/actions/ccache`): restored in every run, saved only from `master`.

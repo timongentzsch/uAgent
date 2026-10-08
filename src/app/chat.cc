@@ -78,7 +78,7 @@ std::string Names(const std::vector<SessionInfo>& members,
     }
   }
   if (ids.contains(kSelf)) {
-    names += (names.empty() ? "" : ", ") + std::string("the coordinator");
+    names += (names.empty() ? "" : ", ") + std::string(kSelf);
   }
   return names;
 }
@@ -261,8 +261,10 @@ bool Chat::Deliver(const std::string& from, const std::string& author,
     mail.type = kMailChat;
     // Forwarded again after a crash, it is the mail its reader already has.
     if (!source.empty()) mail.id = HashHex(source + mail.to);
-    mail.body = {{"text", "[" + author + " in the chat, not a user message]\n" +
-                              text + "\n\n(Typing now: " +
+    // The user's own words are the one message here that is a user's.
+    mail.body = {{"text", "[" + author + " in the chat" +
+                              (from.empty() ? "" : ", not a user message") +
+                              "]\n" + text + "\n\n(Typing now: " +
                               (typing.empty() ? "nobody" : typing) + ")"},
                  {"author", author},
                  {"quiet", !wake}};
@@ -347,7 +349,7 @@ void Chat::Said(const std::string& text) {
     seats_[kSelf].turns = 1;
     typing_.insert(kSelf);
   }
-  Deliver("", "The user", text);
+  Deliver("", "user", text);
   Save();
 }
 
@@ -355,7 +357,7 @@ void Chat::Answered(const std::string& text) {
   const std::vector<SessionInfo> members = ChatMembers(folder_);
   if (members.empty()) return;
   if (Finished(kSelf, Trim(text)) == Answer::kMessage) {
-    Deliver(kSelf, "The coordinator", Trim(text));
+    Deliver(kSelf, kSelf, Trim(text));
   }
   Release(members);
   Save();

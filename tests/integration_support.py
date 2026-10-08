@@ -447,6 +447,10 @@ def run_pty(
     return process.returncode, bytes(output)
 
 
+class Skipped(Exception):
+    """Raised by a case that cannot run on this host, with the reason."""
+
+
 def assert_true(value, message):
     if not value:
         raise AssertionError(message)

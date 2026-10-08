@@ -21,6 +21,7 @@ import integration_sandbox
 import integration_tools
 import integration_ui
 import integration_web
+from integration_support import Skipped
 
 TEST_MODULES = (
     ("runtime", integration_runtime),
@@ -202,6 +203,7 @@ def main():
         tmpdir.mkdir()
         os.environ["TMPDIR"] = str(tmpdir)
         failed = []
+        skipped = 0
         for name in names:
             print(f"running {name}", flush=True)
             case_root = root / name
@@ -217,6 +219,10 @@ def main():
             try:
                 ALL_TESTS[name](case_root, home, binary=arguments.binary.resolve())
                 print(f"passed {name} ({time.monotonic() - started:.3f}s)", flush=True)
+            except Skipped as reason:
+                # Said as what it is: a case that did not run proved nothing.
+                print(f"skipped {name}: {reason}", flush=True)
+                skipped += 1
             except Exception:
                 # One failure does not hide the next: every case still runs.
                 traceback.print_exc()
@@ -230,7 +236,10 @@ def main():
                     stop_sessions(state.parent)
         if failed:
             raise SystemExit(f"{len(failed)} of {len(names)} failed: " + ", ".join(failed))
-        print(f"all {len(names)} {label} integration tests passed")
+        print(
+            f"all {len(names) - skipped} {label} integration tests passed"
+            + (f", {skipped} skipped" if skipped else "")
+        )
     finally:
         remove_suite(pathlib.Path(temp))
 

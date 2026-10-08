@@ -13,6 +13,7 @@
 #include <fstream>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <system_error>
 #include <thread>
@@ -1313,6 +1314,7 @@ void TestAChatCountsAMailOnce() {
   CHECK(SessionStore::Save(ada, record).Ok());
   CHECK(ChatMembers(folder).size() == 1);
 
+  int64_t round = 0;
   const auto heard = [&](const std::string& id, const std::string& text) {
     // As a runtime started again would: from what the last one saved.
     Chat chat(folder, [](const std::string&) {});
@@ -1320,19 +1322,46 @@ void TestAChatCountsAMailOnce() {
     mail.id = id;
     mail.from = MailboxIdFor(ada);
     mail.type = kMailChat;
-    mail.body = {{"text", text}};
+    mail.body = {{"text", text}, {"re", {{"round", round}}}};
     chat.Heard(mail);
     return JsonValue(mail.body, "text", "");
   };
   Chat(folder, [](const std::string&) {}).Said("hello");
+  // An answer to an earlier round is read and uses up nothing.
+  CHECK(heard("m0", "Zero.") == "Ada: Zero.");
+  // What Ada was sent says which round hers answers.
+  const std::vector<Mail> sent = PendingMail(MailboxIdFor(ada));
+  CHECK(sent.size() == 1 &&
+        JsonValue(sent[0].body, "text", "") == "user: hello");
+  round = JsonValue(sent[0].body["re"], "round", int64_t{0});
   const std::string first = heard("m1", "One.");
-  CHECK(first.ends_with("One."));
+  CHECK(first == "Ada: One.");
   // Handed over again, it reads as it did and uses up nothing.
   CHECK(heard("m1", "One.") == first);
   CHECK(heard("m2", "Two.").ends_with("Two."));
   // Two messages each: a third is not posted.
   CHECK(heard("m3", "Three.").empty());
   CHECK(heard("m2", "Two.").ends_with("Two."));
+}
+
+void TestAChatMessageIsForThoseItOpensWith() {
+  const std::vector<std::string> names = {"coordinator", "Sam", "Samantha",
+                                          "Lin"};
+  using Names = std::set<std::string>;
+  CHECK(Addressed("Sam, what is the number?", names) == Names{"Sam"});
+  CHECK(Addressed("  sam: go on", names) == Names{"Sam"});
+  CHECK(Addressed("Sam and LIN, both of you", names) == Names({"Sam", "Lin"}));
+  CHECK(Addressed("Sam, Lin & coordinator: look", names) ==
+        Names({"Sam", "Lin", "coordinator"}));
+  CHECK(Addressed("Samantha, you", names) == Names{"Samantha"});
+  // A name anywhere else, or one that only begins a sentence, addresses
+  // nobody; nor does a word that begins with one.
+  CHECK(Addressed("I think Sam, of all people, knows", names).empty());
+  CHECK(Addressed("Sam is right, Lin", names).empty());
+  CHECK(Addressed("Sam and I disagree, though", names).empty());
+  CHECK(Addressed("Linear, then", names).empty());
+  CHECK(Addressed("Sam", names).empty());
+  CHECK(Addressed("", names).empty());
 }
 
 void TestMailbox() {

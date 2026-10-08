@@ -346,7 +346,8 @@ ToolResult Spawn(const std::string& folder, const json& a,
                        member ? "add_member needs a name and a persona"
                               : "spawn needs a title and an objective");
   }
-  // A name is what an @ addresses: one word, and nobody else's.
+  // A name is what a message opens with to address it: one word, and
+  // nobody else's.
   if (member &&
       (title.size() > 24 || AsciiLower(title) == "coordinator" ||
        !std::ranges::all_of(title,
@@ -488,9 +489,9 @@ ToolResult Message(const SessionInfo& info, const std::string& folder,
   // The chat's cap on turns counts what is written there, nothing else.
   if (const std::string name = JsonValue(ChatMember(info.thread), "name", "");
       !name.empty()) {
-    return ToolFailure(
-        ToolErrorCode::kInvalidArguments,
-        "a member reads the chat: write @" + name + " in your answer instead");
+    return ToolFailure(ToolErrorCode::kInvalidArguments,
+                       "a member reads the chat: open your answer with \"" +
+                           name + ",\" instead");
   }
   std::string error =
       "the session is not running; only this coordinator's "
@@ -830,7 +831,7 @@ std::string CoordinatorBoard(const std::string& folder) {
   for (const SessionInfo& info : sessions) {
     std::string line =
         HashHex(info.path) + " " + LiveStatus(info) + " · " +
-        (!ChatMember(info.thread).empty()  ? "@"
+        (!ChatMember(info.thread).empty()  ? "member "
          : info.kind == kSessionKindThread ? "↳ "
                                            : "") +
         OneLine(info.title) + " · " + std::to_string(info.turns) + " turns · " +
@@ -859,8 +860,7 @@ std::string CoordinatorContext(const std::string& folder) {
       context += "\n## " + std::string(block) + "\n" + value + "\n";
     }
   }
-  return context + ChatContext(folder) + "\n## board\n" +
-         CoordinatorBoard(folder);
+  return context + "\n## board\n" + CoordinatorBoard(folder);
 }
 
 void RecordCoordinatorCost(const std::string& folder, double cost) {

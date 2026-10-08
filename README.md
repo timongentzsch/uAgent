@@ -133,7 +133,8 @@ approvals they cannot settle. `/board` lists the folder's sessions and
 `/open ID` switches to one. Ask it for other voices and it adds members to
 the conversation, each with a persona and, if you like, its own model.
 Everyone there hears every message and decides whether to answer, to wait
-for someone who is typing, or to say nothing; `@name` asks one of them.
+for someone who is typing, or to say nothing. Open a message with a name
+("Ada, …") to ask that one alone.
 
 `uagent --help` lists every flag; `--debug=PATH` writes a trace for bug
 reports, which contains sensitive data.

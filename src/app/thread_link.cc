@@ -90,7 +90,7 @@ void ThreadLink::Ask(const std::string& interaction, const std::string& kind,
 constexpr size_t kThreadReportChars = 6000;
 
 void ThreadLink::Report(const std::string& reason, const std::string& title,
-                        const std::string& answer) {
+                        const std::string& answer, const json& re) {
   const std::string folder = JsonValue(thread_, "folder", "");
   if (folder.empty()) return;
   // A chat member's answer is its message to the chat, a pass included: the
@@ -111,6 +111,7 @@ void ThreadLink::Report(const std::string& reason, const std::string& title,
                              "report " +
                                  std::string("shows it whole):\n") +
                                  Utf8Trunc(answer, kThreadReportChars)));
+  report.body["re"] = re;
   // The latest report is the one that matters: an earlier one still unsent
   // is replaced.
   unsent_.reset();

@@ -190,7 +190,7 @@ for (const [name, viewport] of VIEWPORTS) {
   });
 }
 
-test("a member joins the chat, is addressed with @ and answers under its name", async ({
+test("a member joins the chat, is addressed by name and answers under its name", async ({
   page,
   session,
   command,
@@ -215,7 +215,7 @@ test("a member joins the chat, is addressed with @ and answers under its name", 
   await prompt.fill("Chat probe");
   await prompt.press("Enter");
   // The member is listed on the board and in the sidebar with its avatar,
-  // and its introduction is a message under its name, without the label the
+  // and its introduction is a message under its name, without the name the
   // model reads it by. The coordinator is named above its own.
   const board = page.getByRole("complementary", { name: "Board" });
   await expect(board.getByRole("heading", { name: /^Members/ })).toBeVisible();
@@ -224,23 +224,23 @@ test("a member joins the chat, is addressed with @ and answers under its name", 
     has: page.locator(".actor", { hasText: "Ada" }),
   });
   await expect(said.first()).toContainText("Ada here.");
-  await expect(said.first()).not.toContainText("in the chat");
+  await expect(said.first()).not.toContainText("Ada:");
   await expect(said.first().locator(".avatar")).toHaveText("A");
   await expect(
     page.locator(".transcript .message .actor", { hasText: "Coordinator" }),
   ).toHaveCount(1);
   await expect(page.locator(".turn-summary")).toHaveCount(1);
 
-  // @ offers the member, and a message for it alone wakes it alone: it is
-  // seen typing. Its answer wakes the coordinator, which passes, and a pass
-  // is shown to nobody: no bubble, no stats line.
+  // A member is addressed by name, never with an @, which offers none.
   await prompt.pressSequentially("@A");
-  await page.getByRole("option", { name: "@Ada" }).click();
-  await expect(prompt).toHaveValue("@Ada ");
+  await expect(page.getByRole("option")).toHaveCount(0);
   // From here on, whatever is added to the transcript is recorded, and so is
-  // how tall it is: a pass must add nothing and move nothing.
+  // how tall it is and what the state above the input says: a pass must add
+  // nothing and move nothing, and the state names who is typing and never
+  // what anyone is thinking.
   await page.evaluate(() => {
     window.added = [];
+    window.states = new Set();
     const content = document.querySelector(".transcript-content");
     new MutationObserver((records) => {
       for (const record of records)
@@ -251,13 +251,26 @@ test("a member joins the chat, is addressed with @ and answers under its name", 
       subtree: true,
       characterData: true,
     });
+    const status = document.querySelector(".composer .activity-status");
+    new MutationObserver(() =>
+      window.states.add(status.querySelector(".activity-caption").textContent),
+    ).observe(status, { childList: true, subtree: true, characterData: true });
   });
-  await prompt.fill("@Ada Second opinion");
+  // A message that opens with its name wakes it alone, and its answer goes
+  // back to who asked: the coordinator reads both without a turn.
+  const status = page.locator(".composer .activity-caption");
+  await prompt.fill("Ada, Second opinion");
   await prompt.press("Enter");
-  await expect(page.locator(".composer .status-line")).toContainText(
-    "Ada is typing…",
-  );
+  await expect(status).toHaveText("Ada is typing…");
   await expect(said.last()).toContainText("I would ship it.");
+  await expect(status).toHaveText("Ready");
+  // One for everyone wakes both. The coordinator passes, slowly, and passes
+  // again on what Ada answers; a pass is shown to nobody: no bubble, no
+  // stats line.
+  await prompt.fill("Second opinion, anyone?");
+  await prompt.press("Enter");
+  await expect(status).toHaveText("Ada and Coordinator are typing…");
+  await expect(said).toHaveCount(3);
   const height = () =>
     page.evaluate(
       () => document.querySelector(".transcript-content").scrollHeight,
@@ -271,6 +284,15 @@ test("a member joins the chat, is addressed with @ and answers under its name", 
     })
     .toBeGreaterThan(0);
   await expect(page.locator(".composer .status-led.running")).toHaveCount(0);
+  await expect(status).toHaveText("Ready");
+  expect(
+    [...(await page.evaluate(() => [...window.states]))].filter(
+      (text) =>
+        !/^(Ready|(Ada|Coordinator|Ada and Coordinator) (is|are) typing…)$/.test(
+          text,
+        ),
+    ),
+  ).toEqual([]);
   await expect(page.locator(".transcript")).not.toContainText("PASS");
   // Nothing of the coordinator's turn was ever in the transcript, and from
   // Ada's answer on its height never changed.

@@ -374,7 +374,8 @@ class WorkerChannel final : public ApplicationChannel {
       }
       link_->Report(JsonValue(JsonValue(state, "stop", json::object()),
                               "reason", "completed"),
-                    JsonValue(state_, "title", title_), answer);
+                    JsonValue(state_, "title", title_), answer,
+                    JsonValue(state, "chat_re", json()));
     }
     if (!busy_) {
       // Completion events precede saved display/HTTP metadata. Only the final

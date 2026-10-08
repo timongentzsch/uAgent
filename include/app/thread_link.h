@@ -24,9 +24,10 @@ class ThreadLink {
            const std::string& title) const;
 
   // A finished turn is an event for the coordinator, with the turn's answer
-  // so reading it costs no round.
+  // so reading it costs no round. `re` is what a chat member's answer
+  // is an answer to.
   void Report(const std::string& reason, const std::string& title,
-              const std::string& answer);
+              const std::string& answer, const json& re);
   // Sends again a report the coordinator's full inbox refused.
   void Resend();
   // Whether a report still waits to be sent: its runtime stays for it.

@@ -17,30 +17,28 @@ namespace uagent {
 // name and a persona, oldest first.
 std::vector<SessionInfo> ChatMembers(const std::string& folder);
 
-// Whether `text` is for members of the folder's chat and not for its
-// coordinator: it names one with @ and not the coordinator, which then reads
-// it without taking a turn.
-bool ForMembersOnly(const std::string& folder, const std::string& text);
+// Those of `names` that `text` opens with, as "Sam, …" or "Sam and Lin: …"
+// does, in any case. A name anywhere else addresses nobody.
+std::set<std::string> Addressed(const std::string& text,
+                                const std::vector<std::string>& names);
 
-// A member's message as the coordinator's conversation holds it, as
-// "Name: what it wrote"; empty for any other message.
-std::string ChatPost(const std::string& message);
+// Whether `text` is for members of the folder's chat and not for its
+// coordinator: it opens with their names and not the coordinator's, which
+// then reads it without taking a turn.
+bool ForMembersOnly(const std::string& folder, const std::string& text);
 
 // The mailboxes of the members woken and not yet heard from.
 std::set<std::string> ChatTyping(const std::string& folder);
-
-// The chat as its coordinator is told it each turn: who is in it and who is
-// typing now. Empty without members.
-std::string ChatContext(const std::string& folder);
 
 // A coordinator's chat with its members: a room where everyone hears every
 // message and decides for itself whether to answer, to pass, or to wait for
 // someone who is typing. The coordinator is one of the participants.
 //
 // What is settled here, never by a model, is who is woken. A message that
-// names someone with @ wakes those it names and is read by the rest without
-// a turn; one that names nobody wakes everyone. Whoever waited is woken by
-// the next message. Two limits keep an exchange from running on by itself:
+// opens with names wakes those it names and is read by the rest without a
+// turn; their answer goes back to who asked. Any other message wakes
+// everyone. Whoever waited is woken by the next message. Two limits keep an
+// exchange from running on by itself:
 // UAGENT_COORDINATOR_CHAT_TURNS turns per participant for one message of the
 // user's, and two messages each. The round is kept beside the coordinator's
 // session, so a runtime that starts again takes it up.
@@ -49,15 +47,19 @@ class Chat {
   // `wake` starts a turn of the coordinator's own on a note.
   Chat(std::string folder, std::function<void(const std::string&)> wake);
 
-  // The user wrote here: a new round.
-  void Said(const std::string& text);
+  // The user wrote here: a new round. Returns what the coordinator's answer
+  // is an answer to (see Deliver).
+  json Said(const std::string& text);
   // The coordinator's turn ended with `text`; empty when it ended without an
-  // answer.
-  void Answered(const std::string& text);
+  // answer. `to` is what the message it took that turn on came with.
+  void Answered(const std::string& text, const json& to);
   // A member's turn ended. `mail` carries its answer and leaves as what the
   // coordinator reads: nothing for a pass or a wait, and quiet unless the
   // message wakes the coordinator too.
   void Heard(Mail& mail);
+  // The chat as its coordinator is told it each turn: who is in it and who
+  // is typing now. Empty without members.
+  std::string Context() const;
 
  private:
   enum class Answer { kMessage, kPass, kWait };
@@ -70,20 +72,31 @@ class Chat {
   // Records that `who` finished a turn with `text`, and what that was.
   Answer Finished(const std::string& who, const std::string& text);
   // Mails `text` to every member but its author (`from`) and settles whom it
-  // wakes. `source` is the mail it forwards, whose id makes sending it again
-  // the same mail. True when it wakes the coordinator.
-  bool Deliver(const std::string& from, const std::string& author,
-               const std::string& text, const std::string& source = "");
-  // Whether `who` may take another turn on a message, which it is `named`
-  // in or which names nobody.
-  bool Wakes(const std::string& who, bool any_named, bool named);
+  // wakes: those it opens with, else the one whose question it answers,
+  // else everyone. `to` is what the message it answers came with. `source`
+  // is the mail it forwards, whose id makes sending it again the same mail.
+  // Each message that wakes its reader comes with the round and, put to
+  // that reader by name, with who asked ("asker", empty for the user): the
+  // reader's answer brings it back. Returns that for the coordinator, null
+  // when it is not woken.
+  json Deliver(const std::string& from, const std::string& author,
+               const std::string& text, const json& to = json(),
+               const std::string& source = "");
+  // Whether `who` may take another turn on a message for `some` only, which
+  // it is `one` of.
+  bool Wakes(const std::string& who, bool some, bool one);
   // With nobody typing, whoever waited longest is told so.
   void Release(const std::vector<SessionInfo>& members);
+  // Whether `to`, what a message answers, is of an earlier round.
+  bool Late(const json& to) const {
+    return to.is_object() && JsonValue(to, "round", int64_t{0}) != round_;
+  }
   void Save() const;
 
   std::string folder_;
   std::function<void(const std::string&)> wake_;
-  int64_t each_ = 0;  // turns one participant may take this round
+  int64_t each_ = 0;   // turns one participant may take this round
+  int64_t round_ = 0;  // when the user's message that began this round came
   // Participants woken and not yet heard from, those who chose to wait (the
   // earliest first), and what each has done this round. A member is known by
   // its mailbox, the coordinator by kSelf.

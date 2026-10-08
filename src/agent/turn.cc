@@ -100,11 +100,12 @@ void Agent::PushUserInput(json content, bool attachment, const json& images,
       mail != not_user_.end()) {
     json facts = {{"origin", "mail"}};
     if (!mail->author.empty()) facts["author"] = mail->author;
+    if (mail->re) chat_re_ = *mail->re;
     not_user_.erase(mail);
     conversation_.RecordDisplay(conversation_.LastDisplayId(),
                                 std::move(facts));
   } else if (chat_said_) {
-    chat_said_(text);
+    chat_re_ = chat_said_(text);
   }
   PublishMessage(request_id);
 }

@@ -202,11 +202,16 @@ class Agent {
   bool DeliverMail(bool hold = false);
   // Text about to arrive as input that another session or the harness wrote:
   // its row is shown as an event, not as the person's message, under its
-  // `author` when it has one. `mail` names the mail that brought it.
+  // `author` when it has one. `mail` names the mail that brought it. `re`
+  // is what an answer to it is an answer to (app/chat.h); none for a
+  // message that is read without a turn.
   void NotFromUser(const std::string& text, const std::string& author = "",
-                   const std::string& mail = "") {
-    not_user_.push_back({text, author, mail});
+                   const std::string& mail = "",
+                   std::optional<json> re = json()) {
+    not_user_.push_back({text, author, mail, std::move(re)});
   }
+  // What the message this session last took a turn on came with.
+  const json& ChatRe() const { return chat_re_; }
   // The person's message, written into the conversation without a turn.
   void Say(const std::string& text, const std::string& request_id) {
     PushUserInput(text, false, json(), request_id);
@@ -225,7 +230,7 @@ class Agent {
   // A coordinator's chat (app/chat.h): `said` hears what a person writes
   // here, `heard` is handed each message from another session before it is
   // delivered and may rewrite it.
-  void SetChat(std::function<void(const std::string&)> said,
+  void SetChat(std::function<json(const std::string&)> said,
                std::function<void(Mail&)> heard) {
     chat_said_ = std::move(said);
     chat_heard_ = std::move(heard);
@@ -486,9 +491,11 @@ class Agent {
   // then a restart receives it again.
   struct Arriving {
     std::string text, author, mail;
+    std::optional<json> re;
   };
+  json chat_re_;
   std::vector<Arriving> not_user_;
-  std::function<void(const std::string&)> chat_said_;
+  std::function<json(const std::string&)> chat_said_;
   std::function<void(Mail&)> chat_heard_;
   json delivered_mail_ = json::array();
   EditJournal edits_;

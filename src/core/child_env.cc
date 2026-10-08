@@ -27,7 +27,7 @@ std::string KeyOf(std::string_view entry) {
 // per child rather than once per inherited variable.
 std::vector<std::string> ShellAllowList() {
   std::vector<std::string> allowed;
-  std::string configured = ShellEnvironmentAllowlist();
+  std::string configured = StringSetting(Cfg("UAGENT_SHELL_ENV_ALLOW"));
   for (std::string entry : SplitPathList(configured, ',')) {
     entry = Trim(entry);
     if (!entry.empty()) allowed.push_back(std::move(entry));

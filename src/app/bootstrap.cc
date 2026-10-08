@@ -120,7 +120,8 @@ bool InteractiveApprovalAvailable() {
 bool ResolveProjectTrust(const Options& options, bool& trusted,
                          json& trusted_snapshot, std::string& error,
                          int& exit_code) {
-  trusted = options.trust_project || TrustProjectConfig();
+  trusted =
+      options.trust_project || BoolSetting(Cfg("UAGENT_TRUST_PROJECT_CONFIG"));
   if (!trusted) trusted = ProjectConfigTrusted(&trusted_snapshot);
   bool mcp_present = ProjectMcpPresent();
   if (mcp_present && !trusted) {
@@ -220,7 +221,7 @@ std::vector<Tool> BuildTools(AppContext& context,
   const std::string session_path =
       context.channel ? context.channel->SessionPath() : std::string();
   std::vector<Tool> tools = BuiltinTools(runtime.processes, workspace);
-  if (AdaptiveSystemEnabled()) {
+  if (BoolSetting(Cfg("UAGENT_ADAPT_SYSTEM"))) {
     // The agent exists by the time a tool runs.
     tools.push_back(AdaptSystemTool(runtime.adaptive_system,
                                     [app = &context](const json& request) {
@@ -612,7 +613,7 @@ void LogReady(const AppContext& context) {
       {"auto_compact_tokens", AutoCompactTokens()},
       {"tool_result_chars", ToolResultCap()},
       {"tool_batch_result_chars", ToolBatchResultCap()},
-      {"adaptive_system", AdaptiveSystemEnabled()},
+      {"adaptive_system", BoolSetting(Cfg("UAGENT_ADAPT_SYSTEM"))},
       {"max_tokens", MaxOutputTokens()},
       {"prompt_overlay",
        overlay_digest.empty() ? json(nullptr) : json(overlay_digest)},
@@ -704,7 +705,8 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   // Only the flag vouches for a config file an earlier version left in the
   // project; otherwise it is taken over only as it was approved.
   ConfigManager config_manager = ConfigManager::Capture(
-      options.trust_project || TrustProjectConfig(), options.overrides);
+      options.trust_project || BoolSetting(Cfg("UAGENT_TRUST_PROJECT_CONFIG")),
+      options.overrides);
   RuntimeConfig config = config_manager.Initialize();
   PrintWarning(config_manager.Problem());
   if (memory_child && !BuildMemoryExtractionPrompt(memory_source, workspace,

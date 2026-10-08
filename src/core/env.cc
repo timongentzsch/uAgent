@@ -75,21 +75,7 @@ int64_t SubagentTimeoutSeconds() {
 // also clamp any thinking budget derived from it.
 int64_t MaxOutputTokens() { return LongSetting(Cfg("UAGENT_MAX_TOKENS")); }
 
-bool SandboxEnabled() { return BoolSetting(Cfg("UAGENT_SANDBOX")); }
-
-bool SandboxNetworkAllowed() { return BoolSetting(Cfg("UAGENT_SANDBOX_NET")); }
-
-std::string SandboxWriteRoots() {
-  return StringSetting(Cfg("UAGENT_SANDBOX_WRITE"));
-}
-
-bool AdaptiveSystemEnabled() { return BoolSetting(Cfg("UAGENT_ADAPT_SYSTEM")); }
-
 bool MarkdownEnabled() { return BoolSetting(Cfg("UAGENT_MARKDOWN")); }
-
-bool TrustProjectConfig() {
-  return BoolSetting(Cfg("UAGENT_TRUST_PROJECT_CONFIG"));
-}
 
 bool HeadlessProgressEnabled() {
   return EnvStr("UAGENT_INTERNAL_HEADLESS_PROGRESS") == "1";
@@ -103,13 +89,7 @@ int64_t ReadFileLines() { return LongSetting(Cfg("UAGENT_READ_FILE_LINES")); }
 
 int64_t AttachmentLimitMb() { return LongSetting(Cfg("UAGENT_ATTACHMENT_MB")); }
 
-int64_t ContextWindow() { return LongSetting(Cfg("UAGENT_CONTEXT")); }
-
 int64_t HistoryDays() { return LongSetting(Cfg("UAGENT_HISTORY_DAYS")); }
-
-std::string ShellEnvironmentAllowlist() {
-  return StringSetting(Cfg("UAGENT_SHELL_ENV_ALLOW"));
-}
 
 std::atomic<ApprovalMode>& ApprovalModeState() {
   static std::atomic<ApprovalMode> mode{ApprovalMode::kAsk};

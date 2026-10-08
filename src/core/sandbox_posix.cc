@@ -259,7 +259,8 @@ SandboxInputs CollectInputs() {
     return path.empty() ? std::string() : CanonicalAccessPath(path).string();
   };
   SandboxInputs inputs;
-  inputs.allow_network = SandboxNetworkAllowed();
+  // Outbound TCP. Allowed by default: git, npm and pip all need it.
+  inputs.allow_network = BoolSetting(Cfg("UAGENT_SANDBOX_NET"));
   inputs.workspace = CanonicalCwd();
   std::error_code ec;
   inputs.git_repository =
@@ -271,7 +272,8 @@ SandboxInputs CollectInputs() {
   // root written as ~/.uagent/.. is not textually inside ~/.uagent, so the
   // ancestor screen would let it past and both mechanisms would then resolve
   // it back to the home directory.
-  for (const std::string& raw : SplitPathList(SandboxWriteRoots())) {
+  for (const std::string& raw :
+       SplitPathList(StringSetting(Cfg("UAGENT_SANDBOX_WRITE")))) {
     std::string root = canonical(raw);
     if (!root.empty()) inputs.extra_roots.push_back(std::move(root));
   }
@@ -325,7 +327,7 @@ SandboxStatus BuildStatus() {
       !inherited.empty()) {
     return InheritedStatus(inherited);
   }
-  if (!SandboxEnabled()) return status;
+  if (!BoolSetting(Cfg("UAGENT_SANDBOX"))) return status;
   status.level = SandboxSupported();
   // Test-only, and only ever stricter: it can make an enforceable host look
   // unenforceable, never the other way round.

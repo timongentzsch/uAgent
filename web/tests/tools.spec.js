@@ -164,6 +164,8 @@ test("files read as tiles and cards, tool images sit on their row, and every ima
   // Before sending: one strip, never a second line.
   const strip = page.locator(".composer .attachments");
   await expect(strip.locator(".file-chip")).toHaveCount(2);
+  // Uploaded, not merely listed: Enter does nothing while one is under way.
+  await expect(strip.locator("[aria-busy]")).toHaveCount(0);
   expect(await strip.evaluate((node) => getComputedStyle(node).flexWrap)).toBe(
     "nowrap",
   );

@@ -1072,15 +1072,30 @@ def _last_user(body):
     )
 
 
+def _heard(body):
+    """Everything that reached a member since it last spoke. On a slow
+    machine another message may arrive between the one that woke it and its
+    turn, so the newest alone does not say what it is answering."""
+    heard = []
+    for message in reversed(body["messages"]):
+        # A call of a tool is not having spoken.
+        if message["role"] == "assistant" and not message.get("tool_calls"):
+            break
+        if message["role"] == "user":
+            heard.append(json.dumps(message))
+    return "\n".join(reversed(heard))
+
+
 def _room(reply):
     """A provider for a coordinator that adds Ada and Lin when asked to bring
     in the team, passes on what members write, and otherwise answers
     "coordinator"; members answer what `reply(member, last, body)` returns."""
 
     def route(_, body):
-        member, last = _member(body), _last_user(body)
+        member = _member(body)
+        last = _heard(body) if member else _last_user(body)
         if member:
-            if "joined the chat" in json.dumps(body["messages"][-1]):
+            if "joined the chat" in last:
                 return event({"content": f"{member} here."})
             return event({"content": reply(member, last, body)})
         results = tool_results(body["messages"])
@@ -1096,12 +1111,15 @@ def _room(reply):
 
 
 def _asked(server, name, text):
-    return [b for _, b in server.requests if _member(b) == name and text in _last_user(b)]
+    return [b for _, b in server.requests if _member(b) == name and text in _heard(b)]
 
 
 def _team(root, env, binary):
     result = run(root, env, "coord", "-p", "bring in the team", binary=binary)
     assert_true(result.returncode == 0, result.stderr)
+    # Both joined: a test about the chat is not one about starting runtimes.
+    joined = [path for path in session_files(env["HOME"]) if path.name.startswith("thread-")]
+    assert_true(len(joined) == 2, f"members did not start: {result.stdout!r}")
 
 
 def test_a_chat_is_heard_by_everyone_and_answered_by_who_has_something_to_say(
@@ -1161,9 +1179,13 @@ def test_a_chat_is_heard_by_everyone_and_answered_by_who_has_something_to_say(
         result = run(root, env, "coord", "-p", "@lin only you", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(_member(server.requests[0][1]) == "Lin", server.requests)
-        assert_true(not _asked(server, "Ada", "[The user in the chat"), server.requests)
         assert_true(result.stdout.strip() == "Lin: Just me, then.", repr(result.stdout))
         wait_until(lambda: _asked(server, "Ada", "[Lin in the chat"), "Ada never read Lin")
+        # Ada's turn came with Lin's answer, not with the message for Lin.
+        assert_true(
+            all("[Lin in the chat" in _heard(b) for _, b in server.requests if _member(b) == "Ada"),
+            server.requests,
+        )
 
         # The coordinator cannot message a member past the chat, whose limits
         # would not count it.

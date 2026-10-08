@@ -1103,7 +1103,9 @@ def _room(reply):
                 return event({"content": f"{member} here."})
             return event({"content": reply(member, last, body)})
         results = tool_results(body["messages"])
-        if "bring in the team" in last and len(results) < 2:
+        # Asked anywhere before, not last: the first member's introduction
+        # can arrive between the two calls and be the newest message.
+        if "bring in the team" in json.dumps(body["messages"]) and len(results) < 2:
             name = ("Ada", "Lin")[len(results)]
             return tool_call(
                 "thread", {"action": "add_member", "name": name, "persona": "You take part."}

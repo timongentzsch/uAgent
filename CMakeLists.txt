@@ -411,10 +411,16 @@ if(BUILD_TESTING)
     endif()
   endif()
   foreach(group IN ITEMS runtime tools ui providers mcp delegation sandbox)
+    # By far the longest group (80 s of 190 s in all), so it alone decided
+    # how long a parallel run takes: dealt to three runners, and counted as three.
+    set(_runners)
+    if(group STREQUAL "runtime")
+      set(_runners -j3)
+    endif()
     add_test(NAME integration_${group}
              COMMAND ${Python3_EXECUTABLE}
                      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration.py
-                     $<TARGET_FILE:uagent> --group ${group})
+                     $<TARGET_FILE:uagent> --group ${group} ${_runners})
     # A backstop, not the deadline. Every case inside the runner carries its
     # own budget, scaled by UAGENT_TEST_TIMEOUT_SCALE, and that budget is what
     # should fail -- it prints the captured terminal session and names the
@@ -424,6 +430,7 @@ if(BUILD_TESTING)
     # (TSan runtime, ~5min) so the runner always wins the race.
     set_tests_properties(integration_${group} PROPERTIES TIMEOUT 900)
   endforeach()
+  set_tests_properties(integration_runtime PROPERTIES PROCESSORS 3)
   # Source checks: no binary needed, so CI runs them apart (label `source`).
   foreach(_check IN ITEMS "ci_changes|tests/ci_changes_test.py"
                           "layer_boundary|tests/boundary_test.py"

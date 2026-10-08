@@ -22,7 +22,7 @@ cmake --build --preset debug --parallel
 | integration tests by name | `python3 tests/integration.py build/debug/uagent -k compaction` | seconds |
 | a web edit | `npm test` and `npm run typecheck` in `web/` | 2 s |
 | one web spec in a browser | `npm run build`, then `npm run test:spec -- tests/ui.spec.js` in `web/` | 10 s + the spec |
-| everything before a commit | `ctest --preset debug` | about 80 s |
+| everything before a commit | `ctest --preset debug -j 6` | about 50 s |
 | web work before a push | `npm run test:browser` in `web/` (both browsers) | minutes |
 | what only CI's compilers and linters report | `.github/ci-local.sh` | minutes; incremental after the first run |
 

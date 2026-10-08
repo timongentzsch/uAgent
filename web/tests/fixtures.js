@@ -79,16 +79,23 @@ export const test = base.extend({
         .toBe(true);
       await use(host);
     } finally {
-      if (host && testInfo.status !== testInfo.expectedStatus) {
-        await testInfo.attach("native-host.log", {
-          body: await readFile(resolve(dirname(host.project), "web-host.log")),
-          contentType: "text/plain",
-        });
+      // The host is stopped whatever reading its log does: one left running
+      // outlives the run.
+      try {
+        if (host && testInfo.status !== testInfo.expectedStatus) {
+          await testInfo.attach("native-host.log", {
+            body: await readFile(
+              resolve(dirname(host.project), "web-host.log"),
+            ),
+            contentType: "text/plain",
+          });
+        }
+      } finally {
+        const timer = setTimeout(() => child.kill("SIGKILL"), 15000);
+        child.kill("SIGTERM");
+        const [code, signal] = await exited.finally(() => clearTimeout(timer));
+        expect({ code, signal }, output).toEqual({ code: 0, signal: null });
       }
-      const timer = setTimeout(() => child.kill("SIGKILL"), 15000);
-      child.kill("SIGTERM");
-      const [code, signal] = await exited.finally(() => clearTimeout(timer));
-      expect({ code, signal }, output).toEqual({ code: 0, signal: null });
     }
   },
   baseURL: async ({ host }, use) => use(host.origin),

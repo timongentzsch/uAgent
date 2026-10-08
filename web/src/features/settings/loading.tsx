@@ -1,7 +1,7 @@
 import { DialogHeader, Group, Placeholder, Row } from "../../shared/ui.tsx";
 import "./settings.css";
 import { SettingsNav } from "./settings-nav.tsx";
-import { useMedia } from "../../shared/layout.ts";
+import { usePhone } from "../../shared/layout.ts";
 
 // Settings' loading states, which exist before its code: each draws the
 // feature's own primitives from sample data (see <Placeholder>).
@@ -9,7 +9,7 @@ const noop = () => {};
 
 // Settings before its code arrives: the same header, scope list and page.
 export function SettingsLoading() {
-  const phone = useMedia("(max-width: 600px)");
+  const phone = usePhone();
   return (
     <>
       <DialogHeader title="Settings" />

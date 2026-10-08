@@ -206,6 +206,9 @@ export function useMedia(query: string) {
   return matches;
 }
 
+// The width under which the phone layout applies, as the stylesheets have it.
+export const usePhone = () => useMedia("(max-width: 600px)");
+
 // Animations play unless this device asks for less motion or Settings
 // turns them off.
 export function applyMotion(motion: string) {

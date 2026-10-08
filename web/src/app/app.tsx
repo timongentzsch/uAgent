@@ -65,6 +65,7 @@ import {
   applyZoom,
   lockPageZoom,
   useMedia,
+  usePhone,
   trackViewport,
 } from "../shared/layout.ts";
 
@@ -115,7 +116,7 @@ function App() {
   const compact = useMedia("(max-width: 900px)");
   // On a phone a coordinator's board slides in from the right on demand
   // instead of taking the top of its chat.
-  const phone = useMedia("(max-width: 600px)");
+  const phone = usePhone();
   const [boardOpen, setBoardOpen] = useState(false);
   // The drawer belongs to the compact layout; a wider window drops it.
   useEffect(() => setDrawer(false), [compact]);

@@ -37,31 +37,43 @@ class FileLease {
   bool Acquire(const std::string& path, std::string& error,
                bool publish_owner = false) {
     if (fd_ && path == path_) return true;
-    Fd next(
-        open(path.c_str(), O_RDWR | O_CREAT | O_CLOEXEC | O_NOFOLLOW, 0600));
-    struct stat info{};
-    if (!next || fstat(next.Get(), &info) != 0 || !S_ISREG(info.st_mode) ||
-        info.st_uid != geteuid() || info.st_nlink != 1 ||
-        (info.st_mode & 0077) != 0) {
-      error = "cannot open private ownership file: " + path;
-      return false;
-    }
-    int result;
-    do {
-      result = flock(next.Get(), LOCK_EX | LOCK_NB);
-    } while (result != 0 && errno == EINTR);
-    if (result != 0) {
-      error = (errno == EWOULDBLOCK || errno == EAGAIN)
-                  ? "already owned by another session: " + path
-                  : "cannot acquire ownership: " + std::string(strerror(errno));
-      // Name the live holder when it published itself; the descriptor lock
-      // stays the sole authority, this only turns opaque conflicts into
-      // actionable ones on every surface.
-      if (errno == EWOULDBLOCK || errno == EAGAIN) {
-        std::string holder = LiveOwner(path);
-        if (!holder.empty()) error += " (live owner: " + holder + ")";
+    Fd next;
+    for (;;) {
+      next.Reset(
+          open(path.c_str(), O_RDWR | O_CREAT | O_CLOEXEC | O_NOFOLLOW, 0600));
+      struct stat info{};
+      if (!next || fstat(next.Get(), &info) != 0 || !S_ISREG(info.st_mode) ||
+          info.st_uid != geteuid() || info.st_nlink > 1 ||
+          (info.st_mode & 0077) != 0) {
+        error = "cannot open private ownership file: " + path;
+        return false;
       }
-      return false;
+      int result;
+      do {
+        result = flock(next.Get(), LOCK_EX | LOCK_NB);
+      } while (result != 0 && errno == EINTR);
+      if (result != 0) {
+        error =
+            (errno == EWOULDBLOCK || errno == EAGAIN)
+                ? "already owned by another session: " + path
+                : "cannot acquire ownership: " + std::string(strerror(errno));
+        // Name the live holder when it published itself; the descriptor lock
+        // stays the sole authority, this only turns opaque conflicts into
+        // actionable ones on every surface.
+        if (errno == EWOULDBLOCK || errno == EAGAIN) {
+          std::string holder = LiveOwner(path);
+          if (!holder.empty()) error += " (live owner: " + holder + ")";
+        }
+        return false;
+      }
+      // A holder that left may have removed the file after it was opened
+      // here. The lock then guards a file nobody else can reach, while the
+      // next comer locks a new one: only the file the path names now counts.
+      struct stat named{};
+      if (lstat(path.c_str(), &named) == 0 && named.st_dev == info.st_dev &&
+          named.st_ino == info.st_ino) {
+        break;
+      }
     }
     Reset();
     fd_ = std::move(next);

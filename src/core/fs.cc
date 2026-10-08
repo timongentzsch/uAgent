@@ -338,11 +338,16 @@ void MaintainArtifacts() {
   PruneArtifactTree(UagentDir(kArtifactsDir), kBgDays, kBgFiles);
   PruneArtifactTree(UagentDir(kMcpDir), kMcpLogDays, kMcpLogFiles);
   // What a runtime that was killed left behind: its lease and its socket.
+  // The lease is held while they go, so a runtime starting at this moment
+  // either keeps both or makes them anew.
   std::error_code error;
   for (const auto& entry :
        std::filesystem::directory_iterator(RuntimeDir(), error)) {
     const std::string lease = entry.path().string();
-    if (!lease.ends_with(".sock.lock") || !FileLease::OwnerGone(lease)) {
+    FileLease held;
+    std::string refused;
+    if (!lease.ends_with(".sock.lock") || !FileLease::OwnerGone(lease) ||
+        !held.Acquire(lease, refused)) {
       continue;
     }
     unlink(lease.substr(0, lease.size() - 5).c_str());

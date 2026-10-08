@@ -251,8 +251,8 @@ class Observability {
   bool shutdown_ = false;
 };
 
-// The active pointer is only a migration seam for low-level diagnostics. It is
-// set once by main, has no registration surface, and never owns the runtime.
+// The active pointer is how low-level diagnostics reach the sinks. It is set
+// once by main, has no registration surface, and never owns the runtime.
 void SetObservability(Observability* observability) noexcept;
 Observability* ActiveObservability() noexcept;
 void Emit(Event event) noexcept;

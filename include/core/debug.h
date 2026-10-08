@@ -61,8 +61,8 @@ class DebugSink {
   int64_t seq_ = 0;
 };
 
-// Compatibility accessors for low-level diagnostics. The concrete sinks are
-// owned by the active Observability instance created by main.
+// The trace of the running process. The concrete sinks are owned by the
+// active Observability instance created by main.
 DebugSink& Debug();
 
 class JsonEventStream {
@@ -82,7 +82,7 @@ class JsonEventStream {
   int64_t seq_ = 0;
 };
 
-// Diagnostic-only compatibility shim. Typed semantic events use Emit(Event).
+// One line in the trace. Typed semantic events use Emit(Event).
 void DebugLog(const std::string& event, json data = json::object());
 
 }  // namespace uagent

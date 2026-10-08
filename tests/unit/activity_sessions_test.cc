@@ -897,7 +897,7 @@ void TestActivityWaitAndDelivery() {
         1, std::chrono::steady_clock::now() + std::chrono::seconds(1));
     (void)race.RequestForegroundBackground();
     command.join();
-    CHECK(race.ForegroundCount() == 0);
+    CHECK(!race.WaitForForeground(1, std::chrono::steady_clock::now()));
     CHECK(result.result.Ok());
     for (const BgJob& job : race.Snapshot()) {
       (void)ToolActivityWait(race, {ActivityId(job)}, "all", 1000, context);
@@ -1000,7 +1000,8 @@ void TestActivityWaitAndDelivery() {
       3, std::chrono::steady_clock::now() + std::chrono::seconds(2)));
   CHECK(parallel_handoff.RequestForegroundBackground());
   for (std::thread& thread : parallel_threads) thread.join();
-  CHECK(parallel_handoff.ForegroundCount() == 0);
+  CHECK(
+      !parallel_handoff.WaitForForeground(1, std::chrono::steady_clock::now()));
   CHECK(parallel_handoff.PendingCount() == 3);
   for (const BgJob& job : parallel_handoff.Snapshot()) {
     CHECK_OK(ToolActivityStop(parallel_handoff, ActivityId(job)));

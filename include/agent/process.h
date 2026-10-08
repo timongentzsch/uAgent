@@ -154,7 +154,6 @@ class ProcessSupervisor {
                                                      int64_t max_subagents = 0);
   std::optional<BgJob> RemoveForeground(pid_t pid);
   std::optional<BgJob> MoveForegroundToBackground(pid_t pid);
-  size_t ForegroundCount() const;
   bool WaitForForeground(size_t count,
                          std::chrono::steady_clock::time_point deadline) const;
   bool RequestForegroundBackground();

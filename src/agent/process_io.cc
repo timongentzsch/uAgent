@@ -276,11 +276,6 @@ std::optional<BgJob> ProcessSupervisor::TakeForegroundLocked(pid_t pid) {
   return job;
 }
 
-size_t ProcessSupervisor::ForegroundCount() const {
-  std::lock_guard<std::mutex> lock(mutex_);
-  return foreground_.size();
-}
-
 bool ProcessSupervisor::WaitForForeground(
     size_t count, std::chrono::steady_clock::time_point deadline) const {
   std::unique_lock<std::mutex> lock(mutex_);

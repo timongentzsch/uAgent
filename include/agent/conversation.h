@@ -38,7 +38,6 @@ bool IsUserMessage(const json& message, MessageKind kind);
 class Conversation {
  public:
   const json& Messages() const { return messages_; }
-  int64_t ArchivedBytes() const { return archive_bytes_; }
   const json& Archive() const { return archive_; }
   // The archive as JSON text, joined from each segment's serialization kept
   // since it was archived: a save never re-dumps the archive.

@@ -51,8 +51,9 @@ class Server {
  public:
   Server();
   ~Server();
-  bool Start(const std::string& path, const std::string& generation,
-             std::function<bool(const json&)> command);
+  // Zero once it listens, or the WorkerExit that says why it does not.
+  int Start(const std::string& path, const std::string& generation,
+            std::function<bool(const json&)> command);
   void Publish(json frame);
   size_t Clients() const;
 

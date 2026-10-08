@@ -470,3 +470,27 @@ def test_headless_json_stream_emits_lifecycle_events(root, home, *, binary):
         )
         assert_true("usage" in types and types[-1] == "answer", types)
         assert_true(records[-1]["data"]["answer"] == "stream-answer", records[-1])
+
+
+def test_a_runtime_that_cannot_listen_says_so_at_once(root, home, *, binary):
+    """Its socket path is taken by something it cannot replace. That is no
+    other runtime holding the session, so nobody waits for one to leave."""
+    from integration_support import fnv1a64
+    from session_support import runtime_directory
+
+    session = home / ".uagent" / "history" / fnv1a64(str(root.resolve())) / "coordinator.json"
+    blocked = runtime_directory(home) / f"{fnv1a64(str(session))}.sock"
+    (blocked / "kept").mkdir(parents=True, mode=0o700)
+    runtime_directory(home).chmod(0o700)
+    blocked.chmod(0o700)
+    try:
+        with Server([event({"content": "unused"})]) as server:
+            began = time.monotonic()
+            result = run_dialog(root, base_env(home, server.url), "hello\n", "coord", binary=binary)
+        assert_true(result.returncode != 0, result.stdout)
+        assert_true("could not listen" in result.stderr, result.stderr)
+        assert_true("another runtime" not in result.stderr, result.stderr)
+        assert_true(time.monotonic() - began < budget(5), "waited for a runtime that cannot start")
+    finally:
+        (blocked / "kept").rmdir()
+        blocked.rmdir()

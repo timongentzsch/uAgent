@@ -34,7 +34,7 @@ void TestWorkerBinaryIdentity() {
   {
     session::Server server;
     CHECK(server.Start(session_path, session::RandomToken(16),
-                       [](const json&) { return true; }));
+                       [](const json&) { return true; }) == 0);
     session::Connection connection = session::Connect(session_path);
     CHECK(connection.socket.Valid());
     CHECK(!connection.binary.empty());
@@ -63,7 +63,7 @@ void TestCloseRuntimeWaitsForTheRuntime() {
                      {"accepted", true}});
     closing = true;
     return true;
-  }));
+  }) == 0);
   server->Publish(
       {{"v", session::kProtocol}, {"kind", "state"}, {"busy", false}});
   std::thread runtime([&] {

@@ -118,14 +118,15 @@ class WorkerChannel final : public ApplicationChannel {
   }
   ~WorkerChannel() override { Close(); }
 
-  bool Start() {
-    if (!wake_.Open() ||
-        !server_.Start(path_, generation_,
-                       [this](const json& frame) { return Command(frame); })) {
-      return false;
-    }
+  // Zero once clients can reach it, or the WorkerExit that says why not.
+  int Start() {
+    if (!wake_.Open()) return kWorkerCannotListen;
+    const int failed =
+        server_.Start(path_, generation_,
+                      [this](const json& frame) { return Command(frame); });
+    if (failed) return failed;
     transient_thread_ = std::thread([this] { FlushTransientLoop(); });
-    return true;
+    return 0;
   }
 
   void Event(const AppEvent& event) {
@@ -1012,7 +1013,7 @@ int WorkerMain(int argc, char** argv) {
   WorkerChannel channel(argv[3], argv[4], RandomToken(16), argv[5],
                         options.Coordinator(),
                         JsonValue(options.session, "thread", json::object()));
-  if (!channel.Start()) return kWorkerOwned;
+  if (const int failed = channel.Start()) return failed;
   Observability observation;
   SetObservability(&observation);
   observation.EnableTerminal(false);

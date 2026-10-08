@@ -461,9 +461,13 @@ if(UAGENT_BUILD_BENCHMARKS)
 endif()
 
 if(UAGENT_BUILD_FUZZERS)
+  # Each is built from what it fuzzes and the base library, not from the
+  # whole application: two parsers do not need 150 translation units.
+  add_executable(uagent_fuzz_sse tests/fuzz/fuzz_sse.cc)
+  add_executable(uagent_fuzz_input_decoder tests/fuzz/fuzz_input_decoder.cc
+                                           src/ui/input_decoder.cc)
   foreach(_fuzzer sse input_decoder)
-    add_executable(uagent_fuzz_${_fuzzer} tests/fuzz/fuzz_${_fuzzer}.cc)
-    target_link_libraries(uagent_fuzz_${_fuzzer} PRIVATE uagent_core)
+    target_link_libraries(uagent_fuzz_${_fuzzer} PRIVATE uagent_core_base)
     target_link_options(uagent_fuzz_${_fuzzer} PRIVATE -fsanitize=fuzzer)
   endforeach()
 endif()

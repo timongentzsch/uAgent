@@ -74,7 +74,7 @@ std::string RemoveWorktree(const std::string& project, const std::string& cwd) {
 std::string SendWhenReady(const session::Connection& connection,
                           const std::string& path, json command, bool idle) {
   constexpr int64_t kReadySeconds = 30;
-  const std::string request = session::RandomToken(16);
+  const std::string request = RandomToken(16);
   bool sent = false;
   std::string error = "the session runtime did not become ready";
   session::ReadFrames(

@@ -296,7 +296,7 @@ std::vector<Tool> BuildTools(AppContext& context,
   if (!browser::DataDirectory().empty() && AgentDepth() == 0 &&
       browser::Request({{"op", "ping"}}, 3000).value("ok", false)) {
     context.browser_lease =
-        session_path.empty() ? session::RandomToken(16) : HashHex(session_path);
+        session_path.empty() ? RandomToken(16) : HashHex(session_path);
     tools.push_back(BrowserTool(
         context.browser_lease,
         // A one-shot run has nobody to take the browser over.

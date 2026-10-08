@@ -183,7 +183,11 @@ std::string CanonicalCwd();
 
 // Unique per process and per call. The counter it needs is process-wide
 // mutable state, so the definition lives in src/core/fs.cc.
+std::string UniqueSeed();
+// The same, hashed and named as a session.
 std::string MakeSessionId();
+// OS randomness for credentials and opaque identities. Empty on failure.
+std::string RandomToken(size_t bytes = 24);
 
 std::string WorkspaceId(const std::string& root);
 

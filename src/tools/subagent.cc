@@ -2,11 +2,7 @@
 
 #include "include/tools/subagent.h"
 
-#include <unistd.h>
-
 #include <algorithm>
-#include <atomic>
-#include <chrono>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -52,12 +48,7 @@ std::string AgentPath(const std::string& id) {
 // exclusive creation: two processes can still agree on a free id at the same
 // instant. That residual is accepted -- the inputs already include the pid.
 std::string NewAgentId() {
-  static std::atomic<uint64_t> sequence{0};
-  const std::string seed =
-      CanonicalCwd() + ":" + std::to_string(getpid()) + ":" +
-      std::to_string(
-          std::chrono::steady_clock::now().time_since_epoch().count()) +
-      ":" + std::to_string(sequence.fetch_add(1, std::memory_order_relaxed));
+  const std::string seed = UniqueSeed();
   std::error_code code;
   for (int attempt = 0; attempt < 8; ++attempt) {
     std::string id =

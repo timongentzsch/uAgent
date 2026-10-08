@@ -33,7 +33,7 @@ void TestWorkerBinaryIdentity() {
       std::filesystem::path(session::SocketPath(session_path)).parent_path());
   {
     session::Server server;
-    CHECK(server.Start(session_path, session::RandomToken(16),
+    CHECK(server.Start(session_path, RandomToken(16),
                        [](const json&) { return true; }) == 0);
     session::Connection connection = session::Connect(session_path);
     CHECK(connection.socket.Valid());

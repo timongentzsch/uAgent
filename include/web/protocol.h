@@ -16,7 +16,6 @@ using session::kUploadBytes;
 using session::kUploadCount;
 using session::OpaqueId;
 using session::Pipe;
-using session::RandomToken;
 using session::ReadFrames;
 using session::WriteFrame;
 inline constexpr size_t kWebDeviceLimit = 16;

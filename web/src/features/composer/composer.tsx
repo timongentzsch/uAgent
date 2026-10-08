@@ -39,7 +39,6 @@ import {
   mentionOptions,
 } from "./mention.ts";
 import { SheetButton } from "../../shared/sheet.tsx";
-import { Avatar } from "../../shared/avatar.tsx";
 import { ActivityButton, ActivityStatus } from "../chat/activity-status.tsx";
 import type { InspectorTarget } from "../chat/inspector.tsx";
 import MessageInput from "./message-input.tsx";
@@ -53,12 +52,12 @@ import { permissionLabel, permissionLabels } from "../../shared/display.ts";
 const sentPrompts = new Map<string, string[]>();
 const NO_MEMBERS: Session[] = [];
 
-// "Ada is typing…", for the members answering now.
+// "Ada is typing…", for the participants of a chat answering now.
 function typingLabel(names: string[]) {
-  if (!names.length) return "";
+  if (!names.length) return "Ready";
   if (names.length === 1) return `${names[0]} is typing…`;
   if (names.length === 2) return `${names[0]} and ${names[1]} are typing…`;
-  return `${names.length} members are typing…`;
+  return `${names[0]}, ${names[1]} and ${names.length - 2} more are typing…`;
 }
 
 export default function Composer({
@@ -108,8 +107,8 @@ export default function Composer({
   showStatistics: () => void;
   openBrowser: () => void;
   zoom: number;
-  // The members of a coordinator's chat: whom @ can address, and who is
-  // answering right now.
+  // The members of a coordinator's chat: with any, the state above the
+  // input says who is typing and nothing else.
   members?: Session[];
   // Why the last turn stopped short, while nothing has been sent since.
   stopped?: string;
@@ -128,27 +127,18 @@ export default function Composer({
   const [mentionIndex, setMentionIndex] = useState(-1);
   const [mentionClosed, setMentionClosed] = useState(false);
   const mention = matchMention(draft.text, caret);
-  // Members first: a name is typed as it stands, a file becomes a token.
-  const mentionCandidates: { id: string; name: string; bytes?: number }[] =
-    mention
-      ? [
-          ...mentionOptions(
-            members.map((item) => ({ id: "", name: item.member || "" })),
-            mention.query,
-          ),
-          ...mentionOptions(
-            draft.files.filter((item) => !item.pending),
-            mention.query,
-          ),
-        ]
-      : [];
+  const mentionCandidates = mention
+    ? mentionOptions(
+        draft.files.filter((item) => !item.pending),
+        mention.query,
+      )
+    : [];
   const mentionOpen =
     !!mention && !mentionClosed && mentionCandidates.length > 0;
-  const insertMention = (target?: { id: string; name: string }) => {
+  const insertMention = (id: string) => {
+    const target = draft.files.find((item) => item.id === id);
     if (!mention || !target || !input.current) return;
-    const token = target.id
-      ? `${encodeMention(target.name, target.id)} `
-      : `@${target.name} `;
+    const token = `${encodeMention(target.name, target.id)} `;
     setDraft({
       ...draft,
       text:
@@ -183,7 +173,7 @@ export default function Composer({
           Math.min(mentionIndex, mentionCandidates.length - 1)
         ] ??
         (mentionCandidates.length === 1 ? mentionCandidates[0] : undefined);
-      if (target && !event.repeat) insertMention(target);
+      if (target && !event.repeat) insertMention(target.id);
       else return false;
     } else return false;
     event.preventDefault();
@@ -341,17 +331,17 @@ export default function Composer({
             <ActivityStatus
               phase={
                 detached ||
-                (!running &&
-                  typingLabel(
-                    members
-                      .filter((item) => online && item.turn_active)
-                      .map((item) => item.member || ""),
-                  )) ||
-                state?.activity ||
-                (state ? "Ready" : "Loading…")
+                (members.length
+                  ? typingLabel([
+                      ...members
+                        .filter((item) => online && item.turn_active)
+                        .map((item) => item.member || ""),
+                      ...(running ? ["Coordinator"] : []),
+                    ])
+                  : state?.activity || (state ? "Ready" : "Loading…"))
               }
               running={running}
-              started={state?.turn_started_ms}
+              started={members.length ? undefined : state?.turn_started_ms}
               pending={pending}
               stopped={continuing ? stopLabel : undefined}
               present={online && !!session?.presence}
@@ -393,20 +383,17 @@ export default function Composer({
         {mentionOpen && (
           <SuggestionList
             id="mention-suggestions"
-            label={
-              members.length ? "Members and attached files" : "Attached files"
-            }
+            label="Attached files"
             prefix="mention"
             items={mentionCandidates}
             index={mentionIndex}
-            pick={insertMention}
-            keyOf={(item) => item.id || item.name}
+            pick={(item) => insertMention(item.id)}
+            keyOf={(item) => item.id}
           >
             {(item) => (
               <>
-                {!item.id && <Avatar name={item.name} />}
                 <strong>@{item.name}</strong>
-                <span>{item.id ? bytes(item.bytes || 0) : "Member"}</span>
+                <span>{bytes(item.bytes)}</span>
               </>
             )}
           </SuggestionList>

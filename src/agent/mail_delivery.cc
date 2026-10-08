@@ -99,8 +99,10 @@ bool Agent::DeliverMail(bool hold) {
     if (delivered_mail_.size() > kDeliveredIds) {
       delivered_mail_.erase(delivered_mail_.begin());
     }
-    NotFromUser(text, JsonValue(mail.body, "author", ""), mail.id);
-    if (JsonValue(mail.body, "quiet", false)) {
+    const bool quiet = JsonValue(mail.body, "quiet", false);
+    NotFromUser(text, JsonValue(mail.body, "author", ""), mail.id,
+                quiet ? 0 : JsonValue(mail.body, "round", int64_t{0}));
+    if (quiet) {
       // Read, not answered: it joins the conversation where it stands.
       PushUserInput(text, false, json(), "");
     } else {

@@ -202,11 +202,14 @@ class Agent {
   bool DeliverMail(bool hold = false);
   // Text about to arrive as input that another session or the harness wrote:
   // its row is shown as an event, not as the person's message, under its
-  // `author` when it has one. `mail` names the mail that brought it.
+  // `author` when it has one. `mail` names the mail that brought it, and
+  // `round` the round of a chat whose message wakes this session.
   void NotFromUser(const std::string& text, const std::string& author = "",
-                   const std::string& mail = "") {
-    not_user_.push_back({text, author, mail});
+                   const std::string& mail = "", int64_t round = 0) {
+    not_user_.push_back({text, author, mail, round});
   }
+  // The round of the chat message this session last took a turn on.
+  int64_t ChatRound() const { return chat_round_; }
   // The person's message, written into the conversation without a turn.
   void Say(const std::string& text, const std::string& request_id) {
     PushUserInput(text, false, json(), request_id);
@@ -486,7 +489,9 @@ class Agent {
   // then a restart receives it again.
   struct Arriving {
     std::string text, author, mail;
+    int64_t round = 0;
   };
+  int64_t chat_round_ = 0;
   std::vector<Arriving> not_user_;
   std::function<void(const std::string&)> chat_said_;
   std::function<void(Mail&)> chat_heard_;

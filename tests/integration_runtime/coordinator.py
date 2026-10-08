@@ -1053,12 +1053,16 @@ def test_only_checkpoints_carry_the_view(root, home, *, binary):
 
 
 MEMBER_TOOLS = {"read_path", "grep", "skill", "web_search", "web_fetch"}
-POSTED = "not a user message; their view"
 
 
 def _member(body):
     system = json.dumps(body["messages"][0])
     return next((name for name in ("Ada", "Lin") if f"You are {name}, a member" in system), "")
+
+
+def _posted(text):
+    """Whether `text` holds a member's message, as "Name: what it wrote"."""
+    return any(f"{name}: " in text for name in ("Ada", "Lin"))
 
 
 def _last_user(body):
@@ -1130,11 +1134,19 @@ def test_a_chat_is_heard_by_everyone_and_answered_by_who_has_something_to_say(
             return "Call it Kestrel."
         if member == "Lin" and "only you" in last:
             return "Just me, then."
-        if not member and "nudge Lin" in last and "write @Lin" not in json.dumps(body):
-            lin = next(line.split()[0] for line in json.dumps(body).split("\\n") if "@Lin" in line)
+        if member == "Ada" and "ask Lin" in last:
+            return "Lin, what do you say?"
+        if member == "Lin" and "what do you say" in last:
+            return "I say yes."
+        if member == "Ada" and "I say yes." in last:
+            return "Noted, I agree with Lin, and others may differ."
+        if not member and "nudge Lin" in last and "open your answer" not in json.dumps(body):
+            lin = next(
+                line.split()[0] for line in json.dumps(body).split("\\n") if "member Lin" in line
+            )
             return tool_call("thread", {"action": "message", "session_id": lin, "text": "hello"})
         # Nothing to add: to a member's message, or to the user's.
-        return "PASS" if member or POSTED in last else "coordinator"
+        return "PASS" if member or _posted(last) else "coordinator"
 
     with Server([_room(reply)]) as server:
         env = base_env(home, server.url)
@@ -1157,35 +1169,49 @@ def test_a_chat_is_heard_by_everyone_and_answered_by_who_has_something_to_say(
         server.requests.clear()
         result = run(root, env, "coord", "-p", "name the kite", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
-        assert_true(_asked(server, "Ada", "[user in the chat"), server.requests)
-        assert_true(_asked(server, "Lin", "[user in the chat"), server.requests)
-        wait_until(lambda: _asked(server, "Lin", "[Ada in the chat"), "Lin never read Ada")
+        assert_true(_asked(server, "Ada", "user: name the kite"), server.requests)
+        assert_true(_asked(server, "Lin", "user: name the kite"), server.requests)
+        wait_until(lambda: _asked(server, "Lin", "Ada: Call it"), "Lin never read Ada")
         wait_until(
-            lambda: any(not _member(b) and POSTED in _last_user(b) for _, b in server.requests),
+            lambda: any(not _member(b) and _posted(_last_user(b)) for _, b in server.requests),
             "the coordinator never read Ada",
         )
         assert_true(
             result.stdout.strip() == "coordinator\n\nAda: Call it Kestrel.", repr(result.stdout)
         )
-        # Each is told who else is answering.
-        assert_true(
-            "(Typing now:" in _asked(server, "Ada", "name the kite")[0]["messages"][-1]["content"],
-            server.requests,
-        )
+        # Each is told who else is answering, and nobody reads an @ or a label.
+        woken = [b for _, b in server.requests if _member(b) and "name the kite" in _heard(b)]
+        assert_true(any("(typing: " in _heard(b) for b in woken), server.requests)
+        told = json.dumps([b["messages"] for _, b in server.requests if _member(b)])
+        assert_true("@" not in told and "in the chat" not in told, told)
 
-        # A message that names a member wakes that member alone; the others
-        # read it without a turn. Its answer names nobody and wakes them.
+        # A message that opens with a member's name wakes that member alone;
+        # the others read it without a turn, and so they do its answer, which
+        # goes back to who asked.
         server.requests.clear()
-        result = run(root, env, "coord", "-p", "@lin only you", binary=binary)
+        result = run(root, env, "coord", "-p", "lin, only you", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
-        assert_true(_member(server.requests[0][1]) == "Lin", server.requests)
         assert_true(result.stdout.strip() == "Lin: Just me, then.", repr(result.stdout))
-        wait_until(lambda: _asked(server, "Ada", "[Lin in the chat"), "Ada never read Lin")
-        # Ada's turn came with Lin's answer, not with the message for Lin.
+        time.sleep(budget(1))
+        assert_true([_member(b) for _, b in server.requests] == ["Lin"], server.requests)
+
+        # A name inside a sentence addresses nobody: everyone is woken.
+        server.requests.clear()
+        result = run(root, env, "coord", "-p", "is Lin right, everyone?", binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true({_member(b) for _, b in server.requests} == {"", "Ada", "Lin"}, server.requests)
+
+        # A member asks another by name: the answer wakes the one who asked
+        # and nobody else, and what the asker says next is for everyone.
+        server.requests.clear()
+        result = run(root, env, "coord", "-p", "Ada, ask Lin", binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        time.sleep(budget(1))
         assert_true(
-            all("[Lin in the chat" in _heard(b) for _, b in server.requests if _member(b) == "Ada"),
-            server.requests,
+            [_member(b) for _, b in server.requests][:3] == ["Ada", "Lin", "Ada"], server.requests
         )
+        assert_true("Ada: Noted, I agree with Lin" in result.stdout, repr(result.stdout))
+        wait_until(lambda: _asked(server, "Lin", "Ada: Noted"), "Lin never read Ada")
 
         # The coordinator cannot message a member past the chat, whose limits
         # would not count it.
@@ -1193,8 +1219,8 @@ def test_a_chat_is_heard_by_everyone_and_answered_by_who_has_something_to_say(
         result = run(root, env, "coord", "-p", "nudge Lin", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         text = json.dumps([b for _, b in server.requests if not _member(b)][-1]["messages"])
-        assert_true("@lin only you" in text and "Just me, then." in text, text)
-        assert_true("write @Lin in your answer instead" in text, text)
+        assert_true("lin, only you" in text and "Just me, then." in text, text)
+        assert_true("open your answer with" in text, text)
 
 
 def test_a_member_that_waits_reads_who_was_typing_and_nobody_waits_for_ever(root, home, *, binary):
@@ -1205,7 +1231,7 @@ def test_a_member_that_waits_reads_who_was_typing_and_nobody_waits_for_ever(root
                 return "Ada's point."
             # Lin sees Ada typing and lets her go first.
             return "WAIT" if member == "Lin" else "PASS"
-        if member == "Lin" and "[Ada in the chat" in last:
+        if member == "Lin" and "Ada: Ada's point." in last:
             return "And building on Ada: one more."
         # Everyone waiting for everyone else is nobody having anything to say.
         if "all wait" in last:
@@ -1223,7 +1249,7 @@ def test_a_member_that_waits_reads_who_was_typing_and_nobody_waits_for_ever(root
             repr(result.stdout),
         )
         waited = _asked(server, "Lin", "slow start")[0]["messages"][-1]["content"]
-        assert_true("Ada" in waited.split("(Typing now:")[1], waited)
+        assert_true("Ada" in waited.split("(typing: ")[1], waited)
 
         result = run(root, env, "coord", "-p", "all wait", binary=binary, timeout=budget(20))
         assert_true(result.returncode == 0, result.stderr)
@@ -1262,7 +1288,9 @@ def test_a_member_reads_what_was_shared_in_the_chat_without_review(root, home, *
         # only for the coordinator.
         member, last = _member(body), _last_user(body)
         if member == "Ada" and "look at" in last and not tool_results(body["messages"]):
-            return tool_call("read_path", {"path": last.split("look at ")[1].split("\\n")[0]})
+            return tool_call(
+                "read_path", {"path": last.split("look at ")[1].split("\\n")[0].split('"')[0]}
+            )
         return _room(reply)(_, body)
 
     with Server([route]) as server:
@@ -1274,11 +1302,52 @@ def test_a_member_reads_what_was_shared_in_the_chat_without_review(root, home, *
         shared.mkdir()
         (shared / "plan.txt").write_text("ship on friday\n", encoding="utf-8")
         server.requests.clear()
-        result = run(root, env, "coord", "-p", f"@Ada look at {shared / 'plan.txt'}", binary=binary)
+        result = run(root, env, "coord", "-p", f"Ada, look at {shared / 'plan.txt'}", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "Ada: It says ship on friday", repr(result.stdout))
         # Nobody was asked to review the read: Ada's two requests come first.
         assert_true([_member(b) for _, b in server.requests[:2]] == ["Ada", "Ada"], server.requests)
+
+
+def test_an_answer_to_an_earlier_message_is_read_and_is_no_turn_of_the_next(root, home, *, binary):
+    answering = threading.Event()
+
+    def reply(member, last, _body):
+        if member == "Ada" and "second" in last:
+            return "Answer two."
+        if member == "Ada" and "slow first" in last:
+            answering.set()
+            time.sleep(budget(1.5))
+            return "Answer one."
+        return "PASS" if member or _posted(last) else "coordinator"
+
+    with Server([_room(reply)]) as server:
+        env = base_env(home, server.url)
+        _team(root, env, binary)
+        coordinator = next(path for path in session_files(home) if path.name == "coordinator.json")
+        first = subprocess.Popen(
+            [str(binary), "coord", "-p", "slow first"],
+            cwd=root,
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        try:
+            # The user writes again while Ada still answers the first message.
+            assert_true(answering.wait(budget(10)), "Ada was never woken")
+            result = run(root, env, "coord", "-p", "second", binary=binary, timeout=budget(30))
+        finally:
+            first.kill()
+            first.wait()
+        assert_true(result.returncode == 0, result.stderr)
+        # Both are said, and only the second is her message of this round,
+        # beside the coordinator's one.
+        assert_true(
+            result.stdout.index("Ada: Answer one.") < result.stdout.index("Ada: Answer two."),
+            repr(result.stdout),
+        )
+        round_ = json.loads(pathlib.Path(str(coordinator) + ".chat").read_text(encoding="utf-8"))
+        assert_true(sorted(seat["posts"] for seat in round_["seats"].values()) == [0, 1, 1], round_)
 
 
 def test_a_chat_round_outlives_the_coordinators_runtime(root, home, *, binary):

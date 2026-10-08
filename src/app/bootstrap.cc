@@ -818,15 +818,16 @@ BootstrapResult Bootstrap(Options options, const char* executable,
       &context->runtime.adaptive_system);
   context->agent->SetSessionRole(context->options.session);
   if (context->options.Coordinator()) {
-    context->agent->SetRuntimeContext(
-        [folder = CanonicalCwd(), agent = context->agent.get()] {
-          RecordCoordinatorCost(folder, agent->SessionUsage().cost);
-          return CoordinatorContext(folder);
-        });
     context->chat.emplace(CanonicalCwd(), [agent = context->agent.get()](
                                               const std::string& note) {
       agent->NotFromUser(note);
       SteeringState().Queue(note, "", true);
+    });
+    context->agent->SetRuntimeContext([folder = CanonicalCwd(),
+                                       agent = context->agent.get(),
+                                       chat = &*context->chat] {
+      RecordCoordinatorCost(folder, agent->SessionUsage().cost);
+      return CoordinatorContext(folder) + chat->Context();
     });
     context->agent->SetChat(
         [chat = &*context->chat](const std::string& text) { chat->Said(text); },

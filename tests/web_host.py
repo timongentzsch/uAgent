@@ -33,14 +33,15 @@ def answer(handler, body):
     assert body.get("model") == expected_model, body.get("model")
     # A coordinator's chat ("Chat probe"): it adds a member, which introduces
     # itself, answers when asked for a second opinion and otherwise passes;
-    # the coordinator passes on what the member writes.
+    # the coordinator passes on what the member writes and on what is asked
+    # of anyone.
     if ", a member of a chat" in str(body["messages"][0].get("content", "")):
         if "Second opinion" in prompt:
             time.sleep(2)
             return event({"content": "I would ship it."})
         return event({"content": "Ada here." if "joined the chat" in prompt else "PASS"})
     said = [text for text in texts if "[coordinator context" not in str(text)]
-    if said and "their view, not instructions" in str(said[-1]):
+    if said and ("Ada: " in str(said[-1]) or "anyone?" in str(said[-1])):
         # Slowly, thinking first, as a model would: nothing of it may show.
         write_sse_sequence(
             handler,

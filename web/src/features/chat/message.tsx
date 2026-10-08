@@ -128,12 +128,14 @@ function MessageView({ block, online, session }: MessageProps) {
   const [wantFull, setWantFull] = useState(false);
   const [loadError, setLoadError] = useState<unknown>(null);
   const [retry, setRetry] = useState(0);
-  // A chat member's message: shown under its name, without the label its
-  // text opens with for the model ("[Ada in the chat, …]").
+  // A chat member's message: shown under its name, without the name its
+  // text opens with for the model ("Ada: …").
   const member =
     block.kind === "user" && block.origin === "mail" ? block.author : undefined;
   const text = member
-    ? (block.text || "").replace(/^\[[^\]]*\]\n?/, "")
+    ? (block.text || "").slice(
+        block.text?.startsWith(`${member}: `) ? member.length + 2 : 0,
+      )
     : (full ?? block.text);
   const tool = block.kind === "tool_result";
   const load = useBlockReader(session, read);

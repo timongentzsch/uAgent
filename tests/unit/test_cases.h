@@ -99,6 +99,7 @@ namespace uagent {
   X(TestCoordinatorCountsItsOwnSpend)             \
   X(TestChildSessionsStayOutOfTheCatalogue)       \
   X(TestAChatCountsAMailOnce)                     \
+  X(TestAChatMessageIsForThoseItOpensWith)        \
   X(TestMailbox)                                  \
   X(TestSessionLinks)                             \
   X(TestToolExecutionPolicy)                      \

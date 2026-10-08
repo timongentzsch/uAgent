@@ -143,6 +143,7 @@ void Application::PublishChannelState(bool checkpoint) {
   }
   state["turns"] = agent_.UserTurns();
   state["turn_active"] = turn_active_;
+  state["chat_round"] = agent_.ChatRound();
   state["activities"] = runtime_.processes.ActivityViews();
   state["agents"] = AgentSummaries(runtime_.processes);
   state["error"] = input_error_.empty() ? agent_.LastError() : input_error_;

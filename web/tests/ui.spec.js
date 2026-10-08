@@ -1,4 +1,4 @@
-import { test, expect, withoutServiceWorker } from "./fixtures.js";
+import { test, expect, online, withoutServiceWorker } from "./fixtures.js";
 import { readFile, writeFile } from "node:fs/promises";
 
 test("mobile chrome keeps an opaque safe area and applies appearance before app startup", async ({
@@ -671,6 +671,7 @@ test("code blocks, thinking and HTTP dialogs preserve content and loading geomet
   await withoutServiceWorker(page);
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto(`/#session=${session.id}`);
+  await online(page);
   const prompt = page.getByLabel("Message or guidance");
   await prompt.fill("HTTP body proof");
   await prompt.press("Enter");
@@ -1736,6 +1737,7 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
   });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/#session=${session.id}`);
+  await online(page);
   const prompt = page.getByLabel("Message or guidance");
   await prompt.fill("Exploration probe");
   await prompt.press("Enter");
@@ -2077,25 +2079,32 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
     document.documentElement.style.setProperty("--safe-top", "47px");
     document.documentElement.style.setProperty("--safe-bottom", "34px");
   });
+  await online(page);
   const composer = page.getByLabel("Message or guidance");
   await composer.fill("Delegate preview task");
   await composer.press("Enter");
   await expect(
     page.getByRole("heading", { name: "Verified response" }),
   ).toBeVisible();
-  // Force a retained older page so its control must share the thread's scroll.
-  // The first load is held, to see the sheet's layout while it loads.
-  let releaseFirst;
-  const firstLoad = new Promise((resolve) => (releaseFirst = resolve));
+  // The first load is held, to see the sheet's layout while it loads, and
+  // the refresh that follows it, to see it land on a follow-up being typed.
+  // The refresh forces a retained older page, whose control shows that it
+  // was applied and must share the thread's scroll.
+  let releaseFirst, releaseRefresh;
+  const held = [
+    new Promise((resolve) => (releaseFirst = resolve)),
+    new Promise((resolve) => (releaseRefresh = resolve)),
+  ];
   let loads = 0;
   await page.route("**/api/command", async (route) => {
     const body = route.request().postDataJSON();
     if (body.kind !== "activity" || body.operation !== "inspect" || body.detail)
       return route.continue();
-    if (loads++ === 0) await firstLoad;
+    const load = loads++;
+    await held[load];
     const response = await route.fetch();
     const value = await response.json();
-    if (value.result?.conversation) {
+    if (load && value.result?.conversation) {
       value.result.conversation.more = true;
       value.result.conversation.before = 1;
     }
@@ -2136,20 +2145,21 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
   const followUpNode = await followUp.elementHandle();
   await followUp.fill("Retained follow-up");
   await followUp.focus();
-  await page.waitForTimeout(1100);
+  const thread = detail.locator('[aria-label="Subagent task"]');
+  const older = thread.getByRole("button", {
+    name: "Load older retained messages",
+    exact: true,
+  });
+  await expect(older).toHaveCount(0);
+  releaseRefresh();
+  await expect(older).toHaveCount(1);
   expect(await followUpNode?.evaluate((element) => element.isConnected)).toBe(
     true,
   );
   await expect(followUp).toHaveValue("Retained follow-up");
   await expect(followUp).toBeFocused();
   // Popup threads carry the same rows and viewers as chat history.
-  const thread = detail.locator('[aria-label="Subagent task"]');
   await expect(thread.locator(".message")).not.toHaveCount(0);
-  const older = thread.getByRole("button", {
-    name: "Load older retained messages",
-    exact: true,
-  });
-  await expect(older).toHaveCount(1);
   expect(
     await older.evaluate((button) => {
       const first = button.closest(".child-thread").querySelector(".message");

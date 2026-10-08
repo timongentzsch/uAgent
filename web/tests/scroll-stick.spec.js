@@ -1,12 +1,12 @@
 // Follow-tail guarantees under live streaming growth: while pinned the
 // transcript never detaches from the end, and a reader who scrolled up
 // mid-stream is never yanked back down.
-import { test, expect } from "./fixtures.js";
+import { test, expect, online } from "./fixtures.js";
 
 async function startLongProbe(page, session, command) {
   await page.goto(`/#session=${session.id}`);
   const prompt = page.getByLabel("Message or guidance");
-  await expect(prompt).toBeVisible();
+  await online(page);
   await command("model", {
     session_id: session.id,
     generation: session.generation,
@@ -26,6 +26,28 @@ const gap = (page) =>
       (element) =>
         element.scrollHeight - element.scrollTop - element.clientHeight,
     );
+
+// The bottom gap at every frame from now until the turn ends. Samples
+// taken by the clock are fewer the slower the machine.
+async function gapsUntilIdle(page) {
+  await page.locator(".transcript").evaluate((element) => {
+    const gaps = (window.gaps = []);
+    const frame = () => {
+      gaps.push(
+        element.scrollHeight - element.scrollTop - element.clientHeight,
+      );
+      window.gapFrame = requestAnimationFrame(frame);
+    };
+    frame();
+  });
+  await expect(page.locator(".composer .status-led.running")).toBeHidden({
+    timeout: 60000,
+  });
+  return page.evaluate(() => {
+    cancelAnimationFrame(window.gapFrame);
+    return window.gaps;
+  });
+}
 
 test("progressive rendering retains text while syntax highlighting loads", async ({
   page,
@@ -69,20 +91,12 @@ test("streaming stays pinned to the end while following", async ({
 }) => {
   test.setTimeout(120000);
   await startLongProbe(page, session, command);
-  // Sample the bottom gap across the whole stream. A sample can land
-  // between a state apply and its pre-paint pin, so single transient
-  // excursions are sampling race, not detachment: what matters is the
-  // tail always recovers to the band and settles at zero when done.
-  const gaps = [];
-  for (let index = 0; index < 30; ++index) {
-    gaps.push(await gap(page));
-    await page.waitForTimeout(150);
-  }
+  // A frame can land between a state apply and its pre-paint pin, so a
+  // single excursion is not detachment: what matters is that the tail
+  // recovers to the band and settles at zero when done.
+  const gaps = await gapsUntilIdle(page);
   expect(gaps.filter((value) => value > 100).length).toBeLessThanOrEqual(2);
   expect(gaps.slice(-5).every((value) => value <= 100)).toBe(true);
-  await expect(page.locator(".composer .status-led.running")).toBeHidden({
-    timeout: 60000,
-  });
   await expect.poll(() => gap(page)).toBeLessThan(2);
   await expect(
     page.getByRole("button", { name: "Jump to latest" }),
@@ -123,26 +137,12 @@ test("scrolled-up reader is never yanked down by streaming", async ({
   await expect(jump).toBeVisible();
   await expect.poll(() => gap(page)).toBeGreaterThan(100);
   // Across the rest of the stream the reader stays away from the live edge.
-  const gaps = [];
-  for (let index = 0; index < 20; ++index) {
-    gaps.push(
-      await page
-        .locator(".transcript")
-        .evaluate(
-          (element) =>
-            element.scrollHeight - element.scrollTop - element.clientHeight,
-        ),
-    );
-    await page.waitForTimeout(150);
-  }
+  const gaps = await gapsUntilIdle(page);
   // A row can briefly shrink during rich-content replacement and clamp the
   // scroll range; the saved anchor must bring the reader back once it grows.
   expect(gaps.filter((value) => value <= 100).length).toBeLessThanOrEqual(2);
   expect(gaps.at(-1)).toBeGreaterThan(100);
   await expect(jump).toBeVisible();
-  await expect(page.locator(".composer .status-led.running")).toBeHidden({
-    timeout: 60000,
-  });
 });
 
 test("background completion badges while unfollowed, cleared on jump", async ({

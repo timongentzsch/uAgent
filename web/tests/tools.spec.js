@@ -1,4 +1,4 @@
-import { test, expect } from "./fixtures.js";
+import { test, expect, online } from "./fixtures.js";
 import { readFile, writeFile } from "node:fs/promises";
 
 test("tool catalogue shows its schema size and persists selection", async ({
@@ -60,6 +60,7 @@ test("a shared file previews inline in the conversation, sandboxed", async ({
     mode: "yolo",
   });
   await page.goto(`/#session=${session.id}`);
+  await online(page);
   const prompt = page.getByLabel("Message or guidance");
   await prompt.fill("Artifact probe");
   await prompt.press("Enter");
@@ -115,6 +116,7 @@ test("a long diff shows whole on its row, live and after a reload", async ({
     mode: "yolo",
   });
   await page.goto(`/#session=${session.id}`);
+  await online(page);
   const prompt = page.getByLabel("Message or guidance");
   await prompt.fill("Long diff probe");
   await prompt.press("Enter");
@@ -150,7 +152,7 @@ test("files read as tiles and cards, tool images sit on their row, and every ima
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
     "base64",
   );
-  await expect(page.locator('input[type="file"]')).toBeEnabled();
+  await online(page);
   await page.locator('input[type="file"]').setInputFiles([
     { name: "layout.png", mimeType: "image/png", buffer: pixel },
     {

@@ -138,6 +138,23 @@ How the tests are isolated:
   is never reused if one already listens there, so a run cannot test another
   checkout's tree.
 
+What a spec may assume about time:
+
+- The composer sends and attaches nothing until the event stream has caught
+  up. A Playwright click waits for its control to enable; `press("Enter")`,
+  `setInputFiles` and a click scripted inside the page do not, and what they
+  carried is lost without an error. `await online(page)` (`fixtures.js`)
+  comes before the first of them, and again after a step that reconnects.
+- A layer closed from the interface (a popover, a dialog) removes its history
+  entry in a step back of its own. A spec that then navigates by
+  `location.hash` first waits for `history.state?.layer` to be gone.
+- Speed is recorded, not asserted: frame gaps, input latency and open times
+  go into attachments (`web-performance.json`, `reload-frame-gaps.json`) and
+  never fail a run.
+- The only fixed pauses are gestures: the long-press holds in
+  `browser.spec.js` and `showcase.spec.js`, and the pauses between the wheel
+  and scroll steps in `scroll-stick.spec.js`.
+
 Playwright has two projects. `chromium` runs every spec. `webkit` runs `ui`,
 `ui-quality`, `browser`, `showcase`, `dismiss`, `history-anchor`,
 `scroll-restore`, `scroll-stick` and `coordinator`. A failed test is retried
@@ -269,7 +286,9 @@ so a green pull request is a green `master`.
 | `CI result` | fails if any required job failed or was cancelled |
 
 The `master requires CI` ruleset requires `CI result`, so a red run blocks a
-merge. Superseded runs are cancelled.
+merge. Superseded runs are cancelled. GitHub sends two events for a pull
+request stacked on another's branch when both are pushed together: the first
+run is then cancelled within seconds, and its `CI result` reads failed.
 CodeQL runs in its own workflow on pushes, pull requests and weekly.
 
 ## Guidelines
@@ -294,3 +313,5 @@ A test passes or fails the same way on a slow machine:
   firing.
 - After a look at state, act on it only if a refusal is handled: the state
   may have moved on.
+- Text expected in the terminal's working row fits it at any elapsed time:
+  the row clips its label to the columns its counters leave.

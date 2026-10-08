@@ -1,6 +1,6 @@
 // The image viewer: any image fits whole, and the zoom controls, keys and
 // ⌘/Ctrl+wheel zoom it like a document viewer.
-import { test, expect } from "./fixtures.js";
+import { test, expect, online } from "./fixtures.js";
 
 test("a tall image fits whole and zooms by controls, wheel and keys", async ({
   page,
@@ -8,7 +8,7 @@ test("a tall image fits whole and zooms by controls, wheel and keys", async ({
 }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto(`/#session=${session.id}`);
-  await expect(page.getByLabel("Message or guidance")).toBeEnabled();
+  await online(page);
   // A phone screenshot: far taller than the screen.
   const png = await page.evaluate(async () => {
     const canvas = new OffscreenCanvas(600, 2400);

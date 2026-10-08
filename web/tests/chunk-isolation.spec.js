@@ -1,6 +1,6 @@
 // Transcript must not statically import lazy dialog chunks: holding every
 // dialog chunk must not block message or turn-footer rendering.
-import { test, expect } from "./fixtures.js";
+import { test, expect, online } from "./fixtures.js";
 import { readFile } from "node:fs/promises";
 
 test("transcript renders while dialog chunks are held", async ({
@@ -34,17 +34,12 @@ test("transcript renders while dialog chunks are held", async ({
       await route.continue();
     });
   }
-  const release = async (key) => {
-    gates[key]();
-    await page.waitForTimeout(200);
-  };
-
   // The deliberately held lazy resources keep document readiness open. The
   // response commit is sufficient to release the shell chunks without making
   // navigation wait on the resources this test is intentionally gating.
   await page.goto(`/#session=${session.id}`, { waitUntil: "commit" });
   const prompt = page.getByLabel("Message or guidance");
-  await expect(prompt).toBeVisible();
+  await online(page);
 
   await command("model", {
     session_id: session.id,
@@ -75,7 +70,7 @@ test("transcript renders while dialog chunks are held", async ({
   ).toHaveCSS("display", "flex");
 
   // Releasing the statistics chunk must light up the dialog on demand.
-  await release("statistics");
+  gates.statistics();
   await page
     .getByRole("button", { name: /^Turn statistics: / })
     .first()

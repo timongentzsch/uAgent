@@ -34,7 +34,7 @@
   "devDependencies": {
     "@playwright/test": "1.63.0",
     "@types/markdown-it": "14.2.0",
-    "@types/node": "24.13.3",
+    "@types/node": "26.6.4",
     "axe-core": "4.13.0",
     "prettier": "3.9.6",
     "typescript": "7.0.2",

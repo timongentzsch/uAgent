@@ -127,14 +127,8 @@ json Agent::SideQuestion(const std::string& question) const {
   // attachments are prepared per request, so a side question reads text only.
   json messages = json::array();
   for (json message : *context->messages) {
-    if (const json* parts = JsonArray(message, "content")) {
-      std::string text;
-      for (const json& part : *parts) {
-        if (JsonValue(part, "type", "") == "text") {
-          text += JsonValue(part, "text", "");
-        }
-      }
-      message["content"] = std::move(text);
+    if (JsonArray(message, "content")) {
+      message["content"] = ContentText(message, "");
     }
     messages.push_back(std::move(message));
   }
@@ -540,16 +534,7 @@ json Agent::CompactionMessages() const {
     const json& message = conversation_.At(index);
     if (!message.is_object()) continue;
     MessageKind kind = conversation_.KindAt(index);
-    std::string content;
-    if (message.contains("content") && message["content"].is_string()) {
-      content = message["content"].get<std::string>();
-    } else if (message.contains("content") && message["content"].is_array()) {
-      for (const json& item : message["content"]) {
-        if (JsonValue(item, "type", "") == "text") {
-          content += JsonValue(item, "text", "");
-        }
-      }
-    }
+    const std::string content = ContentText(message, "");
     if (kind == MessageKind::kUser) {
       append("USER: ", content, kProseBytes);
       continue;

@@ -82,16 +82,7 @@ std::string Text(const json& message) {
   if (JsonValue(message, "kind", "") == "activity") {
     return JsonValue(message, "text", "");
   }
-  if (const json* parts = JsonArray(message, "content")) {
-    std::string text;
-    for (const json& part : *parts) {
-      if (JsonValue(part, "type", "") == "text") {
-        text += JsonValue(part, "text", "");
-      }
-    }
-    return text;
-  }
-  return JsonValue(message, "content", "");
+  return ContentText(message, "");
 }
 
 // Scans a double-quoted segment with backslash escapes. `pos` starts on the

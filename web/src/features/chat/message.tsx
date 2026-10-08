@@ -210,8 +210,6 @@ function MessageView({ block, online, session }: MessageProps) {
   // Another session's or the harness's words: an event with its sender's
   // label, never the person's bar. The label is the text's own opening
   // bracket ("[thread event, not a user message] …").
-  // A pass or a wait in a chat is nobody's to read.
-  if (block.silent) return null;
   if (block.kind === "user" && block.origin === "mail" && !member) {
     const match = /^\[([^\]]+)\]\s*([\s\S]*)$/.exec(text || "");
     const label = match?.[1] ?? "Message";
@@ -598,7 +596,11 @@ export async function prepareHistoryBlocks(blocks: Block[]) {
 // from its own start, and until then a row stays as the person left it.
 export function MessageRows({ blocks, ...props }: MessageRowsProps) {
   const { level, policy } = useContext(DetailContext);
-  const rows = useMemo(() => presentMessages(blocks, policy), [blocks, policy]);
+  const chat = !!useContext(MessageActions).team?.length;
+  const rows = useMemo(
+    () => presentMessages(blocks, policy, chat),
+    [blocks, policy, chat],
+  );
   const scope = `${props.session?.id || ""}:${level}:`;
   return (
     <>

@@ -45,13 +45,30 @@ export const recallable = (
 // placeholders (a response before its first delta) are dropped: the status
 // line covers the live state. A tool row keeps the model call that made it.
 // The verbosity level's policy then says how tool work folds.
+// A chat participant answers "PASS" or "WAIT" when it has nothing to say
+// now. Such an answer is nobody's to read, and neither is one that may still
+// become it: while a reply streams and could yet be one of the two words,
+// it has no row, so nothing appears only to be taken away.
+const UNSAID = ["PASS", "PASS.", "WAIT", "WAIT."];
+function unsaid(block: Block, chat: boolean) {
+  if (block.silent) return true;
+  if (!chat || block.kind !== "assistant") return false;
+  const text = (block.text || "").trim();
+  return block.streaming
+    ? UNSAID.some((word) => word.startsWith(text))
+    : UNSAID.includes(text);
+}
+
+// With `chat`, the conversation is a coordinator's chat with members.
 export function presentMessages(
   blocks: Block[],
   policy: DetailPolicy = defaultDetail.policy,
+  chat = false,
 ): PresentedBlock[] {
   const rows: PresentedBlock[] = [];
   const responses = new Map<string, Block>();
   for (const block of blocks) {
+    if (unsaid(block, chat)) continue;
     if (block.kind === "assistant" && block.response_id)
       responses.set(block.response_id, block);
     // Thinking is content only at a level that shows it: a reply holding

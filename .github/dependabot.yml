@@ -1,16 +1,18 @@
 version: 2
 updates:
+  # Minor and patch updates come together, once a week. A major version
+  # comes on its own, so what breaks is known by name.
   - package-ecosystem: npm
     directory: /web
     schedule:
       interval: weekly
     groups:
       web:
-        patterns: ["*"]
+        update-types: [minor, patch]
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
     groups:
       actions:
-        patterns: ["*"]
+        update-types: [minor, patch]

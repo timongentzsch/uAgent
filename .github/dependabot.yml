@@ -9,6 +9,11 @@ updates:
     groups:
       web:
         update-types: [minor, patch]
+    # The type definitions follow the Node version CI and the image build
+    # with, not the newest one.
+    ignore:
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
     schedule:

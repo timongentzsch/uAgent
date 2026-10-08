@@ -270,6 +270,12 @@ On a pull request, `.github/changes.py` selects jobs by the paths changed:
 A pull request that touches native code runs what a push to `master` runs,
 so a green pull request is a green `master`.
 
+The Linux build jobs reuse compiled objects through ccache
+(`.github/actions/ccache`): restored in every run, saved only from `master`.
+A newer push to a pull request cancels the run of the older one; runs on
+`master` are never cancelled, so each merge is tested as it landed. A browser
+spec gets one retry, locally and in CI.
+
 | Job | Runs |
 | --- | --- |
 | `web-dist` | The web bundle the native builds embed; skipped when only `web/` or documents changed |

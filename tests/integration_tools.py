@@ -27,6 +27,7 @@ from integration_support import (
     signal_process_group,
     tool_call,
     tool_results,
+    wait_until,
 )
 
 
@@ -642,11 +643,13 @@ def test_detached_terminal_survives_and_is_readable(root, home, *, binary):
                 timeout=8,
                 binary=binary,
             )
-            for _ in range(40):
-                if pid_file.exists():
-                    break
-                time.sleep(0.05)
-            assert_true(pid_file.exists(), "detached command did not start")
+            # Written, not merely there: the shell creates it before it
+            # writes the number.
+            wait_until(
+                lambda: pid_file.exists() and pid_file.read_text(encoding="utf-8").strip(),
+                "detached command did not start",
+                timeout=2,
+            )
             pid = int(pid_file.read_text(encoding="utf-8"))
             assert_true(launched.returncode == 0, launched.stderr)
             assert_true("launched" in launched.stdout, launched.stdout)

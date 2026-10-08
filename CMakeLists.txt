@@ -411,10 +411,16 @@ if(BUILD_TESTING)
     endif()
   endif()
   foreach(group IN ITEMS runtime tools ui providers mcp delegation sandbox)
+    # By far the longest group (80 s of 190 s in all), so it alone decided
+    # how long a parallel run takes: dealt to three runners, and counted as three.
+    set(_runners)
+    if(group STREQUAL "runtime")
+      set(_runners -j3)
+    endif()
     add_test(NAME integration_${group}
              COMMAND ${Python3_EXECUTABLE}
                      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration.py
-                     $<TARGET_FILE:uagent> --group ${group})
+                     $<TARGET_FILE:uagent> --group ${group} ${_runners})
     # A backstop, not the deadline. Every case inside the runner carries its
     # own budget, scaled by UAGENT_TEST_TIMEOUT_SCALE, and that budget is what
     # should fail -- it prints the captured terminal session and names the
@@ -424,6 +430,7 @@ if(BUILD_TESTING)
     # (TSan runtime, ~5min) so the runner always wins the race.
     set_tests_properties(integration_${group} PROPERTIES TIMEOUT 900)
   endforeach()
+  set_tests_properties(integration_runtime PROPERTIES PROCESSORS 3)
   # Source checks: no binary needed, so CI runs them apart (label `source`).
   foreach(_check IN ITEMS "ci_changes|tests/ci_changes_test.py"
                           "layer_boundary|tests/boundary_test.py"
@@ -461,9 +468,13 @@ if(UAGENT_BUILD_BENCHMARKS)
 endif()
 
 if(UAGENT_BUILD_FUZZERS)
+  # Each is built from what it fuzzes and the base library, not from the
+  # whole application: two parsers do not need 150 translation units.
+  add_executable(uagent_fuzz_sse tests/fuzz/fuzz_sse.cc)
+  add_executable(uagent_fuzz_input_decoder tests/fuzz/fuzz_input_decoder.cc
+                                           src/ui/input_decoder.cc)
   foreach(_fuzzer sse input_decoder)
-    add_executable(uagent_fuzz_${_fuzzer} tests/fuzz/fuzz_${_fuzzer}.cc)
-    target_link_libraries(uagent_fuzz_${_fuzzer} PRIVATE uagent_core)
+    target_link_libraries(uagent_fuzz_${_fuzzer} PRIVATE uagent_core_base)
     target_link_options(uagent_fuzz_${_fuzzer} PRIVATE -fsanitize=fuzzer)
   endforeach()
 endif()

@@ -50,7 +50,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-## @chevrotain/cst-dts-gen@11.1.2
+## @chevrotain/cst-dts-gen@13.2.0
 
 Apache License
                            Version 2.0, January 2004
@@ -254,7 +254,7 @@ Apache License
    See the License for the specific language governing permissions and
    limitations under the License.
 
-## @chevrotain/gast@11.1.2
+## @chevrotain/gast@13.2.0
 
 Apache License
                            Version 2.0, January 2004
@@ -458,7 +458,7 @@ Apache License
    See the License for the specific language governing permissions and
    limitations under the License.
 
-## @chevrotain/regexp-to-ast@11.1.2
+## @chevrotain/regexp-to-ast@13.2.0
 
 Apache License
                            Version 2.0, January 2004
@@ -662,7 +662,7 @@ Apache License
    See the License for the specific language governing permissions and
    limitations under the License.
 
-## @chevrotain/types@11.1.2
+## @chevrotain/types@13.2.0
 
 Apache License
                            Version 2.0, January 2004
@@ -866,7 +866,7 @@ Apache License
    See the License for the specific language governing permissions and
    limitations under the License.
 
-## @chevrotain/utils@11.1.2
+## @chevrotain/utils@13.2.0
 
 Apache License
                            Version 2.0, January 2004
@@ -1118,7 +1118,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-## @mdit/helper@1.1.1
+## @mdit/helper@1.1.2
 
 The MIT License (MIT)
 
@@ -1142,7 +1142,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-## @mdit/plugin-katex@1.1.1
+## @mdit/plugin-katex@1.1.3
 
 The MIT License (MIT)
 
@@ -1166,7 +1166,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-## @mdit/plugin-tex@1.1.1
+## @mdit/plugin-tex@1.1.2
 
 The MIT License (MIT)
 
@@ -1191,7 +1191,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-## @mermaid-js/parser@2.0.0
+## @mermaid-js/parser@2.0.1
 
 The MIT License (MIT)
 
@@ -2123,7 +2123,7 @@ products or services of Licensee, or any third party.
 agrees to be bound by the terms and conditions of this License
 Agreement.
 
-## chevrotain@11.1.2
+## chevrotain@13.2.0
 
 Apache License
                            Version 2.0, January 2004
@@ -4373,7 +4373,31 @@ OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
 TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 
-## katex@0.18.7
+## katex@0.18.10
+
+The MIT License (MIT)
+
+Copyright (c) 2013-2020 Khan Academy and other contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+## katex@0.19.0
 
 The MIT License (MIT)
 
@@ -4544,7 +4568,7 @@ maintained libraries used by this software which have their own
 licenses; we recommend you read them, as their terms may differ from the
 terms above.
 
-## lucide-preact@1.42.0
+## lucide-preact@1.52.0
 
 ISC License
 
@@ -4590,7 +4614,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-## markdown-it@15.0.1
+## markdown-it@15.0.2
 
 Copyright (c) 2014 Vitaly Puzrin, Alex Kocharin.
 
@@ -4710,7 +4734,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 IN THE SOFTWARE.
 
-## mermaid@12.0.0
+## mermaid@12.1.0
 
 The MIT License (MIT)
 

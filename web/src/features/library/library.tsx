@@ -16,16 +16,12 @@ import {
   Spinner,
   DataText,
   Placeholder,
+  Time,
 } from "../../shared/ui.tsx";
 import { Menu, MenuItem } from "../../shared/menu.tsx";
 import { readStored, writeStored } from "../../state/store.ts";
 import { bytes } from "../../shared/quantities.ts";
-import {
-  useLibrary,
-  ProjectField,
-  ScopeField,
-  dateTime,
-} from "./management.tsx";
+import { useLibrary, ProjectField, ScopeField } from "./management.tsx";
 import Markdown from "../../shared/markdown-view.tsx";
 import FolderLabel, { folderName } from "../../shared/folder-label.tsx";
 import "../chat/message.css";
@@ -487,9 +483,7 @@ export default function Library({
                     <dd>{item.path || "Created when saved"}</dd>
                     <dt>Updated</dt>
                     <dd>
-                      {dateTime(
-                        item.modified ? item.modified / 1000 : undefined,
-                      )}
+                      {item.modified ? <Time value={item.modified} /> : "—"}
                     </dd>
                     <dt>Origin</dt>
                     <dd>

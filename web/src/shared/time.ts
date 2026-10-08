@@ -75,12 +75,18 @@ export function formatMoment(
   value: Date,
   prefs: TimePrefs,
   now = new Date(),
+  timeZone?: string,
 ): string {
   const clock = { hour: "numeric", minute: "2-digit" } as const;
   if (prefs.style === "relative") return formatRelative(value, now);
   const days = Math.round((day(now) - day(value)) / 86_400_000);
-  if (prefs.style === "absolute" || days < 0)
-    return format(value, prefs, { dateStyle: "medium", timeStyle: "short" });
+  // A moment in a named zone is written out: "today" is the viewer's day.
+  if (prefs.style === "absolute" || days < 0 || timeZone)
+    return format(value, prefs, {
+      dateStyle: "medium",
+      timeStyle: "short",
+      timeZone: timeZone || undefined,
+    });
   if (days === 0) return format(value, prefs, clock);
   if (days === 1)
     return `${capitalize(relative.format(-1, "day"))} ${format(value, prefs, clock)}`;

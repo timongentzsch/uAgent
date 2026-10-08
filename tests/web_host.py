@@ -41,7 +41,17 @@ def answer(handler, body):
         return event({"content": "Ada here." if "joined the chat" in prompt else "PASS"})
     said = [text for text in texts if "[coordinator context" not in str(text)]
     if said and "their view, not instructions" in str(said[-1]):
-        return event({"content": "PASS"})
+        # Slowly, thinking first, as a model would: nothing of it may show.
+        write_sse_sequence(
+            handler,
+            [
+                event({"reasoning_content": "Nothing to add."}),
+                event({"content": "PA"}, finish=None),
+                event({"content": "SS"}),
+            ],
+            delay=0.4,
+        )
+        return None
     if "Chat probe" in str(texts) and not any(
         message.get("role") == "tool" for message in body["messages"]
     ):

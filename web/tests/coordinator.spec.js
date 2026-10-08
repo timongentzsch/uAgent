@@ -237,12 +237,32 @@ test("a member joins the chat, is addressed with @ and answers under its name", 
   await prompt.pressSequentially("@A");
   await page.getByRole("option", { name: "@Ada" }).click();
   await expect(prompt).toHaveValue("@Ada ");
+  // From here on, whatever is added to the transcript is recorded, and so is
+  // how tall it is: a pass must add nothing and move nothing.
+  await page.evaluate(() => {
+    window.added = [];
+    const content = document.querySelector(".transcript-content");
+    new MutationObserver((records) => {
+      for (const record of records)
+        for (const node of record.addedNodes)
+          window.added.push(node.textContent || "");
+    }).observe(content, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
+  });
   await prompt.fill("@Ada Second opinion");
   await prompt.press("Enter");
   await expect(page.locator(".composer .status-line")).toContainText(
     "Ada is typing…",
   );
   await expect(said.last()).toContainText("I would ship it.");
+  const height = () =>
+    page.evaluate(
+      () => document.querySelector(".transcript-content").scrollHeight,
+    );
+  const answered = await height();
   await expect
     .poll(async () => {
       const blocks = (await (await request.get(`/api/sessions/${id}`)).json())
@@ -252,6 +272,11 @@ test("a member joins the chat, is addressed with @ and answers under its name", 
     .toBeGreaterThan(0);
   await expect(page.locator(".composer .status-led.running")).toHaveCount(0);
   await expect(page.locator(".transcript")).not.toContainText("PASS");
+  // Nothing of the coordinator's turn was ever in the transcript, and from
+  // Ada's answer on its height never changed.
+  const added = await page.evaluate(() => window.added);
+  expect(added.filter((text) => /PA|Nothing to add/.test(text))).toEqual([]);
+  expect(await height()).toBe(answered);
   await expect(page.locator(".turn-summary")).toHaveCount(1);
   await expect(
     page.locator(".transcript .message .actor", { hasText: "Coordinator" }),

@@ -263,7 +263,7 @@ const STATE_ICONS: Partial<Record<SessionState, typeof Inbox>> = {
 // The list's folders in its order, newest first: each folder's threads
 // (under its coordinator's header), then its conversations. The
 // coordinator is the header, not a row.
-export function groupSessions(sessions: Session[], search = "") {
+function groupSessions(sessions: Session[], search = "") {
   const groups = new Map<string, { threads: Session[]; others: Session[] }>();
   for (const item of [...sessions]
     .sort((a, b) => (b.updated || 0) - (a.updated || 0))

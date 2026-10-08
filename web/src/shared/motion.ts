@@ -1,6 +1,6 @@
 // Motion in script uses the same tokens as CSS (style.css :root), so the
 // one reduced-motion switch there covers animations started here too.
-export type Motion = "fast" | "base" | "slow";
+type Motion = "fast" | "base" | "slow";
 
 export function motionMs(name: Motion) {
   const value = getComputedStyle(document.documentElement).getPropertyValue(

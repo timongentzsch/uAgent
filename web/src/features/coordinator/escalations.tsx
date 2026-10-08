@@ -57,7 +57,7 @@ export default function WaitingList({
 
 // The decision a session waits on: undefined while it loads, null once the
 // session no longer waits.
-export function usePendingDecision(item: Session) {
+function usePendingDecision(item: Session) {
   const resource = useResource(
     () =>
       api<{ pending?: Pending | null }>(`/api/sessions/${item.id}`).then(

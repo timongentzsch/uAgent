@@ -4,7 +4,7 @@ export type JSONValue =
   null | boolean | number | string | JSONValue[] | { [key: string]: JSONValue };
 // "inline": the surface that failed shows it; the banner stays clear.
 export type Report = (error: unknown, scope?: "inline") => void;
-export interface Failure extends Error {
+interface Failure extends Error {
   network?: boolean;
   status?: number;
   rejected?: boolean;
@@ -68,7 +68,7 @@ export interface Exchange {
   response_headers?: string;
   turn_root?: string;
 }
-export interface ToolActivity {
+interface ToolActivity {
   // The call's intent: explore, research, edit, verify, run, setup,
   // delegate, memory or share.
   category?: string;
@@ -128,7 +128,7 @@ export interface TurnFile {
   undoable: boolean;
 }
 // Why the last turn ended; null while one runs.
-export interface TurnStop {
+interface TurnStop {
   reason: string;
   detail?: string;
 }
@@ -296,7 +296,7 @@ export interface AskQuestion {
 // What the agent showed of an option: an image it made, snapshotted into the
 // session (id; the path is for terminals), and a monospace preview. The
 // description is the image's alt text.
-export interface AskOption {
+interface AskOption {
   label: string;
   description: string;
   image?: { id?: string; name?: string; path: string };
@@ -316,7 +316,7 @@ export interface Permissions {
   // The mode no choice here can exceed, where the conversation has one.
   limit?: string;
 }
-export interface PermissionRule {
+interface PermissionRule {
   key: string;
   tool: string;
   preview: string;
@@ -365,7 +365,7 @@ export interface Session {
   error?: string;
 }
 export type SessionRef = Pick<Session, "id" | "generation">;
-export interface ActivityStatusDetail {
+interface ActivityStatusDetail {
   source: "lifecycle" | "tool" | "model_intent" | "summary" | "reasoning";
   label: string;
   response_id: string;
@@ -488,7 +488,7 @@ export interface Outcome {
   unknown?: boolean;
   error?: string;
 }
-export interface EventData extends Omit<Partial<Exchange>, "status"> {
+interface EventData extends Omit<Partial<Exchange>, "status"> {
   request_id?: string;
   // approval.requested: "coordinator" while a thread's coordinator decides.
   route?: string;
@@ -602,7 +602,7 @@ export interface ModelCatalogue {
 // One setting as the host states it: its description, then the facts.
 // Where a setting's value can be saved, and every place it can come from.
 export type ConfigScope = "user" | "project" | "conversation";
-export type ConfigSource = ConfigScope | "environment" | "cli";
+type ConfigSource = ConfigScope | "environment" | "cli";
 export interface ConfigSetting {
   name: string;
   // Its name in the settings file: "limits.maxSteps".
@@ -675,7 +675,7 @@ export interface ToolCatalogue {
   full_schema_bytes: number;
   tools: ToolCatalogueItem[];
 }
-export interface ToolCategory {
+interface ToolCategory {
   id: string;
   name: string;
   created: number;
@@ -798,7 +798,7 @@ export interface CommandFields {
   turn?: number;
   path?: string;
 }
-export type Receipt<T> = Outcome &
+type Receipt<T> = Outcome &
   ({ pending: true } | { pending?: false; result: T });
 export type CommandReceipt<K extends CommandKind> = Receipt<CommandResults[K]> &
   (K extends "create" ? { session: Session } : object);
@@ -863,7 +863,7 @@ export interface LibraryItem {
   required_tools?: string[];
   files?: string[];
 }
-export interface LibraryResult {
+interface LibraryResult {
   enabled?: boolean;
   items?: LibraryItem[];
   item?: LibraryItem;
@@ -895,7 +895,7 @@ export interface ScheduledTask {
   next?: number;
   upcoming?: number[];
 }
-export interface ScheduledRun {
+interface ScheduledRun {
   session_available?: boolean;
   id: string;
   task_id: string;
@@ -914,7 +914,7 @@ export interface ScheduledState {
   runs: ScheduledRun[];
   revision: string;
 }
-export interface ScheduleResult extends Partial<ScheduledState> {
+interface ScheduleResult extends Partial<ScheduledState> {
   item?: ScheduledTask;
   run?: ScheduledRun;
   times?: number[];

@@ -37,7 +37,7 @@ import {
 } from "./dialogs.ts";
 
 // What Settings shows and changes of the shell's own state.
-export type Preferences = Pick<
+type Preferences = Pick<
   ComponentProps<typeof Settings>,
   | "theme"
   | "setTheme"

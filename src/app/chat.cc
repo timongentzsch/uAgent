@@ -223,8 +223,12 @@ std::string Chat::Context() const {
   for (const SessionInfo& member : members) {
     names += (names.empty() ? "" : ", ") + Name(member);
   }
-  std::set<std::string> others = typing_;
-  others.erase(kSelf);
+  std::set<std::string> others;
+  for (const SessionInfo& member : members) {
+    if (typing_.contains(MailboxIdFor(member.path)) && AnswerAhead(member)) {
+      others.insert(MailboxIdFor(member.path));
+    }
+  }
   const std::string typing = Names(members, others);
   return "\n## chat\nMembers: " + names +
          (typing.empty() ? "" : "\nTyping: " + typing) + "\n";
@@ -269,14 +273,7 @@ json Chat::Deliver(const std::string& from, const std::string& author,
                    const std::string& text, const json& to,
                    const std::string& source) {
   const std::vector<SessionInfo> members = ChatMembers(folder_);
-  // Nobody waits for a member that has left.
-  const auto here = [&](const std::string& id) {
-    return id == kSelf || std::ranges::any_of(members, [&](const auto& member) {
-             return MailboxIdFor(member.path) == id;
-           });
-  };
-  std::erase_if(typing_, [&](const std::string& id) { return !here(id); });
-  std::erase_if(waiting_, [&](const std::string& id) { return !here(id); });
+  Settle(members);
 
   // Whom it is for: those it opens with, else whoever asked its author.
   const std::set<std::string> opens = Named(members, text);
@@ -352,7 +349,25 @@ json Chat::Deliver(const std::string& from, const std::string& author,
   return self ? asks(kSelf) : json();
 }
 
+void Chat::Settle(const std::vector<SessionInfo>& members) {
+  const auto member = [&](const std::string& id) {
+    return std::ranges::find_if(members, [&](const auto& item) {
+      return MailboxIdFor(item.path) == id;
+    });
+  };
+  // Nobody waits for a member that has left, nor for one whose answer
+  // nothing can bring any more: its runtime never started, or is gone.
+  std::erase_if(typing_, [&](const std::string& id) {
+    return id != kSelf &&
+           (member(id) == members.end() || !AnswerAhead(*member(id)));
+  });
+  std::erase_if(waiting_, [&](const std::string& id) {
+    return id != kSelf && member(id) == members.end();
+  });
+}
+
 void Chat::Release(const std::vector<SessionInfo>& members) {
+  Settle(members);
   const std::string note = "[chat, not a user message] Nobody is typing now.";
   // The first waiter that can still be woken; one that cannot is passed
   // over, so nobody waits behind it.

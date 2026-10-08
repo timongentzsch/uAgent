@@ -886,6 +886,16 @@ std::string CoordinatorPause(const std::string& folder) {
          "UAGENT_COORDINATOR_DAILY_SPEND_USD; your own messages still run.";
 }
 
+bool AnswerAhead(const SessionInfo& member) {
+  const std::string status = LiveStatus(member);
+  if (status == "needs you") return false;
+  return status != "saved" ||
+         std::ranges::any_of(
+             PendingMail(MailboxIdFor(member.path)), [](const Mail& mail) {
+               return NowMillis() - mail.created_ms < kStartingMs;
+             });
+}
+
 bool ThreadsOwe(const std::string& folder) {
   // Looked at in the order the work moves, so nothing slips between two
   // looks: a thread mails its report before it shows idle, and the mail is
@@ -899,16 +909,8 @@ bool ThreadsOwe(const std::string& folder) {
         if (status == "working" || (status == "idle" && info.turns == 0)) {
           return true;
         }
-        // A chat member woken and not yet heard from has an answer ahead
-        // as long as something can still bring it: a runtime that does not
-        // wait on a person, or a wake-up sent moments ago that is starting
-        // one.
-        const std::string box = MailboxIdFor(info.path);
-        if (!typing.contains(box) || status == "needs you") return false;
-        return status != "saved" ||
-               std::ranges::any_of(PendingMail(box), [](const Mail& mail) {
-                 return NowMillis() - mail.created_ms < kStartingMs;
-               });
+        // A chat member woken and not yet heard from.
+        return typing.contains(MailboxIdFor(info.path)) && AnswerAhead(info);
       })) {
     return true;
   }

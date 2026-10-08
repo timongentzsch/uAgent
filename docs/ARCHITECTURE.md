@@ -25,7 +25,7 @@ no application server language runtime or dynamically loaded plugin layer.
 | `src/media/` | Attachment encoding and display projections |
 | `src/transport/` | Session frames and SSE framing |
 | `src/ui/` | Terminal input and presentation |
-| `src/web/` | Authenticated HTTP/SSE adapter (`master.cc`), assets and optional push |
+| `src/web/` | Authenticated HTTP/SSE adapter (`master.cc`), assets and optional push (`push.cc`; `no_push.cc` stands in when `UAGENT_WEB_PUSH=OFF`) |
 | `web/src/` | Browser event projection and presentation: `app/` shell, `state/` host-data layer, `features/<name>/` self-contained UI, `shared/` cross-feature rendering and formatting |
 | `tests/`, `benchmarks/` | Behavioral contracts and measurement |
 

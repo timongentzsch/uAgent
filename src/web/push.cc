@@ -6,6 +6,7 @@
 #include <curl/curl.h>
 #include <fcntl.h>
 #include <netinet/in.h>
+#include <openssl/rand.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -24,11 +25,7 @@
 #include "include/core/time.h"
 #include "include/tools/files.h"
 #include "include/web/protocol.h"
-#ifdef UAGENT_WEB_PUSH
-#include <openssl/rand.h>
-
 #include "include/web/push_crypto.h"
-#endif
 
 namespace uagent::web {
 namespace {
@@ -109,7 +106,6 @@ bool PublicPushAddress(const sockaddr* address) {
   return false;
 }
 
-#ifdef UAGENT_WEB_PUSH
 namespace {
 constexpr size_t kPushResponseBytes = KiB(64);
 constexpr size_t kPushStoreBytes = KiB(128);
@@ -139,11 +135,9 @@ curl_socket_t OpenSocket(void*, curlsocktype purpose, curl_sockaddr* address) {
   return fd;
 }
 }  // namespace
-#endif
 
 struct PushSender::Impl {
   std::string reason = "native Web Push is not compiled (UAGENT_WEB_PUSH=OFF)";
-#ifdef UAGENT_WEB_PUSH
   struct Subscription {
     std::string device, endpoint, public_key, auth;
   };
@@ -315,13 +309,11 @@ struct PushSender::Impl {
       }
     }
   }
-#endif
 };
 
 PushSender::PushSender(const std::string& directory, const std::string& contact,
                        const PushTransport& transport)
     : impl_(std::make_unique<Impl>()) {
-#ifdef UAGENT_WEB_PUSH
   impl_->directory = directory;
   impl_->contact = contact;
   impl_->transport = transport;
@@ -363,26 +355,18 @@ PushSender::PushSender(const std::string& directory, const std::string& contact,
   }
   impl_->reason.clear();
   impl_->sender = std::thread([this] { impl_->Run(); });
-#else
-  (void)directory;
-  (void)contact;
-  (void)transport;
-#endif
 }
 PushSender::~PushSender() {
-#ifdef UAGENT_WEB_PUSH
   impl_->stopping = true;
   impl_->changed.notify_all();
   if (impl_->sender.joinable()) {
     impl_->sender.join();
   }
-#endif
 }
 json PushSender::Capabilities(const std::string& device) const {
   json result = {{"push", impl_->reason.empty()},
                  {"push_reason", impl_->reason},
                  {"subscribed", false}};
-#ifdef UAGENT_WEB_PUSH
   std::lock_guard lock(impl_->mutex);
   if (impl_->key) {
     result["vapid_public_key"] = Base64Url(PushPublicKey(impl_->key.get()));
@@ -390,9 +374,6 @@ json PushSender::Capabilities(const std::string& device) const {
   result["subscribed"] =
       std::any_of(impl_->subscriptions.begin(), impl_->subscriptions.end(),
                   [&](const auto& item) { return item.device == device; });
-#else
-  (void)device;
-#endif
   return result;
 }
 bool PushSender::Subscribe(const std::string& device, const json& subscription,
@@ -401,7 +382,6 @@ bool PushSender::Subscribe(const std::string& device, const json& subscription,
   if (!error.empty()) {
     return false;
   }
-#ifdef UAGENT_WEB_PUSH
   json keys = JsonValue(subscription, "keys", json::object());
   Impl::Subscription item{device, JsonValue(subscription, "endpoint", ""),
                           JsonValue(keys, "p256dh", ""),
@@ -426,14 +406,8 @@ bool PushSender::Subscribe(const std::string& device, const json& subscription,
     return false;
   }
   return true;
-#else
-  (void)device;
-  (void)subscription;
-  return false;
-#endif
 }
 bool PushSender::Revoke(const std::string& device) {
-#ifdef UAGENT_WEB_PUSH
   std::lock_guard lock(impl_->mutex);
   auto previous = impl_->subscriptions;
   std::erase_if(impl_->subscriptions,
@@ -442,14 +416,10 @@ bool PushSender::Revoke(const std::string& device) {
     impl_->subscriptions = std::move(previous);
     return false;
   }
-#else
-  (void)device;
-#endif
   return true;
 }
 bool PushSender::Notify(const std::string& event, const std::string& session,
                         const std::string& device) {
-#ifdef UAGENT_WEB_PUSH
   if (!impl_->reason.empty() || event.size() > kPushEventChars ||
       !OpaqueId(session)) {
     return false;
@@ -468,11 +438,5 @@ bool PushSender::Notify(const std::string& event, const std::string& session,
       {event, session, device, std::chrono::steady_clock::now()});
   impl_->changed.notify_one();
   return true;
-#else
-  (void)event;
-  (void)session;
-  (void)device;
-  return false;
-#endif
 }
 }  // namespace uagent::web

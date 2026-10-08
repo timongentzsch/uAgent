@@ -101,7 +101,8 @@ bool Agent::DeliverMail(bool hold) {
     }
     const bool quiet = JsonValue(mail.body, "quiet", false);
     NotFromUser(text, JsonValue(mail.body, "author", ""), mail.id,
-                quiet ? 0 : JsonValue(mail.body, "round", int64_t{0}));
+                quiet ? std::nullopt
+                      : std::optional(JsonValue(mail.body, "re", json())));
     if (quiet) {
       // Read, not answered: it joins the conversation where it stands.
       PushUserInput(text, false, json(), "");

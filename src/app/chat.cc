@@ -136,11 +136,9 @@ Chat::Chat(std::string folder, std::function<void(const std::string&)> wake)
   }
   if (const json* seats = JsonObject(saved, "seats")) {
     for (const auto& [who, seat] : seats->items()) {
-      Seat& restored = seats_[who];
-      restored = {JsonValue(seat, "turns", int64_t{0}),
-                  JsonValue(seat, "posts", 0), JsonValue(seat, "waited", false),
-                  std::nullopt};
-      if (seat.contains("asker")) restored.asker = JsonValue(seat, "asker", "");
+      seats_[who] = {JsonValue(seat, "turns", int64_t{0}),
+                     JsonValue(seat, "posts", 0),
+                     JsonValue(seat, "waited", false)};
     }
   }
   if (const json* heard = JsonObject(saved, "heard")) {
@@ -157,7 +155,6 @@ void Chat::Save() const {
   for (const auto& [who, seat] : seats_) {
     seats[who] = {
         {"turns", seat.turns}, {"posts", seat.posts}, {"waited", seat.waited}};
-    if (seat.asker) seats[who]["asker"] = *seat.asker;
   }
   std::string error;
   if (!AtomicWriteFile(StatePath(folder_),
@@ -172,13 +169,26 @@ void Chat::Save() const {
   }
 }
 
-bool ForMembersOnly(const std::string& folder, const std::string& text) {
+namespace {
+// The participants `text` opens with: a member as its mailbox, the
+// coordinator as kSelf.
+std::set<std::string> Named(const std::vector<SessionInfo>& members,
+                            const std::string& text) {
   std::vector<std::string> names{kSelf};
-  for (const SessionInfo& member : ChatMembers(folder)) {
-    names.push_back(Name(member));
+  for (const SessionInfo& member : members) names.push_back(Name(member));
+  const std::set<std::string> opens = Addressed(text, names);
+  std::set<std::string> ids;
+  if (opens.contains(kSelf)) ids.insert(kSelf);
+  for (const SessionInfo& member : members) {
+    if (opens.contains(Name(member))) ids.insert(MailboxIdFor(member.path));
   }
-  const std::set<std::string> addressed = Addressed(text, names);
-  return !addressed.empty() && !addressed.contains(kSelf);
+  return ids;
+}
+}  // namespace
+
+bool ForMembersOnly(const std::string& folder, const std::string& text) {
+  const std::set<std::string> opens = Named(ChatMembers(folder), text);
+  return !opens.empty() && !opens.contains(kSelf);
 }
 
 std::vector<SessionInfo> ChatMembers(const std::string& folder) {
@@ -220,11 +230,9 @@ std::string Chat::Context() const {
          (typing.empty() ? "" : "\nTyping: " + typing) + "\n";
 }
 
-Chat::Answer Chat::Finished(const std::string& who, const std::string& text,
-                            std::optional<std::string>& asker) {
+Chat::Answer Chat::Finished(const std::string& who, const std::string& text) {
   typing_.erase(who);
   Seat& seat = seats_[who];
-  asker = std::exchange(seat.asker, std::nullopt);
   Answer answer = text.empty() || text == "PASS" || text == "PASS."
                       ? Answer::kPass
                   : text == "WAIT" || text == "WAIT." ? Answer::kWait
@@ -244,8 +252,7 @@ Chat::Answer Chat::Finished(const std::string& who, const std::string& text,
   return answer;
 }
 
-bool Chat::Wakes(const std::string& who, bool some, bool one,
-                 const std::optional<std::string>& asker) {
+bool Chat::Wakes(const std::string& who, bool some, bool one) {
   // Whoever waited, waited for this.
   const bool waited = std::erase(waiting_, who) > 0;
   // Whoever is writing what may be its last message reads this one after.
@@ -253,16 +260,14 @@ bool Chat::Wakes(const std::string& who, bool some, bool one,
   const int ahead = seat.posts + (typing_.contains(who) ? 1 : 0);
   if (seat.turns >= each_ || ahead >= kPostsEach) return false;
   if (!waited && some && !one) return false;
-  seat.asker = one ? asker : std::nullopt;
   ++seat.turns;
   typing_.insert(who);
   return true;
 }
 
-bool Chat::Deliver(const std::string& from, const std::string& author,
-                   const std::string& text,
-                   const std::optional<std::string>& asker,
-                   const std::string& source, bool late) {
+json Chat::Deliver(const std::string& from, const std::string& author,
+                   const std::string& text, const json& to,
+                   const std::string& source) {
   const std::vector<SessionInfo> members = ChatMembers(folder_);
   // Nobody waits for a member that has left.
   const auto here = [&](const std::string& id) {
@@ -273,30 +278,29 @@ bool Chat::Deliver(const std::string& from, const std::string& author,
   std::erase_if(typing_, [&](const std::string& id) { return !here(id); });
   std::erase_if(waiting_, [&](const std::string& id) { return !here(id); });
 
-  std::vector<std::string> names{kSelf};
-  for (const SessionInfo& member : members) names.push_back(Name(member));
-  const std::set<std::string> opens = Addressed(text, names);
   // Whom it is for: those it opens with, else whoever asked its author.
-  std::set<std::string> some;
-  if (opens.contains(kSelf)) some.insert(kSelf);
-  for (const SessionInfo& member : members) {
-    if (opens.contains(Name(member))) some.insert(MailboxIdFor(member.path));
-  }
-  const bool narrowed = !some.empty() || asker.has_value();
-  // Only a message that names its reader is one that reader answers to.
-  const std::optional<std::string> asks =
-      some.empty() ? std::nullopt : std::optional(from);
-  if (some.empty() && asker) some.insert(*asker);
+  const std::set<std::string> opens = Named(members, text);
+  const bool answers = opens.empty() && to.is_object() && to.contains("asker");
+  std::set<std::string> some = opens;
+  if (answers) some.insert(JsonValue(to, "asker", ""));
+  const bool narrowed = !opens.empty() || answers;
+  // What a reader it wakes answers to: only one it names answers its author.
+  const auto asks = [&](const std::string& reader) {
+    json re = {{"round", round_}};
+    if (opens.contains(reader)) re["asker"] = from;
+    return re;
+  };
   // Settled for everyone first, so each is told who else is answering.
+  const bool late = Late(to);
   std::vector<const SessionInfo*> woken;
   for (const SessionInfo& member : members) {
     const std::string id = MailboxIdFor(member.path);
-    if (!late && id != from && Wakes(id, narrowed, some.contains(id), asks)) {
+    if (!late && id != from && Wakes(id, narrowed, some.contains(id))) {
       woken.push_back(&member);
     }
   }
   const bool self = !late && from != kSelf && !from.empty() &&
-                    Wakes(kSelf, narrowed, some.contains(kSelf), asks);
+                    Wakes(kSelf, narrowed, some.contains(kSelf));
   std::vector<SessionInfo> started;
   for (const SessionInfo& member : members) {
     Mail mail;
@@ -316,16 +320,16 @@ bool Chat::Deliver(const std::string& from, const std::string& author,
          author + ": " + text +
              (typing.empty() || !wake ? "" : "\n\n(typing: " + typing + ")")},
         {"author", author},
-        {"round", round_},
+        {"re", asks(mail.to)},
         {"quiet", !wake}};
-    const std::string to = mail.to;
+    const std::string reader = mail.to;
     if (const std::string refused = SendMail(std::move(mail));
         !refused.empty()) {
       DebugLog("chat_mail_refused", {{"error", refused}});
       // Owed nothing it was not sent.
       if (wake) {
-        --seats_[to].turns;
-        typing_.erase(to);
+        --seats_[reader].turns;
+        typing_.erase(reader);
       }
       continue;
     }
@@ -345,7 +349,7 @@ bool Chat::Deliver(const std::string& from, const std::string& author,
       }
     }).detach();
   }
-  return self;
+  return self ? asks(kSelf) : json();
 }
 
 void Chat::Release(const std::vector<SessionInfo>& members) {
@@ -372,7 +376,7 @@ void Chat::Release(const std::vector<SessionInfo>& members) {
     mail.sender_path = CoordinatorPath(folder_);
     mail.from = MailboxIdFor(mail.sender_path);
     mail.type = kMailChat;
-    mail.body = {{"text", note}, {"round", round_}, {"quiet", false}};
+    mail.body = {{"text", note}, {"re", {{"round", round_}}}, {"quiet", false}};
     if (!SendMail(std::move(mail)).empty()) continue;
     ++seat.turns;
     typing_.insert(who);
@@ -384,9 +388,9 @@ void Chat::Release(const std::vector<SessionInfo>& members) {
   }
 }
 
-void Chat::Said(const std::string& text) {
+json Chat::Said(const std::string& text) {
   const std::vector<SessionInfo> members = ChatMembers(folder_);
-  if (members.empty()) return;
+  if (members.empty()) return json();
   // A new round: whoever still owed an answer to the last one owes none.
   each_ = LongSetting(Cfg("UAGENT_COORDINATOR_CHAT_TURNS"));
   round_ = NowMillis();
@@ -396,21 +400,24 @@ void Chat::Said(const std::string& text) {
   heard_.clear();
   // The coordinator answers its user's message like any other, unless it is
   // for members alone.
-  if (!ForMembersOnly(folder_, text)) {
+  const std::set<std::string> opens = Named(members, text);
+  json re;
+  if (opens.empty() || opens.contains(kSelf)) {
     seats_[kSelf].turns = 1;
     typing_.insert(kSelf);
-    if (Addressed(text, {kSelf}).contains(kSelf)) seats_[kSelf].asker = "";
+    re = {{"round", round_}};
+    if (!opens.empty()) re["asker"] = "";
   }
   Deliver("", "user", text);
   Save();
+  return re;
 }
 
-void Chat::Answered(const std::string& text) {
+void Chat::Answered(const std::string& text, const json& to) {
   const std::vector<SessionInfo> members = ChatMembers(folder_);
   if (members.empty()) return;
-  std::optional<std::string> asker;
-  if (Finished(kSelf, Trim(text), asker) == Answer::kMessage) {
-    Deliver(kSelf, kSelf, Trim(text), asker);
+  if (Finished(kSelf, Trim(text)) == Answer::kMessage) {
+    Deliver(kSelf, kSelf, Trim(text), to);
   }
   Release(members);
   Save();
@@ -423,8 +430,10 @@ void Chat::Heard(Mail& mail) {
     return MailboxIdFor(member.path) == mail.from;
   });
   const std::string text = Trim(JsonValue(mail.body, "text", ""));
-  // An answer to an earlier round is read, and is nobody's turn in this one.
-  const bool late = JsonValue(mail.body, "round", int64_t{0}) != round_;
+  // What it answers. One to an earlier round is read, and is nobody's turn
+  // in this one.
+  const json to = JsonValue(mail.body, "re", json::object());
+  mail.body.erase("re");
   mail.body["text"] = "";
   // Counted once: handed over again, it leaves as it did then.
   const auto [read, first] = heard_.try_emplace(mail.id, kNothing);
@@ -432,15 +441,12 @@ void Chat::Heard(Mail& mail) {
   if (sender != members.end()) {
     // Named from its header, never from what it sent.
     const std::string name = Name(*sender);
-    std::optional<std::string> asker;
-    if (first && late) {
-      if (!text.empty() && !SilentAnswer(text)) {
-        Deliver(mail.from, name, text, {}, mail.id, true);
-        read->second = kQuiet;
-      }
-    } else if (first && Finished(mail.from, text, asker) == Answer::kMessage) {
-      read->second =
-          Deliver(mail.from, name, text, asker, mail.id) ? kWaking : kQuiet;
+    if (first && (Late(to) ? !text.empty() && !SilentAnswer(text)
+                           : Finished(mail.from, text) == Answer::kMessage)) {
+      // With what the coordinator's answer to it is an answer to.
+      const json woke = Deliver(mail.from, name, text, to, mail.id);
+      read->second = woke.is_null() ? kQuiet : kWaking;
+      if (!woke.is_null()) mail.body["re"] = woke;
     }
     if (read->second != kNothing) {
       mail.body["quiet"] = read->second == kQuiet;

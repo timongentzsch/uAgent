@@ -4,7 +4,6 @@
 #include <cstdint>
 #include <functional>
 #include <map>
-#include <optional>
 #include <set>
 #include <string>
 #include <utility>
@@ -48,11 +47,12 @@ class Chat {
   // `wake` starts a turn of the coordinator's own on a note.
   Chat(std::string folder, std::function<void(const std::string&)> wake);
 
-  // The user wrote here: a new round.
-  void Said(const std::string& text);
+  // The user wrote here: a new round. Returns what the coordinator's answer
+  // is an answer to (see Deliver).
+  json Said(const std::string& text);
   // The coordinator's turn ended with `text`; empty when it ended without an
-  // answer.
-  void Answered(const std::string& text);
+  // answer. `to` is what the message it took that turn on came with.
+  void Answered(const std::string& text, const json& to);
   // A member's turn ended. `mail` carries its answer and leaves as what the
   // coordinator reads: nothing for a pass or a wait, and quiet unless the
   // message wakes the coordinator too.
@@ -67,29 +67,30 @@ class Chat {
     int64_t turns = 0;    // turns begun this round
     int posts = 0;        // messages this round
     bool waited = false;  // its last answer was to wait
-    // Who put the message it is answering to it by name; empty for the user.
-    std::optional<std::string> asker;
   };
 
   // Records that `who` finished a turn with `text`, and what that was.
-  // `asker` leaves as who had asked it.
-  Answer Finished(const std::string& who, const std::string& text,
-                  std::optional<std::string>& asker);
+  Answer Finished(const std::string& who, const std::string& text);
   // Mails `text` to every member but its author (`from`) and settles whom it
-  // wakes: those it opens with, else the `asker` it answers, else everyone.
-  // `source` is the mail it forwards, whose id makes sending it again the
-  // same mail. `late`, it answers an earlier round and wakes nobody. True
-  // when it wakes the coordinator.
-  bool Deliver(const std::string& from, const std::string& author,
-               const std::string& text,
-               const std::optional<std::string>& asker = {},
-               const std::string& source = "", bool late = false);
+  // wakes: those it opens with, else the one whose question it answers,
+  // else everyone. `to` is what the message it answers came with. `source`
+  // is the mail it forwards, whose id makes sending it again the same mail.
+  // Each message that wakes its reader comes with the round and, put to
+  // that reader by name, with who asked ("asker", empty for the user): the
+  // reader's answer brings it back. Returns that for the coordinator, null
+  // when it is not woken.
+  json Deliver(const std::string& from, const std::string& author,
+               const std::string& text, const json& to = json(),
+               const std::string& source = "");
   // Whether `who` may take another turn on a message for `some` only, which
-  // it is `one` of; `asker` is who put it to them by name.
-  bool Wakes(const std::string& who, bool some, bool one,
-             const std::optional<std::string>& asker);
+  // it is `one` of.
+  bool Wakes(const std::string& who, bool some, bool one);
   // With nobody typing, whoever waited longest is told so.
   void Release(const std::vector<SessionInfo>& members);
+  // Whether `to`, what a message answers, is of an earlier round.
+  bool Late(const json& to) const {
+    return to.is_object() && JsonValue(to, "round", int64_t{0}) != round_;
+  }
   void Save() const;
 
   std::string folder_;

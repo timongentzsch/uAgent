@@ -1322,7 +1322,7 @@ void TestAChatCountsAMailOnce() {
     mail.id = id;
     mail.from = MailboxIdFor(ada);
     mail.type = kMailChat;
-    mail.body = {{"text", text}, {"round", round}};
+    mail.body = {{"text", text}, {"re", {{"round", round}}}};
     chat.Heard(mail);
     return JsonValue(mail.body, "text", "");
   };
@@ -1333,7 +1333,7 @@ void TestAChatCountsAMailOnce() {
   const std::vector<Mail> sent = PendingMail(MailboxIdFor(ada));
   CHECK(sent.size() == 1 &&
         JsonValue(sent[0].body, "text", "") == "user: hello");
-  round = JsonValue(sent[0].body, "round", int64_t{0});
+  round = JsonValue(sent[0].body["re"], "round", int64_t{0});
   const std::string first = heard("m1", "One.");
   CHECK(first == "Ada: One.");
   // Handed over again, it reads as it did and uses up nothing.

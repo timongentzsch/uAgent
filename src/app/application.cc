@@ -264,10 +264,11 @@ void Application::RunPrompt(const std::string& input) {
   // A coordinator's answer is a message in its chat; a turn that ended
   // without one is a turn it is no longer taking.
   if (context_.chat) {
-    context_.chat->Answered(JsonValue(agent_.LastStop(), "reason", "") ==
-                                    "completed"
-                                ? agent_.LastText()
-                                : std::string());
+    context_.chat->Answered(
+        JsonValue(agent_.LastStop(), "reason", "") == "completed"
+            ? agent_.LastText()
+            : std::string(),
+        agent_.ChatRe());
   }
 }
 

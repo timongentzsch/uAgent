@@ -54,7 +54,7 @@ const NO_MEMBERS: Session[] = [];
 
 // "Ada is typing…", for the participants of a chat answering now.
 function typingLabel(names: string[]) {
-  if (!names.length) return "Ready";
+  if (!names.length) return "";
   if (names.length === 1) return `${names[0]} is typing…`;
   if (names.length === 2) return `${names[0]} and ${names[1]} are typing…`;
   return `${names[0]}, ${names[1]} and ${names.length - 2} more are typing…`;
@@ -330,15 +330,17 @@ export default function Composer({
           <span class="activity-toggle">
             <ActivityStatus
               phase={
-                detached ||
                 (members.length
                   ? typingLabel([
                       ...members
                         .filter((item) => online && item.turn_active)
                         .map((item) => item.member || ""),
                       ...(running ? ["Coordinator"] : []),
-                    ])
-                  : state?.activity || (state ? "Ready" : "Loading…"))
+                    ]) ||
+                    detached ||
+                    "Ready"
+                  : detached || state?.activity) ||
+                (state ? "Ready" : "Loading…")
               }
               running={running}
               started={members.length ? undefined : state?.turn_started_ms}

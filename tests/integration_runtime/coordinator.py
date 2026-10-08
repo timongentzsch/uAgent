@@ -1195,6 +1195,14 @@ def test_a_chat_is_heard_by_everyone_and_answered_by_who_has_something_to_say(
         time.sleep(budget(1))
         assert_true([_member(b) for _, b in server.requests] == ["Lin"], server.requests)
 
+        # Put to a member and the coordinator, it is theirs: what the
+        # coordinator answers goes back to the user and wakes nobody.
+        server.requests.clear()
+        result = run(root, env, "coord", "-p", "Ada and coordinator, a word", binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        time.sleep(budget(1))
+        assert_true(sorted(_member(b) for _, b in server.requests) == ["", "Ada"], server.requests)
+
         # A name inside a sentence addresses nobody: everyone is woken.
         server.requests.clear()
         result = run(root, env, "coord", "-p", "is Lin right, everyone?", binary=binary)

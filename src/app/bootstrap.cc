@@ -830,7 +830,9 @@ BootstrapResult Bootstrap(Options options, const char* executable,
       return CoordinatorContext(folder) + chat->Context();
     });
     context->agent->SetChat(
-        [chat = &*context->chat](const std::string& text) { chat->Said(text); },
+        [chat = &*context->chat](const std::string& text) {
+          return chat->Said(text);
+        },
         [chat = &*context->chat](Mail& mail) { chat->Heard(mail); });
   }
   if (context->channel && !context->channel->SessionPath().empty()) {

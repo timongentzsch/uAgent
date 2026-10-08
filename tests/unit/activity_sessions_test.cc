@@ -1329,6 +1329,8 @@ void TestAChatCountsAMailOnce() {
   Chat(folder, [](const std::string&) {}).Said("hello");
   // An answer to an earlier round is read and uses up nothing.
   CHECK(heard("m0", "Zero.") == "Ada: Zero.");
+  // Its own name before its message is not said twice.
+  CHECK(heard("m00", "ada: Zero again.") == "Ada: Zero again.");
   // What Ada was sent says which round hers answers.
   const std::vector<Mail> sent = PendingMail(MailboxIdFor(ada));
   CHECK(sent.size() == 1 &&

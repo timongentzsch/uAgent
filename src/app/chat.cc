@@ -429,7 +429,7 @@ void Chat::Heard(Mail& mail) {
   const auto sender = std::ranges::find_if(members, [&](const auto& member) {
     return MailboxIdFor(member.path) == mail.from;
   });
-  const std::string text = Trim(JsonValue(mail.body, "text", ""));
+  std::string text = Trim(JsonValue(mail.body, "text", ""));
   // What it answers. One to an earlier round is read, and is nobody's turn
   // in this one.
   const json to = JsonValue(mail.body, "re", json::object());
@@ -439,8 +439,12 @@ void Chat::Heard(Mail& mail) {
   const auto [read, first] = heard_.try_emplace(mail.id, kNothing);
   // A member that has left is not heard; its last words go with it.
   if (sender != members.end()) {
-    // Named from its header, never from what it sent.
+    // Named from its header, never from what it sent: a model that writes
+    // its name before its message, as it reads the others', is named once.
     const std::string name = Name(*sender);
+    if (AsciiLower(text).starts_with(AsciiLower(name) + ":")) {
+      text = Trim(text.substr(name.size() + 1));
+    }
     if (first && (Late(to) ? !text.empty() && !SilentAnswer(text)
                            : Finished(mail.from, text) == Answer::kMessage)) {
       // With what the coordinator's answer to it is an answer to.

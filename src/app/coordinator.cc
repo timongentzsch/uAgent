@@ -532,32 +532,15 @@ ToolResult Stop(const SessionInfo& info) {
   return error->empty() ? ToolSuccess("interrupted") : Unavailable(*error);
 }
 
-// Ends a session's runtime: it acknowledges the close, then exits, which
-// closes the socket. Liveness is the handshake, never the socket file, which
-// a crashed runtime leaves behind. Empty when nothing runs any more.
-std::string CloseRuntime(const SessionInfo& info) {
-  session::Connection connection = session::Connect(info.path);
-  if (!connection.socket) return "";
-  std::string error =
-      SendWhenReady(connection, info.path, {{"kind", "close"}}, false);
-  if (!error.empty()) return error;
-  session::ReadFrames(
-      connection.socket.Get(), -1, session::kFrameBytes,
-      [](const json&) { return true; },
-      std::chrono::steady_clock::now() + session::kWorkerShutdownTimeout);
-  return session::Connect(info.path).socket ? "the session did not exit in time"
-                                            : "";
-}
-
 ToolResult Close(const SessionInfo& info) {
-  const std::string error = CloseRuntime(info);
+  const std::string error = CloseRuntime(info.path);
   return error.empty() ? ToolSuccess("closed") : Unavailable(error);
 }
 
 // A running session is closed first. A thread's worktree goes with it, but
 // only when nothing in it is lost.
 ToolResult Delete(const SessionInfo& info, const std::string& folder) {
-  if (const std::string error = CloseRuntime(info); !error.empty()) {
+  if (const std::string error = CloseRuntime(info.path); !error.empty()) {
     return Unavailable(error);
   }
   if (LaunchWorktree(info.cwd)) {

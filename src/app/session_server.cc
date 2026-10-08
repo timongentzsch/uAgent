@@ -201,8 +201,10 @@ Connection Open(const std::string& executable, const std::string& cwd,
       poll(nullptr, 0, 100);
       continue;
     }
-    error = exit == kWorkerOwned
-                ? "another runtime still holds this session"
+    error = exit == kWorkerOwned ? "another runtime still holds this session"
+            : exit == kWorkerCannotListen
+                ? "session runtime could not listen for clients at " +
+                      SocketPath(path)
                 : "session runtime ended while starting (status " +
                       std::to_string(exit) + ")";
     return {};
@@ -389,8 +391,8 @@ Server::~Server() {
     unlink((state_->path + ".lock").c_str());
   }
 }
-bool Server::Start(const std::string& path, const std::string& generation,
-                   std::function<bool(const json&)> command) {
+int Server::Start(const std::string& path, const std::string& generation,
+                  std::function<bool(const json&)> command) {
   auto& state = *state_;
   state.path = SocketPath(path);
   state.id = HashHex(path);
@@ -399,14 +401,14 @@ bool Server::Start(const std::string& path, const std::string& generation,
   state.command = std::move(command);
   std::string error;
   // Published, so others can tell a running session from one that is gone.
-  if (!state.lease.Acquire(state.path + ".lock", error, true) ||
-      !state.wake.Open()) {
-    return false;
+  if (!state.lease.Acquire(state.path + ".lock", error, true)) {
+    return kWorkerOwned;
   }
+  if (!state.wake.Open()) return kWorkerCannotListen;
   state.listener = Socket(state.path, true);
-  if (!state.listener) return false;
+  if (!state.listener) return kWorkerCannotListen;
   state.thread = std::thread([&state] { state.Run(); });
-  return true;
+  return 0;
 }
 size_t Server::Clients() const { return state_->client_count; }
 void Server::Publish(json frame) {

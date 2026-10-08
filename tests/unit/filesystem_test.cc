@@ -1,7 +1,9 @@
 // Copyright 2026 Timon Gentzsch
 
+#include <sys/mman.h>
 #include <sys/wait.h>
 
+#include <atomic>
 #include <string>
 #include <vector>
 
@@ -69,6 +71,37 @@ void TestFileTools() {
                              std::to_string(getpid()) + " stale-start-identity")
             .Ok());
     CHECK(!FileLease::HasLiveOwner((root / "stale.lock").string()));
+    // A holder that leaves removes its lease file, as a runtime does. The
+    // file one contender opened just before that is no lease any more, so
+    // locking it must never stand beside the lock on the file that replaced
+    // it: at no moment are there two holders.
+    const std::string churned = (root / "churned.lock").string();
+    auto* holders = static_cast<std::atomic<int>*>(
+        mmap(nullptr, sizeof(std::atomic<int>) * 2, PROT_READ | PROT_WRITE,
+             MAP_SHARED | MAP_ANON, -1, 0));
+    CHECK(holders != MAP_FAILED);
+    new (holders) std::atomic<int>[ 2 ]{};
+    std::vector<pid_t> contenders;
+    for (int i = 0; i < 4; ++i) {
+      contenders.push_back(fork());
+      CHECK(contenders.back() >= 0);
+      if (contenders.back() != 0) continue;
+      for (int round = 0; round < 3000; ++round) {
+        FileLease lease;
+        std::string ignored;
+        if (!lease.Acquire(churned, ignored)) continue;
+        if (holders[0].fetch_add(1) != 0) holders[1] = 1;
+        sched_yield();
+        holders[0].fetch_sub(1);
+        unlink(churned.c_str());
+      }
+      _exit(0);
+    }
+    for (pid_t contender : contenders) {
+      CHECK(waitpid(contender, &status, 0) == contender);
+    }
+    CHECK(holders[1] == 0);
+    munmap(holders, sizeof(std::atomic<int>) * 2);
     fs::create_symlink(lock, root / "redirected.lock");
     CHECK(!first.Acquire((root / "redirected.lock").string(), error));
     std::string bytes;

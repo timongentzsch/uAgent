@@ -95,7 +95,7 @@ void TestSettingsStore() {
   // own type; what a value refers to is kept apart under "variables".
   CHECK(Set("", "UAGENT_MAX_STEPS", "12").empty());
   CHECK(Set("", "UAGENT_SANDBOX", "0").empty());
-  CHECK(Set("", "UAGENT_SESSION_BUDGET", "$MY_KEY").empty());
+  CHECK(Set("", "UAGENT_API_KEY", "$MY_KEY").empty());
   const auto document = [] {
     return json::parse(ReadFile(SettingsPath(), 1 << 20).value_or(""));
   };
@@ -103,14 +103,14 @@ void TestSettingsStore() {
   const json all = document()["all"];
   CHECK(all["model"] == "m2" && all["limits.maxSteps"] == 12);
   CHECK(all["sandbox.enabled"] == false);
-  CHECK(all["limits.sessionCost"] == "$MY_KEY");
+  CHECK(all["endpoint.apiKey"] == "$MY_KEY");
   CHECK(all["variables"] == json({{"MY_KEY", "secret"}}));
   CHECK(!all.contains("UAGENT_MODEL") && !all.contains("MY_KEY"));
   CHECK(ReadSettings(folder).all.at("UAGENT_MAX_STEPS") == "12");
   CHECK(ReadSettings(folder).all.at("UAGENT_SANDBOX") == "0");
   CHECK(ReadSettings(folder).warning.empty());
   for (const char* name :
-       {"UAGENT_MAX_STEPS", "UAGENT_SANDBOX", "UAGENT_SESSION_BUDGET"}) {
+       {"UAGENT_MAX_STEPS", "UAGENT_SANDBOX", "UAGENT_API_KEY"}) {
     CHECK(ChangeSettings("", [&](SettingValues& scope) {
             scope.erase(name);
             return std::string();
@@ -241,6 +241,45 @@ void TestSettingsStore() {
     CHECK(kept["all"]["sandbox.enabled"] == "off");
     // What the document holds is what a correction is compared with.
     CHECK(HeldSettings("").at("UAGENT_MAX_STEPS") == "many");
+  }
+
+  // An editor takes no lock. What it saves while a change is being made is
+  // kept, and the change is refused for another try.
+  {
+    TestWorkspace raced("settings-store-raced");
+    CHECK(Set("", "UAGENT_MODEL", "first").empty());
+    const std::string edited =
+        R"({"format": 2, "projects": {}, "all": {"model": "by hand"}})";
+    const std::string refused = ChangeSettings("", [&](SettingValues& scope) {
+      Put(SettingsPath(), edited);
+      scope["UAGENT_MAX_STEPS"] = "5";
+      return std::string();
+    });
+    CHECK(refused.find("try again") != std::string::npos);
+    CHECK(ReadFile(SettingsPath(), 4096).value_or("") == edited);
+    CHECK(Set("", "UAGENT_MAX_STEPS", "5").empty());
+    CHECK(ReadSettings("").all == (SettingValues{{"UAGENT_MAX_STEPS", "5"},
+                                                 {"UAGENT_MODEL", "by hand"}}));
+  }
+
+  // A value that refers to another is judged by what that one holds: the
+  // same problem as if it stood there itself. What it refers to may be
+  // defined nowhere, and then nothing is set.
+  {
+    TestWorkspace referring("settings-store-referring");
+    Put(SettingsPath(),
+        R"({"format": 2, "projects": {}, "all": {"limits.maxSteps": "$COUNT",)"
+        R"( "limits.maxToolCalls": "$CALLS", "limits.maxTurnSeconds": "$NONE",)"
+        R"( "variables": {"COUNT": "many", "CALLS": "7"}}})");
+    const SavedSettings read = ReadSettings("");
+    CHECK(read.error.empty());
+    CHECK(read.warning.find("limits.maxSteps expects an integer") !=
+          std::string::npos);
+    CHECK(read.warning.find("limits.maxToolCalls") == std::string::npos);
+    CHECK(read.warning.find("limits.maxTurnSeconds") == std::string::npos);
+    CHECK(!read.all.contains("UAGENT_MAX_STEPS"));
+    CHECK(read.all.at("UAGENT_MAX_TOOL_CALLS") == "$CALLS");
+    CHECK(HeldSettings("").at("UAGENT_MAX_STEPS") == "$COUNT");
   }
 
   // A document in the format before this one is rewritten in this one the

@@ -45,6 +45,8 @@ enum WorkerExit : int {
   // Another runtime holds the session: one still leaving, or one arriving.
   kWorkerOwned = 65,
   kWorkerNoWorkspace = 66,
+  // It holds the session and cannot open its socket; waiting changes nothing.
+  kWorkerCannotListen = 67,
 };
 // A session's socket, by its id (the hash of its file's path).
 inline std::string SocketPathForId(const std::string& id) {

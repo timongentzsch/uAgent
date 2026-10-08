@@ -202,9 +202,10 @@ class Agent {
   bool DeliverMail(bool hold = false);
   // Text about to arrive as input that another session or the harness wrote:
   // its row is shown as an event, not as the person's message, under its
-  // `author` when it has one.
-  void NotFromUser(const std::string& text, const std::string& author = "") {
-    not_user_.emplace_back(text, author);
+  // `author` when it has one. `mail` names the mail that brought it.
+  void NotFromUser(const std::string& text, const std::string& author = "",
+                   const std::string& mail = "") {
+    not_user_.push_back({text, author, mail});
   }
   // The person's message, written into the conversation without a turn.
   void Say(const std::string& text, const std::string& request_id) {
@@ -480,7 +481,13 @@ class Agent {
   // Mail taken but not yet in a saved snapshot, acknowledged by Save, and the
   // ids of the latest delivered, so one delivered again is recognised.
   mutable std::vector<std::string> unacked_mail_;
-  std::vector<std::pair<std::string, std::string>> not_user_;  // text, author
+  // Text on its way into the conversation. Mail that brought some is only
+  // saved as delivered, and acknowledged, once its text is there: until
+  // then a restart receives it again.
+  struct Arriving {
+    std::string text, author, mail;
+  };
+  std::vector<Arriving> not_user_;
   std::function<void(const std::string&)> chat_said_;
   std::function<void(Mail&)> chat_heard_;
   json delivered_mail_ = json::array();

@@ -1318,7 +1318,9 @@ def test_a_chat_round_outlives_the_coordinators_runtime(root, home, *, binary):
                 "the coordinator never answered",
             )
             time.sleep(budget(0.3))
-            subprocess.run(["pkill", "-9", "-f", f"--session-worker .*{coordinator}"], check=False)
+            subprocess.run(
+                ["pkill", "-9", "-f", "--", f"--session-worker .*{coordinator}"], check=False
+            )
             wait_until(
                 lambda: any(
                     not _member(b) and "Late answer." in _last_user(b) for _, b in server.requests

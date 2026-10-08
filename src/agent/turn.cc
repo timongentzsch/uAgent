@@ -96,11 +96,10 @@ void Agent::PushUserInput(json content, bool attachment, const json& images,
     conversation_.RecordDisplay(conversation_.LastDisplayId(),
                                 {{"files", images}});
   }
-  if (const auto mail = std::ranges::find(
-          not_user_, text, &std::pair<std::string, std::string>::first);
+  if (const auto mail = std::ranges::find(not_user_, text, &Arriving::text);
       mail != not_user_.end()) {
     json facts = {{"origin", "mail"}};
-    if (!mail->second.empty()) facts["author"] = mail->second;
+    if (!mail->author.empty()) facts["author"] = mail->author;
     not_user_.erase(mail);
     conversation_.RecordDisplay(conversation_.LastDisplayId(),
                                 std::move(facts));
@@ -464,7 +463,10 @@ void Agent::AnswerAtLimit(TurnExecution& state, StepState& loop) {
       MessageKind::kInternal);
   ChatResult response = Chat("turn", loop.step, available_schemas_.Schemas());
   conversation_.Erase(conversation_.Size() - 1, conversation_.Size());
-  if (response.interrupted || !response.error.empty()) return;
+  if (response.interrupted || !response.error.empty()) {
+    state.metrics.usage.Merge(AccountModelUsage(response.usage));
+    return;
+  }
   RecordModelResponse(response, state, loop.tool_counts);
   // Only prose that ended on its own is an answer: text beside a tool call
   // announces work that will not happen, and a reply cut short is not one.

@@ -201,8 +201,8 @@ SettingValues DecodeScope(const json& scope, const std::string& where,
                                                         : "a number"));
       continue;
     }
-    // A reference is judged by what it resolves to, where it is read. The
-    // value is taken as written: the check works on its own copy.
+    // A reference is judged below by what it resolves to. The value is
+    // taken as written: the check works on its own copy.
     if (std::string checked = text, problem;
         problems && text.find('$') == std::string::npos &&
         !ValidSettingValue(*descriptor, checked, problem, key)) {
@@ -210,6 +210,24 @@ SettingValues DecodeScope(const json& scope, const std::string& where,
       continue;
     }
     values[std::string(descriptor->environment)] = std::move(text);
+  }
+  // Once every name of the scope is known: the environment's names count as
+  // they do where settings are read, and one defined nowhere sets nothing.
+  for (auto held = values.begin(); problems && held != values.end();) {
+    const ConfigDescriptor* descriptor = FindConfigDescriptor(held->first);
+    std::set<std::string> resolving;
+    std::string problem;
+    std::string resolved =
+        descriptor && held->second.find('$') != std::string::npos
+            ? ResolveEnvValue(held->first, values, resolving)
+            : "";
+    if (resolved.empty() ||
+        ValidSettingValue(*descriptor, resolved, problem, descriptor->key)) {
+      ++held;
+      continue;
+    }
+    report(std::move(problem));
+    held = values.erase(held);
   }
   return values;
 }
@@ -550,6 +568,12 @@ std::string ChangeSettings(
   PrivateJsonStore store(kSettingsFile, EmptyDocument(), kSettingsBytes, error);
   if (!store.Ready()) return error;
   json& document = store.Data();
+  // An editor takes no lock: the document is read with its stamp, and what
+  // an editor saves from here on is not overwritten.
+  FileStamp read;
+  if (json held = ReadDocument(read); !held.is_discarded()) {
+    document = std::move(held);
+  }
   if (!Valid(document)) return Invalid();
   json& scope = folder.empty() ? document["all"] : document["projects"][folder];
   if (!scope.is_object()) scope = json::object();
@@ -559,6 +583,9 @@ std::string ChangeSettings(
   error = change(values);
   if (!error.empty()) return error;
   scope = EncodeScope(values, scope);
+  if (SnapshotFile(SettingsPath()) != read) {
+    return SettingsPath() + " changed while this was being saved; try again";
+  }
   store.Save(error);
   WriteSchema();
   return error;

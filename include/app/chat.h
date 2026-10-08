@@ -90,6 +90,10 @@ class Chat {
   std::set<std::string> typing_;
   std::vector<std::string> waiting_;
   std::map<std::string, Seat> seats_;
+  // The members' mails counted this round and how each left: a runtime that
+  // died before its session recorded one is handed it again.
+  enum Read { kNothing, kQuiet, kWaking };
+  std::map<std::string, int> heard_;
 };
 }  // namespace uagent
 #endif  // UAGENT_INCLUDE_APP_CHAT_H_

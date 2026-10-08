@@ -12,6 +12,7 @@ from integration_support import (
     tool_calls,
     tool_results,
     write_session,
+    write_sse_sequence,
 )
 
 
@@ -143,3 +144,35 @@ def test_tool_call_budget_is_unlimited_by_default(root, home, *, binary):
         result = run(root, env, "--yolo", "-p", "read every line", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip().endswith("unlimited-tools-ok"), result.stdout)
+
+
+def test_a_failed_answer_at_a_limit_is_still_paid_for(root, home, *, binary):
+    """The one extra round a turn stopped at a limit gets may fail after the
+    provider has counted its tokens. They are part of what the turn used."""
+    calls = tool_calls(
+        [("one", "read_path", {"path": "."}), ("two", "read_path", {"path": "."})],
+        usage={"prompt_tokens": 10, "completion_tokens": 3},
+    )
+
+    def fails_after_billing(handler, _):
+        billed = event({"content": "partial"}, finish=None)
+        billed["usage"] = {"prompt_tokens": 20, "completion_tokens": 7}
+        write_sse_sequence(handler, [billed, {"error": {"message": "upstream gave up"}}])
+
+    with Server([calls, fails_after_billing], repeat_last=True) as server:
+        env = base_env(home, server.url)
+        env["UAGENT_MAX_TOOL_CALLS"] = "1"
+        result = run(root, env, "--yolo", "--json", "-p", "inspect", binary=binary)
+        envelope = json.loads(result.stdout)
+        assert_true(envelope["stop"]["reason"] == "max_tool_calls", envelope)
+        answers = len(server.requests) - 1
+        assert_true(answers >= 1, server.requests)
+        assert_true(envelope["usage"]["output"] == 3 + 7 * answers, envelope)
+        assert_true(envelope["usage"]["input"] == 10 + 20 * answers, envelope)
+
+    # So is a step of the turn itself that fails the same way.
+    with Server([fails_after_billing], repeat_last=True) as server:
+        result = run(root, base_env(home, server.url), "--json", "-p", "inspect", binary=binary)
+        envelope = json.loads(result.stdout)
+        assert_true("upstream gave up" in envelope["error"], envelope)
+        assert_true(envelope["usage"]["output"] == 7 * len(server.requests), envelope)

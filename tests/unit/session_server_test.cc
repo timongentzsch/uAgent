@@ -1,9 +1,14 @@
 // Copyright 2026 Timon Gentzsch
+#include <atomic>
+#include <chrono>
 #include <filesystem>
+#include <memory>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
+#include "include/app/launch.h"
 #include "include/app/session.h"
 #include "include/core/fs.h"
 #include "include/core/signals.h"
@@ -29,7 +34,7 @@ void TestWorkerBinaryIdentity() {
   {
     session::Server server;
     CHECK(server.Start(session_path, session::RandomToken(16),
-                       [](const json&) { return true; }));
+                       [](const json&) { return true; }) == 0);
     session::Connection connection = session::Connect(session_path);
     CHECK(connection.socket.Valid());
     CHECK(!connection.binary.empty());
@@ -39,6 +44,47 @@ void TestWorkerBinaryIdentity() {
     CHECK(FileIdentity(probe.string()) != connection.binary);
   }
   SetExecutablePath(prior);
+}
+
+// Closing a runtime waits for the runtime, not for its socket file: one that
+// crashed leaves the file behind and is gone all the same.
+void TestCloseRuntimeWaitsForTheRuntime() {
+  TestWorkspace test("close-runtime");
+  const std::string path = (test.workspace / "s.json").string();
+  const std::string address = session::SocketPath(path);
+  CreatePrivateDirectories(std::filesystem::path(address).parent_path());
+  auto server = std::make_unique<session::Server>();
+  std::atomic<bool> closing{false};
+  CHECK(server->Start(path, session::RandomToken(16), [&](const json& frame) {
+    if (JsonValue(frame, "kind", "") != "close") return true;
+    server->Publish({{"v", session::kProtocol},
+                     {"kind", "outcome"},
+                     {"request_id", JsonValue(frame, "request_id", "")},
+                     {"accepted", true}});
+    closing = true;
+    return true;
+  }) == 0);
+  server->Publish(
+      {{"v", session::kProtocol}, {"kind", "state"}, {"busy", false}});
+  std::thread runtime([&] {
+    while (!closing) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    server.reset();
+  });
+  CHECK(CloseRuntime(path).empty());
+  runtime.join();
+  CHECK(!session::Connect(path).socket);
+
+  // What a killed runtime leaves: a socket nobody listens on.
+  {
+    const Fd abandoned = ListenUnix(address, 1);
+  }
+  CHECK(PathExists(address));
+  const auto began = std::chrono::steady_clock::now();
+  CHECK(CloseRuntime(path).empty());
+  CHECK(std::chrono::steady_clock::now() - began < std::chrono::seconds(1));
+  unlink(address.c_str());
 }
 
 void TestSessionFramePartitions() {

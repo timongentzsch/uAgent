@@ -2,6 +2,7 @@
 
 #include "include/app/launch.h"
 
+#include <chrono>
 #include <optional>
 #include <string>
 #include <utility>
@@ -108,5 +109,21 @@ std::optional<std::string> SendToRunning(const std::string& path,
   const session::Connection connection = session::Connect(path);
   if (!connection.socket) return std::nullopt;
   return SendWhenReady(connection, path, std::move(command), false);
+}
+
+// It acknowledges the close, then exits, which closes the socket. Liveness is
+// the handshake, never the socket file, which a crashed runtime leaves behind.
+std::string CloseRuntime(const std::string& path) {
+  session::Connection connection = session::Connect(path);
+  if (!connection.socket) return "";
+  std::string error =
+      SendWhenReady(connection, path, {{"kind", "close"}}, false);
+  if (!error.empty()) return error;
+  session::ReadFrames(
+      connection.socket.Get(), -1, session::kFrameBytes,
+      [](const json&) { return true; },
+      std::chrono::steady_clock::now() + session::kWorkerShutdownTimeout);
+  return session::Connect(path).socket ? "the session did not exit in time"
+                                       : "";
 }
 }  // namespace uagent

@@ -48,5 +48,8 @@ std::string SendWhenReady(const session::Connection& connection,
                           const std::string& path, json command, bool idle);
 // SendWhenReady to the runtime of `path`, busy or not; nullopt when none runs.
 std::optional<std::string> SendToRunning(const std::string& path, json command);
+// Closes the runtime of `path` and waits until it is gone. Returns why it
+// still runs, or empty once nothing does (also when nothing did).
+std::string CloseRuntime(const std::string& path);
 }  // namespace uagent
 #endif

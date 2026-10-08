@@ -148,6 +148,7 @@ add_library(
   src/agent/activity_completion.cc
   src/agent/activity_log.cc
   src/agent/agent.cc
+  src/agent/background_drain.cc
   src/agent/child_agent.cc
   src/agent/mail_delivery.cc
   src/agent/compaction.cc

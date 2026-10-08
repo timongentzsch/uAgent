@@ -149,6 +149,7 @@ bool WriteTrustRecord(const std::string& root, json record,
       approved && approved->contains("config") && !record.contains("config")) {
     record["config"] = (*approved)["config"];
   }
+  record["format"] = kTrustRecordFormat;
   store.Data()[root] = std::move(record);
   return store.Save(error);
 }
@@ -161,7 +162,8 @@ json ReadTrustStore() {
 }
 
 bool TrustRecordMatches(const json& record, const json& snapshot) {
-  return record.is_object() && JsonValue(record, "format", 0) == 3 &&
+  return record.is_object() &&
+         JsonValue(record, "format", 0) == kTrustRecordFormat &&
          record.contains("mcp") && record["mcp"] == snapshot["mcp"];
 }
 
@@ -181,8 +183,7 @@ bool ProjectConfigTrusted(json* trusted_mcp) {
 bool TrustProjectConfig(std::string& error, json* trusted_mcp) {
   json snapshot;
   if (!ProjectTrustSnapshot(snapshot, error)) return false;
-  if (!WriteTrustRecord(CanonicalCwd(),
-                        {{"format", 3}, {"mcp", snapshot["mcp"]}}, error)) {
+  if (!WriteTrustRecord(CanonicalCwd(), {{"mcp", snapshot["mcp"]}}, error)) {
     return false;
   }
   if (trusted_mcp) *trusted_mcp = std::move(snapshot["mcp"]);

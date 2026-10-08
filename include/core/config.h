@@ -43,6 +43,7 @@ bool ProjectTrustSnapshot(json& snapshot, std::string& error);
 
 inline constexpr char kTrustStoreFile[] = "trusted-projects.json";
 inline constexpr size_t kTrustStoreBytes = size_t{16} * 1024 * 1024;
+inline constexpr int kTrustRecordFormat = 3;
 
 std::string TrustStorePath();
 

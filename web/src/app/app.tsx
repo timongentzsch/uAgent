@@ -17,7 +17,6 @@ import { render } from "preact";
 import {
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -60,9 +59,6 @@ import Board, { CoordinatorHelp } from "../features/coordinator/board.tsx";
 import { threadsOf, waiting as waitingOn } from "../state/attention.ts";
 import { folderName } from "../shared/folder-label.tsx";
 import {
-  applyMotion,
-  applyTheme,
-  applyZoom,
   lockPageZoom,
   useMedia,
   usePhone,
@@ -73,13 +69,13 @@ import { useHost } from "../state/use-host.ts";
 import { useSnapshots } from "../state/snapshot-store.ts";
 import { parseSlash } from "../features/composer/slash.ts";
 import { dedupeName } from "../features/composer/mention.ts";
-import { TimePrefsContext, type TimePrefs } from "../shared/time.ts";
-import { devicePrefs } from "../shared/device-prefs.ts";
+import { TimePrefsContext } from "../shared/time.ts";
 import { DetailContext, detail as detailOf } from "../shared/verbosity.ts";
 import type { InspectorTarget } from "../features/chat/inspector.tsx";
 import { maxDraftFiles, maxUploadBytes } from "../shared/limits.ts";
 import ChatPage, { isBrowsing, transcriptBlocks } from "./chat-page.tsx";
 import Modals from "./modals.tsx";
+import { usePreferences } from "./use-preferences.ts";
 import {
   libraryModule,
   pairing,
@@ -193,14 +189,19 @@ function App() {
   }, [authenticated, online]);
   const [folder, setFolder] = useState("");
   const [busy, setBusy] = useState(false);
-  const [zoom, setZoom] = useState(() => devicePrefs.zoom.read());
+  const {
+    zoom,
+    setZoom,
+    timePrefs,
+    setTimePrefs,
+    theme,
+    setTheme,
+    motion,
+    setMotion,
+  } = usePreferences();
   const [install, setInstall] = useState<InstallPrompt | null>(null);
   const [update, setUpdate] = useState<ServiceWorker | null>(null);
   const [notificationMode, setNotificationMode] = useState(false);
-  const [timePrefs, setTimePrefs] = useState<TimePrefs>(devicePrefs.time.read);
-  useEffect(() => devicePrefs.time.write(timePrefs), [timePrefs]);
-  const [theme, setTheme] = useState(devicePrefs.theme.read);
-  const [motion, setMotion] = useState(devicePrefs.motion.read);
   // How much of the agent's work shows: one level for every conversation,
   // browser and terminal. Only rendering reads it, so a change restyles
   // every conversation where it stands.
@@ -247,10 +248,6 @@ function App() {
     updateDraft(id, () => value);
   }
   useEffect(() => {
-    devicePrefs.zoom.write(zoom);
-    applyZoom(zoom);
-  }, [zoom]);
-  useEffect(() => {
     // The core renderer chunk is needed for every assistant message, so
     // fetch it immediately at boot (not idle: on mobile the idle callback
     // can fire after the first snapshot already mounted, which spreads
@@ -277,14 +274,6 @@ function App() {
     return () => clearTimeout(warm);
   }, []);
   useEffect(trackViewport, []);
-  useEffect(() => {
-    devicePrefs.theme.write(theme);
-    return applyTheme(theme);
-  }, [theme]);
-  useLayoutEffect(() => {
-    devicePrefs.motion.write(motion);
-    return applyMotion(motion);
-  }, [motion]);
   // Files dropped anywhere attach to the open conversation; unhandled, the
   // browser would open the file in place of the app. File inputs and
   // dialogs keep their own drops.

@@ -120,10 +120,7 @@ def test_reasoning_modes_render_consistently(root, home, *, binary):
         write_sse_sequence(
             handler,
             [
-                event(
-                    {"reasoning": ("**Planning provider normalization phases**\n")},
-                    finish=None,
-                ),
+                event({"reasoning": "**Planning phases**\n"}, finish=None),
                 event({"content": "Final answer"}),
             ],
             delay=0.25,
@@ -150,12 +147,13 @@ def test_reasoning_modes_render_consistently(root, home, *, binary):
         assert_true(reasoning_style + b"latest line" in verbose, verbose)
         assert_true(verbose.find(b"first line") < verbose.find(b"Final answer"), verbose)
 
-        # Compact mode selects a complete heading and removes decoration.
+        # Compact mode selects a complete heading and removes decoration. The
+        # heading is short: the row gives the label what its counters leave.
         code, compact = run_pty(
             root,
             env,
             [
-                (b"go\n", b"provider normalization phases"),
+                (b"go\n", b"Thinking \xc2\xb7 Planning phases"),
                 (b"", b"Final answer", b"Ready", None),
                 b"/q\n",
             ],
@@ -163,9 +161,7 @@ def test_reasoning_modes_render_consistently(root, home, *, binary):
             binary=binary,
         )
         assert_true(code == 0, compact)
-        assert_true(b"Thinking \xc2\xb7" in compact, compact)
-        assert_true(b"provider normalization phases" in compact, compact)
-        assert_true(b"Thinking \xc2\xb7 \xe2\x80\xa6" not in compact, compact)
+        assert_true(b"Thinking \xc2\xb7 Planning phases" in compact, compact)
         assert_true(b"****" not in compact, compact)
         assert_true(b"\xc2\xb7 Thinking" not in compact, compact)
 

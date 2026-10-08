@@ -384,6 +384,7 @@ def run_pty(
     if suspend is not None:
         suspend(process, master)
     payloads = [payload] if isinstance(payload, bytes) else payload
+    awaited = None
     for index, item in enumerate(payloads):
         marker = None
         following = None
@@ -425,11 +426,13 @@ def run_pty(
             time.sleep(0.05)
         if index + 1 < len(payloads):
             if marker is not None and not read_until(marker, start, following):
+                awaited = marker
                 break
             if marker is None:
                 read_prompt(start)
     read_until()
-    if process.poll() is None:
+    stuck = process.poll() is None
+    if stuck:
         process.kill()
     process.wait()
     # Inspect the PTY the child left behind, line discipline included, while
@@ -437,6 +440,10 @@ def run_pty(
     if after_exit is not None:
         after_exit(master)
     os.close(master)
+    # Killed for never printing what the next input waits for: said as that,
+    # not left to read as a bad exit code.
+    if stuck and awaited is not None:
+        raise AssertionError(f"never printed {awaited!r}; last output: {bytes(output[-800:])!r}")
     return process.returncode, bytes(output)
 
 

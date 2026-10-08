@@ -162,32 +162,47 @@ test("a file dropped on the transcript attaches instead of navigating", async ({
   page,
   session,
   command,
+  context,
 }) => {
   await ready(page, session, command);
   // A dragover left uncancelled is what lets the browser open the file.
-  const allowed = await page.locator(".transcript").evaluate(
-    (element, bytes) => {
-      const data = new DataTransfer();
-      data.items.add(
-        new File([new Uint8Array(bytes)], "dropped.png", { type: "image/png" }),
-      );
-      const [over] = ["dragover", "drop"].map((type) =>
-        element.dispatchEvent(
-          new DragEvent(type, {
-            dataTransfer: data,
-            bubbles: true,
-            cancelable: true,
+  const drop = () =>
+    page.locator(".transcript").evaluate(
+      (element, bytes) => {
+        const data = new DataTransfer();
+        data.items.add(
+          new File([new Uint8Array(bytes)], "dropped.png", {
+            type: "image/png",
           }),
-        ),
-      );
-      return over;
-    },
-    [...pixel],
-  );
-  expect(allowed).toBe(false);
+        );
+        const [over] = ["dragover", "drop"].map((type) =>
+          element.dispatchEvent(
+            new DragEvent(type, {
+              dataTransfer: data,
+              bubbles: true,
+              cancelable: true,
+            }),
+          ),
+        );
+        return over;
+      },
+      [...pixel],
+    );
+  expect(await drop()).toBe(false);
+  const chips = page.locator(".composer .file-chip", {
+    hasText: "dropped.png",
+  });
+  await expect(chips).toHaveCount(1);
+  // Without a connection nothing can be attached, and the page says so.
+  await context.setOffline(true);
   await expect(
-    page.locator(".composer .file-chip", { hasText: "dropped.png" }),
+    page.getByRole("button", { name: "Send", exact: true }),
+  ).toBeDisabled();
+  await drop();
+  await expect(
+    page.getByText("Not connected: nothing was attached"),
   ).toBeVisible();
+  await expect(chips).toHaveCount(1);
 });
 
 test("an upload cut off by a reload leaves no stuck chip", async ({

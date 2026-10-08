@@ -224,3 +224,38 @@ test.describe("phone drawer", () => {
       .toBe(0);
   });
 });
+
+// The step back that removes a closed layer's entry lands a moment after it
+// is asked for. A conversation opened in that moment is the one that stays.
+test("a conversation opened as a closed layer's entry leaves stays open", async ({
+  page,
+  host,
+  session,
+  command,
+}) => {
+  const { session: other } = await command("create", { cwd: host.project });
+  // As on a busy page: the step lands late enough to act before it does.
+  await page.addInitScript(() => {
+    const go = history.go.bind(history);
+    history.go = (delta) => setTimeout(() => go(delta), 400);
+  });
+  await page.goto(`/#session=${session.id}`);
+  await expect(page.locator(".sidebar .session")).toHaveCount(2);
+  // Which key leads from this conversation to the other one.
+  await page.locator(".conversation-head h1").click();
+  await page.keyboard.press("Alt+ArrowDown");
+  const down = page.url().includes(other.id);
+  await page.keyboard.press(down ? "Alt+ArrowUp" : "Alt+ArrowDown");
+  await expect(page).toHaveURL(new RegExp(session.id));
+
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const settings = page.getByRole("dialog", { name: "Settings" });
+  await settings.getByRole("button", { name: "Close settings" }).click();
+  await expect(settings).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => history.state?.layer)).toBe(1);
+  await page.waitForTimeout(100);
+  await page.keyboard.press(down ? "Alt+ArrowDown" : "Alt+ArrowUp");
+  await page.waitForTimeout(800);
+  await expect(page).toHaveURL(new RegExp(other.id));
+  expect(await page.evaluate(() => history.state?.layer ?? 0)).toBe(0);
+});

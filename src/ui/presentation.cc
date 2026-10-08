@@ -405,6 +405,8 @@ void TerminalPresenter::Consume(const AppEvent& received) noexcept {
 }
 
 void TerminalPresenter::Block(const json& block) {
+  // A chat participant's pass or wait is shown to nobody.
+  if (JsonValue(block, "silent", false)) return;
   const std::string kind = JsonValue(block, "kind", "");
   const std::string text = TerminalSafe(JsonValue(block, "text", ""));
   if (kind == "user" || kind == "attachment") {

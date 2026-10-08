@@ -15,6 +15,13 @@ const stack: Layer[] = [];
 // history.back() calls issued by layers closing themselves; their popstate
 // is ours to swallow.
 let pending = 0;
+// Navigation asked for while such a step back is under way: written before
+// it lands, its entry would be the one the step leaves.
+const waiting: (() => void)[] = [];
+export function settled(run: () => void) {
+  if (pending) waiting.push(run);
+  else run();
+}
 
 type Entry = { layer?: number; seq?: number } | null;
 const depthOf = (state: unknown) => (state as Entry)?.layer ?? 0;
@@ -33,6 +40,7 @@ addEventListener("popstate", (event) => {
   if (pending) {
     pending--;
     at = seqOf(event.state);
+    if (!pending) for (const run of waiting.splice(0)) run();
     return;
   }
   // Back closes every layer above the entry it landed on; forward never

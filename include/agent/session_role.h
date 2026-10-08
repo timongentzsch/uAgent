@@ -4,6 +4,10 @@
 // The roles a session can have beyond an ordinary conversation: a folder's
 // coordinator, or a thread it started. A session header's `kind` names it.
 
+#include <algorithm>
+#include <iterator>
+#include <string_view>
+
 #include "include/core/json.h"
 
 namespace uagent {
@@ -20,8 +24,10 @@ inline json ChatMember(const json& thread) {
 
 // A chat participant's whole answer when it has nothing to say now: it
 // passes, or waits to read someone who is typing. Shown to nobody.
+inline constexpr std::string_view kSilentAnswers[] = {"PASS", "PASS.", "WAIT",
+                                                      "WAIT."};
 inline bool SilentAnswer(std::string_view text) {
-  return text == "PASS" || text == "PASS." || text == "WAIT" || text == "WAIT.";
+  return std::ranges::find(kSilentAnswers, text) != std::end(kSilentAnswers);
 }
 
 // A pending decision or approval that waits on a person rather than on the

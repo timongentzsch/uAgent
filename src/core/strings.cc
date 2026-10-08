@@ -424,7 +424,10 @@ std::string ActivityLabel(const std::string& label, size_t columns) {
   if (prefix_width >= columns) return DisplayTrunc(std::move(prefix), columns);
   std::string detail = safe.substr(separator + kSeparator.size());
   std::string tail = DisplayTail(detail, columns - prefix_width);
-  if (tail.size() < detail.size()) {
+  // A cut inside a word leaves a piece of it, which goes; a cut between two
+  // words leaves the first one whole.
+  if (tail.size() < detail.size() &&
+      detail[detail.size() - tail.size() - 1] != ' ') {
     size_t split = tail.find(' ');
     if (split != std::string::npos && split + 1 < tail.size()) {
       tail.erase(0, split + 1);

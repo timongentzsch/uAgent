@@ -21,6 +21,7 @@
 
 #include "include/agent/child_agent.h"
 #include "include/agent/jobs.h"
+#include "include/app/chat.h"
 #include "include/app/coordinator.h"
 #include "include/app/launch.h"
 #include "include/app/session_host.h"
@@ -1288,6 +1289,49 @@ void TestChildSessionsStayOutOfTheCatalogue() {
       ListSessions(SessionScope::kChildren);
   CHECK(children.size() == 1);
   CHECK(JsonValue(children[0].delegation, "name", "") == "reviewer");
+}
+
+// The chat saves its round before its coordinator's session records the
+// mail. A runtime that dies between the two is handed the mail again, and
+// the message it carries is still one message.
+void TestAChatCountsAMailOnce() {
+  TestWorkspace workspace("chat-counts-once");
+  const std::string folder = workspace.workspace.string();
+  // Nobody is woken: the members only read, so no runtime is started.
+  ScopedEnv turns("UAGENT_COORDINATOR_CHAT_TURNS", "0");
+  SessionRecord record;
+  record.metadata.cwd = folder;
+  record.metadata.kind = kSessionKindThread;
+  record.metadata.thread = {{"coordinator_id", CoordinatorId(folder)},
+                            {"folder", folder},
+                            {"member", {{"name", "Ada"}}}};
+  record.state.messages =
+      json::array({{{"role", "system"}, {"content", "sys"}}});
+  record.state.message_kinds = {MessageKind::kSystem};
+  const std::string ada = HistoryPath(folder, "thread-ada");
+  CHECK(SessionStore::Save(ada, record).Ok());
+  CHECK(ChatMembers(folder).size() == 1);
+
+  const auto heard = [&](const std::string& id, const std::string& text) {
+    // As a runtime started again would: from what the last one saved.
+    Chat chat(folder, [](const std::string&) {});
+    Mail mail;
+    mail.id = id;
+    mail.from = MailboxIdFor(ada);
+    mail.type = kMailChat;
+    mail.body = {{"text", text}};
+    chat.Heard(mail);
+    return JsonValue(mail.body, "text", "");
+  };
+  Chat(folder, [](const std::string&) {}).Said("hello");
+  const std::string first = heard("m1", "One.");
+  CHECK(first.ends_with("One."));
+  // Handed over again, it reads as it did and uses up nothing.
+  CHECK(heard("m1", "One.") == first);
+  CHECK(heard("m2", "Two.").ends_with("Two."));
+  // Two messages each: a third is not posted.
+  CHECK(heard("m3", "Three.").empty());
+  CHECK(heard("m2", "Two.").ends_with("Two."));
 }
 
 void TestMailbox() {

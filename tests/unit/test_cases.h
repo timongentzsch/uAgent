@@ -98,6 +98,7 @@ namespace uagent {
   X(TestThreadWorktreesGoOnlyWhenNothingIsLost)   \
   X(TestCoordinatorCountsItsOwnSpend)             \
   X(TestChildSessionsStayOutOfTheCatalogue)       \
+  X(TestAChatCountsAMailOnce)                     \
   X(TestMailbox)                                  \
   X(TestSessionLinks)                             \
   X(TestToolExecutionPolicy)                      \

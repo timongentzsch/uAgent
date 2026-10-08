@@ -107,6 +107,11 @@ Chat::Chat(std::string folder, std::function<void(const std::string&)> wake)
                      JsonValue(seat, "waited", false)};
     }
   }
+  if (const json* heard = JsonObject(saved, "heard")) {
+    for (const auto& [mail, read] : heard->items()) {
+      if (read.is_number_integer()) heard_[mail] = read.get<int>();
+    }
+  }
   // A runtime that starts again has no turn of its own under way.
   typing_.erase(kSelf);
 }
@@ -122,6 +127,7 @@ void Chat::Save() const {
                        JsonDump({{"each", each_},
                                  {"typing", typing_},
                                  {"waiting", waiting_},
+                                 {"heard", heard_},
                                  {"seats", std::move(seats)}}),
                        kPrivateFileMode, false, error)) {
     DebugLog("chat_state_unsaved", {{"error", error}});
@@ -334,6 +340,7 @@ void Chat::Said(const std::string& text) {
   typing_.clear();
   waiting_.clear();
   seats_.clear();
+  heard_.clear();
   // The coordinator answers its user's message like any other, unless it is
   // for members alone.
   if (!ForMembersOnly(folder_, text)) {
@@ -362,12 +369,18 @@ void Chat::Heard(Mail& mail) {
   });
   const std::string text = Trim(JsonValue(mail.body, "text", ""));
   mail.body["text"] = "";
+  // Counted once: handed over again, it leaves as it did then.
+  const auto [read, first] = heard_.try_emplace(mail.id, kNothing);
   // A member that has left is not heard; its last words go with it.
   if (sender != members.end() &&
-      Finished(mail.from, text) == Answer::kMessage) {
+      (first ? Finished(mail.from, text) == Answer::kMessage
+             : read->second != kNothing)) {
     // Named from its header, never from what it sent.
     const std::string name = Name(*sender);
-    mail.body["quiet"] = !Deliver(mail.from, name, text, mail.id);
+    if (first) {
+      read->second = Deliver(mail.from, name, text, mail.id) ? kWaking : kQuiet;
+    }
+    mail.body["quiet"] = read->second == kQuiet;
     mail.body["author"] = name;
     mail.body["text"] = "[" + name + std::string(kPostLabel) + text;
   }

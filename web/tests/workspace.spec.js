@@ -300,6 +300,11 @@ test("unread completions, background activity and conversation lifecycle", async
   await page
     .getByRole("combobox", { name: "Permissions", exact: true })
     .selectOption("ask");
+  // The popover's history entry leaves in a step of its own, and a
+  // navigation made before that step lands is undone by it.
+  await expect
+    .poll(() => page.evaluate(() => history.state?.layer ?? 0))
+    .toBe(0);
 
   await page.evaluate((hash) => {
     location.hash = hash;

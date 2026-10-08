@@ -1,12 +1,12 @@
 // Follow-tail guarantees under live streaming growth: while pinned the
 // transcript never detaches from the end, and a reader who scrolled up
 // mid-stream is never yanked back down.
-import { test, expect } from "./fixtures.js";
+import { test, expect, online } from "./fixtures.js";
 
 async function startLongProbe(page, session, command) {
   await page.goto(`/#session=${session.id}`);
   const prompt = page.getByLabel("Message or guidance");
-  await expect(prompt).toBeVisible();
+  await online(page);
   await command("model", {
     session_id: session.id,
     generation: session.generation,

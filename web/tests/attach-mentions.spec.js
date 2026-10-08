@@ -1,6 +1,6 @@
 // Named attachments + @-mentions: deduped labels, composer rename, inline
 // token references, and no raw host paths in the transcript.
-import { test, expect } from "./fixtures.js";
+import { test, expect, online } from "./fixtures.js";
 
 const pixel = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
@@ -9,9 +9,7 @@ const pixel = Buffer.from(
 
 async function ready(page, session, command) {
   await page.goto(`/#session=${session.id}`);
-  // Attaching is off until the event stream has caught up, and neither
-  // setInputFiles nor a dispatched drop waits for that: the file is dropped.
-  await expect(page.locator('.composer input[type="file"]')).toBeEnabled();
+  await online(page);
   await command("model", {
     session_id: session.id,
     generation: session.generation,

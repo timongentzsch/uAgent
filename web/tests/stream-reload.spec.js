@@ -1,6 +1,6 @@
 // Reloading while an answer streams must pick the stream up where the saved
 // view left off: the page stays responsive and the answer completes once.
-import { test, expect } from "./fixtures.js";
+import { test, expect, online } from "./fixtures.js";
 
 test("reload mid-stream resumes the answer without freezing", async ({
   page,
@@ -14,6 +14,7 @@ test("reload mid-stream resumes the answer without freezing", async ({
     model: "mock/model-b",
   });
   await page.goto(`/#session=${session.id}`);
+  await online(page);
   const prompt = page.getByLabel("Message or guidance");
   await prompt.fill("Long continuity probe");
   await prompt.press("Enter");

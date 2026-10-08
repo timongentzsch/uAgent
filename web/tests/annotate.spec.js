@@ -1,10 +1,10 @@
 // Image markup: strokes and noted pins baked into a copy that replaces the
 // draft image, driven by mouse on desktop and by touch on a phone.
-import { test, expect } from "./fixtures.js";
+import { test, expect, online } from "./fixtures.js";
 
 async function open(page, session) {
   await page.goto(`/#session=${session.id}`);
-  await expect(page.getByLabel("Message or guidance")).toBeVisible();
+  await online(page);
   // A plain grey screenshot stand-in, large enough to hold the marks.
   const png = await page.evaluate(async () => {
     const canvas = new OffscreenCanvas(320, 200);
@@ -14,9 +14,7 @@ async function open(page, session) {
     const blob = await canvas.convertToBlob({ type: "image/png" });
     return [...new Uint8Array(await blob.arrayBuffer())];
   });
-  const input = page.locator('.composer input[type="file"]');
-  await expect(input).toBeEnabled();
-  await input.setInputFiles({
+  await page.locator('.composer input[type="file"]').setInputFiles({
     name: "shot.png",
     mimeType: "image/png",
     buffer: Buffer.from(png),

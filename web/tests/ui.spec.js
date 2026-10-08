@@ -1,4 +1,4 @@
-import { test, expect, withoutServiceWorker } from "./fixtures.js";
+import { test, expect, online, withoutServiceWorker } from "./fixtures.js";
 import { readFile, writeFile } from "node:fs/promises";
 
 test("mobile chrome keeps an opaque safe area and applies appearance before app startup", async ({
@@ -671,6 +671,7 @@ test("code blocks, thinking and HTTP dialogs preserve content and loading geomet
   await withoutServiceWorker(page);
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto(`/#session=${session.id}`);
+  await online(page);
   const prompt = page.getByLabel("Message or guidance");
   await prompt.fill("HTTP body proof");
   await prompt.press("Enter");
@@ -1736,6 +1737,7 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
   });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/#session=${session.id}`);
+  await online(page);
   const prompt = page.getByLabel("Message or guidance");
   await prompt.fill("Exploration probe");
   await prompt.press("Enter");
@@ -2077,6 +2079,7 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
     document.documentElement.style.setProperty("--safe-top", "47px");
     document.documentElement.style.setProperty("--safe-bottom", "34px");
   });
+  await online(page);
   const composer = page.getByLabel("Message or guidance");
   await composer.fill("Delegate preview task");
   await composer.press("Enter");

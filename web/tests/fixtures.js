@@ -13,6 +13,12 @@ export const withoutServiceWorker = (page) =>
     route.fulfill({ contentType: "text/javascript", body: "" }),
   );
 
+// The composer sends and attaches nothing until the event stream has caught
+// up. A click waits for that; a key press, setInputFiles or a dispatched
+// drop does not, and what it carried is lost.
+export const online = (page) =>
+  expect(page.locator('.composer input[type="file"]')).toBeEnabled();
+
 // The UI showcase is a development page: the Vite dev server serves it
 // (see playwright.config.js), not the native host.
 export { showcaseUrl as SHOWCASE_URL } from "./showcase-url.js";

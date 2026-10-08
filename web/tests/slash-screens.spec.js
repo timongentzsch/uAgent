@@ -1,11 +1,11 @@
 // A slash command with a screen opens it when typed bare, as a click would.
-import { test, expect } from "./fixtures.js";
+import { test, expect, online } from "./fixtures.js";
 
 test("bare slash commands open their screens", async ({ page, session }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto(`/#session=${session.id}`);
   const composer = page.getByLabel("Message or guidance");
-  await expect(composer).toBeEnabled();
+  await online(page);
   const run = async (text) => {
     await composer.fill(text);
     await composer.press("Enter");

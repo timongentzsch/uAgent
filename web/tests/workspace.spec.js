@@ -1,4 +1,4 @@
-import { test, expect } from "./fixtures.js";
+import { test, expect, online } from "./fixtures.js";
 import { mkdir, writeFile } from "node:fs/promises";
 
 test("appearance and configuration remain usable at large scales", async ({
@@ -403,12 +403,17 @@ test("retained history stays bounded and merges overlapping pages once", async (
     if (first) pageFinished();
   };
   await page.route("**/api/sessions/*?before=*", olderRoute);
-  await page
-    .getByRole("button", { name: "Load older retained messages", exact: true })
-    .evaluate((element) => {
-      element.click();
-      element.click();
-    });
+  const older = page.getByRole("button", {
+    name: "Load older retained messages",
+    exact: true,
+  });
+  // Refresh reconnected the event stream, and a scripted click does not
+  // wait for the button that disables meanwhile.
+  await expect(older).toBeEnabled();
+  await older.evaluate((element) => {
+    element.click();
+    element.click();
+  });
   await expect(page.locator(".message")).toHaveCount(128);
   releasePage();
   await pageDone;
@@ -688,6 +693,7 @@ test("the conversation menu exports and restarts; /quit closes nothing", async (
   session,
 }) => {
   await page.goto(`/#session=${session.id}`);
+  await online(page);
   const generation = () =>
     page.evaluate(
       (id) =>

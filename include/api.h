@@ -9,7 +9,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "include/api/capabilities.h"
@@ -52,6 +54,9 @@ class Api : public ApiSettings {
   Api& operator=(const Api&) = delete;
 
   bool capture_http = false;
+  // Answers that, as a whole response, are shown to nobody: a response is
+  // held back while it could still be one.
+  std::span<const std::string_view> unsaid;
   std::function<void(const json&, size_t)> observe_progress;
   json exchange_context = json::object();
   json http_exchanges = json::array();

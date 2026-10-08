@@ -260,6 +260,11 @@ void TestSseChunkPartitions() {
         "Map invariants Detail implementation Plan provider");
   CHECK(ActivityLabel("C# and snake_case use 2*3") ==
         "C# and snake_case use 2*3");
+  // Shortened from the front of its detail, by whole words: a word the cut
+  // falls before stays, one it falls inside goes.
+  CHECK(ActivityLabel("Thinking · alpha beta gamma", 21) ==
+        "Thinking · beta gamma");
+  CHECK(ActivityLabel("Thinking · alpha beta gamma", 20) == "Thinking · gamma");
 
   std::string final_line =
       event({{"choices", {{{"delta", {{"content", "complete"}}}}}}});
@@ -308,6 +313,29 @@ void TestSseChunkPartitions() {
     CHECK(guarded.content == foreign);
     CHECK(guarded.suppressed);
     CHECK(guarded_stream.show == StreamCtx::Show::kSuppress);
+  }
+
+  // A whole answer that is shown to nobody is held however it is chunked;
+  // one that only begins like it appears whole once it differs.
+  constexpr std::string_view kUnsaid[] = {"PASS", "PASS."};
+  for (const std::string said : {"PASS", " PASS.\n", "PASSWORD reset"}) {
+    for (size_t split = 0; split <= said.size(); ++split) {
+      ChatResult held;
+      StreamCtx held_stream;
+      held_stream.res = &held;
+      held_stream.unsaid = kUnsaid;
+      held_stream.started = std::chrono::steady_clock::now();
+      held_stream.EmitContent(said.substr(0, split));
+      const bool early = held_stream.show == StreamCtx::Show::kPrint;
+      held_stream.EmitContent(said.substr(split));
+      held_stream.Finish();
+      CHECK(held.content == said && !held.suppressed);
+      // Nothing shows before it differs from every such answer.
+      CHECK(early == (split > 4 && said.starts_with("PASSW")));
+      CHECK(held_stream.show == (said.starts_with("PASSW")
+                                     ? StreamCtx::Show::kPrint
+                                     : StreamCtx::Show::kSuppress));
+    }
   }
 
   ChatResult html;

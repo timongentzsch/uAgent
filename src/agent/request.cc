@@ -329,6 +329,8 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
     last_progress = now;
   };
   api_.observe_progress(json::object(), 0);
+  // A chat participant's pass or wait never shows, not even as it arrives.
+  if (ChatParticipant()) api_.unsaid = kSilentAnswers;
   ChatResult result =
       api_.Chat(messages, schemas, turn_budget, session_id_, estimated_bytes);
   api_.observe_progress = {};

@@ -169,7 +169,8 @@ add_library(
   src/agent/trace.cc
   src/agent/turn.cc
   src/agent/turn_budgets.cc
-  src/agent/turn_response.cc)
+  src/agent/turn_response.cc
+  src/agent/usage_accounting.cc)
 target_link_libraries(uagent_agent PUBLIC uagent_toolcore)
 
 add_library(

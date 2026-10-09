@@ -86,13 +86,19 @@ def test_a_settings_file_edited_by_hand_says_what_it_cannot_take(root, home, *, 
     edited = {"limits.maxToolCalls": 1, "limits.maxStps": 3, "sandbox.enabled": "maybe"}
     path.write_text(json.dumps({"format": 2, "all": edited, "projects": {}}))
     calls = tool_calls([("one", "read_path", {"path": "."}), ("two", "read_path", {"path": "."})])
-    with Server([calls, event({"content": "answered-at-the-limit"})]) as server:
+    responses = [calls, event({"content": "answered-at-the-limit"}), event({"content": "scripted"})]
+    with Server(responses) as server:
         result = run_dialog(root, base_env(home, server.url), "go\n/q\n", timeout=12, binary=binary)
         assert_true(result.returncode == 0, (result.stdout, result.stderr))
         assert_true("limits.maxStps is not a setting" in result.stdout, result.stdout)
         assert_true("sandbox.enabled expects 0 or 1" in result.stdout, result.stdout)
         # What it could take applies.
         assert_true("tool call limit reached (1)" in result.stdout, result.stdout)
+        # A script reads a headless run's stdout as its answer: the same
+        # report goes to stderr there, and the envelope stands alone.
+        scripted = run(root, base_env(home, server.url), "-p", "go", "--json", binary=binary)
+        assert_true(json.loads(scripted.stdout)["answer"] == "scripted", scripted.stdout)
+        assert_true("limits.maxStps is not a setting" in scripted.stderr, scripted.stderr)
 
 
 def test_prompt_overlay_reaches_the_live_prompt(root, home, *, binary):

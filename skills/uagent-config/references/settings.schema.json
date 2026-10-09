@@ -773,7 +773,7 @@
               "type": "string"
             }
           ],
-          "description": "global web master's loopback port",
+          "description": "the web host's loopback port",
           "x-env": "UAGENT_WEB_PORT"
         },
         "web.pushContact": {

@@ -981,7 +981,9 @@ def test_input_redraw_status_animation_does_not_repaint_draft(root, home, *, bin
         assert_true(output.count(b"status-redraw-ok") == 1, output)
         # Real response output starts with its actor header; its pipe write
         # may arrive separately from the text and legitimately repaint input.
-        response_at = output.index(b"uagent")
+        # The welcome names the program too: the header is the one after
+        # the draft.
+        response_at = output.index(b"uagent", output.index(b"pending draft"))
         assert_true(output[:response_at].count(b"pending draft") == 1, output)
 
 
@@ -1254,7 +1256,7 @@ def test_input_slash_suggestions_and_tab_completion(root, home, *, binary):
         assert_true(code == 0, output)
         # Both candidates are offered, with the same description /help prints.
         assert_true(b"/models  search and select across providers" in output, output)
-        assert_true(b"/model  choose what model to use" in output, output)
+        assert_true(b"/model  choose the model for this conversation" in output, output)
         # Tab commits the shared prefix and, once one row is left, the space
         # its argument needs.
         assert_true(b"/model " in output, output)

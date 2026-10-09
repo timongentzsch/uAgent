@@ -243,7 +243,7 @@ consteval ConfigDescriptor Terminal(ConfigDescriptor descriptor) {
 }  // namespace registry
 
 inline constexpr ConfigDescriptor kConfigRegistry[] = {
-    // The web master is per OS user, so its settings never come from a project.
+    // The web host is per OS user, so its settings never come from a project.
     registry::Terminal(registry::Named(
         registry::Str(
             "web.bind", "UAGENT_WEB_BIND", {}, "127.0.0.1",
@@ -263,7 +263,7 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
     registry::Terminal(registry::Named(
         registry::Int("web.port", "UAGENT_WEB_PORT", {}, 8080, 1024, 65535,
                       ReloadPolicy::kRestartRequired, "web",
-                      "global web master's loopback port", kScopeUser),
+                      "the web host's loopback port", kScopeUser),
         "Web port")),
     registry::Terminal(registry::Named(
         registry::Str(

@@ -825,7 +825,7 @@ std::vector<SessionInfo> FolderSessions(const std::string& folder) {
 
 std::string CoordinatorBoard(const std::string& folder) {
   const std::vector<SessionInfo> sessions = FolderSessions(folder);
-  if (sessions.empty()) return "No sessions in this folder yet.";
+  if (sessions.empty()) return "No conversations in this folder yet.";
   std::string board;
   size_t shown = 0;
   for (const SessionInfo& info : sessions) {

@@ -297,16 +297,15 @@ export default function ChatPage({
       level={1}
       title="What are we working on?"
       tips={[
-        "A folder's coordinator runs several conversations for you and hosts a chat with other voices. New conversation opens one too.",
-        <>
-          {keysOf("palette").map((key) => (
-            <kbd key={key}>{key}</kbd>
-          ))}{" "}
-          finds a conversation, a command or a settings section.
-        </>,
-        <>
-          <kbd>?</kbd> lists the keyboard shortcuts.
-        </>,
+        [
+          "Coordinator",
+          "Runs several conversations in a folder for you and hosts a chat with other voices. New conversation opens one too.",
+        ],
+        [
+          <kbd>{keysOf("palette").join(" ")}</kbd>,
+          "Finds a conversation, a command or a settings section.",
+        ],
+        [<kbd>?</kbd>, "Lists the keyboard shortcuts."],
       ]}
     >
       <p>Pick a folder on your host, or open a conversation from the list.</p>

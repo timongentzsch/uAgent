@@ -133,23 +133,27 @@ export default function Chat({
             tips={
               session.kind === "coordinator"
                 ? [
-                    "Ask for another voice and it adds a member to this chat.",
-                    "Start a message with a name, like “Ada, …”, to ask that one alone.",
-                    "A member with nothing to add stays silent.",
-                    "The board lists who is working and what needs you.",
+                    [
+                      "Members",
+                      "Ask for another voice and it joins this chat.",
+                    ],
+                    [
+                      "Ask one",
+                      "Start a message with a name, like “Ada,\u00a0…”.",
+                    ],
+                    ["Silence", "A member with nothing to add says nothing."],
+                    ["Board", "Who is working and what needs you."],
                   ]
                 : [
-                    <>
-                      <kbd>/</kbd> lists the commands.
-                    </>,
-                    <>
-                      Drop or paste a file to attach it; <kbd>@</kbd> then
-                      refers to it.
-                    </>,
-                    <>
-                      <kbd>Esc</kbd> stops a turn; Undo under a finished turn
-                      puts back the files it changed.
-                    </>,
+                    [<kbd>/</kbd>, "Lists the commands."],
+                    [
+                      <kbd>@</kbd>,
+                      "Refers to a file you dropped or pasted in.",
+                    ],
+                    [
+                      <kbd>Esc</kbd>,
+                      "Stops a turn. Undo under a finished turn puts back the files it changed.",
+                    ],
                   ]
             }
           >

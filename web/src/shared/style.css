@@ -772,6 +772,13 @@ dialog.sidebar:not([open]) {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* Beside four header buttons on a phone there is room for a letter of it:
+   the link stays, and the empty chat says the rest. */
+@media (max-width: 600px) {
+  .coordinator-subtitle span {
+    display: none;
+  }
+}
 .coordinator-subtitle button {
   flex-shrink: 0;
   font-size: inherit;
@@ -1019,21 +1026,37 @@ dialog.sidebar:not([open]) {
 .empty p {
   color: var(--muted);
 }
-/* What to try first, read as a short list under the heading. */
+/* What to try first: a lead and what it does per row, the leads in one
+   column so the rows read as a table. Left-aligned under the centred
+   heading: centred lines of uneven length are hard to scan. */
 .tips {
   display: grid;
-  gap: var(--space-2);
-  margin: var(--space-6) 0 0;
-  padding: 0;
-  list-style: none;
-  color: var(--muted);
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--space-3) var(--space-6);
+  width: fit-content;
+  margin: var(--space-12) auto 0;
+  padding-top: var(--space-6);
+  border-top: 1px solid var(--line);
+  text-align: left;
   font-size: var(--font-small);
+}
+.tips > div {
+  display: contents;
+}
+.tips dt {
+  color: var(--text);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.tips dd {
+  margin: 0;
+  color: var(--muted);
 }
 .tips kbd {
   padding: 0 var(--space-1);
   border: 1px solid var(--line);
   font: inherit;
-  color: var(--text);
+  font-weight: 400;
 }
 .mark.cursor-mark {
   width: calc(56rem / 14);

@@ -515,10 +515,8 @@ function Showcase() {
             <Welcome
               title="An empty view"
               tips={[
-                <>
-                  <kbd>/</kbd> lists the commands.
-                </>,
-                "A sentence about what to try first.",
+                [<kbd>/</kbd>, "Lists the commands."],
+                ["A word", "What it does, in a sentence."],
               ]}
             >
               <p>What this view is for.</p>

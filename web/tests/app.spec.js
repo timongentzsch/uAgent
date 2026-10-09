@@ -184,11 +184,11 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
   expect(await page.locator('img[src^="https:"]').count()).toBe(0);
   await page.setViewportSize({ width: 390, height: 844 });
   await page
-    .getByRole("button", { name: "Open sessions", exact: true })
+    .getByRole("button", { name: "Open conversations", exact: true })
     .click();
   await expect(page.getByRole("navigation")).toBeVisible();
   await page
-    .getByRole("button", { name: "Close sessions", exact: true })
+    .getByRole("button", { name: "Close conversations", exact: true })
     .click();
   await page.getByLabel("Message or guidance").fill("request approval");
   await page.getByRole("button", { name: "Send", exact: true }).click();

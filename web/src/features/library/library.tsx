@@ -247,7 +247,9 @@ export default function Library({
       list
     ) : (
       <EmptyState>
-        No {kind === "memory" ? "memories" : "skills"} found.
+        {kind === "memory"
+          ? "No memories here. A memory is a fact kept between conversations; Add memory writes one."
+          : "No skills here. A skill is a set of instructions loaded when a task calls for it; Add skill writes one."}
       </EmptyState>
     );
   }

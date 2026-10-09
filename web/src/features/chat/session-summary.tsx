@@ -39,10 +39,10 @@ export function SessionSummary({
   open: () => void;
 }) {
   return (
-    <Button variant="quiet" onClick={open} aria-label="Session statistics">
+    <Button variant="quiet" onClick={open} aria-label="Conversation statistics">
       <DataText>
-        Session · {count(state?.statistics?.recorded_turns ?? state?.turns)}{" "}
-        turns
+        Conversation ·{" "}
+        {count(state?.statistics?.recorded_turns ?? state?.turns)} turns
         {state?.usage?.cost_reported ? ` · ${cost(state.usage.cost)}` : ""}
       </DataText>
     </Button>

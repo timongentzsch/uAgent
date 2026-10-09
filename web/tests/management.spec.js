@@ -26,10 +26,10 @@ for (const surface of [
       });
       await page.goto(`/#session=${session.id}`);
       if (viewport.width < 900)
-        await page.getByRole("button", { name: "Open sessions" }).click();
+        await page.getByRole("button", { name: "Open conversations" }).click();
       const nav =
         viewport.width < 900
-          ? page.getByRole("dialog", { name: "Sessions" })
+          ? page.getByRole("dialog", { name: "Conversations" })
           : page.getByRole("complementary");
       await nav
         .getByRole("button", { name: surface.name, exact: true })
@@ -187,7 +187,7 @@ test("library drafts, shared controls and scheduled results", async ({
   }
   await page.unroute("**/api/command");
   await expect(
-    secondGroup.getByText("No memories found.", { exact: true }),
+    secondGroup.getByText(/^No memories here\. A memory is a fact/),
   ).toBeVisible();
   await expect(projectGroup.locator(LOADED_ROWS)).toHaveCount(0);
   await page.getByRole("button", { name: "Add memory", exact: true }).click();
@@ -282,7 +282,7 @@ test("library drafts, shared controls and scheduled results", async ({
     .getByLabel("Instructions", { exact: true })
     .fill("Review the workspace");
   await page.getByLabel("Environment", { exact: true }).selectOption("local");
-  await page.getByLabel("Permissions", { exact: true }).selectOption("yolo");
+  await page.getByLabel("Approval", { exact: true }).selectOption("yolo");
   await page.getByRole("button", { name: "Task model", exact: true }).click();
   await page.getByLabel("Model", { exact: true }).selectOption("mock/model-b");
   await page.getByLabel("Effort", { exact: true }).selectOption("high");

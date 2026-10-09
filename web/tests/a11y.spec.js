@@ -251,8 +251,8 @@ test.describe("phone", () => {
 
   test("the sessions drawer has no violations", async ({ page, session }) => {
     await page.goto(`/#session=${session.id}`);
-    await page.getByRole("button", { name: "Open sessions" }).click();
-    const drawer = page.getByRole("dialog", { name: "Sessions" });
+    await page.getByRole("button", { name: "Open conversations" }).click();
+    const drawer = page.getByRole("dialog", { name: "Conversations" });
     await expect(
       drawer.getByRole("navigation", { name: "Conversations" }),
     ).toBeVisible();

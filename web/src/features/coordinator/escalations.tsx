@@ -23,7 +23,7 @@ export default function WaitingList({
   report,
 }: {
   sessions: Session[];
-  // One folder's threads; every session when absent.
+  // One folder's threads; every conversation when absent.
   folder?: string;
   paused?: string;
   online: boolean;

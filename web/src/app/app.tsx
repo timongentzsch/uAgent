@@ -352,7 +352,8 @@ function App() {
     event.preventDefault();
     setBusy(true);
     try {
-      await startConversation(folder);
+      const kind = (event.submitter as HTMLButtonElement | null)?.value;
+      await startConversation(folder, kind === "coordinator");
       setModal(null);
     } catch (failure) {
       report(failure);
@@ -447,7 +448,7 @@ function App() {
     // In a terminal /quit detaches and the runtime stays; here that is just
     // leaving the page, so it never closes anything.
     else if (name === "/quit")
-      throw new Error("Use Close session in the conversation menu.");
+      throw new Error("Use Close conversation in the conversation menu.");
     else if (name === "/restart") {
       setNotice(await restartConversation(session!));
     } else if (name === "/fork") {
@@ -966,7 +967,7 @@ function App() {
                 ) : (
                   drawer && (
                     <Modal
-                      title="Sessions"
+                      title="Conversations"
                       className="sidebar drawer"
                       close={() => setDrawer(false)}
                     >
@@ -978,7 +979,7 @@ function App() {
                   <header class="conversation-head">
                     {compact && (
                       <IconButton
-                        label="Open sessions"
+                        label="Open conversations"
                         onClick={() => setDrawer(true)}
                       >
                         <Menu />
@@ -1163,8 +1164,8 @@ function App() {
                   sessions={listed}
                   commands={catalogue.commands || []}
                   choose={choose}
-                  start={(cwd: string) =>
-                    void startConversation(cwd).catch(report)
+                  start={(cwd: string, coordinator?: boolean) =>
+                    void startConversation(cwd, coordinator).catch(report)
                   }
                   run={runCommand}
                   settings={(section: string) =>

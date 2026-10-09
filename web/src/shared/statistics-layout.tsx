@@ -60,7 +60,7 @@ export function StatisticsLayout({
               aria-pressed={scope === value}
               onClick={() => change?.(value)}
             >
-              {value === "turn" ? unit : "Session"}
+              {value === "turn" ? unit : "Conversation"}
             </Button>
           ))}
         </div>
@@ -71,14 +71,14 @@ export function StatisticsLayout({
 }
 
 // How many rows each scope lists before its usage rows.
-const SCOPE_ROWS = { Turn: 10, Message: 7, Session: 9 };
+const SCOPE_ROWS = { Turn: 10, Message: 7, Conversation: 9 };
 export function StatisticsLoading({ unit }: { unit?: StatisticsUnit }) {
   return (
     <StatisticsLayout unit={unit} scope={unit ? "turn" : "session"}>
       <Placeholder label="Loading statistics…">
         <Rows
           rows={Array.from(
-            { length: SCOPE_ROWS[unit || "Session"] },
+            { length: SCOPE_ROWS[unit || "Conversation"] },
             (_, index): Row => [`Recorded value ${index}`, "Not recorded"],
           )}
         />

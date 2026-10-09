@@ -80,7 +80,7 @@ export default function ConversationActions({
           {modal.session.generation
             ? modal.session.turn_active
               ? "The running turn stops first."
-              : "The open session closes first."
+              : "The open conversation closes first."
             : ""}
         </p>
       )}

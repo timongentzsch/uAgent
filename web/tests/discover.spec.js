@@ -87,13 +87,59 @@ test("? lists the shortcuts, and Alt+arrows step through conversations", async (
     .toBe(`#session=${session.id}`);
 });
 
-test("the home screen asks one question and offers one way to start", async ({
+test("an empty workspace says what to do, and a folder's coordinator is one step away", async ({
   page,
+  host,
 }) => {
   await page.goto("/");
   await expect(
     page.getByRole("heading", { name: "What are we working on?" }),
   ).toBeVisible();
+  // Nothing to pick yet: the list says how to start, and the page what else
+  // there is.
+  await expect(
+    page.getByRole("navigation", { name: "Conversations" }),
+  ).toContainText("No conversations yet");
+  const tips = page.locator(".empty .tips li");
+  await expect(tips).toHaveCount(3);
+  await expect(tips.first()).toContainText("coordinator");
+  await expect(tips.nth(1)).toContainText("finds any conversation");
+
+  // The coordinator of a folder that has no conversation yet.
+  await page.locator(".empty").getByRole("button").click();
+  await page.getByLabel("Directory on the host").fill(host.project);
+  await page.getByRole("button", { name: "Open its coordinator" }).click();
+  const board = page.getByRole("complementary", { name: "Board" });
+  await expect(board).toContainText("Nothing here yet");
+  // Its empty chat explains itself, and the input says whom it reaches.
+  await expect(page.locator(".transcript .tips")).toContainText(
+    "Start a message with a name",
+  );
+  await expect(page.locator(".transcript .empty")).toContainText(
+    "starts threads that do the work",
+  );
+});
+
+test("the tips of an empty conversation go with its first message", async ({
+  page,
+  session,
+  command,
+}) => {
+  await command("model", {
+    session_id: session.id,
+    generation: session.generation,
+    operation: "select",
+    model: "mock/model-b",
+  });
+  await page.goto(`/#session=${session.id}`);
+  const tips = page.locator(".transcript .tips li");
+  await expect(tips).toHaveCount(3);
+  await expect(tips.first()).toContainText("lists the commands");
+  const prompt = page.getByLabel("Message or guidance");
+  await prompt.fill("Hello");
+  await prompt.press("Enter");
+  await expect(page.locator(".transcript .message").first()).toBeVisible();
+  await expect(tips).toHaveCount(0);
 });
 
 test("the palette opens from the phone's sidebar", async ({
@@ -102,7 +148,7 @@ test("the palette opens from the phone's sidebar", async ({
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/#session=${session.id}`);
-  await page.getByLabel("Open sessions").click();
+  await page.getByLabel("Open conversations").click();
   await page.getByRole("button", { name: "Command palette" }).click();
   await expect(
     page.getByRole("dialog", { name: "Command palette" }),

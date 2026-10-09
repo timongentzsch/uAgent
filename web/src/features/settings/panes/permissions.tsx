@@ -62,7 +62,9 @@ export function PermissionsPane() {
           </Button>
         </Row>
       ))}
-      {rules && !rules.rules.length && <Row label="No remembered actions." />}
+      {rules && !rules.rules.length && (
+        <Row label="No remembered actions. Answering “always” to an approval adds one." />
+      )}
       {!!rules?.rules.length && (
         <Row
           label="Forget all for this repository"

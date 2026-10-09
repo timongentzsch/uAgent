@@ -48,7 +48,12 @@ export default function Board({
   const shown = groups.filter(([, items]) => items.length);
   return (
     <aside class="board" aria-label="Board">
-      {!shown.length && <p class="board-note">No sessions in this folder</p>}
+      {!shown.length && (
+        <p class="board-note">
+          Nothing here yet. Threads the coordinator starts, members of its chat
+          and what needs you appear here.
+        </p>
+      )}
       {shown.map(([label, items, limit]) => (
         <section key={label}>
           <h2>

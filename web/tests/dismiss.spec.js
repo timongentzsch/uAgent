@@ -40,9 +40,9 @@ test.describe("back closes what is open", () => {
 
     // The drawer, then a page opened from it: back unwinds page by page.
     await page
-      .getByRole("button", { name: "Open sessions", exact: true })
+      .getByRole("button", { name: "Open conversations", exact: true })
       .tap();
-    const drawer = page.getByRole("dialog", { name: "Sessions" });
+    const drawer = page.getByRole("dialog", { name: "Conversations" });
     await drawer.getByRole("button", { name: "Library", exact: true }).tap();
     await expect(drawer).toHaveCount(0);
     await expect(
@@ -196,17 +196,17 @@ test.describe("phone drawer", () => {
   test("closes on a tap beside it", async ({ page }) => {
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.goto("/");
-    await page.getByLabel("Open sessions").click();
-    const drawer = page.getByRole("dialog", { name: "Sessions" });
+    await page.getByLabel("Open conversations").click();
+    const drawer = page.getByRole("dialog", { name: "Conversations" });
     await expect(drawer).toBeVisible();
     await page.mouse.click(385, 400);
     await expect(drawer).toHaveCount(0);
   });
   test("slides in from the left", async ({ page }) => {
     await page.goto("/");
-    await expect(page.getByLabel("Open sessions")).toBeVisible();
+    await expect(page.getByLabel("Open conversations")).toBeVisible();
     const left = await page.evaluate(async () => {
-      document.querySelector('[aria-label="Open sessions"]').click();
+      document.querySelector('[aria-label="Open conversations"]').click();
       await new Promise((resolve) => requestAnimationFrame(resolve));
       await new Promise((resolve) => requestAnimationFrame(resolve));
       return document.querySelector("dialog.drawer").getBoundingClientRect()

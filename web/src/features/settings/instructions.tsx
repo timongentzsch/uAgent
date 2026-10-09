@@ -20,8 +20,8 @@ import { ProjectField } from "../library/management.tsx";
 import "./instructions.css";
 
 const TITLES: Record<string, string> = {
-  "sessions/user": "Yours · every session",
-  "sessions/project": "Project · every session",
+  "sessions/user": "Yours · every conversation",
+  "sessions/project": "Project · every conversation",
   "coordinator/user": "Yours · coordinator",
   "coordinator/project": "Project · coordinator",
 };

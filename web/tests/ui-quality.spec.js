@@ -138,7 +138,7 @@ for (const width of [390, 1280]) {
       expect(await geometry(dialog)).toEqual(shell);
       expect(await geometry(toolbar)).toEqual(controls);
       await toolbar
-        .getByRole("button", { name: "Session", exact: true })
+        .getByRole("button", { name: "Conversation", exact: true })
         .click();
       await expect(turn).toHaveAttribute("aria-pressed", "false");
     } finally {
@@ -504,9 +504,9 @@ test.describe("touch interaction", () => {
       await tools.getByText("Categories", { exact: true }).click();
       await scaledFields(tools, zoom);
       await tools.getByRole("button", { name: "Close tools" }).click();
-      await page.getByRole("button", { name: "Open sessions" }).click();
+      await page.getByRole("button", { name: "Open conversations" }).click();
       const sessions = page.getByRole("dialog", {
-        name: "Sessions",
+        name: "Conversations",
         exact: true,
       });
       await expect(

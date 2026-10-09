@@ -428,7 +428,7 @@ export default function Scheduled({
                     </Select>
                   </Field>
                   <Field
-                    label="Permissions"
+                    label="Approval"
                     help={
                       task.permissions === "yolo"
                         ? "Runs without ordinary approval prompts."
@@ -438,7 +438,7 @@ export default function Scheduled({
                     }
                   >
                     <Select
-                      aria-label="Permissions"
+                      aria-label="Approval"
                       // A task saved before the modes had one name asks.
                       value={
                         task.permissions === "prompt" ? "ask" : task.permissions

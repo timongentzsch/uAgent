@@ -9,6 +9,7 @@ import type { ComponentProps, JSX } from "preact";
 import {
   Modal,
   Deferred,
+  Actions,
   Button,
   EmptyState,
   Spinner,
@@ -217,11 +218,27 @@ export default function Modals({
             </label>
             <p class="muted">
               Any accessible directory works, including a folder outside Git.
-              Multiple conversations can work in the same folder.
+              Multiple conversations can work in the same folder. Its
+              coordinator runs several for you and hosts a chat with other
+              voices.
             </p>
-            <Button type="submit" variant="primary" disabled={busy || !online}>
-              Start conversation
-            </Button>
+            <Actions>
+              <Button
+                type="submit"
+                name="kind"
+                value="coordinator"
+                disabled={busy || !online}
+              >
+                Open its coordinator
+              </Button>
+              <Button
+                type="submit"
+                variant="primary"
+                disabled={busy || !online}
+              >
+                Start conversation
+              </Button>
+            </Actions>
           </form>
         </Modal>
       )}

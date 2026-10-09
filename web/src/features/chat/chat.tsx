@@ -6,7 +6,7 @@ import type {
   Snapshot,
 } from "../../shared/types.ts";
 import { useEffect, useState } from "preact/hooks";
-import { LoadError, Mark, Placeholder } from "../../shared/ui.tsx";
+import { LoadError, Placeholder, Welcome } from "../../shared/ui.tsx";
 import HistoryStart from "./history-start.tsx";
 import { MessageRows, prepareHistoryBlocks } from "./message.tsx";
 
@@ -128,13 +128,37 @@ export default function Chat({
           <TranscriptPlaceholder session={session} />
         )}
         {snapshot && prepared && blocks.length === 0 && (
-          <div class="empty">
-            <Mark className="cursor-mark" />
-            <h2>What are we working on?</h2>
+          <Welcome
+            title="What are we working on?"
+            tips={
+              session.kind === "coordinator"
+                ? [
+                    "Ask for another voice and it adds a member to this chat.",
+                    "Start a message with a name, like “Ada, …”, to ask that one alone.",
+                    "A member with nothing to add stays silent.",
+                    "The board lists who is working and what needs you.",
+                  ]
+                : [
+                    <>
+                      <kbd>/</kbd> lists the commands.
+                    </>,
+                    <>
+                      Drop or paste a file to attach it; <kbd>@</kbd> then
+                      refers to it.
+                    </>,
+                    <>
+                      <kbd>Esc</kbd> stops a turn, and <kbd>/undo</kbd> puts
+                      back its file changes.
+                    </>,
+                  ]
+            }
+          >
             <p>
-              Describe a task, attach a file, or use an existing slash command.
+              {session.kind === "coordinator"
+                ? "The coordinator starts threads that do the work and reports back. It never edits files itself."
+                : "Describe a task."}
             </p>
-          </div>
+          </Welcome>
         )}
         {snapshot && prepared && (
           <MessageRows blocks={blocks} online={online} session={session} />

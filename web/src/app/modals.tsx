@@ -259,13 +259,7 @@ export default function Modals({
         </Modal>
       )}
       {modal?.type === "instructions" && (
-        <Modal
-          title="Instructions"
-          className="instructions-view"
-          size="wide"
-          layout="sheet"
-          close={close}
-        >
+        <Modal title="Instructions" size="wide" layout="sheet" close={close}>
           <Deferred
             load={instructionsDialog}
             fallback={<Spinner label="Loading instructions…" surface />}
@@ -313,13 +307,7 @@ export default function Modals({
         </Modal>
       )}
       {modal?.type === "tools" && (
-        <Modal
-          title="Tools"
-          className="tools-view"
-          size="medium"
-          layout="sheet"
-          close={close}
-        >
+        <Modal title="Tools" size="medium" layout="sheet" close={close}>
           {toolsSession ? (
             <Deferred
               load={toolsDialog}

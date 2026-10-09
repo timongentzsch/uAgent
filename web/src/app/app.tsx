@@ -716,10 +716,15 @@ function App() {
     }),
     [report, recallGuidance, branchFrom, selected],
   );
-  // A coordinator's chat names who wrote what and shows each one's prompt.
+  // The other conversations of the open one's folder. A coordinator's chat
+  // names who of them wrote what and shows each one's prompt.
+  const threads = useMemo(
+    () => threadsOf(catalogue.sessions, session?.cwd || ""),
+    [catalogue.sessions, session?.cwd],
+  );
   const teamNames =
     session?.kind === "coordinator"
-      ? threadsOf(catalogue.sessions, session.cwd || "")
+      ? threads
           .map((item) => item.member)
           .filter(Boolean)
           .join(" ")
@@ -753,9 +758,7 @@ function App() {
   // conversation's, or that of a member of its chat.
   function showContext(member?: string) {
     const shown = member
-      ? threadsOf(catalogue.sessions, session?.cwd || "").find(
-          (item) => item.member === member,
-        )
+      ? threads.find((item) => item.member === member)
       : session;
     const busy = member ? shown?.turn_active : running;
     const prepare = shown?.generation && !busy && online ? shown : undefined;
@@ -1026,9 +1029,7 @@ function App() {
                       page === "chat" &&
                       session?.kind === "coordinator" &&
                       (() => {
-                        const waits = waitingOn(
-                          threadsOf(catalogue.sessions, session.cwd || ""),
-                        ).length;
+                        const waits = waitingOn(threads).length;
                         return (
                           <IconButton
                             label={waits ? `Board, ${waits} need you` : "Board"}
@@ -1042,7 +1043,7 @@ function App() {
                         );
                       })()}
                     {compact && (
-                      <div class="conversation-head-actions">
+                      <div>
                         <IconButton label="Settings" onClick={settings}>
                           <Settings />
                         </IconButton>
@@ -1066,10 +1067,7 @@ function App() {
                       close={() => setBoardOpen(false)}
                     >
                       <Board
-                        threads={threadsOf(
-                          catalogue.sessions,
-                          session.cwd || "",
-                        )}
+                        threads={threads}
                         online={online}
                         choose={(id) => {
                           setBoardOpen(false);

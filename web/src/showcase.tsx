@@ -245,9 +245,7 @@ function Showcase() {
             <p>Shared tokens, controls, states, and surfaces.</p>
           </div>
         </div>
-        <a class="button-link" href="/">
-          Back to workspace
-        </a>
+        <a href="/">Back to workspace</a>
       </header>
 
       <section class="showcase-section">

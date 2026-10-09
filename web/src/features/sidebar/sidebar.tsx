@@ -305,7 +305,7 @@ function SessionRowView({
   choose,
   menu,
 }: SessionRowProps) {
-  const { state } = statusOf(item, online);
+  const state = statusOf(item, online);
   const Icon = STATE_ICONS[state];
   return (
     <div class="session-row">
@@ -535,10 +535,7 @@ function SidebarView({
         </Placeholder>
       </nav>
       <footer>
-        <ConnectionStatus
-          phase={connection}
-          className={`connection ${online ? "connected" : ""}`}
-        />
+        <ConnectionStatus phase={connection} className="connection" />
         <IconButton label="Refresh" onClick={refresh}>
           <RefreshCw />
         </IconButton>

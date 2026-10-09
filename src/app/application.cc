@@ -175,7 +175,13 @@ bool Application::ResumeAtStartup() {
   std::string source = session_file_;
   if (source.empty() && context_.options.resume_latest) {
     std::vector<SessionInfo> sessions = ListSessions();
-    if (!sessions.empty()) source = sessions.front().path;
+    if (!sessions.empty()) {
+      source = sessions.front().path;
+    } else if (!channel_) {
+      // On stderr: a headless run's stdout is its answer.
+      fputs("uagent: no saved conversation to continue; starting a new one\n",
+            stderr);
+    }
   }
   if (!source.empty() && PathExists(source)) {
     // A thread's sandbox, budget and approval limit are applied by its

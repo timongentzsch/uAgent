@@ -360,21 +360,10 @@ class WorkerChannel final : public ApplicationChannel {
     ready_ = true;
     busy_ = input_.has_value();
     if (!busy_ && turn_active_ && link_) {
-      std::string answer;
-      const json blocks = JsonValue(JsonValue(state, "view", json::object()),
-                                    "blocks", json::array());
-      for (auto block = blocks.rbegin(); block != blocks.rend(); ++block) {
-        if (JsonValue(*block, "kind", "") != "assistant") continue;
-        answer = JsonValue(*block, "text", "");
-        // The view holds a long answer's opening only.
-        if (JsonValue(*block, "truncated", false)) {
-          answer += "\n[cut short here; history shows the rest]";
-        }
-        break;
-      }
       link_->Report(JsonValue(JsonValue(state, "stop", json::object()),
                               "reason", "completed"),
-                    JsonValue(state_, "title", title_), answer,
+                    JsonValue(state_, "title", title_),
+                    JsonValue(state, "answer", ""),
                     JsonValue(state, "chat_re", json()));
     }
     if (!busy_) {

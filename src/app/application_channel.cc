@@ -114,6 +114,17 @@ void Application::PublishChannelState(bool checkpoint) {
     state["view"] = agent_.DisplaySnapshot();
     state["system_prompt"] = agent_.LastSentPrompt();
     state["http"] = agent_.HttpExchanges();
+    // A thread's last answer whole, for the report to its coordinator: the
+    // view holds a long one's opening only. Well inside what one mail holds.
+    if (JsonValue(context_.options.session, "kind", "") == kSessionKindThread) {
+      constexpr size_t kAnswerBytes = kMailBytes / 4;
+      std::string answer = agent_.LastText();
+      if (answer.size() > kAnswerBytes) {
+        answer = Utf8Prefix(answer, kAnswerBytes) +
+                 "\n[cut short here; history shows the rest]";
+      }
+      state["answer"] = std::move(answer);
+    }
   }
   state["view_epoch"] = agent_.ViewEpoch();
   // The agent's own self-directive, which the Instructions screen can clear.

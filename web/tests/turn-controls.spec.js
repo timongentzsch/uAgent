@@ -38,7 +38,7 @@ test("always allowing an action remembers it in Settings", async ({
   await expect(card).toContainText(`in ${await realpath(host.project)}`);
   await expect(card.locator(".risk-chip").first()).toBeVisible();
   await expect(
-    card.getByRole("button", { name: "Allow for session" }),
+    card.getByRole("button", { name: "Allow for this conversation" }),
   ).toBeVisible();
   // One row of answers; the rest waits under More options.
   const answers = await card
@@ -51,7 +51,7 @@ test("always allowing an action remembers it in Settings", async ({
     );
   expect(answers.map((answer) => answer.name)).toEqual([
     "Deny",
-    "Allow for session",
+    "Allow for this conversation",
     "Allow once",
   ]);
   for (const answer of answers) {

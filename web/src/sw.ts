@@ -96,7 +96,7 @@ async function attention(data: Attention | undefined) {
   )
     return;
   await self.registration.showNotification("µAgent needs your attention", {
-    body: "Open the app to review the latest session state.",
+    body: "Open the app to see what the conversation needs.",
     tag: data.id,
     icon: "/icon-192.png",
     badge: "/icon-192.png",

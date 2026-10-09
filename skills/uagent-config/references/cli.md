@@ -6,18 +6,18 @@
 | Flag | Description |
 | --- | --- |
 | `--show-system-prompt` | show the resolved system prompt without a model call; --json includes sources |
-| `--control JSON|-` | run a native memory, skills, schedule or prompt operation without a model |
+| `--control JSON\|-` | run a native memory, skills, schedule or prompt operation without a model |
 | `--web` | start or reuse this user's web host |
 | `--web-port PORT` | loopback web listener port (default 8080) |
 | `--web-origin ORIGIN` | exact browser origin behind a local HTTPS or tailnet proxy |
 | `-p PROMPT` | run one turn, print only the final answer, exit |
-| `--yolo` | act without asking; commands stay sandboxed, and what always needs a person still does |
+| `--yolo` | act without asking; the sandbox setting still applies, and what always needs a person still does |
 | `--json` | emit a stable JSON envelope in headless mode |
 | `--json-stream` | emit versioned JSONL events in headless mode |
 | `--budget USD` | cap this conversation's total spend between model calls |
 | `--token-budget TOKENS` | cap generated tokens across the session between model calls |
 | `--plain` | screen-reader output: labelled lines, no animation |
-| `--no-memory` | disable memory recall and writes for this session |
+| `--no-memory` | disable memory recall and writes for this conversation |
 | `--verbosity LEVEL` | detail shown in this terminal: minimal, default or full |
 | `--model SELECTION` | conversation model as [provider/]model[:variant][:effort] |
 | `--image-model SELECTION` | read attached images with this model route |

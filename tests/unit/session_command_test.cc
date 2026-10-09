@@ -262,7 +262,7 @@ void TestCommandReplies() {
                std::vector<std::pair<std::string, std::string>>{
                    {"/help", "/attach PATH"},
                    {"/status", "test-model"},
-                   {"/cost", "no session spend"},
+                   {"/cost", "no spend in this conversation"},
                    {"/context", "model request"},
                    {"/tools", "tools"},
                    {"/attach", "no pending attachments"}}) {

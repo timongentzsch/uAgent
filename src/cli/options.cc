@@ -31,8 +31,8 @@ constexpr FlagSpec kFlags[] = {
     {"-p", FlagKind::kPrompt, nullptr, nullptr, "PROMPT",
      "run one turn, print only the final answer, exit"},
     {"--yolo", FlagKind::kToggle, &Options::yolo, nullptr, nullptr,
-     "act without asking; commands stay sandboxed, and what always needs "
-     "a person still does"},
+     "act without asking; the sandbox setting still applies, and what "
+     "always needs a person still does"},
     {"--json", FlagKind::kToggle, &Options::json, nullptr, nullptr,
      "emit a stable JSON envelope in headless mode"},
     {"--json-stream", FlagKind::kToggle, &Options::json_stream, nullptr,
@@ -49,7 +49,7 @@ constexpr FlagSpec kFlags[] = {
     {.flag = "--no-memory",
      .kind = FlagKind::kConfigSet,
      .key = "UAGENT_MEMORY",
-     .help = "disable memory recall and writes for this session",
+     .help = "disable memory recall and writes for this conversation",
      .preset = "0"},
     {"--verbosity", FlagKind::kConfig, nullptr, "UAGENT_VERBOSITY", "LEVEL",
      "detail shown in this terminal: minimal, default or full"},
@@ -211,7 +211,8 @@ ParsedOptions ParseOptions(int argc, char* const argv[]) {
        !parsed.options.overrides.empty())) {
     parsed.error = "--control is a standalone management command";
   } else if (parsed.options.resume_pick && !parsed.options.prompt.empty()) {
-    parsed.error = "--resume picks a session interactively; use -c with -p";
+    parsed.error =
+        "--resume picks a conversation interactively; use -c with -p";
   } else if (parsed.options.json && parsed.options.json_stream) {
     parsed.error = "--json and --json-stream are mutually exclusive";
   } else if ((parsed.options.json || parsed.options.json_stream) &&

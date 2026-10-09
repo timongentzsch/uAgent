@@ -302,7 +302,7 @@ export default function ChatPage({
           {keysOf("palette").map((key) => (
             <kbd key={key}>{key}</kbd>
           ))}{" "}
-          finds any conversation, command or setting.
+          finds a conversation, a command or a settings section.
         </>,
         <>
           <kbd>?</kbd> lists the keyboard shortcuts.

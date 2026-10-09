@@ -103,14 +103,26 @@ test("an empty workspace says what to do, and a folder's coordinator is one step
   const tips = page.locator(".empty .tips li");
   await expect(tips).toHaveCount(3);
   await expect(tips.first()).toContainText("coordinator");
-  await expect(tips.nth(1)).toContainText("finds any conversation");
+  await expect(tips.nth(1)).toContainText("finds a conversation");
 
-  // The coordinator of a folder that has no conversation yet.
+  // Enter in the dialog starts a conversation, as its primary button does.
   await page.locator(".empty").getByRole("button").click();
+  const folder = page.getByLabel("Directory on the host");
+  await folder.fill(host.project);
+  await folder.press("Enter");
+  await expect(page.locator(".transcript .tips")).toContainText(
+    "lists the commands",
+  );
+  await expect(page.getByRole("complementary", { name: "Board" })).toHaveCount(
+    0,
+  );
+
+  // The coordinator of that folder is the dialog's other action.
+  await page.getByRole("button", { name: "New conversation" }).first().click();
   await page.getByLabel("Directory on the host").fill(host.project);
   await page.getByRole("button", { name: "Open its coordinator" }).click();
   const board = page.getByRole("complementary", { name: "Board" });
-  await expect(board).toContainText("Nothing here yet");
+  await expect(board).toBeVisible();
   // Its empty chat explains itself, and the input says whom it reaches.
   await expect(page.locator(".transcript .tips")).toContainText(
     "Start a message with a name",

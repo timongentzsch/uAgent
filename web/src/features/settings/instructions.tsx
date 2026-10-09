@@ -85,8 +85,8 @@ export default function Instructions({
     <div class="instructions">
       <ProjectField value={cwd} projects={projects} change={setCwd} />
       <p class="muted">
-        Read in this order when a session starts, after the built-in base.
-        Changes reach new and restarted sessions.
+        Read in this order when a conversation starts, after the built-in base.
+        Changes reach new and restarted conversations.
       </p>
       {error ? (
         <LoadError error={error} retry={retry} />

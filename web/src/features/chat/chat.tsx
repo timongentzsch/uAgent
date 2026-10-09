@@ -147,8 +147,8 @@ export default function Chat({
                       refers to it.
                     </>,
                     <>
-                      <kbd>Esc</kbd> stops a turn, and <kbd>/undo</kbd> puts
-                      back its file changes.
+                      <kbd>Esc</kbd> stops a turn; Undo under a finished turn
+                      puts back the files it changed.
                     </>,
                   ]
             }

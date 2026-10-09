@@ -55,7 +55,7 @@ std::string CliMarkdown() {
   // As typed, value and all: `--debug[=PATH]` takes one or none.
   out += "| Flag | Description |\n| --- | --- |\n";
   for (const json& flag : CliSchemaJson()) {
-    out += "| `" + JsonValue(flag, "usage", std::string()) + "` | " +
+    out += "| `" + Escape(JsonValue(flag, "usage", std::string())) + "` | " +
            Escape(JsonValue(flag, "description", std::string())) + " |\n";
   }
   out +=

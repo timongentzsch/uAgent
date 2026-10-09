@@ -186,7 +186,7 @@ test("unread completions, background activity and conversation lifecycle", async
     .getByLabel("Conversation menu", { exact: true });
   const originalHash = await page.evaluate(() => location.hash);
   await page
-    .getByRole("complementary", { name: "Projects and sessions" })
+    .getByRole("complementary", { name: "Projects and conversations" })
     .getByRole("button", { name: "New conversation", exact: true })
     .click();
   await page.getByLabel("Directory on the host").fill(fixture.project);

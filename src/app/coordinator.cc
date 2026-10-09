@@ -843,7 +843,7 @@ std::string CoordinatorBoard(const std::string& folder) {
   }
   if (shown < sessions.size()) {
     board += "… " + std::to_string(sessions.size() - shown) +
-             " older sessions; history search finds them\n";
+             " older conversations; history search finds them\n";
   }
   return board;
 }

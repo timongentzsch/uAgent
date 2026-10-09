@@ -843,7 +843,7 @@ void Welcome() {
                     "Enter sends · Esc stops a turn · / lists commands · "
                     "/undo puts back the last turn's file changes\n"
                     "uagent coord opens a folder's coordinator, which runs "
-                    "several at once.\n")
+                    "several conversations.\n")
             .c_str(),
         stdout);
 }
@@ -884,7 +884,7 @@ int TerminalMain(Options options) {
       const std::string board = CoordinatorBoard(cwd);
       printf("%s", TerminalSafe(board).c_str());
       // Nothing to manage yet: what it is for, as the web's empty chat says.
-      if (board.starts_with("No conversations")) {
+      if (FolderSessions(cwd).empty()) {
         fputs(AsciiGlyphs("\nAsk for work and it starts threads that do it. "
                           "Ask for another voice and it adds a member to the "
                           "chat;\nopen a message with a name (\"Ada, …\") to "

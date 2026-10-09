@@ -20,7 +20,7 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
   await expect(page.getByText("Connected", { exact: true })).toBeVisible();
 
   await page
-    .getByRole("complementary", { name: "Projects and sessions" })
+    .getByRole("complementary", { name: "Projects and conversations" })
     .getByRole("button", { name: "New conversation", exact: true })
     .click();
   await page.getByLabel("Directory on the host").fill(fixture.project);

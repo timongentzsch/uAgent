@@ -348,12 +348,15 @@ function App() {
       removeEventListener("hashchange", followDecisionLink);
     };
   }, []);
-  async function create(event: JSX.TargetedSubmitEvent<HTMLFormElement>) {
-    event.preventDefault();
+  // A conversation in the folder typed into the dialog, or its coordinator.
+  async function create(
+    event: JSX.TargetedSubmitEvent<HTMLFormElement> | null,
+    coordinator = false,
+  ) {
+    event?.preventDefault();
     setBusy(true);
     try {
-      const kind = (event.submitter as HTMLButtonElement | null)?.value;
-      await startConversation(folder, kind === "coordinator");
+      await startConversation(folder, coordinator);
       setModal(null);
     } catch (failure) {
       report(failure);
@@ -961,7 +964,10 @@ function App() {
               </a>
               <div class="shell">
                 {!compact ? (
-                  <aside class="sidebar" aria-label="Projects and sessions">
+                  <aside
+                    class="sidebar"
+                    aria-label="Projects and conversations"
+                  >
                     {sidebar}
                   </aside>
                 ) : (

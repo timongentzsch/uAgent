@@ -87,7 +87,7 @@ export default function Palette({
       },
       // One that exists is listed among the conversations above.
       ...(recent.some(
-        (item) => item.kind === "coordinator" && item.cwd === folder,
+        (item) => item.kind === "coordinator" && folderOf(item) === folder,
       )
         ? []
         : [

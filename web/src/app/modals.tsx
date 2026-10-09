@@ -111,7 +111,10 @@ export default function Modals({
   showContext: () => void;
   folder: string;
   setFolder: (folder: string) => void;
-  create: (event: JSX.TargetedSubmitEvent<HTMLFormElement>) => void;
+  create: (
+    event: JSX.TargetedSubmitEvent<HTMLFormElement> | null,
+    coordinator?: boolean,
+  ) => void;
   busy: boolean;
   preferences: Preferences;
 }) {
@@ -223,11 +226,13 @@ export default function Modals({
               voices.
             </p>
             <Actions>
+              {/* Not a submit: Enter in the field starts a conversation. */}
               <Button
-                type="submit"
-                name="kind"
-                value="coordinator"
                 disabled={busy || !online}
+                onClick={(event) =>
+                  event.currentTarget.form?.reportValidity() &&
+                  create(null, true)
+                }
               >
                 Open its coordinator
               </Button>

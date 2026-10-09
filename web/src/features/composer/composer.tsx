@@ -591,7 +591,7 @@ export default function Composer({
           >
             {(close) => (
               <Field
-                label="This conversation's permissions"
+                label="This conversation's approval mode"
                 help="The default is the approval mode in Settings, unless a project or the environment sets another."
               >
                 <Select

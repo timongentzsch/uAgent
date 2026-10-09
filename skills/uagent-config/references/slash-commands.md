@@ -43,7 +43,7 @@
 | `/variant MODE` | set OpenRouter provider routing |
 | `/btw QUESTION` | ask a side question without adding it to the conversation |
 | `/verbosity [minimal|default|full]` | set how much of the agent's work is shown, everywhere |
-| `/yolo` | toggle acting without asking; commands stay sandboxed |
+| `/yolo` | toggle acting without asking; the sandbox setting still applies |
 | `/coord` | open this folder's coordinator |
 | `/board` | list this folder's conversations and threads |
 | `/open ID` | switch to a conversation from /board |

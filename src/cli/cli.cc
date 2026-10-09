@@ -154,7 +154,7 @@ constexpr SlashCommandSpec kSlashCommands[] = {
      "set how much of the agent's work is shown, everywhere",
      kNoViewer | kClientOnly},
     {SlashCommandId::kYolo, "/yolo", "",
-     "toggle acting without asking; commands stay sandboxed",
+     "toggle acting without asking; the sandbox setting still applies",
      kNoViewer | kTerminal},
     {SlashCommandId::kCoord, "/coord", "", "open this folder's coordinator",
      kNoViewer | kClientOnly | kTerminal},

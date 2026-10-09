@@ -268,7 +268,7 @@ export function Welcome({
       <Mark className="cursor-mark" />
       <Heading>{title}</Heading>
       {children}
-      <ul class="tips">
+      <ul class="tips" role="list">
         {tips.map((tip, index) => (
           <li key={index}>{tip}</li>
         ))}

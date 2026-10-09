@@ -123,7 +123,7 @@ void HandleCost(const AppSession& session, CommandReply& reply) {
       {"session_budget", session.ApiClient().config.session_budget}};
   const json& routes = reply.result["routes"];
   if (routes.empty()) {
-    reply.Note(Tone::kNeutral, "no session spend yet");
+    reply.Note(Tone::kNeutral, "no spend in this conversation yet");
     return;
   }
   for (const auto& [route, usage] : routes.items()) {

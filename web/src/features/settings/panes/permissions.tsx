@@ -63,7 +63,7 @@ export function PermissionsPane() {
         </Row>
       ))}
       {rules && !rules.rules.length && (
-        <Row label="No remembered actions. Answering “always” to an approval adds one." />
+        <Row label="No remembered actions. “Always allow this exact action here” on an approval adds one." />
       )}
       {!!rules?.rules.length && (
         <Row

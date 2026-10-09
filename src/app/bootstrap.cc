@@ -683,7 +683,10 @@ BootstrapResult Bootstrap(Options options, const char* executable,
                           Observability& observability,
                           ApplicationChannel* channel) {
   ScopedChannelInput channel_input(channel);
-  if (channel) observability.EnableTerminal(false);
+  // A headless run's stdout is its answer and a runtime's belongs to its
+  // clients: neither is drawn on.
+  const bool headless = !channel && !options.prompt.empty();
+  if (channel || headless) observability.EnableTerminal(false);
   SetExecutablePath(executable);
   // Nothing chdir()s during startup, so the canonical workspace is invariant.
   const std::filesystem::path workspace = CanonicalAccessPath(CanonicalCwd());
@@ -705,6 +708,9 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   ConfigManager config_manager = ConfigManager::Capture(options.overrides);
   RuntimeConfig config = config_manager.Initialize();
   PrintWarning(config_manager.Problem());
+  if (headless && !config_manager.Problem().empty()) {
+    fprintf(stderr, "uagent: %s\n", config_manager.Problem().c_str());
+  }
   if (memory_child && !BuildMemoryExtractionPrompt(memory_source, workspace,
                                                    options.prompt, error)) {
     return Failure(std::move(error), 2);

@@ -48,7 +48,6 @@ inline constexpr const char* kCoordinatorTools[] = {
 inline constexpr const char* kMemberTools[] = {"read_path", "grep", "skill",
                                                "web_search", "web_fetch"};
 
-// The tools only a folder's coordinator gets.
 // Whether a thread this folder's coordinator started is working a turn now.
 bool ThreadsOwe(const std::string& folder);
 // Whether something can still bring the answer of a chat member that was

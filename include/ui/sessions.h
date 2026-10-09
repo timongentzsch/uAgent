@@ -58,12 +58,10 @@ inline std::string MatchSessionPrefix(const std::string& prefix) {
 }
 
 // print a numbered list and read a choice; returns the chosen path or "".
-inline std::string PickSession(bool render = true) {
+inline std::string PickSession() {
   std::vector<SessionInfo> sessions = ListSessions();
   if (sessions.empty()) {
-    if (render) {
-      fputs(Note(Tone::kNeutral, "no saved sessions").c_str(), stdout);
-    }
+    fputs(Note(Tone::kNeutral, "no saved sessions").c_str(), stdout);
     return "";
   }
   auto now = std::filesystem::file_time_type::clock::now();
@@ -75,14 +73,12 @@ inline std::string PickSession(bool render = true) {
         std::chrono::duration_cast<std::chrono::seconds>(now - s.mtime).count();
     std::string safe_cwd = TerminalSafe(Tilde(s.cwd));
     std::string safe_title = TerminalSafe(FirstLine(s.title));
-    if (render) {
-      const std::string dot = AsciiGlyphs(" · ");
-      printf("%s[%zu]%s %s%s%s%s%s turn%s%s%s%s%s\"%s\"%s\n", BOLD(), i + 1,
-             RST(), FmtAgo(secs).c_str(), dot.c_str(),
-             FmtBytes(s.bytes).c_str(), dot.c_str(), FmtCount(s.turns).c_str(),
-             s.turns == 1 ? "" : "s", dot.c_str(), DIM(), safe_cwd.c_str(),
-             dot.c_str(), safe_title.c_str(), RST());
-    }
+    const std::string dot = AsciiGlyphs(" · ");
+    printf("%s[%zu]%s %s%s%s%s%s turn%s%s%s%s%s\"%s\"%s\n", BOLD(), i + 1,
+           RST(), FmtAgo(secs).c_str(), dot.c_str(), FmtBytes(s.bytes).c_str(),
+           dot.c_str(), FmtCount(s.turns).c_str(), s.turns == 1 ? "" : "s",
+           dot.c_str(), DIM(), safe_cwd.c_str(), dot.c_str(),
+           safe_title.c_str(), RST());
     options.push_back({{"value", std::to_string(i + 1)},
                        {"title", s.title},
                        {"cwd", s.cwd},
@@ -102,39 +98,21 @@ inline std::string PickSession(bool render = true) {
       n <= static_cast<int64_t>(shown)) {
     return sessions[static_cast<size_t>(n - 1)].path;
   }
-  if (render) {
-    fputs(Note(Tone::kNeutral, "not a listed number").c_str(), stdout);
-  }
+  fputs(Note(Tone::kNeutral, "not a listed number").c_str(), stdout);
   return "";
 }
 
-// load `path` into the agent; on success the session continues in that file
+// load `path` into the agent; on success the session continues in that file.
+// Nothing is printed: where this runs, a client draws the conversation.
 inline bool ResumeInto(Agent& agent, const std::string& path,
-                       std::string& session_file, bool render = true) {
+                       std::string& session_file) {
   if (path.empty()) return false;
   std::string error;
   if (!agent.Load(path, CanonicalCwd(), error)) {
-    std::string safe_path = TerminalSafe(path);
-    std::string safe_error = TerminalSafe(error);
-    if (render) {
-      fputs(Note(Tone::kError,
-                 "could not resume " + safe_path + ": " + safe_error)
-                .c_str(),
-            stdout);
-    }
     Emit(Event{EventId::kError, {{"error", "cannot resume: " + error}}});
     return false;
   }
   session_file = path;
-  if (render) {
-    fputs(Note(Tone::kNeutral, "resumed — " +
-                                   std::to_string(agent.MessageCount() - 1) +
-                                   " messages")
-              .c_str(),
-          stdout);
-    PrintConversationHistory(agent.History());
-    fputs(Note(Tone::kNeutral, "end of history, continuing").c_str(), stdout);
-  }
   return true;
 }
 

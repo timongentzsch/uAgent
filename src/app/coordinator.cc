@@ -26,6 +26,7 @@
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/mailbox.h"
+#include "include/core/private_store.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
 #include "include/core/time.h"
@@ -267,11 +268,7 @@ std::string PinnedPath(const std::string& folder) {
 }
 
 json ReadPinned(const std::string& folder) {
-  std::string bytes, error;
-  if (!ReadRegularFile(PinnedPath(folder), size_t{64} * 1024, bytes, error)) {
-    return json::object();
-  }
-  json pinned = json::parse(bytes, nullptr, false);
+  json pinned = ReadJsonFile(PinnedPath(folder), size_t{64} * 1024);
   return pinned.is_object() ? pinned : json::object();
 }
 

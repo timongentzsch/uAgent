@@ -23,6 +23,7 @@
 #include "include/core/fs.h"
 #include "include/core/lease.h"
 #include "include/core/platform.h"
+#include "include/core/private_store.h"
 #include "include/tools/files.h"
 #include "include/transport/session.h"
 
@@ -414,8 +415,8 @@ Runtime::Runtime() {
   } else if (errno != ENOENT) {
     profile_error_ = "cannot inspect Chrome profiles";
   }
-  if (ReadRegularFile(DataDirectory() + "/handover.json", 4096, bytes, error)) {
-    json saved = json::parse(bytes, nullptr, false);
+  {
+    const json saved = ReadJsonFile(DataDirectory() + "/handover.json", 4096);
     std::string session = JsonValue(saved, "session_id", "");
     std::string interaction = JsonValue(saved, "interaction_id", "");
     if (session::OpaqueId(session) && session::OpaqueId(interaction)) {

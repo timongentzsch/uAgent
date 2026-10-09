@@ -19,6 +19,7 @@
 #include "include/core/config_registry.h"
 #include "include/core/debug.h"
 #include "include/core/fs.h"
+#include "include/core/private_store.h"
 #include "include/core/strings.h"
 
 namespace uagent {
@@ -39,11 +40,7 @@ std::string StatePath(const std::string& folder) {
 }
 
 json ReadState(const std::string& folder) {
-  std::string bytes, error;
-  if (!ReadRegularFile(StatePath(folder), size_t{64} * 1024, bytes, error)) {
-    return json::object();
-  }
-  json saved = json::parse(bytes, nullptr, false);
+  json saved = ReadJsonFile(StatePath(folder), size_t{64} * 1024);
   return saved.is_object() ? saved : json::object();
 }
 

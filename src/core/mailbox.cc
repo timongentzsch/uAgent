@@ -88,7 +88,6 @@ json MailToJson(const Mail& mail) {
           {"to", mail.to},
           {"type", mail.type},
           {"sender_path", mail.sender_path},
-          {"correlation_id", mail.correlation_id},
           {"hops", mail.hops},
           {"created_ms", mail.created_ms},
           {"expires_ms", mail.expires_ms},
@@ -102,7 +101,6 @@ bool MailFromJson(const json& value, Mail& mail) {
   mail.to = JsonValue(value, "to", "");
   mail.type = JsonValue(value, "type", "");
   mail.sender_path = JsonValue(value, "sender_path", "");
-  mail.correlation_id = JsonValue(value, "correlation_id", "");
   mail.hops = JsonValue(value, "hops", 0);
   mail.created_ms = JsonValue(value, "created_ms", int64_t{0});
   mail.expires_ms = JsonValue(value, "expires_ms", int64_t{0});

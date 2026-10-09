@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "include/core/fs.h"
+#include "include/core/private_store.h"
 #include "include/core/time.h"
 #include "include/tools/files.h"
 #include "include/web/protocol.h"
@@ -338,18 +339,15 @@ PushSender::PushSender(const std::string& directory, const std::string& contact,
     impl_->reason = "cannot load the private VAPID key";
     return;
   }
-  std::string bytes, error;
-  if (ReadRegularFile(directory + "/push-subscriptions.json", kPushStoreBytes,
-                      bytes, error)) {
-    json entries = json::parse(bytes, nullptr, false);
-    if (entries.is_array() && entries.size() <= kWebDeviceLimit) {
-      for (const json& entry : entries) {
-        Impl::Subscription subscription{
-            JsonValue(entry, "device", ""), JsonValue(entry, "endpoint", ""),
-            JsonValue(entry, "public_key", ""), JsonValue(entry, "auth", "")};
-        if (impl_->Valid(subscription)) {
-          impl_->subscriptions.push_back(std::move(subscription));
-        }
+  const json entries =
+      ReadJsonFile(directory + "/push-subscriptions.json", kPushStoreBytes);
+  if (entries.is_array() && entries.size() <= kWebDeviceLimit) {
+    for (const json& entry : entries) {
+      Impl::Subscription subscription{
+          JsonValue(entry, "device", ""), JsonValue(entry, "endpoint", ""),
+          JsonValue(entry, "public_key", ""), JsonValue(entry, "auth", "")};
+      if (impl_->Valid(subscription)) {
+        impl_->subscriptions.push_back(std::move(subscription));
       }
     }
   }

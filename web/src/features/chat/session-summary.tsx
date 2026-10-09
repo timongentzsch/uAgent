@@ -41,7 +41,6 @@ export function SessionSummary({
   return (
     <Button variant="quiet" onClick={open} aria-label="Conversation statistics">
       <DataText>
-        Conversation ·{" "}
         {count(state?.statistics?.recorded_turns ?? state?.turns)} turns
         {state?.usage?.cost_reported ? ` · ${cost(state.usage.cost)}` : ""}
       </DataText>

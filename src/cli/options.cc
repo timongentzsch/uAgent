@@ -23,7 +23,7 @@ constexpr FlagSpec kFlags[] = {
      "run a native memory, skills, schedule or prompt operation without a "
      "model"},
     {"--web", FlagKind::kToggle, &Options::web, nullptr, nullptr,
-     "start or reuse this user's global web application"},
+     "start or reuse this user's web host"},
     {"--web-port", FlagKind::kConfig, nullptr, "UAGENT_WEB_PORT", "PORT",
      "loopback web listener port (default 8080)"},
     {"--web-origin", FlagKind::kConfig, nullptr, "UAGENT_WEB_ORIGIN", "ORIGIN",
@@ -31,13 +31,14 @@ constexpr FlagSpec kFlags[] = {
     {"-p", FlagKind::kPrompt, nullptr, nullptr, "PROMPT",
      "run one turn, print only the final answer, exit"},
     {"--yolo", FlagKind::kToggle, &Options::yolo, nullptr, nullptr,
-     "approve every requested mutation automatically"},
+     "act without asking; the sandbox setting still applies, and what "
+     "always needs a person still does"},
     {"--json", FlagKind::kToggle, &Options::json, nullptr, nullptr,
      "emit a stable JSON envelope in headless mode"},
     {"--json-stream", FlagKind::kToggle, &Options::json_stream, nullptr,
      nullptr, "emit versioned JSONL events in headless mode"},
     {"--budget", FlagKind::kBudget, nullptr, nullptr, "USD",
-     "cap total session spend between model calls"},
+     "cap this conversation's total spend between model calls"},
     {"--token-budget", FlagKind::kTokenBudget, nullptr, nullptr, "TOKENS",
      "cap generated tokens across the session between model calls"},
     {.flag = "--plain",
@@ -48,7 +49,7 @@ constexpr FlagSpec kFlags[] = {
     {.flag = "--no-memory",
      .kind = FlagKind::kConfigSet,
      .key = "UAGENT_MEMORY",
-     .help = "disable memory recall and writes for this session",
+     .help = "disable memory recall and writes for this conversation",
      .preset = "0"},
     {"--verbosity", FlagKind::kConfig, nullptr, "UAGENT_VERBOSITY", "LEVEL",
      "detail shown in this terminal: minimal, default or full"},
@@ -210,7 +211,8 @@ ParsedOptions ParseOptions(int argc, char* const argv[]) {
        !parsed.options.overrides.empty())) {
     parsed.error = "--control is a standalone management command";
   } else if (parsed.options.resume_pick && !parsed.options.prompt.empty()) {
-    parsed.error = "--resume picks a session interactively; use -c with -p";
+    parsed.error =
+        "--resume picks a conversation interactively; use -c with -p";
   } else if (parsed.options.json && parsed.options.json_stream) {
     parsed.error = "--json and --json-stream are mutually exclusive";
   } else if ((parsed.options.json || parsed.options.json_stream) &&

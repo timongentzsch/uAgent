@@ -841,7 +841,9 @@ void Welcome() {
   fputs(AsciiGlyphs("Welcome to µAgent. Try \"explain this repository\", "
                     "\"fix the failing test\" or /help.\n"
                     "Enter sends · Esc stops a turn · / lists commands · "
-                    "/undo puts back the last turn's file changes\n")
+                    "/undo puts back the last turn's file changes\n"
+                    "uagent coord opens a folder's coordinator, which runs "
+                    "several conversations.\n")
             .c_str(),
         stdout);
 }
@@ -878,7 +880,19 @@ int TerminalMain(Options options) {
       return 1;
     }
     const bool coordinator = path == CoordinatorPath(cwd);
-    if (coordinator) printf("%s", TerminalSafe(CoordinatorBoard(cwd)).c_str());
+    if (coordinator) {
+      const std::string board = CoordinatorBoard(cwd);
+      printf("%s", TerminalSafe(board).c_str());
+      // Nothing to manage yet: what it is for, as the web's empty chat says.
+      if (FolderSessions(cwd).empty()) {
+        fputs(AsciiGlyphs("\nAsk for work and it starts threads that do it. "
+                          "Ask for another voice and it adds a member to the "
+                          "chat;\nopen a message with a name (\"Ada, …\") to "
+                          "ask that one alone.\n")
+                  .c_str(),
+              stdout);
+      }
+    }
     Terminal terminal(std::move(connection), path, *detail, pinned, redrawn,
                       keys, draft);
     int result = terminal.Run(options.attach_paths);

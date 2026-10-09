@@ -52,7 +52,7 @@ export default function Settings(props: SettingsProps) {
       <>
         {instructions(
           "Instructions",
-          "What every session and each folder's coordinator read at start.",
+          "What every conversation and each folder's coordinator read at start.",
         )}
         {mcp("global")}
       </>
@@ -61,7 +61,7 @@ export default function Settings(props: SettingsProps) {
       <>
         {instructions(
           "Project instructions",
-          "What sessions and the coordinator read at start in this folder.",
+          "What conversations and the coordinator read at start in this folder.",
         )}
         {mcp("project")}
         <PermissionsPane />

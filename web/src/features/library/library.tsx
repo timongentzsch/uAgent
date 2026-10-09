@@ -247,7 +247,9 @@ export default function Library({
       list
     ) : (
       <EmptyState>
-        No {kind === "memory" ? "memories" : "skills"} found.
+        {kind === "memory"
+          ? "No memories here. A memory is a fact kept between conversations; Add memory writes one."
+          : "No skills here. A skill is a set of instructions loaded when a task calls for it; Add skill writes one."}
       </EmptyState>
     );
   }
@@ -489,14 +491,14 @@ export default function Library({
                     <dd>
                       {item.provenance
                         ? item.provenance.automatic
-                          ? `Automatic memory · session ${item.provenance.source_session}`
+                          ? `Automatic memory · conversation ${item.provenance.source_session}`
                           : "Explicit save"
                         : "No recorded provenance"}
                     </dd>
                     <dt>Context</dt>
                     <dd>
                       {kind === "skills"
-                        ? "Loaded when invoked. Catalogue changes apply to new sessions."
+                        ? "Loaded when invoked. Catalogue changes apply to new conversations."
                         : item.scope === "global" && item.source === "uAgent"
                           ? "Eligible for startup context, within the configured memory limit."
                           : "Available for retrieval when needed."}
@@ -518,7 +520,7 @@ export default function Library({
                 {item.writable && editing && (
                   <div class="editor-actions">
                     <small class="muted">
-                      Saved changes apply to new sessions.
+                      Saved changes apply to new conversations.
                     </small>
                     <Button
                       onClick={() => {

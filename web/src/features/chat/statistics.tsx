@@ -163,7 +163,7 @@ export function StatisticsContent({
       {missingTurn ? (
         <p role="status">
           This {unit?.toLowerCase()} is outside the loaded history. Load its
-          retained messages and try again, or select Session.
+          retained messages and try again, or select Conversation.
         </p>
       ) : (
         <>

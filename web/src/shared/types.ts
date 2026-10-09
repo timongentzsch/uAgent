@@ -684,7 +684,7 @@ export interface ToolCategories {
   categories: ToolCategory[];
   assignments: Record<string, string>;
 }
-// One instruction file a person edits: for every session or a folder's
+// One instruction file a person edits: for every conversation or a folder's
 // coordinator, yours or the project's.
 export interface InstructionFile {
   audience: "sessions" | "coordinator";

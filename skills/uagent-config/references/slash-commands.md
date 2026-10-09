@@ -13,7 +13,7 @@
 | `/fork [TITLE] [@TURN]` | branch this conversation, optionally at user turn N |
 | `/rewind [N]` | fork before your message N to edit it; bare, list the numbers |
 | `/share` | export transcript as markdown |
-| `/permissions [default|ask|auto|yolo|rules|forget N|forget all]` | show or change permission mode, or this repository's remembered actions |
+| `/permissions [default|ask|auto|yolo|rules|forget N|forget all]` | show or change the approval mode, or this repository's remembered actions |
 | `/rename TITLE` | rename this conversation |
 | `/instructions [edit sessions|coordinator user|project | clear]` | show or edit instructions; clear this conversation's self-directive |
 | `/http [INDEX [request|response]]` | inspect captured HTTP attempts (latest by default) |
@@ -27,23 +27,23 @@
 | `/init` | create an AGENTS.md file with instructions for µAgent |
 | `/memory [list|get KEY|set KEY @FILE|forget KEY|rename KEY TARGET|copy KEY TARGET]` | manage project and global memories |
 | `/skills [list|get ID|set KEY @FILE|forget ID|enable ID|disable ID]` | inspect and manage installed skills |
-| `/schedule [list|JSON]` | manage scheduled tasks and runs |
-| `/model NAME` | choose what model to use |
+| `/schedule [list|run ID|pause ID|resume ID|forget ID|stop RUN|JSON]` | manage scheduled tasks and runs |
+| `/model NAME [--default]` | choose the model for this conversation, or for all new ones |
 | `/models [QUERY]` | search and select across providers |
 | `/ps [ID [output|stop]]` | inspect or stop background work |
-| `/quit` | exit uagent |
-| `/reset` | start a new chat |
+| `/quit` | leave; the conversation keeps running and can be resumed |
+| `/reset` | start a new conversation |
 | `/clear` | clear the screen |
 | `/review [TARGET]` | review my current changes and find issues |
-| `/sessions [PREFIX]` | resume a saved chat, optionally matching PREFIX |
-| `/status` | show current session configuration and token usage |
+| `/sessions [PREFIX]` | resume a saved conversation, optionally matching PREFIX |
+| `/status` | show this conversation's configuration and token usage |
 | `/tools [on|off NAME|profile NAME|reset]` | inspect or choose tools for this conversation |
 | `/mcp [retry|on|off NAME]` | show MCP servers; retry one or switch it on or off |
 | `/restart` | restart this conversation to apply settings that need it |
 | `/variant MODE` | set OpenRouter provider routing |
 | `/btw QUESTION` | ask a side question without adding it to the conversation |
 | `/verbosity [minimal|default|full]` | set how much of the agent's work is shown, everywhere |
-| `/yolo` | toggle automatic approval |
+| `/yolo` | toggle acting without asking; the sandbox setting still applies |
 | `/coord` | open this folder's coordinator |
-| `/board` | list this folder's sessions and threads |
-| `/open ID` | switch to a session from /board |
+| `/board` | list this folder's conversations and threads |
+| `/open ID` | switch to a conversation from /board |

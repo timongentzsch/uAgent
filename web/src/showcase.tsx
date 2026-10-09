@@ -20,6 +20,7 @@ import {
   ValueSelect,
   SectionTitle,
   EmptyState,
+  Welcome,
   LoadError,
   EventRow,
   DisclosureRow,
@@ -511,6 +512,17 @@ function Showcase() {
             <EmptyState action={<Button>Create one</Button>}>
               Nothing here yet.
             </EmptyState>
+            <Welcome
+              title="An empty view"
+              tips={[
+                <>
+                  <kbd>/</kbd> lists the commands.
+                </>,
+                "A sentence about what to try first.",
+              ]}
+            >
+              <p>What this view is for.</p>
+            </Welcome>
           </div>
           <div class="showcase-card">
             <DisclosureRow label="Disclosure row" status="done">

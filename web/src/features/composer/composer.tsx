@@ -425,7 +425,11 @@ export default function Composer({
               ? "Decide above to continue"
               : running
                 ? "Add guidance… (Esc to stop)"
-                : "Ask µAgent…"
+                : members.length
+                  ? "Message everyone, or start with a name…"
+                  : session.kind === "coordinator"
+                    ? "Ask the coordinator…"
+                    : "Ask µAgent…"
           }
           value={draft.text}
           onInput={(event) => {
@@ -571,7 +575,7 @@ export default function Composer({
             running={running || !!pending}
           />
           <SheetButton
-            label="Permissions"
+            label="Approval"
             title={`${effectiveLabel}${permission?.mode === "default" ? " · the default" : " · chosen for this conversation"}`}
             // YOLO runs everything unasked: it says so loudly.
             className={`permission-control${effective === "yolo" ? " yolo" : ""}`}
@@ -587,11 +591,11 @@ export default function Composer({
           >
             {(close) => (
               <Field
-                label="This conversation's permissions"
+                label="This conversation's approval mode"
                 help="The default is the approval mode in Settings, unless a project or the environment sets another."
               >
                 <Select
-                  aria-label="Permissions"
+                  aria-label="Approval"
                   value={permission?.mode || "default"}
                   onChange={(event) =>
                     command("permissions", session, {

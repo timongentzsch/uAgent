@@ -180,7 +180,7 @@ export function ConversationMenu({
               .catch(report)
           }
         >
-          Close session
+          Close conversation
         </MenuItem>
       )}
       <MenuItem
@@ -401,7 +401,7 @@ function SidebarView({
   const drawing = loading && !sessions.length;
   const all = drawing ? SAMPLE : sessions;
   // Each folder's coordinator is its header icon, not a row. It and its
-  // badge count every session in the folder, whatever the search shows.
+  // badge count every conversation in the folder, whatever the search shows.
   const coordinators = new Map<string, Session>();
   for (const item of all)
     if (item.kind === "coordinator") coordinators.set(folderOf(item), item);
@@ -527,10 +527,14 @@ function SidebarView({
       </label>
       <nav aria-label="Conversations">
         <Placeholder label="Loading conversations…" when={drawing}>
-          {search && !list.length ? (
-            <EmptyState>No conversation matches.</EmptyState>
-          ) : (
+          {list.length ? (
             list
+          ) : (
+            <EmptyState>
+              {search
+                ? "No conversation matches."
+                : "No conversations yet. New conversation starts one in a folder on your host."}
+            </EmptyState>
           )}
         </Placeholder>
       </nav>

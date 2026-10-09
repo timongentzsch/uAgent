@@ -186,7 +186,7 @@ test("unread completions, background activity and conversation lifecycle", async
     .getByLabel("Conversation menu", { exact: true });
   const originalHash = await page.evaluate(() => location.hash);
   await page
-    .getByRole("complementary", { name: "Projects and sessions" })
+    .getByRole("complementary", { name: "Projects and conversations" })
     .getByRole("button", { name: "New conversation", exact: true })
     .click();
   await page.getByLabel("Directory on the host").fill(fixture.project);
@@ -289,16 +289,16 @@ test("unread completions, background activity and conversation lifecycle", async
   await expect(page.locator(".message.user").first()).toContainText(
     "Unread completion probe",
   );
-  await page.getByRole("button", { name: "Permissions", exact: true }).click();
+  await page.getByRole("button", { name: "Approval", exact: true }).click();
   await page
-    .getByRole("combobox", { name: "Permissions", exact: true })
+    .getByRole("combobox", { name: "Approval", exact: true })
     .selectOption("yolo");
   await expect(
-    page.getByRole("button", { name: "Permissions", exact: true }),
+    page.getByRole("button", { name: "Approval", exact: true }),
   ).toHaveText("YOLO");
-  await page.getByRole("button", { name: "Permissions", exact: true }).click();
+  await page.getByRole("button", { name: "Approval", exact: true }).click();
   await page
-    .getByRole("combobox", { name: "Permissions", exact: true })
+    .getByRole("combobox", { name: "Approval", exact: true })
     .selectOption("ask");
   // The popover's history entry leaves in a step of its own, and a
   // navigation made before that step lands is undone by it.
@@ -705,7 +705,7 @@ test("the conversation menu exports and restarts; /quit closes nothing", async (
   await composer.fill("/quit");
   await composer.press("Enter");
   await expect(
-    page.getByText("Use Close session in the conversation menu."),
+    page.getByText("Use Close conversation in the conversation menu."),
   ).toBeVisible();
   expect(await generation()).toBe(session.generation);
   // The notice that follows replaces this error in the one banner.

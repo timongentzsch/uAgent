@@ -20,8 +20,8 @@ import { ProjectField } from "../library/management.tsx";
 import "./instructions.css";
 
 const TITLES: Record<string, string> = {
-  "sessions/user": "Yours · every session",
-  "sessions/project": "Project · every session",
+  "sessions/user": "Yours · every conversation",
+  "sessions/project": "Project · every conversation",
   "coordinator/user": "Yours · coordinator",
   "coordinator/project": "Project · coordinator",
 };
@@ -85,8 +85,8 @@ export default function Instructions({
     <div class="instructions">
       <ProjectField value={cwd} projects={projects} change={setCwd} />
       <p class="muted">
-        Read in this order when a session starts, after the built-in base.
-        Changes reach new and restarted sessions.
+        Read in this order when a conversation starts, after the built-in base.
+        Changes reach new and restarted conversations.
       </p>
       {error ? (
         <LoadError error={error} retry={retry} />

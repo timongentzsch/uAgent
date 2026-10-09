@@ -224,7 +224,7 @@ export default function Decision({
             )}
             {offers(ALLOW_SESSION) && (
               <Button disabled={idle} onClick={() => void send(ALLOW_SESSION)}>
-                Allow for session
+                Allow for this conversation
               </Button>
             )}
             {offers(ALLOW_ONCE) && (

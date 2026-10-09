@@ -12,7 +12,7 @@ const VIEWPORTS = [
 async function openCoordinator(page, session) {
   await page.goto(`/#session=${session.id}`);
   // Narrow layouts keep the sessions in a drawer.
-  const drawer = page.getByLabel("Open sessions");
+  const drawer = page.getByLabel("Open conversations");
   const button = page.getByLabel(/^Coordinator for /).first();
   await expect(drawer.or(button)).toBeVisible();
   if (await drawer.isVisible()) await drawer.click();

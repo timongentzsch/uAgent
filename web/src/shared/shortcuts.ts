@@ -21,8 +21,12 @@ export const SHORTCUTS = [
   },
   { id: "send", keys: "Enter", label: "Send the message" },
   { id: "newline", keys: "Shift+Enter", label: "New line in the message" },
+  { id: "queue", keys: "Alt+Enter", label: "Send when the running turn ends" },
+  { id: "stop", keys: "Escape", label: "Stop the running turn" },
+  { id: "recall", keys: "ArrowUp", label: "Recall a message you sent" },
   { id: "commands", keys: "/", label: "Slash commands, in the composer" },
-  { id: "mention", keys: "@", label: "Mention a file, in the composer" },
+  { id: "complete", keys: "Tab", label: "Complete a command" },
+  { id: "mention", keys: "@", label: "Mention an attached file" },
   { id: "close", keys: "Escape", label: "Close a dialog or menu" },
 ] as const;
 export type ShortcutId = (typeof SHORTCUTS)[number]["id"];

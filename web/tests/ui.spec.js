@@ -63,9 +63,12 @@ test("mobile chrome keeps an opaque safe area and applies appearance before app 
   );
   for (let i = 0; i < 2; i++) {
     await page
-      .getByRole("button", { name: "Open sessions", exact: true })
+      .getByRole("button", { name: "Open conversations", exact: true })
       .click();
-    const drawer = page.getByRole("dialog", { name: "Sessions", exact: true });
+    const drawer = page.getByRole("dialog", {
+      name: "Conversations",
+      exact: true,
+    });
     await expect(drawer).toBeVisible();
     const drawerBox = await drawer.boundingBox();
     expect(drawerBox.y).toBe(47);
@@ -82,7 +85,7 @@ test("mobile chrome keeps an opaque safe area and applies appearance before app 
       }),
     ).toEqual(["47px", "rgb(255, 255, 255)"]);
     await drawer
-      .getByRole("button", { name: "Close sessions", exact: true })
+      .getByRole("button", { name: "Close conversations", exact: true })
       .click();
     await expect(drawer).toHaveCount(0);
   }
@@ -219,7 +222,7 @@ test("instructions are one stack, edited in place, in a stable dialog", async ({
     exact: true,
   });
   // Top to bottom in the order a session reads it.
-  await expect(dialog.getByLabel("Yours · every session")).toBeEnabled();
+  await expect(dialog.getByLabel("Yours · every conversation")).toBeEnabled();
   const headings = await dialog
     .locator(
       ".instructions summary, .instruction-card strong, .instructions h3",
@@ -227,8 +230,8 @@ test("instructions are one stack, edited in place, in a stable dialog", async ({
     .allTextContents();
   expect(headings).toEqual([
     "Built-in base",
-    "Yours · every session",
-    "Project · every session",
+    "Yours · every conversation",
+    "Project · every conversation",
     "Coordinator",
     "Built-in coordinator base",
     "Yours · coordinator",
@@ -236,14 +239,14 @@ test("instructions are one stack, edited in place, in a stable dialog", async ({
     "Chat members",
     "Built-in member base",
   ]);
-  const yours = dialog.getByLabel("Yours · every session");
+  const yours = dialog.getByLabel("Yours · every conversation");
   await yours.fill("Prefer small diffs.\nKeep this line break.");
   await dialog.getByRole("button", { name: "Save", exact: true }).click();
   await expect(dialog.getByRole("button", { name: "Save" })).toHaveCount(0);
   await dialog.getByRole("button", { name: "Close instructions" }).click();
   await composer.fill("/instructions");
   await composer.press("Enter");
-  await expect(dialog.getByLabel("Yours · every session")).toHaveValue(
+  await expect(dialog.getByLabel("Yours · every conversation")).toHaveValue(
     "Prefer small diffs.\nKeep this line break.",
   );
   // Classic scrollbar gutters, even on hosts with overlay scrollbars.
@@ -306,7 +309,7 @@ test("instructions are one stack, edited in place, in a stable dialog", async ({
     .getByRole("dialog", { name: "Raw context" })
     .getByRole("button", { name: "Instructions", exact: true })
     .click();
-  await expect(dialog.getByLabel("Yours · every session")).toBeVisible();
+  await expect(dialog.getByLabel("Yours · every conversation")).toBeVisible();
   await dialog.getByRole("button", { name: "Close instructions" }).click();
 });
 
@@ -839,7 +842,7 @@ test("touch controls remain reachable at phone width", async ({
     expect(
       await page.evaluate(() => matchMedia("(pointer: coarse)").matches),
     ).toBe(true);
-    for (const name of ["Model and effort", "Permissions", "Send"]) {
+    for (const name of ["Model and effort", "Approval", "Send"]) {
       const rect = await page
         .getByRole("button", { name, exact: true })
         .boundingBox();
@@ -1437,9 +1440,12 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
       .tap();
     await viewport(844);
     await page
-      .getByRole("button", { name: "Open sessions", exact: true })
+      .getByRole("button", { name: "Open conversations", exact: true })
       .tap();
-    const drawer = page.getByRole("dialog", { name: "Sessions", exact: true });
+    const drawer = page.getByRole("dialog", {
+      name: "Conversations",
+      exact: true,
+    });
     await input(drawer.getByRole("searchbox"), "");
     await contained(drawer, 390, 70);
     await drawer.getByRole("button", { name: "Library", exact: true }).tap();
@@ -1452,7 +1458,7 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
     );
     await viewport(844);
     await page
-      .getByRole("button", { name: "Open sessions", exact: true })
+      .getByRole("button", { name: "Open conversations", exact: true })
       .tap();
     await drawer.getByRole("button", { name: /^Scheduled/ }).tap();
     await page.getByRole("button", { name: "New task", exact: true }).tap();
@@ -1528,7 +1534,7 @@ test.describe("mobile navigation and commands", () => {
     await page.setViewportSize({ width: 390, height: 600 });
     const choose = async (title) => {
       await page
-        .getByRole("button", { name: "Open sessions", exact: true })
+        .getByRole("button", { name: "Open conversations", exact: true })
         .click();
       await page.getByRole("button", { name: new RegExp(title) }).click();
     };
@@ -1686,9 +1692,9 @@ test.describe("mobile navigation and commands", () => {
     await send.tap();
     await expect(page.getByLabel("Find a conversation")).toBeVisible();
     await page
-      .getByRole("button", { name: "Close sessions", exact: true })
+      .getByRole("button", { name: "Close conversations", exact: true })
       .tap();
-    await page.getByRole("button", { name: "Open sessions" }).click();
+    await page.getByRole("button", { name: "Open conversations" }).click();
     await page.getByRole("button", { name: "New conversation" }).click();
     const newConversation = page.getByRole("dialog", {
       name: "New conversation",
@@ -1706,13 +1712,13 @@ test.describe("mobile navigation and commands", () => {
       .toContain("Survives reload");
     await page.reload();
     await expect(prompt).toHaveValue("Survives reload");
-    // Close session ends the runtime; typed /quit does not (it detaches a
+    // Close conversation ends the runtime; typed /quit does not (it detaches a
     // terminal).
     await page
       .locator(".conversation-head")
       .getByLabel("Conversation menu", { exact: true })
       .tap();
-    await page.getByRole("menuitem", { name: "Close session" }).tap();
+    await page.getByRole("menuitem", { name: "Close conversation" }).tap();
     // A closed session keeps its composer: the next message starts it again.
     await expect(prompt).toBeVisible();
     await prompt.fill("/att");
@@ -2182,7 +2188,7 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
   await detail.getByRole("button", { name: "Back", exact: true }).click();
   await expect(heading).toHaveText("Subagent");
   await detail
-    .getByRole("button", { name: "Session statistics", exact: true })
+    .getByRole("button", { name: "Conversation statistics", exact: true })
     .click();
   const stats = detail;
   await expect(heading).toHaveText("Subagent statistics");

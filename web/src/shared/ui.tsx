@@ -249,6 +249,34 @@ export function Row({
   );
 }
 
+// A view with nothing in it yet: what it is for and what to try first. The
+// tips are there while it is empty and gone with the first content.
+export function Welcome({
+  level = 2,
+  title,
+  tips,
+  children,
+}: {
+  level?: 1 | 2;
+  title: string;
+  tips: ComponentChildren[];
+  children?: ComponentChildren;
+}) {
+  const Heading = `h${level}` as "h1";
+  return (
+    <div class="empty">
+      <Mark className="cursor-mark" />
+      <Heading>{title}</Heading>
+      {children}
+      <ul class="tips" role="list">
+        {tips.map((tip, index) => (
+          <li key={index}>{tip}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 // Nothing to show yet: one line, and what to do about it.
 export function EmptyState({
   children,

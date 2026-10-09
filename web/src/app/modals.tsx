@@ -9,6 +9,7 @@ import type { ComponentProps, JSX } from "preact";
 import {
   Modal,
   Deferred,
+  Actions,
   Button,
   EmptyState,
   Spinner,
@@ -110,7 +111,10 @@ export default function Modals({
   showContext: () => void;
   folder: string;
   setFolder: (folder: string) => void;
-  create: (event: JSX.TargetedSubmitEvent<HTMLFormElement>) => void;
+  create: (
+    event: JSX.TargetedSubmitEvent<HTMLFormElement> | null,
+    coordinator?: boolean,
+  ) => void;
   busy: boolean;
   preferences: Preferences;
 }) {
@@ -217,11 +221,29 @@ export default function Modals({
             </label>
             <p class="muted">
               Any accessible directory works, including a folder outside Git.
-              Multiple conversations can work in the same folder.
+              Multiple conversations can work in the same folder. Its
+              coordinator runs several for you and hosts a chat with other
+              voices.
             </p>
-            <Button type="submit" variant="primary" disabled={busy || !online}>
-              Start conversation
-            </Button>
+            <Actions>
+              {/* Not a submit: Enter in the field starts a conversation. */}
+              <Button
+                disabled={busy || !online}
+                onClick={(event) =>
+                  event.currentTarget.form?.reportValidity() &&
+                  create(null, true)
+                }
+              >
+                Open its coordinator
+              </Button>
+              <Button
+                type="submit"
+                variant="primary"
+                disabled={busy || !online}
+              >
+                Start conversation
+              </Button>
+            </Actions>
           </form>
         </Modal>
       )}

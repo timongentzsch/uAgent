@@ -80,7 +80,7 @@ export default function Tools({
     ]);
     if (response.pending || categoryResponse.pending)
       throw new Error("Tool settings are still loading. Try again shortly.");
-    // The categories are the host's, the same for every session.
+    // The categories are the host's, the same for every conversation.
     setCategories(categoryResponse.result);
     return response.result;
   }, [session.id, session.generation]);

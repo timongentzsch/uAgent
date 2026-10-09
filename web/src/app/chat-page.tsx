@@ -14,7 +14,8 @@ import type {
 import type { ConnectionPhase } from "../shared/connection-status.tsx";
 import { useMemo } from "preact/hooks";
 import { api } from "../state/api.ts";
-import { Mark, Deferred, Placeholder, Button } from "../shared/ui.tsx";
+import { Welcome, Deferred, Placeholder, Button } from "../shared/ui.tsx";
+import { keysOf } from "../shared/shortcuts.ts";
 import Composer from "../features/composer/composer.tsx";
 import Board, { CoordinatorLayout } from "../features/coordinator/board.tsx";
 import WaitingList from "../features/coordinator/escalations.tsx";
@@ -292,9 +293,22 @@ export default function ChatPage({
       </Placeholder>
     </>
   ) : (
-    <div class="empty">
-      <Mark className="cursor-mark" />
-      <h1>What are we working on?</h1>
+    <Welcome
+      level={1}
+      title="What are we working on?"
+      tips={[
+        "A folder's coordinator runs several conversations for you and hosts a chat with other voices. New conversation opens one too.",
+        <>
+          {keysOf("palette").map((key) => (
+            <kbd key={key}>{key}</kbd>
+          ))}{" "}
+          finds a conversation, a command or a settings section.
+        </>,
+        <>
+          <kbd>?</kbd> lists the keyboard shortcuts.
+        </>,
+      ]}
+    >
       <p>Pick a folder on your host, or open a conversation from the list.</p>
       <Button
         variant="primary"
@@ -303,6 +317,6 @@ export default function ChatPage({
       >
         New conversation
       </Button>
-    </div>
+    </Welcome>
   );
 }

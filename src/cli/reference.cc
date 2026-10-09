@@ -52,14 +52,11 @@ std::string DefaultCell(const json& setting) {
 std::string CliMarkdown() {
   std::string out = "# Command-line flags\n\n";
   out += kGenerated;
-  out += "| Flag | Value | Description |\n| --- | --- | --- |\n";
+  // As typed, value and all: `--debug[=PATH]` takes one or none.
+  out += "| Flag | Description |\n| --- | --- |\n";
   for (const json& flag : CliSchemaJson()) {
-    out += "| `" + JsonValue(flag, "flag", std::string()) + "` | " +
-           (flag.contains("value")
-                ? "`" + JsonValue(flag, "value", std::string()) + "`"
-                : "—") +
-           " | " + Escape(JsonValue(flag, "description", std::string())) +
-           " |\n";
+    out += "| `" + Escape(JsonValue(flag, "usage", std::string())) + "` | " +
+           Escape(JsonValue(flag, "description", std::string())) + " |\n";
   }
   out +=
       "\nPrecedence: these flags override process `UAGENT_*` variables, which "

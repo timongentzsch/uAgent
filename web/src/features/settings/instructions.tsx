@@ -132,7 +132,7 @@ export default function Instructions({
 
 function Base({ text, label }: { text?: string; label: string }) {
   return (
-    <details class="instructions-base">
+    <details>
       <summary>{label}</summary>
       <pre>{text}</pre>
     </details>

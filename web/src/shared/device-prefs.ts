@@ -7,8 +7,8 @@ import {
 } from "./time.ts";
 
 // This browser's preferences: where each is kept, what it is when nothing
-// is kept, and reading and writing it. No other module spells a key; only
-// the pre-paint script (public/theme.js) cannot import this and repeats two.
+// is kept, and reading and writing it. The pre-paint script
+// (public/theme.js) cannot import this and repeats two of the keys.
 function kept<T>(
   key: string,
   fallback: T,

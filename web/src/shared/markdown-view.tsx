@@ -326,7 +326,7 @@ function RenderedMarkdown({
             </div>
           ))}
       {error && (
-        <div class="renderer-fallback">
+        <div>
           <LoadError error={error} retry={() => setRetry(retry + 1)} />
           <pre>{text}</pre>
         </div>

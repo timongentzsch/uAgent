@@ -535,7 +535,7 @@ export default function BrowserPanel({
       <div class="browser-profile">
         <strong>{detail}</strong>
         {status.url && (
-          <small class="muted browser-page" title={status.url}>
+          <small class="muted" title={status.url}>
             {status.title || status.url}
           </small>
         )}

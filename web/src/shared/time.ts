@@ -1,5 +1,5 @@
 // One owner for how moments read. Every timestamp renders through <Time>,
-// which formats with these preferences; nothing else calls toLocale*.
+// which formats with these preferences.
 import { createContext } from "preact";
 import { useEffect, useState } from "preact/hooks";
 

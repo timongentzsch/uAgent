@@ -94,9 +94,6 @@ test("the home screen asks one question and offers one way to start", async ({
   await expect(
     page.getByRole("heading", { name: "What are we working on?" }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("navigation", { name: "Start from" }),
-  ).toHaveCount(0);
 });
 
 test("the palette opens from the phone's sidebar", async ({

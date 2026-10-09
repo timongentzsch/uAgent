@@ -174,7 +174,6 @@ textarea {
 }
 button,
 .file-button,
-.button-link,
 input,
 select,
 textarea {
@@ -240,8 +239,7 @@ input[type="radio"] {
   background: var(--on-accent);
 }
 button,
-.file-button,
-.button-link {
+.file-button {
   min-height: var(--control);
   padding: var(--space-2) var(--space-4);
   cursor: pointer;
@@ -270,8 +268,7 @@ select:disabled {
 /* Hover is an enhancement for a primary pointer that supports it. */
 @media (hover: hover) and (pointer: fine) {
   button:enabled:hover,
-  .file-button:hover,
-  .button-link:hover {
+  .file-button:hover {
     background: var(--hover);
   }
   .primary:enabled:hover {
@@ -288,8 +285,7 @@ select:disabled {
   }
 }
 button:enabled:active,
-.file-button:active,
-.button-link:active {
+.file-button:active {
   background: var(--hover);
 }
 .primary:enabled:active {
@@ -306,14 +302,6 @@ button[aria-busy="true"] {
 button[aria-pressed="true"] {
   background: var(--accent);
   color: var(--on-accent);
-}
-.button-link {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text);
-  text-decoration: none;
-  width: fit-content;
 }
 .icon-button {
   display: inline-flex;
@@ -333,7 +321,7 @@ button[aria-pressed="true"] {
 }
 /* A control that shows an icon beside its label lays them out as one row. */
 /* Zero specificity: a component's own layout (rows, menus) still wins. */
-:where(button, .button-link, .file-button):where(:has(> .lucide)) {
+:where(button, .file-button):where(:has(> .lucide)) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2325,10 +2313,6 @@ dialog > header .icon-button {
     background: var(--raised);
   }
 }
-.group-footer {
-  margin: 0;
-  padding-block: var(--space-2);
-}
 .configuration-bar {
   display: flex;
   gap: var(--gap);
@@ -2344,7 +2328,7 @@ dialog > header .icon-button {
 }
 .group-footer {
   margin: var(--space-3) 0 0;
-  padding-inline: var(--space-6);
+  padding: var(--space-2) var(--space-6);
   color: var(--muted);
   font-size: var(--font-small);
   overflow-wrap: anywhere;

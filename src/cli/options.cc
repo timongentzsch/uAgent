@@ -40,7 +40,7 @@ constexpr FlagSpec kFlags[] = {
     {"--budget", FlagKind::kBudget, nullptr, nullptr, "USD",
      "cap this conversation's total spend between model calls"},
     {"--token-budget", FlagKind::kTokenBudget, nullptr, nullptr, "TOKENS",
-     "cap generated tokens across the session between model calls"},
+     "cap this conversation's generated tokens between model calls"},
     {.flag = "--plain",
      .kind = FlagKind::kConfigSet,
      .key = "UAGENT_PLAIN",
@@ -73,11 +73,11 @@ constexpr FlagSpec kFlags[] = {
     // Codex-style alias; empty help hides it from the listing.
     {"--image", FlagKind::kAttach, nullptr, nullptr, "PATH", ""},
     {"-c", FlagKind::kToggle, &Options::resume_latest, nullptr, nullptr,
-     "resume the most recent saved session"},
+     "continue the most recent conversation"},
     {"--continue", FlagKind::kToggle, &Options::resume_latest, nullptr, nullptr,
      ""},
     {"--resume", FlagKind::kToggle, &Options::resume_pick, nullptr, nullptr,
-     "pick a saved session to resume at startup"},
+     "pick a saved conversation to continue"},
     {"--version", FlagKind::kPrintVersion, nullptr, nullptr, nullptr,
      "print the installed version"},
     // Build-time documentation generation; hidden because it is a maintainer

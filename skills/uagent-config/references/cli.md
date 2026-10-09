@@ -15,7 +15,7 @@
 | `--json` | emit a stable JSON envelope in headless mode |
 | `--json-stream` | emit versioned JSONL events in headless mode |
 | `--budget USD` | cap this conversation's total spend between model calls |
-| `--token-budget TOKENS` | cap generated tokens across the session between model calls |
+| `--token-budget TOKENS` | cap this conversation's generated tokens between model calls |
 | `--plain` | screen-reader output: labelled lines, no animation |
 | `--no-memory` | disable memory recall and writes for this conversation |
 | `--verbosity LEVEL` | detail shown in this terminal: minimal, default or full |
@@ -25,8 +25,8 @@
 | `--memory-model SELECTION` | model route for background memory extraction |
 | `--debug[=PATH]` | write a sensitive reconstructable JSONL trace |
 | `--attach PATH` | send an image or document with the first message |
-| `-c` | resume the most recent saved session |
-| `--resume` | pick a saved session to resume at startup |
+| `-c` | continue the most recent conversation |
+| `--resume` | pick a saved conversation to continue |
 | `--version` | print the installed version |
 | `--trust-project-config` | trust this workspace's .mcp.json |
 | `--help` | show this help |

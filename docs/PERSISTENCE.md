@@ -43,7 +43,8 @@ output) exist only in memory and end with the process.
 
 No settings are read from a project folder. What is read from it: `.mcp.json`
 (once trusted), instruction files (`AGENTS.md`, `.uagent/COORDINATOR.md`) and
-skills (`.agents/skills`).
+skills (`.agents/skills`, `.uagent/skills`; see
+[Bundled skills](../skills/README.md#discovery) for the rest).
 
 ## Settings
 

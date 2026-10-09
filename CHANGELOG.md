@@ -53,11 +53,12 @@
   takes one out, after you confirm. Everyone in the chat, the coordinator
   included, hears every message and decides for itself: it answers, passes,
   or waits for someone who is typing and is woken by the next message.
-  `@name` asks one participant; the others read along without a turn. For
+  A message that opens with a name ("Ada, …") asks that participant alone;
+  the others read along without a turn. For
   one message of yours each participant gets
   `UAGENT_COORDINATOR_CHAT_TURNS` turns (`coordinator.chatTurns`, 3) and two
   messages. In the web, members have avatars in the sidebar and on the
-  board, are shown typing, are offered after `@`, every message carries its
+  board, are shown typing, every message carries its
   author's name, and "Show prompt" on a message shows what its author was
   sent.
 

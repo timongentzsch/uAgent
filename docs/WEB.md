@@ -288,13 +288,13 @@ settings and inspect activity. See [Architecture](ARCHITECTURE.md) and
 | --- | --- |
 | Close the tab, detach a terminal, restart the web host | The runtime keeps running |
 | **Stop** | Interrupts the current turn |
-| **Close session** (conversation menu) | Saves the conversation, then stops the runtime and its supervised children |
+| **Close conversation** (conversation menu) | Saves the conversation, then stops the runtime and its supervised children |
 | 15 minutes with nothing to do | The runtime stops the same way by itself |
 
 "Nothing to do" means no turn, no queued message, no running command and no
 terminal attached. The next message, or a setting changed on the conversation
-(model, permission mode, tools), starts a runtime from the saved conversation
-with its model and permission mode. It never repeats a previous command.
+(model, approval mode, tools), starts a runtime from the saved conversation
+with its model and approval mode. It never repeats a previous command.
 Commands started with `detach` keep running through both.
 
 On Linux, a systemd-launched web host starts each runtime in its own user
@@ -330,7 +330,7 @@ waiting on you are counted once, across every folder:
   wins.
 
 An approval opens above the input, which stays in place, read-only, until it
-is answered; Permissions stays usable. The card shows what it would do (the
+is answered; Approval stays usable. The card shows what it would do (the
 command, or the change as a diff, scrolling past about six lines), the folder
 and its risks, with **Deny**, **Allow for session** and **Allow once** in one
 row. Under **More options**, **Always allow this exact action here** makes
@@ -398,7 +398,7 @@ before Submit.
   the conversations in sidebar order.
 - The conversation menu has **Fork conversation**, **Rename**,
   **Statistics**, **Tools**, **Export transcript**, **Detail**, **Compact**,
-  **Restart**, **Close session** and **Delete**. Tools controls the active
+  **Restart**, **Close conversation** and **Delete**. Tools controls the active
   schema and groups tools into persistent custom categories. Stop and close a
   live runtime before deleting its history; project files are unaffected.
 
@@ -497,30 +497,8 @@ Signing out or a revoked device clears local UI state.
 
 ## Development
 
-Native builds embed the built `web/dist` (not committed; CI builds it once for
-every native job, and releases ship it). The frontend uses strict TypeScript
-and Preact.
-
-```sh
-npm ci --prefix web
-npm run test --prefix web
-npm run build --prefix web
-cmake --preset release
-cmake --build --preset release --parallel 4
-npm run test:browser --prefix web
-```
-
-| Script | Purpose |
-| --- | --- |
-| `test` | Node unit tests (`web/tests/*.test.js`) |
-| `test:browser` | Playwright tests against mock providers |
-| `build` | Type-check, build and promote `web/dist` |
-| `typecheck` | App and service-worker type checks |
-| `format` / `format:check` | Prettier |
-| `size` | Report raw and gzip bundle sizes (advisory, no ceiling) |
-| `notices` / `icons` | Regenerate third-party notices / icons |
-
-See [Architecture](ARCHITECTURE.md) for how the frontend is laid out and
-[Testing](TESTING.md#web-tests) for how the web tests run. Physical iOS
+[Contributing](../CONTRIBUTING.md) has the build and the checks,
+[Testing](TESTING.md#web-tests) how the web tests run and
+[Architecture](ARCHITECTURE.md) how the frontend is laid out. Physical iOS
 keyboard, installation and notification behavior is not covered by automated
 tests; browser emulation does not establish it.

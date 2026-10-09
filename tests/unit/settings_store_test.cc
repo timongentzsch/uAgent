@@ -30,7 +30,6 @@ std::string Set(const std::string& folder, const std::string& name,
 }  // namespace
 
 void TestSettingsStore() {
-  namespace fs = std::filesystem;
   TestWorkspace test("settings-store");
   const std::string folder = test.workspace.string();
 

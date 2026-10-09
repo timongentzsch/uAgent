@@ -393,7 +393,6 @@ void TestWorkspaceScopedSession() {
 }
 
 void TestProjectTrustTracksSemanticConfig() {
-  namespace fs = std::filesystem;
   TestWorkspace test("trust");
 
   CHECK(ToolWriteFile(".mcp.json", R"({"mcpServers":{"x":{"command":"one"}}})")

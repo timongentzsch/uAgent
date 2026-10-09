@@ -530,7 +530,7 @@ class Master {
   }
   // The configured level, by a name the policy table knows.
   static std::string ConfiguredVerbosity() {
-    const auto values = ConfigManager::Capture(false, {}, "").Read().values;
+    const auto values = ConfigManager::Capture({}, "").Read().values;
     const auto found = values.find(std::string(kVerbositySetting));
     return std::string(
         DetailFor(found == values.end() ? "" : found->second).level);
@@ -869,8 +869,8 @@ void Master::Command(const Request& request, Response& response) {
     // The host belongs to no project: a request names the folder it is
     // about, and without one only what is saved for all is in reach.
     const auto folder = CanonicalDirectory(JsonValue(command, "cwd", ""));
-    auto manager = ConfigManager::Capture(
-        false, {}, folder ? folder->string() : std::string());
+    auto manager =
+        ConfigManager::Capture({}, folder ? folder->string() : std::string());
     auto result = ConfigurationControl(command, manager);
     PublishSettings();
     lock.lock();

@@ -7,7 +7,6 @@
 #include <filesystem>
 #include <fstream>
 #include <set>
-#include <sstream>
 #include <string>
 #include <utility>
 
@@ -19,27 +18,6 @@
 #include "include/core/strings.h"
 
 namespace uagent {
-
-// KEY=value lines, as the text config files of earlier versions and .env
-// files spell them: `export ` is allowed, # starts a comment line.
-EnvValues ParseEnvValues(std::istream& input) {
-  EnvValues values;
-  std::string line;
-  while (std::getline(input, line)) {
-    std::string text = Trim(line);
-    if (text.starts_with("export ")) text = Trim(text.substr(7));
-    const size_t equals = text.find('=');
-    if (text.empty() || text[0] == '#' || equals == std::string::npos) continue;
-    const std::string key = Trim(text.substr(0, equals));
-    if (!key.empty()) values[key] = Unquote(Trim(text.substr(equals + 1)));
-  }
-  return values;
-}
-
-EnvValues ParseEnvValues(const std::string& text) {
-  std::istringstream input(text);
-  return ParseEnvValues(input);
-}
 
 std::string ResolveEnvValue(const std::string& key, const EnvValues& values,
                             std::set<std::string>& resolving,
@@ -143,12 +121,6 @@ bool WriteTrustRecord(const std::string& root, json record,
                          error);
   if (!store.Ready()) return false;
   if (!store.Data().is_object()) store.Data() = json::object();
-  // What an earlier version approved as the project's config stays with the
-  // record until the settings import has taken it over.
-  if (const json* approved = JsonObject(store.Data(), root.c_str());
-      approved && approved->contains("config") && !record.contains("config")) {
-    record["config"] = (*approved)["config"];
-  }
   record["format"] = kTrustRecordFormat;
   store.Data()[root] = std::move(record);
   return store.Save(error);

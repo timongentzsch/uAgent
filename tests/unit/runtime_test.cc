@@ -678,14 +678,13 @@ void TestAgentConfigAllowlist() {
       fs::temp_directory_path() /
       ("uagent-config-test-" + std::to_string(static_cast<int64_t>(getpid())));
   fs::create_directories(root / ".uagent");
-  CHECK(ToolWriteFile((root / ".uagent/.config").string(),
-                      "secret=test-key\n"
-                      "OPENROUTER_API_KEY=$secret\n")
-            .output.starts_with("wrote "));
-
   ScopedEnv scoped_home("HOME", root.c_str());
   ScopedEnv scoped_key("OPENROUTER_API_KEY");
-  ConfigManager loaded = ConfigManager::Capture(/*trust_project=*/false, {});
+  // A value may refer to another by name.
+  CHECK(
+      SaveSettings({{"secret", "test-key"}, {"OPENROUTER_API_KEY", "$secret"}})
+          .empty());
+  ConfigManager loaded = ConfigManager::Capture({});
   (void)loaded.Initialize();
   CHECK(SettingText("OPENROUTER_API_KEY") == "test-key");
 
@@ -1075,24 +1074,21 @@ void TestEffectiveConfigReload() {
   ScopedEnv scoped_route_key("OPENROUTER_API_KEY");
   ScopedEnv scoped_review_url("UAGENT_PERMISSION_URL");
   ScopedEnv scoped_toolset("UAGENT_INTERNAL_TOOLSET");
-  std::string path = UagentConfigPath();
-  CHECK(ToolWriteFile(
-            path,
-            "UAGENT_MAX_STEPS=4\n"
-            "UAGENT_INTERNAL_TOOLSET=lean\n"
-            "UAGENT_MAX_TOOL_CALLS=2\n"
-            "UAGENT_MAX_TURN_TOKENS=100\n"
-            "UAGENT_SESSION_TOKEN_BUDGET=200\n"
-            "UAGENT_MCP_TIMEOUT=9\n"
-            "UAGENT_MODEL=initial-model\n"
-            "UAGENT_SESSION_BUDGET=1\n"
-            "UAGENT_PERMISSION_URL=https://user:pass@review.example/v1\n"
-            "route_secret=private-route-key\n"
-            "OPENROUTER_API_KEY=$route_secret\n")
-            .output.starts_with("wrote "));
+  CHECK(SaveSettings(
+            {{"UAGENT_MAX_STEPS", "4"},
+             {"UAGENT_INTERNAL_TOOLSET", "lean"},
+             {"UAGENT_MAX_TOOL_CALLS", "2"},
+             {"UAGENT_MAX_TURN_TOKENS", "100"},
+             {"UAGENT_SESSION_TOKEN_BUDGET", "200"},
+             {"UAGENT_MCP_TIMEOUT", "9"},
+             {"UAGENT_MODEL", "initial-model"},
+             {"UAGENT_SESSION_BUDGET", "1"},
+             {"UAGENT_PERMISSION_URL", "https://user:pass@review.example/v1"},
+             {"route_secret", "private-route-key"},
+             {"OPENROUTER_API_KEY", "$route_secret"}})
+            .empty());
   // The CLI layer outranks the environment and what is saved.
   ConfigManager manager = ConfigManager::Capture(
-      /*trust_project=*/false,
       {{"UAGENT_SESSION_BUDGET", "3.5"}, {"UAGENT_MEMORY", "0"}});
   RuntimeConfig active = manager.Initialize();
   CHECK(active.max_steps == 9);

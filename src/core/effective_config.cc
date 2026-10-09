@@ -55,8 +55,7 @@ std::vector<std::string> DifferentKeys(const RuntimeConfig& configured,
 
 }  // namespace
 
-ConfigManager ConfigManager::Capture(bool trust_project,
-                                     RuntimeConfig::Values cli,
+ConfigManager ConfigManager::Capture(RuntimeConfig::Values cli,
                                      std::optional<std::string> folder) {
   RuntimeConfig::Values process;
   for (char** entry = environ; entry && *entry; ++entry) {
@@ -65,20 +64,19 @@ ConfigManager ConfigManager::Capture(bool trust_project,
     if (equal == std::string::npos || equal == 0) continue;
     process[value.substr(0, equal)] = value.substr(equal + 1);
   }
-  return ConfigManager(std::move(process), trust_project, std::move(cli),
+  return ConfigManager(std::move(process), std::move(cli),
                        folder ? std::move(*folder) : CanonicalCwd());
 }
 
-ConfigManager::ConfigManager(RuntimeConfig::Values process, bool trust_project,
+ConfigManager::ConfigManager(RuntimeConfig::Values process,
                              RuntimeConfig::Values cli, std::string folder)
     : process_(std::move(process)),
-      trust_project_(trust_project),
       cli_(std::move(cli)),
       folder_(std::move(folder)) {}
 
 EffectiveConfigSnapshot ConfigManager::Read() const {
   EffectiveConfigSnapshot snapshot;
-  const SavedSettings saved = ReadSettings(folder_, trust_project_);
+  const SavedSettings saved = ReadSettings(folder_);
   snapshot.stamp = saved.stamp;
   snapshot.error = saved.error;
   snapshot.warning = saved.warning;

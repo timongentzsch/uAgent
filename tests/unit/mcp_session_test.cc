@@ -393,7 +393,6 @@ void TestWorkspaceScopedSession() {
 }
 
 void TestProjectTrustTracksSemanticConfig() {
-  namespace fs = std::filesystem;
   TestWorkspace test("trust");
 
   CHECK(ToolWriteFile(".mcp.json", R"({"mcpServers":{"x":{"command":"one"}}})")
@@ -409,17 +408,6 @@ void TestProjectTrustTracksSemanticConfig() {
   CHECK(ToolWriteFile(".mcp.json", R"({"mcpServers":{"x":{"command":"two"}}})")
             .output.starts_with("wrote "));
   CHECK(!ProjectConfigTrusted());
-
-  // A config file an earlier version left in the project is no part of
-  // trust: it is taken over into the saved settings, or ignored.
-  fs::create_directories(".uagent");
-  CHECK(ToolWriteFile(".uagent/.config", "UAGENT_MODEL=vendor/model\n")
-            .output.starts_with("wrote "));
-  CHECK(!ProjectConfigTrusted());
-  CHECK(TrustProjectConfig(error));
-  CHECK(ToolWriteFile(".uagent/.config", "UAGENT_MODEL=other/model\n")
-            .output.starts_with("wrote "));
-  CHECK(ProjectConfigTrusted());
 }
 
 void TestScopedBaseAndMemory() {
@@ -473,7 +461,6 @@ void TestScopedBaseAndMemory() {
 
   // Without ./.uagent everything is global; the workspace never gets one by
   // being visited.
-  CHECK(ProjectConfigFilePath() == (workspace / ".uagent/.config").string());
   CHECK(!fs::exists(workspace / ".uagent"));
 
   // A global memory lands in the home directory even from inside a workspace.
@@ -533,7 +520,6 @@ void TestScopedBaseAndMemory() {
     CHECK((fs::status(project_memory).permissions() & fs::perms::all) ==
           (fs::perms::owner_read | fs::perms::owner_write));
   }
-  CHECK(ProjectConfigFilePath() == (workspace / ".uagent/.config").string());
   CHECK(UagentDir("history") == (home / ".uagent/history").string());
 
   // Keys are scoped and flat, oversize content is refused, an existing key is
@@ -657,24 +643,16 @@ void TestScopedBaseAndMemory() {
             .output.starts_with("forgot "));
   fs::current_path(workspace);
 
-  // What an earlier version kept in text files is taken over on the first
-  // read: the user's file always, a project's only once it is trusted.
-  CHECK(ToolWriteFile(".uagent/.config", "UAGENT_MODEL=project/model\n")
-            .output.starts_with("wrote "));
-  CHECK(ToolWriteFile((home / ".uagent/.config").string(),
-                      "UAGENT_MODEL=global/model\nUAGENT_API_KEY=global-key\n")
-            .output.starts_with("wrote "));
-  unsetenv("UAGENT_MODEL");
-  unsetenv("UAGENT_API_KEY");
-  ConfigManager untrusted = ConfigManager::Capture(/*trust_project=*/false, {});
-  (void)untrusted.Initialize();
-  CHECK(SettingText(Cfg("UAGENT_MODEL")) == "global/model");
-
   // A project's setting wins key by key; what is saved for all fills the
   // rest.
+  CHECK(SaveSettings({{"UAGENT_MODEL", "global/model"},
+                      {"UAGENT_API_KEY", "global-key"}})
+            .empty());
+  CHECK(SaveSettings({{"UAGENT_MODEL", "project/model"}}, CanonicalCwd())
+            .empty());
   unsetenv("UAGENT_MODEL");
   unsetenv("UAGENT_API_KEY");
-  ConfigManager trusted = ConfigManager::Capture(/*trust_project=*/true, {});
+  ConfigManager trusted = ConfigManager::Capture({});
   (void)trusted.Initialize();
   CHECK(SettingText(Cfg("UAGENT_MODEL")) == "project/model");
   CHECK(SettingText(Cfg("UAGENT_API_KEY")) == "global-key");

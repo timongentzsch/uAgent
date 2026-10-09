@@ -96,7 +96,7 @@ std::string StatusRow(const json& state, bool interrupting,
 // The level this terminal shows: its --verbosity when given, else the
 // configured one.
 const DetailPolicy& ConfiguredDetail(const RuntimeConfig::Values& overrides) {
-  const auto values = ConfigManager::Capture(false, overrides).Read().values;
+  const auto values = ConfigManager::Capture(overrides).Read().values;
   const auto found = values.find(std::string(kVerbositySetting));
   return DetailFor(found == values.end() ? "" : found->second);
 }
@@ -561,7 +561,7 @@ class Terminal {
               {{"operation", "apply"},
                {"changes", json::array({{{"key", kVerbositySetting},
                                          {"value", argument}}})}},
-              ConfigManager::Capture(false, {}));
+              ConfigManager::Capture({}));
           if (const std::string error = JsonValue(saved, "error", "");
               !error.empty()) {
             WriteTerminalRecord(Note(Tone::kError, TerminalSafe(error)));

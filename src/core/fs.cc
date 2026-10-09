@@ -204,17 +204,6 @@ bool ReadRegularFile(const std::string& path, size_t cap, std::string& out,
   return false;
 }
 
-std::string UagentConfigPath() {
-  std::string home = UserHome();
-  return home.empty() ? "" : home + "/.uagent/.config";
-}
-
-std::string ProjectConfigFilePath() {
-  std::error_code ec;
-  std::filesystem::path cwd = std::filesystem::current_path(ec);
-  return ec ? "" : (ProjectBase(cwd) / ".config").string();
-}
-
 bool EnsurePrivateDirectory(const std::string& path) {
   std::filesystem::path current = GlobalBase();
   auto relative = std::filesystem::path(path).lexically_relative(current);

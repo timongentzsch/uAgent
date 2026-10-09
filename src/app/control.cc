@@ -92,7 +92,7 @@ int ControlMain(const std::string& argument) {
     if (!cwd || error) {
       result = {{"error", "project directory is unavailable"}};
     } else {
-      auto manager = ConfigManager::Capture(false, {});
+      auto manager = ConfigManager::Capture({});
       manager.Initialize();
       result = ManagementControl(request);
     }

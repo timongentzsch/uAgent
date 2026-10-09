@@ -253,9 +253,9 @@ def as_list(value: Any) -> list[str]:
 
 
 def copy_user_config(home: Path) -> None:
-    source = Path.home() / ".uagent" / ".config"
+    source = Path.home() / ".uagent" / "config" / "settings.json"
     if source.is_file():
-        target = home / ".uagent" / ".config"
+        target = home / ".uagent" / "config" / "settings.json"
         target.parent.mkdir(parents=True)
         shutil.copyfile(source, target)
         target.chmod(0o600)

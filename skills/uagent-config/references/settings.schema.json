@@ -820,12 +820,6 @@
       "$ref": "#/definitions/scope",
       "description": "Settings for all conversations."
     },
-    "archive": {
-      "items": {
-        "type": "string"
-      },
-      "type": "array"
-    },
     "format": {
       "const": 2
     },

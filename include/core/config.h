@@ -17,13 +17,6 @@ namespace uagent {
 
 using EnvValues = std::map<std::string, std::string>;
 
-// Parse without mutating the process. Only agent-owned keys are exported later;
-// other entries remain available as interpolation sources without leaking every
-// config value into child processes.
-EnvValues ParseEnvValues(std::istream& input);
-
-EnvValues ParseEnvValues(const std::string& text);
-
 std::string ResolveEnvValue(const std::string& key, const EnvValues& values,
                             std::set<std::string>& resolving,
                             bool process_fallback = true);
@@ -54,8 +47,7 @@ bool WriteTrustRecord(const std::string& root, json record, std::string& error);
 json ReadTrustStore();
 
 // A record of another format simply stops matching, so that workspace is
-// asked once more. One written by an earlier version also holds the project
-// config that was approved with it, which the settings import reads.
+// asked once more.
 bool TrustRecordMatches(const json& record, const json& snapshot);
 
 // The out-parameter carries the approved .mcp.json alone: MCP registration

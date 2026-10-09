@@ -59,10 +59,7 @@ Two kinds of session act for you unattended:
   ignored.
 - Workspace trust is about `.mcp.json` alone. User `~/.mcp.json` is trusted
   executable configuration. Project `.mcp.json` requires interactive trust or
-  `--trust-project-config`; semantic edits revoke stored trust. A
-  `.uagent/.config` an earlier version left in a project is imported into
-  the saved settings once and archived, and only when its content was
-  approved then or that flag vouches for it.
+  `--trust-project-config`; semantic edits revoke stored trust.
 - Project instruction files, memories and skills enter model context without
   configuration trust because they grant no capability. An explicit
   `$skill-name` mention loads that skill before the first model call. Treat an
@@ -193,7 +190,7 @@ browser data directory outside the sandbox's writable roots, e.g.
 need it. `UAGENT_SANDBOX_NET=0` denies all IP traffic on macOS and TCP (bind
 and connect) on Linux, where Landlock cannot express the rest.
 
-**Inside the workspace**, a `.uagent/.config` and `.mcp.json`, and in a
+**Inside the workspace**, `.mcp.json`, and in a
 repository its `.git/config` and `.git/hooks` (which your own git would run),
 are carved out of the writable workspace on macOS only; sandboxed commands can
 still commit, but not change git config. Landlock has no deny rule, so the

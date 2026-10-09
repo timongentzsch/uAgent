@@ -879,15 +879,13 @@ def test_process_hardening_scrubs_loader_variables(root, home, *, binary):
 
 def test_composite_configuration_requires_exact_human_approval(root, home, *, binary):
     """Safe credential references reach a redacted prompt, even under --yolo."""
-    config = home / ".uagent" / ".config"
-    config.parent.mkdir(parents=True, exist_ok=True)
-    original = (
-        "# keep me\n"
-        "LOCAL_PROXY_API_KEY=adjacent-integration-secret\n"
-        'UAGENT_PROVIDERS=\'{"old":{"base_url":"https://old.example/v1",'
-        '"api_key":"$LOCAL_PROXY_API_KEY"}}\'\n'
+    save_settings(
+        home,
+        LOCAL_PROXY_API_KEY="adjacent-integration-secret",
+        UAGENT_PROVIDERS={
+            "old": {"base_url": "https://old.example/v1", "api_key": "$LOCAL_PROXY_API_KEY"}
+        },
     )
-    config.write_text(original)
     proposed = json.dumps(
         {
             "codex-local": {
@@ -1000,9 +998,7 @@ def test_self_configuration_requires_a_person(root, home, *, binary):
     the same policy stated earlier: registration and approval share one
     predicate.
     """
-    config = home / ".uagent" / ".config"
-    config.parent.mkdir(parents=True, exist_ok=True)
-    config.write_text("UAGENT_MAX_TOOL_CALLS=40\n")
+    save_settings(home, UAGENT_MAX_TOOL_CALLS=40)
 
     def refuse(_, body):
         names = function_names(body)
@@ -1026,9 +1022,7 @@ def test_self_configuration_requires_a_person(root, home, *, binary):
 def test_self_configuration_commits_after_approval(root, home, *, binary):
     """An approved change is saved beside what was there and reports when it
     takes effect."""
-    config = home / ".uagent" / ".config"
-    config.parent.mkdir(parents=True, exist_ok=True)
-    config.write_text("UAGENT_MAX_TOOL_CALLS=40\nUNKNOWN_KEY=kept\n")
+    save_settings(home, UAGENT_MAX_TOOL_CALLS=40, UNKNOWN_KEY="kept")
 
     def request_change(_, __):
         return tool_call(

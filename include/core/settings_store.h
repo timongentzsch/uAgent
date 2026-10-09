@@ -9,8 +9,7 @@
 // "variables" in a scope holds what a value may refer to as $NAME, kept and
 // never shown. The document may be edited by hand: what it holds that is no
 // setting, or no value a setting takes, is reported and otherwise left
-// alone. While a file taken over from an earlier version could not be
-// archived yet, "archive" lists it.
+// alone.
 //
 // In the process a scope is a map from a setting's environment name to its
 // value as text, which is also how the environment and the command line
@@ -37,9 +36,8 @@ struct SavedSettings {
   SettingValues project;
   // The document's stamp when it was read, for a later "did it change".
   FileStamp stamp;
-  // Why the saved settings are not all here: the document cannot be read, or
-  // an earlier version's file could not be taken over. Nothing is saved over
-  // either until it is put right.
+  // Why the saved settings are not here: the document cannot be read.
+  // Nothing is saved over it until it is put right.
   std::string error;
   // What the document holds that was not taken: a name that is no setting, a
   // value its setting does not take. The rest applies.
@@ -47,11 +45,9 @@ struct SavedSettings {
 };
 
 // What is saved for all conversations and for the conversations in `folder`.
-// The first read takes over what an earlier version kept in text files and
-// leaves each as .config.imported: ~/.uagent/.config, and
-// <folder>/.uagent/.config when its content was approved or the caller says
-// the folder is `trusted`.
-SavedSettings ReadSettings(const std::string& folder, bool trusted = false);
+// A document in the format before this one, which the last release still
+// writes, is rewritten in this one the first time it is read.
+SavedSettings ReadSettings(const std::string& folder);
 
 // One scope as the document holds it, also the values reading does not take:
 // what a change to it is compared with, and what a correction replaces.
@@ -76,8 +72,9 @@ struct AllSettings {
 // all there.
 json ExportSettings(std::string& error);
 // A document from a backup or another host, in this format or the one
-// before, as scopes. False with why it is not one: unlike a document edited
-// in place, one handed over is taken whole or not at all.
+// before, as scopes. False with why it is not
+// one: unlike a document edited in place, one handed over is taken whole or not
+// at all.
 bool ParseSettings(const json& document, AllSettings& settings,
                    std::string& error);
 // Replaces everything saved; the values are the caller's to check. Returns

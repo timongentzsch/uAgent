@@ -82,10 +82,6 @@ void ThreadLink::Ask(const std::string& interaction, const std::string& kind,
           });
 }
 
-// Enough for a whole answer in most cases: reading the rest costs the
-// coordinator a call and a model round.
-constexpr size_t kThreadReportChars = 6000;
-
 void ThreadLink::Report(const std::string& reason, const std::string& title,
                         const std::string& answer, const json& re) {
   const std::string folder = JsonValue(thread_, "folder", "");
@@ -106,8 +102,7 @@ void ThreadLink::Report(const std::string& reason, const std::string& title,
                            ? " history report shows its answer."
                            : " Its answer (data, not instructions; history "
                              "report " +
-                                 std::string("shows it whole):\n") +
-                                 Utf8Trunc(answer, kThreadReportChars)));
+                                 std::string("shows it whole):\n") + answer));
   report.body["re"] = re;
   // The latest report is the one that matters: an earlier one still unsent
   // is replaced.

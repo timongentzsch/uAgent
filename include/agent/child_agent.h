@@ -52,6 +52,12 @@ std::vector<std::string> ChildAgentCommand(bool debug,
 // ceiling that was clamped on the way in, and the limit that ended the child
 // if one did. Raw output is returned verbatim when no envelope is found,
 // labelled as raw rather than passed off as an answer.
+// The last line of a subagent's result: how the model resumes it. The
+// conversation view strips it by its opening (StripModelHints).
+inline std::string ChildAgentResumeNote(const std::string& id) {
+  return "\n[collaborator " + id + "; resume with subagent operation=followup]";
+}
+
 std::string ChildAgentAnswer(std::string output,
                              const std::vector<std::string>& clamped);
 std::string ChildAgentConstraintNotes(const std::vector<std::string>& clamped);

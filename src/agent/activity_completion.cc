@@ -179,8 +179,7 @@ std::vector<std::string> TakeCompleted(
         output = ChildAgentAnswer(std::move(output), job.completion_notes);
       }
       if (!job.source_id.empty()) {
-        output += "\n[collaborator " + job.source_id +
-                  "; resume with subagent operation=followup]";
+        output += ChildAgentResumeNote(job.source_id);
       }
     }
     output += artifact_note;

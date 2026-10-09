@@ -21,6 +21,17 @@ double ThreadBudget(const json& thread);
 // folder and the threads it launched elsewhere (worktrees), newest first.
 std::vector<SessionInfo> FolderSessions(const std::string& folder);
 
+// The threads this folder's coordinator started, chat members included.
+std::vector<SessionInfo> OwnThreads(const std::string& folder);
+
+// A JSON object the coordinator keeps beside its session file, under
+// `suffix`: its pinned notes, its chat's round. Not named *.json, so the
+// session catalogue never mistakes one for a session. Reading gives an
+// empty object when there is none; writing returns why it failed.
+json ReadCoordinatorFile(const std::string& folder, const char* suffix);
+std::string WriteCoordinatorFile(const std::string& folder, const char* suffix,
+                                 const json& value);
+
 // One line per managed session, newest first, bounded to kBoardBytes. Rendered
 // fresh on each request; never stored.
 std::string CoordinatorBoard(const std::string& folder);

@@ -259,7 +259,8 @@ export function Welcome({
 }: {
   level?: 1 | 2;
   title: string;
-  tips: ComponentChildren[];
+  // Each a short lead (a key, a word) and what it does.
+  tips: [ComponentChildren, ComponentChildren][];
   children?: ComponentChildren;
 }) {
   const Heading = `h${level}` as "h1";
@@ -268,11 +269,14 @@ export function Welcome({
       <Mark className="cursor-mark" />
       <Heading>{title}</Heading>
       {children}
-      <ul class="tips" role="list">
-        {tips.map((tip, index) => (
-          <li key={index}>{tip}</li>
+      <dl class="tips">
+        {tips.map(([lead, text], index) => (
+          <div key={index}>
+            <dt>{lead}</dt>
+            <dd>{text}</dd>
+          </div>
         ))}
-      </ul>
+      </dl>
     </div>
   );
 }

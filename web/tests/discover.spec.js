@@ -100,10 +100,10 @@ test("an empty workspace says what to do, and a folder's coordinator is one step
   await expect(
     page.getByRole("navigation", { name: "Conversations" }),
   ).toContainText("No conversations yet");
-  const tips = page.locator(".empty .tips li");
+  const tips = page.locator(".empty .tips dd");
   await expect(tips).toHaveCount(3);
-  await expect(tips.first()).toContainText("coordinator");
-  await expect(tips.nth(1)).toContainText("finds a conversation");
+  await expect(tips.first()).toContainText("several conversations");
+  await expect(tips.nth(1)).toContainText("Finds a conversation");
 
   // Enter in the dialog starts a conversation, as its primary button does.
   await page.locator(".empty").getByRole("button").click();
@@ -111,7 +111,7 @@ test("an empty workspace says what to do, and a folder's coordinator is one step
   await folder.fill(host.project);
   await folder.press("Enter");
   await expect(page.locator(".transcript .tips")).toContainText(
-    "lists the commands",
+    "Lists the commands",
   );
   await expect(page.getByRole("complementary", { name: "Board" })).toHaveCount(
     0,
@@ -144,9 +144,9 @@ test("the tips of an empty conversation go with its first message", async ({
     model: "mock/model-b",
   });
   await page.goto(`/#session=${session.id}`);
-  const tips = page.locator(".transcript .tips li");
+  const tips = page.locator(".transcript .tips dd");
   await expect(tips).toHaveCount(3);
-  await expect(tips.first()).toContainText("lists the commands");
+  await expect(tips.first()).toContainText("Lists the commands");
   const prompt = page.getByLabel("Message or guidance");
   await prompt.fill("Hello");
   await prompt.press("Enter");

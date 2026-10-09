@@ -658,13 +658,17 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
   // authority handed over with them. The child runs with automatic approvals,
   // so approving the spawn approves every tool call that child then decides
   // to make.
-  tool.approval_preview = [describe, &api](const json& arguments) {
+  tool.approval_preview = [describe, &api, &processes](const json& arguments) {
     std::string preview = describe(arguments);
     std::string operation = JsonValue(arguments, "operation", "spawn");
+    const std::string id = JsonValue(arguments, "agent_id", "");
+    // A message to a subagent that has finished runs it again.
+    if (operation == "message" && !RunningAgent(processes, id)) {
+      operation = "followup";
+    }
     if (operation != "spawn" && operation != "followup") return preview;
     // A follow-up runs as the subagent was created unless it says
     // otherwise: what is approved is what will run.
-    const std::string id = JsonValue(arguments, "agent_id", "");
     const json role =
         operation == "followup" && !id.empty() && SafeFileComponent(id) == id
             ? JsonValue(SessionHeader(AgentPath(id)), kSessionHeaderDelegation,

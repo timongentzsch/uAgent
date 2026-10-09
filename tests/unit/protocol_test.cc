@@ -456,6 +456,11 @@ void TestRegistries() {
     CHECK(resumed.find("full: reading, editing and running") !=
           std::string::npos);
     CHECK(resumed.find("memory off") != std::string::npos);
+    // A message to one that has finished runs it again, as it was made.
+    CHECK(subagent
+              .approval_preview(
+                  json{{"operation", "message"}, {"agent_id", "kept"}})
+              .find("full: reading, editing and running") != std::string::npos);
     CHECK(subagent
               .approval_preview(json{{"operation", "followup"},
                                      {"agent_id", "kept"},

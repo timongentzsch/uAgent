@@ -18,8 +18,6 @@
 #include "include/app/session.h"
 #include "include/core/config_registry.h"
 #include "include/core/debug.h"
-#include "include/core/fs.h"
-#include "include/core/private_store.h"
 #include "include/core/strings.h"
 
 namespace uagent {

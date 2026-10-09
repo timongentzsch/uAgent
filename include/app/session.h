@@ -14,7 +14,7 @@ namespace uagent::session {
 // checkpoint's and apply block events to its view, so these large fields
 // never cross the wire on every phase or usage change.
 inline constexpr const char* kCheckpointFields[] = {"view", "http",
-                                                    "system_prompt"};
+                                                    "system_prompt", "answer"};
 
 // `state` without its checkpoint-only fields.
 inline json LightState(const json& state) {

@@ -114,12 +114,24 @@ def test_a_row_too_long_for_one_look_says_it_was_cut(root, home, *, binary):
             "history", {"action": "detail", "session_id": session, "id": "m-3"}, call_id="call-2"
         )
 
-    responses = [tool_call("history", {"action": "board"}), detail, event({"content": "ok"})]
+    def rest(_, body):
+        board, first = tool_results(body["messages"])[:2]
+        session = next(line.split()[0] for line in board.splitlines() if "fix-lexer" in line)
+        offset = int(first.rsplit("offset ", 1)[1].split()[0])
+        return tool_call(
+            "history",
+            {"action": "detail", "session_id": session, "id": "m-3", "offset": offset},
+            call_id="call-3",
+        )
+
+    responses = [tool_call("history", {"action": "board"}), detail, rest, event({"content": "ok"})]
     with Server(responses) as server:
         result = run(root, base_env(home, server.url), "coord", "-p", "status?", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
-        row = tool_results(server.requests[-1][1]["messages"])[1]
-        assert_true(row.rstrip().endswith("[truncated]") and " END" not in row, row[-200:])
+        first, last = tool_results(server.requests[-1][1]["messages"])[1:3]
+        assert_true("[truncated; detail with offset" in first and " END" not in first, first[-200:])
+        # The page after it reaches the row's end and says nothing of a cut.
+        assert_true(last.rstrip().endswith(" END") and "truncated" not in last, last[-200:])
 
 
 def test_coordinator_answers_headless_and_lists_the_board(root, home, *, binary):
@@ -1287,6 +1299,25 @@ def test_a_member_that_waits_reads_who_was_typing_and_nobody_waits_for_ever(root
         result = run(root, env, "coord", "-p", "all wait", binary=binary, timeout=20)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "", repr(result.stdout))
+
+
+def test_a_long_message_reaches_the_chat_whole(root, home, *, binary):
+    long = "Opening. " + "word " * 1500 + "TAIL."
+
+    def reply(member, last, _body):
+        if member == "Ada" and "long one" in last:
+            return long
+        return "PASS"
+
+    with Server([_room(reply)]) as server:
+        env = base_env(home, server.url)
+        _team(root, env, binary)
+        server.requests.clear()
+        result = run(root, env, "coord", "-p", "Ada, a long one", binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        # Not the opening a view keeps of it: the user and the others read
+        # what she wrote.
+        assert_true(result.stdout.strip() == "Ada: " + long, result.stdout[-200:])
 
 
 def test_a_chat_that_never_falls_silent_stops_at_its_limits(root, home, *, binary):

@@ -140,12 +140,6 @@ Fd OpenOwnedRegular(const std::string& path, size_t cap,
 bool ReadRegularFile(const std::string& path, size_t cap, std::string& out,
                      std::string& error, bool prefix = false);
 
-std::string UagentConfigPath();
-
-// The path is stable even before the file exists: scratch state may also create
-// .uagent, but only this specific file opts a workspace into local settings.
-std::string ProjectConfigFilePath();
-
 // Atomic shared writer for config, trust state, tools, and preferences. A temp
 // file in the target directory makes replacement crash-safe.
 bool AtomicWriteFile(const std::string& path, const std::string& content,

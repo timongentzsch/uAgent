@@ -24,9 +24,7 @@ from integration_support import (
 
 
 def test_config_reload_applies_only_at_turn_boundaries(root, home, *, binary):
-    config = home / ".uagent" / ".config"
-    config.parent.mkdir(parents=True)
-    config.write_text("UAGENT_MAX_TOOL_CALLS=2\n", encoding="utf-8")
+    save_settings(home, UAGENT_MAX_TOOL_CALLS=2)
 
     def two_calls():
         return event(

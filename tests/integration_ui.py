@@ -14,6 +14,7 @@ from integration_support import (
     run,
     run_dialog,
     run_pty,
+    save_settings,
     saved_settings,
     session_files,
     timeout_setting,
@@ -1191,12 +1192,10 @@ def test_context_command_shows_memory_and_skills(root, home, *, binary):
     claude = home / ".claude" / "projects" / claude_project / "memory"
     claude.mkdir(parents=True)
     (claude / "MEMORY.md").write_text("claude-memory-body-sentinel", encoding="utf-8")
-    global_config = home / ".uagent" / ".config"
-    global_config.parent.mkdir(parents=True, exist_ok=True)
-    global_config.write_text(
-        "OPENROUTER_API_KEY=context-secret-sentinel\n"
-        "UAGENT_PERMISSION_URL=https://user:pass@review.example/v1\n",
-        encoding="utf-8",
+    save_settings(
+        home,
+        OPENROUTER_API_KEY="context-secret-sentinel",
+        UAGENT_PERMISSION_URL="https://user:pass@review.example/v1",
     )
     skill = workspace / ".uagent" / "skills" / "context-demo"
     skill.mkdir(parents=True)

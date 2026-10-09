@@ -83,9 +83,7 @@ Settings are saved by µAgent, not in files you edit:
 The web's Settings edits the same values. Command-line flags override
 `UAGENT_*` environment variables, which override what is saved for the
 project, which overrides what is saved for all conversations. Saved settings
-live outside the project, and `.env` files are never loaded. A
-`~/.uagent/.config` or a trusted project's `.uagent/.config` from an earlier
-version is imported once and kept as `.config.imported`.
+live outside the project, and `.env` files are never loaded.
 
 Every setting and its default, named providers (`UAGENT_PROVIDERS`)
 included, is in the

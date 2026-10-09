@@ -23,6 +23,7 @@
 #include <vector>
 
 #include "include/core/fs.h"
+#include "include/core/settings_store.h"
 #include "include/tools/tool.h"
 
 namespace uagent {
@@ -147,6 +148,15 @@ inline bool CheckOk(const ToolResult& result, const char* expression,
 inline std::string InvalidToolArgument(const Tool& tool, const json& args) {
   auto issue = FindToolArgumentIssue(tool, args);
   return issue ? issue->message : std::string();
+}
+
+// Saves `values` for all conversations, or for `folder`'s. Returns why not.
+inline std::string SaveSettings(const SettingValues& values,
+                                const std::string& folder = "") {
+  return ChangeSettings(folder, [&](SettingValues& scope) {
+    for (const auto& [name, value] : values) scope[name] = value;
+    return std::string();
+  });
 }
 
 }  // namespace uagent

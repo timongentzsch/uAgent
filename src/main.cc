@@ -104,8 +104,7 @@ void InitializeProcess() {
 
 // The terminal profile the user configured, or asked for with --plain.
 void ResolveTerminalProfile(const Options& options) {
-  const auto values =
-      ConfigManager::Capture(false, options.overrides).Read().values;
+  const auto values = ConfigManager::Capture(options.overrides).Read().values;
   auto on = [&](const char* key) {
     bool value = false;
     if (auto found = values.find(key); found != values.end()) {
@@ -250,8 +249,7 @@ int Main(int argc, char** argv) {
         return 2;
       }
     }
-    auto settings =
-        ConfigManager::Capture(false, parsed.options.overrides, "").Read();
+    auto settings = ConfigManager::Capture(parsed.options.overrides, "").Read();
     auto setting = [&](const char* key, std::string_view fallback = {}) {
       auto found = settings.values.find(key);
       return found == settings.values.end() ? std::string(fallback)

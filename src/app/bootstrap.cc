@@ -702,11 +702,7 @@ BootstrapResult Bootstrap(Options options, const char* executable,
     return Failure(std::move(error), exit_code);
   }
 
-  // Only the flag vouches for a config file an earlier version left in the
-  // project; otherwise it is taken over only as it was approved.
-  ConfigManager config_manager = ConfigManager::Capture(
-      options.trust_project || BoolSetting(Cfg("UAGENT_TRUST_PROJECT_CONFIG")),
-      options.overrides);
+  ConfigManager config_manager = ConfigManager::Capture(options.overrides);
   RuntimeConfig config = config_manager.Initialize();
   PrintWarning(config_manager.Problem());
   if (memory_child && !BuildMemoryExtractionPrompt(memory_source, workspace,

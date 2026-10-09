@@ -87,8 +87,7 @@ constexpr FlagSpec kFlags[] = {
      .help = "",
      .text = &Options::reference_dir},
     {"--trust-project-config", FlagKind::kToggle, &Options::trust_project,
-     nullptr, nullptr,
-     "trust this workspace's .mcp.json and import its legacy .uagent/.config"},
+     nullptr, nullptr, "trust this workspace's .mcp.json"},
     {"-h", FlagKind::kHelp, nullptr, nullptr, nullptr, ""},
     {"--help", FlagKind::kHelp, nullptr, nullptr, nullptr, "show this help"},
 };

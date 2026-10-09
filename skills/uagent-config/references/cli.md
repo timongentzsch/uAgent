@@ -28,7 +28,7 @@
 | `-c` | — | resume the most recent saved session |
 | `--resume` | — | pick a saved session to resume at startup |
 | `--version` | — | print the installed version |
-| `--trust-project-config` | — | trust this workspace's .mcp.json and import its legacy .uagent/.config |
+| `--trust-project-config` | — | trust this workspace's .mcp.json |
 | `--help` | — | show this help |
 
 Precedence: these flags override process `UAGENT_*` variables, which override what is saved for this project, which overrides what is saved for all conversations.

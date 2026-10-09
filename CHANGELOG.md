@@ -4,6 +4,12 @@
 
 ### Upgrade notes
 
+- **The text files of versions before 1.3.1 are no longer read.**
+  `~/.uagent/.config`, a project's `.uagent/.config` and the remembered
+  model in `model-preference.json` were taken over into the settings file by
+  1.3.1. Coming from an older version, start 1.3.1 once before this one;
+  otherwise set what they held again with `/config`. A `.uagent/.config` in
+  a project no longer has any meaning and is not protected from commands.
 - **The settings file names settings in words and holds typed values.**
   `~/.uagent/config/settings.json` is now
   `{"format": 2, "all": {"model": "…", "limits.maxSteps": 40,

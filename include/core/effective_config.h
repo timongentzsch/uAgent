@@ -55,7 +55,7 @@ class ConfigManager {
   // `folder` is the project whose saved settings apply: this process's own
   // unless one is named (the web host has none of its own, so it names the
   // one a request is about, or none).
-  static ConfigManager Capture(bool trust_project, RuntimeConfig::Values cli,
+  static ConfigManager Capture(RuntimeConfig::Values cli,
                                std::optional<std::string> folder = {});
   // The resolved values as they are now, publishing nothing.
   EffectiveConfigSnapshot Read() const;
@@ -77,11 +77,10 @@ class ConfigManager {
   json DiagnosticJson(const RuntimeConfig& active) const;
 
  private:
-  ConfigManager(RuntimeConfig::Values process, bool trust_project,
-                RuntimeConfig::Values cli, std::string folder);
+  ConfigManager(RuntimeConfig::Values process, RuntimeConfig::Values cli,
+                std::string folder);
 
   RuntimeConfig::Values process_;
-  bool trust_project_ = false;
   RuntimeConfig::Values cli_;
   RuntimeConfig::Values conversation_;
   std::unique_ptr<std::mutex> conversation_mutex_ =

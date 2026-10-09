@@ -26,6 +26,7 @@ from integration_support import (
     run,
     run_dialog,
     run_pty,
+    save_settings,
     settings_path,
     tool_call,
 )
@@ -178,9 +179,7 @@ def test_a_subagent_keeps_the_sandbox_its_parent_runs_under(root, home, *, binar
     parent's sandbox is fixed at its start, and so is its child's."""
     require_sandbox(root, home, binary=binary)
     ws = workspace(root)
-    config = home / ".uagent" / ".config"
-    config.parent.mkdir(parents=True, exist_ok=True)
-    config.write_text("UAGENT_SANDBOX=1\n")
+    save_settings(home, UAGENT_SANDBOX=True)
     outside, inside, hooked = root / "later.txt", ws / "later.txt", root / "hooked.txt"
     # A startup file a confined command could have written: the child starts
     # outside the sandbox, so it is started through no shell.
@@ -188,7 +187,7 @@ def test_a_subagent_keeps_the_sandbox_its_parent_runs_under(root, home, *, binar
     hook.write_text(f"export UAGENT_SANDBOX=0\ntouch {hooked}\n")
 
     def loosen():
-        config.write_text("UAGENT_SANDBOX=0\n")
+        save_settings(home, UAGENT_SANDBOX=False)
 
     with delegating_server(outside, inside, loosen) as server:
         env = base_env(home, server.url)
@@ -680,13 +679,12 @@ def test_sandbox_protects_project_authority(root, home, *, binary):
     require_sandbox(root, home, binary=binary)
     ws = workspace(root)
     (ws / ".uagent").mkdir(exist_ok=True)
-    config, mcp, scratch = ws / ".uagent" / ".config", ws / ".mcp.json", ws / ".uagent" / "s.py"
-    command = f"echo a > {config}; echo b > {mcp}; echo c > {scratch}; true"
+    mcp, scratch = ws / ".mcp.json", ws / ".uagent" / "s.py"
+    command = f"echo b > {mcp}; echo c > {scratch}; true"
     run_once(root, sandbox_env(home, ""), command, binary=binary)
-    assert_true(not config.exists(), "a command wrote the project config")
     assert_true(not mcp.exists(), "a command wrote the project .mcp.json")
-    # The carve-out is two files, not the directory: scratch lives beside them.
-    assert_true(scratch.exists(), "the carve-out took the whole .uagent directory")
+    # The carve-out is that file, not the folder's own scratch space.
+    assert_true(scratch.exists(), "the carve-out took the .uagent directory")
 
 
 def test_sandbox_keeps_repository_config_and_hooks(root, home, *, binary):

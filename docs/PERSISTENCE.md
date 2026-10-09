@@ -61,12 +61,6 @@ also be edited by hand. See [OPERATIONS.md](OPERATIONS.md#settings).
 - A document of the format before (`"format": 1`, settings named by their
   environment variable and every value text) is rewritten in this format the
   first time it is read. `uagent config import` takes either.
-- Text files of earlier versions are taken over once. `~/.uagent/.config`
-  moves in on the first start. A project's `.uagent/.config` moves in the
-  first time a conversation starts in that folder, if its content is what was
-  approved when the workspace was trusted, or with `--trust-project-config`;
-  otherwise it is ignored. A file taken over is renamed `.config.imported`
-  and never read again.
 
 ## Sessions
 

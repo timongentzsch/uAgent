@@ -52,8 +52,7 @@ inline bool SelfConfigurationPath(const std::string& path) {
       candidate.parent_path() == CanonicalAccessPath(GlobalBase())) {
     return true;
   }
-  if (matches(UagentConfigPath()) || matches(ProjectConfigFilePath()) ||
-      matches(TrustStorePath()) || matches(SettingsPath()) ||
+  if (matches(TrustStorePath()) || matches(SettingsPath()) ||
       matches(SettingsPath() + ".lock") ||
       matches(UagentDir(kConfigDir) + "/" + kPermissionStoreFile)) {
     return true;

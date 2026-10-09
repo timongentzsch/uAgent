@@ -20,35 +20,24 @@
 #include "tests/unit/test_support.h"
 
 namespace uagent {
-namespace {
-
-void Write(const std::filesystem::path& path, const std::string& bytes) {
-  std::filesystem::create_directories(path.parent_path());
-  std::ofstream file(path, std::ios::binary);
-  file << bytes;
-}
-
-}  // namespace
 
 void TestConfigProposalAndCommit() {
   TestWorkspace test("config-proposal");
-  const std::filesystem::path config = test.home / ".uagent" / ".config";
-  const std::string original =
-      "# keep me\n"
-      "# COMMENT_API_KEY=not-an-assignment\n"
-      "UAGENT_MAX_TOOL_CALLS=40\n"
-      "OPENROUTER_API_KEY=canary-secret\n"
-      "QWEN_GPU_API_KEY=adjacent-provider-secret\n"
-      "UAGENT_PROVIDERS='{\"old\":{\"base_url\":\"https://old.example/v1\","
-      "\"api_key\":\"existing-provider-secret\"},\"gpu\":{\"base_url\":"
-      "\"https://gpu.example/v1\",\"api_key\":\"$QWEN_GPU_API_KEY\"}}'\n";
-  Write(config, original);
+  CHECK(SaveSettings(
+            {{"UAGENT_MAX_TOOL_CALLS", "40"},
+             {"OPENROUTER_API_KEY", "canary-secret"},
+             {"QWEN_GPU_API_KEY", "adjacent-provider-secret"},
+             {"UAGENT_PROVIDERS",
+              R"({"old":{"base_url":"https://old.example/v1",)"
+              R"("api_key":"existing-provider-secret"},"gpu":{"base_url":)"
+              R"("https://gpu.example/v1","api_key":"$QWEN_GPU_API_KEY"}})"}})
+            .empty());
 
   ScopedEnv no_override("UAGENT_MAX_TOOL_CALLS");
   ScopedEnv no_providers("UAGENT_PROVIDERS");
   // Initialize exports file values into the process environment.
   ScopedEnv no_route_key("OPENROUTER_API_KEY");
-  ConfigManager manager = ConfigManager::Capture(false, {});
+  ConfigManager manager = ConfigManager::Capture({});
   RuntimeConfig active = manager.Initialize();
 
   // Unknown keys are rejected before anything is read or written.
@@ -122,7 +111,7 @@ void TestConfigProposalAndCommit() {
   CHECK(CommitConfigProposal(composite, error));
   ScopedEnv provider_key("CODEX_LOCAL_PROXY_API_KEY", "resolved-local-key");
   unsetenv("UAGENT_PROVIDERS");
-  ConfigManager resolved_manager = ConfigManager::Capture(false, {});
+  ConfigManager resolved_manager = ConfigManager::Capture({});
   resolved_manager.Initialize();
   ProviderCatalog catalog = LoadProviderCatalog();
   const NamedProvider* resolved =
@@ -316,7 +305,7 @@ void TestConfigProposalAndCommit() {
 void TestProjectSettingsAreSavedByFolder() {
   TestWorkspace test("config-project");
   ScopedEnv no_override("UAGENT_MAX_TOOL_CALLS");
-  ConfigManager manager = ConfigManager::Capture(false, {});
+  ConfigManager manager = ConfigManager::Capture({});
   ConfigProposal proposal =
       PrepareConfigProposal(ConfigProposalScope::kProject,
                             {{"UAGENT_MAX_TOOL_CALLS", "120", false}}, manager);
@@ -369,7 +358,7 @@ void TestProjectSettingsAreSavedByFolder() {
   CHECK(ReadSettings(test.root.string()).project.empty());
   // Where no folder is named (the web host's own view) there is no project
   // to save for, and never a fall-through to all conversations.
-  ConfigManager host = ConfigManager::Capture(false, {}, "");
+  ConfigManager host = ConfigManager::Capture({}, "");
   CHECK(!PrepareConfigProposal(ConfigProposalScope::kProject,
                                {{"UAGENT_MAX_STEPS", "5", false}}, host)
              .ok);
@@ -387,15 +376,14 @@ void TestProjectSettingsAreSavedByFolder() {
 // save but never its secrets.
 void TestConfigurationResetKeepsSecrets() {
   TestWorkspace test("config-reset");
-  const std::filesystem::path config = test.home / ".uagent" / ".config";
-  Write(config,
-        "UAGENT_MAX_TOOL_CALLS=40\n"
-        "UAGENT_WEB_SEARCH_BACKEND=off\n"
-        "OPENROUTER_API_KEY=keep-me\n");
+  CHECK(SaveSettings({{"UAGENT_MAX_TOOL_CALLS", "40"},
+                      {"UAGENT_WEB_SEARCH_BACKEND", "off"},
+                      {"OPENROUTER_API_KEY", "keep-me"}})
+            .empty());
   ScopedEnv no_calls("UAGENT_MAX_TOOL_CALLS");
   ScopedEnv no_backend("UAGENT_WEB_SEARCH_BACKEND");
   ScopedEnv no_key("OPENROUTER_API_KEY");
-  ConfigManager manager = ConfigManager::Capture(false, {});
+  ConfigManager manager = ConfigManager::Capture({});
   RuntimeConfig active = manager.Read().config;
   auto find = [](const json& result, const std::string& name) {
     for (const json& setting : result["settings"]) {

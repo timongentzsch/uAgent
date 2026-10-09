@@ -246,8 +246,8 @@ void TestToolCopiesKeepRoomForUserFiles() {
 void TestCommandReplies() {
   TestWorkspace workspace("command-replies");
   Observability observability;
-  AppContext context(RuntimeConfig{}, ConfigManager::Capture(false, {}),
-                     Options{}, observability, nullptr);
+  AppContext context(RuntimeConfig{}, ConfigManager::Capture({}), Options{},
+                     observability, nullptr);
   context.runtime.api.model = "test-model";
   context.agent = std::make_unique<Agent>(
       context.runtime.api, context.tools, context.runtime.processes,
@@ -351,8 +351,8 @@ void TestSessionPersistence() {
   observation.EnableTerminal(false);
   RuntimeConfig config;
   config.memory_generate = false;
-  AppContext context(config, ConfigManager::Capture(false, {}), Options{},
-                     observation, &channel);
+  AppContext context(config, ConfigManager::Capture({}), Options{}, observation,
+                     &channel);
   context.runtime.api.model = "test-model";
   context.agent = std::make_unique<Agent>(
       context.runtime.api, context.tools, context.runtime.processes,

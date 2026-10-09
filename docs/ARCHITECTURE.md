@@ -339,7 +339,7 @@ Instruction files are layered, yours before the project's; only a
 conversation's self-directive can overlay or replace. Their editors and the
 agent tool share revision checking and approval policy. Replacing prompt text
 does not replace tool permissions.
-[System prompts](SYSTEM_PROMPTS.md) describes authoring; [Management](MANAGEMENT.md)
+[Instructions](INSTRUCTIONS.md) describes authoring; [Management](MANAGEMENT.md)
 describes memory, skills and scheduled tasks.
 
 ## Context and cache

@@ -17,7 +17,7 @@ this file. Do not load every reference; pick the one the question needs.
 | Which flags exist? | `uagent` action `inspect`, topic `cli`, or `references/cli.md` |
 | Which slash commands exist? | `uagent` action `inspect`, topic `commands`, or `references/slash-commands.md` |
 | Full setting catalogue | `references/configuration.md` |
-| What is in the system prompt? | `references/system-prompt.md`; how instructions layer onto it: `docs/SYSTEM_PROMPTS.md` in a source checkout |
+| What is in the system prompt? | `references/system-prompt.md`; how instructions layer onto it: `docs/INSTRUCTIONS.md` in a source checkout |
 | Which prompt is this session actually running? | `uagent` action `inspect`, topic `prompt` (base digest, active sections, overlay) |
 | Which built-in tools and arguments exist? | `uagent` action `inspect`, topic `tools`, or `references/tools.md` |
 | Which model routes are configured, and is a credential set? | `uagent` action `inspect`, topic `routes` |

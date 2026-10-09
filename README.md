@@ -98,7 +98,7 @@ coordinator and its chat, and scripting. `uagent --help` lists every flag.
 ## Documentation
 
 - [Guide](docs/GUIDE.md): the whole story, in order
-- [Web interface](docs/WEB.md)
+- [Web interface](docs/WEB.md) and the [browser the agent drives](docs/BROWSER.md)
 - [Tools](docs/TOOLS.md)
 - [Memory, skills and scheduled tasks](docs/MANAGEMENT.md)
 - [Bundled skills](skills/README.md)
@@ -111,7 +111,7 @@ coordinator and its chat, and scripting. `uagent --help` lists every flag.
   [slash commands](skills/uagent-config/references/slash-commands.md),
   [settings](skills/uagent-config/references/configuration.md)
 - Internals: [Architecture](docs/ARCHITECTURE.md),
-  [System prompts](docs/SYSTEM_PROMPTS.md),
+  [Instructions](docs/INSTRUCTIONS.md),
   [Prompt caching](docs/CACHING.md)
 - [Changelog](CHANGELOG.md)
 

@@ -41,8 +41,8 @@ or `subagent` tool.
 | `ask` | put 1 to 8 multiple-choice questions to the user and wait; an option can show an image the agent made in the workspace and a monospace preview; they may answer in their own words or with an image | a session someone can answer (never headless runs or children); a thread's questions go to its coordinator first |
 | `subagent` | delegate a subtask to a durable child session | full toolset, delegation depth below `UAGENT_SUBAGENT_DEPTH` |
 | `skill` | load an installed skill | a usable skill is installed |
-| `adapt_system` | add to or replace the base prompt for this conversation | `UAGENT_ADAPT_SYSTEM=1`; see [SYSTEM_PROMPTS.md](SYSTEM_PROMPTS.md) |
-| `browser` | drive the shared Chrome of the browser appliance | top-level sessions (web, terminal, headless, a coordinator's threads) while the web host's browser runs and `UAGENT_BROWSER_DATA` names it; one conversation at a time; see [WEB.md](WEB.md) |
+| `adapt_system` | add to or replace the base prompt for this conversation | `UAGENT_ADAPT_SYSTEM=1`; see [INSTRUCTIONS.md](INSTRUCTIONS.md) |
+| `browser` | drive the shared Chrome of the browser appliance | top-level sessions (web, terminal, headless, a coordinator's threads) while the web host's browser runs and `UAGENT_BROWSER_DATA` names it; one conversation at a time; see [BROWSER.md](BROWSER.md) |
 | `<server>_<tool>` | tools discovered from MCP servers; see [OPERATIONS.md](OPERATIONS.md#mcp) | configured servers; not in lean children |
 
 Independent calls to parallel-safe tools run up to four at a time; results
@@ -110,6 +110,19 @@ Every `activity` call names one `operation`:
 cap for one call. Output returned once is not returned again. Writing to a
 non-PTY activity is rejected.
 
+- Activities of a conversation live only in memory. Detached ones are
+  PID-backed with a rotating log; launching the same detached command from
+  the same directory reuses its process group, and it cannot be reattached
+  interactively after µAgent exits.
+- A command's completion appears only in the UI and never starts a model
+  turn. A subagent's completion is added once to the next model call without
+  starting one.
+- `stop` sends TERM, then KILL, to the whole process group and removes its
+  records and logs.
+- A failed child reports its route, failure stage, bounded diagnostics and a
+  remedy. µAgent never silently changes provider, model, pricing or privacy
+  policy for a child.
+
 ## Delegation
 
 `subagent` defaults to `operation=spawn` and waits for the child, returning
@@ -148,7 +161,7 @@ ignored.
 conversation model. `UAGENT_WEB_SEARCH_MODEL` names that route and
 `UAGENT_WEB_SEARCH_BACKEND=off` withholds the tool.
 
-`browser` drives the web appliance's shared Chrome; [WEB.md](WEB.md)
+`browser` drives the web appliance's shared Chrome; [BROWSER.md](BROWSER.md)
 explains setup, saved logins and taking over.
 
 ## Presentation

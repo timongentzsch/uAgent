@@ -50,13 +50,12 @@ Two kinds of session act for you unattended:
 
 ## Trust boundaries
 
-- Settings come, the earlier winning, from what one conversation chose for
-  itself (its model and approval mode only), command-line flags, process
-  `UAGENT_*` and `OPENROUTER_*` variables, what is saved for the project
-  folder and what is saved for all conversations. Both saved scopes are kept
-  by µAgent in `~/.uagent/config/settings.json`, never in the project. That
-  file and artifact files are forced private. Project `.env` files are
-  ignored.
+- Settings are never read from the project folder. What is saved, for all
+  conversations or for one folder, is kept by µAgent in
+  `~/.uagent/config/settings.json`; the environment, flags and a
+  conversation's own choice override it
+  ([Operations](docs/OPERATIONS.md#settings) has the order). That file and
+  artifact files are forced private. Project `.env` files are ignored.
 - Workspace trust is about `.mcp.json` alone. User `~/.mcp.json` is trusted
   executable configuration. Project `.mcp.json` requires interactive trust or
   `--trust-project-config`; semantic edits revoke stored trust.
@@ -120,7 +119,7 @@ cookies.
   fill the one it offers for the focused field and does not read what was
   filled. The text the agent gets says whether a field holds something,
   never what. Screenshots draw password fields as dots;
-  [the web guide](docs/WEB.md#isolation) lists the fields that are not
+  [the web guide](docs/BROWSER.md#isolation) lists the fields that are not
   masked.
 - With the sandbox on, commands cannot read the profile or connect to its
   sockets, and the file tools refuse it in every mode. See
@@ -184,7 +183,7 @@ sandbox lift that, as they lift the sandbox itself; yolo does not. The file
 tools refuse both paths in every mode. On Linux, Landlock hides the files on
 any supported kernel but the sockets only from Linux 7.1 (ABI 9). Keep the
 browser data directory outside the sandbox's writable roots, e.g.
-`~/.uagent/browser`. See [the web guide](docs/WEB.md#isolation).
+`~/.uagent/browser`. See [the web guide](docs/BROWSER.md#isolation).
 
 **Network.** Outbound access is allowed by default because git, npm and pip
 need it. `UAGENT_SANDBOX_NET=0` denies all IP traffic on macOS and TCP (bind
@@ -224,13 +223,9 @@ refuses the command rather than running it under a truncated profile.
 ## Sensitive data
 
 Sessions and debug logs may contain source, prompts, commands, output and
-reasoning. They are private (owner-only files) but not encrypted. Default
-retention is 30 days / 200 files for sessions, 14 days / 50 files for debug
-traces, 14 days for mail, and 7 days for background and MCP logs and for
-captured outputs and HTTP exchanges. A detached terminal's log is not pruned
-by age alone; it goes when the record of its exited job expires. See
-[docs/PERSISTENCE.md](docs/PERSISTENCE.md) for the detail, locations and
-removal.
+reasoning. They are private (owner-only files) but not encrypted, and are
+pruned by age and count; [Persistence](docs/PERSISTENCE.md) has the
+retention of each kind, the locations and how to remove them.
 
 `uagent config export` prints everything saved, API keys included; treat its
 output as a secret.

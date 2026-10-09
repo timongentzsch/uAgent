@@ -501,8 +501,7 @@ ToolResult RunSubagent(const Api& api, ProcessSupervisor& processes,
                     ChildAgentConstraintNotes(clamped);
   }
   if (child.launched) {
-    result.output +=
-        "\n[collaborator " + id + "; resume with subagent operation=followup]";
+    result.output += ChildAgentResumeNote(id);
     result.parts = json::array({LinkPart("agent", id, "Open agent")});
   }
   return result;
@@ -659,11 +658,24 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
   // authority handed over with them. The child runs with automatic approvals,
   // so approving the spawn approves every tool call that child then decides
   // to make.
-  tool.approval_preview = [describe, &api](const json& arguments) {
+  tool.approval_preview = [describe, &api, &processes](const json& arguments) {
     std::string preview = describe(arguments);
     std::string operation = JsonValue(arguments, "operation", "spawn");
+    const std::string id = JsonValue(arguments, "agent_id", "");
+    // A message to a subagent that has finished runs it again.
+    if (operation == "message" && !RunningAgent(processes, id)) {
+      operation = "followup";
+    }
     if (operation != "spawn" && operation != "followup") return preview;
-    const bool full = JsonValue(arguments, "mode", "lean") == "full";
+    // A follow-up runs as the subagent was created unless it says
+    // otherwise: what is approved is what will run.
+    const json role =
+        operation == "followup" && !id.empty() && SafeFileComponent(id) == id
+            ? JsonValue(SessionHeader(AgentPath(id)), kSessionHeaderDelegation,
+                        json::object())
+            : json::object();
+    const bool full =
+        JsonValue(arguments, "mode", JsonValue(role, "mode", "lean")) == "full";
     preview +=
         "\n\u00b7 the child approves its own tool calls; it writes files and "
         "runs commands unattended, under this session's sandbox";
@@ -672,15 +684,17 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
                        "children"
                      : "lean: reading and running, no file-editing tools");
     const json& limits = ChildLimits(arguments);
-    preview += "\n\u00b7 bounded by " +
-               std::to_string(JsonValue(limits, "steps", SubagentMaxSteps())) +
-               " steps, " +
-               std::to_string(
-                   JsonValue(limits, "tool_calls", SubagentMaxToolCalls())) +
-               " tool calls" +
-               (api.config.memory_enabled && JsonValue(limits, "memory", true)
-                    ? ", memory on"
-                    : ", memory off");
+    preview +=
+        "\n\u00b7 bounded by " +
+        std::to_string(JsonValue(limits, "steps", SubagentMaxSteps())) +
+        " steps, " +
+        std::to_string(
+            JsonValue(limits, "tool_calls", SubagentMaxToolCalls())) +
+        " tool calls" +
+        (api.config.memory_enabled &&
+                 JsonValue(limits, "memory", JsonValue(role, "memory", true))
+             ? ", memory on"
+             : ", memory off");
     return preview;
   };
   return tool;  // Spawns serialize; immediate-background children overlap.

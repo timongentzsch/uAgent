@@ -18,8 +18,6 @@
 #include "include/app/session.h"
 #include "include/core/config_registry.h"
 #include "include/core/debug.h"
-#include "include/core/fs.h"
-#include "include/core/private_store.h"
 #include "include/core/strings.h"
 
 namespace uagent {
@@ -33,15 +31,24 @@ constexpr const char* kSelf = "coordinator";
 // Messages one participant may post before the user writes again.
 constexpr int kPostsEach = 2;
 
-// The round, beside the coordinator's session file. Not named *.json, so the
-// session catalogue never mistakes it for one.
-std::string StatePath(const std::string& folder) {
-  return CoordinatorPath(folder) + ".chat";
-}
+// Where the round is kept beside the coordinator's session file.
+constexpr const char* kState = ".chat";
 
-json ReadState(const std::string& folder) {
-  json saved = ReadJsonFile(StatePath(folder), size_t{64} * 1024);
-  return saved.is_object() ? saved : json::object();
+// Starts the runtimes of `members`, which mail alone does not: it starts a
+// turn only in a running one. Off this thread: each start waits for its
+// runtime to answer.
+void Start(std::vector<SessionInfo> members) {
+  if (members.empty()) return;
+  std::thread([members = std::move(members)] {
+    for (const SessionInfo& member : members) {
+      std::string error;
+      if (!session::Open(ExecutablePath(), member.cwd, member.path, "",
+                         Options{}, error)
+               .socket) {
+        DebugLog("chat_member_start_failed", {{"error", error}});
+      }
+    }
+  }).detach();
 }
 
 // The participants in `ids` by name, as a sentence lists them.
@@ -116,7 +123,7 @@ std::set<std::string> Addressed(const std::string& text,
 
 Chat::Chat(std::string folder, std::function<void(const std::string&)> wake)
     : folder_(std::move(folder)), wake_(std::move(wake)) {
-  const json saved = ReadState(folder_);
+  const json saved = ReadCoordinatorFile(folder_, kState);
   each_ = JsonValue(saved, "each", int64_t{0});
   round_ = JsonValue(saved, "round", int64_t{0});
   for (const char* list : {"typing", "waiting"}) {
@@ -153,17 +160,14 @@ void Chat::Save() const {
     seats[who] = {
         {"turns", seat.turns}, {"posts", seat.posts}, {"waited", seat.waited}};
   }
-  std::string error;
-  if (!AtomicWriteFile(StatePath(folder_),
-                       JsonDump({{"each", each_},
-                                 {"round", round_},
-                                 {"typing", typing_},
-                                 {"waiting", waiting_},
-                                 {"heard", heard_},
-                                 {"seats", std::move(seats)}}),
-                       kPrivateFileMode, false, error)) {
-    DebugLog("chat_state_unsaved", {{"error", error}});
-  }
+  const std::string error = WriteCoordinatorFile(folder_, kState,
+                                                 {{"each", each_},
+                                                  {"round", round_},
+                                                  {"typing", typing_},
+                                                  {"waiting", waiting_},
+                                                  {"heard", heard_},
+                                                  {"seats", std::move(seats)}});
+  if (!error.empty()) DebugLog("chat_state_unsaved", {{"error", error}});
 }
 
 namespace {
@@ -189,22 +193,15 @@ bool ForMembersOnly(const std::string& folder, const std::string& text) {
 }
 
 std::vector<SessionInfo> ChatMembers(const std::string& folder) {
-  const std::string coordinator = CoordinatorId(folder);
-  std::vector<SessionInfo> members;
-  for (SessionInfo& info : FolderSessions(folder)) {
-    if (info.kind == kSessionKindThread &&
-        JsonValue(info.thread, "coordinator_id", "") == coordinator &&
-        !Name(info).empty()) {
-      members.push_back(std::move(info));
-    }
-  }
+  std::vector<SessionInfo> members = OwnThreads(folder);
+  std::erase_if(members, [](const auto& info) { return Name(info).empty(); });
   std::ranges::reverse(members);
   return members;
 }
 
 std::set<std::string> ChatTyping(const std::string& folder) {
   std::set<std::string> typing;
-  const json saved = ReadState(folder);
+  const json saved = ReadCoordinatorFile(folder, kState);
   if (const json* ids = JsonArray(saved, "typing")) {
     for (const json& id : *ids) {
       if (id.is_string() && id != kSelf) typing.insert(id.get<std::string>());
@@ -329,20 +326,7 @@ json Chat::Deliver(const std::string& from, const std::string& author,
     }
     if (wake) started.push_back(member);
   }
-  if (!started.empty()) {
-    // Mail starts a turn only in a running runtime. Off this thread: each
-    // start waits for its runtime to answer.
-    std::thread([started = std::move(started)] {
-      for (const SessionInfo& member : started) {
-        std::string error;
-        if (!session::Open(ExecutablePath(), member.cwd, member.path, "",
-                           Options{}, error)
-                 .socket) {
-          DebugLog("chat_member_start_failed", {{"error", error}});
-        }
-      }
-    }).detach();
-  }
+  Start(std::move(started));
   return self ? asks(kSelf) : json();
 }
 
@@ -392,11 +376,7 @@ void Chat::Release(const std::vector<SessionInfo>& members) {
     if (!SendMail(std::move(mail)).empty()) continue;
     ++seat.turns;
     typing_.insert(who);
-    std::thread([member = *member] {
-      std::string error;
-      session::Open(ExecutablePath(), member.cwd, member.path, "", Options{},
-                    error);
-    }).detach();
+    Start({*member});
   }
 }
 

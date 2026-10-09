@@ -99,6 +99,29 @@ def test_coordinator_reads_only_its_folder(root, home, *, binary):
         assert_true("CRLF is fixed" in search and search.count('"session_id"') == 1, search)
 
 
+def test_a_row_too_long_for_one_look_says_it_was_cut(root, home, *, binary):
+    conversation = [
+        {"role": "system", "content": "sys"},
+        {"role": "user", "content": "fix the lexer"},
+        {"role": "assistant", "content": "LONG " + "x" * 20000 + " END"},
+    ]
+    write_session(home, "fix-lexer", conversation, cwd=root)
+
+    def detail(_, body):
+        board = tool_results(body["messages"])[0]
+        session = next(line.split()[0] for line in board.splitlines() if "fix-lexer" in line)
+        return tool_call(
+            "history", {"action": "detail", "session_id": session, "id": "m-3"}, call_id="call-2"
+        )
+
+    responses = [tool_call("history", {"action": "board"}), detail, event({"content": "ok"})]
+    with Server(responses) as server:
+        result = run(root, base_env(home, server.url), "coord", "-p", "status?", binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        row = tool_results(server.requests[-1][1]["messages"])[1]
+        assert_true(row.rstrip().endswith("[truncated]") and " END" not in row, row[-200:])
+
+
 def test_coordinator_answers_headless_and_lists_the_board(root, home, *, binary):
     write_session(
         home,

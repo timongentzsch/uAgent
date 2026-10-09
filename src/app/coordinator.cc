@@ -229,8 +229,12 @@ ToolResult Read(const SessionInfo& info, uint64_t before) {
 ToolResult Detail(const SessionInfo& info, const std::string& id) {
   return WithConversation(info, [&](const Conversation& conversation) {
     const json detail = ConversationDetail(conversation, id, 0);
-    return SessionData(info, JsonValue(detail, "text", JsonDump(detail)),
-                       kDetailBytes);
+    // A row longer than one page says so: it is cut where the page ends.
+    return SessionData(
+        info,
+        JsonValue(detail, "text", JsonDump(detail)) +
+            (JsonValue(detail, "more", false) ? "\n[truncated]" : ""),
+        kDetailBytes + 16);
   });
 }
 
@@ -260,23 +264,14 @@ constexpr size_t kPinnedBytes = 2048;
 constexpr const char* kPinnedBlocks[] = {"goals", "decisions",
                                          "open_questions"};
 
-// Pinned notes and the day's spend live beside the coordinator's session
-// file: part of every turn's context, they survive compaction and resets.
-// Not named *.json, so the session catalogue never mistakes them for one.
-std::string PinnedPath(const std::string& folder) {
-  return CoordinatorPath(folder) + ".pinned";
-}
-
+// Pinned notes and the day's spend: part of every turn's context, they
+// survive compaction and resets.
 json ReadPinned(const std::string& folder) {
-  json pinned = ReadJsonFile(PinnedPath(folder), size_t{64} * 1024);
-  return pinned.is_object() ? pinned : json::object();
+  return ReadCoordinatorFile(folder, ".pinned");
 }
 
 std::string WritePinned(const std::string& folder, const json& pinned) {
-  std::string error;
-  AtomicWriteFile(PinnedPath(folder), JsonDump(pinned, 1), kPrivateFileMode,
-                  false, error);
-  return error;
+  return WriteCoordinatorFile(folder, ".pinned", pinned);
 }
 
 // What the coordinator's own turns cost today: its session total at the last
@@ -307,6 +302,8 @@ double SpentToday(const std::string& folder,
   return spent;
 }
 
+}  // namespace
+
 std::vector<SessionInfo> OwnThreads(const std::string& folder) {
   const std::string coordinator = CoordinatorId(folder);
   std::vector<SessionInfo> threads;
@@ -315,6 +312,8 @@ std::vector<SessionInfo> OwnThreads(const std::string& folder) {
   }
   return threads;
 }
+
+namespace {
 
 std::string Brief(const json& brief) {
   std::string text = "Objective: " + JsonValue(brief, "objective", "");
@@ -843,6 +842,19 @@ std::string CoordinatorBoard(const std::string& folder) {
              " older conversations; history search finds them\n";
   }
   return board;
+}
+
+json ReadCoordinatorFile(const std::string& folder, const char* suffix) {
+  json held = ReadJsonFile(CoordinatorPath(folder) + suffix, size_t{64} * 1024);
+  return held.is_object() ? held : json::object();
+}
+
+std::string WriteCoordinatorFile(const std::string& folder, const char* suffix,
+                                 const json& value) {
+  std::string error;
+  AtomicWriteFile(CoordinatorPath(folder) + suffix, JsonDump(value, 1),
+                  kPrivateFileMode, false, error);
+  return error;
 }
 
 std::string CoordinatorContext(const std::string& folder) {

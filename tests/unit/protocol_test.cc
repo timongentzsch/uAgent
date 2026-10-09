@@ -437,6 +437,36 @@ void TestRegistries() {
   CHECK(
       subagent.approval_preview(json{{"operation", "spawn"}, {"mode", "full"}})
           .find("full: reading, editing and running") != std::string::npos);
+  // A follow-up that names no mode runs with the one the subagent was
+  // created with, and the approval says that one.
+  {
+    TestWorkspace followup("followup-preview");
+    SessionRecord child;
+    child.metadata.cwd = CanonicalCwd();
+    child.metadata.delegation = {{"mode", "full"}, {"memory", false}};
+    child.state.messages =
+        json::array({{{"role", "system"}, {"content", "sys"}}});
+    child.state.message_kinds = {MessageKind::kSystem};
+    CHECK(SessionStore::Save(UagentDir(kHistoryDir) + "/" +
+                                 WorkspaceId(CanonicalCwd()) + "/kept.json",
+                             child)
+              .Ok());
+    const std::string resumed = subagent.approval_preview(
+        json{{"operation", "followup"}, {"agent_id", "kept"}});
+    CHECK(resumed.find("full: reading, editing and running") !=
+          std::string::npos);
+    CHECK(resumed.find("memory off") != std::string::npos);
+    // A message to one that has finished runs it again, as it was made.
+    CHECK(subagent
+              .approval_preview(
+                  json{{"operation", "message"}, {"agent_id", "kept"}})
+              .find("full: reading, editing and running") != std::string::npos);
+    CHECK(subagent
+              .approval_preview(json{{"operation", "followup"},
+                                     {"agent_id", "kept"},
+                                     {"mode", "lean"}})
+              .find("lean: reading and running") != std::string::npos);
+  }
   // Operations that hand over no authority say no more than the summary.
   const json list_call{{"operation", "list"}};
   CHECK(subagent.approval_preview(list_call) == subagent.summary(list_call));

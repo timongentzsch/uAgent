@@ -44,138 +44,60 @@ with Sigstore (`SHA256SUMS.sigstore.json`), lists every archive's checksum.
 | `-DUAGENT_BROWSER=OFF` | Leave out the browser appliance |
 | `-DUAGENT_WEB_PUSH=ON` | Web Push notifications; needs OpenSSL 3 libcrypto. Release archives and the Docker image include it |
 
-## Configure
+## Quick start
 
-Give it a key and start it in a project folder:
+1. **Give it a key.** With an [OpenRouter](https://openrouter.ai) key and
+   nothing else it picks a default model:
 
-```sh
-export OPENROUTER_API_KEY=replace-me
-cd my-project
-uagent
-```
+   ```sh
+   export OPENROUTER_API_KEY=replace-me
+   ```
 
-With only an OpenRouter key it uses a default model. Choose your own inside
-the session; `--default` also saves it for new conversations:
+   For a local or other OpenAI-compatible endpoint set `UAGENT_BASE_URL` and
+   `UAGENT_MODEL` instead (and `UAGENT_API_KEY` if it wants one). Responses
+   and Anthropic Messages endpoints are set up as
+   [named providers](docs/GUIDE.md#models-and-providers).
 
-```text
-/model deepseek/deepseek-v4-flash --default
-```
+2. **Start it in a project folder** and say what you want:
 
-For any other OpenAI-compatible endpoint set `UAGENT_BASE_URL`,
-`UAGENT_API_KEY` and `UAGENT_MODEL` instead:
+   ```sh
+   cd my-project
+   uagent
+   ```
 
-```sh
-export UAGENT_BASE_URL=http://localhost:8080/v1
-export UAGENT_MODEL=my-model
-```
+   Enter sends, Esc stops a turn, `/` lists the commands.
 
-Settings are saved by µAgent, not in files you edit:
+3. **When it asks before acting**, answer `y` (once), `s` (for this
+   conversation), `a` (always in this repository) or `n`. It asks before it
+   changes a file, runs a command or uses the network. Commands run in a
+   sandbox that can write only inside the folder. `/undo` puts back the files
+   the last turn changed.
 
-| To | Use |
-| --- | --- |
-| see what is set and where from | `/config` |
-| save for all conversations | `/config user KEY=VALUE` |
-| save for this project folder | `/config project KEY=VALUE` |
-| set this conversation's model or approval mode | `/config conversation KEY=VALUE` |
-| remove a saved value | `/config user unset KEY` |
-| move settings between hosts | `uagent config export`, `uagent config import FILE` |
+4. **Pick a model.** `/models` searches what your key offers;
+   `/model NAME --default` also keeps the choice for new conversations.
 
-The web's Settings edits the same values. Command-line flags override
-`UAGENT_*` environment variables, which override what is saved for the
-project, which overrides what is saved for all conversations. Saved settings
-live outside the project, and `.env` files are never loaded.
+5. **Leave and come back.** `/quit` leaves the conversation running;
+   `uagent -c` continues the latest and `uagent --resume` lets you pick.
 
-Every setting and its default, named providers (`UAGENT_PROVIDERS`)
-included, is in the
-[configuration reference](skills/uagent-config/references/configuration.md);
-inside a session, the bundled `$uagent-config` skill answers from it.
+6. **In the browser or on a phone.** `uagent --web` prints a link that pairs
+   the browser; one host serves every folder's conversations. See the
+   [web guide](docs/WEB.md).
 
-## Usage
+7. **Several at once.** `uagent coord` opens the folder's coordinator. Ask it
+   for work and it starts threads that do it; ask it for another voice and it
+   adds a member to the chat. Start a message with a name ("Ada, …") to ask
+   that one alone.
 
-```sh
-uagent                                   # interactive session in this folder
-uagent -c                                # continue the latest session
-uagent --resume                          # pick a saved session
-uagent --model MODEL --attach shot.png   # a model and a file for this run
-uagent --yolo                            # approve changes without asking
-uagent --plain                           # screen-reader output
-```
+8. **From a script.** `uagent -p "inspect this repository" --json` runs one
+   turn and prints one JSON envelope.
 
-Headless, for scripts. `-p` runs one turn and prints the final answer:
-
-```sh
-uagent -p "inspect this repository"
-uagent -p "inspect this repository" --json          # one JSON envelope
-uagent -p "inspect this repository" --json-stream   # JSONL events
-uagent -p "fix the tests" --yolo --budget 2 --token-budget 20000
-```
-
-The `--json` envelope has `schema` (`uagent.headless.v1`), `answer`, `error`,
-`stop`, `usage`, `routes`, `trace` and `exit_code`. `--budget` caps spend in
-USD and `--token-budget` generated tokens. A failed run exits nonzero.
-
-In the browser:
-
-```sh
-uagent --web                             # prints a URL and a pairing link
-```
-
-One host serves every folder's sessions on desktop and mobile. The pairing
-code is single-use and valid for five minutes. See
-[the web guide](docs/WEB.md) for remote access, the Docker browser appliance
-and how the agent uses logins saved in that browser.
-
-Several sessions in one folder: `uagent coord` (or `/coord`) opens the
-folder's coordinator, which delegates work to threads and decides the
-approvals they cannot settle. `/board` lists the folder's sessions and
-`/open ID` switches to one. Ask it for other voices and it adds members to
-the conversation, each with a persona and, if you like, its own model.
-Everyone there hears every message and decides whether to answer, to wait
-for someone who is typing, or to say nothing. Open a message with a name
-("Ada, …") to ask that one alone.
-
-`uagent --help` lists every flag; `--debug=PATH` writes a trace for bug
-reports, which contains sensitive data.
-
-## Interactive controls
-
-| Input | Action |
-| --- | --- |
-| Enter while working | Queue the draft as steering for the running turn |
-| Shift+Enter, Alt+Enter | Insert a newline in the draft |
-| Tab | Complete a `/command` or an `@path` segment |
-| Up, Down in the `/` menu | Highlight a command; Tab or Enter takes it |
-| Ctrl+X Ctrl+E | Edit the draft in `$VISUAL`/`$EDITOR` |
-| Up, Down, Ctrl+P, Ctrl+N | Previous and next draft from history |
-| Ctrl+A, Ctrl+E, Ctrl+F | Move to the start, to the end, one character right |
-| Ctrl+W, Ctrl+K, Ctrl+U | Delete the word before the cursor, to the end, to the start |
-| Esc | Clear the draft and interrupt the running turn |
-| Ctrl+B | Move the foreground command to background supervision |
-| Ctrl+C | Interrupt while working; press twice while idle to detach |
-| Ctrl+D on an empty draft | Detach |
-
-Approval prompts accept `y` (once), `s` (this session), `a` (always in this
-repository) or `n`; any other answer denies the call and is sent to the model
-as guidance. Changes that need a person accept only `y` or `n`. Remembered
-shell approvals match the exact command, not the executable.
-
-Slash commands for a first session:
-
-| Command | Action |
-| --- | --- |
-| `/model NAME` | Choose this conversation's model; `--default` also saves it |
-| `/attach PATH` | Attach a file |
-| `/changes`, `/undo [FILE]` | List the files the last turn changed; put them back as they were |
-| `/permissions ask\|auto\|yolo` | Choose how calls are approved |
-| `/sessions`, `/reset` | Resume a saved session; start a new one |
-| `/config` | Show and change settings |
-| `/help`, `/quit` | List every command with its arguments; detach |
-
-The full list is in the
-[slash-command reference](skills/uagent-config/references/slash-commands.md).
+The [guide](docs/GUIDE.md) tells the rest in order: keys, models and
+providers, settings, approvals, coming back to a conversation, the
+coordinator and its chat, and scripting. `uagent --help` lists every flag.
 
 ## Documentation
 
+- [Guide](docs/GUIDE.md): the whole story, in order
 - [Web interface](docs/WEB.md)
 - [Tools](docs/TOOLS.md)
 - [Memory, skills and scheduled tasks](docs/MANAGEMENT.md)

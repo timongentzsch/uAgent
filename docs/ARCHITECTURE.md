@@ -335,9 +335,10 @@ at a turn boundary, while controls report settings that require a restart.
 A browser's display preferences (appearance, motion, zoom, clock) are not
 settings of the host: they are kept in that browser only.
 
-System-prompt documents support inherit, overlay and replacement at conversation,
-project and global scope. Their editors and agent tool share revision checking
-and approval policy. Replacing prompt text does not replace tool permissions.
+Instruction files are layered, yours before the project's; only a
+conversation's self-directive can overlay or replace. Their editors and the
+agent tool share revision checking and approval policy. Replacing prompt text
+does not replace tool permissions.
 [System prompts](SYSTEM_PROMPTS.md) describes authoring; [Management](MANAGEMENT.md)
 describes memory, skills and scheduled tasks.
 

@@ -36,7 +36,8 @@ not. Editors never write through a symbolic link.
 
 ## Editing
 
-- Web: **Settings → Agent → Instructions** shows the stack in the order the
+- Web: **Settings → All conversations** (or **This project**) **→
+  Instructions** shows the stack in the order the
   model reads it; each file is edited in place.
 - Terminal: `/instructions` shows it; `/instructions edit sessions|coordinator
   user|project` opens `$VISUAL` or `$EDITOR`.

@@ -138,7 +138,7 @@ uagent --budget 5 --token-budget 200000 -p "fix the failing test"
   when a provider omits usage or cost, output marks it unavailable and warns
   that the corresponding limit cannot be enforced.
 - The session token budget survives resume.
-- A delegated child receives only the coordinator's remaining session
+- A delegated child receives only its parent's remaining session
   allowance. While a session budget is set, children run one at a time.
   Child usage is charged to the parent by delta, so follow-ups do not reset
   accounting.

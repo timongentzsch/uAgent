@@ -61,7 +61,7 @@ inline std::string MatchSessionPrefix(const std::string& prefix) {
 inline std::string PickSession() {
   std::vector<SessionInfo> sessions = ListSessions();
   if (sessions.empty()) {
-    fputs(Note(Tone::kNeutral, "no saved sessions").c_str(), stdout);
+    fputs(Note(Tone::kNeutral, "no saved conversations").c_str(), stdout);
     return "";
   }
   auto now = std::filesystem::file_time_type::clock::now();

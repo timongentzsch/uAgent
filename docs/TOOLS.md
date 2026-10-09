@@ -36,6 +36,7 @@ or `subagent` tool.
 | `web_fetch` | read one public http(s) URL as text | always |
 | `artifact` | hand the user a file to open or download (HTML runs sandboxed, PDFs and images open inline); snapshot into the session's assets | a session with a client |
 | `web_search` | cited web search through OpenRouter's hosted search | an OpenRouter-protocol route or search endpoint |
+| `thread`, `decide`, `state`, `history` | a coordinator's own: start, guide, stop and remove threads and chat members; answer what a thread asks or pass it to you; keep pinned notes (goals, decisions, open questions); search and read the folder's conversations | a folder's coordinator only; see the [guide](GUIDE.md#the-coordinator) |
 | `session` | list linked sessions and message them; an idle one starts a turn on the message | always; a coordinator and its threads are linked, and so are YOLO sessions in one folder |
 | `ask` | put 1 to 8 multiple-choice questions to the user and wait; an option can show an image the agent made in the workspace and a monospace preview; they may answer in their own words or with an image | a session someone can answer (never headless runs or children); a thread's questions go to its coordinator first |
 | `subagent` | delegate a subtask to a durable child session | full toolset, delegation depth below `UAGENT_SUBAGENT_DEPTH` |

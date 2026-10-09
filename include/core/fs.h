@@ -140,7 +140,7 @@ Fd OpenOwnedRegular(const std::string& path, size_t cap,
 bool ReadRegularFile(const std::string& path, size_t cap, std::string& out,
                      std::string& error, bool prefix = false);
 
-// Atomic shared writer for config, trust state, tools, and preferences. A temp
+// Atomic shared writer for settings, trust state and tools. A temp
 // file in the target directory makes replacement crash-safe.
 bool AtomicWriteFile(const std::string& path, const std::string& content,
                      mode_t create_mode, bool preserve_mode, std::string& error,
@@ -154,7 +154,7 @@ void CreatePrivateDirectories(const std::filesystem::path& dir);
 std::string MakePrivateDir(const std::string& base, const char* sub);
 
 // ~/.uagent/<sub>, created on demand. History, sessions, logs, the trust store,
-// and preferences stay global: a workspace must not be able to relocate — or
+// and settings stay global: a workspace must not be able to relocate — or
 // grant itself — any of them.
 std::string UagentDir(const char* sub);
 

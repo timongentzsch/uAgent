@@ -148,11 +148,6 @@ class FileLines {
   size_t end_ = 0;
 };
 
-// Atomic write: temp file in the same directory, then rename — a disk-full or
-// crash mid-write can never leave the target truncated. Keeps an existing
-// file's permissions. Defined in agent/file_services.cc alongside the other
-// policy-checked write primitives.
-
 }  // namespace
 
 ToolResult ToolReadFile(const std::string& path, int64_t offset, int64_t limit,

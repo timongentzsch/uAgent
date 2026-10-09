@@ -14,6 +14,14 @@
 
 namespace uagent {
 
+json ReadJsonFile(const std::string& path, size_t byte_limit) {
+  std::string bytes, error;
+  if (!ReadRegularFile(path, byte_limit, bytes, error)) {
+    return json(json::value_t::discarded);
+  }
+  return json::parse(bytes, nullptr, false);
+}
+
 PrivateJsonStore::PrivateJsonStore(const std::string& filename, json empty,
                                    size_t byte_limit, std::string& error)
     : path_(UagentDir(kConfigDir) + "/" + filename),

@@ -15,6 +15,7 @@
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/limits.h"
+#include "include/core/private_store.h"
 #include "include/core/strings.h"
 #include "include/media/attachments.h"
 #include "include/tools/files.h"
@@ -45,11 +46,7 @@ AssetUsage InspectAssets(const std::string& folder, bool cleanup) {
                        std::chrono::hours(24)) {
       auto metadata = entry.path();
       metadata.replace_extension(".json");
-      std::string bytes, error;
-      json record;
-      if (ReadRegularFile(metadata.string(), 1024, bytes, error)) {
-        record = json::parse(bytes, nullptr, false);
-      }
+      const json record = ReadJsonFile(metadata.string(), 1024);
       if (!JsonValue(record, "committed", false)) {
         std::filesystem::remove(entry.path(), ec);
         if (!ec) {
@@ -100,9 +97,7 @@ void EvictToolCopies(const std::string& folder, size_t incoming) {
   std::error_code ec;
   for (const auto& entry : std::filesystem::directory_iterator(folder, ec)) {
     if (entry.path().extension() != ".json") continue;
-    std::string text, error;
-    if (!ReadRegularFile(entry.path().string(), 1024, text, error)) continue;
-    const json record = json::parse(text, nullptr, false);
+    const json record = ReadJsonFile(entry.path().string(), 1024);
     if (!JsonValue(record, "tool_copy", false)) continue;
     const auto bytes = JsonValue(record, "bytes", size_t{0});
     copies.push_back({entry.last_write_time(ec), entry.path(), bytes});

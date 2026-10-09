@@ -11,6 +11,11 @@
 
 namespace uagent {
 
+// A private JSON file as it parses, or a discarded value when it is missing,
+// is no regular file, exceeds `byte_limit` or is not JSON: for a reader that
+// treats all of those as "nothing there".
+json ReadJsonFile(const std::string& path, size_t byte_limit);
+
 // A small owner-only JSON document guarded across worker processes. Callers
 // validate their own schema; this class owns only locking, parsing and atomic
 // replacement.

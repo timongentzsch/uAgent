@@ -31,8 +31,6 @@ struct Mail {
   // Mailbox ids (MailboxIdFor), and the sender's session file, which the
   // recipient reads to decide whether the two may talk.
   std::string id, from, to, type, sender_path;
-  // The task or conversation it belongs to.
-  std::string correlation_id;
   int hops = 0;
   int64_t created_ms = 0, expires_ms = 0;
   json body = json::object();
@@ -51,8 +49,8 @@ std::string MailboxDir(const std::string& id);
 
 // Commits `mail`, filling its id and times when empty. Refuses a full inbox,
 // a sender over its rate and a message forwarded kMailMaxHops times, each with
-// a reason the sender can act on. A duplicate of a pending message is dropped,
-// and a progress report replaces the pending one for its task.
+// a reason the sender can act on. A duplicate of a pending message is
+// dropped.
 std::string SendMail(Mail mail);
 
 // Pending messages in the order they were sent. Those `accept` takes move to

@@ -20,6 +20,7 @@
 #include "include/core/capture.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
+#include "include/core/private_store.h"
 #include "include/core/strings.h"
 #include "include/core/time.h"
 #include "include/core/usage.h"
@@ -98,12 +99,8 @@ void SessionHost::LoadDrafts() {
   for (const auto& entry : std::filesystem::directory_iterator(folder, ec)) {
     if (sessions_.size() >= kMaxCatalogueEntries) break;
     if (entry.path().extension() != ".json") continue;
-    std::string bytes, error;
-    if (!ReadRegularFile(entry.path().string(), kCatalogueHeaderBytes, bytes,
-                         error)) {
-      continue;
-    }
-    json draft = json::parse(bytes, nullptr, false);
+    const json draft =
+        ReadJsonFile(entry.path().string(), kCatalogueHeaderBytes);
     auto session = std::make_shared<HostSession>();
     session->id = JsonValue(draft, "id", "");
     session->path = JsonValue(draft, "path", "");

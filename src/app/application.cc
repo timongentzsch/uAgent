@@ -175,12 +175,7 @@ bool Application::ResumeAtStartup() {
   std::string source = session_file_;
   if (source.empty() && context_.options.resume_latest) {
     std::vector<SessionInfo> sessions = ListSessions();
-    if (sessions.empty()) {
-      fputs(Note(Tone::kNeutral, "no saved sessions").c_str(), stdout);
-      fflush(stdout);
-    } else {
-      source = sessions.front().path;
-    }
+    if (!sessions.empty()) source = sessions.front().path;
   }
   if (!source.empty() && PathExists(source)) {
     // A thread's sandbox, budget and approval limit are applied by its
@@ -197,10 +192,7 @@ bool Application::ResumeAtStartup() {
       Emit(Event{EventId::kError, {{"error", "cannot resume: " + refusal}}});
       return false;
     }
-    if (!ResumeInto(agent_, source, session_file_,
-                    source == session_file_ && !channel_)) {
-      return false;
-    }
+    if (!ResumeInto(agent_, source, session_file_)) return false;
   }
   AppSession session = Session();
   LoadSessionJournal(session, previous_path);

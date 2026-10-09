@@ -40,6 +40,7 @@
 #include "include/core/lease.h"
 #include "include/core/limits.h"
 #include "include/core/platform.h"
+#include "include/core/private_store.h"
 #include "include/core/settings_store.h"
 #include "include/core/signals.h"
 #include "include/core/time.h"
@@ -561,12 +562,8 @@ class Master {
     return out;
   }
   void LoadDevices() {
-    std::string bytes, error;
-    if (!ReadRegularFile(directory_ + "/devices.json", kDeviceStoreBytes, bytes,
-                         error)) {
-      return;
-    }
-    json value = json::parse(bytes, nullptr, false);
+    const json value =
+        ReadJsonFile(directory_ + "/devices.json", kDeviceStoreBytes);
     if (!value.is_array() || value.size() > kWebDeviceLimit) {
       return;
     }

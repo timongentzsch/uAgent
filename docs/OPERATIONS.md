@@ -117,6 +117,11 @@ session limit and the coordinator's daily cost limit.
 | input history / paste | 200 entries of 16 KiB / 64 KiB | |
 | MCP call / optional-server startup | 60 s / 2 s shared | `UAGENT_MCP_TIMEOUT` (call only) |
 | macOS sandbox profile | 64 KiB; larger profiles refuse the command | |
+| session file | 64 MiB | |
+| web upload / files per prompt | 8 MiB / 8 | |
+| conversation / global source assets | 64 MiB / 512 MiB | |
+| paired devices / device lifetime / pairing code | 16 / 30 days / 5 minutes | |
+| event streams per web host | 4 at once | |
 
 Raise a bound only with a representative measurement.
 
@@ -175,25 +180,10 @@ uagent --budget 5 --token-budget 200000 -p "fix the failing test"
 
 ## Activities and delegation
 
-`run` returns a still-running command as an activity after its initial wait.
-`activity` polls, waits, writes, resizes and stops activities; see
-[TOOLS.md](TOOLS.md#activities). Commands, delegated tasks and detached
-terminals share activity IDs. `/ps` lists them, `/ps ID output` shows one and
-`/ps ID stop` ends it; the status bar counts them as `bg:N`.
-
-- Session activities live only in memory. Detached (`detach=true`)
-  activities are PID-backed with a rotating log. Launching the same detached
-  command from the same directory reuses its process group. Detached
-  activities cannot be reattached interactively after µAgent exits.
-- Output already returned by `run` or `activity` is not delivered again.
-  Command completion appears only in the UI and never starts a model turn.
-  Subagent completion is added once to the next model call without starting
-  one.
-- `stop` sends TERM, then KILL, to the whole process group and removes its
-  records and logs.
-- A failed child reports its route, failure stage, bounded diagnostics and a
-  remedy. µAgent never silently changes provider, model, pricing or privacy
-  policy for a child.
+Commands, delegated tasks and detached terminals share activity IDs. `/ps`
+lists them, `/ps ID output` shows one and `/ps ID stop` ends it; the status
+bar counts them as `bg:N`. [Tools](TOOLS.md#activities) describes how they
+start, what survives the conversation and how a result is delivered.
 
 ## Images
 
@@ -224,13 +214,6 @@ retry one or switch it.
   16 MiB. Errors without text point to that log.
 - Not supported: HTTP transport, sampling, elicitation, task extensions,
   `$ref` and output-schema validation, and automatic restart of exited servers.
-
-## Release
-
-Build and test as [CONTRIBUTING.md](../CONTRIBUTING.md) and
-[TESTING.md](TESTING.md) describe. Before tagging, also verify the installed
-archive, one real turn per supported wire API, both Playwright browsers and
-one debug trace.
 
 ## Failure triage
 

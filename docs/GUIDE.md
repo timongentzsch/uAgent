@@ -160,8 +160,8 @@ uagent --web
 prints a link that pairs the browser; the code in it works once, for five
 minutes. One web host serves every folder's conversations, and a
 conversation open in a terminal is the same one in the browser.
-[Web interface](WEB.md) covers a phone or another machine, notifications and
-the browser the agent can drive.
+[Web interface](WEB.md) covers a phone or another machine and notifications;
+[Browser appliance](BROWSER.md) the browser the agent can drive.
 
 ## The coordinator
 
@@ -188,7 +188,7 @@ answers the approvals a thread cannot settle or passes them to you.
   reported cost a day for a coordinator and its threads
   (`coordinator.dailySpendUsd`); at the limit, threads' reports wait.
 - **Instructions.** `COORDINATOR.md` holds what every coordinator reads at
-  start ([Instructions](SYSTEM_PROMPTS.md)).
+  start ([Instructions](INSTRUCTIONS.md)).
 
 ### The chat
 

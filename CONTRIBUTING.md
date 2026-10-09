@@ -116,3 +116,9 @@ applies events, and components own only presentation and local interaction
 state. Derive status from the shared snapshot; do not keep another
 conversation or execution state machine in a component. Use semantic controls,
 visible focus and accessible status text.
+
+## Release
+
+Before tagging, besides the build and the tests above, verify the installed
+archive, one real turn per supported wire API, both Playwright browsers and
+one debug trace.

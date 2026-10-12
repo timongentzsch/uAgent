@@ -38,6 +38,10 @@
 
 ### Added
 
+- Web: a new conversation can be started by name. A name without a `/` in
+  the folder field opens a space, a folder kept at `~/.uagent/spaces/<name>`
+  and made on first use; commands can write it like any workspace. A bare
+  name used to be read as a path relative to the host's own folder.
 - `browser`: `type` fills a field in one call: with `x`, `y` and `view_id`
   it clicks the field first, `replace` overwrites what it holds, and `key`
   is pressed after. `open` with `new_tab` keeps the current page, and `tabs`

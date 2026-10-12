@@ -209,19 +209,26 @@ export default function Modals({
         <Modal title="New conversation" close={close}>
           <form onSubmit={create}>
             <label>
-              Directory on the host
+              Directory on the host, or a name
               <Input
                 autoFocus
+                list="new-conversation-folders"
                 value={folder}
                 onInput={(event) => setFolder(event.currentTarget.value)}
-                placeholder="/path/to/project"
+                placeholder="/path/to/project or a-name"
                 required
                 autoComplete="off"
               />
             </label>
+            <datalist id="new-conversation-folders">
+              {projects.map((path) => (
+                <option key={path} value={path} />
+              ))}
+            </datalist>
             <p class="muted">
-              Any accessible directory works, including a folder outside Git.
-              Multiple conversations can work in the same folder. Its
+              Any accessible directory works, including a folder outside Git. A
+              name alone starts in a space of that name, a folder µAgent keeps
+              for it. Multiple conversations can work in the same folder. Its
               coordinator runs several for you and hosts a chat with other
               voices.
             </p>

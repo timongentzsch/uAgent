@@ -175,7 +175,9 @@ The workspace is held to the same rule. A session started in your home
 directory, which holds `~/.uagent`, has no writable workspace: its commands
 can write only the other roots above, while the file tools still work there.
 Startup says so, the model is told at the start of the conversation, and a
-refused write names the roots. Start in a project folder instead.
+refused write names the roots. Start in a project folder instead, or in a
+space: the web's **New conversation** takes a name and keeps a folder for it
+at `~/.uagent/spaces/<name>`, which is granted like any other workspace.
 
 **Reads** are not restricted on either platform, with one exception below: a
 confined `cat ~/.uagent/config/settings.json` still pulls the file into model

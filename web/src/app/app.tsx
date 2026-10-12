@@ -368,11 +368,15 @@ function App() {
   // One start at a time: a double click must not race two activations.
   const starting = useRef(false);
   const startConversation = useCallback(
-    async (cwd: string, coordinator = false) => {
+    async (folder: string, coordinator = false) => {
       if (starting.current) return;
       starting.current = true;
       try {
-        const created = await command("create", null, { cwd, coordinator });
+        // A name alone is a space; the host keeps the folder for it.
+        const created = await command("create", null, {
+          ...(folder.includes("/") ? { cwd: folder } : { space: folder }),
+          coordinator,
+        });
         if (created.pending) return "";
         upsertSession(created.session);
         // Live before it is shown, so opening never flashes the saved state;

@@ -146,6 +146,11 @@ several paired devices.
   reveal toggle switched to text; autofill still works. Fields in cross-site
   iframes and shadow roots are not masked.
 - `back` refuses history entries that are not HTTP(S), like `open`.
+- `open` with `path` shows a self-contained `.html` or `.svg` file the agent
+  wrote, so it needs no local server to look at its own page. The file's
+  markup is written into a blank page: it has no `file://` origin, cannot
+  load local files or its own relative links, and the profile directory is
+  refused as a path. `file://` URLs stay refused.
 - The [managed policy](../deploy/chrome-policy.json) blocks Chrome's local
   password and autofill pages, `view-source:` and DevTools.
 - On Linux before 7.1 (Landlock ABI 9) the sockets stay reachable: the agent

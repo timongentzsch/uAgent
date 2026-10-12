@@ -38,6 +38,9 @@
 
 ### Added
 
+- `browser`: `open` takes `path` in place of `url` and shows a self-contained
+  `.html` or `.svg` file from the workspace. The agent no longer has to start
+  a local server to look at a page it wrote; `file://` URLs stay refused.
 - Web: a new conversation can be started by name. A name without a `/` in
   the folder field opens a space, a folder kept at `~/.uagent/spaces/<name>`
   and made on first use; commands can write it like any workspace. A bare

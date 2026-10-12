@@ -162,7 +162,8 @@ conversation model. `UAGENT_WEB_SEARCH_MODEL` names that route and
 `UAGENT_WEB_SEARCH_BACKEND=off` withholds the tool.
 
 `browser` drives the web appliance's shared Chrome; [BROWSER.md](BROWSER.md)
-explains setup, saved logins and taking over.
+explains setup, saved logins and taking over. `open` with `path` shows a
+self-contained `.html` or `.svg` file the agent wrote, without a server.
 
 ## Presentation
 

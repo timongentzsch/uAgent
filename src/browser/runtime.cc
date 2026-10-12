@@ -1188,8 +1188,14 @@ json Runtime::Act(const std::string& op, const json& command) {
   json reply;
   if (op == "open") {
     std::string url = JsonValue(command, "url", "");
-    if (!(url.starts_with("https://") || url.starts_with("http://")) ||
-        url.size() > 4096) {
+    // A file of the agent's own arrives as its markup and is written into a
+    // blank page. It never gets a file:// origin, from which a page could
+    // pull in the profile and every other local file.
+    const std::string html = JsonValue(command, "html", "");
+    if (!html.empty()) {
+      url = "about:blank";
+    } else if (!(url.starts_with("https://") || url.starts_with("http://")) ||
+               url.size() > 4096) {
       return {{"error", "URL must be HTTP(S)"}};
     }
     observation_.clear();
@@ -1206,6 +1212,10 @@ json Runtime::Act(const std::string& op, const json& command) {
       if (auto failed = JsonValue(*result, "errorText", ""); !failed.empty()) {
         return {{"error", "navigation failed: " + failed}};
       }
+    }
+    if (!html.empty() && CdError(reply).empty()) {
+      reply = Call("Page.setDocumentContent",
+                   {{"frameId", target_}, {"html", html}}, page_session_);
     }
   } else if (op == "back") {
     json history =

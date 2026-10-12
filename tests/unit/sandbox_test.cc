@@ -82,6 +82,17 @@ void TestSandboxPolicy() {
   CHECK(refused.starts_with("commands cannot write the workspace /home/u,"));
   CHECK(refused.find("/tmp") != std::string::npos);
   CHECK(refused.find("write_file") != std::string::npos);
+  // A hidden path inside such a workspace is read around, folder by folder,
+  // as a command starts: what is made there later, a running command cannot
+  // read. Said only then, and never of a workspace that is writable.
+  CHECK(refused.find("cannot read") == std::string::npos);
+  SandboxPolicy hiding = home.policy;
+  hiding.hidden = {"/home/u/.uagent/web"};
+  CHECK(SandboxWritesNote(hiding, "/home/u").find("cannot read a file made") !=
+        std::string::npos);
+  SandboxPolicy project = base.policy;
+  project.hidden = hiding.hidden;
+  CHECK(SandboxWritesNote(project, "/home/u/work") == note);
 
   // The regression this whole design exists for: no root may be ~/.uagent or
   // an ancestor of it, or the config and the trust store come along with it.

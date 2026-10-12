@@ -742,6 +742,9 @@ def test_sandbox_explains_a_workspace_it_cannot_grant(root, home, *, binary):
     round per guess finding out where it may write.
     """
     require_sandbox(root, home, binary=binary)
+    # The web host's state is hidden from commands. Landlock can only read
+    # around it, so on Linux this workspace also goes stale for a running one.
+    (home / ".uagent" / "web").mkdir(parents=True, exist_ok=True)
     seen = {}
 
     def route(_, body):
@@ -763,6 +766,7 @@ def test_sandbox_explains_a_workspace_it_cannot_grant(root, home, *, binary):
     for said in (seen.get("context", ""), seen.get("tool", "")):
         assert_true("commands cannot write the workspace" in said, said)
         assert_true("/tmp" in said and "write_file" in said, said)
+        assert_true(("cannot read a file made" in said) == (sys.platform == "linux"), said)
     # And the person is told at startup, before anything has failed.
     with Server([event({"content": "ready-ok"})]) as server:
         code, output = run_pty(

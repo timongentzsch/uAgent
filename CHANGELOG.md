@@ -146,6 +146,8 @@
   in the home directory, says so at startup and to the model, and a refused
   write names the writable roots. The hint claimed writes were confined to
   the workspace and pointed at `/context`, which the model cannot run.
+  Where such a workspace also holds a path hidden from commands, the note
+  adds that a running command cannot read files made there later.
 
 ## v1.3.1 - 2026-10-06
 

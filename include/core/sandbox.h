@@ -110,7 +110,8 @@ bool SandboxWritable(const SandboxPolicy& policy, std::string_view path);
 // as a bare "Permission denied": the model after a failed command, the person
 // at startup. A workspace the policy does not grant is named first, with what
 // still works there, because every other sentence about the sandbox assumes
-// the workspace is writable.
+// the workspace is writable; and with what does not, when it holds one of
+// policy.hidden.
 std::string SandboxWritesNote(const SandboxPolicy& policy,
                               std::string_view workspace);
 
@@ -165,9 +166,13 @@ std::string SandboxInheritance();
 // Shared by session_ready, /status and /context so all three cannot drift.
 json SandboxDiagnosticJson();
 
-// SandboxWritesNote for this session when its commands cannot write its own
-// workspace; empty otherwise. A home directory is the usual case: it holds
-// ~/.uagent, so it is never granted.
+// SandboxWritesNote for this session and its workspace. The hidden paths are
+// counted on Linux only: seatbelt denies them by rule, so nothing goes stale.
+std::string SandboxNote();
+
+// SandboxNote when this session's commands cannot write its own workspace;
+// empty otherwise. A home directory is the usual case: it holds ~/.uagent, so
+// it is never granted.
 std::string SandboxWorkspaceRefusal();
 
 // The argv words to put in front of `<shell> -c <command>`, hiding

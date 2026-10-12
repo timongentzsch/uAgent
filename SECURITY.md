@@ -198,7 +198,9 @@ granted folder by folder around a hidden path, as the folders are when a
 command starts. A command that is still running (a server, a watcher) cannot
 read a file created or replaced afterwards directly in a folder on the way to
 a hidden path: `/`, `/home`, your home directory and `~/.uagent`. Files in
-any other folder, a project among them, are unaffected.
+any other folder, a project among them, are unaffected. A session whose
+workspace is one of those folders is told so with the rest of what its
+commands cannot do there.
 
 **Network.** Outbound access is allowed by default because git, npm and pip
 need it. `UAGENT_SANDBOX_NET=0` denies all IP traffic on macOS and TCP (bind

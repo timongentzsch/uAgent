@@ -245,8 +245,7 @@ std::string SandboxHint(const std::string& output) {
   for (std::string_view denial :
        {"Operation not permitted", "Permission denied"}) {
     if (output.find(denial) != std::string::npos) {
-      return "\n[sandbox: " +
-             SandboxWritesNote(SandboxRuntime().policy, CanonicalCwd()) + "]";
+      return "\n[sandbox: " + SandboxNote() + "]";
     }
   }
   return {};

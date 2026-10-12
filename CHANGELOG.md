@@ -132,6 +132,10 @@
   budgets. Only a child that finished reported it.
 - `browser`: Enter sends a form and types a line break, and Backspace
   deletes. The keys reached only a page's own listeners.
+- Sandbox: a session whose workspace cannot be granted, such as one started
+  in the home directory, says so at startup and to the model, and a refused
+  write names the writable roots. The hint claimed writes were confined to
+  the workspace and pointed at `/context`, which the model cannot run.
 
 ## v1.3.1 - 2026-10-06
 

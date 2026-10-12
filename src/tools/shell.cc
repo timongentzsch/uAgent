@@ -239,14 +239,14 @@ std::string SandboxWrapperFor(const ShellCommand& spec,
 // A refused write arrives as the kernel's errno, which names a permission and
 // not the policy that withheld it -- so a command that failed for the one
 // reason this session introduced is the one that explains itself worst. Added
-// only to a wrapped command that actually failed, and it points at the place
-// the writable roots are listed rather than repeating them here.
+// only to a wrapped command that actually failed, and it names the roots: the
+// model cannot run /context, and probing for them costs it a round per guess.
 std::string SandboxHint(const std::string& output) {
   for (std::string_view denial :
        {"Operation not permitted", "Permission denied"}) {
     if (output.find(denial) != std::string::npos) {
-      return "\n[sandbox: writes are confined to the workspace; /context lists "
-             "every writable root]";
+      return "\n[sandbox: " +
+             SandboxWritesNote(SandboxRuntime().policy, CanonicalCwd()) + "]";
     }
   }
   return {};

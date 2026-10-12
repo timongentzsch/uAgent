@@ -228,11 +228,13 @@ retry one or switch it.
 - **Processes outlived a session.** Runtime shutdown reaps managed processes.
   Closing a client only detaches; `SIGKILL` cannot guarantee cleanup.
 - **A command was refused a write.** It reports the errno plus a
-  `[sandbox: ...]` line. `/context` lists the writable roots; widen them with
-  `UAGENT_SANDBOX_WRITE` (colon-separated, applies after a restart), or run
-  the one command with `run(sandbox=false)`, which always asks a person. The
-  same exemption applies to a command that needs credentials from a protected
-  path (see [Tools](TOOLS.md#files-and-search)).
+  `[sandbox: ...]` line that names the writable roots, as `/context` does.
+  Widen them with `UAGENT_SANDBOX_WRITE` (colon-separated, applies after a
+  restart), or run the one command with `run(sandbox=false)`, which always
+  asks a person. The same exemption applies to a command that needs
+  credentials from a protected path (see [Tools](TOOLS.md#files-and-search)).
+  A session started in your home directory has no writable workspace at all:
+  see [Sandboxing](../SECURITY.md#sandboxing).
 - **`sudo` or `ping` fails on Linux.** The sandbox sets `no_new_privs`, so
   setuid binaries fail inside it. Privileged work needs unconfined execution:
   `UAGENT_SANDBOX=0` or an approved `run(sandbox=false)`. `--yolo` does not

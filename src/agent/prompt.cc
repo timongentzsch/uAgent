@@ -225,9 +225,11 @@ std::string CapabilityPrompt(const std::vector<Tool>& tools,
 // attempt on its own, so the approval mode is a host fact the model reads here,
 // at the tail, where a change is appended rather than rewriting the prefix.
 std::string EnvironmentContext(const std::string& date, const std::string& cwd,
-                               const std::string& approval) {
+                               const std::string& approval,
+                               const std::string& sandbox) {
   return "[environment: date " + date + "; cwd " + cwd +
-         "; shell bash; approval " + approval + "]";
+         "; shell bash; approval " + approval +
+         (sandbox.empty() ? "" : "; sandbox: " + sandbox) + "]";
 }
 
 }  // namespace uagent

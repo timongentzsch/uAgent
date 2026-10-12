@@ -430,6 +430,16 @@ json SandboxDiagnosticJson() {
           {"summary", std::move(summary)}};
 }
 
+std::string SandboxWorkspaceRefusal() {
+  const SandboxStatus& status = SandboxRuntime();
+  const std::string workspace = CanonicalCwd();
+  if (status.mode != SandboxMode::kEnforced ||
+      SandboxWritable(status.policy, workspace)) {
+    return {};
+  }
+  return SandboxWritesNote(status.policy, workspace);
+}
+
 std::vector<std::string> SandboxWrapperArgv(const SandboxStatus& status) {
   if (status.mode != SandboxMode::kEnforced) return {};
   SandboxPolicy policy = status.policy;

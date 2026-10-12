@@ -64,6 +64,24 @@ void TestSandboxPolicy() {
                                   "/home/u/work/.git/hooks"}));
   CHECK(base.rejected.empty());
   CHECK(base.policy.allow_network);
+  // A limit met as "Permission denied" is explained by naming the roots.
+  CHECK(SandboxWritable(base.policy, "/home/u/work/out/a.png"));
+  CHECK(!SandboxWritable(base.policy, "/home/u/workshop"));
+  const std::string note = SandboxWritesNote(base.policy, "/home/u/work");
+  CHECK(note.starts_with("commands may write only under "));
+  CHECK(note.find("/home/u/work") != std::string::npos);
+  CHECK(note.find("cannot") == std::string::npos);
+  // A home directory as the workspace holds ~/.uagent, so it is dropped: the
+  // note then leads with that, and with what still works there.
+  SandboxInputs at_home = BaseInputs();
+  at_home.workspace = "/home/u";
+  const SandboxPolicyResult home = BuildSandboxPolicy(at_home);
+  CHECK(Rejected(home, "/home/u"));
+  CHECK(!SandboxWritable(home.policy, "/home/u"));
+  const std::string refused = SandboxWritesNote(home.policy, "/home/u");
+  CHECK(refused.starts_with("commands cannot write the workspace /home/u,"));
+  CHECK(refused.find("/tmp") != std::string::npos);
+  CHECK(refused.find("write_file") != std::string::npos);
 
   // The regression this whole design exists for: no root may be ~/.uagent or
   // an ancestor of it, or the config and the trust store come along with it.

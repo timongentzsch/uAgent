@@ -734,6 +734,48 @@ def test_sandbox_reports_itself(root, home, *, binary):
     assert_true(b"not granted as writable: /" in output, f"a dropped root was silent: {output!r}")
 
 
+def test_sandbox_explains_a_workspace_it_cannot_grant(root, home, *, binary):
+    """A home directory holds ~/.uagent, so it is never a writable root.
+
+    The model has to read that before it plans, and again with the roots when
+    a command fails: left to the kernel's "Permission denied" it spends a
+    round per guess finding out where it may write.
+    """
+    require_sandbox(root, home, binary=binary)
+    seen = {}
+
+    def route(_, body):
+        tools = [str(m.get("content", "")) for m in body["messages"] if m.get("role") == "tool"]
+        if tools:
+            seen["tool"] = tools[-1]
+            return event({"content": "ok"})
+        seen["context"] = " ".join(
+            str(m.get("content", "")) for m in body["messages"] if m.get("role") == "user"
+        )
+        return tool_call("run", {"command": "echo x > refused.txt"})
+
+    with Server([route]) as server:
+        result = run(
+            home, sandbox_env(home, server.url), "--yolo", "-p", "go", timeout=30, binary=binary
+        )
+    assert_true(not (home / "refused.txt").exists(), "a command wrote the home directory")
+    assert_true(result.returncode == 0, (result.stdout, result.stderr))
+    for said in (seen.get("context", ""), seen.get("tool", "")):
+        assert_true("commands cannot write the workspace" in said, said)
+        assert_true("/tmp" in said and "write_file" in said, said)
+    # And the person is told at startup, before anything has failed.
+    with Server([event({"content": "ready-ok"})]) as server:
+        code, output = run_pty(
+            home,
+            sandbox_env(home, server.url),
+            [(b"/status\n", b"sandbox"), b"", b"/q\n"],
+            timeout=30,
+            binary=binary,
+        )
+    assert_true(code == 0, output)
+    assert_true(b"cannot write the workspace" in output, f"startup was silent: {output!r}")
+
+
 def test_sandbox_degrades_when_it_cannot_enforce_by_default(root, home, *, binary):
     """On by default, host cannot enforce: run unconfined and say so.
 

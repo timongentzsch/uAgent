@@ -142,6 +142,9 @@
 - Web: a file the agent shared stays visible at the `minimal` level. It was
   folded into "Worked · N steps" with the rest of the turn's calls, so the
   preview appeared only after opening that row.
+- `scratch`: a result names what the run left in the workspace root. A
+  script runs in the workspace, so a chart saved by a bare name lands there;
+  the model looked for it beside the script and then searched the disk.
 - Sandbox: a session whose workspace cannot be granted, such as one started
   in the home directory, says so at startup and to the model, and a refused
   write names the writable roots. The hint claimed writes were confined to

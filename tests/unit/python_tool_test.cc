@@ -78,6 +78,19 @@ void TestPythonTool() {
   CHECK(fs::is_regular_file(scratch / ".gitignore"));
   result = ToolRunScratch(supervisor, root, ".uagent/scratch/math.py");
   CHECK(result.output == "42\n");
+  // A script runs in the workspace, so a file it names without a folder
+  // lands in the root: the result says what the run left there, and nothing
+  // of what was there before or of a run that left nothing.
+  const fs::path prior_directory = fs::current_path();
+  fs::current_path(root);
+  CHECK(ToolWriteFile((root / "kept.txt").string(), "old").Ok());
+  write("save.sh", "echo x > chart.png; mkdir -p out; echo x > out/data.csv\n");
+  result = ToolRunScratch(supervisor, root, "save.sh");
+  CHECK(result.output == "[changed in the workspace: chart.png, out/]");
+  write("quiet.sh", "echo done\n");
+  result = ToolRunScratch(supervisor, root, "quiet.sh");
+  CHECK(result.output == "done\n");
+  fs::current_path(prior_directory);
 
   CHECK(
       ToolEditFile((scratch / "math.py").string(), {{"6 * 7", "8 * 8", false}})

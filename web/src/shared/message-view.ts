@@ -192,8 +192,8 @@ function workLabel(steps: PresentedBlock[], took?: number) {
 
 // A turn runs from a message of yours to its footer. Its last reply is the
 // answer; the calls and interim replies before it fold into one row where
-// the first of them stood. What needs you stays a row of its own: a failed
-// or cancelled call, an error.
+// the first of them stood. What is for you stays a row of its own: a failed
+// or cancelled call, an error, a file the agent handed you.
 function foldTurns(rows: PresentedBlock[]): PresentedBlock[] {
   const folded: PresentedBlock[] = [];
   let turn: PresentedBlock[] = [];
@@ -207,6 +207,7 @@ function foldTurns(rows: PresentedBlock[]): PresentedBlock[] {
         !row.error &&
         !isFailedStatus(row.status) &&
         !/cancel/i.test(row.status || "") &&
+        !row.parts?.some((part) => part.kind === "file") &&
         (row.kind === "tool_result" ||
           row.kind === "activity" ||
           row.kind === "assistant" ||

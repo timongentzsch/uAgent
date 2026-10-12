@@ -136,6 +136,9 @@
   budgets. Only a child that finished reported it.
 - `browser`: Enter sends a form and types a line break, and Backspace
   deletes. The keys reached only a page's own listeners.
+- Web: a file the agent shared stays visible at the `minimal` level. It was
+  folded into "Worked · N steps" with the rest of the turn's calls, so the
+  preview appeared only after opening that row.
 - Sandbox: a session whose workspace cannot be granted, such as one started
   in the home directory, says so at startup and to the model, and a refused
   write names the writable roots. The hint claimed writes were confined to

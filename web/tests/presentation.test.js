@@ -476,6 +476,21 @@ test("a reply that is only thinking is a row where thinking shows", () => {
   ]);
 });
 
+test("minimal keeps a file the agent handed you out of the fold", () => {
+  const rows = presentMessages(
+    [
+      { id: "u1", kind: "user", text: "chart it" },
+      call("r1", "run"),
+      // A link to open is part of the work; a file is what was asked for.
+      { ...call("d1", "run"), parts: [{ kind: "link", label: "Open" }] },
+      { ...call("a1", "share"), parts: [{ kind: "file", name: "chart.svg" }] },
+      { id: "m1", kind: "assistant", text: "Shared." },
+    ],
+    MINIMAL,
+  );
+  assert.deepEqual(shape(rows), ["u1", ["r1", "d1"], "a1", "m1"]);
+});
+
 test("full folds nothing and keeps routine rows", () => {
   const blocks = [
     grouped("x1", "explore", "x1", "Explored · 2 calls"),

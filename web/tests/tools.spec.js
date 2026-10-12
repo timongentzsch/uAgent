@@ -97,6 +97,22 @@ test("a shared file previews inline in the conversation, sandboxed", async ({
     "href",
     /\?download=1$/,
   );
+  // At the level that folds a turn's work into one row, the write goes into
+  // it and the file stays out: it is what the turn was for.
+  const detail = async (level) => {
+    await page
+      .locator(".conversation-head")
+      .getByLabel("Conversation menu", { exact: true })
+      .click();
+    await page.getByRole("menuitem", { name: /^Detail/ }).click();
+    await page.getByRole("menuitemradio", { name: level, exact: true }).click();
+  };
+  await detail("Minimal");
+  await expect(page.locator(".transcript .group")).toHaveText(/Worked · /);
+  await expect(page.locator(".tool-inline .diff")).toHaveCount(0);
+  await expect(file).toContainText("report.html");
+  await expect(file.locator("iframe")).toBeVisible();
+  await detail("Default");
 });
 
 test("a long diff shows whole on its row, live and after a reload", async ({

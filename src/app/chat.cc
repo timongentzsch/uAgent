@@ -199,6 +199,7 @@ std::set<std::string> Named(const std::string& folder,
     whose[Name(member)] = MailboxIdFor(member.path);
   }
   std::vector<std::string> names;
+  names.reserve(whose.size());
   for (const auto& [name, id] : whose) names.push_back(name);
   std::set<std::string> ids;
   for (const std::string& name : Addressed(text, names)) {

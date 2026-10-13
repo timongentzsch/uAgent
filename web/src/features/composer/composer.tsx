@@ -335,7 +335,7 @@ export default function Composer({
                       ...members
                         .filter((item) => online && item.turn_active)
                         .map((item) => item.member || ""),
-                      ...(running ? ["Moderator"] : []),
+                      ...(running ? [session.member || "Moderator"] : []),
                     ]) ||
                     detached ||
                     "Ready"

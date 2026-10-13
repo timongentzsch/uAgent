@@ -347,21 +347,10 @@ ToolResult Spawn(const std::string& folder, const json& a,
                        member ? "add_member needs a name and a persona"
                               : "spawn needs a title and an objective");
   }
-  // A name is what a message opens with to address it: one word, and
-  // nobody else's.
-  if (member &&
-      (title.size() > 24 || AsciiLower(title) == "moderator" ||
-       !std::ranges::all_of(title,
-                            [](unsigned char c) {
-                              return std::isalnum(c) || c == '_' || c == '-';
-                            }) ||
-       std::ranges::any_of(ChatMembers(folder), [&](const SessionInfo& info) {
-         return AsciiLower(JsonValue(ChatMember(info.thread), "name", "")) ==
-                AsciiLower(title);
-       }))) {
-    return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "a member's name is one word of letters, digits, - "
-                       "and _, at most 24, that no other member has");
+  if (const std::string problem =
+          member ? ChatNameProblem(folder, title, "") : "";
+      !problem.empty()) {
+    return ToolFailure(ToolErrorCode::kInvalidArguments, problem);
   }
   const std::string panel = PanelId(folder);
   const int64_t cap = LongSetting(Cfg("UAGENT_PANEL_MAX_THREADS"));
@@ -422,8 +411,7 @@ ToolResult Spawn(const std::string& folder, const json& a,
                  {"day", Today()},
                  {"ceiling", {{"budget_usd", budget}}}};
   if (member) {
-    thread["member"] = {{"name", title},
-                        {"persona", objective},
+    thread["member"] = {{"persona", objective},
                         {"skills", JsonValue(a, "skills", "")}};
   } else {
     thread["brief"] = {{"objective", objective},
@@ -488,8 +476,7 @@ ToolResult Message(const SessionInfo& info, const std::string& folder,
                        "a message needs 1 to 8192 bytes of text");
   }
   // The chat's cap on turns counts what is written there, nothing else.
-  if (const std::string name = JsonValue(ChatMember(info.thread), "name", "");
-      !name.empty()) {
+  if (const std::string& name = info.title; !ChatMember(info.thread).empty()) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
                        "a member reads the chat: open your answer with \"" +
                            name + ",\" instead");

@@ -397,6 +397,7 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
       } else {
         item.cwd = JsonValue(header, kSessionHeaderCwd, "");
         item.title = JsonValue(header, kSessionHeaderTitle, "(untitled)");
+        item.custom_title = JsonValue(header, "custom_title", false);
         item.turns = JsonValue(header, kSessionHeaderTurns, int64_t{0});
         item.incoming = JsonValue(header, "incoming", uint64_t{0});
         item.cost = JsonValue(header, "cost", 0.0);

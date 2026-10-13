@@ -1188,13 +1188,15 @@ def test_a_chat_is_heard_by_everyone_and_answered_by_who_has_something_to_say(
     with Server([_room(reply)]) as server:
         env = base_env(home, server.url)
         _team(root, env, binary)
+        # A member is called what its session is.
         members = [
-            json.loads(path.read_text(encoding="utf-8").splitlines()[0])["thread"]
+            json.loads(path.read_text(encoding="utf-8").splitlines()[0])
             for path in session_files(home)
             if path.name.startswith("thread-")
         ]
         assert_true(
-            sorted(member["member"]["name"] for member in members) == ["Ada", "Lin"], members
+            sorted(m["title"] for m in members if "member" in m["thread"]) == ["Ada", "Lin"],
+            members,
         )
         intro = next(b for _, b in server.requests if _member(b) == "Lin")
         # It reads and searches; which of those tools exist depends on the setup.

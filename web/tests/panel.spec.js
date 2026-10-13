@@ -325,6 +325,32 @@ test("a member joins the chat, is addressed by name and answers under its name",
   await said.last().getByRole("button", { name: "Show full message" }).click();
   await expect(said.last()).toContainText("LONG-END");
   await expect(said.last()).not.toContainText("Ada:");
+
+  // Renamed, a member is called that everywhere: above what it wrote before,
+  // in the list, and by a message that opens with either name.
+  const ada = (await (await request.get("/api/sessions")).json()).sessions.find(
+    (item) => item.member === "Ada",
+  );
+  await command("rename", {
+    session_id: ada.id,
+    generation: ada.generation,
+    title: "Ada Lovelace",
+  });
+  const renamed = page.locator(".transcript .message", {
+    has: page.locator(".actor", { hasText: "Ada Lovelace" }),
+  });
+  await expect(renamed.first()).toContainText("Ada here.");
+  await expect(renamed.first()).not.toContainText("Ada:");
+  await expect(board.locator(".avatar")).toHaveText("AL");
+  await expect(board).toContainText("Ada Lovelace");
+  const posts = await renamed.count();
+  await prompt.fill("Ada Lovelace, Second opinion");
+  await prompt.press("Enter");
+  await expect(renamed).toHaveCount(posts + 1);
+  await prompt.fill("Ada, Second opinion");
+  await prompt.press("Enter");
+  await expect(renamed).toHaveCount(posts + 2);
+  await expect(renamed.last()).not.toContainText("Lovelace:");
 });
 
 test("the panel's subtitle opens its instructions", async ({

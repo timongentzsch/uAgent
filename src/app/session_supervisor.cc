@@ -369,6 +369,11 @@ bool SessionHost::ApplyRuntimeFrame(HostSession& session, json& frame) {
       session.updated = NowMillis();
       const std::string title = JsonValue(session.state, "title", "");
       if (!title.empty()) session.title = title;
+      // A member is called what its session is.
+      if (!title.empty() && session.kind == kSessionKindThread &&
+          !session.member.empty()) {
+        session.member = title;
+      }
     }
     frame["updated"] = session.updated;
     return true;

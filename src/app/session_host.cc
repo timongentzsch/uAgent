@@ -164,7 +164,12 @@ bool SessionHost::RefreshCatalogue(bool force) {
     session.cwd = item.cwd;
     session.kind = item.kind;
     session.folder = JsonValue(item.thread, "folder", "");
-    session.member = JsonValue(ChatMember(item.thread), "name", "");
+    // Its name in the folder's chat: a member's title, a panel's when it
+    // was given one.
+    session.member = !ChatMember(item.thread).empty() ? item.title
+                     : item.kind != kSessionKindPanel ? ""
+                     : item.custom_title              ? item.title
+                                                      : "Moderator";
     session.incoming = std::max(session.incoming, item.incoming);
     session.title = item.title;
     const FileStamp stamp = SnapshotFile(item.path);

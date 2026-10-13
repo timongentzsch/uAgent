@@ -166,8 +166,10 @@ export interface Block {
   incoming?: number;
   files?: Asset[];
   origin?: string;
-  // Who wrote a message that came by mail: a member of a panel's chat.
+  // Who wrote a message that came by mail: a participant of a panel's chat,
+  // by the name it had then and, as `sender`, by its session.
   author?: string;
+  sender?: string;
   // A chat participant's pass or wait: shown to nobody.
   silent?: boolean;
   // Tool calls whose results added these files to context.

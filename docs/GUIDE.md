@@ -214,6 +214,11 @@ panel's conversation is a chat.
   16 members.
 - **Who said what.** Each message is shown under its author's name; in the
   web, a message's menu shows the prompt its author was given.
+- **Names.** A name may be several words ("Security Reviewer"), without a
+  comma, colon or `&`. Rename a member like any conversation: what it wrote
+  before is shown under the new name, the others are told, and a message
+  that opens with the old name still reaches it. Renaming the panel's own
+  conversation renames its moderator.
 - Ask the moderator to remove a member; it asks you to confirm.
 
 ## Memory, skills and schedules

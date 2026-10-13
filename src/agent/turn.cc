@@ -100,6 +100,7 @@ void Agent::PushUserInput(json content, bool attachment, const json& images,
       mail != not_user_.end()) {
     json facts = {{"origin", "mail"}};
     if (!mail->author.empty()) facts["author"] = mail->author;
+    if (!mail->sender.empty()) facts["sender"] = mail->sender;
     if (mail->re) chat_re_ = *mail->re;
     not_user_.erase(mail);
     conversation_.RecordDisplay(conversation_.LastDisplayId(),

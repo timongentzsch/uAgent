@@ -116,6 +116,7 @@ function MessageView({ block, online, session }: MessageProps) {
     branch,
     http,
     team,
+    moderator,
     prompt,
   } = useContext(MessageActions);
   const { policy } = useContext(DetailContext);
@@ -130,12 +131,17 @@ function MessageView({ block, online, session }: MessageProps) {
   const [retry, setRetry] = useState(0);
   // A chat member's message: shown under its name, without the name its
   // text opens with for the model ("Ada: …").
-  const member =
+  const author =
     block.kind === "user" && block.origin === "mail" ? block.author : undefined;
+  // Under the name its session has now: renamed since, what it wrote before
+  // follows. One that has left keeps the name it wrote under.
+  const member =
+    author &&
+    (team?.find((item) => item.id === block.sender)?.member || author);
   const whole = full ?? block.text ?? "";
   const text =
-    member && whole.startsWith(`${member}: `)
-      ? whole.slice(member.length + 2)
+    author && whole.startsWith(`${author}: `)
+      ? whole.slice(author.length + 2)
       : whole;
   const tool = block.kind === "tool_result";
   const load = useBlockReader(session, read);
@@ -248,7 +254,7 @@ function MessageView({ block, online, session }: MessageProps) {
     (block.kind === "attachment" && block.origin === "tool");
   // In a chat with members the panel is named like everyone else.
   const panel =
-    !!team?.length && block.kind === "assistant" ? "Moderator" : undefined;
+    !!team?.length && block.kind === "assistant" ? moderator : undefined;
   const actor =
     member || panel || (userOwned || row || agentRow ? null : block.kind);
   const running = block.duration_ms == null && isRunningStatus(block.status);

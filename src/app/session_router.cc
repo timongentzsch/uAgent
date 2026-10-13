@@ -45,8 +45,12 @@ bool ValidSpaceName(const std::string& name) {
          name.find('/') == std::string::npos;
 }
 
-// `path` as a space's folder, or nothing when it is not one.
+// `path` as a space's folder, or nothing when it is not one. The folder
+// that holds the spaces is µAgent's own: one that is a link leads to
+// directories that are not spaces, and holds none.
 std::optional<fs::path> SpaceAt(const std::string& path) {
+  std::error_code error;
+  if (fs::is_symlink(UagentDir("spaces"), error)) return std::nullopt;
   const auto root = CanonicalDirectory(UagentDir("spaces"));
   const auto space = CanonicalDirectory(path);
   return root && space && space->parent_path() == *root ? space : std::nullopt;
@@ -79,12 +83,7 @@ std::string SpaceFolder(const std::string& name, std::string& error) {
     }
   }
   // A folder of its own: the name made safe, numbered when that is taken.
-  std::string safe;
-  for (const char c : name) {
-    safe += std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '-'
-                ? c
-                : '-';
-  }
+  const std::string safe = SafeFileComponent(name);
   std::string folder = UagentDir("spaces") + "/" + safe;
   for (int n = 2; PathExists(folder); ++n) {
     folder = UagentDir("spaces") + "/" + safe + "-" + std::to_string(n);
@@ -154,6 +153,15 @@ std::string SessionHost::DeleteSpace(const std::string& path,
         ExecuteCommand(command, device, RandomToken(16));
     if (!result.error.empty()) return result.error;
   }
+  // Under the lock a conversation is created under: none starts in a
+  // folder that is going.
+  std::lock_guard lock(mutex_);
+  if (std::ranges::any_of(sessions_, [&](const auto& held) {
+        return held.second->cwd == space->string() ||
+               held.second->folder == space->string();
+      })) {
+    return "a conversation started in the space meanwhile; try again";
+  }
   std::error_code error;
   fs::remove_all(UagentDir(kHistoryDir) + "/" + WorkspaceId(space->string()),
                  error);
@@ -174,8 +182,15 @@ SessionCommandResult SessionHost::ExecuteCommand(
     std::string folder = JsonValue(command, "cwd", "");
     if (const std::string space = Trim(JsonValue(command, "space", ""));
         !space.empty()) {
+      const size_t before = Spaces().size();
       folder = SpaceFolder(space, result.error);
       if (folder.empty()) return result;
+      // A new one is listed wherever the spaces are.
+      if (const json spaces = Spaces(); spaces.size() != before) {
+        replay_.Publish(epoch_, "", "",
+                        {{"kind", "spaces.changed"}, {"spaces", spaces}},
+                        false);
+      }
     }
     const auto resolved = CanonicalDirectory(folder);
     if (!resolved) {

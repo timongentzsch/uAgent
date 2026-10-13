@@ -858,6 +858,10 @@ void Master::Command(const Request& request, Response& response) {
                 : host_.RenameSpace(path, Trim(JsonValue(command, "name", "")));
     lock.lock();
     outcome["result"] = {{"spaces", session::Spaces()}};
+    if (error.empty()) {
+      host_.Publish(
+          "", "", {{"kind", "spaces.changed"}, {"spaces", session::Spaces()}});
+    }
   } else if (kind == "restart_conversations") {
     // Settings that need a restart reach running conversations only through
     // a fresh runtime; each keeps its history and restarts when idle.

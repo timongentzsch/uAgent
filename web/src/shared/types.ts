@@ -591,6 +591,7 @@ export type HostEvent = HostEnvelope &
           | "scheduled.changed";
       }
     | { kind: "settings.changed"; level: string }
+    | { kind: "spaces.changed"; spaces: Space[] }
   );
 export interface BodyPage {
   text: string;

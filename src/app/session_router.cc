@@ -131,10 +131,11 @@ SessionCommandResult SessionHost::ExecuteCommand(
     const std::string chat = session->kind == kSessionKindPanel ? session->cwd
                              : session->member.empty() ? ""
                                                        : session->folder;
+    std::string was;
     if (kind == SessionCommandKind::kRename && !chat.empty()) {
       result.error = ChatNameProblem(chat, title, session->path);
       if (!result.error.empty()) return result;
-      ChatRenamed(chat, session->path, title);
+      was = ChatName(chat, session->path);
     }
     std::string prior_status = session->status;
     session->status =
@@ -165,6 +166,8 @@ SessionCommandResult SessionHost::ExecuteCommand(
       replay_.Publish(epoch_, session->id, "", {{"kind", "deleted"}},
                       !session->run_id.empty());
     } else if (result.error.empty()) {
+      // Only a rename that was saved is one the chat hears of.
+      ChatRenamed(chat, session->path, was, title);
       session->title = title;
       if (!chat.empty()) session->member = title;
       session->draft_title = title;

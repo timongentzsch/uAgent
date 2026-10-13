@@ -745,7 +745,9 @@ class WorkerChannel final : public ApplicationChannel {
                                ? ""
                                : ChatNameProblem(chat_, parsed.title, path_);
                    error.empty()) {
-          if (!chat_.empty()) ChatRenamed(chat_, path_, parsed.title);
+          if (!chat_.empty()) {
+            ChatRenamed(chat_, path_, ChatName(chat_, path_), parsed.title);
+          }
           input_ = ApplicationInput{.title = std::string(parsed.title)};
           busy_ = true;
           wake_.Wake();

@@ -246,12 +246,15 @@ std::string ChatNameProblem(const std::string& folder, const std::string& name,
                             "without , : or &, and nobody else's";
 }
 
+std::string ChatName(const std::string& folder, const std::string& path) {
+  return path == PanelPath(folder)
+             ? ModeratorName(folder)
+             : JsonValue(SessionHeader(path), kSessionHeaderTitle, "");
+}
+
 void ChatRenamed(const std::string& folder, const std::string& path,
-                 const std::string& now) {
+                 const std::string& old, const std::string& now) {
   const bool moderator = path == PanelPath(folder);
-  const std::string old =
-      moderator ? ModeratorName(folder)
-                : JsonValue(SessionHeader(path), kSessionHeaderTitle, "");
   if (old.empty() || AsciiLower(old) == AsciiLower(now)) return;
   json former = ReadPanelFile(folder, kFormer);
   former.erase(AsciiLower(now));

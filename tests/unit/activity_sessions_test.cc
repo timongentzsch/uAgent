@@ -1357,8 +1357,9 @@ void TestAChatCountsAMailOnce() {
   CHECK(!ChatNameProblem(folder, "ada", "").empty());
   // Renamed, she is reached by the new name and still by the old one, which
   // stays hers.
-  ChatRenamed(folder, ada, "Grace Hopper");
+  CHECK(ChatName(folder, ada) == "Ada");
   CHECK(SessionStore::Rename(ada, "Grace Hopper").Ok());
+  ChatRenamed(folder, ada, "Ada", "Grace Hopper");
   CHECK(ForMembersOnly(folder, "grace hopper, a word"));
   CHECK(ForMembersOnly(folder, "Ada: a word"));
   CHECK(!ForMembersOnly(folder, "Moderator, a word"));

@@ -133,13 +133,14 @@ child process from the saved conversation, and a message to a finished child
 starts one on that message. A child's result reaches its parent through the
 activity completion; an idle parent takes it up at once as a turn.
 
-A folder's panel is a session that reads and delegates but never writes
-or runs commands. The sessions it starts are its threads.
+A folder's panel is a session whose agent, the moderator, reads and
+delegates but never writes or runs commands. The sessions it starts are its
+threads.
 
 The panel's conversation is also a chat (`src/app/chat.cc`). A member
-is a thread the panel added under a name and a persona instead of a
+is a thread the moderator added under a name and a persona instead of a
 brief: it reads and searches, changes nothing, and its prompt comes from its
-session header, which it cannot rewrite. The panel is one of the
+session header, which it cannot rewrite. The moderator is one of the
 participants, with no part of its own beyond its tools.
 
 - Everyone hears every message. What the panel's runtime settles, and

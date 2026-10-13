@@ -35,4 +35,4 @@ Precedence: these flags override process `UAGENT_*` variables, which override wh
 
 ## Panel
 
-`uagent panel [options]` opens this folder's panel: one per folder, it reads the folder's sessions, delegates threads and decides approvals their Auto mode cannot settle. `uagent panel -p PROMPT` runs one turn and prints the answer; `--json` adds the stop reason. Inside any session, `/panel` opens it, `/board` lists the folder's sessions and `/open ID` switches to one. Settings are the `UAGENT_PANEL_*` rows of the configuration reference; it reads `PANEL.md` (`~/.uagent/` and the folder's `.uagent/`) after `AGENTS.md`.
+`uagent panel [options]` opens this folder's panel: one per folder. Its moderator reads the folder's sessions, delegates threads and decides approvals their Auto mode cannot settle. `uagent panel -p PROMPT` runs one turn and prints the answer; `--json` adds the stop reason. Inside any session, `/panel` opens it, `/board` lists the folder's sessions and `/open ID` switches to one. Settings are the `UAGENT_PANEL_*` rows of the configuration reference; it reads `PANEL.md` (`~/.uagent/` and the folder's `.uagent/`) after `AGENTS.md`.

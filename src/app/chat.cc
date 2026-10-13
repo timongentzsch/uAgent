@@ -26,8 +26,10 @@ std::string Name(const SessionInfo& member) {
   return JsonValue(ChatMember(member.thread), "name", "");
 }
 
-// The moderator among the participants.
-constexpr const char* kSelf = "moderator";
+// The moderator among the participants, under the id a saved round and
+// queued mail know it by; kName is what a message calls it.
+constexpr const char* kSelf = "coordinator";
+constexpr const char* kName = "moderator";
 // Messages one participant may post before the user writes again.
 constexpr int kPostsEach = 2;
 
@@ -61,7 +63,7 @@ std::string Names(const std::vector<SessionInfo>& members,
     }
   }
   if (ids.contains(kSelf)) {
-    names += (names.empty() ? "" : ", ") + std::string(kSelf);
+    names += (names.empty() ? "" : ", ") + std::string(kName);
   }
   return names;
 }
@@ -175,11 +177,11 @@ namespace {
 // panel as kSelf.
 std::set<std::string> Named(const std::vector<SessionInfo>& members,
                             const std::string& text) {
-  std::vector<std::string> names{kSelf};
+  std::vector<std::string> names{kName};
   for (const SessionInfo& member : members) names.push_back(Name(member));
   const std::set<std::string> opens = Addressed(text, names);
   std::set<std::string> ids;
-  if (opens.contains(kSelf)) ids.insert(kSelf);
+  if (opens.contains(kName)) ids.insert(kSelf);
   for (const SessionInfo& member : members) {
     if (opens.contains(Name(member))) ids.insert(MailboxIdFor(member.path));
   }
@@ -409,7 +411,7 @@ void Chat::Answered(const std::string& text, const json& to) {
   const std::vector<SessionInfo> members = ChatMembers(folder_);
   if (members.empty()) return;
   if (Finished(kSelf, Trim(text)) == Answer::kMessage) {
-    Deliver(kSelf, kSelf, Trim(text), to);
+    Deliver(kSelf, kName, Trim(text), to);
   }
   Release(members);
   Save();

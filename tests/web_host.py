@@ -39,6 +39,8 @@ def answer(handler, body):
         if "Second opinion" in prompt:
             time.sleep(2)
             return event({"content": "I would ship it."})
+        if "Long opinion" in prompt:
+            return event({"content": "Long. " * 1000 + "LONG-END"})
         return event({"content": "Ada here." if "joined the chat" in prompt else "PASS"})
     said = [text for text in texts if "[coordinator context" not in str(text)]
     if said and ("Ada: " in str(said[-1]) or "anyone?" in str(said[-1])):

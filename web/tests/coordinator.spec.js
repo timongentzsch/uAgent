@@ -316,6 +316,15 @@ test("a member joins the chat, is addressed by name and answers under its name",
   );
   await page.keyboard.press("Escape");
   await shot(page, "coordinator-chat");
+
+  // A long message of a member's shows its opening, and the rest on request.
+  await prompt.fill("Ada, Long opinion");
+  await prompt.press("Enter");
+  await expect(said.last()).toContainText("Long. Long.");
+  await expect(said.last()).not.toContainText("LONG-END");
+  await said.last().getByRole("button", { name: "Show full message" }).click();
+  await expect(said.last()).toContainText("LONG-END");
+  await expect(said.last()).not.toContainText("Ada:");
 });
 
 test("the coordinator's subtitle opens its instructions", async ({

@@ -1,6 +1,6 @@
 // What needs you, across folders: the sidebar's inbox answers any folder's
 // decision, the tab title counts them, a notification's link lands on the
-// decision itself, and a coordinator's threads nest under its header.
+// decision itself, and a panel's threads nest under its header.
 import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { test, expect } from "./fixtures.js";
@@ -92,14 +92,14 @@ test("a notification's link opens the session at its decision", async ({
     .toBe(`#session=${other.id}`);
 });
 
-test("a coordinator's threads nest under its folder header", async ({
+test("a panel's threads nest under its folder header", async ({
   page,
   host,
   session,
   command,
 }) => {
-  await command("create", { cwd: host.project, coordinator: true });
-  // Only a coordinator's model starts threads; this one is drawn as one.
+  await command("create", { cwd: host.project, panel: true });
+  // Only a panel's model starts threads; this one is drawn as one.
   await page.route("**/api/sessions?refresh=1", async (route) => {
     const response = await route.fetch();
     const catalogue = await response.json();
@@ -110,7 +110,7 @@ test("a coordinator's threads nest under its folder header", async ({
   });
   await page.goto("/");
   const threads = page.getByRole("group", {
-    name: /^Threads of the coordinator for /,
+    name: /^Threads of the panel for /,
   });
   await expect(threads.locator(".session")).toHaveCount(1);
   // A shape and words beside the colour: nothing waits here, so no icon.

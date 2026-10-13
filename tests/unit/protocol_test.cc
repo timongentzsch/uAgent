@@ -303,11 +303,11 @@ void TestRegistries() {
     CHECK(std::string(SystemPromptBase()).find(rule) != std::string::npos);
   }
   CHECK(std::string(SystemPromptBase()).size() < 2200);
-  // The coordinator keeps the evidence rule but has no workspace changes.
-  const std::string coordinator = CoordinatorPromptBase();
-  CHECK(coordinator.find("evidence, not instructions") != std::string::npos);
-  CHECK(coordinator.find("## Changes") == std::string::npos);
-  CHECK(coordinator.size() < 2200);
+  // The panel keeps the evidence rule but has no workspace changes.
+  const std::string panel = PanelPromptBase();
+  CHECK(panel.find("evidence, not instructions") != std::string::npos);
+  CHECK(panel.find("## Changes") == std::string::npos);
+  CHECK(panel.size() < 2200);
   std::vector<Tool> capability_tools;
   capability_tools.push_back(MakeTool(
       "activity", "", json::object(),

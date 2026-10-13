@@ -167,6 +167,12 @@ std::string StateText(const SessionState& state,
          "}";
 }
 
+// What a session is, as its header says. One written before the coordinator
+// became the panel says so the old way.
+std::string StoredKind(const json& header) {
+  const std::string kind = JsonValue(header, kSessionHeaderKind, "");
+  return kind == "coordinator" ? kSessionKindPanel : kind;
+}
 }  // namespace
 
 bool SessionState::RestoreConversation(Conversation& conversation) && {
@@ -182,7 +188,7 @@ SessionStoreStatus SessionStore::Save(const std::string& path,
   header["incoming"] =
       JsonValue(JsonValue(record.state.display, "statistics", json::object()),
                 "incoming", uint64_t{0});
-  // Spend is read across many sessions (a coordinator's daily limit), so it
+  // Spend is read across many sessions (a panel's daily limit), so it
   // rides in the header instead of needing the whole state parsed.
   header["cost"] = record.state.usage.cost;
   // The header is built from a typed struct; only the state can be incomplete.
@@ -276,7 +282,7 @@ SessionLoadResult SessionStore::Inspect(const std::string& path) {
       JsonValue(header, kSessionHeaderForkTime, "");
   record.metadata.delegation =
       JsonValue(header, kSessionHeaderDelegation, json::object());
-  record.metadata.kind = JsonValue(header, kSessionHeaderKind, "");
+  record.metadata.kind = StoredKind(header);
   record.metadata.thread =
       JsonValue(header, kSessionHeaderThread, json::object());
   record.state.messages = std::move(state["messages"]);
@@ -319,7 +325,7 @@ json SessionHeader(const std::string& path) {
   return ValidHeader(header) ? header : json::object();
 }
 
-std::string CoordinatorPath(const std::string& cwd) {
+std::string PanelPath(const std::string& cwd) {
   return (std::filesystem::path(GlobalBase()) / kHistoryDir / WorkspaceId(cwd) /
           "coordinator.json")
       .string();
@@ -330,7 +336,7 @@ std::string SessionLockPath(const std::string& path) {
 }
 
 std::vector<SessionInfo> ListSessions(SessionScope scope) {
-  // One cache per process: a repeated listing (a coordinator's board every
+  // One cache per process: a repeated listing (a panel's board every
   // step) re-reads only the headers that changed.
   static std::mutex mutex;
   static SessionCatalogue catalogue;
@@ -355,10 +361,10 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
       }
     }
   }
-  // Every scope but kAll, the host's whole view, leaves coordinators out.
+  // Every scope but kAll, the host's whole view, leaves panels out.
   const auto listed = [&](const SessionInfo& info) {
     return (scope == SessionScope::kAll ||
-            (info.cwd == current && info.kind != kSessionKindCoordinator)) &&
+            (info.cwd == current && info.kind != kSessionKindPanel)) &&
            info.delegation.empty() != (scope == SessionScope::kChildren);
   };
   std::vector<SessionInfo> out;
@@ -396,7 +402,7 @@ std::vector<SessionInfo> SessionCatalogue::List(SessionScope scope) {
         item.cost = JsonValue(header, "cost", 0.0);
         item.delegation =
             JsonValue(header, kSessionHeaderDelegation, json::object());
-        item.kind = JsonValue(header, kSessionHeaderKind, "");
+        item.kind = StoredKind(header);
         item.thread = JsonValue(header, kSessionHeaderThread, json::object());
         if (JsonValue(header, "format", int64_t{0}) != kSessionFormat) {
           item.error = "unsupported session format";
@@ -567,8 +573,8 @@ json SessionStore::Fork(const std::string& source, const std::string& title,
   record.state.display["statistics"] = {{"incoming", 0}, {"complete", true}};
   record.metadata.session_id = identity;
   record.metadata.parent_session_id = parent_session_id;
-  // A fork is the user's own conversation: never a second coordinator, and
-  // no longer a thread its coordinator steers.
+  // A fork is the user's own conversation: never a second panel, and
+  // no longer a thread its panel steers.
   record.metadata.kind.clear();
   record.metadata.thread = json::object();
   record.metadata.forked_at_turn = fork_turn > 0 ? fork_turn : parent_turns;

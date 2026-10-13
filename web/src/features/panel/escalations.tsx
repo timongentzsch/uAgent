@@ -10,7 +10,7 @@ import { folderName } from "../../shared/folder-label.tsx";
 const decisionPanel = () => import("../chat/decision.tsx");
 
 // Decisions sessions are waiting on: a folder's threads above its
-// coordinator's composer, or every folder's in the sidebar's inbox. Each is
+// panel's composer, or every folder's in the sidebar's inbox. Each is
 // the session's own pending decision, answered in the session, so answering
 // here or there is the same act and the first answer wins. A pause at the
 // spend limit shows here too, for the same reason.
@@ -31,7 +31,7 @@ export default function WaitingList({
   report: Report;
 }) {
   const decisions = waiting(sessions, folder).filter(
-    (item) => folder === undefined || item.kind !== "coordinator",
+    (item) => folder === undefined || item.kind !== "panel",
   );
   if (!decisions.length && !paused) return null;
   return (

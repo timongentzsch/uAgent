@@ -190,7 +190,7 @@ bool Application::ResumeAtStartup() {
     if (!channel_ && JsonValue(SessionHeader(source), kSessionHeaderKind, "") ==
                          kSessionKindThread) {
       const std::string refusal =
-          "that session is a coordinator's thread; continue it in its "
+          "that session is a panel's thread; continue it in its "
           "conversation, or name another session";
       // On stderr: a headless run's stdout is the answer, and is silenced
       // until there is one.
@@ -259,7 +259,7 @@ void Application::RunPrompt(const std::string& input) {
     attachments_.clear();
   }
   RunTurns(input, std::move(content), images);
-  // A coordinator's answer is a message in its chat; a turn that ended
+  // A panel's answer is a message in its chat; a turn that ended
   // without one is a turn it is no longer taking.
   if (context_.chat) {
     context_.chat->Answered(

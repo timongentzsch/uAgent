@@ -39,16 +39,16 @@ inline constexpr const char* kInstructionNames[] = {"AGENTS.override.md",
 std::filesystem::path InstructionFileIn(const std::filesystem::path& dir);
 
 // The instruction files a person writes: for every session or for a folder's
-// coordinator, yours (every folder) or the project's. Always additive, read
+// panel, yours (every folder) or the project's. Always additive, read
 // once when a session starts. Loading, showing, editing and protecting them
 // all name them here.
-std::filesystem::path InstructionPath(bool coordinator, bool project,
+std::filesystem::path InstructionPath(bool panel, bool project,
                                       const std::filesystem::path& cwd);
 
 // One of the four files, in the editors' words: audience "sessions" or
-// "coordinator", scope "user" or "project". False for anything else.
+// "panel", scope "user" or "project". False for anything else.
 bool ParseInstructionTarget(const std::string& audience,
-                            const std::string& scope, bool& coordinator,
+                            const std::string& scope, bool& panel,
                             bool& project);
 
 // An instruction file's text, bounded like the loader reads it; empty when
@@ -57,11 +57,11 @@ std::string ReadInstructionFile(const std::filesystem::path& path);
 
 // Codex-style startup discovery: one instruction file per directory, ordered
 // from repository root to cwd. CLAUDE.md is the fallback when no AGENTS file
-// exists at that level. A coordinator then reads COORDINATOR.md: yours, then
+// exists at that level. A panel then reads PANEL.md: yours, then
 // the folder's.
 ProjectInstructions LoadProjectInstructions(const std::filesystem::path& cwd,
                                             size_t max_bytes,
-                                            bool coordinator = false);
+                                            bool panel = false);
 
 // What instructions mean for `cwd`, in the order a session reads them: the
 // four files a person edits (whether or not they exist yet), and every other
@@ -71,7 +71,7 @@ json InstructionFiles(const std::filesystem::path& cwd);
 // Replaces one instruction file; returns the error, or empty. With `base`,
 // the text the editor started from, a file changed since then is kept: two
 // editors never silently overwrite each other.
-std::string WriteInstructionFile(bool coordinator, bool project,
+std::string WriteInstructionFile(bool panel, bool project,
                                  const std::filesystem::path& cwd,
                                  const std::string& text,
                                  const std::optional<std::string>& base = {});

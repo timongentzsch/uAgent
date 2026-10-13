@@ -83,7 +83,7 @@ with Sigstore (`SHA256SUMS.sigstore.json`), lists every archive's checksum.
    the browser; one host serves every folder's conversations. See the
    [web guide](docs/WEB.md).
 
-7. **Several at once.** `uagent coord` opens the folder's coordinator. Ask it
+7. **Several at once.** `uagent panel` opens the folder's panel. Ask it
    for work and it starts threads that do it; ask it for another voice and it
    adds a member to the chat. Start a message with a name ("Ada, …") to ask
    that one alone.
@@ -93,7 +93,7 @@ with Sigstore (`SHA256SUMS.sigstore.json`), lists every archive's checksum.
 
 The [guide](docs/GUIDE.md) tells the rest in order: keys, models and
 providers, settings, approvals, coming back to a conversation, the
-coordinator and its chat, and scripting. `uagent --help` lists every flag.
+panel and its chat, and scripting. `uagent --help` lists every flag.
 
 ## Documentation
 

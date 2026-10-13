@@ -308,17 +308,17 @@ def test_message_to_finished_child_runs_it_once(root, home, *, binary):
         users = [
             str(message.get("content", "")) for message in messages if message.get("role") == "user"
         ]
-        coordinator = next(
+        panel = next(
             (
                 index
                 for index in range(len(messages) - 1, -1, -1)
                 if messages[index].get("role") == "user"
-                and str(messages[index].get("content", "")).endswith("coordinator")
+                and str(messages[index].get("content", "")).endswith("panel")
             ),
             None,
         )
-        parent_prompt = messages[coordinator]["content"] if coordinator is not None else ""
-        results = tool_results(messages[coordinator + 1 :]) if coordinator is not None else []
+        parent_prompt = messages[panel]["content"] if panel is not None else ""
+        results = tool_results(messages[panel + 1 :]) if panel is not None else []
 
         if users and users[-1] == "seed child":
             return event({"content": "seeded"})
@@ -330,14 +330,14 @@ def test_message_to_finished_child_runs_it_once(root, home, *, binary):
             valid = users.count("queued once") == 1
             return event({"content": "mailbox-cleared" if valid else "mailbox-repeated"})
 
-        if parent_prompt == "spawn coordinator":
+        if parent_prompt == "spawn panel":
             if results:
                 match = re.search(r"\[collaborator (agent-[^;\]]+)", results[-1])
                 assert_true(match is not None, results[-1])
                 collaborator_id["value"] = match.group(1)
                 return event({"content": "spawned"})
             return tool_call("subagent", {"prompt": "seed child", "background": False})
-        if parent_prompt == "queue coordinator":
+        if parent_prompt == "queue panel":
             if results and "heard" in results[-1]:
                 return event({"content": "queued"})
             if results:
@@ -350,7 +350,7 @@ def test_message_to_finished_child_runs_it_once(root, home, *, binary):
                     "prompt": "queued once",
                 },
             )
-        if parent_prompt == "fail coordinator":
+        if parent_prompt == "fail panel":
             if results:
                 return event({"content": "failure-observed"})
             return tool_call(
@@ -362,7 +362,7 @@ def test_message_to_finished_child_runs_it_once(root, home, *, binary):
                     "background": False,
                 },
             )
-        if parent_prompt == "retry coordinator":
+        if parent_prompt == "retry panel":
             if results:
                 valid = "mailbox-cleared" in results[-1]
                 return event({"content": "mailbox-ok" if valid else "mailbox-bad"})
@@ -379,12 +379,12 @@ def test_message_to_finished_child_runs_it_once(root, home, *, binary):
 
     with Server([route]) as server:
         env = base_env(home, server.url)
-        # All operations belong to one coordinator conversation. An unrelated
+        # All operations belong to one panel conversation. An unrelated
         # session in the same folder must not control its retained children.
         result = run_dialog(
             root,
             env,
-            "spawn coordinator\nqueue coordinator\nfail coordinator\nretry coordinator\n/q\n",
+            "spawn panel\nqueue panel\nfail panel\nretry panel\n/q\n",
             "--yolo",
             binary=binary,
         )
@@ -461,7 +461,7 @@ def test_agents_command_lists_a_running_child(root, home, *, binary):
             str(message.get("content", "")) for message in messages if message.get("role") == "user"
         ]
         if "stay-busy" in users:
-            # Bounded: the coordinator quits long before this, and a child that
+            # Bounded: the panel quits long before this, and a child that
             # outlived the dialog would keep the test's process group alive.
             if len(messages) > 8:
                 return event({"content": "child-done"})

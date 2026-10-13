@@ -79,7 +79,7 @@ changes. That reference lists every setting with its default.
 ## Limits
 
 Rows without a setting are fixed in the binary. `0` switches off a turn or
-session limit and the coordinator's daily cost limit.
+session limit and the panel's daily cost limit.
 
 | Concern | Default | Setting |
 | --- | --- | --- |
@@ -104,10 +104,10 @@ session limit and the coordinator's daily cost limit.
 | delegation depth / rounds / tool calls per child | 2 / 100 / 240 | `UAGENT_SUBAGENT_DEPTH`, `UAGENT_SUBAGENT_MAX_STEPS`, `UAGENT_SUBAGENT_MAX_TOOL_CALLS` |
 | wall clock per child | the turn | `UAGENT_SUBAGENT_TIMEOUT` |
 | subagent launches per turn | 32 | |
-| coordinator threads at once / reported cost per day | 5 / $20 | `UAGENT_COORDINATOR_MAX_THREADS`, `UAGENT_COORDINATOR_DAILY_SPEND_USD` |
-| chat turns per participant, and messages each, for one message of the user's | 3, 2 | `UAGENT_COORDINATOR_CHAT_TURNS` |
-| members of one coordinator's chat | 16 | |
-| a thread's report to its coordinator / one chat message | 6,000 characters / 16 KiB; `history` reads the rest | |
+| panel threads at once / reported cost per day | 5 / $20 | `UAGENT_PANEL_MAX_THREADS`, `UAGENT_PANEL_DAILY_SPEND_USD` |
+| chat turns per participant, and messages each, for one message of the user's | 3, 2 | `UAGENT_PANEL_CHAT_TURNS` |
+| members of one panel's chat | 16 | |
+| a thread's report to its panel / one chat message | 6,000 characters / 16 KiB; `history` reads the rest | |
 | idle session runtime | stops after 15 minutes; the next message starts it | |
 | undo journal | 2 MiB per file, 64 MiB per session | |
 | memory size / count per scope / always-on slice | 2 KiB / 32 / 2 KiB | |

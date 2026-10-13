@@ -481,14 +481,14 @@ void TestFileTools() {
     // project's are ordinary repository files.
     for (const std::string& instructions :
          {GlobalBase() + "/AGENTS.md", GlobalBase() + "/AGENTS.override.md",
-          GlobalBase() + "/CLAUDE.md", GlobalBase() + "/COORDINATOR.md"}) {
+          GlobalBase() + "/CLAUDE.md", GlobalBase() + "/PANEL.md"}) {
       CHECK(PathApprovalClass(instructions, PathAccess::kRead) ==
             ApprovalClass::kNone);
       CHECK(PathApprovalClass(instructions, PathAccess::kWrite) ==
             ApprovalClass::kMandatoryHuman);
     }
     for (const char* name :
-         {"/AGENTS.md", "/AGENTS.override.md", "/.uagent/COORDINATOR.md"}) {
+         {"/AGENTS.md", "/AGENTS.override.md", "/.uagent/PANEL.md"}) {
       CHECK(PathApprovalClass(CanonicalCwd() + name, PathAccess::kWrite) ==
             ApprovalClass::kNone);
     }

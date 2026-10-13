@@ -38,7 +38,7 @@ struct ApplicationInput {
   std::vector<Attachment> attachments{};
   bool wake = false;
   // The text joins the conversation as the person's message and starts no
-  // turn: a coordinator's chat message for its members alone.
+  // turn: a panel's chat message for its members alone.
   bool quiet = false;
   std::optional<std::string> title{};
 };
@@ -54,7 +54,7 @@ class ApplicationChannel {
   virtual std::string ReadInteraction(const InteractionRequest& request,
                                       bool* eof) = 0;
   virtual int WakeFd() const { return -1; }
-  // True while mail that would start a turn must wait (a coordinator at its
+  // True while mail that would start a turn must wait (a panel at its
   // spend limit).
   virtual bool HoldMail() { return false; }
   virtual std::string SessionPath() const { return {}; }
@@ -104,7 +104,7 @@ struct AppContext {
   // What "don't ask again" granted, bound to the tool's current provider,
   // schema and approval policy. Session-scoped by construction: it dies here.
   std::unordered_set<std::string> session_approvals;
-  // A coordinator's chat with its members; unset for every other session.
+  // A panel's chat with its members; unset for every other session.
   // Before the agent, which calls into it.
   std::optional<Chat> chat;
   std::unique_ptr<Agent> agent;

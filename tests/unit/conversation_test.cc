@@ -322,7 +322,7 @@ void TestConversation() {
 }
 
 // A user message's arrival outlives display-fact eviction and a restore: a
-// coordinator's model reads it, so it must never shift under the cache.
+// panel's model reads it, so it must never shift under the cache.
 void TestArrivalsSurviveFactEviction() {
   Conversation conversation;
   conversation.Push({{"role", "system"}, {"content", "sys"}},

@@ -13,7 +13,7 @@ no application server language runtime or dynamically loaded plugin layer.
 | `src/app/` | Bootstrap, session transport and lifecycle |
 | `src/app/session_*.cc` | The session runtime, its terminal client and the host's facets; see [Session runtime and clients](#session-runtime-and-clients) |
 | `src/app/commands_*.cc` | Slash-command handlers for model, session and control; `commands.cc` dispatches |
-| `src/app/coordinator.cc`, `chat.cc`, `thread_link.cc`, `launch.cc` | A folder's coordinator, its threads, its chat with members and where a launched session runs |
+| `src/app/panel.cc`, `chat.cc`, `thread_link.cc`, `launch.cc` | A folder's panel, its threads, its chat with members and where a launched session runs |
 | `src/agent/` | Turn execution, canonical conversation, context preparation, persistence, supervision services (process, jobs, child agent), mail delivery, the edit journal behind `/undo`, memory store and observation records |
 | `src/api/` | Provider dialects, streaming, capabilities, usage and HTTP captures: transport in `client.cc`, request bodies in `wire_request.cc`, stream decoding in `wire_stream.cc` |
 | `src/providers/` | Route catalog, model selection grammar and route policy |
@@ -133,16 +133,16 @@ child process from the saved conversation, and a message to a finished child
 starts one on that message. A child's result reaches its parent through the
 activity completion; an idle parent takes it up at once as a turn.
 
-A folder's coordinator is a session that reads and delegates but never writes
+A folder's panel is a session that reads and delegates but never writes
 or runs commands. The sessions it starts are its threads.
 
-The coordinator's conversation is also a chat (`src/app/chat.cc`). A member
-is a thread the coordinator added under a name and a persona instead of a
+The panel's conversation is also a chat (`src/app/chat.cc`). A member
+is a thread the panel added under a name and a persona instead of a
 brief: it reads and searches, changes nothing, and its prompt comes from its
-session header, which it cannot rewrite. The coordinator is one of the
+session header, which it cannot rewrite. The panel is one of the
 participants, with no part of its own beyond its tools.
 
-- Everyone hears every message. What the coordinator's runtime settles, and
+- Everyone hears every message. What the panel's runtime settles, and
   no model does, is who is woken: the participants a message opens with
   ("Ada, …", "Ada and Lin: …"), or all of them when it opens with no name.
   The rest read it without a turn, and the answer of someone asked this way
@@ -151,35 +151,35 @@ participants, with no part of its own beyond its tools.
   (someone who is typing is likely to cover it). Neither is shown to anyone.
   A wake-up says who else is typing; whoever waited is woken by the next
   message, or as soon as nobody is typing.
-- A member's answer appears in the coordinator's conversation under its
-  name. It starts a turn there only when it wakes the coordinator like any
+- A member's answer appears in the panel's conversation under its
+  name. It starts a turn there only when it wakes the panel like any
   other participant.
 - Two limits keep an exchange from running on by itself, both counted from
-  one message of the user's: `UAGENT_COORDINATOR_CHAT_TURNS` turns per
-  participant, and two messages each. The coordinator cannot message a
+  one message of the user's: `UAGENT_PANEL_CHAT_TURNS` turns per
+  participant, and two messages each. The panel cannot message a
   member past the chat. Members spend from the same daily limit as threads.
   An answer that arrives after the user has written again belongs to the
   round before: it is read by everyone and is nobody's turn in the new one.
 - A file the user attaches reaches the members as its path in the message;
-  they read what is shared in the coordinator's chat without review, like
+  they read what is shared in the panel's chat without review, like
   the folder itself.
 - The round (each participant's turns and messages, who is typing, who
   waits) is saved beside the
-  coordinator's session, so a runtime that starts again takes it up. A
+  panel's session, so a runtime that starts again takes it up. A
   member's answer is forwarded under an id derived from it: forwarded again
   after a crash, it is the mail its readers already have.
 
 Sessions message each other through durable mailboxes
 ([PERSISTENCE.md](PERSISTENCE.md#mail)): linked peers, a parent and its
-children, children of one parent, and a folder's coordinator and its threads.
+children, children of one parent, and a folder's panel and its threads.
 
 - Each runtime watches its mailbox (inotify, kqueue on macOS) and delivers at
   the next model step, including after a final answer, which reopens the turn.
 - An idle runtime starts a turn on mail meant to wake it. A headless child
   answers mail that arrives after its last step before it exits.
-- A thread's finished turns and questions reach its coordinator this way
-  within milliseconds, starting the coordinator's runtime when none runs. At
-  the daily spend limit the coordinator's mail waits.
+- A thread's finished turns and questions reach its panel this way
+  within milliseconds, starting the panel's runtime when none runs. At
+  the daily spend limit the panel's mail waits.
 - Senders are refused, visibly, past 64 pending messages, 20 a minute or 8
   forwards (`include/core/mailbox.h`).
 

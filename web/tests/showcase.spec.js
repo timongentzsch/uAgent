@@ -235,9 +235,9 @@ for (const width of [1440, 900, 390]) {
     const commands = () => page.evaluate(() => globalThis.commands ?? []);
     const ask = page.getByRole("region", { name: "Pending decision" });
     await ask.scrollIntoViewIfNeeded();
-    // Routed to the coordinator, the form still answers: the first wins.
+    // Routed to the panel, the form still answers: the first wins.
     await expect(
-      ask.getByRole("heading", { name: "The coordinator is deciding" }),
+      ask.getByRole("heading", { name: "The moderator is deciding" }),
     ).toBeVisible();
     // One question to a page: Next until the review, which holds Submit.
     const submit = ask.getByRole("button", { name: "Submit" });

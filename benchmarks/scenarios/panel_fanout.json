@@ -1,10 +1,10 @@
 {
-  "name": "coordinator_fanout",
-  "description": "Two independent jobs become two threads started in one batch, each with a brief; the coordinator itself changes nothing.",
+  "name": "panel_fanout",
+  "description": "Two independent jobs become two threads started in one batch, each with a brief; the panel itself changes nothing.",
   "tier": "regression",
   "variants": ["control"],
-  "coordinator": true,
-  "env": {"UAGENT_COORDINATOR_ENVIRONMENT": "local", "UAGENT_COORDINATOR_DAILY_SPEND_USD": "1"},
+  "panel": true,
+  "env": {"UAGENT_PANEL_ENVIRONMENT": "local", "UAGENT_PANEL_DAILY_SPEND_USD": "1"},
   "prompt": "Two independent jobs: add an 'Install' section to README.md, and add a 0.2.0 entry to CHANGELOG.md. Delegate them so they run in parallel, then tell me what you started.",
   "files": {
     "README.md": "# demo\n\nA small demo project.\n",

@@ -33,7 +33,7 @@ namespace {
 constexpr int kSessionLinkFormat = 1;
 constexpr size_t kSessionLinkMembers = 32;
 
-// A coordinator and its threads work together, so they are linked by where
+// A panel and its threads work together, so they are linked by where
 // they live, whatever mode each runs in: one history folder holds
 // coordinator.json and its thread-*.json. Nothing to join, nothing to prune.
 std::vector<json> SocietyMembers() {

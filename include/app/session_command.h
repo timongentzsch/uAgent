@@ -42,7 +42,7 @@ enum class SessionCommandKind {
   kSide,
   kSelfDirective,
   kSubmit,
-  // A coordinator hands a thread's routed decision to the user.
+  // A panel hands a thread's routed decision to the user.
   kEscalate,
   kCreate,
   kDelete,

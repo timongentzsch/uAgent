@@ -29,7 +29,7 @@ address. Or open the URL and type the code.
   **Log out this device**.
 
 The sidebar lists this OS user's conversations grouped by project folder. A
-folder's coordinator is its header, with the threads it started nested under
+folder's panel is its header, with the threads it started nested under
 it. Browsing saved history does not start a model or run a command.
 
 **New conversation** takes a directory on the host or a name. A name alone
@@ -248,9 +248,9 @@ before Submit.
   schema and groups tools into persistent custom categories. Stop and close a
   live runtime before deleting its history; project files are unaffected.
 
-### The coordinator and its chat
+### The panel and its chat
 
-- **New conversation → Open its coordinator** opens a folder's coordinator;
+- **New conversation → Open its panel** opens a folder's panel;
   so does the icon beside the folder in the sidebar, and the command palette.
 - The **board** beside the chat (a button in the header on a phone) lists
   what needs you, the chat's members, and the threads working and done.
@@ -258,7 +258,7 @@ before Submit.
   its menu's **Show prompt** shows what that author was given. The line above
   the input says who is typing.
 - Start a message with a member's name to ask that one alone.
-  [The guide](GUIDE.md#the-coordinator) explains threads, members and the
+  [The guide](GUIDE.md#the-panel) explains threads, members and the
   chat's rules.
 
 ### Settings

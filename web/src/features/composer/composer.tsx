@@ -107,7 +107,7 @@ export default function Composer({
   showStatistics: () => void;
   openBrowser: () => void;
   zoom: number;
-  // The members of a coordinator's chat: with any, the state above the
+  // The members of a panel's chat: with any, the state above the
   // input says who is typing and nothing else.
   members?: Session[];
   // Why the last turn stopped short, while nothing has been sent since.
@@ -335,7 +335,7 @@ export default function Composer({
                       ...members
                         .filter((item) => online && item.turn_active)
                         .map((item) => item.member || ""),
-                      ...(running ? ["Coordinator"] : []),
+                      ...(running ? ["Moderator"] : []),
                     ]) ||
                     detached ||
                     "Ready"
@@ -427,8 +427,8 @@ export default function Composer({
                 ? "Add guidance… (Esc to stop)"
                 : members.length
                   ? "Message everyone, or start with a name…"
-                  : session.kind === "coordinator"
-                    ? "Ask the coordinator…"
+                  : session.kind === "panel"
+                    ? "Ask the panel…"
                     : "Ask µAgent…"
           }
           value={draft.text}

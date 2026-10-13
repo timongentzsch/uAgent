@@ -7,7 +7,7 @@
 // through one file mailbox, which also carries a parent's guidance to its
 // delegated children. Isolation
 // is the default: two sessions read each other's mail only while a link file
-// names them both. Sessions under yolo, and a coordinator's threads, join
+// names them both. Sessions under yolo, and a panel's threads, join
 // their folder's link by themselves.
 
 #include <functional>
@@ -26,7 +26,7 @@ ToolResult MessageSession(const std::string& id, const std::string& text,
                           int hops = 0);
 
 // Text-only peer messaging for every toolset, lean included. `start` starts
-// the runtime of a coordinator or thread that a message found stopped; any
+// the runtime of a panel or thread that a message found stopped; any
 // other session reads its mail when it is next opened.
 Tool SessionTool(
     const std::function<void(const std::string& path)>& start = {});

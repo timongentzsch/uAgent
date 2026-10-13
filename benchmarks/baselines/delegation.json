@@ -18,7 +18,7 @@
           "input_k": 85,
           "cached_pct": 9
         },
-        "fix/coord": {
+        "fix/panel": {
           "wall_s": 253,
           "steps": 49,
           "input_k": 357,
@@ -36,7 +36,7 @@
           "input_k": 26,
           "cached_pct": 15
         },
-        "survey/coord": {
+        "survey/panel": {
           "wall_s": 190,
           "steps": 31,
           "input_k": 280,
@@ -54,7 +54,7 @@
           "input_k": 336,
           "cached_pct": 9
         },
-        "research/coord": {
+        "research/panel": {
           "wall_s": 255,
           "steps": 49,
           "input_k": 702,
@@ -72,7 +72,7 @@
           "input_k": 457,
           "cached_pct": 6
         },
-        "audit/coord": {
+        "audit/panel": {
           "wall_s": 231,
           "steps": 32,
           "input_k": 548,
@@ -95,7 +95,7 @@
           "input_k": 28,
           "cached_pct": 0
         },
-        "fix/coord": {
+        "fix/panel": {
           "wall_s": 133,
           "steps": 12,
           "input_k": 88,
@@ -113,7 +113,7 @@
           "input_k": 45,
           "cached_pct": 0
         },
-        "survey/coord": {
+        "survey/panel": {
           "wall_s": 143,
           "steps": 14,
           "input_k": 97,
@@ -131,7 +131,7 @@
           "input_k": 367,
           "cached_pct": 0
         },
-        "research/coord": {
+        "research/panel": {
           "wall_s": 236,
           "steps": 32,
           "input_k": 491,
@@ -149,7 +149,7 @@
           "input_k": 490,
           "cached_pct": 8
         },
-        "audit/coord": {
+        "audit/panel": {
           "wall_s": 267,
           "steps": 21,
           "input_k": 289,
@@ -170,7 +170,7 @@
           "steps": 6,
           "input_k": 34
         },
-        "fix/coord": {
+        "fix/panel": {
           "wall_s": 127,
           "steps": 13,
           "input_k": 105
@@ -185,7 +185,7 @@
           "steps": 8,
           "input_k": 115
         },
-        "survey/coord": {
+        "survey/panel": {
           "wall_s": 88,
           "steps": 10,
           "input_k": 54
@@ -200,7 +200,7 @@
           "steps": 15,
           "input_k": 346
         },
-        "research/coord": {
+        "research/panel": {
           "wall_s": 101,
           "steps": 12,
           "input_k": 138
@@ -215,7 +215,7 @@
           "steps": 19,
           "input_k": 507
         },
-        "audit/coord": {
+        "audit/panel": {
           "wall_s": 290,
           "steps": 21,
           "input_k": 350
@@ -224,9 +224,9 @@
     },
     "c6cff034": {
       "title": "After the browser, delegation and cleanup stages, 2026-10-05, commit `c6cff034`",
-      "note": "survey/coord is its second attempt: the first ended in an error after the coordinator answered a spawn with empty text three times.",
+      "note": "survey/panel is its second attempt: the first ended in an error after the panel answered a spawn with empty text three times.",
       "runs": {
-        "audit/coord": {
+        "audit/panel": {
           "wall_s": 356,
           "steps": 30,
           "input_k": 680,
@@ -244,7 +244,7 @@
           "input_k": 463,
           "cached_pct": 14
         },
-        "fix/coord": {
+        "fix/panel": {
           "wall_s": 148,
           "steps": 12,
           "input_k": 80,
@@ -262,7 +262,7 @@
           "input_k": 114,
           "cached_pct": 11
         },
-        "research/coord": {
+        "research/panel": {
           "wall_s": 89,
           "steps": 11,
           "input_k": 102,
@@ -280,7 +280,7 @@
           "input_k": 372,
           "cached_pct": 3
         },
-        "survey/coord": {
+        "survey/panel": {
           "wall_s": 104,
           "steps": 10,
           "input_k": 52,

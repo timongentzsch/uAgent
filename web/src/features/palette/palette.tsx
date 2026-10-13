@@ -46,8 +46,8 @@ export default function Palette({
   sessions: Session[];
   commands: SlashCommand[];
   choose: (id: string) => void;
-  // A new conversation in a folder, or the folder's coordinator.
-  start: (cwd: string, coordinator?: boolean) => void;
+  // A new conversation in a folder, or the folder's panel.
+  start: (cwd: string, panel?: boolean) => void;
   // A slash command, as if typed in the composer.
   run: (command: SlashCommand) => void;
   settings: (scope: Scope) => void;
@@ -72,8 +72,8 @@ export default function Palette({
     ...recent.map((item) => ({
       key: `session:${item.id}`,
       label:
-        item.kind === "coordinator"
-          ? `Coordinator · ${folderName(item.cwd)}`
+        item.kind === "panel"
+          ? `Panel · ${folderName(item.cwd)}`
           : item.title || "New conversation",
       detail: folderName(folderOf(item)),
       run: () => choose(item.id),
@@ -87,13 +87,13 @@ export default function Palette({
       },
       // One that exists is listed among the conversations above.
       ...(recent.some(
-        (item) => item.kind === "coordinator" && folderOf(item) === folder,
+        (item) => item.kind === "panel" && folderOf(item) === folder,
       )
         ? []
         : [
             {
-              key: `coordinator:${folder}`,
-              label: `Coordinator · ${folderName(folder)}`,
+              key: `panel:${folder}`,
+              label: `Panel · ${folderName(folder)}`,
               detail: "Folder",
               run: () => start(folder, true),
             },

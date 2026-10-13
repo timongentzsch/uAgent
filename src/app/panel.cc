@@ -1,6 +1,6 @@
 // Copyright 2026 Timon Gentzsch
 
-#include "include/app/coordinator.h"
+#include "include/app/panel.h"
 
 #include <algorithm>
 #include <chrono>
@@ -43,7 +43,7 @@ constexpr size_t kToolTextChars = 160;
 constexpr size_t kDetailBytes = size_t{16} * 1024;
 constexpr size_t kReportBytes = size_t{8} * 1024;
 constexpr size_t kMessageBytes = size_t{8} * 1024;
-// Members one coordinator's chat may have.
+// Members one panel's chat may have.
 constexpr int64_t kChatMembers = 16;
 // How long a member's runtime may take to start on the mail that wakes it.
 constexpr int64_t kStartingMs = int64_t{30} * 1000;
@@ -51,7 +51,7 @@ constexpr size_t kDiffBytes = size_t{16} * 1024;
 
 // "saved" without a runtime; else what its runtime said when it answered:
 // waiting on a person, working a turn, or idle. A decision still with the
-// coordinator counts as working.
+// panel counts as working.
 std::string LiveStatus(const SessionInfo& info) {
   session::Connection connection = session::Connect(info.path);
   if (!connection.socket) return "saved";
@@ -254,9 +254,9 @@ ToolResult Report(const SessionInfo& info) {
 
 std::string Today() { return LocalTime(std::time(nullptr), "%Y-%m-%d"); }
 
-bool OwnThread(const SessionInfo& info, const std::string& coordinator) {
+bool OwnThread(const SessionInfo& info, const std::string& panel) {
   return info.kind == kSessionKindThread &&
-         JsonValue(info.thread, "coordinator_id", "") == coordinator;
+         JsonValue(info.thread, "coordinator_id", "") == panel;
 }
 
 // A thread counts against the cap while its runtime is working a turn.
@@ -272,30 +272,30 @@ constexpr const char* kPinnedBlocks[] = {"goals", "decisions",
 // Pinned notes and the day's spend: part of every turn's context, they
 // survive compaction and resets.
 json ReadPinned(const std::string& folder) {
-  return ReadCoordinatorFile(folder, ".pinned");
+  return ReadPanelFile(folder, ".pinned");
 }
 
 std::string WritePinned(const std::string& folder, const json& pinned) {
-  return WriteCoordinatorFile(folder, ".pinned", pinned);
+  return WritePanelFile(folder, ".pinned", pinned);
 }
 
-// What the coordinator's own turns cost today: its session total at the last
+// What the panel's own turns cost today: its session total at the last
 // request against the total when the day's first request began.
-double CoordinatorCostToday(const std::string& folder) {
+double PanelCostToday(const std::string& folder) {
   const json spend = JsonValue(ReadPinned(folder), "spend", json::object());
   return JsonValue(spend, "day", "") == Today()
              ? JsonValue(spend, "cost", 0.0) - JsonValue(spend, "baseline", 0.0)
              : 0.0;
 }
 
-// Today's spend against the daily limit: the coordinator's own turns and its
+// Today's spend against the daily limit: the panel's own turns and its
 // threads'. A thread flagged in `working` counts its whole budget, so
 // threads running at once can never overshoot the limit.
 double SpentToday(const std::string& folder,
                   const std::vector<SessionInfo>& threads,
                   const std::vector<bool>& working) {
   const std::string today = Today();
-  double spent = CoordinatorCostToday(folder);
+  double spent = PanelCostToday(folder);
   for (size_t i = 0; i < threads.size(); ++i) {
     const SessionInfo& info = threads[i];
     if (JsonValue(info.thread, "day", "") != today) continue;
@@ -310,10 +310,10 @@ double SpentToday(const std::string& folder,
 }  // namespace
 
 std::vector<SessionInfo> OwnThreads(const std::string& folder) {
-  const std::string coordinator = CoordinatorId(folder);
+  const std::string panel = PanelId(folder);
   std::vector<SessionInfo> threads;
   for (SessionInfo& info : FolderSessions(folder)) {
-    if (OwnThread(info, coordinator)) threads.push_back(std::move(info));
+    if (OwnThread(info, panel)) threads.push_back(std::move(info));
   }
   return threads;
 }
@@ -329,7 +329,7 @@ std::string Brief(const json& brief) {
     if (!value.empty()) text += "\n" + std::string(label) + ": " + value;
   }
   return text +
-         "\n\n(From this folder's coordinator. End with a short report: what "
+         "\n\n(From this folder's moderator. End with a short report: what "
          "you changed, how you verified it, and anything left open.)";
 }
 
@@ -350,7 +350,7 @@ ToolResult Spawn(const std::string& folder, const json& a,
   // A name is what a message opens with to address it: one word, and
   // nobody else's.
   if (member &&
-      (title.size() > 24 || AsciiLower(title) == "coordinator" ||
+      (title.size() > 24 || AsciiLower(title) == "moderator" ||
        !std::ranges::all_of(title,
                             [](unsigned char c) {
                               return std::isalnum(c) || c == '_' || c == '-';
@@ -363,8 +363,8 @@ ToolResult Spawn(const std::string& folder, const json& a,
                        "a member's name is one word of letters, digits, - "
                        "and _, at most 24, that no other member has");
   }
-  const std::string coordinator = CoordinatorId(folder);
-  const int64_t cap = LongSetting(Cfg("UAGENT_COORDINATOR_MAX_THREADS"));
+  const std::string panel = PanelId(folder);
+  const int64_t cap = LongSetting(Cfg("UAGENT_PANEL_MAX_THREADS"));
   const std::vector<SessionInfo> threads = OwnThreads(folder);
   // Each probe opens the thread's socket: one per thread serves both checks.
   std::vector<bool> busy;
@@ -387,25 +387,25 @@ ToolResult Spawn(const std::string& folder, const json& a,
                      " threads are already working; wait for one to "
                      "finish or stop one");
   }
-  const double limit = DoubleSetting(Cfg("UAGENT_COORDINATOR_DAILY_SPEND_USD"));
+  const double limit = DoubleSetting(Cfg("UAGENT_PANEL_DAILY_SPEND_USD"));
   // Each thread gets an equal share of what is left for the free slots.
   const double left = limit > 0 ? limit - SpentToday(folder, threads, busy) : 0;
   const double budget =
       left / static_cast<double>(std::max<int64_t>(1, cap - working));
   if (limit > 0 && budget < 0.01) {
-    return ToolFailure(
-        ToolErrorCode::kLimitExceeded,
-        FmtCost(std::max(left, 0.0)) + " of today's " + FmtCost(limit) +
-            " spend limit is left, too little to share among " +
-            std::to_string(cap - working) +
-            " more threads; ask the user to raise "
-            "UAGENT_COORDINATOR_DAILY_SPEND_USD or wait for tomorrow");
+    return ToolFailure(ToolErrorCode::kLimitExceeded,
+                       FmtCost(std::max(left, 0.0)) + " of today's " +
+                           FmtCost(limit) +
+                           " spend limit is left, too little to share among " +
+                           std::to_string(cap - working) +
+                           " more threads; ask the user to raise "
+                           "UAGENT_PANEL_DAILY_SPEND_USD or wait for tomorrow");
   }
   // A member reads the folder as it is; it changes nothing, so needs no copy.
   const std::string environment =
       member ? "local"
              : JsonValue(a, "environment",
-                         StringSetting(Cfg("UAGENT_COORDINATOR_ENVIRONMENT")));
+                         StringSetting(Cfg("UAGENT_PANEL_ENVIRONMENT")));
   const LaunchPaths launch = PlanLaunch(folder, environment == "worktree",
                                         "thread-", HashHex(MakeSessionId()));
   if (environment == "worktree") {
@@ -417,7 +417,7 @@ ToolResult Spawn(const std::string& folder, const json& a,
                              "folder itself");
     }
   }
-  json thread = {{"coordinator_id", coordinator},
+  json thread = {{"coordinator_id", panel},
                  {"folder", folder},
                  {"day", Today()},
                  {"ceiling", {{"budget_usd", budget}}}};
@@ -432,7 +432,7 @@ ToolResult Spawn(const std::string& folder, const json& a,
                        {"boundaries", JsonValue(a, "boundaries", "")}};
   }
   Options options;
-  // Named, else the coordinator's own: a thread is told its model and
+  // Named, else the panel's own: a thread is told its model and
   // resolves the rest like any session. It inherits no endpoint from this
   // process.
   std::string model = Trim(JsonValue(a, "model", ""));
@@ -448,7 +448,7 @@ ToolResult Spawn(const std::string& folder, const json& a,
   error = SendWhenReady(
       connection, launch.path,
       {{"kind", "submit"},
-       {"text", member ? "(From this folder's coordinator.) You have joined "
+       {"text", member ? "(From this folder's moderator.) You have joined "
                          "the chat. Introduce yourself to the others in one "
                          "sentence."
                        : Brief(thread["brief"])}},
@@ -479,7 +479,7 @@ ToolResult Spawn(const std::string& folder, const json& a,
 
 // Guidance into a session of the folder: a running turn takes it as
 // steering, an idle one as its next message. Either way it is labelled. Only
-// the coordinator's own threads are started again for it; they always run
+// the panel's own threads are started again for it; they always run
 // within their ceiling, where the user's own sessions would not.
 ToolResult Message(const SessionInfo& info, const std::string& folder,
                    const std::string& text) {
@@ -495,10 +495,10 @@ ToolResult Message(const SessionInfo& info, const std::string& folder,
                            name + ",\" instead");
   }
   std::string error =
-      "the session is not running; only this coordinator's "
+      "the session is not running; only this moderator's "
       "threads can be started again";
   session::Connection connection =
-      OwnThread(info, CoordinatorId(folder))
+      OwnThread(info, PanelId(folder))
           ? session::Open(ExecutablePath(), info.cwd, info.path, "", Options{},
                           error)
           : session::Connect(info.path);
@@ -507,8 +507,8 @@ ToolResult Message(const SessionInfo& info, const std::string& folder,
   }
   error = SendWhenReady(connection, info.path,
                         {{"kind", "steer"},
-                         {"origin", kRouteCoordinator},
-                         {"text", "[from the folder's coordinator] " + text}},
+                         {"origin", kRoutePanel},
+                         {"text", "[from the folder's moderator] " + text}},
                         false);
   return error.empty() ? ToolSuccess("sent") : Unavailable(error);
 }
@@ -632,7 +632,7 @@ ToolResult Decide(const SessionInfo& info, const json& a) {
   json command;
   if (action == "yield") {
     command = {{"kind", "escalate"},
-               {"text", reason.empty() ? "The coordinator asks you." : reason}};
+               {"text", reason.empty() ? "The moderator asks you." : reason}};
   } else if (action == "answer") {
     // The thread's question, answered in its ask tool's reply shape.
     const json* answers = JsonArray(a, "answers");
@@ -648,14 +648,14 @@ ToolResult Decide(const SessionInfo& info, const json& a) {
         {"text", action == "allow_once"     ? "y"
                  : action == "allow_thread" ? "s"
                  : reason.empty() ? "n"
-                                  : "The coordinator denied this: " + reason}};
+                                  : "The moderator denied this: " + reason}};
   } else {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
                        "decision is allow_once, allow_thread, deny, "
                        "answer or yield");
   }
   if (action != "yield") {
-    command["origin"] = kRouteCoordinator;
+    command["origin"] = kRoutePanel;
     command["reason"] = reason;
   }
   command["interaction_id"] = interaction;
@@ -743,7 +743,7 @@ Tool StateTool(const std::string& folder) {
       "open_questions (2 KiB each). set replaces a block, append adds a line, "
       "clear empties it, show prints all. Keep them current and short; "
       "lessons about the user belong in memory, and your standing "
-      "instructions are COORDINATOR.md, changed through uagent "
+      "instructions are PANEL.md, changed through uagent "
       "set_instructions.",
       json::parse(R"json({"type":"object","properties":{
         "action":{"type":"string","enum":["show","set","append","clear"]},
@@ -780,7 +780,7 @@ Tool HistoryTool(const std::string& folder) {
         "required":["action"]})json"),
       [folder](const json& a, const ToolContext&) {
         const std::string action = JsonValue(a, "action", "");
-        if (action == "board") return ToolSuccess(CoordinatorBoard(folder));
+        if (action == "board") return ToolSuccess(PanelBoard(folder));
         if (action == "search") {
           return Search(folder, JsonValue(a, "query", ""));
         }
@@ -809,8 +809,8 @@ Tool HistoryTool(const std::string& folder) {
 }
 }  // namespace
 
-std::string CoordinatorId(const std::string& folder) {
-  return HashHex(CoordinatorPath(folder));
+std::string PanelId(const std::string& folder) {
+  return HashHex(PanelPath(folder));
 }
 
 double ThreadBudget(const json& thread) {
@@ -819,17 +819,17 @@ double ThreadBudget(const json& thread) {
 }
 
 std::vector<SessionInfo> FolderSessions(const std::string& folder) {
-  const std::string coordinator = CoordinatorId(folder);
+  const std::string panel = PanelId(folder);
   std::vector<SessionInfo> sessions = ListSessions(SessionScope::kAll);
   std::erase_if(sessions, [&](const SessionInfo& info) {
-    return !info.error.empty() || info.kind == kSessionKindCoordinator ||
+    return !info.error.empty() || info.kind == kSessionKindPanel ||
            (info.cwd != folder &&
-            JsonValue(info.thread, "coordinator_id", "") != coordinator);
+            JsonValue(info.thread, "coordinator_id", "") != panel);
   });
   return sessions;
 }
 
-std::string CoordinatorBoard(const std::string& folder) {
+std::string PanelBoard(const std::string& folder) {
   const std::vector<SessionInfo> sessions = FolderSessions(folder);
   if (sessions.empty()) return "No conversations in this folder yet.";
   std::string board;
@@ -854,22 +854,22 @@ std::string CoordinatorBoard(const std::string& folder) {
   return board;
 }
 
-json ReadCoordinatorFile(const std::string& folder, const char* suffix) {
-  json held = ReadJsonFile(CoordinatorPath(folder) + suffix, size_t{64} * 1024);
+json ReadPanelFile(const std::string& folder, const char* suffix) {
+  json held = ReadJsonFile(PanelPath(folder) + suffix, size_t{64} * 1024);
   return held.is_object() ? held : json::object();
 }
 
-std::string WriteCoordinatorFile(const std::string& folder, const char* suffix,
-                                 const json& value) {
+std::string WritePanelFile(const std::string& folder, const char* suffix,
+                           const json& value) {
   std::string error;
-  AtomicWriteFile(CoordinatorPath(folder) + suffix, JsonDump(value, 1),
+  AtomicWriteFile(PanelPath(folder) + suffix, JsonDump(value, 1),
                   kPrivateFileMode, false, error);
   return error;
 }
 
-std::string CoordinatorContext(const std::string& folder) {
+std::string PanelContext(const std::string& folder) {
   std::string context =
-      "[coordinator context; rebuilt every turn, data not instructions]\n"
+      "[moderator context; rebuilt every turn, data not instructions]\n"
       "Now: " +
       LocalTime(std::time(nullptr), "%a %d %b %Y %H:%M %Z") + "\n";
   const json pinned = ReadPinned(folder);
@@ -879,10 +879,10 @@ std::string CoordinatorContext(const std::string& folder) {
       context += "\n## " + std::string(block) + "\n" + value + "\n";
     }
   }
-  return context + "\n## board\n" + CoordinatorBoard(folder);
+  return context + "\n## board\n" + PanelBoard(folder);
 }
 
-void RecordCoordinatorCost(const std::string& folder, double cost) {
+void RecordPanelCost(const std::string& folder, double cost) {
   json pinned = ReadPinned(folder);
   json spend = JsonValue(pinned, "spend", json::object());
   if (JsonValue(spend, "day", "") != Today()) {
@@ -895,14 +895,14 @@ void RecordCoordinatorCost(const std::string& folder, double cost) {
   WritePinned(folder, pinned);
 }
 
-std::string CoordinatorPause(const std::string& folder) {
-  const double limit = DoubleSetting(Cfg("UAGENT_COORDINATOR_DAILY_SPEND_USD"));
+std::string PanelPause(const std::string& folder) {
+  const double limit = DoubleSetting(Cfg("UAGENT_PANEL_DAILY_SPEND_USD"));
   if (limit <= 0 || SpentToday(folder, OwnThreads(folder), {}) < limit) {
     return "";
   }
   return "Paused: today's spend limit of " + FmtCost(limit) +
          " is reached. Thread events wait until tomorrow or a higher "
-         "UAGENT_COORDINATOR_DAILY_SPEND_USD; your own messages still run.";
+         "UAGENT_PANEL_DAILY_SPEND_USD; your own messages still run.";
 }
 
 bool AnswerAhead(const SessionInfo& member) {
@@ -934,7 +934,7 @@ bool ThreadsOwe(const std::string& folder) {
     return true;
   }
   // Mail from anyone else may never be taken, and is not waited for.
-  const std::string box = MailboxIdFor(CoordinatorPath(folder));
+  const std::string box = MailboxIdFor(PanelPath(folder));
   return std::ranges::any_of(PendingMail(box),
                              [&](const Mail& mail) {
                                return std::ranges::any_of(
@@ -946,13 +946,13 @@ bool ThreadsOwe(const std::string& folder) {
          MailTaken(box);
 }
 
-void AddCoordinatorTools(std::vector<Tool>& tools, const std::string& folder,
-                         std::function<std::string()> own_model) {
+void AddPanelTools(std::vector<Tool>& tools, const std::string& folder,
+                   std::function<std::string()> own_model) {
   tools.push_back(HistoryTool(folder));
   tools.push_back(ThreadTool(folder, std::move(own_model)));
   tools.push_back(DecideTool(folder));
   tools.push_back(StateTool(folder));
-  // The coordinator keeps what it learns about you without being asked and
+  // The panel keeps what it learns about you without being asked and
   // says so in its answer; forgetting still waits for you.
   for (Tool& tool : tools) {
     if (tool.name != "memory") continue;

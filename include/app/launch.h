@@ -11,7 +11,7 @@
 
 namespace uagent {
 // Where a launched session runs and where its file lives. Shared by scheduled
-// runs and coordinator threads so both isolate work the same way.
+// runs and panel threads so both isolate work the same way.
 struct LaunchPaths {
   std::string cwd, path;
 };

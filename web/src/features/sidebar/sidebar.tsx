@@ -49,7 +49,7 @@ import {
   type SessionState,
 } from "../../state/attention.ts";
 import { SheetButton } from "../../shared/sheet.tsx";
-import WaitingList from "../coordinator/escalations.tsx";
+import WaitingList from "../panel/escalations.tsx";
 // The conversation's transcript as Markdown on the host; says where.
 export async function shareTranscript(item: Session) {
   const result = await command("share", item);
@@ -207,29 +207,29 @@ const SAMPLE: Session[] = [
   updated: Date.now(),
 }));
 
-// A folder's coordinator: faint until used, pulsing while it works, badged
+// A folder's panel: faint until used, pulsing while it works, badged
 // with the decisions waiting on you, which a thread cannot proceed without.
-function CoordinatorButton({
+function PanelButton({
   folder,
-  coordinator,
+  panel,
   waiting,
   online,
   open,
 }: {
   folder: string;
-  coordinator?: Session;
+  panel?: Session;
   waiting: number;
   online: boolean;
   open: () => void;
 }) {
-  const state = !coordinator
+  const state = !panel
     ? "idle"
-    : online && coordinator.turn_active
+    : online && panel.turn_active
       ? "working"
       : "ready";
   // One name carries the folder, the state and the badge's count.
   const label = [
-    `Coordinator for ${folderName(folder)}`,
+    `Panel for ${folderName(folder)}`,
     state === "working" && "working",
     waiting > 0 && `${waiting} waiting on you`,
   ]
@@ -238,13 +238,13 @@ function CoordinatorButton({
   return (
     <IconButton
       label={label}
-      class={`coordinator-button ${state}`}
+      class={`panel-button ${state}`}
       onClick={open}
       disabled={!online}
     >
       <MessagesSquare />
       {waiting > 0 && (
-        <span class="coordinator-badge" aria-hidden="true">
+        <span class="panel-badge" aria-hidden="true">
           {waiting}
         </span>
       )}
@@ -261,8 +261,8 @@ const STATE_ICONS: Partial<Record<SessionState, typeof Inbox>> = {
 };
 
 // The list's folders in its order, newest first: each folder's threads
-// (under its coordinator's header), then its conversations. The
-// coordinator is the header, not a row.
+// (under its panel's header), then its conversations. The
+// panel is the header, not a row.
 function groupSessions(sessions: Session[], search = "") {
   const groups = new Map<string, { threads: Session[]; others: Session[] }>();
   for (const item of [...sessions]
@@ -271,11 +271,11 @@ function groupSessions(sessions: Session[], search = "") {
       `${item.title} ${item.cwd}`.toLowerCase().includes(search.toLowerCase()),
     )) {
     const folder = folderOf(item);
-    // A folder with only its coordinator still has a header to open it.
+    // A folder with only its panel still has a header to open it.
     if (!groups.has(folder)) groups.set(folder, { threads: [], others: [] });
     const group = groups.get(folder)!;
     if (item.kind === "thread") group.threads.push(item);
-    else if (item.kind !== "coordinator") group.others.push(item);
+    else if (item.kind !== "panel") group.others.push(item);
   }
   return groups;
 }
@@ -372,7 +372,7 @@ type SidebarProps = {
   refresh: () => void;
   settings: () => void;
   create: () => void;
-  coordinate: (cwd: string) => void;
+  openPanel: (cwd: string) => void;
   palette: () => void;
   report: Report;
 };
@@ -389,7 +389,7 @@ function SidebarView({
   refresh,
   settings,
   create,
-  coordinate,
+  openPanel,
   page,
   navigate,
   scheduledUnread,
@@ -400,11 +400,11 @@ function SidebarView({
   // Until the list arrives, it draws sample rows in its own layout.
   const drawing = loading && !sessions.length;
   const all = drawing ? SAMPLE : sessions;
-  // Each folder's coordinator is its header icon, not a row. It and its
+  // Each folder's panel is its header icon, not a row. It and its
   // badge count every conversation in the folder, whatever the search shows.
-  const coordinators = new Map<string, Session>();
+  const panels = new Map<string, Session>();
   for (const item of all)
-    if (item.kind === "coordinator") coordinators.set(folderOf(item), item);
+    if (item.kind === "panel") panels.set(folderOf(item), item);
   const row = (item: Session) => (
     <SessionRow
       key={item.id}
@@ -422,12 +422,12 @@ function SidebarView({
       <h2>
         <FolderLabel path={cwd} />
         {!drawing && (
-          <CoordinatorButton
+          <PanelButton
             folder={cwd}
-            coordinator={coordinators.get(cwd)}
+            panel={panels.get(cwd)}
             waiting={waiting(all, cwd).length}
             online={online}
-            open={() => coordinate(cwd)}
+            open={() => openPanel(cwd)}
           />
         )}
       </h2>
@@ -435,7 +435,7 @@ function SidebarView({
         <div
           class="threads"
           role="group"
-          aria-label={`Threads of the coordinator for ${folderName(cwd)}`}
+          aria-label={`Threads of the panel for ${folderName(cwd)}`}
         >
           {group.threads.map(row)}
         </div>

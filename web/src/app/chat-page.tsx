@@ -17,8 +17,8 @@ import { api } from "../state/api.ts";
 import { Welcome, Deferred, Placeholder, Button } from "../shared/ui.tsx";
 import { keysOf } from "../shared/shortcuts.ts";
 import Composer from "../features/composer/composer.tsx";
-import Board, { CoordinatorLayout } from "../features/coordinator/board.tsx";
-import WaitingList from "../features/coordinator/escalations.tsx";
+import Board, { PanelLayout } from "../features/panel/board.tsx";
+import WaitingList from "../features/panel/escalations.tsx";
 import { threadsOf } from "../state/attention.ts";
 import Chat, {
   TranscriptPlaceholder,
@@ -183,9 +183,9 @@ export default function ChatPage({
     !blocks.at(-1)?.id.startsWith("outgoing-")
       ? stop.reason
       : undefined;
-  // A coordinator's board, escalations and chat read the same threads.
+  // A panel's board, escalations and chat read the same threads.
   const threads =
-    session?.kind === "coordinator"
+    session?.kind === "panel"
       ? threadsOf(catalogue.sessions, session.cwd || "")
       : undefined;
   // The conversation's composer; before the session is known, the same
@@ -228,7 +228,7 @@ export default function ChatPage({
     />
   );
   return session ? (
-    <CoordinatorLayout
+    <PanelLayout
       board={
         threads && <Board threads={threads} online={online} choose={choose} />
       }
@@ -278,7 +278,7 @@ export default function ChatPage({
         />
       )}
       {composerFor(session)}
-    </CoordinatorLayout>
+    </PanelLayout>
   ) : opening ? (
     // A reload on a conversation: its surfaces, before the
     // catalogue names the session.
@@ -298,7 +298,7 @@ export default function ChatPage({
       title="What are we working on?"
       tips={[
         [
-          "Coordinator",
+          "Panel",
           "Runs several conversations in a folder for you and hosts a chat with other voices. New conversation opens one too.",
         ],
         [

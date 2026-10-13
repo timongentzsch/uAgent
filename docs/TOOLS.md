@@ -36,13 +36,13 @@ or `subagent` tool.
 | `web_fetch` | read one public http(s) URL as text | always |
 | `artifact` | hand the user a file to open or download (HTML runs sandboxed, PDFs and images open inline); snapshot into the session's assets | a session with a client |
 | `web_search` | cited web search through OpenRouter's hosted search | an OpenRouter-protocol route or search endpoint |
-| `thread`, `decide`, `state`, `history` | a coordinator's own: start, guide, stop and remove threads and chat members; answer what a thread asks or pass it to you; keep pinned notes (goals, decisions, open questions); search and read the folder's conversations | a folder's coordinator only; see the [guide](GUIDE.md#the-coordinator) |
-| `session` | list linked sessions and message them; an idle one starts a turn on the message | always; a coordinator and its threads are linked, and so are YOLO sessions in one folder |
-| `ask` | put 1 to 8 multiple-choice questions to the user and wait; an option can show an image the agent made in the workspace and a monospace preview; they may answer in their own words or with an image | a session someone can answer (never headless runs or children); a thread's questions go to its coordinator first |
+| `thread`, `decide`, `state`, `history` | a panel's own: start, guide, stop and remove threads and chat members; answer what a thread asks or pass it to you; keep pinned notes (goals, decisions, open questions); search and read the folder's conversations | a folder's panel only; see the [guide](GUIDE.md#the-panel) |
+| `session` | list linked sessions and message them; an idle one starts a turn on the message | always; a panel and its threads are linked, and so are YOLO sessions in one folder |
+| `ask` | put 1 to 8 multiple-choice questions to the user and wait; an option can show an image the agent made in the workspace and a monospace preview; they may answer in their own words or with an image | a session someone can answer (never headless runs or children); a thread's questions go to its panel first |
 | `subagent` | delegate a subtask to a durable child session | full toolset, delegation depth below `UAGENT_SUBAGENT_DEPTH` |
 | `skill` | load an installed skill | a usable skill is installed |
 | `adapt_system` | add to or replace the base prompt for this conversation | `UAGENT_ADAPT_SYSTEM=1`; see [INSTRUCTIONS.md](INSTRUCTIONS.md) |
-| `browser` | drive the shared Chrome of the browser appliance | top-level sessions (web, terminal, headless, a coordinator's threads) while the web host's browser runs and `UAGENT_BROWSER_DATA` names it; one conversation at a time; see [BROWSER.md](BROWSER.md) |
+| `browser` | drive the shared Chrome of the browser appliance | top-level sessions (web, terminal, headless, a panel's threads) while the web host's browser runs and `UAGENT_BROWSER_DATA` names it; one conversation at a time; see [BROWSER.md](BROWSER.md) |
 | `<server>_<tool>` | tools discovered from MCP servers; see [OPERATIONS.md](OPERATIONS.md#mcp) | configured servers; not in lean children |
 
 Independent calls to parallel-safe tools run up to four at a time; results
@@ -66,7 +66,7 @@ workspace follow the approval mode:
 | list or remove remembered approvals | `/permissions rules`, `/permissions forget N\|all` |
 
 What each mode covers, what always needs a person, and how subagents and a
-coordinator's threads differ is in
+panel's threads differ is in
 [SECURITY.md](../SECURITY.md#what-the-agent-may-do-without-asking).
 
 ## Files and search

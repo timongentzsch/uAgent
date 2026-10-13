@@ -4,6 +4,19 @@
 
 ### Upgrade notes
 
+- **The coordinator is now the panel, and the one you talk to in it its
+  moderator.** Existing coordinators, their threads and their chat members
+  open as they were.
+  - `uagent coord` and `/coord` are `uagent panel` and `/panel`.
+  - Settings are `panel.maxThreads`, `panel.dailySpendUsd`,
+    `panel.chatTurns` and `panel.environment`. A settings file that still
+    names them `coordinator.…` is read as before and saved under the new
+    names. The environment variables are `UAGENT_PANEL_…`; the
+    `UAGENT_COORDINATOR_…` ones are no longer read.
+  - Instructions are `PANEL.md`. A `COORDINATOR.md` is read where no
+    `PANEL.md` exists.
+  - In the chat, `Moderator, …` asks the moderator alone, and no member may
+    be called that.
 - **The text files of versions before 1.3.1 are no longer read.**
   `~/.uagent/.config`, a project's `.uagent/.config` and the remembered
   model in `model-preference.json` were taken over into the settings file by

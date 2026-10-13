@@ -42,7 +42,7 @@ Two kinds of session act for you unattended:
 - A **subagent** approves its own tool calls; approving the delegation is the
   gate, and the approval says so. It runs its commands under the sandbox of
   the session that delegated to it, whatever its own configuration says.
-- A **coordinator's thread** cannot be put in yolo: `/permissions yolo` is
+- A **panel's thread** cannot be put in yolo: `/permissions yolo` is
   refused there and a saved or flagged yolo reads as auto. Its sandbox is
   always switched on. While that sandbox is enforced, its `run` and `scratch`
   commands and its file changes inside the workspace run without review;
@@ -213,7 +213,7 @@ still commit, but not change git config. Landlock has no deny rule, so the
 same guarantee on Linux would mean not granting the workspace. On Linux, a
 command that changes `.mcp.json` still revokes project trust, so the next
 launch asks again. A project's instruction files (`AGENTS.md`,
-`.uagent/COORDINATOR.md`) are ordinary repository files that any session in
+`.uagent/PANEL.md`) are ordinary repository files that any session in
 it may edit.
 
 **Not confined by the sandbox:** the built-in file tools (approval and path

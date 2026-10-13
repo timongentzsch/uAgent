@@ -22,8 +22,8 @@ import "./instructions.css";
 const TITLES: Record<string, string> = {
   "sessions/user": "Yours · every conversation",
   "sessions/project": "Project · every conversation",
-  "coordinator/user": "Yours · coordinator",
-  "coordinator/project": "Project · coordinator",
+  "panel/user": "Yours · panel",
+  "panel/project": "Project · panel",
 };
 
 // Everything a session reads before your first message, top to bottom in the
@@ -100,16 +100,13 @@ export default function Instructions({
                 Also read here: {stack.also_loaded.join(", ")}
               </p>
             )}
-            <h3>Coordinator</h3>
-            <Base
-              text={stack?.base.coordinator}
-              label="Built-in coordinator base"
-            />
-            {files.filter((file) => file.audience === "coordinator").map(card)}
+            <h3>Panel</h3>
+            <Base text={stack?.base.panel} label="Built-in panel base" />
+            {files.filter((file) => file.audience === "panel").map(card)}
             <h3>Chat members</h3>
             <Base text={stack?.base.member} label="Built-in member base" />
             <p class="muted instructions-also">
-              A coordinator fills in each member&rsquo;s name, persona and
+              The moderator fills in each member&rsquo;s name, persona and
               skills when it adds one. What a member was sent is under
               &ldquo;Show prompt&rdquo; on its messages.
             </p>

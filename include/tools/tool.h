@@ -248,7 +248,7 @@ struct ToolAvailability {
 struct ToolPolicy {
   uint32_t allowed = kAllToolCapabilities;
   // When set, only these tools, whatever the capabilities allow: a
-  // delegated child's toolset, or a folder coordinator's.
+  // delegated child's toolset, or a folder panel's.
   std::vector<std::string> tool_allowlist;
   std::vector<std::string> run_allowlist;
   std::string error;

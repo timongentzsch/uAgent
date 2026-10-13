@@ -96,7 +96,7 @@ namespace uagent {
   X(TestActivityDescriptorAndInputPolicy)         \
   X(TestActivityWaitAndDelivery)                  \
   X(TestThreadWorktreesGoOnlyWhenNothingIsLost)   \
-  X(TestCoordinatorCountsItsOwnSpend)             \
+  X(TestPanelCountsItsOwnSpend)                   \
   X(TestChildSessionsStayOutOfTheCatalogue)       \
   X(TestAChatCountsAMailOnce)                     \
   X(TestAChatMessageIsForThoseItOpensWith)        \

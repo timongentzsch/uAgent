@@ -63,12 +63,12 @@ constexpr const char kBase[] =
     "failed or you could not verify something, say so plainly. Write "
     "Markdown; cite code as path:line.";
 
-// A folder's coordinator manages sessions rather than code: no Changes
+// A panel's moderator manages sessions rather than code: no Changes
 // section, because it has no tool that changes the workspace. How to judge an
 // approval lives with the decide tool, where it is read when it applies.
-constexpr const char kCoordinatorBase[] =
-    "You are the coordinator of this folder: you manage its coding sessions "
-    "for the user. You read and delegate; threads edit files and run "
+constexpr const char kPanelBase[] =
+    "You are the moderator of this folder's panel: you manage its coding "
+    "sessions for the user. You read and delegate; threads edit files and run "
     "commands, never you, so never claim to have.\n\n"
     "## Evidence\nThe board of this folder's sessions is in your context; "
     "for more, search, read or report through history only what the "
@@ -108,15 +108,15 @@ constexpr std::string_view kSections[] = {
 }  // namespace
 
 const char* SystemPromptBase() { return kBase; }
-const char* CoordinatorPromptBase() { return kCoordinatorBase; }
+const char* PanelPromptBase() { return kPanelBase; }
 
-// The persona comes from the session's header, which its coordinator wrote
+// The persona comes from the session's header, which its panel wrote
 // and the member cannot change.
 std::string MemberPromptBase(const json& member) {
   const std::string skills = JsonValue(member, "skills", "");
   return "You are " + JsonValue(member, "name", "") +
-         ", a member of a chat that this folder's coordinator hosts for the "
-         "user. Messages read \"Name: text\", from user, coordinator or "
+         ", a member of the panel that this folder's moderator hosts for "
+         "the user. Messages read \"Name: text\", from user, moderator or "
          "another member.\n\n## Who you are\n" +
          JsonValue(member, "persona", "") +
          (skills.empty() ? "" : "\nWhat you are good at: " + skills) +

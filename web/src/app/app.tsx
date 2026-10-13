@@ -55,7 +55,7 @@ import Sidebar, {
 import { useShortcuts } from "../shared/shortcuts.ts";
 import { nextIndex } from "../shared/listbox-nav.ts";
 import { focusDecision, followDecisionLink } from "../shared/navigation.ts";
-import Board, { CoordinatorHelp } from "../features/coordinator/board.tsx";
+import Board, { PanelHelp } from "../features/panel/board.tsx";
 import { threadsOf, waiting as waitingOn } from "../state/attention.ts";
 import { folderName } from "../shared/folder-label.tsx";
 import {
@@ -109,7 +109,7 @@ function App() {
   useDismiss(page !== "chat", () => setPage("chat"));
   const [drawer, setDrawer] = useState(false);
   const compact = useMedia("(max-width: 900px)");
-  // On a phone a coordinator's board slides in from the right on demand
+  // On a phone a panel's board slides in from the right on demand
   // instead of taking the top of its chat.
   const phone = usePhone();
   const [boardOpen, setBoardOpen] = useState(false);
@@ -348,15 +348,15 @@ function App() {
       removeEventListener("hashchange", followDecisionLink);
     };
   }, []);
-  // A conversation in the folder typed into the dialog, or its coordinator.
+  // A conversation in the folder typed into the dialog, or its panel.
   async function create(
     event: JSX.TargetedSubmitEvent<HTMLFormElement> | null,
-    coordinator = false,
+    panel = false,
   ) {
     event?.preventDefault();
     setBusy(true);
     try {
-      await startConversation(folder, coordinator);
+      await startConversation(folder, panel);
       setModal(null);
     } catch (failure) {
       report(failure);
@@ -364,18 +364,18 @@ function App() {
       setBusy(false);
     }
   }
-  // The host returns a folder's existing coordinator rather than a second.
+  // The host returns a folder's existing panel rather than a second.
   // One start at a time: a double click must not race two activations.
   const starting = useRef(false);
   const startConversation = useCallback(
-    async (folder: string, coordinator = false) => {
+    async (folder: string, panel = false) => {
       if (starting.current) return;
       starting.current = true;
       try {
         // A name alone is a space; the host keeps the folder for it.
         const created = await command("create", null, {
           ...(folder.includes("/") ? { cwd: folder } : { space: folder }),
-          coordinator,
+          panel,
         });
         if (created.pending) return "";
         upsertSession(created.session);
@@ -439,7 +439,7 @@ function App() {
     if (edit)
       setNotice(
         rewound
-          ? "The coordinator rewound to this message; edit and send."
+          ? "The panel rewound to this message; edit and send."
           : "Continuing in a fork. Files on disk are unchanged.",
       );
   }
@@ -724,14 +724,14 @@ function App() {
     }),
     [report, recallGuidance, branchFrom, selected],
   );
-  // The other conversations of the open one's folder. A coordinator's chat
+  // The other conversations of the open one's folder. A panel's chat
   // names who of them wrote what and shows each one's prompt.
   const threads = useMemo(
     () => threadsOf(catalogue.sessions, session?.cwd || ""),
     [catalogue.sessions, session?.cwd],
   );
   const teamNames =
-    session?.kind === "coordinator"
+    session?.kind === "panel"
       ? threads
           .map((item) => item.member)
           .filter(Boolean)
@@ -866,7 +866,7 @@ function App() {
     setFolder(cwd);
     open({ type: "new" });
   }, [cwd, open]);
-  const coordinate = useCallback(
+  const openPanel = useCallback(
     (cwd: string) => startConversation(cwd, true).catch(report),
     [startConversation, report],
   );
@@ -895,7 +895,7 @@ function App() {
       refresh={refresh}
       settings={settings}
       create={newConversation}
-      coordinate={coordinate}
+      openPanel={openPanel}
       palette={openPalette}
       report={report}
     />
@@ -1001,8 +1001,8 @@ function App() {
                           "Library"
                         ) : page === "scheduled" ? (
                           "Scheduled"
-                        ) : session?.kind === "coordinator" ? (
-                          `Coordinator · ${folderName(session.cwd)}`
+                        ) : session?.kind === "panel" ? (
+                          `Panel · ${folderName(session.cwd)}`
                         ) : session ? (
                           session.title || "Your workspace"
                         ) : opening ? (
@@ -1013,8 +1013,8 @@ function App() {
                           "Your workspace"
                         )}
                       </h1>
-                      {page === "chat" && session?.kind === "coordinator" && (
-                        <CoordinatorHelp
+                      {page === "chat" && session?.kind === "panel" && (
+                        <PanelHelp
                           editInstructions={() =>
                             open({ type: "instructions" })
                           }
@@ -1038,7 +1038,7 @@ function App() {
                     )}
                     {phone &&
                       page === "chat" &&
-                      session?.kind === "coordinator" &&
+                      session?.kind === "panel" &&
                       (() => {
                         const waits = waitingOn(threads).length;
                         return (
@@ -1070,7 +1070,7 @@ function App() {
                         </IconButton>
                       ) : null)}
                   </header>
-                  {boardOpen && phone && session?.kind === "coordinator" && (
+                  {boardOpen && phone && session?.kind === "panel" && (
                     <Modal
                       title="Board"
                       layout="sheet"
@@ -1174,8 +1174,8 @@ function App() {
                   sessions={listed}
                   commands={catalogue.commands || []}
                   choose={choose}
-                  start={(cwd: string, coordinator?: boolean) =>
-                    void startConversation(cwd, coordinator).catch(report)
+                  start={(cwd: string, panel?: boolean) =>
+                    void startConversation(cwd, panel).catch(report)
                   }
                   run={runCommand}
                   settings={(section: string) =>

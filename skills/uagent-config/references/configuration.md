@@ -15,7 +15,7 @@ A setting has two names. `Setting` is its name in `~/.uagent/config/settings.jso
 - Requests
 - Tools
 - Subagents
-- Coordinator
+- Panel
 - Web search
 - Memory
 - Skills
@@ -98,14 +98,14 @@ A setting has two names. `Setting` is its name in `~/.uagent/config/settings.jso
 | `subagent.maxToolCalls` | `UAGENT_SUBAGENT_MAX_TOOL_CALLS` | integer | `240` | next-user-turn | tool calls per delegated child |
 | `subagent.timeout` | `UAGENT_SUBAGENT_TIMEOUT` | integer | `0` | next-user-turn | wall-clock ceiling per delegated child; 0 is the turn |
 
-## Coordinator
+## Panel
 
 | Setting | Environment | Type | Default | Takes effect | Description |
 | --- | --- | --- | --- | --- | --- |
-| `coordinator.maxThreads` | `UAGENT_COORDINATOR_MAX_THREADS` | integer | `5` | next-user-turn | threads one coordinator may run at once |
-| `coordinator.dailySpendUsd` | `UAGENT_COORDINATOR_DAILY_SPEND_USD` | number | `20.0` | next-user-turn | reported cost a coordinator and its threads may spend per day; at it, thread events wait. 0 disables it |
-| `coordinator.chatTurns` | `UAGENT_COORDINATOR_CHAT_TURNS` | integer | `3` | next-user-turn | turns each participant of a coordinator's chat may take on one message of the user's; 0 lets the members only read |
-| `coordinator.environment` | `UAGENT_COORDINATOR_ENVIRONMENT` | string | `worktree` | next-user-turn | where threads run: a fresh git worktree, or the folder itself |
+| `panel.maxThreads` | `UAGENT_PANEL_MAX_THREADS` | integer | `5` | next-user-turn | threads one panel may run at once |
+| `panel.dailySpendUsd` | `UAGENT_PANEL_DAILY_SPEND_USD` | number | `20.0` | next-user-turn | reported cost a panel and its threads may spend per day; at it, thread events wait. 0 disables it |
+| `panel.chatTurns` | `UAGENT_PANEL_CHAT_TURNS` | integer | `3` | next-user-turn | turns each participant of a panel's chat may take on one message of the user's; 0 lets the members only read |
+| `panel.environment` | `UAGENT_PANEL_ENVIRONMENT` | string | `worktree` | next-user-turn | where threads run: a fresh git worktree, or the folder itself |
 
 ## Web search
 

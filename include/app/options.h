@@ -38,10 +38,10 @@ struct Options {
   std::string control;
   std::vector<std::string> attach_paths;
   // Session role from the runtime launch: {kind, thread} for a folder's
-  // coordinator or a thread it launched, empty for an ordinary session.
+  // panel or a thread it launched, empty for an ordinary session.
   uagent::json session = uagent::json::object();
-  bool Coordinator() const {
-    return JsonValue(session, "kind", "") == kSessionKindCoordinator;
+  bool Panel() const {
+    return JsonValue(session, "kind", "") == kSessionKindPanel;
   }
   // UAGENT_* values named on the command line; they outrank the environment
   // and both config files. --budget and --no-memory land here too.

@@ -33,7 +33,7 @@ std::string ParentSession(const json& delegation) {
 }
 
 // Who may talk to whom: linked sessions, a delegated child and its parent,
-// children of one parent, and a folder's coordinator and its threads. The
+// children of one parent, and a folder's panel and its threads. The
 // sender's own session header says which it is.
 bool MailAllowed(const Mail& mail, const std::string& own_path,
                  const json& role) {
@@ -57,15 +57,14 @@ bool MailAllowed(const Mail& mail, const std::string& own_path,
     return true;
   }
   const std::string folder = Folder(role);
-  if (!folder.empty() && MailboxIdFor(CoordinatorPath(folder)) == mail.from) {
+  if (!folder.empty() && MailboxIdFor(PanelPath(folder)) == mail.from) {
     return true;
   }
   // A thread asks during its first turn, before its header is saved; until
   // then its mail names its folder.
   const std::string sender_folder =
       sender.empty() ? JsonValue(mail.body, "folder", "") : Folder(sender);
-  if (!sender_folder.empty() &&
-      MailboxIdFor(CoordinatorPath(sender_folder)) == own) {
+  if (!sender_folder.empty() && MailboxIdFor(PanelPath(sender_folder)) == own) {
     return true;
   }
   return SharesLink(Stem(mail.sender_path), Stem(own_path));

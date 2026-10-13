@@ -249,10 +249,10 @@ const char* UsageText() {
       listing += row + spec.help + "\n";
     }
     return synopsis +
-           "\n       uagent coord [options]"
+           "\n       uagent panel [options]"
            "\n       uagent config export | import FILE\n\n" +
            listing +
-           "  coord                   open this folder's coordinator\n"
+           "  panel                   open this folder's panel\n"
            "  config export           print everything saved, as JSON\n"
            "  config import FILE|-    replace it with such a document\n"
            "\nsettings: what is saved for all conversations, then for this "

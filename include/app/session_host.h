@@ -39,8 +39,8 @@ struct HostSession {
   json launch = json::object();
   std::string id, path, cwd, title, draft_title, generation, status = "saved",
                                                              error, binary;
-  // "coordinator", "thread" or empty; a thread names its project `folder`,
-  // and itself as a `member` of its coordinator's chat when it is one.
+  // "panel", "thread" or empty; a thread names its project `folder`,
+  // and itself as a `member` of its panel's chat when it is one.
   std::string kind, folder, member;
   int64_t activated = 0;  // wall-clock ms of the last successful activation
   json state = json::object(), pending = nullptr;
@@ -113,7 +113,7 @@ class SessionHost {
   std::vector<HostNotice> WaitForNotices();
   void Stop();
   void LoadDrafts();
-  // Follows the history on disk: sessions created elsewhere (a coordinator's
+  // Follows the history on disk: sessions created elsewhere (a panel's
   // threads) appear, and those deleted elsewhere go, each published. A scan
   // within a second of the last is deferred to RescanDue(), never dropped.
   bool RefreshCatalogue(bool force = false);

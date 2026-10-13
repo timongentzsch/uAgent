@@ -1,7 +1,7 @@
 # Delegation benchmark
 
 Four tasks, each run three ways: one session that may not delegate (`solo`),
-one that may use subagents (`sub`), and a folder's coordinator (`coord`).
+one that may use subagents (`sub`), and a folder's panel (`panel`).
 It measures wall time, model steps and tokens per session, and checks the
 answers that can be checked mechanically.
 
@@ -40,7 +40,7 @@ factor, not of a few percent.
 ## Results
 
 Every run is in `benchmarks/baselines/delegation.json`, keyed by commit.
-Coordinator runs, wall time and input tokens:
+Panel runs, wall time and input tokens:
 
 | Task | `fb55c4c6` (before) | `aea30096` | `ae26decc` | `c6cff034` |
 | --- | --- | --- | --- | --- |
@@ -51,7 +51,7 @@ Coordinator runs, wall time and input tokens:
 
 Before the fixes thirteen attempts ended on the provider's
 `server_is_overloaded`; since then the runs complete first time, but for one
-coordinator run at `c6cff034` that answered a spawn with empty text (the
+panel run at `c6cff034` that answered a spawn with empty text (the
 spawn result now asks for a line). A
-coordinator itself takes 3 to 12 steps; the rest is its threads' work. The
+panel itself takes 3 to 12 steps; the rest is its threads' work. The
 provider reports no cached input on this route, with or without a cache key.

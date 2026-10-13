@@ -20,17 +20,17 @@ Paths under `~/.uagent` unless shown otherwise.
 | background command logs | `bg/*` |
 | detached terminal records and logs | `terminals/<pid>.json`, `terminals/logs/*` |
 | delegated children | `history/<workspace>/agent-<id>.json`, sessions whose header carries `delegation` |
-| mail between sessions, coordinators and children | `mail/<id>/{new,cur}/*.json` |
+| mail between sessions, panels and children | `mail/<id>/{new,cur}/*.json` |
 | MCP server logs | `mcp/*` |
 | memories | `memory/{global,projects/<repository>}/*.md` |
 | memory audit and extraction claims | `memory/events.jsonl`, `memory/.processed/*` |
 | scheduled tasks | `scheduled/state.json` |
-| worktrees of scheduled runs and coordinator threads | `worktrees/<id>` |
+| worktrees of scheduled runs and panel threads | `worktrees/<id>` |
 | session links | `links/*` |
 | web host discovery, devices and push keys | `web/*` |
 | settings, for all conversations and per project folder | `config/settings.json` (and its `.lock`) |
 | project trust, permission rules, tool categories, first-run welcome shown | `config/trusted-projects.json`, `config/permissions.json`, `config/tool-categories.json`, `config/welcomed` |
-| instructions | `AGENTS.md`, `COORDINATOR.md`, and `<folder>/.uagent/COORDINATOR.md` |
+| instructions | `AGENTS.md`, `PANEL.md`, and `<folder>/.uagent/PANEL.md` |
 | your skills | `skills/*` |
 | shared browser profile (saved logins, cookies) | the directory `UAGENT_BROWSER_DATA` names |
 | runtime sockets and their leases | `/tmp/uagent-<uid>-<hash>/*.sock`, `*.sock.lock` |
@@ -42,7 +42,7 @@ header records its `cwd` and title. Session activities (IDs, PTYs, incremental
 output) exist only in memory and end with the process.
 
 No settings are read from a project folder. What is read from it: `.mcp.json`
-(once trusted), instruction files (`AGENTS.md`, `.uagent/COORDINATOR.md`) and
+(once trusted), instruction files (`AGENTS.md`, `.uagent/PANEL.md`) and
 skills (`.agents/skills`, `.uagent/skills`; see
 [Bundled skills](../skills/README.md#discovery) for the rest).
 
@@ -117,7 +117,7 @@ buffers do not.
 
 ## Mail
 
-Sessions, a folder's coordinator and its threads, and delegated children talk
+Sessions, a folder's panel and its threads, and delegated children talk
 through one mailbox each, `mail/<id>/`, where `<id>` hashes the canonical
 session file. A message is a private JSON file with a type
 (`task.completed`, `ask`, `steer`, `note`, ...), sender, correlation id and

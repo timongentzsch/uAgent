@@ -13,7 +13,7 @@
 #include "include/core/mailbox.h"
 
 namespace uagent {
-// The members of a folder's chat: the threads its coordinator added under a
+// The members of a folder's chat: the threads its panel added under a
 // name and a persona, oldest first.
 std::vector<SessionInfo> ChatMembers(const std::string& folder);
 
@@ -23,41 +23,41 @@ std::set<std::string> Addressed(const std::string& text,
                                 const std::vector<std::string>& names);
 
 // Whether `text` is for members of the folder's chat and not for its
-// coordinator: it opens with their names and not the coordinator's, which
+// panel: it opens with their names and not the panel's, which
 // then reads it without taking a turn.
 bool ForMembersOnly(const std::string& folder, const std::string& text);
 
 // The mailboxes of the members woken and not yet heard from.
 std::set<std::string> ChatTyping(const std::string& folder);
 
-// A coordinator's chat with its members: a room where everyone hears every
+// A panel's chat with its members: a room where everyone hears every
 // message and decides for itself whether to answer, to pass, or to wait for
-// someone who is typing. The coordinator is one of the participants.
+// someone who is typing. The panel is one of the participants.
 //
 // What is settled here, never by a model, is who is woken. A message that
 // opens with names wakes those it names and is read by the rest without a
 // turn; their answer goes back to who asked. Any other message wakes
 // everyone. Whoever waited is woken by the next message. Two limits keep an
 // exchange from running on by itself:
-// UAGENT_COORDINATOR_CHAT_TURNS turns per participant for one message of the
-// user's, and two messages each. The round is kept beside the coordinator's
+// UAGENT_PANEL_CHAT_TURNS turns per participant for one message of the
+// user's, and two messages each. The round is kept beside the panel's
 // session, so a runtime that starts again takes it up.
 class Chat {
  public:
-  // `wake` starts a turn of the coordinator's own on a note.
+  // `wake` starts a turn of the panel's own on a note.
   Chat(std::string folder, std::function<void(const std::string&)> wake);
 
-  // The user wrote here: a new round. Returns what the coordinator's answer
+  // The user wrote here: a new round. Returns what the panel's answer
   // is an answer to (see Deliver).
   json Said(const std::string& text);
-  // The coordinator's turn ended with `text`; empty when it ended without an
+  // The panel's turn ended with `text`; empty when it ended without an
   // answer. `to` is what the message it took that turn on came with.
   void Answered(const std::string& text, const json& to);
   // A member's turn ended. `mail` carries its answer and leaves as what the
-  // coordinator reads: nothing for a pass or a wait, and quiet unless the
-  // message wakes the coordinator too.
+  // panel reads: nothing for a pass or a wait, and quiet unless the
+  // message wakes the panel too.
   void Heard(Mail& mail);
-  // The chat as its coordinator is told it each turn: who is in it and who
+  // The chat as its panel is told it each turn: who is in it and who
   // is typing now. Empty without members.
   std::string Context() const;
 
@@ -77,7 +77,7 @@ class Chat {
   // is the mail it forwards, whose id makes sending it again the same mail.
   // Each message that wakes its reader comes with the round and, put to
   // that reader by name, with who asked ("asker", empty for the user): the
-  // reader's answer brings it back. Returns that for the coordinator, null
+  // reader's answer brings it back. Returns that for the panel, null
   // when it is not woken.
   json Deliver(const std::string& from, const std::string& author,
                const std::string& text, const json& to = json(),
@@ -102,7 +102,7 @@ class Chat {
   int64_t round_ = 0;  // when the user's message that began this round came
   // Participants woken and not yet heard from, those who chose to wait (the
   // earliest first), and what each has done this round. A member is known by
-  // its mailbox, the coordinator by kSelf.
+  // its mailbox, the panel by kSelf.
   std::set<std::string> typing_;
   std::vector<std::string> waiting_;
   std::map<std::string, Seat> seats_;

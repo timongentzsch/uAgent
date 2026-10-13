@@ -12,9 +12,9 @@
 #include <vector>
 
 #include "include/agent/session_role.h"
-#include "include/app/coordinator.h"
 #include "include/app/launch.h"
 #include "include/app/options.h"
+#include "include/app/panel.h"
 #include "include/app/session.h"
 #include "include/core/config_registry.h"
 #include "include/core/debug.h"
@@ -26,12 +26,12 @@ std::string Name(const SessionInfo& member) {
   return JsonValue(ChatMember(member.thread), "name", "");
 }
 
-// The coordinator among the participants.
-constexpr const char* kSelf = "coordinator";
+// The moderator among the participants.
+constexpr const char* kSelf = "moderator";
 // Messages one participant may post before the user writes again.
 constexpr int kPostsEach = 2;
 
-// Where the round is kept beside the coordinator's session file.
+// Where the round is kept beside the panel's session file.
 constexpr const char* kState = ".chat";
 
 // Starts the runtimes of `members`, which mail alone does not: it starts a
@@ -123,7 +123,7 @@ std::set<std::string> Addressed(const std::string& text,
 
 Chat::Chat(std::string folder, std::function<void(const std::string&)> wake)
     : folder_(std::move(folder)), wake_(std::move(wake)) {
-  const json saved = ReadCoordinatorFile(folder_, kState);
+  const json saved = ReadPanelFile(folder_, kState);
   each_ = JsonValue(saved, "each", int64_t{0});
   round_ = JsonValue(saved, "round", int64_t{0});
   for (const char* list : {"typing", "waiting"}) {
@@ -160,19 +160,19 @@ void Chat::Save() const {
     seats[who] = {
         {"turns", seat.turns}, {"posts", seat.posts}, {"waited", seat.waited}};
   }
-  const std::string error = WriteCoordinatorFile(folder_, kState,
-                                                 {{"each", each_},
-                                                  {"round", round_},
-                                                  {"typing", typing_},
-                                                  {"waiting", waiting_},
-                                                  {"heard", heard_},
-                                                  {"seats", std::move(seats)}});
+  const std::string error = WritePanelFile(folder_, kState,
+                                           {{"each", each_},
+                                            {"round", round_},
+                                            {"typing", typing_},
+                                            {"waiting", waiting_},
+                                            {"heard", heard_},
+                                            {"seats", std::move(seats)}});
   if (!error.empty()) DebugLog("chat_state_unsaved", {{"error", error}});
 }
 
 namespace {
 // The participants `text` opens with: a member as its mailbox, the
-// coordinator as kSelf.
+// panel as kSelf.
 std::set<std::string> Named(const std::vector<SessionInfo>& members,
                             const std::string& text) {
   std::vector<std::string> names{kSelf};
@@ -201,7 +201,7 @@ std::vector<SessionInfo> ChatMembers(const std::string& folder) {
 
 std::set<std::string> ChatTyping(const std::string& folder) {
   std::set<std::string> typing;
-  const json saved = ReadCoordinatorFile(folder, kState);
+  const json saved = ReadPanelFile(folder, kState);
   if (const json* ids = JsonArray(saved, "typing")) {
     for (const json& id : *ids) {
       if (id.is_string() && id != kSelf) typing.insert(id.get<std::string>());
@@ -301,7 +301,7 @@ json Chat::Deliver(const std::string& from, const std::string& author,
     std::set<std::string> others = typing_;
     others.erase(mail.to);
     const std::string typing = Names(members, others);
-    mail.sender_path = CoordinatorPath(folder_);
+    mail.sender_path = PanelPath(folder_);
     mail.from = MailboxIdFor(mail.sender_path);
     mail.type = kMailChat;
     // Forwarded again after a crash, it is the mail its reader already has.
@@ -369,7 +369,7 @@ void Chat::Release(const std::vector<SessionInfo>& members) {
     if (member == members.end()) continue;
     Mail mail;
     mail.to = who;
-    mail.sender_path = CoordinatorPath(folder_);
+    mail.sender_path = PanelPath(folder_);
     mail.from = MailboxIdFor(mail.sender_path);
     mail.type = kMailChat;
     mail.body = {{"text", note}, {"re", {{"round", round_}}}, {"quiet", false}};
@@ -384,13 +384,13 @@ json Chat::Said(const std::string& text) {
   const std::vector<SessionInfo> members = ChatMembers(folder_);
   if (members.empty()) return json();
   // A new round: whoever still owed an answer to the last one owes none.
-  each_ = LongSetting(Cfg("UAGENT_COORDINATOR_CHAT_TURNS"));
+  each_ = LongSetting(Cfg("UAGENT_PANEL_CHAT_TURNS"));
   round_ = NowMillis();
   typing_.clear();
   waiting_.clear();
   seats_.clear();
   heard_.clear();
-  // The coordinator answers its user's message like any other, unless it is
+  // The panel answers its user's message like any other, unless it is
   // for members alone.
   const std::set<std::string> opens = Named(members, text);
   json re;
@@ -439,7 +439,7 @@ void Chat::Heard(Mail& mail) {
     }
     if (first && (Late(to) ? !text.empty() && !SilentAnswer(text)
                            : Finished(mail.from, text) == Answer::kMessage)) {
-      // With what the coordinator's answer to it is an answer to.
+      // With what the panel's answer to it is an answer to.
       const json woke = Deliver(mail.from, name, text, to, mail.id);
       read->second = woke.is_null() ? kQuiet : kWaking;
       if (!woke.is_null()) mail.body["re"] = woke;

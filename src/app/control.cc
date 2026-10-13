@@ -35,12 +35,12 @@ json ManagementControl(const json& request) {
     // A person edits these directly; an agent asks through uagent.
     const std::string cwd = CanonicalCwd();
     if (JsonValue(request, "action", "show") == "set") {
-      bool coordinator = false, project = false;
+      bool panel = false, project = false;
       if (!ParseInstructionTarget(JsonValue(request, "audience", ""),
-                                  JsonValue(request, "scope", ""), coordinator,
+                                  JsonValue(request, "scope", ""), panel,
                                   project)) {
         return {{"error",
-                 "audience is sessions or coordinator, scope user "
+                 "audience is sessions or panel, scope user "
                  "or project"}};
       }
       std::optional<std::string> base;
@@ -48,14 +48,14 @@ json ManagementControl(const json& request) {
         base = *text;
       }
       const std::string error = WriteInstructionFile(
-          coordinator, project, cwd, JsonValue(request, "text", ""), base);
+          panel, project, cwd, JsonValue(request, "text", ""), base);
       if (!error.empty()) return {{"error", error}};
     }
     json shown = InstructionFiles(cwd);
     // A chat member's base with the parts each member fills in named.
     shown["base"] = {
         {"sessions", SystemPromptBase()},
-        {"coordinator", CoordinatorPromptBase()},
+        {"panel", PanelPromptBase()},
         {"member", MemberPromptBase({{"name", "‹name›"},
                                      {"persona", "‹its persona›"},
                                      {"skills", "‹its skills›"}})}};

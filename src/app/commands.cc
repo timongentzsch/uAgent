@@ -123,7 +123,7 @@ CommandReply RunSlashCommand(AppSession& session,
     case SlashCommandId::kFork:
     case SlashCommandId::kVerbosity:
     case SlashCommandId::kBtw:
-    case SlashCommandId::kCoord:
+    case SlashCommandId::kPanel:
     case SlashCommandId::kBoard:
     case SlashCommandId::kOpen:
     case SlashCommandId::kClear:

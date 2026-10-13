@@ -87,7 +87,7 @@ test("? lists the shortcuts, and Alt+arrows step through conversations", async (
     .toBe(`#session=${session.id}`);
 });
 
-test("an empty workspace says what to do, and a folder's coordinator is one step away", async ({
+test("an empty workspace says what to do, and a folder's panel is one step away", async ({
   page,
   host,
 }) => {
@@ -117,10 +117,10 @@ test("an empty workspace says what to do, and a folder's coordinator is one step
     0,
   );
 
-  // The coordinator of that folder is the dialog's other action.
+  // The panel of that folder is the dialog's other action.
   await page.getByRole("button", { name: "New conversation" }).first().click();
   await page.getByLabel("Directory on the host").fill(host.project);
-  await page.getByRole("button", { name: "Open its coordinator" }).click();
+  await page.getByRole("button", { name: "Open its panel" }).click();
   const board = page.getByRole("complementary", { name: "Board" });
   await expect(board).toBeVisible();
   // Its empty chat explains itself, and the input says whom it reaches.

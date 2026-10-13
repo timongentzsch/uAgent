@@ -86,7 +86,7 @@ Tool SessionTool(const std::function<void(const std::string& path)>& start) {
   Tool tool = MakeTool(
       "session",
       "Message another uagent session linked with this one (a "
-      "coordinator's threads and yolo sessions link per folder). list shows "
+      "panel's threads and yolo sessions link per folder). list shows "
       "linked, then linkable sessions; message reaches the peer at its next "
       "step, or starts its turn when it is idle; broadcast reaches every "
       "linked session. Unlinked "

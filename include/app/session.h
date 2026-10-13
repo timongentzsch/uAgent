@@ -63,8 +63,8 @@ class Server {
 };
 int WorkerMain(int argc, char** argv);
 int TerminalMain(Options options);
-// `uagent coord -p`: one turn of the folder's coordinator runtime, printed as
+// `uagent panel -p`: one turn of the folder's panel runtime, printed as
 // text or, with --json, as {answer, session_id, stop}.
-int CoordinatorPromptMain(const Options& options);
+int PanelPromptMain(const Options& options);
 }  // namespace uagent::session
 #endif

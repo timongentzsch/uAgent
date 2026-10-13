@@ -85,6 +85,8 @@ export default function Modals({
   showContext,
   folder,
   setFolder,
+  space,
+  setSpace,
   create,
   busy,
   preferences,
@@ -111,6 +113,8 @@ export default function Modals({
   showContext: () => void;
   folder: string;
   setFolder: (folder: string) => void;
+  space: string;
+  setSpace: (space: string) => void;
   create: (
     event: JSX.TargetedSubmitEvent<HTMLFormElement> | null,
     panel?: boolean,
@@ -137,9 +141,13 @@ export default function Modals({
         <Modal
           title={
             modal.type === "rename"
-              ? "Rename conversation"
+              ? modal.space
+                ? "Rename space"
+                : "Rename conversation"
               : modal.type === "delete"
-                ? "Delete conversation?"
+                ? modal.space
+                  ? "Delete space?"
+                  : "Delete conversation?"
                 : "unit" in modal && modal.unit
                   ? `${modal.unit} statistics`
                   : "Conversation statistics"
@@ -160,7 +168,7 @@ export default function Modals({
               fallback={
                 <Spinner label="Loading conversation actions…" surface />
               }
-              key={`${modal.type}-${modal.session.id}`}
+              key={`${modal.type}-${modal.session?.id || modal.space?.path}`}
               modal={modal}
               close={close}
               online={online}
@@ -208,28 +216,57 @@ export default function Modals({
       {modal?.type === "new" && (
         <Modal title="New conversation" close={close}>
           <form onSubmit={create}>
+            {/* One of the two: writing in one empties the other. */}
             <label>
-              Directory on the host, or a name
+              In a space
               <Input
                 autoFocus
+                list="new-conversation-spaces"
+                value={space}
+                onInput={(event) => {
+                  setSpace(event.currentTarget.value);
+                  setFolder("");
+                }}
+                placeholder="A name, new or existing"
+                required={!folder}
+                maxLength={64}
+                autoComplete="off"
+              />
+            </label>
+            <datalist id="new-conversation-spaces">
+              {(catalogue.spaces || []).map((item) => (
+                <option key={item.path} value={item.name} />
+              ))}
+            </datalist>
+            <label>
+              Or in a folder on the host
+              <Input
                 list="new-conversation-folders"
                 value={folder}
-                onInput={(event) => setFolder(event.currentTarget.value)}
-                placeholder="/path/to/project or a-name"
-                required
+                onInput={(event) => {
+                  setFolder(event.currentTarget.value);
+                  setSpace("");
+                }}
+                placeholder="/path/to/project"
+                required={!space}
                 autoComplete="off"
               />
             </label>
             <datalist id="new-conversation-folders">
-              {projects.map((path) => (
-                <option key={path} value={path} />
-              ))}
+              {projects
+                .filter(
+                  (path) =>
+                    !catalogue.spaces?.some((item) => item.path === path),
+                )
+                .map((path) => (
+                  <option key={path} value={path} />
+                ))}
             </datalist>
             <p class="muted">
-              Any accessible directory works, including a folder outside Git. A
-              name alone starts in a space of that name, a folder µAgent keeps
-              for it. Multiple conversations can work in the same folder. Its
-              panel runs several for you and hosts a chat with other voices.
+              A space is µAgent&rsquo;s own: a place for work that belongs to no
+              project, which you can rename and delete. A folder is a directory
+              of yours, in Git or not. Either holds several conversations, and a
+              panel that runs them for you and hosts a chat with other voices.
             </p>
             <Actions>
               {/* Not a submit: Enter in the field starts a conversation. */}

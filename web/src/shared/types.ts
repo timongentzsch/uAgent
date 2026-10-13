@@ -824,6 +824,16 @@ export type StatisticsModal =
   | {
       type: "rename" | "delete";
       session: Session;
+      space?: never;
+      block?: never;
+      snapshot?: never;
+    }
+  // A space, by its name; deleting says how many conversations go with it.
+  | {
+      type: "rename" | "delete";
+      space: Space;
+      conversations?: number;
+      session?: never;
       block?: never;
       snapshot?: never;
     }

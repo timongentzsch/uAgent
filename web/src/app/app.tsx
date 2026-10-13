@@ -6,6 +6,7 @@ import type {
   InstallPrompt,
   Block,
   Session,
+  Space,
   Act,
   CommandKind,
   CommandFields,
@@ -48,6 +49,7 @@ import {
 } from "../shared/message-view.ts";
 import Sidebar, {
   ConversationMenu,
+  SpaceMenu,
   restartConversation,
   sessionOrder,
   shareTranscript,
@@ -101,6 +103,8 @@ const BROWSER_KEY = "uagent-browser";
 // snapshot, only what it selects from one (the session's metadata, whether
 // its agent browses, whether any turn waits), so a streamed frame re-renders
 // the conversation (<ChatPage>), not the shell and its sidebar.
+const NO_SPACES: Space[] = [];
+
 function App() {
   const [page, setPage] = useState<"chat" | "library" | "scheduled">("chat");
   // Which Library tab /memory or /skills asked for.
@@ -187,6 +191,7 @@ function App() {
     };
   }, [authenticated, online]);
   const [folder, setFolder] = useState("");
+  const [space, setSpace] = useState("");
   const [busy, setBusy] = useState(false);
   const {
     zoom,
@@ -247,6 +252,12 @@ function App() {
   });
   function setDraft(value: Draft, id = selected) {
     updateDraft(id, () => value);
+  }
+  // The moderator adds a member, with a persona, skills and model of its
+  // choosing: asking for one starts the message that asks.
+  function addMember() {
+    setDraft({ ...draft, text: "Add a member named " });
+    document.querySelector<HTMLTextAreaElement>("#prompt")?.focus();
   }
   useEffect(() => {
     // The core renderer chunk is needed for every assistant message, so
@@ -356,7 +367,7 @@ function App() {
     event?.preventDefault();
     setBusy(true);
     try {
-      await startConversation(folder, panel);
+      await startConversation(folder, panel, space.trim());
       setModal(null);
     } catch (failure) {
       report(failure);
@@ -368,13 +379,13 @@ function App() {
   // One start at a time: a double click must not race two activations.
   const starting = useRef(false);
   const startConversation = useCallback(
-    async (folder: string, panel = false) => {
+    async (folder: string, panel = false, space = "") => {
       if (starting.current) return;
       starting.current = true;
       try {
-        // A name alone is a space; the host keeps the folder for it.
+        // A space is asked for by its name; the host keeps its folder.
         const created = await command("create", null, {
-          ...(folder.includes("/") ? { cwd: folder } : { space: folder }),
+          ...(space ? { space } : { cwd: folder }),
           panel,
         });
         if (created.pending) return "";
@@ -388,12 +399,14 @@ function App() {
           await choose(created.session.id);
         }
         await load(created.session.id);
+        // A space made by this is listed with the others.
+        if (space) await refresh();
         return created.session.id;
       } finally {
         starting.current = false;
       }
     },
-    [upsertSession, choose, load],
+    [upsertSession, choose, load, refresh],
   );
   // A command with a screen opens it when typed bare; with an argument it
   // runs on the host, as in the terminal.
@@ -839,7 +852,7 @@ function App() {
   }
   // Alt+↑/↓: the conversation above or below in the list.
   const step = (key: "ArrowUp" | "ArrowDown") => {
-    const order = sessionOrder(listed);
+    const order = sessionOrder(listed, catalogue.spaces);
     if (!order.length) return;
     const at = order.findIndex((item) => item.id === selected);
     choose(order[nextIndex(at, key, order.length)].id);
@@ -862,10 +875,17 @@ function App() {
   }, []);
   const settings = useCallback(() => open({ type: "settings" }), [open]);
   const cwd = session?.cwd || "";
+  // Where the open conversation is, is where the next one is offered.
   const newConversation = useCallback(() => {
-    setFolder(cwd);
+    const here = catalogue.spaces?.find((item) => item.path === cwd);
+    setSpace(here?.name || "");
+    setFolder(here ? "" : cwd);
     open({ type: "new" });
-  }, [cwd, open]);
+  }, [cwd, open, catalogue.spaces]);
+  // A space by the name it goes by, a folder by the end of its path.
+  const placeName = (path = "") =>
+    catalogue.spaces?.find((item) => item.path === path)?.name ||
+    folderName(path);
   const openPanel = useCallback(
     (cwd: string) => startConversation(cwd, true).catch(report),
     [startConversation, report],
@@ -886,6 +906,15 @@ function App() {
         !!catalogue.scheduled?.runs?.some((run) => unread.has(run.session_id))
       }
       sessions={listed}
+      spaces={catalogue.spaces || NO_SPACES}
+      spaceMenu={(space, conversations) => (
+        <SpaceMenu
+          space={space}
+          conversations={conversations}
+          online={online}
+          open={open}
+        />
+      )}
       selected={page === "chat" ? selected : ""}
       unread={unread}
       online={online}
@@ -1002,7 +1031,7 @@ function App() {
                         ) : page === "scheduled" ? (
                           "Scheduled"
                         ) : session?.kind === "panel" ? (
-                          `Panel · ${folderName(session.cwd)}`
+                          `Panel · ${placeName(session.cwd)}`
                         ) : session ? (
                           session.title || "Your workspace"
                         ) : opening ? (
@@ -1013,6 +1042,17 @@ function App() {
                           "Your workspace"
                         )}
                       </h1>
+                      {/* What a panel started leads back to it. */}
+                      {page === "chat" && session?.kind === "thread" && (
+                        <p class="panel-subtitle">
+                          <Button
+                            variant="quiet"
+                            onClick={() => openPanel(session.folder || "")}
+                          >
+                            ‹ Panel · {placeName(session.folder)}
+                          </Button>
+                        </p>
+                      )}
                       {page === "chat" && session?.kind === "panel" && (
                         <PanelHelp
                           editInstructions={() =>
@@ -1084,6 +1124,11 @@ function App() {
                           setBoardOpen(false);
                           void choose(id);
                         }}
+                        menu={conversationMenu}
+                        add={() => {
+                          setBoardOpen(false);
+                          addMember();
+                        }}
                       />
                     </Modal>
                   )}
@@ -1130,6 +1175,8 @@ function App() {
                     connection={connection}
                     outgoing={outgoing}
                     loadError={loadErrors[selected]}
+                    menu={conversationMenu}
+                    addMember={addMember}
                     draft={draft}
                     setDraft={setDraft}
                     upload={upload}
@@ -1214,6 +1261,8 @@ function App() {
             showContext={() => showContext()}
             folder={folder}
             setFolder={setFolder}
+            space={space}
+            setSpace={setSpace}
             create={create}
             busy={busy}
             preferences={{

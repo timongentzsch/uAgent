@@ -242,14 +242,14 @@ void HandleInstructions(AppSession& session, const std::string& argument,
     return;
   }
   if (action == "edit") {
-    bool coordinator = false, project = false;
-    if (!ParseInstructionTarget(audience, scope, coordinator, project)) {
+    bool panel = false, project = false;
+    if (!ParseInstructionTarget(audience, scope, panel, project)) {
       reply.Print("%s",
-                  "usage: /instructions edit sessions|coordinator "
+                  "usage: /instructions edit sessions|panel "
                   "user|project\n");
       return;
     }
-    const auto path = InstructionPath(coordinator, project, cwd);
+    const auto path = InstructionPath(panel, project, cwd);
     const std::string base = ReadInstructionFile(path);
     bool cancelled = false;
     const std::string text = ReadInteraction(
@@ -260,7 +260,7 @@ void HandleInstructions(AppSession& session, const std::string& argument,
       return;
     }
     const std::string error =
-        WriteInstructionFile(coordinator, project, cwd, text, base);
+        WriteInstructionFile(panel, project, cwd, text, base);
     reply.Note(Tone::kNeutral, error.empty()
                                    ? "saved; new and restarted sessions read it"
                                    : TerminalSafe(error));
@@ -268,7 +268,7 @@ void HandleInstructions(AppSession& session, const std::string& argument,
   }
   if (!action.empty()) {
     reply.Print("%s",
-                "usage: /instructions [edit sessions|coordinator "
+                "usage: /instructions [edit sessions|panel "
                 "user|project | clear]\n");
     return;
   }
@@ -276,13 +276,12 @@ void HandleInstructions(AppSession& session, const std::string& argument,
   const json stack = InstructionFiles(cwd);
   for (const json& file : stack["files"]) {
     const std::string text = JsonValue(file, "text", "");
-    reply.Print("%s%s · %s%s  %s\n%s\n\n", BOLD(),
-                JsonValue(file, "scope", "") == "user" ? "yours" : "project",
-                JsonValue(file, "audience", "") == "coordinator"
-                    ? "coordinator"
-                    : "every session",
-                RST(), TerminalSafe(JsonValue(file, "path", "")).c_str(),
-                text.empty() ? "(empty)" : TerminalSafe(text).c_str());
+    reply.Print(
+        "%s%s · %s%s  %s\n%s\n\n", BOLD(),
+        JsonValue(file, "scope", "") == "user" ? "yours" : "project",
+        JsonValue(file, "audience", "") == "panel" ? "panel" : "every session",
+        RST(), TerminalSafe(JsonValue(file, "path", "")).c_str(),
+        text.empty() ? "(empty)" : TerminalSafe(text).c_str());
   }
   for (const json& also : stack["also_loaded"]) {
     reply.Print("also read: %s\n",

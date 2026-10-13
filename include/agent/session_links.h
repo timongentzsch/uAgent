@@ -19,12 +19,12 @@ namespace uagent {
 // True when both ids are named in it. The only gate between sessions;
 // everything else is addressing.
 bool SharesLink(const std::string& a, const std::string& b);
-// Whether a session file is a coordinator's or one of its threads'.
+// Whether a session file is a panel's or one of its threads'.
 bool SocietySession(const std::string& path);
 
 // Join the workspace auto-link. No-op without yolo or without a session
 // file, so toggling /yolo mid-session takes effect on the next tool call. A
-// coordinator and its threads need no link file: they are linked by sharing
+// panel and its threads need no link file: they are linked by sharing
 // one history folder.
 ToolResult EnsureSessionAutoLink();
 

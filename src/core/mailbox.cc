@@ -156,7 +156,7 @@ std::string SendMail(Mail mail) {
     return "not sent: the recipient has " + std::to_string(count) +
            " messages waiting; try again after it has read them";
   }
-  // A thread's events are its coordinator's to hear, however many: the rate
+  // A thread's events are its panel's to hear, however many: the rate
   // is for what sessions write to each other.
   // A chat's messages are bounded by its own cap on turns.
   const bool event = mail.type == kMailTaskCompleted || mail.type == kMailAsk ||

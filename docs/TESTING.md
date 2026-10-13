@@ -157,7 +157,7 @@ What a spec may assume about time:
 
 Playwright has two projects. `chromium` runs every spec. `webkit` runs `ui`,
 `ui-quality`, `browser`, `showcase`, `dismiss`, `history-anchor`,
-`scroll-restore`, `scroll-stick` and `coordinator`. A failed test is retried
+`scroll-restore`, `scroll-stick` and `panel`. A failed test is retried
 once, locally and in CI; four workers run locally and two in CI; traces
 and screenshots of failures are kept in `web/test-results`.
 

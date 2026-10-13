@@ -56,7 +56,7 @@ class Conversation {
   json AnnouncedDeliveries(const std::string& id) const;
   void RecordAnnouncedDeliveries(std::string id, json values);
   // When a user message arrived (UTC), by display id; empty when unknown.
-  // Kept apart from the evictable display facts: a coordinator's model reads
+  // Kept apart from the evictable display facts: a panel's model reads
   // these stamps, so losing one would change its cached prefix.
   std::string Arrival(uint64_t id) const;
   json RecordEntry(json facts);

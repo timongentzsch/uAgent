@@ -272,7 +272,7 @@ void TestToolExecutionPolicy() {
   CHECK(allowed_run &&
         allowed_run->validate({{"command", "python3 other.py"}}));
 
-  // An allowlist (a coordinator's) keeps only its named tools, even when
+  // An allowlist (a panel's) keeps only its named tools, even when
   // every capability is allowed and an exact run is authorized.
   Tool read_tool = inspect;
   read_tool.name = "read_path";

@@ -1,4 +1,4 @@
-// Sessions created or deleted outside this browser (a coordinator spawning or
+// Sessions created or deleted outside this browser (a panel spawning or
 // deleting its threads) reach the list on their own, without a refresh.
 import { test, expect } from "./fixtures.js";
 import { mkdir, rm, writeFile } from "node:fs/promises";

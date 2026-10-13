@@ -40,24 +40,31 @@ std::filesystem::path InstructionFileIn(const std::filesystem::path& dir) {
   return dir / "AGENTS.md";
 }
 
-std::filesystem::path InstructionPath(bool coordinator, bool project,
+std::filesystem::path InstructionPath(bool panel, bool project,
                                       const std::filesystem::path& cwd) {
-  if (!coordinator) {
+  if (!panel) {
     return InstructionFileIn(project ? ProjectRoot(cwd)
                                      : std::filesystem::path(GlobalBase()));
   }
-  return project ? cwd / ".uagent" / "COORDINATOR.md"
-                 : std::filesystem::path(GlobalBase()) / "COORDINATOR.md";
+  const std::filesystem::path dir =
+      project ? cwd / ".uagent" : std::filesystem::path(GlobalBase());
+  // The file's name from before the coordinator became the panel still
+  // counts where no PANEL.md has replaced it.
+  std::error_code ignored;
+  return !std::filesystem::exists(dir / "PANEL.md", ignored) &&
+                 std::filesystem::exists(dir / "COORDINATOR.md", ignored)
+             ? dir / "COORDINATOR.md"
+             : dir / "PANEL.md";
 }
 
 bool ParseInstructionTarget(const std::string& audience,
-                            const std::string& scope, bool& coordinator,
+                            const std::string& scope, bool& panel,
                             bool& project) {
-  if ((audience != "sessions" && audience != "coordinator") ||
+  if ((audience != "sessions" && audience != "panel") ||
       (scope != "user" && scope != "project")) {
     return false;
   }
-  coordinator = audience == "coordinator";
+  panel = audience == "panel";
   project = scope == "project";
   return true;
 }
@@ -67,8 +74,7 @@ std::string ReadInstructionFile(const std::filesystem::path& path) {
 }
 
 ProjectInstructions LoadProjectInstructions(const std::filesystem::path& cwd,
-                                            size_t max_bytes,
-                                            bool coordinator) {
+                                            size_t max_bytes, bool panel) {
   namespace fs = std::filesystem;
   ProjectInstructions loaded;
   if (max_bytes == 0) return loaded;
@@ -119,11 +125,11 @@ ProjectInstructions LoadProjectInstructions(const std::filesystem::path& cwd,
   for (const fs::path& dir : dirs) {
     if (dir != global) append_dir(dir);
   }
-  if (coordinator) {
+  if (panel) {
     for (bool project : {false, true}) {
       const fs::path path = InstructionPath(true, project, cwd);
       if (fs::is_regular_file(path, ec) &&
-          append(path, loaded.text, "For the folder's coordinator:\n")) {
+          append(path, loaded.text, "For the folder's moderator:\n")) {
         loaded.sources.push_back(path.string());
       }
     }
@@ -133,11 +139,10 @@ ProjectInstructions LoadProjectInstructions(const std::filesystem::path& cwd,
 
 json InstructionFiles(const std::filesystem::path& cwd) {
   json files = json::array();
-  for (bool coordinator : {false, true}) {
+  for (bool panel : {false, true}) {
     for (bool project : {false, true}) {
-      const std::filesystem::path path =
-          InstructionPath(coordinator, project, cwd);
-      files.push_back({{"audience", coordinator ? "coordinator" : "sessions"},
+      const std::filesystem::path path = InstructionPath(panel, project, cwd);
+      files.push_back({{"audience", panel ? "panel" : "sessions"},
                        {"scope", project ? "project" : "user"},
                        {"path", path.string()},
                        {"text", ReadInstructionFile(path)}});
@@ -161,7 +166,7 @@ json InstructionFiles(const std::filesystem::path& cwd) {
   return {{"files", std::move(files)}, {"also_loaded", std::move(also)}};
 }
 
-std::string WriteInstructionFile(bool coordinator, bool project,
+std::string WriteInstructionFile(bool panel, bool project,
                                  const std::filesystem::path& cwd,
                                  const std::string& text,
                                  const std::optional<std::string>& base) {
@@ -169,7 +174,7 @@ std::string WriteInstructionFile(bool coordinator, bool project,
     return "instructions are at most " +
            std::to_string(kProjectDocBytes / 1024) + " KiB";
   }
-  const std::filesystem::path path = InstructionPath(coordinator, project, cwd);
+  const std::filesystem::path path = InstructionPath(panel, project, cwd);
   if (base && ReadInstructionFile(path) != *base) {
     return path.string() + " changed since it was opened; reload it first";
   }
@@ -181,7 +186,7 @@ std::string WriteInstructionFile(bool coordinator, bool project,
   // A project's files belong to its repository and others read them; yours
   // live in your private ~/.uagent. A project's .uagent stays private too.
   std::string error;
-  if (!project || coordinator) CreatePrivateDirectories(path.parent_path());
+  if (!project || panel) CreatePrivateDirectories(path.parent_path());
   AtomicWriteFile(path.string(), text, project ? 0644 : kPrivateFileMode, true,
                   error);
   return error;

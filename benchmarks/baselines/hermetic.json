@@ -68,7 +68,7 @@
       "tool_result_chars": 5070,
       "initial_schema_bytes": 9480
     },
-    "coordinator_fanout/control": {
+    "panel_fanout/control": {
       "score": 5,
       "checks_total": 5,
       "model_requests": 3,
@@ -81,7 +81,7 @@
       "tool_result_chars": 759,
       "initial_schema_bytes": 8808
     },
-    "coordinator_status/control": {
+    "panel_status/control": {
       "score": 5,
       "checks_total": 5,
       "model_requests": 2,

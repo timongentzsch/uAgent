@@ -114,7 +114,7 @@ void Application::PublishChannelState(bool checkpoint) {
     state["view"] = agent_.DisplaySnapshot();
     state["system_prompt"] = agent_.LastSentPrompt();
     state["http"] = agent_.HttpExchanges();
-    // A thread's last answer whole, for the report to its coordinator: the
+    // A thread's last answer whole, for the report to its panel: the
     // view holds a long one's opening only. Well inside what one mail holds.
     if (JsonValue(context_.options.session, "kind", "") == kSessionKindThread) {
       constexpr size_t kAnswerBytes = kMailBytes / 4;

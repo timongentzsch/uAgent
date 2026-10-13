@@ -166,7 +166,7 @@ export interface Block {
   incoming?: number;
   files?: Asset[];
   origin?: string;
-  // Who wrote a message that came by mail: a member of a coordinator's chat.
+  // Who wrote a message that came by mail: a member of a panel's chat.
   author?: string;
   // A chat participant's pass or wait: shown to nobody.
   silent?: boolean;
@@ -281,8 +281,8 @@ export interface Pending {
   };
   // kind "ask": the model's questions; `prompt` repeats the first.
   questions?: AskQuestion[];
-  // A thread's decision goes to its coordinator first; "human" once yielded.
-  route?: "coordinator" | "human";
+  // A thread's decision goes to its panel first; "human" once yielded.
+  route?: "panel" | "human";
   note?: string;
 }
 // Each question also takes a free-text "Other" answer.
@@ -346,10 +346,10 @@ export interface Session {
   generation?: string;
   title?: string;
   cwd?: string;
-  // A folder's coordinator, or a thread it launched (in `folder`).
-  kind?: "coordinator" | "thread" | "";
+  // A folder's panel, or a thread it launched (in `folder`).
+  kind?: "panel" | "thread" | "";
   folder?: string;
-  // A thread's name as a member of its coordinator's chat.
+  // A thread's name as a member of its panel's chat.
   member?: string;
   status?: SessionStatus;
   presence?: "active" | "";
@@ -394,7 +394,7 @@ export interface State {
   system_prompt?: string;
   // The agent's own conversation-scoped addition (adapt_system).
   self_directive?: SelfDirective;
-  // Why a coordinator holds its threads' events (today's spend limit).
+  // Why a panel holds its threads' events (today's spend limit).
   paused?: string;
   statistics?: Statistics;
   activity?: string;
@@ -490,7 +490,7 @@ export interface Outcome {
 }
 interface EventData extends Omit<Partial<Exchange>, "status"> {
   request_id?: string;
-  // approval.requested: "coordinator" while a thread's coordinator decides.
+  // approval.requested: "panel" while a thread's panel decides.
   route?: string;
   inspect?: boolean;
   context_tokens?: number;
@@ -685,9 +685,9 @@ export interface ToolCategories {
   assignments: Record<string, string>;
 }
 // One instruction file a person edits: for every conversation or a folder's
-// coordinator, yours or the project's.
+// panel, yours or the project's.
 export interface InstructionFile {
-  audience: "sessions" | "coordinator";
+  audience: "sessions" | "panel";
   scope: "user" | "project";
   path: string;
   text: string;
@@ -695,7 +695,7 @@ export interface InstructionFile {
 export interface InstructionStack {
   files: InstructionFile[];
   also_loaded: string[];
-  base: { sessions: string; coordinator: string; member: string };
+  base: { sessions: string; panel: string; member: string };
 }
 export interface SelfDirective {
   mode: "overlay" | "replace";
@@ -724,7 +724,7 @@ export interface CommandResults {
   context: { exchanges: Exchange[] };
   revert: { restored: string[]; conflicts: { path: string; reason: string }[] };
   // A fork cut before a message returns that message, to edit (prompt).
-  // A coordinator rewinds itself in place (`rewound`) instead of forking.
+  // A panel rewinds itself in place (`rewound`) instead of forking.
   fork: { id: string; prompt?: string; rewound?: boolean };
   share: { path: string };
   side: { answer: string };
@@ -778,7 +778,7 @@ export interface CommandFields {
   key?: string;
   value?: string;
   cwd?: string;
-  coordinator?: boolean;
+  panel?: boolean;
   audience?: string;
   // Instructions: the text an edit started from; a changed file refuses.
   base?: string;

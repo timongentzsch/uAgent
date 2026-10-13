@@ -31,7 +31,7 @@ json PermissionControl(AppContext& context, const json& request) {
   // The mode is the approval setting; a conversation's own is that setting
   // chosen at its scope, and "default" takes the choice back.
   const std::string key = "UAGENT_APPROVAL";
-  // A thread works unattended for its coordinator: it reviews (Auto) unless
+  // A thread works unattended for its panel: it reviews (Auto) unless
   // told to ask, and nothing puts it above that.
   const bool thread =
       JsonValue(context.options.session, "kind", "") == kSessionKindThread;
@@ -141,9 +141,9 @@ json SessionControl(AppSession& session, const json& request) {
       session.session_file = HistoryPath(CanonicalCwd(), MakeSessionId());
     }
     std::string error;
-    // A folder has one coordinator, so "edit from here" rewinds it in place
+    // A folder has one panel, so "edit from here" rewinds it in place
     // rather than starting an ordinary conversation beside it.
-    if (kind == "fork" && session.context.options.Coordinator() &&
+    if (kind == "fork" && session.context.options.Panel() &&
         (JsonValue(request, "turn", int64_t{0}) > 0 ||
          !JsonValue(request, "message_id", "").empty())) {
       json rewound = session.ActiveAgent().RewindBefore(

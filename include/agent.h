@@ -126,9 +126,9 @@ class Agent {
   using KeepFile =
       std::function<json(const std::string& path, const std::string& name)>;
   void KeepToolFiles(KeepFile keep) { keep_tool_file_ = std::move(keep); }
-  // Coordinator/thread role ({kind, thread}), saved in the session header.
+  // Panel/thread role ({kind, thread}), saved in the session header.
   void SetSessionRole(json role) { session_role_ = std::move(role); }
-  // Extra context rebuilt for every model request (a coordinator's clock,
+  // Extra context rebuilt for every model request (a panel's clock,
   // pinned notes and board): appended to the request, never stored.
   void SetRuntimeContext(std::function<std::string()> extra) {
     runtime_context_ = std::move(extra);
@@ -216,7 +216,7 @@ class Agent {
   void Say(const std::string& text, const std::string& request_id) {
     PushUserInput(text, false, json(), request_id);
   }
-  // Whether this session is one of a chat's participants: its coordinator, or
+  // Whether this session is one of a chat's participants: its panel, or
   // a member. And whether its last answer was only to pass or to wait.
   bool ChatParticipant() const {
     return static_cast<bool>(chat_said_) ||
@@ -227,7 +227,7 @@ class Agent {
     return ChatParticipant() &&
            SilentAnswer(Trim(conversation_.LastAssistantText()));
   }
-  // A coordinator's chat (app/chat.h): `said` hears what a person writes
+  // A panel's chat (app/chat.h): `said` hears what a person writes
   // here, `heard` is handed each message from another session before it is
   // delivered and may rewrite it.
   void SetChat(std::function<json(const std::string&)> said,
@@ -412,7 +412,7 @@ class Agent {
   // rather than restored, so it tracks the current tools/protocol (see load()).
   json SysMsg() const;
   void EnsureRuntimeContext();
-  json CoordinatorRequest(json messages) const;
+  json PanelRequest(json messages) const;
 
   // Append environment state only when it changes. This preserves every prior
   // request byte for provider caching without repeating cwd metadata each turn.

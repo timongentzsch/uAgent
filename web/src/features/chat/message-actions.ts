@@ -27,8 +27,8 @@ export interface MessageActions {
   resume?: () => void;
   branch?: (block: PresentedBlock, edit: boolean) => void;
   http?: (exchanges: Exchange[]) => void;
-  // In a coordinator's chat: its members, and a way to see the prompt a
-  // participant was last sent (a member by name, the coordinator by none).
+  // In a panel's chat: its members, and a way to see the prompt a
+  // participant was last sent (a member by name, the panel by none).
   team?: Session[];
   prompt?: (member?: string) => void;
 }

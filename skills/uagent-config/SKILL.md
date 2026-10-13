@@ -24,9 +24,9 @@ this file. Do not load every reference; pick the one the question needs.
 | How is µAgent built, and why? | `references/architecture.md` when installed, else `docs/ARCHITECTURE.md` in a source checkout |
 | Limits, recovery or failure triage | `docs/OPERATIONS.md` in a source checkout |
 | Change a setting persistently | `references/self-configuration.md` |
-| What is a folder's coordinator, and how is it opened or limited? | `references/cli.md` (Coordinator), the `UAGENT_COORDINATOR_*` rows of `references/configuration.md` |
-| What instructions do sessions and coordinators read? | `uagent` action `inspect`, topic `instructions` |
-| Change instructions | `uagent` action `set_instructions` with `audience` (sessions or coordinator), `scope` (user or project) and the whole `text`; the user approves the exact diff. The user can also run `/instructions edit` |
+| What is a folder's panel, and how is it opened or limited? | `references/cli.md` (Panel), the `UAGENT_PANEL_*` rows of `references/configuration.md` |
+| What instructions do sessions and panels read? | `uagent` action `inspect`, topic `instructions` |
+| Change instructions | `uagent` action `set_instructions` with `audience` (sessions or panel), `scope` (user or project) and the whole `text`; the user approves the exact diff. The user can also run `/instructions edit` |
 
 `uagent` reports the installed binary, so it beats both these references
 and any recollection when the two disagree. The references are generated from

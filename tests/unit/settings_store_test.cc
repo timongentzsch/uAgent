@@ -173,7 +173,10 @@ void TestSettingsStore() {
         {"format", 1},
         {"all",
          {{"UAGENT_MODEL", "old"}, {"UAGENT_MAX_STEPS", "9"}, {"TOKEN", "t"}}},
-        {"projects", {{"/p", {{"UAGENT_SANDBOX", "false"}}}}}};
+        {"projects",
+         {{"/p",
+           {{"UAGENT_SANDBOX", "false"},
+            {"UAGENT_COORDINATOR_MAX_THREADS", "7"}}}}}};
     Put(SettingsPath(), JsonDump(before));
     CHECK(ReadSettings("/p").all == (SettingValues{{"TOKEN", "t"},
                                                    {"UAGENT_MAX_STEPS", "9"},
@@ -182,6 +185,8 @@ void TestSettingsStore() {
     const json now = json::parse(ReadFile(SettingsPath(), 4096).value_or(""));
     CHECK(now["format"] == 2 && now["all"]["limits.maxSteps"] == 9);
     CHECK(now["projects"]["/p"]["sandbox.enabled"] == false);
+    // A panel's settings under the names they had as a coordinator's.
+    CHECK(now["projects"]["/p"]["panel.maxThreads"] == 7);
     AllSettings handed;
     std::string why;
     CHECK(ParseSettings(before, handed, why) && handed.all.size() == 3);
@@ -191,6 +196,10 @@ void TestSettingsStore() {
     wrong["all"]["no.such.setting"] = 1;
     CHECK(!ParseSettings(wrong, handed, why));
     CHECK(why.find("no.such.setting is not a setting") != std::string::npos);
+    json spelled = now;
+    spelled["all"]["coordinator.chatTurns"] = 2;
+    Put(SettingsPath(), JsonDump(spelled));
+    CHECK(ReadSettings("").all.at("UAGENT_PANEL_CHAT_TURNS") == "2");
   }
 
   // A document that cannot be read is reported and never saved over.

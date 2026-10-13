@@ -25,7 +25,7 @@
 #include "include/app/asset_store.h"
 #include "include/app/commands.h"
 #include "include/app/config_proposal.h"
-#include "include/app/coordinator.h"
+#include "include/app/panel.h"
 #include "include/app/permissions.h"
 #include "include/app/reference.h"
 #include "include/app/session.h"
@@ -172,11 +172,10 @@ session::AssetStoreResult StoreSessionFile(const std::string& session_path,
 // instructions do not spend is what the memory index may.
 ProjectInstructions LoadInstructions(const std::filesystem::path& workspace,
                                      const RuntimeConfig& config,
-                                     bool memory_child, bool coordinator) {
+                                     bool memory_child, bool panel) {
   ProjectInstructions instructions;
   if (!memory_child) {
-    instructions =
-        LoadProjectInstructions(workspace, kProjectDocBytes, coordinator);
+    instructions = LoadProjectInstructions(workspace, kProjectDocBytes, panel);
   }
   if (config.memory_enabled) {
     size_t remaining = instructions.text.size() >= kProjectDocBytes
@@ -314,9 +313,8 @@ std::vector<Tool> BuildTools(AppContext& context,
   // The default lean child is an isolation and context-efficiency boundary:
   // do not clone the parent's entire MCP fleet into every delegation. A root
   // lean session and an explicitly requested full child still get MCP. A
-  // coordinator may call none of their tools, so it starts none of them.
-  if (!context.options.Coordinator() &&
-      (AgentDepth() == 0 || toolset != "lean")) {
+  // panel may call none of their tools, so it starts none of them.
+  if (!context.options.Panel() && (AgentDepth() == 0 || toolset != "lean")) {
     error = McpRegister(tools, runtime.mcp, runtime.config, trusted_snapshot);
     if (!error.empty()) return {};
   }
@@ -333,8 +331,8 @@ std::vector<Tool> BuildTools(AppContext& context,
                   JsonValue(SessionHeader(path), kSessionHeaderCwd, ""), path,
                   "", Options{}, ignored);
   }));
-  if (context.options.Coordinator()) {
-    AddCoordinatorTools(tools, CanonicalCwd(), [app = &context] {
+  if (context.options.Panel()) {
+    AddPanelTools(tools, CanonicalCwd(), [app = &context] {
       return ChosenSelection(app->runtime.api, app->provider.providers);
     });
   }
@@ -413,7 +411,7 @@ Agent::Approver MakeApprover(AppContext* app) {
     bool session_rule = !mandatory && app->session_approvals.contains(key);
     bool repository_rule =
         !mandatory && !session_rule && RepositoryPermissionAllows(root, key);
-    // A coordinator's thread acts inside its folder without review while
+    // A panel's thread acts inside its folder without review while
     // the sandbox holds it there: the commands the sandbox wraps (run and
     // scratch, which may also write the sandbox's other roots: temporary
     // files and tool caches), and file changes at a path its own check
@@ -426,16 +424,15 @@ Agent::Approver MakeApprover(AppContext* app) {
         SandboxRuntime().mode == SandboxMode::kEnforced &&
         (tool.name == "run" || tool.name == "scratch" ||
          (tool.needs_approval && !tool.needs_approval(arguments)));
-    // A chat member reads what was shared in its coordinator's chat as it
+    // A chat member reads what was shared in its panel's chat as it
     // reads the folder: without review.
     const json thread =
         JsonValue(app->options.session, "thread", json::object());
     const bool shared_file =
         tool.name == "read_path" && !ChatMember(thread).empty() &&
-        PathWithin(
-            CanonicalAccessPath(JsonValue(arguments, "path", "")),
-            CanonicalAccessPath(
-                CoordinatorPath(JsonValue(thread, "folder", "")) + ".assets"));
+        PathWithin(CanonicalAccessPath(JsonValue(arguments, "path", "")),
+                   CanonicalAccessPath(
+                       PanelPath(JsonValue(thread, "folder", "")) + ".assets"));
     bool automatic =
         !mandatory && (ApprovalIsYolo() || session_rule || repository_rule ||
                        confined_thread || shared_file);
@@ -762,7 +759,7 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   Api& api = context->runtime.api;
   ProjectInstructions instructions =
       LoadInstructions(workspace, context->runtime.config, memory_child,
-                       context->options.Coordinator());
+                       context->options.Panel());
   if (instructions.truncated) {
     PrintWarning("project instructions truncated at " +
                  std::to_string(kProjectDocBytes) + " bytes");
@@ -808,9 +805,9 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   // Before the tools, whose servers are started with it.
   PermissionControl(*context, json::object());
   context->tool_policy = ToolPolicyFromEnvironment();
-  if (context->options.Coordinator()) {
-    context->tool_policy.tool_allowlist.assign(std::begin(kCoordinatorTools),
-                                               std::end(kCoordinatorTools));
+  if (context->options.Panel()) {
+    context->tool_policy.tool_allowlist.assign(std::begin(kPanelTools),
+                                               std::end(kPanelTools));
   } else if (!ChatMember(
                   JsonValue(context->options.session, "thread", json::object()))
                   .empty()) {
@@ -829,7 +826,7 @@ BootstrapResult Bootstrap(Options options, const char* executable,
       std::move(instructions), std::move(skills),
       &context->runtime.adaptive_system);
   context->agent->SetSessionRole(context->options.session);
-  if (context->options.Coordinator()) {
+  if (context->options.Panel()) {
     context->chat.emplace(CanonicalCwd(), [agent = context->agent.get()](
                                               const std::string& note) {
       agent->NotFromUser(note);
@@ -838,8 +835,8 @@ BootstrapResult Bootstrap(Options options, const char* executable,
     context->agent->SetRuntimeContext([folder = CanonicalCwd(),
                                        agent = context->agent.get(),
                                        chat = &*context->chat] {
-      RecordCoordinatorCost(folder, agent->SessionUsage().cost);
-      return CoordinatorContext(folder) + chat->Context();
+      RecordPanelCost(folder, agent->SessionUsage().cost);
+      return PanelContext(folder) + chat->Context();
     });
     context->agent->SetChat(
         [chat = &*context->chat](const std::string& text) {

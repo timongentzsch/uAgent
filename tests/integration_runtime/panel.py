@@ -23,7 +23,7 @@ from integration_support import (
     write_session,
 )
 
-COORDINATOR_TOOLS = {
+PANEL_TOOLS = {
     "read_path",
     "grep",
     "memory",
@@ -37,37 +37,37 @@ COORDINATOR_TOOLS = {
 }
 
 
-def test_coordinator_is_one_read_only_session_per_folder(root, home, *, binary):
+def test_panel_is_one_read_only_session_per_folder(root, home, *, binary):
     with Server([event({"content": "first-ok"}), event({"content": "second-ok"})]) as server:
         env = base_env(home, server.url)
-        # Widening capabilities never widens the coordinator.
+        # Widening capabilities never widens the panel.
         env["UAGENT_TOOL_CAPABILITIES"] = "inspect,execute,mutate,delegate,external"
         for text, answer in ((b"first\n", b"first-ok"), (b"second\n", b"second-ok")):
             code, output = run_pty(
                 root,
                 env,
                 [(text, answer, b"Ready", None), b"/q\n"],
-                args=("coord",),
+                args=("panel",),
                 binary=binary,
             )
             assert_true(code == 0, output)
         assert_true(len(server.requests) == 2, server.requests)
         for _, request in server.requests:
             names = function_names(request)
-            assert_true(names and names <= COORDINATOR_TOOLS, names)
+            assert_true(names and names <= PANEL_TOOLS, names)
             assert_true("read_path" in names, names)
             system = request["messages"][0]["content"]
-            assert_true("coordinator of this folder" in system, system[:200])
+            assert_true("moderator of this folder's panel" in system, system[:200])
             assert_true("coding agent" not in system, system[:200])
         # Both invocations reached the same runtime and file.
         sessions = session_files(home)
         assert_true([path.name for path in sessions] == ["coordinator.json"], sessions)
         header = json.loads(sessions[0].read_text(encoding="utf-8").splitlines()[0])
-        assert_true(header.get("kind") == "coordinator", header)
+        assert_true(header.get("kind") == "panel", header)
         assert_true(header["turns"] == 2, header)
 
 
-def test_coordinator_reads_only_its_folder(root, home, *, binary):
+def test_panel_reads_only_its_folder(root, home, *, binary):
     elsewhere = root / "elsewhere"
     elsewhere.mkdir()
     conversation = [
@@ -88,7 +88,7 @@ def test_coordinator_reads_only_its_folder(root, home, *, binary):
             root,
             base_env(home, server.url),
             [(b"status?\n", b"status-ok", b"Ready", None), b"/q\n"],
-            args=("coord",),
+            args=("panel",),
             binary=binary,
         )
         assert_true(code == 0, output)
@@ -126,7 +126,7 @@ def test_a_row_too_long_for_one_look_says_it_was_cut(root, home, *, binary):
 
     responses = [tool_call("history", {"action": "board"}), detail, rest, event({"content": "ok"})]
     with Server(responses) as server:
-        result = run(root, base_env(home, server.url), "coord", "-p", "status?", binary=binary)
+        result = run(root, base_env(home, server.url), "panel", "-p", "status?", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         first, last = tool_results(server.requests[-1][1]["messages"])[1:3]
         assert_true("[truncated; detail with offset" in first and " END" not in first, first[-200:])
@@ -134,7 +134,7 @@ def test_a_row_too_long_for_one_look_says_it_was_cut(root, home, *, binary):
         assert_true(last.rstrip().endswith(" END") and "truncated" not in last, last[-200:])
 
 
-def test_coordinator_answers_headless_and_lists_the_board(root, home, *, binary):
+def test_panel_answers_headless_and_lists_the_board(root, home, *, binary):
     write_session(
         home,
         "fix-lexer",
@@ -146,10 +146,10 @@ def test_coordinator_answers_headless_and_lists_the_board(root, home, *, binary)
         [event({"content": "plain-ok"}, usage=usage), event({"content": "json-ok"}, usage=usage)]
     ) as server:
         env = base_env(home, server.url)
-        plain = run(root, env, "coord", "-p", "status?", binary=binary)
+        plain = run(root, env, "panel", "-p", "status?", binary=binary)
         assert_true(plain.returncode == 0, plain.stderr)
         assert_true(plain.stdout.strip() == "plain-ok", plain.stdout)
-        structured = run(root, env, "coord", "--json", "-p", "again?", binary=binary)
+        structured = run(root, env, "panel", "--json", "-p", "again?", binary=binary)
         assert_true(structured.returncode == 0, structured.stderr)
         envelope = json.loads(structured.stdout)
         assert_true(envelope["answer"] == "json-ok", envelope)
@@ -164,16 +164,16 @@ def test_coordinator_answers_headless_and_lists_the_board(root, home, *, binary)
     assert_true(code == 0, output)
 
 
-def test_a_headless_coordinator_says_why_it_has_no_answer(root, home, *, binary):
+def test_a_headless_panel_says_why_it_has_no_answer(root, home, *, binary):
     # Nothing listens at this address.
     env = base_env(home, "http://127.0.0.1:9")
-    result = run(root, env, "coord", "-p", "hello", binary=binary, timeout=60)
+    result = run(root, env, "panel", "-p", "hello", binary=binary, timeout=60)
     assert_true(result.returncode == 1, result)
     assert_true(result.stdout.strip() == "", repr(result.stdout))
     assert_true("connect" in result.stderr, repr(result.stderr))
 
 
-def test_coordinator_saves_memory_unasked_but_forgets_only_with_the_user(root, home, *, binary):
+def test_panel_saves_memory_unasked_but_forgets_only_with_the_user(root, home, *, binary):
     with Server(
         [
             tool_call(
@@ -183,7 +183,7 @@ def test_coordinator_saves_memory_unasked_but_forgets_only_with_the_user(root, h
             event({"content": "noted-ok"}),
         ]
     ) as server:
-        result = run(root, base_env(home, server.url), "coord", "-p", "be terse", binary=binary)
+        result = run(root, base_env(home, server.url), "panel", "-p", "be terse", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         saved, forgot = tool_results(server.requests[-1][1]["messages"])
         assert_true("approval" not in saved.lower() and "error" not in saved.lower(), saved)
@@ -193,7 +193,7 @@ def test_coordinator_saves_memory_unasked_but_forgets_only_with_the_user(root, h
         assert_true("Noted:" in system, system)
 
 
-def test_coordinator_delegates_a_thread_and_hears_back(root, home, *, binary):
+def test_panel_delegates_a_thread_and_hears_back(root, home, *, binary):
     heard = threading.Event()
     reported = {}
 
@@ -220,10 +220,10 @@ def test_coordinator_delegates_a_thread_and_hears_back(root, home, *, binary):
 
     with Server([route]) as server:
         env = base_env(home, server.url)
-        result = run(root, env, "coord", "-p", "delegate a count", binary=binary)
+        result = run(root, env, "panel", "-p", "delegate a count", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         # The run waits for the thread it started and prints all the
-        # coordinator said: a thread that finishes before the coordinator's
+        # panel said: a thread that finishes before the panel's
         # next step is heard within that turn, a later one in a turn of its own.
         assert_true(
             result.stdout.strip() in ("noted-event", "spawned-ok\n\nnoted-event"),
@@ -237,11 +237,11 @@ def test_coordinator_delegates_a_thread_and_hears_back(root, home, *, binary):
             )
         )
         assert_true(len(spawned["session_id"]) == 16, spawned)
-        # The finished thread's mail wakes the coordinator at once, starting its
+        # The finished thread's mail wakes the panel at once, starting its
         # runtime first, since the -p run that spawned the thread has exited.
         assert_true(heard.wait(budget(10)), [json.dumps(b)[-300:] for _, b in server.requests])
         latency = reported["heard"] - reported["finished"]
-        assert_true(latency < budget(5), f"coordinator heard back after {latency:.1f}s")
+        assert_true(latency < budget(5), f"panel heard back after {latency:.1f}s")
         threads = [path for path in session_files(home) if path.name.startswith("thread-")]
         assert_true(len(threads) == 1, threads)
         header = json.loads(threads[0].read_text(encoding="utf-8").splitlines()[0])
@@ -249,7 +249,7 @@ def test_coordinator_delegates_a_thread_and_hears_back(root, home, *, binary):
         link = header["thread"]
         assert_true(link["folder"] == str(root.resolve()), link)
         assert_true("budget_usd" in link["ceiling"], link)
-        # The thread's own requests carried only its brief, never the coordinator's.
+        # The thread's own requests carried only its brief, never the panel's.
         thread_requests = [
             body for _, body in server.requests if "Objective: count the files" in json.dumps(body)
         ]
@@ -257,7 +257,7 @@ def test_coordinator_delegates_a_thread_and_hears_back(root, home, *, binary):
         assert_true("history" not in function_names(thread_requests[0]), thread_requests[0])
 
 
-def test_a_headless_coordinator_waits_for_a_slow_thread(root, home, *, binary):
+def test_a_headless_panel_waits_for_a_slow_thread(root, home, *, binary):
     """The answer holds the thread's report however long after the first turn it comes."""
 
     def route(_, body):
@@ -281,7 +281,7 @@ def test_a_headless_coordinator_waits_for_a_slow_thread(root, home, *, binary):
 
     with Server([route]) as server:
         result = run(
-            root, base_env(home, server.url), "coord", "-p", "delegate slowly", binary=binary
+            root, base_env(home, server.url), "panel", "-p", "delegate slowly", binary=binary
         )
         assert_true(result.returncode == 0, result.stderr)
         assert_true(
@@ -290,7 +290,7 @@ def test_a_headless_coordinator_waits_for_a_slow_thread(root, home, *, binary):
 
 
 def test_a_thread_reaches_a_named_provider_with_its_key(root, home, *, binary):
-    """A coordinator on `provider/model` starts a thread that is told that
+    """A panel on `provider/model` starts a thread that is told that
     selection and resolves it itself: its requests carry the provider's key.
     It used to inherit the endpoint through the environment, and no key."""
     seen = {}
@@ -327,17 +327,17 @@ def test_a_thread_reaches_a_named_provider_with_its_key(root, home, *, binary):
             UAGENT_MODEL="named/some-model",
         )
         env.pop("UAGENT_MODEL", None)
-        result = run(root, env, "coord", "-p", "delegate a count", binary=binary)
+        result = run(root, env, "panel", "-p", "delegate a count", binary=binary)
         assert_true(result.returncode == 0, (result.stdout, result.stderr))
         assert_true(seen.get("thread") == ("Bearer named-provider-key", "some-model"), seen)
         # The run waited for the thread it started, and what it prints is all
-        # the coordinator said for the request, not only its last remark.
+        # the panel said for the request, not only its last remark.
         assert_true("thread-heard" in result.stdout, repr(result.stdout))
 
 
-def test_threads_of_one_coordinator_message_each_other(root, home, *, binary):
+def test_threads_of_one_panel_message_each_other(root, home, *, binary):
     """Two threads find each other by the ids the board shows, talk directly and
-    wake on each other's mail; the coordinator hears each answer in its event."""
+    wake on each other's mail; the panel hears each answer in its event."""
     society(root, home, binary, stopped=False)
 
 
@@ -441,7 +441,7 @@ def society(root, home, binary, *, stopped):
             env["UAGENT_INTERNAL_IDLE_S"] = "1"
         if stopped:
             client["process"] = subprocess.Popen(
-                [str(binary), "coord", "-p", "delegate"],
+                [str(binary), "panel", "-p", "delegate"],
                 cwd=root,
                 env=env,
                 stdin=subprocess.DEVNULL,
@@ -449,7 +449,7 @@ def society(root, home, binary, *, stopped):
                 stderr=subprocess.DEVNULL,
             )
         else:
-            result = run(root, env, "coord", "-p", "delegate", timeout=60, binary=binary)
+            result = run(root, env, "panel", "-p", "delegate", timeout=60, binary=binary)
             assert_true(result.returncode == 0, result.stderr)
         assert_true(
             heard.wait(budget(40)),
@@ -463,17 +463,17 @@ def society(root, home, binary, *, stopped):
         ]
         assert_true(sent and all(r.startswith("sent to session") for r in sent), sent)
         # A thread's answer travels with its event: no history call to read it.
-        wait_until(lambda: seen["events"], "the coordinator heard no thread event", timeout=10)
+        wait_until(lambda: seen["events"], "the panel heard no thread event", timeout=10)
         assert_true("Its answer" in str(seen["events"][0]), seen["events"][0])
         # And its row is recorded as mail, so no client shows it as the person's.
         saved = next((home / ".uagent" / "history").glob("*/coordinator.json")).read_text()
         assert_true('"origin":"mail"' in saved.replace(" ", ""), saved[-600:])
 
 
-def test_coordinator_refuses_spawns_past_its_spend_limit(root, home, *, binary):
+def test_panel_refuses_spawns_past_its_spend_limit(root, home, *, binary):
     from integration_support import fnv1a64
 
-    coordinator = fnv1a64(
+    panel = fnv1a64(
         str(home / ".uagent" / "history" / fnv1a64(str(root.resolve())) / "coordinator.json")
     )
     write_session(
@@ -484,7 +484,7 @@ def test_coordinator_refuses_spawns_past_its_spend_limit(root, home, *, binary):
         usage={"cost": 1.5, "cost_reported": True},
         kind="thread",
         thread={
-            "coordinator_id": coordinator,
+            "coordinator_id": panel,
             "folder": str(root.resolve()),
             "day": time.strftime("%Y-%m-%d"),
         },
@@ -499,8 +499,8 @@ def test_coordinator_refuses_spawns_past_its_spend_limit(root, home, *, binary):
         ]
     ) as server:
         env = base_env(home, server.url)
-        env["UAGENT_COORDINATOR_DAILY_SPEND_USD"] = "1"
-        result = run(root, env, "coord", "-p", "more", binary=binary)
+        env["UAGENT_PANEL_DAILY_SPEND_USD"] = "1"
+        result = run(root, env, "panel", "-p", "more", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         refusal = tool_results(server.requests[-1][1]["messages"])[0]
         assert_true("spend limit" in refusal, refusal)
@@ -509,7 +509,7 @@ def test_coordinator_refuses_spawns_past_its_spend_limit(root, home, *, binary):
 def test_restarted_threads_keep_their_ceiling_and_user_sessions_stay_asleep(root, home, *, binary):
     from integration_support import fnv1a64
 
-    coordinator = fnv1a64(
+    panel = fnv1a64(
         str(home / ".uagent" / "history" / fnv1a64(str(root.resolve())) / "coordinator.json")
     )
     conversation = [{"role": "system", "content": "sys"}, {"role": "user", "content": "go"}]
@@ -521,14 +521,14 @@ def test_restarted_threads_keep_their_ceiling_and_user_sessions_stay_asleep(root
         usage={"cost": 5, "cost_reported": True},
         kind="thread",
         thread={
-            "coordinator_id": coordinator,
+            "coordinator_id": panel,
             "folder": str(root.resolve()),
             "ceiling": {"budget_usd": 1},
         },
     )
     write_session(home, "mine", conversation, cwd=root)
     ids = {path.stem: fnv1a64(str(path)) for path in session_files(home)}
-    # The restarted thread's report can reach the coordinator within this
+    # The restarted thread's report can reach the panel within this
     # turn, which then answers once more: the last reply repeats.
     with Server(
         [
@@ -544,17 +544,17 @@ def test_restarted_threads_keep_their_ceiling_and_user_sessions_stay_asleep(root
         ],
         repeat_last=True,
     ) as server:
-        result = run(root, base_env(home, server.url), "coord", "-p", "nudge", binary=binary)
+        result = run(root, base_env(home, server.url), "panel", "-p", "nudge", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         sent, refused = tool_results(server.requests[2][1]["messages"])[:2]
         assert_true(sent == "sent", sent)
         assert_true("not running" in refused, refused)
         time.sleep(budget(1))
         # The restarted thread stopped at its budget before asking the model:
-        # no request ever carried the coordinator's message as a user turn.
+        # no request ever carried the panel's message as a user turn.
         assert_true(
             not any(
-                "[from the folder's coordinator] more" in json.dumps(body["messages"])
+                "[from the folder's moderator] more" in json.dumps(body["messages"])
                 for _, body in server.requests
             ),
             [json.dumps(b)[-200:] for _, b in server.requests],
@@ -603,7 +603,7 @@ def test_a_thread_is_never_above_auto(root, home, *, binary):
             run(root, named, "--yolo", "-p", "continue", binary=binary),
         ):
             assert_true(
-                how.returncode != 0 and "coordinator's thread" in how.stderr,
+                how.returncode != 0 and "panel's thread" in how.stderr,
                 (how.stdout, how.stderr),
             )
         assert_true(not server.requests, "a thread ran without its limits")
@@ -611,10 +611,10 @@ def test_a_thread_is_never_above_auto(root, home, *, binary):
         assert_true('"limit": "auto"' in again.stdout, again.stdout)
 
 
-def test_coordinator_messages_a_thread_at_most_three_times_in_a_row(root, home, *, binary):
+def test_panel_messages_a_thread_at_most_three_times_in_a_row(root, home, *, binary):
     from integration_support import fnv1a64
 
-    coordinator = fnv1a64(
+    panel = fnv1a64(
         str(home / ".uagent" / "history" / fnv1a64(str(root.resolve())) / "coordinator.json")
     )
     thread = write_session(
@@ -625,27 +625,27 @@ def test_coordinator_messages_a_thread_at_most_three_times_in_a_row(root, home, 
         usage={"cost": 5, "cost_reported": True},
         kind="thread",
         thread={
-            "coordinator_id": coordinator,
+            "coordinator_id": panel,
             "folder": str(root.resolve()),
             "ceiling": {"budget_usd": 1},
         },
     )
     message = {"action": "message", "session_id": fnv1a64(str(thread)), "text": "again"}
-    # The restarted thread's report can reach the coordinator within this
+    # The restarted thread's report can reach the panel within this
     # turn, which then answers once more: the last reply repeats.
     with Server(
         [tool_call("thread", message, call_id=f"call-{index}") for index in range(4)]
         + [event({"content": "done-ok"})],
         repeat_last=True,
     ) as server:
-        result = run(root, base_env(home, server.url), "coord", "-p", "nudge", binary=binary)
+        result = run(root, base_env(home, server.url), "panel", "-p", "nudge", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         results = tool_results(server.requests[-1][1]["messages"])
         assert_true(results[:3] == ["sent"] * 3, results)
         assert_true("3 times in a row" in results[3], results)
 
 
-def test_coordinator_holds_thread_events_at_the_spend_limit(root, home, *, binary):
+def test_panel_holds_thread_events_at_the_spend_limit(root, home, *, binary):
     from integration_support import fnv1a64
     from session_support import SessionClient, runtime_directory, stop_sessions
 
@@ -665,9 +665,9 @@ def test_coordinator_holds_thread_events_at_the_spend_limit(root, home, *, binar
     )
     with Server([event({"content": "asked-ok"}), event({"content": "event-ran"})]) as server:
         env = base_env(home, server.url)
-        env["UAGENT_COORDINATOR_DAILY_SPEND_USD"] = "1"
+        env["UAGENT_PANEL_DAILY_SPEND_USD"] = "1"
         # Your own messages still run at the limit.
-        result = run(root, env, "coord", "-p", "status?", binary=binary)
+        result = run(root, env, "panel", "-p", "status?", binary=binary)
         assert_true(result.stdout.strip() == "asked-ok", result.stdout + result.stderr)
         client = SessionClient(runtime_directory(home) / f"{fnv1a64(str(path))}.sock")
         try:
@@ -684,7 +684,7 @@ def test_coordinator_holds_thread_events_at_the_spend_limit(root, home, *, binar
             stop_sessions(home)
 
 
-def test_coordinator_caps_working_threads_in_worktrees(root, home, *, binary):
+def test_panel_caps_working_threads_in_worktrees(root, home, *, binary):
     import subprocess
 
     for command in (
@@ -733,9 +733,9 @@ def test_coordinator_caps_working_threads_in_worktrees(root, home, *, binary):
 
     with Server([route]) as server:
         env = base_env(home, server.url)
-        env["UAGENT_COORDINATOR_MAX_THREADS"] = "1"
+        env["UAGENT_PANEL_MAX_THREADS"] = "1"
         try:
-            result = run(root, env, "coord", "-p", "two things", binary=binary, timeout=30)
+            result = run(root, env, "panel", "-p", "two things", binary=binary, timeout=30)
         finally:
             release.set()
         assert_true(result.returncode == 0, result.stderr)
@@ -751,7 +751,7 @@ def test_coordinator_caps_working_threads_in_worktrees(root, home, *, binary):
         assert_true("already working" in second, second)
 
 
-def test_coordinator_closes_an_idle_thread(root, home, *, binary):
+def test_panel_closes_an_idle_thread(root, home, *, binary):
     """close ends an idle thread's runtime, which a stop never did, so the
     session can then be deleted."""
     closed = {}
@@ -781,7 +781,7 @@ def test_coordinator_closes_an_idle_thread(root, home, *, binary):
 
     with Server([route]) as server:
         env = base_env(home, server.url)
-        result = run(root, env, "coord", "-p", "spawn one", binary=binary)
+        result = run(root, env, "panel", "-p", "spawn one", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         wait_until(lambda: "result" in closed, "the thread was never closed", timeout=15)
         # "closed" is only reported once the runtime no longer answers; the
@@ -791,7 +791,7 @@ def test_coordinator_closes_an_idle_thread(root, home, *, binary):
         assert_true(len(thread) == 1, thread)
 
 
-def test_coordinator_deletes_only_with_the_user(root, home, *, binary):
+def test_panel_deletes_only_with_the_user(root, home, *, binary):
     victim = write_session(home, "keep-me", [{"role": "system", "content": "sys"}], cwd=root)
     session_id = __import__("integration_support").fnv1a64(str(victim))
     with Server(
@@ -802,7 +802,7 @@ def test_coordinator_deletes_only_with_the_user(root, home, *, binary):
     ) as server:
         env = base_env(home, server.url)
         env["UAGENT_APPROVAL"] = "yolo"
-        result = run(root, env, "coord", "-p", "delete it", binary=binary)
+        result = run(root, env, "panel", "-p", "delete it", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true("declined" in result.stderr, result.stderr)
         assert_true(victim.exists(), "deleted without the user")
@@ -815,7 +815,7 @@ def _thread_session(home):
 
 
 def _spawn_then(decide):
-    """A router: the coordinator spawns one local thread that writes a file,
+    """A router: the panel spawns one local thread that writes a file,
     and answers the routed approval with `decide(thread_id, interaction_id)`."""
     import re
 
@@ -834,7 +834,7 @@ def _spawn_then(decide):
             state["asked"].set()
             return tool_call("decide", decide(match.group(1), match.group(2)))
         if "[approval request" in text or "[thread event" in text:
-            return event({"content": "coordinator-ack"})
+            return event({"content": "panel-ack"})
         if not results:
             return tool_call(
                 "thread",
@@ -852,7 +852,7 @@ def _spawn_then(decide):
 
 def test_a_confined_thread_acts_inside_its_folder_without_review(root, home, *, binary):
     """The sandbox holds a thread to its folder, so what it writes and runs
-    there is put to nobody: not to a reviewer, not to its coordinator."""
+    there is put to nobody: not to a reviewer, not to its panel."""
     from integration_sandbox import sandbox_enforced
 
     if not sandbox_enforced(root, home, binary=binary):
@@ -871,7 +871,7 @@ def test_a_confined_thread_acts_inside_its_folder_without_review(root, home, *, 
         if "[approval request" in text:
             seen["asked"] = True
         if results or "[thread event" in text:
-            return event({"content": "coordinator-ack"})
+            return event({"content": "panel-ack"})
         return tool_call(
             "thread",
             {
@@ -887,15 +887,15 @@ def test_a_confined_thread_acts_inside_its_folder_without_review(root, home, *, 
         # A thread is confined whatever policy its launcher's environment hands
         # down: this one says "off".
         env["UAGENT_INTERNAL_SANDBOX"] = '{"mode":0}'
-        result = run(root, env, "coord", "-p", "delegate", timeout=60, binary=binary)
+        result = run(root, env, "panel", "-p", "delegate", timeout=60, binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true((root / "ran.txt").read_text() == "x", "the thread did not get to act")
         # A review would have failed here (no reviewer is configured) and come
-        # to the coordinator as a question.
+        # to the panel as a question.
         assert_true(not seen["asked"], "a confined thread's action was put to review")
 
 
-def test_coordinator_approves_what_auto_could_not(root, home, *, binary):
+def test_panel_approves_what_auto_could_not(root, home, *, binary):
     route, state = _spawn_then(
         lambda thread, interaction: {
             "session_id": thread,
@@ -908,14 +908,14 @@ def test_coordinator_approves_what_auto_could_not(root, home, *, binary):
         env = base_env(home, server.url)
         # No sandbox to hold the thread to its folder: its actions are reviewed.
         env["UAGENT_INTERNAL_SANDBOX_UNAVAILABLE"] = "1"
-        result = run(root, env, "coord", "-p", "delegate", binary=binary)
+        result = run(root, env, "panel", "-p", "delegate", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
-        assert_true(state["asked"].wait(budget(20)), "approval never reached the coordinator")
+        assert_true(state["asked"].wait(budget(20)), "approval never reached the panel")
         assert_true(state["done"].wait(budget(20)), "thread never continued")
         assert_true((root / "out.txt").read_text() == "x", "write was not allowed")
         journal = pathlib.Path(str(_thread_session(home)) + ".events.jsonl")
         wait_until(
-            lambda: "coordinator decided y: inside the brief" in journal.read_text(),
+            lambda: "moderator decided y: inside the brief" in journal.read_text(),
             "the decision is missing from the thread's log",
         )
 
@@ -935,9 +935,9 @@ def test_yielded_and_mandatory_decisions_reach_the_user(root, home, *, binary):
         env = base_env(home, server.url)
         # No sandbox to hold the thread to its folder: its actions are reviewed.
         env["UAGENT_INTERNAL_SANDBOX_UNAVAILABLE"] = "1"
-        result = run(root, env, "coord", "-p", "delegate", binary=binary)
+        result = run(root, env, "panel", "-p", "delegate", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
-        assert_true(state["asked"].wait(budget(20)), "approval never reached the coordinator")
+        assert_true(state["asked"].wait(budget(20)), "approval never reached the panel")
         thread = _thread_session(home)
         socket = (
             runtime_directory(home)
@@ -960,12 +960,12 @@ def test_yielded_and_mandatory_decisions_reach_the_user(root, home, *, binary):
         assert_true((root / "out.txt").read_text() == "x", "write was not allowed")
 
 
-def test_mandatory_decisions_skip_the_coordinator(root, home, *, binary):
+def test_mandatory_decisions_skip_the_panel(root, home, *, binary):
     from session_support import SessionClient, runtime_directory
 
     def route(_, body):
         text = json.dumps(body["messages"])
-        assert "[approval request" not in text, "a mandatory decision reached the coordinator"
+        assert "[approval request" not in text, "a mandatory decision reached the panel"
         if "Objective: run it" in text:
             return tool_call("run", {"command": "true", "sandbox": False})
         if "[thread event" in text:
@@ -979,7 +979,7 @@ def test_mandatory_decisions_skip_the_coordinator(root, home, *, binary):
 
     with Server([route]) as server:
         env = base_env(home, server.url)
-        result = run(root, env, "coord", "-p", "delegate", binary=binary)
+        result = run(root, env, "panel", "-p", "delegate", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         thread = _thread_session(home)
         fnv = __import__("integration_support").fnv1a64
@@ -996,10 +996,10 @@ def test_mandatory_decisions_skip_the_coordinator(root, home, *, binary):
             client.close()
 
 
-def test_coordinator_context_carries_instructions_notes_board_and_time(root, home, *, binary):
+def test_panel_context_carries_instructions_notes_board_and_time(root, home, *, binary):
     import re
 
-    instructions = home / ".uagent" / "COORDINATOR.md"
+    instructions = home / ".uagent" / "PANEL.md"
     instructions.parent.mkdir(parents=True, exist_ok=True)
     instructions.write_text("Prefer small threads.")
     with Server(
@@ -1009,7 +1009,7 @@ def test_coordinator_context_carries_instructions_notes_board_and_time(root, hom
                 "uagent",
                 {
                     "action": "set_instructions",
-                    "audience": "coordinator",
+                    "audience": "panel",
                     "scope": "user",
                     "text": "Be reckless.",
                 },
@@ -1020,14 +1020,14 @@ def test_coordinator_context_carries_instructions_notes_board_and_time(root, hom
         ]
     ) as server:
         env = base_env(home, server.url)
-        first = run(root, env, "coord", "-p", "remember the goal", binary=binary)
+        first = run(root, env, "panel", "-p", "remember the goal", binary=binary)
         assert_true(first.returncode == 0, first.stderr)
         assert_true("declined" in first.stderr, first.stderr)
         assert_true(
             instructions.read_text() == "Prefer small threads.",
             "instructions changed without the user",
         )
-        second = run(root, env, "coord", "-p", "what now?", binary=binary)
+        second = run(root, env, "panel", "-p", "what now?", binary=binary)
         assert_true(second.returncode == 0, second.stderr)
         messages = server.requests[-1][1]["messages"]
         system = messages[0]["content"]
@@ -1037,7 +1037,7 @@ def test_coordinator_context_carries_instructions_notes_board_and_time(root, hom
         # Rebuilt per request, never stored: rewriting stored history would
         # move display rows and spoil the provider's cached prefix.
         stored = next(p for p in session_files(home) if p.name == "coordinator.json")
-        assert_true("## board" not in stored.read_text(), "coordinator context was stored")
+        assert_true("## board" not in stored.read_text(), "panel context was stored")
         # The typed text is stored as typed; only the request carries stamps.
         stored_messages = json.loads(stored.read_text().split("\n", 1)[1])["messages"]
         assert_true(any(m.get("content") == "what now?" for m in stored_messages), stored_messages)
@@ -1062,7 +1062,7 @@ def test_only_checkpoints_carry_the_view(root, home, *, binary):
 
     path = home / ".uagent" / "history" / fnv1a64(str(root.resolve())) / "coordinator.json"
     with Server([event({"content": "first"}), event({"content": "second"})]) as server:
-        result = run(root, base_env(home, server.url), "coord", "-p", "hi", binary=binary)
+        result = run(root, base_env(home, server.url), "panel", "-p", "hi", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         client = SessionClient(runtime_directory(home) / f"{fnv1a64(str(path))}.sock")
         try:
@@ -1106,7 +1106,7 @@ def _last_user(body):
         [
             m
             for m in body["messages"]
-            if m["role"] == "user" and "[coordinator context" not in json.dumps(m)
+            if m["role"] == "user" and "[moderator context" not in json.dumps(m)
         ][-1]
     )
 
@@ -1126,9 +1126,9 @@ def _heard(body):
 
 
 def _room(reply):
-    """A provider for a coordinator that adds Ada and Lin when asked to bring
+    """A provider for a panel that adds Ada and Lin when asked to bring
     in the team, passes on what members write, and otherwise answers
-    "coordinator"; members answer what `reply(member, last, body)` returns."""
+    "panel"; members answer what `reply(member, last, body)` returns."""
 
     def route(_, body):
         member = _member(body)
@@ -1156,7 +1156,7 @@ def _asked(server, name, text):
 
 
 def _team(root, env, binary):
-    result = run(root, env, "coord", "-p", "bring in the team", binary=binary)
+    result = run(root, env, "panel", "-p", "bring in the team", binary=binary)
     assert_true(result.returncode == 0, result.stderr)
     # Both joined: a test about the chat is not one about starting runtimes.
     joined = [path for path in session_files(env["HOME"]) if path.name.startswith("thread-")]
@@ -1183,7 +1183,7 @@ def test_a_chat_is_heard_by_everyone_and_answered_by_who_has_something_to_say(
             )
             return tool_call("thread", {"action": "message", "session_id": lin, "text": "hello"})
         # Nothing to add: to a member's message, or to the user's.
-        return "PASS" if member or _posted(last) else "coordinator"
+        return "PASS" if member or _posted(last) else "panel"
 
     with Server([_room(reply)]) as server:
         env = base_env(home, server.url)
@@ -1201,21 +1201,19 @@ def test_a_chat_is_heard_by_everyone_and_answered_by_who_has_something_to_say(
         assert_true({"read_path", "grep"} <= set(function_names(intro)) <= MEMBER_TOOLS, intro)
 
         # A message that names nobody wakes everyone. Ada answers, which wakes
-        # Lin and the coordinator in turn; both pass, and a pass is shown to
+        # Lin and the panel in turn; both pass, and a pass is shown to
         # nobody: not in the conversation, not in what the run prints.
         server.requests.clear()
-        result = run(root, env, "coord", "-p", "name the kite", binary=binary)
+        result = run(root, env, "panel", "-p", "name the kite", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(_asked(server, "Ada", "user: name the kite"), server.requests)
         assert_true(_asked(server, "Lin", "user: name the kite"), server.requests)
         wait_until(lambda: _asked(server, "Lin", "Ada: Call it"), "Lin never read Ada")
         wait_until(
             lambda: any(not _member(b) and _posted(_last_user(b)) for _, b in server.requests),
-            "the coordinator never read Ada",
+            "the panel never read Ada",
         )
-        assert_true(
-            result.stdout.strip() == "coordinator\n\nAda: Call it Kestrel.", repr(result.stdout)
-        )
+        assert_true(result.stdout.strip() == "panel\n\nAda: Call it Kestrel.", repr(result.stdout))
         # Each is told who else is answering, and nobody reads an @ or a label.
         woken = [b for _, b in server.requests if _member(b) and "name the kite" in _heard(b)]
         assert_true(any("(typing: " in _heard(b) for b in woken), server.requests)
@@ -1226,30 +1224,30 @@ def test_a_chat_is_heard_by_everyone_and_answered_by_who_has_something_to_say(
         # the others read it without a turn, and so they do its answer, which
         # goes back to who asked.
         server.requests.clear()
-        result = run(root, env, "coord", "-p", "lin, only you", binary=binary)
+        result = run(root, env, "panel", "-p", "lin, only you", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "Lin: Just me, then.", repr(result.stdout))
         time.sleep(budget(1))
         assert_true([_member(b) for _, b in server.requests] == ["Lin"], server.requests)
 
-        # Put to a member and the coordinator, it is theirs: what the
-        # coordinator answers goes back to the user and wakes nobody.
+        # Put to a member and the panel, it is theirs: what the
+        # panel answers goes back to the user and wakes nobody.
         server.requests.clear()
-        result = run(root, env, "coord", "-p", "Ada and coordinator, a word", binary=binary)
+        result = run(root, env, "panel", "-p", "Ada and moderator, a word", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         time.sleep(budget(1))
         assert_true(sorted(_member(b) for _, b in server.requests) == ["", "Ada"], server.requests)
 
         # A name inside a sentence addresses nobody: everyone is woken.
         server.requests.clear()
-        result = run(root, env, "coord", "-p", "is Lin right, everyone?", binary=binary)
+        result = run(root, env, "panel", "-p", "is Lin right, everyone?", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true({_member(b) for _, b in server.requests} == {"", "Ada", "Lin"}, server.requests)
 
         # A member asks another by name: the answer wakes the one who asked
         # and nobody else, and what the asker says next is for everyone.
         server.requests.clear()
-        result = run(root, env, "coord", "-p", "Ada, ask Lin", binary=binary)
+        result = run(root, env, "panel", "-p", "Ada, ask Lin", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         time.sleep(budget(1))
         assert_true(
@@ -1258,10 +1256,10 @@ def test_a_chat_is_heard_by_everyone_and_answered_by_who_has_something_to_say(
         assert_true("Ada: Noted, I agree with Lin" in result.stdout, repr(result.stdout))
         wait_until(lambda: _asked(server, "Lin", "Ada: Noted"), "Lin never read Ada")
 
-        # The coordinator cannot message a member past the chat, whose limits
+        # The panel cannot message a member past the chat, whose limits
         # would not count it.
         server.requests.clear()
-        result = run(root, env, "coord", "-p", "nudge Lin", binary=binary)
+        result = run(root, env, "panel", "-p", "nudge Lin", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         text = json.dumps([b for _, b in server.requests if not _member(b)][-1]["messages"])
         assert_true("lin, only you" in text and "Just me, then." in text, text)
@@ -1287,7 +1285,7 @@ def test_a_member_that_waits_reads_who_was_typing_and_nobody_waits_for_ever(root
         env = base_env(home, server.url)
         _team(root, env, binary)
         server.requests.clear()
-        result = run(root, env, "coord", "-p", "slow start", binary=binary)
+        result = run(root, env, "panel", "-p", "slow start", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(
             result.stdout.strip() == "Ada: Ada's point.\n\nLin: And building on Ada: one more.",
@@ -1296,7 +1294,7 @@ def test_a_member_that_waits_reads_who_was_typing_and_nobody_waits_for_ever(root
         waited = _asked(server, "Lin", "slow start")[0]["messages"][-1]["content"]
         assert_true("Ada" in waited.split("(typing: ")[1], waited)
 
-        result = run(root, env, "coord", "-p", "all wait", binary=binary, timeout=20)
+        result = run(root, env, "panel", "-p", "all wait", binary=binary, timeout=20)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "", repr(result.stdout))
 
@@ -1313,7 +1311,7 @@ def test_a_long_message_reaches_the_chat_whole(root, home, *, binary):
         env = base_env(home, server.url)
         _team(root, env, binary)
         server.requests.clear()
-        result = run(root, env, "coord", "-p", "Ada, a long one", binary=binary)
+        result = run(root, env, "panel", "-p", "Ada, a long one", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         # Not the opening a view keeps of it: the user and the others read
         # what she wrote.
@@ -1322,23 +1320,23 @@ def test_a_long_message_reaches_the_chat_whole(root, home, *, binary):
 
 def test_a_chat_that_never_falls_silent_stops_at_its_limits(root, home, *, binary):
     def reply(member, _last, _body):
-        return f"More from {member or 'the coordinator'}."
+        return f"More from {member or 'the panel'}."
 
     with Server([_room(reply)]) as server:
         env = base_env(home, server.url)
-        env["UAGENT_COORDINATOR_CHAT_TURNS"] = "3"
+        env["UAGENT_PANEL_CHAT_TURNS"] = "3"
         _team(root, env, binary)
         server.requests.clear()
         # Every answer would wake everyone else for ever. Three participants
         # get nine turns between them and two messages each, and no more.
-        result = run(root, env, "coord", "-p", "keep talking", binary=binary, timeout=30)
+        result = run(root, env, "panel", "-p", "keep talking", binary=binary, timeout=30)
         assert_true(result.returncode == 0, result.stderr)
         time.sleep(budget(1))
         assert_true(len(server.requests) <= 9, [_last_user(b)[:60] for _, b in server.requests])
         said = result.stdout
         for name in ("Ada", "Lin"):
             assert_true(1 <= said.count(f"{name}: More from {name}.") <= 2, said)
-        assert_true(1 <= said.count("More from the coordinator.") <= 2, said)
+        assert_true(1 <= said.count("More from the panel.") <= 2, said)
 
 
 def test_a_member_reads_what_was_shared_in_the_chat_without_review(root, home, *, binary):
@@ -1349,7 +1347,7 @@ def test_a_member_reads_what_was_shared_in_the_chat_without_review(root, home, *
 
     def route(_, body):
         # A member may answer with a tool call here, which `_room` passes on
-        # only for the coordinator.
+        # only for the panel.
         member, last = _member(body), _last_user(body)
         if member == "Ada" and "look at" in last and not tool_results(body["messages"]):
             return tool_call(
@@ -1360,13 +1358,13 @@ def test_a_member_reads_what_was_shared_in_the_chat_without_review(root, home, *
     with Server([route]) as server:
         env = base_env(home, server.url)
         _team(root, env, binary)
-        # Where the web keeps the files a person uploads to the coordinator.
-        coordinator = next(path for path in session_files(home) if path.name == "coordinator.json")
-        shared = pathlib.Path(str(coordinator) + ".assets")
+        # Where the web keeps the files a person uploads to the panel.
+        panel = next(path for path in session_files(home) if path.name == "coordinator.json")
+        shared = pathlib.Path(str(panel) + ".assets")
         shared.mkdir()
         (shared / "plan.txt").write_text("ship on friday\n", encoding="utf-8")
         server.requests.clear()
-        result = run(root, env, "coord", "-p", f"Ada, look at {shared / 'plan.txt'}", binary=binary)
+        result = run(root, env, "panel", "-p", f"Ada, look at {shared / 'plan.txt'}", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "Ada: It says ship on friday", repr(result.stdout))
         # Nobody was asked to review the read: Ada's two requests come first.
@@ -1383,14 +1381,14 @@ def test_an_answer_to_an_earlier_message_is_read_and_is_no_turn_of_the_next(root
             answering.set()
             time.sleep(budget(1.5))
             return "Answer one."
-        return "PASS" if member or _posted(last) else "coordinator"
+        return "PASS" if member or _posted(last) else "panel"
 
     with Server([_room(reply)]) as server:
         env = base_env(home, server.url)
         _team(root, env, binary)
-        coordinator = next(path for path in session_files(home) if path.name == "coordinator.json")
+        panel = next(path for path in session_files(home) if path.name == "coordinator.json")
         first = subprocess.Popen(
-            [str(binary), "coord", "-p", "slow first"],
+            [str(binary), "panel", "-p", "slow first"],
             cwd=root,
             env=env,
             stdout=subprocess.DEVNULL,
@@ -1399,66 +1397,64 @@ def test_an_answer_to_an_earlier_message_is_read_and_is_no_turn_of_the_next(root
         try:
             # The user writes again while Ada still answers the first message.
             assert_true(answering.wait(budget(10)), "Ada was never woken")
-            result = run(root, env, "coord", "-p", "second", binary=binary, timeout=30)
+            result = run(root, env, "panel", "-p", "second", binary=binary, timeout=30)
         finally:
             first.kill()
             first.wait()
         assert_true(result.returncode == 0, result.stderr)
         # Both are said, and only the second is her message of this round,
-        # beside the coordinator's one.
+        # beside the panel's one.
         assert_true(
             result.stdout.index("Ada: Answer one.") < result.stdout.index("Ada: Answer two."),
             repr(result.stdout),
         )
-        round_ = json.loads(pathlib.Path(str(coordinator) + ".chat").read_text(encoding="utf-8"))
+        round_ = json.loads(pathlib.Path(str(panel) + ".chat").read_text(encoding="utf-8"))
         assert_true(sorted(seat["posts"] for seat in round_["seats"].values()) == [0, 1, 1], round_)
 
 
-def test_a_chat_round_outlives_the_coordinators_runtime(root, home, *, binary):
+def test_a_chat_round_outlives_the_panels_runtime(root, home, *, binary):
     answering = threading.Event()
 
     def reply(member, _last, body):
         said = json.dumps(body["messages"])
-        # The coordinator's own answer may reach Ada before her turn starts
+        # The panel's own answer may reach Ada before her turn starts
         # and be the newest message she sees: the question is still hers.
         if member == "Ada" and "slow one" in said and "Late answer." not in said:
             answering.set()
             time.sleep(budget(1.5))
             return "Late answer."
-        return "PASS" if member else "coordinator"
+        return "PASS" if member else "panel"
 
     with Server([_room(reply)]) as server:
         env = base_env(home, server.url)
         _team(root, env, binary)
-        coordinator = next(path for path in session_files(home) if path.name == "coordinator.json")
+        panel = next(path for path in session_files(home) if path.name == "coordinator.json")
         server.requests.clear()
         asking = subprocess.Popen(
-            [str(binary), "coord", "-p", "slow one"],
+            [str(binary), "panel", "-p", "slow one"],
             cwd=root,
             env=env,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
         try:
-            # The coordinator has answered and Ada is still writing when the
-            # coordinator's runtime dies. Ada's answer starts it again, and
+            # The panel has answered and Ada is still writing when the
+            # panel's runtime dies. Ada's answer starts it again, and
             # the round it finds saved lets it take its turn on her message.
             assert_true(answering.wait(budget(10)), "Ada was never woken")
             wait_until(
                 lambda: any(
                     not _member(b) and "slow one" in _last_user(b) for _, b in server.requests
                 ),
-                "the coordinator never answered",
+                "the panel never answered",
             )
             time.sleep(budget(0.3))
-            subprocess.run(
-                ["pkill", "-9", "-f", "--", f"--session-worker .*{coordinator}"], check=False
-            )
+            subprocess.run(["pkill", "-9", "-f", "--", f"--session-worker .*{panel}"], check=False)
             wait_until(
                 lambda: any(
                     not _member(b) and "Late answer." in _last_user(b) for _, b in server.requests
                 ),
-                "the coordinator did not hear Ada after the restart",
+                "the panel did not hear Ada after the restart",
             )
         finally:
             asking.kill()

@@ -6,7 +6,7 @@ until grep -q "ALL DONE" progress.txt; do sleep 20; done
 mkdir -p failed
 for attempt in 1 2 3; do
   for task in fix survey research audit; do
-    for mode in solo sub coord; do
+    for mode in solo sub panel; do
       name=$task-$mode
       reason=$(python3 -c "import json,sys;print(json.loads(open('runs/$name/out.json').read().strip().splitlines()[-1])['stop']['reason'])" 2>/dev/null)
       if [ "$reason" != completed ]; then

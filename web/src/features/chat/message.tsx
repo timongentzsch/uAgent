@@ -246,11 +246,11 @@ function MessageView({ block, online, session }: MessageProps) {
   const agentRow =
     block.kind === "assistant" ||
     (block.kind === "attachment" && block.origin === "tool");
-  // In a chat with members the coordinator is named like everyone else.
-  const coordinator =
-    !!team?.length && block.kind === "assistant" ? "Coordinator" : undefined;
+  // In a chat with members the panel is named like everyone else.
+  const panel =
+    !!team?.length && block.kind === "assistant" ? "Moderator" : undefined;
   const actor =
-    member || coordinator || (userOwned || row || agentRow ? null : block.kind);
+    member || panel || (userOwned || row || agentRow ? null : block.kind);
   const running = block.duration_ms == null && isRunningStatus(block.status);
   const assets = `/api/sessions/${session.id}/assets/`;
   const nameId = useId();
@@ -269,7 +269,7 @@ function MessageView({ block, online, session }: MessageProps) {
   return (
     <article
       data-message-id={block.key || block.id}
-      className={`message ${row ? "tool" : userOwned ? "user" : "response"}${member || coordinator ? " member" : ""}${block.turn_root === block.id ? " turn-start" : ""}`}
+      className={`message ${row ? "tool" : userOwned ? "user" : "response"}${member || panel ? " member" : ""}${block.turn_root === block.id ? " turn-start" : ""}`}
       aria-labelledby={nameId}
     >
       <h3 class="sr-only" id={nameId}>
@@ -308,9 +308,7 @@ function MessageView({ block, online, session }: MessageProps) {
             http={http}
             branch={userOwned ? branch : undefined}
             prompt={
-              prompt && (member || coordinator)
-                ? () => prompt(member)
-                : undefined
+              prompt && (member || panel) ? () => prompt(member) : undefined
             }
           />
         </header>

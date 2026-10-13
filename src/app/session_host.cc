@@ -175,7 +175,7 @@ bool SessionHost::RefreshCatalogue(bool force) {
     if (inserted) session.published = nullptr;
     changed |= PublishMetadata(session.id, session);
   }
-  // Gone from disk and not running: deleted by a coordinator or by hand.
+  // Gone from disk and not running: deleted by a panel or by hand.
   // Drafts have no file yet, and a session mid-command is the router's.
   for (auto it = sessions_.begin(); it != sessions_.end();) {
     const HostSession& session = *it->second;
@@ -263,7 +263,7 @@ bool SessionHost::Contains(const std::string& id) const {
 }
 
 json SessionHost::Metadata(const HostSession& session) const {
-  // Waiting on a person: a coordinator's routed decision is not. What it
+  // Waiting on a person: a panel's routed decision is not. What it
   // waits on is named from the decision in memory, for the inbox row.
   const bool waits = WaitsOnPerson(session.pending);
   return {

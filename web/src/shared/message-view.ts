@@ -59,7 +59,7 @@ function unsaid(block: Block, chat: boolean) {
     : UNSAID.includes(text);
 }
 
-// With `chat`, the conversation is a coordinator's chat with members.
+// With `chat`, the conversation is a panel's chat with members.
 export function presentMessages(
   blocks: Block[],
   policy: DetailPolicy = defaultDetail.policy,

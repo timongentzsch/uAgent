@@ -459,7 +459,7 @@ class Master {
           break;
         }
         PublishSettings();
-        // Sessions a coordinator creates or deletes reach every client.
+        // Sessions a panel creates or deletes reach every client.
         host_.RefreshCatalogue();
         bool observed;
         {

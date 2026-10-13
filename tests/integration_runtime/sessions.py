@@ -490,7 +490,7 @@ def test_a_runtime_that_cannot_listen_says_so_at_once(root, home, *, binary):
     try:
         with Server([event({"content": "unused"})]) as server:
             began = time.monotonic()
-            result = run_dialog(root, base_env(home, server.url), "hello\n", "coord", binary=binary)
+            result = run_dialog(root, base_env(home, server.url), "hello\n", "panel", binary=binary)
         assert_true(result.returncode != 0, result.stdout)
         assert_true("could not listen" in result.stderr, result.stderr)
         assert_true("another runtime" not in result.stderr, result.stderr)

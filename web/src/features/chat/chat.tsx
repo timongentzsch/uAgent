@@ -131,7 +131,7 @@ export default function Chat({
           <Welcome
             title="What are we working on?"
             tips={
-              session.kind === "coordinator"
+              session.kind === "panel"
                 ? [
                     [
                       "Members",
@@ -158,8 +158,8 @@ export default function Chat({
             }
           >
             <p>
-              {session.kind === "coordinator"
-                ? "The coordinator starts threads that do the work and reports back. It never edits files itself."
+              {session.kind === "panel"
+                ? "The moderator starts threads that do the work and reports back. It never edits files itself."
                 : "Describe a task."}
             </p>
           </Welcome>

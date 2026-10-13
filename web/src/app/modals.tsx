@@ -113,7 +113,7 @@ export default function Modals({
   setFolder: (folder: string) => void;
   create: (
     event: JSX.TargetedSubmitEvent<HTMLFormElement> | null,
-    coordinator?: boolean,
+    panel?: boolean,
   ) => void;
   busy: boolean;
   preferences: Preferences;
@@ -229,8 +229,7 @@ export default function Modals({
               Any accessible directory works, including a folder outside Git. A
               name alone starts in a space of that name, a folder µAgent keeps
               for it. Multiple conversations can work in the same folder. Its
-              coordinator runs several for you and hosts a chat with other
-              voices.
+              panel runs several for you and hosts a chat with other voices.
             </p>
             <Actions>
               {/* Not a submit: Enter in the field starts a conversation. */}
@@ -241,7 +240,7 @@ export default function Modals({
                   create(null, true)
                 }
               >
-                Open its coordinator
+                Open its panel
               </Button>
               <Button
                 type="submit"

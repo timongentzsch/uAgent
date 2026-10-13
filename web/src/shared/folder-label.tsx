@@ -7,7 +7,7 @@ export const folderName = (path = "") =>
   path.split("/").filter(Boolean).slice(-2).join("/") ||
   "Unavailable directory";
 
-// The folder a session belongs to: a thread's coordinator folder, else its
+// The folder a session belongs to: a thread's panel folder, else its
 // own working directory.
 export const folderOf = (item: Session) => item.folder || item.cwd || "";
 

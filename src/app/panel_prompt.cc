@@ -10,8 +10,8 @@
 
 #include "include/agent/session_store.h"
 #include "include/app/chat.h"
-#include "include/app/coordinator.h"
 #include "include/app/launch.h"
+#include "include/app/panel.h"
 #include "include/app/session.h"
 #include "include/core/json.h"
 #include "include/core/signals.h"
@@ -19,11 +19,11 @@
 #include "include/transport/session.h"
 
 namespace uagent::session {
-// One request to a folder's coordinator from the command line: its answer,
+// One request to a folder's panel from the command line: its answer,
 // with what its threads reported, on standard output.
-int CoordinatorPromptMain(const Options& options) {
+int PanelPromptMain(const Options& options) {
   const std::string cwd = CanonicalCwd();
-  const std::string path = CoordinatorPath(cwd);
+  const std::string path = PanelPath(cwd);
   std::string error;
   auto connection = Open(ExecutablePath(), cwd, path, "", options, error);
   if (!connection.socket) {
@@ -38,16 +38,16 @@ int CoordinatorPromptMain(const Options& options) {
   const std::string request = RandomToken(16);
   bool submitted = false, rejected = false, completed = false, busy = true;
   bool accepted = false, paused = false, done = false;
-  std::string probe;  // the request that asks the coordinator how it stands
+  std::string probe;  // the request that asks the panel how it stands
   json stop = json::object();
-  // The coordinator's session runs on; this request is its growth.
+  // The panel's session runs on; this request is its growth.
   Usage before, after;
   const auto receive = [&](const json& frame) {
     const std::string kind = JsonValue(frame, "kind", "");
     if (kind == "outcome" && JsonValue(frame, "request_id", "") == request) {
       accepted = JsonValue(frame, "accepted", false);
       if (accepted) return true;
-      error = JsonValue(frame, "error", "coordinator refused");
+      error = JsonValue(frame, "error", "panel refused");
       rejected = true;
       return false;
     }
@@ -96,8 +96,8 @@ int CoordinatorPromptMain(const Options& options) {
   };
   // The work it delegated is part of the answer. Each step is in place
   // before the one before it ends: a thread mails its report before it shows
-  // idle, the coordinator queues a report before acknowledging it, and the
-  // queue starts its turn. So when no thread owes anything, the coordinator
+  // idle, the panel queues a report before acknowledging it, and the
+  // queue starts its turn. So when no thread owes anything, the panel
   // is asked, and its word that it is idle is the end. A thread that waits
   // for a person, or whose runtime is gone, is not waited for, nor are
   // reports the spend limit holds. One buffer for the whole wait: a frame
@@ -127,10 +127,10 @@ int CoordinatorPromptMain(const Options& options) {
   // A runtime that closed with work still owed has not answered.
   if (rejected || !done) {
     fprintf(stderr, "%s\n",
-            error.empty() ? "coordinator runtime closed" : error.c_str());
+            error.empty() ? "panel runtime closed" : error.c_str());
     return 1;
   }
-  // Everything the coordinator and its chat's members said since the
+  // Everything the panel and its chat's members said since the
   // request, in full: a thread's report reopens its turn or starts another,
   // and each says part of it.
   std::string answer;

@@ -8,7 +8,7 @@ import { usePhone } from "../../shared/layout.ts";
 
 const DONE_SHOWN = 8;
 
-// The folder at a glance, beside its coordinator: what waits on you, what is
+// The folder at a glance, beside its panel: what waits on you, what is
 // working, and what is done. Drawn from live session metadata, never stored.
 export default function Board({
   threads,
@@ -50,7 +50,7 @@ export default function Board({
     <aside class="board" aria-label="Board">
       {!shown.length && (
         <p class="board-note">
-          Nothing here yet. Threads the coordinator starts, members of its chat
+          Nothing here yet. Threads the moderator starts, members of the panel
           and what needs you appear here.
         </p>
       )}
@@ -85,10 +85,10 @@ export default function Board({
   );
 }
 
-// A coordinator's chat keeps the conversation column; the board sits beside
+// A panel's chat keeps the conversation column; the board sits beside
 // it. On a phone the header's Board button opens it from the right instead.
 // Other conversations render unchanged.
-export function CoordinatorLayout({
+export function PanelLayout({
   board,
   children,
 }: {
@@ -98,22 +98,22 @@ export function CoordinatorLayout({
   const phone = usePhone();
   if (!board || phone) return <>{children}</>;
   return (
-    <div class="coordinator-layout">
-      <div class="coordinator-chat">{children}</div>
+    <div class="panel-layout">
+      <div class="panel-chat">{children}</div>
       {board}
     </div>
   );
 }
 
-// What a coordinator is, in one line under its title, with the way to
+// What a panel is, in one line under its title, with the way to
 // change what it reads.
-export function CoordinatorHelp({
+export function PanelHelp({
   editInstructions,
 }: {
   editInstructions: () => void;
 }) {
   return (
-    <p class="coordinator-subtitle">
+    <p class="panel-subtitle">
       <span>
         Tracks this folder&rsquo;s conversations and hands work to threads (↳);
         never edits files itself.

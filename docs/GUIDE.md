@@ -6,7 +6,7 @@ detail. [README](../README.md) has the install and a one-screen quick start.
 
 Words used throughout: a **conversation** is what you talk in (its file and
 its running process are a *session*); a **thread** is a conversation a
-coordinator started to do work; a **member** is a persona in a coordinator's
+panel started to do work; a **member** is a persona in a panel's
 chat; an **activity** is a command or agent that keeps running in the
 background; **approval** is being asked before an action.
 
@@ -163,56 +163,58 @@ conversation open in a terminal is the same one in the browser.
 [Web interface](WEB.md) covers a phone or another machine and notifications;
 [Browser appliance](BROWSER.md) the browser the agent can drive.
 
-## The coordinator
+## The panel
 
 ```sh
-uagent coord
+uagent panel
 ```
 
-opens the folder's coordinator (`/coord` from inside a conversation; in the
-web, *New conversation → Open its coordinator*). It never edits files
-itself. Ask it for work and it starts **threads**: conversations of their
-own, each on a brief, that report back when their turn ends. The coordinator
-answers the approvals a thread cannot settle or passes them to you.
+opens the folder's panel (`/panel` from inside a conversation; in the
+web, *New conversation → Open its panel*). You talk to its **moderator**,
+which never edits files itself. Ask it for work and it starts **threads**:
+conversations of their own, each on a brief, that report back when their
+turn ends. The moderator answers the approvals a thread cannot settle or
+passes them to you.
 
 - **The board** lists the folder's conversations, what each is doing and what
   waits on you: `/board` in the terminal, beside the chat in the web.
   `/open ID` switches to one.
 - **Where a thread works.** By default in a git worktree of its own under
   `~/.uagent/worktrees/`, started from your `HEAD`, so your checkout stays as
-  it is while several threads work. Ask the coordinator for a thread's diff.
+  it is while several threads work. Ask the moderator for a thread's diff.
   To take the work, have the thread commit and merge or cherry-pick that
   commit from your checkout (the worktree shares your repository). With
-  `coordinator.environment=local` threads work in the folder itself.
-- **Limits.** Five threads at once (`coordinator.maxThreads`) and $20 of
-  reported cost a day for a coordinator and its threads
-  (`coordinator.dailySpendUsd`); at the limit, threads' reports wait.
-- **Instructions.** `COORDINATOR.md` holds what every coordinator reads at
-  start ([Instructions](INSTRUCTIONS.md)).
+  `panel.environment=local` threads work in the folder itself.
+- **Limits.** Five threads at once (`panel.maxThreads`) and $20 of
+  reported cost a day for a panel and its threads
+  (`panel.dailySpendUsd`); at the limit, threads' reports wait.
+- **Instructions.** `PANEL.md` holds what every moderator reads at
+  start ([Instructions](INSTRUCTIONS.md)). A `COORDINATOR.md`, its name
+  before, is read where no `PANEL.md` exists.
 
 ### The chat
 
-Ask the coordinator for another voice ("add a sceptical reviewer called
+Ask the moderator for another voice ("add a sceptical reviewer called
 Ada") and it adds a **member**: a persona with a name, optionally its own
 model, that reads and searches but changes nothing. From then on the
-coordinator's conversation is a chat.
+panel's conversation is a chat.
 
 - **Everyone reads every message** and decides whether to answer. A
   participant with nothing to add says nothing, and one that sees someone
   else typing may wait for them. You only see the messages.
 - **To ask one participant alone, start the message with its name** followed
   by a comma or a colon: `Ada, is this safe?`, `Ada and Lin: your view?`,
-  `Coordinator, summarise`. Only those named answer, and the answer comes
+  `Moderator, summarise`. Only those named answer, and the answer comes
   back to you without waking the others. A name anywhere else in the
   message addresses nobody.
 - **A message for everyone** starts with no name; members also answer one
   another.
 - **Limits.** For each message of yours, every participant may take three
-  turns (`coordinator.chatTurns`) and post two messages; a chat has at most
+  turns (`panel.chatTurns`) and post two messages; a chat has at most
   16 members.
 - **Who said what.** Each message is shown under its author's name; in the
   web, a message's menu shows the prompt its author was given.
-- Ask the coordinator to remove a member; it asks you to confirm.
+- Ask the moderator to remove a member; it asks you to confirm.
 
 ## Memory, skills and schedules
 
@@ -231,7 +233,7 @@ uagent -p "inspect this repository"
 uagent -p "inspect this repository" --json          # one JSON envelope
 uagent -p "inspect this repository" --json-stream   # one JSON event per line
 uagent -p "fix the tests" --yolo --budget 2 --token-budget 20000
-uagent coord -p "status of the threads"             # ask the coordinator
+uagent panel -p "status of the threads"             # ask the panel
 ```
 
 - `--json` prints one object with `schema` (`uagent.headless.v1`), `answer`,

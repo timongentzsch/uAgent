@@ -2,7 +2,7 @@
 #ifndef UAGENT_INCLUDE_AGENT_SESSION_ROLE_H_
 #define UAGENT_INCLUDE_AGENT_SESSION_ROLE_H_
 // The roles a session can have beyond an ordinary conversation: a folder's
-// coordinator, or a thread it started. A session header's `kind` names it.
+// panel, or a thread it started. A session header's `kind` names it.
 
 #include <algorithm>
 #include <iterator>
@@ -11,12 +11,12 @@
 #include "include/core/json.h"
 
 namespace uagent {
-inline constexpr const char* kSessionKindCoordinator = "coordinator";
+inline constexpr const char* kSessionKindPanel = "panel";
 inline constexpr const char* kSessionKindThread = "thread";
-// A thread's decision with this route is its coordinator's to answer.
-inline constexpr const char* kRouteCoordinator = "coordinator";
+// A thread's decision with this route is its panel's to answer.
+inline constexpr const char* kRoutePanel = "panel";
 
-// Who a thread is in its coordinator's chat (name, persona, skills), from its
+// Who a thread is in its panel's chat (name, persona, skills), from its
 // `thread` role; empty for a thread that works a brief.
 inline json ChatMember(const json& thread) {
   return JsonValue(thread, "member", json::object());
@@ -31,14 +31,13 @@ inline bool SilentAnswer(std::string_view text) {
 }
 
 // A pending decision or approval that waits on a person rather than on the
-// thread's coordinator.
+// thread's panel.
 inline bool WaitsOnPerson(const json& pending) {
-  return pending.is_object() &&
-         JsonValue(pending, "route", "") != kRouteCoordinator;
+  return pending.is_object() && JsonValue(pending, "route", "") != kRoutePanel;
 }
 
 // How a session stands to someone looking from outside, from what its
-// runtime last said: a decision still with the coordinator counts as working.
+// runtime last said: a decision still with the panel counts as working.
 inline const char* Standing(const json& pending, bool busy) {
   return WaitsOnPerson(pending) ? "needs you" : busy ? "working" : "idle";
 }

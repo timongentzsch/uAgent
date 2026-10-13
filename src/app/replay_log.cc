@@ -24,10 +24,10 @@ void ReplayLog::Publish(const std::string& epoch, const std::string& session,
   const std::string kind = JsonValue(value, "kind", "");
   HostNotice notice;
   notice.session = session;
-  // A decision routed to a thread's coordinator reaches a person only once
-  // the coordinator yields it (approval.escalated).
+  // A decision routed to a thread's panel reaches a person only once
+  // the panel yields it (approval.escalated).
   const bool routed = JsonValue(JsonValue(value, "data", json::object()),
-                                "route", "") == kRouteCoordinator;
+                                "route", "") == kRoutePanel;
   if (type == "turn.completed" ||
       ((type == "approval.requested" || type == "ask.requested") && !routed) ||
       type == "approval.escalated" || type == "error" || kind == "error") {

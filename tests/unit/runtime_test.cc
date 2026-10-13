@@ -622,7 +622,7 @@ void TestEffectiveImageModel() {
 void TestAWakeSurvivesARuntimeKilledBeforeItsTurn() {
   TestWorkspace workspace("wake-before-turn");
   const std::string folder = workspace.workspace.string();
-  const std::string path = CoordinatorPath(folder);
+  const std::string path = PanelPath(folder);
   const std::string own = MailboxIdFor(path);
   ScopedEnv session("UAGENT_INTERNAL_SESSION_PATH", path.c_str());
   Mail wake;

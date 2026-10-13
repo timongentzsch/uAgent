@@ -36,10 +36,9 @@ size_t ClampedOffset(const std::string& text) {
 std::vector<std::string> PromptPaths(const std::vector<std::string>& projects) {
   std::vector<std::string> paths;
   for (const std::string& project : projects) {
-    for (bool coordinator : {false, true}) {
+    for (bool panel : {false, true}) {
       for (bool in_project : {false, true}) {
-        paths.push_back(
-            InstructionPath(coordinator, in_project, project).string());
+        paths.push_back(InstructionPath(panel, in_project, project).string());
       }
     }
   }

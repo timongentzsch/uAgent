@@ -222,7 +222,7 @@ add_library(
   src/app/launch.cc
   src/app/thread_link.cc
   src/app/uagent_tool.cc
-  src/app/coordinator.cc
+  src/app/panel.cc
   src/app/chat.cc
   src/cli/options.cc
   src/cli/reference.cc
@@ -240,7 +240,7 @@ add_library(
   src/cli/cli.cc
   src/app/session_server.cc
   src/app/session_worker.cc
-  src/app/coordinator_prompt.cc
+  src/app/panel_prompt.cc
   src/app/session_terminal.cc
   src/ui/conversation.cc
   src/ui/input_decoder.cc

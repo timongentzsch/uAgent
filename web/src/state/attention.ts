@@ -1,11 +1,9 @@
 import type { Session } from "../shared/types.ts";
 import { folderOf } from "../shared/folder-label.tsx";
 
-// A folder's threads: its sessions other than the coordinator.
+// A folder's threads: its sessions other than the panel.
 export const threadsOf = (sessions: Session[], folder: string) =>
-  sessions.filter(
-    (item) => item.kind !== "coordinator" && folderOf(item) === folder,
-  );
+  sessions.filter((item) => item.kind !== "panel" && folderOf(item) === folder);
 
 // Sessions waiting on a person's decision, in one folder when given.
 export const waiting = (sessions: Session[], folder?: string) =>

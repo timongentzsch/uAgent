@@ -112,7 +112,7 @@ def select(arguments):
 def remove_suite(root):
     """Remove the suite's directory once no runtime writes into it: a
     session that finished at the end of a case can still start another (a
-    thread waking its coordinator) after that case's cleanup."""
+    thread waking its panel) after that case's cleanup."""
     from session_support import close_sessions, remove_runtime, runtime_directory
 
     homes = list(root.glob("*.home"))

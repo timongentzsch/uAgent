@@ -53,7 +53,7 @@ enum class SlashCommandId {
   kVerbosity,
   kBtw,
   kYolo,
-  kCoord,
+  kPanel,
   kBoard,
   kOpen,
 };

@@ -33,7 +33,7 @@ inline constexpr const char* kSessionHeaderForkTime = "forked_at_time";
 // (parent, name, description, directive, mode, model, route, label, memory).
 // Children are addressed by their parent, never listed as sessions.
 inline constexpr const char* kSessionHeaderDelegation = "delegation";
-// Present only on a folder's coordinator ("coordinator") or on a session it
+// Present only on a folder's panel ("panel") or on a session it
 // launched ("thread"); absent means an ordinary session. A thread also
 // carries its link: {coordinator_id, brief, ceiling}, fixed at spawn.
 inline constexpr const char* kSessionHeaderKind = "kind";
@@ -45,7 +45,7 @@ inline constexpr size_t kSessionHeaderBytes = size_t{16} * 1024;
 inline constexpr size_t kSessionReadBytes = size_t{64} * 1024 * 1024;
 
 // kChildren: this workspace's delegated children, which the other scopes skip.
-// No scope lists a coordinator; it is addressed by its folder instead.
+// No scope lists a panel; it is addressed by its folder instead.
 enum class SessionScope { kWorkspace, kAll, kChildren };
 
 struct SessionInfo {
@@ -61,8 +61,8 @@ struct SessionInfo {
   json thread = json::object();
 };
 
-// The one coordinator session file of a canonical folder.
-std::string CoordinatorPath(const std::string& cwd);
+// The one panel session file of a canonical folder.
+std::string PanelPath(const std::string& cwd);
 
 // The first line of a session file when it is a valid header, else an empty
 // object. Bounded: it never reads the transcript.

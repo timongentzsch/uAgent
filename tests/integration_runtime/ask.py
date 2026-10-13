@@ -170,7 +170,7 @@ def test_ask_is_absent_where_no_one_can_answer(root, home, *, binary):
         assert_true(names and "ask" not in names, names)
 
 
-def test_a_threads_question_goes_to_its_coordinator(root, home, *, binary):
+def test_a_threads_question_goes_to_its_panel(root, home, *, binary):
     answered = {}
 
     def route(_, body):
@@ -194,7 +194,7 @@ def test_a_threads_question_goes_to_its_coordinator(root, home, *, binary):
                 },
             )
         if "[question" in text or "[thread event" in text:
-            return event({"content": "coordinator-ack"})
+            return event({"content": "panel-ack"})
         if not results:
             return tool_call(
                 "thread",
@@ -208,7 +208,7 @@ def test_a_threads_question_goes_to_its_coordinator(root, home, *, binary):
         return event({"content": "spawned-ok"})
 
     with Server([route]) as server:
-        result = run(root, base_env(home, server.url), "coord", "-p", "delegate", binary=binary)
+        result = run(root, base_env(home, server.url), "panel", "-p", "delegate", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         wait_until(lambda: "result" in answered, "the thread never heard its answer")
         assert_true("Which database?\n→ Postgres" in answered["result"], answered)

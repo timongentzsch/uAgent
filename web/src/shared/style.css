@@ -665,8 +665,8 @@ dialog.sidebar:not([open]) {
   align-items: center;
   gap: var(--gap);
 }
-/* The folder path truncates first; the coordinator icon keeps its place. */
-.sidebar h2:has(.coordinator-button) {
+/* The folder path truncates first; the panel icon keeps its place. */
+.sidebar h2:has(.panel-button) {
   display: flex;
   align-items: center;
   gap: var(--gap);
@@ -677,22 +677,22 @@ dialog.sidebar:not([open]) {
   flex: 1;
   min-width: 0;
 }
-.coordinator-button {
+.panel-button {
   position: relative;
   flex-shrink: 0;
   color: var(--muted);
 }
-.coordinator-button.idle svg {
+.panel-button.idle svg {
   opacity: 0.45;
 }
-.coordinator-button.ready {
+.panel-button.ready {
   color: var(--accent);
 }
-.coordinator-button.working svg {
+.panel-button.working svg {
   color: var(--accent);
   animation: led-breathe var(--motion-pulse) var(--ease-standard) infinite;
 }
-.coordinator-badge {
+.panel-badge {
   position: absolute;
   top: 0;
   right: 0;
@@ -724,7 +724,7 @@ dialog.sidebar:not([open]) {
   font-weight: 600;
   line-height: 1;
 }
-/* A coordinator's threads hang under its folder header. */
+/* A panel's threads hang under its folder header. */
 .sidebar .threads {
   margin-left: var(--space-4);
   border-left: 1px solid var(--line);
@@ -758,7 +758,7 @@ dialog.sidebar:not([open]) {
   color: var(--muted);
 }
 /* One line: the words truncate, the link to its instructions stays. */
-.coordinator-subtitle {
+.panel-subtitle {
   display: flex;
   align-items: baseline;
   gap: var(--space-2);
@@ -766,7 +766,7 @@ dialog.sidebar:not([open]) {
   color: var(--muted);
   font-size: var(--font-small);
 }
-.coordinator-subtitle span {
+.panel-subtitle span {
   min-width: 0;
   white-space: nowrap;
   overflow: hidden;
@@ -775,24 +775,24 @@ dialog.sidebar:not([open]) {
 /* Beside four header buttons on a phone there is room for a letter of it:
    the link stays, and the empty chat says the rest. */
 @media (max-width: 600px) {
-  .coordinator-subtitle span {
+  .panel-subtitle span {
     display: none;
   }
 }
-.coordinator-subtitle button {
+.panel-subtitle button {
   flex-shrink: 0;
   font-size: inherit;
   min-height: 0;
   padding: 0;
   text-decoration: underline;
 }
-.coordinator-layout {
+.panel-layout {
   flex: 1;
   min-height: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) calc(240rem / 14);
 }
-.coordinator-chat {
+.panel-chat {
   min-width: 0;
   min-height: 0;
   display: flex;
@@ -1597,7 +1597,7 @@ details[open]:not(.disclosure-row) > summary::before {
   padding: 0;
   border: 0;
 }
-/* A coordinator's threads waiting on the user, above its composer; the
+/* A panel's threads waiting on the user, above its composer; the
    transcript keeps at least half the column. */
 .escalations {
   flex-shrink: 0;

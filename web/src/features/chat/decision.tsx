@@ -109,8 +109,8 @@ export default function Decision({
     if (!typing) heading.current?.focus({ preventScroll: true });
   }, []);
   const title =
-    pending.route === "coordinator"
-      ? "The coordinator is deciding"
+    pending.route === "panel"
+      ? "The moderator is deciding"
       : asking
         ? "Needs your answer"
         : "Needs your decision";
@@ -146,7 +146,7 @@ export default function Decision({
           </strong>
         )}
       </div>
-      {pending.route === "coordinator" && (
+      {pending.route === "panel" && (
         <p class="decision-note">You can still answer first.</p>
       )}
       {pending.note && <p class="decision-note">{cleanText(pending.note)}</p>}

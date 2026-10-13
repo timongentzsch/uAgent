@@ -22,8 +22,8 @@
 #include "include/agent/session_view.h"
 #include "include/app/bootstrap.h"
 #include "include/app/chat.h"
-#include "include/app/coordinator.h"
 #include "include/app/launch.h"
+#include "include/app/panel.h"
 #include "include/app/session.h"
 #include "include/app/session_command.h"
 #include "include/app/thread_link.h"
@@ -107,13 +107,13 @@ json AttachmentsToJson(const std::vector<Attachment>& attachments) {
 class WorkerChannel final : public ApplicationChannel {
  public:
   WorkerChannel(std::string path, std::string id, std::string generation,
-                std::string title, bool coordinator, json thread)
+                std::string title, bool panel, json thread)
       : path_(std::move(path)),
         id_(std::move(id)),
         generation_(std::move(generation)),
         title_(std::move(title)),
         mail_(MailboxIdFor(path_)),
-        coordinator_(coordinator) {
+        panel_(panel) {
     if (!thread.empty()) link_.emplace(std::move(thread), path_, id_);
   }
   ~WorkerChannel() override { Close(); }
@@ -165,9 +165,9 @@ class WorkerChannel final : public ApplicationChannel {
     json data = event.data;
     if (event.type == "approval.requested") {
       // A thread's approval that Auto could not settle goes to its
-      // coordinator first; one reserved for a person never does.
+      // panel first; one reserved for a person never does.
       if (link_ && !JsonValue(data, "mandatory_human", false)) {
-        data["route"] = kRouteCoordinator;
+        data["route"] = kRoutePanel;
         link_->Ask(JsonValue(data, "id", ""), "approval request",
                    "asks to run " + JsonValue(data, "tool", ""),
                    JsonValue(data, "preview", ""), title_);
@@ -288,10 +288,10 @@ class WorkerChannel final : public ApplicationChannel {
     }
     if (request.kind == "ask") {
       decision_["questions"] = request.questions;
-      // A thread's questions go to its coordinator first, as its approvals
+      // A thread's questions go to its panel first, as its approvals
       // do; a person is notified only if it yields or does not answer.
       if (link_) {
-        decision_["route"] = kRouteCoordinator;
+        decision_["route"] = kRoutePanel;
         link_->Ask(request.id, "question", "asks the user",
                    JsonDump(request.questions), title_);
       }
@@ -303,11 +303,9 @@ class WorkerChannel final : public ApplicationChannel {
     }
     state_["phase"] = "decision";
     SendState();
-    const auto routed_until =
-        std::chrono::steady_clock::now() + kCoordinatorDecision;
+    const auto routed_until = std::chrono::steady_clock::now() + kPanelDecision;
     while (!closed_ && !reply_ && !AbortRequested()) {
-      const bool routed =
-          JsonValue(decision_, "route", "") == kRouteCoordinator;
+      const bool routed = JsonValue(decision_, "route", "") == kRoutePanel;
       lock.unlock();
       pollfd waits[] = {{wake_.read.Get(), POLLIN, 0},
                         {AbortWakeFd(), POLLIN, 0}};
@@ -315,7 +313,7 @@ class WorkerChannel final : public ApplicationChannel {
       wake_.Drain();
       lock.lock();
       if (routed && std::chrono::steady_clock::now() >= routed_until) {
-        EscalateLocked("The coordinator did not decide in time.");
+        EscalateLocked("The moderator did not decide in time.");
       }
     }
     if (!decided_.empty()) {
@@ -405,7 +403,7 @@ class WorkerChannel final : public ApplicationChannel {
     }
   }
 
-  // A session wakes to notice it is idle, and a coordinator a minute later
+  // A session wakes to notice it is idle, and a panel a minute later
   // while the spend limit holds its mail. Without a mailbox watch, mail is
   // looked for once a second.
   int PollTimeout() {
@@ -431,11 +429,10 @@ class WorkerChannel final : public ApplicationChannel {
     return !paused_.empty();
   }
 
-  // At today's spend limit a coordinator keeps its mail pending and says so
+  // At today's spend limit a panel keeps its mail pending and says so
   // in its state. Checked outside the lock: it reads the threads' files.
   bool HoldMail() override {
-    const std::string pause =
-        coordinator_ ? CoordinatorPause(CanonicalCwd()) : "";
+    const std::string pause = panel_ ? PanelPause(CanonicalCwd()) : "";
     std::lock_guard lock(mutex_);
     if (pause != paused_) {
       paused_ = pause;
@@ -686,8 +683,7 @@ class WorkerChannel final : public ApplicationChannel {
     SessionCommandKind kind = parsed.kind;
     // Read before the lock: it looks at the folder's session files.
     const json* files = JsonArray(parsed.raw, "attachments");
-    const bool members_only = coordinator_ &&
-                              kind == SessionCommandKind::kSubmit &&
+    const bool members_only = panel_ && kind == SessionCommandKind::kSubmit &&
                               (!files || files->empty()) &&
                               ForMembersOnly(CanonicalCwd(), parsed.text);
     std::unique_lock lock(mutex_);
@@ -698,8 +694,8 @@ class WorkerChannel final : public ApplicationChannel {
     if (link_ && !parsed.text.empty() &&
         (kind == SessionCommandKind::kSubmit ||
          kind == SessionCommandKind::kSteer)) {
-      const std::string refused = link_->Admit(
-          JsonValue(parsed.raw, "origin", "") == kRouteCoordinator);
+      const std::string refused =
+          link_->Admit(JsonValue(parsed.raw, "origin", "") == kRoutePanel);
       if (!refused.empty()) {
         SendOutcome(request, refused);
         return true;
@@ -722,8 +718,8 @@ class WorkerChannel final : public ApplicationChannel {
         break;
       case SessionCommandKind::kEscalate:
         if (pending_.empty() || parsed.interaction_id != pending_ || reply_ ||
-            JsonValue(decision_, "route", "") != kRouteCoordinator) {
-          error = "decision is stale or not with the coordinator";
+            JsonValue(decision_, "route", "") != kRoutePanel) {
+          error = "decision is stale or not with the moderator";
         } else {
           EscalateLocked(parsed.text);
         }
@@ -797,15 +793,13 @@ class WorkerChannel final : public ApplicationChannel {
 
   // Answers the pending decision. The caller holds mutex_.
   void ReplyLocked(const SessionCommand& parsed, std::string& error) {
-    const bool from_coordinator =
-        JsonValue(parsed.raw, "origin", "") == kRouteCoordinator;
+    const bool from_panel = JsonValue(parsed.raw, "origin", "") == kRoutePanel;
     if (pending_.empty() || parsed.interaction_id != pending_ || reply_) {
       error = "decision is stale or already answered";
       return;
     }
-    if (from_coordinator &&
-        JsonValue(decision_, "route", "") != kRouteCoordinator) {
-      // Only a decision routed to the coordinator is its to answer.
+    if (from_panel && JsonValue(decision_, "route", "") != kRoutePanel) {
+      // Only a decision routed to the panel is its to answer.
       error = "this decision belongs to the user";
       return;
     }
@@ -817,10 +811,10 @@ class WorkerChannel final : public ApplicationChannel {
     reply_cancelled_ = parsed.cancelled;
     // The decision log: who decided a routed decision, and why.
     const std::string reason = JsonValue(parsed.raw, "reason", "");
-    if (from_coordinator) {
-      decided_ = (ask ? "coordinator answered"
-                      : "coordinator decided " + parsed.text) +
-                 (reason.empty() ? "" : ": " + reason);
+    if (from_panel) {
+      decided_ =
+          (ask ? "moderator answered" : "moderator decided " + parsed.text) +
+          (reason.empty() ? "" : ": " + reason);
     }
     wake_.Wake();
   }
@@ -873,8 +867,8 @@ class WorkerChannel final : public ApplicationChannel {
 
   // A message during a turn is guidance; otherwise it takes the one-slot
   // input queue. The caller holds mutex_.
-  // With `members_only` the message is written into a coordinator's chat for
-  // the members it names: it starts no turn of the coordinator's own.
+  // With `members_only` the message is written into a panel's chat for
+  // the members it names: it starts no turn of the panel's own.
   void SubmitLocked(const SessionCommand& parsed, bool members_only,
                     std::string& error) {
     if (turn_active_ && !parsed.text.empty() && !parsed.text.starts_with("/") &&
@@ -933,16 +927,16 @@ class WorkerChannel final : public ApplicationChannel {
   static constexpr auto kIdlePoll = std::chrono::milliseconds(30000);
   static constexpr auto kLetGo = std::chrono::milliseconds(2000);
   static constexpr auto kLetGoPoll = std::chrono::milliseconds(50);
-  static constexpr auto kCoordinatorDecision = std::chrono::minutes(5);
+  static constexpr auto kPanelDecision = std::chrono::minutes(5);
   static constexpr auto kSpendRecheck = std::chrono::milliseconds(60000);
   bool closed_ = false, busy_ = true;
   bool turn_active_ = false;
-  const bool coordinator_ = false;
+  const bool panel_ = false;
   std::optional<ThreadLink> link_;  // set when this session is a thread
   bool reply_cancelled_ = false;
   bool ready_ = false;
   json notices_ = json::array();
-  std::string paused_;  // why a coordinator holds its mail, if it does
+  std::string paused_;  // why a panel holds its mail, if it does
   std::function<json(const json&)> activity_control_;
   // Permission and activity controls that arrived before the application.
   std::vector<std::pair<std::string, json>> early_controls_;
@@ -974,10 +968,10 @@ int WorkerMain(int argc, char** argv) {
   // Before anyone can connect: a runtime that cannot work never answers.
   if (chdir(argv[2]) != 0) return kWorkerNoWorkspace;
   Options options = OptionsFromLaunch(launch);
-  // The coordinator is known by its path; a thread's link is fixed at launch
+  // The panel is known by its path; a thread's link is fixed at launch
   // and afterwards read back from its own header.
-  if (argv[3] == CoordinatorPath(argv[2])) {
-    options.session = {{"kind", kSessionKindCoordinator}};
+  if (argv[3] == PanelPath(argv[2])) {
+    options.session = {{"kind", kSessionKindPanel}};
   } else if (const json* role = JsonObject(launch, "session");
              role && JsonValue(*role, "kind", "") == kSessionKindThread) {
     options.session = *role;
@@ -1001,7 +995,7 @@ int WorkerMain(int argc, char** argv) {
     }
   }
   WorkerChannel channel(argv[3], argv[4], RandomToken(16), argv[5],
-                        options.Coordinator(),
+                        options.Panel(),
                         JsonValue(options.session, "thread", json::object()));
   if (const int failed = channel.Start()) return failed;
   Observability observation;

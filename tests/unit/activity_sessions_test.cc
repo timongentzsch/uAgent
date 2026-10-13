@@ -23,8 +23,8 @@
 #include "include/agent/child_agent.h"
 #include "include/agent/jobs.h"
 #include "include/app/chat.h"
-#include "include/app/coordinator.h"
 #include "include/app/launch.h"
+#include "include/app/panel.h"
 #include "include/app/session_host.h"
 #include "include/core/capture.h"
 #include "include/core/config.h"
@@ -218,8 +218,7 @@ void TestSignalAndFileWatch() {
   REQUIRE(mkdtemp(project_root) != nullptr);
   int catalogue_wake[2] = {-1, -1};
   REQUIRE(pipe(catalogue_wake) == 0);
-  const std::string prompt =
-      std::string(project_root) + "/.uagent/COORDINATOR.md";
+  const std::string prompt = std::string(project_root) + "/.uagent/PANEL.md";
   FileWaitResult catalogue_changed = FileWaitResult::kTimedOut;
   std::thread catalogue_watcher([&] {
     catalogue_changed = WaitForAnyFileChange(
@@ -1240,18 +1239,18 @@ void TestThreadWorktreesGoOnlyWhenNothingIsLost() {
   CHECK(!std::filesystem::exists(tree));
 }
 
-void TestCoordinatorCountsItsOwnSpend() {
-  TestWorkspace workspace("coordinator-spend");
-  ScopedEnv limit("UAGENT_COORDINATOR_DAILY_SPEND_USD", "1");
+void TestPanelCountsItsOwnSpend() {
+  TestWorkspace workspace("panel-spend");
+  ScopedEnv limit("UAGENT_PANEL_DAILY_SPEND_USD", "1");
   const std::string folder = CanonicalCwd();
   // The day's first request sets the baseline: yesterday's spend is not
   // today's.
-  RecordCoordinatorCost(folder, 5.0);
-  CHECK(CoordinatorPause(folder).empty());
-  RecordCoordinatorCost(folder, 5.5);
-  CHECK(CoordinatorPause(folder).empty());
-  RecordCoordinatorCost(folder, 6.0);
-  CHECK(CoordinatorPause(folder).find("spend limit") != std::string::npos);
+  RecordPanelCost(folder, 5.0);
+  CHECK(PanelPause(folder).empty());
+  RecordPanelCost(folder, 5.5);
+  CHECK(PanelPause(folder).empty());
+  RecordPanelCost(folder, 6.0);
+  CHECK(PanelPause(folder).find("spend limit") != std::string::npos);
 }
 
 void TestChildSessionsStayOutOfTheCatalogue() {
@@ -1273,9 +1272,10 @@ void TestChildSessionsStayOutOfTheCatalogue() {
   write("ordinary", json::object());
   write("agent-aaaa1111",
         {{kSessionHeaderDelegation, {{"parent", "p"}, {"name", "reviewer"}}}});
-  // A folder lists its coordinator only in the host's whole view.
-  write("coordinator", {{kSessionHeaderKind, kSessionKindCoordinator}});
-  CHECK(CoordinatorPath(CanonicalCwd()) == (dir / "coordinator.json").string());
+  // A folder lists its panel only in the host's whole view. One saved
+  // before it was called that is the panel all the same.
+  write("coordinator", {{kSessionHeaderKind, "coordinator"}});
+  CHECK(PanelPath(CanonicalCwd()) == (dir / "coordinator.json").string());
   auto ids = [](SessionScope scope) {
     std::vector<std::string> out;
     for (const SessionInfo& info : ListSessions(scope)) {
@@ -1293,18 +1293,18 @@ void TestChildSessionsStayOutOfTheCatalogue() {
   CHECK(JsonValue(children[0].delegation, "name", "") == "reviewer");
 }
 
-// The chat saves its round before its coordinator's session records the
+// The chat saves its round before its panel's session records the
 // mail. A runtime that dies between the two is handed the mail again, and
 // the message it carries is still one message.
 void TestAChatCountsAMailOnce() {
   TestWorkspace workspace("chat-counts-once");
   const std::string folder = workspace.workspace.string();
   // Nobody is woken: the members only read, so no runtime is started.
-  ScopedEnv turns("UAGENT_COORDINATOR_CHAT_TURNS", "0");
+  ScopedEnv turns("UAGENT_PANEL_CHAT_TURNS", "0");
   SessionRecord record;
   record.metadata.cwd = folder;
   record.metadata.kind = kSessionKindThread;
-  record.metadata.thread = {{"coordinator_id", CoordinatorId(folder)},
+  record.metadata.thread = {{"coordinator_id", PanelId(folder)},
                             {"folder", folder},
                             {"member", {{"name", "Ada"}}}};
   record.state.messages =
@@ -1347,14 +1347,14 @@ void TestAChatCountsAMailOnce() {
 }
 
 void TestAChatMessageIsForThoseItOpensWith() {
-  const std::vector<std::string> names = {"coordinator", "Sam", "Samantha",
+  const std::vector<std::string> names = {"moderator", "Sam", "Samantha",
                                           "Lin"};
   using Names = std::set<std::string>;
   CHECK(Addressed("Sam, what is the number?", names) == Names{"Sam"});
   CHECK(Addressed("  sam: go on", names) == Names{"Sam"});
   CHECK(Addressed("Sam and LIN, both of you", names) == Names({"Sam", "Lin"}));
-  CHECK(Addressed("Sam, Lin & coordinator: look", names) ==
-        Names({"Sam", "Lin", "coordinator"}));
+  CHECK(Addressed("Sam, Lin & moderator: look", names) ==
+        Names({"Sam", "Lin", "moderator"}));
   CHECK(Addressed("Samantha, you", names) == Names{"Samantha"});
   // A name anywhere else, or one that only begins a sentence, addresses
   // nobody; nor does a word that begins with one.
@@ -1516,7 +1516,7 @@ void TestSessionLinks() {
   header.erase("delegation");
   save(fb);
   CHECK(SharesLink("aaa", "bbb"));
-  // A coordinator's threads are linked by living in one history folder: no
+  // A panel's threads are linked by living in one history folder: no
   // yolo, no joining, and nobody else in that folder is.
   const fs::path ta = workspace.workspace / "thread-a.json";
   const fs::path tb = workspace.workspace / "thread-b.json";

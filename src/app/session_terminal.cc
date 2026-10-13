@@ -16,8 +16,8 @@
 
 #include "include/agent/session_view.h"
 #include "include/app/config_proposal.h"
-#include "include/app/coordinator.h"
 #include "include/app/launch.h"
+#include "include/app/panel.h"
 #include "include/app/session.h"
 #include "include/cli.h"
 #include "include/core/config_registry.h"
@@ -411,9 +411,9 @@ class Terminal {
     return exit_code ? exit_code : failed_ ? 1 : 0;
   }
   const std::string& Next() const { return next_; }
-  // Where Next() opens when it has no file yet (a folder's first coordinator).
+  // Where Next() opens when it has no file yet (a folder's first panel).
   const std::string& NextFolder() const { return next_folder_; }
-  // The folder whose coordinator this session answers to: a thread's
+  // The folder whose panel this session answers to: a thread's
   // project, else the session's own folder.
   std::string Folder() const {
     const json header = SessionHeader(path_);
@@ -465,14 +465,14 @@ class Terminal {
         }
         return Command::kDone;
       case SlashCommandId::kBoard:
-        WriteTerminalRecord(TerminalSafe(CoordinatorBoard(Folder())));
+        WriteTerminalRecord(TerminalSafe(PanelBoard(Folder())));
         return Command::kDone;
-      case SlashCommandId::kCoord:
+      case SlashCommandId::kPanel:
       case SlashCommandId::kOpen: {
         std::string target;
-        if (slash.spec->id == SlashCommandId::kCoord) {
+        if (slash.spec->id == SlashCommandId::kPanel) {
           next_folder_ = Folder();
-          target = CoordinatorPath(next_folder_);
+          target = PanelPath(next_folder_);
         } else if (target = MatchFolderSession(argument); target.empty()) {
           WriteTerminalRecord(
               Note(Tone::kNeutral, "no unique session in /board matches \"" +
@@ -662,7 +662,7 @@ class Terminal {
           }
         }
       }
-      // A coordinator holding thread events says why, once per change.
+      // A panel holding thread events says why, once per change.
       if (std::string paused = JsonValue(state, "paused", "");
           paused != paused_) {
         paused_ = std::move(paused);
@@ -745,7 +745,7 @@ class Terminal {
       } else if (!result.empty()) {
         WriteTerminalRecord(TerminalSafe(JsonDump(result, 2)) + "\n");
       }
-      // A coordinator rewinds in place: reopening its path shows the
+      // A panel rewinds in place: reopening its path shows the
       // shortened conversation, with the message back in the composer.
       if (JsonValue(result, "forked", false) ||
           JsonValue(result, "rewound", false)) {
@@ -842,7 +842,7 @@ void Welcome() {
                     "\"fix the failing test\" or /help.\n"
                     "Enter sends · Esc stops a turn · / lists commands · "
                     "/undo puts back the last turn's file changes\n"
-                    "uagent coord opens a folder's coordinator, which runs "
+                    "uagent panel opens a folder's panel, which runs "
                     "several conversations.\n")
             .c_str(),
         stdout);
@@ -852,8 +852,8 @@ void Welcome() {
 int TerminalMain(Options options) {
   Welcome();
   std::string path;
-  if (options.Coordinator()) {
-    path = CoordinatorPath(CanonicalCwd());
+  if (options.Panel()) {
+    path = PanelPath(CanonicalCwd());
   } else if (options.resume_pick) {
     path = PickSession();
   } else if (options.resume_latest) {
@@ -867,7 +867,7 @@ int TerminalMain(Options options) {
   bool redrawn = false;
   TerminalInputDecoder keys;
   for (;;) {
-    // A saved session reopens in its own folder; so does a coordinator
+    // A saved session reopens in its own folder; so does a panel
     // reached from a session in another directory.
     std::string cwd = JsonValue(SessionHeader(path), kSessionHeaderCwd, folder);
     if (path.empty()) {
@@ -879,9 +879,9 @@ int TerminalMain(Options options) {
       fprintf(stderr, "%s\n", error.c_str());
       return 1;
     }
-    const bool coordinator = path == CoordinatorPath(cwd);
-    if (coordinator) {
-      const std::string board = CoordinatorBoard(cwd);
+    const bool panel = path == PanelPath(cwd);
+    if (panel) {
+      const std::string board = PanelBoard(cwd);
       printf("%s", TerminalSafe(board).c_str());
       // Nothing to manage yet: what it is for, as the web's empty chat says.
       if (FolderSessions(cwd).empty()) {
@@ -909,8 +909,8 @@ int TerminalMain(Options options) {
       fputs(Note(Tone::kNeutral, still.empty() ? "restarted" : still).c_str(),
             stdout);
     } else if (terminal.Next() == "/reset") {
-      // The folder has one coordinator; its reset keeps the same file.
-      if (!coordinator) path.clear();
+      // The folder has one panel; its reset keeps the same file.
+      if (!panel) path.clear();
     } else {
       if (redrawn) fputs(ClearScreen(), stdout);
       path = terminal.Next();

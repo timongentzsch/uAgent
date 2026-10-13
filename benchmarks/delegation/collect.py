@@ -125,8 +125,8 @@ print(
 )
 for name, r in results.items():
     s = r["sessions"]
-    # The root of a solo/sub run is not saved as a session; a coordinator's is.
-    extra_root = [] if name.endswith("coord") else [r["root"]]
+    # The root of a solo/sub run is not saved as a session; a panel's is.
+    extra_root = [] if name.endswith("panel") else [r["root"]]
     rows = s + extra_root
 
     def tot(k, rows=rows):

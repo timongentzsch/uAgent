@@ -161,10 +161,10 @@ int Main(int argc, char** argv) {
 #endif
   Observability observability;
   SetObservability(&observability);
-  // `uagent coord` opens the folder's coordinator; the rest are its options.
-  const bool coordinator = argc > 1 && std::string_view(argv[1]) == "coord";
+  // `uagent panel` opens the folder's panel; the rest are its options.
+  const bool panel = argc > 1 && std::string_view(argv[1]) == "panel";
   ParsedOptions parsed =
-      coordinator ? ParseOptions(argc - 1, argv + 1) : ParseOptions(argc, argv);
+      panel ? ParseOptions(argc - 1, argv + 1) : ParseOptions(argc, argv);
   if (!parsed.Ok()) {
     if (parsed.options.json_stream) observability.StartJsonStream();
     return Fail(parsed.options.json_stream, parsed.options.json, parsed.error,
@@ -216,16 +216,16 @@ int Main(int argc, char** argv) {
     return result.contains("error") ? 1 : 0;
   }
   const bool json_stream = parsed.options.json_stream;
-  if (coordinator) {
+  if (panel) {
     if (parsed.options.web || json_stream || parsed.options.resume_latest ||
         parsed.options.resume_pick ||
         (parsed.options.json && parsed.options.prompt.empty())) {
-      fprintf(stderr, "uagent coord takes session options, -p and --json\n");
+      fprintf(stderr, "uagent panel takes session options, -p and --json\n");
       return 2;
     }
-    parsed.options.session = {{"kind", kSessionKindCoordinator}};
+    parsed.options.session = {{"kind", kSessionKindPanel}};
     if (!parsed.options.prompt.empty()) {
-      return session::CoordinatorPromptMain(parsed.options);
+      return session::PanelPromptMain(parsed.options);
     }
     ResolveTerminalProfile(parsed.options);
     return session::TerminalMain(std::move(parsed.options));

@@ -2,7 +2,7 @@
 
 #ifndef UAGENT_INCLUDE_CORE_MAILBOX_H_
 #define UAGENT_INCLUDE_CORE_MAILBOX_H_
-// One durable mailbox per agent (a session, a coordinator, a delegated child),
+// One durable mailbox per agent (a session, a panel, a delegated child),
 // addressed by its session id: ~/.uagent/mail/<id>/{new,cur}. A send commits
 // by an atomic rename into new/. The recipient takes a message by moving it to
 // cur/ and acknowledges it once its transcript is saved, so a crash in between
@@ -23,7 +23,7 @@ inline constexpr const char* kMailTaskCompleted = "task.completed";
 inline constexpr const char* kMailAsk = "ask";
 inline constexpr const char* kMailSteer = "steer";
 inline constexpr const char* kMailNote = "note";
-// A message in a coordinator's chat. Its body names the `author`; one marked
+// A message in a panel's chat. Its body names the `author`; one marked
 // `quiet` joins the reader's conversation without starting a turn.
 inline constexpr const char* kMailChat = "chat";
 

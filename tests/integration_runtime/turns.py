@@ -28,7 +28,7 @@ def test_instructions_follow_the_base_for_their_audience(root, home, *, binary):
     (home / ".uagent").mkdir(parents=True, exist_ok=True)
     (home / ".uagent" / "AGENTS.md").write_text("user-rule")
     (root / "AGENTS.md").write_text("project-rule")
-    (home / ".uagent" / "COORDINATOR.md").write_text("coordinator-rule")
+    (home / ".uagent" / "PANEL.md").write_text("panel-rule")
     with Server([event({"content": "unexpected model call"})]) as server:
         env = base_env(home, server.url)
         result = run(root, env, "--show-system-prompt", "--json", binary=binary)
@@ -38,18 +38,18 @@ def test_instructions_follow_the_base_for_their_audience(root, home, *, binary):
             effective.find("Read only what the task needs") < effective.find("user-rule"), effective
         )
         assert_true(effective.find("user-rule") < effective.find("project-rule"), effective)
-        assert_true("coordinator-rule" not in effective, effective)
+        assert_true("panel-rule" not in effective, effective)
         assert_true(server.requests == [], server.requests)
 
-    def coordinator(_, body):
+    def panel(_, body):
         prompt = body["messages"][0]["content"]
-        assert_true(prompt.find("project-rule") < prompt.find("coordinator-rule"), prompt)
-        return event({"content": "coordinator-ok"})
+        assert_true(prompt.find("project-rule") < prompt.find("panel-rule"), prompt)
+        return event({"content": "panel-ok"})
 
-    with Server([coordinator]) as server:
-        result = run(root, base_env(home, server.url), "coord", "-p", "hi", binary=binary)
+    with Server([panel]) as server:
+        result = run(root, base_env(home, server.url), "panel", "-p", "hi", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
-        assert_true(result.stdout.strip() == "coordinator-ok", result.stdout)
+        assert_true(result.stdout.strip() == "panel-ok", result.stdout)
 
 
 def test_adaptive_system_revises_replaces_and_clears(root, home, *, binary):

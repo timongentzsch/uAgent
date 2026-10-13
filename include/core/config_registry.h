@@ -74,7 +74,7 @@ inline constexpr ConfigCategory kConfigCategories[] = {
     {"request", "Requests"},
     {"tools", "Tools"},
     {"delegation", "Subagents"},
-    {"coordination", "Coordinator"},
+    {"coordination", "Panel"},
     {"search", "Web search"},
     {"memory", "Memory"},
     {"skills", "Skills"},
@@ -481,32 +481,28 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
 
     // Coordination.
     registry::Named(
-        registry::Int("coordinator.maxThreads",
-                      "UAGENT_COORDINATOR_MAX_THREADS", {}, 5, 1, 64,
-                      ReloadPolicy::kNextUserTurn, "coordination",
-                      "threads one coordinator may run at once"),
-        "Coordinator threads"),
+        registry::Int("panel.maxThreads", "UAGENT_PANEL_MAX_THREADS", {}, 5, 1,
+                      64, ReloadPolicy::kNextUserTurn, "coordination",
+                      "threads one panel may run at once"),
+        "Panel threads"),
     registry::Named(
-        registry::Dbl(
-            "coordinator.dailySpendUsd", "UAGENT_COORDINATOR_DAILY_SPEND_USD",
-            {}, 20.0,
-            ReloadPolicy::kNextUserTurn, "coordination",
-            "reported cost a coordinator and its threads may spend per "
-            "day; at it, thread events wait. 0 disables it"),
-        "Coordinator daily spend"),
+        registry::Dbl("panel.dailySpendUsd", "UAGENT_PANEL_DAILY_SPEND_USD", {},
+                      20.0, ReloadPolicy::kNextUserTurn, "coordination",
+                      "reported cost a panel and its threads may spend per "
+                      "day; at it, thread events wait. 0 disables it"),
+        "Panel daily spend"),
     registry::Named(
-        registry::Int("coordinator.chatTurns", "UAGENT_COORDINATOR_CHAT_TURNS",
-                      {}, 3, 0, 64, ReloadPolicy::kNextUserTurn, "coordination",
-                      "turns each participant of a coordinator's chat may "
+        registry::Int("panel.chatTurns", "UAGENT_PANEL_CHAT_TURNS", {}, 3, 0,
+                      64, ReloadPolicy::kNextUserTurn, "coordination",
+                      "turns each participant of a panel's chat may "
                       "take on one message of the user's; 0 lets the "
                       "members only read"),
         "Chat turns each"),
     registry::Named(
         registry::Choice(
-            registry::Str("coordinator.environment",
-                          "UAGENT_COORDINATOR_ENVIRONMENT", {}, "worktree",
-                          ReloadPolicy::kNextUserTurn, Sensitivity::kPublic,
-                          "coordination",
+            registry::Str("panel.environment", "UAGENT_PANEL_ENVIRONMENT", {},
+                          "worktree", ReloadPolicy::kNextUserTurn,
+                          Sensitivity::kPublic, "coordination",
                           "where threads run: a fresh git worktree, or the "
                           "folder itself"),
             kThreadEnvironments),

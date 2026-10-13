@@ -347,7 +347,7 @@ def run_case(
             mock = Server([script])
         else:
             copy_user_config(home)
-        # Saved conversations the folder already has, for a coordinator to read.
+        # Saved conversations the folder already has, for a panel to read.
         for saved in scenario.get("sessions", []):
             write_session(
                 home, saved["name"], saved["messages"], cwd=workspace, title=saved["title"]
@@ -368,8 +368,8 @@ def run_case(
             prompt = prompt.replace("${workspace}", str(workspace))
             prompt = prompt.replace("${workspace_uri}", workspace.as_uri())
             cli = [
-                # A coordinator scenario talks to the folder's coordinator.
-                *(["coord"] if scenario.get("coordinator") else []),
+                # A panel scenario talks to the folder's panel.
+                *(["panel"] if scenario.get("panel") else []),
                 "--json",
                 "--no-memory",
                 f"--debug={trace_path}",
@@ -405,7 +405,7 @@ def run_case(
                 )
             elapsed = time.monotonic() - started
         finally:
-            # Threads a coordinator started outlive its answer; none may
+            # Threads a panel started outlive its answer; none may
             # outlive the case.
             stop_sessions(home)
             remove_runtime(home)

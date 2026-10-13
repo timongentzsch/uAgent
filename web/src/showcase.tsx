@@ -90,7 +90,7 @@ const SAMPLE_IMAGE = `data:image/svg+xml,${encodeURIComponent(
 const SAMPLE_ASK: Pending = {
   id: "showcase-ask",
   kind: "ask",
-  route: "coordinator",
+  route: "panel",
   prompt: "Which storage should the cache use?",
   questions: [
     {

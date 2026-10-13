@@ -23,8 +23,8 @@ Tool UagentTool(SelfDescriptionProvider describe,
   Tool tool = MakeTool(
       "uagent",
       "Inspect this running build: status, cli, commands, config, tools, "
-      "prompt, routes, or instructions (the AGENTS.md and COORDINATOR.md "
-      "files sessions and coordinators read at start). Secrets are never "
+      "prompt, routes, or instructions (the AGENTS.md and PANEL.md "
+      "files sessions and panels read at start). Secrets are never "
       "returned or accepted literally.",
       {{"type", "object"},
        {"properties",
@@ -38,9 +38,9 @@ Tool UagentTool(SelfDescriptionProvider describe,
                                  "prompt", "routes", "instructions"})}}},
          {"audience",
           {{"type", "string"},
-           {"enum", json::array({"sessions", "coordinator"})},
+           {"enum", json::array({"sessions", "panel"})},
            {"description",
-            "set_instructions: AGENTS.md (every session) or COORDINATOR.md"}}},
+            "set_instructions: AGENTS.md (every session) or PANEL.md"}}},
          {"text",
           {{"type", "string"},
            {"description", "set_instructions: the whole new file, Markdown"}}},
@@ -76,14 +76,14 @@ Tool UagentTool(SelfDescriptionProvider describe,
         }
         if (action == "set_instructions") {
           // Reaching here means the user approved this exact text.
-          bool coordinator = false, project = false;
+          bool panel = false, project = false;
           ParseInstructionTarget(JsonValue(arguments, "audience", ""),
-                                 JsonValue(arguments, "scope", ""), coordinator,
+                                 JsonValue(arguments, "scope", ""), panel,
                                  project);
           std::optional<std::string> base;
           if (shown->first == arguments) base = shown->second;
           const std::string error =
-              WriteInstructionFile(coordinator, project, CanonicalCwd(),
+              WriteInstructionFile(panel, project, CanonicalCwd(),
                                    JsonValue(arguments, "text", ""), base);
           return error.empty()
                      ? ToolSuccess("saved; new and restarted sessions read it")
@@ -156,12 +156,12 @@ Tool UagentTool(SelfDescriptionProvider describe,
                            "configuration requires an interactive human");
     }
     if (JsonValue(arguments, "action", "") == "set_instructions") {
-      bool coordinator = false, project = false;
+      bool panel = false, project = false;
       if (!ParseInstructionTarget(JsonValue(arguments, "audience", ""),
-                                  JsonValue(arguments, "scope", ""),
-                                  coordinator, project)) {
+                                  JsonValue(arguments, "scope", ""), panel,
+                                  project)) {
         return ArgumentIssue("instructions.target",
-                             "audience must be sessions or coordinator, and "
+                             "audience must be sessions or panel, and "
                              "scope user or project");
       }
       if (!arguments.contains("text") ||
@@ -223,11 +223,10 @@ Tool UagentTool(SelfDescriptionProvider describe,
   // the proposal, so the bytes shown are exactly the bytes that can commit.
   tool.approval_preview = [prepare, store, shown](const json& arguments) {
     if (JsonValue(arguments, "action", "") == "set_instructions") {
-      bool coordinator = false, project = false;
+      bool panel = false, project = false;
       ParseInstructionTarget(JsonValue(arguments, "audience", ""),
-                             JsonValue(arguments, "scope", ""), coordinator,
-                             project);
-      const auto path = InstructionPath(coordinator, project, CanonicalCwd());
+                             JsonValue(arguments, "scope", ""), panel, project);
+      const auto path = InstructionPath(panel, project, CanonicalCwd());
       *shown = {arguments, ReadInstructionFile(path)};
       return ConfigUnifiedDiff(shown->second, JsonValue(arguments, "text", ""),
                                path.string()) +

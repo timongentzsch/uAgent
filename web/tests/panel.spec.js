@@ -1,4 +1,4 @@
-// A folder's coordinator opens from its header icon; its board lists the
+// A folder's panel opens from its header icon; its board lists the
 // folder's sessions beside the chat, and slides in from the right on a
 // phone. Its threads nest under that header in the sidebar.
 import { test, expect } from "./fixtures.js";
@@ -9,15 +9,15 @@ const VIEWPORTS = [
   ["phone", { width: 390, height: 844 }],
 ];
 
-async function openCoordinator(page, session) {
+async function openPanel(page, session) {
   await page.goto(`/#session=${session.id}`);
   // Narrow layouts keep the sessions in a drawer.
   const drawer = page.getByLabel("Open conversations");
-  const button = page.getByLabel(/^Coordinator for /).first();
+  const button = page.getByLabel(/^Panel for /).first();
   await expect(drawer.or(button)).toBeVisible();
   if (await drawer.isVisible()) await drawer.click();
   await page
-    .getByLabel(/^Coordinator for /)
+    .getByLabel(/^Panel for /)
     .first()
     .click();
   // Beside the chat, or behind the header's Board button on a phone.
@@ -34,7 +34,7 @@ test("on a phone the board slides in from the right", async ({
   session,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await openCoordinator(page, session);
+  await openPanel(page, session);
   // Nothing stacks above the chat.
   await expect(page.locator(".conversation .board")).toHaveCount(0);
   await page.getByRole("button", { name: /^Board/ }).click();
@@ -63,13 +63,13 @@ async function shot(page, name) {
 }
 
 for (const [name, viewport] of VIEWPORTS) {
-  test(`coordinator view and help (${name})`, async ({
+  test(`panel view and help (${name})`, async ({
     page,
     session,
     browserName,
   }) => {
     await page.setViewportSize(viewport);
-    await openCoordinator(page, session);
+    await openPanel(page, session);
     await expect(page.getByLabel("Message or guidance")).toBeVisible();
     // One stable geometry: nothing scrolls the page sideways.
     expect(
@@ -79,7 +79,7 @@ for (const [name, viewport] of VIEWPORTS) {
     ).toBeLessThanOrEqual(0);
     // What it is, in one line under its title, with its instructions a tap
     // away even where the words truncate.
-    const subtitle = page.locator(".coordinator-subtitle");
+    const subtitle = page.locator(".panel-subtitle");
     await expect(subtitle).toContainText("hands work to threads");
     const button = subtitle.getByRole("button", { name: "Edit instructions" });
     await expect(button).toBeInViewport();
@@ -87,7 +87,7 @@ for (const [name, viewport] of VIEWPORTS) {
     await shot(page, `help-${browserName}-${name}`);
   });
 
-  test(`coordinator turns keep their order (${name})`, async ({
+  test(`panel turns keep their order (${name})`, async ({
     page,
     session,
     command,
@@ -95,7 +95,7 @@ for (const [name, viewport] of VIEWPORTS) {
     browserName,
   }) => {
     await page.setViewportSize(viewport);
-    const id = await openCoordinator(page, session);
+    const id = await openPanel(page, session);
     let meta;
     await expect
       .poll(async () => {
@@ -169,11 +169,11 @@ for (const [name, viewport] of VIEWPORTS) {
       generation: session.generation,
       text: "Memory receipt probe: please save this test memory",
     });
-    await openCoordinator(page, session);
-    // The folder's coordinator button names what waits on you.
+    await openPanel(page, session);
+    // The folder's panel button names what waits on you.
     if (name === "desktop")
       await expect(
-        page.getByLabel(/^Coordinator for .+, 1 waiting on you$/),
+        page.getByLabel(/^Panel for .+, 1 waiting on you$/),
       ).toBeVisible();
     const waiting = page.getByRole("region", {
       name: "Decisions waiting on you",
@@ -197,7 +197,7 @@ test("a member joins the chat, is addressed by name and answers under its name",
   request,
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
-  const id = await openCoordinator(page, session);
+  const id = await openPanel(page, session);
   let meta;
   await expect
     .poll(async () => {
@@ -216,7 +216,7 @@ test("a member joins the chat, is addressed by name and answers under its name",
   await prompt.press("Enter");
   // The member is listed on the board and in the sidebar with its avatar,
   // and its introduction is a message under its name, without the name the
-  // model reads it by. The coordinator is named above its own.
+  // model reads it by. The panel is named above its own.
   const board = page.getByRole("complementary", { name: "Board" });
   await expect(board.getByRole("heading", { name: /^Members/ })).toBeVisible();
   await expect(board.locator(".avatar")).toHaveText("A");
@@ -227,7 +227,7 @@ test("a member joins the chat, is addressed by name and answers under its name",
   await expect(said.first()).not.toContainText("Ada:");
   await expect(said.first().locator(".avatar")).toHaveText("A");
   await expect(
-    page.locator(".transcript .message .actor", { hasText: "Coordinator" }),
+    page.locator(".transcript .message .actor", { hasText: "Moderator" }),
   ).toHaveCount(1);
   await expect(page.locator(".turn-summary")).toHaveCount(1);
 
@@ -257,19 +257,19 @@ test("a member joins the chat, is addressed by name and answers under its name",
     ).observe(status, { childList: true, subtree: true, characterData: true });
   });
   // A message that opens with its name wakes it alone, and its answer goes
-  // back to who asked: the coordinator reads both without a turn.
+  // back to who asked: the panel reads both without a turn.
   const status = page.locator(".composer .activity-caption");
   await prompt.fill("Ada, Second opinion");
   await prompt.press("Enter");
   await expect(status).toHaveText("Ada is typing…");
   await expect(said.last()).toContainText("I would ship it.");
   await expect(status).toHaveText("Ready");
-  // One for everyone wakes both. The coordinator passes, slowly, and passes
+  // One for everyone wakes both. The panel passes, slowly, and passes
   // again on what Ada answers; a pass is shown to nobody: no bubble, no
   // stats line.
   await prompt.fill("Second opinion, anyone?");
   await prompt.press("Enter");
-  await expect(status).toHaveText("Ada and Coordinator are typing…");
+  await expect(status).toHaveText("Ada and Moderator are typing…");
   await expect(said).toHaveCount(3);
   const height = () =>
     page.evaluate(
@@ -288,20 +288,20 @@ test("a member joins the chat, is addressed by name and answers under its name",
   expect(
     [...(await page.evaluate(() => [...window.states]))].filter(
       (text) =>
-        !/^(Ready|(Ada|Coordinator|Ada and Coordinator) (is|are) typing…)$/.test(
+        !/^(Ready|(Ada|Moderator|Ada and Moderator) (is|are) typing…)$/.test(
           text,
         ),
     ),
   ).toEqual([]);
   await expect(page.locator(".transcript")).not.toContainText("PASS");
-  // Nothing of the coordinator's turn was ever in the transcript, and from
+  // Nothing of the panel's turn was ever in the transcript, and from
   // Ada's answer on its height never changed.
   const added = await page.evaluate(() => window.added);
   expect(added.filter((text) => /PA|Nothing to add/.test(text))).toEqual([]);
   expect(await height()).toBe(answered);
   await expect(page.locator(".turn-summary")).toHaveCount(1);
   await expect(
-    page.locator(".transcript .message .actor", { hasText: "Coordinator" }),
+    page.locator(".transcript .message .actor", { hasText: "Moderator" }),
   ).toHaveCount(1);
 
   // What a member was sent is one click from what it wrote.
@@ -312,10 +312,10 @@ test("a member joins the chat, is addressed by name and answers under its name",
     .click();
   await page.getByRole("menuitem", { name: "Show prompt" }).click();
   await expect(page.getByRole("dialog")).toContainText(
-    "You are Ada, a member of a chat",
+    "You are Ada, a member of the panel",
   );
   await page.keyboard.press("Escape");
-  await shot(page, "coordinator-chat");
+  await shot(page, "panel-chat");
 
   // A long message of a member's shows its opening, and the rest on request.
   await prompt.fill("Ada, Long opinion");
@@ -327,29 +327,29 @@ test("a member joins the chat, is addressed by name and answers under its name",
   await expect(said.last()).not.toContainText("Ada:");
 });
 
-test("the coordinator's subtitle opens its instructions", async ({
+test("the panel's subtitle opens its instructions", async ({
   page,
   session,
 }) => {
-  await openCoordinator(page, session);
+  await openPanel(page, session);
   await page.getByRole("button", { name: "Edit instructions" }).click();
   const dialog = page.getByRole("dialog", { name: "Instructions" });
-  const coordinator = dialog.getByLabel("Yours · coordinator");
-  await expect(coordinator).toBeEnabled();
-  await coordinator.fill("Prefer small threads.");
+  const panel = dialog.getByLabel("Yours · panel");
+  await expect(panel).toBeEnabled();
+  await panel.fill("Prefer small threads.");
   await dialog.getByRole("button", { name: "Save", exact: true }).click();
   await expect(dialog.getByRole("button", { name: "Save" })).toHaveCount(0);
   // Saving keeps focus in the field, not on the page behind the dialog.
-  await expect(coordinator).toBeFocused();
+  await expect(panel).toBeFocused();
   await shot(page, "instructions");
 });
 
 test("instructions read well on a phone", async ({ page, session }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await openCoordinator(page, session);
+  await openPanel(page, session);
   await page.getByRole("button", { name: "Edit instructions" }).click();
   const dialog = page.getByRole("dialog", { name: "Instructions" });
-  await expect(dialog.getByLabel("Yours · coordinator")).toBeEnabled();
+  await expect(dialog.getByLabel("Yours · panel")).toBeEnabled();
   expect(
     await dialog.evaluate((node) => node.scrollWidth <= node.clientWidth + 1),
   ).toBe(true);

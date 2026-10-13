@@ -110,12 +110,19 @@ void TestSelfDirective() {
   CHECK(!tool.run(args, {}).Ok());
 }
 
-// Four files a person edits; a coordinator reads its own after AGENTS.md.
+// Four files a person edits; a panel reads its own after AGENTS.md.
 void TestInstructionFiles() {
   TestWorkspace workspace("instruction-files");
   const auto cwd = workspace.workspace;
   CHECK(InstructionPath(false, false, cwd).filename() == "AGENTS.md");
-  CHECK(InstructionPath(true, true, cwd) == cwd / ".uagent" / "COORDINATOR.md");
+  CHECK(InstructionPath(true, true, cwd) == cwd / ".uagent" / "PANEL.md");
+  // The file under its name of before is the one, until a PANEL.md is.
+  fs::create_directories(cwd / ".uagent");
+  std::ofstream(cwd / ".uagent" / "COORDINATOR.md") << "old";
+  CHECK(InstructionPath(true, true, cwd).filename() == "COORDINATOR.md");
+  std::ofstream(cwd / ".uagent" / "PANEL.md") << "new";
+  CHECK(InstructionPath(true, true, cwd).filename() == "PANEL.md");
+  fs::remove_all(cwd / ".uagent");
   CHECK(WriteInstructionFile(false, true, cwd, "Run ctest.").empty());
   CHECK(WriteInstructionFile(true, false, cwd, "Keep threads small.").empty());
   struct stat info{};
@@ -129,9 +136,8 @@ void TestInstructionFiles() {
   const auto session = LoadProjectInstructions(cwd, kProjectDocBytes);
   CHECK(session.text.find("Run ctest.") != std::string::npos);
   CHECK(session.text.find("Keep threads small.") == std::string::npos);
-  const auto coordinator = LoadProjectInstructions(cwd, kProjectDocBytes, true);
-  CHECK(coordinator.text.find("Run ctest.") <
-        coordinator.text.find("Keep threads small."));
+  const auto panel = LoadProjectInstructions(cwd, kProjectDocBytes, true);
+  CHECK(panel.text.find("Run ctest.") < panel.text.find("Keep threads small."));
   const json shown = InstructionFiles(cwd);
   CHECK(shown["files"].size() == 4);
   CHECK(shown["files"][1]["text"] == "Run ctest.");

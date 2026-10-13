@@ -2697,24 +2697,23 @@ def test_web_conversation_starts_in_a_space_by_name(root, home, *, binary):
             assert_true(not (home / ".uagent" / "outside").exists(), "a name left its folder")
 
 
-def test_folder_coordinator_is_one_session_with_its_own_tools(root, home, *, binary):
+def test_folder_panel_is_one_session_with_its_own_tools(root, home, *, binary):
     project = root / "coordinated"
     project.mkdir()
-    with Server([event({"content": "coordinator-ok"})]) as provider:
+    with Server([event({"content": "panel-ok"})]) as provider:
         with web_host(binary, root, home, provider.url) as (web, code, _, _env):
             web.pair(code)
-            first = web.command("create", cwd=str(project), coordinator=True)["session"]
-            again = web.command("create", cwd=str(project), coordinator=True)["session"]
+            first = web.command("create", cwd=str(project), panel=True)["session"]
+            again = web.command("create", cwd=str(project), panel=True)["session"]
             assert_true(first["id"] == again["id"], (first, again))
-            assert_true(first["kind"] == "coordinator", first)
+            assert_true(first["kind"] == "panel", first)
             session = web.command("activate", first)["session"]
             web.until(session, lambda value: value["metadata"]["status"] == "idle")
             web.command("submit", session, text="status?")
             web.until(
                 session,
                 lambda value: any(
-                    block.get("text") == "coordinator-ok"
-                    for block in value["state"]["view"]["blocks"]
+                    block.get("text") == "panel-ok" for block in value["state"]["view"]["blocks"]
                 ),
             )
             _, body = provider.requests[-1]
@@ -2723,10 +2722,10 @@ def test_folder_coordinator_is_one_session_with_its_own_tools(root, home, *, bin
             _, catalogue, _ = web.json("/api/sessions?refresh=1")
             listed = catalogue["sessions"]
             kinds = [item.get("kind") for item in listed if item["cwd"] == str(project.resolve())]
-            assert_true(kinds == ["coordinator"], listed)
+            assert_true(kinds == ["panel"], listed)
 
 
-def test_idle_coordinator_is_let_go_and_exits(root, home, *, binary):
+def test_idle_panel_is_let_go_and_exits(root, home, *, binary):
     from session_support import runtime_directory
 
     project = root / "idle"
@@ -2736,19 +2735,19 @@ def test_idle_coordinator_is_let_go_and_exits(root, home, *, binary):
             binary, root, home, provider.url, extra_env={"UAGENT_INTERNAL_IDLE_S": "2"}
         ) as (web, code, _, _env):
             web.pair(code)
-            session = web.command("create", cwd=str(project), coordinator=True)["session"]
+            session = web.command("create", cwd=str(project), panel=True)["session"]
             web.command("activate", session)
 
             def sockets():
                 return list(runtime_directory(home).glob("*.sock"))
 
-            wait_until(sockets, "coordinator runtime never started", timeout=10)
+            wait_until(sockets, "panel runtime never started", timeout=10)
             # The host lets go after the idle period; the runtime then exits.
-            wait_until(lambda: not sockets(), "idle coordinator kept running", timeout=30)
-            again = web.command("create", cwd=str(project), coordinator=True)["session"]
+            wait_until(lambda: not sockets(), "idle panel kept running", timeout=30)
+            again = web.command("create", cwd=str(project), panel=True)["session"]
             assert_true(again["id"] == session["id"], again)
             web.command("activate", again)
-            wait_until(sockets, "coordinator did not start again", timeout=10)
+            wait_until(sockets, "panel did not start again", timeout=10)
 
 
 def test_idle_session_stops_and_a_message_starts_it_again(root, home, *, binary):
@@ -2925,13 +2924,13 @@ def test_stopped_session_starts_for_several_commands_and_says_why_it_cannot(root
             )
 
 
-def test_coordinator_edit_from_here_rewinds_in_place(root, home, *, binary):
+def test_panel_edit_from_here_rewinds_in_place(root, home, *, binary):
     project = root / "rewind"
     project.mkdir()
     with Server([event({"content": "one-ok"}), event({"content": "two-ok"})]) as provider:
         with web_host(binary, root, home, provider.url) as (web, code, _, _env):
             web.pair(code)
-            session = web.command("create", cwd=str(project), coordinator=True)["session"]
+            session = web.command("create", cwd=str(project), panel=True)["session"]
             session = web.command("activate", session)["session"]
             web.until(session, lambda value: value["metadata"]["status"] == "idle")
             for text, answer in (("first", "one-ok"), ("second", "two-ok")):

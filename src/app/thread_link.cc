@@ -17,13 +17,13 @@
 
 namespace uagent::session {
 namespace {
-// An event of `thread_path` for its folder's coordinator.
+// An event of `thread_path` for its folder's panel.
 Mail Event(const std::string& folder, const std::string& thread_path,
            const char* type, const std::string& text) {
   Mail mail;
   mail.from = MailboxIdFor(thread_path);
   mail.sender_path = thread_path;
-  mail.to = MailboxIdFor(CoordinatorPath(folder));
+  mail.to = MailboxIdFor(PanelPath(folder));
   mail.type = type;
   mail.body = {{"text", text}, {"folder", folder}};
   // Named here, so sending it again is the same message to its reader.
@@ -31,7 +31,7 @@ Mail Event(const std::string& folder, const std::string& thread_path,
   return mail;
 }
 
-// Mails the coordinator and starts its runtime if none runs: a starting
+// Mails the panel and starts its runtime if none runs: a starting
 // runtime delivers its pending mail. The mail is written before this
 // returns, so a thread never shows idle with its report still unsent; false
 // when it was refused. The start is off the caller's thread, which may hold
@@ -41,16 +41,15 @@ bool Deliver(const Mail& mail, std::function<void()> unreachable) {
   const std::string folder = JsonValue(mail.body, "folder", "");
   const std::string refused = SendMail(mail);
   if (!refused.empty()) {
-    DebugLog("coordinator_mail_refused", {{"error", refused}});
+    DebugLog("panel_mail_refused", {{"error", refused}});
   }
   // Started also when the mail was refused: a full inbox empties only when
-  // its coordinator runs.
+  // its panel runs.
   std::thread([folder, refused, unreachable = std::move(unreachable)] {
     std::string error;
-    if (!Open(ExecutablePath(), folder, CoordinatorPath(folder), "", Options{},
-              error)
+    if (!Open(ExecutablePath(), folder, PanelPath(folder), "", Options{}, error)
              .socket) {
-      DebugLog("coordinator_start_failed", {{"error", error}});
+      DebugLog("panel_start_failed", {{"error", error}});
       unreachable();
     } else if (!refused.empty()) {
       unreachable();
@@ -66,7 +65,7 @@ ThreadLink::ThreadLink(json thread, std::string path, std::string id)
 void ThreadLink::Ask(const std::string& interaction, const std::string& kind,
                      const std::string& asks, const std::string& data,
                      const std::string& title) const {
-  // The coordinator wrote the brief and has it: it is not sent back.
+  // The panel wrote the brief and has it: it is not sent back.
   const std::string text =
       "[" + kind + ", not a user message] Thread " + id_ + " \"" +
       OneLine(title) + "\" " + asks + " (interaction " + interaction +
@@ -75,15 +74,14 @@ void ThreadLink::Ask(const std::string& interaction, const std::string& kind,
       "\nDecide with the decide tool; yield when the user should.";
   Deliver(Event(JsonValue(thread_, "folder", ""), path_, kMailAsk, text),
           [thread = path_, interaction] {
-            SendToRunning(thread,
-                          {{"kind", "escalate"},
-                           {"interaction_id", interaction},
-                           {"text", "The coordinator is unavailable."}});
+            SendToRunning(thread, {{"kind", "escalate"},
+                                   {"interaction_id", interaction},
+                                   {"text", "The moderator is unavailable."}});
           });
 }
 
 // Enough for a whole answer in most cases: reading the rest costs the
-// coordinator a call and a model round. A chat member's message is not cut
+// panel a call and a model round. A chat member's message is not cut
 // here: it is what the others read.
 constexpr size_t kThreadReportChars = 6000;
 
@@ -120,13 +118,13 @@ void ThreadLink::Resend() {
   if (unsent_ && Deliver(*unsent_, [] {})) unsent_.reset();
 }
 
-std::string ThreadLink::Admit(bool from_coordinator) {
-  if (!from_coordinator) {
+std::string ThreadLink::Admit(bool from_panel) {
+  if (!from_panel) {
     streak_ = 0;
     return "";
   }
   if (++streak_ <= kStreak) return "";
-  return "the coordinator has messaged this thread " + std::to_string(kStreak) +
+  return "the moderator has messaged this thread " + std::to_string(kStreak) +
          " times in a row; ask the user first";
 }
 }  // namespace uagent::session

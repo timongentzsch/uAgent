@@ -35,8 +35,8 @@ void ReplayLog::Publish(const std::string& epoch, const std::string& session,
     value["attention_id"] = notice.attention_id;
   }
   notice.wake = kind == "scheduled.changed" || kind == "management.changed" ||
-                kind == "metadata" || kind == "activated" ||
-                kind == "deactivated" || run_owned;
+                kind == "spaces.changed" || kind == "metadata" ||
+                kind == "activated" || kind == "deactivated" || run_owned;
   if (kind == "deleted") notices_.erase(session);
   value["epoch"] = epoch;
   value["sequence"] = ++sequence_;

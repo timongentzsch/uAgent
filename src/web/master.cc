@@ -259,6 +259,7 @@ class Master {
                              {"epoch", epoch_},
                              {"cursor", std::move(catalogue["cursor"])},
                              {"sessions", std::move(catalogue["sessions"])},
+                             {"spaces", session::Spaces()},
                              {"commands", CommandSchemaJson()},
                              {"verbosity",
                               [] {
@@ -847,6 +848,19 @@ void Master::Command(const Request& request, Response& response) {
     if (error.empty() && action != "list" && action != "get" &&
         action != "show" && action != "preview") {
       host_.Publish("", "", {{"kind", "management.changed"}});
+    }
+  } else if (kind == "space") {
+    // A space's own: its name, and its end with everything in it.
+    lock.unlock();
+    const std::string path = JsonValue(command, "cwd", "");
+    error = JsonValue(command, "action", "") == "delete"
+                ? host_.DeleteSpace(path, device)
+                : host_.RenameSpace(path, Trim(JsonValue(command, "name", "")));
+    lock.lock();
+    outcome["result"] = {{"spaces", session::Spaces()}};
+    if (error.empty()) {
+      host_.Publish(
+          "", "", {{"kind", "spaces.changed"}, {"spaces", session::Spaces()}});
     }
   } else if (kind == "restart_conversations") {
     // Settings that need a restart reach running conversations only through

@@ -1,6 +1,7 @@
 import base64
 import json
 import os
+import pathlib
 import signal
 import socket
 import subprocess
@@ -2678,12 +2679,12 @@ def test_web_conversation_starts_in_a_space_by_name(root, home, *, binary):
         with web_host(binary, root, home, provider.url) as (web, code, _, _env):
             web.pair(code)
             first = web.command("create", space="notes-1")["session"]
-            again = web.command("create", space="notes-1")["session"]
+            again = web.command("create", space="Notes-1")["session"]
             space = (home / ".uagent" / "spaces" / "notes-1").resolve()
             assert_true(space.is_dir(), "the space was not created")
             assert_true(first["cwd"] == again["cwd"] == str(space), (first, again))
             assert_true(first["id"] != again["id"], "a second conversation was not started")
-            for number, name in enumerate(("../outside", "two words", ".hidden")):
+            for number, name in enumerate(("../outside", "a/b", "x" * 65)):
                 status, refused, _ = web.json(
                     "/api/command",
                     {
@@ -2693,8 +2694,60 @@ def test_web_conversation_starts_in_a_space_by_name(root, home, *, binary):
                         "space": name,
                     },
                 )
-                assert_true(status == 409 and "name takes" in refused["error"], (name, refused))
+                assert_true(status == 409 and "space's name" in refused["error"], (name, refused))
             assert_true(not (home / ".uagent" / "outside").exists(), "a name left its folder")
+
+
+def test_web_space_is_renamed_and_deleted(root, home, *, binary):
+    """A space goes by the name it was given, in several words if it likes.
+    Renaming it changes that name and nothing else; deleting it removes its
+    conversations and its folder, and never a folder that is not a space."""
+    with Server([event({"content": "ok"})]) as provider:
+        with web_host(binary, root, home, provider.url) as (web, code, _, _env):
+            web.pair(code)
+            session = web.command("create", space="Trip to Rome")["session"]
+            space = pathlib.Path(session["cwd"])
+            assert_true(space.parent == (home / ".uagent" / "spaces").resolve(), space)
+            other = web.command("create", space="other")["session"]
+
+            def spaces():
+                return {s["name"]: s["path"] for s in web.json("/api/sessions")[1]["spaces"]}
+
+            assert_true(spaces() == {"other": other["cwd"], "Trip to Rome": str(space)}, spaces())
+
+            renamed = web.command("space", action="rename", cwd=str(space), name="Rome 2027")
+            assert_true(
+                [s["name"] for s in renamed["result"]["spaces"]] == ["other", "Rome 2027"], renamed
+            )
+            same = web.command("create", space="rome 2027")["session"]
+            assert_true(same["cwd"] == str(space), "the renamed space is another folder")
+            listed = {s["id"]: s["cwd"] for s in web.json("/api/sessions")[1]["sessions"]}
+            assert_true(listed.get(session["id"]) == str(space), "a conversation changed")
+            for number, fields in enumerate(
+                (
+                    {"action": "rename", "cwd": str(space), "name": "other"},
+                    {"action": "rename", "cwd": str(space), "name": "a/b"},
+                    {"action": "rename", "cwd": str(root), "name": "mine"},
+                    {"action": "delete", "cwd": str(root)},
+                    {"action": "delete", "cwd": str(space.parent)},
+                )
+            ):
+                status, refused, _ = web.json(
+                    "/api/command",
+                    {"v": 2, "kind": "space", "request_id": f"{0xF0 + number:032x}", **fields},
+                )
+                assert_true(status == 409, (fields, refused))
+            assert_true(root.is_dir() and space.is_dir(), "a refused command removed a folder")
+
+            # One of its conversations is running: it is closed first.
+            (space / "notes.txt").write_text("keep?")
+            running = web.command("activate", session)["session"]
+            assert_true(running.get("presence") == "active", running)
+            deleted = web.command("space", action="delete", cwd=str(space))
+            assert_true([s["name"] for s in deleted["result"]["spaces"]] == ["other"], deleted)
+            assert_true(not space.exists(), "the space's folder is still there")
+            left = [s["cwd"] for s in web.json("/api/sessions")[1]["sessions"]]
+            assert_true(left == [other["cwd"]], left)
 
 
 def test_folder_panel_is_one_session_with_its_own_tools(root, home, *, binary):

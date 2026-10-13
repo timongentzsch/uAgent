@@ -33,10 +33,16 @@ folder's panel is its header, with the threads it started nested under
 it. Browsing saved history does not start a model or run a command.
 
 **New conversation** takes a directory on the host or a name. A name alone
-(letters, digits, `-` and `_`) starts in a space: a folder the host keeps at
-`~/.uagent/spaces/<name>`, made the first time the name is used. Use one for
-work that belongs to no project, rather than the home directory, which
+starts in a **space**: a folder the host keeps under `~/.uagent/spaces/`,
+made the first time the name is used. Use one for work that belongs to no
+project, rather than the home directory, which
 [commands cannot write](../SECURITY.md#sandboxing).
+
+A space goes by its name, which may be several words and can be changed:
+renaming a space moves nothing, so its conversations stay as they are.
+Deleting a space removes its conversations and its folder with every file
+in it. A **folder** is a directory of yours: it is listed while it has
+conversations, and µAgent never removes it.
 
 `--web` starts no conversation itself, so it refuses session flags (`-p`,
 `--json`, `-c`, `--resume`, `--yolo`, `--attach`, `--model`, …). It reads the

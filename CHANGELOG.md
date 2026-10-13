@@ -17,6 +17,10 @@
     `PANEL.md` exists.
   - In the chat, `Moderator, …` asks the moderator alone, and no member may
     be called that.
+- **A space has a name of its own and can be renamed and deleted.** The
+  name may be several words; the folder under `~/.uagent/spaces/` keeps
+  the name it was made with, so renaming moves nothing. Deleting a space
+  removes its conversations and its folder with every file in it.
 - **A chat member is called what its conversation is.** A name may be
   several words. Renaming a member's conversation renames the member: its
   earlier messages are shown under the new name, the other members are

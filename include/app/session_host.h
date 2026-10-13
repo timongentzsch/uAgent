@@ -86,6 +86,13 @@ struct SnapshotResult {
   int status = 200;
 };
 
+// The spaces: folders µAgent keeps for conversations that belong to no
+// project, each under the name its user gave it. [{path, name}], by name.
+json Spaces();
+// The folder of the space called `name`, made when there is none. Empty
+// with `error` when the name cannot be one or the folder cannot be made.
+std::string SpaceFolder(const std::string& name, std::string& error);
+
 struct SessionCommandResult {
   json outcome;
   std::string error, worker_request;
@@ -133,6 +140,12 @@ class SessionHost {
   HostWaitState RunSchedules(bool& recovered);
   void Shutdown();
   json Catalogue() const;
+  // A space is renamed by its label, its folder and so every conversation
+  // in it staying what they are. Deleting one closes and removes its
+  // conversations, then the folder with everything in it. Each returns why
+  // it could not, or nothing.
+  std::string RenameSpace(const std::string& path, const std::string& name);
+  std::string DeleteSpace(const std::string& path, const std::string& device);
   std::string AssetPath(const std::string& id) const;
   AssetStoreResult StoreAsset(const std::string& session_id,
                               const std::string& bytes, std::string name);

@@ -28,19 +28,21 @@ address. Or open the URL and type the code.
 - **Remove a device.** Settings → Host → Paired devices → **Revoke**, or
   **Log out this device**.
 
-The sidebar lists this OS user's conversations grouped by project folder. A
-folder's panel is its header, with the threads it started nested under
-it. Browsing saved history does not start a model or run a command.
+The sidebar lists this OS user's conversations by where they are: **Spaces**
+first, then **Folders**. Each place lists its panel first, with what the
+panel started (threads and the members of its chat) nested under it, then
+its conversations. Browsing saved history does not start a model or run a
+command.
 
-**New conversation** takes a directory on the host or a name. A name alone
-starts in a **space**: a folder the host keeps under `~/.uagent/spaces/`,
-made the first time the name is used. Use one for work that belongs to no
+**New conversation** takes a space's name or a directory on the host. A
+**space** is a folder the host keeps under `~/.uagent/spaces/`, made the
+first time its name is used. Use one for work that belongs to no
 project, rather than the home directory, which
 [commands cannot write](../SECURITY.md#sandboxing).
 
 A space goes by its name, which may be several words and can be changed:
-renaming a space moves nothing, so its conversations stay as they are.
-Deleting a space removes its conversations and its folder with every file
+renaming a space (the menu beside its name) moves nothing, so its
+conversations stay as they are. Deleting a space removes its conversations and its folder with every file
 in it. A **folder** is a directory of yours: it is listed while it has
 conversations, and µAgent never removes it.
 
@@ -256,10 +258,14 @@ before Submit.
 
 ### The panel and its chat
 
-- **New conversation → Open its panel** opens a folder's panel;
-  so does the icon beside the folder in the sidebar, and the command palette.
+- A place's panel is its first row in the sidebar, or **Open panel** where
+  it has none yet; **New conversation → Open its panel** and the command
+  palette open it too. A thread or member links back to its panel under its
+  title.
 - The **board** beside the chat (a button in the header on a phone) lists
-  what needs you, the chat's members, and the threads working and done.
+  the chat's members and the work the moderator started. A row's menu
+  renames or removes it, and **+** starts a message asking for another
+  member. What needs you is above the input and in the sidebar's inbox.
 - Members appear with an avatar; each message carries its author's name, and
   its menu's **Show prompt** shows what that author was given. The line above
   the input says who is typing.

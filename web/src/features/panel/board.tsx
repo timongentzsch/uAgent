@@ -1,84 +1,89 @@
 import type { ComponentChildren } from "preact";
 import type { Session } from "../../shared/types.ts";
-import { Button, Time } from "../../shared/ui.tsx";
-import { waiting } from "../../state/attention.ts";
+import { Plus } from "lucide-preact";
+import { Button, IconButton, Time } from "../../shared/ui.tsx";
+import { statusOf } from "../../state/attention.ts";
 import SessionName from "../../shared/session-name.tsx";
 import { ListRow } from "../../shared/list-row.tsx";
 import { usePhone } from "../../shared/layout.ts";
 
 const DONE_SHOWN = 8;
 
-// The folder at a glance, beside its panel: what waits on you, what is
-// working, and what is done. Drawn from live session metadata, never stored.
+// Who is on the panel and what it started, beside its chat. Drawn from live
+// session metadata, never stored. What waits on you is above the composer
+// and in the sidebar's inbox, not repeated here.
 export default function Board({
   threads,
   online,
   choose,
+  menu,
+  add,
 }: {
   threads: Session[];
   online: boolean;
   choose: (id: string) => void;
+  // A row's own actions: rename it, remove it.
+  menu?: (item: Session) => ComponentChildren;
+  // Starts a message that asks the moderator for another member.
+  add?: () => void;
 }) {
   const managed = [...threads].sort(
     (a, b) => (b.updated || 0) - (a.updated || 0),
   );
-  const working = (item: Session) => online && item.turn_active;
-  // Each group with how many rows it lists: what is done shows the latest
-  // few, and the rest stay in the sidebar. The chat's members are neither
-  // working nor done: they are there.
+  const working = (item: Session) => statusOf(item, online) === "working";
+  const work = managed.filter((item) => item.kind === "thread" && !item.member);
+  // Work that is done shows its latest few; the rest stay in the sidebar.
+  const done = work.filter((item) => !working(item) && !item.pending);
   const groups: [string, Session[], number][] = [
-    ["Needs you", waiting(managed), Infinity],
+    ["Members", managed.filter((item) => item.member), 0],
     [
-      "Members",
-      managed.filter((item) => !item.pending && item.member),
-      Infinity,
-    ],
-    [
-      "Working",
-      managed.filter((item) => !item.pending && !item.member && working(item)),
-      Infinity,
-    ],
-    [
-      "Done",
-      managed.filter((item) => !item.pending && !item.member && !working(item)),
-      DONE_SHOWN,
+      "Work",
+      [
+        ...work.filter((item) => working(item) || item.pending),
+        ...done.slice(0, DONE_SHOWN),
+      ],
+      Math.max(0, done.length - DONE_SHOWN),
     ],
   ];
-  // Only groups with something in them; an empty folder says so once.
-  const shown = groups.filter(([, items]) => items.length);
   return (
     <aside class="board" aria-label="Board">
-      {!shown.length && (
-        <p class="board-note">
-          Nothing here yet. Threads the moderator starts, members of the panel
-          and what needs you appear here.
-        </p>
-      )}
-      {shown.map(([label, items, limit]) => (
+      {groups.map(([label, items, earlier]) => (
         <section key={label}>
           <h2>
-            {label} <span class="board-count">{items.length}</span>
+            {label} <span class="board-count">{items.length + earlier}</span>
+            {label === "Members" && add && (
+              <IconButton label="Add a member" disabled={!online} onClick={add}>
+                <Plus />
+              </IconButton>
+            )}
           </h2>
-          {items.slice(0, limit).map((item) => (
-            <ListRow
-              key={item.id}
-              class="board-row"
-              onClick={() => choose(item.id)}
-              title={<SessionName item={item} />}
-              meta={
-                item.pending
-                  ? "Needs your input"
-                  : working(item)
-                    ? item.member
-                      ? "Typing…"
-                      : item.activity || "Working"
-                    : item.updated && <Time value={item.updated} />
-              }
-            />
-          ))}
-          {items.length > limit && (
-            <p class="board-note">{items.length - limit} earlier</p>
+          {!items.length && (
+            <p class="board-note">
+              {label === "Members"
+                ? "Nobody yet. Ask the moderator for another voice."
+                : "Nothing yet. The moderator starts threads for work you ask for."}
+            </p>
           )}
+          {items.map((item) => (
+            <div class="session-row" key={item.id}>
+              <ListRow
+                class="board-row"
+                onClick={() => choose(item.id)}
+                title={<SessionName item={item} />}
+                meta={
+                  item.pending
+                    ? "Needs your input"
+                    : working(item)
+                      ? item.member
+                        ? "Typing…"
+                        : item.activity || "Working"
+                      : item.updated && <Time value={item.updated} />
+                }
+              />
+              {menu?.(item)}
+            </div>
+          ))}
+          {earlier > 0 && <p class="board-note">{earlier} earlier</p>}
         </section>
       ))}
     </aside>

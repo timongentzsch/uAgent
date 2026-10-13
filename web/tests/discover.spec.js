@@ -107,7 +107,7 @@ test("an empty workspace says what to do, and a folder's panel is one step away"
 
   // Enter in the dialog starts a conversation, as its primary button does.
   await page.locator(".empty").getByRole("button").click();
-  const folder = page.getByLabel("Directory on the host");
+  const folder = page.getByLabel("Or in a folder on the host");
   await folder.fill(host.project);
   await folder.press("Enter");
   await expect(page.locator(".transcript .tips")).toContainText(
@@ -119,7 +119,7 @@ test("an empty workspace says what to do, and a folder's panel is one step away"
 
   // The panel of that folder is the dialog's other action.
   await page.getByRole("button", { name: "New conversation" }).first().click();
-  await page.getByLabel("Directory on the host").fill(host.project);
+  await page.getByLabel("Or in a folder on the host").fill(host.project);
   await page.getByRole("button", { name: "Open its panel" }).click();
   const board = page.getByRole("complementary", { name: "Board" });
   await expect(board).toBeVisible();

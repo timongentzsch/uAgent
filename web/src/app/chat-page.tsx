@@ -1,3 +1,4 @@
+import type { ComponentChildren } from "preact";
 import type {
   Act,
   Activity,
@@ -76,6 +77,8 @@ export default function ChatPage({
   loadError,
   draft,
   setDraft,
+  menu,
+  addMember,
   upload,
   uploading,
   busy,
@@ -108,6 +111,9 @@ export default function ChatPage({
   loadError: unknown;
   draft: Draft;
   setDraft: (value: Draft) => void;
+  // A panel's roster: a row's own actions, and asking for another member.
+  menu: (item: Session) => ComponentChildren;
+  addMember: () => void;
   upload: (files: File[]) => Promise<boolean>;
   uploading: boolean;
   busy: boolean;
@@ -230,7 +236,15 @@ export default function ChatPage({
   return session ? (
     <PanelLayout
       board={
-        threads && <Board threads={threads} online={online} choose={choose} />
+        threads && (
+          <Board
+            threads={threads}
+            online={online}
+            choose={choose}
+            menu={menu}
+            add={addMember}
+          />
+        )
       }
     >
       {/* Remount the transcript per session: a stale surface's

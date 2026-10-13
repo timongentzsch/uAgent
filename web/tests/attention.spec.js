@@ -92,7 +92,7 @@ test("a notification's link opens the session at its decision", async ({
     .toBe(`#session=${other.id}`);
 });
 
-test("a panel's threads nest under its folder header", async ({
+test("what a panel started nests under it", async ({
   page,
   host,
   session,
@@ -110,7 +110,7 @@ test("a panel's threads nest under its folder header", async ({
   });
   await page.goto("/");
   const threads = page.getByRole("group", {
-    name: /^Threads of the panel for /,
+    name: /^Started by the panel of /,
   });
   await expect(threads.locator(".session")).toHaveCount(1);
   // A shape and words beside the colour: nothing waits here, so no icon.

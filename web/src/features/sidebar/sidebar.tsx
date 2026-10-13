@@ -5,6 +5,7 @@ import {
 import { Component, type ComponentChildren } from "preact";
 import type {
   Session,
+  Space,
   Report,
   AppModal,
   Snapshot,
@@ -45,7 +46,6 @@ import { ListRow } from "../../shared/list-row.tsx";
 import {
   needsYou,
   statusOf,
-  waiting,
   type SessionState,
 } from "../../state/attention.ts";
 import { SheetButton } from "../../shared/sheet.tsx";
@@ -65,6 +65,36 @@ export async function restartConversation(item: Session) {
     : deferred
       ? "Restarts when this turn ends."
       : "Nothing to restart: this conversation is not running.";
+}
+
+// What can be done to a space, which is µAgent's own to rename and remove.
+export function SpaceMenu({
+  space,
+  conversations,
+  online,
+  open,
+}: {
+  space: Space;
+  conversations: number;
+  online: boolean;
+  open: (modal: AppModal) => void;
+}) {
+  return (
+    <Menu label={`Menu for the space ${space.name}`}>
+      <MenuItem
+        disabled={!online}
+        onClick={() => open({ type: "rename", space })}
+      >
+        Rename
+      </MenuItem>
+      <MenuItem
+        disabled={!online}
+        onClick={() => open({ type: "delete", space, conversations })}
+      >
+        Delete
+      </MenuItem>
+    </Menu>
+  );
 }
 
 export function ConversationMenu({
@@ -207,51 +237,6 @@ const SAMPLE: Session[] = [
   updated: Date.now(),
 }));
 
-// A folder's panel: faint until used, pulsing while it works, badged
-// with the decisions waiting on you, which a thread cannot proceed without.
-function PanelButton({
-  folder,
-  panel,
-  waiting,
-  online,
-  open,
-}: {
-  folder: string;
-  panel?: Session;
-  waiting: number;
-  online: boolean;
-  open: () => void;
-}) {
-  const state = !panel
-    ? "idle"
-    : online && panel.turn_active
-      ? "working"
-      : "ready";
-  // One name carries the folder, the state and the badge's count.
-  const label = [
-    `Panel for ${folderName(folder)}`,
-    state === "working" && "working",
-    waiting > 0 && `${waiting} waiting on you`,
-  ]
-    .filter(Boolean)
-    .join(", ");
-  return (
-    <IconButton
-      label={label}
-      class={`panel-button ${state}`}
-      onClick={open}
-      disabled={!online}
-    >
-      <MessagesSquare />
-      {waiting > 0 && (
-        <span class="panel-badge" aria-hidden="true">
-          {waiting}
-        </span>
-      )}
-    </IconButton>
-  );
-}
-
 // A row that waits on you or failed shows that as a shape in place of the
 // LED; a working row keeps the LED, which breathes. The words beside it name
 // the state.
@@ -260,32 +245,60 @@ const STATE_ICONS: Partial<Record<SessionState, typeof Inbox>> = {
   failed: TriangleAlert,
 };
 
-// The list's folders in its order, newest first: each folder's threads
-// (under its panel's header), then its conversations. The
-// panel is the header, not a row.
-function groupSessions(sessions: Session[], search = "") {
-  const groups = new Map<string, { threads: Session[]; others: Session[] }>();
-  for (const item of [...sessions]
-    .sort((a, b) => (b.updated || 0) - (a.updated || 0))
-    .filter((item) =>
-      `${item.title} ${item.cwd}`.toLowerCase().includes(search.toLowerCase()),
-    )) {
-    const folder = folderOf(item);
-    // A folder with only its panel still has a header to open it.
-    if (!groups.has(folder)) groups.set(folder, { threads: [], others: [] });
-    const group = groups.get(folder)!;
-    if (item.kind === "thread") group.threads.push(item);
-    else if (item.kind !== "panel") group.others.push(item);
+type Place = { panel?: Session; threads: Session[]; others: Session[] };
+
+// The list's places in its order, newest first: each one's panel, what
+// the panel started (threads and the members of its chat), then its
+// conversations. A space is a place whether or not anything is in it yet.
+function groupSessions(sessions: Session[], spaces: Space[] = [], search = "") {
+  const groups = new Map<string, Place>();
+  const place = (path: string) => {
+    if (!groups.has(path)) groups.set(path, { threads: [], others: [] });
+    return groups.get(path)!;
+  };
+  const names = new Map(spaces.map((space) => [space.path, space.name]));
+  const matches = (text: string) =>
+    text.toLowerCase().includes(search.toLowerCase());
+  for (const item of [...sessions].sort(
+    (a, b) => (b.updated || 0) - (a.updated || 0),
+  )) {
+    const path = folderOf(item);
+    // A panel is listed with its place, whatever the search shows of it.
+    if (item.kind === "panel") {
+      if (!search || matches(`${names.get(path) || ""} ${path}`))
+        place(path).panel = item;
+    } else if (matches(`${item.title} ${names.get(path) || ""} ${item.cwd}`)) {
+      (item.kind === "thread" ? place(path).threads : place(path).others).push(
+        item,
+      );
+    }
   }
+  for (const space of spaces) if (matches(space.name)) place(space.path);
   return groups;
 }
 
+// The places under the word for their kind, spaces first: one is µAgent's
+// to keep and remove, the other a directory of yours.
+function placesByKind(sessions: Session[], spaces: Space[] = [], search = "") {
+  const places = [...groupSessions(sessions, spaces, search)];
+  const space = (path: string) => spaces.some((item) => item.path === path);
+  return (
+    [
+      ["Spaces", places.filter(([path]) => space(path))],
+      ["Folders", places.filter(([path]) => !space(path))],
+    ] as const
+  ).filter(([, shown]) => shown.length);
+}
+
 // The rows in the order the list shows them: what Alt+↑/↓ steps through.
-export const sessionOrder = (sessions: Session[]) =>
-  [...groupSessions(sessions).values()].flatMap((group) => [
-    ...group.threads,
-    ...group.others,
-  ]);
+export const sessionOrder = (sessions: Session[], spaces?: Space[]) =>
+  placesByKind(sessions, spaces).flatMap(([, places]) =>
+    places.flatMap(([, group]) => [
+      ...(group.panel ? [group.panel] : []),
+      ...group.threads,
+      ...group.others,
+    ]),
+  );
 
 type SessionRowProps = {
   item: Session;
@@ -294,6 +307,8 @@ type SessionRowProps = {
   online: boolean;
   choose: (id: string) => void;
   menu: (session: Session) => ComponentChildren;
+  // A panel's row says how many members its chat has.
+  members?: number;
 };
 
 // One conversation in the list: its title, activity and last update.
@@ -304,6 +319,7 @@ function SessionRowView({
   online,
   choose,
   menu,
+  members = 0,
 }: SessionRowProps) {
   const state = statusOf(item, online);
   const Icon = STATE_ICONS[state];
@@ -313,7 +329,12 @@ function SessionRowView({
         class="session"
         onClick={() => choose(item.id)}
         aria-current={selected ? "page" : undefined}
-        title={<SessionName item={item} />}
+        title={
+          <>
+            <SessionName item={item} />
+            {members > 0 && ` · ${members} member${members > 1 ? "s" : ""}`}
+          </>
+        }
         unread={unread && "Unread messages"}
         meta={
           <>
@@ -333,7 +354,6 @@ function SessionRowView({
               pending={online && item.pending}
             />
             {item.updated ? <Time value={item.updated} /> : "New conversation"}
-            {item.error && <span title={item.error}> · Needs attention</span>}
           </>
         }
       />
@@ -363,6 +383,9 @@ type SidebarProps = {
   navigate: (page: "chat" | "library" | "scheduled") => void;
   scheduledUnread: boolean;
   sessions: Session[];
+  spaces: Space[];
+  // What can be done to a space: rename it, delete it.
+  spaceMenu: (space: Space, conversations: number) => ComponentChildren;
   selected: string;
   unread: Set<string>;
   online: boolean;
@@ -380,6 +403,8 @@ type SidebarProps = {
 function SidebarView({
   loading,
   sessions,
+  spaces,
+  spaceMenu,
   selected,
   unread,
   online,
@@ -400,11 +425,6 @@ function SidebarView({
   // Until the list arrives, it draws sample rows in its own layout.
   const drawing = loading && !sessions.length;
   const all = drawing ? SAMPLE : sessions;
-  // Each folder's panel is its header icon, not a row. It and its
-  // badge count every conversation in the folder, whatever the search shows.
-  const panels = new Map<string, Session>();
-  for (const item of all)
-    if (item.kind === "panel") panels.set(folderOf(item), item);
   const row = (item: Session) => (
     <SessionRow
       key={item.id}
@@ -417,32 +437,67 @@ function SidebarView({
     />
   );
   const count = drawing ? 0 : needsYou(all);
-  const list = [...groupSessions(all, search)].map(([cwd, group]) => (
-    <section key={cwd}>
-      <h2>
-        <FolderLabel path={cwd} />
-        {!drawing && (
-          <PanelButton
-            folder={cwd}
-            panel={panels.get(cwd)}
-            waiting={waiting(all, cwd).length}
+  const kept = new Map(spaces.map((space) => [space.path, space]));
+  const place = ([cwd, group]: [string, Place]) => {
+    const space = kept.get(cwd);
+    return (
+      <section key={cwd}>
+        <h2>
+          <FolderLabel path={cwd} space={!!space}>
+            {space?.name}
+          </FolderLabel>
+          {space &&
+            spaceMenu(
+              space,
+              all.filter((item) => folderOf(item) === cwd).length,
+            )}
+        </h2>
+        {group.panel ? (
+          <SessionRow
+            key={group.panel.id}
+            item={group.panel}
+            selected={group.panel.id === selected}
+            unread={unread.has(group.panel.id)}
             online={online}
-            open={() => openPanel(cwd)}
+            choose={choose}
+            menu={menu}
+            members={group.threads.filter((item) => item.member).length}
           />
+        ) : (
+          !drawing &&
+          !search && (
+            <Button
+              variant="quiet"
+              class="open-panel"
+              disabled={!online}
+              onClick={() => openPanel(cwd)}
+            >
+              <MessagesSquare />
+              Open panel
+            </Button>
+          )
         )}
-      </h2>
-      {group.threads.length > 0 && (
-        <div
-          class="threads"
-          role="group"
-          aria-label={`Threads of the panel for ${folderName(cwd)}`}
-        >
-          {group.threads.map(row)}
-        </div>
-      )}
-      {group.others.map(row)}
-    </section>
-  ));
+        {group.threads.length > 0 && (
+          <div
+            class="threads"
+            role="group"
+            aria-label={`Started by the panel of ${space?.name || folderName(cwd)}`}
+          >
+            {group.threads.map(row)}
+          </div>
+        )}
+        {group.others.map(row)}
+      </section>
+    );
+  };
+  const list = placesByKind(all, drawing ? [] : spaces, search).map(
+    ([kind, shown]) => (
+      <div key={kind} class="list-group" role="group" aria-label={kind}>
+        <p class="list-kind">{kind}</p>
+        {shown.map(place)}
+      </div>
+    ),
+  );
   return (
     <>
       <div class="sidebar-head">

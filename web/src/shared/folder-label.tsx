@@ -1,5 +1,5 @@
 import type { ComponentChildren } from "preact";
-import { Folder } from "lucide-preact";
+import { Box, Folder } from "lucide-preact";
 import { DataText } from "./placeholder.tsx";
 import type { Session } from "./types.ts";
 
@@ -13,14 +13,17 @@ export const folderOf = (item: Session) => item.folder || item.cwd || "";
 
 export default function FolderLabel({
   path,
+  space,
   children,
 }: {
   path?: string;
+  // A space is µAgent's own, and goes by its name rather than its path.
+  space?: boolean;
   children?: ComponentChildren;
 }) {
   return (
-    <span class="folder-label" title={path}>
-      <Folder />
+    <span class="folder-label" title={space ? undefined : path}>
+      {space ? <Box /> : <Folder />}
       <span>
         <DataText>{children || folderName(path)}</DataText>
       </span>

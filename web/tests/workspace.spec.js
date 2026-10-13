@@ -189,7 +189,7 @@ test("unread completions, background activity and conversation lifecycle", async
     .getByRole("complementary", { name: "Projects and conversations" })
     .getByRole("button", { name: "New conversation", exact: true })
     .click();
-  await page.getByLabel("Directory on the host").fill(fixture.project);
+  await page.getByLabel("Or in a folder on the host").fill(fixture.project);
   await page
     .getByRole("button", { name: "Start conversation", exact: true })
     .click();

@@ -5,6 +5,7 @@ import type {
   Session,
   Snapshot,
 } from "../shared/types.ts";
+import { folderOf } from "../shared/folder-label.tsx";
 import type { ComponentProps, JSX } from "preact";
 import {
   Modal,
@@ -173,7 +174,14 @@ export default function Modals({
               close={close}
               online={online}
               changed={async (kind: string, id: string) => {
-                if (kind === "delete") forget(id);
+                // A space takes its conversations with it.
+                if (kind === "delete")
+                  for (const gone of modal.space
+                    ? catalogue.sessions.filter(
+                        (item) => folderOf(item) === modal.space?.path,
+                      )
+                    : [{ id }])
+                    forget(gone.id);
                 await refresh();
               }}
             />

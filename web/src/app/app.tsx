@@ -256,7 +256,8 @@ function App() {
   // The moderator adds a member, with a persona, skills and model of its
   // choosing: asking for one starts the message that asks.
   function addMember() {
-    setDraft({ ...draft, text: "Add a member named " });
+    // What is already written stays: it may be the request itself.
+    if (!draft.text) setDraft({ ...draft, text: "Add a member named " });
     document.querySelector<HTMLTextAreaElement>("#prompt")?.focus();
   }
   useEffect(() => {
@@ -399,14 +400,12 @@ function App() {
           await choose(created.session.id);
         }
         await load(created.session.id);
-        // A space made by this is listed with the others.
-        if (space) await refresh();
         return created.session.id;
       } finally {
         starting.current = false;
       }
     },
-    [upsertSession, choose, load, refresh],
+    [upsertSession, choose, load],
   );
   // A command with a screen opens it when typed bare; with an argument it
   // runs on the host, as in the terminal.

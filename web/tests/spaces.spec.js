@@ -38,4 +38,8 @@ test("a space is listed apart from folders, renamed and deleted", async ({
   await page.getByRole("button", { name: "Delete permanently" }).click();
   await expect(spaces).toHaveCount(0);
   await expect(folders.locator(".session")).toHaveCount(1);
+  // The conversation that was open went with it.
+  await expect(
+    page.getByRole("heading", { name: "Your workspace" }),
+  ).toBeVisible();
 });

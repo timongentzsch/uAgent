@@ -277,13 +277,28 @@ function groupSessions(sessions: Session[], spaces: Space[] = [], search = "") {
   return groups;
 }
 
+// The places under the word for their kind, spaces first: one is µAgent's
+// to keep and remove, the other a directory of yours.
+function placesByKind(sessions: Session[], spaces: Space[] = [], search = "") {
+  const places = [...groupSessions(sessions, spaces, search)];
+  const space = (path: string) => spaces.some((item) => item.path === path);
+  return (
+    [
+      ["Spaces", places.filter(([path]) => space(path))],
+      ["Folders", places.filter(([path]) => !space(path))],
+    ] as const
+  ).filter(([, shown]) => shown.length);
+}
+
 // The rows in the order the list shows them: what Alt+↑/↓ steps through.
 export const sessionOrder = (sessions: Session[], spaces?: Space[]) =>
-  [...groupSessions(sessions, spaces).values()].flatMap((group) => [
-    ...(group.panel ? [group.panel] : []),
-    ...group.threads,
-    ...group.others,
-  ]);
+  placesByKind(sessions, spaces).flatMap(([, places]) =>
+    places.flatMap(([, group]) => [
+      ...(group.panel ? [group.panel] : []),
+      ...group.threads,
+      ...group.others,
+    ]),
+  );
 
 type SessionRowProps = {
   item: Session;
@@ -475,22 +490,14 @@ function SidebarView({
       </section>
     );
   };
-  const places = [...groupSessions(all, drawing ? [] : spaces, search)];
-  // Spaces and folders are told apart: one is µAgent's to keep and remove,
-  // the other a directory of yours.
-  const list = (
-    [
-      ["Spaces", places.filter(([cwd]) => kept.has(cwd))],
-      ["Folders", places.filter(([cwd]) => !kept.has(cwd))],
-    ] as const
-  )
-    .filter(([, shown]) => shown.length)
-    .map(([kind, shown]) => (
+  const list = placesByKind(all, drawing ? [] : spaces, search).map(
+    ([kind, shown]) => (
       <div key={kind} class="list-group" role="group" aria-label={kind}>
         <p class="list-kind">{kind}</p>
         {shown.map(place)}
       </div>
-    ));
+    ),
+  );
   return (
     <>
       <div class="sidebar-head">

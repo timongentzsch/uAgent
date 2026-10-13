@@ -467,7 +467,15 @@ export interface Verbosity {
   // The level names from least detail to most.
   order: string[];
 }
+// A folder the host keeps for conversations that belong to no project,
+// under the name its user gave it.
+export interface Space {
+  path: string;
+  name: string;
+}
+
 export interface Catalogue {
+  spaces?: Space[];
   commands?: SlashCommand[];
   verbosity?: Verbosity;
   scheduled?: ScheduledState;
@@ -719,6 +727,7 @@ export interface CommandResults {
   model: ModelCatalogue;
   config: Configuration;
   restart_conversations: { restarting: number; deferred: number };
+  space: { spaces: Space[] };
   restart_host: { restarting: boolean };
   tools: ToolCatalogue;
   tool_categories: ToolCategories;
@@ -780,6 +789,8 @@ export interface CommandFields {
   key?: string;
   value?: string;
   cwd?: string;
+  // Create: a space by its name, in place of `cwd`.
+  space?: string;
   panel?: boolean;
   audience?: string;
   // Instructions: the text an edit started from; a changed file refuses.

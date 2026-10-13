@@ -34,6 +34,7 @@ Paths under `~/.uagent` unless shown otherwise.
 | your skills | `skills/*` |
 | shared browser profile (saved logins, cookies) | the directory `UAGENT_BROWSER_DATA` names |
 | runtime sockets and their leases | `/tmp/uagent-<uid>-<hash>/*.sock`, `*.sock.lock` |
+| spaces, and the name each goes by | `spaces/<folder>`, `spaces/<folder>/.uagent/name` |
 | scratch scripts | `<workspace>/.uagent/scratch/*.py`, `*.sh` |
 | Playwright snapshots and logs | `<workspace>/.playwright-cli/*` |
 

@@ -132,11 +132,11 @@ function MessageView({ block, online, session }: MessageProps) {
   // text opens with for the model ("Ada: …").
   const member =
     block.kind === "user" && block.origin === "mail" ? block.author : undefined;
-  const text = member
-    ? (block.text || "").slice(
-        block.text?.startsWith(`${member}: `) ? member.length + 2 : 0,
-      )
-    : (full ?? block.text);
+  const whole = full ?? block.text ?? "";
+  const text =
+    member && whole.startsWith(`${member}: `)
+      ? whole.slice(member.length + 2)
+      : whole;
   const tool = block.kind === "tool_result";
   const load = useBlockReader(session, read);
   useEffect(() => {
